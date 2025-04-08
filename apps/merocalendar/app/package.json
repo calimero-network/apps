@@ -1,9 +1,8 @@
 {
-  "name": "app",
+  "name": "plantr",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "homepage": "https://calimero-network.github.io/core-app-template/",
   "dependencies": {
     "@calimero-network/calimero-client": "1.5.0",
     "@types/react": "^18.3.3",

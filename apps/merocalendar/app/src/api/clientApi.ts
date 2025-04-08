@@ -1,27 +1,27 @@
 import { ApiResponse } from '@calimero-network/calimero-client';
 
-export interface GetCountResponse {
-  count: number;
-}
-
-export interface IncreaseCountRequest {
-  count: number;
-}
-
-export interface IncreaseCountResponse {}
-
-export interface ResetCounterResponse {}
-
 export enum ClientMethod {
-  GET_COUNT = 'get_count',
-  INCREASE_COUNT = 'increase_count',
-  RESET = 'reset',
+  GET_CALENDAR_EVENTS = 'get_calendar_events',
+}
+
+export interface GetCalendarEventsRequest {}
+
+export interface GetCalendarEventsResponse {
+  events: CalendarEvent[];
+}
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  description: string;
+  startDate: string;
+  endDate: string;
+  location: string;
+  attendees: string[];
+  status: string;
+  type: string;
 }
 
 export interface ClientApi {
-  getCount(): ApiResponse<GetCountResponse>;
-  increaseCount(
-    params: IncreaseCountRequest,
-  ): ApiResponse<IncreaseCountResponse>;
-  reset(): ApiResponse<ResetCounterResponse>;
+  getCalendarEvents(): ApiResponse<GetCalendarEventsResponse>;
 }
