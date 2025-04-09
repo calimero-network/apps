@@ -1,13 +1,19 @@
 import { ApiResponse } from '@calimero-network/calimero-client';
+import { IEventCreate, TPartialEvent } from '../types/event';
+
+export interface GetEventsResponse {}
+
+export interface CreateEventResponse {}
+
+export interface DeleteEventResponse {}
+
+export interface UpdateEventResponse {}
 
 export enum ClientMethod {
-  GET_CALENDAR_EVENTS = 'get_calendar_events',
-}
-
-export interface GetCalendarEventsRequest {}
-
-export interface GetCalendarEventsResponse {
-  events: CalendarEvent[];
+  GET_EVENTS = "get_events",
+  CREATE_EVENT = "create_event",
+  DELETE_EVENT = "delete_event",
+  UPDATE_EVENT = "update_event",
 }
 
 export interface CalendarEvent {
@@ -23,5 +29,11 @@ export interface CalendarEvent {
 }
 
 export interface ClientApi {
-  getCalendarEvents(): ApiResponse<GetCalendarEventsResponse>;
+  getEvents(): ApiResponse<GetEventsResponse>;
+  createEvent(event: IEventCreate): ApiResponse<CreateEventResponse>;
+  deleteEvent(eventId: string): ApiResponse<DeleteEventResponse>;
+  updateEvent(
+    eventId: string,
+    eventData: TPartialEvent
+  ): ApiResponse<UpdateEventResponse>;
 }

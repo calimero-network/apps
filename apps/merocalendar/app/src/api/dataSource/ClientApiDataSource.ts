@@ -10,9 +10,12 @@ import {
 import {
   ClientApi,
   ClientMethod,
-  GetCalendarEventsRequest,
-  GetCalendarEventsResponse,
+  CreateEventResponse,
+  DeleteEventResponse,
+  GetEventsResponse,
+  UpdateEventResponse,
 } from '../clientApi';
+import { IEventCreate, TPartialEvent } from '../../types/event';
 
 export function getJsonRpcClient() {
   const appEndpointKey = getAppEndpointKey();
@@ -51,7 +54,94 @@ export class ClientApiDataSource implements ClientApi {
     }
   }
 
-  async getCalendarEvents(): ApiResponse<GetCalendarEventsResponse> {
+  async getEvents(): ApiResponse<GetEventsResponse> {
+    try {
+      const { publicKey, contextId, config, error } =
+        prepareAuthenticatedRequestConfig();
+      if (error) {
+        return { error };
+      }
+
+      const response = await getJsonRpcClient().execute<any, GetEventsResponse>(
+        {
+          contextId: contextId,
+          method: ClientMethod.GET_EVENTS,
+          argsJson: {},
+          executorPublicKey: publicKey,
+        },
+        config
+      );
+      if (response?.error) {
+        return await this.handleError(response.error, {}, this.getEvents);
+      }
+
+      return {
+        data: { response },
+        error: null,
+      };
+    } catch (error) {
+      console.error("getEvents failed:", error);
+      let errorMessage = "An unexpected error occurred during getEvents";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+
+  async createEvent(event: IEventCreate): ApiResponse<CreateEventResponse> {
+    try {
+      const { publicKey, contextId, config, error } =
+        prepareAuthenticatedRequestConfig();
+
+      if (error) {
+        return { error };
+      }
+      const response = await getJsonRpcClient().execute<
+        any,
+        CreateEventResponse
+      >(
+        {
+          contextId: contextId,
+          method: ClientMethod.CREATE_EVENT,
+          argsJson: event,
+          executorPublicKey: publicKey,
+        },
+        config
+      );
+      if (response?.error) {
+        return await this.handleError(response.error, {}, this.createEvent);
+      }
+
+      return {
+        data: Number(response?.result?.output) ?? null,
+        error: null,
+      };
+    } catch (error) {
+      console.error("createEvent failed:", error);
+      let errorMessage = "An unexpected error occurred during createEvent";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+
+  async deleteEvent(eventId: string): ApiResponse<DeleteEventResponse> {
     try {
       const { publicKey, contextId, config, error } =
         prepareAuthenticatedRequestConfig();
@@ -60,35 +150,79 @@ export class ClientApiDataSource implements ClientApi {
       }
 
       const response = await getJsonRpcClient().execute<
-        GetCalendarEventsRequest,
-        GetCalendarEventsResponse
+        any,
+        DeleteEventResponse
       >(
         {
           contextId: contextId,
-          method: ClientMethod.GET_CALENDAR_EVENTS,
-          argsJson: {},
+          method: ClientMethod.DELETE_EVENT,
+          argsJson: eventId,
           executorPublicKey: publicKey,
         },
-        config,
+        config
       );
       if (response?.error) {
-        return await this.handleError(
-          response.error,
-          {},
-          this.getCalendarEvents,
-        );
+        return await this.handleError(response.error, {}, this.deleteEvent);
       }
 
       return {
-        data: response.result.output as GetCalendarEventsResponse,
+        data: Number(response?.result?.output) ?? null,
         error: null,
       };
     } catch (error) {
-      console.error('getCalendarEvents failed:', error);
-      let errorMessage = 'An unexpected error occurred during getCount';
+      console.error("deleteEvent failed:", error);
+      let errorMessage = "An unexpected error occurred during deleteEvent";
       if (error instanceof Error) {
         errorMessage = error.message;
-      } else if (typeof error === 'string') {
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+
+  async updateEvent(
+    eventId: string,
+    eventData: TPartialEvent
+  ): ApiResponse<UpdateEventResponse> {
+    try {
+      const { publicKey, contextId, config, error } =
+        prepareAuthenticatedRequestConfig();
+
+      if (error) {
+        return { error };
+      }
+      const response = await getJsonRpcClient().execute<
+        any,
+        UpdateEventResponse
+      >(
+        {
+          contextId: contextId,
+          method: ClientMethod.UPDATE_EVENT,
+          argsJson: { eventId, eventData },
+          executorPublicKey: publicKey,
+        },
+        config
+      );
+      if (response?.error) {
+        return await this.handleError(response.error, {}, this.updateEvent);
+      }
+
+      return {
+        data: Number(response?.result?.output) ?? null,
+        error: null,
+      };
+    } catch (error) {
+      console.error("updateEvent failed:", error);
+      let errorMessage = "An unexpected error occurred during updateEvent";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
         errorMessage = error;
       }
       return {
