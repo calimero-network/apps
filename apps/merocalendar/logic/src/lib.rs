@@ -35,6 +35,7 @@ pub struct CalendarEvent {
     end: String,
     event_type: String,
     color: String,
+    peers: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -47,6 +48,7 @@ pub struct CreateCalendarEvent {
     end: String,
     event_type: String,
     color: String,
+    peers: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -59,6 +61,7 @@ pub struct UpdateCalendarEvent {
     end: Option<String>,
     event_type: Option<String>,
     color: Option<String>,
+    peers: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -117,6 +120,7 @@ impl Calendar {
             end: event_data.end,
             event_type: event_data.event_type,
             color: event_data.color,
+            peers: event_data.peers,
         };
 
         if let Err(err) = self.events.insert(id.clone(), event) {
@@ -176,6 +180,9 @@ impl Calendar {
         }
         if let Some(data) = event_data.color {
             event.color = data
+        }
+        if let Some(data) = event_data.peers {
+            event.peers = data
         }
 
         if let Err(err) = self.events.insert(event_id.clone(), event) {
