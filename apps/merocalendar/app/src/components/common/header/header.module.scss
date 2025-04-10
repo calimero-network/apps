@@ -112,3 +112,37 @@
     }
   }
 }
+
+
+.accountWrapper {
+  margin-left: 2rem;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+
+  &__copy {
+    cursor: pointer;
+    font-size: 12px;
+    color: #000;
+    text-decoration: underline;
+    transition: color 0.3s ease;
+    height: 20px;
+    width: 20px;
+  }
+
+  &__copy:hover {
+    color: #e40eab;
+    fill: #e40eab;
+  }
+
+  &__accountId {
+    font-size: 18px;
+    color: #000;
+    transition: color 0.3s ease;
+    cursor: pointer;
+  }
+
+  &__accountId:hover {
+    color: #e40eab;
+  }
+}

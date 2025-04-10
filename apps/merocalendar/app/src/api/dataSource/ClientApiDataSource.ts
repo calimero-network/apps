@@ -13,9 +13,11 @@ import {
   CreateEventResponse,
   DeleteEventResponse,
   GetEventsResponse,
+  IEventJsonRpc,
   UpdateEventResponse,
 } from '../clientApi';
-import { IEventCreate, TPartialEvent } from '../../types/event';
+import { IEvent, IEventCreate, TPartialEvent } from '../../types/event';
+import parseEvents from '../../utils/helpers/parseEvents';
 
 export function getJsonRpcClient() {
   const appEndpointKey = getAppEndpointKey();
@@ -69,22 +71,26 @@ export class ClientApiDataSource implements ClientApi {
           argsJson: {},
           executorPublicKey: publicKey,
         },
-        config
+        config,
       );
       if (response?.error) {
         return await this.handleError(response.error, {}, this.getEvents);
       }
 
+      let events: IEvent[] = parseEvents(
+        (response?.result.output as IEventJsonRpc[]) ?? [],
+      );
+
       return {
-        data: { response },
+        data: events,
         error: null,
       };
     } catch (error) {
-      console.error("getEvents failed:", error);
-      let errorMessage = "An unexpected error occurred during getEvents";
+      console.error('getEvents failed:', error);
+      let errorMessage = 'An unexpected error occurred during getEvents';
       if (error instanceof Error) {
         errorMessage = error.message;
-      } else if (typeof error === "string") {
+      } else if (typeof error === 'string') {
         errorMessage = error;
       }
       return {
@@ -111,25 +117,46 @@ export class ClientApiDataSource implements ClientApi {
         {
           contextId: contextId,
           method: ClientMethod.CREATE_EVENT,
-          argsJson: event,
+          argsJson: {
+            event_data: {
+              color: event.color,
+              description: event.description,
+              end: event.end,
+              start: event.start,
+              title: event.title,
+              owner: publicKey,
+              event_type: event.type,
+            },
+          },
           executorPublicKey: publicKey,
         },
-        config
+        config,
       );
       if (response?.error) {
         return await this.handleError(response.error, {}, this.createEvent);
       }
 
+      const eventId = response?.result?.output;
+
+      if (!eventId) {
+        return {
+          error: {
+            code: 500,
+            message: 'Event ID is missing',
+          },
+        };
+      }
+
       return {
-        data: Number(response?.result?.output) ?? null,
+        data: eventId,
         error: null,
       };
     } catch (error) {
-      console.error("createEvent failed:", error);
-      let errorMessage = "An unexpected error occurred during createEvent";
+      console.error('createEvent failed:', error);
+      let errorMessage = 'An unexpected error occurred during createEvent';
       if (error instanceof Error) {
         errorMessage = error.message;
-      } else if (typeof error === "string") {
+      } else if (typeof error === 'string') {
         errorMessage = error;
       }
       return {
@@ -156,25 +183,36 @@ export class ClientApiDataSource implements ClientApi {
         {
           contextId: contextId,
           method: ClientMethod.DELETE_EVENT,
-          argsJson: eventId,
+          argsJson: { event_id: eventId },
           executorPublicKey: publicKey,
         },
-        config
+        config,
       );
       if (response?.error) {
         return await this.handleError(response.error, {}, this.deleteEvent);
       }
 
+      const eventIdResponse = response?.result?.output;
+
+      if (!eventIdResponse) {
+        return {
+          error: {
+            code: 500,
+            message: 'Event ID is missing',
+          },
+        };
+      }
+
       return {
-        data: Number(response?.result?.output) ?? null,
+        data: eventIdResponse,
         error: null,
       };
     } catch (error) {
-      console.error("deleteEvent failed:", error);
-      let errorMessage = "An unexpected error occurred during deleteEvent";
+      console.error('deleteEvent failed:', error);
+      let errorMessage = 'An unexpected error occurred during deleteEvent';
       if (error instanceof Error) {
         errorMessage = error.message;
-      } else if (typeof error === "string") {
+      } else if (typeof error === 'string') {
         errorMessage = error;
       }
       return {
@@ -188,7 +226,7 @@ export class ClientApiDataSource implements ClientApi {
 
   async updateEvent(
     eventId: string,
-    eventData: TPartialEvent
+    eventData: TPartialEvent,
   ): ApiResponse<UpdateEventResponse> {
     try {
       const { publicKey, contextId, config, error } =
@@ -204,25 +242,36 @@ export class ClientApiDataSource implements ClientApi {
         {
           contextId: contextId,
           method: ClientMethod.UPDATE_EVENT,
-          argsJson: { eventId, eventData },
+          argsJson: { event_id: eventId, event_data: eventData },
           executorPublicKey: publicKey,
         },
-        config
+        config,
       );
       if (response?.error) {
         return await this.handleError(response.error, {}, this.updateEvent);
       }
 
+      const eventIdResponse = response?.result?.output;
+
+      if (!eventIdResponse) {
+        return {
+          error: {
+            code: 500,
+            message: 'Event ID is missing',
+          },
+        };
+      }
+
       return {
-        data: Number(response?.result?.output) ?? null,
+        data: eventIdResponse,
         error: null,
       };
     } catch (error) {
-      console.error("updateEvent failed:", error);
-      let errorMessage = "An unexpected error occurred during updateEvent";
+      console.error('updateEvent failed:', error);
+      let errorMessage = 'An unexpected error occurred during updateEvent';
       if (error instanceof Error) {
         errorMessage = error.message;
-      } else if (typeof error === "string") {
+      } else if (typeof error === 'string') {
         errorMessage = error;
       }
       return {

@@ -72,6 +72,7 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
     
     setValue('startTime', time);
     setValue('endTime', newEndTime);
+
     setValue('endDate', newEndDate);
     setValue('startDate', getDateTime(values.startDate, time));
   }

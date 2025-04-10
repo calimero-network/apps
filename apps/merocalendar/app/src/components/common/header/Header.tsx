@@ -1,12 +1,20 @@
 import React, { FC } from 'react';
-import Select from '../select/Select';
 
-import { createDate, getNextStartMinutes, shmoment } from '../../../utils/date';
+import {
+  clientLogout,
+  getExecutorPublicKey,
+} from '@calimero-network/calimero-client';
 import cn from 'classnames';
+import { ToastContainer, toast } from 'react-toastify';
 
-import styles from './header.module.scss';
 import { IDirections, IModes, TDate } from '../../../types/date';
 import { useModal } from '../../../hooks/useModal';
+import { createDate, getNextStartMinutes, shmoment } from '../../../utils/date';
+import copyIcon from '../../../assets/copy-icon.svg';
+import Select from '../select/Select';
+
+import styles from './header.module.scss';
+import { useNavigate } from 'react-router-dom';
 
 interface IHeaderProps {
   onClickArrow: (direction: IDirections) => void;
@@ -25,12 +33,14 @@ const Header: FC<IHeaderProps> = ({
   selectedOption,
   selectedDay,
 }) => {
+  const navigate = useNavigate();
   const {
     isOpenModalCreateEvent,
     isOpenModalDayInfoEvents,
     isOpenModalEditEvent,
     openModalCreate,
   } = useModal();
+  const accountId = getExecutorPublicKey();
 
   const isBtnCreateEventDisable =
     isOpenModalCreateEvent || isOpenModalDayInfoEvents || isOpenModalEditEvent;
@@ -51,6 +61,16 @@ const Header: FC<IHeaderProps> = ({
     openModalCreate({ selectedDate });
   };
 
+  const handleCopy = () => {
+    navigator.clipboard.writeText(accountId as string);
+    toast('Public key copied!');
+  };
+
+  const handleLogout = () => {
+    clientLogout();
+    navigate('/login');
+  };
+
   return (
     <header className={styles.header}>
       <button
@@ -62,7 +82,7 @@ const Header: FC<IHeaderProps> = ({
       </button>
       <div className={styles.navigation}>
         <button
-          className={cn(styles.navigation__today__btn, "button")}
+          className={cn(styles.navigation__today__btn, 'button')}
           onClick={changeToToday}
         >
           Today
@@ -91,6 +111,24 @@ const Header: FC<IHeaderProps> = ({
         options={modes}
         selectedOption={selectedOption}
       />
+      {accountId && (
+        <div className={styles.accountWrapper}>
+          <img
+            src={copyIcon as unknown as string}
+            alt="copy"
+            className={styles.accountWrapper__copy}
+            onClick={handleCopy}
+          />
+          <ToastContainer />
+          <span
+            className={styles.accountWrapper__accountId}
+            onClick={handleLogout}
+          >
+            {accountId?.substring(0, 4)}...
+            {accountId?.substring(accountId.length - 4)}
+          </span>
+        </div>
+      )}
     </header>
   );
 };
