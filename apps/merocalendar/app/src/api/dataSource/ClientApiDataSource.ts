@@ -126,6 +126,7 @@ export class ClientApiDataSource implements ClientApi {
               title: event.title,
               owner: publicKey,
               event_type: event.type,
+              peers: event.peers,
             },
           },
           executorPublicKey: publicKey,
