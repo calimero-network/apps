@@ -1,6 +1,7 @@
 import React, { FC } from 'react';
 
 import {
+  clearAccessToken,
   clientLogout,
   getExecutorPublicKey,
 } from '@calimero-network/calimero-client';
@@ -67,7 +68,7 @@ const Header: FC<IHeaderProps> = ({
   };
 
   const handleLogout = () => {
-    clientLogout();
+    clearAccessToken();
     navigate('/login');
   };
 

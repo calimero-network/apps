@@ -20,14 +20,14 @@ export const LoginPage = () => {
   const [applicationError, setApplicationError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [url, setUrl] = useState<string | null>(null);
-  const [appId, setAppId] = useState<string | null>("");
+  const [appId, setAppId] = useState<string | null>('');
   const [isDisabled, setIsDisabled] = useState(true);
   const [loginError, setLoginError] = useState<string | null>(null);
   const MINIMUM_LOADING_TIME_MS = 1000;
 
   useEffect(() => {
     setUrl(getAppEndpointKey());
-    setAppId(getApplicationId());
+    setAppId(getApplicationId() ?? import.meta.env.VITE_APPLICATION_ID);
   }, []);
 
   function validateUrl(value: string): boolean {
@@ -67,12 +67,6 @@ export const LoginPage = () => {
     }
   };
 
-  const handleChangeContextId = (value: string) => {
-    setApplicationError('');
-    setAppId(value);
-    validateContext(value);
-  };
-
   const checkConnection = useCallback(async () => {
     if (!url) return;
     if (validateUrl(url.toString())) {
@@ -92,17 +86,23 @@ export const LoginPage = () => {
               setApplicationId(appId || '');
               redirectToDashboardLogin();
             } else {
-              setLoginError('Connection failed. Please check if node url is correct.');
+              setLoginError(
+                'Connection failed. Please check if node url is correct.',
+              );
             }
           })
           .catch(() => {
-            setLoginError('Connection failed. Please check if node url is correct.');
+            setLoginError(
+              'Connection failed. Please check if node url is correct.',
+            );
           })
           .finally(() => {
             setLoading(false);
           });
       } catch (e) {
-        setLoginError('Connection failed. Please check if node url is correct.');
+        setLoginError(
+          'Connection failed. Please check if node url is correct.',
+        );
         setLoading(false);
       }
     } else {
@@ -111,11 +111,14 @@ export const LoginPage = () => {
   }, [url, appId]);
 
   useEffect(() => {
-    let status = !url || !appId || !!applicationError || !validateUrl(url) || loading; 
+    let status =
+      !url || !appId || !!applicationError || !validateUrl(url) || loading;
     setIsDisabled(status);
   }, [url, appId, applicationError, loading]);
 
   const redirectToDashboardLogin = () => {
+    const appId = import.meta.env.VITE_APPLICATION_ID;
+    setApplicationId(appId);
     const nodeUrl = getAppEndpointKey();
     const applicationId = getApplicationId();
     if (!nodeUrl) {
@@ -163,52 +166,35 @@ export const LoginPage = () => {
         </div>
         <div className={styles.configWrapper}>
           <div className={styles.configWrapper__title}>APP CONFIGURATION</div>
-          <div>
-            <div id="input-item" className={styles.configWrapper__inputItem}>
-              <label className={styles.configWrapper__label}>
-                Application ID
-              </label>
-              <div className={styles.paddingWrap}>
-                <input
-                  type="text"
-                  placeholder="application id"
-                  value={appId || ''}
-                  onChange={(e) => handleChangeContextId(e.target.value)}
-                  aria-invalid={!!applicationError}
-                  aria-describedby="appIdError"
-                  className={styles.configWrapper__inputField}
-                />
-              </div>
-              <div className={styles.configWrapper__error}>
-                {applicationError}
-              </div>
+          <div id="input-item" className={styles.configWrapper__inputItem}>
+            <label className={styles.configWrapper__label}>Node url</label>
+            <div className={styles.paddingWrap}>
+              <input
+                type="text"
+                placeholder="node url"
+                inputMode="url"
+                value={url || ''}
+                onChange={(e) => handleChange(e.target.value)}
+                aria-invalid={!!error}
+                aria-describedby="urlError"
+                className={styles.configWrapper__inputField}
+              />
             </div>
-            <div id="input-item" className={styles.configWrapper__inputItem}>
-              <label className={styles.configWrapper__label}>Node url</label>
-              <div className={styles.paddingWrap}>
-                <input
-                  type="text"
-                  placeholder="node url"
-                  inputMode="url"
-                  value={url || ''}
-                  onChange={(e) => handleChange(e.target.value)}
-                  aria-invalid={!!error}
-                  aria-describedby="urlError"
-                  className={styles.configWrapper__inputField}
-                />
-              </div>
-              <div className={styles.configWrapper__error}>{error || loginError}</div>
+            <div className={styles.configWrapper__error}>
+              {error || loginError}
             </div>
-            <div className={styles.loginButtonWrapper}>
-              <div className={loading ? styles.loading : styles.loading__hidden}></div>
-              <button
-                className={styles.login__btn}
-                disabled={isDisabled}
-                onClick={checkConnection}
-              >
-                <span>Login</span>
-              </button>
-            </div>
+          </div>
+          <div className={styles.loginButtonWrapper}>
+            <div
+              className={loading ? styles.loading : styles.loading__hidden}
+            ></div>
+            <button
+              className={styles.login__btn}
+              disabled={isDisabled}
+              onClick={checkConnection}
+            >
+              <span>Login</span>
+            </button>
           </div>
         </div>
       </div>
