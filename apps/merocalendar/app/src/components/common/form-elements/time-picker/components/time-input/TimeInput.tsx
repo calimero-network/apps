@@ -34,7 +34,6 @@ const TimeInput: FC<ITimeInputProps> = ({
   selectTime,
   onFocus
 }) => {
-
   const inputRef = useRef<HTMLInputElement>();
   
   const onChange = (e: ChangeEvent<HTMLInputElement>) => {

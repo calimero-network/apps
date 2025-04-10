@@ -18,5 +18,5 @@ export const createEventSchema: IRules = {
   endTime: {
     maxLength: 5,
     isNumberWithColon: true
-  }
+  },
 }

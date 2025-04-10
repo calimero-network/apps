@@ -5,6 +5,7 @@ import { formatDate } from "../../../utils/date";
 export const getMapEventValues = ({
   title,
   description,
+  peers,
   startDate,
   endDate,
   type,
@@ -12,6 +13,7 @@ export const getMapEventValues = ({
 }: IMapEventValues): IModalValues => {
   return {
     title,
+    peers,
     startDate,
     endDate,
     startTime: formatDate(startDate, `hh:mm`),

@@ -31,20 +31,18 @@ const TimeOption: FC<ITimeOptionsProps> = ({
 }) => {
   const time = `${hours}:${mins}`;
 
-  const handleSelectOption = () => {
+  const onClick = () => {
+    setSelectedOptionId(indx);
     selectTime(time);
     closeOptions();
   }
-
-  const onMouseEnterSelectOption = () => setSelectedOptionId(indx);
 
   return (
   <div
     className={styles.option}
     key={`${hours}-${mins}-${indx}`}
-    onMouseDown={handleSelectOption}
     aria-selected={selectedOptionId === indx}
-    onMouseEnter={onMouseEnterSelectOption}
+    onClick={onClick}
   >
     {
       isToday && !isFullDay

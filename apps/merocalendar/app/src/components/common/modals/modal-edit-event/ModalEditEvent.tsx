@@ -18,6 +18,8 @@ const ModalEditEvent: FC<IModalEditEventOptions> = ({ eventData, eventId }) => {
     title: eventData.title,
     // @ts-ignore
     description: eventData.description,
+    // @ts-ignore
+    peers: eventData.peers,
     startDate,
     endDate,
     // @ts-ignore

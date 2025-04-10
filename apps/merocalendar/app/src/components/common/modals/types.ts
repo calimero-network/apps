@@ -5,6 +5,7 @@ export interface IModalValues extends IValidatorData {
   title: string;
   startDate: Date;
   endDate: Date;
+  peers: string;
   startTime: string;
   endTime: string;
   description: string;
@@ -15,6 +16,7 @@ export interface IModalValues extends IValidatorData {
 export interface IMapEventValues {
   title: string;
   description: string;
+  peers: string;
   startDate: Date;
   endDate: Date;
   type: TEventTypes;

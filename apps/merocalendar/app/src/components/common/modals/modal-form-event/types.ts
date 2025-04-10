@@ -1,10 +1,11 @@
-import { IValidatorData } from "hooks/useValidator/types";
-import { TEventTypes } from "types/event";
+import { IValidatorData } from "../../../../hooks/useValidator/types";
+import { TEventTypes } from "../../../../types/event";
 
 export interface IModalValues extends IValidatorData {
   title: string;
   startDate: Date;
   endDate: Date;
+  peers: string;
   startTime: string;
   endTime: string;
   description: string;

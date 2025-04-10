@@ -1,13 +1,14 @@
-import React, { FC } from "react";
-import { shmoment } from "../../../../utils/date";
-import { getMapEventValues } from "../helpers";
+import React, { FC } from 'react';
+import { shmoment } from '../../../../utils/date';
+import { getMapEventValues } from '../helpers';
 import { IModalCreateEventOptions } from '../../../../store/modals/types';
-import ModalFormEvent from "../modal-form-event/ModalFormEvent";
-import { useActions, useModal } from "../../../../hooks/index";
+import ModalFormEvent from '../modal-form-event/ModalFormEvent';
+import { useActions, useModal } from '../../../../hooks/index';
+import { ToastContainer } from 'react-toastify';
 
 const ModalCreateEvent: FC<IModalCreateEventOptions> = ({
   selectedDate,
-  type = 'event'
+  type = 'event',
 }) => {
   const { createEvent } = useActions();
   const { closeModalCreate } = useModal();
@@ -16,9 +17,10 @@ const ModalCreateEvent: FC<IModalCreateEventOptions> = ({
   const defaultEventValues = getMapEventValues({
     title: '',
     description: '',
+    peers: '',
     startDate: selectedDate,
     endDate,
-    type
+    type,
   });
 
   return (
@@ -30,7 +32,7 @@ const ModalCreateEvent: FC<IModalCreateEventOptions> = ({
       // @ts-ignore
       handlerSubmit={createEvent}
     />
-  )
-}
+  );
+};
 
 export default ModalCreateEvent;

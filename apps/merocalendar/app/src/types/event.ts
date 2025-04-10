@@ -3,6 +3,7 @@ export interface IEvent {
     title: string;
     description: string;
     start: string;
+    peers: string;
     end: string;
     type: TEventTypes;
     color: string;
@@ -14,6 +15,7 @@ export interface IEvent {
     title: string;
     description: string;
     start: string;
+    peers: string;
     end: string;
     type: TEventTypes;
     color: string;
