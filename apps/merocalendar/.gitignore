@@ -3,4 +3,5 @@
 
 .idea/
 data/
-target/
+**/target/
+**/res/
