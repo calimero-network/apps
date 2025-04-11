@@ -15,6 +15,7 @@ export default function parseEvents(events: IEventJsonRpc[]): IEvent[] {
       end: event.end,
       type: event.event_type as TEventTypes,
       color: event.color,
+      owner: event.owner,
     }));
   }
 
@@ -34,5 +35,6 @@ export default function parseEvents(events: IEventJsonRpc[]): IEvent[] {
       end: event.end,
       type: event.event_type as TEventTypes,
       color: event.color,
+      owner: event.owner,
     }));
 }

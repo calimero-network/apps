@@ -7,6 +7,7 @@ export interface IEvent {
     end: string;
     type: TEventTypes;
     color: string;
+    owner: string;
   }
   
   export type TPartialEvent = Partial<IEvent>;
@@ -19,6 +20,7 @@ export interface IEvent {
     end: string;
     type: TEventTypes;
     color: string;
+    owner: string;
   }
   
   export type TEventTypes = 'event' | 'long-event';

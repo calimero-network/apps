@@ -6,14 +6,20 @@ interface IColorOptionProps {
   color: string;
   selectedColor: string;
   onChangeColor: (color: string) => void;
+  readOnly?: boolean;
 }
 
 const ColorOption: FC<IColorOptionProps> = ({
   color,
   selectedColor,
   onChangeColor,
+  readOnly = false
 }) => {
-  const handleChangeColor = () => onChangeColor(color);
+  const handleChangeColor = () => {
+    if (!readOnly) {
+      onChangeColor(color);
+    }
+  }
 
   return (
     <div

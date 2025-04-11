@@ -26,7 +26,10 @@ const ModalEditEvent: FC<IModalEditEventOptions> = ({ eventData, eventId }) => {
     type: eventData.type,
     // @ts-ignore
     color: eventData.color,
+    // @ts-ignore
+    owner: eventData.owner,
   });
+
 
   const onUpdateEvent = (event: TPartialEvent) =>
     updateEvent({ eventId: eventId, event });

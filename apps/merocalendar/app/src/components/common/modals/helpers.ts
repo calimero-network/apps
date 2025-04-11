@@ -9,7 +9,8 @@ export const getMapEventValues = ({
   startDate,
   endDate,
   type,
-  color = colors[0]
+  color = colors[0],
+  owner
 }: IMapEventValues): IModalValues => {
   return {
     title,
@@ -20,6 +21,7 @@ export const getMapEventValues = ({
     endTime: formatDate(endDate, `hh:mm`),
     description,
     isLongEvent: type === 'long-event',
-    color
+    color,
+    owner
   }
 }

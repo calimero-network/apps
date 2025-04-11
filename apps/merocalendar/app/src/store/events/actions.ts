@@ -1,7 +1,6 @@
 import { createAsyncThunk } from '@reduxjs/toolkit'
 import { IEvent, IEventCreate, TPartialEvent } from '../../types/event';
 import { ClientApiDataSource } from '../../api/dataSource/ClientApiDataSource';
-import { toast } from 'react-toastify';
 
 const apiEvents = new ClientApiDataSource();
 

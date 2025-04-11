@@ -8,12 +8,14 @@ import { useClickOutside } from "../../../../hooks/useClickOutside";
 
 interface IColorPickerProps {
   selectedColor: string;
-  onChangeColor: (color: string) => void
+  onChangeColor: (color: string) => void;
+  readOnly?: boolean;
 }
 
 const ColorPicker: FC<IColorPickerProps> = ({
   selectedColor,
-  onChangeColor
+  onChangeColor,
+  readOnly = false
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const colorPickerRef = useRef<HTMLDivElement>(null);
@@ -41,6 +43,7 @@ const ColorPicker: FC<IColorPickerProps> = ({
               color={color}
               selectedColor={selectedColor}
               onChangeColor={onChangeColor}
+              readOnly={readOnly}
             />
           ))}
         </ul>

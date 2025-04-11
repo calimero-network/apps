@@ -21,4 +21,5 @@ export interface IMapEventValues {
   endDate: Date;
   type: TEventTypes;
   color?: string;
+  owner: string;
 }

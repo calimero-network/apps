@@ -1,4 +1,4 @@
-import React, { FC, useRef } from 'react';
+import React, { FC, useEffect, useRef, useState } from 'react';
 import {
   useActions,
   useClickOutside,
@@ -9,6 +9,7 @@ import {
 } from '../../../hooks/index';
 
 import styles from './popup.module.scss';
+import { getExecutorPublicKey } from '@calimero-network/calimero-client';
 
 interface IPopupProps {
   x: number;
@@ -17,6 +18,7 @@ interface IPopupProps {
 }
 
 const Popup: FC<IPopupProps> = ({ x, y, eventId }) => {
+  const accountId = getExecutorPublicKey();
   const popupRef = useRef<HTMLDivElement>(null);
   const { events } = useTypedSelector(({ events }) => events);
   const { deleteEvent } = useActions();
@@ -64,19 +66,36 @@ const Popup: FC<IPopupProps> = ({ x, y, eventId }) => {
     closePopup();
   };
 
+  const [isOwner, setIsOwner] = useState(false);
+
+  useEffect(() => {
+    const eventData = events.find((event) => event.id === eventId);
+    if (accountId === eventData?.owner) {
+      setIsOwner(true);
+    }
+  }, [accountId, eventId]);
+
   return (
     <div className={styles.popup} ref={popupRef} style={getPopupStyle()}>
-      <button className={styles.btn__action} onClick={onDelete}>
-        <span className="delete-event-btn__icon">
-          <i className="fas fa-trash"></i>
-        </span>
-        <span className={styles.btn__action__text}>Delete</span>
-      </button>
+      {isOwner && (
+        <button className={styles.btn__action} onClick={onDelete}>
+          <span className="delete-event-btn__icon">
+            <i className="fas fa-trash"></i>
+          </span>
+          <span className={styles.btn__action__text}>Delete</span>
+        </button>
+      )}
       <button className={styles.btn__action} onClick={handleOpenEditEventModal}>
         <span className="delete-event-btn__icon">
-          <i className="fas fa-edit"></i>
+          {isOwner ? (
+            <i className="fas fa-edit"></i>
+          ) : (
+            <i className="fas fa-eye"></i>
+          )}
         </span>
-        <span className={styles.btn__action__text}>Edit</span>
+        <span className={styles.btn__action__text}>
+          {isOwner ? 'Edit' : 'View'}
+        </span>
       </button>
     </div>
   );

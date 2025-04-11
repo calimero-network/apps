@@ -17,9 +17,11 @@ const TextField = forwardRef<HTMLInputElement, IFieldProps>(({
   const inputRef = useRef<HTMLInputElement>();
   
   useImperativeHandle(ref, () => inputRef.current!, [inputRef])
-  
+  // @ts-ignore
   const handleClick = (e) => {
+    // @ts-ignore
     inputRef.current.focus();
+    // @ts-ignore
     onClick?.(e);
   }
 
@@ -45,6 +47,7 @@ const TextField = forwardRef<HTMLInputElement, IFieldProps>(({
             [styles.text__field_full]: fullWidth
           })}
           type={type}
+          // @ts-ignore
           ref={inputRef}
           onClick={onClickInput}
           {...rest}

@@ -1,4 +1,4 @@
-import React, { ChangeEvent, FC, useRef, useState } from 'react';
+import React, { ChangeEvent, FC, useEffect, useRef, useState } from 'react';
 import { useClickOutside, useForm } from '../../../../hooks/index';
 import {
   checkDateIsEqual,
@@ -20,6 +20,7 @@ import {
 import cn from 'classnames';
 
 import styles from './modal-form-event.module.scss';
+import { getExecutorPublicKey } from '@calimero-network/calimero-client';
 
 interface IModalFormEventProps {
   textSendButton: string;
@@ -36,8 +37,9 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
   defaultEventValues,
   handlerSubmit,
 }) => {
+  const accountId = getExecutorPublicKey();
   const modalRef = useRef<HTMLDivElement>();
-
+  const [viewOnly, setViewOnly] = useState(false);
   const { values, handleChange, handleSubmit, setValue, errors, submitting } =
     useForm<IModalValues>({
       defaultValues: defaultEventValues,
@@ -150,6 +152,16 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
   // @ts-ignore
   useClickOutside(modalRef, closeModal);
 
+  useEffect(() => {
+    if (textSendButton === "Edit") {
+      if (accountId === defaultEventValues.owner) {
+        setViewOnly(false);
+      } else {
+        setViewOnly(true);
+      }
+    }
+  }, [accountId, defaultEventValues.owner, defaultEventValues.peers, textSendButton]);
+
   return (
     <div className="overlay">
       {/* @ts-ignore */}
@@ -171,6 +183,7 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
               error={errors.title}
               className={styles.modal__form__title}
               fullWidth
+              readOnly={viewOnly}
             />
             <div
               className={cn(
@@ -224,34 +237,40 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
                   errors.endTime}
               </div>
             )}
-            <div
-              className={cn(
-                styles.modal__form__checkbox__container,
-                styles.modal__form__group,
-              )}
-            >
-              <label htmlFor="type">
-                <input
-                  type="checkbox"
-                  name="type"
-                  id="type"
-                  onChange={onToggleIsLongEvent}
-                  checked={values.isLongEvent}
-                />
-                <span className={styles.modal__form__checkbox__title}>
-                  All day
-                </span>
-              </label>
-            </div>
-            <div className={styles.modal__form__group}>
-              <div className={styles.modal__form__group__title}>
-                Select event color
+            {!viewOnly && (
+              <div
+                className={cn(
+                  styles.modal__form__checkbox__container,
+                  styles.modal__form__group,
+                )}
+              >
+                <label htmlFor="type">
+                  <input
+                    type="checkbox"
+                    name="type"
+                    id="type"
+                    onChange={onToggleIsLongEvent}
+                    checked={values.isLongEvent}
+                    readOnly={viewOnly}
+                  />
+                  <span className={styles.modal__form__checkbox__title}>
+                    All day
+                  </span>
+                </label>
               </div>
-              <ColorPicker
-                selectedColor={values.color}
-                onChangeColor={onChangeColor}
-              />
-            </div>
+            )}
+            {!viewOnly && (
+              <div className={styles.modal__form__group}>
+                <div className={styles.modal__form__group__title}>
+                  Select event color
+                </div>
+                <ColorPicker
+                  selectedColor={values.color}
+                  onChangeColor={onChangeColor}
+                  readOnly={viewOnly}
+                />
+              </div>
+            )}
             <div className={styles.modal__form__group}>
               <div className={styles.modal__form__group__title}>
                 Invite peers
@@ -265,6 +284,7 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
                     className={styles.modal__form__textarea}
                     type="text"
                     placeholder="peer1, peer2, peer3"
+                    readOnly={viewOnly}
                   />
                 </div>
               </div>
@@ -281,15 +301,18 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
                 className={styles.modal__form__textarea}
                 onChange={handleChange}
                 value={values.description}
+                readOnly={viewOnly}
               />
             </div>
-            <button
-              type="submit"
-              className={styles.modal__form__btn}
-              disabled={submitting || !isValid}
-            >
-              {submitting ? textSendingBtn : textSendButton}
-            </button>
+            {!viewOnly && (
+              <button
+                type="submit"
+                className={styles.modal__form__btn}
+                disabled={submitting || !isValid}
+              >
+                {submitting ? textSendingBtn : textSendButton}
+              </button>
+            )}
           </form>
         </div>
       </div>
