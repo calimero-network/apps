@@ -1,31 +1,18 @@
 import React, { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
-  getAccessToken,
-  getAppEndpointKey,
-  getApplicationId,
   getContextId,
-  getRefreshToken,
   NodeEvent,
   SubscriptionsClient,
 } from '@calimero-network/calimero-client';
 
-import {
-  getWsSubscriptionsClient,
-} from '../../api/dataSource/ClientApiDataSource';
+import { getWsSubscriptionsClient } from '../../api/dataSource/ClientApiDataSource';
+import Calendar from '../../components/calendar/Calendar';
+
+import '../../common.scss';
+import { useActions } from '../../hooks';
 
 export default function CalendarPage() {
-  const navigate = useNavigate();
-  const url = getAppEndpointKey();
-  const applicationId = getApplicationId();
-  const accessToken = getAccessToken();
-  const refreshToken = getRefreshToken();
-
-  useEffect(() => {
-    if (!url || !applicationId || !accessToken || !refreshToken) {
-      navigate('/login');
-    }
-  }, [accessToken, applicationId, navigate, refreshToken, url]);
+  const { getEvents } = useActions();
 
   const observeNodeEvents = async () => {
     let subscriptionsClient: SubscriptionsClient = getWsSubscriptionsClient();
@@ -40,6 +27,7 @@ export default function CalendarPage() {
       ) {
         const event = data.data.events[0];
         if (event.data && Array.isArray(event.data)) {
+          getEvents();
         }
       }
     });
@@ -47,7 +35,12 @@ export default function CalendarPage() {
 
   useEffect(() => {
     observeNodeEvents();
+    getEvents();
   }, []);
 
-  return <>calendar</>;
+  return (
+    <div>
+      <Calendar />
+    </div>
+  );
 }

@@ -1,0 +1,156 @@
+.loginWrapper {
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+    justify-content: center;
+    height: 100vh;
+    width: 100vw;
+    background-color: #f0f0f0;
+}
+
+.loginModal {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 0 10px 0 rgba(0, 0, 0, 0.1);
+    gap: 10rem;
+    border: 1px solid #cfcfcf;
+    border-radius: 20px;
+    padding: 20px;
+    height: 300px;
+
+    &__title {
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 20px;
+        padding-left: 10px;
+    }
+}
+
+.title {
+    font-size: 16px;
+    opacity: 0;
+    font-weight: 400;
+    color: #5f5f5f;
+    width: 300px;
+
+    &__text {
+        padding-left:10px;
+    }
+}
+
+
+.configWrapper {
+    padding-right: 20px;
+
+    &__title {
+        font-size: 28px;
+        font-weight: 800;
+        margin-bottom: 10px;
+        color: #5f5f5f;
+    }
+
+    &__label {
+        font-size: 14px;
+        font-weight: 400;
+        color: #5f5f5f;
+    }
+
+    &__input {
+        width: 100%;
+        margin-bottom: 20px;
+    }
+
+    &__inputField {
+        width: 100%;
+        height: 40px;
+        border: 1px solid #cfcfcf;
+        border-radius: 5px;
+        background-color: transparent;
+        font-size: 14px;
+        font-weight: 400;
+        color: #5f5f5f;
+        padding-left: 8px;
+        padding-right: 8px;
+    }
+
+    &__error {
+        font-size: 10px;
+        font-weight: 400;
+        color: #ff0000;
+        margin-top: 4px;
+    }
+}
+
+.paddingWrap {
+    padding-top: 8px;
+}
+
+.loginButtonWrapper {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: end;
+    padding-top: 20px;
+}
+
+.login__btn {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-radius: 8px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    padding-left: 28px;
+    padding-right: 28px;
+    border: none;
+   
+    cursor: pointer;
+    background-color: rgba(255, 255, 255, 0.502);
+    box-shadow: 0px 1px 2px 0px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);
+  
+    &:hover {
+      transition: border 280ms cubic-bezier(.4, 0, .2, 1), box-shadow 280ms cubic-bezier(.4,0,.2,1);
+      box-shadow: 0px 4px 4px 0px rgba(60, 64, 67, 0.3), 0px 8px 12px 6px rgba(60, 64, 67, 0.15);
+      background-color: #f6fafe;
+    }
+  
+    &:active {
+      background-color: rgb(227, 227, 227);
+    }
+  
+    &:disabled {
+      opacity: 0.6;
+      box-shadow: 0px 1px 2px 0px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);
+      pointer-events: none;
+    }
+    
+    @media screen and (max-width: 720px) {
+      &__icon {
+        margin-right: 0;
+      }
+    }
+  
+  }
+  .loading {
+    border: 4px solid rgba(0, 0, 0, 0.1);
+    border-top: 4px solid #3498db;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+
+    &__hidden {
+        opacity: 0;
+    }
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+}
