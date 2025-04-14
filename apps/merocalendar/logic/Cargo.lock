@@ -248,6 +248,7 @@ dependencies = [
  "base64",
  "calimero-sdk",
  "calimero-storage",
+ "sha2",
  "thiserror",
 ]
 
