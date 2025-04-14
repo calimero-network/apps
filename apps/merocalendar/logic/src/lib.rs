@@ -2,9 +2,9 @@ use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::types::Error as SdkError;
 use calimero_sdk::{app, env};
 use calimero_storage::collections::UnorderedMap;
+use thiserror::Error;
 
 #[app::event]
 pub enum Event {
@@ -64,17 +64,12 @@ pub struct UpdateCalendarEvent {
     peers: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Error, Serialize)]
 #[serde(crate = "calimero_sdk::serde")]
+#[serde(tag = "kind", content = "data")]
 pub enum Error {
-    AppError(AppError),
-    SdkError(SdkError),
-}
-
-#[derive(Debug, Serialize)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct AppError {
-    message: String,
+    #[error("key not found: {0}")]
+    NotFound(String),
 }
 
 #[app::logic]
@@ -86,26 +81,18 @@ impl Calendar {
         }
     }
 
-    pub fn get_events(&self) -> Result<Vec<CalendarEvent>, AppError> {
+    pub fn get_events(&self) -> app::Result<Vec<CalendarEvent>> {
         let mut all_events = Vec::new();
-        let entries = match self.events.entries() {
-            Ok(entries) => entries,
-            Err(err) => {
-                return Err(AppError {
-                    message: err.to_string(),
-                });
-            }
-        };
 
-        for (_id, event) in entries {
+        for (_id, event) in self.events.entries()? {
             all_events.push(event);
         }
 
         Ok(all_events)
     }
 
-    pub fn create_event(&mut self, event_data: CreateCalendarEvent) -> Result<String, AppError> {
-        env::log(&format!("Creating calendar event {:?}", event_data));
+    pub fn create_event(&mut self, event_data: CreateCalendarEvent) -> app::Result<String> {
+        app::log!("Creating calendar event {:?}", event_data);
 
         let mut buffer = [0u8; 16];
         env::random_bytes(&mut buffer);
@@ -123,11 +110,7 @@ impl Calendar {
             peers: event_data.peers,
         };
 
-        if let Err(err) = self.events.insert(id.clone(), event) {
-            return Err(AppError {
-                message: err.to_string(),
-            });
-        }
+        self.events.insert(id.clone(), event)?;
 
         app::emit!(Event::CalendarEventCreated(id.clone()));
 
@@ -138,26 +121,11 @@ impl Calendar {
         &mut self,
         event_id: String,
         event_data: UpdateCalendarEvent,
-    ) -> Result<String, AppError> {
-        env::log(&format!(
-            "Updating calendar event {} with {:?}",
-            event_id, event_data
-        ));
+    ) -> app::Result<String> {
+        app::log!("Updating calendar event {} with {:?}", event_id, event_data);
 
-        let mut event = match self.events.get(&event_id) {
-            Ok(event) => match event {
-                Some(event) => event,
-                None => {
-                    return Err(AppError {
-                        message: format!("Event with {} id doesn't exist", event_id).to_owned(),
-                    });
-                }
-            },
-            Err(err) => {
-                return Err(AppError {
-                    message: err.to_string(),
-                })
-            }
+        let Some(mut event) = self.events.get(&event_id)? else {
+            app::bail!(Error::NotFound(event_id));
         };
 
         if let Some(data) = event_data.title {
@@ -185,33 +153,18 @@ impl Calendar {
             event.peers = data
         }
 
-        if let Err(err) = self.events.insert(event_id.clone(), event) {
-            return Err(AppError {
-                message: err.to_string(),
-            });
-        }
+        self.events.insert(event_id.clone(), event)?;
 
         app::emit!(Event::CalendarEventCreated(event_id.clone()));
 
         Ok(event_id)
     }
 
-    pub fn delete_event(&mut self, event_id: String) -> Result<String, AppError> {
-        env::log(&format!("Deleting calendar event {}", event_id));
+    pub fn delete_event(&mut self, event_id: String) -> app::Result<String> {
+        app::log!("Deleting calendar event {}", event_id);
 
-        match self.events.remove(&event_id) {
-            Ok(old) => {
-                if old.is_none() {
-                    return Err(AppError {
-                        message: format!("Event with {} id doesn't exist", event_id).to_owned(),
-                    });
-                }
-            }
-            Err(err) => {
-                return Err(AppError {
-                    message: err.to_string(),
-                })
-            }
+        if self.events.remove(&event_id)?.is_none() {
+            app::bail!(Error::NotFound(event_id));
         }
 
         Ok(event_id)
