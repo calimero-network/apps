@@ -9,9 +9,9 @@ crate-type = ["cdylib"]
 
 [dependencies]
 base64 = "0.22.1"
+bs58 = "0.5.1"
 calimero-sdk = { git = "https://github.com/calimero-network/core", branch = "master" }
 calimero-storage = { git = "https://github.com/calimero-network/core", branch = "master" }
-sha2 = "0.10.8"
 thiserror = "1.0.56"
 
 [profile.app-release]

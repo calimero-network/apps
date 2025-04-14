@@ -4,8 +4,11 @@ use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, env};
 use calimero_storage::collections::{UnorderedMap, Vector};
-use sha2::{Digest, Sha256};
 use thiserror::Error;
+use types::id;
+mod types;
+
+id::define!(pub UserId<32, 44>);
 
 #[app::event]
 pub enum Event {
@@ -28,27 +31,31 @@ pub struct CalendarState {
 pub struct CalendarEventState {
     title: String,
     description: String,
-    owner: [u8; 32],
+    owner: UserId,
     start: String,
     end: String,
     event_type: String,
     color: String,
-    peers: Vector<[u8; 32]>,
+    peers: Vector<UserId>,
 }
 
 // request/response
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct ExecutorId([u8; 32]);
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct CalendarEvent {
     id: String,
     title: String,
     description: String,
-    owner: [u8; 32],
+    owner: UserId,
     start: String,
     end: String,
     event_type: String,
     color: String,
-    peers: Vec<[u8; 32]>,
+    peers: Vec<UserId>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -60,7 +67,7 @@ pub struct CreateCalendarEvent {
     end: String,
     event_type: String,
     color: String,
-    peers: Vec<[u8; 32]>,
+    peers: Vec<UserId>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -72,7 +79,7 @@ pub struct UpdateCalendarEvent {
     end: Option<String>,
     event_type: Option<String>,
     color: Option<String>,
-    peers: Option<Vec<[u8; 32]>>,
+    peers: Option<Vec<UserId>>,
 }
 
 #[derive(Debug, Error, Serialize)]
@@ -221,8 +228,8 @@ impl CalendarState {
         Ok(event_id)
     }
 
-    fn get_executor_id(&self) -> [u8; 32] {
-        env::executor_id()
+    fn get_executor_id(&self) -> UserId {
+        UserId::new(env::executor_id())
     }
 
     fn generate_id(&self) -> String {
