@@ -127,4 +127,20 @@
   }
 }
 
+.dropdown {
+  position: absolute;
+  left: 25px;
+  background-color: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 0;
+  list-style-type: none;
 
+  &__item {
+    padding: 8px;
+    cursor: pointer;
+    &:hover {
+      background-color: #f6f6f6;
+    }
+  }
+}

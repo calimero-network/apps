@@ -14,13 +14,17 @@ import { TPartialEvent } from '../../../../types/event';
 import {
   TextField,
   DatePicker,
-  TimePicker,
   ColorPicker,
 } from '../../../../components/common/form-elements';
 import cn from 'classnames';
 
 import styles from './modal-form-event.module.scss';
-import { getExecutorPublicKey } from '@calimero-network/calimero-client';
+import {
+  getAppEndpointKey,
+  getContextId,
+  getExecutorPublicKey,
+} from '@calimero-network/calimero-client';
+import axios from 'axios';
 
 interface IModalFormEventProps {
   textSendButton: string;
@@ -37,6 +41,7 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
   defaultEventValues,
   handlerSubmit,
 }) => {
+  const contextId = getContextId();
   const accountId = getExecutorPublicKey();
   const modalRef = useRef<HTMLDivElement>();
   const [viewOnly, setViewOnly] = useState(false);
@@ -153,14 +158,67 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
   useClickOutside(modalRef, closeModal);
 
   useEffect(() => {
-    if (textSendButton === "Edit") {
+    if (textSendButton === 'Edit') {
       if (accountId === defaultEventValues.owner) {
         setViewOnly(false);
       } else {
         setViewOnly(true);
       }
     }
-  }, [accountId, defaultEventValues.owner, defaultEventValues.peers, textSendButton]);
+  }, [
+    accountId,
+    defaultEventValues.owner,
+    defaultEventValues.peers,
+    textSendButton,
+  ]);
+
+  const [fetchedPeers, setFetchedPeers] = useState<string[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [filteredPeers, setFilteredPeers] = useState<string[]>([]);
+
+  useEffect(() => {
+    const fetchPeers = async () => {
+      try {
+        const response = await axios.get(
+          `${getAppEndpointKey()}/admin-api/contexts/${contextId}/identities`,
+        );
+        setFetchedPeers(response.data.data.identities);
+      } catch (error) {
+        console.error('Error fetching peers:', error);
+        setFetchedPeers([]);
+      }
+    };
+    fetchPeers();
+  }, []);
+
+  const handlePeersChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const inputValue = e.target.value;
+    handleChange(e);
+
+    if (inputValue.includes('@')) {
+      setShowDropdown(true);
+      const query = inputValue.split('@').pop();
+      setFilteredPeers(
+        fetchedPeers.filter((peer) =>
+          peer.toLowerCase().includes(query?.toLowerCase() || '')
+        )
+      );
+    } else {
+      setShowDropdown(false);
+    }
+  };
+
+  const handlePeerSelect = (peer: string) => {
+    const cleanedPeer = peer.replace('@', '');
+    let oldValues = values.peers.replace('@', '');
+    const currentPeers = oldValues ? oldValues.split(',').map(p => p.trim()) : [];
+
+    if (!currentPeers.includes(cleanedPeer)) {
+      const newPeers = currentPeers.length > 0 ? `${oldValues.trim()}, ${cleanedPeer}` : cleanedPeer;
+      setValue('peers', newPeers);
+    }
+    setShowDropdown(false);
+  };
 
   return (
     <div className="overlay">
@@ -198,20 +256,21 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
               />
               {!values.isLongEvent && (
                 <div className={styles.modal__form__time}>
-                  <TimePicker
-                    timeFrom="00:00"
-                    selectedTime={values.startTime}
-                    selectTime={onSelectStartTime}
-                    isFullDay
-                    error={errors.startTime}
+                  <input
+                    type="time"
+                    value={values.startTime}
+                    onChange={(e) => onSelectStartTime(e.target.value)}
+                    className={styles.modal__form__time__input}
+                    readOnly={viewOnly}
                   />
                   <span>-</span>
-                  <TimePicker
-                    timeFrom={values.startTime}
-                    selectedTime={values.endTime}
-                    selectTime={onSelectEndTime}
-                    isToday={checkDateIsEqual(values.startDate, values.endDate)}
-                    error={errors.endTime ?? errors.endDate}
+                  <input
+                    type="time"
+                    value={values.endTime}
+                    onChange={(e) => onSelectEndTime(e.target.value)}
+                    className={styles.modal__form__time__input}
+                    readOnly={viewOnly}
+                    min={values.startTime}
                   />
                 </div>
               )}
@@ -279,13 +338,26 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
                 <div className={styles.modal__form__group__peers__item}>
                   <input
                     name="peers"
-                    onChange={handleChange}
+                    onChange={handlePeersChange}
                     value={values.peers as string}
                     className={styles.modal__form__textarea}
                     type="text"
                     placeholder="peer1, peer2, peer3"
                     readOnly={viewOnly}
                   />
+                  {showDropdown && (
+                    <ul className={styles.dropdown}>
+                      {filteredPeers.map((peer) => (
+                        <li
+                          key={peer}
+                          onClick={() => handlePeerSelect(peer)}
+                          className={styles.dropdown__item}
+                        >
+                          {peer}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               </div>
             </div>

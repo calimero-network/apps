@@ -20,6 +20,10 @@ export default function CalendarPage() {
     subscriptionsClient.subscribe([getContextId() ?? '']);
 
     subscriptionsClient?.addCallback((data: NodeEvent) => {
+      //@ts-ignore
+      if (data.data.newRoot && data.type === 'StateMutation') {
+        getEvents();
+      }
       if (
         'events' in data.data &&
         Array.isArray(data.data.events) &&

@@ -4,7 +4,6 @@ import { getMapEventValues } from '../helpers';
 import { IModalCreateEventOptions } from '../../../../store/modals/types';
 import ModalFormEvent from '../modal-form-event/ModalFormEvent';
 import { useActions, useModal } from '../../../../hooks/index';
-import { ToastContainer } from 'react-toastify';
 
 const ModalCreateEvent: FC<IModalCreateEventOptions> = ({
   selectedDate,
@@ -21,6 +20,7 @@ const ModalCreateEvent: FC<IModalCreateEventOptions> = ({
     startDate: selectedDate,
     endDate,
     type,
+    owner: '',
   });
 
   return (
