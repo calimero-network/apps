@@ -173,6 +173,8 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
   ]);
 
   const [fetchedPeers, setFetchedPeers] = useState<string[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [filteredPeers, setFilteredPeers] = useState<string[]>([]);
 
   useEffect(() => {
     const fetchPeers = async () => {
@@ -188,6 +190,35 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
     };
     fetchPeers();
   }, []);
+
+  const handlePeersChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const inputValue = e.target.value;
+    handleChange(e);
+
+    if (inputValue.includes('@')) {
+      setShowDropdown(true);
+      const query = inputValue.split('@').pop();
+      setFilteredPeers(
+        fetchedPeers.filter((peer) =>
+          peer.toLowerCase().includes(query?.toLowerCase() || '')
+        )
+      );
+    } else {
+      setShowDropdown(false);
+    }
+  };
+
+  const handlePeerSelect = (peer: string) => {
+    const cleanedPeer = peer.replace('@', '');
+    let oldValues = values.peers.replace('@', '');
+    const currentPeers = oldValues ? oldValues.split(',').map(p => p.trim()) : [];
+
+    if (!currentPeers.includes(cleanedPeer)) {
+      const newPeers = currentPeers.length > 0 ? `${oldValues.trim()}, ${cleanedPeer}` : cleanedPeer;
+      setValue('peers', newPeers);
+    }
+    setShowDropdown(false);
+  };
 
   return (
     <div className="overlay">
@@ -307,13 +338,26 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
                 <div className={styles.modal__form__group__peers__item}>
                   <input
                     name="peers"
-                    onChange={handleChange}
+                    onChange={handlePeersChange}
                     value={values.peers as string}
                     className={styles.modal__form__textarea}
                     type="text"
                     placeholder="peer1, peer2, peer3"
                     readOnly={viewOnly}
                   />
+                  {showDropdown && (
+                    <ul className={styles.dropdown}>
+                      {filteredPeers.map((peer) => (
+                        <li
+                          key={peer}
+                          onClick={() => handlePeerSelect(peer)}
+                          className={styles.dropdown__item}
+                        >
+                          {peer}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               </div>
             </div>

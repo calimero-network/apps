@@ -124,7 +124,6 @@ export class ClientApiDataSource implements ClientApi {
               end: event.end,
               start: event.start,
               title: event.title,
-              owner: publicKey,
               event_type: event.type,
               peers: event.peers,
             },
