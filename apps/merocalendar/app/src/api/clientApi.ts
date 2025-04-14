@@ -6,7 +6,7 @@ export interface IEventJsonRpc {
   title: string;
   description: string;
   start: string;
-  peers: string;
+  peers: string[];
   end: string;
   event_type: string;
   color: string;
