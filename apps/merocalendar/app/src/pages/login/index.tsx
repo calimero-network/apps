@@ -3,26 +3,43 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 import {
+  Context,
   getAppEndpointKey,
   getApplicationId,
-  setAccessToken,
   setAppEndpointKey,
   setApplicationId,
-  setRefreshToken,
+  setContextId,
+  setExecutorPublicKey,
 } from '@calimero-network/calimero-client';
 import plantrLogo from '../../assets/plantrlogo.svg';
 
 import styles from './login.module.scss';
+import { useAuth } from '../../hooks/useAuth';
+
+enum STEPS {
+  ENTER_NODE_URL = 'ENTER NODE URL',
+  SELECT_CONTEXT = 'SELECT CONTEXT',
+  SELECT_IDENTITY = 'SELECT IDENTITY',
+  LOGIN = 'LOGIN',
+}
 
 export const LoginPage = () => {
   const navigate = useNavigate();
+  const { isLoggedIn } = useAuth();
   const [error, setError] = useState<string | null>(null);
-  const [applicationError, setApplicationError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [url, setUrl] = useState<string | null>(null);
   const [appId, setAppId] = useState<string | null>('');
   const [isDisabled, setIsDisabled] = useState(true);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [availableContexts, setAvailableContexts] = useState<Context[]>([]);
+  const [selectedContextId, setSelectedContextId] = useState<string | null>(
+    null,
+  );
+  const [contextIdentities, setContextIdentities] = useState<string[]>([]);
+  const [selectedIdentity, setSelectedIdentity] = useState<string | null>(null);
+  const [contextError, setContextError] = useState<string | null>('');
+
   const MINIMUM_LOADING_TIME_MS = 1000;
 
   useEffect(() => {
@@ -39,24 +56,6 @@ export const LoginPage = () => {
     }
   }
 
-  function validateContext(value: string) {
-    if (value.length < 32 || value.length > 44) {
-      setApplicationError(
-        'Application ID must be between 32 and 44 characters long.',
-      );
-      return;
-    }
-    const validChars =
-      /^[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$/;
-
-    if (!validChars.test(value)) {
-      setApplicationError(
-        'Application ID must contain only base58 characters.',
-      );
-      return;
-    }
-  }
-
   const handleChange = (urlValue: string) => {
     if (validateUrl(urlValue)) {
       setError('');
@@ -66,6 +65,8 @@ export const LoginPage = () => {
       setUrl(urlValue);
     }
   };
+
+  const [currentStep, setCurrentStep] = useState(STEPS.ENTER_NODE_URL);
 
   const checkConnection = useCallback(async () => {
     if (!url) return;
@@ -79,12 +80,12 @@ export const LoginPage = () => {
 
         Promise.all([timer, fetchData])
           .then(([, response]) => {
-            console.log(response);
             if (response.data) {
               setLoginError('');
               setAppEndpointKey(url);
               setApplicationId(appId || '');
-              redirectToDashboardLogin();
+              fetchAvailableContexts();
+              setCurrentStep(STEPS.SELECT_CONTEXT);
             } else {
               setLoginError(
                 'Connection failed. Please check if node url is correct.',
@@ -110,44 +111,63 @@ export const LoginPage = () => {
     }
   }, [url, appId]);
 
-  useEffect(() => {
-    let status =
-      !url || !appId || !!applicationError || !validateUrl(url) || loading;
-    setIsDisabled(status);
-  }, [url, appId, applicationError, loading]);
-
-  const redirectToDashboardLogin = () => {
-    const appId = import.meta.env.VITE_APPLICATION_ID;
-    setApplicationId(appId);
-    const nodeUrl = getAppEndpointKey();
-    const applicationId = getApplicationId();
-    if (!nodeUrl) {
-      setLoginError('Node URL is not set');
-      return;
+  const fetchAvailableContexts = useCallback(async () => {
+    try {
+      const response = await axios(`${url}/admin-api/contexts`);
+      let appContexts = response.data.data.contexts.filter(
+        (context: Context) => context.applicationId === appId,
+      );
+      setAvailableContexts(appContexts);
+    } catch (error) {
+      setContextError('Failed to fetch contexts');
     }
-    if (!applicationId) {
-      setLoginError('Application ID is not set');
-      return;
+  }, [appId]);
+
+  const onSelectContext = (contextId: string) => {
+    setSelectedContextId(contextId);
+    fetchContextIdentities(contextId);
+    setCurrentStep(STEPS.SELECT_IDENTITY);
+  };
+
+  const fetchContextIdentities = useCallback(
+    async (contextId: string) => {
+      try {
+        const response = await axios.get(
+          `${url}/admin-api/contexts/${contextId}/identities-owned`,
+        );
+        setContextIdentities(response.data.data.identities);
+      } catch (error) {
+        console.error('Error deleting context:', error);
+        return { error: { code: 500, message: 'Failed to delete context.' } };
+      }
+    },
+    [selectedContextId, url],
+  );
+
+  const onSelectIdentity = (identity: string) => {
+    setSelectedIdentity(identity);
+    setCurrentStep(STEPS.LOGIN);
+  };
+
+  const handleLogin = () => {
+    if (selectedContextId && selectedIdentity) {
+      setContextId(selectedContextId);
+      setExecutorPublicKey(selectedIdentity);
+      navigate('/');
     }
-
-    const callbackUrl = encodeURIComponent(window.location.href);
-    const redirectUrl = `${nodeUrl}/admin-dashboard/?application_id=${applicationId}&callback_url=${callbackUrl}`;
-
-    window.location.href = redirectUrl;
   };
 
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const encodedAccessToken = urlParams.get('access_token');
-    const encodedRefreshToken = urlParams.get('refresh_token');
-    if (encodedAccessToken && encodedRefreshToken) {
-      const accessToken = decodeURIComponent(encodedAccessToken);
-      const refreshToken = decodeURIComponent(encodedRefreshToken);
-      setAccessToken(accessToken);
-      setRefreshToken(refreshToken);
+    let status =
+      !url || !appId || !validateUrl(url) || loading;
+    setIsDisabled(status);
+  }, [url, appId, loading]);
+
+  useEffect(() => {
+    if (isLoggedIn) {
       navigate('/');
     }
-  }, []);
+  }, [isLoggedIn]);
 
   return (
     <div className={styles.loginWrapper}>
@@ -166,36 +186,136 @@ export const LoginPage = () => {
         </div>
         <div className={styles.configWrapper}>
           <div className={styles.configWrapper__title}>APP CONFIGURATION</div>
-          <div id="input-item" className={styles.configWrapper__inputItem}>
-            <label className={styles.configWrapper__label}>Node url</label>
-            <div className={styles.paddingWrap}>
-              <input
-                type="text"
-                placeholder="node url"
-                inputMode="url"
-                value={url || ''}
-                onChange={(e) => handleChange(e.target.value)}
-                aria-invalid={!!error}
-                aria-describedby="urlError"
-                className={styles.configWrapper__inputField}
-              />
-            </div>
-            <div className={styles.configWrapper__error}>
-              {error || loginError}
-            </div>
-          </div>
-          <div className={styles.loginButtonWrapper}>
-            <div
-              className={loading ? styles.loading : styles.loading__hidden}
-            ></div>
-            <button
-              className={styles.login__btn}
-              disabled={isDisabled}
-              onClick={checkConnection}
-            >
-              <span>Login</span>
-            </button>
-          </div>
+          {currentStep === STEPS.ENTER_NODE_URL && (
+            <>
+              <div id="input-item" className={styles.configWrapper__inputItem}>
+                <label className={styles.configWrapper__label}>Node url</label>
+                <div className={styles.paddingWrap}>
+                  <input
+                    type="text"
+                    placeholder="node url"
+                    inputMode="url"
+                    value={url || ''}
+                    onChange={(e) => handleChange(e.target.value)}
+                    aria-invalid={!!error}
+                    aria-describedby="urlError"
+                    className={styles.configWrapper__inputField}
+                  />
+                </div>
+                <div className={styles.configWrapper__error}>
+                  {error || loginError}
+                </div>
+              </div>
+              <div className={styles.loginButtonWrapper}>
+                <div
+                  className={loading ? styles.loading : styles.loading__hidden}
+                ></div>
+                <button
+                  className={styles.login__btn}
+                  disabled={isDisabled}
+                  onClick={checkConnection}
+                >
+                  <span>Login</span>
+                </button>
+              </div>
+            </>
+          )}
+          {currentStep === STEPS.SELECT_CONTEXT && (
+            <>
+              <div className={styles.subtitle}>Select context</div>
+              <div className={styles.configWrapper__contexts}>
+                {availableContexts.length > 0 ? (
+                  availableContexts.map((context: Context) => (
+                    <div
+                      key={context.id}
+                      className={styles.configWrapper__context}
+                    >
+                      <div
+                        className={styles.configWrapper__contextName}
+                        onClick={() => onSelectContext(context.id)}
+                      >
+                        {context.id}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className={styles.noDataDiv}>
+                    No contexts found for this application
+                  </div>
+                )}
+              </div>
+              <div className={styles.configWrapper__error}>
+                {' '}
+                {contextError}{' '}
+              </div>
+              <button
+                className={styles.login__btn}
+                onClick={() => setCurrentStep(STEPS.ENTER_NODE_URL)}
+              >
+                Back
+              </button>
+            </>
+          )}
+          {currentStep === STEPS.SELECT_IDENTITY && (
+            <>
+              <div className={styles.subtitle}>Select identity</div>
+              <div className={styles.configWrapper__contexts}>
+                {contextIdentities.length > 0 ? (
+                  contextIdentities.map((identity: string) => (
+                    <div
+                      key={identity}
+                      className={styles.configWrapper__context}
+                    >
+                      <div
+                        className={styles.configWrapper__contextName}
+                        onClick={() => onSelectIdentity(identity)}
+                      >
+                        {identity}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className={styles.noDataDiv}>
+                    No identities found for this context
+                  </div>
+                )}
+              </div>
+              <div className={styles.configWrapper__error}>
+                {' '}
+                {contextError}{' '}
+              </div>
+              <button
+                className={styles.login__btn}
+                onClick={() => setCurrentStep(STEPS.SELECT_CONTEXT)}
+              >
+                Back
+              </button>
+            </>
+          )}
+          {currentStep === STEPS.LOGIN && (
+            <>
+              <div className={styles.subtitle}>LOGIN</div>
+              <div className={styles.flexWrapper}>
+                <span>Selected context:</span>
+                <span className={styles.selectedItem}>{selectedContextId}</span>
+              </div>
+              <div className={styles.flexWrapper}>
+                <span>Selected identity:</span>
+                <span className={styles.selectedItem}>{selectedIdentity}</span>
+              </div>
+              <div className={styles.login__btnWrapper}>
+                <button
+                  className={styles.login__btn}
+                  onClick={() => setCurrentStep(STEPS.SELECT_IDENTITY)}
+                >
+                  Back
+                </button>
+                <button className={styles.login__btn} onClick={handleLogin}>
+                  login
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

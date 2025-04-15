@@ -46,6 +46,20 @@ export interface CalendarEvent {
   type: string;
 }
 
+export interface Context {
+  applicationId: string;
+  id: string;
+  rootHash: String;
+}
+
+export interface GetContextsResponse {
+  contexts: Context[];
+}
+
+export interface FetchContextIdentitiesResponse {
+  identities: string[];
+}
+
 export interface ClientApi {
   getEvents(): ApiResponse<GetEventsResponse>;
   createEvent(event: IEventCreate): ApiResponse<CreateEventResponse>;
