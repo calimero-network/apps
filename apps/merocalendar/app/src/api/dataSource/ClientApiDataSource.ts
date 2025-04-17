@@ -58,7 +58,7 @@ export class ClientApiDataSource implements ClientApi {
 
   async getEvents(): ApiResponse<GetEventsResponse> {
     try {
-      const { publicKey, contextId, config, error } =
+      const { publicKey, contextId, error } =
         prepareAuthenticatedRequestConfig();
       if (error) {
         return { error };
@@ -71,7 +71,12 @@ export class ClientApiDataSource implements ClientApi {
           argsJson: {},
           executorPublicKey: publicKey,
         },
-        config,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          timeout: 10000,
+        },
       );
       if (response?.error) {
         return await this.handleError(response.error, {}, this.getEvents);
@@ -104,7 +109,7 @@ export class ClientApiDataSource implements ClientApi {
 
   async createEvent(event: IEventCreate): ApiResponse<CreateEventResponse> {
     try {
-      const { publicKey, contextId, config, error } =
+      const { publicKey, contextId, error } =
         prepareAuthenticatedRequestConfig();
 
       if (error) {
@@ -130,8 +135,14 @@ export class ClientApiDataSource implements ClientApi {
           },
           executorPublicKey: publicKey,
         },
-        config,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          timeout: 10000,
+        },
       );
+
       if (response?.error) {
         return await this.handleError(response.error, {}, this.createEvent);
       }
@@ -170,7 +181,7 @@ export class ClientApiDataSource implements ClientApi {
 
   async deleteEvent(eventId: string): ApiResponse<DeleteEventResponse> {
     try {
-      const { publicKey, contextId, config, error } =
+      const { publicKey, contextId, error } =
         prepareAuthenticatedRequestConfig();
       if (error) {
         return { error };
@@ -186,7 +197,12 @@ export class ClientApiDataSource implements ClientApi {
           argsJson: { event_id: eventId },
           executorPublicKey: publicKey,
         },
-        config,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          timeout: 10000,
+        },
       );
       if (response?.error) {
         return await this.handleError(response.error, {}, this.deleteEvent);
