@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import {
   getContextId,
+  getExecutorPublicKey,
   NodeEvent,
   SubscriptionsClient,
 } from '@calimero-network/calimero-client';
@@ -10,9 +11,19 @@ import Calendar from '../../components/calendar/Calendar';
 
 import '../../common.scss';
 import { useActions } from '../../hooks';
+import { useNavigate } from 'react-router-dom';
 
 export default function CalendarPage() {
+  const navigate = useNavigate();
+  const pk = getExecutorPublicKey();
+  const contextId = getContextId();
   const { getEvents } = useActions();
+
+  useEffect(() => {
+    if (!pk || !contextId) {
+      navigate('/login');
+    }
+  }, [pk, contextId, navigate]);
 
   const observeNodeEvents = async () => {
     let subscriptionsClient: SubscriptionsClient = getWsSubscriptionsClient();
