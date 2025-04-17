@@ -6,6 +6,7 @@ import {
   handleRpcError,
   getAppEndpointKey,
   prepareAuthenticatedRequestConfig,
+  getAuthConfig,
 } from '@calimero-network/calimero-client';
 import {
   ClientApi,
@@ -58,18 +59,24 @@ export class ClientApiDataSource implements ClientApi {
 
   async getEvents(): ApiResponse<GetEventsResponse> {
     try {
-      const { publicKey, contextId, error } =
-        prepareAuthenticatedRequestConfig();
-      if (error) {
-        return { error };
+      const config = getAuthConfig();
+
+      if (!config || !config.contextId || !config.executorPublicKey) {
+        return {
+          data: null,
+          error: {
+            code: 500,
+            message: 'Authentication configuration not found',
+          },
+        };
       }
 
       const response = await getJsonRpcClient().execute<any, GetEventsResponse>(
         {
-          contextId: contextId,
+          contextId: config.contextId,
           method: ClientMethod.GET_EVENTS,
           argsJson: {},
-          executorPublicKey: publicKey,
+          executorPublicKey: config.executorPublicKey,
         },
         {
           headers: {
@@ -109,18 +116,24 @@ export class ClientApiDataSource implements ClientApi {
 
   async createEvent(event: IEventCreate): ApiResponse<CreateEventResponse> {
     try {
-      const { publicKey, contextId, error } =
-        prepareAuthenticatedRequestConfig();
+      const config = getAuthConfig();
 
-      if (error) {
-        return { error };
+      if (!config || !config.contextId || !config.executorPublicKey) {
+        return {
+          data: null,
+          error: {
+            code: 500,
+            message: 'Authentication configuration not found',
+          },
+        };
       }
+
       const response = await getJsonRpcClient().execute<
         any,
         CreateEventResponse
       >(
         {
-          contextId: contextId,
+          contextId: config.contextId,
           method: ClientMethod.CREATE_EVENT,
           argsJson: {
             event_data: {
@@ -130,10 +143,10 @@ export class ClientApiDataSource implements ClientApi {
               start: event.start,
               title: event.title,
               event_type: event.type,
-              peers: event.peers.length > 0 ? event.peers.split(", ") : [],
+              peers: event.peers.length > 0 ? event.peers.split(', ') : [],
             },
           },
-          executorPublicKey: publicKey,
+          executorPublicKey: config.executorPublicKey,
         },
         {
           headers: {
@@ -181,10 +194,16 @@ export class ClientApiDataSource implements ClientApi {
 
   async deleteEvent(eventId: string): ApiResponse<DeleteEventResponse> {
     try {
-      const { publicKey, contextId, error } =
-        prepareAuthenticatedRequestConfig();
-      if (error) {
-        return { error };
+      const config = getAuthConfig();
+
+      if (!config || !config.contextId || !config.executorPublicKey) {
+        return {
+          data: null,
+          error: {
+            code: 500,
+            message: 'Authentication configuration not found',
+          },
+        };
       }
 
       const response = await getJsonRpcClient().execute<
@@ -192,10 +211,10 @@ export class ClientApiDataSource implements ClientApi {
         DeleteEventResponse
       >(
         {
-          contextId: contextId,
+          contextId: config.contextId,
           method: ClientMethod.DELETE_EVENT,
           argsJson: { event_id: eventId },
-          executorPublicKey: publicKey,
+          executorPublicKey: config.executorPublicKey,
         },
         {
           headers: {
@@ -245,23 +264,34 @@ export class ClientApiDataSource implements ClientApi {
     eventData: TPartialEvent,
   ): ApiResponse<UpdateEventResponse> {
     try {
-      const { publicKey, contextId, config, error } =
-        prepareAuthenticatedRequestConfig();
+      const config = getAuthConfig();
 
-      if (error) {
-        return { error };
+      if (!config || !config.contextId || !config.executorPublicKey) {
+        return {
+          data: null,
+          error: {
+            code: 500,
+            message: 'Authentication configuration not found',
+          },
+        };
       }
+
       const response = await getJsonRpcClient().execute<
         any,
         UpdateEventResponse
       >(
         {
-          contextId: contextId,
+          contextId: config.contextId,
           method: ClientMethod.UPDATE_EVENT,
           argsJson: { event_id: eventId, event_data: eventData },
-          executorPublicKey: publicKey,
+          executorPublicKey: config.executorPublicKey,
         },
-        config,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          timeout: 10000,
+        },
       );
       if (response?.error) {
         return await this.handleError(response.error, {}, this.updateEvent);
