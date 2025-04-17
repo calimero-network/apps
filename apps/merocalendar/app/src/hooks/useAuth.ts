@@ -1,4 +1,7 @@
 import {
+  clearAppEndpoint,
+  clearContextId,
+  clearExecutorPublicKey,
   getAppEndpointKey,
   getApplicationId,
   getContextId,
@@ -21,5 +24,11 @@ export const useAuth = () => {
     }
   }, [pk, contextId, appId, nodeUrl]);
 
-  return { isLoggedIn };
+  const logout = () => {
+    clearAppEndpoint();
+    clearContextId();
+    clearExecutorPublicKey();
+  };
+
+  return { isLoggedIn, logout };
 };

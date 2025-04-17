@@ -1,10 +1,6 @@
 import React, { FC } from 'react';
 
-import {
-  clearAccessToken,
-  clientLogout,
-  getExecutorPublicKey,
-} from '@calimero-network/calimero-client';
+import { getExecutorPublicKey } from '@calimero-network/calimero-client';
 import cn from 'classnames';
 import { ToastContainer, toast } from 'react-toastify';
 
@@ -16,6 +12,7 @@ import Select from '../select/Select';
 
 import styles from './header.module.scss';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../../hooks/useAuth';
 
 interface IHeaderProps {
   onClickArrow: (direction: IDirections) => void;
@@ -34,6 +31,7 @@ const Header: FC<IHeaderProps> = ({
   selectedOption,
   selectedDay,
 }) => {
+  const { logout } = useAuth();
   const navigate = useNavigate();
   const {
     isOpenModalCreateEvent,
@@ -68,7 +66,7 @@ const Header: FC<IHeaderProps> = ({
   };
 
   const handleLogout = () => {
-    clearAccessToken();
+    logout();
     navigate('/login');
   };
 

@@ -112,6 +112,7 @@ export const LoginPage = () => {
   }, [url, appId]);
 
   const fetchAvailableContexts = useCallback(async () => {
+    setContextError('');
     try {
       const response = await axios(`${url}/admin-api/contexts`);
       let appContexts = response.data.data.contexts.filter(
@@ -121,7 +122,7 @@ export const LoginPage = () => {
     } catch (error) {
       setContextError('Failed to fetch contexts');
     }
-  }, [appId]);
+  }, [url, appId]);
 
   const onSelectContext = (contextId: string) => {
     setSelectedContextId(contextId);
