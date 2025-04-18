@@ -6,7 +6,9 @@ import {
   openModalEdit,
   closeModalCreate,
   closeModalDayInfo,
-  closeModalEdit
+  closeModalEdit,
+  openErrorModal,
+  closeErrorModal
 } from './actions';
 
 const initialState: IModalsState = {
@@ -15,7 +17,9 @@ const initialState: IModalsState = {
   isOpenModalDayInfoEvents: false,
   modalCreateEventOptions: null,
   modalEditEventOptions: null,
-  selectedDate: null
+  selectedDate: null,
+  isOpenErrorModal: false,
+  errorModalOptions: null,
 }
 
 export const modalsSlice = createSlice({
@@ -46,6 +50,14 @@ export const modalsSlice = createSlice({
       .addCase(closeModalEdit, (state) => {
         state.isOpenModalEditEvent = false;
         state.modalEditEventOptions = null;
+      })
+      .addCase(openErrorModal, (state, { payload }) => {
+        state.isOpenErrorModal = true;
+        state.errorModalOptions = payload;
+      })
+      .addCase(closeErrorModal, (state) => {
+        state.isOpenErrorModal = false;
+        state.errorModalOptions = null;
       })
   },
   reducers: {}

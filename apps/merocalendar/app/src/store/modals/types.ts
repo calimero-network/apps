@@ -7,6 +7,8 @@ export interface IModalsState {
   modalCreateEventOptions: IModalCreateEventOptions | null;
   modalEditEventOptions: IModalEditEventOptions | null;
   selectedDate: Date | null;
+  isOpenErrorModal: boolean;
+  errorModalOptions: IErrorModalOptions | null;
 }
 
 export interface IModalCreateEventOptions {
@@ -17,4 +19,9 @@ export interface IModalCreateEventOptions {
 export interface IModalEditEventOptions {
   eventData: TPartialEvent;
   eventId: string;
+}
+
+export interface IErrorModalOptions {
+  message: string;
+  type: 'websocket' | 'create' | 'edit' | 'delete' | 'appError';
 }
