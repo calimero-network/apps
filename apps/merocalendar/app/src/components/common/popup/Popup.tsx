@@ -23,7 +23,7 @@ const Popup: FC<IPopupProps> = ({ x, y, eventId }) => {
   const { events } = useTypedSelector(({ events }) => events);
   const { deleteEvent } = useActions();
   const { closePopup } = usePopup();
-  const { openModalEdit } = useModal();
+  const { openModalEdit, openErrorModal } = useModal();
   const { width: windowWidth, height: windowHeight } = useWindowSize();
 
   const getPopupStyle = () => {
@@ -56,8 +56,15 @@ const Popup: FC<IPopupProps> = ({ x, y, eventId }) => {
   useClickOutside(popupRef, handleClosePopup);
 
   const onDelete = () => {
-    deleteEvent(eventId);
-    closePopup();
+    try {
+      deleteEvent(eventId);
+      closePopup();
+    } catch (error: any) {
+      openErrorModal({
+        message: error.message,
+        errorType: 'delete',
+      });
+    }
   };
 
   const handleOpenEditEventModal = () => {
