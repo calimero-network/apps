@@ -5,7 +5,7 @@ import { useAuth } from '../../../hooks/useAuth';
 interface IErrorModalProps {
   message: string;
   closeError: () => void;
-  errorType: 'websocket' | 'create' | 'edit' | 'delete';
+  errorType: 'websocket' | 'create' | 'edit' | 'delete' | 'appError';
 }
 
 const ErrorModal: FC<IErrorModalProps> = ({
