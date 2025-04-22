@@ -33,7 +33,7 @@ export default function CalendarPage() {
       await subscriptionsClient.connect();
       subscriptionsClient.subscribe([getContextId() ?? '']);
 
-      subscriptionsClient?.addCallback(async(data: NodeEvent) => {
+      subscriptionsClient?.addCallback(async (data: NodeEvent) => {
         try {
           //@ts-ignore
           if (data.data.newRoot && data.type === 'StateMutation') {
@@ -80,21 +80,8 @@ export default function CalendarPage() {
 
   useEffect(() => {
     observeNodeEvents();
-    const fetchEvents = async () => {
-      try {
-        // @ts-ignore
-        await getEvents().unwrap();
-      } catch (error: any) {
-        // openErrorModal({
-        //   message: error.message,
-        //   errorType: 'appError',
-        // });
-      }
-    };
-
-    fetchEvents();
+    getEvents();
   }, []);
-
 
   return (
     <div>

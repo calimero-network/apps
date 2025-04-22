@@ -24,13 +24,11 @@ export const createEvent = createAsyncThunk<string, IEventCreate>(
   async (newEvent, thunkAPI) => {
     try {
       const response = await apiEvents.createEvent(newEvent);
-      console.log(response);
       if (!response?.data) {
         throw new Error('No data received');
       }
       return response.data.eventId;
     } catch (error) {
-      console.log(error);
       return thunkAPI.rejectWithValue(error)
     }
   }
