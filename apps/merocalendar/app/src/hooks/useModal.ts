@@ -9,7 +9,9 @@ export const useModal = () => {
     openModalEdit,
     closeModalCreate,
     closeModalDayInfo,
-    closeModalEdit
+    closeModalEdit,
+    openErrorModal,
+    closeErrorModal,
   } = useActions();
 
   return {
@@ -19,6 +21,8 @@ export const useModal = () => {
     openModalEdit,
     closeModalCreate,
     closeModalDayInfo,
-    closeModalEdit
+    closeModalEdit,
+    openErrorModal,
+    closeErrorModal,
   };
-}
+};

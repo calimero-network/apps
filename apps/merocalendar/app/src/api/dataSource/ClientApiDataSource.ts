@@ -5,7 +5,6 @@ import {
   RpcError,
   handleRpcError,
   getAppEndpointKey,
-  prepareAuthenticatedRequestConfig,
   getAuthConfig,
 } from '@calimero-network/calimero-client';
 import {
@@ -283,7 +282,21 @@ export class ClientApiDataSource implements ClientApi {
         {
           contextId: config.contextId,
           method: ClientMethod.UPDATE_EVENT,
-          argsJson: { event_id: eventId, event_data: eventData },
+          argsJson: {
+            event_id: eventId,
+            event_data: {
+              color: eventData.color ?? null,
+              description: eventData.description ?? null,
+              end: eventData.end ?? null,
+              start: eventData.start ?? null,
+              title: eventData.title ?? null,
+              event_type: eventData.type ?? null,
+              peers:
+                eventData.peers && eventData.peers?.length > 0
+                  ? eventData.peers.split(', ')
+                  : [],
+            },
+          },
           executorPublicKey: config.executorPublicKey,
         },
         {

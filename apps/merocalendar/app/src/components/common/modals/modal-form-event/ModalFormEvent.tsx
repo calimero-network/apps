@@ -139,6 +139,8 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
     setValue('endDate', getDateTime(values.endDate, endTime));
   };
 
+  const [error, setError] = useState<string | null>(null);
+
   const onSubmit: TSubmitHandler<IModalValues> = async (data) => {
     const newEvent: TPartialEvent = {
       title: data.title,
@@ -150,8 +152,13 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
       color: data.color,
     };
 
-    await handlerSubmit(newEvent);
-    closeModal();
+    try {
+      // @ts-ignore
+      let response = await handlerSubmit(newEvent).unwrap();
+      closeModal();
+    } catch (error: any) {
+      setError(`JsonRPC error: ${error.message}`);
+    }
   };
 
   // @ts-ignore
@@ -200,8 +207,8 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
       const query = inputValue.split('@').pop();
       setFilteredPeers(
         fetchedPeers.filter((peer) =>
-          peer.toLowerCase().includes(query?.toLowerCase() || '')
-        )
+          peer.toLowerCase().includes(query?.toLowerCase() || ''),
+        ),
       );
     } else {
       setShowDropdown(false);
@@ -211,10 +218,15 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
   const handlePeerSelect = (peer: string) => {
     const cleanedPeer = peer.replace('@', '');
     let oldValues = values.peers.replace('@', '');
-    const currentPeers = oldValues ? oldValues.split(',').map(p => p.trim()) : [];
+    const currentPeers = oldValues
+      ? oldValues.split(',').map((p) => p.trim())
+      : [];
 
     if (!currentPeers.includes(cleanedPeer)) {
-      const newPeers = currentPeers.length > 0 ? `${oldValues.trim()}, ${cleanedPeer}` : cleanedPeer;
+      const newPeers =
+        currentPeers.length > 0
+          ? `${oldValues.trim()}, ${cleanedPeer}`
+          : cleanedPeer;
       setValue('peers', newPeers);
     }
     setShowDropdown(false);
@@ -376,6 +388,7 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
                 readOnly={viewOnly}
               />
             </div>
+            {error && <div className={styles.modal__form__error}>{error}</div>}
             {!viewOnly && (
               <button
                 type="submit"

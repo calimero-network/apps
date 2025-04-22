@@ -23,7 +23,7 @@ const Popup: FC<IPopupProps> = ({ x, y, eventId }) => {
   const { events } = useTypedSelector(({ events }) => events);
   const { deleteEvent } = useActions();
   const { closePopup } = usePopup();
-  const { openModalEdit } = useModal();
+  const { openModalEdit, openErrorModal } = useModal();
   const { width: windowWidth, height: windowHeight } = useWindowSize();
 
   const getPopupStyle = () => {

@@ -10,7 +10,7 @@ export const getEvents = createAsyncThunk<IEvent[], void>(
     try {
       const response = await apiEvents.getEvents();
       if (!response?.data) {
-        throw new Error('No data received');
+        throw new Error(response.error.message);
       }
       return response.data as IEvent[];
     } catch (error) {
@@ -24,8 +24,8 @@ export const createEvent = createAsyncThunk<string, IEventCreate>(
   async (newEvent, thunkAPI) => {
     try {
       const response = await apiEvents.createEvent(newEvent);
-      if (!response?.data || !response.data.eventId) {
-        throw new Error('No data or eventId received');
+      if (!response?.data) {
+        throw new Error('No data received');
       }
       return response.data.eventId;
     } catch (error) {
