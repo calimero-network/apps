@@ -1,6 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
 import type { ActiveChat, User, ChannelMeta } from '../../types/Common';
+import ChannelHeader from './ChannelHeader';
 
 interface SideSelectorProps {
   users: User[];
@@ -109,7 +110,7 @@ const SearchChannelsWrapper = styled.div`
   gap: 4px;
   cursor: pointer;
   border-radius: 8px;
-  :hover {
+  &:hover {
     background-color: #25252a;
     color: #fff;
     fill: #fff;
@@ -158,7 +159,7 @@ const SearchChannels: React.FC<SearchChannelsProps> = ({ isOpenSearchChannel, se
           </clipPath>
         </defs>
       </svg>
-      <span id="searchTitle">Browse Channels</span>
+      <span className="searchTitle">Browse Channels</span>
     </SearchChannelsWrapper>
   );
 };
@@ -178,9 +179,7 @@ const SideSelector: React.FC<SideSelectorProps> = (props) => {
           setIsOpenSearchChannel={() => setIsOpenSearchChannel(!isOpenSearchChannel)}
         />
         <HorizontalSeparatorLine isMobile={false} />
-        <div>
-          <h3>Channel</h3>
-        </div>
+        <ChannelHeader title="Channels" />
         <div>
           {channels.map((channel) => (
             <div key={channel.name}>

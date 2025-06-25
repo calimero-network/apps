@@ -51,7 +51,7 @@ export default function AppContainer({
       />
       <ContentDivContainer>
       <ChannelsContainer
-        onChatSelected={() => {}}
+        onChatSelected={updateSelectedActiveChat}
         activeChat={activeChat}
         isSidebarOpen={isSidebarOpen}
         setIsSidebarOpen={setIsSidebarOpen}

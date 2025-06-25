@@ -1,6 +1,7 @@
-import React from "react";
-import type { ActiveChat } from "../../types/Common";
+import React, { useEffect, useState } from "react";
+import type { ActiveChat, ChannelMeta, User } from "../../types/Common";
 import SideSelector from "../sideSelector/SideSelector";
+import { defaultActiveChat, mockChannels, mockChannelUsers } from "../../mock/mock";
 
 interface ChannelsContainerProps {
   onChatSelected: (chat: ActiveChat) => void;
@@ -20,13 +21,24 @@ const ChannelsContainer: React.FC<ChannelsContainerProps> = (props) => {
     setIsOpenSearchChannel,
     isOpenSearchChannel,
   } = props;
+  const [channels, setChannels] = useState<ChannelMeta[]>();
+  const [users, setUsers] = useState<User[]>();
 
-  const defaultActiveChat: ActiveChat = {
-    type: "channel",
-    id: "1",
-    name: "general",
-    readOnly: false,
-  };
+  useEffect(() => {
+    const fetchChannels = async () => {
+      // TODO: fetch channels from API
+      //const channels = await getChannels();
+      setChannels(mockChannels);
+    }
+    const fetchUsers = async () => {
+      // TODO: fetch users from API
+      //const users = await getUsers();
+      setUsers(mockChannelUsers);
+    }
+    fetchChannels();
+    fetchUsers();
+  },[]);
+
 
   return (
     <SideSelector
@@ -36,8 +48,8 @@ const ChannelsContainer: React.FC<ChannelsContainerProps> = (props) => {
       setIsSidebarOpen={setIsSidebarOpen}
       setIsOpenSearchChannel={setIsOpenSearchChannel}
       isOpenSearchChannel={isOpenSearchChannel}
-      users={[]}
-      channels={[]}
+      users={users || []}
+      channels={channels || []}
     />
   );
 };

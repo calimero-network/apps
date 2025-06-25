@@ -1,5 +1,5 @@
-import React from 'react';
-import styled from 'styled-components';
+import React from "react";
+import styled from "styled-components";
 
 interface TabSwitchProps {
   selectedTabIndex: number;
@@ -22,13 +22,11 @@ const Popup = styled.div`
 
 const SwitchOption = styled.div<{ selected?: boolean; leftPadding?: boolean }>`
   display: flex;
-  align-items: center;
-  justify-content: center;
   column-gap: 0.5rem;
   padding-right: 1rem;
-  ${({ leftPadding }) => leftPadding && 'padding-left: 1rem;'}
+  ${({ leftPadding }) => leftPadding && "padding-left: 1rem;"}
   cursor: pointer;
-  ${({ selected }) => (selected ? 'color: #5765F2' : 'color: #fff;')}
+  ${({ selected }) => (selected ? "color: #5765F2" : "color: #fff;")}
 `;
 
 const TabSwitch: React.FC<TabSwitchProps> = (props) => {
@@ -38,12 +36,12 @@ const TabSwitch: React.FC<TabSwitchProps> = (props) => {
 
   const items = [
     {
-      name: 'About',
-      icon: 'bi bi-info-circle-fill',
+      name: "About",
+      icon: "bi bi-info-circle-fill",
     },
     {
       name: `Members ${userCount}`,
-      icon: 'bi bi-people-fill',
+      icon: "bi bi-people-fill",
     },
   ];
 
