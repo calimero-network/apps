@@ -1,7 +1,7 @@
 import { styled } from "styled-components";
-import type { ActiveChat } from "../../types/Common";
-import NavbarContainer from "./NavbarContainer";
+import type { ActiveChat, User } from "../../types/Common";
 import ChannelsContainer from "./ChannelsContainer";
+import CurbNavbar from "../navbar/CurbNavbar";
 
 const ContentDivContainer = styled.div`
   width: 100%;
@@ -18,53 +18,36 @@ const Wrapper = styled.div`
 `;
 
 interface AppContainerProps {
-  activeChat: ActiveChat | null;
-  setActiveChat: (chat: ActiveChat | null) => void;
-  isSidebarOpen: boolean;
-  setIsSidebarOpen: (isOpen: boolean) => void;
-  appEndpoint: string | null;
-  setAppEndpoint: (endpoint: string | null) => void;
   isOpenSearchChannel: boolean;
   setIsOpenSearchChannel: (isOpen: boolean) => void;
+  isSidebarOpen: boolean;
+  setIsSidebarOpen: (isOpen: boolean) => void;
+  activeChat: ActiveChat | null;
+  setActiveChat: (chat: ActiveChat | null) => void;
+  updateSelectedActiveChat: (chat: ActiveChat) => void;
+  openSearchPage: () => void;
+  channelUsers: User[];
 }
 export default function AppContainer({
   activeChat,
   setActiveChat,
   isSidebarOpen,
   setIsSidebarOpen,
-  appEndpoint,
-  setAppEndpoint,
   isOpenSearchChannel,
   setIsOpenSearchChannel,
+  updateSelectedActiveChat,
+  openSearchPage,
+  channelUsers
 }: AppContainerProps) {
   return (
     <>
-      <NavbarContainer
+      <CurbNavbar
         activeChat={activeChat}
         isSidebarOpen={isSidebarOpen}
         setIsSidebarOpen={setIsSidebarOpen}
         isOpenSearchChannel={isOpenSearchChannel}
         setIsOpenSearchChannel={setIsOpenSearchChannel}
-        channelUserList={[
-          {
-            id: "1",
-            name: "User 1",
-            moderator: false,
-            active: true,
-          },
-          {
-            id: "2",
-            name: "User 2",
-            moderator: false,
-            active: true,
-          },
-          {
-            id: "3",
-            name: "User 3",
-            moderator: false,
-            active: true,
-          },
-        ]}
+        channelUserList={channelUsers}
       />
       <ContentDivContainer>
       <ChannelsContainer

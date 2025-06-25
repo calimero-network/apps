@@ -3,12 +3,14 @@ import type { ActiveChat, User } from "../../types/Common";
 import DetailsDropdown from "./DetailsDropdown";
 import ChannelDetailsPopup from "../popups/ChannelDetailsPopup";
 import UsersButtonGroup from "./UsersButtonGroup";
+import { useState } from "react";
 
 interface CurbNavbarProps {
   activeChat: ActiveChat | null;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (isOpen: boolean) => void;
   isOpenSearchChannel: boolean;
+  setIsOpenSearchChannel: (isOpen: boolean) => void;
   channelUserList: User[];
 }
 
@@ -80,11 +82,11 @@ const ItemsContainer = styled.div<{ align: boolean }>`
 
 const LogoContainer = styled.div<{ justify?: boolean }>`
   display: flex;
+  gap: 0.5rem;
   @media (max-width: 1024px) {
       display: none;
     }
   }
-  column-gap: 0.5rem;
   align-items: center;
   ${(props) => props.justify && "justify-content: center;"}
 `;
@@ -100,10 +102,13 @@ const BackIcon = styled.svg`
 
 const IconWrapper = styled.div`
   padding: 8px;
-  display: flex;
+  display: none;
   justify-content: center;
   align-items: center;
   margin-right: 8px;
+  @media (max-width: 1024px) {
+    display: flex;
+  }
 `;
 
 const CurbLogo = () => {
@@ -136,7 +141,7 @@ const BackIconContainer = ({ onClick }: { onClick: () => void }) => {
         xmlns="http://www.w3.org/2000/svg"
         width="20"
         height="20"
-        fill="currentColor"
+        fill="white"
         className="bi bi-chevron-left"
         viewBox="0 0 16 16"
       >
@@ -149,14 +154,14 @@ const BackIconContainer = ({ onClick }: { onClick: () => void }) => {
   );
 };
 
-export default function CurbNavbar(props: CurbNavbarProps) {
-  const {
-    activeChat,
-    isSidebarOpen,
-    setIsSidebarOpen,
-    isOpenSearchChannel,
-    channelUserList,
-  } = props;
+export default function CurbNavbar({
+  activeChat,
+  isSidebarOpen,
+  setIsSidebarOpen,
+  isOpenSearchChannel,
+  channelUserList,
+}: CurbNavbarProps) {
+  const [isOpen, setIsOpen] = useState(false);
   return (
     <NavigationBar isSidebarOpen={isSidebarOpen}>
       <ItemsContainer align={true}>
@@ -165,17 +170,14 @@ export default function CurbNavbar(props: CurbNavbarProps) {
           <OrgNameContainer>Calimero P2P</OrgNameContainer>
         </>
         <VerticalSeparatorFull enableCommunities={false} />
-        {
-          <BackIconContainer
-            onClick={() => {
-              setIsSidebarOpen(!isSidebarOpen);
-            }}
-          />
-        }
+        <BackIconContainer
+          onClick={() => {
+            setIsSidebarOpen(!isSidebarOpen);
+          }}
+        />
         {activeChat && (
           <DetailsDropdown
             activeChat={activeChat}
-            curbApi={"curbApi"}
             isOpenSearchChannel={isOpenSearchChannel}
             channelUserList={channelUserList}
           />
@@ -194,6 +196,8 @@ export default function CurbNavbar(props: CurbNavbarProps) {
             }
             chat={activeChat!}
             channelUserList={channelUserList}
+            isOpen={isOpen}
+            setIsOpen={setIsOpen}
           />
         </ItemsContainer>
       )}

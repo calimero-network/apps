@@ -1,6 +1,7 @@
 import { styled } from "styled-components";
 import type { ActiveChat, User } from "../../types/Common";
 import ChannelDetailsPopup from "../popups/ChannelDetailsPopup";
+import { useState } from "react";
 
 const DropdownSelector = styled.div`
   display: flex;
@@ -24,44 +25,51 @@ const SelectedChannelName = styled.h4`
   }
 `;
 
-const ChevronIcon = styled.i`
-  font-size: 1rem;
-  @media (max-width: 1024px) {
-    display: none;
-  }
-  cursor: pointer;
-  color: #777583;
-`;
-
 const MobileCogIcon = styled.i`
+  color: #777583;
   display: none;
   @media (max-width: 1024px) {
     display: block;
   }
   cursor: pointer;
-  color: #777583;
+
   font-size: 0.8rem;
-  padding-bottom: 4px;
+`;
+
+const ChevronIcon = styled.i`
+  color: #777583;
+  margin-top: 0.2rem;
+  font-size: 1rem;
+  transition: transform 0.2s ease;
+
+  &.open {
+    transform: rotate(180deg);
+  }
+
+  @media (max-width: 1024px) {
+    display: none;
+  }
 `;
 
 interface DetailsDropdownProps {
   activeChat: ActiveChat;
-  //todo create API properly
-  curbApi: string;
   isOpenSearchChannel: boolean;
   channelUserList: User[];
 }
 
 export default function DetailsDropdown(props: DetailsDropdownProps) {
   const { activeChat, isOpenSearchChannel, channelUserList } = props;
+  const [isOpen, setIsOpen] = useState(false);
 
   if (activeChat.type === "channel") {
     const toggle = (
       <DropdownSelector>
         <SelectedChannelName>{activeChat.name}</SelectedChannelName>
         <>
-          <ChevronIcon className="bi bi-gear-fill" />
-          <MobileCogIcon className="bi bi-info-circle-fill" />
+          <ChevronIcon
+            className={`bi bi-chevron-down ${isOpen ? "open" : ""}`}
+          />
+          <MobileCogIcon className="bi bi-gear-fill" />
         </>
       </DropdownSelector>
     );
@@ -70,12 +78,15 @@ export default function DetailsDropdown(props: DetailsDropdownProps) {
         toggle={toggle}
         chat={activeChat}
         channelUserList={channelUserList}
+        isOpen={isOpen}
+        setIsOpen={setIsOpen}
       />
     );
   }
   if (isOpenSearchChannel) {
     return <SelectedChannelName>Browse Channels</SelectedChannelName>;
   }
-  const title = activeChat.type === "dm" ? activeChat.id : activeChat.name;
+  const title =
+    activeChat.type === "direct_message" ? activeChat.id : activeChat.name;
   return <SelectedChannelName>{title}</SelectedChannelName>;
 }

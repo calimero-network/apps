@@ -7,11 +7,12 @@ interface ChannelDetailsPopupProps {
   toggle: React.ReactNode;
   chat: ActiveChat;
   channelUserList?: User[];
+  isOpen: boolean;
+  setIsOpen: (isOpen: boolean) => void;
 }
 
 export default function ChannelDetailsPopup(props: ChannelDetailsPopupProps) {
-  const { chat, toggle, channelUserList } = props;
-  const [isOpen, setIsOpen] = useState(false);
+  const { chat, toggle, channelUserList, isOpen, setIsOpen } = props;
   const [channelMeta] = useState<ChannelMeta>({
     name: chat.name,
     description: "",
