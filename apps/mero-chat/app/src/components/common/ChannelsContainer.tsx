@@ -4,7 +4,7 @@ import SideSelector from "../sideSelector/SideSelector";
 import { defaultActiveChat, mockChannels, mockChannelUsers } from "../../mock/mock";
 
 interface ChannelsContainerProps {
-  onChatSelected: (chat: ActiveChat) => void;
+  onChatSelected: (chat: ChannelMeta) => void;
   activeChat: ActiveChat | null;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import AppContainer from "../../components/common/AppContainer";
-import type { ActiveChat, User } from "../../types/Common";
-import { getStoredSession, updateSessionChat } from "../../utils/session";
+import type { ActiveChat, ChannelMeta, User } from "../../types/Common";
+import { getStoredSession } from "../../utils/session";
 import { mockChannelUsers } from "../../mock/mock";
 
 export default function Home() {
@@ -23,12 +23,12 @@ export default function Home() {
     setChannelUsers(channelUsers);
   }, []);
 
-  const updateSelectedActiveChat = useCallback((selectedChat: ActiveChat) => {
+  const updateSelectedActiveChat = useCallback((selectedChat: ChannelMeta) => {
     setIsOpenSearchChannel(false);
-    setActiveChat(selectedChat);
-    getChannelUsers(selectedChat.id);
+    //setActiveChat(selectedChat);
+    //getChannelUsers(selectedChat.id);
     setIsSidebarOpen(false);
-    updateSessionChat(selectedChat);
+    //updateSessionChat(selectedChat);
   }, []);
   
   const openSearchPage = useCallback(() => {

@@ -1,5 +1,5 @@
 import { styled } from "styled-components";
-import type { ActiveChat, User } from "../../types/Common";
+import type { ActiveChat, ChannelMeta, User } from "../../types/Common";
 import ChannelsContainer from "./ChannelsContainer";
 import CurbNavbar from "../navbar/CurbNavbar";
 
@@ -24,7 +24,7 @@ interface AppContainerProps {
   setIsSidebarOpen: (isOpen: boolean) => void;
   activeChat: ActiveChat | null;
   setActiveChat: (chat: ActiveChat | null) => void;
-  updateSelectedActiveChat: (chat: ActiveChat) => void;
+  updateSelectedActiveChat: (chat: ChannelMeta) => void;
   openSearchPage: () => void;
   channelUsers: User[];
 }

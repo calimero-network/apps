@@ -2,12 +2,13 @@ import React from 'react';
 import styled from 'styled-components';
 import type { ActiveChat, User, ChannelMeta } from '../../types/Common';
 import ChannelHeader from './ChannelHeader';
+import ChannelList from './ChannelList';
 
 interface SideSelectorProps {
   users: User[];
   channels: ChannelMeta[];
   activeChat: ActiveChat;
-  onChatSelected: (chat: ActiveChat) => void;
+  onChatSelected: (chat: ChannelMeta) => void;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
   setIsOpenSearchChannel: (open: boolean) => void;
@@ -180,13 +181,11 @@ const SideSelector: React.FC<SideSelectorProps> = (props) => {
         />
         <HorizontalSeparatorLine isMobile={false} />
         <ChannelHeader title="Channels" />
-        <div>
-          {channels.map((channel) => (
-            <div key={channel.name}>
-              {channel.name}
-            </div>
-          ))}
-        </div>
+         <ChannelList
+         channels={channels}
+         selectChannel={props.onChatSelected}
+         selectedChannelId={props.activeChat.type === 'channel' ? props.activeChat.name : ""}
+         />
         <HorizontalSeparatorLine isMobile={true} />
         <div>
           {users.map((user) => (

@@ -92,6 +92,11 @@ export const mockChannels: ChannelMeta[] = [
     createdBy: "admin",
     owner: "admin",
     inviteOnly: false,
+    channelType: "Public",
+    unreadMessages: {
+      count: 0,
+      mentions: 0,
+    },
   },
   {
     name: "announcements",
@@ -101,6 +106,11 @@ export const mockChannels: ChannelMeta[] = [
     createdBy: "admin",
     owner: "admin",
     inviteOnly: false,
+    channelType: "Public",
+    unreadMessages: {
+      count: 0,
+      mentions: 0,
+    },
   },
   {
     name: "engineering",
@@ -110,6 +120,11 @@ export const mockChannels: ChannelMeta[] = [
     createdBy: "admin",
     owner: "admin",
     inviteOnly: false,
+    channelType: "Public",
+    unreadMessages: {
+      count: 0,
+      mentions: 0,
+    },
   },
   {
     name: "design",
@@ -119,6 +134,11 @@ export const mockChannels: ChannelMeta[] = [
     createdBy: "admin",
     owner: "admin",
     inviteOnly: false,
+    channelType: "Public",
+    unreadMessages: {
+      count: 0,
+      mentions: 0,
+    },
   },
   {
     name: "marketing",
@@ -128,6 +148,11 @@ export const mockChannels: ChannelMeta[] = [
     createdBy: "admin",
     owner: "admin",
     inviteOnly: false,
+    channelType: "Public",
+    unreadMessages: {
+      count: 0,
+      mentions: 0,
+    },
   },
   {
     name: "sales",
@@ -137,6 +162,11 @@ export const mockChannels: ChannelMeta[] = [
     createdBy: "admin",
     owner: "admin",
     inviteOnly: false,
+    channelType: "Public",
+    unreadMessages: {
+      count: 0,
+      mentions: 0,
+    },
   },
   {
     name: "product",
@@ -146,6 +176,11 @@ export const mockChannels: ChannelMeta[] = [
     createdBy: "admin",
     owner: "admin",
     inviteOnly: false,
+    channelType: "Public",
+    unreadMessages: {
+      count: 0,
+      mentions: 0,
+    },
   },
   {
     name: "hr",
@@ -155,6 +190,11 @@ export const mockChannels: ChannelMeta[] = [
     createdBy: "admin",
     owner: "admin",
     inviteOnly: false,
+    channelType: "Public",
+    unreadMessages: {
+      count: 0,
+      mentions: 0,
+    },
   },
   {
     name: "finance",
@@ -164,6 +204,11 @@ export const mockChannels: ChannelMeta[] = [
     createdBy: "admin",
     owner: "admin",
     inviteOnly: false,
+    channelType: "Public",
+    unreadMessages: {
+      count: 0,
+      mentions: 0,
+    },
   },
   {
     name: "random",
@@ -173,6 +218,11 @@ export const mockChannels: ChannelMeta[] = [
     createdBy: "admin",
     owner: "admin",
     inviteOnly: false,
+    channelType: "Public",
+    unreadMessages: {
+      count: 0,
+      mentions: 0,
+    },
   },
   {
     name: "watercooler",
@@ -182,6 +232,11 @@ export const mockChannels: ChannelMeta[] = [
     createdBy: "admin",
     owner: "admin",
     inviteOnly: false,
+    channelType: "Public",
+    unreadMessages: {
+      count: 0,
+      mentions: 0,
+    },
   },
   {
     name: "help",
@@ -191,6 +246,11 @@ export const mockChannels: ChannelMeta[] = [
     createdBy: "admin",
     owner: "admin",
     inviteOnly: false,
+    channelType: "Public",
+    unreadMessages: {
+      count: 0,
+      mentions: 0,
+    },
   },
   {
     name: "dev-ops",
@@ -200,6 +260,11 @@ export const mockChannels: ChannelMeta[] = [
     createdBy: "admin",
     owner: "admin",
     inviteOnly: false,
+    channelType: "Public",
+    unreadMessages: {
+      count: 0,
+      mentions: 0,
+    },
   },
   {
     name: "frontend",
@@ -209,6 +274,11 @@ export const mockChannels: ChannelMeta[] = [
     createdBy: "admin",
     owner: "admin",
     inviteOnly: false,
+    channelType: "Public",
+    unreadMessages: {
+      count: 0,
+      mentions: 0,
+    },
   },
   {
     name: "backend",
@@ -218,6 +288,11 @@ export const mockChannels: ChannelMeta[] = [
     createdBy: "admin",
     owner: "admin",
     inviteOnly: false,
+    channelType: "Public",
+    unreadMessages: {
+      count: 0,
+      mentions: 0,
+    },
   },
   {
     name: "qa",
@@ -227,6 +302,11 @@ export const mockChannels: ChannelMeta[] = [
     createdBy: "admin",
     owner: "admin",
     inviteOnly: false,
+    channelType: "Public",
+    unreadMessages: {
+      count: 0,
+      mentions: 0,
+    },
   },
   {
     name: "releases",
@@ -236,6 +316,11 @@ export const mockChannels: ChannelMeta[] = [
     createdBy: "admin",
     owner: "admin",
     inviteOnly: false,
+    channelType: "Public",
+    unreadMessages: {
+      count: 0,
+      mentions: 0,
+    },
   },
   {
     name: "security",
@@ -245,6 +330,11 @@ export const mockChannels: ChannelMeta[] = [
     createdBy: "admin",
     owner: "admin",
     inviteOnly: false,
+    channelType: "Public",
+    unreadMessages: {
+      count: 0,
+      mentions: 0,
+    },
   },
   {
     name: "legal",
@@ -254,6 +344,11 @@ export const mockChannels: ChannelMeta[] = [
     createdBy: "admin",
     owner: "admin",
     inviteOnly: false,
+    channelType: "Public",
+    unreadMessages: {
+      count: 0,
+      mentions: 0,
+    },
   },
   {
     name: "customer-support",
@@ -263,5 +358,10 @@ export const mockChannels: ChannelMeta[] = [
     createdBy: "admin",
     owner: "admin",
     inviteOnly: false,
+    channelType: "Public",
+    unreadMessages: {
+      count: 0,
+      mentions: 0,
+    },
   },
 ];

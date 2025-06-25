@@ -31,10 +31,15 @@ export interface User {
 
 export interface ChannelMeta {
   name: string;
+  channelType: string;
   description: string;
   members: User[];
   createdAt: string;
   createdBy: string;
   owner: string;
   inviteOnly: boolean;
+  unreadMessages: {
+    count: number;
+    mentions: number;
+  };
 }
