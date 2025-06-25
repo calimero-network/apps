@@ -25,7 +25,6 @@ const NavigationBar = styled.div<{ isSidebarOpen: boolean }>`
   @media (max-width: 1024px) {
     ${(props) => (props.isSidebarOpen ? "display: none;" : "display: flex;")}
     position: fixed;
-    top: 64px;
     left: 0;
     right: 0;
     z-index: 1000;

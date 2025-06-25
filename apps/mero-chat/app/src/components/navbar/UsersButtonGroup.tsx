@@ -55,7 +55,7 @@ export default function UsersButtonGroup(props: UsersButtonGroupProps) {
         );
       })}
       {props.channelUserList.length > 3 && (
-        <ProfileIconContainerGroup counter={true}>
+        <ProfileIconContainerGroup counter={true} isHovered={isHovered}>
           {props.channelUserList.length}
         </ProfileIconContainerGroup>
       )}
