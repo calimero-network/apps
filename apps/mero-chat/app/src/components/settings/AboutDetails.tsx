@@ -18,10 +18,10 @@ interface TextProps {
 }
 
 const SettingsItem = styled.div<SettingsItemProps>`
+  display: flex;
+  gap: 0.5rem;
   background-color: #0e0e10;
   padding-left: 1rem;
-  padding-top: 0.5rem;
-  padding-bottom: 0.5rem;
   ${({ borderbottom }) => borderbottom && 'border-bottom: 1px solid #282933;'}
   ${({ roundedTop }) =>
     roundedTop &&
@@ -40,6 +40,9 @@ const Text = styled.h6<TextProps>`
   font-style: normal;
   font-weight: 400;
   line-height: 150%; /* 24px */
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  padding: 0;
 `;
 
 const ButtonLeave = styled.button`
@@ -47,6 +50,7 @@ const ButtonLeave = styled.button`
   border: none;
   padding: 0rem;
   margin: 0rem;
+  cursor: pointer;
 `;
 
 const AboutDetails: React.FC<AboutDetailsProps> = (props) => {

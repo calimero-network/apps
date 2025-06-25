@@ -87,14 +87,22 @@ const BaseModal: React.FC<BaseModalProps> = (props) => {
     border-radius: 8px;
     width: 489px;
     @media (max-width: 1024px) {
-      width: 90%;
+      width: calc(100% - 2rem);
+      max-width: calc(100vw - 2rem);
       position: absolute;
       left: 50%;
       top: 20%;
       transform: translate(-50%, -20%);
       background-color: #1d1d21;
-      width: 100%;
       height: fit-content;
+      box-sizing: border-box;
+    }
+    outline: none;
+    &:focus {
+      outline: none;
+    }
+    &:focus-visible {
+      outline: none;
     }
   `;
 
@@ -115,8 +123,10 @@ const BaseModal: React.FC<BaseModalProps> = (props) => {
       background-color: #1d1d21;
       padding: 1rem;
       border-radius: 8px;
-      width: 100%;
+      width: calc(100% - 2rem);
+      max-width: calc(100vw - 2rem);
       height: fit-content;
+      box-sizing: border-box;
     }
   `;
 

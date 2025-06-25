@@ -38,14 +38,16 @@ const Text = styled.div`
 `;
 
 const Input = styled.input`
-  color: #fff;
+  position: relative;
   width: 100%;
+  color: #fff;
   height: 40px;
   padding: 8px 60px 8px 16px;
   border-radius: 4px;
   background-color: #0e0e10;
   border: none;
   outline: 0;
+  box-sizing: border-box;
   :focus {
     border: none;
     outline: 0;
@@ -155,6 +157,8 @@ const RulesWrapper = styled.div`
 
 const InputWrapper = styled.div`
   position: relative;
+  box-sizing: border-box;
+  width: 100%;
 `;
 
 const SelectedAccountsWrapper = styled.div`
@@ -293,7 +297,7 @@ const MultipleInputPopup: React.FC<MultipleInputPopupProps> = (props) => {
   };
 
   const popupContent = (
-    <>
+    <div style={{ width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
       <CloseButton onClick={handleClosePopup}>
         <i className="bi bi-x-lg"></i>
       </CloseButton>
@@ -356,7 +360,7 @@ const MultipleInputPopup: React.FC<MultipleInputPopupProps> = (props) => {
         )}
       </InputWrapper>
       <RulesWrapper>
-        Invite users whose wallets end with .near for access
+        Invite users to group
       </RulesWrapper>
       <FunctionButton
         onClick={runProcess}
@@ -365,7 +369,7 @@ const MultipleInputPopup: React.FC<MultipleInputPopupProps> = (props) => {
       >
         {invitationsInProgress ? <Loader size={16} /> : buttonText}
       </FunctionButton>
-    </>
+    </div>
   );
 
   return (

@@ -32,7 +32,7 @@ export interface User {
 export interface ChannelMeta {
   name: string;
   description: string;
-  members: string[];
+  members: User[];
   createdAt: string;
   createdBy: string;
   owner: string;

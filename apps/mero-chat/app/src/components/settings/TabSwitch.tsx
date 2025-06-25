@@ -22,6 +22,8 @@ const Popup = styled.div`
 
 const SwitchOption = styled.div<{ selected?: boolean; leftPadding?: boolean }>`
   display: flex;
+  align-items: center;
+  justify-content: center;
   column-gap: 0.5rem;
   padding-right: 1rem;
   ${({ leftPadding }) => leftPadding && 'padding-left: 1rem;'}

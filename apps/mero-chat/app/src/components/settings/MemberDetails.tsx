@@ -1,7 +1,8 @@
-import React, { useCallback, useState } from 'react';
-import styled from 'styled-components';
-import type { User } from '../../types/Common';
-import MultipleInputPopup from '../common/popups/MultipleInputPopup';
+import React, { useCallback, useState } from "react";
+import styled from "styled-components";
+import type { User } from "../../types/Common";
+import MultipleInputPopup from "../common/popups/MultipleInputPopup";
+import UserProfileIcon from "../profileIcon/UserProfileIcon";
 
 const AddMemberButton = styled.div`
   display: flex;
@@ -27,9 +28,6 @@ const UserListItem = styled.div`
   justify-content: space-between;
   align-items: center;
   color: #777583;
-  :hover {
-    background-color: #25252a;
-  }
   padding-top: 0.5rem;
   padding-bottom: 0.5rem;
   padding-left: 1rem;
@@ -73,6 +71,9 @@ const UserList = styled.div`
 const UserInfo = styled.div`
   display: flex;
   column-gap: 0.5rem;
+  :hover {
+    background-color: transparent;
+  }
 `;
 
 const Text = styled.div<{ isSelected?: boolean }>`
@@ -80,7 +81,10 @@ const Text = styled.div<{ isSelected?: boolean }>`
   justify-content: start;
   align-items: center;
   width: 100%;
-  color: ${({ isSelected }) => (isSelected ? '#5765F2' : '#fff')};
+  color: ${({ isSelected }) => (isSelected ? "#5765F2" : "#fff")};
+  :hover {
+    background-color: transparent;
+  }
 `;
 
 const RoleText = styled.div`
@@ -122,7 +126,7 @@ const OptionsWindow = styled.div`
   flex-direction: column;
   padding-top: 4px;
   padding-bottom: 4px;
-  border-radius: 0px 0px 4px 4px;
+  border-radius: 4px;
   background-color: #25252a;
   pointer-events: auto;
 `;
@@ -140,6 +144,7 @@ const Option = styled.div`
   line-height: 150%;
   -webkit-font-smoothing: antialiased applied;
   cursor: pointer;
+
   :hover {
     background-color: #2a2b37;
   }
@@ -157,9 +162,21 @@ const OverLay = styled.div`
   align-items: center;
 `;
 
-const TopOverlay = styled.div`
-  position: absolute;
+const TopOverlay = styled.div<{ bottomPadding: boolean }>`
+  position: fixed;
   z-index: 20;
+  @media (max-width: 1024px) {
+    position: absolute;
+    right: 0;
+    ${({ bottomPadding }) =>
+      bottomPadding
+        ? `
+      bottom: 100%;
+    `
+        : `
+      top: 100%;
+    `}
+  }
 `;
 
 interface AddUserDialogProps {
@@ -170,12 +187,11 @@ interface AddUserDialogProps {
 }
 
 const AddUserDialog = (props: AddUserDialogProps) => {
-  const { addMember, channelName, getNonInvitedUsers, nonInvitedUserList } = props;
+  const { addMember, channelName, getNonInvitedUsers, nonInvitedUserList } =
+    props;
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const addUser = useCallback(() => {
-    selectedUsers.forEach((account) =>
-      addMember(account, channelName),
-    );
+    selectedUsers.forEach((account) => addMember(account, channelName));
   }, [addMember, channelName, channelName, selectedUsers]);
 
   const updateUsers = useCallback((value: string) => {
@@ -184,30 +200,34 @@ const AddUserDialog = (props: AddUserDialogProps) => {
 
   return (
     <MultipleInputPopup
-        title={`Invite user to #${channelName}`}
-        placeholder={'ex: username.near'}
-        buttonText={'Invite'}
-        functionLoader={addUser}
-        colors={{
-          base: '#5765f2',
-          hover: '#717cf0',
-          disabled: '#3B487A'
-        }}
-        toggle={
-          <AddMemberButton>
-            <i className="bi bi-plus-circle-fill" />
-            Add new member
-          </AddMemberButton>
-        }
-        updateUsers={updateUsers}
-        isChild={true}
-        autocomplete={true}
-        nonInvitedUserList={nonInvitedUserList}
-        selectedUsers={selectedUsers}
-        setSelectedUsers={setSelectedUsers}
+      title={`Invite user to #${channelName}`}
+      placeholder={"ex: 0x124abc..."}
+      buttonText={"Invite"}
+      functionLoader={addUser}
+      colors={{
+        base: "#5765f2",
+        hover: "#717cf0",
+        disabled: "#3B487A",
+      }}
+      toggle={
+        <AddMemberButton>
+          <i className="bi bi-plus-circle-fill" />
+          Add new member
+        </AddMemberButton>
+      }
+      updateUsers={updateUsers}
+      isChild={true}
+      autocomplete={true}
+      nonInvitedUserList={nonInvitedUserList}
+      selectedUsers={selectedUsers}
+      setSelectedUsers={setSelectedUsers}
     />
   );
 };
+
+const OptionsWrapper = styled.div`
+  position: relative;
+`;
 
 interface MemberDetailsProps {
   id: number;
@@ -235,9 +255,9 @@ const MemberDetails: React.FC<MemberDetailsProps> = (props) => {
   const [optionsOpen, setOptionsOpen] = useState(-1);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
-  const ModeratorOptionsPopup = ({ id, user }: { id: number; user: User }) => {
+  const ModeratorOptionsPopup = ({ id, user, length }: { id: number; user: User, length: number }) => {
     return (
-      <div>
+      <OptionsWrapper>
         <OptionsButton
           handleClick={() => {
             setOptionsOpen(id);
@@ -245,7 +265,7 @@ const MemberDetails: React.FC<MemberDetailsProps> = (props) => {
           }}
         />
         {optionsOpen === id && (
-          <TopOverlay>
+          <TopOverlay bottomPadding={length - 3 <= id}>
             <OptionsWindow>
               {selectedUser && selectedUser.id !== channelOwner && (
                 <Option
@@ -253,7 +273,7 @@ const MemberDetails: React.FC<MemberDetailsProps> = (props) => {
                     promoteModerator(selectedUser.id, !selectedUser.moderator)
                   }
                 >{`${
-                  selectedUser.moderator ? 'Remove moderator' : 'Make moderator'
+                  selectedUser.moderator ? "Remove moderator" : "Make moderator"
                 }`}</Option>
               )}
               {selectedUser && (
@@ -264,34 +284,32 @@ const MemberDetails: React.FC<MemberDetailsProps> = (props) => {
             </OptionsWindow>
           </TopOverlay>
         )}
-      </div>
+      </OptionsWrapper>
     );
   };
 
   return (
     <>
-      <AddUserDialog {...props}/>
+      <AddUserDialog {...props} />
       {optionsOpen !== -1 && <OverLay onClick={() => setOptionsOpen(-1)} />}
       <UserList>
         {userList.length > 0 &&
           userList.map((user, id) => (
             <UserListItem key={id}>
               <UserInfo>
-                <div style={{ width: '32px', height: '32px', backgroundColor: '#5765f2', borderRadius: '50%' }}>
-                  {/* TODO: Replace with actual user profile icon */}
-                </div>
-                <Text isSelected={optionsOpen === id}>{user.id}</Text>
+                <UserProfileIcon accountId={user.name ?? ""} />
+                <Text isSelected={optionsOpen === id}>{user.name}</Text>
               </UserInfo>
               <ModeratorOptions>
                 {(user.moderator || channelOwner === user.id) && (
                   <RoleText>{`${
                     channelOwner === user.id
-                      ? 'Channel Owner'
-                      : 'Channel Moderator'
+                      ? "Channel Owner"
+                      : "Channel Moderator"
                   }`}</RoleText>
                 )}
                 {channelOwner !== user.id && (
-                  <ModeratorOptionsPopup id={id} user={user} />
+                  <ModeratorOptionsPopup id={id} user={user} length={userList.length}/>
                 )}
               </ModeratorOptions>
             </UserListItem>

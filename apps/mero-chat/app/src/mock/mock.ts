@@ -33,4 +33,46 @@ export const mockChannelUsers: User[] = [
     moderator: false,
     active: false,
   },
+  {
+    id: "4",
+    name: "John",
+    moderator: false,
+    active: false,
+  },
+  {
+    id: "5",
+    name: "Jane",
+    moderator: false,
+    active: false,
+  },
+  {
+    id: "6",
+    name: "Jane",
+    moderator: false,
+    active: false,
+  },
+  {
+    id: "7",
+    name: "Jane",
+    moderator: false,
+    active: false,
+  },
+  {
+    id: "8",
+    name: "Jane",
+    moderator: false,
+    active: false,
+  },
+  {
+    id: "9",
+    name: "Jane",
+    moderator: false,
+    active: false,
+  },
+  {
+    id: "10",
+    name: "Jane",
+    moderator: false,
+    active: false,
+  },
 ];
