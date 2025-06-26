@@ -9,7 +9,7 @@ use calimero_sdk::serde::{self, de, Deserialize, Serialize};
 
 enum Dud<const N: usize> {}
 
-#[derive(Eq, Ord, Copy, Clone, Debug, PartialEq, PartialOrd, BorshDeserialize, BorshSerialize)]
+#[derive(Eq, Ord, Copy, Clone, Debug, PartialEq, PartialOrd, BorshDeserialize, BorshSerialize, std::hash::Hash)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct Id<const N: usize, const S: usize = 0> {
     bytes: [u8; N],
@@ -145,6 +145,7 @@ macro_rules! define {
             $crate::types::id::__private::Deserialize,
             $crate::types::id::__private::BorshSerialize,
             $crate::types::id::__private::BorshDeserialize,
+            std::hash::Hash,
         )]
         #[borsh(crate = "::calimero_sdk::borsh")]
         #[serde(crate = "::calimero_sdk::serde")]
