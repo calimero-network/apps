@@ -1,14 +1,16 @@
-import React from 'react';
-import styled from 'styled-components';
-import type { ActiveChat, User, ChannelMeta } from '../../types/Common';
-import ChannelHeader from './ChannelHeader';
-import ChannelList from './ChannelList';
+import React from "react";
+import styled from "styled-components";
+import type { ActiveChat, User, ChannelMeta } from "../../types/Common";
+import ChannelHeader from "./ChannelHeader";
+import ChannelList from "./ChannelList";
+import DMSideSelector from "./DMSideSelector";
 
 interface SideSelectorProps {
   users: User[];
   channels: ChannelMeta[];
   activeChat: ActiveChat;
   onChatSelected: (chat: ChannelMeta) => void;
+  onDMSelected: (dm: User) => void;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
   setIsOpenSearchChannel: (open: boolean) => void;
@@ -16,14 +18,14 @@ interface SideSelectorProps {
 }
 
 const HorizontalSeparatorLine = styled.div<{ isMobile: boolean }>`
-  background-color: '#BF4F74';
+  background-color: "#BF4F74";
   height: 1px;
   background-color: #282933;
   margin-top: 1rem;
   margin-bottom: 1rem;
   @media (max-width: 1024px) {
     width: 100%;
-    display: ${({ isMobile }) => (isMobile ? 'flex' : 'none')};
+    display: ${({ isMobile }) => (isMobile ? "flex" : "none")};
   }
 `;
 
@@ -130,12 +132,15 @@ interface SearchChannelsProps {
   setIsOpenSearchChannel: () => void;
 }
 
-const SearchChannels: React.FC<SearchChannelsProps> = ({ isOpenSearchChannel, setIsOpenSearchChannel }) => {
+const SearchChannels: React.FC<SearchChannelsProps> = ({
+  isOpenSearchChannel,
+  setIsOpenSearchChannel,
+}) => {
   const style = isOpenSearchChannel
     ? {
-        color: '#fff',
-        fill: '#fff',
-        backgroundColor: '#1E1F28',
+        color: "#fff",
+        fill: "#fff",
+        backgroundColor: "#1E1F28",
       }
     : {};
   return (
@@ -177,23 +182,34 @@ const SideSelector: React.FC<SideSelectorProps> = (props) => {
       <>
         <SearchChannels
           isOpenSearchChannel={isOpenSearchChannel}
-          setIsOpenSearchChannel={() => setIsOpenSearchChannel(!isOpenSearchChannel)}
+          setIsOpenSearchChannel={() =>
+            setIsOpenSearchChannel(!isOpenSearchChannel)
+          }
         />
         <HorizontalSeparatorLine isMobile={false} />
         <ChannelHeader title="Channels" />
-         <ChannelList
-         channels={channels}
-         selectChannel={props.onChatSelected}
-         selectedChannelId={props.activeChat.type === 'channel' ? props.activeChat.name : ""}
-         />
+        <ChannelList
+          channels={channels}
+          selectChannel={props.onChatSelected}
+          selectedChannelId={
+            props.activeChat.type === "channel" ? props.activeChat.name : ""
+          }
+        />
         <HorizontalSeparatorLine isMobile={true} />
-        <div>
-          {users.map((user) => (
-            <div key={user.id}>
-              {user.name || user.id}
-            </div>
-          ))}
-        </div>
+        <DMSideSelector
+          users={users}
+          onDMSelected={props.onDMSelected}
+          selectedDM={
+            props.activeChat.type === "direct_message"
+              ? props.activeChat.id
+              : ""
+          }
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          createDM={(value: string) => {
+            // TODO: Implement createDM
+            return Promise.resolve();
+          }}
+        />
       </>
     );
   };

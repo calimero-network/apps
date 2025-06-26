@@ -10,6 +10,7 @@ interface ChannelsContainerProps {
   setIsSidebarOpen: (open: boolean) => void;
   setIsOpenSearchChannel: (open: boolean) => void;
   isOpenSearchChannel: boolean;
+  onDMSelected: (dm: User) => void;
 }
 
 const ChannelsContainer: React.FC<ChannelsContainerProps> = (props) => {
@@ -20,6 +21,7 @@ const ChannelsContainer: React.FC<ChannelsContainerProps> = (props) => {
     setIsSidebarOpen,
     setIsOpenSearchChannel,
     isOpenSearchChannel,
+    onDMSelected
   } = props;
   const [channels, setChannels] = useState<ChannelMeta[]>();
   const [users, setUsers] = useState<User[]>();
@@ -45,6 +47,7 @@ const ChannelsContainer: React.FC<ChannelsContainerProps> = (props) => {
       onChatSelected={onChatSelected}
       activeChat={activeChat || defaultActiveChat}
       isSidebarOpen={isSidebarOpen}
+      onDMSelected={onDMSelected}
       setIsSidebarOpen={setIsSidebarOpen}
       setIsOpenSearchChannel={setIsOpenSearchChannel}
       isOpenSearchChannel={isOpenSearchChannel}

@@ -27,6 +27,7 @@ interface AppContainerProps {
   updateSelectedActiveChat: (chat: ChannelMeta) => void;
   openSearchPage: () => void;
   channelUsers: User[];
+  onDMSelected: (dm: User) => void;
 }
 export default function AppContainer({
   activeChat,
@@ -37,7 +38,8 @@ export default function AppContainer({
   setIsOpenSearchChannel,
   updateSelectedActiveChat,
   openSearchPage,
-  channelUsers
+  channelUsers,
+  onDMSelected
 }: AppContainerProps) {
   return (
     <>
@@ -57,6 +59,7 @@ export default function AppContainer({
         setIsSidebarOpen={setIsSidebarOpen}
         setIsOpenSearchChannel={setIsOpenSearchChannel}
         isOpenSearchChannel={isOpenSearchChannel}
+        onDMSelected={onDMSelected}
       />
       {!isSidebarOpen && (
         <Wrapper>

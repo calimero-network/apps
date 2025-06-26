@@ -23,6 +23,7 @@ export default function Home() {
     setChannelUsers(channelUsers);
   }, []);
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const updateSelectedActiveChat = useCallback((selectedChat: ChannelMeta) => {
     setIsOpenSearchChannel(false);
     //setActiveChat(selectedChat);
@@ -30,7 +31,7 @@ export default function Home() {
     setIsSidebarOpen(false);
     //updateSessionChat(selectedChat);
   }, []);
-  
+
   const openSearchPage = useCallback(() => {
     setIsOpenSearchChannel(true);
     setIsSidebarOpen(false);
@@ -45,6 +46,14 @@ export default function Home() {
     getChannelUsers(activeChat?.id || "");
   }, []);
 
+  const onDMSelected = useCallback((dm: User) => {
+    setActiveChat({
+      type: "direct_message",
+      name: dm.id,
+      id: dm.id,
+    });
+  }, []);
+
   return (
     <AppContainer
       isOpenSearchChannel={isOpenSearchChannel}
@@ -56,6 +65,7 @@ export default function Home() {
       updateSelectedActiveChat={updateSelectedActiveChat}
       openSearchPage={openSearchPage}
       channelUsers={channelUsers}
+      onDMSelected={onDMSelected}
     />
   );
 }

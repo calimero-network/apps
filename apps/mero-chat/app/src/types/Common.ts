@@ -27,6 +27,10 @@ export interface User {
   name?: string;
   moderator?: boolean;
   active?: boolean;
+  unreadMessages?: {
+    count: number;
+    mentions: number;
+  };
 }
 
 export interface ChannelMeta {
