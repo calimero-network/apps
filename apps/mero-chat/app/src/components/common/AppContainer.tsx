@@ -1,7 +1,8 @@
 import { styled } from "styled-components";
-import type { ActiveChat, ChannelMeta, User } from "../../types/Common";
+import type { ActiveChat, User } from "../../types/Common";
 import ChannelsContainer from "./ChannelsContainer";
 import CurbNavbar from "../navbar/CurbNavbar";
+import SearchChannelsContainer from "../searchChannels/SearchChannelsContainer";
 
 const ContentDivContainer = styled.div`
   width: 100%;
@@ -23,15 +24,13 @@ interface AppContainerProps {
   isSidebarOpen: boolean;
   setIsSidebarOpen: (isOpen: boolean) => void;
   activeChat: ActiveChat | null;
-  setActiveChat: (chat: ActiveChat | null) => void;
-  updateSelectedActiveChat: (chat: ChannelMeta) => void;
+  updateSelectedActiveChat: (chat: ActiveChat) => void;
   openSearchPage: () => void;
   channelUsers: User[];
   onDMSelected: (dm: User) => void;
 }
 export default function AppContainer({
   activeChat,
-  setActiveChat,
   isSidebarOpen,
   setIsSidebarOpen,
   isOpenSearchChannel,
@@ -39,7 +38,7 @@ export default function AppContainer({
   updateSelectedActiveChat,
   openSearchPage,
   channelUsers,
-  onDMSelected
+  onDMSelected,
 }: AppContainerProps) {
   return (
     <>
@@ -52,18 +51,18 @@ export default function AppContainer({
         channelUserList={channelUsers}
       />
       <ContentDivContainer>
-      <ChannelsContainer
-        onChatSelected={updateSelectedActiveChat}
-        activeChat={activeChat}
-        isSidebarOpen={isSidebarOpen}
-        setIsSidebarOpen={setIsSidebarOpen}
-        setIsOpenSearchChannel={setIsOpenSearchChannel}
-        isOpenSearchChannel={isOpenSearchChannel}
-        onDMSelected={onDMSelected}
-      />
-      {!isSidebarOpen && (
-        <Wrapper>
-          {/* {!isOpenSearchChannel && (
+        <ChannelsContainer
+          onChatSelected={updateSelectedActiveChat}
+          activeChat={activeChat}
+          isSidebarOpen={isSidebarOpen}
+          setIsSidebarOpen={setIsSidebarOpen}
+          setIsOpenSearchChannel={() => openSearchPage()}
+          isOpenSearchChannel={isOpenSearchChannel}
+          onDMSelected={onDMSelected}
+        />
+        {!isSidebarOpen && (
+          <Wrapper>
+            {/* {!isOpenSearchChannel && (
             <Widget
               src={`${componentOwnerId}/widget/Calimero.Curb.Chat.ChatContainer`}
               props={{
@@ -79,20 +78,15 @@ export default function AppContainer({
               }}
             />
           )}
-          {isOpenSearchChannel && (
-            <Widget
-              src={`${componentOwnerId}/widget/Calimero.Curb.SearchChannels.SearchChannelsContainer`}
-              props={{
-                componentOwnerId,
-                curbApi,
-                accountId,
-                onChatSelected: updateSelectedActiveChat,
-              }}
-            />
-          )} */}
-        </Wrapper>
-      )}
-    </ContentDivContainer>
+            */}
+            {isOpenSearchChannel && (
+              <SearchChannelsContainer
+                onChatSelected={updateSelectedActiveChat}
+              />
+            )}
+          </Wrapper>
+        )}
+      </ContentDivContainer>
     </>
   );
 }

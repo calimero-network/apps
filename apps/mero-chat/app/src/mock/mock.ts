@@ -97,6 +97,8 @@ export const mockChannels: ChannelMeta[] = [
       count: 0,
       mentions: 0,
     },
+    isMember: true,
+    readOnly: false,
   },
   {
     name: "announcements",
@@ -111,6 +113,8 @@ export const mockChannels: ChannelMeta[] = [
       count: 0,
       mentions: 0,
     },
+    isMember: true,
+    readOnly: true,
   },
   {
     name: "engineering",
@@ -125,6 +129,8 @@ export const mockChannels: ChannelMeta[] = [
       count: 0,
       mentions: 0,
     },
+    isMember: true,
+    readOnly: false,
   },
   {
     name: "design",
@@ -139,6 +145,8 @@ export const mockChannels: ChannelMeta[] = [
       count: 0,
       mentions: 0,
     },
+    isMember: true,
+    readOnly: false,
   },
   {
     name: "marketing",
@@ -153,6 +161,8 @@ export const mockChannels: ChannelMeta[] = [
       count: 0,
       mentions: 0,
     },
+    isMember: true,
+    readOnly: false,
   },
   {
     name: "sales",
@@ -167,6 +177,8 @@ export const mockChannels: ChannelMeta[] = [
       count: 0,
       mentions: 0,
     },
+    isMember: true,
+    readOnly: false,
   },
   {
     name: "product",
@@ -181,6 +193,8 @@ export const mockChannels: ChannelMeta[] = [
       count: 0,
       mentions: 0,
     },
+    isMember: true,
+    readOnly: false,
   },
   {
     name: "hr",
@@ -195,6 +209,8 @@ export const mockChannels: ChannelMeta[] = [
       count: 0,
       mentions: 0,
     },
+    isMember: true,
+    readOnly: false,
   },
   {
     name: "finance",
@@ -209,6 +225,8 @@ export const mockChannels: ChannelMeta[] = [
       count: 0,
       mentions: 0,
     },
+    isMember: true,
+    readOnly: false,
   },
   {
     name: "random",
@@ -223,6 +241,8 @@ export const mockChannels: ChannelMeta[] = [
       count: 0,
       mentions: 0,
     },
+    isMember: true,
+    readOnly: false,
   },
   {
     name: "watercooler",
@@ -237,6 +257,8 @@ export const mockChannels: ChannelMeta[] = [
       count: 0,
       mentions: 0,
     },
+    isMember: true,
+    readOnly: false,
   },
   {
     name: "help",
@@ -251,6 +273,8 @@ export const mockChannels: ChannelMeta[] = [
       count: 0,
       mentions: 0,
     },
+    isMember: true,
+    readOnly: false,
   },
   {
     name: "dev-ops",
@@ -265,6 +289,8 @@ export const mockChannels: ChannelMeta[] = [
       count: 0,
       mentions: 0,
     },
+    isMember: true,
+    readOnly: false,
   },
   {
     name: "frontend",
@@ -279,6 +305,8 @@ export const mockChannels: ChannelMeta[] = [
       count: 0,
       mentions: 0,
     },
+    isMember: true,
+    readOnly: false,
   },
   {
     name: "backend",
@@ -293,6 +321,8 @@ export const mockChannels: ChannelMeta[] = [
       count: 0,
       mentions: 0,
     },
+    isMember: true,
+    readOnly: false,
   },
   {
     name: "qa",
@@ -307,6 +337,8 @@ export const mockChannels: ChannelMeta[] = [
       count: 0,
       mentions: 0,
     },
+    isMember: true,
+    readOnly: false,
   },
   {
     name: "releases",
@@ -321,6 +353,8 @@ export const mockChannels: ChannelMeta[] = [
       count: 0,
       mentions: 0,
     },
+    isMember: true,
+    readOnly: true,
   },
   {
     name: "security",
@@ -335,6 +369,8 @@ export const mockChannels: ChannelMeta[] = [
       count: 0,
       mentions: 0,
     },
+    isMember: true,
+    readOnly: false,
   },
   {
     name: "legal",
@@ -349,6 +385,8 @@ export const mockChannels: ChannelMeta[] = [
       count: 0,
       mentions: 0,
     },
+    isMember: true,
+    readOnly: false,
   },
   {
     name: "customer-support",
@@ -363,5 +401,7 @@ export const mockChannels: ChannelMeta[] = [
       count: 0,
       mentions: 0,
     },
+    isMember: true,
+    readOnly: false,
   },
 ];

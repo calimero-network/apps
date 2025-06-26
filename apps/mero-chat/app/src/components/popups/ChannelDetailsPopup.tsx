@@ -22,6 +22,10 @@ export default function ChannelDetailsPopup(props: ChannelDetailsPopupProps) {
     createdBy: "",
     owner: "",
     inviteOnly: false,
+    channelType: "channel",
+    unreadMessages: { count: 0, mentions: 0 },
+    isMember: false,
+    readOnly: false,
   });
 
   const channelName = chat.type === "channel" ? chat.name : chat.id;
@@ -37,6 +41,10 @@ export default function ChannelDetailsPopup(props: ChannelDetailsPopupProps) {
       createdBy: "Fran",
       owner: "Fran",
       inviteOnly: false,
+      channelType: "channel",
+      unreadMessages: { count: 0, mentions: 0 },
+      isMember: false,
+      readOnly: false,
     });
   };
 

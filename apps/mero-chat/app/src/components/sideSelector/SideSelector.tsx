@@ -9,7 +9,7 @@ interface SideSelectorProps {
   users: User[];
   channels: ChannelMeta[];
   activeChat: ActiveChat;
-  onChatSelected: (chat: ChannelMeta) => void;
+  onChatSelected: (chat: ActiveChat) => void;
   onDMSelected: (dm: User) => void;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
@@ -17,7 +17,7 @@ interface SideSelectorProps {
   isOpenSearchChannel: boolean;
 }
 
-const HorizontalSeparatorLine = styled.div<{ isMobile: boolean }>`
+const HorizontalSeparatorLine = styled.div<{ $isMobile: boolean }>`
   background-color: "#BF4F74";
   height: 1px;
   background-color: #282933;
@@ -25,7 +25,7 @@ const HorizontalSeparatorLine = styled.div<{ isMobile: boolean }>`
   margin-bottom: 1rem;
   @media (max-width: 1024px) {
     width: 100%;
-    display: ${({ isMobile }) => (isMobile ? "flex" : "none")};
+    display: ${({ $isMobile }) => ($isMobile ? "flex" : "none")};
   }
 `;
 
@@ -186,7 +186,7 @@ const SideSelector: React.FC<SideSelectorProps> = (props) => {
             setIsOpenSearchChannel(!isOpenSearchChannel)
           }
         />
-        <HorizontalSeparatorLine isMobile={false} />
+        <HorizontalSeparatorLine $isMobile={false} />
         <ChannelHeader title="Channels" />
         <ChannelList
           channels={channels}
@@ -195,7 +195,7 @@ const SideSelector: React.FC<SideSelectorProps> = (props) => {
             props.activeChat.type === "channel" ? props.activeChat.name : ""
           }
         />
-        <HorizontalSeparatorLine isMobile={true} />
+        <HorizontalSeparatorLine $isMobile={true} />
         <DMSideSelector
           users={users}
           onDMSelected={props.onDMSelected}

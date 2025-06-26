@@ -1,5 +1,5 @@
 import { styled } from "styled-components";
-import type { ChannelMeta } from "../../types/Common";
+import type { ActiveChat, ChannelMeta, ChatType } from "../../types/Common";
 import UnreadMessagesBadge from "./UnreadMessageBadge";
 
 const ChannelListContainer = styled.div`
@@ -61,7 +61,7 @@ const IconWrapper = styled.div`
 interface ChannelListProps {
   channels: ChannelMeta[];
   selectedChannelId: string;
-  selectChannel: (channel: ChannelMeta) => void;
+  selectChannel: (channel: ActiveChat) => void;
 }
 
 
@@ -74,7 +74,7 @@ export default function ChannelList(props: ChannelListProps) {
         <ChannelListItem
           key={channel.name}
           selected={selectedChannelId === channel.name}
-          onClick={() => selectChannel(channel)}
+          onClick={() => selectChannel({ type: channel.channelType as ChatType, name: channel.name, id: channel.name, readOnly: channel.readOnly })}
           style={{
             backgroundColor:
               selectedChannelId === channel.name ? "#25252a" : "#0E0E10",

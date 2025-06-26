@@ -16,7 +16,7 @@ const AvatarContainer = styled.div`
   align-items: center;
 `;
 
-const ProfileIconContainerGroup = styled.div<{ counter?: boolean, isHovered?: boolean }>`
+const ProfileIconContainerGroup = styled.div<{ $counter?: boolean, $isHovered?: boolean }>`
   position: relative;
   display: flex;
   justify-content: center;
@@ -24,8 +24,8 @@ const ProfileIconContainerGroup = styled.div<{ counter?: boolean, isHovered?: bo
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  ${({ counter }) =>
-    counter ? "background-color: #25252A; color: #6E6E78;" : "color: #FFF;"}
+  ${({ $counter }) =>
+    $counter ? "background-color: #25252A; color: #6E6E78;" : "color: #FFF;"}
   text-align: center;
   /* Body/Small */
   font-family: Helvetica Neue;
@@ -34,7 +34,7 @@ const ProfileIconContainerGroup = styled.div<{ counter?: boolean, isHovered?: bo
   font-weight: 400;
   line-height: 150%; /* 21px */
   margin-left: -8px;
-  border: solid 1px ${({ isHovered }) => isHovered ? "#fff" : "#0e0e10"};
+  border: solid 1px ${({ $isHovered }) => $isHovered ? "#fff" : "#0e0e10"};
 `;
 
 export default function UsersButtonGroup(props: UsersButtonGroupProps) {
@@ -48,14 +48,14 @@ export default function UsersButtonGroup(props: UsersButtonGroupProps) {
       {props.channelUserList.slice(0, 3).map((user, id) => {
         return (
           <div key={id}>
-            <ProfileIconContainerGroup isHovered={isHovered}>
+            <ProfileIconContainerGroup $isHovered={isHovered}>
               <UserProfileIcon accountId={user.id} showStatus={false} />
             </ProfileIconContainerGroup>
           </div>
         );
       })}
       {props.channelUserList.length > 3 && (
-        <ProfileIconContainerGroup counter={true} isHovered={isHovered}>
+        <ProfileIconContainerGroup $counter={true} $isHovered={isHovered}>
           {props.channelUserList.length}
         </ProfileIconContainerGroup>
       )}

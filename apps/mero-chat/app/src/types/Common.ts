@@ -20,6 +20,7 @@ export type ActiveChat = {
   name: string;
   readOnly?: boolean;
   account?: string;
+  canJoin?: boolean;
 };
 
 export interface User {
@@ -46,4 +47,6 @@ export interface ChannelMeta {
     count: number;
     mentions: number;
   };
+  isMember: boolean;
+  readOnly: boolean;
 }

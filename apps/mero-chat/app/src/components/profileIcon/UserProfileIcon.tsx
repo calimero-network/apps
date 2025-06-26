@@ -18,15 +18,15 @@ const ProfileIconContainer = styled.div<{ width?: string; height?: string }>`
   ${({ height }) => height && `height: ${height};`}
 `;
 
-const ActiveStatusCricle = styled.div<{ active?: boolean }>`
+const ActiveStatusCricle = styled.div<{ $active?: boolean }>`
   position: absolute;
   bottom: -2px;
   right: -2px;
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  ${({ active }) =>
-    active ? 'background-color: #00FF66;' : 'background-color: #777583;'}
+  ${({ $active }) =>
+    $active ? 'background-color: #00FF66;' : 'background-color: #777583;'}
   border: 1px solid #1A1A1D;
 `;
 
@@ -45,7 +45,7 @@ export default function UserProfileIcon(props: UserProfileIconProps) {
         style={{ width: width, height: height, objectFit: "cover", borderRadius: "50%" }}
         fallbackUrl="https://i.imgur.com/e8buxpa.png"
       />
-      {showStatus && <ActiveStatusCricle active={props.active} />}
+      {showStatus && <ActiveStatusCricle $active={props.active} />}
     </ProfileIconContainer>
   );
 }

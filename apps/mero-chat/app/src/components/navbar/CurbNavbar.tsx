@@ -14,7 +14,7 @@ interface CurbNavbarProps {
   channelUserList: User[];
 }
 
-const NavigationBar = styled.div<{ isSidebarOpen: boolean }>`
+const NavigationBar = styled.div<{ $isSidebarOpen: boolean }>`
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -23,7 +23,7 @@ const NavigationBar = styled.div<{ isSidebarOpen: boolean }>`
   padding-right: 1rem;
   border-bottom: 1px solid #282933;
   @media (max-width: 1024px) {
-    ${(props) => (props.isSidebarOpen ? "display: none;" : "display: flex;")}
+    ${(props) => (props.$isSidebarOpen ? "display: none;" : "display: flex;")}
     position: fixed;
     left: 0;
     right: 0;
@@ -42,10 +42,9 @@ const CurbNameContainer = styled.div`
   line-height: 150%;
   padding-right: 0.875rem;
 `;
-const VerticalSeparatorFull = styled.div<{ enableCommunities: boolean }>`
+const VerticalSeparatorFull = styled.div`
   width: 1px;
   height: 80px;
-  ${(props) => props.enableCommunities && "margin-left: 5.5rem;"}
   background-color: #282933;
   @media (max-width: 1024px) {
     display: none;
@@ -74,9 +73,9 @@ const OrgNameContainer = styled.div`
 }
 `;
 
-const ItemsContainer = styled.div<{ align: boolean }>`
+const ItemsContainer = styled.div<{ $align: boolean }>`
   display: flex;
-  ${(props) => props.align && "align-items: center;"}
+  ${(props) => props.$align && "align-items: center;"}
 `;
 
 const LogoContainer = styled.div<{ justify?: boolean }>`
@@ -162,13 +161,13 @@ export default function CurbNavbar({
 }: CurbNavbarProps) {
   const [isOpen, setIsOpen] = useState(false);
   return (
-    <NavigationBar isSidebarOpen={isSidebarOpen}>
-      <ItemsContainer align={true}>
+    <NavigationBar $isSidebarOpen={isSidebarOpen}>
+      <ItemsContainer $align={true}>
         <>
           <CurbLogo />
           <OrgNameContainer>Calimero P2P</OrgNameContainer>
         </>
-        <VerticalSeparatorFull enableCommunities={false} />
+        <VerticalSeparatorFull/>
         <BackIconContainer
           onClick={() => {
             setIsSidebarOpen(!isSidebarOpen);
@@ -182,8 +181,8 @@ export default function CurbNavbar({
           />
         )}
       </ItemsContainer>
-      {channelUserList.length > 0 && (
-        <ItemsContainer align={false}>
+      {channelUserList.length > 0 && activeChat && (
+        <ItemsContainer $align={false}>
           <ChannelDetailsPopup
             toggle={
               <div>
@@ -193,7 +192,7 @@ export default function CurbNavbar({
                 />
               </div>
             }
-            chat={activeChat!}
+            chat={activeChat}
             channelUserList={channelUserList}
             isOpen={isOpen}
             setIsOpen={setIsOpen}
