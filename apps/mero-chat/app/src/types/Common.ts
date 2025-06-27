@@ -50,3 +50,44 @@ export interface ChannelMeta {
   isMember: boolean;
   readOnly: boolean;
 }
+
+export interface Message {
+  timestamp: number;
+  sender: string;
+  id: string;
+  text: string;
+  files: FileObject[];
+  images: FileObject[];
+  nonce: Uint8Array;
+  edited_on?: number;
+  mentions: Map<string, number>;
+}
+
+export interface MessageWithReactions {
+  id: string;
+  text: string;
+  nonce: string;
+  timestamp: number;
+  sender: string;
+  reactions: Map<string, string[]>;
+  edited_on?: number;
+  files: FileObject[];
+  images: FileObject[];
+  thread_count: number;
+  thread_last_timestamp: number;
+}
+
+export interface Thread {
+  messages: MessageWithReactions[];
+}
+
+export interface FileObject {
+  cid: string;
+  name: string;
+  size: number;
+  type: string;
+}
+
+export interface ChatFile {
+  file: FileObject;
+}

@@ -3,6 +3,7 @@ import type { ActiveChat, User } from "../../types/Common";
 import ChannelsContainer from "./ChannelsContainer";
 import CurbNavbar from "../navbar/CurbNavbar";
 import SearchChannelsContainer from "../searchChannels/SearchChannelsContainer";
+import ChatContainer from "../../chat/ChatContainer";
 
 const ContentDivContainer = styled.div`
   width: 100%;
@@ -62,23 +63,13 @@ export default function AppContainer({
         />
         {!isSidebarOpen && (
           <Wrapper>
-            {/* {!isOpenSearchChannel && (
-            <Widget
-              src={`${componentOwnerId}/widget/Calimero.Curb.Chat.ChatContainer`}
-              props={{
-                componentOwnerId,
-                contract,
-                curbApi,
-                activeChat,
-                accountId,
-                wsApi,
-                isWsConnectionActive,
-                setIsOpenSearchChannel: () => openSearchPage(),
-                onJoinedChat: updateSelectedActiveChat,
-              }}
-            />
-          )}
-            */}
+            {!isOpenSearchChannel && activeChat && (
+              <ChatContainer
+                activeChat={activeChat}
+                setIsOpenSearchChannel={() => openSearchPage()}
+                onJoinedChat={() => console.log("joined chat")}
+              />
+            )}
             {isOpenSearchChannel && (
               <SearchChannelsContainer
                 onChatSelected={updateSelectedActiveChat}
