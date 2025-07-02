@@ -76,12 +76,12 @@ const UserInfo = styled.div`
   }
 `;
 
-const Text = styled.div<{ isSelected?: boolean }>`
+const Text = styled.div<{ $isSelected?: boolean }>`
   display: flex;
   justify-content: start;
   align-items: center;
   width: 100%;
-  color: ${({ isSelected }) => (isSelected ? "#5765F2" : "#fff")};
+  color: ${({ $isSelected }) => ($isSelected ? "#5765F2" : "#fff")};
   :hover {
     background-color: transparent;
   }
@@ -298,7 +298,7 @@ const MemberDetails: React.FC<MemberDetailsProps> = (props) => {
             <UserListItem key={id}>
               <UserInfo>
                 <UserProfileIcon accountId={user.name ?? ""} />
-                <Text isSelected={optionsOpen === id}>{user.name}</Text>
+                <Text $isSelected={optionsOpen === id}>{user.name}</Text>
               </UserInfo>
               <ModeratorOptions>
                 {(user.moderator || channelOwner === user.id) && (

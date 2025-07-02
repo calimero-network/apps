@@ -33,8 +33,10 @@ const SideMenu = styled.div`
   background-color: #0e0e10;
   padding-top: 1rem;
   width: 318px;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 81px);
   overflow-y: scroll;
-  height: calc(100vh - 169px);
   @media (max-width: 1024px) {
     display: none;
   }
@@ -192,7 +194,7 @@ const SideSelector: React.FC<SideSelectorProps> = (props) => {
           channels={channels}
           selectChannel={props.onChatSelected}
           selectedChannelId={
-            props.activeChat.type === "channel" ? props.activeChat.name : ""
+            props.activeChat.type === "channel" ? props.activeChat.name : props.activeChat.id
           }
         />
         <HorizontalSeparatorLine $isMobile={true} />

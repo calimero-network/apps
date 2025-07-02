@@ -1,0 +1,11 @@
+/Users/frandomovic/Desktop/calimero-curb-chat/logic/target/debug/deps/libborsh-2a7b3b9c1ee5fbc6.rmeta: /Users/frandomovic/.cargo/registry/src/index.crates.io-6f17d22bba15001f/borsh-0.10.4/src/lib.rs /Users/frandomovic/.cargo/registry/src/index.crates.io-6f17d22bba15001f/borsh-0.10.4/src/de/mod.rs /Users/frandomovic/.cargo/registry/src/index.crates.io-6f17d22bba15001f/borsh-0.10.4/src/de/hint.rs /Users/frandomovic/.cargo/registry/src/index.crates.io-6f17d22bba15001f/borsh-0.10.4/src/schema.rs /Users/frandomovic/.cargo/registry/src/index.crates.io-6f17d22bba15001f/borsh-0.10.4/src/schema_helpers.rs /Users/frandomovic/.cargo/registry/src/index.crates.io-6f17d22bba15001f/borsh-0.10.4/src/ser/mod.rs /Users/frandomovic/.cargo/registry/src/index.crates.io-6f17d22bba15001f/borsh-0.10.4/src/ser/helpers.rs
+
+/Users/frandomovic/Desktop/calimero-curb-chat/logic/target/debug/deps/borsh-2a7b3b9c1ee5fbc6.d: /Users/frandomovic/.cargo/registry/src/index.crates.io-6f17d22bba15001f/borsh-0.10.4/src/lib.rs /Users/frandomovic/.cargo/registry/src/index.crates.io-6f17d22bba15001f/borsh-0.10.4/src/de/mod.rs /Users/frandomovic/.cargo/registry/src/index.crates.io-6f17d22bba15001f/borsh-0.10.4/src/de/hint.rs /Users/frandomovic/.cargo/registry/src/index.crates.io-6f17d22bba15001f/borsh-0.10.4/src/schema.rs /Users/frandomovic/.cargo/registry/src/index.crates.io-6f17d22bba15001f/borsh-0.10.4/src/schema_helpers.rs /Users/frandomovic/.cargo/registry/src/index.crates.io-6f17d22bba15001f/borsh-0.10.4/src/ser/mod.rs /Users/frandomovic/.cargo/registry/src/index.crates.io-6f17d22bba15001f/borsh-0.10.4/src/ser/helpers.rs
+
+/Users/frandomovic/.cargo/registry/src/index.crates.io-6f17d22bba15001f/borsh-0.10.4/src/lib.rs:
+/Users/frandomovic/.cargo/registry/src/index.crates.io-6f17d22bba15001f/borsh-0.10.4/src/de/mod.rs:
+/Users/frandomovic/.cargo/registry/src/index.crates.io-6f17d22bba15001f/borsh-0.10.4/src/de/hint.rs:
+/Users/frandomovic/.cargo/registry/src/index.crates.io-6f17d22bba15001f/borsh-0.10.4/src/schema.rs:
+/Users/frandomovic/.cargo/registry/src/index.crates.io-6f17d22bba15001f/borsh-0.10.4/src/schema_helpers.rs:
+/Users/frandomovic/.cargo/registry/src/index.crates.io-6f17d22bba15001f/borsh-0.10.4/src/ser/mod.rs:
+/Users/frandomovic/.cargo/registry/src/index.crates.io-6f17d22bba15001f/borsh-0.10.4/src/ser/helpers.rs:

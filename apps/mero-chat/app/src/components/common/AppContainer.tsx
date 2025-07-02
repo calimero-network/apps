@@ -41,6 +41,7 @@ export default function AppContainer({
   channelUsers,
   onDMSelected,
 }: AppContainerProps) {
+  console.log("activeChat", activeChat);
   return (
     <>
       <CurbNavbar

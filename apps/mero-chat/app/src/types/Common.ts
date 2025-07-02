@@ -36,6 +36,7 @@ export interface User {
 
 export interface ChannelMeta {
   name: string;
+  type: ChatType;
   channelType: string;
   description: string;
   members: User[];
@@ -90,4 +91,62 @@ export interface FileObject {
 
 export interface ChatFile {
   file: FileObject;
+}
+
+export enum MessageStatus {
+  sending = 'sending',
+  sent = 'sent',
+}
+
+export type Option<T> = T | undefined;
+export type HashMap<K extends string | number, V> = { [key in K]: V };
+export interface CurbFile {
+  name: Option<string>;
+  ipfs_cid: string;
+}
+
+export interface CurbMessage {
+  id: string; // id can be temporary or permanent
+  text: string;
+  nonce: string;
+  key: string;
+  timestamp: number;
+  sender: string;
+  reactions: Option<HashMap<string, Array<string>>>;
+  threadCount?: number;
+  threadLastTimestamp?: number;
+  editedOn: Option<number>;
+  mentions: Array<string>;
+  files: Array<CurbFile>;
+  images: Array<CurbFile>;
+  temporalId?: number;
+  editMode?: boolean;
+  deleted?: boolean;
+  status: MessageStatus;
+}
+
+export interface AccountData {
+  id: string;
+  active: boolean;
+}
+
+export interface MessageRendererProps {
+  accountId: string;
+  isThread: boolean;
+  handleReaction: (message: CurbMessage, reaction: string) => void;
+  setThread?: (message: CurbMessage) => void;
+  getIconFromCache: (accountId: string) => Promise<string | null>;
+  toggleEmojiSelector: (message: CurbMessage) => void;
+  openMobileReactions: string;
+  setOpenMobileReactions: (messageId: string) => void;
+  editable: (message: CurbMessage) => boolean;
+  deleteable: (message: CurbMessage) => boolean;
+  onEditModeRequested: (message: CurbMessage, isThread: boolean) => void;
+  onEditModeCancelled: (message: CurbMessage) => void;
+  onMessageUpdated: (message: CurbMessage) => void;
+  onDeleteMessageRequested: (message: CurbMessage) => void;
+  fetchAccounts: (prefix: string) => void;
+  autocompleteAccounts: AccountData[];
+  authToken: string | undefined;
+  privateIpfsEndpoint: string;
 }

@@ -2,17 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import AppContainer from "../../components/common/AppContainer";
 import type { ActiveChat, User } from "../../types/Common";
 import { getStoredSession } from "../../utils/session";
-import { mockChannelUsers } from "../../mock/mock";
+import { defaultActiveChat, mockChannelUsers } from "../../mock/mock";
 
 export default function Home() {
   const [isOpenSearchChannel, setIsOpenSearchChannel] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [activeChat, setActiveChat] = useState<ActiveChat | null>({
-    type: "channel",
-    id: "1",
-    name: "general",
-    readOnly: false,
-  });
+  const [activeChat, setActiveChat] = useState<ActiveChat | null>(defaultActiveChat);
 
   const [channelUsers, setChannelUsers] = useState<User[]>([]);
 

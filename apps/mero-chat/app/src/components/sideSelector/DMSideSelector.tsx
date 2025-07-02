@@ -5,6 +5,7 @@ import UserList from "./UserList";
 
 const DMContainer = styled.div`
   background-color: #0e0e10;
+  padding-bottom: 1rem;
   @media (max-width: 1024px) {
     width: 100%;
   }

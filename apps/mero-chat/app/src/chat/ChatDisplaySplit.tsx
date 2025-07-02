@@ -1,9 +1,18 @@
 import { styled } from "styled-components";
-import type { ChannelMeta, MessageWithReactions, User } from "../types/Common";
-import type { ActiveChat } from "../types/Common";
+import {
+  MessageStatus,
+  type ChannelMeta,
+  type MessageWithReactions,
+  type User,
+} from "../types/Common";
+import type { ActiveChat, MessageRendererProps } from "../types/Common";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import MessageInput from "./MessageInput";
-import { messageRenderer, VirtualizedChat } from "virtualized-chat";
+import {
+  messageRenderer,
+  VirtualizedChat,
+  type CurbMessage,
+} from "virtualized-chat";
 
 interface ChatDisplaySplitProps {
   readMessage: (message: MessageWithReactions) => void;
@@ -197,7 +206,7 @@ export default function ChatDisplaySplit({
     // return curbApi.fetchMessages({ chat: activeChat, beforeId: id, limit: 20 });
   };
 
-  const setThread = useCallback((message: MessageWithReactions) => {
+  const setThread = useCallback((message: CurbMessage) => {
     setOpenThread(message);
   }, []);
 
@@ -210,57 +219,6 @@ export default function ChatDisplaySplit({
   );
 
   const isOwner = accountId === channelMeta.createdBy;
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const createMessageRenderer = (...args: any[]) => {
-    const params = args[0];
-    // if (typeof params.accountId !== "string") {
-    //   throw new Error("Invalid accountId. It should be a string.");
-    // }
-
-    // if (typeof params.isThread !== "boolean") {
-    //   throw new Error("Invalid isThread. It should be a boolean.");
-    // }
-
-    // if (typeof params.handleReaction !== "function") {
-    //   throw new Error("Invalid handleReaction. It should be a function.");
-    // }
-
-    // if (params.setThread && typeof params.setThread !== "function") {
-    //   throw new Error(
-    //     "Invalid setThread. If provided, it should be a function."
-    //   );
-    // }
-    return messageRenderer(params);
-  }
-
-  const renderMessage = useMemo(
-    () =>
-      createMessageRenderer({
-        handleReaction,
-        getIconFromCache,
-        accountId,
-        isThread,
-        openMobileReactions,
-        setOpenMobileReactions,
-        setThread: setThread,
-        toggleEmojiSelector,
-        onEditModeRequested: onEditModeRequested,
-        onEditModeCancelled: onEditModeCancelled,
-        onMessageUpdated: onMessageUpdated,
-        editable: () => false,
-        deleteable: (message: MessageWithReactions) => {
-          if (message.sender === accountId) {
-            return true;
-          }
-          return isOwner || isModerator;
-        },
-        onDeleteMessageRequested: (message: MessageWithReactions) => {
-          onMessageDeletion(message);
-        },
-      }),
-    [accountId, isOwner, isModerator, openMobileReactions]
-  );
 
   if (openThread && isThread) {
     chatStyle.height = "calc(100% - 124px)";
@@ -282,6 +240,96 @@ export default function ChatDisplaySplit({
     chatStyle["overflow"] = "hidden";
   }
 
+  const loadInitialMessagesMock = async () => {
+    return {
+      messages: [
+        {
+          id: "12321",
+          text: "Hello, how are you?",
+          nonce: "1234567890",
+          key: "1234567890",
+          timestamp: 1714732800,
+          sender: "Fran",
+          reactions: {},
+          threadCount: 0,
+          threadLastTimestamp: 0,
+          editedOn: null,
+          mentions: [],
+          files: [],
+          images: [],
+          editMode: false,
+          status: MessageStatus.sent,
+        },
+      ],
+      totalCount: 1,
+    };
+  };
+
+  const loadPrevMessagesMock = async () => {
+    return {
+      messages: [],
+      hasMore: false,
+    };
+  };
+
+  const incomingMessageMock: CurbMessage[] = [];
+
+  // const renderMessage = useMemo(
+  //   () => {
+  //     const params = {
+  //       handleReaction,
+  //       getIconFromCache,
+  //       accountId,
+  //       isThread,
+  //       openMobileReactions,
+  //       setOpenMobileReactions,
+  //       setThread: openThread ? setThread : undefined,
+  //       toggleEmojiSelector,
+  //       onEditModeRequested: onEditModeRequested,
+  //       onEditModeCancelled: onEditModeCancelled,
+  //       onMessageUpdated: onMessageUpdated,
+  //       editable: () => false,
+  //       deleteable: (message: MessageWithReactions) => {
+  //         if (message.sender === accountId) {
+  //           return true;
+  //         }
+  //         return isOwner || isModerator;
+  //       },
+  //       onDeleteMessageRequested: (message: MessageWithReactions) => {
+  //         onMessageDeletion(message);
+  //       },
+  //     }
+  //     return messageRenderer(params);
+  //   },
+  //   [accountId, isOwner, isModerator, openMobileReactions]
+  // );
+
+  const renderMessageMock = () => {
+    const params: MessageRendererProps = {
+      accountId: "fran.near",
+      isThread: false,
+      handleReaction: (message: CurbMessage, reaction: string) => {
+        console.log(message, reaction);
+      },
+      setThread: setThread,
+      getIconFromCache: (accountId: string) => Promise.resolve(null),
+      toggleEmojiSelector: (message: CurbMessage) => {},
+      openMobileReactions: "abc",
+      setOpenMobileReactions: (messageId: string) => {},
+      editable: (message: CurbMessage) => true,
+      deleteable: (message: CurbMessage) => true,
+      onEditModeRequested: (message: CurbMessage, isThread: boolean) => {},
+      onEditModeCancelled: (message: CurbMessage) => {},
+      onMessageUpdated: (message: CurbMessage) => {},
+      onDeleteMessageRequested: (message: CurbMessage) => {},
+      fetchAccounts: (prefix: string) => {},
+      autocompleteAccounts: [],
+      authToken: undefined,
+      privateIpfsEndpoint: "https://ipfs.io",
+    };
+    return messageRenderer(params);
+  };
+
   return (
     <Wrapper style={wrapperStyle}>
       {/* @ts-expect-error - TODO: fix this */}
@@ -290,15 +338,15 @@ export default function ChatDisplaySplit({
           <ThreadHeader onClose={() => setOpenThread(null)} />
         )}
         <VirtualizedChat
-          loadInitialMessages={loadInitialMessages}
-          loadPrevMessages={loadPrevMessages}
-          incomingMessages={incomingMessages}
+          loadInitialMessages={loadInitialMessagesMock}
+          loadPrevMessages={loadPrevMessagesMock}
+          incomingMessages={incomingMessageMock}
           updatedMessages={updatedMessages}
           onItemNewItemRender={readMessage}
           shouldTriggerNewItemIndicator={(message: MessageWithReactions) =>
             message.sender !== accountId
           }
-          render={renderMessage}
+          render={renderMessageMock()}
           chatId={isThread ? openThread?.id : activeChat}
           style={chatStyle}
         />

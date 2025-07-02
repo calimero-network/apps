@@ -64,7 +64,6 @@ interface ChannelListProps {
   selectChannel: (channel: ActiveChat) => void;
 }
 
-
 export default function ChannelList(props: ChannelListProps) {
   const { channels, selectedChannelId, selectChannel } = props;
 
@@ -74,7 +73,14 @@ export default function ChannelList(props: ChannelListProps) {
         <ChannelListItem
           key={channel.name}
           selected={selectedChannelId === channel.name}
-          onClick={() => selectChannel({ type: channel.channelType as ChatType, name: channel.name, id: channel.name, readOnly: channel.readOnly })}
+          onClick={() =>
+            selectChannel({
+              type: channel.type as ChatType,
+              name: channel.name,
+              id: channel.name,
+              readOnly: channel.readOnly,
+            })
+          }
           style={{
             backgroundColor:
               selectedChannelId === channel.name ? "#25252a" : "#0E0E10",

@@ -27,7 +27,7 @@ const TextBold = styled.div`
   font-style: normal;
   font-weight: 700;
   line-height: 150%;
-  color: #ffffff;
+  color: #777583;
 `;
 const IconPlusContainer = styled.div`
   display: flex;

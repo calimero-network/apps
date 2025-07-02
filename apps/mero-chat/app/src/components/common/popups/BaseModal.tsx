@@ -137,6 +137,7 @@ const BaseModal: React.FC<BaseModalProps> = (props) => {
         {isChild ? (
           <OverlayContainerChild>
             <Dialog.Content asChild>
+              <Dialog.Title asChild></Dialog.Title>
               <PopupContainerChild>{content}</PopupContainerChild>
             </Dialog.Content>
           </OverlayContainerChild>

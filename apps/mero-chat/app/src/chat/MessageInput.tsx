@@ -162,13 +162,13 @@ const IconSend = ({
 );
 
 const Placeholder = styled.div<{
-  placeholderPosition: string;
-  placeholderPositionMobile: string;
+  $placeholderPosition: string;
+  $placeholderPositionMobile: string;
 }>`
   position: absolute;
   z-index: 10;
-  bottom: ${({ placeholderPosition }) =>
-    placeholderPosition && placeholderPosition};
+  bottom: ${({ $placeholderPosition }) =>
+    $placeholderPosition && $placeholderPosition};
   left: 68px;
   color: #686672;
   font-size: 16px;
@@ -181,8 +181,8 @@ const Placeholder = styled.div<{
     font-style: normal;
     font-weight: 400;
     line-height: 150%;
-    bottom: ${({ placeholderPositionMobile }) =>
-      placeholderPositionMobile && placeholderPositionMobile};
+    bottom: ${({ $placeholderPositionMobile }) =>
+      $placeholderPositionMobile && $placeholderPositionMobile};
     left: 56px;
   }
 `;
@@ -284,7 +284,7 @@ export default function MessageInput({
   isThread,
   isReadOnly,
   isOwner,
-  isModerator
+  isModerator,
 }: MessageInputProps) {
   const [canWriteMessage, setCanWriteMessage] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
@@ -296,9 +296,12 @@ export default function MessageInput({
   const [error, setError] = useState("");
   const placeholderPosition = "16px";
 
-  const handleMessageChange = useCallback((mesage: MessageWithReactions | null) => {
-    setMessage(mesage);
-  }, []);
+  const handleMessageChange = useCallback(
+    (mesage: MessageWithReactions | null) => {
+      setMessage(mesage);
+    },
+    []
+  );
 
   const resetFile = useCallback(() => {
     setUploadedFile(null);
@@ -375,24 +378,34 @@ export default function MessageInput({
           <Wrapper>
             <FullWidthWrapper>
               <MarkdownEditor
-                setValue={(value) => setMessage(message ? { ...message, text: value } : { 
-                  id: "",
-                  text: value,
-                  nonce: "",
-                  timestamp: Date.now(),
-                  sender: "",
-                  reactions: new Map(),
-                  files: [],
-                  images: [],
-                  thread_count: 0,
-                  thread_last_timestamp: 0
-                })}
+                setValue={(value) =>
+                  setMessage(
+                    message
+                      ? { ...message, text: value }
+                      : {
+                          id: "",
+                          text: value,
+                          nonce: "",
+                          timestamp: Date.now(),
+                          sender: "",
+                          reactions: new Map(),
+                          files: [],
+                          images: [],
+                          thread_count: 0,
+                          thread_last_timestamp: 0,
+                        }
+                  )
+                }
                 value={message?.text ?? ""}
                 handleMessageSent={handleSendMessage}
               />
             </FullWidthWrapper>
-            {(!message || emptyText.test(markdownParser(message?.text ?? ""))) && (
-              <Placeholder placeholderPosition={placeholderPosition} placeholderPositionMobile={placeholderPosition}>
+            {(!message ||
+              emptyText.test(markdownParser(message?.text ?? ""))) && (
+              <Placeholder
+                $placeholderPosition={placeholderPosition}
+                $placeholderPositionMobile={placeholderPosition}
+              >
                 {openThread && isThread
                   ? `Reply in thread`
                   : `Type message in ${selectedChat}`}
@@ -434,37 +447,37 @@ export default function MessageInput({
               />
             </EmojiPopupContainer>
           )}
-          {showUpload && !uploadedFile?.file.cid && !uploadedImage?.file.cid && (
-            <UploadPopupContainer>
-              {error && <ErrorContainer>{error}</ErrorContainer>}
-              <UploadContainer>
-                <UploadComponent
-                  uploadedFile={uploadedImage}
-                  setUploadedFile={setUploadedImage}
-                  type={["image/jpeg", "image/png", "image/gif"]}
-                  icon={<ImageIconSvg />}
-                  text="Upload Image"
-                  setError={setError}
-                  key="images-component"
-                />
-                <UploadComponent
-                  uploadedFile={uploadedFile}
-                  setUploadedFile={setUploadedFile}
-                  type={["*/*"]}
-                  icon={<FileIconSvg />}
-                  text="Upload File"
-                  setError={setError}
-                  key="files-component"
-                />
-              </UploadContainer>
-            </UploadPopupContainer>
-          )}
+          {showUpload &&
+            !uploadedFile?.file.cid &&
+            !uploadedImage?.file.cid && (
+              <UploadPopupContainer>
+                {error && <ErrorContainer>{error}</ErrorContainer>}
+                <UploadContainer>
+                  <UploadComponent
+                    uploadedFile={uploadedImage}
+                    setUploadedFile={setUploadedImage}
+                    type={["image/jpeg", "image/png", "image/gif"]}
+                    icon={<ImageIconSvg />}
+                    text="Upload Image"
+                    setError={setError}
+                    key="images-component"
+                  />
+                  <UploadComponent
+                    uploadedFile={uploadedFile}
+                    setUploadedFile={setUploadedFile}
+                    type={["*/*"]}
+                    icon={<FileIconSvg />}
+                    text="Upload File"
+                    setError={setError}
+                    key="files-component"
+                  />
+                </UploadContainer>
+              </UploadPopupContainer>
+            )}
         </Container>
       )}
       {!canWriteMessage && (
-        <Container
-          style={getCustomStyle(!!openThread, isThread)}
-        >
+        <Container style={getCustomStyle(!!openThread, isThread)}>
           <ReadOnlyField>
             You don&apos;t have permissions to write in this channel
           </ReadOnlyField>
