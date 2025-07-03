@@ -1,23 +1,11 @@
-use base64::engine::general_purpose::STANDARD;
-use base64::Engine;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, env};
 use calimero_storage::collections::{UnorderedMap, UnorderedSet, Vector};
-use thiserror::Error;
 use types::id;
 mod types;
 use std::collections::HashMap;
-use std::f32::consts::E;
 use std::fmt::Write;
-use std::time::{SystemTime, UNIX_EPOCH};
-
-fn get_current_timestamp_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as u64
-}
 
 id::define!(pub UserId<32, 44>);
 type MessageId = String;
@@ -29,7 +17,8 @@ pub enum Event {
     MessageSent(String),
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Clone)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
+#[serde(crate = "calimero_sdk::serde")]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct Message {
     pub timestamp: u64,
@@ -48,7 +37,7 @@ pub enum ChannelType {
 }
 
 #[derive(
-    BorshDeserialize, BorshSerialize, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Clone,
+    BorshDeserialize, BorshSerialize, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Clone, Hash,
 )]
 #[serde(crate = "calimero_sdk::serde")]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -80,6 +69,25 @@ pub struct ChannelInfo {
     pub read_only: bool,
     pub meta: ChannelMetadata,
     pub last_read: UnorderedMap<UserId, MessageId>,
+}
+
+
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct FullMessageResponse {
+    pub total_count: u32,
+    pub messages: Vec<Message>,
+    pub start_position: u32,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct PublicChannelInfo {
+    pub channel_type: ChannelType,
+    pub read_only: bool,
+    pub created_at: u64,
+    pub created_by: UserId,
+    pub links_allowed: bool,
 }
 
 #[app::state(emits = Event)]
@@ -116,8 +124,9 @@ impl CurbChat {
         &mut self,
         name: String,
         default_channels: Vec<Channel>,
+        created_at: u64,
     ) -> Result<String, String> {
-        if (self.owner.is_some()) {
+        if self.owner.is_some() {
             return Err("Chat already initialized".to_string());
         }
 
@@ -125,7 +134,7 @@ impl CurbChat {
 
         self.owner = Some(executor_id);
         self.name = name;
-        self.created_at = get_current_timestamp_ms();
+        self.created_at = created_at;
         let _ = self.members.insert(executor_id);
 
         for c in default_channels {
@@ -134,7 +143,7 @@ impl CurbChat {
                 channel_type: ChannelType::Default,
                 read_only: false,
                 meta: ChannelMetadata {
-                    created_at: get_current_timestamp_ms(),
+                    created_at: created_at,
                     created_by: executor_id,
                     read_only: UnorderedSet::new(),
                     moderators: UnorderedSet::new(),
@@ -156,9 +165,10 @@ impl CurbChat {
         channel: Channel,
         channel_type: ChannelType,
         read_only: bool,
-        moderators: UnorderedSet<UserId>,
+        moderators: Vec<UserId>,
         links_allowed: bool,
-    ) -> Result<String, String> {
+        created_at: u64,
+    ) -> app::Result<String, String> {
         if self.owner.is_none() {
             return Err("Chat not initialized".to_string());
         }
@@ -171,10 +181,8 @@ impl CurbChat {
 
         // Create a copy of moderators for the metadata
         let mut moderators_copy = UnorderedSet::new();
-        if let Ok(iter) = moderators.iter() {
-            for moderator in iter {
-                let _ = moderators_copy.insert(moderator.clone());
-            }
+        for moderator in &moderators {
+            let _ = moderators_copy.insert(moderator.clone());
         }
 
         let channel_info = ChannelInfo {
@@ -182,7 +190,7 @@ impl CurbChat {
             channel_type: channel_type,
             read_only: read_only,
             meta: ChannelMetadata {
-                created_at: get_current_timestamp_ms(),
+                created_at: created_at,
                 created_by: executor_id,
                 read_only: UnorderedSet::new(),
                 moderators: moderators_copy,
@@ -194,10 +202,8 @@ impl CurbChat {
         let _ = self.channels.insert(channel.clone(), channel_info);
         let mut initial_members = UnorderedSet::new();
         // Copy moderators to initial_members
-        if let Ok(iter) = moderators.iter() {
-            for moderator in iter {
-                let _ = initial_members.insert(moderator.clone());
-            }
+        for moderator in &moderators {
+            let _ = initial_members.insert(moderator.clone());
         }
         let _ = initial_members.insert(executor_id);
         let _ = self
@@ -207,20 +213,48 @@ impl CurbChat {
         Ok("Channel created".to_string())
     }
 
-    pub fn get_channels(&self) -> UnorderedMap<Channel, ChannelInfo> {
-        let mut channels = UnorderedMap::new();
+    pub fn get_channels(&self) -> HashMap<String, PublicChannelInfo> {
+        let mut channels = HashMap::new();
         let executor_id = self.get_executor_id();
 
         if let Ok(entries) = self.channels.entries() {
             for (channel, channel_info) in entries {
                 if let Ok(Some(members)) = self.channel_members.get(&channel) {
                     if members.contains(&executor_id).unwrap_or(false) {
-                        let _ = channels.insert(channel, channel_info);
+                        let public_info = PublicChannelInfo {
+                            channel_type: channel_info.channel_type,
+                            read_only: channel_info.read_only,
+                            created_at: channel_info.meta.created_at,
+                            created_by: channel_info.meta.created_by,
+                            links_allowed: channel_info.meta.links_allowed,
+                        };
+                        channels.insert(channel.name, public_info);
                     }
                 }
             }
         }
         channels
+    }
+
+    pub fn get_channel_members(&self, channel: Channel) -> app::Result<Vec<UserId>, String> {
+        let executor_id = self.get_executor_id();
+        let members = match self.channel_members.get(&channel) {
+            Ok(Some(members)) => members,
+            _ => return Err("Channel not found".to_string()),
+        };
+
+        if !members.contains(&executor_id).unwrap_or(false) {
+            return Err("You are not a member of this channel".to_string());
+        }
+
+        let mut member_list = Vec::new();
+        if let Ok(iter) = members.iter() {
+            for member in iter {
+                member_list.push(member.clone());
+            }
+        }
+
+        Ok(member_list)
     }
 
     fn get_message_id(
@@ -248,7 +282,7 @@ impl CurbChat {
         group: Channel,
         message: String,
         timestamp: u64,
-    ) -> Result<Message, String> {
+    ) -> app::Result<Message, String> {
         let executor_id = self.get_executor_id();
         let message_id = self.get_message_id(&executor_id, &group, &message, timestamp);
 
@@ -270,7 +304,7 @@ impl CurbChat {
         Ok(message)
     }
 
-    pub fn get_messages(&self, group: Channel, limit: Option<usize>, offset: Option<usize>) -> Result<Vec<Message>, String> {
+    pub fn get_messages(&self, group: Channel, limit: Option<usize>, offset: Option<usize>) -> app::Result<FullMessageResponse, String> {
         let executor_id = self.get_executor_id();
 
         let members = match self.channel_members.get(&group) {
@@ -292,7 +326,11 @@ impl CurbChat {
         let offset = offset.unwrap_or(0);
         
         if total_messages == 0 {
-            return Ok(Vec::new());
+            return Ok(FullMessageResponse {
+                total_count: 0,
+                messages: Vec::new(),
+                start_position: 0,
+            });
         }
         
         let mut messages = Vec::new();
@@ -301,7 +339,11 @@ impl CurbChat {
             
             if !all_messages.is_empty() {
                 let start_idx = if offset >= all_messages.len() {
-                    return Ok(Vec::new());
+                    return Ok(FullMessageResponse {
+                        total_count: total_messages as u32,
+                        messages: Vec::new(),
+                        start_position: 0
+                    });
                 } else {
                     all_messages.len() - 1 - offset
                 };
@@ -318,6 +360,10 @@ impl CurbChat {
             }
         }
         
-        Ok(messages)
+        Ok(FullMessageResponse {
+            total_count: total_messages as u32,
+            messages: messages,
+            start_position: offset as u32,
+        })
     }
 }
