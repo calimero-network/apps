@@ -79,7 +79,7 @@ struct Message {
     pub timestamp: u64,
     pub sender: UserId,
     pub id: MessageId,
-    pub text: Vector<u8>,
+    pub text: String,
     pub files: Vector<File>,
     pub images: Vector<File>,
     pub nonce: [u8; 16],
@@ -90,16 +90,8 @@ struct Message {
 impl Clone for Message {
     fn clone(&self) -> Self {
         // Create new Vectors with appropriate prefixes
-        let mut text_vec = Vector::new();
         let mut files_vec = Vector::new();
         let mut images_vec = Vector::new();
-        
-        // Copy data from existing vectors
-        if let Ok(iter) = self.text.iter() {
-            for item in iter {
-                text_vec.push(item);
-            }
-        }
         
         if let Ok(iter) = self.files.iter() {
             for item in iter {
@@ -117,7 +109,7 @@ impl Clone for Message {
             timestamp: self.timestamp,
             sender: self.sender.clone(),
             id: self.id.clone(),
-            text: text_vec,
+            text: self.text.clone(),
             files: files_vec,
             images: images_vec,
             nonce: self.nonce.clone(),
@@ -581,6 +573,59 @@ impl Curb {
         s
     }
 
+    // fn place_message(
+    //     messages: &mut Vector<Message>,
+    //     mut message: Message,
+    //     mentions: Option<Vec<String>>,
+    // ) -> Message {
+    //     let mentions = mentions.unwrap_or(vec![]);
+    //     if messages.len().unwrap_or(0) == 0 {
+    //         for mention in mentions {
+    //             message.mentions.insert(mention, 1);
+    //         }
+    //         messages.push(message);
+
+    //         message
+    //     } else {
+    //         if let Ok(len) = messages.len() {
+    //             for i in (0..len).rev() {
+    //                 if let Ok(Some(msg)) = messages.get(i) {
+    //                     if msg.timestamp < message.timestamp {
+    //                         for (key, value) in msg.mentions.entries() {
+    //                             message.mentions.insert(key, value);
+    //                         }
+
+    //                         for mention in mentions {
+    //                             let current = message.mentions.get(&mention).unwrap_or(&0);
+    //                             message.mentions.insert(mention, current + 1);
+    //                         }
+
+    //                         let mut insert_pos = i + 1;
+    //                         let mut current_message = message;
+                            
+    //                         while let Ok(true) = insert_pos.lt(&messages.len()) {
+    //                             if let Ok(Some(next_msg)) = messages.get(insert_pos) {
+    //                                 let next = next_msg.clone();
+    //                                 messages.replace(insert_pos, &current_message);
+    //                                 current_message = next;
+    //                             }
+    //                             insert_pos += 1;
+    //                         }
+                            
+    //                         messages.push(&current_message);
+                            
+    //                         if let Ok(Some(inserted)) = messages.get(i + 1) {
+    //                             return inserted.clone();
+    //                         }
+    //                     }
+    //                 }
+    //             }
+    //         }
+
+    //         panic!("not inserted message");
+    //     }
+    // }
+
     pub fn send_message(
         &mut self,
         account: Option<UserId>,
@@ -609,24 +654,18 @@ impl Curb {
         
         // Convert Vec<File> to Vector<File>
         let mut files_vec = Vector::new();
-        for file in files.unwrap_or_else(Vec::new) {
+        for file in files.clone().unwrap_or_else(Vec::new) {
             files_vec.push(file);
         }
         
         let mut images_vec = Vector::new();
-        for image in images.unwrap_or_else(Vec::new) {
+        for image in images.clone().unwrap_or_else(Vec::new) {
             images_vec.push(image);
         }
         
-        // Convert Vec<u8> to Vector<u8>
-        let mut text_vec = Vector::new();
-        for byte in Curb::from_base64(&message) {
-            text_vec.push(byte);
-        }
-        
-        let message = Message {
+        let message_object = Message {
             id: message_id.clone(),
-            text: text_vec,
+            text: message.clone(),
             files: files_vec,
             images: images_vec,
             nonce: Curb::from_hex(&nonce).try_into().unwrap(),
@@ -636,11 +675,9 @@ impl Curb {
             mentions: UnorderedMap::new(),
         };
         
-        // For now, return a simple MessageWithReactions
-        // TODO: Implement proper message storage and retrieval
-        MessageWithReactions {
+        let message_with_reactions = MessageWithReactions {
             id: message_id,
-            text: Curb::to_base64(&Curb::from_base64(&message)),
+            text: message,
             nonce: nonce,
             timestamp: timestamp,
             sender: executor_id,
@@ -650,249 +687,254 @@ impl Curb {
             images: images.unwrap_or_else(Vec::new),
             thread_count: 0,
             thread_last_timestamp: 0,
+        };
+
+        if let Some(channel) = group {
+            if !self.channels.contains(&channel).unwrap_or(false) {
+                panic!("Group does not exist");
+            } else {
+                let mut channel_info = self.channels.get(&channel).unwrap().unwrap();
+                let _ = channel_info.messages.push(message_object);
+                let _ =self.channels.insert(channel, channel_info);
+            }
+        } else {
+            panic!("Either account or group need to be provided");
+
         }
+        message_with_reactions
     }
 
     pub fn get_messages(
         &self,
-        accounts: Option<(UserId, UserId)>,
-        group: Option<Channel>,
-        parent_message: Option<MessageId>,
-        before_id: Option<MessageId>,
-        after_id: Option<MessageId>,
-        limit: u32,
+        group: Channel,
     ) -> FullMessageResponse {
-        require!(
-            before_id.is_none() || after_id.is_none(),
-            "before_id and after_id can not be provided together"
-        );
-
-        let info = if let Some(accounts) = accounts {
-            let key = ChatMembers::from(accounts);
-            match self.chats.get(&key) {
-                Some(info) => info,
-                _ => return FullMessageResponse::default(),
-            }
-        } else if let Some(channel) = group {
-            match self.channels.get(&channel) {
-                Some(info) => info,
-                _ => return FullMessageResponse::default(),
-            }
-        } else {
-            panic!("Either account or group need to be provided");
-        };
-        let empty_thread: Vector<Message> = Vector::new(b"empty thread".to_vec());
-        let messages = if let Some(parent_message) = parent_message {
-            match self.threads.get(&parent_message) {
-                Some(thread) => &thread.messages,
-                _ => &empty_thread,
-            }
-        } else {
-            &info.messages
+        // Only handle groups for now
+        let channel_info = match self.channels.get(&group) {
+            Ok(Some(info)) => info,
+            _ => return FullMessageResponse::default(),
         };
 
-        let bounds = if let Some(message_id) = before_id {
-            let pos = Curb::find_message_pos(messages, &message_id)
-                .map(|o| o.0)
-                .unwrap_or(limit.min(messages.len()));
-            (pos.saturating_sub(limit), pos)
-        } else if let Some(message_id) = after_id {
-            let pos = Curb::find_message_pos(messages, &message_id)
-                .map(|o| o.0)
-                .unwrap_or(messages.len().saturating_sub(limit));
-            (pos, info.messages.len().min(pos + limit))
-        } else {
-            (messages.len().saturating_sub(limit), messages.len())
-        };
-
-        let count = messages.len();
-        let mut selected_messages: Vec<&Message> = vec![];
-        for i in bounds.0..bounds.1 {
-            selected_messages.push(&messages[i]);
+        let messages = &channel_info.messages;
+        let count = messages.len().unwrap_or(0) as u32;
+        
+        let mut selected_messages: Vec<MessageWithReactions> = vec![];
+        
+        // Get all messages from the channel
+        if let Ok(len) = messages.len() {
+            for i in 0..len {
+                if let Ok(Some(message)) = messages.get(i) {
+                    let message_with_reactions = MessageWithReactions {
+                        id: message.id.clone(),
+                        text: message.text.clone(),
+                        nonce: Curb::to_hex(&message.nonce),
+                        timestamp: message.timestamp,
+                        sender: message.sender.clone(),
+                        reactions: None, // TODO: implement reactions
+                        edited_on: message.edited_on,
+                        files: {
+                            let mut files = Vec::new();
+                            if let Ok(iter) = message.files.iter() {
+                                for file in iter {
+                                    files.push(file.clone());
+                                }
+                            }
+                            files
+                        },
+                        images: {
+                            let mut images = Vec::new();
+                            if let Ok(iter) = message.images.iter() {
+                                for image in iter {
+                                    images.push(image.clone());
+                                }
+                            }
+                            images
+                        },
+                        thread_count: 0, // TODO: implement thread counting
+                        thread_last_timestamp: 0,
+                    };
+                    selected_messages.push(message_with_reactions);
+                }
+            }
         }
-        let selected_messages: Vec<MessageWithReactions> = selected_messages
-            .into_iter()
-            .map(|m| self.add_reactions_to_message(&m))
-            .collect();
 
         FullMessageResponse {
             total_count: count,
             messages: selected_messages,
-            start_position: bounds.0,
+            start_position: 0,
         }
     }
 
-    pub fn get_members(
-        &self,
-        group: Option<Channel>,
-        name_prefix: Option<String>,
-        limit: Option<usize>,
-        exclude: Option<bool>,
-    ) -> Vec<UserInfo> {
-        let prefix = name_prefix.unwrap_or("".to_string());
-        let exclude = exclude.unwrap_or(false);
-        let mut result: Vec<UserInfo> = if let Some(group) = group {
-            let group_info = self.channels.get(&group).unwrap();
-            if !self.default_groups.contains(&group) {
-                if exclude {
-                    match self.channel_members.get(&group) {
-                        Some(cm) => self
-                            .members
-                            .iter()
-                            .filter(|(m, _)| !cm.contains(m))
-                            .filter(|(m, _)| m.as_str().starts_with(&prefix))
-                            .map(|(m, timestamp)| UserInfo {
-                                id: m.clone(),
-                                active: self.is_active(*timestamp),
-                                moderator: group_info.meta.moderators.contains(&m),
-                                read_only: group_info.meta.read_only.contains(&m),
-                            })
-                            .collect(),
-                        None => return vec![],
-                    }
-                } else {
-                    match self.channel_members.get(&group) {
-                        Some(cm) => cm
-                            .iter()
-                            .filter(|m| m.as_str().starts_with(&prefix))
-                            .map(|m| UserInfo {
-                                id: m.clone(),
-                                active: self.is_active(*self.members.get(&m).unwrap()),
-                                moderator: group_info.meta.moderators.contains(&m),
-                                read_only: group_info.meta.read_only.contains(&m),
-                            })
-                            .collect(),
-                        None => return vec![],
-                    }
-                }
-            } else {
-                if exclude {
-                    return vec![];
-                } else {
-                    self.members
-                        .iter()
-                        .filter(|(m, _)| m.as_str().starts_with(&prefix))
-                        .map(|(m, timestamp)| UserInfo {
-                            id: m.clone(),
-                            active: self.is_active(*timestamp),
-                            moderator: group_info.meta.moderators.contains(&m),
-                            read_only: group_info.meta.read_only.contains(&m),
-                        })
-                        .collect()
-                }
-            }
-        } else {
-            if exclude {
-                return vec![];
-            } else {
-                self.members
-                    .iter()
-                    .filter(|(m, _)| m.as_str().starts_with(&prefix))
-                    .map(|(m, timestamp)| UserInfo {
-                        id: m.clone(),
-                        active: self.is_active(*timestamp),
-                        moderator: false,
-                        read_only: false,
-                    })
-                    .collect()
-            }
-        };
-        if let Some(limit) = limit {
-            let items_count = limit.min(result.len());
-            result.drain(0..items_count).collect()
-        } else {
-            result
-        }
-    }
+    // pub fn get_members(
+    //     &self,
+    //     group: Option<Channel>,
+    //     name_prefix: Option<String>,
+    //     limit: Option<usize>,
+    //     exclude: Option<bool>,
+    // ) -> Vec<UserInfo> {
+    //     let prefix = name_prefix.unwrap_or("".to_string());
+    //     let exclude = exclude.unwrap_or(false);
+    //     let mut result: Vec<UserInfo> = if let Some(group) = group {
+    //         let group_info = self.channels.get(&group).unwrap();
+    //         if !self.default_groups.contains(&group) {
+    //             if exclude {
+    //                 match self.channel_members.get(&group) {
+    //                     Some(cm) => self
+    //                         .members
+    //                         .iter()
+    //                         .filter(|(m, _)| !cm.contains(m))
+    //                         .filter(|(m, _)| m.as_str().starts_with(&prefix))
+    //                         .map(|(m, timestamp)| UserInfo {
+    //                             id: m.clone(),
+    //                             active: self.is_active(*timestamp),
+    //                             moderator: group_info.meta.moderators.contains(&m),
+    //                             read_only: group_info.meta.read_only.contains(&m),
+    //                         })
+    //                         .collect(),
+    //                     None => return vec![],
+    //                 }
+    //             } else {
+    //                 match self.channel_members.get(&group) {
+    //                     Some(cm) => cm
+    //                         .iter()
+    //                         .filter(|m| m.as_str().starts_with(&prefix))
+    //                         .map(|m| UserInfo {
+    //                             id: m.clone(),
+    //                             active: self.is_active(*self.members.get(&m).unwrap()),
+    //                             moderator: group_info.meta.moderators.contains(&m),
+    //                             read_only: group_info.meta.read_only.contains(&m),
+    //                         })
+    //                         .collect(),
+    //                     None => return vec![],
+    //                 }
+    //             }
+    //         } else {
+    //             if exclude {
+    //                 return vec![];
+    //             } else {
+    //                 self.members
+    //                     .iter()
+    //                     .filter(|(m, _)| m.as_str().starts_with(&prefix))
+    //                     .map(|(m, timestamp)| UserInfo {
+    //                         id: m.clone(),
+    //                         active: self.is_active(*timestamp),
+    //                         moderator: group_info.meta.moderators.contains(&m),
+    //                         read_only: group_info.meta.read_only.contains(&m),
+    //                     })
+    //                     .collect()
+    //             }
+    //         }
+    //     } else {
+    //         if exclude {
+    //             return vec![];
+    //         } else {
+    //             self.members
+    //                 .iter()
+    //                 .filter(|(m, _)| m.as_str().starts_with(&prefix))
+    //                 .map(|(m, timestamp)| UserInfo {
+    //                     id: m.clone(),
+    //                     active: self.is_active(*timestamp),
+    //                     moderator: false,
+    //                     read_only: false,
+    //                 })
+    //                 .collect()
+    //         }
+    //     };
+    //     if let Some(limit) = limit {
+    //         let items_count = limit.min(result.len());
+    //         result.drain(0..items_count).collect()
+    //     } else {
+    //         result
+    //     }
+    // }
 
-    fn is_active(&self, timestamp: u64) -> bool {
-        get_current_timestamp_ms() - timestamp < ACTIVE_MS_THRESHOLD
-    }
+    // fn is_active(&self, timestamp: u64) -> bool {
+    //     get_current_timestamp_ms() - timestamp < ACTIVE_MS_THRESHOLD
+    // }
 
-    pub fn get_direct_messages(
-        &self,
-        account: UserId,
-        limit: Option<usize>,
-        offset: Option<usize>,
-    ) -> Vector<UserId> {
-        let mut res = vec![];
-        for other in self.members.keys() {
-            let key = ChatMembers::from((account.clone(), other.clone()));
-            if self.chats.contains(&key) {
-                res.push(key.get_other_account(&account));
-            }
-        }
-        let mut results: &[UserId] = &res[..];
+    // pub fn get_direct_messages(
+    //     &self,
+    //     account: UserId,
+    //     limit: Option<usize>,
+    //     offset: Option<usize>,
+    // ) -> Vector<UserId> {
+    //     let mut res = vec![];
+    //     for other in self.members.keys() {
+    //         let key = ChatMembers::from((account.clone(), other.clone()));
+    //         if self.chats.contains(&key) {
+    //             res.push(key.get_other_account(&account));
+    //         }
+    //     }
+    //     let mut results: &[UserId] = &res[..];
 
-        if let Some(offset) = offset {
-            results = &results[offset..];
-        }
-        if let Some(limit) = limit {
-            results = &results[0..limit.min(results.len())];
-        }
+    //     if let Some(offset) = offset {
+    //         results = &results[offset..];
+    //     }
+    //     if let Some(limit) = limit {
+    //         results = &results[0..limit.min(results.len())];
+    //     }
 
-        results.to_vec()
-    }
+    //     results.to_vec()
+    // }
 
-    pub fn get_groups(&self, account: Option<UserId>) -> Vec<PublicChannel> {
-        if let Some(account) = account {
-            let mut res = match self.member_channels.get(&account) {
-                Ok(Some(mc)) => mc
-                    .iter()
-                    .map(|c| {
-                        let info = self.channels.get(c);
-                        match info {
-                            Ok(Some(info)) => Some(PublicChannel {
-                                name: c.name.clone(),
-                                channel_type: info.channel_type.clone(),
-                                read_only: info.read_only.clone(),
-                            }),
-                            _ => None,
-                        }
-                    })
-                    .flatten()
-                    .collect(),
-                _ => vec![],
-            };
-            let mut default: Vec<PublicChannel> = self
-                .default_groups
-                .iter()
-                .map(|c| {
-                    if let Ok(Some(info)) = self.channels.get(&c) {
-                        PublicChannel {
-                            name: c.name.clone(),
-                            channel_type: info.channel_type.clone(),
-                            read_only: info.read_only.clone(),
-                        }
-                    } else {
-                        PublicChannel {
-                            name: c.name.clone(),
-                            channel_type: ChannelType::Public,
-                            read_only: false,
-                        }
-                    }
-                })
-                .collect();
-            default.append(&mut res);
+    // pub fn get_groups(&self, account: Option<UserId>) -> Vec<PublicChannel> {
+    //     if let Some(account) = account {
+    //         let mut res = match self.member_channels.get(&account) {
+    //             Ok(Some(mc)) => mc
+    //                 .iter()
+    //                 .map(|c| {
+    //                     let info = self.channels.get(c);
+    //                     match info {
+    //                         Ok(Some(info)) => Some(PublicChannel {
+    //                             name: c.name.clone(),
+    //                             channel_type: info.channel_type.clone(),
+    //                             read_only: info.read_only.clone(),
+    //                         }),
+    //                         _ => None,
+    //                     }
+    //                 })
+    //                 .flatten()
+    //                 .collect(),
+    //             _ => vec![],
+    //         };
+    //         let mut default: Vec<PublicChannel> = self
+    //             .default_groups
+    //             .iter()
+    //             .map(|c| {
+    //                 if let Ok(Some(info)) = self.channels.get(&c) {
+    //                     PublicChannel {
+    //                         name: c.name.clone(),
+    //                         channel_type: info.channel_type.clone(),
+    //                         read_only: info.read_only.clone(),
+    //                     }
+    //                 } else {
+    //                     PublicChannel {
+    //                         name: c.name.clone(),
+    //                         channel_type: ChannelType::Public,
+    //                         read_only: false,
+    //                     }
+    //                 }
+    //             })
+    //             .collect();
+    //         default.append(&mut res);
 
-            default
-        } else {
-            let mut channels = vec![];
-            if let Ok(entries) = self.channels.entries() {
-                for (channel, info) in entries {
-                    if info.channel_type != ChannelType::Private {
-                        channels.push(PublicChannel {
-                            name: channel.name.clone(),
-                            channel_type: info.channel_type.clone(),
-                            read_only: info.read_only.clone(),
-                        });
-                    }
-                }
-            }
+    //         default
+    //     } else {
+    //         let mut channels = vec![];
+    //         if let Ok(entries) = self.channels.entries() {
+    //             for (channel, info) in entries {
+    //                 if info.channel_type != ChannelType::Private {
+    //                     channels.push(PublicChannel {
+    //                         name: channel.name.clone(),
+    //                         channel_type: info.channel_type.clone(),
+    //                         read_only: info.read_only.clone(),
+    //                     });
+    //                 }
+    //             }
+    //         }
 
-            channels
-        }
-    }
+    //         channels
+    //     }
+    // }
 
     pub fn channel_info(&self, group: Channel) -> Option<PublicChannelMetadata> {
         if let Ok(Some(c)) = self.channels.get(&group) {
