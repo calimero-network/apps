@@ -1,10 +1,10 @@
 import styled from "styled-components";
 import UserProfileIcon from "../profileIcon/UserProfileIcon";
-import type { User } from "../../types/Common";
 import { useState } from "react";
+import type { UserId } from "../../api/clientApi";
 
 interface UsersButtonGroupProps {
-  channelUserList: User[];
+  channelUserList: UserId[];
   openMemberList: () => void;
 }
 
@@ -49,7 +49,7 @@ export default function UsersButtonGroup(props: UsersButtonGroupProps) {
         return (
           <div key={id}>
             <ProfileIconContainerGroup $isHovered={isHovered}>
-              <UserProfileIcon accountId={user.id} showStatus={false} />
+              <UserProfileIcon accountId={user} showStatus={false} />
             </ProfileIconContainerGroup>
           </div>
         );

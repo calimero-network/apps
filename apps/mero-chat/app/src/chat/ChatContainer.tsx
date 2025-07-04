@@ -3,17 +3,22 @@ import { styled } from "styled-components";
 import type {
   ActiveChat,
   ChannelMeta,
+  ChatMessagesData,
+  CurbMessage,
   MessageWithReactions,
   User,
 } from "../types/Common";
 import JoinChannel from "./JoinChannel";
 import EmojiSelectorPopup from "../emojiSelector/EmojiSelectorPopup";
 import ChatDisplaySplit from "./ChatDisplaySplit";
+import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 
 interface ChatContainerProps {
   activeChat: ActiveChat;
   setIsOpenSearchChannel: () => void;
   onJoinedChat: () => void;
+  loadInitialChatMessages: () => Promise<ChatMessagesData>;
+  incomingMessages: CurbMessage[];
 }
 
 const ChatContainerWrapper = styled.div`
@@ -50,11 +55,12 @@ export default function ChatContainer({
   activeChat,
   setIsOpenSearchChannel,
   onJoinedChat,
+  loadInitialChatMessages,
+  incomingMessages,
 }: ChatContainerProps) {
   const [openThread, setOpenThread] = useState<
     MessageWithReactions | undefined
   >(undefined);
-  const [incomingMessages, _setIncomingMessages] = useState([]);
   const [updatedMessages, _setUpdatedMessages] = useState<
     MessageWithReactions[]
   >([]);
@@ -147,7 +153,7 @@ export default function ChatContainer({
 
   const handleReaction = useCallback(
     (message: MessageWithReactions, reaction: string) => {
-      const updates = [
+      const _updates = [
         {
           id: message.id,
           descriptor: {
@@ -160,7 +166,6 @@ export default function ChatContainer({
           },
         },
       ];
-      console.log("updates", updates);
       //setUpdatedMessages(updates);
       //setUpdatedThreadMessages(updates);
       // todo toggle
@@ -346,6 +351,14 @@ export default function ChatContainer({
   //   setUpdatedThreadMessages([]);
   // }, []);
 
+  const mockSendMessage = async (message: string) => {
+    await new ClientApiDataSource().sendMessage({
+      group: { name: activeChat.name },
+      message,
+      timestamp: Math.floor(Date.now() / 1000),
+    });
+  }
+
   return (
     <ChatContainerWrapper>
       {activeChat.canJoin ? (
@@ -363,10 +376,9 @@ export default function ChatContainer({
             openThread={openThread}
             setOpenThread={() => {}}
             activeChat={activeChat}
-            incomingMessages={incomingMessages}
             updatedMessages={updatedMessages}
             resetImage={() => {}}
-            sendMessage={() => {}}
+            sendMessage={(message: string) => mockSendMessage(message)}
             getIconFromCache={getIconFromCache}
             isThread={!!openThread}
             isReadOnly={activeChat.readOnly ?? false}
@@ -379,6 +391,8 @@ export default function ChatContainer({
             onEditModeRequested={() => {}}
             onEditModeCancelled={() => {}}
             onMessageUpdated={() => {}}
+            loadInitialChatMessages={loadInitialChatMessages}
+            incomingMessages={incomingMessages}
           />
           {openThread && openThread.id && (
             <ThreadWrapper>
@@ -388,7 +402,6 @@ export default function ChatContainer({
                 openThread={openThread}
                 setOpenThread={(message: MessageWithReactions | null) => setOpenThread(message || undefined)}
                 activeChat={activeChat}
-                incomingMessages={incomingThreadMessages}
                 updatedMessages={updatedThreadMessages}
                 resetImage={() => {}}
                 sendMessage={(message: string) => console.log(message)}
@@ -404,6 +417,8 @@ export default function ChatContainer({
                 onEditModeRequested={(message: MessageWithReactions) => console.log(message)}
                 onEditModeCancelled={(message: MessageWithReactions) => console.log(message)}
                 onMessageUpdated={(message: MessageWithReactions) => console.log(message)}
+                loadInitialChatMessages={loadInitialChatMessages}
+                incomingMessages={incomingMessages}
               />
             </ThreadWrapper>
           )}

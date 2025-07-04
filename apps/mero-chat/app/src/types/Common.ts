@@ -34,6 +34,12 @@ export interface User {
   };
 }
 
+export interface ChatMessagesData {
+  messages: CurbMessage[];
+  totalCount: number;
+  hasMore: boolean;
+}
+
 export interface ChannelMeta {
   name: string;
   type: ChatType;

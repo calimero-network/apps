@@ -31,7 +31,7 @@ export interface CreateChannelProps {
 
 export type CreateChannelResponse = string;
 
-export interface Channel {
+export interface ChannelInfo {
   channel_type: string;
   created_at: number;
   created_by: string;
@@ -39,7 +39,7 @@ export interface Channel {
   read_only: boolean;
 }
 
-export type Channels = Map<string, Channel>;
+export type Channels = Map<string, ChannelInfo>;
 
 export interface GetChannelMembersProps {
   channel: Channel;

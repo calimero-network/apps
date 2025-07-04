@@ -1,9 +1,10 @@
 import styled from "styled-components";
-import type { ActiveChat, User } from "../../types/Common";
+import type { ActiveChat } from "../../types/Common";
 import DetailsDropdown from "./DetailsDropdown";
 import ChannelDetailsPopup from "../popups/ChannelDetailsPopup";
 import UsersButtonGroup from "./UsersButtonGroup";
 import { useState } from "react";
+import type { UserId } from "../../api/clientApi";
 
 interface CurbNavbarProps {
   activeChat: ActiveChat | null;
@@ -11,7 +12,7 @@ interface CurbNavbarProps {
   setIsSidebarOpen: (isOpen: boolean) => void;
   isOpenSearchChannel: boolean;
   setIsOpenSearchChannel: (isOpen: boolean) => void;
-  channelUserList: User[];
+  channelUserList: UserId[];
 }
 
 const NavigationBar = styled.div<{ $isSidebarOpen: boolean }>`

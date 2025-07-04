@@ -3,7 +3,7 @@ import styled from "styled-components";
 import type { ActiveChat, User, ChannelMeta } from "../../types/Common";
 import ChannelHeader from "./ChannelHeader";
 import ChannelList from "./ChannelList";
-import DMSideSelector from "./DMSideSelector";
+//import DMSideSelector from "./DMSideSelector";
 
 interface SideSelectorProps {
   users: User[];
@@ -182,13 +182,13 @@ const SideSelector: React.FC<SideSelectorProps> = (props) => {
   const SideMenuContent = () => {
     return (
       <>
-        <SearchChannels
+        {/* <SearchChannels
           isOpenSearchChannel={isOpenSearchChannel}
           setIsOpenSearchChannel={() =>
             setIsOpenSearchChannel(!isOpenSearchChannel)
           }
         />
-        <HorizontalSeparatorLine $isMobile={false} />
+        <HorizontalSeparatorLine $isMobile={false} /> */}
         <ChannelHeader title="Channels" />
         <ChannelList
           channels={channels}
@@ -198,7 +198,7 @@ const SideSelector: React.FC<SideSelectorProps> = (props) => {
           }
         />
         <HorizontalSeparatorLine $isMobile={true} />
-        <DMSideSelector
+        {/* <DMSideSelector
           users={users}
           onDMSelected={props.onDMSelected}
           selectedDM={
@@ -211,7 +211,7 @@ const SideSelector: React.FC<SideSelectorProps> = (props) => {
             // TODO: Implement createDM
             return Promise.resolve();
           }}
-        />
+        /> */}
       </>
     );
   };

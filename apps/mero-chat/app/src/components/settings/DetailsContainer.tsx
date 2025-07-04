@@ -4,6 +4,7 @@ import AboutDetails from "./AboutDetails";
 import MemberDetails from "./MemberDetails";
 import TabSwitch from "./TabSwitch";
 import type { ChannelMeta, User } from "../../types/Common";
+import type { UserId } from "../../api/clientApi";
 
 const Wrapper = styled.div`
 `;
@@ -11,7 +12,7 @@ const Wrapper = styled.div`
 interface DetailsContainerProps {
   channelName: string;
   selectedTabIndex?: number;
-  userList: User[];
+  userList: UserId[];
   channelMeta: ChannelMeta;
   handleLeaveChannel: () => void;
   addMember: (user: string) => void;
@@ -29,7 +30,6 @@ const DetailsContainer: React.FC<DetailsContainerProps> = (props) => {
   const promoteModerator = props.promoteModerator;
   const removeUserFromChannel = props.removeUserFromChannel;
 
-  console.log("channelMeta", channelMeta);
   const [selectedTabIndex, setSelectedTabIndex] = useState(initialTabIndex);
 
   const ChannelTitle = styled.div`

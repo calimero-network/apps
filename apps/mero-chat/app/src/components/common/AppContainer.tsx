@@ -1,9 +1,10 @@
 import { styled } from "styled-components";
-import type { ActiveChat, User } from "../../types/Common";
+import type { ActiveChat, ChatMessagesData, CurbMessage, User } from "../../types/Common";
 import ChannelsContainer from "./ChannelsContainer";
 import CurbNavbar from "../navbar/CurbNavbar";
 import SearchChannelsContainer from "../searchChannels/SearchChannelsContainer";
 import ChatContainer from "../../chat/ChatContainer";
+import type { UserId } from "../../api/clientApi";
 
 const ContentDivContainer = styled.div`
   width: 100%;
@@ -27,8 +28,10 @@ interface AppContainerProps {
   activeChat: ActiveChat | null;
   updateSelectedActiveChat: (chat: ActiveChat) => void;
   openSearchPage: () => void;
-  channelUsers: User[];
+  channelUsers: UserId[];
   onDMSelected: (dm: User) => void;
+  loadInitialChatMessages: () => Promise<ChatMessagesData>;
+  incomingMessages: CurbMessage[];
 }
 export default function AppContainer({
   activeChat,
@@ -40,8 +43,9 @@ export default function AppContainer({
   openSearchPage,
   channelUsers,
   onDMSelected,
+  loadInitialChatMessages,
+  incomingMessages
 }: AppContainerProps) {
-  console.log("activeChat", activeChat);
   return (
     <>
       <CurbNavbar
@@ -69,6 +73,8 @@ export default function AppContainer({
                 activeChat={activeChat}
                 setIsOpenSearchChannel={() => openSearchPage()}
                 onJoinedChat={() => console.log("joined chat")}
+                loadInitialChatMessages={loadInitialChatMessages}
+                incomingMessages={incomingMessages}
               />
             )}
             {isOpenSearchChannel && (

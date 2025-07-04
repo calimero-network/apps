@@ -1,7 +1,8 @@
 import { styled } from "styled-components";
-import type { ActiveChat, User } from "../../types/Common";
+import type { ActiveChat } from "../../types/Common";
 import ChannelDetailsPopup from "../popups/ChannelDetailsPopup";
 import { useState } from "react";
+import type { UserId } from "../../api/clientApi";
 
 const DropdownSelector = styled.div`
   display: flex;
@@ -54,7 +55,7 @@ const ChevronIcon = styled.i`
 interface DetailsDropdownProps {
   activeChat: ActiveChat;
   isOpenSearchChannel: boolean;
-  channelUserList: User[];
+  channelUserList: UserId[];
 }
 
 export default function DetailsDropdown(props: DetailsDropdownProps) {

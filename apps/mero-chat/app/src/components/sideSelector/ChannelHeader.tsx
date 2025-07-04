@@ -1,6 +1,9 @@
 import { styled } from "styled-components";
 import CreateChannelPopup from "../popups/CreateChannelPopup";
 import { isValidChannelName } from "../../utils/validation";
+import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
+import { ChannelType } from "../../api/clientApi";
+import { useState } from "react";
 
 const Container = styled.div`
   display: flex;
@@ -42,26 +45,44 @@ interface ChannelHeaderProps {
 }
 
 export default function ChannelHeader(props: ChannelHeaderProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [inputValue, setInputValue] = useState("");
+  const createChannel = async (
+    channelName: string,
+    isPublic: boolean,
+    isReadyOnly: boolean
+  ) => {
+    await new ClientApiDataSource().createChannel({
+      channel: { name: channelName },
+      channel_type: isPublic ? ChannelType.PUBLIC : ChannelType.PRIVATE,
+      read_only: isReadyOnly,
+      moderators: [],
+      links_allowed: true,
+      created_at: Math.floor(Date.now() / 1000),
+    });
+  };
   return (
     <Container>
       <TextBold>{props.title}</TextBold>
       <CreateChannelPopup
-          title={"Create new Channel"}
-          placeholder={"# channel name"}
-          buttonText={"Create"}
-          colors={{
-            base: "#5765f2",
-            hover: "#717cf0",
-            disabled: "#3B487A",
-          }}
-          toggle={
-            <IconPlusContainer>
-              <i className="bi bi-plus-circle" />
-            </IconPlusContainer>
-          }
-        createChannel={async (channelName, isPublic, isReadOnly) => {
-          await console.log(channelName, isPublic, isReadOnly);
+        title={"Create new Channel"}
+        inputValue={inputValue}
+        isOpen={isOpen}
+        setIsOpen={setIsOpen}
+        setInputValue={setInputValue}
+        placeholder={"# channel name"}
+        buttonText={"Create"}
+        colors={{
+          base: "#5765f2",
+          hover: "#717cf0",
+          disabled: "#3B487A",
         }}
+        toggle={
+          <IconPlusContainer onClick={() => setIsOpen(true)}>
+            <i className="bi bi-plus-circle" />
+          </IconPlusContainer>
+        }
+        createChannel={createChannel}
         channelNameValidator={isValidChannelName}
       />
     </Container>

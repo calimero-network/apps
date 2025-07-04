@@ -5,7 +5,6 @@ import {
   type RpcError,
   handleRpcError,
   getAppEndpointKey,
-  getAuthConfig,
 } from "@calimero-network/calimero-client";
 import {
   type Channels,
@@ -40,6 +39,9 @@ export function getWsSubscriptionsClient() {
   return new WsSubscriptionsClient(appEndpointKey, "/ws");
 }
 
+export const contextId = "9ovD2GRq78N6TsomFePTDVKr9tx7PfwAXAwqUWTn2rzC";
+export const executorId = "Dxez5ELkMSyeZwMo17bjyAZK9VsZzmk6PieHxDNNJvT6";
+
 export class ClientApiDataSource implements ClientApi {
   private async handleError(
     error: RpcError,
@@ -61,25 +63,13 @@ export class ClientApiDataSource implements ClientApi {
 
   async getChannels(): ApiResponse<Channels> {
     try {
-      const config = getAuthConfig();
-
-      if (!config || !config.contextId || !config.executorPublicKey) {
-        return {
-          data: null,
-          error: {
-            code: 500,
-            message: "Authentication configuration not found",
-          },
-        };
-      }
-
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await getJsonRpcClient().execute<any, Channels>(
         {
-          contextId: config.contextId,
+          contextId: contextId,
           method: ClientMethod.GET_CHANNELS,
           argsJson: {},
-          executorPublicKey: config.executorPublicKey,
+          executorPublicKey: executorId,
         },
         {
           headers: {
@@ -117,25 +107,13 @@ export class ClientApiDataSource implements ClientApi {
     props: CreateChannelProps
   ): ApiResponse<CreateChannelResponse> {
     try {
-      const config = getAuthConfig();
-
-      if (!config || !config.contextId || !config.executorPublicKey) {
-        return {
-          data: null,
-          error: {
-            code: 500,
-            message: "Authentication configuration not found",
-          },
-        };
-      }
-
       const response = await getJsonRpcClient().execute<
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         any,
         CreateChannelResponse
       >(
         {
-          contextId: config.contextId,
+          contextId: contextId,
           method: ClientMethod.CREATE_CHANNEL,
           argsJson: {
             channel: props.channel,
@@ -145,7 +123,7 @@ export class ClientApiDataSource implements ClientApi {
             links_allowed: props.links_allowed,
             created_at: props.created_at,
           },
-          executorPublicKey: config.executorPublicKey,
+          executorPublicKey: executorId,
         },
         {
           headers: {
@@ -184,27 +162,15 @@ export class ClientApiDataSource implements ClientApi {
     props: GetChannelMembersProps
   ): ApiResponse<UserId[]> {
     try {
-      const config = getAuthConfig();
-
-      if (!config || !config.contextId || !config.executorPublicKey) {
-        return {
-          data: null,
-          error: {
-            code: 500,
-            message: "Authentication configuration not found",
-          },
-        };
-      }
-
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await getJsonRpcClient().execute<any, UserId[]>(
         {
-          contextId: config.contextId,
+          contextId: contextId,
           method: ClientMethod.GET_CHANNEL_MEMBERS,
           argsJson: {
             channel: props.channel,
           },
-          executorPublicKey: config.executorPublicKey,
+          executorPublicKey: executorId,
         },
         {
           headers: {
@@ -244,29 +210,18 @@ export class ClientApiDataSource implements ClientApi {
   }
   async getMessages(props: GetMessagesProps): ApiResponse<Message[]> {
     try {
-      const config = getAuthConfig();
-
-      if (!config || !config.contextId || !config.executorPublicKey) {
-        return {
-          data: null,
-          error: {
-            code: 500,
-            message: "Authentication configuration not found",
-          },
-        };
-      }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await getJsonRpcClient().execute<any, Message[]>(
         {
-          contextId: config.contextId,
+          contextId: contextId,
           method: ClientMethod.GET_MESSAGES,
           argsJson: {
             group: props.group,
             limit: props.limit,
             offset: props.offset,
           },
-          executorPublicKey: config.executorPublicKey,
+          executorPublicKey: executorId,
         },
         {
           headers: {
@@ -302,32 +257,20 @@ export class ClientApiDataSource implements ClientApi {
 
   async sendMessage(props: SendMessageProps): ApiResponse<Message> {
     try {
-      const config = getAuthConfig();
-
-      if (!config || !config.contextId || !config.executorPublicKey) {
-        return {
-          data: null,
-          error: {
-            code: 500,
-            message: "Authentication configuration not found",
-          },
-        };
-      }
-
       const response = await getJsonRpcClient().execute<
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         any,
         Message
       >(
         {
-          contextId: config.contextId,
-          method: ClientMethod.CREATE_CHANNEL,
+          contextId: contextId,
+          method: ClientMethod.SEND_MESSAGE,
           argsJson: {
             group: props.group,
             message: props.message,
             timestamp: props.timestamp,
           },
-          executorPublicKey: config.executorPublicKey,
+          executorPublicKey: executorId,
         },
         {
           headers: {
