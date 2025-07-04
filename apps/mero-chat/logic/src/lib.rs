@@ -14,7 +14,11 @@ type MessageId = String;
 pub enum Event {
     ChatInitialized(String),
     ChannelCreated(String),
-    MessageSent(String),
+    ChannelInvited(String),
+    MessageSent(Message),
+    MessageReceived(String),
+    ChannelJoined(String),
+    ChannelLeft(String),
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
@@ -37,7 +41,16 @@ pub enum ChannelType {
 }
 
 #[derive(
-    BorshDeserialize, BorshSerialize, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Clone, Hash,
+    BorshDeserialize,
+    BorshSerialize,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Clone,
+    Hash,
 )]
 #[serde(crate = "calimero_sdk::serde")]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -61,6 +74,14 @@ pub struct ChannelMetadata {
     pub links_allowed: bool,
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct PublicChannelMetadata {
+    pub created_at: u64,
+    pub created_by: UserId,
+    pub links_allowed: bool,
+}
+
 #[derive(BorshDeserialize, BorshSerialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct ChannelInfo {
@@ -71,7 +92,6 @@ pub struct ChannelInfo {
     pub last_read: UnorderedMap<UserId, MessageId>,
 }
 
-
 #[derive(Serialize, Deserialize)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct FullMessageResponse {
@@ -80,8 +100,9 @@ pub struct FullMessageResponse {
     pub start_position: u32,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 #[serde(crate = "calimero_sdk::serde")]
+#[borsh(crate = "calimero_sdk::borsh")]
 pub struct PublicChannelInfo {
     pub channel_type: ChannelType,
     pub read_only: bool,
@@ -118,6 +139,10 @@ impl CurbChat {
 
     fn get_executor_id(&self) -> UserId {
         UserId::new(env::executor_id())
+    }
+
+    pub fn get_chat_name(&self) -> String {
+        self.name.clone()
     }
 
     pub fn create_default(
@@ -157,6 +182,7 @@ impl CurbChat {
             let _ = self.channel_members.insert(c.clone(), initial_members);
         }
 
+        app::emit!(Event::ChatInitialized(self.name.clone()));
         Ok("Chat initialized".to_string())
     }
 
@@ -210,6 +236,7 @@ impl CurbChat {
             .channel_members
             .insert(channel.clone(), initial_members);
 
+        app::emit!(Event::ChannelCreated(channel.name.clone()));
         Ok("Channel created".to_string())
     }
 
@@ -257,6 +284,81 @@ impl CurbChat {
         Ok(member_list)
     }
 
+    pub fn get_channel_info(&self, channel: Channel) -> app::Result<PublicChannelMetadata, String> {
+        let channel_info = match self.channels.get(&channel) {
+            Ok(Some(info)) => info,
+            _ => return Err("Channel not found".to_string()),
+        };
+        Ok(PublicChannelMetadata {
+            created_at: channel_info.meta.created_at,
+            created_by: channel_info.meta.created_by,
+            links_allowed: channel_info.meta.links_allowed,
+        })
+    }
+
+    pub fn join_channel(&mut self, channel: Channel) -> app::Result<String, String> {
+        let executor_id = self.get_executor_id();
+
+        let channel_info = match self.channels.get(&channel) {
+            Ok(Some(info)) => info,
+            _ => return Err("Channel not found".to_string()),
+        };
+
+        if channel_info.channel_type != ChannelType::Public {
+            return Err("Can only join public channels".to_string());
+        }
+
+        let members = match self.channel_members.get(&channel) {
+            Ok(Some(members)) => members,
+            _ => return Err("Channel not found".to_string()),
+        };
+
+        if members.contains(&executor_id).unwrap_or(false) {
+            return Err("Already a member of this channel".to_string());
+        }
+
+        let mut updated_members = UnorderedSet::new();
+        if let Ok(iter) = members.iter() {
+            for member in iter {
+                let _ = updated_members.insert(member.clone());
+            }
+        }
+        let _ = updated_members.insert(executor_id);
+        let _ = self
+            .channel_members
+            .insert(channel.clone(), updated_members);
+
+        app::emit!(Event::ChannelJoined(channel.name.clone()));
+        Ok("Joined channel".to_string())
+    }
+
+    pub fn leave_channel(&mut self, channel: Channel) -> app::Result<String, String> {
+        let executor_id = self.get_executor_id();
+
+        let members = match self.channel_members.get(&channel) {
+            Ok(Some(members)) => members,
+            _ => return Err("Channel not found".to_string()),
+        };
+
+        if !members.contains(&executor_id).unwrap_or(false) {
+            return Err("You are not a member of this channel".to_string());
+        }
+
+        let mut updated_members = UnorderedSet::new();
+        if let Ok(iter) = members.iter() {
+            for member in iter {
+                let _ = updated_members.insert(member.clone());
+            }
+        }
+        let _ = updated_members.remove(&executor_id);
+        let _ = self
+            .channel_members
+            .insert(channel.clone(), updated_members);
+
+        app::emit!(Event::ChannelLeft(channel.name.clone()));
+        Ok("Left channel".to_string())
+    }
+
     fn get_message_id(
         &self,
         account: &UserId,
@@ -301,10 +403,17 @@ impl CurbChat {
         let _ = channel_info.messages.push(message.clone());
         let _ = self.channels.insert(group, channel_info);
 
+        app::emit!(Event::MessageSent(message.clone()));
+
         Ok(message)
     }
 
-    pub fn get_messages(&self, group: Channel, limit: Option<usize>, offset: Option<usize>) -> app::Result<FullMessageResponse, String> {
+    pub fn get_messages(
+        &self,
+        group: Channel,
+        limit: Option<usize>,
+        offset: Option<usize>,
+    ) -> app::Result<FullMessageResponse, String> {
         let executor_id = self.get_executor_id();
 
         let members = match self.channel_members.get(&group) {
@@ -324,7 +433,7 @@ impl CurbChat {
         let total_messages = channel_info.messages.len().unwrap_or(0);
         let limit = limit.unwrap_or(total_messages);
         let offset = offset.unwrap_or(0);
-        
+
         if total_messages == 0 {
             return Ok(FullMessageResponse {
                 total_count: 0,
@@ -332,34 +441,38 @@ impl CurbChat {
                 start_position: 0,
             });
         }
-        
+
         let mut messages = Vec::new();
         if let Ok(iter) = channel_info.messages.iter() {
             let all_messages: Vec<_> = iter.collect();
-            
+
             if !all_messages.is_empty() {
-                let start_idx = if offset >= all_messages.len() {
+                // Calculate start and end indices for pagination from the end
+                let total_len = all_messages.len();
+                let start_idx = if offset >= total_len {
                     return Ok(FullMessageResponse {
                         total_count: total_messages as u32,
                         messages: Vec::new(),
-                        start_position: 0
+                        start_position: 0,
                     });
                 } else {
-                    all_messages.len() - 1 - offset
+                    total_len - limit - offset
                 };
-                
-                let end_idx = if offset + limit >= all_messages.len() {
-                    0
-                } else {
-                    all_messages.len() - 1 - offset - limit + 1
-                };
-                
-                for i in (end_idx..=start_idx).rev() {
+
+                let end_idx = total_len - offset;
+
+                // Ensure we don't go below 0
+                let actual_start = start_idx.max(0);
+
+                // Return messages in the order they appear in the array
+                for i in actual_start..end_idx {
                     messages.push(all_messages[i].clone());
                 }
             }
         }
-        
+
+        app::emit!(Event::MessageReceived(group.name.clone()));
+
         Ok(FullMessageResponse {
             total_count: total_messages as u32,
             messages: messages,
