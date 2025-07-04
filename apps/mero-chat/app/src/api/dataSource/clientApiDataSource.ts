@@ -12,12 +12,16 @@ import {
   ClientMethod,
   type CreateChannelProps,
   type CreateChannelResponse,
+  type FullMessageResponse,
   type GetChannelMembersProps,
   type GetMessagesProps,
   type Message,
   type SendMessageProps,
   type UserId,
 } from "../clientApi";
+
+export const contextId = "2s3PufZv58jeyEu8SqWGsKgqnj7YKPe8rzrW1puFMEm3";
+export const executorId = "AK82zu84LVPgnVQHWqZqxnQNQdZvvUfJi4mGjZxx4S97";
 
 export function getJsonRpcClient() {
   const appEndpointKey = getAppEndpointKey();
@@ -38,9 +42,6 @@ export function getWsSubscriptionsClient() {
   }
   return new WsSubscriptionsClient(appEndpointKey, "/ws");
 }
-
-export const contextId = "9ovD2GRq78N6TsomFePTDVKr9tx7PfwAXAwqUWTn2rzC";
-export const executorId = "Dxez5ELkMSyeZwMo17bjyAZK9VsZzmk6PieHxDNNJvT6";
 
 export class ClientApiDataSource implements ClientApi {
   private async handleError(
@@ -208,11 +209,11 @@ export class ClientApiDataSource implements ClientApi {
       };
     }
   }
-  async getMessages(props: GetMessagesProps): ApiResponse<Message[]> {
+  async getMessages(props: GetMessagesProps): ApiResponse<FullMessageResponse> {
     try {
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await getJsonRpcClient().execute<any, Message[]>(
+      const response = await getJsonRpcClient().execute<any, FullMessageResponse>(
         {
           contextId: contextId,
           method: ClientMethod.GET_MESSAGES,
@@ -235,7 +236,7 @@ export class ClientApiDataSource implements ClientApi {
       }
 
       return {
-        data: response?.result.output as Message[],
+        data: response?.result.output as FullMessageResponse,
         error: null,
       };
     } catch (error) {

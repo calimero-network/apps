@@ -64,10 +64,21 @@ export interface SendMessageProps {
   timestamp: number;
 }
 
+export interface FullMessageResponse {
+  messages: Message[];
+  totalCount: number;
+  startPosition: number;
+}
+
+export interface GetChannelInfoProps {
+  channel: Channel;
+}
+
 export interface ClientApi {
   createChannel(props: CreateChannelProps): ApiResponse<CreateChannelResponse>;
   getChannels(): ApiResponse<Channels>;
   getChannelMembers(props: GetChannelMembersProps): ApiResponse<UserId[]>;
-  getMessages(props: GetMessagesProps): ApiResponse<Message[]>;
+  getChannelInfo(props: GetChannelInfoProps): ApiResponse<ChannelInfo>;
+  getMessages(props: GetMessagesProps): ApiResponse<FullMessageResponse>;
   sendMessage(props: SendMessageProps): ApiResponse<Message>;
 }

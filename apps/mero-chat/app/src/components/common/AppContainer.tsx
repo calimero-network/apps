@@ -1,5 +1,5 @@
 import { styled } from "styled-components";
-import type { ActiveChat, ChatMessagesData, CurbMessage, User } from "../../types/Common";
+import type { ActiveChat, ChannelMeta, ChatMessagesData, CurbMessage, User } from "../../types/Common";
 import ChannelsContainer from "./ChannelsContainer";
 import CurbNavbar from "../navbar/CurbNavbar";
 import SearchChannelsContainer from "../searchChannels/SearchChannelsContainer";
@@ -32,6 +32,8 @@ interface AppContainerProps {
   onDMSelected: (dm: User) => void;
   loadInitialChatMessages: () => Promise<ChatMessagesData>;
   incomingMessages: CurbMessage[];
+  users: User[];
+  channels: ChannelMeta[];
 }
 export default function AppContainer({
   activeChat,
@@ -44,7 +46,9 @@ export default function AppContainer({
   channelUsers,
   onDMSelected,
   loadInitialChatMessages,
-  incomingMessages
+  incomingMessages,
+  users,
+  channels,
 }: AppContainerProps) {
   return (
     <>
@@ -65,6 +69,8 @@ export default function AppContainer({
           setIsOpenSearchChannel={() => openSearchPage()}
           isOpenSearchChannel={isOpenSearchChannel}
           onDMSelected={onDMSelected}
+          users={users}
+          channels={channels}
         />
         {!isSidebarOpen && (
           <Wrapper>

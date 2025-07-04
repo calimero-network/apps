@@ -3,6 +3,7 @@ import AppContainer from "../../components/common/AppContainer";
 import {
   MessageStatus,
   type ActiveChat,
+  type ChannelMeta,
   type ChatMessagesData,
   type CurbMessage,
   type User,
@@ -18,7 +19,7 @@ import {
   type NodeEvent,
   type ResponseData,
 } from "@calimero-network/calimero-client";
-import type { UserId } from "../../api/clientApi";
+import type { Channels, FullMessageResponse, Message, UserId } from "../../api/clientApi";
 import type { Message as ApiMessage } from "../../api/clientApi";
 
 import { type SubscriptionsClient } from "@calimero-network/calimero-client";
@@ -29,7 +30,6 @@ export default function Home() {
   const [channelUsers, setChannelUsers] = useState<UserId[]>([]);
   const [activeChat, setActiveChat] = useState<ActiveChat | null>(null);
   const [incomingMessages, setIncomingMessages] = useState<CurbMessage[]>([]);
-  const [initialMessages, setInitialMessages] = useState<CurbMessage[]>([]);
 
   const getChannelUsers = async (channelId: string) => {
     const channelUsers: ResponseData<UserId[]> =
@@ -73,30 +73,76 @@ export default function Home() {
     });
   }, []);
 
-  const observeNodeEvents = async () => {
-    try {
-      const subscriptionsClient: SubscriptionsClient =
-        getWsSubscriptionsClient();
-      await subscriptionsClient.connect();
-      subscriptionsClient.subscribe([contextId]);
+  useEffect(() => {
+    let subscriptionsClient: SubscriptionsClient | null = null;
+    
+    const observeNodeEvents = async () => {
+      try {
+        subscriptionsClient = getWsSubscriptionsClient();
+        await subscriptionsClient.connect();
+        subscriptionsClient.subscribe([contextId]);
 
-      subscriptionsClient?.addCallback(async (data: NodeEvent) => {
-        try {
-          if (data.type === "StateMutation") {
-            //TODO FIX LOGIC
+        subscriptionsClient?.addCallback(async (data: NodeEvent) => {
+          try {
+            if (data.type === "StateMutation") {
+              //TODO FIX LOGIC
+            } else if (data.type === "ExecutionEvent") {
+              console.log("execution event: ", data);
+              // e.g. Message sent event
+              const executionEvents = data.data.events;
+              for (const event of executionEvents) {
+                if (event.kind === "MessageSent") {
+                  const messageDataArray: number[] = event.data;
+                  const messageData = new Uint8Array(messageDataArray);
+                  const message: Message = JSON.parse(new TextDecoder().decode(messageData));
+                  const newMessage: CurbMessage = {
+                    id: message.id,
+                    text: message.text,
+                    nonce: Math.random().toString(36).substring(2, 15),
+                    key: Math.random().toString(36).substring(2, 15),
+                    timestamp: message.timestamp * 1000,
+                    sender: message.sender,
+                    reactions: {},
+                    threadCount: 0,
+                    threadLastTimestamp: 0,
+                    editedOn: undefined,
+                    mentions: [],
+                    files: [],
+                    images: [],
+                    editMode: false,
+                    status: MessageStatus.sent,
+                  };
+                  setIncomingMessages([newMessage]);
+                } else if (event.kind === "ChannelCreated") {
+                  const channelCreatedDataArray: number[] = event.data;
+                  const data = new Uint8Array(channelCreatedDataArray);
+                  const result: Message = JSON.parse(new TextDecoder().decode(data));
+                  console.log("channel created: ", result);
+                  await fetchChannels();
+                }
+              } 
+            }
+          } catch (callbackError) {
+            console.error("Error in subscription callback:", callbackError);
           }
-        } catch (callbackError) {
-          console.error("Error in subscription callback:", callbackError);
-        }
-      });
-    } catch (error) {
-      console.error("Error in node websocket:", error);
-    }
-  };
+        });
+      } catch (error) {
+        console.error("Error in node websocket:", error);
+      }
+    };
+
+    observeNodeEvents();
+
+    // Cleanup function to disconnect when component unmounts
+    return () => {
+      if (subscriptionsClient) {
+        subscriptionsClient.disconnect();
+      }
+    };
+  }, []); // Remove activeChat dependency - subscription should be global
 
   const loadInitialChatMessages = async (
   ): Promise<ChatMessagesData> => {
-    console.log("chat selected:", activeChat);
     if (!activeChat?.name) {
       return {
         messages: [],
@@ -104,12 +150,12 @@ export default function Home() {
         hasMore: false,
       };
     }
-    const messages: ResponseData<ApiMessage[]> =
+    const messages: ResponseData<FullMessageResponse> =
       await new ClientApiDataSource().getMessages({
         group: { name: activeChat?.name || "" },
       });
     if (messages.data) {
-      const messagesArray = messages.data.map((message: ApiMessage) => ({
+      const messagesArray = messages.data.messages.map((message: ApiMessage) => ({
         id: message.id,
         text: message.text,
         nonce: "1234567890",
@@ -140,9 +186,39 @@ export default function Home() {
     };
   };
 
+  const [channels, setChannels] = useState<ChannelMeta[]>([]);
+  const [users, _setUsers] = useState<User[]>([]);
+
+  const fetchChannels = async () => {
+    const channels: ResponseData<Channels> =
+      await new ClientApiDataSource().getChannels();
+    if (channels.data) {
+      const channelsArray: ChannelMeta[] = Object.entries(channels.data).map(
+        ([name, channelInfo]) => ({
+          name,
+          type: "channel" as const,
+          channelType: channelInfo.channel_type,
+          description: "",
+          owner: channelInfo.created_by,
+          members: [],
+          createdBy: channelInfo.created_by,
+          inviteOnly: false,
+          unreadMessages: {
+            count: 0,
+            mentions: 0,
+          },
+          isMember: false,
+          readOnly: channelInfo.read_only,
+          createdAt: new Date(channelInfo.created_at * 1000).toISOString(),
+        })
+      );
+      setChannels(channelsArray);
+    }
+  };
+
   useEffect(() => {
-    observeNodeEvents();
-  }, [activeChat]);
+    fetchChannels();
+  }, []);
 
   return (
     <AppContainer
@@ -157,6 +233,8 @@ export default function Home() {
       onDMSelected={onDMSelected}
       loadInitialChatMessages={loadInitialChatMessages}
       incomingMessages={incomingMessages}
+      channels={channels}
+      users={users}
     />
   );
 }
