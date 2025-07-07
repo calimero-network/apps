@@ -12,12 +12,12 @@ import { getStoredSession, updateSessionChat } from "../../utils/session";
 import { defaultActiveChat } from "../../mock/mock";
 import {
   ClientApiDataSource,
-  contextId,
   getWsSubscriptionsClient,
 } from "../../api/dataSource/clientApiDataSource";
 import {
   type NodeEvent,
   type ResponseData,
+  getContextId,
 } from "@calimero-network/calimero-client";
 import type { Channels, FullMessageResponse, Message, UserId } from "../../api/clientApi";
 import type { Message as ApiMessage } from "../../api/clientApi";
@@ -80,9 +80,10 @@ export default function Home() {
       try {
         subscriptionsClient = getWsSubscriptionsClient();
         await subscriptionsClient.connect();
-        subscriptionsClient.subscribe([contextId]);
+        subscriptionsClient.subscribe([getContextId() || ""]);
 
         subscriptionsClient?.addCallback(async (data: NodeEvent) => {
+          console.log("node event: ", data);
           try {
             if (data.type === "StateMutation") {
               //TODO FIX LOGIC

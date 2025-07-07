@@ -5,23 +5,24 @@ import {
   type RpcError,
   handleRpcError,
   getAppEndpointKey,
+  getContextId,
+  getExecutorPublicKey,
 } from "@calimero-network/calimero-client";
 import {
+  type ChannelInfo,
   type Channels,
   type ClientApi,
   ClientMethod,
   type CreateChannelProps,
   type CreateChannelResponse,
   type FullMessageResponse,
+  type GetChannelInfoProps,
   type GetChannelMembersProps,
   type GetMessagesProps,
   type Message,
   type SendMessageProps,
   type UserId,
 } from "../clientApi";
-
-export const contextId = "2s3PufZv58jeyEu8SqWGsKgqnj7YKPe8rzrW1puFMEm3";
-export const executorId = "AK82zu84LVPgnVQHWqZqxnQNQdZvvUfJi4mGjZxx4S97";
 
 export function getJsonRpcClient() {
   const appEndpointKey = getAppEndpointKey();
@@ -67,10 +68,10 @@ export class ClientApiDataSource implements ClientApi {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await getJsonRpcClient().execute<any, Channels>(
         {
-          contextId: contextId,
+          contextId: getContextId() || "",
           method: ClientMethod.GET_CHANNELS,
           argsJson: {},
-          executorPublicKey: executorId,
+          executorPublicKey: getExecutorPublicKey() || "",
         },
         {
           headers: {
@@ -114,7 +115,7 @@ export class ClientApiDataSource implements ClientApi {
         CreateChannelResponse
       >(
         {
-          contextId: contextId,
+          contextId: getContextId() || "",
           method: ClientMethod.CREATE_CHANNEL,
           argsJson: {
             channel: props.channel,
@@ -124,7 +125,7 @@ export class ClientApiDataSource implements ClientApi {
             links_allowed: props.links_allowed,
             created_at: props.created_at,
           },
-          executorPublicKey: executorId,
+          executorPublicKey: getExecutorPublicKey() || "",
         },
         {
           headers: {
@@ -166,12 +167,12 @@ export class ClientApiDataSource implements ClientApi {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await getJsonRpcClient().execute<any, UserId[]>(
         {
-          contextId: contextId,
+          contextId: getContextId() || "",
           method: ClientMethod.GET_CHANNEL_MEMBERS,
           argsJson: {
             channel: props.channel,
           },
-          executorPublicKey: executorId,
+          executorPublicKey: getExecutorPublicKey() || "",
         },
         {
           headers: {
@@ -209,20 +210,67 @@ export class ClientApiDataSource implements ClientApi {
       };
     }
   }
+
+  async getChannelInfo(props: GetChannelInfoProps): ApiResponse<ChannelInfo> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, ChannelInfo>(
+        {
+          contextId: getContextId() || "",
+          method: ClientMethod.GET_CHANNEL_MEMBERS,
+          argsJson: {
+            channel: props.channel,
+          },
+          executorPublicKey: getExecutorPublicKey() || "",
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+      if (response?.error) {
+        return await this.handleError(response.error, {}, this.getChannelInfo);
+      }
+
+      return {
+        data: response?.result.output as ChannelInfo,
+        error: null,
+      };
+    } catch (error) {
+      console.error("getChannelInfo failed:", error);
+      let errorMessage = "An unexpected error occurred during getChannelInfo";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+
   async getMessages(props: GetMessagesProps): ApiResponse<FullMessageResponse> {
     try {
-
+      const response = await getJsonRpcClient().execute<
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await getJsonRpcClient().execute<any, FullMessageResponse>(
+        any,
+        FullMessageResponse
+      >(
         {
-          contextId: contextId,
+          contextId: getContextId() || "",
           method: ClientMethod.GET_MESSAGES,
           argsJson: {
             group: props.group,
             limit: props.limit,
             offset: props.offset,
           },
-          executorPublicKey: executorId,
+          executorPublicKey: getExecutorPublicKey() || "",
         },
         {
           headers: {
@@ -264,14 +312,14 @@ export class ClientApiDataSource implements ClientApi {
         Message
       >(
         {
-          contextId: contextId,
+          contextId: getContextId() || "",
           method: ClientMethod.SEND_MESSAGE,
           argsJson: {
             group: props.group,
             message: props.message,
             timestamp: props.timestamp,
           },
-          executorPublicKey: executorId,
+          executorPublicKey: getExecutorPublicKey() || "",
         },
         {
           headers: {
