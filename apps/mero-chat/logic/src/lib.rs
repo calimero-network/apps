@@ -115,7 +115,7 @@ pub struct PublicChannelInfo {
 #[derive(BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct CurbChat {
-    owner: Option<UserId>,
+    owner: UserId,
     name: String,
     created_at: u64,
     members: UnorderedSet<UserId>,
@@ -126,41 +126,16 @@ pub struct CurbChat {
 #[app::logic]
 impl CurbChat {
     #[app::init]
-    pub fn init() -> CurbChat {
-        CurbChat {
-            owner: None,
-            name: "".to_string(),
-            created_at: 0,
-            members: UnorderedSet::new(),
-            channels: UnorderedMap::new(),
-            channel_members: UnorderedMap::new(),
-        }
-    }
-
-    fn get_executor_id(&self) -> UserId {
-        UserId::new(env::executor_id())
-    }
-
-    pub fn get_chat_name(&self) -> String {
-        self.name.clone()
-    }
-
-    pub fn create_default(
-        &mut self,
+    pub fn init(
         name: String,
         default_channels: Vec<Channel>,
         created_at: u64,
-    ) -> Result<String, String> {
-        if self.owner.is_some() {
-            return Err("Chat already initialized".to_string());
-        }
+    ) -> CurbChat {
+        let executor_id = UserId::new(env::executor_id());
 
-        let executor_id = self.get_executor_id();
-
-        self.owner = Some(executor_id);
-        self.name = name;
-        self.created_at = created_at;
-        let _ = self.members.insert(executor_id);
+        let mut channels: UnorderedMap<Channel, ChannelInfo> = UnorderedMap::new();
+        let mut members: UnorderedSet<UserId> = UnorderedSet::new();
+        let mut channel_members: UnorderedMap<Channel, UnorderedSet<UserId>> = UnorderedMap::new();
 
         for c in default_channels {
             let channel_info = ChannelInfo {
@@ -176,14 +151,58 @@ impl CurbChat {
                 },
                 last_read: UnorderedMap::new(),
             };
-            let _ = self.channels.insert(c.clone(), channel_info);
-            let mut initial_members = UnorderedSet::new();
-            let _ = initial_members.insert(executor_id);
-            let _ = self.channel_members.insert(c.clone(), initial_members);
+            let _ = channels.insert(c.clone(), channel_info);
+            let _ = members.insert(executor_id);
+            let mut new_members = UnorderedSet::new();
+            let _ = new_members.insert(executor_id);
+            let _ = channel_members.insert(c.clone(), new_members);
         }
 
-        app::emit!(Event::ChatInitialized(self.name.clone()));
-        Ok("Chat initialized".to_string())
+        app::emit!(Event::ChatInitialized(name.clone()));
+
+        CurbChat {
+            owner: executor_id,
+            name: name,
+            created_at: created_at,
+            members: members,
+            channels: channels,
+            channel_members: channel_members,
+        }
+    }
+
+
+    pub fn join_chat(&mut self) -> app::Result<String, String> {
+        let executor_id = self.get_executor_id();
+
+        if self.members.contains(&executor_id).unwrap_or(false) {
+            return Err("Already a member of the chat".to_string());
+        }
+
+        let _ = self.members.insert(executor_id);
+
+        if let Ok(entries) = self.channels.entries() {
+            for (channel, channel_info) in entries {
+                if channel_info.channel_type == ChannelType::Default {
+                    let mut channel_members = match self.channel_members.get(&channel) {
+                        Ok(Some(members)) => members,
+                        _ => continue,
+                    };
+                    
+                    let _ = channel_members.insert(executor_id);
+                    let _ = self.channel_members.insert(channel, channel_members);
+                }
+            }
+        }
+
+        Ok("Successfully joined the chat".to_string())
+    }
+
+    fn get_executor_id(&self) -> UserId {
+        UserId::new(env::executor_id())
+    }
+
+    pub fn get_chat_name(&self) -> String {
+        self.name.clone()
     }
 
     pub fn create_channel(
@@ -195,10 +214,6 @@ impl CurbChat {
         links_allowed: bool,
         created_at: u64,
     ) -> app::Result<String, String> {
-        if self.owner.is_none() {
-            return Err("Chat not initialized".to_string());
-        }
-
         if self.channels.contains(&channel).unwrap_or(false) {
             return Err("Channel already exists".to_string());
         }
@@ -263,6 +278,39 @@ impl CurbChat {
         channels
     }
 
+    pub fn get_all_channels(&self) -> HashMap<String, PublicChannelInfo> {
+        let mut channels = HashMap::new();
+        let executor_id = self.get_executor_id();
+
+        if let Ok(entries) = self.channels.entries() {
+            for (channel, channel_info) in entries {
+                let should_include = match channel_info.channel_type {
+                    ChannelType::Public | ChannelType::Default => true,
+                    ChannelType::Private => {
+                        // Only include private channels if user is a member
+                        if let Ok(Some(members)) = self.channel_members.get(&channel) {
+                            members.contains(&executor_id).unwrap_or(false)
+                        } else {
+                            false
+                        }
+                    }
+                };
+
+                if should_include {
+                    let public_info = PublicChannelInfo {
+                        channel_type: channel_info.channel_type,
+                        read_only: channel_info.read_only,
+                        created_at: channel_info.meta.created_at,
+                        created_by: channel_info.meta.created_by,
+                        links_allowed: channel_info.meta.links_allowed,
+                    };
+                    channels.insert(channel.name, public_info);
+                }
+            }
+        }
+        channels
+    }
+
     pub fn get_channel_members(&self, channel: Channel) -> app::Result<Vec<UserId>, String> {
         let executor_id = self.get_executor_id();
         let members = match self.channel_members.get(&channel) {
@@ -294,6 +342,64 @@ impl CurbChat {
             created_by: channel_info.meta.created_by,
             links_allowed: channel_info.meta.links_allowed,
         })
+    }
+
+    pub fn invite_to_channel(&mut self, channel: Channel, user: UserId) -> app::Result<String, String> {
+        let executor_id = self.get_executor_id();
+
+        match self.channels.get(&channel) {
+            Ok(Some(info)) => info,
+            _ => return Err("Channel not found".to_string()),
+        };
+
+        let members = match self.channel_members.get(&channel) {
+            Ok(Some(members)) => members,
+            _ => return Err("Channel not found".to_string()),
+        };
+
+        if !members.contains(&executor_id).unwrap_or(false) {
+            return Err("You are not a member of this channel".to_string());
+        }
+
+        if members.contains(&user).unwrap_or(false) {
+            return Err("User is already a member of this channel".to_string());
+        }
+
+        if !self.members.contains(&user).unwrap_or(false) {
+            return Err("User is not a member of the chat".to_string());
+        }
+
+        let mut updated_members = UnorderedSet::new();
+        if let Ok(iter) = members.iter() {
+            for member in iter {
+                let _ = updated_members.insert(member.clone());
+            }
+        }
+        let _ = updated_members.insert(user.clone());
+        let _ = self
+            .channel_members
+            .insert(channel.clone(), updated_members);
+
+        app::emit!(Event::ChannelInvited(channel.name.clone()));
+        Ok("User invited to channel".to_string())
+    }
+
+    pub fn get_non_member_users(&self, channel: Channel) -> app::Result<Vec<UserId>, String> {
+        let members = match self.channel_members.get(&channel) {
+            Ok(Some(members)) => members,
+            _ => return Err("Channel not found".to_string()),
+        };
+
+        let mut non_member_users = Vec::new();
+        if let Ok(iter) = self.members.iter() {
+            for member in iter {
+                if !members.contains(&member).unwrap_or(false) {
+                    non_member_users.push(member.clone());
+                }
+            }
+        }
+
+        Ok(non_member_users)
     }
 
     pub fn join_channel(&mut self, channel: Channel) -> app::Result<String, String> {
