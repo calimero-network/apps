@@ -29,6 +29,7 @@ interface AppContainerProps {
   updateSelectedActiveChat: (chat: ActiveChat) => void;
   openSearchPage: () => void;
   channelUsers: UserId[];
+  nonInvitedUserList: UserId[];
   onDMSelected: (dm: User) => void;
   loadInitialChatMessages: () => Promise<ChatMessagesData>;
   incomingMessages: CurbMessage[];
@@ -44,6 +45,7 @@ export default function AppContainer({
   updateSelectedActiveChat,
   openSearchPage,
   channelUsers,
+  nonInvitedUserList,
   onDMSelected,
   loadInitialChatMessages,
   incomingMessages,
@@ -59,6 +61,7 @@ export default function AppContainer({
         isOpenSearchChannel={isOpenSearchChannel}
         setIsOpenSearchChannel={setIsOpenSearchChannel}
         channelUserList={channelUsers}
+        nonInvitedUserList={nonInvitedUserList}
       />
       <ContentDivContainer>
         <ChannelsContainer

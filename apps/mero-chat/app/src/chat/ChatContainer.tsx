@@ -23,9 +23,10 @@ interface ChatContainerProps {
 
 const ChatContainerWrapper = styled.div`
   display: flex;
+  background-color: #0e0e10;
   @media (min-width: 1025px) {
     padding-left: 4px;
-    height: calc(100vh - 169px);
+    height: calc(100vh - 173px);
   }
   @media (max-width: 1024px) {
     display: flex;

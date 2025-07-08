@@ -1,13 +1,5 @@
 import type { ApiResponse } from "@calimero-network/calimero-client";
 
-export enum ClientMethod {
-  CREATE_CHANNEL = "create_channel",
-  GET_CHANNELS = "get_channels",
-  GET_CHANNEL_MEMBERS = "get_channel_members",
-  GET_MESSAGES = "get_messages",
-  SEND_MESSAGE = "send_message",
-}
-
 export enum ChannelType {
   PUBLIC = "Public",
   PRIVATE = "Private",
@@ -41,9 +33,15 @@ export interface ChannelInfo {
 
 export type Channels = Map<string, ChannelInfo>;
 
-export interface GetChannelMembersProps {
+interface ChannelOperationProps {
   channel: Channel;
 }
+
+export type GetChannelMembersProps = ChannelOperationProps;
+export type GetChannelInfoProps = ChannelOperationProps;
+export type GetNonMemberUsersProps = ChannelOperationProps;
+export type JoinChannelProps = ChannelOperationProps;
+export type LeaveChannelProps = ChannelOperationProps;
 
 export interface GetMessagesProps {
   group: Channel;
@@ -70,15 +68,37 @@ export interface FullMessageResponse {
   startPosition: number;
 }
 
-export interface GetChannelInfoProps {
+export enum ClientMethod {
+  JOIN_CHAT = "join_chat",
+  CREATE_CHANNEL = "create_channel",
+  GET_CHANNELS = "get_channels",
+  GET_ALL_CHANNELS_SEARCH = "get_all_channels",
+  GET_CHANNEL_MEMBERS = "get_channel_members",
+  GET_CHANNEL_INFO = "get_channel_info",
+  INVITE_TO_CHANNEL = "invite_to_channel",
+  GET_INVITE_USERS = "get_non_member_users",
+  JOIN_CHANNEL = "join_channel",
+  LEAVE_CHANNEL = "leave_channel",
+  GET_MESSAGES = "get_messages",
+  SEND_MESSAGE = "send_message",
+}
+
+export interface InviteToChannelProps {
   channel: Channel;
+  user: UserId;
 }
 
 export interface ClientApi {
+  joinChat(): ApiResponse<string>;
   createChannel(props: CreateChannelProps): ApiResponse<CreateChannelResponse>;
   getChannels(): ApiResponse<Channels>;
+  getAllChannelsSearch(): ApiResponse<Channels>;
   getChannelMembers(props: GetChannelMembersProps): ApiResponse<UserId[]>;
   getChannelInfo(props: GetChannelInfoProps): ApiResponse<ChannelInfo>;
+  inviteToChannel(props: InviteToChannelProps): ApiResponse<string>;
+  getNonMemberUsers(props: GetNonMemberUsersProps): ApiResponse<UserId[]>;
+  joinChannel(props: JoinChannelProps): ApiResponse<string>;
+  leaveChannel(props: LeaveChannelProps): ApiResponse<string>;
   getMessages(props: GetMessagesProps): ApiResponse<FullMessageResponse>;
   sendMessage(props: SendMessageProps): ApiResponse<Message>;
 }

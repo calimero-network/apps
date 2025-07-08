@@ -10,6 +10,7 @@ interface ChannelDetailsPopupProps {
   toggle: React.ReactNode;
   chat: ActiveChat;
   channelUserList?: UserId[];
+  nonInvitedUserList: UserId[];
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
 }
@@ -20,6 +21,7 @@ export default function ChannelDetailsPopup({
   channelUserList,
   isOpen,
   setIsOpen,
+  nonInvitedUserList
 }: ChannelDetailsPopupProps) {
   const [channelMeta, setChannelMeta] = useState<ChannelMeta>({
     name: chat.name,
@@ -38,11 +40,18 @@ export default function ChannelDetailsPopup({
 
   const channelName = chat.type === "channel" ? chat.name : chat.id;
 
-  const getChannelMetadata = async (_channelName: string) => {
+  const getChannelMetadata = async (channelName: string) => {
     const channelInfo: ResponseData<ChannelInfo> = await new ClientApiDataSource().getChannelInfo({
-      channel: { name: _channelName },
+      channel: { name: channelName },
     });
-    console.log(channelInfo);
+    if (channelInfo.data) {
+      setChannelMeta(prevMeta => ({
+        ...prevMeta,
+        createdAt: new Date(channelInfo.data.created_at * 1000).toISOString(),
+        createdBy: channelInfo.data.created_by,
+      }));
+    }
+    
   };
 
   useEffect(() => {
@@ -57,8 +66,9 @@ export default function ChannelDetailsPopup({
   const popupContent = (
     <DetailsContainer
       channelName={channelName}
-      selectedTabIndex={0}
+      selectedTabIndex={1}
       userList={channelUserList ?? []}
+      nonInvitedUserList={nonInvitedUserList}
       channelMeta={channelMeta}
       handleLeaveChannel={() => {}}
       addMember={() => {}}

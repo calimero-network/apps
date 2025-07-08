@@ -10,125 +10,138 @@ interface BaseModalProps {
   isChild?: boolean;
 }
 
+// Visually hidden component for accessibility
+const VisuallyHidden = styled.span`
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+`;
+
+const OverlayContainer = styled.div`
+  @media (min-width: 1025px) {
+    left: 0px;
+    right: 0px;
+    bottom: 0px;
+    top: 0px;
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    z-index: 20;
+    display: flex;
+    background-color: rgba(0, 0, 0, 0.5);
+    justify-content: center;
+    align-items: center;
+  }
+
+  @media (max-width: 1024px) {
+    position: fixed;
+    z-index: 20;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    background-color: rgba(0, 0, 0, 0.5);
+  }
+`;
+
+const OverlayContainerChild = styled.div`
+  @media (min-width: 1025px) {
+    left: 0px;
+    right: 0px;
+    bottom: 0px;
+    top: 0px;
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    z-index: 20;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: rgba(0, 0, 0, 0.5);
+  }
+  @media (max-width: 1024px) {
+    width: 100%;
+    height: 100%;
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 20;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    background-color: rgba(0, 0, 0, 0.5);
+  }
+`;
+
+const PopupContainer = styled.div`
+  position: relative;
+  background-color: #1d1d21;
+  padding: 1rem;
+  border-radius: 8px;
+  width: 540px;
+  @media (max-width: 1024px) {
+    width: calc(100% - 2rem);
+    max-width: calc(100vw - 2rem);
+    position: absolute;
+    left: 50%;
+    top: 20%;
+    transform: translate(-50%, -20%);
+    background-color: #1d1d21;
+    height: fit-content;
+    box-sizing: border-box;
+  }
+  outline: none;
+  &:focus {
+    outline: none;
+  }
+  &:focus-visible {
+    outline: none;
+  }
+`;
+
+const PopupContainerChild = styled.div`
+  @media (min-width: 1025px) {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    background-color: #1d1d21;
+    padding: 1rem;
+    border-radius: 8px;
+    width: 540px;
+    height: fit-content;
+  }
+  @media (max-width: 1024px) {
+    position: absolute;
+    background-color: #1d1d21;
+    padding: 1rem;
+    border-radius: 8px;
+    width: calc(100% - 2rem);
+    max-width: calc(100vw - 2rem);
+    height: fit-content;
+    box-sizing: border-box;
+  }
+`;
+
 const BaseModal: React.FC<BaseModalProps> = (props) => {
   const content = props.content;
   const open = props.open;
   const onOpenChange = props.onOpenChange;
   const toggle = props.toggle;
   const isChild = props.isChild;
-
-  const OverlayContainer = styled.div`
-    @media (min-width: 1025px) {
-      left: 0px;
-      right: 0px;
-      bottom: 0px;
-      top: 0px;
-      position: absolute;
-      width: 100%;
-      height: 100%;
-      z-index: 20;
-      display: flex;
-      background-color: rgba(0, 0, 0, 0.5);
-      justify-content: center;
-      align-items: center;
-    }
-
-    @media (max-width: 1024px) {
-      position: absolute;
-      z-index: 20;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      width: 100%;
-      height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: flex-start;
-      background-color: rgba(0, 0, 0, 0.5);
-    }
-  `;
-
-  const OverlayContainerChild = styled.div`
-    @media (min-width: 1025px) {
-      left: 0px;
-      right: 0px;
-      bottom: 0px;
-      top: 0px;
-      position: absolute;
-      width: 100%;
-      height: 100%;
-      z-index: 20;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      background-color: rgba(0, 0, 0, 0.5);
-    }
-    @media (max-width: 1024px) {
-      width: 100%;
-      height: 100%;
-      position: absolute;
-      left: 0;
-      right: 0;
-      top: 0;
-      bottom: 0;
-      z-index: 20;
-      display: flex;
-      justify-content: center;
-      align-items: flex-start;
-      background-color: rgba(0, 0, 0, 0.5);
-    }
-  `;
-
-  const PopupContainer = styled.div`
-    position: relative;
-    background-color: #1d1d21;
-    padding: 1rem;
-    border-radius: 8px;
-    width: 489px;
-    @media (max-width: 1024px) {
-      width: calc(100% - 2rem);
-      max-width: calc(100vw - 2rem);
-      position: absolute;
-      left: 50%;
-      top: 20%;
-      transform: translate(-50%, -20%);
-      background-color: #1d1d21;
-      height: fit-content;
-      box-sizing: border-box;
-    }
-    outline: none;
-    &:focus {
-      outline: none;
-    }
-    &:focus-visible {
-      outline: none;
-    }
-  `;
-
-  const PopupContainerChild = styled.div`
-    @media (min-width: 1025px) {
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
-      background-color: #1d1d21;
-      padding: 1rem;
-      border-radius: 8px;
-      width: 489px;
-      height: fit-content;
-    }
-    @media (max-width: 1024px) {
-      position: absolute;
-      background-color: #1d1d21;
-      padding: 1rem;
-      border-radius: 8px;
-      width: calc(100% - 2rem);
-      max-width: calc(100vw - 2rem);
-      height: fit-content;
-      box-sizing: border-box;
-    }
-  `;
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -137,14 +150,29 @@ const BaseModal: React.FC<BaseModalProps> = (props) => {
         {isChild ? (
           <OverlayContainerChild>
             <Dialog.Content asChild>
-              <Dialog.Title asChild></Dialog.Title>
-              <PopupContainerChild>{content}</PopupContainerChild>
+              <PopupContainerChild>
+                <Dialog.Title asChild>
+                  <VisuallyHidden>Dialog</VisuallyHidden>
+                </Dialog.Title>
+                <Dialog.Description asChild>
+                  <VisuallyHidden>Dialog content</VisuallyHidden>
+                </Dialog.Description>
+                {content}
+              </PopupContainerChild>
             </Dialog.Content>
           </OverlayContainerChild>
         ) : (
           <OverlayContainer>
             <Dialog.Content asChild>
-              <PopupContainer>{content}</PopupContainer>
+              <PopupContainer>
+                <Dialog.Title asChild>
+                  <VisuallyHidden>Dialog</VisuallyHidden>
+                </Dialog.Title>
+                <Dialog.Description asChild>
+                  <VisuallyHidden>Dialog content</VisuallyHidden>
+                </Dialog.Description>
+                {content}
+              </PopupContainer>
             </Dialog.Content>
           </OverlayContainer>
         )}

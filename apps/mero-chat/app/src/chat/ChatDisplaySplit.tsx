@@ -116,7 +116,7 @@ const containerPaddingStyle = {
   paddingRight: "2.5rem",
   paddingBottom: "2.5rem",
   scrollBehavior: "smooth",
-  height: "calc(100vh - 241px)",
+  height: "calc(100vh - 173px)",
   width: "",
 };
 const chatStyle = {
@@ -298,27 +298,27 @@ export default function ChatDisplaySplit({
   };
 
   return (
-    <Wrapper style={wrapperStyle}>
-      {/* @ts-expect-error - TODO: fix this */}
-      <ContainerPadding style={containerPaddingStyle}>
-        {openThread && isThread && (
-          <ThreadHeader onClose={() => setOpenThread(null)} />
-        )}
-        <VirtualizedChat
-          loadInitialMessages={loadInitialChatMessages}
-          loadPrevMessages={loadPrevMessagesMock}
-          incomingMessages={incomingMessages}
-          updatedMessages={updatedMessages}
-          onItemNewItemRender={readMessage}
-          shouldTriggerNewItemIndicator={(message: MessageWithReactions) =>
-            message.sender !== accountId
-          }
-          render={renderMessageMock()}
-          chatId={isThread ? openThread?.id : activeChat}
-          style={chatStyle}
-        />
-      </ContainerPadding>
-      <MessageInput
+      <Wrapper style={wrapperStyle}>
+        {/* @ts-expect-error - TODO: fix this */}
+        <ContainerPadding style={containerPaddingStyle}>
+          {openThread && isThread && (
+            <ThreadHeader onClose={() => setOpenThread(null)} />
+          )}
+          <VirtualizedChat
+            loadInitialMessages={loadInitialChatMessages}
+            loadPrevMessages={loadPrevMessagesMock}
+            incomingMessages={incomingMessages}
+            updatedMessages={updatedMessages}
+            onItemNewItemRender={readMessage}
+            shouldTriggerNewItemIndicator={(message: MessageWithReactions) =>
+              message.sender !== accountId
+            }
+            render={renderMessageMock()}
+            chatId={isThread ? openThread?.id : activeChat}
+            style={chatStyle}
+          />
+        </ContainerPadding>
+        <MessageInput
         selectedChat={
           activeChat.type === "channel" ? activeChat.name : activeChat.id
         }
@@ -330,6 +330,6 @@ export default function ChatDisplaySplit({
         isOwner={isOwner}
         isModerator={isModerator}
       />
-    </Wrapper>
+      </Wrapper>
   );
 }

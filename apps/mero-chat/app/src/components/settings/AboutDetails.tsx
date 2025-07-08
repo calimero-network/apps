@@ -8,13 +8,13 @@ interface AboutDetailsProps {
 }
 
 interface SettingsItemProps {
-  borderbottom?: boolean;
-  roundedTop?: boolean;
-  roundedBottom?: boolean;
+  $borderbottom?: boolean;
+  $roundedTop?: boolean;
+  $roundedBottom?: boolean;
 }
 
 interface TextProps {
-  red?: boolean;
+  $red?: boolean;
 }
 
 const SettingsItem = styled.div<SettingsItemProps>`
@@ -22,18 +22,18 @@ const SettingsItem = styled.div<SettingsItemProps>`
   gap: 0.5rem;
   background-color: #0e0e10;
   padding-left: 1rem;
-  ${({ borderbottom }) => borderbottom && 'border-bottom: 1px solid #282933;'}
-  ${({ roundedTop }) =>
-    roundedTop &&
+  ${({ $borderbottom }) => $borderbottom && 'border-bottom: 1px solid #282933;'}
+  ${({ $roundedTop }) =>
+    $roundedTop &&
     'border-top-left-radius: 0.375rem; border-top-right-radius: 0.375rem;'}
-    ${({ roundedBottom }) =>
-    roundedBottom &&
+    ${({ $roundedBottom }) =>
+    $roundedBottom &&
     'border-bottom-left-radius: 0.375rem; border-bottom-right-radius: 0.375rem;'}
 `;
 
 const Text = styled.h6<TextProps>`
-  ${({ red }) =>
-    red ? 'color: #DC3545; :hover { color: #f76560 }' : 'color: #FFF;'}
+  ${({ $red }) =>
+    $red ? 'color: #DC3545; :hover { color: #f76560 }' : 'color: #FFF;'}
   /* Body/Regular */
     font-family: Helvetica Neue;
   font-size: 16px;
@@ -66,19 +66,19 @@ const AboutDetails: React.FC<AboutDetailsProps> = (props) => {
 
   return (
     <>
-      <SettingsItem borderbottom roundedTop>
+      <SettingsItem $borderbottom $roundedTop>
         <Text>Created</Text>
         <Text>
           {props.dateCreated ? timestampToDate(props.dateCreated) : 'N/A'}
         </Text>
       </SettingsItem>
-      <SettingsItem borderbottom>
+      <SettingsItem $borderbottom>
         <Text>Managed by</Text>
-        <Text>{props.manager}</Text>
+        <Text>{props.manager.slice(0, 6)}...{props.manager.slice(-4)}</Text>
       </SettingsItem>
-      <SettingsItem roundedBottom>
+      <SettingsItem $roundedBottom>
         <ButtonLeave>
-          <Text red onClick={props.handleLeaveChannel}>
+          <Text $red={true} onClick={props.handleLeaveChannel}>
             Leave Channel
           </Text>
         </ButtonLeave>

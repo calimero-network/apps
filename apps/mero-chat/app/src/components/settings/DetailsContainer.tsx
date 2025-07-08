@@ -3,16 +3,30 @@ import styled from "styled-components";
 import AboutDetails from "./AboutDetails";
 import MemberDetails from "./MemberDetails";
 import TabSwitch from "./TabSwitch";
-import type { ChannelMeta, User } from "../../types/Common";
+import type { ChannelMeta } from "../../types/Common";
 import type { UserId } from "../../api/clientApi";
+import { getExecutorPublicKey } from "@calimero-network/calimero-client";
 
-const Wrapper = styled.div`
+const Wrapper = styled.div``;
+
+const ChannelTitle = styled.div`
+  display: flex;
+  column-gap: 0.5rem;
+  align-items: center;
+  color: #fff;
+  font-family: Helvetica Neue;
+  font-size: 24px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: 120%;
+  margin-bottom: 1rem;
 `;
 
 interface DetailsContainerProps {
   channelName: string;
   selectedTabIndex?: number;
   userList: UserId[];
+  nonInvitedUserList: UserId[];
   channelMeta: ChannelMeta;
   handleLeaveChannel: () => void;
   addMember: (user: string) => void;
@@ -29,21 +43,9 @@ const DetailsContainer: React.FC<DetailsContainerProps> = (props) => {
   const handleLeaveChannel = props.handleLeaveChannel;
   const promoteModerator = props.promoteModerator;
   const removeUserFromChannel = props.removeUserFromChannel;
+  const nonInvitedUserList = props.nonInvitedUserList;
 
   const [selectedTabIndex, setSelectedTabIndex] = useState(initialTabIndex);
-
-  const ChannelTitle = styled.div`
-    display: flex;
-    column-gap: 0.5rem;
-    align-items: center;
-    color: #fff;
-    font-family: Helvetica Neue;
-    font-size: 24px;
-    font-style: normal;
-    font-weight: 500;
-    line-height: 120%;
-    margin-bottom: 1rem;
-  `;
 
   const ChannelName = () => {
     return (
@@ -57,10 +59,11 @@ const DetailsContainer: React.FC<DetailsContainerProps> = (props) => {
   const addMember = (account: string, channel: string) => {
     console.log(account, channel);
   };
-  const getNonInvitedUsers = (value: string, channelName: string) => {
-    console.log(value, channelName);
+  const getNonInvitedUsers = (value: string): UserId[] => {
+    return nonInvitedUserList
+      ? nonInvitedUserList.filter((u) => u.startsWith(value))
+      : [];
   };
-  const nonInvitedUserList: User[] = [];
 
   return (
     <Wrapper>
@@ -80,21 +83,20 @@ const DetailsContainer: React.FC<DetailsContainerProps> = (props) => {
       {selectedTabIndex === 1 && (
         <MemberDetails
           id={0}
-          user={userList[0]}
-          
+          user={getExecutorPublicKey() as unknown as UserId}
           promoteModerator={(userId: string, isModerator: boolean) => {
             if (!isModerator) {
               return;
             }
-            const user = userList.find((u) => u.id === userId);
+            const user = userList.find((u) => u === userId);
             if (user) {
-              promoteModerator(user.id);
+              promoteModerator(user);
             }
           }}
           removeUserFromChannel={(userId: string) => {
-            const user = userList.find((u) => u.id === userId);
+            const user = userList.find((u) => u === userId);
             if (user) {
-              removeUserFromChannel(user.id);
+              removeUserFromChannel(user);
             }
           }}
           channelOwner={channelMeta.createdBy}

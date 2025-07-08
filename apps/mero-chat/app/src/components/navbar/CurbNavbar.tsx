@@ -13,6 +13,7 @@ interface CurbNavbarProps {
   isOpenSearchChannel: boolean;
   setIsOpenSearchChannel: (isOpen: boolean) => void;
   channelUserList: UserId[];
+  nonInvitedUserList: UserId[];
 }
 
 const NavigationBar = styled.div<{ $isSidebarOpen: boolean }>`
@@ -159,6 +160,7 @@ export default function CurbNavbar({
   setIsSidebarOpen,
   isOpenSearchChannel,
   channelUserList,
+  nonInvitedUserList
 }: CurbNavbarProps) {
   const [isOpen, setIsOpen] = useState(false);
   return (
@@ -195,6 +197,7 @@ export default function CurbNavbar({
             }
             chat={activeChat}
             channelUserList={channelUserList}
+            nonInvitedUserList={nonInvitedUserList}
             isOpen={isOpen}
             setIsOpen={setIsOpen}
           />

@@ -3,7 +3,7 @@ import styled from "styled-components";
 import BaseModal from "./BaseModal";
 import Loader from "../../loader/Loader";
 import UserProfileIcon from "../../profileIcon/UserProfileIcon";
-import type { User } from "../../../types/Common";
+import type { UserId } from "../../../api/clientApi";
 
 interface MultipleInputPopupProps {
   title: string;
@@ -18,7 +18,7 @@ interface MultipleInputPopupProps {
   };
   isChild?: boolean;
   autocomplete?: boolean;
-  nonInvitedUserList: User[];
+  nonInvitedUserList: UserId[];
   selectedUsers: string[];
   setSelectedUsers: (users: string[]) => void;
   updateUsers: (value: string) => void;
@@ -55,14 +55,14 @@ const Input = styled.input`
 `;
 
 const FunctionButton = styled.button<{
-  disabled: boolean;
-  colors: { base: string; hover: string; disabled: string };
+  $disabled: boolean;
+  $colors: { base: string; hover: string; disabled: string };
 }>`
-  background-color: ${({ disabled, colors }) =>
-    disabled ? colors.disabled : colors.base};
+  background-color: ${({ $disabled, $colors }) =>
+    $disabled ? $colors.disabled : $colors.base};
   :hover {
-    background-color: ${({ disabled, colors }) =>
-      disabled ? colors.disabled : colors.hover};
+    background-color: ${({ $disabled, $colors }) =>
+      $disabled ? $colors.disabled : $colors.hover};
   }
   color: #fff;
   border-radius: 4px;
@@ -192,7 +192,7 @@ const SelectedAccountsWrapper = styled.div`
 
 interface AutocompleteContainerProps {
   value: string;
-  inviteUsers: User[];
+  inviteUsers: UserId[];
   selectUser: (userId: string) => void;
   selectedUsers: string[];
 }
@@ -204,17 +204,17 @@ const AutocompleteContainer: React.FC<AutocompleteContainerProps> = ({
   selectedUsers,
 }) => {
   const filteredInviteUsers = inviteUsers.filter(
-    (user) => user.id !== value && !selectedUsers.includes(user.id)
+    (user) => user !== value && !selectedUsers.includes(user)
   );
   return (
     <>
       {filteredInviteUsers.length > 0 && (
         <UserList>
           {filteredInviteUsers.map((user, id) => (
-            <UserListItem key={id} onClick={() => selectUser(user.id)}>
+            <UserListItem key={id} onClick={() => selectUser(user)}>
               <UserInfo>
-                <UserProfileIcon accountId={user.id} active={user.active} />
-                <UserText>{user.id}</UserText>
+                <UserProfileIcon accountId={user} active={false} />
+                <UserText>{user}</UserText>
               </UserInfo>
             </UserListItem>
           ))}
@@ -247,7 +247,7 @@ const MultipleInputPopup: React.FC<MultipleInputPopupProps> = (props) => {
   const isAutocompleteListOpen =
     autocomplete &&
     inputValue &&
-    nonInvitedUserList.length > 0 &&
+    nonInvitedUserList && nonInvitedUserList?.length > 0 &&
     showAutocomplete;
 
   const selectUser = (userId: string) => {
@@ -364,8 +364,8 @@ const MultipleInputPopup: React.FC<MultipleInputPopupProps> = (props) => {
       </RulesWrapper>
       <FunctionButton
         onClick={runProcess}
-        disabled={selectedUsers.length === 0}
-        colors={colors}
+        $disabled={selectedUsers.length === 0}
+        $colors={colors}
       >
         {invitationsInProgress ? <Loader size={16} /> : buttonText}
       </FunctionButton>

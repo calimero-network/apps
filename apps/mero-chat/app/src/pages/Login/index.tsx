@@ -1,6 +1,13 @@
-import { setAppEndpointKey, setContextId, setExecutorPublicKey } from "@calimero-network/calimero-client";
+import {
+  setAppEndpointKey,
+  setContextId,
+  setExecutorPublicKey,
+  type ResponseData,
+} from "@calimero-network/calimero-client";
 import { useState } from "react";
 import { styled } from "styled-components";
+import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
+import { extractErrorMessage } from "../../utils/errorParser";
 
 const LoginWrapper = styled.div`
   display: flex;
@@ -8,8 +15,9 @@ const LoginWrapper = styled.div`
   align-items: center;
   justify-content: center;
   height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #0e0e10;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 `;
 
 const LoginCard = styled.div`
@@ -73,7 +81,9 @@ const Button = styled.button`
   font-size: 1rem;
   font-weight: 500;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
   margin-top: 1rem;
 
   &:hover {
@@ -118,9 +128,9 @@ export default function Login() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
     setError("");
     setSuccess("");
@@ -133,7 +143,11 @@ export default function Login() {
     setSuccess("");
 
     // Validate inputs
-    if (!formData.nodeUrl.trim() || !formData.contextId.trim() || !formData.identityId.trim()) {
+    if (
+      !formData.nodeUrl.trim() ||
+      !formData.contextId.trim() ||
+      !formData.identityId.trim()
+    ) {
       setError("All fields are required");
       setIsLoading(false);
       return;
@@ -143,12 +157,23 @@ export default function Login() {
       setAppEndpointKey(formData.nodeUrl.trim());
       setContextId(formData.contextId.trim());
       setExecutorPublicKey(formData.identityId.trim());
-      setSuccess("Login successful! Redirecting...");
-      
+      const response: ResponseData<string> =
+        await new ClientApiDataSource().joinChat();
+      if (response.error) {
+        const errorMessage = extractErrorMessage(response.error);
+        if (errorMessage.includes("Already a member")) {
+          setSuccess("Already connected to chat!");
+        } else {
+          setError(errorMessage);
+          return;
+        }
+      } else {
+        setSuccess("Successfully joined chat!");
+      }
+
       setTimeout(() => {
         window.location.href = "/";
       }, 1000);
-      
     } catch (_err) {
       setError("Failed to save login information");
     } finally {
@@ -173,7 +198,7 @@ export default function Login() {
               disabled={isLoading}
             />
           </InputGroup>
-          
+
           <InputGroup>
             <Label htmlFor="contextId">Context ID</Label>
             <Input
@@ -186,7 +211,7 @@ export default function Login() {
               disabled={isLoading}
             />
           </InputGroup>
-          
+
           <InputGroup>
             <Label htmlFor="identityId">Identity ID</Label>
             <Input
@@ -199,11 +224,11 @@ export default function Login() {
               disabled={isLoading}
             />
           </InputGroup>
-          
+
           <Button type="submit" disabled={isLoading}>
             {isLoading ? "Setting up..." : "Connect"}
           </Button>
-          
+
           {error && <ErrorMessage>{error}</ErrorMessage>}
           {success && <SuccessMessage>{success}</SuccessMessage>}
         </Form>

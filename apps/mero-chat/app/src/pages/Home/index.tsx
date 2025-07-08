@@ -30,6 +30,7 @@ export default function Home() {
   const [channelUsers, setChannelUsers] = useState<UserId[]>([]);
   const [activeChat, setActiveChat] = useState<ActiveChat | null>(null);
   const [incomingMessages, setIncomingMessages] = useState<CurbMessage[]>([]);
+  const [nonInvitedUserList, setNonInvitedUserList] = useState<UserId[]>([]);
 
   const getChannelUsers = async (channelId: string) => {
     const channelUsers: ResponseData<UserId[]> =
@@ -41,10 +42,21 @@ export default function Home() {
     }
   };
 
+  const getNonInvitedUsers = async (channelId: string) => {
+    const nonInvitedUsers: ResponseData<UserId[]> =
+      await new ClientApiDataSource().getNonMemberUsers({
+        channel: { name: channelId },
+      });
+    if (nonInvitedUsers.data) {
+      setNonInvitedUserList(nonInvitedUsers.data);
+    }
+  };
+
   const updateSelectedActiveChat = (selectedChat: ActiveChat) => {
     setIsOpenSearchChannel(false);
     setActiveChat(selectedChat);
     getChannelUsers(selectedChat.id);
+    getNonInvitedUsers(selectedChat.id);
     setIsSidebarOpen(false);
     updateSessionChat(selectedChat);
   };
@@ -57,12 +69,11 @@ export default function Home() {
 
   useEffect(() => {
     const storedSession: ActiveChat | null = getStoredSession();
-    if (storedSession) {
-      setActiveChat(storedSession);
-    } else {
-      setActiveChat(defaultActiveChat);
-    }
-    getChannelUsers(activeChat?.name || "");
+    const chatToUse = storedSession || defaultActiveChat;
+    
+    setActiveChat(chatToUse);
+    getChannelUsers(chatToUse.name);
+    getNonInvitedUsers(chatToUse.name);
   }, []);
 
   const onDMSelected = useCallback((dm: User) => {
@@ -83,13 +94,10 @@ export default function Home() {
         subscriptionsClient.subscribe([getContextId() || ""]);
 
         subscriptionsClient?.addCallback(async (data: NodeEvent) => {
-          console.log("node event: ", data);
           try {
             if (data.type === "StateMutation") {
               //TODO FIX LOGIC
             } else if (data.type === "ExecutionEvent") {
-              console.log("execution event: ", data);
-              // e.g. Message sent event
               const executionEvents = data.data.events;
               for (const event of executionEvents) {
                 if (event.kind === "MessageSent") {
@@ -231,6 +239,7 @@ export default function Home() {
       updateSelectedActiveChat={updateSelectedActiveChat}
       openSearchPage={openSearchPage}
       channelUsers={channelUsers}
+      nonInvitedUserList={nonInvitedUserList}
       onDMSelected={onDMSelected}
       loadInitialChatMessages={loadInitialChatMessages}
       incomingMessages={incomingMessages}

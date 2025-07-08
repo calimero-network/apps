@@ -9,7 +9,8 @@ import MessageImageField from "./MessageImageField";
 import { MarkdownEditor } from "../markdown/MarkdownEditor";
 
 const Container = styled.div`
-  position: absolute;
+  position: fixed;
+  bottom: 0;
   width: 100%;
   bottom: 16px;
   padding-left: 16px;
@@ -19,9 +20,16 @@ const Container = styled.div`
   background-color: #1d1d21;
   display: flex;
   align-items: end;
+  z-index: 10;
+  transform: translateZ(0);
   @media (min-width: 1025px) {
     gap: 8px;
     border-radius: 4px;
+    /* Prevent layout shifts when modals open on desktop */
+    will-change: transform;
+    backface-visibility: hidden;
+    /* Ensure the element stays in place when modals open */
+    isolation: isolate;
   }
   @media (max-width: 1024px) {
     position: fixed;
@@ -38,6 +46,11 @@ const Container = styled.div`
     padding-bottom: 12px;
     padding-top: 12px;
     width: 100% !important;
+    z-index: 10;
+    transform: translateZ(0);
+    /* Prevent layout shifts when modals open */
+    will-change: transform;
+    backface-visibility: hidden;
   }
 `;
 
@@ -45,12 +58,14 @@ const EmojiPopupContainer = styled.div`
   position: absolute;
   bottom: 70px;
   right: 2.5rem;
+  z-index: 1000;
 `;
 
 const UploadPopupContainer = styled.div`
   position: absolute;
   bottom: 46px;
   left: 16px;
+  z-index: 1000;
   @media (max-width: 1024px) {
     left: 8px;
   }
@@ -169,7 +184,7 @@ const Placeholder = styled.div<{
   z-index: 10;
   bottom: ${({ $placeholderPosition }) =>
     $placeholderPosition && $placeholderPosition};
-  left: 68px;
+  left: 25px;
   color: #686672;
   font-size: 16px;
   font-style: normal;

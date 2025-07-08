@@ -135,7 +135,7 @@ const Container = styled.div`
   background-color: #1d1d21;
   padding: 1rem;
   border-radius: 8px;
-  width: 489px;
+  width: 540px;
   @media (max-width: 1024px) {
     width: calc(100% - 2rem);
     max-width: calc(100vw - 2rem);

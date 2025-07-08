@@ -19,6 +19,10 @@ import {
   type GetChannelInfoProps,
   type GetChannelMembersProps,
   type GetMessagesProps,
+  type GetNonMemberUsersProps,
+  type InviteToChannelProps,
+  type JoinChannelProps,
+  type LeaveChannelProps,
   type Message,
   type SendMessageProps,
   type UserId,
@@ -63,13 +67,13 @@ export class ClientApiDataSource implements ClientApi {
     }
   }
 
-  async getChannels(): ApiResponse<Channels> {
+  async joinChat(): ApiResponse<string> {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await getJsonRpcClient().execute<any, Channels>(
+      const response = await getJsonRpcClient().execute<any, string>(
         {
           contextId: getContextId() || "",
-          method: ClientMethod.GET_CHANNELS,
+          method: ClientMethod.JOIN_CHAT,
           argsJson: {},
           executorPublicKey: getExecutorPublicKey() || "",
         },
@@ -81,16 +85,15 @@ export class ClientApiDataSource implements ClientApi {
         }
       );
       if (response?.error) {
-        return await this.handleError(response.error, {}, this.getChannels);
+        return await this.handleError(response.error, {}, this.joinChat);
       }
-
       return {
-        data: response?.result.output as Channels,
+        data: response?.result.output as string,
         error: null,
       };
     } catch (error) {
-      console.error("getChannels failed:", error);
-      let errorMessage = "An unexpected error occurred during getChannels";
+      console.error("joinChat failed:", error);
+      let errorMessage = "An unexpected error occurred during joinChat";
       if (error instanceof Error) {
         errorMessage = error.message;
       } else if (typeof error === "string") {
@@ -160,6 +163,134 @@ export class ClientApiDataSource implements ClientApi {
     }
   }
 
+  async getChannels(): ApiResponse<Channels> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, Channels>(
+        {
+          contextId: getContextId() || "",
+          method: ClientMethod.GET_CHANNELS,
+          argsJson: {},
+          executorPublicKey: getExecutorPublicKey() || "",
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+      if (response?.error) {
+        return await this.handleError(response.error, {}, this.getChannels);
+      }
+
+      return {
+        data: response?.result.output as Channels,
+        error: null,
+      };
+    } catch (error) {
+      console.error("getChannels failed:", error);
+      let errorMessage = "An unexpected error occurred during getChannels";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+
+  async getAllChannelsSearch(): ApiResponse<Channels> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, Channels>(
+        {
+          contextId: getContextId() || "",
+          method: ClientMethod.GET_ALL_CHANNELS_SEARCH,
+          argsJson: {},
+          executorPublicKey: getExecutorPublicKey() || "",
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+      if (response?.error) {
+        return await this.handleError(response.error, {}, this.getAllChannelsSearch);
+      }
+      return {
+        data: response?.result.output as Channels,
+        error: null,
+      };
+    } catch (error) {
+      console.error("getAllChannelsSearch failed:", error);
+      let errorMessage = "An unexpected error occurred during getAllChannelsSearch";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+
+  async getChannelInfo(props: GetChannelInfoProps): ApiResponse<ChannelInfo> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, ChannelInfo>(
+        {
+          contextId: getContextId() || "",
+          method: ClientMethod.GET_CHANNEL_INFO,
+          argsJson: {
+            channel: props.channel,
+          },
+          executorPublicKey: getExecutorPublicKey() || "",
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+      if (response?.error) {
+        return await this.handleError(response.error, {}, this.getChannelInfo);
+      }
+
+      return {
+        data: response?.result.output as ChannelInfo,
+        error: null,
+      };
+    } catch (error) {
+      console.error("getChannelInfo failed:", error);
+      let errorMessage = "An unexpected error occurred during getChannelInfo";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+
+
   async getChannelMembers(
     props: GetChannelMembersProps
   ): ApiResponse<UserId[]> {
@@ -211,13 +342,100 @@ export class ClientApiDataSource implements ClientApi {
     }
   }
 
-  async getChannelInfo(props: GetChannelInfoProps): ApiResponse<ChannelInfo> {
+  async inviteToChannel(props: InviteToChannelProps): ApiResponse<string> {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await getJsonRpcClient().execute<any, ChannelInfo>(
+      const response = await getJsonRpcClient().execute<any, string>(
         {
           contextId: getContextId() || "",
-          method: ClientMethod.GET_CHANNEL_MEMBERS,
+          method: ClientMethod.INVITE_TO_CHANNEL,
+          argsJson: {
+            channel: props.channel,
+            user: props.user,
+          },
+          executorPublicKey: getExecutorPublicKey() || "",
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+      if (response?.error) {
+        return await this.handleError(response.error, {}, this.inviteToChannel);
+      }
+      return {
+        data: response?.result.output as string,
+        error: null,
+      };
+    } catch (error) {
+      console.error("inviteToChannel failed:", error);
+      let errorMessage = "An unexpected error occurred during inviteToChannel";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+
+  async getNonMemberUsers(props: GetNonMemberUsersProps): ApiResponse<UserId[]> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, UserId[]>(
+        {
+          contextId: getContextId() || "",
+          method: ClientMethod.GET_INVITE_USERS,
+          argsJson: {
+            channel: props.channel,
+          },
+          executorPublicKey: getExecutorPublicKey() || "",
+        },
+        {
+          headers: {    
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+      if (response?.error) {
+        return await this.handleError(response.error, {}, this.getNonMemberUsers);
+      }
+      return {
+        data: response?.result.output as UserId[],
+        error: null,
+      };
+    } catch (error) {
+      console.error("getNonMemberUsers failed:", error);
+      let errorMessage = "An unexpected error occurred during getNonMemberUsers";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+
+  async joinChannel(props: JoinChannelProps): ApiResponse<string> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, string>(
+        {
+          contextId: getContextId() || "",
+          method: ClientMethod.JOIN_CHANNEL,
           argsJson: {
             channel: props.channel,
           },
@@ -231,16 +449,58 @@ export class ClientApiDataSource implements ClientApi {
         }
       );
       if (response?.error) {
-        return await this.handleError(response.error, {}, this.getChannelInfo);
+        return await this.handleError(response.error, {}, this.joinChannel);
       }
-
       return {
-        data: response?.result.output as ChannelInfo,
+        data: response?.result.output as string,
         error: null,
       };
     } catch (error) {
-      console.error("getChannelInfo failed:", error);
-      let errorMessage = "An unexpected error occurred during getChannelInfo";
+      console.error("joinChannel failed:", error);
+      let errorMessage = "An unexpected error occurred during joinChannel";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+
+  async leaveChannel(props: LeaveChannelProps): ApiResponse<string> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, string>(
+        {
+          contextId: getContextId() || "",
+          method: ClientMethod.LEAVE_CHANNEL,
+          argsJson: {
+            channel: props.channel,
+          },
+          executorPublicKey: getExecutorPublicKey() || "",
+        },
+        {
+          headers: {    
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+      if (response?.error) {    
+        return await this.handleError(response.error, {}, this.leaveChannel);
+      }
+      return {
+        data: response?.result.output as string,
+        error: null,
+      };
+    } catch (error) {
+      console.error("leaveChannel failed:", error);
+      let errorMessage = "An unexpected error occurred during leaveChannel";
       if (error instanceof Error) {
         errorMessage = error.message;
       } else if (typeof error === "string") {
