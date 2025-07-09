@@ -56,10 +56,15 @@ interface DetailsDropdownProps {
   activeChat: ActiveChat;
   isOpenSearchChannel: boolean;
   channelUserList: UserId[];
+  nonInvitedUserList: UserId[];
 }
 
-export default function DetailsDropdown(props: DetailsDropdownProps) {
-  const { activeChat, isOpenSearchChannel, channelUserList } = props;
+export default function DetailsDropdown({
+  activeChat,
+  isOpenSearchChannel,
+  channelUserList,
+  nonInvitedUserList,
+}: DetailsDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   if (activeChat.type === "channel") {
@@ -81,6 +86,8 @@ export default function DetailsDropdown(props: DetailsDropdownProps) {
         channelUserList={channelUserList}
         isOpen={isOpen}
         setIsOpen={setIsOpen}
+        nonInvitedUserList={nonInvitedUserList}
+        selectedTabIndex={1}
       />
     );
   }

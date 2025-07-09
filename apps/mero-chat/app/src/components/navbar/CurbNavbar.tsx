@@ -181,6 +181,7 @@ export default function CurbNavbar({
             activeChat={activeChat}
             isOpenSearchChannel={isOpenSearchChannel}
             channelUserList={channelUserList}
+            nonInvitedUserList={nonInvitedUserList}
           />
         )}
       </ItemsContainer>
@@ -200,6 +201,7 @@ export default function CurbNavbar({
             nonInvitedUserList={nonInvitedUserList}
             isOpen={isOpen}
             setIsOpen={setIsOpen}
+            selectedTabIndex={0}
           />
         </ItemsContainer>
       )}

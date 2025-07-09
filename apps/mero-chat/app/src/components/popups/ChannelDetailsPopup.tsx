@@ -13,6 +13,7 @@ interface ChannelDetailsPopupProps {
   nonInvitedUserList: UserId[];
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
+  selectedTabIndex: number;
 }
 
 export default function ChannelDetailsPopup({
@@ -21,7 +22,8 @@ export default function ChannelDetailsPopup({
   channelUserList,
   isOpen,
   setIsOpen,
-  nonInvitedUserList
+  nonInvitedUserList,
+  selectedTabIndex
 }: ChannelDetailsPopupProps) {
   const [channelMeta, setChannelMeta] = useState<ChannelMeta>({
     name: chat.name,
@@ -66,7 +68,7 @@ export default function ChannelDetailsPopup({
   const popupContent = (
     <DetailsContainer
       channelName={channelName}
-      selectedTabIndex={1}
+      selectedTabIndex={selectedTabIndex}
       userList={channelUserList ?? []}
       nonInvitedUserList={nonInvitedUserList}
       channelMeta={channelMeta}
