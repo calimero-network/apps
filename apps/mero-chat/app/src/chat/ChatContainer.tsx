@@ -31,7 +31,7 @@ const ChatContainerWrapper = styled.div`
   @media (max-width: 1024px) {
     display: flex;
     flex-direction: column;
-    padding-top: 104px;
+    padding-top: 42px;
   }
 `;
 

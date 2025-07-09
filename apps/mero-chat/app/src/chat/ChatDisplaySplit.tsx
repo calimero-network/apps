@@ -90,7 +90,7 @@ const ThreadContainer = styled.div`
   justify-content: space-between;
   @media (max-width: 1024px) {
     margin-right: 16px;
-    padding-top: 104px;
+    padding-top: 42px;
   }
 `;
 

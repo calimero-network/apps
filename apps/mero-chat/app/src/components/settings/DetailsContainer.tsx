@@ -6,6 +6,7 @@ import TabSwitch from "./TabSwitch";
 import type { ChannelMeta } from "../../types/Common";
 import type { UserId } from "../../api/clientApi";
 import { getExecutorPublicKey } from "@calimero-network/calimero-client";
+import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 
 const Wrapper = styled.div``;
 
@@ -32,6 +33,7 @@ interface DetailsContainerProps {
   addMember: (user: string) => void;
   promoteModerator: (user: string) => void;
   removeUserFromChannel: (user: string) => void;
+  reFetchChannelMembers: () => void;
 }
 
 const DetailsContainer: React.FC<DetailsContainerProps> = (props) => {
@@ -44,6 +46,7 @@ const DetailsContainer: React.FC<DetailsContainerProps> = (props) => {
   const promoteModerator = props.promoteModerator;
   const removeUserFromChannel = props.removeUserFromChannel;
   const nonInvitedUserList = props.nonInvitedUserList;
+  const reFetchChannelMembers = props.reFetchChannelMembers;
 
   const [selectedTabIndex, setSelectedTabIndex] = useState(initialTabIndex);
 
@@ -56,8 +59,12 @@ const DetailsContainer: React.FC<DetailsContainerProps> = (props) => {
     );
   };
 
-  const addMember = (account: string, channel: string) => {
-    console.log(account, channel);
+  const addMember = async (account: string, channel: string) => {
+    await new ClientApiDataSource().inviteToChannel({
+      channel: { name: channel },
+      user: account,
+    });
+    await reFetchChannelMembers();
   };
   const getNonInvitedUsers = (value: string): UserId[] => {
     return nonInvitedUserList

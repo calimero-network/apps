@@ -282,6 +282,8 @@ const MultipleInputPopup: React.FC<MultipleInputPopupProps> = (props) => {
   const runProcess = () => {
     setInvitationsInProgress(true);
     functionLoader();
+    setInvitationsInProgress(false);
+    setIsOpen(false);
   };
 
   const onOpenChange = (isOpen: boolean) => {

@@ -5,6 +5,7 @@ import BaseModal from "../common/popups/BaseModal";
 import type { ChannelInfo, UserId } from "../../api/clientApi";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 import type { ResponseData } from "@calimero-network/calimero-client";
+import { defaultActiveChat } from "../../mock/mock";
 
 interface ChannelDetailsPopupProps {
   toggle: React.ReactNode;
@@ -14,6 +15,9 @@ interface ChannelDetailsPopupProps {
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
   selectedTabIndex: number;
+  reFetchChannelMembers: () => void;
+  setActiveChat: (chat: ActiveChat) => void;
+  fetchChannels: () => void;
 }
 
 export default function ChannelDetailsPopup({
@@ -23,7 +27,10 @@ export default function ChannelDetailsPopup({
   isOpen,
   setIsOpen,
   nonInvitedUserList,
-  selectedTabIndex
+  selectedTabIndex,
+  reFetchChannelMembers,
+  setActiveChat,
+  fetchChannels
 }: ChannelDetailsPopupProps) {
   const [channelMeta, setChannelMeta] = useState<ChannelMeta>({
     name: chat.name,
@@ -56,6 +63,15 @@ export default function ChannelDetailsPopup({
     
   };
 
+  const handleLeaveChannel = async () => {
+    await new ClientApiDataSource().leaveChannel({
+      channel: { name: channelName },
+    });
+    setActiveChat(defaultActiveChat);
+    fetchChannels();
+    setIsOpen(false);
+  };
+
   useEffect(() => {
     const fetchMetadata = async () => {
       if (chat.name) {
@@ -72,10 +88,11 @@ export default function ChannelDetailsPopup({
       userList={channelUserList ?? []}
       nonInvitedUserList={nonInvitedUserList}
       channelMeta={channelMeta}
-      handleLeaveChannel={() => {}}
+      handleLeaveChannel={handleLeaveChannel}
       addMember={() => {}}
       promoteModerator={() => {}}
       removeUserFromChannel={() => {}}
+      reFetchChannelMembers={reFetchChannelMembers}
     />
   );
 

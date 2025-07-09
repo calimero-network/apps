@@ -6,16 +6,6 @@ import UsersButtonGroup from "./UsersButtonGroup";
 import { useState } from "react";
 import type { UserId } from "../../api/clientApi";
 
-interface CurbNavbarProps {
-  activeChat: ActiveChat | null;
-  isSidebarOpen: boolean;
-  setIsSidebarOpen: (isOpen: boolean) => void;
-  isOpenSearchChannel: boolean;
-  setIsOpenSearchChannel: (isOpen: boolean) => void;
-  channelUserList: UserId[];
-  nonInvitedUserList: UserId[];
-}
-
 const NavigationBar = styled.div<{ $isSidebarOpen: boolean }>`
   display: flex;
   justify-content: space-between;
@@ -154,13 +144,29 @@ const BackIconContainer = ({ onClick }: { onClick: () => void }) => {
   );
 };
 
+interface CurbNavbarProps {
+  activeChat: ActiveChat | null;
+  isSidebarOpen: boolean;
+  setIsSidebarOpen: (isOpen: boolean) => void;
+  isOpenSearchChannel: boolean;
+  setIsOpenSearchChannel: (isOpen: boolean) => void;
+  channelUserList: UserId[];
+  nonInvitedUserList: UserId[];
+  reFetchChannelMembers: () => void;
+  setActiveChat: (chat: ActiveChat) => void;
+  fetchChannels: () => void;
+}
+
 export default function CurbNavbar({
   activeChat,
   isSidebarOpen,
   setIsSidebarOpen,
   isOpenSearchChannel,
   channelUserList,
-  nonInvitedUserList
+  nonInvitedUserList,
+  reFetchChannelMembers,
+  setActiveChat,
+  fetchChannels
 }: CurbNavbarProps) {
   const [isOpen, setIsOpen] = useState(false);
   return (
@@ -182,6 +188,9 @@ export default function CurbNavbar({
             isOpenSearchChannel={isOpenSearchChannel}
             channelUserList={channelUserList}
             nonInvitedUserList={nonInvitedUserList}
+            reFetchChannelMembers={reFetchChannelMembers}
+            setActiveChat={setActiveChat}
+            fetchChannels={fetchChannels}
           />
         )}
       </ItemsContainer>
@@ -202,6 +211,9 @@ export default function CurbNavbar({
             isOpen={isOpen}
             setIsOpen={setIsOpen}
             selectedTabIndex={0}
+            reFetchChannelMembers={reFetchChannelMembers}
+            setActiveChat={setActiveChat}
+            fetchChannels={fetchChannels}
           />
         </ItemsContainer>
       )}

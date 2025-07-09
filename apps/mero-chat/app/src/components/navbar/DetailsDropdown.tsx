@@ -57,6 +57,9 @@ interface DetailsDropdownProps {
   isOpenSearchChannel: boolean;
   channelUserList: UserId[];
   nonInvitedUserList: UserId[];
+  reFetchChannelMembers: () => void;
+  setActiveChat: (chat: ActiveChat) => void;
+  fetchChannels: () => void;
 }
 
 export default function DetailsDropdown({
@@ -64,6 +67,9 @@ export default function DetailsDropdown({
   isOpenSearchChannel,
   channelUserList,
   nonInvitedUserList,
+  reFetchChannelMembers,
+  setActiveChat,
+  fetchChannels
 }: DetailsDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -88,6 +94,9 @@ export default function DetailsDropdown({
         setIsOpen={setIsOpen}
         nonInvitedUserList={nonInvitedUserList}
         selectedTabIndex={1}
+        reFetchChannelMembers={reFetchChannelMembers}
+        setActiveChat={setActiveChat}
+        fetchChannels={fetchChannels}
       />
     );
   }

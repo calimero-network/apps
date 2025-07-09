@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import AppContainer from "../../components/common/AppContainer";
 import {
   MessageStatus,
@@ -19,7 +19,12 @@ import {
   type ResponseData,
   getContextId,
 } from "@calimero-network/calimero-client";
-import type { Channels, FullMessageResponse, Message, UserId } from "../../api/clientApi";
+import type {
+  Channels,
+  FullMessageResponse,
+  Message,
+  UserId,
+} from "../../api/clientApi";
 import type { Message as ApiMessage } from "../../api/clientApi";
 
 import { type SubscriptionsClient } from "@calimero-network/calimero-client";
@@ -31,6 +36,8 @@ export default function Home() {
   const [activeChat, setActiveChat] = useState<ActiveChat | null>(null);
   const [incomingMessages, setIncomingMessages] = useState<CurbMessage[]>([]);
   const [nonInvitedUserList, setNonInvitedUserList] = useState<UserId[]>([]);
+  const messagesRef = useRef<CurbMessage[]>([]);
+  const activeChatRef = useRef<ActiveChat | null>(null);
 
   const getChannelUsers = async (channelId: string) => {
     const channelUsers: ResponseData<UserId[]> =
@@ -40,6 +47,10 @@ export default function Home() {
     if (channelUsers.data) {
       setChannelUsers(channelUsers.data);
     }
+  };
+
+  const reFetchChannelMembers = async () => {
+    await getChannelUsers(activeChatRef.current?.id || "");
   };
 
   const getNonInvitedUsers = async (channelId: string) => {
@@ -55,6 +66,7 @@ export default function Home() {
   const updateSelectedActiveChat = (selectedChat: ActiveChat) => {
     setIsOpenSearchChannel(false);
     setActiveChat(selectedChat);
+    activeChatRef.current = selectedChat;
     getChannelUsers(selectedChat.id);
     getNonInvitedUsers(selectedChat.id);
     setIsSidebarOpen(false);
@@ -70,8 +82,9 @@ export default function Home() {
   useEffect(() => {
     const storedSession: ActiveChat | null = getStoredSession();
     const chatToUse = storedSession || defaultActiveChat;
-    
+
     setActiveChat(chatToUse);
+    activeChatRef.current = chatToUse;
     getChannelUsers(chatToUse.name);
     getNonInvitedUsers(chatToUse.name);
   }, []);
@@ -86,7 +99,7 @@ export default function Home() {
 
   useEffect(() => {
     let subscriptionsClient: SubscriptionsClient | null = null;
-    
+
     const observeNodeEvents = async () => {
       try {
         subscriptionsClient = getWsSubscriptionsClient();
@@ -97,14 +110,19 @@ export default function Home() {
           try {
             if (data.type === "StateMutation") {
               //TODO FIX LOGIC
-            } else if (data.type === "ExecutionEvent") {
-              const executionEvents = data.data.events;
-              for (const event of executionEvents) {
-                if (event.kind === "MessageSent") {
-                  const messageDataArray: number[] = event.data;
-                  const messageData = new Uint8Array(messageDataArray);
-                  const message: Message = JSON.parse(new TextDecoder().decode(messageData));
-                  const newMessage: CurbMessage = {
+              const reFetchedMessages: ResponseData<FullMessageResponse> =
+                await new ClientApiDataSource().getMessages({
+                  group: { name: activeChatRef.current?.name || "" },
+                });
+              if (reFetchedMessages.data) {
+                const existingMessageIds = new Set(
+                  messagesRef.current.map((msg) => msg.id)
+                );
+                const newMessages = reFetchedMessages.data.messages
+                  .filter(
+                    (message: ApiMessage) => !existingMessageIds.has(message.id)
+                  )
+                  .map((message: ApiMessage) => ({
                     id: message.id,
                     text: message.text,
                     nonce: Math.random().toString(36).substring(2, 15),
@@ -120,16 +138,31 @@ export default function Home() {
                     images: [],
                     editMode: false,
                     status: MessageStatus.sent,
-                  };
-                  setIncomingMessages([newMessage]);
+                  }));
+
+                if (newMessages.length > 0) {
+                  setIncomingMessages(newMessages);
+                  messagesRef.current = [
+                    ...messagesRef.current,
+                    ...newMessages,
+                  ];
+                }
+              }
+            } else if (data.type === "ExecutionEvent") {
+              const executionEvents = data.data.events;
+              for (const event of executionEvents) {
+                if (event.kind === "MessageSent") {
+                  // On sender node do nothing as this will only duplicate the message
                 } else if (event.kind === "ChannelCreated") {
                   const channelCreatedDataArray: number[] = event.data;
                   const data = new Uint8Array(channelCreatedDataArray);
-                  const result: Message = JSON.parse(new TextDecoder().decode(data));
+                  const result: Message = JSON.parse(
+                    new TextDecoder().decode(data)
+                  );
                   console.log("channel created: ", result);
                   await fetchChannels();
                 }
-              } 
+              }
             }
           } catch (callbackError) {
             console.error("Error in subscription callback:", callbackError);
@@ -142,16 +175,14 @@ export default function Home() {
 
     observeNodeEvents();
 
-    // Cleanup function to disconnect when component unmounts
     return () => {
       if (subscriptionsClient) {
         subscriptionsClient.disconnect();
       }
     };
-  }, []); // Remove activeChat dependency - subscription should be global
+  }, []);
 
-  const loadInitialChatMessages = async (
-  ): Promise<ChatMessagesData> => {
+  const loadInitialChatMessages = async (): Promise<ChatMessagesData> => {
     if (!activeChat?.name) {
       return {
         messages: [],
@@ -164,24 +195,27 @@ export default function Home() {
         group: { name: activeChat?.name || "" },
       });
     if (messages.data) {
-      const messagesArray = messages.data.messages.map((message: ApiMessage) => ({
-        id: message.id,
-        text: message.text,
-        nonce: "1234567890",
-        key: Math.random().toString(36).substring(2, 15),
-        timestamp: message.timestamp * 1000,
-        sender: message.sender,
-        reactions: {},
-        threadCount: 0,
-        threadLastTimestamp: 0,
-        editedOn: undefined,
-        mentions: [],
-        files: [],
-        images: [],
-        editMode: false,
-        status: MessageStatus.sent,
-      }));
+      const messagesArray = messages.data.messages.map(
+        (message: ApiMessage) => ({
+          id: message.id,
+          text: message.text,
+          nonce: Math.random().toString(36).substring(2, 15),
+          key: Math.random().toString(36).substring(2, 15),
+          timestamp: message.timestamp * 1000,
+          sender: message.sender,
+          reactions: {},
+          threadCount: 0,
+          threadLastTimestamp: 0,
+          editedOn: undefined,
+          mentions: [],
+          files: [],
+          images: [],
+          editMode: false,
+          status: MessageStatus.sent,
+        })
+      );
 
+      messagesRef.current = messagesArray;
       return {
         messages: messagesArray,
         totalCount: messagesArray.length,
@@ -237,6 +271,7 @@ export default function Home() {
       setIsSidebarOpen={setIsSidebarOpen}
       activeChat={activeChat}
       updateSelectedActiveChat={updateSelectedActiveChat}
+      reFetchChannelMembers={reFetchChannelMembers}
       openSearchPage={openSearchPage}
       channelUsers={channelUsers}
       nonInvitedUserList={nonInvitedUserList}
@@ -245,6 +280,7 @@ export default function Home() {
       incomingMessages={incomingMessages}
       channels={channels}
       users={users}
+      fetchChannels={fetchChannels}
     />
   );
 }

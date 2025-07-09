@@ -35,6 +35,8 @@ interface AppContainerProps {
   incomingMessages: CurbMessage[];
   users: User[];
   channels: ChannelMeta[];
+  reFetchChannelMembers: () => void;
+  fetchChannels: () => void;
 }
 export default function AppContainer({
   activeChat,
@@ -51,17 +53,22 @@ export default function AppContainer({
   incomingMessages,
   users,
   channels,
+  reFetchChannelMembers,
+  fetchChannels
 }: AppContainerProps) {
   return (
     <>
       <CurbNavbar
         activeChat={activeChat}
+        setActiveChat={updateSelectedActiveChat}
         isSidebarOpen={isSidebarOpen}
         setIsSidebarOpen={setIsSidebarOpen}
         isOpenSearchChannel={isOpenSearchChannel}
         setIsOpenSearchChannel={setIsOpenSearchChannel}
         channelUserList={channelUsers}
         nonInvitedUserList={nonInvitedUserList}
+        reFetchChannelMembers={reFetchChannelMembers}
+        fetchChannels={fetchChannels}
       />
       <ContentDivContainer>
         <ChannelsContainer
