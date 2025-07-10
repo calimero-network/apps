@@ -1,8 +1,10 @@
 import { useCallback, useState } from "react";
-import type { ActiveChat, ChannelMeta } from "../types/Common";
-import { convertTimestampToDate } from "../utils/time";
+import type { ActiveChat } from "../types/Common";
 import Loader from "../components/loader/Loader";
 import { styled } from "styled-components";
+import type { ChannelInfo } from "../api/clientApi";
+import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
+import { timestampToDate } from "../utils/time";
 
 const MessageJoinWrapper = styled.div`
   height: 100%;
@@ -68,7 +70,7 @@ const MessageJoinWrapper = styled.div`
     align-items: center;
     width: 190px;
     height: 40px;
-    :hover {
+    &:hover {
       background-color: #717cf0;
     }
   }
@@ -80,10 +82,10 @@ const MessageJoinWrapper = styled.div`
 `;
 
 interface JoinChannelProps {
-  channelMeta: ChannelMeta;
+  channelMeta: ChannelInfo;
   activeChat: ActiveChat;
   setIsOpenSearchChannel: () => void;
-  onJoinedChat: (activeChat: ActiveChat) => void;
+  onJoinedChat: () => void;
 }
 
 export default function JoinChannel({
@@ -93,14 +95,13 @@ export default function JoinChannel({
   onJoinedChat,
 }: JoinChannelProps) {
   const [loading, setLoading] = useState(false);
-  const joinChannel = useCallback(() => {
+  const joinChannel = useCallback(async() => {
     setLoading(true);
-    // todo! join channel
-    // curbApi.joinChannel(activeChat.name).then(() => {
-    //   setLoading(false);
-    //   activeChat.canJoin = false;
-    //   onJoinedChat(activeChat);
-    // });
+    await new ClientApiDataSource().joinChannel({
+      channel: { name: activeChat.name },
+    });
+    setLoading(false);
+    onJoinedChat();
   }, [activeChat, onJoinedChat]);
 
   return (
@@ -121,18 +122,12 @@ export default function JoinChannel({
           </svg>
           <span>{activeChat.name}</span>
         </div>
-        {`@${
-          channelMeta.createdBy
-        } created this channel on ${convertTimestampToDate(
-          channelMeta.createdAt,
-        )}`}
+        {channelMeta && channelMeta.created_by && channelMeta.created_at && `@${channelMeta.created_by.slice(0,6)}...${channelMeta.created_by.slice(-4)} created this channel on ${timestampToDate(new Date(
+          channelMeta.created_at * 1000
+        ).toISOString())}`}
         <div className="wrapper">
           <div className="join-button" onClick={joinChannel}>
-            {loading ? (
-              <Loader size={16} />
-            ) : (
-              <span>Join Channel</span>
-            )}
+            {loading ? <Loader size={16} /> : "Join Channel"}
           </div>
         </div>
         <span className="backButton" onClick={setIsOpenSearchChannel}>
@@ -142,4 +137,3 @@ export default function JoinChannel({
     </MessageJoinWrapper>
   );
 }
-

@@ -1,7 +1,13 @@
 import { styled } from "styled-components";
 import Loader from "../loader/Loader";
-import type { ActiveChat, ChannelMeta, ChatType } from "../../types/Common";
+import type { ActiveChat, ChannelMeta } from "../../types/Common";
 import { useCallback, useEffect, useState } from "react";
+import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
+import {
+  getExecutorPublicKey,
+  type ResponseData,
+} from "@calimero-network/calimero-client";
+import type { Channels, UserId } from "../../api/clientApi";
 
 const SearchContainer = styled.div`
   padding: 24px;
@@ -175,25 +181,29 @@ const SearchContainer = styled.div`
   }
 `;
 
-const ChannelOptionButton = styled.button<{ canJoin: boolean }>`
+const ChannelOptionButton = styled.button<{ $canJoin: boolean }>`
   background-color: transparent;
   :hover {
-    background-color: ${({ canJoin }) => (canJoin ? "#727EFA" : "#C03636")};
-    border: 1px solid ${({ canJoin }) => (canJoin ? "#727EFA" : "#C03636")};
+    background-color: ${({ $canJoin }) => ($canJoin ? "#727EFA" : "#C03636")};
+    border: 1px solid ${({ $canJoin }) => ($canJoin ? "#727EFA" : "#C03636")};
   }
 `;
 
 interface SearchChannelsContainerProps {
   onChatSelected: (chat: ActiveChat) => void;
+  fetchChannels: () => void;
 }
 
 export default function SearchChannelsContainer({
   onChatSelected,
+  fetchChannels,
 }: SearchChannelsContainerProps) {
   const [allChannels, setAllChannels] = useState<ChannelMeta[]>([]);
   const [inputValue, setInputValue] = useState("");
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [allChannelsCreators, setAllChannelsCreators] = useState<{ [key: string]: string }>({});
+  const [allChannelsCreators, setAllChannelsCreators] = useState<{
+    [key: string]: string;
+  }>({});
   const [isLoadingNameId, setIsLoadingNameId] = useState("");
 
   const channelsStartingWithPrefix = inputValue
@@ -201,44 +211,60 @@ export default function SearchChannelsContainer({
     : allChannels || [];
 
   useEffect(() => {
-    // TODO: fetch channels from API
-    //   Promise.all([curbApi.getChannels(false), curbApi.getChannels(true)])
-    //     .then(([publicChannels, userChannels]) => {
-    //       const userChannelSet = userChannels.map((uc) => uc.name);
-    //       const onlyPublicChannels = publicChannels
-    //         .filter((c) => c.channelType === "Public")
-    //         .map((ac) => ({
-    //           ...ac,
-    //           isMember: userChannelSet.includes(ac.name),
-    //         }));
-    //       setAllChannels(onlyPublicChannels);
-    //     })
-    //     .catch((error) => {
-    //       setAllChannels([]);
-    //       console.log("Error fetching channels:", error);
-    //     });
+    const fetchChannels = async () => {
+      const channels: ResponseData<Channels> =
+        await new ClientApiDataSource().getAllChannelsSearch();
+      if (channels.data) {
+        const channelsArray: ChannelMeta[] = await Promise.all(
+          Object.entries(channels.data).map(async ([name, channelInfo]) => {
+            const channelMembers: ResponseData<UserId[]> =
+              await new ClientApiDataSource().getChannelMembers({
+                channel: { name: name },
+              });
+            let isMember = false;
+            if (channelMembers.data) {
+              isMember = channelMembers.data.includes(
+                getExecutorPublicKey() || ""
+              );
+            } else {
+              isMember = false;
+            }
+            return {
+              name,
+              type: "channel" as const,
+              channelType: channelInfo.channel_type,
+              description: "",
+              owner: channelInfo.created_by,
+              members: [],
+              createdBy: channelInfo.created_by,
+              inviteOnly: false,
+              unreadMessages: {
+                count: 0,
+                mentions: 0,
+              },
+              isMember: isMember,
+              readOnly: channelInfo.read_only,
+              createdAt: new Date(channelInfo.created_at * 1000).toISOString(),
+            };
+          })
+        );
+        setAllChannels(channelsArray);
+      }
+    };
+    fetchChannels();
   }, []);
 
-  useEffect(() => {
-    // TODO: fetch channel meta from API
-    //   allChannels.forEach((c) => {
-    //     Promise.all([curbApi.getChannelMeta(c.name)]).then(([meta]) => {
-    //       const allChannelsTemp = allChannelsCreators;
-    //       allChannelsTemp[c.name] = meta.createdBy;
-    //       setAllChannelsCreators(allChannelsTemp);
-    //     });
-    //   });
-  }, [allChannels]);
-
   const clickChannelOption = useCallback(
-    (isMember: boolean, channelName: string) => {
+    async (isMember: boolean, channelName: string) => {
       setIsLoadingNameId(channelName);
       if (isMember) {
-        // TODO: leave channel from API
-        //curbApi.leaveChannel(channelName).then(() => setIsLoadingNameId(""));
+        await new ClientApiDataSource().leaveChannel({
+          channel: { name: channelName },
+        });
       } else {
-        // TODO: join channel from API
-        //curbApi.joinChannel(channelName).then(() => setIsLoadingNameId(""));
+        await new ClientApiDataSource().joinChannel({
+          channel: { name: channelName },
+        });
       }
       const updatedChannel = allChannels.map((c) => {
         if (c.name === channelName) {
@@ -248,20 +274,22 @@ export default function SearchChannelsContainer({
         }
       });
       setAllChannels(updatedChannel);
+      setIsLoadingNameId("");
+      fetchChannels();
     },
     [setAllChannels, allChannels]
   );
 
   const onViewChannel = useCallback((chatSelected: ChannelMeta) => {
-    const chat: ActiveChat = { type: chatSelected.channelType as ChatType, name: '', readOnly: false, id: '' };
-    if (chatSelected.channelType === "channel") {
-      chat.name = chatSelected.name;
-      chat.readOnly = chatSelected.readOnly;
-      if (chatSelected.isMember === false) {
-        chat.canJoin = true;
-      }
-      onChatSelected(chat);
-    }
+    const chat: ActiveChat = {
+      type: chatSelected.type,
+      id: chatSelected.name,
+      name: chatSelected.name,
+      readOnly: chatSelected.readOnly,
+      account: chatSelected.owner,
+      canJoin: chatSelected.isMember === false,
+    };
+    onChatSelected(chat);
   }, []);
 
   return (
@@ -309,7 +337,8 @@ export default function SearchChannelsContainer({
                     {channel.name}
                   </div>
                   <div className="creatorText">
-                    Created by: {allChannelsCreators[channel.name]}
+                    Created by: {channel.createdBy.slice(0, 6)}...
+                    {channel.createdBy.slice(-4)}
                   </div>
                 </div>
                 <div className="listItemOptions">
@@ -326,11 +355,10 @@ export default function SearchChannelsContainer({
                   </div>
                   <ChannelOptionButton
                     className="joinChannelButton"
-                    canJoin={!channel.isMember}
+                    $canJoin={!channel.isMember}
                     disabled={
                       channel.name === isLoadingNameId ||
-                      allChannelsCreators[channel.name] ===
-                        localStorage.getItem("accountId")
+                      channel.createdBy === localStorage.getItem("accountId")
                     }
                     onClick={() =>
                       clickChannelOption(channel.isMember, channel.name)

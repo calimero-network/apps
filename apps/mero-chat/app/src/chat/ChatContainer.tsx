@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { styled } from "styled-components";
 import type {
   ActiveChat,
-  ChannelMeta,
   ChatMessagesData,
   CurbMessage,
   MessageWithReactions,
@@ -12,6 +11,8 @@ import JoinChannel from "./JoinChannel";
 import EmojiSelectorPopup from "../emojiSelector/EmojiSelectorPopup";
 import ChatDisplaySplit from "./ChatDisplaySplit";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
+import type { ResponseData } from "@calimero-network/calimero-client";
+import type { ChannelInfo } from "../api/clientApi";
 
 interface ChatContainerProps {
   activeChat: ActiveChat;
@@ -65,7 +66,7 @@ export default function ChatContainer({
   const [updatedMessages, _setUpdatedMessages] = useState<
     MessageWithReactions[]
   >([]);
-  const [incomingThreadMessages, _setIncomingThreadMessages] = useState<
+  const [_incomingThreadMessages, _setIncomingThreadMessages] = useState<
     MessageWithReactions[]
   >([]);
   const [updatedThreadMessages, _setUpdatedThreadMessages] = useState<
@@ -74,18 +75,23 @@ export default function ChatContainer({
   const [isEmojiSelectorVisible, setIsEmojiSelectorVisible] = useState(false);
   const [messageWithEmojiSelector, _setMessageWithEmojiSelector] =
     useState<MessageWithReactions | null>(null);
-  const [channelMeta, _setChannelMeta] = useState<ChannelMeta>(
-    {} as ChannelMeta
+  const [channelMeta, setChannelMeta] = useState<ChannelInfo>(
+    {} as ChannelInfo
   );
   const [channelUserList, _setChannelUserList] = useState<User[]>([]);
   const [openMobileReactions, setOpenMobileReactions] = useState("");
 
   useEffect(() => {
-    if (activeChat.type === "channel") {
-      // todo! get channel meta and channel members
-      //curbApi.getChannelMeta(activeChat.name).then(setChannelMeta);
-      //curbApi.getChannelMembers(activeChat.name).then(setChannelUserList);
-    }
+    const fetchChannelMeta = async () => {
+      const channelMeta: ResponseData<ChannelInfo> =
+        await new ClientApiDataSource().getChannelInfo({
+          channel: { name: activeChat.name },
+        });
+      if (channelMeta.data) {
+        setChannelMeta(channelMeta.data);
+      }
+    };
+    fetchChannelMeta();
   }, [activeChat]);
 
   const _toggleEmojiSelector = useCallback(
@@ -100,27 +106,9 @@ export default function ChatContainer({
   const _openThreadRef = useRef(openThread);
 
   useEffect(() => {
-    if (activeChat.type === "channel") {
-      // todo: calimero ws subscription
-      // wsApi.methods.subscribe(
-      //   { [contract]: [activeChat.name] },
-      //   (err, result) => {
-      //     if (err) return console.log("error subscribing to channel", err);
-      //     console.log("subscribed to", activeChat, err, result);
-      //     curbApi.emit("subscribed", activeChat.name);
-      //   }
-      // );
-    }
     activeChatRef.current = activeChat;
   }, [activeChat]);
 
-  useEffect(() => {
-    setOpenThread(undefined);
-  }, [activeChat]);
-
-  // useEffect(() => {
-  //   _openThreadRef.current = openThread;
-  // }, [openThread]);
   const computeReaction = useCallback(
     (message: MessageWithReactions, reaction: string, sender: string) => {
       const accounts = message.reactions.get(reaction) ?? [];
@@ -134,23 +122,6 @@ export default function ChatContainer({
     },
     []
   );
-
-  // useEffect(() => {
-  //   const messageListener = () => {};
-  //   const reactionListener = () => {};
-  //   const editsListener = () => {};
-  //   const deleteListener = () => {};
-  // }, []);
-
-  // const readMessage = useCallback((message: MessageWithReactions) => {
-  //   if (message?.id && message?.sender !== localStorage.getItem("accountId")) {
-  //     // todo: api for read message
-  //     // curbApi.readMessage({
-  //     //   chat: activeChatRef.current,
-  //     //   messageId: message.id,
-  //     // });
-  //   }
-  // }, []);
 
   const handleReaction = useCallback(
     (message: MessageWithReactions, reaction: string) => {
@@ -358,7 +329,7 @@ export default function ChatContainer({
       message,
       timestamp: Math.floor(Date.now() / 1000),
     });
-  }
+  };
 
   return (
     <ChatContainerWrapper>
@@ -398,10 +369,14 @@ export default function ChatContainer({
           {openThread && openThread.id && (
             <ThreadWrapper>
               <ChatDisplaySplit
-                readMessage={(message: MessageWithReactions) => console.log(message)}
+                readMessage={(message: MessageWithReactions) =>
+                  console.log(message)
+                }
                 handleReaction={handleReaction}
                 openThread={openThread}
-                setOpenThread={(message: MessageWithReactions | null) => setOpenThread(message || undefined)}
+                setOpenThread={(message: MessageWithReactions | null) =>
+                  setOpenThread(message || undefined)
+                }
                 activeChat={activeChat}
                 updatedMessages={updatedThreadMessages}
                 resetImage={() => {}}
@@ -414,10 +389,18 @@ export default function ChatContainer({
                 channelUserList={channelUserList}
                 openMobileReactions={openMobileReactions}
                 setOpenMobileReactions={setOpenMobileReactions}
-                onMessageDeletion={(message: MessageWithReactions) => console.log(message)}
-                onEditModeRequested={(message: MessageWithReactions) => console.log(message)}
-                onEditModeCancelled={(message: MessageWithReactions) => console.log(message)}
-                onMessageUpdated={(message: MessageWithReactions) => console.log(message)}
+                onMessageDeletion={(message: MessageWithReactions) =>
+                  console.log(message)
+                }
+                onEditModeRequested={(message: MessageWithReactions) =>
+                  console.log(message)
+                }
+                onEditModeCancelled={(message: MessageWithReactions) =>
+                  console.log(message)
+                }
+                onMessageUpdated={(message: MessageWithReactions) =>
+                  console.log(message)
+                }
                 loadInitialChatMessages={loadInitialChatMessages}
                 incomingMessages={incomingMessages}
               />

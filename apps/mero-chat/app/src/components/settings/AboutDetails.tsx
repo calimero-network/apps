@@ -1,5 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
+import { timestampToDate } from '../../utils/time';
 
 interface AboutDetailsProps {
   dateCreated: string;
@@ -54,16 +55,6 @@ const ButtonLeave = styled.button`
 `;
 
 const AboutDetails: React.FC<AboutDetailsProps> = (props) => {
-  const timestampToDate = (timestampMs: string) => {
-    const date = new Date(timestampMs);
-    const day = date.getDate();
-    const month = date.getMonth() + 1;
-    const year = date.getFullYear();
-    const formattedDay = day < 10 ? `0${day}` : `${day}`;
-    const formattedMonth = month < 10 ? `0${month}` : `${month}`;
-    return `${formattedDay}/${formattedMonth}/${year}`;
-  };
-
   return (
     <>
       <SettingsItem $borderbottom $roundedTop>

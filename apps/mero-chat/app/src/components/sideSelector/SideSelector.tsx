@@ -173,7 +173,6 @@ const SearchChannels: React.FC<SearchChannelsProps> = ({
 };
 
 const SideSelector: React.FC<SideSelectorProps> = (props) => {
-  const users = props.users;
   const channels = props.channels;
   const isSidebarOpen = props.isSidebarOpen;
   const setIsOpenSearchChannel = props.setIsOpenSearchChannel;
@@ -182,13 +181,13 @@ const SideSelector: React.FC<SideSelectorProps> = (props) => {
   const SideMenuContent = () => {
     return (
       <>
-        {/* <SearchChannels
+        <SearchChannels
           isOpenSearchChannel={isOpenSearchChannel}
           setIsOpenSearchChannel={() =>
             setIsOpenSearchChannel(!isOpenSearchChannel)
           }
         />
-        <HorizontalSeparatorLine $isMobile={false} /> */}
+        <HorizontalSeparatorLine $isMobile={false} />
         <ChannelHeader title="Channels" />
         <ChannelList
           channels={channels}

@@ -37,6 +37,7 @@ interface AppContainerProps {
   channels: ChannelMeta[];
   reFetchChannelMembers: () => void;
   fetchChannels: () => void;
+  onJoinedChat: () => void;
 }
 export default function AppContainer({
   activeChat,
@@ -54,7 +55,8 @@ export default function AppContainer({
   users,
   channels,
   reFetchChannelMembers,
-  fetchChannels
+  fetchChannels,
+  onJoinedChat
 }: AppContainerProps) {
   return (
     <>
@@ -88,7 +90,7 @@ export default function AppContainer({
               <ChatContainer
                 activeChat={activeChat}
                 setIsOpenSearchChannel={() => openSearchPage()}
-                onJoinedChat={() => console.log("joined chat")}
+                onJoinedChat={onJoinedChat}
                 loadInitialChatMessages={loadInitialChatMessages}
                 incomingMessages={incomingMessages}
               />
@@ -96,6 +98,7 @@ export default function AppContainer({
             {isOpenSearchChannel && (
               <SearchChannelsContainer
                 onChatSelected={updateSelectedActiveChat}
+                fetchChannels={fetchChannels}
               />
             )}
           </Wrapper>

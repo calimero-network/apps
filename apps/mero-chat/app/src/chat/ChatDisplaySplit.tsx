@@ -1,6 +1,5 @@
 import { styled } from "styled-components";
 import {
-  type ChannelMeta,
   type MessageWithReactions,
   type User,
 } from "../types/Common";
@@ -16,6 +15,8 @@ import {
   VirtualizedChat,
   type CurbMessage,
 } from "virtualized-chat";
+import type { ChannelInfo } from "../api/clientApi";
+import { getExecutorPublicKey } from "@calimero-network/calimero-client";
 
 interface ChatDisplaySplitProps {
   readMessage: (message: MessageWithReactions) => void;
@@ -30,7 +31,7 @@ interface ChatDisplaySplitProps {
   isThread: boolean;
   isReadOnly: boolean;
   toggleEmojiSelector: () => void;
-  channelMeta: ChannelMeta;
+  channelMeta: ChannelInfo;
   channelUserList: User[];
   setOpenMobileReactions: (reactions: string) => void;
   openMobileReactions: string;
@@ -180,11 +181,11 @@ export default function ChatDisplaySplit({
 
   useEffect(() => {
     if (!accountId) {
-      setAccountId(localStorage.getItem("accountId") ?? "");
+      setAccountId(getExecutorPublicKey() ?? "");
     }
   }, []);
 
-  const loadPrevMessages = (id: string) => {
+  const _loadPrevMessages = (id: string) => {
     console.log(id);
     // TODO: pagination
     // if (isThread && id) {
@@ -210,7 +211,7 @@ export default function ChatDisplaySplit({
     [channelUserList, accountId]
   );
 
-  const isOwner = accountId === channelMeta.createdBy;
+  const isOwner = accountId === channelMeta.created_by;
 
   if (openThread && isThread) {
     chatStyle.height = "calc(100% - 124px)";
@@ -239,39 +240,7 @@ export default function ChatDisplaySplit({
     };
   };
 
-  const incomingMessageMock: CurbMessage[] = [];
-
-  // const renderMessage = useMemo(
-  //   () => {
-  //     const params = {
-  //       handleReaction,
-  //       getIconFromCache,
-  //       accountId,
-  //       isThread,
-  //       openMobileReactions,
-  //       setOpenMobileReactions,
-  //       setThread: openThread ? setThread : undefined,
-  //       toggleEmojiSelector,
-  //       onEditModeRequested: onEditModeRequested,
-  //       onEditModeCancelled: onEditModeCancelled,
-  //       onMessageUpdated: onMessageUpdated,
-  //       editable: () => false,
-  //       deleteable: (message: MessageWithReactions) => {
-  //         if (message.sender === accountId) {
-  //           return true;
-  //         }
-  //         return isOwner || isModerator;
-  //       },
-  //       onDeleteMessageRequested: (message: MessageWithReactions) => {
-  //         onMessageDeletion(message);
-  //       },
-  //     }
-  //     return messageRenderer(params);
-  //   },
-  //   [accountId, isOwner, isModerator, openMobileReactions]
-  // );
-
-  const renderMessageMock = () => {
+  const renderMessage = () => {
     const params: MessageRendererProps = {
       accountId: "fran.near",
       isThread: false,
@@ -279,17 +248,17 @@ export default function ChatDisplaySplit({
         console.log(message, reaction);
       },
       setThread: setThread,
-      getIconFromCache: (accountId: string) => Promise.resolve(null),
-      toggleEmojiSelector: (message: CurbMessage) => {},
+      getIconFromCache: (_accountId: string) => Promise.resolve(null),
+      toggleEmojiSelector: (_message: CurbMessage) => {},
       openMobileReactions: "abc",
-      setOpenMobileReactions: (messageId: string) => {},
-      editable: (message: CurbMessage) => true,
-      deleteable: (message: CurbMessage) => true,
-      onEditModeRequested: (message: CurbMessage, isThread: boolean) => {},
-      onEditModeCancelled: (message: CurbMessage) => {},
-      onMessageUpdated: (message: CurbMessage) => {},
-      onDeleteMessageRequested: (message: CurbMessage) => {},
-      fetchAccounts: (prefix: string) => {},
+      setOpenMobileReactions: (_messageId: string) => {},
+      editable: (_message: CurbMessage) => true,
+      deleteable: (_message: CurbMessage) => true,
+      onEditModeRequested: (_message: CurbMessage, _isThread: boolean) => {},
+      onEditModeCancelled: (_message: CurbMessage) => {},
+      onMessageUpdated: (_message: CurbMessage) => {},
+      onDeleteMessageRequested: (_message: CurbMessage) => {},
+      fetchAccounts: (_prefix: string) => {},
       autocompleteAccounts: [],
       authToken: undefined,
       privateIpfsEndpoint: "https://ipfs.io",
@@ -313,7 +282,7 @@ export default function ChatDisplaySplit({
             shouldTriggerNewItemIndicator={(message: MessageWithReactions) =>
               message.sender !== accountId
             }
-            render={renderMessageMock()}
+            render={renderMessage()}
             chatId={isThread ? openThread?.id : activeChat}
             style={chatStyle}
           />

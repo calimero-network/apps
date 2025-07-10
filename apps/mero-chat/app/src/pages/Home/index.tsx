@@ -22,7 +22,6 @@ import {
 import type {
   Channels,
   FullMessageResponse,
-  Message,
   UserId,
 } from "../../api/clientApi";
 import type { Message as ApiMessage } from "../../api/clientApi";
@@ -154,12 +153,6 @@ export default function Home() {
                 if (event.kind === "MessageSent") {
                   // On sender node do nothing as this will only duplicate the message
                 } else if (event.kind === "ChannelCreated") {
-                  const channelCreatedDataArray: number[] = event.data;
-                  const data = new Uint8Array(channelCreatedDataArray);
-                  const result: Message = JSON.parse(
-                    new TextDecoder().decode(data)
-                  );
-                  console.log("channel created: ", result);
                   await fetchChannels();
                 }
               }
@@ -263,6 +256,21 @@ export default function Home() {
     fetchChannels();
   }, []);
 
+  const onJoinedChat = async () => {
+    await fetchChannels();
+    const activeChatCopy = {...activeChat};
+    if (activeChatCopy && activeChat) {
+      activeChatCopy.canJoin = false;
+      activeChatCopy.type = activeChat.type;
+      activeChatCopy.id = activeChat.id;
+      activeChatCopy.name = activeChat.name;
+      activeChatCopy.readOnly = activeChat.readOnly;
+      activeChatCopy.account = activeChat.account;
+    }
+    setActiveChat(activeChatCopy as ActiveChat);
+    activeChatRef.current = activeChatCopy as ActiveChat;
+  }
+
   return (
     <AppContainer
       isOpenSearchChannel={isOpenSearchChannel}
@@ -281,6 +289,7 @@ export default function Home() {
       channels={channels}
       users={users}
       fetchChannels={fetchChannels}
+      onJoinedChat={onJoinedChat}
     />
   );
 }
