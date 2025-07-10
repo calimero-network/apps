@@ -307,7 +307,7 @@ export default function MessageInput({
   const [uploadedFile, setUploadedFile] = useState<ChatFile | null>(null);
   const [uploadedImage, setUploadedImage] = useState<ChatFile | null>(null);
   const [emojiSelectorOpen, setEmojiSelectorOpen] = useState(false);
-  const [_selectedEmoji, setSelectedEmoji] = useState("");
+  const [selectedEmoji, setSelectedEmoji] = useState("");
   const [error, setError] = useState("");
   const placeholderPosition = "16px";
 
@@ -317,6 +317,12 @@ export default function MessageInput({
     },
     []
   );
+
+  useEffect(() => {
+    setMessage(null);
+    setEmojiSelectorOpen(false);
+    setSelectedEmoji("");
+  }, [selectedChat]);
 
   const resetFile = useCallback(() => {
     setUploadedFile(null);
@@ -412,6 +418,8 @@ export default function MessageInput({
                   )
                 }
                 value={message?.text ?? ""}
+                selectedEmoji={selectedEmoji}
+                resetSelectedEmoji={() => setSelectedEmoji('')}
                 handleMessageSent={handleSendMessage}
               />
             </FullWidthWrapper>

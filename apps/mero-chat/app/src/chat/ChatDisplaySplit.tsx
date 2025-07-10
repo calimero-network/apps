@@ -1,8 +1,5 @@
 import { styled } from "styled-components";
-import {
-  type MessageWithReactions,
-  type User,
-} from "../types/Common";
+import { type MessageWithReactions, type User } from "../types/Common";
 import type {
   ActiveChat,
   ChatMessagesData,
@@ -267,27 +264,27 @@ export default function ChatDisplaySplit({
   };
 
   return (
-      <Wrapper style={wrapperStyle}>
-        {/* @ts-expect-error - TODO: fix this */}
-        <ContainerPadding style={containerPaddingStyle}>
-          {openThread && isThread && (
-            <ThreadHeader onClose={() => setOpenThread(null)} />
-          )}
-          <VirtualizedChat
-            loadInitialMessages={loadInitialChatMessages}
-            loadPrevMessages={loadPrevMessagesMock}
-            incomingMessages={incomingMessages}
-            updatedMessages={updatedMessages}
-            onItemNewItemRender={readMessage}
-            shouldTriggerNewItemIndicator={(message: MessageWithReactions) =>
-              message.sender !== accountId
-            }
-            render={renderMessage()}
-            chatId={isThread ? openThread?.id : activeChat}
-            style={chatStyle}
-          />
-        </ContainerPadding>
-        <MessageInput
+    <Wrapper style={wrapperStyle}>
+      {/* @ts-expect-error - TODO: fix this */}
+      <ContainerPadding style={containerPaddingStyle}>
+        {openThread && isThread && (
+          <ThreadHeader onClose={() => setOpenThread(null)} />
+        )}
+        <VirtualizedChat
+          loadInitialMessages={loadInitialChatMessages}
+          loadPrevMessages={loadPrevMessagesMock}
+          incomingMessages={incomingMessages}
+          updatedMessages={updatedMessages}
+          onItemNewItemRender={readMessage}
+          shouldTriggerNewItemIndicator={(message: MessageWithReactions) =>
+            message.sender !== accountId
+          }
+          render={renderMessage()}
+          chatId={isThread ? openThread?.id : activeChat}
+          style={chatStyle}
+        />
+      </ContainerPadding>
+      <MessageInput
         selectedChat={
           activeChat.type === "channel" ? activeChat.name : activeChat.id
         }
@@ -299,6 +296,6 @@ export default function ChatDisplaySplit({
         isOwner={isOwner}
         isModerator={isModerator}
       />
-      </Wrapper>
+    </Wrapper>
   );
 }
