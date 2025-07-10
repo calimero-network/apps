@@ -5,6 +5,7 @@ import {
   type ActiveChat,
   type ChannelMeta,
   type ChatMessagesData,
+  type ChatMessagesDataWithOlder,
   type CurbMessage,
   type User,
 } from "../../types/Common";
@@ -70,6 +71,8 @@ export default function Home() {
     getNonInvitedUsers(selectedChat.id);
     setIsSidebarOpen(false);
     updateSessionChat(selectedChat);
+    setMessagesOffset(20);
+    setTotalMessageCount(0);
   };
 
   const openSearchPage = useCallback(() => {
@@ -86,6 +89,8 @@ export default function Home() {
     activeChatRef.current = chatToUse;
     getChannelUsers(chatToUse.name);
     getNonInvitedUsers(chatToUse.name);
+    setMessagesOffset(20);
+    setTotalMessageCount(0);
   }, []);
 
   const onDMSelected = useCallback((dm: User) => {
@@ -94,6 +99,8 @@ export default function Home() {
       name: dm.id,
       id: dm.id,
     });
+    setMessagesOffset(20);
+    setTotalMessageCount(0);
   }, []);
 
   useEffect(() => {
@@ -112,6 +119,8 @@ export default function Home() {
               const reFetchedMessages: ResponseData<FullMessageResponse> =
                 await new ClientApiDataSource().getMessages({
                   group: { name: activeChatRef.current?.name || "" },
+                  limit: 20,
+                  offset: 0,
                 });
               if (reFetchedMessages.data) {
                 const existingMessageIds = new Set(
@@ -125,7 +134,7 @@ export default function Home() {
                     id: message.id,
                     text: message.text,
                     nonce: Math.random().toString(36).substring(2, 15),
-                    key: Math.random().toString(36).substring(2, 15),
+                    key: message.id,
                     timestamp: message.timestamp * 1000,
                     sender: message.sender,
                     reactions: {},
@@ -186,6 +195,8 @@ export default function Home() {
     const messages: ResponseData<FullMessageResponse> =
       await new ClientApiDataSource().getMessages({
         group: { name: activeChat?.name || "" },
+        limit: 20,
+        offset: 0,
       });
     if (messages.data) {
       const messagesArray = messages.data.messages.map(
@@ -193,7 +204,7 @@ export default function Home() {
           id: message.id,
           text: message.text,
           nonce: Math.random().toString(36).substring(2, 15),
-          key: Math.random().toString(36).substring(2, 15),
+          key: message.id,
           timestamp: message.timestamp * 1000,
           sender: message.sender,
           reactions: {},
@@ -209,10 +220,11 @@ export default function Home() {
       );
 
       messagesRef.current = messagesArray;
+      setTotalMessageCount(messages.data.total_count);
       return {
         messages: messagesArray,
-        totalCount: messagesArray.length,
-        hasMore: false,
+        totalCount: messages.data.total_count,
+        hasMore: messages.data.start_position < messages.data.total_count,
       };
     }
     return {
@@ -258,7 +270,7 @@ export default function Home() {
 
   const onJoinedChat = async () => {
     await fetchChannels();
-    const activeChatCopy = {...activeChat};
+    const activeChatCopy = { ...activeChat };
     if (activeChatCopy && activeChat) {
       activeChatCopy.canJoin = false;
       activeChatCopy.type = activeChat.type;
@@ -269,7 +281,62 @@ export default function Home() {
     }
     setActiveChat(activeChatCopy as ActiveChat);
     activeChatRef.current = activeChatCopy as ActiveChat;
-  }
+  };
+
+  const [messagesOffset, setMessagesOffset] = useState(20);
+  const [totalMessageCount, setTotalMessageCount] = useState(0);
+
+  const loadPrevMessages = async (
+    _id: string
+  ): Promise<ChatMessagesDataWithOlder> => {
+    if (messagesOffset >= totalMessageCount) {
+      return {
+        messages: [],
+        totalCount: totalMessageCount,
+        hasOlder: false,
+      };
+    }
+
+    const messages: ResponseData<FullMessageResponse> =
+      await new ClientApiDataSource().getMessages({
+        group: { name: activeChatRef.current?.name || "" },
+        limit: 20,
+        offset: messagesOffset,
+      });
+    if (messages.data) {
+      const messagesArray = messages.data.messages.map(
+        (message: ApiMessage) => ({
+          id: message.id,
+          text: message.text,
+          nonce: Math.random().toString(36).substring(2, 15),
+          key: message.id,
+          timestamp: message.timestamp * 1000,
+          sender: message.sender,
+          reactions: {},
+          threadCount: 0,
+          threadLastTimestamp: 0,
+          editedOn: undefined,
+          mentions: [],
+          files: [],
+          images: [],
+          editMode: false,
+          status: MessageStatus.sent,
+        })
+      );
+      setMessagesOffset(messagesOffset + 20);
+      return {
+        messages: messagesArray,
+        totalCount: messages.data.total_count,
+        hasOlder: messages.data.start_position < messages.data.total_count,
+      };
+    } else {
+      return {
+        messages: [],
+        totalCount: 0,
+        hasOlder: false,
+      };
+    }
+  };
 
   return (
     <AppContainer
@@ -290,6 +357,7 @@ export default function Home() {
       users={users}
       fetchChannels={fetchChannels}
       onJoinedChat={onJoinedChat}
+      loadPrevMessages={loadPrevMessages}
     />
   );
 }

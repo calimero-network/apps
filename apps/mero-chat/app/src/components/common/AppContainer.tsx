@@ -1,5 +1,5 @@
 import { styled } from "styled-components";
-import type { ActiveChat, ChannelMeta, ChatMessagesData, CurbMessage, User } from "../../types/Common";
+import type { ActiveChat, ChannelMeta, ChatMessagesData, ChatMessagesDataWithOlder, CurbMessage, User } from "../../types/Common";
 import ChannelsContainer from "./ChannelsContainer";
 import CurbNavbar from "../navbar/CurbNavbar";
 import SearchChannelsContainer from "../searchChannels/SearchChannelsContainer";
@@ -38,6 +38,7 @@ interface AppContainerProps {
   reFetchChannelMembers: () => void;
   fetchChannels: () => void;
   onJoinedChat: () => void;
+  loadPrevMessages: (id: string) => Promise<ChatMessagesDataWithOlder>;
 }
 export default function AppContainer({
   activeChat,
@@ -56,7 +57,8 @@ export default function AppContainer({
   channels,
   reFetchChannelMembers,
   fetchChannels,
-  onJoinedChat
+  onJoinedChat,
+  loadPrevMessages
 }: AppContainerProps) {
   return (
     <>
@@ -93,6 +95,7 @@ export default function AppContainer({
                 onJoinedChat={onJoinedChat}
                 loadInitialChatMessages={loadInitialChatMessages}
                 incomingMessages={incomingMessages}
+                loadPrevMessages={loadPrevMessages}
               />
             )}
             {isOpenSearchChannel && (

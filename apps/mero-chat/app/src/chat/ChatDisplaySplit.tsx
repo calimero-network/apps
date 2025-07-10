@@ -3,6 +3,7 @@ import { type MessageWithReactions, type User } from "../types/Common";
 import type {
   ActiveChat,
   ChatMessagesData,
+  ChatMessagesDataWithOlder,
   MessageRendererProps,
 } from "../types/Common";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -38,6 +39,7 @@ interface ChatDisplaySplitProps {
   onMessageUpdated: (message: MessageWithReactions) => void;
   loadInitialChatMessages: () => Promise<ChatMessagesData>;
   incomingMessages: CurbMessage[];
+  loadPrevMessages: (id: string) => Promise<ChatMessagesDataWithOlder>;
 }
 
 const ContainerPadding = styled.div`
@@ -152,27 +154,28 @@ const ThreadHeader = ({ onClose }: { onClose: () => void }) => (
 
 export default function ChatDisplaySplit({
   readMessage,
-  handleReaction,
+  _handleReaction,
   openThread,
   setOpenThread,
   activeChat,
   updatedMessages,
   resetImage,
   sendMessage,
-  getIconFromCache,
+  _getIconFromCache,
   isThread,
   isReadOnly,
-  toggleEmojiSelector,
+  _toggleEmojiSelector,
   channelMeta,
   channelUserList,
-  setOpenMobileReactions,
-  openMobileReactions,
-  onMessageDeletion,
-  onEditModeRequested,
-  onEditModeCancelled,
-  onMessageUpdated,
+  _setOpenMobileReactions,
+  _openMobileReactions,
+  _onMessageDeletion,
+  _onEditModeRequested,
+  _onEditModeCancelled,
+  _onMessageUpdated,
   loadInitialChatMessages,
   incomingMessages,
+  loadPrevMessages
 }: ChatDisplaySplitProps) {
   const [accountId, setAccountId] = useState<string | undefined>(undefined);
 
@@ -181,20 +184,6 @@ export default function ChatDisplaySplit({
       setAccountId(getExecutorPublicKey() ?? "");
     }
   }, []);
-
-  const _loadPrevMessages = (id: string) => {
-    console.log(id);
-    // TODO: pagination
-    // if (isThread && id) {
-    //   return curbApi.fetchMessages({
-    //     chat: activeChat,
-    //     beforeId: id,
-    //     limit: 20,
-    //     parentMessageId: openThread.id,
-    //   });
-    // }
-    // return curbApi.fetchMessages({ chat: activeChat, beforeId: id, limit: 20 });
-  };
 
   const setThread = useCallback((message: CurbMessage) => {
     setOpenThread(message);
@@ -229,13 +218,6 @@ export default function ChatDisplaySplit({
     chatStyle.width = "100%";
     chatStyle["overflow"] = "hidden";
   }
-
-  const loadPrevMessagesMock = async () => {
-    return {
-      messages: [],
-      hasMore: false,
-    };
-  };
 
   const renderMessage = () => {
     const params: MessageRendererProps = {
@@ -272,7 +254,7 @@ export default function ChatDisplaySplit({
         )}
         <VirtualizedChat
           loadInitialMessages={loadInitialChatMessages}
-          loadPrevMessages={loadPrevMessagesMock}
+          loadPrevMessages={loadPrevMessages}
           incomingMessages={incomingMessages}
           updatedMessages={updatedMessages}
           onItemNewItemRender={readMessage}

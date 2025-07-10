@@ -40,6 +40,12 @@ export interface ChatMessagesData {
   hasMore: boolean;
 }
 
+export interface ChatMessagesDataWithOlder {
+  messages: CurbMessage[];
+  totalCount: number;
+  hasOlder: boolean;
+}
+
 export interface ChannelMeta {
   name: string;
   type: ChatType;

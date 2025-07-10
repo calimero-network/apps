@@ -478,11 +478,23 @@ impl CurbChat {
         hash_input.extend_from_slice(account.as_ref());
         hash_input.extend_from_slice(&timestamp.to_be_bytes());
 
+        let message_counter = self.get_message_counter(group);
+        hash_input.extend_from_slice(&message_counter.to_be_bytes());
+
         let mut s = MessageId::with_capacity(hash_input.len() * 2);
         for &b in &hash_input {
             write!(&mut s, "{:02x}", b).unwrap();
         }
         format!("{}_{}", s, timestamp)
+    }
+
+    fn get_message_counter(&self, group: &Channel) -> u64 {
+        match self.channels.get(group) {
+            Ok(Some(channel_info)) => {
+                channel_info.messages.len().unwrap_or(0) as u64 + 1
+            }
+            _ => 1
+        }
     }
 
     pub fn send_message(
@@ -553,25 +565,23 @@ impl CurbChat {
             let all_messages: Vec<_> = iter.collect();
 
             if !all_messages.is_empty() {
-                // Calculate start and end indices for pagination from the end
                 let total_len = all_messages.len();
-                let start_idx = if offset >= total_len {
+                if offset >= total_len {
                     return Ok(FullMessageResponse {
                         total_count: total_messages as u32,
                         messages: Vec::new(),
-                        start_position: 0,
+                        start_position: offset as u32,
                     });
+                }
+                
+                let end_idx = total_len - offset;
+                let start_idx = if end_idx > limit {
+                    end_idx - limit
                 } else {
-                    total_len - limit - offset
+                    0
                 };
 
-                let end_idx = total_len - offset;
-
-                // Ensure we don't go below 0
-                let actual_start = start_idx.max(0);
-
-                // Return messages in the order they appear in the array
-                for i in actual_start..end_idx {
+                for i in start_idx..end_idx {
                     messages.push(all_messages[i].clone());
                 }
             }

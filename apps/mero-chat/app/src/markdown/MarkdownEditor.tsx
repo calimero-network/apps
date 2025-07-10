@@ -5,7 +5,7 @@ import Quill from "quill";
 import { sanitizePasteHtml } from "virtualized-chat";
 
 interface MarkdownEditorProps {
-    handleMessageSent: (message: string) => void;
+    handleMessageSent: (content: string) => void;
     value: string;
     selectedEmoji: string;
     resetSelectedEmoji: () => void;
@@ -25,8 +25,17 @@ export const MarkdownEditor = ({
   const toolbarOptions = ['bold', 'italic', 'underline', 'strike', { 'list': 'ordered' }, { 'list': 'bullet' }];
 
   const sendMessage = () => {
-    handleMessageSent(quillRef?.current?.root?.innerHTML ?? '');
-    quillRef?.current?.setText('');
+    const content = quillRef?.current?.root?.innerHTML ?? '';
+    // Clean the content by removing trailing <br> tags and empty paragraphs
+    const cleanContent = content
+      .replace(/<br\s*\/?>\s*$/i, '') // Remove trailing <br>
+      .replace(/<p><br><\/p>\s*$/i, '') // Remove trailing empty paragraph
+      .replace(/<p>\s*<\/p>\s*$/i, ''); // Remove trailing empty paragraph
+    if (cleanContent.trim() !== '') {
+      setValue(cleanContent);
+      handleMessageSent(cleanContent);
+      quillRef?.current?.setText('');
+    }
   }
 
   const handleDrop = (e: DragEvent) => e.preventDefault();
@@ -61,17 +70,34 @@ export const MarkdownEditor = ({
           keyboard: {
             bindings: {
               enter: {
-                  key: 13,
-                  handler: sendMessage
+                key: 13,
+                handler: function() {
+                  return false; // Prevent default Enter behavior
+                }
               }
-          },
-        }
-      },
-      theme: "snow",
+            }
+          }
+        },
+        theme: "snow",
       });
       quillRef.current.root.innerHTML = value;
       quillRef.current.root.addEventListener("paste", handlePaste);
       quillRef.current.root.addEventListener("drop", handleDrop);
+
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          // Small delay to ensure Quill doesn't add the <br> tag
+          setTimeout(() => {
+            sendMessage();
+          }, 0);
+          return false;
+        }
+      };
+
+      quillRef.current.root.addEventListener('keydown', handleKeyDown);
 
       quillRef.current.on('selection-change', (range) => {
         if (range) {

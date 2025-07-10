@@ -361,6 +361,26 @@ export default function MessageInput({
     }
   }, [message, uploadedImage, uploadedFile, openThread]);
 
+  const handleSendMessageEnter = useCallback(
+    (content: string) => {
+      if (
+        emptyText.test(markdownParser(content ?? "")) &&
+        !uploadedImage &&
+        !uploadedFile
+      ) {
+        handleMessageChange(null);
+      } else {
+        sendMessage(content ?? "");
+        resetImageLocal();
+        resetFile();
+        setShowUpload(false);
+        setEmojiSelectorOpen(false);
+        handleMessageChange(null);
+      }
+    },
+    [message, uploadedImage, uploadedFile, openThread]
+  );
+
   useEffect(() => {
     setCanWriteMessage(false);
     if (isReadOnly) {
@@ -419,8 +439,10 @@ export default function MessageInput({
                 }
                 value={message?.text ?? ""}
                 selectedEmoji={selectedEmoji}
-                resetSelectedEmoji={() => setSelectedEmoji('')}
-                handleMessageSent={handleSendMessage}
+                resetSelectedEmoji={() => setSelectedEmoji("")}
+                handleMessageSent={(content: string) => {
+                  handleSendMessageEnter(content);
+                }}
               />
             </FullWidthWrapper>
             {(!message ||

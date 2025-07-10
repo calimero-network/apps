@@ -64,8 +64,8 @@ export interface SendMessageProps {
 
 export interface FullMessageResponse {
   messages: Message[];
-  totalCount: number;
-  startPosition: number;
+  total_count: number;
+  start_position: number;
 }
 
 export enum ClientMethod {

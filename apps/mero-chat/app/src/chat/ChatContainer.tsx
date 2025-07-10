@@ -3,6 +3,7 @@ import { styled } from "styled-components";
 import type {
   ActiveChat,
   ChatMessagesData,
+  ChatMessagesDataWithOlder,
   CurbMessage,
   MessageWithReactions,
   User,
@@ -20,6 +21,7 @@ interface ChatContainerProps {
   onJoinedChat: () => void;
   loadInitialChatMessages: () => Promise<ChatMessagesData>;
   incomingMessages: CurbMessage[];
+  loadPrevMessages: (id: string) => Promise<ChatMessagesDataWithOlder>;
 }
 
 const ChatContainerWrapper = styled.div`
@@ -59,6 +61,7 @@ export default function ChatContainer({
   onJoinedChat,
   loadInitialChatMessages,
   incomingMessages,
+  loadPrevMessages
 }: ChatContainerProps) {
   const [openThread, setOpenThread] = useState<
     MessageWithReactions | undefined
@@ -323,9 +326,9 @@ export default function ChatContainer({
   //   setUpdatedThreadMessages([]);
   // }, []);
 
-  const mockSendMessage = async (message: string) => {
+  const sendMessage = async (message: string) => {
     await new ClientApiDataSource().sendMessage({
-      group: { name: activeChat.name },
+      group: { name: activeChatRef.current?.name ?? "" },
       message,
       timestamp: Math.floor(Date.now() / 1000),
     });
@@ -350,7 +353,7 @@ export default function ChatContainer({
             activeChat={activeChat}
             updatedMessages={updatedMessages}
             resetImage={() => {}}
-            sendMessage={(message: string) => mockSendMessage(message)}
+            sendMessage={sendMessage}
             getIconFromCache={getIconFromCache}
             isThread={!!openThread}
             isReadOnly={activeChat.readOnly ?? false}
@@ -365,6 +368,7 @@ export default function ChatContainer({
             onMessageUpdated={() => {}}
             loadInitialChatMessages={loadInitialChatMessages}
             incomingMessages={incomingMessages}
+            loadPrevMessages={loadPrevMessages}
           />
           {openThread && openThread.id && (
             <ThreadWrapper>
@@ -403,6 +407,7 @@ export default function ChatContainer({
                 }
                 loadInitialChatMessages={loadInitialChatMessages}
                 incomingMessages={incomingMessages}
+                loadPrevMessages={loadPrevMessages}
               />
             </ThreadWrapper>
           )}
