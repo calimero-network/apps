@@ -111,6 +111,17 @@ pub struct PublicChannelInfo {
     pub links_allowed: bool,
 }
 
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Clone)]
+#[serde(crate = "calimero_sdk::serde")]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct DMChatInfo {
+    pub channel_type: ChannelType,
+    pub created_at: u64,
+    pub created_by: UserId,
+    pub channel_user: UserId,
+    pub context_id: String,
+}
+
 #[app::state(emits = Event)]
 #[derive(BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -121,6 +132,8 @@ pub struct CurbChat {
     members: UnorderedSet<UserId>,
     channels: UnorderedMap<Channel, ChannelInfo>,
     channel_members: UnorderedMap<Channel, UnorderedSet<UserId>>,
+    dm_chats: UnorderedMap<UserId, Vec<DMChatInfo>>,
+    is_dm: bool,
 }
 
 #[app::logic]
@@ -130,6 +143,7 @@ impl CurbChat {
         name: String,
         default_channels: Vec<Channel>,
         created_at: u64,
+        is_dm: bool,
     ) -> CurbChat {
         let executor_id = UserId::new(env::executor_id());
 
@@ -162,14 +176,15 @@ impl CurbChat {
 
         CurbChat {
             owner: executor_id,
-            name: name,
-            created_at: created_at,
-            members: members,
-            channels: channels,
-            channel_members: channel_members,
+            name,
+            created_at,
+            members,
+            channels,
+            channel_members,
+            dm_chats: UnorderedMap::new(),
+            is_dm,
         }
     }
-
 
     pub fn join_chat(&mut self) -> app::Result<String, String> {
         let executor_id = self.get_executor_id();
@@ -187,7 +202,7 @@ impl CurbChat {
                         Ok(Some(members)) => members,
                         _ => continue,
                     };
-                    
+
                     let _ = channel_members.insert(executor_id);
                     let _ = self.channel_members.insert(channel, channel_members);
                 }
@@ -214,6 +229,10 @@ impl CurbChat {
         links_allowed: bool,
         created_at: u64,
     ) -> app::Result<String, String> {
+        if self.is_dm {
+            return Err("Cannot create channels in a DM chat".to_string());
+        }
+
         if self.channels.contains(&channel).unwrap_or(false) {
             return Err("Channel already exists".to_string());
         }
@@ -344,7 +363,15 @@ impl CurbChat {
         })
     }
 
-    pub fn invite_to_channel(&mut self, channel: Channel, user: UserId) -> app::Result<String, String> {
+    pub fn invite_to_channel(
+        &mut self,
+        channel: Channel,
+        user: UserId,
+    ) -> app::Result<String, String> {
+        if self.is_dm {
+            return Err("Cannot invite to a DM chat".to_string());
+        }
+
         let executor_id = self.get_executor_id();
 
         match self.channels.get(&channel) {
@@ -385,6 +412,10 @@ impl CurbChat {
     }
 
     pub fn get_non_member_users(&self, channel: Channel) -> app::Result<Vec<UserId>, String> {
+        if self.is_dm {
+            return Err("Cannot create channels in a DM chat".to_string());
+        }
+
         let members = match self.channel_members.get(&channel) {
             Ok(Some(members)) => members,
             _ => return Err("Channel not found".to_string()),
@@ -403,6 +434,9 @@ impl CurbChat {
     }
 
     pub fn join_channel(&mut self, channel: Channel) -> app::Result<String, String> {
+        if self.is_dm {
+            return Err("Cannot create channels in a DM chat".to_string());
+        }
         let executor_id = self.get_executor_id();
 
         let channel_info = match self.channels.get(&channel) {
@@ -439,6 +473,9 @@ impl CurbChat {
     }
 
     pub fn leave_channel(&mut self, channel: Channel) -> app::Result<String, String> {
+        if self.is_dm {
+            return Err("Cannot leave a DM chat".to_string());
+        }
         let executor_id = self.get_executor_id();
 
         let members = match self.channel_members.get(&channel) {
@@ -490,10 +527,8 @@ impl CurbChat {
 
     fn get_message_counter(&self, group: &Channel) -> u64 {
         match self.channels.get(group) {
-            Ok(Some(channel_info)) => {
-                channel_info.messages.len().unwrap_or(0) as u64 + 1
-            }
-            _ => 1
+            Ok(Some(channel_info)) => channel_info.messages.len().unwrap_or(0) as u64 + 1,
+            _ => 1,
         }
     }
 
@@ -573,13 +608,9 @@ impl CurbChat {
                         start_position: offset as u32,
                     });
                 }
-                
+
                 let end_idx = total_len - offset;
-                let start_idx = if end_idx > limit {
-                    end_idx - limit
-                } else {
-                    0
-                };
+                let start_idx = if end_idx > limit { end_idx - limit } else { 0 };
 
                 for i in start_idx..end_idx {
                     messages.push(all_messages[i].clone());
@@ -594,5 +625,119 @@ impl CurbChat {
             messages: messages,
             start_position: offset as u32,
         })
+    }
+
+    pub fn create_dm_chat(
+        &mut self,
+        user: UserId,
+        timestamp: u64,
+        context_id: String,
+    ) -> app::Result<String, String> {
+        if self.is_dm {
+            return Err("Cannot create DMs in a DM chat".to_string());
+        }
+
+        let executor_id = self.get_executor_id();
+
+        if !self.members.contains(&executor_id).unwrap_or(false) {
+            return Err("You are not a member of the chat".to_string());
+        }
+        if !self.members.contains(&user).unwrap_or(false) {
+            return Err("Other user is not a member of the chat".to_string());
+        }
+
+        if executor_id == user {
+            return Err("Cannot create DM with yourself".to_string());
+        }
+
+        if self.dm_exists(&executor_id, &user) {
+            return Err("DM already exists".to_string());
+        }
+
+        let context_id_for_user = context_id.clone();
+        let dm_chat_info = DMChatInfo {
+            created_at: timestamp,
+            created_by: executor_id,
+            channel_user: user.clone(),
+            channel_type: ChannelType::Private,
+            context_id: context_id.clone(),
+        };
+
+        self.add_dm_to_user(&executor_id, dm_chat_info);
+        self.add_dm_to_user(
+            &user,
+            DMChatInfo {
+                channel_type: ChannelType::Private,
+                created_at: timestamp,
+                created_by: executor_id,
+                channel_user: executor_id,
+                context_id: context_id_for_user,
+            },
+        );
+
+        Ok(context_id)
+    }
+
+    pub fn get_dms(&self) -> app::Result<Vec<DMChatInfo>, String> {
+        if self.is_dm {
+            return Err("Cannot get DMs in a DM chat".to_string());
+        }
+        let executor_id = self.get_executor_id();
+        match self.dm_chats.get(&executor_id) {
+            Ok(Some(dms)) => {
+                let mut dm_list = Vec::new();
+                for dm in dms.iter() {
+                    dm_list.push(DMChatInfo {
+                        channel_type: dm.channel_type.clone(),
+                        created_at: dm.created_at,
+                        created_by: dm.created_by.clone(),
+                        channel_user: dm.channel_user.clone(),
+                        context_id: dm.context_id.clone(),
+                    });
+                }
+                Ok(dm_list)
+            }
+            Ok(None) => Ok(Vec::new()),
+            Err(_) => Err("Failed to retrieve DMs".to_string()),
+        }
+    }
+
+    pub fn delete_dm(&mut self, other_user: UserId) -> app::Result<String, String> {
+        if self.is_dm {
+            return Err("Cannot delete DMs in a DM chat".to_string());
+        }
+        let executor_id = self.get_executor_id();
+
+        self.remove_dm_from_user(&executor_id, &other_user);
+        self.remove_dm_from_user(&other_user, &executor_id);
+
+        Ok("DM deleted successfully".to_string())
+    }
+
+    fn dm_exists(&self, user1: &UserId, user2: &UserId) -> bool {
+        if let Ok(Some(dms)) = self.dm_chats.get(user1) {
+            for dm in dms.iter() {
+                if dm.channel_user == *user2 {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    fn add_dm_to_user(&mut self, user: &UserId, dm_info: DMChatInfo) {
+        let mut dms = match self.dm_chats.get(user) {
+            Ok(Some(existing_dms)) => existing_dms,
+            _ => Vec::new(),
+        };
+        dms.push(dm_info);
+        let _ = self.dm_chats.insert(user.clone(), dms);
+    }
+
+    fn remove_dm_from_user(&mut self, user: &UserId, other_user: &UserId) {
+        if let Ok(Some(mut dms)) = self.dm_chats.get(user) {
+            dms.retain(|dm| dm.channel_user != *other_user);
+            let _ = self.dm_chats.insert(user.clone(), dms);
+        }
     }
 }
