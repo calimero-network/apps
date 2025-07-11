@@ -198,7 +198,7 @@ const Placeholder = styled.div<{
     line-height: 150%;
     bottom: ${({ $placeholderPositionMobile }) =>
       $placeholderPositionMobile && $placeholderPositionMobile};
-    left: 56px;
+    left: 14px;
   }
 `;
 
