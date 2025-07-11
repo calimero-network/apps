@@ -3,6 +3,7 @@ import styled from "styled-components";
 import type { ActiveChat, User, ChannelMeta } from "../../types/Common";
 import ChannelHeader from "./ChannelHeader";
 import ChannelList from "./ChannelList";
+import { CurbLogo, OrgNameContainer } from "../navbar/CurbNavbar";
 //import DMSideSelector from "./DMSideSelector";
 
 interface SideSelectorProps {
@@ -76,7 +77,7 @@ const SideMenuMobile = styled.div`
     display: block;
     position: relative;
     z-index: 10;
-    padding-top: 64px;
+    padding-top: 12px;
     width: 100%;
     padding-bottom: 30px;
   }
@@ -172,6 +173,14 @@ const SearchChannels: React.FC<SearchChannelsProps> = ({
   );
 };
 
+const MobileHeaderWrapper = styled.div`
+  display: flex;
+  align-items: center;
+  padding-left: 1rem;
+  border-bottom: 1px solid #282933;
+  margin-bottom: 0.5rem;
+`;
+
 const SideSelector: React.FC<SideSelectorProps> = (props) => {
   const channels = props.channels;
   const isSidebarOpen = props.isSidebarOpen;
@@ -193,7 +202,9 @@ const SideSelector: React.FC<SideSelectorProps> = (props) => {
           channels={channels}
           selectChannel={props.onChatSelected}
           selectedChannelId={
-            props.activeChat.type === "channel" ? props.activeChat.name : props.activeChat.id
+            props.activeChat.type === "channel"
+              ? props.activeChat.name
+              : props.activeChat.id
           }
         />
         <HorizontalSeparatorLine $isMobile={true} />
@@ -219,6 +230,10 @@ const SideSelector: React.FC<SideSelectorProps> = (props) => {
     <>
       {isSidebarOpen && (
         <SideMenuMobile>
+          <MobileHeaderWrapper>
+            <CurbLogo isMobile={true} />
+            <OrgNameContainer $isMobile={true}>Calimero P2P</OrgNameContainer>
+          </MobileHeaderWrapper>
           <SideMenuContent />
         </SideMenuMobile>
       )}

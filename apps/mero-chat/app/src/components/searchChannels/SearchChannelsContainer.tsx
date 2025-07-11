@@ -17,7 +17,7 @@ const SearchContainer = styled.div`
     height: 100%;
   }
   @media (max-width: 1024px) {
-    padding: 104px 0 0;
+    padding: 42px 0 0;
     background-color: #0e0e10;
   }
   .inputFieldWrapper {

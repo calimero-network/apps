@@ -6,20 +6,22 @@ import type { UserId } from "../../api/clientApi";
 
 const DropdownSelector = styled.div`
   display: flex;
-  column-gap: 0.5rem;
+  justify-content: center;
   align-items: center;
+  column-gap: 0.5rem;
   cursor: pointer;
-  padding-left: 0.875rem;
-  padding-top: 0.5rem;
+
+  @media (min-width: 1025px) {
+    padding-left: 1.25rem;
+  }
 `;
 
-const SelectedChannelName = styled.h4`
+const SelectedChannelName = styled.div`
   color: #fff;
   font-family: Helvetica Neue;
   font-size: 24px;
   font-style: normal;
   font-weight: 500;
-  line-height: 120%;
   @media (max-width: 1024px) {
     font-size: 18px;
     font-weight: 400;
@@ -39,8 +41,8 @@ const MobileCogIcon = styled.i`
 
 const ChevronIcon = styled.i`
   color: #777583;
-  margin-top: 0.2rem;
   font-size: 1rem;
+  margin-top: 0.2rem;
   transition: transform 0.2s ease;
 
   &.open {
@@ -62,6 +64,12 @@ interface DetailsDropdownProps {
   fetchChannels: () => void;
 }
 
+const IconContainer = styled.div`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+`;
+
 export default function DetailsDropdown({
   activeChat,
   isOpenSearchChannel,
@@ -77,12 +85,12 @@ export default function DetailsDropdown({
     const toggle = (
       <DropdownSelector>
         <SelectedChannelName>{activeChat.name}</SelectedChannelName>
-        <>
+        <IconContainer>
           <ChevronIcon
             className={`bi bi-chevron-down ${isOpen ? "open" : ""}`}
           />
           <MobileCogIcon className="bi bi-gear-fill" />
-        </>
+        </IconContainer>
       </DropdownSelector>
     );
     return (

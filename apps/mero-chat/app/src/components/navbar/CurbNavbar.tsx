@@ -11,7 +11,7 @@ const NavigationBar = styled.div<{ $isSidebarOpen: boolean }>`
   justify-content: space-between;
   align-items: center;
   background-color: #0e0e10;
-  padding-left: 1rem;
+  padding-left: 0.5rem;
   padding-right: 1rem;
   border-bottom: 1px solid #282933;
   @media (max-width: 1024px) {
@@ -44,7 +44,7 @@ const VerticalSeparatorFull = styled.div`
 }
 `;
 
-const OrgNameContainer = styled.div`
+export const OrgNameContainer = styled.div<{ $isMobile: boolean }>`
   color: #777583;
   font-family: Helvetica Neue;
   font-size: 16px;
@@ -52,7 +52,7 @@ const OrgNameContainer = styled.div`
   font-weight: 500;
   line-height: 120%;
   padding-left: 1rem;
-  padding-right: 6rem;
+  padding-right: 5.5rem;
   padding-top: 1rem;
   padding-bottom: 1rem;
   display: flex;
@@ -60,7 +60,7 @@ const OrgNameContainer = styled.div`
   align-items: center;
   border-left: 1px solid #282933;
   @media (max-width: 1024px) {
-    display: none;
+    display: ${(props) => props.$isMobile ? "flex" : "none"};
   }
 }
 `;
@@ -70,11 +70,11 @@ const ItemsContainer = styled.div<{ $align: boolean }>`
   ${(props) => props.$align && "align-items: center;"}
 `;
 
-const LogoContainer = styled.div<{ justify?: boolean }>`
+const LogoContainer = styled.div<{ $isMobile: boolean, justify?: boolean }>`
   display: flex;
   gap: 0.5rem;
   @media (max-width: 1024px) {
-      display: none;
+      display: ${(props) => props.$isMobile ? "flex" : "none"};
     }
   }
   align-items: center;
@@ -101,9 +101,9 @@ const IconWrapper = styled.div`
   }
 `;
 
-const CurbLogo = () => {
+export const CurbLogo = ({ isMobile }: { isMobile: boolean }) => {
   return (
-    <LogoContainer>
+    <LogoContainer $isMobile={isMobile}>
       <svg
         width="28"
         height="28"
@@ -173,8 +173,8 @@ export default function CurbNavbar({
     <NavigationBar $isSidebarOpen={isSidebarOpen}>
       <ItemsContainer $align={true}>
         <>
-          <CurbLogo />
-          <OrgNameContainer>Calimero P2P</OrgNameContainer>
+          <CurbLogo isMobile={false}/>
+          <OrgNameContainer $isMobile={false}>Calimero P2P</OrgNameContainer>
         </>
         <VerticalSeparatorFull/>
         <BackIconContainer
