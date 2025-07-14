@@ -120,6 +120,7 @@ pub struct DMChatInfo {
     pub created_by: UserId,
     pub channel_user: UserId,
     pub context_id: String,
+    pub invitation_payload: String,
 }
 
 #[app::state(emits = Event)]
@@ -632,6 +633,7 @@ impl CurbChat {
         user: UserId,
         timestamp: u64,
         context_id: String,
+        invitation_payload: String,
     ) -> app::Result<String, String> {
         if self.is_dm {
             return Err("Cannot create DMs in a DM chat".to_string());
@@ -661,6 +663,7 @@ impl CurbChat {
             channel_user: user.clone(),
             channel_type: ChannelType::Private,
             context_id: context_id.clone(),
+            invitation_payload: "".to_string(),
         };
 
         self.add_dm_to_user(&executor_id, dm_chat_info);
@@ -672,6 +675,7 @@ impl CurbChat {
                 created_by: executor_id,
                 channel_user: executor_id,
                 context_id: context_id_for_user,
+                invitation_payload: invitation_payload.clone(),
             },
         );
 
@@ -693,6 +697,7 @@ impl CurbChat {
                         created_by: dm.created_by.clone(),
                         channel_user: dm.channel_user.clone(),
                         context_id: dm.context_id.clone(),
+                        invitation_payload: dm.invitation_payload.clone(),
                     });
                 }
                 Ok(dm_list)
