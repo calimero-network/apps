@@ -1,6 +1,8 @@
 import { styled } from "styled-components";
 import StartDMPopup from "../popups/StartDMPopup";
 import { useCallback } from "react";
+import type { UserId } from "../../api/clientApi";
+import { validateUserId } from "../../utils/validation";
 
 const Container = styled.div`
   display: flex;
@@ -36,29 +38,19 @@ const IconPlusContainer = styled.div`
 
 interface DMHeaderProps {
   createDM: (value: string) => Promise<void>;
+  chatMembers: UserId[];
 }
 
-export default function DMHeader({ createDM }: DMHeaderProps) {
-  const isValidNearAccount = useCallback((value: string) => {
-    const regex = /^[a-z\d]+[-_]*[a-z\d]+[-_]*[a-z\d]+\.(near|testnet)$/;
-    let isValid = false;
-    let error = "";
-
-    if (!regex.test(value)) {
-      isValid = false;
-      error = "Invite users whose wallets end with '.near' for access";
-    } else {
-      isValid = true;
-      error = "";
-    }
-    return { isValid, error };
+export default function DMHeader({ createDM, chatMembers }: DMHeaderProps) {
+  const isValidIdentityId = useCallback((value: string) => {
+    return validateUserId(value);
   }, []);
   return (
     <Container>
       <TextBold>{"Direct Messages"}</TextBold>
       <StartDMPopup
-        title="Start new message"
-        placeholder="Send to wallet address"
+        title="Create a new private DM context"
+        placeholder="invite user by entering their identity ID"
         buttonText="Next"
         colors={{
           base: "#5765f2",
@@ -70,14 +62,8 @@ export default function DMHeader({ createDM }: DMHeaderProps) {
             <i className="bi bi-plus-circle" />
           </IconPlusContainer>
         }
-        onAccountSelected={createDM}
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        fetchAccounts={(prefix) => {
-          // TODO: Implement fetchAccounts
-          //return curbApi.fetchAccounts({ prefix, limit: 20 });
-          return Promise.resolve([]);
-        }}
-        validator={isValidNearAccount}
+        chatMembers={chatMembers}
+        validator={isValidIdentityId}
         functionLoader={createDM}
       />
     </Container>

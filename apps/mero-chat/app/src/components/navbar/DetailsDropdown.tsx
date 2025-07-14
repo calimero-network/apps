@@ -26,6 +26,24 @@ const SelectedChannelName = styled.div`
     font-size: 18px;
     font-weight: 400;
   }
+
+  &.desktop {
+    display: block;
+  }
+
+  &.mobile {
+    display: none;
+  }
+
+  @media (max-width: 1024px) {
+    &.desktop {
+      display: none;
+    }
+
+    &.mobile {
+      display: block;
+    }
+  }
 `;
 
 const MobileCogIcon = styled.i`
@@ -52,6 +70,10 @@ const ChevronIcon = styled.i`
   @media (max-width: 1024px) {
     display: none;
   }
+`;
+
+const PaddingContainer = styled.div`
+  padding-left: 1.25rem;
 `;
 
 interface DetailsDropdownProps {
@@ -112,6 +134,15 @@ export default function DetailsDropdown({
     return <SelectedChannelName>Browse Channels</SelectedChannelName>;
   }
   const title =
-    activeChat.type === "direct_message" ? activeChat.id : activeChat.name;
-  return <SelectedChannelName>{title}</SelectedChannelName>;
+    activeChat.type === "direct_message" ? activeChat.id.toLowerCase() : activeChat.name;
+  
+  // Truncate title on mobile screens: first 6 chars + "..." + last 4 chars
+  const truncatedTitle = title.length > 10 ? `${title.slice(0, 6)}...${title.slice(-4)}` : title;
+  
+  return (
+    <PaddingContainer>
+      <SelectedChannelName className="desktop">{title}</SelectedChannelName>
+      <SelectedChannelName className="mobile">{truncatedTitle}</SelectedChannelName>
+    </PaddingContainer>
+  );
 }

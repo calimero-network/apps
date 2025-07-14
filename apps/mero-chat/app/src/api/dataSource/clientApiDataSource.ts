@@ -15,6 +15,8 @@ import {
   ClientMethod,
   type CreateChannelProps,
   type CreateChannelResponse,
+  type CreateDmProps,
+  type DMChatInfo,
   type FullMessageResponse,
   type GetChannelInfoProps,
   type GetChannelMembersProps,
@@ -223,7 +225,11 @@ export class ClientApiDataSource implements ClientApi {
         }
       );
       if (response?.error) {
-        return await this.handleError(response.error, {}, this.getAllChannelsSearch);
+        return await this.handleError(
+          response.error,
+          {},
+          this.getAllChannelsSearch
+        );
       }
       return {
         data: response?.result.output as Channels,
@@ -231,7 +237,8 @@ export class ClientApiDataSource implements ClientApi {
       };
     } catch (error) {
       console.error("getAllChannelsSearch failed:", error);
-      let errorMessage = "An unexpected error occurred during getAllChannelsSearch";
+      let errorMessage =
+        "An unexpected error occurred during getAllChannelsSearch";
       if (error instanceof Error) {
         errorMessage = error.message;
       } else if (typeof error === "string") {
@@ -289,7 +296,6 @@ export class ClientApiDataSource implements ClientApi {
       };
     }
   }
-
 
   async getChannelMembers(
     props: GetChannelMembersProps
@@ -386,7 +392,9 @@ export class ClientApiDataSource implements ClientApi {
     }
   }
 
-  async getNonMemberUsers(props: GetNonMemberUsersProps): ApiResponse<UserId[]> {
+  async getNonMemberUsers(
+    props: GetNonMemberUsersProps
+  ): ApiResponse<UserId[]> {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await getJsonRpcClient().execute<any, UserId[]>(
@@ -399,14 +407,18 @@ export class ClientApiDataSource implements ClientApi {
           executorPublicKey: getExecutorPublicKey() || "",
         },
         {
-          headers: {    
+          headers: {
             "Content-Type": "application/json",
           },
           timeout: 10000,
         }
       );
       if (response?.error) {
-        return await this.handleError(response.error, {}, this.getNonMemberUsers);
+        return await this.handleError(
+          response.error,
+          {},
+          this.getNonMemberUsers
+        );
       }
       return {
         data: response?.result.output as UserId[],
@@ -414,7 +426,8 @@ export class ClientApiDataSource implements ClientApi {
       };
     } catch (error) {
       console.error("getNonMemberUsers failed:", error);
-      let errorMessage = "An unexpected error occurred during getNonMemberUsers";
+      let errorMessage =
+        "An unexpected error occurred during getNonMemberUsers";
       if (error instanceof Error) {
         errorMessage = error.message;
       } else if (typeof error === "string") {
@@ -485,13 +498,13 @@ export class ClientApiDataSource implements ClientApi {
           executorPublicKey: getExecutorPublicKey() || "",
         },
         {
-          headers: {    
+          headers: {
             "Content-Type": "application/json",
           },
           timeout: 10000,
         }
       );
-      if (response?.error) {    
+      if (response?.error) {
         return await this.handleError(response.error, {}, this.leaveChannel);
       }
       return {
@@ -518,7 +531,7 @@ export class ClientApiDataSource implements ClientApi {
   async getMessages(props: GetMessagesProps): ApiResponse<FullMessageResponse> {
     try {
       const response = await getJsonRpcClient().execute<
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         any,
         FullMessageResponse
       >(
@@ -600,6 +613,134 @@ export class ClientApiDataSource implements ClientApi {
     } catch (error) {
       console.error("sendMessage failed:", error);
       let errorMessage = "An unexpected error occurred during sendMessage";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+
+  async getDms(): ApiResponse<DMChatInfo[]> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, DMChatInfo[]>(
+        {
+          contextId: getContextId() || "",
+          method: ClientMethod.GET_DMS,
+          argsJson: {},
+          executorPublicKey: getExecutorPublicKey() || "",
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+      if (response?.error) {
+        return await this.handleError(response.error, {}, this.getDms);
+      }
+      return {
+        data: response?.result.output as DMChatInfo[],
+        error: null,
+      };
+    } catch (error) {
+      console.error("getDms failed:", error);
+      let errorMessage = "An unexpected error occurred during getDms";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+
+  async getChatMembers(): ApiResponse<UserId[]> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, UserId[]>(
+        {
+          contextId: getContextId() || "",
+          method: ClientMethod.GET_CHAT_MEMBERS,
+          argsJson: {},
+          executorPublicKey: getExecutorPublicKey() || "",
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+      if (response?.error) {
+        return await this.handleError(response.error, {}, this.getChatMembers);
+      }
+      return {
+        data: response?.result.output as UserId[],
+        error: null,
+      };
+    } catch (error) {
+      console.error("getChatMembers failed:", error);
+      let errorMessage = "An unexpected error occurred during getChatMembers";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+
+  async createDm(props: CreateDmProps): ApiResponse<string> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, string>(
+        {
+          contextId: getContextId() || "",
+          method: ClientMethod.CREATE_DM,
+          argsJson: {
+            user: props.user,
+            timestamp: props.timestamp,
+            context_id: props.context_id,
+            invitation_payload: props.invitation_payload,
+          },
+          executorPublicKey: getExecutorPublicKey() || "",
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+      if (response?.error) {
+        return await this.handleError(response.error, {}, this.createDm);
+      }
+      return {
+        data: response?.result.output as string,
+        error: null,
+      };
+    } catch (error) {
+      console.error("createDm failed:", error);
+      let errorMessage = "An unexpected error occurred during createDm";
       if (error instanceof Error) {
         errorMessage = error.message;
       } else if (typeof error === "string") {

@@ -1,7 +1,7 @@
 import { styled } from "styled-components";
-import type { User } from "../../types/Common";
 import DMHeader from "./DMHeader";
 import UserList from "./UserList";
+import type { DMChatInfo, UserId } from "../../api/clientApi";
 
 const DMContainer = styled.div`
   background-color: #0e0e10;
@@ -12,22 +12,24 @@ const DMContainer = styled.div`
 `;
 
 interface DMSideSelectorProps {
-  users: User[];
+  chatMembers: UserId[];
   createDM: (value: string) => Promise<void>;
-  onDMSelected: (dm: User) => void;
+  onDMSelected: (dm: DMChatInfo) => void;
   selectedDM: string;
+  privateDMs: DMChatInfo[];
 }
 
 export default function DMSideSelector({
-  users,
+  chatMembers,
   createDM,
   onDMSelected,
   selectedDM,
+  privateDMs
 }: DMSideSelectorProps) {
   return (
     <DMContainer>
-      <DMHeader createDM={createDM} />
-      <UserList users={users} selectedDM={selectedDM} onDMSelected={onDMSelected} />
+      <DMHeader createDM={createDM} chatMembers={chatMembers}/>
+      <UserList selectedDM={selectedDM} onDMSelected={onDMSelected} privateDMs={privateDMs} />
     </DMContainer>
   );
 }

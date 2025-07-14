@@ -1,27 +1,28 @@
-import type { User } from "../../types/Common";
+import type { DMChatInfo } from "../../api/clientApi";
 import UserItem from "./UserItem";
 
 interface UserListProps {
-  users: User[];
   selectedDM: string;
-  onDMSelected: (user: User) => void;
+  onDMSelected: (user: DMChatInfo) => void;
+  privateDMs: DMChatInfo[];
 }
 
 export default function UserList({
-  users,
   selectedDM,
   onDMSelected,
+  privateDMs,
 }: UserListProps) {
   return (
     <>
-      {users.map((user: User) => (
-        <UserItem
-          user={user}
-          onDMSelected={onDMSelected}
-          selected={selectedDM === user.id}
-          key={user.id}
-        />
-      ))}
+      {privateDMs &&
+        privateDMs.map((userDM: DMChatInfo) => (
+          <UserItem
+            userDM={userDM}
+            onDMSelected={onDMSelected}
+            selected={selectedDM === userDM.channel_user}
+            key={userDM.channel_user}
+          />
+        ))}
     </>
   );
 }

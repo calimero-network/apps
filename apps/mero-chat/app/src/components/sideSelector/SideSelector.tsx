@@ -1,21 +1,24 @@
 import React from "react";
 import styled from "styled-components";
-import type { ActiveChat, User, ChannelMeta } from "../../types/Common";
+import type { ActiveChat, ChannelMeta } from "../../types/Common";
 import ChannelHeader from "./ChannelHeader";
 import ChannelList from "./ChannelList";
 import { CurbLogo, OrgNameContainer } from "../navbar/CurbNavbar";
-//import DMSideSelector from "./DMSideSelector";
+import DMSideSelector from "./DMSideSelector";
+import type { DMChatInfo, UserId } from "../../api/clientApi";
 
 interface SideSelectorProps {
-  users: User[];
   channels: ChannelMeta[];
   activeChat: ActiveChat;
   onChatSelected: (chat: ActiveChat) => void;
-  onDMSelected: (dm: User) => void;
+  onDMSelected: (dm: DMChatInfo) => void;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
   setIsOpenSearchChannel: (open: boolean) => void;
   isOpenSearchChannel: boolean;
+  chatMembers: UserId[];
+  createDM: (value: string) => Promise<void>;
+  privateDMs: DMChatInfo[];
 }
 
 const HorizontalSeparatorLine = styled.div<{ $isMobile: boolean }>`
@@ -208,20 +211,17 @@ const SideSelector: React.FC<SideSelectorProps> = (props) => {
           }
         />
         <HorizontalSeparatorLine $isMobile={true} />
-        {/* <DMSideSelector
-          users={users}
+        <DMSideSelector
+          chatMembers={props.chatMembers}
           onDMSelected={props.onDMSelected}
           selectedDM={
             props.activeChat.type === "direct_message"
               ? props.activeChat.id
               : ""
           }
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          createDM={(value: string) => {
-            // TODO: Implement createDM
-            return Promise.resolve();
-          }}
-        /> */}
+          createDM={props.createDM}
+          privateDMs={props.privateDMs}
+        />
       </>
     );
   };

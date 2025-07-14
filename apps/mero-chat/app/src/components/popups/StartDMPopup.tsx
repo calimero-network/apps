@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import BaseModal from "../common/popups/BaseModal";
 import Loader from "../loader/Loader";
 import { styled } from "styled-components";
-import type { User } from "../../types/Common";
+import type { UserId } from "../../api/clientApi";
 
 const SuggestionsDropdown = styled.div`
   max-height: 200px;
@@ -53,12 +53,12 @@ const customStyle = {
   outline: "none",
 };
 
-const FunctionButton = styled.button<{ disabled: boolean, baseColors: { disabled: string, base: string, hover: string } }>`
-  background-color: ${({ disabled, baseColors }) =>
-    disabled ? `${baseColors.disabled};` : `${baseColors.base};`};
+const FunctionButton = styled.button<{ $disabled: boolean, $baseColors: { disabled: string, base: string, hover: string } }>`
+  background-color: ${({ $disabled, $baseColors }) =>
+    $disabled ? `${$baseColors.disabled};` : `${$baseColors.base};`};
   :hover {
-    background-color: ${({ disabled, baseColors }) =>
-      disabled ? `${baseColors.disabled};` : `${baseColors.hover};`};
+    background-color: ${({ $disabled, $baseColors }) =>
+      $disabled ? `${$baseColors.disabled};` : `${$baseColors.hover};`};
   }
   color: #fff;
   border-radius: 4px;
@@ -124,31 +124,30 @@ interface StartDMPopupProps {
     title: string;
     toggle: React.ReactNode;
     placeholder: string;
-    onAccountSelected: (account: string) => void;
     buttonText: string;
-    fetchAccounts: (value: string) => Promise<User[]>;
     validator: (value: string) => { isValid: boolean; error: string };
     functionLoader: (value: string) => Promise<void>;
     colors: { disabled: string, base: string, hover: string };
+    chatMembers: UserId[];
 }
 
 export default function StartDMPopup({
     title,
     toggle,
     placeholder,
-    onAccountSelected,
     buttonText,
-    fetchAccounts,
     validator,
     functionLoader,
     colors,
+    chatMembers,
   }: StartDMPopupProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [validInput, setValidInput] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggestions, setSuggestions] = useState<UserId[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const inputRef = useRef("");
 
@@ -173,20 +172,17 @@ export default function StartDMPopup({
     setIsOpen(isOpen);
   };
 
-  const debouncedFetchUsers = (value: string) => {
-    setTimeout(
-      () =>
-        fetchAccounts(value).then((users: User[]) => {
-          const accounts = users.map((user) => user.id);
-          setSuggestions(accounts);
-        }),
-      200
-    );
-  };
-
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setInputValue(value);
+    if (value.length > 0) {
+      const s = chatMembers.filter((member) => member.toLowerCase().startsWith(value.toLowerCase()));
+      setSuggestions(s);
+      setShowSuggestions(s.length > 0);
+    } else {
+      setShowSuggestions(false);
+      setSuggestions([]);
+    }
 
     if (validator) {
       const { isValid, error } = validator(value);
@@ -194,7 +190,6 @@ export default function StartDMPopup({
       setErrorMessage(error ? error : "");
     }
 
-    debouncedFetchUsers(value);
   };
 
   const handleClosePopup = () => {
@@ -203,8 +198,14 @@ export default function StartDMPopup({
   };
 
   const handleSuggestionClick = (suggestion: string) => {
-    onAccountSelected(suggestion);
-    setIsOpen(false);
+    if (validator) {
+      const { isValid, error } = validator(suggestion);
+      setValidInput(isValid);
+      setErrorMessage(error ? error : "");
+    }
+    setInputValue(suggestion);
+    setShowSuggestions(false);
+    setSuggestions([]);
   };
 
   const popupContent = (
@@ -221,13 +222,7 @@ export default function StartDMPopup({
           style={isInvalid ? customStyle : {}}
         />
         {isInvalid && <ExclamationIcon />}
-      </InputWrapper>
-      {isInvalid ? (
-        <ErrorWrapper>{errorMessage}</ErrorWrapper>
-      ) : (
-        <EmptyMessageContainer />
-      )}
-      {suggestions.length > 0 && (
+        {showSuggestions && suggestions && suggestions.length > 0 && (
         <SuggestionsDropdown>
           {suggestions.map((suggestion, index) => (
             <SuggestionItem
@@ -239,10 +234,16 @@ export default function StartDMPopup({
           ))}
         </SuggestionsDropdown>
       )}
+      </InputWrapper>
+      {isInvalid ? (
+        <ErrorWrapper>{errorMessage}</ErrorWrapper>
+      ) : (
+        <EmptyMessageContainer />
+      )}
       <FunctionButton
         onClick={runProcess}
-        disabled={inputValue ? !!isInvalid : true}
-        baseColors={colors}
+        $disabled={inputValue ? !!isInvalid : true}
+        $baseColors={colors}
       >
         {isProcessing ? <Loader size={16} /> : buttonText}
       </FunctionButton>

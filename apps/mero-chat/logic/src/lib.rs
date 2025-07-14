@@ -15,10 +15,11 @@ pub enum Event {
     ChatInitialized(String),
     ChannelCreated(String),
     ChannelInvited(String),
+    ChannelLeft(String),
     MessageSent(Message),
     MessageReceived(String),
     ChannelJoined(String),
-    ChannelLeft(String),
+    DMCreated(String),
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
@@ -273,6 +274,19 @@ impl CurbChat {
 
         app::emit!(Event::ChannelCreated(channel.name.clone()));
         Ok("Channel created".to_string())
+    }
+
+    pub fn get_chat_members(&self) -> Vec<UserId> {
+        let executor_id = self.get_executor_id();
+        let mut members = Vec::new();
+        if let Ok(iter) = self.members.iter() {
+            for member in iter {
+                if member != executor_id {
+                    members.push(member.clone());
+                }
+            }
+        }
+        members
     }
 
     pub fn get_channels(&self) -> HashMap<String, PublicChannelInfo> {
@@ -679,6 +693,7 @@ impl CurbChat {
             },
         );
 
+        app::emit!(Event::DMCreated("Private DM created!".to_string()));
         Ok(context_id)
     }
 

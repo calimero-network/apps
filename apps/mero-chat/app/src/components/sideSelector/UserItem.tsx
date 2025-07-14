@@ -1,8 +1,8 @@
 import { useCallback } from "react";
 import { styled } from "styled-components";
-import type { User } from "../../types/Common";
 import UserProfileIcon from "../profileIcon/UserProfileIcon";
-import UnreadMessagesBadge from "./UnreadMessageBadge";
+// import UnreadMessagesBadge from "./UnreadMessageBadge";
+import type { DMChatInfo } from "../../api/clientApi";
 
 const UserListItem = styled.div<{ selected: boolean }>`
   display: flex;
@@ -40,32 +40,32 @@ const NameContainer = styled.div`
 `;
 
 interface UserItemProps {
-  onDMSelected: (user: User) => void;
+  onDMSelected: (user: DMChatInfo) => void;
   selected: boolean;
-  user: User;
+  userDM: DMChatInfo;
 }
 
 export default function UserItem({
   onDMSelected,
   selected,
-  user,
+  userDM,
 }: UserItemProps) {
   const handleClick = useCallback(() => {
-    onDMSelected(user);
-  }, [user, onDMSelected]);
+    onDMSelected(userDM);
+  }, [userDM, onDMSelected]);
 
   return (
     <UserListItem selected={selected} onClick={handleClick}>
       <UserInfoContainer>
-        <UserProfileIcon accountId={user.id} active={user.active} />
-        <NameContainer>{`${user.id}`}</NameContainer>
+        <UserProfileIcon accountId={userDM.channel_user} active={true} />
+        <NameContainer>{`${userDM.channel_user.slice(0, 6)}...${userDM.channel_user.slice(-4)}`}</NameContainer>
       </UserInfoContainer>
-      {user?.unreadMessages && user.unreadMessages.count > 0 && (
+      {/* {user?.unreadMessages && user.unreadMessages.count > 0 && (
         <UnreadMessagesBadge
           messageCount={user.unreadMessages.count}
           backgroundColor="#777583"
         />
-      )}
+      )} */}
     </UserListItem>
   );
 }

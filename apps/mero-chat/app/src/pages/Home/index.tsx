@@ -6,8 +6,8 @@ import {
   type ChannelMeta,
   type ChatMessagesData,
   type ChatMessagesDataWithOlder,
+  type ChatType,
   type CurbMessage,
-  type User,
 } from "../../types/Common";
 import { getStoredSession, updateSessionChat } from "../../utils/session";
 import { defaultActiveChat } from "../../mock/mock";
@@ -19,15 +19,18 @@ import {
   type NodeEvent,
   type ResponseData,
   getContextId,
+  setContextId,
 } from "@calimero-network/calimero-client";
-import type {
-  Channels,
-  FullMessageResponse,
-  UserId,
+import {
+  type Channels,
+  type DMChatInfo,
+  type FullMessageResponse,
+  type UserId,
 } from "../../api/clientApi";
 import type { Message as ApiMessage } from "../../api/clientApi";
 
 import { type SubscriptionsClient } from "@calimero-network/calimero-client";
+import { ContextApiDataSource } from "../../api/dataSource/nodeApiDataSource";
 
 export default function Home() {
   const [isOpenSearchChannel, setIsOpenSearchChannel] = useState(false);
@@ -93,12 +96,21 @@ export default function Home() {
     setTotalMessageCount(0);
   }, []);
 
-  const onDMSelected = useCallback((dm: User) => {
-    setActiveChat({
-      type: "direct_message",
-      name: dm.id,
-      id: dm.id,
-    });
+  const onDMSelected = useCallback((dm: DMChatInfo) => {
+    const selectedChat = {
+      type: "direct_message" as ChatType,
+      contextId: dm.context_id,
+      id: dm.channel_user,
+      name: dm.channel_user,
+      readOnly: false,
+      account: dm.channel_user,
+      canJoin: false,
+    };
+    setContextId(dm.context_id);
+    setIsOpenSearchChannel(false);
+    setActiveChat(selectedChat);
+    activeChatRef.current = selectedChat;
+    setIsSidebarOpen(false);
     setMessagesOffset(20);
     setTotalMessageCount(0);
   }, []);
@@ -235,7 +247,6 @@ export default function Home() {
   };
 
   const [channels, setChannels] = useState<ChannelMeta[]>([]);
-  const [users, _setUsers] = useState<User[]>([]);
 
   const fetchChannels = async () => {
     const channels: ResponseData<Channels> =
@@ -264,8 +275,30 @@ export default function Home() {
     }
   };
 
+  const [privateDMs, setPrivateDMs] = useState<DMChatInfo[]>([]);
+
+  const fetchDms = async () => {
+    const dms: ResponseData<DMChatInfo[]> =
+      await new ClientApiDataSource().getDms();
+    if (dms.data) {
+      setPrivateDMs(dms.data);
+    }
+  };
+
+  const [chatMembers, setChatMembers] = useState<UserId[]>([]);
+
+  const fetchChatMembers = async () => {
+    const chatMembers: ResponseData<UserId[]> =
+      await new ClientApiDataSource().getChatMembers();
+    if (chatMembers.data) {
+      setChatMembers(chatMembers.data);
+    }
+  };
+
   useEffect(() => {
     fetchChannels();
+    fetchDms();
+    fetchChatMembers();
   }, []);
 
   const onJoinedChat = async () => {
@@ -338,6 +371,31 @@ export default function Home() {
     }
   };
 
+  const createDM = async (value: string) => {
+    const response = await new ContextApiDataSource().createContext({
+      user: value,
+    });
+    if (response.data) {
+      const inviteResponse = await new ContextApiDataSource().inviteToContext({
+        contextId: response.data.contextId,
+        invitee: value,
+        inviter: response.data.memberPublicKey,
+      });
+      if (inviteResponse.data) {
+        const invitationPayload = inviteResponse.data;
+        const createDmResponse = await new ClientApiDataSource().createDm({
+          user: value,
+          timestamp: Date.now(),
+          context_id: response.data.contextId,
+          invitation_payload: invitationPayload,
+        });
+        if (createDmResponse.data) {
+          await fetchDms();
+        }
+      }
+    }
+  };
+
   return (
     <AppContainer
       isOpenSearchChannel={isOpenSearchChannel}
@@ -354,10 +412,12 @@ export default function Home() {
       loadInitialChatMessages={loadInitialChatMessages}
       incomingMessages={incomingMessages}
       channels={channels}
-      users={users}
       fetchChannels={fetchChannels}
       onJoinedChat={onJoinedChat}
       loadPrevMessages={loadPrevMessages}
+      chatMembers={chatMembers}
+      createDM={createDM}
+      privateDMs={privateDMs}
     />
   );
 }

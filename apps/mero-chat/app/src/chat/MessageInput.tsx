@@ -200,6 +200,24 @@ const Placeholder = styled.div<{
       $placeholderPositionMobile && $placeholderPositionMobile};
     left: 14px;
   }
+
+  &.desktop {
+    display: block;
+  }
+
+  &.mobile {
+    display: none;
+  }
+
+  @media (max-width: 1024px) {
+    &.desktop {
+      display: none;
+    }
+
+    &.mobile {
+      display: block;
+    }
+  }
 `;
 
 const ReadOnlyField = styled.div`
@@ -447,14 +465,26 @@ export default function MessageInput({
             </FullWidthWrapper>
             {(!message ||
               emptyText.test(markdownParser(message?.text ?? ""))) && (
-              <Placeholder
-                $placeholderPosition={placeholderPosition}
-                $placeholderPositionMobile={placeholderPosition}
-              >
-                {openThread && isThread
-                  ? `Reply in thread`
-                  : `Type message in ${selectedChat}`}
-              </Placeholder>
+              <>
+                <Placeholder
+                  $placeholderPosition={placeholderPosition}
+                  $placeholderPositionMobile={placeholderPosition}
+                  className="desktop"
+                >
+                  {openThread && isThread
+                    ? `Reply in thread`
+                    : `Type message in ${selectedChat}`}
+                </Placeholder>
+                <Placeholder
+                  $placeholderPosition={placeholderPosition}
+                  $placeholderPositionMobile={placeholderPosition}
+                  className="mobile"
+                >
+                  {openThread && isThread
+                    ? `Reply in thread`
+                    : `Type message in ${selectedChat.length == 44 ? `${selectedChat.toLowerCase().slice(0, 6)}...${selectedChat.toLowerCase().slice(-4)}` : selectedChat}`}
+                </Placeholder>
+              </>
             )}
 
             {uploadedFile?.file.cid && (

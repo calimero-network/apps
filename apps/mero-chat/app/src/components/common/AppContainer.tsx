@@ -1,10 +1,10 @@
 import { styled } from "styled-components";
-import type { ActiveChat, ChannelMeta, ChatMessagesData, ChatMessagesDataWithOlder, CurbMessage, User } from "../../types/Common";
+import type { ActiveChat, ChannelMeta, ChatMessagesData, ChatMessagesDataWithOlder, CurbMessage } from "../../types/Common";
 import ChannelsContainer from "./ChannelsContainer";
 import CurbNavbar from "../navbar/CurbNavbar";
 import SearchChannelsContainer from "../searchChannels/SearchChannelsContainer";
 import ChatContainer from "../../chat/ChatContainer";
-import type { UserId } from "../../api/clientApi";
+import type { DMChatInfo, UserId } from "../../api/clientApi";
 
 const ContentDivContainer = styled.div`
   width: 100%;
@@ -30,15 +30,17 @@ interface AppContainerProps {
   openSearchPage: () => void;
   channelUsers: UserId[];
   nonInvitedUserList: UserId[];
-  onDMSelected: (dm: User) => void;
+  onDMSelected: (dm: DMChatInfo) => void;
   loadInitialChatMessages: () => Promise<ChatMessagesData>;
   incomingMessages: CurbMessage[];
-  users: User[];
   channels: ChannelMeta[];
   reFetchChannelMembers: () => void;
   fetchChannels: () => void;
   onJoinedChat: () => void;
   loadPrevMessages: (id: string) => Promise<ChatMessagesDataWithOlder>;
+  chatMembers: UserId[];
+  createDM: (value: string) => Promise<void>;
+  privateDMs: DMChatInfo[];
 }
 export default function AppContainer({
   activeChat,
@@ -53,12 +55,14 @@ export default function AppContainer({
   onDMSelected,
   loadInitialChatMessages,
   incomingMessages,
-  users,
   channels,
   reFetchChannelMembers,
   fetchChannels,
   onJoinedChat,
-  loadPrevMessages
+  loadPrevMessages,
+  chatMembers,
+  createDM,
+  privateDMs
 }: AppContainerProps) {
   return (
     <>
@@ -83,8 +87,10 @@ export default function AppContainer({
           setIsOpenSearchChannel={() => openSearchPage()}
           isOpenSearchChannel={isOpenSearchChannel}
           onDMSelected={onDMSelected}
-          users={users}
           channels={channels}
+          chatMembers={chatMembers}
+          createDM={createDM}
+          privateDMs={privateDMs}
         />
         {!isSidebarOpen && (
           <Wrapper>

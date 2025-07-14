@@ -194,7 +194,7 @@ export default function CurbNavbar({
           />
         )}
       </ItemsContainer>
-      {channelUserList.length > 0 && activeChat && (
+      {activeChat && activeChat?.type === "channel" && channelUserList.length > 0 && (
         <ItemsContainer $align={false}>
           <ChannelDetailsPopup
             toggle={

@@ -16,6 +16,7 @@ export type ChatType = "channel" | "direct_message";
  */
 export type ActiveChat = {
   type: ChatType;
+  contextId?: string;
   id: string;
   name: string;
   readOnly?: boolean;

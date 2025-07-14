@@ -1,10 +1,8 @@
 import React from "react";
-import type { ActiveChat, ChannelMeta, User } from "../../types/Common";
+import type { ActiveChat, ChannelMeta } from "../../types/Common";
 import SideSelector from "../sideSelector/SideSelector";
-import {
-  defaultActiveChat,
-} from "../../mock/mock";
-
+import { defaultActiveChat } from "../../mock/mock";
+import type { DMChatInfo, UserId } from "../../api/clientApi";
 
 interface ChannelsContainerProps {
   onChatSelected: (chat: ActiveChat) => void;
@@ -13,9 +11,11 @@ interface ChannelsContainerProps {
   setIsSidebarOpen: (open: boolean) => void;
   setIsOpenSearchChannel: (open: boolean) => void;
   isOpenSearchChannel: boolean;
-  onDMSelected: (dm: User) => void;
-  users: User[];
+  onDMSelected: (dm: DMChatInfo) => void;
   channels: ChannelMeta[];
+  chatMembers: UserId[];
+  createDM: (value: string) => Promise<void>;
+  privateDMs: DMChatInfo[];
 }
 
 const ChannelsContainer: React.FC<ChannelsContainerProps> = (props) => {
@@ -27,8 +27,10 @@ const ChannelsContainer: React.FC<ChannelsContainerProps> = (props) => {
     setIsOpenSearchChannel,
     isOpenSearchChannel,
     onDMSelected,
-    users,
     channels,
+    chatMembers,
+    createDM,
+    privateDMs
   } = props;
 
   return (
@@ -40,8 +42,10 @@ const ChannelsContainer: React.FC<ChannelsContainerProps> = (props) => {
       setIsSidebarOpen={setIsSidebarOpen}
       setIsOpenSearchChannel={setIsOpenSearchChannel}
       isOpenSearchChannel={isOpenSearchChannel}
-      users={users || []}
       channels={channels || []}
+      chatMembers={chatMembers}
+      createDM={createDM}
+      privateDMs={privateDMs}
     />
   );
 };

@@ -68,6 +68,27 @@ export interface FullMessageResponse {
   start_position: number;
 }
 
+export interface InviteToChannelProps {
+  channel: Channel;
+  user: UserId;
+}
+
+export interface DMChatInfo {
+  channel_type: ChannelType;
+  created_at: number;
+  created_by: UserId;
+  channel_user: UserId;
+  context_id: string;
+  invitation_payload: string;
+}
+
+export interface CreateDmProps {
+  user: UserId;
+  timestamp: number;
+  context_id: string;
+  invitation_payload: string;
+}
+
 export enum ClientMethod {
   JOIN_CHAT = "join_chat",
   CREATE_CHANNEL = "create_channel",
@@ -81,11 +102,9 @@ export enum ClientMethod {
   LEAVE_CHANNEL = "leave_channel",
   GET_MESSAGES = "get_messages",
   SEND_MESSAGE = "send_message",
-}
-
-export interface InviteToChannelProps {
-  channel: Channel;
-  user: UserId;
+  GET_DMS = "get_dms",
+  GET_CHAT_MEMBERS = "get_chat_members",
+  CREATE_DM = "create_dm_chat"
 }
 
 export interface ClientApi {
@@ -101,4 +120,6 @@ export interface ClientApi {
   leaveChannel(props: LeaveChannelProps): ApiResponse<string>;
   getMessages(props: GetMessagesProps): ApiResponse<FullMessageResponse>;
   sendMessage(props: SendMessageProps): ApiResponse<Message>;
+  getDms(): ApiResponse<DMChatInfo[]>;
+  getChatMembers(): ApiResponse<UserId[]>;
 }
