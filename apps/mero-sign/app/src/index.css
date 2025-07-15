@@ -1,30 +1,144 @@
-:root,
+@import 'tailwindcss';
+
+@layer base {
+  :root {
+    /* shadcn/ui CSS Variables */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 83 100% 55%;
+    --primary-foreground: 222.2 84% 4.9%;
+    --secondary: 210 40% 98%;
+    --secondary-foreground: 222.2 84% 4.9%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222.2 84% 4.9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 83 100% 55%;
+    --radius: 0.5rem;
+
+    /* MeroDocs Brand Colors */
+    --color-primary: #a9ff1f;
+    --color-background-light: #ffffff;
+    --color-background-dark: #0e1011;
+    --color-surface-light: #f8f9fa;
+    --color-surface-dark: #1a1d1f;
+    --color-text-light: #0e1011;
+    --color-text-dark: #e8e4e1;
+    --color-text-secondary-light: #6c757d;
+    --color-text-secondary-dark: #c5c0b9;
+    --color-muted: #c5c0b9;
+    --color-border-light: #e9ecef;
+    --color-border-dark: #2d3234;
+    --color-card-light: #ffffff;
+    --color-card-dark: #1a1d1f;
+
+    /* Mobile-first spacing */
+    --spacing-mobile-header: 60px;
+    --spacing-sidebar-width: 280px;
+    --spacing-touch-target: 44px;
+
+    /* Custom shadows */
+    --shadow-card: 0 8px 32px rgb(0 0 0 / 0.08);
+    --shadow-button: 0 4px 16px rgb(169 255 31 / 0.2);
+    --shadow-large: 0 20px 40px rgb(0 0 0 / 0.1);
+    --shadow-sidebar: 2px 0 10px rgb(0 0 0 / 0.1);
+    --shadow-sidebar-dark: 2px 0 10px rgb(0 0 0 / 0.5);
+
+    /* Typography */
+    --font-inter: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+      sans-serif;
+
+    /* Default to dark theme */
+    --current-bg: var(--color-background-dark);
+    --current-text: var(--color-text-dark);
+    --current-surface: var(--color-surface-dark);
+    --current-border: var(--color-border-dark);
+    --current-card: var(--color-card-dark);
+    --current-text-secondary: var(--color-text-secondary-dark);
+
+    line-height: 1.5;
+    font-weight: 400;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 83 100% 55%;
+    --primary-foreground: 222.2 84% 4.9%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 83 100% 55%;
+  }
+}
+
+/* Light theme class */
+.theme-light {
+  --current-bg: var(--color-background-light);
+  --current-text: var(--color-text-light);
+  --current-surface: var(--color-surface-light);
+  --current-border: var(--color-border-light);
+  --current-card: var(--color-card-light);
+  --current-text-secondary: var(--color-text-secondary-light);
+}
+
+/* Dark theme class (default) */
+.theme-dark {
+  --current-bg: var(--color-background-dark);
+  --current-text: var(--color-text-dark);
+  --current-surface: var(--color-surface-dark);
+  --current-border: var(--color-border-dark);
+  --current-card: var(--color-card-dark);
+  --current-text-secondary: var(--color-text-secondary-dark);
+}
+
 html {
-  line-height: 1.5;
-  font-weight: 400;
-
-  color-scheme: light dark;
-  color: #ffffff;
-  background-color: #111111;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  color-scheme: dark light;
+  color: var(--current-text);
+  background-color: var(--current-bg);
 }
 
 html,
 body {
   margin: 0;
   padding: 0;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter);
   font-optical-sizing: auto;
-  font-weight: 500;
+  font-weight: 400;
   font-style: normal;
   font-variation-settings: 'slnt' 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-smooth: never;
+  background: var(--current-bg);
+  color: var(--current-text);
+  min-height: 100vh;
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
 }
 
 * {
@@ -33,4 +147,232 @@ body {
 
 .modal-content {
   background-color: transparent !important;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--current-surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--current-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary);
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+  html,
+  body {
+    font-size: 16px; /* Prevent zoom on iOS */
+    -webkit-text-size-adjust: 100%;
+  }
+}
+
+/* Focus styles for accessibility */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Remove focus outline for mouse users */
+button:focus:not(:focus-visible),
+input:focus:not(:focus-visible),
+select:focus:not(:focus-visible),
+textarea:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Utility classes for themes */
+.bg-current {
+  background-color: var(--current-bg);
+}
+.bg-surface {
+  background-color: var(--current-surface);
+}
+.bg-card {
+  background-color: var(--current-card);
+}
+.bg-primary {
+  background-color: var(--color-primary);
+}
+
+.text-current {
+  color: var(--current-text);
+}
+.text-secondary {
+  color: var(--current-text-secondary);
+}
+.text-primary {
+  color: var(--color-primary);
+}
+.text-muted {
+  color: var(--color-muted);
+}
+
+.border-current {
+  border-color: var(--current-border);
+}
+.border-primary {
+  border-color: var(--color-primary);
+}
+
+.shadow-card {
+  box-shadow: var(--shadow-card);
+}
+.shadow-large {
+  box-shadow: var(--shadow-large);
+}
+.shadow-button {
+  box-shadow: var(--shadow-button);
+}
+.shadow-sidebar {
+  box-shadow: var(--shadow-sidebar);
+}
+
+/* Animation utilities for landing page */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.6s ease-out;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}
+
+/* Loading shimmer effect */
+.shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.1),
+    transparent
+  );
+  animation: shimmer 2s infinite;
+}
+
+/* Button hover effects */
+.btn-hover-lift {
+  transition: all 0.2s ease;
+}
+
+.btn-hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(169, 255, 31, 0.25);
+}
+
+.btn-hover-lift:active {
+  transform: translateY(0);
+}
+
+/* Shake animation for form errors */
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-5px);
+  }
+  75% {
+    transform: translateX(5px);
+  }
+}
+
+.animate-shake {
+  animation: shake 0.5s ease-in-out;
+}
+
+/* Enhanced focus states */
+.focus-ring {
+  transition: all 0.2s ease;
+}
+
+.focus-ring:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(169, 255, 31, 0.3);
+}
+
+/* Pulse animation for status indicators */
+@keyframes pulse-green {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse-green {
+  animation: pulse-green 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Glass morphism effect */
+.glass {
+  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Gradient text utility */
+.gradient-text {
+  background: linear-gradient(135deg, var(--color-primary) 0%, #22c55e 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }

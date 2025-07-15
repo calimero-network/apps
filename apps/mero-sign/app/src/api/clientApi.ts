@@ -1,27 +1,9 @@
-import { ApiResponse } from '@calimero-network/calimero-client';
+// MeroDocs API interfaces will be added here as we implement features
+// For now, keeping the file structure ready for future implementation
 
-export interface GetCountResponse {
-  count: number;
-}
-
-export interface IncreaseCountRequest {
-  count: number;
-}
-
-export interface IncreaseCountResponse {}
-
-export interface ResetCounterResponse {}
-
-export enum ClientMethod {
-  GET_COUNT = 'get_count',
-  INCREASE_COUNT = 'increase_count',
-  RESET = 'reset',
-}
+export enum ClientMethod {}
+// Future API methods will be defined here
 
 export interface ClientApi {
-  getCount(): ApiResponse<GetCountResponse>;
-  increaseCount(
-    params: IncreaseCountRequest,
-  ): ApiResponse<IncreaseCountResponse>;
-  reset(): ApiResponse<ResetCounterResponse>;
+  // Future API methods will be implemented here
 }

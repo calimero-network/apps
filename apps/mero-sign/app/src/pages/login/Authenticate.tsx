@@ -70,7 +70,7 @@ export default function Authenticate() {
         <div className="flex-wrapper">
           <div className="card">
             <div className="title-wrapper">
-              <div className="title">App template</div>
+              <div className="title">MeroDocs</div>
             </div>
             <ClientLogin sucessRedirect={() => navigate('/home')} />
           </div>

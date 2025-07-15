@@ -15,6 +15,10 @@
     "noEmit": true,
     "outDir": "build",
     "jsx": "react",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
     "types": ["styled-components", "vite/client", "node"]
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "custom.d.ts", "src/assets"],

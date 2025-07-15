@@ -1,6 +1,6 @@
 [package]
-name = "increment"
-description = "Calimero increment/decrement application"
+name = "mero_docs"
+description = "Calimero MeroDocs logic"
 version = "0.1.0"
 edition = "2021"
 
@@ -9,6 +9,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 calimero-sdk = { git = "https://github.com/calimero-network/core", branch = "master" }
+serde = { version = "1.0", features = ["derive"] }
 
 [profile.app-release]
 inherits = "release"

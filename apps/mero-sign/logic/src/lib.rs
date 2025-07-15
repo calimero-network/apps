@@ -1,44 +1,27 @@
-use calimero_sdk::{
-    app,
-    borsh::{BorshDeserialize, BorshSerialize},
-    env,
-};
+use calimero_sdk::app;
+use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 
-#[app::event]
-pub enum Event {
-    Increased(u32),
-    Reset,
-}
-
-#[app::state(emits = Event)]
+#[app::state]
 #[derive(Default, BorshDeserialize, BorshSerialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
-pub struct AppState {
-    count: u32,
+pub struct MeroDocsState {
+    // Application state will be added here
+}
+
+#[app::event]
+#[derive(Debug, BorshSerialize, BorshDeserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub enum MeroDocsEvent {
+    // Events will be added here
+    Placeholder,
 }
 
 #[app::logic]
-impl AppState {
+impl MeroDocsState {
     #[app::init]
-    pub fn init() -> AppState {
-        AppState::default()
+    pub fn init() -> MeroDocsState {
+        MeroDocsState::default()
     }
 
-    pub fn get_count(&self) -> u32 {
-        env::log("Get counter");
-        self.count
-    }
-
-    pub fn increase_count(&mut self, count: u32) -> u32 {
-        env::log(&format!("Increasing counter by {:?}", count));
-        self.count = self.count + count;
-        app::emit!(Event::Increased(self.count));
-        self.count
-    }
-
-    pub fn reset(&mut self) {
-        env::log("Reset counter");
-        self.count = 0;
-        app::emit!(Event::Reset);
-    }
+    // Application methods will be added here
 }
