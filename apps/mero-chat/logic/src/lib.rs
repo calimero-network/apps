@@ -116,11 +116,13 @@ pub struct PublicChannelInfo {
 #[serde(crate = "calimero_sdk::serde")]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct DMChatInfo {
+    pub context_id: String,
     pub channel_type: ChannelType,
     pub created_at: u64,
     pub created_by: UserId,
     pub channel_user: UserId,
-    pub context_id: String,
+    pub context_identity: UserId,
+    pub did_join: bool,
     pub invitation_payload: String,
 }
 
@@ -644,7 +646,10 @@ impl CurbChat {
 
     pub fn create_dm_chat(
         &mut self,
+        // User to be invited e.g. n1:identity1
         user: UserId,
+        // New identity of executor user e.g. n2:identity2 as you can't create same context identity
+        creator: UserId,
         timestamp: u64,
         context_id: String,
         invitation_payload: String,
@@ -672,24 +677,29 @@ impl CurbChat {
 
         let context_id_for_user = context_id.clone();
         let dm_chat_info = DMChatInfo {
+            context_id: context_id.clone(),
+            channel_type: ChannelType::Private,
+
             created_at: timestamp,
             created_by: executor_id,
             channel_user: user.clone(),
-            channel_type: ChannelType::Private,
-            context_id: context_id.clone(),
+            context_identity: creator,
             invitation_payload: "".to_string(),
+            did_join: true
         };
 
         self.add_dm_to_user(&executor_id, dm_chat_info);
         self.add_dm_to_user(
             &user,
             DMChatInfo {
+                context_id: context_id_for_user,
                 channel_type: ChannelType::Private,
                 created_at: timestamp,
                 created_by: executor_id,
                 channel_user: executor_id,
-                context_id: context_id_for_user,
+                context_identity: user,
                 invitation_payload: invitation_payload.clone(),
+                did_join: false
             },
         );
 
@@ -712,6 +722,8 @@ impl CurbChat {
                         created_by: dm.created_by.clone(),
                         channel_user: dm.channel_user.clone(),
                         context_id: dm.context_id.clone(),
+                        context_identity: dm.context_identity.clone(),
+                        did_join: dm.did_join,
                         invitation_payload: dm.invitation_payload.clone(),
                     });
                 }

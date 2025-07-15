@@ -16,7 +16,21 @@ export interface InviteToContextProps {
   inviter: UserId;
 }
 
+export interface JoinContextProps {
+  invitationPayload: string;
+}
+
+export interface VerifyContextProps {
+  contextId: string;
+}
+
+export interface VerifyContextResponse {
+  joined: boolean;
+}
+
 export interface NodeApi {
   createContext(props: CreateContextProps): ApiResponse<CreateContextResponse>;
   inviteToContext(props: InviteToContextProps): ApiResponse<string>;
+  joinContext(props: JoinContextProps): ApiResponse<string>;
+  verifyContext(props: VerifyContextProps): ApiResponse<VerifyContextResponse>;
 }

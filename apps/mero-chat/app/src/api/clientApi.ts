@@ -47,6 +47,8 @@ export interface GetMessagesProps {
   group: Channel;
   limit?: number;
   offset?: number;
+  is_dm?: boolean;
+  dm_identity?: UserId;
 }
 
 export interface Message {
@@ -60,6 +62,8 @@ export interface SendMessageProps {
   group: Channel;
   message: string;
   timestamp: number;
+  is_dm?: boolean;
+  dm_identity?: UserId;
 }
 
 export interface FullMessageResponse {
@@ -79,11 +83,14 @@ export interface DMChatInfo {
   created_by: UserId;
   channel_user: UserId;
   context_id: string;
+  context_identity: UserId;
+  did_join: boolean;
   invitation_payload: string;
 }
 
 export interface CreateDmProps {
   user: UserId;
+  creator: UserId;
   timestamp: number;
   context_id: string;
   invitation_payload: string;
@@ -122,4 +129,5 @@ export interface ClientApi {
   sendMessage(props: SendMessageProps): ApiResponse<Message>;
   getDms(): ApiResponse<DMChatInfo[]>;
   getChatMembers(): ApiResponse<UserId[]>;
+  createDm(props: CreateDmProps): ApiResponse<string>
 }

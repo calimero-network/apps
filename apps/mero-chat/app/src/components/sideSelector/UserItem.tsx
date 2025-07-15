@@ -14,10 +14,10 @@ const UserListItem = styled.div<{ selected: boolean }>`
   padding-left: 1rem;
   padding-right: 1rem;
   border-radius: 0.5rem;
-  :hover {
+  &:hover {
     color: #ffffff;
   }
-  :hover {
+  &:hover {
     background-color: #25252a;
   }
   cursor: pointer;

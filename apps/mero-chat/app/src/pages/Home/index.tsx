@@ -9,7 +9,12 @@ import {
   type ChatType,
   type CurbMessage,
 } from "../../types/Common";
-import { getStoredSession, updateSessionChat } from "../../utils/session";
+import {
+  getDmContextId,
+  getStoredSession,
+  setDmContextId,
+  updateSessionChat,
+} from "../../utils/session";
 import { defaultActiveChat } from "../../mock/mock";
 import {
   ClientApiDataSource,
@@ -19,7 +24,6 @@ import {
   type NodeEvent,
   type ResponseData,
   getContextId,
-  setContextId,
 } from "@calimero-network/calimero-client";
 import {
   type Channels,
@@ -96,17 +100,26 @@ export default function Home() {
     setTotalMessageCount(0);
   }, []);
 
-  const onDMSelected = useCallback((dm: DMChatInfo) => {
+  const onDMSelected = useCallback(async (dm: DMChatInfo) => {
+    let canJoin = true;
+    const verifyContextResponse =
+      await new ContextApiDataSource().verifyContext({
+        contextId: dm.context_id,
+      });
+    if (verifyContextResponse.data) {
+      canJoin = !verifyContextResponse.data.joined;
+    }
     const selectedChat = {
       type: "direct_message" as ChatType,
       contextId: dm.context_id,
       id: dm.channel_user,
       name: dm.channel_user,
       readOnly: false,
-      account: dm.channel_user,
-      canJoin: false,
+      account: dm.context_identity,
+      canJoin: canJoin,
+      invitationPayload: dm.invitation_payload,
     };
-    setContextId(dm.context_id);
+    setDmContextId(dm.context_id);
     setIsOpenSearchChannel(false);
     setActiveChat(selectedChat);
     activeChatRef.current = selectedChat;
@@ -122,7 +135,11 @@ export default function Home() {
       try {
         subscriptionsClient = getWsSubscriptionsClient();
         await subscriptionsClient.connect();
-        subscriptionsClient.subscribe([getContextId() || ""]);
+        subscriptionsClient.subscribe([
+          (activeChatRef.current?.type === "direct_message"
+            ? getDmContextId()
+            : getContextId()) || "",
+        ]);
 
         subscriptionsClient?.addCallback(async (data: NodeEvent) => {
           try {
@@ -133,6 +150,8 @@ export default function Home() {
                   group: { name: activeChatRef.current?.name || "" },
                   limit: 20,
                   offset: 0,
+                  is_dm: activeChatRef.current?.type === "direct_message",
+                  dm_identity: activeChatRef.current?.account,
                 });
               if (reFetchedMessages.data) {
                 const existingMessageIds = new Set(
@@ -194,7 +213,7 @@ export default function Home() {
         subscriptionsClient.disconnect();
       }
     };
-  }, []);
+  }, [activeChatRef.current?.type, activeChatRef.current?.id]);
 
   const loadInitialChatMessages = async (): Promise<ChatMessagesData> => {
     if (!activeChat?.name) {
@@ -209,6 +228,8 @@ export default function Home() {
         group: { name: activeChat?.name || "" },
         limit: 20,
         offset: 0,
+        is_dm: activeChat?.type === "direct_message",
+        dm_identity: activeChat?.account,
       });
     if (messages.data) {
       const messagesArray = messages.data.messages.map(
@@ -302,10 +323,22 @@ export default function Home() {
   }, []);
 
   const onJoinedChat = async () => {
-    await fetchChannels();
+    let canJoin = false;
+    if (activeChatRef.current?.type === "direct_message") {
+      const joinContextResponse = await new ContextApiDataSource().joinContext({
+        invitationPayload: activeChatRef.current?.invitationPayload || "",
+      });
+      if (joinContextResponse.data) {
+        await fetchDms();
+      } else {
+        canJoin = true;
+      }
+    } else {
+      await fetchChannels();
+    }
     const activeChatCopy = { ...activeChat };
     if (activeChatCopy && activeChat) {
-      activeChatCopy.canJoin = false;
+      activeChatCopy.canJoin = canJoin;
       activeChatCopy.type = activeChat.type;
       activeChatCopy.id = activeChat.id;
       activeChatCopy.name = activeChat.name;
@@ -335,6 +368,8 @@ export default function Home() {
         group: { name: activeChatRef.current?.name || "" },
         limit: 20,
         offset: messagesOffset,
+        is_dm: activeChat?.type === "direct_message",
+        dm_identity: activeChat?.account,
       });
     if (messages.data) {
       const messagesArray = messages.data.messages.map(
@@ -385,6 +420,7 @@ export default function Home() {
         const invitationPayload = inviteResponse.data;
         const createDmResponse = await new ClientApiDataSource().createDm({
           user: value,
+          creator: response.data.memberPublicKey,
           timestamp: Date.now(),
           context_id: response.data.contextId,
           invitation_payload: invitationPayload,

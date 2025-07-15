@@ -23,3 +23,11 @@ export const getStoredSession = (): ActiveChat | null => {
 export const clearStoredSession = () => {
   localStorage.removeItem("lastSession");
 };
+
+export const setDmContextId = (contextId: string) => {
+  localStorage.setItem("dmContextId", contextId);
+}
+
+export const getDmContextId = () => {
+  return localStorage.getItem("dmContextId");
+}

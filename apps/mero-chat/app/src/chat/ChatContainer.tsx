@@ -331,6 +331,8 @@ export default function ChatContainer({
       group: { name: activeChatRef.current?.name ?? "" },
       message,
       timestamp: Math.floor(Date.now() / 1000),
+      is_dm: activeChatRef.current?.type === "direct_message",
+      dm_identity: activeChatRef.current?.account,
     });
   };
 

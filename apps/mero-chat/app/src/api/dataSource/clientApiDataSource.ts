@@ -29,6 +29,7 @@ import {
   type SendMessageProps,
   type UserId,
 } from "../clientApi";
+import { getDmContextId } from "../../utils/session";
 
 export function getJsonRpcClient() {
   const appEndpointKey = getAppEndpointKey();
@@ -536,14 +537,14 @@ export class ClientApiDataSource implements ClientApi {
         FullMessageResponse
       >(
         {
-          contextId: getContextId() || "",
+          contextId: (props.is_dm ? getDmContextId() : getContextId()) || "",
           method: ClientMethod.GET_MESSAGES,
           argsJson: {
             group: props.group,
             limit: props.limit,
             offset: props.offset,
           },
-          executorPublicKey: getExecutorPublicKey() || "",
+          executorPublicKey: (props.is_dm ? props.dm_identity : getExecutorPublicKey()) || "",
         },
         {
           headers: {
@@ -585,14 +586,14 @@ export class ClientApiDataSource implements ClientApi {
         Message
       >(
         {
-          contextId: getContextId() || "",
+          contextId: (props.is_dm ? getDmContextId() : getContextId()) || "",
           method: ClientMethod.SEND_MESSAGE,
           argsJson: {
             group: props.group,
             message: props.message,
             timestamp: props.timestamp,
           },
-          executorPublicKey: getExecutorPublicKey() || "",
+          executorPublicKey: (props.is_dm ? props.dm_identity : getExecutorPublicKey()) || "",
         },
         {
           headers: {
@@ -718,6 +719,7 @@ export class ClientApiDataSource implements ClientApi {
           method: ClientMethod.CREATE_DM,
           argsJson: {
             user: props.user,
+            creator: props.creator,
             timestamp: props.timestamp,
             context_id: props.context_id,
             invitation_payload: props.invitation_payload,

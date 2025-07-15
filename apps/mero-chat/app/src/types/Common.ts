@@ -22,6 +22,7 @@ export type ActiveChat = {
   readOnly?: boolean;
   account?: string;
   canJoin?: boolean;
+  invitationPayload?: string;
 };
 
 export interface User {
