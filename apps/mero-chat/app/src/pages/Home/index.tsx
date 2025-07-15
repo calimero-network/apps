@@ -23,7 +23,9 @@ import {
 import {
   type NodeEvent,
   type ResponseData,
+  getAppEndpointKey,
   getContextId,
+  getExecutorPublicKey,
 } from "@calimero-network/calimero-client";
 import {
   type Channels,
@@ -45,6 +47,15 @@ export default function Home() {
   const [nonInvitedUserList, setNonInvitedUserList] = useState<UserId[]>([]);
   const messagesRef = useRef<CurbMessage[]>([]);
   const activeChatRef = useRef<ActiveChat | null>(null);
+
+  useEffect(() => {
+    const contextID = getContextId();
+    const nodeURL = getAppEndpointKey();
+    const identity = getExecutorPublicKey();
+    if (!contextID || !nodeURL || !identity) {
+      window.location.href = "/login";
+    }
+  }, []);
 
   const getChannelUsers = async (channelId: string) => {
     const channelUsers: ResponseData<UserId[]> =
