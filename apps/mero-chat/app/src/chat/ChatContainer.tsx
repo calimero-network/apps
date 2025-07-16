@@ -74,7 +74,7 @@ export default function ChatContainer({
     MessageWithReactions[]
   >([]);
   const [updatedThreadMessages, _setUpdatedThreadMessages] = useState<
-    MessageWithReactions[]
+  UpdatedMessages[]
   >([]);
   const [isEmojiSelectorVisible, setIsEmojiSelectorVisible] = useState(false);
   const [_messageWithEmojiSelector, _setMessageWithEmojiSelector] =
@@ -84,6 +84,7 @@ export default function ChatContainer({
   );
   const [channelUserList, _setChannelUserList] = useState<User[]>([]);
   const [openMobileReactions, setOpenMobileReactions] = useState("");
+  const [messageWithEmojiSelector, setMessageWithEmojiSelector] = useState<CurbMessage | null>(null);
 
   useEffect(() => {
     const fetchChannelMeta = async () => {
@@ -328,6 +329,14 @@ export default function ChatContainer({
   //   setUpdatedThreadMessages([]);
   // }, []);
 
+  const toggleEmojiSelector = useCallback(
+    (message: CurbMessage) => {
+      setMessageWithEmojiSelector(message);
+      setIsEmojiSelectorVisible((prev) => !prev);
+    },
+    [setIsEmojiSelectorVisible],
+  );
+
   const sendMessage = async (message: string) => {
     await new ClientApiDataSource().sendMessage({
       group: { name: activeChatRef.current?.name ?? "" },
@@ -361,7 +370,7 @@ export default function ChatContainer({
             getIconFromCache={getIconFromCache}
             isThread={!!openThread}
             isReadOnly={activeChat.readOnly ?? false}
-            toggleEmojiSelector={() => {}}
+            toggleEmojiSelector={toggleEmojiSelector}
             channelMeta={channelMeta}
             channelUserList={channelUserList}
             openMobileReactions={openMobileReactions}
@@ -392,7 +401,7 @@ export default function ChatContainer({
                 getIconFromCache={getIconFromCache}
                 isThread={true}
                 isReadOnly={activeChat.readOnly ?? false}
-                toggleEmojiSelector={() => {}}
+                toggleEmojiSelector={toggleEmojiSelector}
                 channelMeta={channelMeta}
                 channelUserList={channelUserList}
                 openMobileReactions={openMobileReactions}
@@ -419,8 +428,8 @@ export default function ChatContainer({
       )}
       {isEmojiSelectorVisible && (
         <EmojiSelectorPopup
-                      onEmojiSelected={(_emoji: string) => {
-            //handleReaction(messageWithEmojiSelector!, emoji);
+            onEmojiSelected={(emoji: string) => {
+            handleReaction(messageWithEmojiSelector!, emoji);
             setIsEmojiSelectorVisible(false);
           }}
           onClose={() => setIsEmojiSelectorVisible(false)}

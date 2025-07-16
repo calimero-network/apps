@@ -29,7 +29,7 @@ interface ChatDisplaySplitProps {
   getIconFromCache: (icon: string) => string;
   isThread: boolean;
   isReadOnly: boolean;
-  toggleEmojiSelector: () => void;
+  toggleEmojiSelector: (message: CurbMessage) => void;
   channelMeta: ChannelInfo;
   channelUserList: User[];
   setOpenMobileReactions: (reactions: string) => void;
@@ -165,7 +165,7 @@ export default function ChatDisplaySplit({
   _getIconFromCache,
   isThread,
   isReadOnly,
-  _toggleEmojiSelector,
+  toggleEmojiSelector,
   channelMeta,
   channelUserList,
   _setOpenMobileReactions,
@@ -227,7 +227,7 @@ export default function ChatDisplaySplit({
       handleReaction: (message: CurbMessage, reaction: string) => handleReaction(message, reaction),
       setThread: setThread,
       getIconFromCache: (_accountId: string) => Promise.resolve(null),
-      toggleEmojiSelector: (_message: CurbMessage) => {},
+      toggleEmojiSelector: toggleEmojiSelector,
       openMobileReactions: "abc",
       setOpenMobileReactions: (_messageId: string) => {},
       editable: (_message: CurbMessage) => true,
