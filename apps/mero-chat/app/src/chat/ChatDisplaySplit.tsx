@@ -26,7 +26,7 @@ interface ChatDisplaySplitProps {
   updatedMessages: UpdatedMessages[];
   resetImage: () => void;
   sendMessage: (message: string) => void;
-  getIconFromCache: (icon: string) => string;
+  getIconFromCache: (accountId: string) => Promise<string | null>;
   isThread: boolean;
   isReadOnly: boolean;
   toggleEmojiSelector: (message: CurbMessage) => void;
@@ -34,10 +34,10 @@ interface ChatDisplaySplitProps {
   channelUserList: User[];
   setOpenMobileReactions: (reactions: string) => void;
   openMobileReactions: string;
-  onMessageDeletion: (message: MessageWithReactions) => void;
-  onEditModeRequested: (message: MessageWithReactions) => void;
-  onEditModeCancelled: (message: MessageWithReactions) => void;
-  onMessageUpdated: (message: MessageWithReactions) => void;
+  onMessageDeletion: (message: CurbMessage) => void;
+  onEditModeRequested: (message: CurbMessage, isThread: boolean) => void;
+  onEditModeCancelled: (message: CurbMessage) => void;
+  onMessageUpdated: (message: CurbMessage) => void;
   loadInitialChatMessages: () => Promise<ChatMessagesData>;
   incomingMessages: CurbMessage[];
   loadPrevMessages: (id: string) => Promise<ChatMessagesDataWithOlder>;
@@ -162,18 +162,18 @@ export default function ChatDisplaySplit({
   updatedMessages,
   resetImage,
   sendMessage,
-  _getIconFromCache,
+  getIconFromCache,
   isThread,
   isReadOnly,
   toggleEmojiSelector,
   channelMeta,
   channelUserList,
-  _setOpenMobileReactions,
-  _openMobileReactions,
-  _onMessageDeletion,
-  _onEditModeRequested,
-  _onEditModeCancelled,
-  _onMessageUpdated,
+  setOpenMobileReactions,
+  openMobileReactions,
+  onMessageDeletion,
+  onEditModeRequested,
+  onEditModeCancelled,
+  onMessageUpdated,
   loadInitialChatMessages,
   incomingMessages,
   loadPrevMessages
@@ -226,16 +226,16 @@ export default function ChatDisplaySplit({
       isThread: false,
       handleReaction: (message: CurbMessage, reaction: string) => handleReaction(message, reaction),
       setThread: setThread,
-      getIconFromCache: (_accountId: string) => Promise.resolve(null),
+      getIconFromCache: getIconFromCache,
       toggleEmojiSelector: toggleEmojiSelector,
-      openMobileReactions: "abc",
-      setOpenMobileReactions: (_messageId: string) => {},
+      openMobileReactions: openMobileReactions,
+      setOpenMobileReactions: setOpenMobileReactions,
       editable: (_message: CurbMessage) => true,
       deleteable: (_message: CurbMessage) => true,
-      onEditModeRequested: (_message: CurbMessage, _isThread: boolean) => {},
-      onEditModeCancelled: (_message: CurbMessage) => {},
-      onMessageUpdated: (_message: CurbMessage) => {},
-      onDeleteMessageRequested: (_message: CurbMessage) => {},
+      onEditModeRequested: onEditModeRequested,
+      onEditModeCancelled: onEditModeCancelled,
+      onMessageUpdated: onMessageUpdated,
+      onDeleteMessageRequested: onMessageDeletion,
       fetchAccounts: (_prefix: string) => {},
       autocompleteAccounts: [],
       authToken: undefined,

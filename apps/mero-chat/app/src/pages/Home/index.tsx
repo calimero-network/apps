@@ -188,6 +188,7 @@ export default function Home() {
                     images: [],
                     editMode: false,
                     status: MessageStatus.sent,
+                    deleted: message.deleted,
                   }));
 
                 if (newMessages.length > 0) {
@@ -260,6 +261,7 @@ export default function Home() {
           images: [],
           editMode: false,
           status: MessageStatus.sent,
+          deleted: message.deleted,
         })
       );
 

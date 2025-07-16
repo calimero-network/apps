@@ -57,6 +57,7 @@ export interface Message {
   sender: string;
   text: string;
   timestamp: number;
+  deleted?: boolean;
   reactions: HashMap<string, UserId[]>;
 }
 
@@ -109,6 +110,17 @@ export interface UpdateReactionProps {
   add: boolean;
 }
 
+export interface DeleteMessageProps {
+  group: Channel;
+  messageId: string;
+}
+
+export interface EditMessageProps {
+  group: Channel;
+  messageId: string;
+  newMessage: string;
+}
+
 export enum ClientMethod {
   JOIN_CHAT = "join_chat",
   CREATE_CHANNEL = "create_channel",
@@ -125,7 +137,9 @@ export enum ClientMethod {
   GET_DMS = "get_dms",
   GET_CHAT_MEMBERS = "get_chat_members",
   CREATE_DM = "create_dm_chat",
-  UPDATE_REACTION = "update_reaction"
+  UPDATE_REACTION = "update_reaction",
+  DELETE_MESSAGE = "delete_message",
+  EDIT_MESSAGE = "edit_message"
 }
 
 export interface ClientApi {
@@ -145,4 +159,6 @@ export interface ClientApi {
   getChatMembers(): ApiResponse<UserId[]>;
   createDm(props: CreateDmProps): ApiResponse<string>;
   updateReaction(props: UpdateReactionProps): ApiResponse<string>;
+  editMessage(props: EditMessageProps): ApiResponse<Message>;
+  deleteMessage(props: DeleteMessageProps): ApiResponse<string>;
 }

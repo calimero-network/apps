@@ -16,7 +16,9 @@ import {
   type CreateChannelProps,
   type CreateChannelResponse,
   type CreateDmProps,
+  type DeleteMessageProps,
   type DMChatInfo,
+  type EditMessageProps,
   type FullMessageResponse,
   type GetChannelInfoProps,
   type GetChannelMembersProps,
@@ -792,6 +794,95 @@ export class ClientApiDataSource implements ClientApi {
     } catch (error) {
       console.error("updateReaction failed:", error);
       let errorMessage = "An unexpected error occurred during updateReaction";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+
+  async deleteMessage(props: DeleteMessageProps): ApiResponse<string> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, string>(
+        {
+          contextId: getContextId() || "",
+          method: ClientMethod.DELETE_MESSAGE,
+          argsJson: {
+            group: props.group,
+            message_id: props.messageId,
+          },
+          executorPublicKey: getExecutorPublicKey() || "",
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+      if (response?.error) {
+        return await this.handleError(response.error, {}, this.deleteMessage);
+      }
+      return {
+        data: response?.result.output as string,
+        error: null,
+      };
+    } catch (error) {
+      console.error("deleteMessage failed:", error);
+      let errorMessage = "An unexpected error occurred during deleteMessage";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+
+  async editMessage(props: EditMessageProps): ApiResponse<Message> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, Message>(
+        {
+          contextId: getContextId() || "",
+          method: ClientMethod.EDIT_MESSAGE,
+          argsJson: {
+            group: props.group,
+            message_id: props.messageId,
+            new_message: props.newMessage,
+          },
+          executorPublicKey: getExecutorPublicKey() || "",
+        },  
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+      if (response?.error) {    
+        return await this.handleError(response.error, {}, this.editMessage);
+      }
+      return {
+        data: response?.result.output as Message,
+        error: null,
+      };
+    } catch (error) {
+      console.error("editMessage failed:", error);
+      let errorMessage = "An unexpected error occurred during editMessage";
       if (error instanceof Error) {
         errorMessage = error.message;
       } else if (typeof error === "string") {

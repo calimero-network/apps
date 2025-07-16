@@ -13,7 +13,10 @@ import JoinChannel from "./JoinChannel";
 import EmojiSelectorPopup from "../emojiSelector/EmojiSelectorPopup";
 import ChatDisplaySplit from "./ChatDisplaySplit";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
-import { getExecutorPublicKey, type ResponseData } from "@calimero-network/calimero-client";
+import {
+  getExecutorPublicKey,
+  type ResponseData,
+} from "@calimero-network/calimero-client";
 import type { ChannelInfo } from "../api/clientApi";
 
 interface ChatContainerProps {
@@ -62,19 +65,17 @@ export default function ChatContainer({
   onJoinedChat,
   loadInitialChatMessages,
   incomingMessages,
-  loadPrevMessages
+  loadPrevMessages,
 }: ChatContainerProps) {
   const [openThread, setOpenThread] = useState<
     MessageWithReactions | undefined
   >(undefined);
-  const [updatedMessages, setUpdatedMessages] = useState<
-    UpdatedMessages[]
-  >([]);
+  const [updatedMessages, setUpdatedMessages] = useState<UpdatedMessages[]>([]);
   const [_incomingThreadMessages, _setIncomingThreadMessages] = useState<
     MessageWithReactions[]
   >([]);
   const [updatedThreadMessages, _setUpdatedThreadMessages] = useState<
-  UpdatedMessages[]
+    UpdatedMessages[]
   >([]);
   const [isEmojiSelectorVisible, setIsEmojiSelectorVisible] = useState(false);
   const [_messageWithEmojiSelector, _setMessageWithEmojiSelector] =
@@ -84,7 +85,8 @@ export default function ChatContainer({
   );
   const [channelUserList, _setChannelUserList] = useState<User[]>([]);
   const [openMobileReactions, setOpenMobileReactions] = useState("");
-  const [messageWithEmojiSelector, setMessageWithEmojiSelector] = useState<CurbMessage | null>(null);
+  const [messageWithEmojiSelector, setMessageWithEmojiSelector] =
+    useState<CurbMessage | null>(null);
 
   useEffect(() => {
     const fetchChannelMeta = async () => {
@@ -99,14 +101,6 @@ export default function ChatContainer({
     fetchChannelMeta();
   }, [activeChat]);
 
-  const _toggleEmojiSelector = useCallback(
-    (message: string) => {
-      console.log("message", message);
-      setIsEmojiSelectorVisible((prev) => !prev);
-    },
-    [setIsEmojiSelectorVisible]
-  );
-
   const activeChatRef = useRef(activeChat);
   const _openThreadRef = useRef(openThread);
 
@@ -114,23 +108,27 @@ export default function ChatContainer({
     activeChatRef.current = activeChat;
   }, [activeChat]);
 
-
-  const computeReaction = useCallback((message: CurbMessage, reaction: string, sender: string) => {
-    const accounts = message.reactions?.[reaction] ?? [];
-    let update;
-    if (accounts.includes(sender)) {
-      update = accounts.filter((a: string) => a !== sender);
-    } else {
-      update = [...accounts, sender];
-    }
-    return { reactions: { ...message.reactions, [reaction]: update } };
-  }, []);
+  const computeReaction = useCallback(
+    (message: CurbMessage, reaction: string, sender: string) => {
+      const accounts = message.reactions?.[reaction] ?? [];
+      let update;
+      if (accounts.includes(sender)) {
+        update = accounts.filter((a: string) => a !== sender);
+      } else {
+        update = [...accounts, sender];
+      }
+      return { reactions: { ...message.reactions, [reaction]: update } };
+    },
+    []
+  );
 
   const handleReaction = useCallback(
     async (message: CurbMessage, reaction: string) => {
       const accountId = getExecutorPublicKey() ?? "";
       const accounts = message.reactions?.[reaction] ?? [];
-      const isAdding = !(Array.isArray(accounts) && accounts.includes(accountId));
+      const isAdding = !(
+        Array.isArray(accounts) && accounts.includes(accountId)
+      );
 
       try {
         const response = await new ClientApiDataSource().updateReaction({
@@ -142,9 +140,10 @@ export default function ChatContainer({
         if (response.data) {
           const updateFunction = (message: CurbMessage) =>
             computeReaction(message, reaction, accountId);
-          setUpdatedMessages([{ id: message.id, descriptor: { updateFunction } }]);
+          setUpdatedMessages([
+            { id: message.id, descriptor: { updateFunction } },
+          ]);
         }
-
       } catch (error) {
         console.error("Error updating reaction:", error);
       }
@@ -234,20 +233,23 @@ export default function ChatContainer({
   //   [activeChat, openThread]
   // );
 
-  const getIconFromCache = useCallback((_accountId: string) => {
-    const fallbackImage = "https://i.imgur.com/e8buxpa.png";
-    return fallbackImage;
-  }, []);
+  const getIconFromCache = useCallback(
+    (_accountId: string): Promise<string | null> => {
+      const fallbackImage = "https://i.imgur.com/e8buxpa.png";
+      return Promise.resolve(fallbackImage);
+    },
+    []
+  );
 
-  // const updateDeletedMessage = ({ id, parent_message }) => {
+  // const updateDeletedMessage = ({ id, parent_message }: { id: string, parent_message: string }) => {
   //   const update = [{ id, descriptor: { updatedFields: { deleted: true } } }];
   //   if (parent_message) {
   //     const parentUpdate = [
   //       {
   //         id: parent_message,
   //         descriptor: {
-  //           updateFunction: (message) => ({
-  //             threadCount: message.threadCount - 1,
+  //           updateFunction: (message: CurbMessage) => ({
+  //             threadCount: (message.threadCount ?? 0) - 1,
   //           }),
   //         },
   //       },
@@ -334,7 +336,7 @@ export default function ChatContainer({
       setMessageWithEmojiSelector(message);
       setIsEmojiSelectorVisible((prev) => !prev);
     },
-    [setIsEmojiSelectorVisible],
+    [setIsEmojiSelectorVisible]
   );
 
   const sendMessage = async (message: string) => {
@@ -346,6 +348,63 @@ export default function ChatContainer({
       dm_identity: activeChatRef.current?.account,
     });
   };
+
+  const updateDeletedMessage = (message: CurbMessage) => {
+    const update = [
+      { id: message.id, descriptor: { updatedFields: { deleted: true } } },
+    ];
+    setUpdatedMessages(update);
+  };
+
+  const handleDeleteMessage = useCallback(
+    async (message: CurbMessage) => {
+      const response = await new ClientApiDataSource().deleteMessage({
+        group: { name: activeChatRef.current?.name ?? "" },
+        messageId: message.id,
+      });
+      if (response.data) {
+        updateDeletedMessage(message);
+      }
+    },
+    [activeChatRef]
+  );
+
+  const handleEditMode = useCallback((message: CurbMessage) => {
+    const update = [
+      {
+        id: message.id,
+        descriptor: {
+          updatedFields: { editMode: !message.editMode },
+        },
+      },
+    ];
+    setUpdatedMessages(update);
+  }, []);
+
+  const handleEditedMessage = useCallback(
+    async (message: CurbMessage) => {
+      const response = await new ClientApiDataSource().editMessage({
+        group: { name: activeChatRef.current?.name ?? "" },
+        messageId: message.id,
+        newMessage: message.text,
+      });
+      if (response.data) {
+        const update = [
+          {
+            id: message.id,
+            descriptor: {
+              updatedFields: {
+                text: message.text,
+                editMode: false,
+              },
+            },
+          },
+        ];
+        setUpdatedMessages(update);
+      }
+    },
+    [activeChatRef]
+  );
 
   return (
     <ChatContainerWrapper>
@@ -374,11 +433,11 @@ export default function ChatContainer({
             channelMeta={channelMeta}
             channelUserList={channelUserList}
             openMobileReactions={openMobileReactions}
-            setOpenMobileReactions={() => {}}
-            onMessageDeletion={() => {}}
-            onEditModeRequested={() => {}}
-            onEditModeCancelled={() => {}}
-            onMessageUpdated={() => {}}
+            setOpenMobileReactions={setOpenMobileReactions}
+            onMessageDeletion={handleDeleteMessage}
+            onEditModeRequested={handleEditMode}
+            onEditModeCancelled={handleEditMode}
+            onMessageUpdated={handleEditedMessage}
             loadInitialChatMessages={loadInitialChatMessages}
             incomingMessages={incomingMessages}
             loadPrevMessages={loadPrevMessages}
@@ -406,18 +465,10 @@ export default function ChatContainer({
                 channelUserList={channelUserList}
                 openMobileReactions={openMobileReactions}
                 setOpenMobileReactions={setOpenMobileReactions}
-                onMessageDeletion={(message: MessageWithReactions) =>
-                  console.log(message)
-                }
-                onEditModeRequested={(message: MessageWithReactions) =>
-                  console.log(message)
-                }
-                onEditModeCancelled={(message: MessageWithReactions) =>
-                  console.log(message)
-                }
-                onMessageUpdated={(message: MessageWithReactions) =>
-                  console.log(message)
-                }
+                onMessageDeletion={handleDeleteMessage}
+                onEditModeRequested={handleEditMode}
+                onEditModeCancelled={handleEditMode}
+                onMessageUpdated={handleEditedMessage}
                 loadInitialChatMessages={loadInitialChatMessages}
                 incomingMessages={incomingMessages}
                 loadPrevMessages={loadPrevMessages}
@@ -428,7 +479,7 @@ export default function ChatContainer({
       )}
       {isEmojiSelectorVisible && (
         <EmojiSelectorPopup
-            onEmojiSelected={(emoji: string) => {
+          onEmojiSelected={(emoji: string) => {
             handleReaction(messageWithEmojiSelector!, emoji);
             setIsEmojiSelectorVisible(false);
           }}
