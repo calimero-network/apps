@@ -8,8 +8,12 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
+base64 = "0.22.1"
+borsh = "0.10.3"
+borsh-derive = "0.10.3"
+bs58 = "0.5.1"
 calimero-sdk = { git = "https://github.com/calimero-network/core", branch = "master" }
-serde = { version = "1.0", features = ["derive"] }
+calimero-storage = { git = "https://github.com/calimero-network/core", branch = "master" }
 
 [profile.app-release]
 inherits = "release"
