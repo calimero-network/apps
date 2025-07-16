@@ -1,4 +1,5 @@
 import type { ApiResponse } from "@calimero-network/calimero-client";
+import type { HashMap } from "../types/Common";
 
 export enum ChannelType {
   PUBLIC = "Public",
@@ -56,6 +57,11 @@ export interface Message {
   sender: string;
   text: string;
   timestamp: number;
+  reactions: HashMap<string, UserId[]>;
+}
+
+export interface MessageWithReactions extends Message {
+  reactions: HashMap<string, UserId[]>;
 }
 
 export interface SendMessageProps {
@@ -67,7 +73,7 @@ export interface SendMessageProps {
 }
 
 export interface FullMessageResponse {
-  messages: Message[];
+  messages: MessageWithReactions[];
   total_count: number;
   start_position: number;
 }
@@ -96,6 +102,13 @@ export interface CreateDmProps {
   invitation_payload: string;
 }
 
+export interface UpdateReactionProps {
+  messageId: string;
+  emoji: string;
+  userId: UserId;
+  add: boolean;
+}
+
 export enum ClientMethod {
   JOIN_CHAT = "join_chat",
   CREATE_CHANNEL = "create_channel",
@@ -111,7 +124,8 @@ export enum ClientMethod {
   SEND_MESSAGE = "send_message",
   GET_DMS = "get_dms",
   GET_CHAT_MEMBERS = "get_chat_members",
-  CREATE_DM = "create_dm_chat"
+  CREATE_DM = "create_dm_chat",
+  UPDATE_REACTION = "update_reaction"
 }
 
 export interface ClientApi {
@@ -129,5 +143,6 @@ export interface ClientApi {
   sendMessage(props: SendMessageProps): ApiResponse<Message>;
   getDms(): ApiResponse<DMChatInfo[]>;
   getChatMembers(): ApiResponse<UserId[]>;
-  createDm(props: CreateDmProps): ApiResponse<string>
+  createDm(props: CreateDmProps): ApiResponse<string>;
+  updateReaction(props: UpdateReactionProps): ApiResponse<string>;
 }

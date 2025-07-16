@@ -6,13 +6,14 @@ import type {
   ChatMessagesDataWithOlder,
   CurbMessage,
   MessageWithReactions,
+  UpdatedMessages,
   User,
 } from "../types/Common";
 import JoinChannel from "./JoinChannel";
 import EmojiSelectorPopup from "../emojiSelector/EmojiSelectorPopup";
 import ChatDisplaySplit from "./ChatDisplaySplit";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
-import type { ResponseData } from "@calimero-network/calimero-client";
+import { getExecutorPublicKey, type ResponseData } from "@calimero-network/calimero-client";
 import type { ChannelInfo } from "../api/clientApi";
 
 interface ChatContainerProps {
@@ -66,8 +67,8 @@ export default function ChatContainer({
   const [openThread, setOpenThread] = useState<
     MessageWithReactions | undefined
   >(undefined);
-  const [updatedMessages, _setUpdatedMessages] = useState<
-    MessageWithReactions[]
+  const [updatedMessages, setUpdatedMessages] = useState<
+    UpdatedMessages[]
   >([]);
   const [_incomingThreadMessages, _setIncomingThreadMessages] = useState<
     MessageWithReactions[]
@@ -76,7 +77,7 @@ export default function ChatContainer({
     MessageWithReactions[]
   >([]);
   const [isEmojiSelectorVisible, setIsEmojiSelectorVisible] = useState(false);
-  const [messageWithEmojiSelector, _setMessageWithEmojiSelector] =
+  const [_messageWithEmojiSelector, _setMessageWithEmojiSelector] =
     useState<MessageWithReactions | null>(null);
   const [channelMeta, setChannelMeta] = useState<ChannelInfo>(
     {} as ChannelInfo
@@ -112,39 +113,40 @@ export default function ChatContainer({
     activeChatRef.current = activeChat;
   }, [activeChat]);
 
-  const computeReaction = useCallback(
-    (message: MessageWithReactions, reaction: string, sender: string) => {
-      const accounts = message.reactions.get(reaction) ?? [];
-      let update;
-      if (accounts.includes(sender)) {
-        update = accounts.filter((a: string) => a !== sender);
-      } else {
-        update = [...accounts, sender];
-      }
-      return { reactions: { ...message.reactions, [reaction]: update } };
-    },
-    []
-  );
+
+  const computeReaction = useCallback((message: CurbMessage, reaction: string, sender: string) => {
+    const accounts = message.reactions?.[reaction] ?? [];
+    let update;
+    if (accounts.includes(sender)) {
+      update = accounts.filter((a: string) => a !== sender);
+    } else {
+      update = [...accounts, sender];
+    }
+    return { reactions: { ...message.reactions, [reaction]: update } };
+  }, []);
 
   const handleReaction = useCallback(
-    (message: MessageWithReactions, reaction: string) => {
-      const _updates = [
-        {
-          id: message.id,
-          descriptor: {
-            updateFunction: (message: MessageWithReactions) =>
-              computeReaction(
-                message,
-                reaction,
-                localStorage.getItem("accountId") ?? ""
-              ),
-          },
-        },
-      ];
-      //setUpdatedMessages(updates);
-      //setUpdatedThreadMessages(updates);
-      // todo toggle
-      //curbApi.toggleReaction({ messageId: message.id, reaction });
+    async (message: CurbMessage, reaction: string) => {
+      const accountId = getExecutorPublicKey() ?? "";
+      const accounts = message.reactions?.[reaction] ?? [];
+      const isAdding = !(Array.isArray(accounts) && accounts.includes(accountId));
+
+      try {
+        const response = await new ClientApiDataSource().updateReaction({
+          messageId: message.id,
+          emoji: reaction,
+          userId: accountId,
+          add: isAdding,
+        });
+        if (response.data) {
+          const updateFunction = (message: CurbMessage) =>
+            computeReaction(message, reaction, accountId);
+          setUpdatedMessages([{ id: message.id, descriptor: { updateFunction } }]);
+        }
+
+      } catch (error) {
+        console.error("Error updating reaction:", error);
+      }
     },
     []
   );
@@ -349,7 +351,7 @@ export default function ChatContainer({
         <>
           <ChatDisplaySplit
             readMessage={() => {}}
-            handleReaction={() => {}}
+            handleReaction={handleReaction}
             openThread={openThread}
             setOpenThread={() => {}}
             activeChat={activeChat}
@@ -417,8 +419,8 @@ export default function ChatContainer({
       )}
       {isEmojiSelectorVisible && (
         <EmojiSelectorPopup
-          onEmojiSelected={(emoji: string) => {
-            handleReaction(messageWithEmojiSelector!, emoji);
+                      onEmojiSelected={(_emoji: string) => {
+            //handleReaction(messageWithEmojiSelector!, emoji);
             setIsEmojiSelectorVisible(false);
           }}
           onClose={() => setIsEmojiSelectorVisible(false)}

@@ -108,8 +108,8 @@ export interface ChatFile {
 }
 
 export enum MessageStatus {
-  sending = 'sending',
-  sent = 'sent',
+  sending = "sending",
+  sent = "sent",
 }
 
 export type Option<T> = T | undefined;
@@ -163,4 +163,20 @@ export interface MessageRendererProps {
   autocompleteAccounts: AccountData[];
   authToken: string | undefined;
   privateIpfsEndpoint: string;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type T = any;
+
+export interface UpdateFunction<T> {
+  (currentMessage: T): Partial<T>;
+}
+
+export type UpdateDescriptor<T> =
+  | { updatedFields: Partial<T> }
+  | { updateFunction: UpdateFunction<T> };
+
+export interface UpdatedMessages {
+  id: string;
+  descriptor: UpdateDescriptor<T>;
 }

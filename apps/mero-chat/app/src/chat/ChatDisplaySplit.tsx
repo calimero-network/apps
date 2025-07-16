@@ -5,6 +5,7 @@ import type {
   ChatMessagesData,
   ChatMessagesDataWithOlder,
   MessageRendererProps,
+  UpdatedMessages,
 } from "../types/Common";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import MessageInput from "./MessageInput";
@@ -18,11 +19,11 @@ import { getExecutorPublicKey } from "@calimero-network/calimero-client";
 
 interface ChatDisplaySplitProps {
   readMessage: (message: MessageWithReactions) => void;
-  handleReaction: (message: MessageWithReactions, emoji: string) => void;
+  handleReaction: (message: CurbMessage, emoji: string) => void;
   openThread: MessageWithReactions | undefined;
   setOpenThread: (message: MessageWithReactions | null) => void;
   activeChat: ActiveChat;
-  updatedMessages: MessageWithReactions[];
+  updatedMessages: UpdatedMessages[];
   resetImage: () => void;
   sendMessage: (message: string) => void;
   getIconFromCache: (icon: string) => string;
@@ -154,7 +155,7 @@ const ThreadHeader = ({ onClose }: { onClose: () => void }) => (
 
 export default function ChatDisplaySplit({
   readMessage,
-  _handleReaction,
+  handleReaction,
   openThread,
   setOpenThread,
   activeChat,
@@ -223,9 +224,7 @@ export default function ChatDisplaySplit({
     const params: MessageRendererProps = {
       accountId: "fran.near",
       isThread: false,
-      handleReaction: (message: CurbMessage, reaction: string) => {
-        console.log(message, reaction);
-      },
+      handleReaction: (message: CurbMessage, reaction: string) => handleReaction(message, reaction),
       setThread: setThread,
       getIconFromCache: (_accountId: string) => Promise.resolve(null),
       toggleEmojiSelector: (_message: CurbMessage) => {},

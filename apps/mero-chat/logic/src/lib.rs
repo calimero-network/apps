@@ -20,6 +20,7 @@ pub enum Event {
     MessageReceived(String),
     ChannelJoined(String),
     DMCreated(String),
+    ReactionUpdated(String),
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
@@ -30,6 +31,17 @@ pub struct Message {
     pub sender: UserId,
     pub id: MessageId,
     pub text: String,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
+#[serde(crate = "calimero_sdk::serde")]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct MessageWithReactions {
+    pub timestamp: u64,
+    pub sender: UserId,
+    pub id: MessageId,
+    pub text: String,
+    pub reactions: Option<HashMap<String, Vec<UserId>>>,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, PartialEq, Eq, Clone)]
@@ -97,7 +109,7 @@ pub struct ChannelInfo {
 #[serde(crate = "calimero_sdk::serde")]
 pub struct FullMessageResponse {
     pub total_count: u32,
-    pub messages: Vec<Message>,
+    pub messages: Vec<MessageWithReactions>,
     pub start_position: u32,
 }
 
@@ -138,6 +150,7 @@ pub struct CurbChat {
     channel_members: UnorderedMap<Channel, UnorderedSet<UserId>>,
     dm_chats: UnorderedMap<UserId, Vec<DMChatInfo>>,
     is_dm: bool,
+    reactions: UnorderedMap<MessageId, UnorderedMap<String, UnorderedSet<UserId>>>,
 }
 
 #[app::logic]
@@ -187,6 +200,7 @@ impl CurbChat {
             channel_members,
             dm_chats: UnorderedMap::new(),
             is_dm,
+            reactions: UnorderedMap::new(),
         }
     }
 
@@ -612,7 +626,7 @@ impl CurbChat {
             });
         }
 
-        let mut messages = Vec::new();
+        let mut messages: Vec<MessageWithReactions> = Vec::new();
         if let Ok(iter) = channel_info.messages.iter() {
             let all_messages: Vec<_> = iter.collect();
 
@@ -630,7 +644,35 @@ impl CurbChat {
                 let start_idx = if end_idx > limit { end_idx - limit } else { 0 };
 
                 for i in start_idx..end_idx {
-                    messages.push(all_messages[i].clone());
+                    let message = &all_messages[i];
+                    let message_reactions = self.reactions.get(&message.id);
+
+                    let reactions = match message_reactions {
+                        Ok(Some(reactions)) => {
+                            let mut hashmap = HashMap::new();
+                            if let Ok(entries) = reactions.entries() {
+                                for (emoji, users) in entries {
+                                    let mut user_vec = Vec::new();
+                                    if let Ok(iter) = users.iter() {
+                                        for user in iter {
+                                            user_vec.push(user.clone());
+                                        }
+                                    }
+                                    hashmap.insert(emoji, user_vec);
+                                }
+                            }
+                            Some(hashmap)
+                        }
+                        _ => None,
+                    };
+
+                    messages.push(MessageWithReactions {
+                        timestamp: message.timestamp,
+                        sender: message.sender.clone(),
+                        id: message.id.clone(),
+                        text: message.text.clone(),
+                        reactions,
+                    });
                 }
             }
         }
@@ -642,6 +684,37 @@ impl CurbChat {
             messages: messages,
             start_position: offset as u32,
         })
+    }
+
+    pub fn update_reaction(
+        &mut self,
+        message_id: MessageId,
+        emoji: String,
+        user: UserId,
+        add: bool,
+    ) -> app::Result<String, String> {
+        let mut reactions = match self.reactions.get(&message_id) {
+            Ok(Some(reactions)) => reactions,
+            _ => UnorderedMap::new(),
+        };
+
+        let mut emoji_reactions = match reactions.get(&emoji) {
+            Ok(Some(users)) => users,
+            _ => UnorderedSet::new(),
+        };
+
+        if add {
+            let _ = emoji_reactions.insert(user);
+        } else {
+            let _ = emoji_reactions.remove(&user);
+        }
+
+        let _ = reactions.insert(emoji, emoji_reactions);
+        let _ = self.reactions.insert(message_id, reactions);
+
+        let action = if add { "added" } else { "removed" };
+        app::emit!(Event::ReactionUpdated(format!("Reaction {} successfully", action)));
+        Ok(format!("Reaction {} successfully", action))
     }
 
     pub fn create_dm_chat(
@@ -685,7 +758,7 @@ impl CurbChat {
             channel_user: user.clone(),
             context_identity: creator,
             invitation_payload: "".to_string(),
-            did_join: true
+            did_join: true,
         };
 
         self.add_dm_to_user(&executor_id, dm_chat_info);
@@ -699,7 +772,7 @@ impl CurbChat {
                 channel_user: executor_id,
                 context_identity: user,
                 invitation_payload: invitation_payload.clone(),
-                did_join: false
+                did_join: false,
             },
         );
 

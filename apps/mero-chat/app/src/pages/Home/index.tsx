@@ -33,7 +33,7 @@ import {
   type FullMessageResponse,
   type UserId,
 } from "../../api/clientApi";
-import type { Message as ApiMessage } from "../../api/clientApi";
+import type { MessageWithReactions } from "../../api/clientApi";
 
 import { type SubscriptionsClient } from "@calimero-network/calimero-client";
 import { ContextApiDataSource } from "../../api/dataSource/nodeApiDataSource";
@@ -170,16 +170,16 @@ export default function Home() {
                 );
                 const newMessages = reFetchedMessages.data.messages
                   .filter(
-                    (message: ApiMessage) => !existingMessageIds.has(message.id)
+                    (message: MessageWithReactions) => !existingMessageIds.has(message.id)
                   )
-                  .map((message: ApiMessage) => ({
+                  .map((message: MessageWithReactions) => ({
                     id: message.id,
                     text: message.text,
                     nonce: Math.random().toString(36).substring(2, 15),
                     key: message.id,
                     timestamp: message.timestamp * 1000,
                     sender: message.sender,
-                    reactions: {},
+                    reactions: message.reactions,
                     threadCount: 0,
                     threadLastTimestamp: 0,
                     editedOn: undefined,
@@ -244,14 +244,14 @@ export default function Home() {
       });
     if (messages.data) {
       const messagesArray = messages.data.messages.map(
-        (message: ApiMessage) => ({
+        (message: MessageWithReactions) => ({
           id: message.id,
           text: message.text,
           nonce: Math.random().toString(36).substring(2, 15),
           key: message.id,
           timestamp: message.timestamp * 1000,
           sender: message.sender,
-          reactions: {},
+          reactions: message.reactions,
           threadCount: 0,
           threadLastTimestamp: 0,
           editedOn: undefined,
@@ -384,7 +384,7 @@ export default function Home() {
       });
     if (messages.data) {
       const messagesArray = messages.data.messages.map(
-        (message: ApiMessage) => ({
+        (message: MessageWithReactions) => ({
           id: message.id,
           text: message.text,
           nonce: Math.random().toString(36).substring(2, 15),

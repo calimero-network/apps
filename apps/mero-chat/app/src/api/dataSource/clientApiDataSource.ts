@@ -27,6 +27,7 @@ import {
   type LeaveChannelProps,
   type Message,
   type SendMessageProps,
+  type UpdateReactionProps,
   type UserId,
 } from "../clientApi";
 import { getDmContextId } from "../../utils/session";
@@ -544,7 +545,8 @@ export class ClientApiDataSource implements ClientApi {
             limit: props.limit,
             offset: props.offset,
           },
-          executorPublicKey: (props.is_dm ? props.dm_identity : getExecutorPublicKey()) || "",
+          executorPublicKey:
+            (props.is_dm ? props.dm_identity : getExecutorPublicKey()) || "",
         },
         {
           headers: {
@@ -593,7 +595,8 @@ export class ClientApiDataSource implements ClientApi {
             message: props.message,
             timestamp: props.timestamp,
           },
-          executorPublicKey: (props.is_dm ? props.dm_identity : getExecutorPublicKey()) || "",
+          executorPublicKey:
+            (props.is_dm ? props.dm_identity : getExecutorPublicKey()) || "",
         },
         {
           headers: {
@@ -743,6 +746,52 @@ export class ClientApiDataSource implements ClientApi {
     } catch (error) {
       console.error("createDm failed:", error);
       let errorMessage = "An unexpected error occurred during createDm";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+
+  async updateReaction(props: UpdateReactionProps): ApiResponse<string> {
+    try {
+       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, string>(
+        {
+          contextId: getContextId() || "",
+          method: ClientMethod.UPDATE_REACTION,
+          argsJson: {
+            message_id: props.messageId,
+            emoji: props.emoji,
+            user: props.userId,
+            add: props.add,
+          },
+          executorPublicKey: getExecutorPublicKey() || "",
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+      if (response?.error) {
+        return await this.handleError(response.error, {}, this.updateReaction);
+      }
+      return {
+        data: response?.result.output as string,
+        error: null,
+      };
+    } catch (error) {
+      console.error("updateReaction failed:", error);
+      let errorMessage = "An unexpected error occurred during updateReaction";
       if (error instanceof Error) {
         errorMessage = error.message;
       } else if (typeof error === "string") {
