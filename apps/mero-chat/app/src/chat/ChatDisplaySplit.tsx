@@ -7,7 +7,7 @@ import type {
   MessageRendererProps,
   UpdatedMessages,
 } from "../types/Common";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import MessageInput from "./MessageInput";
 import {
   messageRenderer,
@@ -16,12 +16,17 @@ import {
 } from "virtualized-chat";
 import type { ChannelInfo } from "../api/clientApi";
 import { getExecutorPublicKey } from "@calimero-network/calimero-client";
+import EmojiSelectorPopup from "../emojiSelector/EmojiSelectorPopup";
 
 interface ChatDisplaySplitProps {
   readMessage: (message: MessageWithReactions) => void;
-  handleReaction: (message: CurbMessage, emoji: string) => void;
-  openThread: MessageWithReactions | undefined;
-  setOpenThread: (message: MessageWithReactions | null) => void;
+  handleReaction: (
+    message: CurbMessage,
+    emoji: string,
+    isThread: boolean
+  ) => void;
+  openThread: CurbMessage | undefined;
+  setOpenThread: (message: CurbMessage) => void;
   activeChat: ActiveChat;
   updatedMessages: UpdatedMessages[];
   resetImage: () => void;
@@ -41,6 +46,10 @@ interface ChatDisplaySplitProps {
   loadInitialChatMessages: () => Promise<ChatMessagesData>;
   incomingMessages: CurbMessage[];
   loadPrevMessages: (id: string) => Promise<ChatMessagesDataWithOlder>;
+  currentOpenThreadRef?: React.RefObject<CurbMessage | undefined>;
+  isEmojiSelectorVisible: boolean;
+  setIsEmojiSelectorVisible: (isVisible: boolean) => void;
+  messageWithEmojiSelector: CurbMessage | null;
 }
 
 const ContainerPadding = styled.div`
@@ -176,7 +185,11 @@ export default function ChatDisplaySplit({
   onMessageUpdated,
   loadInitialChatMessages,
   incomingMessages,
-  loadPrevMessages
+  loadPrevMessages,
+  currentOpenThreadRef,
+  isEmojiSelectorVisible,
+  setIsEmojiSelectorVisible,
+  messageWithEmojiSelector,
 }: ChatDisplaySplitProps) {
   const [accountId, setAccountId] = useState<string | undefined>(undefined);
 
@@ -184,10 +197,6 @@ export default function ChatDisplaySplit({
     if (!accountId) {
       setAccountId(getExecutorPublicKey() ?? "");
     }
-  }, []);
-
-  const setThread = useCallback((message: CurbMessage) => {
-    setOpenThread(message);
   }, []);
 
   const isModerator = useMemo(
@@ -200,32 +209,38 @@ export default function ChatDisplaySplit({
 
   const isOwner = accountId === channelMeta.created_by;
 
+  // Create mutable copies of the style objects
+  const currentChatStyle = { ...chatStyle };
+  const currentContainerPaddingStyle = { ...containerPaddingStyle };
+  const currentWrapperStyle = { ...wrapperStyle };
+
   if (openThread && isThread) {
-    chatStyle.height = "calc(100% - 124px)";
-    chatStyle.width = "100%";
-    chatStyle.overflow = "hidden";
-    containerPaddingStyle.flexDirection = "column";
-    containerPaddingStyle.paddingLeft = "0px";
-    containerPaddingStyle.height = "100%";
-    containerPaddingStyle.width = "100%";
-    wrapperStyle.width = "100%";
+    currentChatStyle.height = "calc(100% - 124px)";
+    currentChatStyle.width = "100%";
+    currentChatStyle.overflow = "hidden";
+    currentContainerPaddingStyle.flexDirection = "column";
+    currentContainerPaddingStyle.paddingLeft = "0px";
+    currentContainerPaddingStyle.height = "100%";
+    currentContainerPaddingStyle.width = "100%";
+    currentWrapperStyle.width = "100%";
   } else if (openThread && !isThread) {
-    chatStyle.height = "100%";
-    chatStyle.width = "100%";
-    containerPaddingStyle.paddingRight = "0px";
-    wrapperStyle.width = "60%";
+    currentChatStyle.height = "100%";
+    currentChatStyle.width = "100%";
+    currentContainerPaddingStyle.paddingRight = "0px";
+    currentWrapperStyle.width = "60%";
   } else {
-    chatStyle.height = "100%";
-    chatStyle.width = "100%";
-    chatStyle["overflow"] = "hidden";
+    currentChatStyle.height = "100%";
+    currentChatStyle.width = "100%";
+    currentChatStyle.overflow = "hidden";
   }
 
   const renderMessage = () => {
     const params: MessageRendererProps = {
       accountId: "fran.near",
-      isThread: false,
-      handleReaction: (message: CurbMessage, reaction: string) => handleReaction(message, reaction),
-      setThread: setThread,
+      isThread: isThread,
+      handleReaction: (message: CurbMessage, reaction: string) =>
+        handleReaction(message, reaction, isThread),
+      setThread: setOpenThread,
       getIconFromCache: getIconFromCache,
       toggleEmojiSelector: toggleEmojiSelector,
       openMobileReactions: openMobileReactions,
@@ -245,38 +260,57 @@ export default function ChatDisplaySplit({
   };
 
   return (
-    <Wrapper style={wrapperStyle}>
-      {/* @ts-expect-error - TODO: fix this */}
-      <ContainerPadding style={containerPaddingStyle}>
-        {openThread && isThread && (
-          <ThreadHeader onClose={() => setOpenThread(null)} />
-        )}
-        <VirtualizedChat
-          loadInitialMessages={loadInitialChatMessages}
-          loadPrevMessages={loadPrevMessages}
-          incomingMessages={incomingMessages}
-          updatedMessages={updatedMessages}
-          onItemNewItemRender={readMessage}
-          shouldTriggerNewItemIndicator={(message: MessageWithReactions) =>
-            message.sender !== accountId
+    <>
+      <Wrapper style={currentWrapperStyle}>
+        {/* @ts-expect-error - TODO: fix this */}
+        <ContainerPadding style={currentContainerPaddingStyle}>
+          {openThread && isThread && (
+            <ThreadHeader
+              onClose={() => {
+                setOpenThread("");
+                if (currentOpenThreadRef) {
+                  currentOpenThreadRef.current = undefined;
+                }
+              }}
+            />
+          )}
+          <VirtualizedChat
+            loadInitialMessages={loadInitialChatMessages}
+            loadPrevMessages={loadPrevMessages}
+            incomingMessages={incomingMessages}
+            updatedMessages={updatedMessages}
+            onItemNewItemRender={readMessage}
+            shouldTriggerNewItemIndicator={(message: MessageWithReactions) =>
+              message.sender !== accountId
+            }
+            render={renderMessage()}
+            chatId={isThread ? openThread?.id : activeChat}
+            style={currentChatStyle}
+          />
+        </ContainerPadding>
+        <MessageInput
+          selectedChat={
+            activeChat.type === "channel" ? activeChat.name : activeChat.id
           }
-          render={renderMessage()}
-          chatId={isThread ? openThread?.id : activeChat}
-          style={chatStyle}
+          sendMessage={sendMessage}
+          resetImage={resetImage}
+          openThread={openThread}
+          isThread={isThread}
+          isReadOnly={isReadOnly}
+          isOwner={isOwner}
+          isModerator={isModerator}
         />
-      </ContainerPadding>
-      <MessageInput
-        selectedChat={
-          activeChat.type === "channel" ? activeChat.name : activeChat.id
-        }
-        sendMessage={sendMessage}
-        resetImage={resetImage}
-        openThread={openThread}
-        isThread={isThread}
-        isReadOnly={isReadOnly}
-        isOwner={isOwner}
-        isModerator={isModerator}
-      />
-    </Wrapper>
+      </Wrapper>
+      {isEmojiSelectorVisible && (
+        <EmojiSelectorPopup
+          onEmojiSelected={(emoji: string) => {
+            handleReaction(messageWithEmojiSelector!, emoji, isThread);
+            setIsEmojiSelectorVisible(false);
+          }}
+          onClose={() => setIsEmojiSelectorVisible(false)}
+          key="chat-emojis-component"
+        />
+      )}
+    </>
   );
 }

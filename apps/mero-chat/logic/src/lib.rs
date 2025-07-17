@@ -31,6 +31,7 @@ pub struct Message {
     pub sender: UserId,
     pub id: MessageId,
     pub text: String,
+    pub edited_on: Option<u64>,
     pub deleted: Option<bool>,
 }
 
@@ -42,8 +43,11 @@ pub struct MessageWithReactions {
     pub sender: UserId,
     pub id: MessageId,
     pub text: String,
+    pub edited_on: Option<u64>,
     pub reactions: Option<HashMap<String, Vec<UserId>>>,
     pub deleted: Option<bool>,
+    pub thread_count: u32,
+    pub thread_last_timestamp: u64,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, PartialEq, Eq, Clone)]
@@ -149,6 +153,7 @@ pub struct CurbChat {
     created_at: u64,
     members: UnorderedSet<UserId>,
     channels: UnorderedMap<Channel, ChannelInfo>,
+    threads: UnorderedMap<MessageId, Vector<Message>>,
     channel_members: UnorderedMap<Channel, UnorderedSet<UserId>>,
     moderators: UnorderedSet<UserId>,
     dm_chats: UnorderedMap<UserId, Vec<DMChatInfo>>,
@@ -202,6 +207,7 @@ impl CurbChat {
             created_at,
             members,
             channels,
+            threads: UnorderedMap::new(),
             channel_members,
             moderators: moderators,
             dm_chats: UnorderedMap::new(),
@@ -573,6 +579,7 @@ impl CurbChat {
         &mut self,
         group: Channel,
         message: String,
+        parent_message: Option<MessageId>,
         timestamp: u64,
     ) -> app::Result<Message, String> {
         let executor_id = self.get_executor_id();
@@ -584,15 +591,24 @@ impl CurbChat {
             id: message_id,
             text: message,
             deleted: None,
+            edited_on: None,
         };
 
         let mut channel_info = match self.channels.get(&group) {
             Ok(Some(info)) => info,
             _ => return Err("Channel not found".to_string()),
         };
-
-        let _ = channel_info.messages.push(message.clone());
-        let _ = self.channels.insert(group, channel_info);
+        if let Some(parent_message) = parent_message {
+            let mut thread_messages = match self.threads.get(&parent_message) {
+                Ok(Some(messages)) => messages,
+                _ => Vector::new(),
+            };
+            let _ = thread_messages.push(message.clone());
+            let _ = self.threads.insert(parent_message, thread_messages);
+        } else {
+            let _ = channel_info.messages.push(message.clone());
+            let _ = self.channels.insert(group, channel_info);
+        }
 
         app::emit!(Event::MessageSent(message.clone()));
 
@@ -602,6 +618,7 @@ impl CurbChat {
     pub fn get_messages(
         &self,
         group: Channel,
+        parent_message: Option<MessageId>,
         limit: Option<usize>,
         offset: Option<usize>,
     ) -> app::Result<FullMessageResponse, String> {
@@ -614,6 +631,92 @@ impl CurbChat {
 
         if !members.contains(&executor_id).unwrap_or(false) {
             return Err("You are not a member of this channel".to_string());
+        }
+
+        if let Some(parent_id) = parent_message {
+            let thread_messages = match self.threads.get(&parent_id) {
+                Ok(Some(messages)) => messages,
+                _ => return Ok(FullMessageResponse {
+                    total_count: 0,
+                    messages: Vec::new(),
+                    start_position: 0,
+                }),
+            };
+
+            let total_messages = thread_messages.len().unwrap_or(0);
+            let limit = limit.unwrap_or(total_messages);
+            let offset = offset.unwrap_or(0);
+
+            if total_messages == 0 {
+                return Ok(FullMessageResponse {
+                    total_count: 0,
+                    messages: Vec::new(),
+                    start_position: 0,
+                });
+            }
+
+            let mut messages: Vec<MessageWithReactions> = Vec::new();
+            if let Ok(iter) = thread_messages.iter() {
+                let all_messages: Vec<_> = iter.collect();
+
+                if !all_messages.is_empty() {
+                    let total_len = all_messages.len();
+                    if offset >= total_len {
+                        return Ok(FullMessageResponse {
+                            total_count: total_messages as u32,
+                            messages: Vec::new(),
+                            start_position: offset as u32,
+                        });
+                    }
+
+                    let end_idx = total_len - offset;
+                    let start_idx = if end_idx > limit { end_idx - limit } else { 0 };
+
+                    for i in start_idx..end_idx {
+                        let message = &all_messages[i];
+                        let message_reactions = self.reactions.get(&message.id);
+
+                        let reactions = match message_reactions {
+                            Ok(Some(reactions)) => {
+                                let mut hashmap = HashMap::new();
+                                if let Ok(entries) = reactions.entries() {
+                                    for (emoji, users) in entries {
+                                        let mut user_vec = Vec::new();
+                                        if let Ok(iter) = users.iter() {
+                                            for user in iter {
+                                                user_vec.push(user.clone());
+                                            }
+                                        }
+                                        hashmap.insert(emoji, user_vec);
+                                    }
+                                }
+                                Some(hashmap)
+                            }
+                            _ => None,
+                        };
+
+                        messages.push(MessageWithReactions {
+                            timestamp: message.timestamp,
+                            sender: message.sender.clone(),
+                            id: message.id.clone(),
+                            text: message.text.clone(),
+                            reactions,
+                            deleted: message.deleted,
+                            edited_on: message.edited_on,
+                            thread_count: 0,
+                            thread_last_timestamp: 0,
+                        });
+                    }
+                }
+            }
+
+            app::emit!(Event::MessageReceived(group.name.clone()));
+
+            return Ok(FullMessageResponse {
+                total_count: total_messages as u32,
+                messages: messages,
+                start_position: offset as u32,
+            });
         }
 
         let channel_info = match self.channels.get(&group) {
@@ -673,6 +776,26 @@ impl CurbChat {
                         _ => None,
                     };
 
+                    let threads_count = match self.threads.get(&message.id) {
+                        Ok(Some(messages)) => messages.len().unwrap_or(0),
+                        _ => 0,
+                    };
+
+                    let last_timestamp = match self.threads.get(&message.id) {
+                        Ok(Some(messages)) => {
+                            if threads_count > 0 {
+                                if let Ok(Some(last_message)) = messages.get(threads_count - 1) {
+                                    last_message.timestamp
+                                } else {
+                                    0
+                                }
+                            } else {
+                                0
+                            }
+                        }
+                        _ => 0,
+                    };
+
                     messages.push(MessageWithReactions {
                         timestamp: message.timestamp,
                         sender: message.sender.clone(),
@@ -680,6 +803,9 @@ impl CurbChat {
                         text: message.text.clone(),
                         reactions,
                         deleted: message.deleted,
+                        edited_on: message.edited_on,
+                        thread_count: threads_count as u32,
+                        thread_last_timestamp: last_timestamp,
                     });
                 }
             }
@@ -721,7 +847,10 @@ impl CurbChat {
         let _ = self.reactions.insert(message_id, reactions);
 
         let action = if add { "added" } else { "removed" };
-        app::emit!(Event::ReactionUpdated(format!("Reaction {} successfully", action)));
+        app::emit!(Event::ReactionUpdated(format!(
+            "Reaction {} successfully",
+            action
+        )));
         Ok(format!("Reaction {} successfully", action))
     }
 
@@ -730,6 +859,7 @@ impl CurbChat {
         group: Channel,
         message_id: MessageId,
         new_message: String,
+        timestamp: u64,
     ) -> app::Result<Message, String> {
         // TODO: performance on this is critical, optimization requires lot of changes not supported now
         // Reset message storage for large channels (~1K messages cap)
@@ -751,7 +881,7 @@ impl CurbChat {
 
         let mut message_index: Option<usize> = None;
         let mut updated_message: Option<Message> = None;
-        
+
         if let Ok(iter) = channel_info.messages.iter() {
             for (index, message) in iter.enumerate() {
                 if message.id == message_id {
@@ -769,7 +899,8 @@ impl CurbChat {
             if let Ok(Some(original_message)) = channel_info.messages.get(index) {
                 let mut updated_msg = original_message.clone();
                 updated_msg.text = new_message.clone();
-                
+                updated_msg.edited_on = Some(timestamp);
+
                 let _ = channel_info.messages.update(index, updated_msg.clone());
                 updated_message = Some(updated_msg);
             }
@@ -793,7 +924,7 @@ impl CurbChat {
         message_id: MessageId,
     ) -> app::Result<String, String> {
         let executor_id = self.get_executor_id();
-        
+
         let mut channel_info = match self.channels.get(&group) {
             Ok(Some(info)) => info,
             _ => return Err("Channel not found".to_string()),
@@ -801,7 +932,7 @@ impl CurbChat {
 
         let mut message_index: Option<usize> = None;
         let mut target_message: Option<Message> = None;
-        
+
         if let Ok(iter) = channel_info.messages.iter() {
             for (index, message) in iter.enumerate() {
                 if message.id == message_id {
@@ -817,11 +948,11 @@ impl CurbChat {
         }
 
         let message = target_message.unwrap();
-        
+
         let is_message_owner = message.sender == executor_id;
         let is_moderator = self.moderators.contains(&executor_id).unwrap_or(false);
         let is_owner = self.owner == executor_id;
-        
+
         if !is_message_owner && !is_moderator && !is_owner {
             return Err("You don't have permission to delete this message".to_string());
         }
@@ -830,7 +961,7 @@ impl CurbChat {
             let mut deleted_message = message.clone();
             deleted_message.text = "".to_string();
             deleted_message.deleted = Some(true);
-            
+
             let _ = channel_info.messages.update(index, deleted_message);
         }
 

@@ -45,8 +45,26 @@ export default function Home() {
   const [activeChat, setActiveChat] = useState<ActiveChat | null>(null);
   const [incomingMessages, setIncomingMessages] = useState<CurbMessage[]>([]);
   const [nonInvitedUserList, setNonInvitedUserList] = useState<UserId[]>([]);
+  const [totalThreadMessageCount, setTotalThreadMessageCount] = useState(0);
+  const [threadMessagesOffset, setThreadMessagesOffset] = useState(20);
+  const [incomingThreadMessages, setIncomingThreadMessages] = useState<
+    CurbMessage[]
+  >([]);
+  const [currentOpenThread, setCurrentOpenThread] = useState<
+    CurbMessage | undefined
+  >(undefined);
   const messagesRef = useRef<CurbMessage[]>([]);
+  const messagesThreadRef = useRef<CurbMessage[]>([]);
   const activeChatRef = useRef<ActiveChat | null>(null);
+  const currentOpenThreadRef = useRef<CurbMessage | undefined>(undefined);
+  const [openThread, setOpenThread] = useState<CurbMessage | undefined>(
+    undefined
+  );
+
+  // Sync the ref with the state
+  useEffect(() => {
+    currentOpenThreadRef.current = currentOpenThread;
+  }, [currentOpenThread]);
 
   useEffect(() => {
     const contextID = getContextId();
@@ -91,6 +109,8 @@ export default function Home() {
     updateSessionChat(selectedChat);
     setMessagesOffset(20);
     setTotalMessageCount(0);
+    setOpenThread(undefined);
+    setCurrentOpenThread(undefined);
   };
 
   const openSearchPage = useCallback(() => {
@@ -137,6 +157,8 @@ export default function Home() {
     setIsSidebarOpen(false);
     setMessagesOffset(20);
     setTotalMessageCount(0);
+    setOpenThread(undefined);
+    setCurrentOpenThread(undefined);
   }, []);
 
   useEffect(() => {
@@ -155,7 +177,56 @@ export default function Home() {
         subscriptionsClient?.addCallback(async (data: NodeEvent) => {
           try {
             if (data.type === "StateMutation") {
-              //TODO FIX LOGIC
+              const currentThread = currentOpenThreadRef.current;
+
+              if (currentThread) {
+                const reFetchedThreadMessages: ResponseData<FullMessageResponse> =
+                  await new ClientApiDataSource().getMessages({
+                    group: { name: activeChatRef.current?.name || "" },
+                    limit: 20,
+                    offset: 0,
+                    parent_message: currentThread.id,
+                    is_dm: activeChatRef.current?.type === "direct_message",
+                    dm_identity: activeChatRef.current?.account,
+                  });
+                if (reFetchedThreadMessages.data) {
+                  const existingThreadMessageIds = new Set(
+                    messagesThreadRef.current.map((msg) => msg.id)
+                  );
+                  const newThreadMessages =
+                    reFetchedThreadMessages.data.messages
+                      .filter(
+                        (message: MessageWithReactions) =>
+                          !existingThreadMessageIds.has(message.id)
+                      )
+                      .map((message: MessageWithReactions) => ({
+                        id: message.id,
+                        text: message.text,
+                        nonce: Math.random().toString(36).substring(2, 15),
+                        key: message.id,
+                        timestamp: message.timestamp * 1000,
+                        sender: message.sender,
+                        reactions: message.reactions,
+                        threadCount: message.thread_count,
+                        threadLastTimestamp: message.thread_last_timestamp,
+                        editedOn: undefined,
+                        mentions: [],
+                        files: [],
+                        images: [],
+                        editMode: false,
+                        status: MessageStatus.sent,
+                        deleted: message.deleted,
+                      }));
+
+                  if (newThreadMessages.length > 0) {
+                    setIncomingThreadMessages(newThreadMessages);
+                    messagesThreadRef.current = [
+                      ...messagesThreadRef.current,
+                      ...newThreadMessages,
+                    ];
+                  }
+                }
+              }
               const reFetchedMessages: ResponseData<FullMessageResponse> =
                 await new ClientApiDataSource().getMessages({
                   group: { name: activeChatRef.current?.name || "" },
@@ -166,11 +237,12 @@ export default function Home() {
                 });
               if (reFetchedMessages.data) {
                 const existingMessageIds = new Set(
-                  messagesRef.current.map((msg) => msg.id)
+                  messagesRef.current.map((msg) => (msg.id))
                 );
                 const newMessages = reFetchedMessages.data.messages
                   .filter(
-                    (message: MessageWithReactions) => !existingMessageIds.has(message.id)
+                    (message: MessageWithReactions) =>
+                      !existingMessageIds.has(message.id)
                   )
                   .map((message: MessageWithReactions) => ({
                     id: message.id,
@@ -180,8 +252,8 @@ export default function Home() {
                     timestamp: message.timestamp * 1000,
                     sender: message.sender,
                     reactions: message.reactions,
-                    threadCount: 0,
-                    threadLastTimestamp: 0,
+                    threadCount: message.thread_count,
+                    threadLastTimestamp: message.thread_last_timestamp,
                     editedOn: undefined,
                     mentions: [],
                     files: [],
@@ -253,8 +325,8 @@ export default function Home() {
           timestamp: message.timestamp * 1000,
           sender: message.sender,
           reactions: message.reactions,
-          threadCount: 0,
-          threadLastTimestamp: 0,
+          threadCount: message.thread_count,
+          threadLastTimestamp: message.thread_last_timestamp,
           editedOn: undefined,
           mentions: [],
           files: [],
@@ -393,10 +465,10 @@ export default function Home() {
           key: message.id,
           timestamp: message.timestamp * 1000,
           sender: message.sender,
-          reactions: {},
-          threadCount: 0,
-          threadLastTimestamp: 0,
-          editedOn: undefined,
+          reactions: message.reactions,
+          threadCount: message.thread_count,
+          threadLastTimestamp: message.thread_last_timestamp,
+          editedOn: message.edited_on,
           mentions: [],
           files: [],
           images: [],
@@ -445,6 +517,125 @@ export default function Home() {
     }
   };
 
+  const loadInitialThreadMessages = async (
+    parentMessageId: string
+  ): Promise<ChatMessagesData> => {
+    if (!activeChat?.name) {
+      return {
+        messages: [],
+        totalCount: 0,
+        hasMore: false,
+      };
+    }
+    const messages: ResponseData<FullMessageResponse> =
+      await new ClientApiDataSource().getMessages({
+        group: { name: activeChat?.name || "" },
+        limit: 20,
+        offset: 0,
+        parent_message: parentMessageId,
+        is_dm: activeChat?.type === "direct_message",
+        dm_identity: activeChat?.account,
+      });
+    if (messages.data) {
+      const messagesArray = messages.data.messages.map(
+        (message: MessageWithReactions) => ({
+          id: message.id,
+          text: message.text,
+          nonce: Math.random().toString(36).substring(2, 15),
+          key: message.id,
+          timestamp: message.timestamp * 1000,
+          sender: message.sender,
+          reactions: message.reactions,
+          threadCount: message.thread_count,
+          threadLastTimestamp: message.thread_last_timestamp,
+          editedOn: message.edited_on,
+          mentions: [],
+          files: [],
+          images: [],
+          editMode: false,
+          status: MessageStatus.sent,
+          deleted: message.deleted,
+        })
+      );
+
+      messagesThreadRef.current = messagesArray;
+      setTotalThreadMessageCount(messages.data.total_count);
+      return {
+        messages: messagesArray,
+        totalCount: messages.data.total_count,
+        hasMore: messages.data.start_position < messages.data.total_count,
+      };
+    }
+    return {
+      messages: [],
+      totalCount: 0,
+      hasMore: false,
+    };
+  };
+
+  const updateCurrentOpenThread = useCallback(
+    (thread: CurbMessage | undefined) => {
+      setCurrentOpenThread(thread);
+    },
+    []
+  );
+
+  const loadPrevThreadMessages = async (
+    parentMessageId: string
+  ): Promise<ChatMessagesDataWithOlder> => {
+    if (threadMessagesOffset >= totalThreadMessageCount) {
+      return {
+        messages: [],
+        totalCount: totalThreadMessageCount,
+        hasOlder: false,
+      };
+    }
+
+    const messages: ResponseData<FullMessageResponse> =
+      await new ClientApiDataSource().getMessages({
+        group: { name: activeChatRef.current?.name || "" },
+        limit: 20,
+        offset: threadMessagesOffset,
+        parent_message: parentMessageId,
+        is_dm: activeChat?.type === "direct_message",
+        dm_identity: activeChat?.account,
+      });
+    if (messages.data) {
+      const messagesArray = messages.data.messages.map(
+        (message: MessageWithReactions) => ({
+          id: message.id,
+          text: message.text,
+          nonce: Math.random().toString(36).substring(2, 15),
+          key: message.id,
+          timestamp: message.timestamp * 1000,
+          sender: message.sender,
+          reactions: message.reactions,
+          threadCount: message.thread_count,
+          threadLastTimestamp: message.thread_last_timestamp,
+          editedOn: message.edited_on,
+          mentions: [],
+          files: [],
+          images: [],
+          editMode: false,
+          status: MessageStatus.sent,
+          deleted: message.deleted,
+        })
+      );
+      setThreadMessagesOffset(threadMessagesOffset + 20);
+      return {
+        messages: messagesArray,
+        totalCount: messages.data.total_count,
+        hasOlder: messages.data.start_position < messages.data.total_count,
+      };
+    } else {
+      return {
+        messages: [],
+        totalCount: 0,
+        hasOlder: false,
+      };
+    }
+  };
+
   return (
     <AppContainer
       isOpenSearchChannel={isOpenSearchChannel}
@@ -467,6 +658,13 @@ export default function Home() {
       chatMembers={chatMembers}
       createDM={createDM}
       privateDMs={privateDMs}
+      loadInitialThreadMessages={loadInitialThreadMessages}
+      incomingThreadMessages={incomingThreadMessages}
+      loadPrevThreadMessages={loadPrevThreadMessages}
+      updateCurrentOpenThread={updateCurrentOpenThread}
+      openThread={openThread}
+      setOpenThread={setOpenThread}
+      currentOpenThreadRef={currentOpenThreadRef}
     />
   );
 }

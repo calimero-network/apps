@@ -46,6 +46,7 @@ export type LeaveChannelProps = ChannelOperationProps;
 
 export interface GetMessagesProps {
   group: Channel;
+  parent_message?: string;
   limit?: number;
   offset?: number;
   is_dm?: boolean;
@@ -58,7 +59,10 @@ export interface Message {
   text: string;
   timestamp: number;
   deleted?: boolean;
+  edited_on?: number;
   reactions: HashMap<string, UserId[]>;
+  thread_count: number;
+  thread_last_timestamp: number;
 }
 
 export interface MessageWithReactions extends Message {
@@ -69,6 +73,7 @@ export interface SendMessageProps {
   group: Channel;
   message: string;
   timestamp: number;
+  parent_message?: string;
   is_dm?: boolean;
   dm_identity?: UserId;
 }
@@ -119,6 +124,7 @@ export interface EditMessageProps {
   group: Channel;
   messageId: string;
   newMessage: string;
+  timestamp: number;
 }
 
 export enum ClientMethod {

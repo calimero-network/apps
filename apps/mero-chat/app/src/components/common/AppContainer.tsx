@@ -41,6 +41,13 @@ interface AppContainerProps {
   chatMembers: UserId[];
   createDM: (value: string) => Promise<void>;
   privateDMs: DMChatInfo[];
+  loadInitialThreadMessages: (parentMessageId: string) => Promise<ChatMessagesData>;
+  incomingThreadMessages: CurbMessage[];
+  loadPrevThreadMessages: (id: string) => Promise<ChatMessagesDataWithOlder>;
+  updateCurrentOpenThread: (thread: CurbMessage | undefined) => void;
+  openThread: CurbMessage | undefined;
+  setOpenThread: (thread: CurbMessage | undefined) => void;
+  currentOpenThreadRef: React.RefObject<CurbMessage | undefined>;
 }
 export default function AppContainer({
   activeChat,
@@ -62,7 +69,14 @@ export default function AppContainer({
   loadPrevMessages,
   chatMembers,
   createDM,
-  privateDMs
+  privateDMs,
+  loadInitialThreadMessages,
+  incomingThreadMessages,
+  loadPrevThreadMessages,
+  updateCurrentOpenThread,
+  openThread,
+  setOpenThread,
+  currentOpenThreadRef
 }: AppContainerProps) {
   return (
     <>
@@ -102,6 +116,13 @@ export default function AppContainer({
                 loadInitialChatMessages={loadInitialChatMessages}
                 incomingMessages={incomingMessages}
                 loadPrevMessages={loadPrevMessages}
+                loadInitialThreadMessages={loadInitialThreadMessages}
+                incomingThreadMessages={incomingThreadMessages}
+                loadPrevThreadMessages={loadPrevThreadMessages}
+                updateCurrentOpenThread={updateCurrentOpenThread}
+                openThread={openThread}
+                setOpenThread={setOpenThread}
+                currentOpenThreadRef={currentOpenThreadRef}
               />
             )}
             {isOpenSearchChannel && (

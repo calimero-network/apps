@@ -544,6 +544,7 @@ export class ClientApiDataSource implements ClientApi {
           method: ClientMethod.GET_MESSAGES,
           argsJson: {
             group: props.group,
+            parent_message: props.parent_message,
             limit: props.limit,
             offset: props.offset,
           },
@@ -595,6 +596,7 @@ export class ClientApiDataSource implements ClientApi {
           argsJson: {
             group: props.group,
             message: props.message,
+            parent_message: props.parent_message,
             timestamp: props.timestamp,
           },
           executorPublicKey:
@@ -863,6 +865,7 @@ export class ClientApiDataSource implements ClientApi {
             group: props.group,
             message_id: props.messageId,
             new_message: props.newMessage,
+            timestamp: props.timestamp,
           },
           executorPublicKey: getExecutorPublicKey() || "",
         },  

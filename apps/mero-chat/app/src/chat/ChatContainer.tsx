@@ -5,12 +5,10 @@ import type {
   ChatMessagesData,
   ChatMessagesDataWithOlder,
   CurbMessage,
-  MessageWithReactions,
   UpdatedMessages,
   User,
 } from "../types/Common";
 import JoinChannel from "./JoinChannel";
-import EmojiSelectorPopup from "../emojiSelector/EmojiSelectorPopup";
 import ChatDisplaySplit from "./ChatDisplaySplit";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import {
@@ -26,6 +24,15 @@ interface ChatContainerProps {
   loadInitialChatMessages: () => Promise<ChatMessagesData>;
   incomingMessages: CurbMessage[];
   loadPrevMessages: (id: string) => Promise<ChatMessagesDataWithOlder>;
+  loadInitialThreadMessages: (
+    parentMessageId: string
+  ) => Promise<ChatMessagesData>;
+  incomingThreadMessages: CurbMessage[];
+  loadPrevThreadMessages: (id: string) => Promise<ChatMessagesDataWithOlder>;
+  updateCurrentOpenThread: (thread: CurbMessage | undefined) => void;
+  openThread: CurbMessage | undefined;
+  setOpenThread: (thread: CurbMessage | undefined) => void;
+  currentOpenThreadRef: React.RefObject<CurbMessage | undefined>;
 }
 
 const ChatContainerWrapper = styled.div`
@@ -66,20 +73,19 @@ export default function ChatContainer({
   loadInitialChatMessages,
   incomingMessages,
   loadPrevMessages,
+  loadInitialThreadMessages,
+  incomingThreadMessages,
+  loadPrevThreadMessages,
+  updateCurrentOpenThread,
+  openThread,
+  setOpenThread,
+  currentOpenThreadRef,
 }: ChatContainerProps) {
-  const [openThread, setOpenThread] = useState<
-    MessageWithReactions | undefined
-  >(undefined);
   const [updatedMessages, setUpdatedMessages] = useState<UpdatedMessages[]>([]);
-  const [_incomingThreadMessages, _setIncomingThreadMessages] = useState<
-    MessageWithReactions[]
-  >([]);
-  const [updatedThreadMessages, _setUpdatedThreadMessages] = useState<
+  const [updatedThreadMessages, setUpdatedThreadMessages] = useState<
     UpdatedMessages[]
   >([]);
   const [isEmojiSelectorVisible, setIsEmojiSelectorVisible] = useState(false);
-  const [_messageWithEmojiSelector, _setMessageWithEmojiSelector] =
-    useState<MessageWithReactions | null>(null);
   const [channelMeta, setChannelMeta] = useState<ChannelInfo>(
     {} as ChannelInfo
   );
@@ -102,7 +108,6 @@ export default function ChatContainer({
   }, [activeChat]);
 
   const activeChatRef = useRef(activeChat);
-  const _openThreadRef = useRef(openThread);
 
   useEffect(() => {
     activeChatRef.current = activeChat;
@@ -123,7 +128,7 @@ export default function ChatContainer({
   );
 
   const handleReaction = useCallback(
-    async (message: CurbMessage, reaction: string) => {
+    async (message: CurbMessage, reaction: string, isThread: boolean) => {
       const accountId = getExecutorPublicKey() ?? "";
       const accounts = message.reactions?.[reaction] ?? [];
       const isAdding = !(
@@ -140,9 +145,15 @@ export default function ChatContainer({
         if (response.data) {
           const updateFunction = (message: CurbMessage) =>
             computeReaction(message, reaction, accountId);
-          setUpdatedMessages([
-            { id: message.id, descriptor: { updateFunction } },
-          ]);
+          if (isThread) {
+            setUpdatedThreadMessages([
+              { id: message.id, descriptor: { updateFunction } },
+            ]);
+          } else {
+            setUpdatedMessages([
+              { id: message.id, descriptor: { updateFunction } },
+            ]);
+          }
         }
       } catch (error) {
         console.error("Error updating reaction:", error);
@@ -150,88 +161,6 @@ export default function ChatContainer({
     },
     []
   );
-
-  // const submitMessage = (chat: ActiveChat, message: Message) =>
-  //   new Promise((resolve, reject) => {
-  //     // TODO SEND MESSAGE
-  //     // curbApi.sendMessage(
-  //     //   {
-  //     //     message: message.text,
-  //     //     chat,
-  //     //     images: message.images,
-  //     //     files: message.files,
-  //     //     threadId: message.parent_message ? message.parent_message : undefined,
-  //     //   },
-  //     //   (err, result) => {
-  //     //     if (result) {
-  //     //       resolve(result.result.id);
-  //     //     } else {
-  //     //       reject(err);
-  //     //     }
-  //     //   }
-  //     // );
-  //   });
-
-  // const createSendMessageHandler =
-  //   (chat, parentMessage) => (text, img, uploadedFile) => {
-  //     const temporalMessage = createTemporalMessage(
-  //       text,
-  //       img,
-  //       uploadedFile,
-  //       parentMessage
-  //     );
-
-  //     const incomingCall = parentMessage
-  //       ? setIncomingThreadMessages
-  //       : setIncomingMessages;
-  //     incomingCall([temporalMessage]);
-
-  //     submitMessage(chat, temporalMessage)
-  //       .then((realMessageId) => {
-  //         const update = [
-  //           {
-  //             id: temporalMessage.id,
-  //             descriptor: {
-  //               updatedFields: {
-  //                 id: realMessageId,
-  //                 temporalId: undefined,
-  //                 status: "sent",
-  //               },
-  //             },
-  //           },
-  //         ];
-
-  //         if (parentMessage) {
-  //           const parentUpdate = [
-  //             {
-  //               id: parentMessage.id,
-  //               descriptor: {
-  //                 updateFunction: (message) => ({
-  //                   threadCount: message.threadCount + 1,
-  //                   threadLastTimestamp: Date.now(),
-  //                 }),
-  //               },
-  //             },
-  //           ];
-  //           setUpdatedThreadMessages(update);
-  //           setUpdatedMessages(parentUpdate);
-  //         } else {
-  //           setUpdatedMessages(update);
-  //         }
-  //       })
-  //       .catch((err) => {
-  //         console.log(err);
-  //       });
-  //   };
-
-  // const sendMessage = useMemo(
-  //   () => createSendMessageHandler(activeChat),
-  //   [activeChat]
-  // );
-  // const sendThreadMessage = useMemo(
-  //   () => createSendMessageHandler(activeChat, openThread),
-  //   [activeChat, openThread]
-  // );
 
   const getIconFromCache = useCallback(
     (_accountId: string): Promise<string | null> => {
@@ -241,96 +170,6 @@ export default function ChatContainer({
     []
   );
 
-  // const updateDeletedMessage = ({ id, parent_message }: { id: string, parent_message: string }) => {
-  //   const update = [{ id, descriptor: { updatedFields: { deleted: true } } }];
-  //   if (parent_message) {
-  //     const parentUpdate = [
-  //       {
-  //         id: parent_message,
-  //         descriptor: {
-  //           updateFunction: (message: CurbMessage) => ({
-  //             threadCount: (message.threadCount ?? 0) - 1,
-  //           }),
-  //         },
-  //       },
-  //     ];
-  //     setUpdatedThreadMessages(update);
-  //     setUpdatedMessages(parentUpdate);
-  //   } else {
-  //     if (id === _openThreadRef?.current?.id) {
-  //       setOpenThread(undefined);
-  //     }
-  //     setUpdatedMessages(update);
-  //   }
-  // };
-
-  // const handleDeleteMessage = useCallback(
-  //   (message) => {
-  //     updateDeletedMessage(message);
-  //     curbApi.deleteMessage({ message, chat: activeChatRef.current });
-  //   },
-  //   [curbApi, activeChat]
-  // );
-
-  // const handleEditMode = useCallback((message) => {
-  //   console.log("edit mode", message);
-  //   const update = [
-  //     {
-  //       id: message.id,
-  //       descriptor: {
-  //         updatedFields: { editMode: !message.editMode },
-  //       },
-  //     },
-  //   ];
-  //   setUpdatedMessages(update);
-  // }, []);
-
-  // const handleEditedMessage = useCallback(
-  //   (message) => {
-  //     curbApi.editMessage({ message, chat: activeChat });
-  //     const update = [
-  //       {
-  //         id: message.id,
-  //         descriptor: {
-  //           updatedFields: {
-  //             text: message.text,
-  //             editMode: false,
-  //           },
-  //         },
-  //       },
-  //     ];
-  //     setUpdatedMessages(update);
-  //   },
-  //   [activeChat, curbApi]
-  // );
-
-  // const handleEditedThreadMessage = useCallback(
-  //   (message) => {
-  //     curbApi.editMessage({ message, chat: activeChat });
-  //     const update = [
-  //       {
-  //         id: message.id,
-  //         descriptor: {
-  //           updatedFields: {
-  //             text: message.text,
-  //             editMode: false,
-  //           },
-  //         },
-  //       },
-  //     ];
-  //     setUpdatedThreadMessages(update);
-  //   },
-  //   [activeChat, curbApi]
-  // );
-
-  // const selectThread = useCallback((message) => {
-  //   console.log("select thread", message);
-  //   setOpenThread(message);
-  //   // reset thread updates
-  //   setIncomingThreadMessages([]);
-  //   setUpdatedThreadMessages([]);
-  // }, []);
-
   const toggleEmojiSelector = useCallback(
     (message: CurbMessage) => {
       setMessageWithEmojiSelector(message);
@@ -339,14 +178,40 @@ export default function ChatContainer({
     [setIsEmojiSelectorVisible]
   );
 
-  const sendMessage = async (message: string) => {
+  const sendMessage = async (message: string, isThread: boolean) => {
     await new ClientApiDataSource().sendMessage({
       group: { name: activeChatRef.current?.name ?? "" },
       message,
       timestamp: Math.floor(Date.now() / 1000),
       is_dm: activeChatRef.current?.type === "direct_message",
       dm_identity: activeChatRef.current?.account,
+      parent_message: isThread ? currentOpenThreadRef.current?.id : undefined,
     });
+
+    if (isThread && currentOpenThreadRef.current) {
+      const newThreadCount =
+        (currentOpenThreadRef.current.threadCount ?? 0) + 1;
+      const newThreadLastTimestamp = Math.floor(Date.now() / 1000);
+      const update = [
+        {
+          id: currentOpenThreadRef.current.id,
+          descriptor: {
+            updateFunction: () => ({
+              threadCount: newThreadCount,
+              threadLastTimestamp: newThreadLastTimestamp,
+            }),
+          },
+        },
+      ];
+      setUpdatedMessages(update);
+      currentOpenThreadRef.current = {
+        ...currentOpenThreadRef.current,
+        threadCount: newThreadCount,
+        threadLastTimestamp: newThreadLastTimestamp,
+      };
+      setOpenThread(currentOpenThreadRef.current);
+      updateCurrentOpenThread(currentOpenThreadRef.current);
+    }
   };
 
   const updateDeletedMessage = (message: CurbMessage) => {
@@ -366,7 +231,8 @@ export default function ChatContainer({
         updateDeletedMessage(message);
       }
     },
-    [activeChatRef]
+    // TODO
+    [activeChatRef, currentOpenThreadRef]
   );
 
   const handleEditMode = useCallback((message: CurbMessage) => {
@@ -378,8 +244,9 @@ export default function ChatContainer({
         },
       },
     ];
+    // TODO 
     setUpdatedMessages(update);
-  }, []);
+  }, [currentOpenThreadRef]);
 
   const handleEditedMessage = useCallback(
     async (message: CurbMessage) => {
@@ -387,6 +254,7 @@ export default function ChatContainer({
         group: { name: activeChatRef.current?.name ?? "" },
         messageId: message.id,
         newMessage: message.text,
+        timestamp: Math.floor(Date.now() / 1000),
       });
       if (response.data) {
         const update = [
@@ -401,10 +269,17 @@ export default function ChatContainer({
           },
         ];
         setUpdatedMessages(update);
+        // TODO
       }
     },
-    [activeChatRef]
+    [activeChatRef, currentOpenThreadRef]
   );
+
+  const selectThread = (message: CurbMessage) => {
+    setOpenThread(message);
+    updateCurrentOpenThread(message);
+    setUpdatedThreadMessages([]);
+  };
 
   return (
     <ChatContainerWrapper>
@@ -421,13 +296,13 @@ export default function ChatContainer({
             readMessage={() => {}}
             handleReaction={handleReaction}
             openThread={openThread}
-            setOpenThread={() => {}}
+            setOpenThread={selectThread}
             activeChat={activeChat}
             updatedMessages={updatedMessages}
             resetImage={() => {}}
-            sendMessage={sendMessage}
+            sendMessage={(message: string) => sendMessage(message, false)}
             getIconFromCache={getIconFromCache}
-            isThread={!!openThread}
+            isThread={false}
             isReadOnly={activeChat.readOnly ?? false}
             toggleEmojiSelector={toggleEmojiSelector}
             channelMeta={channelMeta}
@@ -441,22 +316,21 @@ export default function ChatContainer({
             loadInitialChatMessages={loadInitialChatMessages}
             incomingMessages={incomingMessages}
             loadPrevMessages={loadPrevMessages}
+            isEmojiSelectorVisible={isEmojiSelectorVisible}
+            setIsEmojiSelectorVisible={setIsEmojiSelectorVisible}
+            messageWithEmojiSelector={messageWithEmojiSelector}
           />
           {openThread && openThread.id && (
             <ThreadWrapper>
               <ChatDisplaySplit
-                readMessage={(message: MessageWithReactions) =>
-                  console.log(message)
-                }
+                readMessage={() => {}}
                 handleReaction={handleReaction}
                 openThread={openThread}
-                setOpenThread={(message: MessageWithReactions | null) =>
-                  setOpenThread(message || undefined)
-                }
+                setOpenThread={setOpenThread}
                 activeChat={activeChat}
                 updatedMessages={updatedThreadMessages}
                 resetImage={() => {}}
-                sendMessage={(message: string) => console.log(message)}
+                sendMessage={(message: string) => sendMessage(message, true)}
                 getIconFromCache={getIconFromCache}
                 isThread={true}
                 isReadOnly={activeChat.readOnly ?? false}
@@ -469,23 +343,19 @@ export default function ChatContainer({
                 onEditModeRequested={handleEditMode}
                 onEditModeCancelled={handleEditMode}
                 onMessageUpdated={handleEditedMessage}
-                loadInitialChatMessages={loadInitialChatMessages}
-                incomingMessages={incomingMessages}
-                loadPrevMessages={loadPrevMessages}
+                loadInitialChatMessages={() =>
+                  loadInitialThreadMessages(openThread.id)
+                }
+                incomingMessages={incomingThreadMessages}
+                loadPrevMessages={loadPrevThreadMessages}
+                currentOpenThreadRef={currentOpenThreadRef}
+                isEmojiSelectorVisible={isEmojiSelectorVisible}
+                setIsEmojiSelectorVisible={setIsEmojiSelectorVisible}
+                messageWithEmojiSelector={messageWithEmojiSelector}
               />
             </ThreadWrapper>
           )}
         </>
-      )}
-      {isEmojiSelectorVisible && (
-        <EmojiSelectorPopup
-          onEmojiSelected={(emoji: string) => {
-            handleReaction(messageWithEmojiSelector!, emoji);
-            setIsEmojiSelectorVisible(false);
-          }}
-          onClose={() => setIsEmojiSelectorVisible(false)}
-          key="chat-emojis-component"
-        />
       )}
     </ChatContainerWrapper>
   );
