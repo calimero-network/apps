@@ -860,15 +860,11 @@ impl CurbChat {
         message_id: MessageId,
         new_message: String,
         timestamp: u64,
+        parent_id: Option<MessageId>,
     ) -> app::Result<Message, String> {
         // TODO: performance on this is critical, optimization requires lot of changes not supported now
         // Reset message storage for large channels (~1K messages cap)
         let executor_id = self.get_executor_id();
-
-        let mut channel_info = match self.channels.get(&group) {
-            Ok(Some(info)) => info,
-            _ => return Err("Channel not found".to_string()),
-        };
 
         let members = match self.channel_members.get(&group) {
             Ok(Some(members)) => members,
@@ -879,42 +875,93 @@ impl CurbChat {
             return Err("You are not a member of this channel".to_string());
         }
 
-        let mut message_index: Option<usize> = None;
-        let mut updated_message: Option<Message> = None;
+        if let Some(parent_message_id) = parent_id {
+            let mut thread_messages = match self.threads.get(&parent_message_id) {
+                Ok(Some(messages)) => messages,
+                _ => return Err("Thread not found".to_string()),
+            };
 
-        if let Ok(iter) = channel_info.messages.iter() {
-            for (index, message) in iter.enumerate() {
-                if message.id == message_id {
-                    if message.sender != executor_id {
-                        return Err("You can only edit your own messages".to_string());
+            let mut message_index: Option<usize> = None;
+            let mut updated_message: Option<Message> = None;
+
+            if let Ok(iter) = thread_messages.iter() {
+                for (index, message) in iter.enumerate() {
+                    if message.id == message_id {
+                        if message.sender != executor_id {
+                            return Err("You can only edit your own messages".to_string());
+                        }
+
+                        message_index = Some(index);
+                        break;
                     }
-
-                    message_index = Some(index);
-                    break;
                 }
             }
-        }
 
-        if let Some(index) = message_index {
-            if let Ok(Some(original_message)) = channel_info.messages.get(index) {
-                let mut updated_msg = original_message.clone();
-                updated_msg.text = new_message.clone();
-                updated_msg.edited_on = Some(timestamp);
+            if let Some(index) = message_index {
+                if let Ok(Some(original_message)) = thread_messages.get(index) {
+                    let mut updated_msg = original_message.clone();
+                    updated_msg.text = new_message.clone();
+                    updated_msg.edited_on = Some(timestamp);
 
-                let _ = channel_info.messages.update(index, updated_msg.clone());
-                updated_message = Some(updated_msg);
+                    let _ = thread_messages.update(index, updated_msg.clone());
+                    updated_message = Some(updated_msg);
+                }
+            } else {
+                return Err("Message not found in thread".to_string());
+            }
+
+            let _ = self.threads.insert(parent_message_id, thread_messages);
+
+            match updated_message {
+                Some(msg) => {
+                    app::emit!(Event::MessageSent(msg.clone()));
+                    Ok(msg)
+                }
+                None => Err("Failed to update thread message".to_string()),
             }
         } else {
-            return Err("Message not found".to_string());
-        }
-        let _ = self.channels.insert(group, channel_info);
+            let mut channel_info = match self.channels.get(&group) {
+                Ok(Some(info)) => info,
+                _ => return Err("Channel not found".to_string()),
+            };
 
-        match updated_message {
-            Some(msg) => {
-                app::emit!(Event::MessageSent(msg.clone()));
-                Ok(msg)
+            let mut message_index: Option<usize> = None;
+            let mut updated_message: Option<Message> = None;
+
+            if let Ok(iter) = channel_info.messages.iter() {
+                for (index, message) in iter.enumerate() {
+                    if message.id == message_id {
+                        if message.sender != executor_id {
+                            return Err("You can only edit your own messages".to_string());
+                        }
+
+                        message_index = Some(index);
+                        break;
+                    }
+                }
             }
-            None => Err("Failed to update message".to_string()),
+
+            if let Some(index) = message_index {
+                if let Ok(Some(original_message)) = channel_info.messages.get(index) {
+                    let mut updated_msg = original_message.clone();
+                    updated_msg.text = new_message.clone();
+                    updated_msg.edited_on = Some(timestamp);
+
+                    let _ = channel_info.messages.update(index, updated_msg.clone());
+                    updated_message = Some(updated_msg);
+                }
+            } else {
+                return Err("Message not found".to_string());
+            }
+            let _ = self.channels.insert(group, channel_info);
+
+            match updated_message {
+                Some(msg) => {
+                    app::emit!(Event::MessageSent(msg.clone()));
+                    Ok(msg)
+                }
+                None => Err("Failed to update message".to_string()),
+            }
         }
     }
 
@@ -922,55 +969,105 @@ impl CurbChat {
         &mut self,
         group: Channel,
         message_id: MessageId,
+        parent_id: Option<MessageId>,
     ) -> app::Result<String, String> {
         let executor_id = self.get_executor_id();
 
-        let mut channel_info = match self.channels.get(&group) {
-            Ok(Some(info)) => info,
-            _ => return Err("Channel not found".to_string()),
-        };
+        if let Some(parent_message_id) = parent_id {
+            let mut thread_messages = match self.threads.get(&parent_message_id) {
+                Ok(Some(messages)) => messages,
+                _ => return Err("Thread not found".to_string()),
+            };
 
-        let mut message_index: Option<usize> = None;
-        let mut target_message: Option<Message> = None;
+            let mut message_index: Option<usize> = None;
+            let mut target_message: Option<Message> = None;
 
-        if let Ok(iter) = channel_info.messages.iter() {
-            for (index, message) in iter.enumerate() {
-                if message.id == message_id {
-                    message_index = Some(index);
-                    target_message = Some(message.clone());
-                    break;
+            if let Ok(iter) = thread_messages.iter() {
+                for (index, message) in iter.enumerate() {
+                    if message.id == message_id {
+                        message_index = Some(index);
+                        target_message = Some(message.clone());
+                        break;
+                    }
                 }
             }
+
+            if message_index.is_none() {
+                return Err("Message not found in thread".to_string());
+            }
+
+            let message = target_message.unwrap();
+
+            let is_message_owner = message.sender == executor_id;
+            let is_moderator = self.moderators.contains(&executor_id).unwrap_or(false);
+            let is_owner = self.owner == executor_id;
+
+            if !is_message_owner && !is_moderator && !is_owner {
+                return Err("You don't have permission to delete this message".to_string());
+            }
+
+            if let Some(index) = message_index {
+                let mut deleted_message = message.clone();
+                deleted_message.text = "".to_string();
+                deleted_message.deleted = Some(true);
+
+                let _ = thread_messages.update(index, deleted_message);
+            }
+
+            let _ = self.reactions.remove(&message_id);
+
+            let _ = self.threads.insert(parent_message_id, thread_messages);
+
+            app::emit!(Event::MessageSent(message.clone()));
+            Ok("Thread message deleted successfully".to_string())
+        } else {
+            let mut channel_info = match self.channels.get(&group) {
+                Ok(Some(info)) => info,
+                _ => return Err("Channel not found".to_string()),
+            };
+
+            let mut message_index: Option<usize> = None;
+            let mut target_message: Option<Message> = None;
+
+            if let Ok(iter) = channel_info.messages.iter() {
+                for (index, message) in iter.enumerate() {
+                    if message.id == message_id {
+                        message_index = Some(index);
+                        target_message = Some(message.clone());
+                        break;
+                    }
+                }
+            }
+
+            if message_index.is_none() {
+                return Err("Message not found".to_string());
+            }
+
+            let message = target_message.unwrap();
+
+            let is_message_owner = message.sender == executor_id;
+            let is_moderator = self.moderators.contains(&executor_id).unwrap_or(false);
+            let is_owner = self.owner == executor_id;
+
+            if !is_message_owner && !is_moderator && !is_owner {
+                return Err("You don't have permission to delete this message".to_string());
+            }
+
+            if let Some(index) = message_index {
+                let mut deleted_message = message.clone();
+                deleted_message.text = "".to_string();
+                deleted_message.deleted = Some(true);
+
+                let _ = channel_info.messages.update(index, deleted_message);
+            }
+
+            let _ = self.reactions.remove(&message_id);
+
+            let _ = self.channels.insert(group, channel_info);
+
+            app::emit!(Event::MessageSent(message.clone()));
+            Ok("Message deleted successfully".to_string())
         }
-
-        if message_index.is_none() {
-            return Err("Message not found".to_string());
-        }
-
-        let message = target_message.unwrap();
-
-        let is_message_owner = message.sender == executor_id;
-        let is_moderator = self.moderators.contains(&executor_id).unwrap_or(false);
-        let is_owner = self.owner == executor_id;
-
-        if !is_message_owner && !is_moderator && !is_owner {
-            return Err("You don't have permission to delete this message".to_string());
-        }
-
-        if let Some(index) = message_index {
-            let mut deleted_message = message.clone();
-            deleted_message.text = "".to_string();
-            deleted_message.deleted = Some(true);
-
-            let _ = channel_info.messages.update(index, deleted_message);
-        }
-
-        let _ = self.reactions.remove(&message_id);
-
-        let _ = self.channels.insert(group, channel_info);
-
-        app::emit!(Event::MessageSent(message.clone()));
-        Ok("Message deleted successfully".to_string())
     }
 
     pub fn create_dm_chat(
