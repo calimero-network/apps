@@ -1,0 +1,27 @@
+[package]
+name = "curb"
+description = "Calimero Curb"
+version = "0.0.1"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+base64 = "0.22.1"
+borsh = "0.10.3"
+borsh-derive = "0.10.3"
+bs58 = "0.5.1"
+calimero-sdk = { git = "https://github.com/calimero-network/core", branch = "master" }
+calimero-storage = { git = "https://github.com/calimero-network/core", branch = "master" }
+thiserror = "1.0.56"
+
+[profile.app-release]
+inherits = "release"
+codegen-units = 1
+opt-level = "z"
+lto = true
+debug = false
+panic = "abort"
+overflow-checks = true
+
