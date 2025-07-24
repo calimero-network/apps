@@ -6,7 +6,7 @@ use calimero_sdk::{app, env};
 use calimero_storage::collections::{UnorderedMap, UnorderedSet, Vector};
 
 mod types;
-use types::id::{BlobId, UserId};
+use types::id::UserId;
 
 /// Safe base58 encoding for blob IDs using our own buffer
 fn encode_blob_id_base58(blob_id_bytes: &[u8; 32]) -> String {
@@ -15,12 +15,30 @@ fn encode_blob_id_base58(blob_id_bytes: &[u8; 32]) -> String {
     std::str::from_utf8(&buf[..len]).unwrap().to_owned()
 }
 
+/// Parse blob ID from base58 string
+fn parse_blob_id_base58(blob_id_str: &str) -> Result<[u8; 32], String> {
+    match bs58::decode(blob_id_str).into_vec() {
+        Ok(bytes) => {
+            if bytes.len() != 32 {
+                return Err(format!(
+                    "Invalid blob ID length: expected 32 bytes, got {}",
+                    bytes.len()
+                ));
+            }
+            let mut blob_id = [0u8; 32];
+            blob_id.copy_from_slice(&bytes);
+            Ok(blob_id)
+        }
+        Err(e) => Err(format!("Failed to decode blob ID '{}': {}", blob_id_str, e)),
+    }
+}
+
 /// Safe serialization function for blob ID bytes that handles BufferTooSmall panics
-fn serialize_blob_id_bytes<S>(blob_id: &BlobId, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_blob_id_bytes<S>(blob_id_bytes: &[u8; 32], serializer: S) -> Result<S::Ok, S::Error>
 where
     S: calimero_sdk::serde::Serializer,
 {
-    let safe_string = encode_blob_id_base58(&**blob_id);
+    let safe_string = encode_blob_id_base58(blob_id_bytes);
     serializer.serialize_str(&safe_string)
 }
 
@@ -104,7 +122,7 @@ pub struct SignatureRecord {
     pub id: u64,
     pub name: String,
     #[serde(serialize_with = "serialize_blob_id_bytes")]
-    pub blob_id: BlobId, // Store PNG data as blob
+    pub blob_id: [u8; 32], // Store PNG data as blob
     pub size: u64,
     pub created_at: u64,
 }
@@ -126,6 +144,7 @@ pub enum ParticipantRole {
     Owner,
     Signer,
     Viewer,
+    Unknown,
 }
 
 /// Document information
@@ -139,12 +158,13 @@ pub struct DocumentInfo {
     pub uploaded_by: UserId,
     pub uploaded_at: u64,
     pub status: DocumentStatus,
-    pub pdf_blob_id: BlobId,
+    #[serde(serialize_with = "serialize_blob_id_bytes")]
+    pub pdf_blob_id: [u8; 32],
     pub size: u64,
 }
 
 /// Document status tracking
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize, Serialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub enum DocumentStatus {
@@ -163,7 +183,7 @@ pub struct DocumentSignature {
 }
 
 /// Permission levels for participants
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub enum PermissionLevel {
@@ -219,6 +239,30 @@ pub struct IdentityMapping {
     pub created_at: u64,          // When this mapping was created
 }
 
+/// Participant information with permission level
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct ParticipantInfo {
+    pub user_id: UserId,
+    pub permission_level: PermissionLevel,
+}
+
+/// Detailed information about a shared context
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct ContextDetails {
+    pub context_id: String,
+    pub context_name: String,
+    pub owner: UserId,
+    pub is_private: bool,
+    pub participant_count: u64,
+    pub participants: Vec<ParticipantInfo>,
+    pub document_count: u64,
+    pub created_at: u64,
+}
+
 #[app::event]
 #[derive(Debug, BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -246,6 +290,9 @@ pub enum MeroDocsEvent {
         name: String,
         uploaded_by: UserId,
     },
+    DocumentDeleted {
+        id: String,
+    },
     DocumentSigned {
         document_id: String,
         signer: UserId,
@@ -265,11 +312,7 @@ pub enum MeroDocsEvent {
 #[app::logic]
 impl MeroDocsState {
     #[app::init]
-    pub fn init(
-        is_private: bool,
-        context_name: String,
-        _creator_private_identity: Option<UserId>,
-    ) -> MeroDocsState {
+    pub fn init(is_private: bool, context_name: String) -> MeroDocsState {
         let owner_raw = env::executor_id();
         let owner = UserId::new(owner_raw);
 
@@ -308,8 +351,7 @@ impl MeroDocsState {
         self.signature_count += 1;
         let data_size = png_data.len() as u64;
 
-        let blob_id_raw = store_blob_chunked(&png_data)?;
-        let blob_id = BlobId::new(blob_id_raw);
+        let blob_id = store_blob_chunked(&png_data)?;
 
         let signature = SignatureRecord {
             id: signature_id,
@@ -380,7 +422,7 @@ impl MeroDocsState {
         };
 
         // Load PNG data from blob
-        let data = load_blob_full(&*signature.blob_id)?
+        let data = load_blob_full(&signature.blob_id)?
             .ok_or_else(|| format!("Signature blob not found: {}", signature_id))?;
 
         Ok(data)
@@ -390,9 +432,8 @@ impl MeroDocsState {
     pub fn join_shared_context(
         &mut self,
         context_id: String,
+        shared_identity: UserId,
         context_name: String,
-        role: ParticipantRole,
-        shared_identity: UserId, // New identity for this shared context
     ) -> Result<(), String> {
         if !self.is_private {
             return Err("Context joining can only be managed in private context".to_string());
@@ -407,7 +448,7 @@ impl MeroDocsState {
         let metadata = ContextMetadata {
             context_id: context_id.clone(),
             context_name: context_name.clone(),
-            role,
+            role: ParticipantRole::Unknown, // Role will be managed by add participant not here hence Unknown
             joined_at: env::time_now(),
             private_identity,
             shared_identity,
@@ -468,6 +509,46 @@ impl MeroDocsState {
 
     // === SHARED CONTEXT METHODS ===
 
+    /// Get detailed information about the shared context
+    pub fn get_context_details(&self, context_id: String) -> Result<ContextDetails, String> {
+        let mut participants_with_permissions = Vec::new();
+
+        // Collect all participants with their permission levels
+        if let Ok(iter) = self.participants.iter() {
+            for participant in iter {
+                let user_id_str = format!("{:?}", participant);
+                let permission = self
+                    .permissions
+                    .get(&user_id_str)
+                    .map_err(|e| format!("Failed to get permission for user: {:?}", e))?
+                    .unwrap_or(PermissionLevel::Read);
+
+                participants_with_permissions.push(ParticipantInfo {
+                    user_id: participant.clone(),
+                    permission_level: permission,
+                });
+            }
+        }
+
+        let document_count =
+            self.documents
+                .len()
+                .map_err(|e| format!("Failed to get document count: {:?}", e))? as u64;
+
+        let context_details = ContextDetails {
+            context_id: context_id.clone(),
+            context_name: self.context_name.clone(),
+            owner: self.owner,
+            is_private: self.is_private,
+            participant_count: participants_with_permissions.len() as u64,
+            participants: participants_with_permissions,
+            document_count,
+            created_at: env::time_now(),
+        };
+
+        Ok(context_details)
+    }
+
     fn validate_admin_permissions(&self) -> Result<(), String> {
         if self.is_private {
             return Err("This method can only be called from shared context".to_string());
@@ -488,19 +569,17 @@ impl MeroDocsState {
         context_id: String,
         name: String,
         hash: String,
-        pdf_data: Vec<u8>,
+        pdf_blob_id_str: String,
+        file_size: u64,
     ) -> Result<String, String> {
-        self.validate_shared_context_access(context_id)?;
-
         let document_id = format!("doc_{}_{}", env::time_now(), name);
 
         if self.documents.contains(&document_id).unwrap_or(false) {
             return Err("Document with this ID already exists".to_string());
         }
 
-        let pdf_blob_id_raw = store_blob_chunked(&pdf_data)?;
-        let pdf_blob_id = BlobId::new(pdf_blob_id_raw);
-        let file_size = pdf_data.len() as u64;
+        // Parse the blob ID from the HTTP upload
+        let pdf_blob_id_bytes = parse_blob_id_base58(&pdf_blob_id_str)?;
 
         let document = DocumentInfo {
             id: document_id.clone(),
@@ -509,7 +588,7 @@ impl MeroDocsState {
             uploaded_by: self.owner,
             uploaded_at: env::time_now(),
             status: DocumentStatus::Pending,
-            pdf_blob_id,
+            pdf_blob_id: pdf_blob_id_bytes,
             size: file_size,
         };
 
@@ -530,10 +609,32 @@ impl MeroDocsState {
         Ok(document_id)
     }
 
+    /// Delete a document by ID
+    pub fn delete_document(
+        &mut self,
+        context_id: String,
+        document_id: String,
+    ) -> Result<(), String> {
+        self.validate_admin_permissions()?;
+
+        match self.documents.remove(&document_id) {
+            Ok(Some(_)) => {
+                let _ = self.document_signatures.remove(&document_id);
+
+               
+                app::emit!(MeroDocsEvent::DocumentDeleted {
+                    id: document_id,
+                });
+
+                Ok(())
+            }
+            Ok(None) => Err(format!("Document not found: {}", document_id)),
+            Err(e) => Err(format!("Failed to delete document: {:?}", e)),
+        }
+    }
+
     /// List all documents
     pub fn list_documents(&self, context_id: String) -> Result<Vec<DocumentInfo>, String> {
-        self.validate_shared_context_access(context_id)?;
-
         let mut documents = Vec::new();
         if let Ok(entries) = self.documents.entries() {
             for (_, document) in entries {
@@ -549,8 +650,6 @@ impl MeroDocsState {
         context_id: String,
         document_id: String,
     ) -> Result<DocumentInfo, String> {
-        self.validate_shared_context_access(context_id)?;
-
         match self.documents.get(&document_id) {
             Ok(Some(doc)) => Ok(doc.clone()),
             Ok(None) => Err("Document not found".to_string()),
@@ -558,47 +657,39 @@ impl MeroDocsState {
         }
     }
 
-    /// Sign a document and update the PDF with signatures
+    /// Sign a document by uploading a new signed PDF blob and recording the signer
     pub fn sign_document(
         &mut self,
         context_id: String,
         document_id: String,
-        updated_pdf_data: Vec<u8>,
+        pdf_blob_id_str: String,
+        file_size: u64,
         new_hash: String,
+        signer_id: UserId,
     ) -> Result<(), String> {
-        self.validate_shared_context_access(context_id)?;
-
+        // Fetch the document
         let mut document = match self.documents.get(&document_id) {
             Ok(Some(doc)) => doc,
             Ok(None) => return Err("Document not found".to_string()),
             Err(e) => return Err(format!("Failed to get document: {:?}", e)),
         };
 
-        if let Ok(Some(signatures)) = self.document_signatures.get(&document_id) {
-            if let Ok(iter) = signatures.iter() {
-                for sig in iter {
-                    if sig.signer == self.owner {
-                        return Err("User has already signed this document".to_string());
-                    }
-                }
-            }
-        }
+        // Parse the new signed PDF blob ID
+        let pdf_blob_id_bytes = parse_blob_id_base58(&pdf_blob_id_str)?;
 
-        let updated_pdf_blob_id_raw = store_blob_chunked(&updated_pdf_data)?;
-        let updated_pdf_blob_id = BlobId::new(updated_pdf_blob_id_raw);
-        let updated_size = updated_pdf_data.len() as u64;
-
-        document.pdf_blob_id = updated_pdf_blob_id;
-        document.size = updated_size;
+        // Update document info with new signed PDF
+        document.pdf_blob_id = pdf_blob_id_bytes;
+        document.size = file_size;
         document.hash = new_hash;
-        document.status = DocumentStatus::PartiallySigned; // Update status
+        document.status = DocumentStatus::PartiallySigned;
 
         self.documents
             .insert(document_id.clone(), document)
             .map_err(|e| format!("Failed to update document: {:?}", e))?;
 
+        // Record the signature (no duplicate check here)
         let signature = DocumentSignature {
-            signer: self.owner,
+            signer: signer_id,
             signed_at: env::time_now(),
         };
 
@@ -618,7 +709,7 @@ impl MeroDocsState {
 
         app::emit!(MeroDocsEvent::DocumentSigned {
             document_id,
-            signer: self.owner,
+            signer: signer_id,
         });
 
         Ok(())
@@ -630,8 +721,6 @@ impl MeroDocsState {
         context_id: String,
         document_id: String,
     ) -> Result<Vec<DocumentSignature>, String> {
-        self.validate_shared_context_access(context_id)?;
-
         let mut signatures = Vec::new();
         if let Ok(Some(sigs)) = self.document_signatures.get(&document_id) {
             if let Ok(iter) = sigs.iter() {
@@ -643,45 +732,64 @@ impl MeroDocsState {
         Ok(signatures)
     }
 
-    /// Get document PDF data by ID
-    pub fn get_document_pdf(
-        &self,
-        context_id: String,
-        document_id: String,
-    ) -> Result<Vec<u8>, String> {
-        self.validate_shared_context_access(context_id)?;
-
-        let document = match self.documents.get(&document_id) {
-            Ok(Some(doc)) => doc,
-            Ok(None) => return Err("Document not found".to_string()),
-            Err(e) => return Err(format!("Failed to get document: {:?}", e)),
-        };
-
-        let data = load_blob_full(&*document.pdf_blob_id)?
-            .ok_or_else(|| format!("Document PDF blob not found: {}", document_id))?;
-
-        Ok(data)
-    }
-
     /// Update document status to fully signed
-    pub fn mark_document_fully_signed(
+    pub fn mark_participant_signed(
         &mut self,
         context_id: String,
         document_id: String,
+        user_id: UserId,
     ) -> Result<(), String> {
-        self.validate_shared_context_access(context_id)?;
-
+        // Check if document exists
         let mut document = match self.documents.get(&document_id) {
             Ok(Some(doc)) => doc,
             Ok(None) => return Err("Document not found".to_string()),
             Err(e) => return Err(format!("Failed to get document: {:?}", e)),
         };
 
-        document.status = DocumentStatus::FullySigned;
+        let signatures = self
+            .document_signatures
+            .get(&document_id)
+            .map_err(|e| format!("Failed to get document signatures: {:?}", e))?
+            .unwrap_or_else(|| Vector::new());
 
-        self.documents
-            .insert(document_id, document)
-            .map_err(|e| format!("Failed to update document status: {:?}", e))?;
+        let mut already_signed = false;
+        if let Ok(iter) = signatures.iter() {
+            for sig in iter {
+                if sig.signer == user_id {
+                    already_signed = true;
+                    break;
+                }
+            }
+        }
+        if !already_signed {
+            return Err("User has not signed this document yet".to_string());
+        }
+
+        let mut all_signed = true;
+        if let Ok(participants_iter) = self.participants.iter() {
+            for participant in participants_iter {
+                let mut signed = false;
+                if let Ok(sig_iter) = signatures.iter() {
+                    for sig in sig_iter {
+                        if sig.signer == participant {
+                            signed = true;
+                            break;
+                        }
+                    }
+                }
+                if !signed {
+                    all_signed = false;
+                    break;
+                }
+            }
+        }
+
+        if all_signed {
+            document.status = DocumentStatus::FullySigned;
+            self.documents
+                .insert(document_id.clone(), document)
+                .map_err(|e| format!("Failed to update document status: {:?}", e))?;
+        }
 
         Ok(())
     }
@@ -693,7 +801,6 @@ impl MeroDocsState {
         user_id: UserId,
         permission: PermissionLevel,
     ) -> Result<(), String> {
-        self.validate_shared_context_access(context_id)?;
         self.validate_admin_permissions()?;
 
         if self.participants.contains(&user_id).unwrap_or(false) {
@@ -706,21 +813,36 @@ impl MeroDocsState {
 
         let user_id_str = format!("{:?}", user_id);
         self.permissions
-            .insert(user_id_str, permission)
+            .insert(user_id_str, permission.clone())
             .map_err(|e| format!("Failed to set permissions: {:?}", e))?;
+
+        // Update all documents to PartiallySigned status when a new participant with Signer permission is added
+        if permission == PermissionLevel::Sign {
+            let mut docs_to_update = Vec::new();
+            if let Ok(entries) = self.documents.entries() {
+                for (_, document) in entries {
+                    if document.status == DocumentStatus::FullySigned {
+                        let mut updated_document = document.clone();
+                        updated_document.status = DocumentStatus::PartiallySigned;
+                        docs_to_update.push(updated_document);
+                    }
+                }
+            }
+            for document in docs_to_update {
+                let _ = self.documents.insert(document.id.clone(), document);
+            }
+        }
 
         app::emit!(MeroDocsEvent::ParticipantJoined { user_id });
 
         Ok(())
     }
-
     /// Remove participant from shared context
     pub fn remove_participant(
         &mut self,
         context_id: String,
         user_id: UserId,
     ) -> Result<(), String> {
-        self.validate_shared_context_access(context_id)?;
         self.validate_admin_permissions()?;
 
         if !self.participants.contains(&user_id).unwrap_or(false) {
@@ -743,8 +865,6 @@ impl MeroDocsState {
 
     /// List all participants
     pub fn list_participants(&self, context_id: String) -> Result<Vec<UserId>, String> {
-        self.validate_shared_context_access(context_id)?;
-
         let mut participants = Vec::new();
         if let Ok(iter) = self.participants.iter() {
             for participant in iter {
@@ -760,30 +880,12 @@ impl MeroDocsState {
         context_id: String,
         user_id: UserId,
     ) -> Result<PermissionLevel, String> {
-        self.validate_shared_context_access(context_id)?;
-
         let user_id_str = format!("{:?}", user_id);
         match self.permissions.get(&user_id_str) {
             Ok(Some(perm)) => Ok(perm.clone()),
             Ok(None) => Err("User not found".to_string()),
             Err(e) => Err(format!("Failed to get permission: {:?}", e)),
         }
-    }
-
-    fn validate_shared_context_access(&self, context_id: String) -> Result<(), String> {
-        if self.is_private {
-            return Err("This method can only be called from shared context".to_string());
-        }
-
-        if self.context_name != context_id {
-            return Err("Context ID mismatch".to_string());
-        }
-
-        if !self.participants.contains(&self.owner).unwrap_or(false) {
-            return Err("User is not a participant in this context".to_string());
-        }
-
-        Ok(())
     }
 
     /// Get current context ID

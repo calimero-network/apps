@@ -12,6 +12,7 @@ import {
   PenTool,
   Plus,
   Check,
+  Upload,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from './ui/button';
@@ -26,7 +27,9 @@ import SignaturePadComponent from './SignaturePad';
 import * as pdfjsLib from 'pdfjs-dist';
 import './PDFViewer.css';
 import { useTheme } from '../contexts/ThemeContext';
-// Types for saved signatures
+import { ClientApiDataSource } from '../api/dataSource/ClientApiDataSource';
+import { DocumentService } from '../api/documentService';
+
 interface SavedSignature {
   id: string;
   name: string;
@@ -42,7 +45,7 @@ interface PDFViewerProps {
   showDownload?: boolean;
   showClose?: boolean;
   maxHeight?: string;
-  // Signature-related props
+
   signatures?: SignaturePosition[];
   onSignaturePlace?: (signature: SignaturePosition) => void;
   onSignatureUpdate?: (signature: SignaturePosition) => void;
@@ -50,6 +53,11 @@ interface PDFViewerProps {
   selectedSignature?: string | null;
   showSignatureControls?: boolean;
   onSaveSignedPDF?: (blob: Blob) => void;
+  contextId?: string;
+  documentId?: string;
+  documentHash?: string;
+  showSaveToContext?: boolean;
+  onDocumentSaved?: () => void;
 }
 
 const PDFViewer: React.FC<PDFViewerProps> = ({
@@ -67,6 +75,11 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
   selectedSignature,
   showSignatureControls = false,
   onSaveSignedPDF,
+  contextId,
+  documentId,
+  documentHash,
+  showSaveToContext = false,
+  onDocumentSaved,
 }) => {
   const { mode } = useTheme();
   const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
@@ -81,7 +94,6 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
   const [savingPDF, setSavingPDF] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Signature-related state
   const [documentSignatures, setDocumentSignatures] = useState<
     SignaturePosition[]
   >([]);
@@ -93,8 +105,10 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
   >(null);
   const [signingMode, setSigningMode] = useState(false);
   const [showMobileActions, setShowMobileActions] = useState(false);
+  const [savingToContext, setSavingToContext] = useState(false);
 
-  // Load PDF document
+  const documentService = new DocumentService();
+
   const loadPDF = useCallback(async () => {
     if (!file) return;
 
@@ -102,9 +116,8 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
     setError(null);
 
     try {
-   
       const pdfDoc = await pdfService.loadPDF(file);
-     
+
       setPdf(pdfDoc);
       setCurrentPage(1);
     } catch (err) {
@@ -119,14 +132,12 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
     }
   }, [file]);
 
-  // Render all pages
   const renderPages = useCallback(async () => {
     if (!pdf) return;
 
     try {
-     
       const renderedPages = await pdfService.renderAllPages(pdf, scale);
-  
+
       setPages(renderedPages);
     } catch (err) {
       console.error('Error rendering pages:', err);
@@ -134,7 +145,6 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
     }
   }, [pdf, scale]);
 
-  // Handle signature selection
   const handleSignatureSelect = useCallback((signatureId: string) => {
     setSelectedSignatureId(signatureId);
   }, []);
@@ -172,20 +182,16 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
     setSelectedSavedSignature(null);
   }, []);
 
-  // Handle canvas click for signature placement
   const handleCanvasClick = useCallback(
     (event: React.MouseEvent<HTMLCanvasElement>) => {
-      // Deselect any selected signatures when clicking on empty space
       if (selectedSignatureId) {
         setSelectedSignatureId(null);
       }
 
-      // Handle signature placement in signing mode
       if (signingMode && selectedSavedSignature) {
-        // Check if click is on an existing signature overlay
         const target = event.target as HTMLElement;
         if (target.closest('.signature-overlay')) {
-          return; // Don't place signature if clicking on existing overlay
+          return;
         }
 
         const canvas = event.currentTarget;
@@ -193,13 +199,12 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
         const clickX = event.clientX - rect.left;
         const clickY = event.clientY - rect.top;
 
-        // Convert click coordinates to actual canvas coordinates
         const canvasX = (clickX / rect.width) * canvas.width;
         const canvasY = (clickY / rect.height) * canvas.height;
 
         const signaturePosition: SignaturePosition = {
           id: Date.now().toString(),
-          x: canvasX - 50, // Center the signature
+          x: canvasX - 50,
           y: canvasY - 25,
           width: 100,
           height: 50,
@@ -212,13 +217,11 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
         return;
       }
 
-      // Original signature placement logic for external signatures
       if (!selectedSignature || !onSignaturePlace) return;
 
-      // Check if click is on an existing signature overlay
       const target = event.target as HTMLElement;
       if (target.closest('.signature-overlay')) {
-        return; // Don't place signature if clicking on existing overlay
+        return;
       }
 
       const canvas = event.currentTarget;
@@ -226,13 +229,12 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
       const clickX = event.clientX - rect.left;
       const clickY = event.clientY - rect.top;
 
-      // Convert click coordinates to actual canvas coordinates
       const canvasX = (clickX / rect.width) * canvas.width;
       const canvasY = (clickY / rect.height) * canvas.height;
 
       const signaturePosition: SignaturePosition = {
         id: Date.now().toString(),
-        x: canvasX - 50, // Center the signature
+        x: canvasX - 50,
         y: canvasY - 25,
         width: 100,
         height: 50,
@@ -254,20 +256,16 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
     ],
   );
 
-  // Handle touch events for mobile signature placement
   const handleCanvasTouch = useCallback(
     (event: React.TouchEvent<HTMLCanvasElement>) => {
-      // Deselect any selected signatures when touching on empty space
       if (selectedSignatureId) {
         setSelectedSignatureId(null);
       }
 
-      // Handle signature placement in signing mode
       if (signingMode && selectedSavedSignature) {
-        // Check if touch is on an existing signature overlay
         const target = event.target as HTMLElement;
         if (target.closest('.signature-overlay')) {
-          return; // Don't place signature if touching on existing overlay
+          return;
         }
 
         const canvas = event.currentTarget;
@@ -276,13 +274,12 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
         const touchX = touch.clientX - rect.left;
         const touchY = touch.clientY - rect.top;
 
-        // Convert touch coordinates to actual canvas coordinates
         const canvasX = (touchX / rect.width) * canvas.width;
         const canvasY = (touchY / rect.height) * canvas.height;
 
         const signaturePosition: SignaturePosition = {
           id: Date.now().toString(),
-          x: canvasX - 50, // Center the signature
+          x: canvasX - 50,
           y: canvasY - 25,
           width: 100,
           height: 50,
@@ -304,7 +301,6 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
     ],
   );
 
-  // Handle save signed PDF
   const handleSaveSignedPDF = useCallback(async () => {
     if (!file || !onSaveSignedPDF || signatures.length === 0) return;
 
@@ -324,7 +320,6 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
     }
   }, [file, signatures, scale, onSaveSignedPDF]);
 
-  // Load saved signatures from localStorage
   useEffect(() => {
     const savedSignatures = localStorage.getItem('signatures');
     if (savedSignatures) {
@@ -336,7 +331,6 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
     }
   }, []);
 
-  // Signature functionality
   const handleStartSigning = () => {
     setShowSignatureOptions(true);
   };
@@ -373,7 +367,6 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
         scale,
       );
 
-      // Download the signed PDF
       const url = URL.createObjectURL(signedPDFBlob);
       const a = document.createElement('a');
       a.href = url;
@@ -394,23 +387,88 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
     }
   };
 
-  // Load PDF when file changes
+  const handleSaveDocumentToContext = async () => {
+    if (
+      !file ||
+      !contextId ||
+      !documentId ||
+      !documentHash ||
+      documentSignatures.length === 0
+    ) {
+      setError('Missing required information to save document to context');
+      return;
+    }
+
+    setSavingToContext(true);
+    try {
+      const signedPDFBlob = await pdfService.generateSignedPDF(
+        file,
+        documentSignatures,
+        scale,
+      );
+
+      const arrayBuffer = await signedPDFBlob.arrayBuffer();
+      const updatedPdfData = new Uint8Array(arrayBuffer);
+      const newHash = await calculateFileHash(updatedPdfData);
+
+      // Convert signedPDFBlob to File
+      const signedFile = new File([signedPDFBlob], file?.name || 'signed.pdf', {
+        type: 'application/pdf',
+      });
+      const signerId = localStorage.getItem('agreementContextUserID') || '';
+      const agreementContextID =
+        localStorage.getItem('agreementContextID') || undefined;
+      const agreementContextUserID =
+        localStorage.getItem('agreementContextUserID') || undefined;
+
+      // Use DocumentService for signing
+      const response = await documentService.signDocument(
+        contextId,
+        documentId,
+        signedFile,
+        signerId,
+        agreementContextID,
+        agreementContextUserID,
+      );
+
+      if (response.error) {
+        console.error('Error saving document to context:', response.error);
+        setError(`Failed to save document: ${response.error.message}`);
+        return;
+      }
+
+      if (onDocumentSaved) {
+        onDocumentSaved();
+      }
+
+      setError(null);
+    } catch (err) {
+      console.error('Error saving document to context:', err);
+      setError('Failed to save signed document to context.');
+    } finally {
+      setSavingToContext(false);
+    }
+  };
+
+  const calculateFileHash = async (data: Uint8Array): Promise<string> => {
+    const buffer = new Uint8Array(data);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+  };
+
   useEffect(() => {
     if (file) {
       loadPDF();
     }
   }, [file, loadPDF]);
 
-  // Render all pages when PDF loads or scale changes
   useEffect(() => {
     if (pdf) {
       renderPages();
     }
   }, [pdf, scale, renderPages]);
 
-  // Canvas drawing is now handled by ref callback in the JSX
-
-  // Navigation handlers
   const nextPage = () => {
     if (pdf && currentPage < pdf.numPages) {
       setCurrentPage((prev) => prev + 1);
@@ -423,7 +481,6 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
     }
   };
 
-  // Zoom handlers
   const zoomIn = () => {
     setScale((prev) => {
       const newScale = Math.min(prev + 0.2, 3);
@@ -438,7 +495,6 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
     });
   };
 
-  // Download handler
   const handleDownload = () => {
     if (!file) return;
 
@@ -587,6 +643,28 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
               Download Signed
             </Button>
           )}
+
+          {/* Save Document to Context Button - Desktop Only */}
+          {showSaveToContext &&
+            documentSignatures.length > 0 &&
+            contextId &&
+            documentId && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleSaveDocumentToContext}
+                disabled={savingToContext}
+                className="hidden sm:flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white"
+                title="Save signed document to context"
+              >
+                {savingToContext ? (
+                  <LoadingSpinner size="sm" />
+                ) : (
+                  <Upload size={16} />
+                )}
+                Save Document
+              </Button>
+            )}
 
           {showDownload && (
             <Button
@@ -811,7 +889,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
             exit={{ opacity: 0, y: 100 }}
             className={`rounded-t-2xl sm:rounded-lg p-4 w-full max-w-md border border-border shadow-2xl max-h-[80vh] overflow-hidden flex flex-col ${mode === 'dark' ? 'bg-gray-900' : 'bg-white'} ${
               mode === 'dark' ? 'text-gray-200' : 'text-gray-800'
-            }`} 
+            }`}
           >
             {/* Header */}
             <div className="flex items-center justify-between mb-4 pb-2 border-b">
@@ -984,6 +1062,33 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
                       </div>
                     </Button>
                   )}
+
+                  {/* Save Document to Context */}
+                  {showSaveToContext &&
+                    documentSignatures.length > 0 &&
+                    contextId &&
+                    documentId && (
+                      <Button
+                        onClick={() => {
+                          setShowMobileActions(false);
+                          handleSaveDocumentToContext();
+                        }}
+                        disabled={savingToContext}
+                        className="w-full flex items-center gap-3 p-4 text-left justify-start bg-green-600 hover:bg-green-700 text-white border-0"
+                      >
+                        {savingToContext ? (
+                          <LoadingSpinner size="sm" />
+                        ) : (
+                          <Upload size={20} />
+                        )}
+                        <div>
+                          <div className="font-medium">Save Document</div>
+                          <div className="text-sm text-white/80">
+                            Save signed document to context
+                          </div>
+                        </div>
+                      </Button>
+                    )}
 
                   {/* Download Original */}
                   {showDownload && (

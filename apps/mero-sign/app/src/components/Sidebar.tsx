@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, Users, PenTool, LogOut, X } from 'lucide-react';
+import { Home, PenTool, LogOut, X } from 'lucide-react';
 import { clientLogout } from '@calimero-network/calimero-client';
 
 interface SidebarProps {
@@ -23,8 +23,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   };
 
   const handleLogout = () => {
-    clientLogout();
+    if (localStorage.getItem('agreementContextID')) {
+      localStorage.removeItem('agreementContextID');
+    }
+    if (localStorage.getItem('agreementContextUserID')) {
+      localStorage.removeItem('agreementContextUserID');
+    }
     navigate('/');
+    clientLogout();
     onClose();
   };
 
