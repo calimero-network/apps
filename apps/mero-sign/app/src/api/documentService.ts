@@ -1,6 +1,7 @@
 import { ClientApiDataSource } from './dataSource/ClientApiDataSource';
 import { DocumentInfo, Document } from './clientApi';
 import { blobClient } from '@calimero-network/calimero-client';
+import { backendService } from './icp/backendService';
 
 export class DocumentService {
   private clientApi: ClientApiDataSource;
@@ -16,6 +17,7 @@ export class DocumentService {
     agreementContextID?: string,
     agreementContextUserID?: string,
     onProgress?: (progress: number) => void,
+    icpIdentity?: any,
   ): Promise<{ data?: string; error?: any }> {
     try {
       const blobResponse = await blobClient.uploadBlob(
@@ -58,6 +60,31 @@ export class DocumentService {
         agreementContextID,
         agreementContextUserID,
       );
+
+      if (!response.error && response.data) {
+        try {
+          let documentId = response.data;
+          const safeDocumentId = this.sanitizeDocumentId(documentId);
+          if (documentId !== safeDocumentId) {
+            console.warn('Sanitized documentId for ICP:', {
+              original: documentId,
+              sanitized: safeDocumentId,
+            });
+          }
+          const icpApi = await backendService(icpIdentity);
+          const icpResponse = await icpApi.recordOriginalHash(
+            safeDocumentId,
+            hash,
+          );
+          console.log('ICP canister recordOriginalHash response:', icpResponse);
+          console.log('Original hash uploaded to ICP canister');
+        } catch (icpError) {
+          console.error(
+            'Failed to upload original hash to ICP canister:',
+            icpError,
+          );
+        }
+      }
 
       return {
         data: response.data || undefined,
@@ -130,6 +157,7 @@ export class DocumentService {
     agreementContextID?: string,
     agreementContextUserID?: string,
     onProgress?: (progress: number) => void,
+    icpIdentity?: any, // Pass ICP identity from outside
   ): Promise<{ data?: void; error?: any }> {
     try {
       // Upload the new signed PDF via blob API
@@ -172,13 +200,44 @@ export class DocumentService {
       );
 
       if (!response.error) {
-        await this.clientApi.markParticipantSigned(
+        const markSignedResp = await this.clientApi.markParticipantSigned(
           contextId,
           documentId,
           signerId,
           agreementContextID,
           agreementContextUserID,
         );
+
+        if (!markSignedResp?.error) {
+          // --- ICP CANISTER INTEGRATION ---
+          // On successful sign and mark, also upload the final hash to ICP canister
+          try {
+            const safeDocumentId = this.sanitizeDocumentId(documentId);
+            if (documentId !== safeDocumentId) {
+              console.warn('Sanitized documentId for ICP:', {
+                original: documentId,
+                sanitized: safeDocumentId,
+              });
+            }
+            const icpApi = await backendService(icpIdentity);
+            const icpResponse = await icpApi.recordFinalHash(
+              safeDocumentId,
+              newHash,
+            );
+            console.log('Final hash uploaded to ICP canister', icpResponse);
+          } catch (icpError) {
+            console.error(
+              'Failed to upload final hash to ICP canister:',
+              icpError,
+            );
+          }
+          // --- END ICP CANISTER INTEGRATION ---
+        } else {
+          console.error(
+            'Failed to mark participant as signed:',
+            markSignedResp.error,
+          );
+        }
       }
 
       return {
@@ -188,6 +247,62 @@ export class DocumentService {
     } catch (error) {
       console.error('Error signing document:', error);
       return { error: { message: 'Failed to sign document' } };
+    }
+  }
+
+  async verifyDocumentWithICP(
+    documentId: string,
+    hash: string,
+    icpIdentity?: any,
+  ): Promise<{
+    status?: string;
+    verified?: boolean;
+    message?: string;
+    error?: any;
+  }> {
+    try {
+      const safeDocumentId = this.sanitizeDocumentId(documentId);
+      console.log(
+        `Verifying document with ICP canister: ${safeDocumentId}, hash: ${hash}`,
+      );
+      const icpApi = await backendService(icpIdentity);
+      const statusResult = await icpApi.verifyHash(safeDocumentId, hash);
+      console.log('ICP canister verifyHash response:', statusResult);
+
+      // Determine verification result and user-friendly message
+      let verified = false;
+      let status: string | undefined = undefined;
+      let message: string | undefined = undefined;
+
+      if (statusResult && typeof statusResult === 'object') {
+        const key = Object.keys(statusResult)[0];
+        status = key;
+        if (key === 'FinalMatch') {
+          verified = true;
+          message =
+            'This document is verified and matches the final signed version on ICP.';
+        } else if (key === 'OriginalMatch') {
+          verified = true;
+          message =
+            'This document matches the original uploaded version on ICP.';
+        } else if (key === 'NoMatch') {
+          message = 'This document does not match any version recorded on ICP.';
+        } else if (key === 'Unrecorded') {
+          message = 'This document has not been recorded on ICP.';
+        }
+      } else if (typeof statusResult === 'string') {
+        status = statusResult;
+        message = statusResult;
+      }
+
+      return { status, verified, message };
+    } catch (error) {
+      console.error('Failed to verify document with ICP canister:', error);
+      return {
+        error: { message: 'Failed to verify document with ICP canister.' },
+        verified: false,
+        message: 'Verification failed due to an error.',
+      };
     }
   }
 
@@ -231,5 +346,9 @@ export class DocumentService {
     const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  private sanitizeDocumentId(documentId: string): string {
+    return documentId.replace(/[^a-zA-Z0-9_-]/g, '_');
   }
 }

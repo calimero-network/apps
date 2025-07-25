@@ -25,6 +25,7 @@ import {
   Download,
   AlertCircle,
   CheckCircle2,
+  MoreVertical,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button, Card, CardContent } from '../../components/ui';
@@ -38,6 +39,7 @@ import {
 } from '../../api/dataSource/ClientApiDataSource';
 import { ContextApiDataSource } from '../../api/dataSource/nodeApiDataSource';
 import { ContextDetails, PermissionLevel } from '../../api/clientApi';
+import { useIcpAuth } from '../../contexts/IcpAuthContext';
 
 // Constants
 
@@ -145,7 +147,7 @@ const AgreementPage: React.FC = () => {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { mode } = useTheme();
-
+  const { identity } = useIcpAuth();
   const documentService = useMemo(() => new DocumentService(), []);
   const clientApiService = useMemo(() => new ClientApiDataSource(), []);
   const nodeApiService = useMemo(() => new ContextApiDataSource(), []);
@@ -177,6 +179,14 @@ const AgreementPage: React.FC = () => {
   const [notification, setNotification] = useState<NotificationState | null>(
     null,
   );
+  const [menuOpenDocId, setMenuOpenDocId] = useState<string | null>(null);
+  const [verifyingDocId, setVerifyingDocId] = useState<string | null>(null);
+  const [verifyResult, setVerifyResult] = useState<{
+    status?: string;
+    error?: any;
+    verified?: boolean;
+    message?: string;
+  } | null>(null);
 
   const showNotification = useCallback(
     (message: string, type: NotificationType) => {
@@ -353,6 +363,7 @@ const AgreementPage: React.FC = () => {
         (progress: number) => {
           setUploadFiles((prev) => prev.map((f) => ({ ...f, progress })));
         },
+        identity,
       );
 
       if (response.error) {
@@ -384,7 +395,13 @@ const AgreementPage: React.FC = () => {
         await loadDocuments();
       }
     },
-    [documentService, currentContextId, loadDocuments, showNotification],
+    [
+      documentService,
+      currentContextId,
+      loadDocuments,
+      showNotification,
+      identity,
+    ],
   );
 
   const handleUploadClick = useCallback(() => {
@@ -569,6 +586,26 @@ const AgreementPage: React.FC = () => {
     showNotification('Payload copied to clipboard!', 'success');
     setShowPayloadDialog(false);
   }, [generatedPayload, showNotification]);
+
+  const handleVerifyDocument = useCallback(
+    async (doc: UploadedDocument) => {
+      setVerifyingDocId(doc.id);
+      setVerifyResult(null);
+      try {
+        const result = await documentService.verifyDocumentWithICP(
+          doc.id, // <-- send the document id here
+          doc.hash || '',
+          identity,
+        );
+        setVerifyResult(result);
+      } catch (error) {
+        setVerifyResult({ error: { message: 'Verification failed.' } });
+      } finally {
+        setVerifyingDocId(null);
+      }
+    },
+    [documentService, identity],
+  );
 
   useEffect(() => {
     let subscriptionsClient: SubscriptionsClient | null = null;
@@ -801,7 +838,63 @@ const AgreementPage: React.FC = () => {
                             </div>
                           </div>
                         </div>
+                        {/* 3 dots menu */}
+                        <div className="relative">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="p-2 h-auto w-auto"
+                            onClick={() =>
+                              setMenuOpenDocId(
+                                menuOpenDocId === document.id
+                                  ? null
+                                  : document.id,
+                              )
+                            }
+                          >
+                            <MoreVertical className="w-5 h-5" />
+                          </Button>
+                          {menuOpenDocId === document.id && (
+                            <div className="absolute right-0 mt-2 w-56 rounded-lg border border-border bg-background/95 p-1 shadow-lg backdrop-blur-sm z-10">
+                              <button
+                                className="w-full text-center px-3 py-1.5 text-sm text-foreground hover:bg-muted transition rounded-md flex items-center justify-center"
+                                onClick={() => {
+                                  setMenuOpenDocId(null);
+                                  handleVerifyDocument(document);
+                                }}
+                                disabled={verifyingDocId === document.id}
+                              >
+                                {verifyingDocId === document.id
+                                  ? 'Verifying...'
+                                  : 'Verify on ICP'}
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
+
+                      {/* Verification result */}
+                      {verifyResult && menuOpenDocId === document.id && (
+                        <div className="mt-2 p-3 rounded bg-muted text-sm">
+                          {verifyResult.error ? (
+                            <span className="text-red-600">
+                              {verifyResult.error.message}
+                            </span>
+                          ) : (
+                            <span
+                              className={
+                                verifyResult.verified
+                                  ? 'text-green-600'
+                                  : 'text-yellow-700'
+                              }
+                            >
+                              {verifyResult.message
+                                ? verifyResult.message
+                                : `ICP Verification Status: ${verifyResult.status}`}
+                            </span>
+                          )}
+                        </div>
+                      )}
 
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-2">

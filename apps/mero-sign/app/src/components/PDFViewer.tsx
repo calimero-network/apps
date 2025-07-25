@@ -27,9 +27,8 @@ import SignaturePadComponent from './SignaturePad';
 import * as pdfjsLib from 'pdfjs-dist';
 import './PDFViewer.css';
 import { useTheme } from '../contexts/ThemeContext';
-import { ClientApiDataSource } from '../api/dataSource/ClientApiDataSource';
 import { DocumentService } from '../api/documentService';
-
+import { useIcpAuth } from '../contexts/IcpAuthContext';
 interface SavedSignature {
   id: string;
   name: string;
@@ -108,7 +107,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
   const [savingToContext, setSavingToContext] = useState(false);
 
   const documentService = new DocumentService();
-
+  const { identity } = useIcpAuth();
   const loadPDF = useCallback(async () => {
     if (!file) return;
 
@@ -429,6 +428,8 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
         signerId,
         agreementContextID,
         agreementContextUserID,
+        undefined,
+        identity,
       );
 
       if (response.error) {

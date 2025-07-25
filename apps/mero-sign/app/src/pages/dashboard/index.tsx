@@ -30,7 +30,6 @@ interface NotificationState {
   type: NotificationType;
 }
 
-
 const NotificationPopup: React.FC<{
   notification: NotificationState;
 }> = ({ notification }) => (

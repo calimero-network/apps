@@ -204,7 +204,6 @@ class PDFService {
       const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
       const doc = await loadingTask.promise;
 
-
       return true;
     } catch (error) {
       console.error('PDF.js test failed:', error);

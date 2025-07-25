@@ -25,7 +25,9 @@ function getErrorMessage(error: any): string {
   }
   if (
     error?.error?.name === 'UnknownServerError' &&
-    error?.error?.cause?.info?.message?.includes("Verify that the node server is running")
+    error?.error?.cause?.info?.message?.includes(
+      'Verify that the node server is running',
+    )
   ) {
     return 'Syncing state, Please wait and retry.';
   }

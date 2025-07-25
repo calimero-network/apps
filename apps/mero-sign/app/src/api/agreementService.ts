@@ -13,12 +13,8 @@ export class AgreementService {
     this.clientApi = new ClientApiDataSource();
   }
 
-
-  async createAgreement(
-    name: string,
-  ): ApiResponse<Agreement> {
+  async createAgreement(name: string): ApiResponse<Agreement> {
     try {
-  
       const contextProps: CreateContextProps = {
         is_private: false, // Shared context
         context_name: name,
@@ -35,27 +31,24 @@ export class AgreementService {
 
       const contextData = contextResponse.data as CreateContextResponse;
 
-      
       const joinResponse = await this.clientApi.joinSharedContext(
         contextData.contextId,
-        contextData.memberPublicKey, 
+        contextData.memberPublicKey,
         name,
       );
 
       if (joinResponse.error) {
         console.error('Failed to join created context:', joinResponse.error);
-       
       }
 
-      
       const agreement: Agreement = {
         id: contextData.contextId,
         name,
         contextId: contextData.contextId,
         memberPublicKey: contextData.memberPublicKey,
-        role: 'Owner', 
+        role: 'Owner',
         joinedAt: Date.now(),
-        privateIdentity: contextData.memberPublicKey, 
+        privateIdentity: contextData.memberPublicKey,
         sharedIdentity: contextData.memberPublicKey,
       };
 
@@ -84,9 +77,7 @@ export class AgreementService {
   // List all agreements (joined contexts)
   async listAgreements(): ApiResponse<Agreement[]> {
     try {
-
       const contextsResponse = await this.clientApi.listJoinedContexts();
-
 
       if (contextsResponse.error) {
         console.error(
@@ -100,8 +91,6 @@ export class AgreementService {
       }
 
       const contexts = contextsResponse.data as ContextMetadata[];
-
-
 
       if (!contexts || !Array.isArray(contexts)) {
         console.error(
@@ -126,8 +115,6 @@ export class AgreementService {
         privateIdentity: context.private_identity,
         sharedIdentity: context.shared_identity,
       }));
-
-
 
       return {
         data: agreements,
@@ -218,7 +205,6 @@ export class AgreementService {
         };
       }
 
-     
       const contextId = joinResponse.data?.contextId || '';
 
       return {

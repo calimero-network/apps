@@ -54,7 +54,7 @@ struct DocumentHashes {
     timestamp_final: Option<u64>,
 }
 
-const MAX_DOCUMENT_HASHES_SIZE: u32 = 148;
+const MAX_DOCUMENT_HASHES_SIZE: u32 = 256;
 
 impl Storable for DocumentHashes {
     fn to_bytes(&self) -> Cow<[u8]> {

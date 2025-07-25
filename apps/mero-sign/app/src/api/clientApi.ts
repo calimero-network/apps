@@ -19,7 +19,7 @@ export enum ClientMethod {
   MARK_DOCUMENT_FULLY_SIGNED = 'mark_document_fully_signed',
   GET_CONTEXT_DETAILS = 'get_context_details',
   ADD_PARTICIPANT = 'add_participant',
-  MARK_PARTICIPANT_SIGNED = 'mark_participant_signed'
+  MARK_PARTICIPANT_SIGNED = 'mark_participant_signed',
 }
 
 export interface SignatureRecord {
