@@ -585,6 +585,14 @@ export class ClientApiDataSource implements ClientApi {
 
   async sendMessage(props: SendMessageProps): ApiResponse<Message> {
     try {
+      if (!props.message) {
+        return {
+          error: {
+            code: 400,
+            message: "Message is required",
+          },
+        };
+      }
       const response = await getJsonRpcClient().execute<
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         any,

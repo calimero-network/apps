@@ -370,7 +370,7 @@ export default function MessageInput({
     ) {
       handleMessageChange(null);
     } else {
-      sendMessage(message?.text ?? "");
+      sendMessage(markdownParser(message?.text ?? ""));
       resetImageLocal();
       resetFile();
       setShowUpload(false);
@@ -388,7 +388,7 @@ export default function MessageInput({
       ) {
         handleMessageChange(null);
       } else {
-        sendMessage(content ?? "");
+        sendMessage(markdownParser(content ?? ""));
         resetImageLocal();
         resetFile();
         setShowUpload(false);
