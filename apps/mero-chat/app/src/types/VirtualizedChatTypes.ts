@@ -1,4 +1,4 @@
-import type { AccountData, CurbMessage } from "virtualized-chat";
+import type { AccountData, CurbMessage } from "curb-virtualized-chat";
 
 export interface MessageRendererProps {
   accountId: string;

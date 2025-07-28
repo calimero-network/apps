@@ -2,7 +2,7 @@ import "./quill.snow.css";
 import React, { useEffect, useRef } from "react";
 
 import Quill from "quill";
-import { sanitizePasteHtml } from "virtualized-chat";
+import { sanitizePasteHtml } from "curb-virtualized-chat";
 
 interface MarkdownEditorProps {
     handleMessageSent: (content: string) => void;
@@ -26,11 +26,10 @@ export const MarkdownEditor = ({
 
   const sendMessage = () => {
     const content = quillRef?.current?.root?.innerHTML ?? '';
-    // Clean the content by removing trailing <br> tags and empty paragraphs
     const cleanContent = content
-      .replace(/<br\s*\/?>\s*$/i, '') // Remove trailing <br>
-      .replace(/<p><br><\/p>\s*$/i, '') // Remove trailing empty paragraph
-      .replace(/<p>\s*<\/p>\s*$/i, ''); // Remove trailing empty paragraph
+      .replace(/<br\s*\/?>\s*$/i, '')
+      .replace(/<p><br><\/p>\s*$/i, '')
+      .replace(/<p>\s*<\/p>\s*$/i, '');
     if (cleanContent.trim() !== '') {
       setValue(cleanContent);
       handleMessageSent(cleanContent);
@@ -54,8 +53,7 @@ export const MarkdownEditor = ({
     if (types.includes('text/html')) {
       const pastedData = clipboardData.getData('text/html');
       const processedData = sanitizePasteHtml(pastedData);
-      // @ts-expect-error - TODO: types missmatch OK
-      quill?.pasteHTML(selection?.index ?? 0, processedData);
+      quill?.clipboard.dangerouslyPasteHTML(selection?.index ?? 0, processedData);
     } else if (types.includes('text/plain')) {
       const pastedData = clipboardData.getData('text/plain');
       quill?.insertText(selection?.index ?? 0, pastedData);
@@ -72,7 +70,7 @@ export const MarkdownEditor = ({
               enter: {
                 key: 13,
                 handler: function() {
-                  return false; // Prevent default Enter behavior
+                  return false;
                 }
               }
             }
@@ -89,7 +87,6 @@ export const MarkdownEditor = ({
           e.preventDefault();
           e.stopPropagation();
           e.stopImmediatePropagation();
-          // Small delay to ensure Quill doesn't add the <br> tag
           setTimeout(() => {
             sendMessage();
           }, 0);

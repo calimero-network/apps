@@ -13,7 +13,7 @@ import {
   messageRenderer,
   VirtualizedChat,
   type CurbMessage,
-} from "virtualized-chat";
+} from "curb-virtualized-chat";
 import type { ChannelInfo } from "../api/clientApi";
 import { getExecutorPublicKey } from "@calimero-network/calimero-client";
 import EmojiSelectorPopup from "../emojiSelector/EmojiSelectorPopup";
