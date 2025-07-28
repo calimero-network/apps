@@ -8,6 +8,8 @@ import { useState } from "react";
 import { styled } from "styled-components";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 import { extractErrorMessage } from "../../utils/errorParser";
+import { defaultActiveChat } from "../../mock/mock";
+import { updateSessionChat } from "../../utils/session";
 
 const LoginWrapper = styled.div`
   display: flex;
@@ -163,12 +165,14 @@ export default function Login() {
         const errorMessage = extractErrorMessage(response.error);
         if (errorMessage.includes("Already a member")) {
           setSuccess("Already connected to chat!");
+          updateSessionChat(defaultActiveChat);
         } else {
           setError(errorMessage);
           return;
         }
       } else {
         setSuccess("Successfully joined chat!");
+        updateSessionChat(defaultActiveChat);
       }
 
       setTimeout(() => {

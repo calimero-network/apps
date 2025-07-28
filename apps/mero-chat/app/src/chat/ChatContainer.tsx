@@ -49,22 +49,22 @@ const ChatContainerWrapper = styled.div`
   }
 `;
 
-const ThreadWrapper = styled.div`
-  height: 100%;
-  flex: 1;
-  border-left: 2px solid #282933;
-  padding-left: 20px;
-  @media (max-width: 1024px) {
-    border-left: none;
-    position: fixed;
-    left: 0;
-    right: 0; /* Set both left and right to 0 to stretch to full width */
-    top: 50%; /* Vertically center the element */
-    transform: translateY(-50%); /* Center it vertically */
-    z-index: 30;
-    background-color: #0e0e10;
-  }
-`;
+// const ThreadWrapper = styled.div`
+//   height: 100%;
+//   flex: 1;
+//   border-left: 2px solid #282933;
+//   padding-left: 20px;
+//   @media (max-width: 1024px) {
+//     border-left: none;
+//     position: fixed;
+//     left: 0;
+//     right: 0; /* Set both left and right to 0 to stretch to full width */
+//     top: 50%; /* Vertically center the element */
+//     transform: translateY(-50%); /* Center it vertically */
+//     z-index: 30;
+//     background-color: #0e0e10;
+//   }
+// `;
 
 export default function ChatContainer({
   activeChat,
@@ -73,16 +73,16 @@ export default function ChatContainer({
   loadInitialChatMessages,
   incomingMessages,
   loadPrevMessages,
-  loadInitialThreadMessages,
-  incomingThreadMessages,
-  loadPrevThreadMessages,
+  // loadInitialThreadMessages,
+  // incomingThreadMessages,
+  // loadPrevThreadMessages,
   updateCurrentOpenThread,
   openThread,
   setOpenThread,
   currentOpenThreadRef,
 }: ChatContainerProps) {
   const [updatedMessages, setUpdatedMessages] = useState<UpdatedMessages[]>([]);
-  const [updatedThreadMessages, setUpdatedThreadMessages] = useState<
+  const [_updatedThreadMessages, setUpdatedThreadMessages] = useState<
     UpdatedMessages[]
   >([]);
   const [isEmojiSelectorVisible, setIsEmojiSelectorVisible] = useState(false);
@@ -320,7 +320,7 @@ export default function ChatContainer({
             setIsEmojiSelectorVisible={setIsEmojiSelectorVisible}
             messageWithEmojiSelector={messageWithEmojiSelector}
           />
-          {openThread && openThread.id && (
+          {/* {openThread && openThread.id && (
             <ThreadWrapper>
               <ChatDisplaySplit
                 readMessage={() => {}}
@@ -354,7 +354,7 @@ export default function ChatContainer({
                 messageWithEmojiSelector={messageWithEmojiSelector}
               />
             </ThreadWrapper>
-          )}
+          )} */}
         </>
       )}
     </ChatContainerWrapper>
