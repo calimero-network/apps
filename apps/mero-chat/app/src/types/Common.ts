@@ -23,6 +23,8 @@ export type ActiveChat = {
   account?: string;
   canJoin?: boolean;
   invitationPayload?: string;
+  otherIdentityNew?: string;
+  creator?: string;
 };
 
 export interface User {

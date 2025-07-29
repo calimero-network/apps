@@ -16,6 +16,8 @@ import {
   type ResponseData,
 } from "@calimero-network/calimero-client";
 import type { ChannelInfo } from "../api/clientApi";
+import HandleDMSetup from "./HandleDMSetup";
+import HandleInvitation from "./HandleInvitation";
 
 interface ChatContainerProps {
   activeChat: ActiveChat;
@@ -280,10 +282,32 @@ export default function ChatContainer({
     updateCurrentOpenThread(message);
     setUpdatedThreadMessages([]);
   };
+  
+    // Handle setup
+    // Case No.1 - nodeA (creator) is invited and doesen't have set otherIdentityNew means he is waiting for nodeB -> block him
+    // Case No.2 - nodeB (invitee) doesen't have set can_join and no invitation payload means he needs to create new identity
+    // Case No.3 - nodeB (invitee) has set new node identity and is blocked until he has invitation payload
+    // Case No.4 - nodeA (creator) has new node identity from nodeB and creates invite and set the invitation payload
+    // Case No.4 - unblock him as he did the invitation process
+    // Case No.5 - nodeB (invitee) has context identity and invitation payload he needs to accept the join context only option - unblock him after
+    // Case No.6 - nodeB (invitee) verify he actually joined the context
+
+    // activeChat.ownIdentity  - null (nodeA)
+    // activeChat.otherIdentityNew - null  (nodeA)
+    // activeChat.canJoin - true (nodeB)
+    // invitationPayload - null (nodeB)
 
   return (
     <ChatContainerWrapper>
-      {activeChat.canJoin ? (
+      {(!activeChat.otherIdentityNew || !activeChat.account) && <HandleDMSetup activeChat={activeChat}/>}
+      {!activeChat.canJoin && !activeChat.invitationPayload && activeChat.otherIdentityNew && <HandleInvitation activeChat={activeChat}/>}
+      {activeChat.canJoin && activeChat.invitationPayload && <JoinChannel
+          channelMeta={channelMeta}
+          activeChat={activeChat}
+          setIsOpenSearchChannel={setIsOpenSearchChannel}
+          onJoinedChat={onJoinedChat}
+        />}
+      {/* {activeChat.canJoin ? (
         <JoinChannel
           channelMeta={channelMeta}
           activeChat={activeChat}
@@ -291,7 +315,6 @@ export default function ChatContainer({
           onJoinedChat={onJoinedChat}
         />
       ) : (
-        <>
           <ChatDisplaySplit
             readMessage={() => {}}
             handleReaction={handleReaction}
@@ -320,7 +343,13 @@ export default function ChatContainer({
             setIsEmojiSelectorVisible={setIsEmojiSelectorVisible}
             messageWithEmojiSelector={messageWithEmojiSelector}
           />
-          {/* {openThread && openThread.id && (
+      )} */}
+    </ChatContainerWrapper>
+  );
+}
+
+
+{/* {openThread && openThread.id && (
             <ThreadWrapper>
               <ChatDisplaySplit
                 readMessage={() => {}}
@@ -355,8 +384,3 @@ export default function ChatContainer({
               />
             </ThreadWrapper>
           )} */}
-        </>
-      )}
-    </ChatContainerWrapper>
-  );
-}

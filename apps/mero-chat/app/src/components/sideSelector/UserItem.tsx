@@ -57,8 +57,8 @@ export default function UserItem({
   return (
     <UserListItem selected={selected} onClick={handleClick}>
       <UserInfoContainer>
-        <UserProfileIcon accountId={userDM.channel_user} active={true} />
-        <NameContainer>{`${userDM.channel_user.slice(0, 6)}...${userDM.channel_user.slice(-4)}`}</NameContainer>
+        <UserProfileIcon accountId={userDM.other_identity_old} active={true} />
+        <NameContainer>{`${userDM.other_identity_old.slice(0, 6)}...${userDM.other_identity_old.slice(-4)}`}</NameContainer>
       </UserInfoContainer>
       {/* {user?.unreadMessages && user.unreadMessages.count > 0 && (
         <UnreadMessagesBadge

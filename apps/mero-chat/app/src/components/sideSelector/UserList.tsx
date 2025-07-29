@@ -19,8 +19,8 @@ export default function UserList({
           <UserItem
             userDM={userDM}
             onDMSelected={onDMSelected}
-            selected={selectedDM === userDM.channel_user}
-            key={userDM.channel_user}
+            selected={selectedDM === userDM.other_identity_old}
+            key={userDM.other_identity_old}
           />
         ))}
     </>

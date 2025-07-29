@@ -95,17 +95,20 @@ export interface DMChatInfo {
   created_by: UserId;
   channel_user: UserId;
   context_id: string;
-  context_identity: UserId;
+  other_identity_new: UserId;
+  other_identity_old: UserId;
+  own_identity: UserId;
+  own_identity_old: UserId;
   did_join: boolean;
   invitation_payload: string;
 }
 
 export interface CreateDmProps {
-  user: UserId;
-  creator: UserId;
-  timestamp: number;
   context_id: string;
-  invitation_payload: string;
+  creator: UserId;
+  creator_new_identity: UserId;
+  invitee: UserId;
+  timestamp: number;
 }
 
 export interface UpdateReactionProps {

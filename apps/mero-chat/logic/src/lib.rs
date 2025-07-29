@@ -21,6 +21,9 @@ pub enum Event {
     ChannelJoined(String),
     DMCreated(String),
     ReactionUpdated(String),
+    NewIdentityUpdated(String),
+    InvitationPayloadUpdated(String),
+    InvitationAccepted(String),
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
@@ -134,12 +137,20 @@ pub struct PublicChannelInfo {
 #[serde(crate = "calimero_sdk::serde")]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct DMChatInfo {
+    pub created_at: u64,
     pub context_id: String,
     pub channel_type: ChannelType,
-    pub created_at: u64,
+
+    // inviter - old chat identity
     pub created_by: UserId,
-    pub channel_user: UserId,
-    pub context_identity: UserId,
+    // own identity - new dm identity
+    pub own_identity_old: UserId,
+    pub own_identity: Option<UserId>,
+
+    // other identity - new dm identity
+    pub other_identity_old: UserId,
+    pub other_identity_new: Option<UserId>,
+
     pub did_join: bool,
     pub invitation_payload: String,
 }
@@ -636,11 +647,13 @@ impl CurbChat {
         if let Some(parent_id) = parent_message {
             let thread_messages = match self.threads.get(&parent_id) {
                 Ok(Some(messages)) => messages,
-                _ => return Ok(FullMessageResponse {
-                    total_count: 0,
-                    messages: Vec::new(),
-                    start_position: 0,
-                }),
+                _ => {
+                    return Ok(FullMessageResponse {
+                        total_count: 0,
+                        messages: Vec::new(),
+                        start_position: 0,
+                    })
+                }
             };
 
             let total_messages = thread_messages.len().unwrap_or(0);
@@ -1070,15 +1083,16 @@ impl CurbChat {
         }
     }
 
+    // STEP1
+    // Create DM chat - new Context with created old and new identity and invitee old identity
+    // Each of them have new objects for DM chat
     pub fn create_dm_chat(
         &mut self,
-        // User to be invited e.g. n1:identity1
-        user: UserId,
-        // New identity of executor user e.g. n2:identity2 as you can't create same context identity
-        creator: UserId,
-        timestamp: u64,
         context_id: String,
-        invitation_payload: String,
+        creator: UserId,
+        creator_new_identity: UserId,
+        invitee: UserId,
+        timestamp: u64,
     ) -> app::Result<String, String> {
         if self.is_dm {
             return Err("Cannot create DMs in a DM chat".to_string());
@@ -1086,51 +1100,183 @@ impl CurbChat {
 
         let executor_id = self.get_executor_id();
 
+        if creator != executor_id {
+            return Err("You are not the inviter".to_string());
+        }
+
         if !self.members.contains(&executor_id).unwrap_or(false) {
             return Err("You are not a member of the chat".to_string());
         }
-        if !self.members.contains(&user).unwrap_or(false) {
-            return Err("Other user is not a member of the chat".to_string());
+        if !self.members.contains(&invitee).unwrap_or(false) {
+            return Err("Invitee user is not a member of the chat".to_string());
         }
 
-        if executor_id == user {
+        if executor_id == invitee {
             return Err("Cannot create DM with yourself".to_string());
         }
 
-        if self.dm_exists(&executor_id, &user) {
+        if self.dm_exists(&executor_id, &invitee) {
             return Err("DM already exists".to_string());
         }
 
         let context_id_for_user = context_id.clone();
+        // CREATOR
         let dm_chat_info = DMChatInfo {
             context_id: context_id.clone(),
             channel_type: ChannelType::Private,
-
             created_at: timestamp,
+            // user A - inviter
             created_by: executor_id,
-            channel_user: user.clone(),
-            context_identity: creator,
+            own_identity_old: creator.clone(),
+            own_identity: Some(creator_new_identity.clone()),
+            // user B - invitee
+            other_identity_old: invitee.clone(),
+            other_identity_new: None,
             invitation_payload: "".to_string(),
             did_join: true,
         };
 
         self.add_dm_to_user(&executor_id, dm_chat_info);
+        // INVITEE
         self.add_dm_to_user(
-            &user,
+            &invitee,
             DMChatInfo {
                 context_id: context_id_for_user,
                 channel_type: ChannelType::Private,
                 created_at: timestamp,
+                // user A - inviter
                 created_by: executor_id,
-                channel_user: executor_id,
-                context_identity: user,
-                invitation_payload: invitation_payload.clone(),
+                other_identity_old: creator.clone(),
+                other_identity_new: Some(invitee.clone()),
+                // user B - invitee
+                own_identity_old: invitee.clone(),
+                own_identity: None,
+                invitation_payload: "".to_string(),
                 did_join: false,
             },
         );
 
         app::emit!(Event::DMCreated("Private DM created!".to_string()));
         Ok(context_id)
+    }
+
+    // STEP2
+    // User updates his new identity he will be invited with
+    pub fn update_new_identity(
+        &mut self,
+        other_user: UserId,
+        new_identity: UserId,
+    ) -> app::Result<String, String> {
+        if self.is_dm {
+            return Err("Cannot update new identity in a DM chat".to_string());
+        }
+
+        let executor_id = self.get_executor_id();
+
+        if !self.members.contains(&executor_id).unwrap_or(false) {
+            return Err("You are not a member of the chat".to_string());
+        }
+
+        if !self.dm_exists(&executor_id, &other_user) {
+            return Err("DM does not exist".to_string());
+        }
+
+        if let Ok(Some(mut dms)) = self.dm_chats.get(&executor_id) {
+            // He calls for himself - he is not the owner he has it like this
+            for dm in dms.iter_mut() {
+                if dm.other_identity_old == other_user {
+                    dm.own_identity = Some(new_identity.clone());
+                    break;
+                }
+            }
+            let _ = self.dm_chats.insert(executor_id.clone(), dms);
+        }
+
+        if let Ok(Some(mut dms)) = self.dm_chats.get(&other_user) {
+            // He calls for the creator
+            for dm in dms.iter_mut() {
+                if dm.other_identity_old == executor_id {
+                    dm.other_identity_new = Some(new_identity.clone());
+                    break;
+                }
+            }
+            let _ = self.dm_chats.insert(other_user.clone(), dms);
+        }
+
+        app::emit!(Event::NewIdentityUpdated(
+            "New identity updated!".to_string()
+        ));
+        Ok("Identity updated successfully".to_string())
+    }
+
+    // STEP3
+    // Inviter uses the new identity of invitee to create new invitation and save payload
+    pub fn update_invitation_payload(
+        &mut self,
+        other_user: UserId,
+        invitation_payload: String,
+    ) -> app::Result<String, String> {
+        if self.is_dm {
+            return Err("Cannot update invitation payload in a DM chat".to_string());
+        }
+
+        let executor_id = self.get_executor_id();
+
+        if !self.members.contains(&executor_id).unwrap_or(false) {
+            return Err("You are not a member of the chat".to_string());
+        }
+
+        if !self.dm_exists(&executor_id, &other_user) {
+            return Err("DM does not exist".to_string());
+        }
+
+        if let Ok(Some(mut dms)) = self.dm_chats.get(&executor_id) {
+            for dm in dms.iter_mut() {
+                if dm.other_identity_old == other_user {
+                    dm.invitation_payload = invitation_payload.clone();
+                    break;
+                }
+            }
+            let _ = self.dm_chats.insert(executor_id.clone(), dms);
+        }
+
+        app::emit!(Event::InvitationPayloadUpdated(
+            "Invitation payload updated!".to_string()
+        ));
+        Ok("Invitation payload updated successfully".to_string())
+    }
+
+    // STEP4
+    // Invitee accepts invitation and updates "is joined" to be true so we know the process is done
+    pub fn accept_invitation(&mut self, other_user: UserId) -> app::Result<String, String> {
+        if self.is_dm {
+            return Err("Cannot accept invitation in a DM chat".to_string());
+        }
+
+        let executor_id = self.get_executor_id();
+
+        if !self.members.contains(&executor_id).unwrap_or(false) {
+            return Err("You are not a member of the chat".to_string());
+        }
+
+        if !self.dm_exists(&executor_id, &other_user) {
+            return Err("DM does not exist".to_string());
+        }
+
+        if let Ok(Some(mut dms)) = self.dm_chats.get(&executor_id) {
+            for dm in dms.iter_mut() {
+                if dm.other_identity_old == other_user {
+                    dm.did_join = true;
+                    break;
+                }
+            }
+            let _ = self.dm_chats.insert(executor_id.clone(), dms);
+        }
+
+        app::emit!(Event::InvitationAccepted(
+            "Invitation accepted!".to_string()
+        ));
+        Ok("Invitation accepted successfully".to_string())
     }
 
     pub fn get_dms(&self) -> app::Result<Vec<DMChatInfo>, String> {
@@ -1146,9 +1292,11 @@ impl CurbChat {
                         channel_type: dm.channel_type.clone(),
                         created_at: dm.created_at,
                         created_by: dm.created_by.clone(),
-                        channel_user: dm.channel_user.clone(),
                         context_id: dm.context_id.clone(),
-                        context_identity: dm.context_identity.clone(),
+                        own_identity_old: dm.own_identity_old.clone(),
+                        own_identity: dm.own_identity.clone(),
+                        other_identity_old: dm.other_identity_old.clone(),
+                        other_identity_new: dm.other_identity_new.clone(),
                         did_join: dm.did_join,
                         invitation_payload: dm.invitation_payload.clone(),
                     });
@@ -1175,7 +1323,7 @@ impl CurbChat {
     fn dm_exists(&self, user1: &UserId, user2: &UserId) -> bool {
         if let Ok(Some(dms)) = self.dm_chats.get(user1) {
             for dm in dms.iter() {
-                if dm.channel_user == *user2 {
+                if dm.other_identity_old == *user2 {
                     return true;
                 }
             }
@@ -1194,7 +1342,7 @@ impl CurbChat {
 
     fn remove_dm_from_user(&mut self, user: &UserId, other_user: &UserId) {
         if let Ok(Some(mut dms)) = self.dm_chats.get(user) {
-            dms.retain(|dm| dm.channel_user != *other_user);
+            dms.retain(|dm| dm.other_identity_old != *other_user);
             let _ = self.dm_chats.insert(user.clone(), dms);
         }
     }

@@ -143,12 +143,17 @@ export default function Home() {
     const selectedChat = {
       type: "direct_message" as ChatType,
       contextId: dm.context_id,
-      id: dm.channel_user,
-      name: dm.channel_user,
+
+      id: dm.other_identity_old,
+      name: dm.other_identity_old,
+  
       readOnly: false,
-      account: dm.context_identity,
+      // executor public key of a caller (own new public key for private context)
+      account: dm.own_identity,
       canJoin: canJoin,
       invitationPayload: dm.invitation_payload,
+      otherIdentityNew: dm.other_identity_new,
+      creator: dm.created_by,
     };
     setDmContextId(dm.context_id);
     setIsOpenSearchChannel(false);
@@ -495,24 +500,17 @@ export default function Home() {
     const response = await new ContextApiDataSource().createContext({
       user: value,
     });
+
     if (response.data) {
-      const inviteResponse = await new ContextApiDataSource().inviteToContext({
-        contextId: response.data.contextId,
+      const createDMResponse = await new ClientApiDataSource().createDm({
+        context_id: response.data.contextId,
+        creator: getExecutorPublicKey() || "",
+        creator_new_identity: response.data.memberPublicKey,
         invitee: value,
-        inviter: response.data.memberPublicKey,
+        timestamp: Date.now(),
       });
-      if (inviteResponse.data) {
-        const invitationPayload = inviteResponse.data;
-        const createDmResponse = await new ClientApiDataSource().createDm({
-          user: value,
-          creator: response.data.memberPublicKey,
-          timestamp: Date.now(),
-          context_id: response.data.contextId,
-          invitation_payload: invitationPayload,
-        });
-        if (createDmResponse.data) {
-          await fetchDms();
-        }
+      if (createDMResponse.data) {
+        await fetchDms();
       }
     }
   };
