@@ -180,6 +180,7 @@ impl CurbChat {
         default_channels: Vec<Channel>,
         created_at: u64,
         is_dm: bool,
+        invitee: Option<UserId>,
     ) -> CurbChat {
         let executor_id = UserId::new(env::executor_id());
 
@@ -187,6 +188,14 @@ impl CurbChat {
         let mut members: UnorderedSet<UserId> = UnorderedSet::new();
         let mut channel_members: UnorderedMap<Channel, UnorderedSet<UserId>> = UnorderedMap::new();
         let mut moderators: UnorderedSet<UserId> = UnorderedSet::new();
+
+        let _ = members.insert(executor_id);
+
+        if is_dm {
+            if let Some(invitee_id) = invitee {
+                let _ = members.insert(invitee_id);
+            }
+        }
 
         for c in default_channels {
             let channel_info = ChannelInfo {
@@ -203,9 +212,15 @@ impl CurbChat {
                 last_read: UnorderedMap::new(),
             };
             let _ = channels.insert(c.clone(), channel_info);
-            let _ = members.insert(executor_id);
             let mut new_members = UnorderedSet::new();
             let _ = new_members.insert(executor_id);
+            
+            if is_dm {
+                if let Some(invitee_id) = &invitee {
+                    let _ = new_members.insert(invitee_id.clone());
+                }
+            }
+            
             let _ = channel_members.insert(c.clone(), new_members);
             let _ = moderators.insert(executor_id);
         }
@@ -1147,7 +1162,7 @@ impl CurbChat {
                 // user A - inviter
                 created_by: executor_id,
                 other_identity_old: creator.clone(),
-                other_identity_new: Some(invitee.clone()),
+                other_identity_new: Some(creator_new_identity.clone()),
                 // user B - invitee
                 own_identity_old: invitee.clone(),
                 own_identity: None,
@@ -1238,6 +1253,16 @@ impl CurbChat {
                 }
             }
             let _ = self.dm_chats.insert(executor_id.clone(), dms);
+        }
+
+        if let Ok(Some(mut dms)) = self.dm_chats.get(&other_user) {
+            for dm in dms.iter_mut() {
+                if dm.other_identity_old == executor_id {
+                    dm.invitation_payload = invitation_payload.clone();
+                    break;
+                }
+            }
+            let _ = self.dm_chats.insert(other_user.clone(), dms);
         }
 
         app::emit!(Event::InvitationPayloadUpdated(

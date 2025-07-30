@@ -6,6 +6,7 @@ import {
 import type {
   CreateContextProps,
   CreateContextResponse,
+  CreateIdentityResponse,
   InviteToContextProps,
   JoinContextProps,
   NodeApi,
@@ -23,7 +24,7 @@ export class ContextApiDataSource implements NodeApi {
       const jsonData = {
         name: props.user,
         is_dm: true,
-        default_channels: [{ name: props.user }],
+        default_channels: [{ name: "private_dm"}],
         created_at: Date.now(),
       };
       const jsonString = JSON.stringify(jsonData);
@@ -158,7 +159,7 @@ export class ContextApiDataSource implements NodeApi {
 
       if (response.status === 200) {
         return {
-          data: {joined: response.data.data.rootHash ? true : false},
+          data: {joined: response.data.data.rootHash ? true : false, isSynced: response.data.data.rootHash !== "11111111111111111111111111111111"},
           error: null,
         };
       } else {
@@ -175,6 +176,35 @@ export class ContextApiDataSource implements NodeApi {
       return {
         data: null,
         error: { code: 500, message: 'Failed to fetch context data.' },
+      };
+    }
+  }
+
+  async createIdentity(): ApiResponse<CreateIdentityResponse> {
+    try {
+      const nodeEndpoint = getAppEndpointKey() || DEFAULT_NODE_ENDPOINT;
+      const response = await axios.post(`${nodeEndpoint}/admin-api/identity/context`);
+
+      if (response.status === 200) {
+        return {
+          data: response.data.data,
+          error: null,
+        };
+      } else {
+        return {
+          data: null,
+          error: { code: response.status, message: response.statusText },
+        };
+      }
+    } catch (error) {
+      console.error("createIdentity failed:", error);
+      let errorMessage = "An unexpected error occurred during createIdentity";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      return {
+        data: null,
+        error: { code: 500, message: errorMessage },
       };
     }
   }

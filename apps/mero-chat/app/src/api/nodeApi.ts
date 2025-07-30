@@ -26,6 +26,11 @@ export interface VerifyContextProps {
 
 export interface VerifyContextResponse {
   joined: boolean;
+  isSynced: boolean;
+}
+
+export interface CreateIdentityResponse {
+  publicKey: string;
 }
 
 export interface NodeApi {
@@ -33,4 +38,5 @@ export interface NodeApi {
   inviteToContext(props: InviteToContextProps): ApiResponse<string>;
   joinContext(props: JoinContextProps): ApiResponse<string>;
   verifyContext(props: VerifyContextProps): ApiResponse<VerifyContextResponse>;
+  createIdentity(): ApiResponse<CreateIdentityResponse>;
 }

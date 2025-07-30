@@ -160,7 +160,9 @@ export default function Login() {
       setContextId(formData.contextId.trim());
       setExecutorPublicKey(formData.identityId.trim());
       const response: ResponseData<string> =
-        await new ClientApiDataSource().joinChat();
+        await new ClientApiDataSource().joinChat({
+          isDM: false,
+        });
       if (response.error) {
         const errorMessage = extractErrorMessage(response.error);
         if (errorMessage.includes("Already a member")) {

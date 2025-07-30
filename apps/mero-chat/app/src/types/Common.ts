@@ -7,6 +7,19 @@
 export type ChatType = "channel" | "direct_message";
 
 /**
+ * Enum defining the different states of DM setup process
+ */
+export enum DMSetupState {
+  CREATOR_WAITING_FOR_INVITEE_TO_CREATE_IDENTITY = "CREATOR_WAITING_FOR_INVITEE_TO_CREATE_IDENTITY",
+  INVITEE_CONTEXT_CREATE_IDENTITY = "INVITEE_CONTEXT_CREATE_IDENTITY",
+  INVITEE_WAITING_INVITATION = "INVITEE_WAITING_INVITATION",
+  CREATOR_CONTEXT_INVITATION_POPUP = "CREATOR_CONTEXT_INVITATION_POPUP",
+  INVITEE_CONTEXT_ACCEPT_POPUP = "INVITEE_CONTEXT_ACCEPT_POPUP",
+  SYNC_WAITING = "SYNC_WAITING",
+  ACTIVE = "ACTIVE",
+}
+
+/**
  * Initial version of the chat object, currently only supports channels and p2p DMs.
  * @typedef {object} Chat
  * @property {string} type - Can be 'channel' or 'direct_message'.
@@ -25,6 +38,7 @@ export type ActiveChat = {
   invitationPayload?: string;
   otherIdentityNew?: string;
   creator?: string;
+  isSynced?: boolean;
 };
 
 export interface User {
