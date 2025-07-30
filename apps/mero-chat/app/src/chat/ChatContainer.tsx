@@ -295,23 +295,15 @@ export default function ChatContainer({
 
   const dmSetupState = getDMSetupState(activeChat);
 
-  console.log("dmSetupState", dmSetupState);
-
   const renderDMContent = () => {
     switch (dmSetupState) {
-      // STEP 0 - NODE1 / NODE2
       case DMSetupState.CREATOR_WAITING_FOR_INVITEE_TO_CREATE_IDENTITY:
       case DMSetupState.INVITEE_CONTEXT_CREATE_IDENTITY:
         return <HandleDMSetup activeChat={activeChat} />;
-
-      // STEP 1 - NODE1 (invitor)
-
       case DMSetupState.CREATOR_CONTEXT_INVITATION_POPUP:
         return <HandleInvitation activeChat={activeChat} />;
-      // STEP 2 - NODE2 (invitee)
       case DMSetupState.INVITEE_WAITING_INVITATION:
         return <InvitationPending activeChat={activeChat} />;
-
       case DMSetupState.INVITEE_CONTEXT_ACCEPT_POPUP:
         return (
           <JoinContext
