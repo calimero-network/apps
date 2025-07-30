@@ -29,6 +29,9 @@ import './PDFViewer.css';
 import { useTheme } from '../contexts/ThemeContext';
 import { DocumentService } from '../api/documentService';
 import { useIcpAuth } from '../contexts/IcpAuthContext';
+import { ClientApiDataSource } from '../api/dataSource/ClientApiDataSource';
+import { blobClient, getContextId } from '@calimero-network/calimero-client';
+
 interface SavedSignature {
   id: string;
   name: string;
@@ -108,6 +111,8 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
 
   const documentService = new DocumentService();
   const { identity } = useIcpAuth();
+  const api = new ClientApiDataSource();
+
   const loadPDF = useCallback(async () => {
     if (!file) return;
 
@@ -320,14 +325,57 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
   }, [file, signatures, scale, onSaveSignedPDF]);
 
   useEffect(() => {
-    const savedSignatures = localStorage.getItem('signatures');
-    if (savedSignatures) {
+    async function fetchSignatures() {
       try {
-        setSavedSignatures(JSON.parse(savedSignatures));
+        const response = await api.listSignatures();
+        if (!response.data || !Array.isArray(response.data)) {
+          setSavedSignatures([]);
+          return;
+        }
+
+        const contextId = getContextId();
+        const signaturesWithImages = await Promise.all(
+          response.data.map(async (sig: any) => {
+            let dataURL = '';
+            try {
+              const blobId =
+                typeof sig.blob_id === 'string'
+                  ? sig.blob_id
+                  : Buffer.from(sig.blob_id).toString('hex');
+
+              const blob = await blobClient.downloadBlob(
+                blobId,
+                contextId || undefined,
+              );
+              if (blob) {
+                dataURL = await new Promise<string>((resolve) => {
+                  const reader = new FileReader();
+                  reader.onloadend = () => resolve(reader.result as string);
+                  reader.readAsDataURL(blob);
+                });
+              }
+            } catch (e) {
+              console.error(
+                `Failed to fetch signature PNG for blobId ${sig.blob_id}:`,
+                e,
+              );
+            }
+            return {
+              id: sig.id.toString(),
+              name: sig.name,
+              dataURL,
+              createdAt: new Date(sig.created_at).toLocaleDateString(),
+            };
+          }),
+        );
+        setSavedSignatures(signaturesWithImages);
       } catch (error) {
-        console.error('Error loading signatures:', error);
+        console.error('Failed to list signatures:', error);
+        setSavedSignatures([]);
       }
     }
+
+    fetchSignatures();
   }, []);
 
   const handleStartSigning = () => {

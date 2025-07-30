@@ -253,14 +253,19 @@ export class ClientApiDataSource implements ClientApi {
   //   return `data:image/png;base64,${base64String}`;
   // }
 
-  async createSignature(name: string, pngData: Uint8Array): Promise<any> {
+  async createSignature(
+    name: string,
+    blobIdStr: string,
+    dataSize: number,
+  ): Promise<any> {
     try {
       const response = await rpcClient.execute({
         ...getAuthConfig(),
         method: ClientMethod.CREATE_SIGNATURE,
         argsJson: {
           name,
-          png_data: Array.from(pngData),
+          blob_id_str: blobIdStr,
+          data_size: dataSize,
         },
       } as RpcQueryParams<any>);
       return {
@@ -325,28 +330,6 @@ export class ClientApiDataSource implements ClientApi {
           code: error.code || 500,
           message: getErrorMessage(error),
         },
-      };
-    }
-  }
-
-  async getSignatureData(signatureId: number): Promise<any> {
-    try {
-      const response = await rpcClient.execute({
-        ...getAuthConfig(),
-        method: ClientMethod.GET_SIGNATURE_DATA,
-        argsJson: {
-          signature_id: signatureId,
-        },
-      } as RpcQueryParams<any>);
-
-      const uint8Array = new Uint8Array(response.result as number[]);
-
-      return {
-        data: uint8Array,
-      };
-    } catch (error: any) {
-      return {
-        error: error,
       };
     }
   }
@@ -564,45 +547,6 @@ export class ClientApiDataSource implements ClientApi {
       };
     } catch (error: any) {
       console.error('ClientApiDataSource: Error in listDocuments:', error);
-      return {
-        data: null,
-        error: {
-          code: error.code || 500,
-          message: getErrorMessage(error),
-        },
-      };
-    }
-  }
-
-  async getDocument(contextId: string, documentId: string): Promise<any> {
-    try {
-      const response = await rpcClient.execute({
-        ...getAuthConfig(),
-        method: ClientMethod.GET_DOCUMENT,
-        argsJson: {
-          context_id: contextId,
-          document_id: documentId,
-        },
-      } as RpcQueryParams<any>);
-
-      if (response?.error) {
-        return {
-          data: null,
-          error: {
-            code: response.error.code ?? 500,
-            message: getErrorMessage(response.error),
-          },
-        };
-      }
-
-      const data = response.result?.output || response.result;
-
-      return {
-        data: data,
-        error: null,
-      };
-    } catch (error: any) {
-      console.error('ClientApiDataSource: Error in getDocument:', error);
       return {
         data: null,
         error: {

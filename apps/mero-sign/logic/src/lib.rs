@@ -42,79 +42,6 @@ where
     serializer.serialize_str(&safe_string)
 }
 
-/// Load complete blob data into memory (uses chunked reading internally)
-fn load_blob_full(blob_id_bytes: &[u8; 32]) -> Result<Option<Vec<u8>>, String> {
-    let fd = env::blob_open(blob_id_bytes);
-
-    if fd == 0 {
-        return Ok(None);
-    }
-
-    let mut result = Vec::new();
-    let mut buffer = [0u8; 8192];
-
-    loop {
-        let bytes_read = env::blob_read(fd, &mut buffer);
-
-        if bytes_read == 0 {
-            break;
-        }
-
-        result.extend_from_slice(&buffer[..bytes_read as usize]);
-    }
-
-    let _ = env::blob_close(fd);
-
-    Ok(Some(result))
-}
-
-/// Store blob data using chunked writing
-fn store_blob_chunked(data: &[u8]) -> Result<[u8; 32], String> {
-    let fd = env::blob_create();
-
-    if fd == 0 {
-        return Err("Failed to create blob handle".to_owned());
-    }
-
-    let chunk_size = 8192;
-    let mut total_written = 0;
-
-    for chunk in data.chunks(chunk_size) {
-        let bytes_written = env::blob_write(fd, chunk);
-
-        if bytes_written == 0 {
-            return Err("Failed to write blob data".to_owned());
-        }
-
-        if bytes_written != chunk.len() as u64 {
-            return Err(format!(
-                "Partial write: wrote {} of {} bytes",
-                bytes_written,
-                chunk.len()
-            ));
-        }
-
-        total_written += bytes_written;
-    }
-
-    if total_written != data.len() as u64 {
-        return Err(format!(
-            "Failed to write complete blob data: wrote {} of {} bytes",
-            total_written,
-            data.len()
-        ));
-    }
-
-    let blob_id_buf = env::blob_close(fd);
-
-    // Check if we got a valid blob ID (not all zeros)
-    if blob_id_buf == [0u8; 32] {
-        return Err("blob_close returned all zeros - blob creation failed".to_owned());
-    }
-
-    Ok(blob_id_buf)
-}
-
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -122,7 +49,7 @@ pub struct SignatureRecord {
     pub id: u64,
     pub name: String,
     #[serde(serialize_with = "serialize_blob_id_bytes")]
-    pub blob_id: [u8; 32], // Store PNG data as blob
+    pub blob_id: [u8; 32],
     pub size: u64,
     pub created_at: u64,
 }
@@ -342,16 +269,20 @@ impl MeroDocsState {
     }
 
     /// Create a new signature and store its PNG data
-    pub fn create_signature(&mut self, name: String, png_data: Vec<u8>) -> Result<u64, String> {
+    pub fn create_signature(
+        &mut self,
+        name: String,
+        blob_id_str: String,
+        data_size: u64,
+    ) -> Result<u64, String> {
         if !self.is_private {
             return Err("Signatures can only be created in private context".to_string());
         }
 
         let signature_id = self.signature_count;
         self.signature_count += 1;
-        let data_size = png_data.len() as u64;
 
-        let blob_id = store_blob_chunked(&png_data)?;
+        let blob_id = parse_blob_id_base58(&blob_id_str)?;
 
         let signature = SignatureRecord {
             id: signature_id,
@@ -405,27 +336,6 @@ impl MeroDocsState {
             }
         }
         Ok(signatures)
-    }
-
-    /// Get signature PNG data by ID
-    pub fn get_signature_data(&self, signature_id: u64) -> Result<Vec<u8>, String> {
-        if !self.is_private {
-            return Err("Signature data can only be accessed in private context".to_string());
-        }
-
-        let key = signature_id.to_string();
-
-        let signature = match self.signatures.get(&key) {
-            Ok(Some(sig)) => sig,
-            Ok(None) => return Err(format!("Signature not found: {}", signature_id)),
-            Err(e) => return Err(format!("Failed to get signature: {:?}", e)),
-        };
-
-        // Load PNG data from blob
-        let data = load_blob_full(&signature.blob_id)?
-            .ok_or_else(|| format!("Signature blob not found: {}", signature_id))?;
-
-        Ok(data)
     }
 
     /// Join a shared context with identity mapping
@@ -621,10 +531,7 @@ impl MeroDocsState {
             Ok(Some(_)) => {
                 let _ = self.document_signatures.remove(&document_id);
 
-               
-                app::emit!(MeroDocsEvent::DocumentDeleted {
-                    id: document_id,
-                });
+                app::emit!(MeroDocsEvent::DocumentDeleted { id: document_id });
 
                 Ok(())
             }
@@ -643,20 +550,6 @@ impl MeroDocsState {
         }
         Ok(documents)
     }
-
-    /// Get document by ID
-    pub fn get_document(
-        &self,
-        context_id: String,
-        document_id: String,
-    ) -> Result<DocumentInfo, String> {
-        match self.documents.get(&document_id) {
-            Ok(Some(doc)) => Ok(doc.clone()),
-            Ok(None) => Err("Document not found".to_string()),
-            Err(e) => Err(format!("Failed to get document: {:?}", e)),
-        }
-    }
-
     /// Sign a document by uploading a new signed PDF blob and recording the signer
     pub fn sign_document(
         &mut self,

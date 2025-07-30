@@ -124,31 +124,6 @@ export class DocumentService {
     }
   }
 
-  async getDocument(
-    contextId: string,
-    documentId: string,
-  ): Promise<{ data?: Document; error?: any }> {
-    try {
-      const response = await this.clientApi.getDocument(contextId, documentId);
-
-      if (response.error) {
-        return { error: response.error };
-      }
-
-      const documentInfo = response.data;
-      if (!documentInfo) {
-        return { error: { message: 'Document not found' } };
-      }
-
-      const formattedDocument = this.formatDocument(documentInfo);
-
-      return { data: formattedDocument };
-    } catch (error) {
-      console.error('Error getting document:', error);
-      return { error: { message: 'Failed to get document' } };
-    }
-  }
-
   async signDocument(
     contextId: string,
     documentId: string,

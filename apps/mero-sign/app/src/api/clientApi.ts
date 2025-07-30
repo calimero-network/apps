@@ -13,7 +13,6 @@ export enum ClientMethod {
   UPLOAD_DOCUMENT = 'upload_document',
   DELETE_DOCUMENT = 'delete_document',
   LIST_DOCUMENTS = 'list_documents',
-  GET_DOCUMENT = 'get_document',
   SIGN_DOCUMENT = 'sign_document',
   GET_DOCUMENT_SIGNATURES = 'get_document_signatures',
   MARK_DOCUMENT_FULLY_SIGNED = 'mark_document_fully_signed',
@@ -110,10 +109,13 @@ export interface Agreement {
 }
 
 export interface ClientApi {
-  createSignature(name: string, pngData: Uint8Array): ApiResponse<number>;
+  createSignature(
+    name: string,
+    blobIdStr: string,
+    dataSize: number,
+  ): ApiResponse<number>;
   deleteSignature(signatureId: number): ApiResponse<void>;
   listSignatures(): ApiResponse<SignatureRecord[]>;
-  getSignatureData(signatureId: number): ApiResponse<Uint8Array>;
 
   joinSharedContext(
     contextId: string,
@@ -148,7 +150,6 @@ export interface ClientApi {
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<DocumentInfo[]>;
-  getDocument(contextId: string, documentId: string): ApiResponse<DocumentInfo>;
   signDocument(
     contextId: string,
     documentId: string,
