@@ -16,7 +16,7 @@ import {
   getExecutorPublicKey,
   type ResponseData,
 } from "@calimero-network/calimero-client";
-import type { ChannelInfo } from "../api/clientApi";
+import type { ChannelInfo, DMChatInfo } from "../api/clientApi";
 import HandleDMSetup from "./HandleDMSetup";
 import HandleInvitation from "./HandleInvitation";
 import JoinContext from "./JoinContext";
@@ -39,6 +39,7 @@ interface ChatContainerProps {
   openThread: CurbMessage | undefined;
   setOpenThread: (thread: CurbMessage | undefined) => void;
   currentOpenThreadRef: React.RefObject<CurbMessage | undefined>;
+  onDMSelected: (dm?: DMChatInfo, sc?: ActiveChat) => void;
 }
 
 const ChatContainerWrapper = styled.div`
@@ -86,6 +87,7 @@ export default function ChatContainer({
   openThread,
   setOpenThread,
   currentOpenThreadRef,
+  onDMSelected
 }: ChatContainerProps) {
   const [updatedMessages, setUpdatedMessages] = useState<UpdatedMessages[]>([]);
   const [_updatedThreadMessages, setUpdatedThreadMessages] = useState<
@@ -299,7 +301,7 @@ export default function ChatContainer({
     switch (dmSetupState) {
       case DMSetupState.CREATOR_WAITING_FOR_INVITEE_TO_CREATE_IDENTITY:
       case DMSetupState.INVITEE_CONTEXT_CREATE_IDENTITY:
-        return <HandleDMSetup activeChat={activeChat} />;
+        return <HandleDMSetup activeChat={activeChat} onDMSelected={onDMSelected} />;
       case DMSetupState.CREATOR_CONTEXT_INVITATION_POPUP:
         return <HandleInvitation activeChat={activeChat} />;
       case DMSetupState.INVITEE_WAITING_INVITATION:

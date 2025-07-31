@@ -7,6 +7,7 @@ import type {
   CreateContextProps,
   CreateContextResponse,
   CreateIdentityResponse,
+  DeleteContextProps,
   InviteToContextProps,
   JoinContextProps,
   NodeApi,
@@ -24,7 +25,7 @@ export class ContextApiDataSource implements NodeApi {
       const jsonData = {
         name: props.user,
         is_dm: true,
-        default_channels: [{ name: "private_dm"}],
+        default_channels: [{ name: "private_dm" }],
         created_at: Date.now(),
       };
       const jsonString = JSON.stringify(jsonData);
@@ -152,14 +153,23 @@ export class ContextApiDataSource implements NodeApi {
     }
   }
 
-  async verifyContext(props: VerifyContextProps): ApiResponse<VerifyContextResponse> {
+  async verifyContext(
+    props: VerifyContextProps
+  ): ApiResponse<VerifyContextResponse> {
     try {
       const nodeEndpoint = getAppEndpointKey() || DEFAULT_NODE_ENDPOINT;
-      const response = await axios.get(`${nodeEndpoint}/admin-api/contexts/${props.contextId}`);
+      const response = await axios.get(
+        `${nodeEndpoint}/admin-api/contexts/${props.contextId}`
+      );
 
       if (response.status === 200) {
         return {
-          data: {joined: response.data.data.rootHash ? true : false, isSynced: response.data.data.rootHash !== "11111111111111111111111111111111"},
+          data: {
+            joined: response.data.data.rootHash ? true : false,
+            isSynced:
+              response.data.data.rootHash !==
+              "11111111111111111111111111111111",
+          },
           error: null,
         };
       } else {
@@ -172,10 +182,10 @@ export class ContextApiDataSource implements NodeApi {
         };
       }
     } catch (error) {
-      console.error('Error fetching context:', error);
+      console.error("Error fetching context:", error);
       return {
         data: null,
-        error: { code: 500, message: 'Failed to fetch context data.' },
+        error: { code: 500, message: "Failed to fetch context data." },
       };
     }
   }
@@ -183,7 +193,9 @@ export class ContextApiDataSource implements NodeApi {
   async createIdentity(): ApiResponse<CreateIdentityResponse> {
     try {
       const nodeEndpoint = getAppEndpointKey() || DEFAULT_NODE_ENDPOINT;
-      const response = await axios.post(`${nodeEndpoint}/admin-api/identity/context`);
+      const response = await axios.post(
+        `${nodeEndpoint}/admin-api/identity/context`
+      );
 
       if (response.status === 200) {
         return {
@@ -199,6 +211,36 @@ export class ContextApiDataSource implements NodeApi {
     } catch (error) {
       console.error("createIdentity failed:", error);
       let errorMessage = "An unexpected error occurred during createIdentity";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      return {
+        data: null,
+        error: { code: 500, message: errorMessage },
+      };
+    }
+  }
+
+  async deleteContext(props: DeleteContextProps): ApiResponse<string> {
+    try {
+      const nodeEndpoint = getAppEndpointKey() || DEFAULT_NODE_ENDPOINT;
+      const response = await axios.delete(
+        `${nodeEndpoint}/admin-api/contexts/${props.contextId}`
+      );
+      if (response.status === 200) {
+        return {
+          data: response.data.data,
+          error: null,
+        };
+      } else {
+        return {
+          data: null,
+          error: { code: response.status, message: response.statusText },
+        };
+      }
+    } catch (error) {
+      console.error("Delete context failed:", error);
+      let errorMessage = "An unexpected error occurred during delete context";
       if (error instanceof Error) {
         errorMessage = error.message;
       }

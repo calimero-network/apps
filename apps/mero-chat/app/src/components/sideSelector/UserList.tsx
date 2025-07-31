@@ -1,9 +1,10 @@
 import type { DMChatInfo } from "../../api/clientApi";
+import type { ActiveChat } from "../../types/Common";
 import UserItem from "./UserItem";
 
 interface UserListProps {
   selectedDM: string;
-  onDMSelected: (user: DMChatInfo) => void;
+  onDMSelected: (user?: DMChatInfo, sc?: ActiveChat) => void;
   privateDMs: DMChatInfo[];
 }
 

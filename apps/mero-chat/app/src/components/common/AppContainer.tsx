@@ -31,7 +31,7 @@ interface AppContainerProps {
   openSearchPage: () => void;
   channelUsers: UserId[];
   nonInvitedUserList: UserId[];
-  onDMSelected: (dm: DMChatInfo) => void;
+  onDMSelected: (dm?: DMChatInfo, sc?: ActiveChat) => void;
   loadInitialChatMessages: () => Promise<ChatMessagesData>;
   incomingMessages: CurbMessage[];
   channels: ChannelMeta[];
@@ -124,6 +124,7 @@ export default function AppContainer({
                 openThread={openThread}
                 setOpenThread={setOpenThread}
                 currentOpenThreadRef={currentOpenThreadRef}
+                onDMSelected={onDMSelected}
               />
             )}
             {isOpenSearchChannel && (

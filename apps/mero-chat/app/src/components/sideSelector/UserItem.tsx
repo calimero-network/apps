@@ -3,6 +3,7 @@ import { styled } from "styled-components";
 import UserProfileIcon from "../profileIcon/UserProfileIcon";
 // import UnreadMessagesBadge from "./UnreadMessageBadge";
 import type { DMChatInfo } from "../../api/clientApi";
+import type { ActiveChat } from "../../types/Common";
 
 const UserListItem = styled.div<{ selected: boolean }>`
   display: flex;
@@ -40,7 +41,7 @@ const NameContainer = styled.div`
 `;
 
 interface UserItemProps {
-  onDMSelected: (user: DMChatInfo) => void;
+  onDMSelected: (user?: DMChatInfo, sc?: ActiveChat) => void;
   selected: boolean;
   userDM: DMChatInfo;
 }

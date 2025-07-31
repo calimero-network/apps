@@ -6,6 +6,7 @@ import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import { getStoredSession, updateSessionChat } from "../utils/session";
 import { getDMSetupState } from "../utils/dmSetupState";
 import { DMSetupState } from "../types/Common";
+import type { DMChatInfo } from "../api/clientApi";
 
 export const Wrapper = styled.div`
   height: 100%;
@@ -64,11 +65,15 @@ const Button = styled.button`
   }
 `;
 
+interface HandleDMSetupProps {
+  activeChat: ActiveChat;
+  onDMSelected: (dm?: DMChatInfo, sc?: ActiveChat) => void;
+}
+
 export default function HandleDMSetup({
   activeChat,
-}: {
-  activeChat: ActiveChat;
-}) {
+  onDMSelected
+}: HandleDMSetupProps) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
@@ -94,6 +99,7 @@ export default function HandleDMSetup({
           if (savedSession) {
             savedSession.account = response.data.publicKey;
             updateSessionChat(savedSession);
+            onDMSelected(undefined, savedSession);
           }
           setTimeout(() => {
             window.location.reload();

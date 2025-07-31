@@ -33,8 +33,13 @@ export interface CreateIdentityResponse {
   publicKey: string;
 }
 
+export interface DeleteContextProps {
+  contextId: string;
+}
+
 export interface NodeApi {
   createContext(props: CreateContextProps): ApiResponse<CreateContextResponse>;
+  deleteContext(props: DeleteContextProps): ApiResponse<string>;
   inviteToContext(props: InviteToContextProps): ApiResponse<string>;
   joinContext(props: JoinContextProps): ApiResponse<string>;
   verifyContext(props: VerifyContextProps): ApiResponse<VerifyContextResponse>;

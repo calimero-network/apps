@@ -12,7 +12,7 @@ interface ChannelsContainerProps {
   setIsSidebarOpen: (open: boolean) => void;
   setIsOpenSearchChannel: (open: boolean) => void;
   isOpenSearchChannel: boolean;
-  onDMSelected: (dm: DMChatInfo) => void;
+  onDMSelected: (dm?: DMChatInfo, sc?: ActiveChat) => void;
   channels: ChannelMeta[];
   chatMembers: UserId[];
   createDM: (value: string) => Promise<CreateContextResult>;

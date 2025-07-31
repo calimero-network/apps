@@ -135,11 +135,11 @@ export default function Home() {
     setTotalMessageCount(0);
   }, []);
 
-  const onDMSelected = useCallback(async (dm: DMChatInfo) => {
+  const onDMSelected = useCallback(async (dm?: DMChatInfo, sc?: ActiveChat) => {
     let canJoin = true;
     const verifyContextResponse =
       await new ContextApiDataSource().verifyContext({
-        contextId: dm.context_id,
+        contextId: (sc?.contextId ? sc.contextId : dm?.context_id) || "",
       });
     if (verifyContextResponse.data) {
       canJoin = !verifyContextResponse.data.joined;
@@ -147,29 +147,39 @@ export default function Home() {
 
     const isSynced = verifyContextResponse.data?.isSynced;
 
-    if (dm.own_identity && !canJoin && isSynced) {
+    if ((sc?.account || dm?.own_identity) && !canJoin && isSynced) {
       await new ClientApiDataSource().joinChat({
-        contextId: dm.context_id,
+        contextId: dm?.context_id || "",
         isDM: true,
-        executor: dm.own_identity,
+        executor: dm?.own_identity || "",
       });
     }
-    const selectedChat = {
-      type: "direct_message" as ChatType,
-      contextId: dm.context_id,
-      readOnly: false,
-      canJoin: canJoin,
-      invitationPayload: dm.invitation_payload,
-      id: dm.other_identity_old,
-      name: dm.other_identity_old,
-      account: dm.own_identity,
-      otherIdentityNew: dm.other_identity_new,
-      creator: dm.created_by,
-      isSynced: isSynced,
-    };
+
+    let selectedChat = {} as ActiveChat;
+    if (sc?.contextId) {
+      selectedChat = {
+        ...sc,
+        canJoin: canJoin,
+        isSynced: isSynced,
+      }
+    } else {
+      selectedChat = {
+        type: "direct_message" as ChatType,
+        contextId: dm?.context_id || "",
+        readOnly: false,
+        canJoin: canJoin,
+        invitationPayload: dm?.invitation_payload || "",
+        id: dm?.other_identity_old || "",
+        name: dm?.other_identity_old || "",
+        account: dm?.own_identity || "",
+        otherIdentityNew: dm?.other_identity_new || "",
+        creator: dm?.created_by || "",
+        isSynced: isSynced,
+      };
+    }
 
     updateSelectedActiveChat(selectedChat);
-    setDmContextId(dm.context_id);
+    setDmContextId(dm?.context_id || "");
     setIsOpenSearchChannel(false);
     setActiveChat(selectedChat);
     activeChatRef.current = selectedChat;
@@ -193,9 +203,14 @@ export default function Home() {
         ]);
 
         subscriptionsClient?.addCallback(async (data: NodeEvent) => {
+          console.log("WS callback", data);
           try {
             if (data.type === "StateMutation") {
               const currentThread = currentOpenThreadRef.current;
+
+              fetchDms();
+              fetchChannels();
+              fetchChatMembers();
 
               if (currentThread) {
                 const reFetchedThreadMessages: ResponseData<FullMessageResponse> =
@@ -542,15 +557,19 @@ export default function Home() {
           error: ""
         }
       } else {
+        await new ContextApiDataSource().deleteContext({
+          contextId: response.data.contextId,
+        });
         return {
           data: "",
           error: "Failed to create DM - DM already exists"
         }
       }
-    }
-    return {
-      data: "",
-      error: "Failed to create DM"
+    } else {
+      return {
+        data: "",
+        error: "Failed to create DM"
+      }
     }
   };
 
