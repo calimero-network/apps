@@ -37,6 +37,7 @@ import type { MessageWithReactions } from "../../api/clientApi";
 
 import { type SubscriptionsClient } from "@calimero-network/calimero-client";
 import { ContextApiDataSource } from "../../api/dataSource/nodeApiDataSource";
+import type { CreateContextResult } from "../../components/popups/StartDMPopup";
 
 export default function Home() {
   const [isOpenSearchChannel, setIsOpenSearchChannel] = useState(false);
@@ -521,7 +522,7 @@ export default function Home() {
     }
   };
 
-  const createDM = async (value: string) => {
+  const createDM = async (value: string) : Promise<CreateContextResult> => {
     const response = await new ContextApiDataSource().createContext({
       user: value,
     });
@@ -536,7 +537,20 @@ export default function Home() {
       });
       if (createDMResponse.data) {
         await fetchDms();
+        return {
+          data: "DM created successfully",
+          error: ""
+        }
+      } else {
+        return {
+          data: "",
+          error: "Failed to create DM - DM already exists"
+        }
       }
+    }
+    return {
+      data: "",
+      error: "Failed to create DM"
     }
   };
 

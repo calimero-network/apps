@@ -99,6 +99,14 @@ const IconSvg = styled.svg`
   right: 13px;
 `;
 
+const CreationError = styled.div`
+  color: #dc3545;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 150%;
+  padding-top: 4px;
+`;
+
 const ExclamationIcon = () => (
   <IconSvg
     width="18"
@@ -120,13 +128,18 @@ const InputWrapper = styled.div`
   position: relative;
 `;
 
+export interface CreateContextResult {
+  data: string;
+  error: string;
+}
+
 interface StartDMPopupProps {
     title: string;
     toggle: React.ReactNode;
     placeholder: string;
     buttonText: string;
     validator: (value: string) => { isValid: boolean; error: string };
-    functionLoader: (value: string) => Promise<void>;
+    functionLoader: (value: string) => Promise<CreateContextResult>;
     colors: { disabled: string, base: string, hover: string };
     chatMembers: UserId[];
 }
@@ -157,12 +170,17 @@ export default function StartDMPopup({
     inputRef.current = inputValue;
   }, [inputValue]);
 
-  const runProcess = () => {
+  const runProcess = async() => {
     setIsProcessing(true);
-    functionLoader(inputValue).then((_) => {
+    setErrorMessage("");
+    const result = await functionLoader(inputValue);
+    if (result.data) {
       setIsProcessing(false);
       setIsOpen(false);
-    });
+    } else {
+      setErrorMessage(result.error);
+      setIsProcessing(false);
+    }
   };
 
   const onOpenChange = (isOpen: boolean) => {
@@ -221,6 +239,7 @@ export default function StartDMPopup({
           placeholder={placeholder}
           style={isInvalid ? customStyle : {}}
         />
+        {errorMessage && <CreationError>{errorMessage}</CreationError>}
         {isInvalid && <ExclamationIcon />}
         {showSuggestions && suggestions && suggestions.length > 0 && (
         <SuggestionsDropdown>

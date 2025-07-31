@@ -6,6 +6,7 @@ import ChannelList from "./ChannelList";
 import { CurbLogo, OrgNameContainer } from "../navbar/CurbNavbar";
 import DMSideSelector from "./DMSideSelector";
 import type { DMChatInfo, UserId } from "../../api/clientApi";
+import type { CreateContextResult } from "../popups/StartDMPopup";
 
 interface SideSelectorProps {
   channels: ChannelMeta[];
@@ -17,7 +18,7 @@ interface SideSelectorProps {
   setIsOpenSearchChannel: (open: boolean) => void;
   isOpenSearchChannel: boolean;
   chatMembers: UserId[];
-  createDM: (value: string) => Promise<void>;
+  createDM: (value: string) => Promise<CreateContextResult>;
   privateDMs: DMChatInfo[];
 }
 

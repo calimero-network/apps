@@ -1,5 +1,5 @@
 import { styled } from "styled-components";
-import StartDMPopup from "../popups/StartDMPopup";
+import StartDMPopup, { type CreateContextResult } from "../popups/StartDMPopup";
 import { useCallback } from "react";
 import type { UserId } from "../../api/clientApi";
 import { validateUserId } from "../../utils/validation";
@@ -37,7 +37,7 @@ const IconPlusContainer = styled.div`
 `;
 
 interface DMHeaderProps {
-  createDM: (value: string) => Promise<void>;
+  createDM: (value: string) => Promise<CreateContextResult>;
   chatMembers: UserId[];
 }
 
