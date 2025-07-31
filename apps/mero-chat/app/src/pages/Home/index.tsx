@@ -207,13 +207,15 @@ export default function Home() {
             if (data.type === "StateMutation") {
               const currentThread = currentOpenThreadRef.current;
 
-              fetchDms();
+              const updatedDMs = await fetchDms();
               fetchChannels();
-              fetchChatMembers();
 
               const sessionChat = getStoredSession();
-              if (sessionChat?.type === "direct_message") {
-                onDMSelected(undefined, sessionChat);
+              if (sessionChat?.type === "direct_message" && updatedDMs?.length) {
+                const currentDM = updatedDMs.find(dm => dm.context_id === sessionChat.contextId);
+                onDMSelected(currentDM);
+              } else {
+                await reFetchChannelMembers();
               }
 
               if (currentThread) {
@@ -433,6 +435,7 @@ export default function Home() {
       await new ClientApiDataSource().getDms();
     if (dms.data) {
       setPrivateDMs(dms.data);
+      return dms.data;
     }
   };
 
