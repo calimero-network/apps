@@ -2,6 +2,8 @@ import { styled } from "styled-components";
 import DMHeader from "./DMHeader";
 import UserList from "./UserList";
 import type { DMChatInfo, UserId } from "../../api/clientApi";
+import type { CreateContextResult } from "../popups/StartDMPopup";
+import type { ActiveChat } from "../../types/Common";
 
 const DMContainer = styled.div`
   background-color: #0e0e10;
@@ -13,8 +15,8 @@ const DMContainer = styled.div`
 
 interface DMSideSelectorProps {
   chatMembers: UserId[];
-  createDM: (value: string) => Promise<void>;
-  onDMSelected: (dm: DMChatInfo) => void;
+  createDM: (value: string) => Promise<CreateContextResult>;
+  onDMSelected: (dm?: DMChatInfo, sc?: ActiveChat) => void;
   selectedDM: string;
   privateDMs: DMChatInfo[];
 }

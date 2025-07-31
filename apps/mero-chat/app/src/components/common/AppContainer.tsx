@@ -5,6 +5,7 @@ import CurbNavbar from "../navbar/CurbNavbar";
 import SearchChannelsContainer from "../searchChannels/SearchChannelsContainer";
 import ChatContainer from "../../chat/ChatContainer";
 import type { DMChatInfo, UserId } from "../../api/clientApi";
+import type { CreateContextResult } from "../popups/StartDMPopup";
 
 const ContentDivContainer = styled.div`
   width: 100%;
@@ -30,7 +31,7 @@ interface AppContainerProps {
   openSearchPage: () => void;
   channelUsers: UserId[];
   nonInvitedUserList: UserId[];
-  onDMSelected: (dm: DMChatInfo) => void;
+  onDMSelected: (dm?: DMChatInfo, sc?: ActiveChat) => void;
   loadInitialChatMessages: () => Promise<ChatMessagesData>;
   incomingMessages: CurbMessage[];
   channels: ChannelMeta[];
@@ -39,7 +40,7 @@ interface AppContainerProps {
   onJoinedChat: () => void;
   loadPrevMessages: (id: string) => Promise<ChatMessagesDataWithOlder>;
   chatMembers: UserId[];
-  createDM: (value: string) => Promise<void>;
+  createDM: (value: string) => Promise<CreateContextResult>;
   privateDMs: DMChatInfo[];
   loadInitialThreadMessages: (parentMessageId: string) => Promise<ChatMessagesData>;
   incomingThreadMessages: CurbMessage[];
@@ -123,6 +124,7 @@ export default function AppContainer({
                 openThread={openThread}
                 setOpenThread={setOpenThread}
                 currentOpenThreadRef={currentOpenThreadRef}
+                onDMSelected={onDMSelected}
               />
             )}
             {isOpenSearchChannel && (

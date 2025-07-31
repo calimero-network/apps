@@ -6,7 +6,7 @@ import type { ChannelInfo } from "../api/clientApi";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import { timestampToDate } from "../utils/time";
 
-const MessageJoinWrapper = styled.div`
+export const MessageJoinWrapper = styled.div`
   height: 100%;
   width: 100%;
   display: flex;

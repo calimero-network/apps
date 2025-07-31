@@ -9,6 +9,7 @@ import {
   getExecutorPublicKey,
 } from "@calimero-network/calimero-client";
 import {
+  type AcceptInvitationProps,
   type ChannelInfo,
   type Channels,
   type ClientApi,
@@ -22,13 +23,17 @@ import {
   type FullMessageResponse,
   type GetChannelInfoProps,
   type GetChannelMembersProps,
+  type GetChatMembersProps,
   type GetMessagesProps,
   type GetNonMemberUsersProps,
   type InviteToChannelProps,
   type JoinChannelProps,
+  type JoinChatProps,
   type LeaveChannelProps,
   type Message,
   type SendMessageProps,
+  type UpdateInvitationPayloadProps,
+  type UpdateNewIdentityProps,
   type UpdateReactionProps,
   type UserId,
 } from "../clientApi";
@@ -73,15 +78,15 @@ export class ClientApiDataSource implements ClientApi {
     }
   }
 
-  async joinChat(): ApiResponse<string> {
+  async joinChat(props: JoinChatProps): ApiResponse<string> {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await getJsonRpcClient().execute<any, string>(
         {
-          contextId: getContextId() || "",
+          contextId: (props.isDM ? getDmContextId() : getContextId()) || "",
           method: ClientMethod.JOIN_CHAT,
           argsJson: {},
-          executorPublicKey: getExecutorPublicKey() || "",
+          executorPublicKey: (props.isDM ? props.executor : getExecutorPublicKey()) || "",
         },
         {
           headers: {
@@ -684,15 +689,16 @@ export class ClientApiDataSource implements ClientApi {
     }
   }
 
-  async getChatMembers(): ApiResponse<UserId[]> {
+  async getChatMembers(props: GetChatMembersProps): ApiResponse<UserId[]> {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await getJsonRpcClient().execute<any, UserId[]>(
         {
-          contextId: getContextId() || "",
+          contextId: (props.isDM ? getDmContextId() : getContextId()) || "",
           method: ClientMethod.GET_CHAT_MEMBERS,
           argsJson: {},
-          executorPublicKey: getExecutorPublicKey() || "",
+          executorPublicKey:
+            (props.isDM ? props.executor : getExecutorPublicKey()) || "",
         },
         {
           headers: {
@@ -733,11 +739,11 @@ export class ClientApiDataSource implements ClientApi {
           contextId: getContextId() || "",
           method: ClientMethod.CREATE_DM,
           argsJson: {
-            user: props.user,
-            creator: props.creator,
-            timestamp: props.timestamp,
             context_id: props.context_id,
-            invitation_payload: props.invitation_payload,
+            creator: props.creator,
+            creator_new_identity: props.creator_new_identity,
+            invitee: props.invitee,
+            timestamp: props.timestamp,
           },
           executorPublicKey: getExecutorPublicKey() || "",
         },
@@ -774,7 +780,7 @@ export class ClientApiDataSource implements ClientApi {
 
   async updateReaction(props: UpdateReactionProps): ApiResponse<string> {
     try {
-       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await getJsonRpcClient().execute<any, string>(
         {
           contextId: getContextId() || "",
@@ -876,7 +882,7 @@ export class ClientApiDataSource implements ClientApi {
             timestamp: props.timestamp,
           },
           executorPublicKey: getExecutorPublicKey() || "",
-        },  
+        },
         {
           headers: {
             "Content-Type": "application/json",
@@ -884,7 +890,7 @@ export class ClientApiDataSource implements ClientApi {
           timeout: 10000,
         }
       );
-      if (response?.error) {    
+      if (response?.error) {
         return await this.handleError(response.error, {}, this.editMessage);
       }
       return {
@@ -894,6 +900,153 @@ export class ClientApiDataSource implements ClientApi {
     } catch (error) {
       console.error("editMessage failed:", error);
       let errorMessage = "An unexpected error occurred during editMessage";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+
+  async updateNewIdentity(props: UpdateNewIdentityProps): ApiResponse<string> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, string>(
+        {
+          contextId: getContextId() || "",
+          method: ClientMethod.UPDATE_NEW_IDENTITY,
+          argsJson: {
+            other_user: props.other_user,
+            new_identity: props.new_identity,
+          },
+          executorPublicKey: getExecutorPublicKey() || "",
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+      if (response?.error) {
+        return await this.handleError(
+          response.error,
+          {},
+          this.updateNewIdentity
+        );
+      }
+      return {
+        data: response?.result.output as string,
+        error: null,
+      };
+    } catch (error) {
+      console.error("updateNewIdentity failed:", error);
+      let errorMessage =
+        "An unexpected error occurred during updateNewIdentity";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+
+  async updateInvitationPayload(
+    props: UpdateInvitationPayloadProps
+  ): ApiResponse<string> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, string>(
+        {
+          contextId: getContextId() || "",
+          method: ClientMethod.UPDATE_INVITATION_PAYLOAD,
+          argsJson: {
+            other_user: props.other_user,
+            invitation_payload: props.invitation_payload,
+          },
+          executorPublicKey: getExecutorPublicKey() || "",
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+      if (response?.error) {
+        return await this.handleError(
+          response.error,
+          {},
+          this.updateInvitationPayload
+        );
+      }
+      return {
+        data: response?.result.output as string,
+        error: null,
+      };
+    } catch (error) {
+      console.error("updateInvitationPayload failed:", error);
+      let errorMessage =
+        "An unexpected error occurred during updateInvitationPayload";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+
+  async acceptInvitation(props: AcceptInvitationProps): ApiResponse<string> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, string>(
+        {
+          contextId: getContextId() || "",
+          method: ClientMethod.ACCEPT_INVITATION,
+          argsJson: {
+            other_user: props.other_user,
+          },
+          executorPublicKey: getExecutorPublicKey() || "",
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+      if (response?.error) {
+        return await this.handleError(
+          response.error,
+          {},
+          this.acceptInvitation
+        );
+      }
+      return {
+        data: response?.result.output as string,
+        error: null,
+      };
+    } catch (error) {
+      console.error("acceptInvitation failed:", error);
+      let errorMessage = "An unexpected error occurred during acceptInvitation";
       if (error instanceof Error) {
         errorMessage = error.message;
       } else if (typeof error === "string") {

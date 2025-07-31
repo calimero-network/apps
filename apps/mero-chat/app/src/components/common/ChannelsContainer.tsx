@@ -3,6 +3,7 @@ import type { ActiveChat, ChannelMeta } from "../../types/Common";
 import SideSelector from "../sideSelector/SideSelector";
 import { defaultActiveChat } from "../../mock/mock";
 import type { DMChatInfo, UserId } from "../../api/clientApi";
+import type { CreateContextResult } from "../popups/StartDMPopup";
 
 interface ChannelsContainerProps {
   onChatSelected: (chat: ActiveChat) => void;
@@ -11,10 +12,10 @@ interface ChannelsContainerProps {
   setIsSidebarOpen: (open: boolean) => void;
   setIsOpenSearchChannel: (open: boolean) => void;
   isOpenSearchChannel: boolean;
-  onDMSelected: (dm: DMChatInfo) => void;
+  onDMSelected: (dm?: DMChatInfo, sc?: ActiveChat) => void;
   channels: ChannelMeta[];
   chatMembers: UserId[];
-  createDM: (value: string) => Promise<void>;
+  createDM: (value: string) => Promise<CreateContextResult>;
   privateDMs: DMChatInfo[];
 }
 

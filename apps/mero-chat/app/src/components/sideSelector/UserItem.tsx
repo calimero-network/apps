@@ -3,6 +3,7 @@ import { styled } from "styled-components";
 import UserProfileIcon from "../profileIcon/UserProfileIcon";
 // import UnreadMessagesBadge from "./UnreadMessageBadge";
 import type { DMChatInfo } from "../../api/clientApi";
+import type { ActiveChat } from "../../types/Common";
 
 const UserListItem = styled.div<{ selected: boolean }>`
   display: flex;
@@ -40,7 +41,7 @@ const NameContainer = styled.div`
 `;
 
 interface UserItemProps {
-  onDMSelected: (user: DMChatInfo) => void;
+  onDMSelected: (user?: DMChatInfo, sc?: ActiveChat) => void;
   selected: boolean;
   userDM: DMChatInfo;
 }
@@ -57,8 +58,8 @@ export default function UserItem({
   return (
     <UserListItem selected={selected} onClick={handleClick}>
       <UserInfoContainer>
-        <UserProfileIcon accountId={userDM.channel_user} active={true} />
-        <NameContainer>{`${userDM.channel_user.slice(0, 6)}...${userDM.channel_user.slice(-4)}`}</NameContainer>
+        <UserProfileIcon accountId={userDM.other_identity_old} active={true} />
+        <NameContainer>{`${userDM.other_identity_old.slice(0, 6)}...${userDM.other_identity_old.slice(-4)}`}</NameContainer>
       </UserInfoContainer>
       {/* {user?.unreadMessages && user.unreadMessages.count > 0 && (
         <UnreadMessagesBadge

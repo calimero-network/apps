@@ -37,6 +37,7 @@ import type { MessageWithReactions } from "../../api/clientApi";
 
 import { type SubscriptionsClient } from "@calimero-network/calimero-client";
 import { ContextApiDataSource } from "../../api/dataSource/nodeApiDataSource";
+import type { CreateContextResult } from "../../components/popups/StartDMPopup";
 
 export default function Home() {
   const [isOpenSearchChannel, setIsOpenSearchChannel] = useState(false);
@@ -86,7 +87,10 @@ export default function Home() {
   };
 
   const reFetchChannelMembers = async () => {
-    await getChannelUsers(activeChatRef.current?.id || "");
+    const isDM = activeChatRef.current?.type === "direct_message";
+    await getChannelUsers(
+      (isDM ? "private_dm" : activeChatRef.current?.id) || ""
+    );
   };
 
   const getNonInvitedUsers = async (channelId: string) => {
@@ -131,26 +135,51 @@ export default function Home() {
     setTotalMessageCount(0);
   }, []);
 
-  const onDMSelected = useCallback(async (dm: DMChatInfo) => {
+  const onDMSelected = useCallback(async (dm?: DMChatInfo, sc?: ActiveChat) => {
     let canJoin = true;
     const verifyContextResponse =
       await new ContextApiDataSource().verifyContext({
-        contextId: dm.context_id,
+        contextId: (sc?.contextId ? sc.contextId : dm?.context_id) || "",
       });
     if (verifyContextResponse.data) {
       canJoin = !verifyContextResponse.data.joined;
     }
-    const selectedChat = {
-      type: "direct_message" as ChatType,
-      contextId: dm.context_id,
-      id: dm.channel_user,
-      name: dm.channel_user,
-      readOnly: false,
-      account: dm.context_identity,
-      canJoin: canJoin,
-      invitationPayload: dm.invitation_payload,
-    };
-    setDmContextId(dm.context_id);
+
+    const isSynced = verifyContextResponse.data?.isSynced;
+
+    if ((sc?.account || dm?.own_identity) && !canJoin && isSynced) {
+      await new ClientApiDataSource().joinChat({
+        contextId: dm?.context_id || "",
+        isDM: true,
+        executor: dm?.own_identity || "",
+      });
+    }
+
+    let selectedChat = {} as ActiveChat;
+    if (sc?.contextId) {
+      selectedChat = {
+        ...sc,
+        canJoin: canJoin,
+        isSynced: isSynced,
+      }
+    } else {
+      selectedChat = {
+        type: "direct_message" as ChatType,
+        contextId: dm?.context_id || "",
+        readOnly: false,
+        canJoin: canJoin,
+        invitationPayload: dm?.invitation_payload || "",
+        id: dm?.other_identity_old || "",
+        name: dm?.other_identity_old || "",
+        account: dm?.own_identity || "",
+        otherIdentityNew: dm?.other_identity_new || "",
+        creator: dm?.created_by || "",
+        isSynced: isSynced,
+      };
+    }
+
+    updateSelectedActiveChat(selectedChat);
+    setDmContextId(dm?.context_id || "");
     setIsOpenSearchChannel(false);
     setActiveChat(selectedChat);
     activeChatRef.current = selectedChat;
@@ -166,12 +195,11 @@ export default function Home() {
 
     const observeNodeEvents = async () => {
       try {
+        const isDM = activeChatRef.current?.type === "direct_message";
         subscriptionsClient = getWsSubscriptionsClient();
         await subscriptionsClient.connect();
         subscriptionsClient.subscribe([
-          (activeChatRef.current?.type === "direct_message"
-            ? getDmContextId()
-            : getContextId()) || "",
+          (isDM ? getDmContextId() : getContextId()) || "",
         ]);
 
         subscriptionsClient?.addCallback(async (data: NodeEvent) => {
@@ -179,14 +207,29 @@ export default function Home() {
             if (data.type === "StateMutation") {
               const currentThread = currentOpenThreadRef.current;
 
+              const updatedDMs = await fetchDms();
+              fetchChannels();
+
+              const sessionChat = getStoredSession();
+              if (sessionChat?.type === "direct_message" && updatedDMs?.length) {
+                const currentDM = updatedDMs.find(dm => dm.context_id === sessionChat.contextId);
+                onDMSelected(currentDM);
+              } else {
+                await reFetchChannelMembers();
+              }
+
               if (currentThread) {
                 const reFetchedThreadMessages: ResponseData<FullMessageResponse> =
                   await new ClientApiDataSource().getMessages({
-                    group: { name: activeChatRef.current?.name || "" },
+                    group: {
+                      name:
+                        (isDM ? "private_dm" : activeChatRef.current?.name) ||
+                        "",
+                    },
                     limit: 20,
                     offset: 0,
                     parent_message: currentThread.id,
-                    is_dm: activeChatRef.current?.type === "direct_message",
+                    is_dm: isDM,
                     dm_identity: activeChatRef.current?.account,
                   });
                 if (reFetchedThreadMessages.data) {
@@ -229,15 +272,18 @@ export default function Home() {
               }
               const reFetchedMessages: ResponseData<FullMessageResponse> =
                 await new ClientApiDataSource().getMessages({
-                  group: { name: activeChatRef.current?.name || "" },
+                  group: {
+                    name:
+                      (isDM ? "private_dm" : activeChatRef.current?.name) || "",
+                  },
                   limit: 20,
                   offset: 0,
-                  is_dm: activeChatRef.current?.type === "direct_message",
+                  is_dm: isDM,
                   dm_identity: activeChatRef.current?.account,
                 });
               if (reFetchedMessages.data) {
                 const existingMessageIds = new Set(
-                  messagesRef.current.map((msg) => (msg.id))
+                  messagesRef.current.map((msg) => msg.id)
                 );
                 const newMessages = reFetchedMessages.data.messages
                   .filter(
@@ -307,12 +353,13 @@ export default function Home() {
         hasMore: false,
       };
     }
+    const isDM = activeChat?.type === "direct_message";
     const messages: ResponseData<FullMessageResponse> =
       await new ClientApiDataSource().getMessages({
-        group: { name: activeChat?.name || "" },
+        group: { name: (isDM ? "private_dm" : activeChat?.name) || "" },
         limit: 20,
         offset: 0,
-        is_dm: activeChat?.type === "direct_message",
+        is_dm: isDM,
         dm_identity: activeChat?.account,
       });
     if (messages.data) {
@@ -388,6 +435,7 @@ export default function Home() {
       await new ClientApiDataSource().getDms();
     if (dms.data) {
       setPrivateDMs(dms.data);
+      return dms.data;
     }
   };
 
@@ -395,7 +443,9 @@ export default function Home() {
 
   const fetchChatMembers = async () => {
     const chatMembers: ResponseData<UserId[]> =
-      await new ClientApiDataSource().getChatMembers();
+      await new ClientApiDataSource().getChatMembers({
+        isDM: false,
+      });
     if (chatMembers.data) {
       setChatMembers(chatMembers.data);
     }
@@ -448,12 +498,15 @@ export default function Home() {
       };
     }
 
+    const isDM = activeChat?.type === "direct_message";
     const messages: ResponseData<FullMessageResponse> =
       await new ClientApiDataSource().getMessages({
-        group: { name: activeChatRef.current?.name || "" },
+        group: {
+          name: (isDM ? "private_dm" : activeChatRef.current?.name) || "",
+        },
         limit: 20,
         offset: messagesOffset,
-        is_dm: activeChat?.type === "direct_message",
+        is_dm: isDM,
         dm_identity: activeChat?.account,
       });
     if (messages.data) {
@@ -491,28 +544,38 @@ export default function Home() {
     }
   };
 
-  const createDM = async (value: string) => {
+  const createDM = async (value: string) : Promise<CreateContextResult> => {
     const response = await new ContextApiDataSource().createContext({
       user: value,
     });
+
     if (response.data) {
-      const inviteResponse = await new ContextApiDataSource().inviteToContext({
-        contextId: response.data.contextId,
+      const createDMResponse = await new ClientApiDataSource().createDm({
+        context_id: response.data.contextId,
+        creator: getExecutorPublicKey() || "",
+        creator_new_identity: response.data.memberPublicKey,
         invitee: value,
-        inviter: response.data.memberPublicKey,
+        timestamp: Date.now(),
       });
-      if (inviteResponse.data) {
-        const invitationPayload = inviteResponse.data;
-        const createDmResponse = await new ClientApiDataSource().createDm({
-          user: value,
-          creator: response.data.memberPublicKey,
-          timestamp: Date.now(),
-          context_id: response.data.contextId,
-          invitation_payload: invitationPayload,
-        });
-        if (createDmResponse.data) {
-          await fetchDms();
+      if (createDMResponse.data) {
+        await fetchDms();
+        return {
+          data: "DM created successfully",
+          error: ""
         }
+      } else {
+        await new ContextApiDataSource().deleteContext({
+          contextId: response.data.contextId,
+        });
+        return {
+          data: "",
+          error: "Failed to create DM - DM already exists"
+        }
+      }
+    } else {
+      return {
+        data: "",
+        error: "Failed to create DM"
       }
     }
   };

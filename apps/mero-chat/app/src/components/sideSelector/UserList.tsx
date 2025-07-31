@@ -1,9 +1,10 @@
 import type { DMChatInfo } from "../../api/clientApi";
+import type { ActiveChat } from "../../types/Common";
 import UserItem from "./UserItem";
 
 interface UserListProps {
   selectedDM: string;
-  onDMSelected: (user: DMChatInfo) => void;
+  onDMSelected: (user?: DMChatInfo, sc?: ActiveChat) => void;
   privateDMs: DMChatInfo[];
 }
 
@@ -19,8 +20,8 @@ export default function UserList({
           <UserItem
             userDM={userDM}
             onDMSelected={onDMSelected}
-            selected={selectedDM === userDM.channel_user}
-            key={userDM.channel_user}
+            selected={selectedDM === userDM.other_identity_old}
+            key={userDM.other_identity_old}
           />
         ))}
     </>
