@@ -6,6 +6,8 @@ import { ContextApiDataSource } from "../api/dataSource/nodeApiDataSource";
 import { styled } from "styled-components";
 import { getDMSetupState } from "../utils/dmSetupState";
 import { DMSetupState } from "../types/Common";
+import type { DMChatInfo } from "../api/clientApi";
+import { getStoredSession, updateSessionChat } from "../utils/session";
 
 const TextWrapper = styled.div`
   display: flex;
@@ -21,11 +23,13 @@ const TextWrapper = styled.div`
 interface JoinContextProps {
   activeChat: ActiveChat;
   invitationPayload: string;
+  onDMSelected: (dm?: DMChatInfo, sc?: ActiveChat) => void;
 }
 
 export default function JoinContext({
   activeChat,
   invitationPayload,
+  onDMSelected
 }: JoinContextProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +62,12 @@ export default function JoinContext({
           });
         if (verifyContextResponse.data) {
           setSuccess("Context joined successfully");
+          const savedSession = getStoredSession();
+          if (savedSession) {
+            savedSession.canJoin = false;
+            updateSessionChat(savedSession);
+            onDMSelected(undefined, savedSession);
+          }
           setTimeout(() => {
             window.location.href = "/";
           }, 2000);

@@ -203,7 +203,6 @@ export default function Home() {
         ]);
 
         subscriptionsClient?.addCallback(async (data: NodeEvent) => {
-          console.log("WS callback", data);
           try {
             if (data.type === "StateMutation") {
               const currentThread = currentOpenThreadRef.current;
@@ -211,6 +210,11 @@ export default function Home() {
               fetchDms();
               fetchChannels();
               fetchChatMembers();
+
+              const sessionChat = getStoredSession();
+              if (sessionChat?.type === "direct_message") {
+                onDMSelected(undefined, sessionChat);
+              }
 
               if (currentThread) {
                 const reFetchedThreadMessages: ResponseData<FullMessageResponse> =

@@ -6,6 +6,7 @@ import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import { getStoredSession, updateSessionChat } from "../utils/session";
 import { getDMSetupState } from "../utils/dmSetupState";
 import { DMSetupState } from "../types/Common";
+import type { DMChatInfo } from "../api/clientApi";
 
 export const Wrapper = styled.div`
   height: 100%;
@@ -59,11 +60,15 @@ const Button = styled.button`
   }
 `;
 
+interface HandleInvitationProps {
+  activeChat: ActiveChat;
+  onDMSelected: (dm?: DMChatInfo, sc?: ActiveChat) => void;
+}
+
 export default function HandleInvitation({
   activeChat,
-}: {
-  activeChat: ActiveChat;
-}) {
+  onDMSelected
+}: HandleInvitationProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -96,6 +101,7 @@ export default function HandleInvitation({
           if (savedSession) {
             savedSession.invitationPayload = invitationPayload;
             updateSessionChat(savedSession);
+            onDMSelected(undefined, savedSession);
           }
           setTimeout(() => {
             window.location.reload();

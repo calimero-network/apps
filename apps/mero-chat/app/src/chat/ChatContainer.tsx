@@ -303,7 +303,7 @@ export default function ChatContainer({
       case DMSetupState.INVITEE_CONTEXT_CREATE_IDENTITY:
         return <HandleDMSetup activeChat={activeChat} onDMSelected={onDMSelected} />;
       case DMSetupState.CREATOR_CONTEXT_INVITATION_POPUP:
-        return <HandleInvitation activeChat={activeChat} />;
+        return <HandleInvitation activeChat={activeChat} onDMSelected={onDMSelected}/>;
       case DMSetupState.INVITEE_WAITING_INVITATION:
         return <InvitationPending activeChat={activeChat} />;
       case DMSetupState.INVITEE_CONTEXT_ACCEPT_POPUP:
@@ -311,6 +311,7 @@ export default function ChatContainer({
           <JoinContext
             activeChat={activeChat}
             invitationPayload={activeChat.invitationPayload!}
+            onDMSelected={onDMSelected}
           />
         );
 
