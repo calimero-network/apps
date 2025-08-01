@@ -26,6 +26,9 @@ export default function SyncWaiting({
           const savedSession = getStoredSession();
           if (savedSession) {
             savedSession.isSynced = verifyResponse.data.isSynced;
+            if (verifyResponse.data.isSynced) {
+              savedSession.isFinal = true;
+            }
             updateSessionChat(savedSession);
             onDMSelected(undefined, savedSession);
           }

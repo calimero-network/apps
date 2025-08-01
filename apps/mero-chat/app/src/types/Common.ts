@@ -39,6 +39,7 @@ export type ActiveChat = {
   otherIdentityNew?: string;
   creator?: string;
   isSynced?: boolean;
+  isFinal?: boolean;
 };
 
 export interface User {

@@ -216,6 +216,7 @@ export default function Home() {
 
               if (
                 sessionChat?.type === "direct_message" &&
+                !sessionChat?.isFinal &&
                 updatedDMs?.length &&
                 (sessionChat?.canJoin ||
                   !sessionChat?.isSynced ||
