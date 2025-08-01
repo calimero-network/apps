@@ -139,7 +139,6 @@ export default function HandleDMSetup({
     );
   }
 
-  console.log("TU SAM");
   // If we're the invitee and need to create identity
   if (dmSetupState === DMSetupState.INVITEE_CONTEXT_CREATE_IDENTITY && !activeChat.account) {
     return (
@@ -157,6 +156,5 @@ export default function HandleDMSetup({
     );
   }
 
-  console.log("TU SAM2");
-  return <>tu sam</>;
+  return <></>;
 }

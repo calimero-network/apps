@@ -65,6 +65,7 @@ export default function JoinContext({
           const savedSession = getStoredSession();
           if (savedSession) {
             savedSession.canJoin = false;
+            savedSession.isSynced = verifyContextResponse.data.isSynced;
             updateSessionChat(savedSession);
             onDMSelected(undefined, savedSession);
           }

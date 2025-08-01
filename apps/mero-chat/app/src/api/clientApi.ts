@@ -155,6 +155,10 @@ export interface JoinChatProps {
   executor?: UserId;
 }
 
+export interface DeleteDMProps {
+  other_user: UserId;
+}
+
 export enum ClientMethod {
   JOIN_CHAT = "join_chat",
   CREATE_CHANNEL = "create_channel",
@@ -177,6 +181,7 @@ export enum ClientMethod {
   UPDATE_NEW_IDENTITY = "update_new_identity",
   UPDATE_INVITATION_PAYLOAD = "update_invitation_payload",
   ACCEPT_INVITATION = "accept_invitation",
+  DELETE_DM = "delete_dm",
 }
 
 export interface ClientApi {
@@ -201,4 +206,5 @@ export interface ClientApi {
   updateNewIdentity(props: UpdateNewIdentityProps): ApiResponse<string>;
   updateInvitationPayload(props: UpdateInvitationPayloadProps): ApiResponse<string>;
   acceptInvitation(props: AcceptInvitationProps): ApiResponse<string>;
+  deleteDM(props: DeleteDMProps): ApiResponse<string>;
 }

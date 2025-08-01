@@ -1342,6 +1342,12 @@ impl CurbChat {
         self.remove_dm_from_user(&executor_id, &other_user);
         self.remove_dm_from_user(&other_user, &executor_id);
 
+        let dm_channel = Channel { name: other_user.to_string() };
+        let _ = self.channels.remove(&dm_channel);
+
+        let _ = self.channel_members.remove(&dm_channel);
+
+        app::emit!(Event::DMCreated("DM deleted successfully".to_string()));
         Ok("DM deleted successfully".to_string())
     }
 

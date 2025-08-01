@@ -22,6 +22,7 @@ import HandleInvitation from "./HandleInvitation";
 import JoinContext from "./JoinContext";
 import InvitationPending from "./InvitationPending";
 import { getDMSetupState } from "../utils/dmSetupState";
+import SyncWaiting from "./SyncWaiting";
 
 interface ChatContainerProps {
   activeChat: ActiveChat;
@@ -87,7 +88,7 @@ export default function ChatContainer({
   openThread,
   setOpenThread,
   currentOpenThreadRef,
-  onDMSelected
+  onDMSelected,
 }: ChatContainerProps) {
   const [updatedMessages, setUpdatedMessages] = useState<UpdatedMessages[]>([]);
   const [_updatedThreadMessages, setUpdatedThreadMessages] = useState<
@@ -301,9 +302,16 @@ export default function ChatContainer({
     switch (dmSetupState) {
       case DMSetupState.CREATOR_WAITING_FOR_INVITEE_TO_CREATE_IDENTITY:
       case DMSetupState.INVITEE_CONTEXT_CREATE_IDENTITY:
-        return <HandleDMSetup activeChat={activeChat} onDMSelected={onDMSelected} />;
+        return (
+          <HandleDMSetup activeChat={activeChat} onDMSelected={onDMSelected} />
+        );
       case DMSetupState.CREATOR_CONTEXT_INVITATION_POPUP:
-        return <HandleInvitation activeChat={activeChat} onDMSelected={onDMSelected}/>;
+        return (
+          <HandleInvitation
+            activeChat={activeChat}
+            onDMSelected={onDMSelected}
+          />
+        );
       case DMSetupState.INVITEE_WAITING_INVITATION:
         return <InvitationPending activeChat={activeChat} />;
       case DMSetupState.INVITEE_CONTEXT_ACCEPT_POPUP:
@@ -314,6 +322,8 @@ export default function ChatContainer({
             onDMSelected={onDMSelected}
           />
         );
+      case DMSetupState.SYNC_WAITING: 
+        return <SyncWaiting activeChat={activeChat} onDMSelected={onDMSelected}/>;
 
       case DMSetupState.ACTIVE:
         return (

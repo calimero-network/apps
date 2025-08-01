@@ -17,6 +17,7 @@ import {
   type CreateChannelProps,
   type CreateChannelResponse,
   type CreateDmProps,
+  type DeleteDMProps,
   type DeleteMessageProps,
   type DMChatInfo,
   type EditMessageProps,
@@ -86,7 +87,8 @@ export class ClientApiDataSource implements ClientApi {
           contextId: (props.isDM ? getDmContextId() : getContextId()) || "",
           method: ClientMethod.JOIN_CHAT,
           argsJson: {},
-          executorPublicKey: (props.isDM ? props.executor : getExecutorPublicKey()) || "",
+          executorPublicKey:
+            (props.isDM ? props.executor : getExecutorPublicKey()) || "",
         },
         {
           headers: {
@@ -1047,6 +1049,49 @@ export class ClientApiDataSource implements ClientApi {
     } catch (error) {
       console.error("acceptInvitation failed:", error);
       let errorMessage = "An unexpected error occurred during acceptInvitation";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+
+  async deleteDM(props: DeleteDMProps): ApiResponse<string> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, string>(
+        {
+          contextId: getContextId() || "",
+          method: ClientMethod.DELETE_DM,
+          argsJson: {
+            other_user: props.other_user,
+          },
+          executorPublicKey: getExecutorPublicKey() || "",
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+      if (response?.error) {
+        return await this.handleError(response.error, {}, this.deleteDM);
+      }
+      return {
+        data: response?.result.output as string,
+        error: null,
+      };
+    } catch (error) {
+      console.error("deleteDM failed:", error);
+      let errorMessage = "An unexpected error occurred during deleteDM";
       if (error instanceof Error) {
         errorMessage = error.message;
       } else if (typeof error === "string") {

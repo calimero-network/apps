@@ -48,7 +48,7 @@ export default function Home() {
   const [nonInvitedUserList, setNonInvitedUserList] = useState<UserId[]>([]);
   const [totalThreadMessageCount, setTotalThreadMessageCount] = useState(0);
   const [threadMessagesOffset, setThreadMessagesOffset] = useState(20);
-  const [incomingThreadMessages, setIncomingThreadMessages] = useState<
+  const [incomingThreadMessages, _setIncomingThreadMessages] = useState<
     CurbMessage[]
   >([]);
   const [currentOpenThread, setCurrentOpenThread] = useState<
@@ -161,7 +161,7 @@ export default function Home() {
         ...sc,
         canJoin: canJoin,
         isSynced: isSynced,
-      }
+      };
     } else {
       selectedChat = {
         type: "direct_message" as ChatType,
@@ -179,7 +179,7 @@ export default function Home() {
     }
 
     updateSelectedActiveChat(selectedChat);
-    setDmContextId(dm?.context_id || "");
+    setDmContextId(sc?.contextId || dm?.context_id || "");
     setIsOpenSearchChannel(false);
     setActiveChat(selectedChat);
     activeChatRef.current = selectedChat;
@@ -195,90 +195,53 @@ export default function Home() {
 
     const observeNodeEvents = async () => {
       try {
-        const isDM = activeChatRef.current?.type === "direct_message";
+        const sessionChat = getStoredSession();
+        const useDM = (sessionChat?.type === "direct_message" &&
+          sessionChat?.account &&
+          !sessionChat?.canJoin &&
+          sessionChat?.otherIdentityNew) as boolean;
+
         subscriptionsClient = getWsSubscriptionsClient();
         await subscriptionsClient.connect();
         subscriptionsClient.subscribe([
-          (isDM ? getDmContextId() : getContextId()) || "",
+          (useDM ? getDmContextId() : getContextId()) || "",
         ]);
 
         subscriptionsClient?.addCallback(async (data: NodeEvent) => {
           try {
             if (data.type === "StateMutation") {
-              const currentThread = currentOpenThreadRef.current;
-
-              const updatedDMs = await fetchDms();
               fetchChannels();
 
-              const sessionChat = getStoredSession();
-              if (sessionChat?.type === "direct_message" && updatedDMs?.length) {
-                const currentDM = updatedDMs.find(dm => dm.context_id === sessionChat.contextId);
+              const updatedDMs = await fetchDms();
+
+              if (
+                sessionChat?.type === "direct_message" &&
+                updatedDMs?.length &&
+                (sessionChat?.canJoin ||
+                  !sessionChat?.isSynced ||
+                  !sessionChat?.account ||
+                  !sessionChat?.otherIdentityNew)
+              ) {
+                const currentDM = updatedDMs.find(
+                  (dm) => dm.context_id === sessionChat.contextId
+                );
                 onDMSelected(currentDM);
-              } else {
+              }
+
+              if (sessionChat?.type !== "direct_message") {
                 await reFetchChannelMembers();
               }
 
-              if (currentThread) {
-                const reFetchedThreadMessages: ResponseData<FullMessageResponse> =
-                  await new ClientApiDataSource().getMessages({
-                    group: {
-                      name:
-                        (isDM ? "private_dm" : activeChatRef.current?.name) ||
-                        "",
-                    },
-                    limit: 20,
-                    offset: 0,
-                    parent_message: currentThread.id,
-                    is_dm: isDM,
-                    dm_identity: activeChatRef.current?.account,
-                  });
-                if (reFetchedThreadMessages.data) {
-                  const existingThreadMessageIds = new Set(
-                    messagesThreadRef.current.map((msg) => msg.id)
-                  );
-                  const newThreadMessages =
-                    reFetchedThreadMessages.data.messages
-                      .filter(
-                        (message: MessageWithReactions) =>
-                          !existingThreadMessageIds.has(message.id)
-                      )
-                      .map((message: MessageWithReactions) => ({
-                        id: message.id,
-                        text: message.text,
-                        nonce: Math.random().toString(36).substring(2, 15),
-                        key: message.id,
-                        timestamp: message.timestamp * 1000,
-                        sender: message.sender,
-                        reactions: message.reactions,
-                        threadCount: message.thread_count,
-                        threadLastTimestamp: message.thread_last_timestamp,
-                        editedOn: undefined,
-                        mentions: [],
-                        files: [],
-                        images: [],
-                        editMode: false,
-                        status: MessageStatus.sent,
-                        deleted: message.deleted,
-                      }));
-
-                  if (newThreadMessages.length > 0) {
-                    setIncomingThreadMessages(newThreadMessages);
-                    messagesThreadRef.current = [
-                      ...messagesThreadRef.current,
-                      ...newThreadMessages,
-                    ];
-                  }
-                }
-              }
               const reFetchedMessages: ResponseData<FullMessageResponse> =
                 await new ClientApiDataSource().getMessages({
                   group: {
                     name:
-                      (isDM ? "private_dm" : activeChatRef.current?.name) || "",
+                      (useDM ? "private_dm" : activeChatRef.current?.name) ||
+                      "",
                   },
                   limit: 20,
                   offset: 0,
-                  is_dm: isDM,
+                  is_dm: useDM,
                   dm_identity: activeChatRef.current?.account,
                 });
               if (reFetchedMessages.data) {
@@ -544,7 +507,7 @@ export default function Home() {
     }
   };
 
-  const createDM = async (value: string) : Promise<CreateContextResult> => {
+  const createDM = async (value: string): Promise<CreateContextResult> => {
     const response = await new ContextApiDataSource().createContext({
       user: value,
     });
@@ -561,22 +524,22 @@ export default function Home() {
         await fetchDms();
         return {
           data: "DM created successfully",
-          error: ""
-        }
+          error: "",
+        };
       } else {
         await new ContextApiDataSource().deleteContext({
           contextId: response.data.contextId,
         });
         return {
           data: "",
-          error: "Failed to create DM - DM already exists"
-        }
+          error: "Failed to create DM - DM already exists",
+        };
       }
     } else {
       return {
         data: "",
-        error: "Failed to create DM"
-      }
+        error: "Failed to create DM",
+      };
     }
   };
 
