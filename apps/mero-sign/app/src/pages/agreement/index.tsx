@@ -811,6 +811,8 @@ const AgreementPage: React.FC = () => {
                   variants={ANIMATION_VARIANTS.item}
                   whileHover={{ y: -2, scale: 1.01 }}
                   whileTap={{ scale: 0.99 }}
+                  onClick={() => handleOpenDocument(document)}
+                  className="cursor-pointer"
                 >
                   <Card className="hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 border-border/50 hover:border-primary/20">
                     <CardContent className="p-4">
@@ -844,13 +846,14 @@ const AgreementPage: React.FC = () => {
                             variant="ghost"
                             size="sm"
                             className="p-2 h-auto w-auto"
-                            onClick={() =>
+                            onClick={(e) => {
+                              e.stopPropagation();
                               setMenuOpenDocId(
                                 menuOpenDocId === document.id
                                   ? null
                                   : document.id,
-                              )
-                            }
+                              );
+                            }}
                           >
                             <MoreVertical className="w-5 h-5" />
                           </Button>
@@ -918,20 +921,10 @@ const AgreementPage: React.FC = () => {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleOpenDocument(document)}
-                            disabled={loadingPDFPreview}
-                            className="p-2 h-auto w-auto"
-                          >
-                            {loadingPDFPreview ? (
-                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
-                            ) : (
-                              <Eye className="w-4 h-4" />
-                            )}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDownloadDocument(document)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDownloadDocument(document);
+                            }}
                             className="p-2 h-auto w-auto text-blue-600 hover:text-blue-700"
                           >
                             <Download className="w-4 h-4" />
@@ -939,7 +932,10 @@ const AgreementPage: React.FC = () => {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleRemoveDocument(document.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveDocument(document.id);
+                            }}
                             className="p-2 h-auto w-auto text-red-600 hover:text-red-700"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -1253,7 +1249,8 @@ const AgreementPage: React.FC = () => {
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9 }}
-            className="w-full max-w-4xl h-[90vh] max-h-[90vh]"
+            className="w-full max-w-4xl h-[90vh] max-h-[90vh] mt-16"
+            style={{ marginTop: '4rem' }}
           >
             <PDFViewer
               file={selectedDocument.file || null}
@@ -1270,7 +1267,6 @@ const AgreementPage: React.FC = () => {
               onDocumentSaved={() => {
                 setShowPDFViewer(false);
                 setSelectedDocument(null);
-
                 loadDocuments();
               }}
             />

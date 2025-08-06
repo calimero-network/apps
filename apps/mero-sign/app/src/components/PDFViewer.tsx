@@ -961,11 +961,10 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
                 className="w-full flex items-center gap-3 p-4 border border-border rounded-lg hover:bg-muted transition-colors"
                 variant="outline"
               >
-                <Plus size={18} />
                 <div className="text-left">
-                  <div className="font-medium">Create New Signature</div>
+                  <div className="font-medium">Draw Signature</div>
                   <div className="text-sm text-muted-foreground">
-                    Draw a new signature
+                    Draw a signature for signing now
                   </div>
                 </div>
               </Button>
