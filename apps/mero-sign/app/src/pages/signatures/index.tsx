@@ -39,10 +39,7 @@ export default function SignaturesPage() {
                 ? sig.blob_id
                 : Buffer.from(sig.blob_id).toString('hex');
 
-            const blob = await blobClient.downloadBlob(
-              blobId,
-              contextId || undefined,
-            );
+            const blob = await blobClient.downloadBlob(blobId);
             if (blob) {
               dataURL = await new Promise<string>((resolve) => {
                 const reader = new FileReader();
@@ -93,12 +90,7 @@ export default function SignaturesPage() {
     const contextId = getContextId();
     const onProgress = (progress: number) => {};
 
-    const blobResponse = await blobClient.uploadBlob(
-      file,
-      onProgress,
-      '',
-      contextId || undefined,
-    );
+    const blobResponse = await blobClient.uploadBlob(file, onProgress, '');
 
     if (blobResponse.error || !blobResponse.data?.blobId) {
       const errorMessage =

@@ -1,5 +1,6 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import { jsPDF } from 'jspdf';
+import { PDFDocument } from 'pdf-lib';
 
 // Configure PDF.js worker for version 5.x
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.3.93/pdf.worker.min.mjs`;
@@ -144,40 +145,74 @@ class PDFService {
     });
   }
 
+  private dataUrlToBytes(dataUrl: string): Uint8Array {
+    const base64 = dataUrl.split(',')[1];
+    const binaryStr = atob(base64);
+    const len = binaryStr.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+    return bytes;
+  }
+
   async generateSignedPDF(
     originalFile: File,
     signatures: SignaturePosition[],
     renderScale: number = 1.5,
   ): Promise<Blob> {
-    const pdf = await this.loadPDF(originalFile);
-
-    const pages = await this.renderAllPages(pdf, renderScale);
-
-    const signaturePromises = signatures.map(async (signature) => {
-      const page = pages.find((p) => p.pageNumber === signature.pageNumber);
-      if (page) {
-        await this.addSignatureToCanvas(page.canvas, signature, renderScale);
-      }
-    });
-
-    await Promise.all(signaturePromises);
-
-    const signedPdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'px',
-      format: [pages[0].width, pages[0].height],
-    });
-
-    for (let i = 0; i < pages.length; i++) {
-      if (i > 0) {
-        signedPdf.addPage([pages[i].width, pages[i].height]);
-      }
-
-      const imgData = pages[i].canvas.toDataURL('image/png');
-      signedPdf.addImage(imgData, 'PNG', 0, 0, pages[i].width, pages[i].height);
+    if (signatures.length === 0) {
+      return originalFile;
     }
 
-    return signedPdf.output('blob');
+    const pdfBytes = await originalFile.arrayBuffer();
+
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    const pages = pdfDoc.getPages();
+
+    for (const signature of signatures) {
+      const pageIndex = signature.pageNumber - 1;
+      if (pageIndex < 0 || pageIndex >= pages.length) {
+        console.warn(
+          `Invalid page number ${signature.pageNumber} for signature.`,
+        );
+        continue;
+      }
+      const page = pages[pageIndex];
+
+      try {
+        const imageBytes = this.dataUrlToBytes(signature.signatureData);
+        const image = await pdfDoc.embedPng(imageBytes);
+
+        const { height: pageHeight } = page.getSize();
+
+        const signatureCoords = {
+          x: signature.x / renderScale,
+
+          y:
+            pageHeight -
+            signature.y / renderScale -
+            signature.height / renderScale,
+
+          width: signature.width / renderScale,
+          height: signature.height / renderScale,
+        };
+
+        page.drawImage(image, signatureCoords);
+
+        console.log(
+          `Successfully embedded signature on page ${signature.pageNumber}`,
+        );
+      } catch (error) {
+        console.error('Error embedding signature:', error);
+      }
+    }
+
+    const signedPdfBytes = await pdfDoc.save();
+
+    return new Blob([new Uint8Array(signedPdfBytes)], {
+      type: 'application/pdf',
+    });
   }
 
   downloadPDF(blob: Blob, filename: string): void {
@@ -203,6 +238,9 @@ class PDFService {
       const arrayBuffer = await pdfBlob.arrayBuffer();
       const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
       const doc = await loadingTask.promise;
+
+      const numPages = doc.numPages;
+      console.log(`Test PDF loaded successfully with ${numPages} pages`);
 
       return true;
     } catch (error) {
