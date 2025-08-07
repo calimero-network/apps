@@ -45,6 +45,7 @@ pub struct Message {
 pub struct MessageWithReactions {
     pub timestamp: u64,
     pub sender: UserId,
+    pub sender_username: String,
     pub id: MessageId,
     pub text: String,
     pub edited_on: Option<u64>,
@@ -103,6 +104,7 @@ pub struct ChannelMetadata {
 pub struct PublicChannelMetadata {
     pub created_at: u64,
     pub created_by: UserId,
+    pub created_by_username: String,
     pub links_allowed: bool,
 }
 
@@ -362,6 +364,10 @@ impl CurbChat {
         usernames
     }
 
+    pub fn get_username(&self, user_id: UserId) -> String {
+        self.member_usernames.get(&user_id).unwrap().unwrap()
+    }
+
     pub fn get_chat_members(&self) -> Vec<UserId> {
         let executor_id = self.get_executor_id();
         let mut members = Vec::new();
@@ -434,7 +440,7 @@ impl CurbChat {
         channels
     }
 
-    pub fn get_channel_members(&self, channel: Channel) -> app::Result<Vec<UserId>, String> {
+    pub fn get_channel_members(&self, channel: Channel) -> app::Result<HashMap<UserId, String>, String> {
         let executor_id = self.get_executor_id();
         let members = match self.channel_members.get(&channel) {
             Ok(Some(members)) => members,
@@ -445,14 +451,16 @@ impl CurbChat {
             return Err("You are not a member of this channel".to_string());
         }
 
-        let mut member_list = Vec::new();
+        let mut members_map = HashMap::new();
+
         if let Ok(iter) = members.iter() {
             for member in iter {
-                member_list.push(member.clone());
+                let username = self.member_usernames.get(&member).unwrap().unwrap();
+                members_map.insert(member.clone(), username.clone());
             }
         }
 
-        Ok(member_list)
+        Ok(members_map)
     }
 
     pub fn get_channel_info(&self, channel: Channel) -> app::Result<PublicChannelMetadata, String> {
@@ -463,6 +471,7 @@ impl CurbChat {
         Ok(PublicChannelMetadata {
             created_at: channel_info.meta.created_at,
             created_by: channel_info.meta.created_by,
+            created_by_username: self.member_usernames.get(&channel_info.meta.created_by).unwrap().unwrap(),
             links_allowed: channel_info.meta.links_allowed,
         })
     }
@@ -515,7 +524,7 @@ impl CurbChat {
         Ok("User invited to channel".to_string())
     }
 
-    pub fn get_non_member_users(&self, channel: Channel) -> app::Result<Vec<UserId>, String> {
+    pub fn get_non_member_users(&self, channel: Channel) -> app::Result<HashMap<UserId, String>, String> {
         if self.is_dm {
             return Err("Cannot create channels in a DM chat".to_string());
         }
@@ -525,11 +534,12 @@ impl CurbChat {
             _ => return Err("Channel not found".to_string()),
         };
 
-        let mut non_member_users = Vec::new();
+        let mut non_member_users = HashMap::new();
         if let Ok(iter) = self.members.iter() {
             for member in iter {
                 if !members.contains(&member).unwrap_or(false) {
-                    non_member_users.push(member.clone());
+                    let username = self.member_usernames.get(&member).unwrap().unwrap();
+                    non_member_users.insert(member.clone(), username.clone());
                 }
             }
         }
@@ -763,6 +773,7 @@ impl CurbChat {
                         messages.push(MessageWithReactions {
                             timestamp: message.timestamp,
                             sender: message.sender.clone(),
+                            sender_username: message.sender_username.clone(),
                             id: message.id.clone(),
                             text: message.text.clone(),
                             reactions,
@@ -864,6 +875,7 @@ impl CurbChat {
                     messages.push(MessageWithReactions {
                         timestamp: message.timestamp,
                         sender: message.sender.clone(),
+                        sender_username: message.sender_username.clone(),
                         id: message.id.clone(),
                         text: message.text.clone(),
                         reactions,
