@@ -32,7 +32,7 @@ export const Wrapper = styled.div`
 `;
 
 export const Card = styled.div`
-  background: rgba(30, 30, 45, 0.95);
+  background: transparent;
   backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   padding: 2rem;

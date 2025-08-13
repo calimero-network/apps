@@ -26,9 +26,9 @@ const Label = styled.label`
 `;
 
 const Button = styled.button`
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #111;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   color: white;
-  border: none;
   padding: 0.6rem 1.2rem;
   border-radius: 6px;
   font-size: 0.9rem;

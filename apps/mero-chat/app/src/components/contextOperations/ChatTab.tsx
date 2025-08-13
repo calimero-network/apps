@@ -69,7 +69,7 @@ const ConfigBox = styled.div`
 `;
 
 const Button = styled.button`
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #111;
   color: white;
   border: none;
   padding: 0.75rem;
@@ -79,6 +79,7 @@ const Button = styled.button`
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   margin-top: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 
   &:hover {
     transform: translateY(-1px);

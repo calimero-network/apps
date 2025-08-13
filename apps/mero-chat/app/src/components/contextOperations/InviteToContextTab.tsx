@@ -61,9 +61,9 @@ const ConfigBox = styled.div`
 `;
 
 const Button = styled.button`
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #111;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   color: white;
-  border: none;
   padding: 0.75rem;
   border-radius: 8px;
   font-size: 1rem;
