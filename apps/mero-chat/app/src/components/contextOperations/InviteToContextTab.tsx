@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { styled } from "styled-components";
-import { apiClient } from "@calimero-network/calimero-client";
+import { apiClient, getContextId, getExecutorPublicKey } from "@calimero-network/calimero-client";
 import type { ResponseData } from "@calimero-network/calimero-client";
 
 const TabContent = styled.div`
@@ -121,9 +121,8 @@ export default function InviteToContextTab() {
   });
 
   useEffect(() => {
-    // Try to get context data from localStorage
-    const storedContextId = localStorage.getItem("contextId");
-    const storedExecutorPublicKey = localStorage.getItem("executorPublicKey");
+    const storedContextId = getContextId();;
+    const storedExecutorPublicKey = getExecutorPublicKey();
     
     if (storedContextId && storedExecutorPublicKey) {
       setConfigData({
