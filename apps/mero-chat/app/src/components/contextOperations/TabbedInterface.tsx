@@ -23,25 +23,25 @@ const TabNavigation = styled.div`
   }
 `;
 
-const TabButton = styled.button<{ isActive: boolean }>`
-  background: ${({ isActive }) =>
-    isActive ? "rgba(255, 255, 255, 0.1)" : "transparent"};
-  color: ${({ isActive }) =>
-    isActive ? "#ffffff" : "#b8b8d1"};
+const TabButton = styled.button<{ $isActive: boolean }>`
+  background: ${({ $isActive }) =>
+    $isActive ? "rgba(255, 255, 255, 0.1)" : "transparent"};
+  color: ${({ $isActive }) =>
+    $isActive ? "#ffffff" : "#b8b8d1"};
   border: none;
   padding: 0.6rem 1.2rem;
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
-  border-bottom: 2px solid ${({ isActive }) =>
-    isActive ? "#667eea" : "transparent"};
+  border-bottom: 2px solid ${({ $isActive }) =>
+    $isActive ? "#667eea" : "transparent"};
   white-space: nowrap;
   flex-shrink: 0;
 
   &:hover {
-    background: ${({ isActive }) =>
-      isActive ? "rgba(255, 255, 255, 0.15)" : "rgba(255, 255, 255, 0.05)"};
+    background: ${({ $isActive }) =>
+      $isActive ? "rgba(255, 255, 255, 0.15)" : "rgba(255, 255, 255, 0.05)"};
     color: #ffffff;
   }
 
@@ -85,7 +85,7 @@ export default function TabbedInterface({ tabs }: TabbedInterfaceProps) {
         {tabs.map((tab, index) => (
           <TabButton
             key={index}
-            isActive={activeTab === index}
+            $isActive={activeTab === index}
             onClick={() => setActiveTab(index)}
           >
             {tab.name}

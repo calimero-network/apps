@@ -16,15 +16,12 @@ import {
   updateSessionChat,
 } from "../../utils/session";
 import { defaultActiveChat } from "../../mock/mock";
+import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 import {
-  ClientApiDataSource,
-  getWsSubscriptionsClient,
-} from "../../api/dataSource/clientApiDataSource";
-import {
-  type NodeEvent,
   type ResponseData,
   getContextId,
   getExecutorPublicKey,
+  useCalimero,
 } from "@calimero-network/calimero-client";
 import {
   type Channels,
@@ -33,12 +30,11 @@ import {
   type UserId,
 } from "../../api/clientApi";
 import type { MessageWithReactions } from "../../api/clientApi";
-
-import { type SubscriptionsClient } from "@calimero-network/calimero-client";
 import { ContextApiDataSource } from "../../api/dataSource/nodeApiDataSource";
 import type { CreateContextResult } from "../../components/popups/StartDMPopup";
 
 export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
+  const { app } = useCalimero();
   const [isOpenSearchChannel, setIsOpenSearchChannel] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [channelUsers, setChannelUsers] = useState<UserId[]>([]);
@@ -187,123 +183,128 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   }, []);
 
   useEffect(() => {
-    let subscriptionsClient: SubscriptionsClient | null = null;
+    if (!app) {
+      return;
+    }
 
-    const observeNodeEvents = async () => {
+    if (!app.subscribeToEvents || !app.unsubscribeFromEvents) {
+      return;
+    }
+
+    const sessionChat = getStoredSession();
+    const useDM = (sessionChat?.type === "direct_message" &&
+      sessionChat?.account &&
+      !sessionChat?.canJoin &&
+      sessionChat?.otherIdentityNew) as boolean;
+
+    const contextId = getContextId();
+    const dmContextId = getDmContextId();
+    const currentContextId = (useDM ? dmContextId : contextId) || "";
+
+    if (!currentContextId) {
+      return;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const eventCallback = async (event: any ) => {
       try {
-        const sessionChat = getStoredSession();
-        const useDM = (sessionChat?.type === "direct_message" &&
-          sessionChat?.account &&
-          !sessionChat?.canJoin &&
-          sessionChat?.otherIdentityNew) as boolean;
+        if (event.type === "StateMutation") {
+          fetchChannels();
 
-        subscriptionsClient = getWsSubscriptionsClient();
-        await subscriptionsClient.connect();
-        subscriptionsClient.subscribe([
-          (useDM ? getDmContextId() : getContextId()) || "",
-        ]);
+          const updatedDMs = await fetchDms();
 
-        subscriptionsClient?.addCallback(async (data: NodeEvent) => {
-          try {
-            if (data.type === "StateMutation") {
-              fetchChannels();
-
-              const updatedDMs = await fetchDms();
-
-              if (
-                sessionChat?.type === "direct_message" &&
-                !sessionChat?.isFinal &&
-                updatedDMs?.length &&
-                (sessionChat?.canJoin ||
-                  !sessionChat?.isSynced ||
-                  !sessionChat?.account ||
-                  !sessionChat?.otherIdentityNew)
-              ) {
-                const currentDM = updatedDMs.find(
-                  (dm) => dm.context_id === sessionChat.contextId
-                );
-                onDMSelected(currentDM);
-              }
-
-              if (sessionChat?.type !== "direct_message") {
-                await reFetchChannelMembers();
-              }
-
-              const reFetchedMessages: ResponseData<FullMessageResponse> =
-                await new ClientApiDataSource().getMessages({
-                  group: {
-                    name:
-                      (useDM ? "private_dm" : activeChatRef.current?.name) ||
-                      "",
-                  },
-                  limit: 20,
-                  offset: 0,
-                  is_dm: useDM,
-                  dm_identity: activeChatRef.current?.account,
-                });
-              if (reFetchedMessages.data) {
-                const existingMessageIds = new Set(
-                  messagesRef.current.map((msg) => msg.id)
-                );
-                const newMessages = reFetchedMessages.data.messages
-                  .filter(
-                    (message: MessageWithReactions) =>
-                      !existingMessageIds.has(message.id)
-                  )
-                  .map((message: MessageWithReactions) => ({
-                    id: message.id,
-                    text: message.text,
-                    nonce: Math.random().toString(36).substring(2, 15),
-                    key: message.id,
-                    timestamp: message.timestamp * 1000,
-                    sender: message.sender,
-                    reactions: message.reactions,
-                    threadCount: message.thread_count,
-                    threadLastTimestamp: message.thread_last_timestamp,
-                    editedOn: undefined,
-                    mentions: [],
-                    files: [],
-                    images: [],
-                    editMode: false,
-                    status: MessageStatus.sent,
-                    deleted: message.deleted,
-                  }));
-
-                if (newMessages.length > 0) {
-                  setIncomingMessages(newMessages);
-                  messagesRef.current = [
-                    ...messagesRef.current,
-                    ...newMessages,
-                  ];
-                }
-              }
-            } else if (data.type === "ExecutionEvent") {
-              const executionEvents = data.data.events;
-              for (const event of executionEvents) {
-                if (event.kind === "MessageSent") {
-                  // On sender node do nothing as this will only duplicate the message
-                } else if (event.kind === "ChannelCreated") {
-                  await fetchChannels();
-                }
-              }
-            }
-          } catch (callbackError) {
-            console.error("Error in subscription callback:", callbackError);
+          if (
+            sessionChat?.type === "direct_message" &&
+            !sessionChat?.isFinal &&
+            updatedDMs?.length &&
+            (sessionChat?.canJoin ||
+              !sessionChat?.isSynced ||
+              !sessionChat?.account ||
+              !sessionChat?.otherIdentityNew)
+          ) {
+            const currentDM = updatedDMs.find(
+              (dm) => dm.context_id === sessionChat.contextId
+            );
+            onDMSelected(currentDM);
           }
-        });
-      } catch (error) {
-        console.error("Error in node websocket:", error);
+
+          if (sessionChat?.type !== "direct_message") {
+            await reFetchChannelMembers();
+          }
+
+          const reFetchedMessages: ResponseData<FullMessageResponse> =
+            await new ClientApiDataSource().getMessages({
+              group: {
+                name:
+                  (useDM ? "private_dm" : activeChatRef.current?.name) || "",
+              },
+              limit: 20,
+              offset: 0,
+              is_dm: useDM,
+              dm_identity: activeChatRef.current?.account,
+            });
+          if (reFetchedMessages.data) {
+            const existingMessageIds = new Set(
+              messagesRef.current.map((msg) => msg.id)
+            );
+            const newMessages = reFetchedMessages.data.messages
+              .filter(
+                (message: MessageWithReactions) =>
+                  !existingMessageIds.has(message.id)
+              )
+              .map((message: MessageWithReactions) => ({
+                id: message.id,
+                text: message.text,
+                nonce: Math.random().toString(36).substring(2, 15),
+                key: message.id,
+                timestamp: message.timestamp * 1000,
+                sender: message.sender,
+                reactions: message.reactions,
+                threadCount: message.thread_count,
+                threadLastTimestamp: message.thread_last_timestamp,
+                editedOn: undefined,
+                mentions: [],
+                files: [],
+                images: [],
+                editMode: false,
+                status: MessageStatus.sent,
+                deleted: message.deleted,
+              }));
+
+            if (newMessages.length > 0) {
+              setIncomingMessages(newMessages);
+              messagesRef.current = [...messagesRef.current, ...newMessages];
+            }
+          }
+        } else if (event.type === "ExecutionEvent" && event.data?.events) {
+          const executionEvents = event.data.events;
+          for (const executionEvent of executionEvents) {
+            if (executionEvent.kind === "MessageSent") {
+              // On sender node do nothing as this will only duplicate the message
+            } else if (executionEvent.kind === "ChannelCreated") {
+              await fetchChannels();
+            }
+          }
+        }
+      } catch (callbackError) {
+        console.error("Error in subscription callback:", callbackError);
       }
     };
 
-    observeNodeEvents();
+    try {
+      app.subscribeToEvents([currentContextId], eventCallback);
+    } catch (error) {
+      console.warn("Failed to subscribe to context events:", error);
+    }
 
     return () => {
-      if (subscriptionsClient) {
-        subscriptionsClient.disconnect();
+      try {
+        app.unsubscribeFromEvents([currentContextId]);
+      } catch (error) {
+        console.warn("Error during event unsubscription:", error);
       }
     };
-  }, [activeChatRef.current?.type, activeChatRef.current?.id]);
+  }, [app]);
 
   const loadInitialChatMessages = async (): Promise<ChatMessagesData> => {
     if (!activeChat?.name) {
