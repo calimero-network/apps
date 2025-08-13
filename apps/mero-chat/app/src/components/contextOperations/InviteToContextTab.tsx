@@ -119,6 +119,7 @@ export default function InviteToContextTab() {
     contextId: "",
     executorPublicKey: "",
   });
+  const [invitationPayload, setInvitationPayload] = useState<string | null>(null);
 
   useEffect(() => {
     const storedContextId = getContextId();;
@@ -157,6 +158,7 @@ export default function InviteToContextTab() {
       if (response.error) {
         setMessage({ text: response.error.message || "Failed to invite to context", type: "error" });
       } else {
+        setInvitationPayload(response.data);
         setMessage({ text: "Successfully invited to context!", type: "success" });
         setInviteeId("");
       }
@@ -169,17 +171,27 @@ export default function InviteToContextTab() {
 
   return (
     <TabContent>
-      <ConfigInfo>
-        <ConfigTitle>Context Configuration</ConfigTitle>
-        <InputGroup>
-          <Label>Context ID</Label>
-          <ConfigBox>{configData.contextId || "Not found in localStorage"}</ConfigBox>
-        </InputGroup>
-        <InputGroup>
-          <Label>Executor Public Key</Label>
-          <ConfigBox>{configData.executorPublicKey || "Not found in localStorage"}</ConfigBox>
-        </InputGroup>
-      </ConfigInfo>
+      {invitationPayload ? (
+        <ConfigInfo>
+          <ConfigTitle>Invitation Payload</ConfigTitle>
+          <InputGroup>
+            <Label>Generated Invitation</Label>
+            <ConfigBox>{invitationPayload}</ConfigBox>
+          </InputGroup>
+        </ConfigInfo>
+      ) : (
+        <ConfigInfo>
+          <ConfigTitle>Context Configuration</ConfigTitle>
+          <InputGroup>
+            <Label>Context ID</Label>
+            <ConfigBox>{configData.contextId || "Not found in localStorage"}</ConfigBox>
+          </InputGroup>
+          <InputGroup>
+            <Label>Executor Public Key</Label>
+            <ConfigBox>{configData.executorPublicKey || "Not found in localStorage"}</ConfigBox>
+          </InputGroup>
+        </ConfigInfo>
+      )}
 
       <Form onSubmit={handleSubmit}>
         <InputGroup>
