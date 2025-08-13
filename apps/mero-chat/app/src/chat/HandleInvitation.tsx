@@ -85,8 +85,8 @@ export default function HandleInvitation({
     try {
       const response = await apiClient.node().contextInvite(
         activeChat.contextId ?? "",
-        activeChat.otherIdentityNew ?? "",
         activeChat.account ?? "",
+        activeChat.otherIdentityNew ?? "",
       );
       if (response.data) {
         const invitationPayload = response.data;
