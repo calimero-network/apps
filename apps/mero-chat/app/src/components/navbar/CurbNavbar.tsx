@@ -5,6 +5,7 @@ import ChannelDetailsPopup from "../popups/ChannelDetailsPopup";
 import UsersButtonGroup from "./UsersButtonGroup";
 import { useState } from "react";
 import type { UserId } from "../../api/clientApi";
+import SettingsIcon from "./SettingsIcon";
 
 const NavigationBar = styled.div<{ $isSidebarOpen: boolean }>`
   display: flex;
@@ -60,7 +61,7 @@ export const OrgNameContainer = styled.div<{ $isMobile: boolean }>`
   align-items: center;
   border-left: 1px solid #282933;
   @media (max-width: 1024px) {
-    display: ${(props) => props.$isMobile ? "flex" : "none"};
+    display: ${(props) => (props.$isMobile ? "flex" : "none")};
   }
 }
 `;
@@ -70,11 +71,11 @@ const ItemsContainer = styled.div<{ $align: boolean }>`
   ${(props) => props.$align && "align-items: center;"}
 `;
 
-const LogoContainer = styled.div<{ $isMobile: boolean, justify?: boolean }>`
+const LogoContainer = styled.div<{ $isMobile: boolean; justify?: boolean }>`
   display: flex;
   gap: 0.5rem;
   @media (max-width: 1024px) {
-      display: ${(props) => props.$isMobile ? "flex" : "none"};
+      display: ${(props) => (props.$isMobile ? "flex" : "none")};
     }
   }
   align-items: center;
@@ -99,6 +100,12 @@ const IconWrapper = styled.div`
   @media (max-width: 1024px) {
     display: flex;
   }
+`;
+
+const FlexContainer = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1rem;
 `;
 
 export const CurbLogo = ({ isMobile }: { isMobile: boolean }) => {
@@ -166,17 +173,17 @@ export default function CurbNavbar({
   nonInvitedUserList,
   reFetchChannelMembers,
   setActiveChat,
-  fetchChannels
+  fetchChannels,
 }: CurbNavbarProps) {
   const [isOpen, setIsOpen] = useState(false);
   return (
     <NavigationBar $isSidebarOpen={isSidebarOpen}>
       <ItemsContainer $align={true}>
         <>
-          <CurbLogo isMobile={false}/>
+          <CurbLogo isMobile={false} />
           <OrgNameContainer $isMobile={false}>Calimero P2P</OrgNameContainer>
         </>
-        <VerticalSeparatorFull/>
+        <VerticalSeparatorFull />
         <BackIconContainer
           onClick={() => {
             setIsSidebarOpen(!isSidebarOpen);
@@ -194,29 +201,34 @@ export default function CurbNavbar({
           />
         )}
       </ItemsContainer>
-      {activeChat && activeChat?.type === "channel" && channelUserList.length > 0 && (
-        <ItemsContainer $align={false}>
-          <ChannelDetailsPopup
-            toggle={
-              <div>
-                <UsersButtonGroup
-                  channelUserList={channelUserList}
-                  openMemberList={() => {}}
-                />
-              </div>
-            }
-            chat={activeChat}
-            channelUserList={channelUserList}
-            nonInvitedUserList={nonInvitedUserList}
-            isOpen={isOpen}
-            setIsOpen={setIsOpen}
-            selectedTabIndex={0}
-            reFetchChannelMembers={reFetchChannelMembers}
-            setActiveChat={setActiveChat}
-            fetchChannels={fetchChannels}
-          />
-        </ItemsContainer>
-      )}
+      <FlexContainer>
+        {activeChat &&
+          activeChat?.type === "channel" &&
+          channelUserList.length > 0 && (
+            <ItemsContainer $align={false}>
+              <ChannelDetailsPopup
+                toggle={
+                  <div>
+                    <UsersButtonGroup
+                      channelUserList={channelUserList}
+                      openMemberList={() => {}}
+                    />
+                  </div>
+                }
+                chat={activeChat}
+                channelUserList={channelUserList}
+                nonInvitedUserList={nonInvitedUserList}
+                isOpen={isOpen}
+                setIsOpen={setIsOpen}
+                selectedTabIndex={0}
+                reFetchChannelMembers={reFetchChannelMembers}
+                setActiveChat={setActiveChat}
+                fetchChannels={fetchChannels}
+              />
+            </ItemsContainer>
+          )}
+        <SettingsIcon />
+      </FlexContainer>
     </NavigationBar>
   );
 }
