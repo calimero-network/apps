@@ -12,9 +12,8 @@ base64 = "0.22.1"
 borsh = "0.10.3"
 borsh-derive = "0.10.3"
 bs58 = "0.5.1"
-calimero-sdk = { git = "https://github.com/calimero-network/core", branch = "master" }
-calimero-storage = { git = "https://github.com/calimero-network/core", branch = "master" }
-
+calimero-sdk = { git = "https://github.com/calimero-network/core", branch = "feat/blob-discovery-wip" }
+calimero-storage = { git = "https://github.com/calimero-network/core", branch = "feat/blob-discovery-wip" }
 [profile.app-release]
 inherits = "release"
 codegen-units = 1

@@ -109,7 +109,7 @@ dependencies = [
 [[package]]
 name = "calimero-sdk"
 version = "0.1.0"
-source = "git+https://github.com/calimero-network/core?branch=master#53dbe18e5446c83c127a74f08b6e214038afbfbd"
+source = "git+https://github.com/calimero-network/core?branch=feat%2Fblob-discovery-wip#f53537d524b42a7dbc3c7f5e6f5e3108d7248e28"
 dependencies = [
  "borsh 1.5.7",
  "bs58",
@@ -122,7 +122,7 @@ dependencies = [
 [[package]]
 name = "calimero-sdk-macros"
 version = "0.1.0"
-source = "git+https://github.com/calimero-network/core?branch=master#53dbe18e5446c83c127a74f08b6e214038afbfbd"
+source = "git+https://github.com/calimero-network/core?branch=feat%2Fblob-discovery-wip#f53537d524b42a7dbc3c7f5e6f5e3108d7248e28"
 dependencies = [
  "prettyplease",
  "proc-macro2",
@@ -134,7 +134,7 @@ dependencies = [
 [[package]]
 name = "calimero-storage"
 version = "0.1.0"
-source = "git+https://github.com/calimero-network/core?branch=master#53dbe18e5446c83c127a74f08b6e214038afbfbd"
+source = "git+https://github.com/calimero-network/core?branch=feat%2Fblob-discovery-wip#f53537d524b42a7dbc3c7f5e6f5e3108d7248e28"
 dependencies = [
  "borsh 1.5.7",
  "calimero-sdk",
@@ -152,7 +152,7 @@ dependencies = [
 [[package]]
 name = "calimero-storage-macros"
 version = "0.1.0"
-source = "git+https://github.com/calimero-network/core?branch=master#53dbe18e5446c83c127a74f08b6e214038afbfbd"
+source = "git+https://github.com/calimero-network/core?branch=feat%2Fblob-discovery-wip#f53537d524b42a7dbc3c7f5e6f5e3108d7248e28"
 dependencies = [
  "borsh 1.5.7",
  "quote",

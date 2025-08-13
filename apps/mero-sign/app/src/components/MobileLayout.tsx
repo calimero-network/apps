@@ -4,10 +4,22 @@ import { Sidebar } from './Sidebar';
 
 interface MobileLayoutProps {
   children: ReactNode;
+  sidebarOpen?: boolean;
+  onSidebarToggle?: (open: boolean) => void;
 }
 
-export const MobileLayout: React.FC<MobileLayoutProps> = ({ children }) => {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+export const MobileLayout: React.FC<MobileLayoutProps> = ({
+  children,
+  sidebarOpen: externalSidebarOpen,
+  onSidebarToggle,
+}) => {
+  const [internalSidebarOpen, setInternalSidebarOpen] = useState(false);
+
+  const sidebarOpen =
+    externalSidebarOpen !== undefined
+      ? externalSidebarOpen
+      : internalSidebarOpen;
+  const setSidebarOpen = onSidebarToggle || setInternalSidebarOpen;
 
   const handleMenuToggle = () => {
     setSidebarOpen(!sidebarOpen);
@@ -24,7 +36,7 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({ children }) => {
 
       <main
         className="relative min-h-[calc(100vh-60px)]"
-        style={{ paddingTop: 'var(--spacing-mobile-header)' }}
+        style={{ paddingTop: '32px' }}
       >
         <div className="p-4 max-w-full mx-auto md:max-w-[1200px] md:p-6">
           {children}

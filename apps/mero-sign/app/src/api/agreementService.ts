@@ -8,9 +8,9 @@ export class AgreementService {
   private contextApi: ContextApiDataSource;
   private clientApi: ClientApiDataSource;
 
-  constructor() {
-    this.contextApi = new ContextApiDataSource();
-    this.clientApi = new ClientApiDataSource();
+  constructor(app?: any) {
+    this.contextApi = new ContextApiDataSource(app);
+    this.clientApi = new ClientApiDataSource(app);
   }
 
   async createAgreement(name: string): ApiResponse<Agreement> {
@@ -33,7 +33,7 @@ export class AgreementService {
 
       const joinResponse = await this.clientApi.joinSharedContext(
         contextData.contextId,
-        contextData.memberPublicKey,
+        contextData.executorId,
         name,
       );
 
@@ -45,11 +45,11 @@ export class AgreementService {
         id: contextData.contextId,
         name,
         contextId: contextData.contextId,
-        memberPublicKey: contextData.memberPublicKey,
+        memberPublicKey: contextData.executorId,
         role: 'Owner',
         joinedAt: Date.now(),
-        privateIdentity: contextData.memberPublicKey,
-        sharedIdentity: contextData.memberPublicKey,
+        privateIdentity: contextData.executorId,
+        sharedIdentity: contextData.executorId,
       };
 
       return {
@@ -90,13 +90,20 @@ export class AgreementService {
         };
       }
 
-      const contexts = contextsResponse.data as ContextMetadata[];
+      let contextsArray: any[] = [];
+      const responseData = contextsResponse.data;
 
-      if (!contexts || !Array.isArray(contexts)) {
+      if (Array.isArray(responseData)) {
+        contextsArray = responseData;
+      } else if (responseData && Array.isArray(responseData.output)) {
+        contextsArray = responseData.output;
+      } else if (responseData && Array.isArray(responseData.result)) {
+        contextsArray = responseData.result;
+      } else {
         console.error(
           'AgreementService: Invalid contexts data, expected array but got:',
-          typeof contexts,
-          contexts,
+          typeof responseData,
+          responseData,
         );
         return {
           data: [],
@@ -104,17 +111,34 @@ export class AgreementService {
         };
       }
 
-      // Convert contexts to agreements
-      const agreements: Agreement[] = contexts.map((context) => ({
-        id: context.context_id,
-        name: context.context_name,
-        contextId: context.context_id,
-        memberPublicKey: context.shared_identity,
-        role: context.role,
-        joinedAt: context.joined_at,
-        privateIdentity: context.private_identity,
-        sharedIdentity: context.shared_identity,
-      }));
+      const agreements: Agreement[] = contextsArray.map((context: any) => {
+        if (context.contextId) {
+          return {
+            id: context.contextId,
+            name:
+              context.context_name ||
+              `Agreement ${context.contextId.slice(0, 8)}...`,
+            contextId: context.contextId,
+            memberPublicKey: context.executorId,
+            role: context.role || ' ',
+            joinedAt: context.joinedAt || ' ',
+            privateIdentity: context.executorId,
+            sharedIdentity: context.executorId,
+          };
+        }
+
+        // Handle old API structure (fallback)
+        return {
+          id: context.context_id,
+          name: context.context_name,
+          contextId: context.context_id,
+          memberPublicKey: context.shared_identity,
+          role: context.role,
+          joinedAt: context.joined_at,
+          privateIdentity: context.private_identity,
+          sharedIdentity: context.shared_identity,
+        };
+      });
 
       return {
         data: agreements,

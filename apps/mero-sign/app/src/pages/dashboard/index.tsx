@@ -1,9 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  getAppEndpointKey,
-  getApplicationId,
-} from '@calimero-network/calimero-client';
+import { useCalimero, apiClient } from '@calimero-network/calimero-client';
 import {
   FileText,
   Search,
@@ -14,6 +11,8 @@ import {
   UserPlus,
   CheckCircle2,
   AlertCircle,
+  Key,
+  Copy,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button, Card, CardContent } from '../../components/ui';
@@ -60,8 +59,7 @@ const NotificationPopup: React.FC<{
 export default function Dashboard() {
   const navigate = useNavigate();
   const { mode } = useTheme();
-  const url = getAppEndpointKey();
-  const applicationId = getApplicationId();
+  const { app } = useCalimero();
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
@@ -74,13 +72,15 @@ export default function Dashboard() {
   const [joining, setJoining] = useState(false);
   const [joinProgress, setJoinProgress] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [generatedIdentity, setGeneratedIdentity] = useState<string>('');
+  const [generatingIdentity, setGeneratingIdentity] = useState(false);
   const [notification, setNotification] = useState<NotificationState | null>(
     null,
   );
 
-  const agreementService = useMemo(() => new AgreementService(), []);
-  const nodeApiService = useMemo(() => new ContextApiDataSource(), []);
-  const clientApiService = useMemo(() => new ClientApiDataSource(), []);
+  const agreementService = useMemo(() => new AgreementService(app), [app]);
+  const nodeApiService = useMemo(() => new ContextApiDataSource(app), [app]);
+  const clientApiService = useMemo(() => new ClientApiDataSource(app), [app]);
 
   const showNotification = useCallback(
     (message: string, type: NotificationType) => {
@@ -116,10 +116,10 @@ export default function Dashboard() {
   }, [agreementService]);
 
   useEffect(() => {
-    if (url && applicationId) {
+    if (app) {
       loadAgreements();
     }
-  }, [url, applicationId, loadAgreements]);
+  }, [app, loadAgreements]);
 
   const stats = [
     {
@@ -132,6 +132,9 @@ export default function Dashboard() {
   ];
 
   const filteredContexts = agreements.filter((agreement) => {
+    if (!agreement.name) {
+      return false;
+    }
     const matchesSearch = agreement.name
       .toLowerCase()
       .includes(searchQuery.toLowerCase());
@@ -217,7 +220,19 @@ export default function Dashboard() {
       }
 
       setJoinProgress('Storing context information...');
+      if (!joinResponse.data) {
+        setError('No data received from join context response');
+        setJoining(false);
+        return;
+      }
+
       const { contextId, memberPublicKey } = joinResponse.data;
+      if (!contextId || !memberPublicKey) {
+        setError('Invalid join context response data');
+        setJoining(false);
+        return;
+      }
+
       localStorage.setItem('agreementContextID', contextId);
       localStorage.setItem('agreementContextUserID', memberPublicKey);
 
@@ -242,6 +257,7 @@ export default function Dashboard() {
       setShowJoinModal(false);
       setInvitationPayload('');
       setContextName('');
+      setGeneratedIdentity('');
 
       await loadAgreements();
 
@@ -254,6 +270,46 @@ export default function Dashboard() {
     } finally {
       setJoining(false);
       setJoinProgress('');
+    }
+  };
+
+  const handleGenerateIdentity = async () => {
+    try {
+      setGeneratingIdentity(true);
+      setError(null);
+
+      // Create new identity
+      const identityResponse = await apiClient.node().createNewIdentity();
+
+      if (identityResponse.error) {
+        setError(
+          'Failed to generate identity: ' + identityResponse.error.message,
+        );
+        return;
+      }
+
+      if (identityResponse.data) {
+        // Extract the public key or ID from the NodeIdentity object
+        const identity = identityResponse.data as any;
+        const identityId =
+          identity.publicKey || identity.id || JSON.stringify(identity);
+        setGeneratedIdentity(identityId);
+        showNotification('Identity generated successfully!', 'success');
+      } else {
+        setError('No identity data received');
+      }
+    } catch (err) {
+      console.error('Failed to generate identity:', err);
+      setError('Failed to generate identity');
+    } finally {
+      setGeneratingIdentity(false);
+    }
+  };
+
+  const handleCopyIdentity = () => {
+    if (generatedIdentity) {
+      navigator.clipboard.writeText(generatedIdentity);
+      showNotification('Identity copied to clipboard!', 'success');
     }
   };
 
@@ -542,6 +598,7 @@ export default function Dashboard() {
                     setShowJoinModal(false);
                     setInvitationPayload('');
                     setContextName('');
+                    setGeneratedIdentity('');
                     setError(null);
                     setJoinProgress('');
                   }}
@@ -591,6 +648,67 @@ export default function Dashboard() {
                   This will be used as the name for the joined context
                 </p>
               </div>
+
+              {/* Identity Generation Section */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-foreground">
+                    Identity 
+                  </label>
+                  <Button
+                    onClick={handleGenerateIdentity}
+                    variant="outline"
+                    size="sm"
+                    disabled={joining || generatingIdentity}
+                    className="h-8 px-3"
+                  >
+                    {generatingIdentity ? (
+                      <>
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current mr-1"></div>
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Key className="w-3 h-3 mr-1" />
+                        Generate Identity
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {generatedIdentity && (
+                  <div className="space-y-2">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={generatedIdentity}
+                        readOnly
+                        className="w-full px-3 py-2 pr-10 border border-border rounded-lg bg-muted text-foreground font-mono text-sm"
+                      />
+                      <Button
+                        onClick={handleCopyIdentity}
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6 p-0"
+                      >
+                        <Copy className="w-3 h-3" />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Your generated identity. Click the copy button to copy it
+                      to clipboard.
+                    </p>
+                  </div>
+                )}
+
+                {!generatedIdentity && (
+                  <p className="text-xs text-muted-foreground">
+                    Generate a new identity. This is
+                    sending your identity to other users for creating invitation payload for you to join agreements.
+                  </p>
+                )}
+              </div>
+
               {error && (
                 <div className="p-3 bg-red-100 border border-red-300 rounded-lg">
                   <p className="text-sm text-red-700">{error}</p>
@@ -602,6 +720,7 @@ export default function Dashboard() {
                     setShowJoinModal(false);
                     setInvitationPayload('');
                     setContextName('');
+                    setGeneratedIdentity('');
                     setError(null);
                     setJoinProgress('');
                   }}

@@ -21,7 +21,6 @@ export class DocumentService {
   ): Promise<{ data?: string; error?: any }> {
     try {
       const blobResponse = await blobClient.uploadBlob(file, onProgress, '');
-      console.log(`Blob upload response:`, blobResponse);
 
       if (blobResponse.error) {
         console.error(
@@ -35,10 +34,6 @@ export class DocumentService {
         console.error(`Failed to get blob ID from upload for ${file.name}`);
         return { error: { message: 'Failed to get blob ID from upload' } };
       }
-
-      console.log(
-        `Upload completed for ${file.name}: ${blobResponse.data.blobId}`,
-      );
 
       // Calculate hash from file for verification
       const arrayBuffer = await file.arrayBuffer();
@@ -60,12 +55,6 @@ export class DocumentService {
         try {
           let documentId = response.data;
           const safeDocumentId = this.sanitizeDocumentId(documentId);
-          if (documentId !== safeDocumentId) {
-            console.warn('Sanitized documentId for ICP:', {
-              original: documentId,
-              sanitized: safeDocumentId,
-            });
-          }
           const icpApi = await backendService(icpIdentity);
           const icpResponse = await icpApi.recordOriginalHash(
             safeDocumentId,
@@ -136,7 +125,6 @@ export class DocumentService {
         onProgress,
         '',
       );
-      console.log(`Blob upload response:`, blobResponse);
 
       if (blobResponse.error) {
         console.error(
@@ -182,12 +170,6 @@ export class DocumentService {
           // On successful sign and mark, also upload the final hash to ICP canister
           try {
             const safeDocumentId = this.sanitizeDocumentId(documentId);
-            if (documentId !== safeDocumentId) {
-              console.warn('Sanitized documentId for ICP:', {
-                original: documentId,
-                sanitized: safeDocumentId,
-              });
-            }
             const icpApi = await backendService(icpIdentity);
             const icpResponse = await icpApi.recordFinalHash(
               safeDocumentId,

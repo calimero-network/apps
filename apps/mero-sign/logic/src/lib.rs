@@ -268,6 +268,10 @@ impl MeroDocsState {
         state
     }
 
+    pub fn is_default_private_context(&self) -> bool {
+        self.is_private && self.context_name == "default"
+    }
+
     /// Create a new signature and store its PNG data
     pub fn create_signature(
         &mut self,
@@ -283,6 +287,20 @@ impl MeroDocsState {
         self.signature_count += 1;
 
         let blob_id = parse_blob_id_base58(&blob_id_str)?;
+
+        // Announce the signature blob to the network for discovery
+        let current_context = env::context_id();
+        if env::blob_announce_to_context(&blob_id, &current_context) {
+            app::log!(
+                "Successfully announced signature blob {} to network",
+                blob_id_str
+            );
+        } else {
+            app::log!(
+                "Failed to announce signature blob {} to network",
+                blob_id_str
+            );
+        }
 
         let signature = SignatureRecord {
             id: signature_id,
@@ -491,6 +509,17 @@ impl MeroDocsState {
         // Parse the blob ID from the HTTP upload
         let pdf_blob_id_bytes = parse_blob_id_base58(&pdf_blob_id_str)?;
 
+        // Announce blob to the network for discovery
+        let current_context = env::context_id();
+        if env::blob_announce_to_context(&pdf_blob_id_bytes, &current_context) {
+            app::log!(
+                "Successfully announced PDF blob {} to network",
+                pdf_blob_id_str
+            );
+        } else {
+            app::log!("Failed to announce PDF blob {} to network", pdf_blob_id_str);
+        }
+
         let document = DocumentInfo {
             id: document_id.clone(),
             name: name.clone(),
@@ -569,6 +598,20 @@ impl MeroDocsState {
 
         // Parse the new signed PDF blob ID
         let pdf_blob_id_bytes = parse_blob_id_base58(&pdf_blob_id_str)?;
+
+        // Announce the signed blob to the network for discovery
+        let current_context = env::context_id();
+        if env::blob_announce_to_context(&pdf_blob_id_bytes, &current_context) {
+            app::log!(
+                "Successfully announced signed PDF blob {} to network",
+                pdf_blob_id_str
+            );
+        } else {
+            app::log!(
+                "Failed to announce signed PDF blob {} to network",
+                pdf_blob_id_str
+            );
+        }
 
         // Update document info with new signed PDF
         document.pdf_blob_id = pdf_blob_id_bytes;

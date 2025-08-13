@@ -1,8 +1,9 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, PenTool, LogOut, X } from 'lucide-react';
-import { clientLogout } from '@calimero-network/calimero-client';
+import { Home, PenTool, X } from 'lucide-react';
 import { useIcpAuth } from '../contexts/IcpAuthContext';
+import { CalimeroConnectButton } from '@calimero-network/calimero-client';
+import { useDefaultContext } from '../hooks/useDefaultContext';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -14,6 +15,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const location = useLocation();
   const icpAuth = useIcpAuth();
   const [isLoading, setIsLoading] = React.useState(false);
+  const { isCreating: isCreatingDefaultContext, error: defaultContextError } =
+    useDefaultContext();
 
   const navItems = [
     { icon: Home, label: 'Dashboard', path: '/' },
@@ -22,18 +25,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
   const handleNavigation = (path: string) => {
     navigate(path);
-    onClose();
-  };
-
-  const handleLogout = () => {
-    if (localStorage.getItem('agreementContextID')) {
-      localStorage.removeItem('agreementContextID');
-    }
-    if (localStorage.getItem('agreementContextUserID')) {
-      localStorage.removeItem('agreementContextUserID');
-    }
-    navigate('/');
-    clientLogout();
     onClose();
   };
 
@@ -129,7 +120,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           </button>
         </div>
 
-        {/* Content */}
+        {/* Show loading indicator when creating default context */}
+        {isCreatingDefaultContext && (
+          <div className="px-6 py-2 bg-blue-50 border-l-4 border-blue-400">
+            <div className="flex items-center">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+              <span className="text-sm text-blue-700">
+                Setting up your workspace...
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Navigation */}
         <div className="flex-1 py-4">
           <nav className="mb-8">
             {navItems.map((item) => {
@@ -178,7 +181,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
         </div>
 
         {/* ICP Auth Button */}
-        <div className="px-6 pb-4">
+        <div className="px-6 pb-2">
           {icpAuth.isAuthenticated && icpAuth.principal ? (
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2">
@@ -205,6 +208,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                   </p>
                 </div>
               </div>
+
               <button
                 onClick={handleIcpLogout}
                 disabled={isLoading}
@@ -260,25 +264,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           )}
         </div>
 
-        <button
-          onClick={handleLogout}
-          className="w-full flex items-center gap-4 px-6 py-3 text-left cursor-pointer transition-all duration-200 min-h-[44px]"
-          style={{
-            color: 'var(--current-text-secondary)',
-            backgroundColor: 'transparent',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = 'var(--current-border)';
-            e.currentTarget.style.color = 'var(--current-text)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'transparent';
-            e.currentTarget.style.color = 'var(--current-text-secondary)';
-          }}
-        >
-          <LogOut size={20} />
-          Logout
-        </button>
+        {/* Calimero Connect Button */}
+        <div className="px-6 pb-15 flex justify-center">
+          <CalimeroConnectButton />
+        </div>
       </div>
     </>
   );

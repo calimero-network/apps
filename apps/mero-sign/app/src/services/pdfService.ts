@@ -199,10 +199,6 @@ class PDFService {
         };
 
         page.drawImage(image, signatureCoords);
-
-        console.log(
-          `Successfully embedded signature on page ${signature.pageNumber}`,
-        );
       } catch (error) {
         console.error('Error embedding signature:', error);
       }

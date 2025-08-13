@@ -5,7 +5,7 @@
   "type": "module",
   "homepage": "https://calimero-network.github.io/core-app-template/",
   "dependencies": {
-    "@calimero-network/calimero-client": "^1.10.6",
+    "@calimero-network/calimero-client": "^1.14.1",
     "@dfinity/agent": "^3.1.0",
     "@dfinity/auth-client": "^3.1.0",
     "@dfinity/principal": "^3.1.0",

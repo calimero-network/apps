@@ -1,11 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { PenTool, Plus, Trash2 } from 'lucide-react';
 import { MobileLayout } from '../../components/MobileLayout';
 import SignaturePadComponent from '../../components/SignaturePad';
 import { ClientApiDataSource } from '../../api/dataSource/ClientApiDataSource';
-import { blobClient, getContextId } from '@calimero-network/calimero-client';
-
-const api = new ClientApiDataSource();
+import { blobClient, useCalimero } from '@calimero-network/calimero-client';
 
 interface SavedSignature {
   id: string;
@@ -15,6 +13,9 @@ interface SavedSignature {
 }
 
 export default function SignaturesPage() {
+  const { app } = useCalimero();
+  const api = useMemo(() => new ClientApiDataSource(app), [app]);
+
   const [signatures, setSignatures] = useState<SavedSignature[]>([]);
   const [showSignaturePad, setShowSignaturePad] = useState(false);
   const [deleteSignatureId, setDeleteSignatureId] = useState<string | null>(
@@ -24,22 +25,40 @@ export default function SignaturesPage() {
   const fetchSignatures = useCallback(async () => {
     try {
       const response = await api.listSignatures();
-      if (!response.data || !Array.isArray(response.data)) {
+
+      let signaturesArray: any[] = [];
+
+      if (response.data) {
+        if (Array.isArray(response.data)) {
+          signaturesArray = response.data;
+        } else if (
+          response.data.output &&
+          Array.isArray(response.data.output)
+        ) {
+          signaturesArray = response.data.output;
+        } else if (
+          response.data.result &&
+          Array.isArray(response.data.result)
+        ) {
+          signaturesArray = response.data.result;
+        }
+      }
+
+      if (!signaturesArray || signaturesArray.length === 0) {
         setSignatures([]);
         return;
       }
 
-      const contextId = getContextId();
       const signaturesWithImages = await Promise.all(
-        response.data.map(async (sig: any) => {
+        signaturesArray.map(async (sig: any) => {
           let dataURL = '';
           try {
             const blobId =
               typeof sig.blob_id === 'string'
                 ? sig.blob_id
                 : Buffer.from(sig.blob_id).toString('hex');
-
-            const blob = await blobClient.downloadBlob(blobId);
+            const contextId = localStorage.getItem('defaultContextId') || '';
+            const blob = await blobClient.downloadBlob(blobId, contextId);
             if (blob) {
               dataURL = await new Promise<string>((resolve) => {
                 const reader = new FileReader();
@@ -61,12 +80,13 @@ export default function SignaturesPage() {
           };
         }),
       );
+
       setSignatures(signaturesWithImages);
     } catch (error) {
       console.error('Failed to list signatures:', error);
       setSignatures([]);
     }
-  }, []);
+  }, [api]);
 
   useEffect(() => {
     fetchSignatures();
@@ -87,7 +107,6 @@ export default function SignaturesPage() {
 
   const uploadSignatureBlob = async (blob: Blob) => {
     const file = new File([blob], 'signature.png', { type: blob.type });
-    const contextId = getContextId();
     const onProgress = (progress: number) => {};
 
     const blobResponse = await blobClient.uploadBlob(file, onProgress, '');
@@ -99,7 +118,6 @@ export default function SignaturesPage() {
       throw new Error(errorMessage);
     }
 
-    console.log(`Upload completed: ${blobResponse.data.blobId}`);
     return {
       blobId: blobResponse.data.blobId,
       size: file.size,
