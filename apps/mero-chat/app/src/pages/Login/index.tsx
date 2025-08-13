@@ -1,17 +1,14 @@
-import {
-  setAppEndpointKey,
-  setContextId,
-  setExecutorPublicKey,
-  type ResponseData,
-} from "@calimero-network/calimero-client";
-import { useState } from "react";
+import { CalimeroConnectButton } from "@calimero-network/calimero-client";
 import { styled } from "styled-components";
-import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
-import { extractErrorMessage } from "../../utils/errorParser";
-import { defaultActiveChat } from "../../mock/mock";
-import { updateSessionChat } from "../../utils/session";
+import TabbedInterface from "../../components/contextOperations/TabbedInterface";
+import {
+  ChatTab,
+  CreateIdentityTab,
+  InviteToContextTab,
+  JoinContextTab,
+} from "../../components/contextOperations";
 
-const LoginWrapper = styled.div`
+export const Wrapper = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -20,225 +17,109 @@ const LoginWrapper = styled.div`
   background: #0e0e10;
   font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+  }
 `;
 
-const LoginCard = styled.div`
-  background: white;
+export const Card = styled.div`
+  background: rgba(30, 30, 45, 0.95);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   padding: 2rem;
-  border-radius: 12px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-  width: 100%;
-  max-width: 400px;
+  border-radius: 20px;
+  box-shadow:
+    0 25px 50px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  width: 90%;
+  max-width: 600px;
+  position: relative;
+  z-index: 1;
+
+  @media (max-width: 768px) {
+    padding: 1.5rem;
+    width: 95%;
+    max-width: 500px;
+  }
 `;
 
-const Title = styled.h1`
+export const Title = styled.h1`
   text-align: center;
-  color: #333;
+  color: #ffffff;
   margin-bottom: 1.5rem;
-  font-size: 1.8rem;
+  font-size: 2rem;
   font-weight: 600;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+
+  @media (max-width: 768px) {
+    font-size: 1.7rem;
+    margin-bottom: 1rem;
+  }
 `;
 
-const Form = styled.form`
+export const ConnectWrapper = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-`;
-
-const InputGroup = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-`;
-
-const Label = styled.label`
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: #555;
-`;
-
-const Input = styled.input`
-  padding: 0.75rem;
-  border: 2px solid #e1e5e9;
-  border-radius: 6px;
-  font-size: 1rem;
-  transition: border-color 0.2s ease;
-
-  &:focus {
-    outline: none;
-    border-color: #667eea;
-  }
-
-  &::placeholder {
-    color: #999;
-  }
-`;
-
-const Button = styled.button`
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  padding: 0.75rem;
-  border-radius: 6px;
-  font-size: 1rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease;
-  margin-top: 1rem;
-
-  &:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-  }
-
-  &:active {
-    transform: translateY(0);
-  }
-
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform: none;
-  }
-`;
-
-const ErrorMessage = styled.div`
-  color: #e74c3c;
-  font-size: 0.9rem;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
   text-align: center;
-  margin-top: 0.5rem;
 `;
 
-const SuccessMessage = styled.div`
-  color: #27ae60;
-  font-size: 0.9rem;
+export const Subtitle = styled.h2`
   text-align: center;
-  margin-top: 0.5rem;
+  color: #b8b8d1;
+  margin-bottom: 1.5rem;
+  font-size: 1.1rem;
+  font-weight: 400;
+  line-height: 1.6;
+  opacity: 0.9;
 `;
 
-export default function Login() {
-  const [formData, setFormData] = useState({
-    nodeUrl: "",
-    contextId: "",
-    identityId: "",
-  });
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+interface LoginProps {
+  isAuthenticated: boolean;
+  isConfigSet: boolean;
+}
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-    setError("");
-    setSuccess("");
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setError("");
-    setSuccess("");
-
-    // Validate inputs
-    if (
-      !formData.nodeUrl.trim() ||
-      !formData.contextId.trim() ||
-      !formData.identityId.trim()
-    ) {
-      setError("All fields are required");
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      setAppEndpointKey(formData.nodeUrl.trim());
-      setContextId(formData.contextId.trim());
-      setExecutorPublicKey(formData.identityId.trim());
-      const response: ResponseData<string> =
-        await new ClientApiDataSource().joinChat({
-          isDM: false,
-        });
-      if (response.error) {
-        const errorMessage = extractErrorMessage(response.error);
-        if (errorMessage.includes("Already a member")) {
-          setSuccess("Already connected to chat!");
-          updateSessionChat(defaultActiveChat);
-        } else {
-          setError(errorMessage);
-          return;
-        }
-      } else {
-        setSuccess("Successfully joined chat!");
-        updateSessionChat(defaultActiveChat);
-      }
-
-      setTimeout(() => {
-        window.location.href = "/";
-      }, 1000);
-    } catch (_err) {
-      setError("Failed to save login information");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
+  const tabs = [
+    {
+      name: "Chat",
+      component: (
+        <ChatTab isAuthenticated={isAuthenticated} isConfigSet={isConfigSet} />
+      ),
+    },
+    { name: "Join Context", component: <JoinContextTab /> },
+    { name: "Invite to Context", component: <InviteToContextTab /> },
+    { name: "Create Identity", component: <CreateIdentityTab /> },
+  ];
 
   return (
-    <LoginWrapper>
-      <LoginCard>
+    <Wrapper>
+      <Card>
         <Title>Welcome to Curb Chat</Title>
-        <Form onSubmit={handleSubmit}>
-          <InputGroup>
-            <Label htmlFor="nodeUrl">Node URL</Label>
-            <Input
-              id="nodeUrl"
-              name="nodeUrl"
-              type="text"
-              placeholder="Enter node URL"
-              value={formData.nodeUrl}
-              onChange={handleInputChange}
-              disabled={isLoading}
-            />
-          </InputGroup>
-
-          <InputGroup>
-            <Label htmlFor="contextId">Context ID</Label>
-            <Input
-              id="contextId"
-              name="contextId"
-              type="text"
-              placeholder="Enter context ID"
-              value={formData.contextId}
-              onChange={handleInputChange}
-              disabled={isLoading}
-            />
-          </InputGroup>
-
-          <InputGroup>
-            <Label htmlFor="identityId">Identity ID</Label>
-            <Input
-              id="identityId"
-              name="identityId"
-              type="text"
-              placeholder="Enter identity ID"
-              value={formData.identityId}
-              onChange={handleInputChange}
-              disabled={isLoading}
-            />
-          </InputGroup>
-
-          <Button type="submit" disabled={isLoading}>
-            {isLoading ? "Setting up..." : "Connect"}
-          </Button>
-
-          {error && <ErrorMessage>{error}</ErrorMessage>}
-          {success && <SuccessMessage>{success}</SuccessMessage>}
-        </Form>
-      </LoginCard>
-    </LoginWrapper>
+        {!isAuthenticated && !isConfigSet ? (
+          <ConnectWrapper>
+            <Subtitle>Connect your Node to get started</Subtitle>
+            <CalimeroConnectButton />
+          </ConnectWrapper>
+        ) : (
+          <TabbedInterface
+            tabs={tabs}
+          />
+        )}
+      </Card>
+    </Wrapper>
   );
 }

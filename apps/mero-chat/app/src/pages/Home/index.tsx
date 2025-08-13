@@ -23,7 +23,6 @@ import {
 import {
   type NodeEvent,
   type ResponseData,
-  getAppEndpointKey,
   getContextId,
   getExecutorPublicKey,
 } from "@calimero-network/calimero-client";
@@ -39,7 +38,7 @@ import { type SubscriptionsClient } from "@calimero-network/calimero-client";
 import { ContextApiDataSource } from "../../api/dataSource/nodeApiDataSource";
 import type { CreateContextResult } from "../../components/popups/StartDMPopup";
 
-export default function Home() {
+export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   const [isOpenSearchChannel, setIsOpenSearchChannel] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [channelUsers, setChannelUsers] = useState<UserId[]>([]);
@@ -62,19 +61,16 @@ export default function Home() {
     undefined
   );
 
+  useEffect(() => {
+    if (!isConfigSet) {
+      window.location.href = "/login";
+    }
+  }, [isConfigSet]);
+
   // Sync the ref with the state
   useEffect(() => {
     currentOpenThreadRef.current = currentOpenThread;
   }, [currentOpenThread]);
-
-  useEffect(() => {
-    const contextID = getContextId();
-    const nodeURL = getAppEndpointKey();
-    const identity = getExecutorPublicKey();
-    if (!contextID || !nodeURL || !identity) {
-      window.location.href = "/login";
-    }
-  }, []);
 
   const getChannelUsers = async (channelId: string) => {
     const channelUsers: ResponseData<UserId[]> =
