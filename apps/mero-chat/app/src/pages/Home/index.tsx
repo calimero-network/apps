@@ -19,6 +19,7 @@ import { defaultActiveChat } from "../../mock/mock";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 import {
   type ResponseData,
+  apiClient,
   getContextId,
   getExecutorPublicKey,
   useCalimero,
@@ -30,8 +31,8 @@ import {
   type UserId,
 } from "../../api/clientApi";
 import type { MessageWithReactions } from "../../api/clientApi";
-import { ContextApiDataSource } from "../../api/dataSource/nodeApiDataSource";
 import type { CreateContextResult } from "../../components/popups/StartDMPopup";
+import { generateDMParams } from "../../utils/dmSetupState";
 
 export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   const { app } = useCalimero();
@@ -129,15 +130,16 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
 
   const onDMSelected = useCallback(async (dm?: DMChatInfo, sc?: ActiveChat) => {
     let canJoin = true;
-    const verifyContextResponse =
-      await new ContextApiDataSource().verifyContext({
-        contextId: (sc?.contextId ? sc.contextId : dm?.context_id) || "",
-      });
+    const verifyContextResponse = await apiClient
+      .node()
+      .getContext((sc?.contextId ? sc.contextId : dm?.context_id) || "");
     if (verifyContextResponse.data) {
-      canJoin = !verifyContextResponse.data.joined;
+      canJoin = !(verifyContextResponse.data.rootHash ? true : false);
     }
 
-    const isSynced = verifyContextResponse.data?.isSynced;
+    const isSynced =
+      verifyContextResponse.data?.rootHash !==
+      "11111111111111111111111111111111";
 
     if ((sc?.account || dm?.own_identity) && !canJoin && isSynced) {
       await new ClientApiDataSource().joinChat({
@@ -206,7 +208,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const eventCallback = async (event: any ) => {
+    const eventCallback = async (event: any) => {
       try {
         if (event.type === "StateMutation") {
           fetchChannels();
@@ -421,9 +423,9 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   const onJoinedChat = async () => {
     let canJoin = false;
     if (activeChatRef.current?.type === "direct_message") {
-      const joinContextResponse = await new ContextApiDataSource().joinContext({
-        invitationPayload: activeChatRef.current?.invitationPayload || "",
-      });
+      const joinContextResponse = await apiClient
+        .node()
+        .joinContext(activeChatRef.current?.invitationPayload || "");
       if (joinContextResponse.data) {
         await fetchDms();
       } else {
@@ -506,9 +508,14 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   };
 
   const createDM = async (value: string): Promise<CreateContextResult> => {
-    const response = await new ContextApiDataSource().createContext({
-      user: value,
-    });
+    const dmParams = generateDMParams(value);
+    const response = await apiClient
+      .node()
+      .createContext(
+        dmParams.applicationId,
+        dmParams.params,
+        dmParams.protocol
+      );
 
     if (response.data) {
       const createDMResponse = await new ClientApiDataSource().createDm({
@@ -525,9 +532,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
           error: "",
         };
       } else {
-        await new ContextApiDataSource().deleteContext({
-          contextId: response.data.contextId,
-        });
+        await apiClient.node().deleteContext(response.data.contextId);
         return {
           data: "",
           error: "Failed to create DM - DM already exists",

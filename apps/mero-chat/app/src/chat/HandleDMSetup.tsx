@@ -1,12 +1,12 @@
 import { styled } from "styled-components";
 import type { ActiveChat } from "../types/Common";
 import { useState } from "react";
-import { ContextApiDataSource } from "../api/dataSource/nodeApiDataSource";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import { getStoredSession, updateSessionChat } from "../utils/session";
 import { getDMSetupState } from "../utils/dmSetupState";
 import { DMSetupState } from "../types/Common";
 import type { DMChatInfo } from "../api/clientApi";
+import { apiClient } from "@calimero-network/calimero-client";
 
 export const Wrapper = styled.div`
   height: 100%;
@@ -83,7 +83,7 @@ export default function HandleDMSetup({
     setError(null);
     setSuccess(null);
     try {
-      const response = await new ContextApiDataSource().createIdentity();
+      const response = await apiClient.node().createNewIdentity();
       if (response.data) {
         const updateIdentityResponse =
           await new ClientApiDataSource().updateNewIdentity({

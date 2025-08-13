@@ -109,7 +109,7 @@ export default function JoinContextTab() {
     try {
       const response: ResponseData<JoinContextResponse> = await apiClient
         .node()
-        .joinContext(executorPublicKey, invitationPayload.trim());
+        .joinContext(invitationPayload.trim());
 
       if (response.error) {
         setMessage({

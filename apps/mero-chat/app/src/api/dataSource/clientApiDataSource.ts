@@ -5,7 +5,6 @@ import {
   getContextId,
   getExecutorPublicKey,
   rpcClient,
-  getAuthConfig,
 } from "@calimero-network/calimero-client";
 import {
   type AcceptInvitationProps,
@@ -62,8 +61,6 @@ export function getWsSubscriptionsClient() {
 export class ClientApiDataSource implements ClientApi {
   async joinChat(props: JoinChatProps): ApiResponse<string> {
     try {
-      const auth = getAuthConfig();
-      console.log("auth config", auth);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await getJsonRpcClient().execute<any, string>(
         {

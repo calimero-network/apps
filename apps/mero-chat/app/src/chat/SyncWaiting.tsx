@@ -1,10 +1,10 @@
 import { useEffect } from "react";
 import type { DMChatInfo } from "../api/clientApi";
-import { ContextApiDataSource } from "../api/dataSource/nodeApiDataSource";
 import type { ActiveChat } from "../types/Common";
 import { Message, Title, Wrapper } from "./HandleDMSetup";
 import { getStoredSession, updateSessionChat } from "../utils/session";
 import Loader from "../components/loader/Loader";
+import { apiClient } from "@calimero-network/calimero-client";
 
 interface SyncWaitingProps {
   activeChat: ActiveChat;
@@ -18,15 +18,21 @@ export default function SyncWaiting({
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
-        const verifyResponse = await new ContextApiDataSource().verifyContext({
-          contextId: activeChat.contextId ?? "",
-        });
+        const verifyResponse = await apiClient
+          .node()
+          .getContext(activeChat.contextId ?? "");
 
         if (verifyResponse.data) {
+          const data = {
+            joined: verifyResponse.data.rootHash ? true : false,
+            isSynced:
+            verifyResponse.data.rootHash !==
+              "11111111111111111111111111111111",
+          }
           const savedSession = getStoredSession();
           if (savedSession) {
-            savedSession.isSynced = verifyResponse.data.isSynced;
-            if (verifyResponse.data.isSynced) {
+            savedSession.isSynced = data.isSynced;
+            if (data.isSynced) {
               savedSession.isFinal = true;
             }
             updateSessionChat(savedSession);
