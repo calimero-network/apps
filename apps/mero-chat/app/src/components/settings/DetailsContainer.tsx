@@ -26,7 +26,7 @@ const ChannelTitle = styled.div`
 interface DetailsContainerProps {
   channelName: string;
   selectedTabIndex?: number;
-  userList: UserId[];
+  userList: Map<string, string>;
   nonInvitedUserList: UserId[];
   channelMeta: ChannelMeta;
   handleLeaveChannel: () => void;
@@ -39,7 +39,7 @@ interface DetailsContainerProps {
 const DetailsContainer: React.FC<DetailsContainerProps> = (props) => {
   const channelName = props.channelName;
   const initialTabIndex = props.selectedTabIndex ? 0 : 1;
-  const userCount = props.userList.length;
+  const userCount = Object.keys(props.userList).length;
   const userList = props.userList;
   const channelMeta = props.channelMeta;
   const handleLeaveChannel = props.handleLeaveChannel;
@@ -66,9 +66,12 @@ const DetailsContainer: React.FC<DetailsContainerProps> = (props) => {
     });
     await reFetchChannelMembers();
   };
+
   const getNonInvitedUsers = (value: string): UserId[] => {
     return nonInvitedUserList
-      ? nonInvitedUserList.filter((u) => u.startsWith(value))
+      ? Object.values(nonInvitedUserList).filter((u) => {
+          return u.startsWith(value);
+        })
       : [];
   };
 
@@ -83,7 +86,7 @@ const DetailsContainer: React.FC<DetailsContainerProps> = (props) => {
       {selectedTabIndex === 0 && (
         <AboutDetails
           dateCreated={channelMeta.createdAt}
-          manager={channelMeta.createdBy}
+          manager={channelMeta.createdByUsername}
           handleLeaveChannel={handleLeaveChannel}
         />
       )}
@@ -95,15 +98,17 @@ const DetailsContainer: React.FC<DetailsContainerProps> = (props) => {
             if (!isModerator) {
               return;
             }
-            const user = userList.find((u) => u === userId);
+            // @ts-expect-error - userList is a Map<string, string>
+            const user = userList[userId];
             if (user) {
-              promoteModerator(user);
+              promoteModerator(userId);
             }
           }}
           removeUserFromChannel={(userId: string) => {
-            const user = userList.find((u) => u === userId);
+            // @ts-expect-error - userList is a Map<string, string>
+            const user = userList[userId];
             if (user) {
-              removeUserFromChannel(user);
+              removeUserFromChannel(userId);
             }
           }}
           channelOwner={channelMeta.createdBy}

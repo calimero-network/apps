@@ -32,6 +32,7 @@ pub enum Event {
 pub struct Message {
     pub timestamp: u64,
     pub sender: UserId,
+    pub sender_username: String,
     pub id: MessageId,
     pub text: String,
     pub edited_on: Option<u64>,
@@ -44,6 +45,7 @@ pub struct Message {
 pub struct MessageWithReactions {
     pub timestamp: u64,
     pub sender: UserId,
+    pub sender_username: String,
     pub id: MessageId,
     pub text: String,
     pub edited_on: Option<u64>,
@@ -91,6 +93,7 @@ impl AsRef<[u8]> for Channel {
 pub struct ChannelMetadata {
     pub created_at: u64,
     pub created_by: UserId,
+    pub created_by_username: Option<String>,
     pub read_only: UnorderedSet<UserId>,
     pub moderators: UnorderedSet<UserId>,
     pub links_allowed: bool,
@@ -101,6 +104,7 @@ pub struct ChannelMetadata {
 pub struct PublicChannelMetadata {
     pub created_at: u64,
     pub created_by: UserId,
+    pub created_by_username: String,
     pub links_allowed: bool,
 }
 
@@ -129,6 +133,7 @@ pub struct PublicChannelInfo {
     pub channel_type: ChannelType,
     pub read_only: bool,
     pub created_at: u64,
+    pub created_by_username: String,
     pub created_by: UserId,
     pub links_allowed: bool,
 }
@@ -146,10 +151,12 @@ pub struct DMChatInfo {
     // own identity - new dm identity
     pub own_identity_old: UserId,
     pub own_identity: Option<UserId>,
+    pub own_username: String,
 
     // other identity - new dm identity
     pub other_identity_old: UserId,
     pub other_identity_new: Option<UserId>,
+    pub other_username: String,
 
     pub did_join: bool,
     pub invitation_payload: String,
@@ -163,6 +170,7 @@ pub struct CurbChat {
     name: String,
     created_at: u64,
     members: UnorderedSet<UserId>,
+    member_usernames: UnorderedMap<UserId, String>,
     channels: UnorderedMap<Channel, ChannelInfo>,
     threads: UnorderedMap<MessageId, Vector<Message>>,
     channel_members: UnorderedMap<Channel, UnorderedSet<UserId>>,
@@ -181,6 +189,8 @@ impl CurbChat {
         created_at: u64,
         is_dm: bool,
         invitee: Option<UserId>,
+        owner_username: Option<String>,
+        invitee_username: Option<String>,
     ) -> CurbChat {
         let executor_id = UserId::new(env::executor_id());
 
@@ -188,13 +198,23 @@ impl CurbChat {
         let mut members: UnorderedSet<UserId> = UnorderedSet::new();
         let mut channel_members: UnorderedMap<Channel, UnorderedSet<UserId>> = UnorderedMap::new();
         let mut moderators: UnorderedSet<UserId> = UnorderedSet::new();
+        let mut member_usernames: UnorderedMap<UserId, String> = UnorderedMap::new();
 
         let _ = members.insert(executor_id);
+
+        if let Some(owner_username) = owner_username.clone() {
+            let _ = member_usernames.insert(executor_id, owner_username);
+        }
 
         if is_dm {
             if let Some(invitee_id) = invitee {
                 let _ = members.insert(invitee_id);
+
+                if let Some(invitee_username) = invitee_username {
+                    let _ = member_usernames.insert(invitee_id, invitee_username);
+                }
             }
+           
         }
 
         for c in default_channels {
@@ -205,6 +225,7 @@ impl CurbChat {
                 meta: ChannelMetadata {
                     created_at: created_at,
                     created_by: executor_id,
+                    created_by_username: owner_username.clone(),
                     read_only: UnorderedSet::new(),
                     moderators: UnorderedSet::new(),
                     links_allowed: true,
@@ -232,6 +253,7 @@ impl CurbChat {
             name,
             created_at,
             members,
+            member_usernames,
             channels,
             threads: UnorderedMap::new(),
             channel_members,
@@ -242,7 +264,7 @@ impl CurbChat {
         }
     }
 
-    pub fn join_chat(&mut self) -> app::Result<String, String> {
+    pub fn join_chat(&mut self, username: String) -> app::Result<String, String> {
         let executor_id = self.get_executor_id();
 
         if self.members.contains(&executor_id).unwrap_or(false) {
@@ -250,6 +272,7 @@ impl CurbChat {
         }
 
         let _ = self.members.insert(executor_id);
+        let _ = self.member_usernames.insert(executor_id, username);
 
         if let Ok(entries) = self.channels.entries() {
             for (channel, channel_info) in entries {
@@ -308,6 +331,7 @@ impl CurbChat {
             meta: ChannelMetadata {
                 created_at: created_at,
                 created_by: executor_id,
+                created_by_username: self.member_usernames.get(&executor_id).unwrap_or(None),
                 read_only: UnorderedSet::new(),
                 moderators: moderators_copy,
                 links_allowed: links_allowed,
@@ -328,6 +352,20 @@ impl CurbChat {
 
         app::emit!(Event::ChannelCreated(channel.name.clone()));
         Ok("Channel created".to_string())
+    }
+
+    pub fn get_chat_usernames(&self) -> HashMap<UserId, String> {
+        let mut usernames = HashMap::new();
+        if let Ok(entries) = self.member_usernames.entries() {
+            for (user_id, username) in entries {
+                usernames.insert(user_id.clone(), username.clone());
+            }
+        }
+        usernames
+    }
+
+    pub fn get_username(&self, user_id: UserId) -> String {
+        self.member_usernames.get(&user_id).unwrap().unwrap()
     }
 
     pub fn get_chat_members(&self) -> Vec<UserId> {
@@ -356,6 +394,7 @@ impl CurbChat {
                             read_only: channel_info.read_only,
                             created_at: channel_info.meta.created_at,
                             created_by: channel_info.meta.created_by,
+                            created_by_username: self.member_usernames.get(&channel_info.meta.created_by).unwrap().unwrap(),
                             links_allowed: channel_info.meta.links_allowed,
                         };
                         channels.insert(channel.name, public_info);
@@ -385,10 +424,12 @@ impl CurbChat {
                 };
 
                 if should_include {
+                    let created_by_username = self.member_usernames.get(&channel_info.meta.created_by).unwrap().unwrap();
                     let public_info = PublicChannelInfo {
                         channel_type: channel_info.channel_type,
                         read_only: channel_info.read_only,
                         created_at: channel_info.meta.created_at,
+                        created_by_username: created_by_username,
                         created_by: channel_info.meta.created_by,
                         links_allowed: channel_info.meta.links_allowed,
                     };
@@ -399,7 +440,7 @@ impl CurbChat {
         channels
     }
 
-    pub fn get_channel_members(&self, channel: Channel) -> app::Result<Vec<UserId>, String> {
+    pub fn get_channel_members(&self, channel: Channel) -> app::Result<HashMap<UserId, String>, String> {
         let executor_id = self.get_executor_id();
         let members = match self.channel_members.get(&channel) {
             Ok(Some(members)) => members,
@@ -410,14 +451,16 @@ impl CurbChat {
             return Err("You are not a member of this channel".to_string());
         }
 
-        let mut member_list = Vec::new();
+        let mut members_map = HashMap::new();
+
         if let Ok(iter) = members.iter() {
             for member in iter {
-                member_list.push(member.clone());
+                let username = self.member_usernames.get(&member).unwrap().unwrap();
+                members_map.insert(member.clone(), username.clone());
             }
         }
 
-        Ok(member_list)
+        Ok(members_map)
     }
 
     pub fn get_channel_info(&self, channel: Channel) -> app::Result<PublicChannelMetadata, String> {
@@ -428,6 +471,7 @@ impl CurbChat {
         Ok(PublicChannelMetadata {
             created_at: channel_info.meta.created_at,
             created_by: channel_info.meta.created_by,
+            created_by_username: self.member_usernames.get(&channel_info.meta.created_by).unwrap().unwrap(),
             links_allowed: channel_info.meta.links_allowed,
         })
     }
@@ -480,7 +524,7 @@ impl CurbChat {
         Ok("User invited to channel".to_string())
     }
 
-    pub fn get_non_member_users(&self, channel: Channel) -> app::Result<Vec<UserId>, String> {
+    pub fn get_non_member_users(&self, channel: Channel) -> app::Result<HashMap<UserId, String>, String> {
         if self.is_dm {
             return Err("Cannot create channels in a DM chat".to_string());
         }
@@ -490,11 +534,12 @@ impl CurbChat {
             _ => return Err("Channel not found".to_string()),
         };
 
-        let mut non_member_users = Vec::new();
+        let mut non_member_users = HashMap::new();
         if let Ok(iter) = self.members.iter() {
             for member in iter {
                 if !members.contains(&member).unwrap_or(false) {
-                    non_member_users.push(member.clone());
+                    let username = self.member_usernames.get(&member).unwrap().unwrap();
+                    non_member_users.insert(member.clone(), username.clone());
                 }
             }
         }
@@ -607,13 +652,19 @@ impl CurbChat {
         message: String,
         parent_message: Option<MessageId>,
         timestamp: u64,
+        sender_username: String,
     ) -> app::Result<Message, String> {
         let executor_id = self.get_executor_id();
+        let sender_username = match self.member_usernames.get(&executor_id) {
+            Ok(Some(username)) => username,
+            _ => sender_username,
+        };
         let message_id = self.get_message_id(&executor_id, &group, &message, timestamp);
 
         let message = Message {
             timestamp: timestamp,
             sender: executor_id,
+            sender_username: sender_username,
             id: message_id,
             text: message,
             deleted: None,
@@ -726,6 +777,7 @@ impl CurbChat {
                         messages.push(MessageWithReactions {
                             timestamp: message.timestamp,
                             sender: message.sender.clone(),
+                            sender_username: message.sender_username.clone(),
                             id: message.id.clone(),
                             text: message.text.clone(),
                             reactions,
@@ -827,6 +879,7 @@ impl CurbChat {
                     messages.push(MessageWithReactions {
                         timestamp: message.timestamp,
                         sender: message.sender.clone(),
+                        sender_username: message.sender_username.clone(),
                         id: message.id.clone(),
                         text: message.text.clone(),
                         reactions,
@@ -1134,6 +1187,9 @@ impl CurbChat {
             return Err("DM already exists".to_string());
         }
 
+        let own_username = self.member_usernames.get(&executor_id).unwrap().unwrap();
+        let other_username = self.member_usernames.get(&invitee).unwrap().unwrap();
+
         let context_id_for_user = context_id.clone();
         // CREATOR
         let dm_chat_info = DMChatInfo {
@@ -1144,9 +1200,11 @@ impl CurbChat {
             created_by: executor_id,
             own_identity_old: creator.clone(),
             own_identity: Some(creator_new_identity.clone()),
+            own_username: own_username.clone(),
             // user B - invitee
             other_identity_old: invitee.clone(),
             other_identity_new: None,
+            other_username: other_username.clone(),
             invitation_payload: "".to_string(),
             did_join: true,
         };
@@ -1166,6 +1224,8 @@ impl CurbChat {
                 // user B - invitee
                 own_identity_old: invitee.clone(),
                 own_identity: None,
+                own_username: other_username.clone(),
+                other_username: own_username.clone(),
                 invitation_payload: "".to_string(),
                 did_join: false,
             },
@@ -1322,6 +1382,8 @@ impl CurbChat {
                         own_identity: dm.own_identity.clone(),
                         other_identity_old: dm.other_identity_old.clone(),
                         other_identity_new: dm.other_identity_new.clone(),
+                        own_username: dm.own_username.clone(),
+                        other_username: dm.other_username.clone(),
                         did_join: dm.did_join,
                         invitation_payload: dm.invitation_payload.clone(),
                     });

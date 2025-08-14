@@ -195,7 +195,13 @@ const AddUserDialog = ({
 }: AddUserDialogProps) => {
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const addUser = useCallback(() => {
-    selectedUsers.forEach((account) => addMember(account, channelName));
+    selectedUsers.forEach((account) => {
+      const identityId = Object.keys(nonInvitedUserList).find(
+        // @ts-expect-error - nonInvitedUserList is a Map
+        (u) => nonInvitedUserList[u] === account
+      ) as string;
+      addMember(identityId, channelName);
+    });
   }, [addMember, channelName, selectedUsers]);
 
   const updateUsers = useCallback((value: string) => {
@@ -243,7 +249,7 @@ interface MemberDetailsProps {
   setOptionsOpen: (id: number) => void;
   selectedUser: User | null;
   setSelectedUser: (user: User | null) => void;
-  userList: UserId[];
+  userList: Map<string, string>;
   addMember: (account: string, channel: string) => void;
   channelName: string;
   getNonInvitedUsers: (value: string) => UserId[];
@@ -257,6 +263,7 @@ const MemberDetails: React.FC<MemberDetailsProps> = (props) => {
   // const channelOwner = props.channelOwner;
 
   const [optionsOpen, setOptionsOpen] = useState(-1);
+
   //const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
   // const ModeratorOptionsPopup = ({ id, user, length }: { id: number; user: User, length: number }) => {
@@ -302,12 +309,15 @@ const MemberDetails: React.FC<MemberDetailsProps> = (props) => {
       />
       {optionsOpen !== -1 && <OverLay onClick={() => setOptionsOpen(-1)} />}
       <UserList>
-        {userList.length > 0 &&
-          userList.map((user, id) => (
+        {Object.keys(userList).length > 0 &&
+          Object.keys(userList).map((user, id) => (
             <UserListItem key={id}>
               <UserInfo>
                 <UserProfileIcon accountId={user ?? ""} />
-                <Text $isSelected={optionsOpen === id}>{user}</Text>
+                <Text $isSelected={optionsOpen === Number(id)}>
+                  {/* @ts-expect-error - userList is a Map */}
+                  {userList[user]}
+                </Text>
               </UserInfo>
               {/* TODO: Add moderator options */}
               {/* <ModeratorOptions>

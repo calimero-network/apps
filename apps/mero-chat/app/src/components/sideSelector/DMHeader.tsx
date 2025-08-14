@@ -1,7 +1,6 @@
 import { styled } from "styled-components";
 import StartDMPopup, { type CreateContextResult } from "../popups/StartDMPopup";
 import { useCallback } from "react";
-import type { UserId } from "../../api/clientApi";
 import { validateUserId } from "../../utils/validation";
 
 const Container = styled.div`
@@ -38,19 +37,20 @@ const IconPlusContainer = styled.div`
 
 interface DMHeaderProps {
   createDM: (value: string) => Promise<CreateContextResult>;
-  chatMembers: UserId[];
+  chatMembers: Map<string, string>;
 }
 
 export default function DMHeader({ createDM, chatMembers }: DMHeaderProps) {
   const isValidIdentityId = useCallback((value: string) => {
     return validateUserId(value);
   }, []);
+  
   return (
     <Container>
       <TextBold>{"Direct Messages"}</TextBold>
       <StartDMPopup
         title="Create a new private DM context"
-        placeholder="invite user by entering their identity ID"
+        placeholder="invite user by entering their name"
         buttonText="Next"
         colors={{
           base: "#5765f2",

@@ -59,7 +59,7 @@ export default function UserItem({
     <UserListItem selected={selected} onClick={handleClick}>
       <UserInfoContainer>
         <UserProfileIcon accountId={userDM.other_identity_old} active={true} />
-        <NameContainer>{`${userDM.other_identity_old.slice(0, 6)}...${userDM.other_identity_old.slice(-4)}`}</NameContainer>
+        <NameContainer>{`${userDM.other_username}`}</NameContainer>
       </UserInfoContainer>
       {/* {user?.unreadMessages && user.unreadMessages.count > 0 && (
         <UnreadMessagesBadge

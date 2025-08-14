@@ -290,7 +290,7 @@ export default function ChatDisplaySplit({
         </ContainerPadding>
         <MessageInput
           selectedChat={
-            activeChat.type === "channel" ? activeChat.name : activeChat.id
+            activeChat.type === "channel" ? activeChat.name : activeChat.username || ""
           }
           sendMessage={sendMessage}
           resetImage={resetImage}

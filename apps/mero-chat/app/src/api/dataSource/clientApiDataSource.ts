@@ -1,6 +1,5 @@
 import {
   type ApiResponse,
-  WsSubscriptionsClient,
   getAppEndpointKey,
   getContextId,
   getExecutorPublicKey,
@@ -48,16 +47,6 @@ export function getJsonRpcClient() {
   return rpcClient;
 }
 
-export function getWsSubscriptionsClient() {
-  const appEndpointKey = getAppEndpointKey();
-  if (!appEndpointKey) {
-    throw new Error(
-      "Application endpoint key is missing. Please check your configuration."
-    );
-  }
-  return new WsSubscriptionsClient(appEndpointKey, "/ws");
-}
-
 export class ClientApiDataSource implements ClientApi {
   async joinChat(props: JoinChatProps): ApiResponse<string> {
     try {
@@ -66,7 +55,9 @@ export class ClientApiDataSource implements ClientApi {
         {
           contextId: (props.isDM ? getDmContextId() : getContextId()) || "",
           method: ClientMethod.JOIN_CHAT,
-          argsJson: {},
+          argsJson: {
+            username: props.username,
+          },
           executorPublicKey:
             (props.isDM ? props.executor : getExecutorPublicKey()) || "",
         },
@@ -320,10 +311,10 @@ export class ClientApiDataSource implements ClientApi {
 
   async getChannelMembers(
     props: GetChannelMembersProps
-  ): ApiResponse<UserId[]> {
+  ): ApiResponse<Map<string, string>> {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await getJsonRpcClient().execute<any, UserId[]>(
+      const response = await getJsonRpcClient().execute<any, Map<string, string>>(
         {
           contextId: getContextId() || "",
           method: ClientMethod.GET_CHANNEL_MEMBERS,
@@ -351,7 +342,7 @@ export class ClientApiDataSource implements ClientApi {
       }
 
       return {
-        data: response?.result.output as UserId[],
+        data: response?.result.output as Map<string, string>,
         error: null,
       };
     } catch (error) {
@@ -749,13 +740,13 @@ export class ClientApiDataSource implements ClientApi {
     }
   }
 
-  async getChatMembers(props: GetChatMembersProps): ApiResponse<UserId[]> {
+  async getChatMembers(props: GetChatMembersProps): ApiResponse<Map<string, string>> {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await getJsonRpcClient().execute<any, UserId[]>(
+      const response = await getJsonRpcClient().execute<any, Map<string, string>>(
         {
           contextId: (props.isDM ? getDmContextId() : getContextId()) || "",
-          method: ClientMethod.GET_CHAT_MEMBERS,
+          method: ClientMethod.GET_CHAT_USERNAMES,
           argsJson: {},
           executorPublicKey:
             (props.isDM ? props.executor : getExecutorPublicKey()) || "",
@@ -778,7 +769,7 @@ export class ClientApiDataSource implements ClientApi {
         }
       }
       return {
-        data: response?.result.output as UserId[],
+        data: response?.result.output as Map<string, string>,
         error: null,
       };
     } catch (error) {

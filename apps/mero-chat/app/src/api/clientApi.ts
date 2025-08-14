@@ -28,6 +28,7 @@ export interface ChannelInfo {
   channel_type: string;
   created_at: number;
   created_by: string;
+  created_by_username: string;
   links_allowed: boolean;
   read_only: boolean;
 }
@@ -56,6 +57,7 @@ export interface GetMessagesProps {
 export interface Message {
   id: string;
   sender: string;
+  sender_username: string;
   text: string;
   timestamp: number;
   deleted?: boolean;
@@ -97,8 +99,10 @@ export interface DMChatInfo {
   context_id: string;
   other_identity_new: UserId;
   other_identity_old: UserId;
+  other_username: string;
   own_identity: UserId;
   own_identity_old: UserId;
+  own_username: string;
   did_join: boolean;
   invitation_payload: string;
 }
@@ -153,6 +157,7 @@ export interface JoinChatProps {
   isDM?: boolean;
   contextId?: string;
   executor?: UserId;
+  username?: string;
 }
 
 export interface DeleteDMProps {
@@ -182,6 +187,8 @@ export enum ClientMethod {
   UPDATE_INVITATION_PAYLOAD = "update_invitation_payload",
   ACCEPT_INVITATION = "accept_invitation",
   DELETE_DM = "delete_dm",
+  GET_USERNAME = "get_username",
+  GET_CHAT_USERNAMES = "get_chat_usernames",
 }
 
 export interface ClientApi {
@@ -189,7 +196,7 @@ export interface ClientApi {
   createChannel(props: CreateChannelProps): ApiResponse<CreateChannelResponse>;
   getChannels(): ApiResponse<Channels>;
   getAllChannelsSearch(): ApiResponse<Channels>;
-  getChannelMembers(props: GetChannelMembersProps): ApiResponse<UserId[]>;
+  getChannelMembers(props: GetChannelMembersProps): ApiResponse<Map<string, string>>;
   getChannelInfo(props: GetChannelInfoProps): ApiResponse<ChannelInfo>;
   inviteToChannel(props: InviteToChannelProps): ApiResponse<string>;
   getNonMemberUsers(props: GetNonMemberUsersProps): ApiResponse<UserId[]>;
@@ -198,7 +205,7 @@ export interface ClientApi {
   getMessages(props: GetMessagesProps): ApiResponse<FullMessageResponse>;
   sendMessage(props: SendMessageProps): ApiResponse<Message>;
   getDms(): ApiResponse<DMChatInfo[]>;
-  getChatMembers(props: GetChatMembersProps): ApiResponse<UserId[]>;
+  getChatMembers(props: GetChatMembersProps): ApiResponse<Map<string, string>>;
   createDm(props: CreateDmProps): ApiResponse<string>;
   updateReaction(props: UpdateReactionProps): ApiResponse<string>;
   editMessage(props: EditMessageProps): ApiResponse<Message>;

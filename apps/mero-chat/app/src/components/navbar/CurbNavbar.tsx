@@ -157,7 +157,7 @@ interface CurbNavbarProps {
   setIsSidebarOpen: (isOpen: boolean) => void;
   isOpenSearchChannel: boolean;
   setIsOpenSearchChannel: (isOpen: boolean) => void;
-  channelUserList: UserId[];
+  channelUserList: Map<string, string>;
   nonInvitedUserList: UserId[];
   reFetchChannelMembers: () => void;
   setActiveChat: (chat: ActiveChat) => void;
@@ -176,6 +176,7 @@ export default function CurbNavbar({
   fetchChannels,
 }: CurbNavbarProps) {
   const [isOpen, setIsOpen] = useState(false);
+
   return (
     <NavigationBar $isSidebarOpen={isSidebarOpen}>
       <ItemsContainer $align={true}>
@@ -204,7 +205,7 @@ export default function CurbNavbar({
       <FlexContainer>
         {activeChat &&
           activeChat?.type === "channel" &&
-          channelUserList.length > 0 && (
+          Object.keys(channelUserList).length > 0 && (
             <ItemsContainer $align={false}>
               <ChannelDetailsPopup
                 toggle={

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { styled } from "styled-components";
 import { useCalimero } from "@calimero-network/calimero-client";
+import { clearDmContextId, clearStoredSession } from "../../utils/session";
 
 const TabContainer = styled.div`
   display: flex;
@@ -79,6 +80,12 @@ export default function TabbedInterface({ tabs }: TabbedInterfaceProps) {
   const [activeTab, setActiveTab] = useState(0);
   const { logout } = useCalimero();
 
+  const handleLogout = () => {
+    clearStoredSession();
+    clearDmContextId();
+    logout();
+  }
+
   return (
     <TabContainer>
       <TabNavigation>
@@ -97,7 +104,7 @@ export default function TabbedInterface({ tabs }: TabbedInterfaceProps) {
         {tabs[activeTab].component}
       </TabContent>
 
-      <LogoutButton onClick={logout}>
+      <LogoutButton onClick={handleLogout}>
         Logout
       </LogoutButton>
     </TabContainer>

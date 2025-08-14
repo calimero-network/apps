@@ -29,7 +29,7 @@ interface AppContainerProps {
   activeChat: ActiveChat | null;
   updateSelectedActiveChat: (chat: ActiveChat) => void;
   openSearchPage: () => void;
-  channelUsers: UserId[];
+  channelUsers: Map<string, string>;
   nonInvitedUserList: UserId[];
   onDMSelected: (dm?: DMChatInfo, sc?: ActiveChat) => void;
   loadInitialChatMessages: () => Promise<ChatMessagesData>;
@@ -39,7 +39,7 @@ interface AppContainerProps {
   fetchChannels: () => void;
   onJoinedChat: () => void;
   loadPrevMessages: (id: string) => Promise<ChatMessagesDataWithOlder>;
-  chatMembers: UserId[];
+  chatMembers: Map<string, string>;
   createDM: (value: string) => Promise<CreateContextResult>;
   privateDMs: DMChatInfo[];
   loadInitialThreadMessages: (parentMessageId: string) => Promise<ChatMessagesData>;

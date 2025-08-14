@@ -38,7 +38,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   const { app } = useCalimero();
   const [isOpenSearchChannel, setIsOpenSearchChannel] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [channelUsers, setChannelUsers] = useState<UserId[]>([]);
+  const [channelUsers, setChannelUsers] = useState<Map<string, string>>(new Map());
   const [activeChat, setActiveChat] = useState<ActiveChat | null>(null);
   const [incomingMessages, setIncomingMessages] = useState<CurbMessage[]>([]);
   const [nonInvitedUserList, setNonInvitedUserList] = useState<UserId[]>([]);
@@ -70,7 +70,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   }, [currentOpenThread]);
 
   const getChannelUsers = async (channelId: string) => {
-    const channelUsers: ResponseData<UserId[]> =
+    const channelUsers: ResponseData<Map<string, string>> =
       await new ClientApiDataSource().getChannelMembers({
         channel: { name: channelId },
       });
@@ -146,6 +146,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
         contextId: dm?.context_id || "",
         isDM: true,
         executor: dm?.own_identity || "",
+        username: dm?.own_username || "",
       });
     }
 
@@ -165,6 +166,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
         invitationPayload: dm?.invitation_payload || "",
         id: dm?.other_identity_old || "",
         name: dm?.other_identity_old || "",
+        username: dm?.other_username || "",
         account: dm?.own_identity || "",
         otherIdentityNew: dm?.other_identity_new || "",
         creator: dm?.created_by || "",
@@ -261,6 +263,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
                 key: message.id,
                 timestamp: message.timestamp * 1000,
                 sender: message.sender,
+                senderUsername: message.sender_username,
                 reactions: message.reactions,
                 threadCount: message.thread_count,
                 threadLastTimestamp: message.thread_last_timestamp,
@@ -334,6 +337,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
           key: message.id,
           timestamp: message.timestamp * 1000,
           sender: message.sender,
+          senderUsername: message.sender_username,
           reactions: message.reactions,
           threadCount: message.thread_count,
           threadLastTimestamp: message.thread_last_timestamp,
@@ -375,6 +379,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
           channelType: channelInfo.channel_type,
           description: "",
           owner: channelInfo.created_by,
+          createdByUsername: channelInfo.created_by_username,
           members: [],
           createdBy: channelInfo.created_by,
           inviteOnly: false,
@@ -402,10 +407,10 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     }
   };
 
-  const [chatMembers, setChatMembers] = useState<UserId[]>([]);
+  const [chatMembers, setChatMembers] = useState<Map<string, string>>(new Map());
 
   const fetchChatMembers = async () => {
-    const chatMembers: ResponseData<UserId[]> =
+    const chatMembers: ResponseData<Map<string, string>> =
       await new ClientApiDataSource().getChatMembers({
         isDM: false,
       });
@@ -481,6 +486,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
           key: message.id,
           timestamp: message.timestamp * 1000,
           sender: message.sender,
+          senderUsername: message.sender_username,
           reactions: message.reactions,
           threadCount: message.thread_count,
           threadLastTimestamp: message.thread_last_timestamp,
@@ -508,7 +514,11 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   };
 
   const createDM = async (value: string): Promise<CreateContextResult> => {
-    const dmParams = generateDMParams(value);
+    // @ts-expect-error - chatMembers is a Map<string, string>
+    const creatorUsername = chatMembers[getExecutorPublicKey() || ""];
+    // @ts-expect-error - chatMembers is a Map<string, string>
+    const inviteeUsername = chatMembers[value];
+    const dmParams = generateDMParams(value, creatorUsername, inviteeUsername);
     const response = await apiClient
       .node()
       .createContext(
@@ -574,6 +584,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
           key: message.id,
           timestamp: message.timestamp * 1000,
           sender: message.sender,
+          senderUsername: message.sender_username,
           reactions: message.reactions,
           threadCount: message.thread_count,
           threadLastTimestamp: message.thread_last_timestamp,
@@ -638,6 +649,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
           key: message.id,
           timestamp: message.timestamp * 1000,
           sender: message.sender,
+          senderUsername: message.sender_username,
           reactions: message.reactions,
           threadCount: message.thread_count,
           threadLastTimestamp: message.thread_last_timestamp,

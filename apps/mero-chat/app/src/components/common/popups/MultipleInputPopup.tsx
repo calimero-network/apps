@@ -203,7 +203,7 @@ const AutocompleteContainer: React.FC<AutocompleteContainerProps> = ({
   selectUser,
   selectedUsers,
 }) => {
-  const filteredInviteUsers = inviteUsers.filter(
+  const filteredInviteUsers = Object.values(inviteUsers).filter(
     (user) => user !== value && !selectedUsers.includes(user)
   );
   return (
@@ -247,7 +247,7 @@ const MultipleInputPopup: React.FC<MultipleInputPopupProps> = (props) => {
   const isAutocompleteListOpen =
     autocomplete &&
     inputValue &&
-    nonInvitedUserList && nonInvitedUserList?.length > 0 &&
+    nonInvitedUserList && Object.keys(nonInvitedUserList).length > 0 &&
     showAutocomplete;
 
   const selectUser = (userId: string) => {

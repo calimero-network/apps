@@ -93,12 +93,15 @@ export function isInvitee(activeChat: ActiveChat): boolean {
 } 
 
 
-export function generateDMParams(value: string) {
+export function generateDMParams(value: string, creatorUsername: string, inviteeUsername: string) {
   const jsonData = {
     name: value,
-    is_dm: true,
     default_channels: [{ name: "private_dm" }],
     created_at: Date.now(),
+    is_dm: true,
+    invitee: value,
+    owner_username: creatorUsername,
+    invitee_username: inviteeUsername,
   };
   const jsonString = JSON.stringify(jsonData);
   return {

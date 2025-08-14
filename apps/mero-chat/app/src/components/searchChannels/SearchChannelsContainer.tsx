@@ -7,7 +7,7 @@ import {
   getExecutorPublicKey,
   type ResponseData,
 } from "@calimero-network/calimero-client";
-import type { Channels, UserId } from "../../api/clientApi";
+import type { Channels } from "../../api/clientApi";
 
 const SearchContainer = styled.div`
   padding: 24px;
@@ -217,13 +217,13 @@ export default function SearchChannelsContainer({
       if (channels.data) {
         const channelsArray: ChannelMeta[] = await Promise.all(
           Object.entries(channels.data).map(async ([name, channelInfo]) => {
-            const channelMembers: ResponseData<UserId[]> =
+            const channelMembers: ResponseData<Map<string, string>> =
               await new ClientApiDataSource().getChannelMembers({
                 channel: { name: name },
               });
             let isMember = false;
             if (channelMembers.data) {
-              isMember = channelMembers.data.includes(
+              isMember = Object.keys(channelMembers.data).includes(
                 getExecutorPublicKey() || ""
               );
             } else {
@@ -237,6 +237,7 @@ export default function SearchChannelsContainer({
               owner: channelInfo.created_by,
               members: [],
               createdBy: channelInfo.created_by,
+              createdByUsername: channelInfo.created_by_username,
               inviteOnly: false,
               unreadMessages: {
                 count: 0,

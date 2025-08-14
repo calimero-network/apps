@@ -1,6 +1,6 @@
-import React from 'react';
-import styled from 'styled-components';
-import { timestampToDate } from '../../utils/time';
+import React from "react";
+import styled from "styled-components";
+import { timestampToDate } from "../../utils/time";
 
 interface AboutDetailsProps {
   dateCreated: string;
@@ -23,18 +23,18 @@ const SettingsItem = styled.div<SettingsItemProps>`
   gap: 0.5rem;
   background-color: #0e0e10;
   padding-left: 1rem;
-  ${({ $borderbottom }) => $borderbottom && 'border-bottom: 1px solid #282933;'}
+  ${({ $borderbottom }) => $borderbottom && "border-bottom: 1px solid #282933;"}
   ${({ $roundedTop }) =>
     $roundedTop &&
-    'border-top-left-radius: 0.375rem; border-top-right-radius: 0.375rem;'}
+    "border-top-left-radius: 0.375rem; border-top-right-radius: 0.375rem;"}
     ${({ $roundedBottom }) =>
     $roundedBottom &&
-    'border-bottom-left-radius: 0.375rem; border-bottom-right-radius: 0.375rem;'}
+    "border-bottom-left-radius: 0.375rem; border-bottom-right-radius: 0.375rem;"}
 `;
 
 const Text = styled.h6<TextProps>`
   ${({ $red }) =>
-    $red ? 'color: #DC3545; :hover { color: #f76560 }' : 'color: #FFF;'}
+    $red ? "color: #DC3545; :hover { color: #f76560 }" : "color: #FFF;"}
   /* Body/Regular */
     font-family: Helvetica Neue;
   font-size: 16px;
@@ -60,12 +60,12 @@ const AboutDetails: React.FC<AboutDetailsProps> = (props) => {
       <SettingsItem $borderbottom $roundedTop>
         <Text>Created</Text>
         <Text>
-          {props.dateCreated ? timestampToDate(props.dateCreated) : 'N/A'}
+          {props.dateCreated ? timestampToDate(props.dateCreated) : "N/A"}
         </Text>
       </SettingsItem>
       <SettingsItem $borderbottom>
         <Text>Managed by</Text>
-        <Text>{props.manager.slice(0, 6)}...{props.manager.slice(-4)}</Text>
+        <Text>{props.manager}</Text>
       </SettingsItem>
       <SettingsItem $roundedBottom>
         <ButtonLeave>
