@@ -91,3 +91,19 @@ export function isCreator(activeChat: ActiveChat): boolean {
 export function isInvitee(activeChat: ActiveChat): boolean {
   return activeChat.canJoin ?? false;
 } 
+
+
+export function generateDMParams(value: string) {
+  const jsonData = {
+    name: value,
+    is_dm: true,
+    default_channels: [{ name: "private_dm" }],
+    created_at: Date.now(),
+  };
+  const jsonString = JSON.stringify(jsonData);
+  return {
+    applicationId: import.meta.env.VITE_APPLICATION_ID || "",
+    protocol: "near",
+    params: jsonString,
+  };
+}

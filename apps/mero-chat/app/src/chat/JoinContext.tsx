@@ -2,12 +2,12 @@ import { useState } from "react";
 import type { ActiveChat } from "../types/Common";
 import { MessageJoinWrapper } from "./JoinChannel";
 import Loader from "../components/loader/Loader";
-import { ContextApiDataSource } from "../api/dataSource/nodeApiDataSource";
 import { styled } from "styled-components";
 import { getDMSetupState } from "../utils/dmSetupState";
 import { DMSetupState } from "../types/Common";
 import type { DMChatInfo } from "../api/clientApi";
 import { getStoredSession, updateSessionChat } from "../utils/session";
+import { apiClient } from "@calimero-network/calimero-client";
 
 const TextWrapper = styled.div`
   display: flex;
@@ -51,21 +51,21 @@ export default function JoinContext({
       return;
     }
     try {
-      const response = await new ContextApiDataSource().joinContext({
-        invitationPayload,
-      });
+      const response = await apiClient
+        .node()
+        .joinContext(invitationPayload.trim());
+
 
       if (response.data) {
         const verifyContextResponse =
-          await new ContextApiDataSource().verifyContext({
-            contextId: activeChat.contextId ?? "",
-          });
+          await apiClient.node().getContext(activeChat.contextId ?? "");
         if (verifyContextResponse.data) {
           setSuccess("Context joined successfully");
           const savedSession = getStoredSession();
           if (savedSession) {
             savedSession.canJoin = false;
-            savedSession.isSynced = verifyContextResponse.data.isSynced;
+            savedSession.isSynced = verifyContextResponse.data.rootHash !==
+            "11111111111111111111111111111111";
             updateSessionChat(savedSession);
             onDMSelected(undefined, savedSession);
           }

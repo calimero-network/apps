@@ -1,12 +1,10 @@
 import {
   type ApiResponse,
-  JsonRpcClient,
   WsSubscriptionsClient,
-  type RpcError,
-  handleRpcError,
   getAppEndpointKey,
   getContextId,
   getExecutorPublicKey,
+  rpcClient,
 } from "@calimero-network/calimero-client";
 import {
   type AcceptInvitationProps,
@@ -47,7 +45,7 @@ export function getJsonRpcClient() {
       "Application endpoint key is missing. Please check your configuration."
     );
   }
-  return new JsonRpcClient(appEndpointKey, "/jsonrpc");
+  return rpcClient;
 }
 
 export function getWsSubscriptionsClient() {
@@ -61,24 +59,6 @@ export function getWsSubscriptionsClient() {
 }
 
 export class ClientApiDataSource implements ClientApi {
-  private async handleError(
-    error: RpcError,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    params: any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    callbackFunction: any
-  ) {
-    if (error && error.code) {
-      const response = await handleRpcError(error, getAppEndpointKey);
-      if (response.code === 403) {
-        return await callbackFunction(params);
-      }
-      return {
-        error: await handleRpcError(error, getAppEndpointKey),
-      };
-    }
-  }
-
   async joinChat(props: JoinChatProps): ApiResponse<string> {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -98,7 +78,14 @@ export class ClientApiDataSource implements ClientApi {
         }
       );
       if (response?.error) {
-        return await this.handleError(response.error, {}, this.joinChat);
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
       }
       return {
         data: response?.result.output as string,
@@ -152,7 +139,14 @@ export class ClientApiDataSource implements ClientApi {
       );
 
       if (response?.error) {
-        return await this.handleError(response.error, {}, this.createChannel);
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
       }
 
       return {
@@ -194,7 +188,14 @@ export class ClientApiDataSource implements ClientApi {
         }
       );
       if (response?.error) {
-        return await this.handleError(response.error, {}, this.getChannels);
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
       }
 
       return {
@@ -236,11 +237,14 @@ export class ClientApiDataSource implements ClientApi {
         }
       );
       if (response?.error) {
-        return await this.handleError(
-          response.error,
-          {},
-          this.getAllChannelsSearch
-        );
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
       }
       return {
         data: response?.result.output as Channels,
@@ -284,9 +288,15 @@ export class ClientApiDataSource implements ClientApi {
         }
       );
       if (response?.error) {
-        return await this.handleError(response.error, {}, this.getChannelInfo);
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
       }
-
       return {
         data: response?.result.output as ChannelInfo,
         error: null,
@@ -330,11 +340,14 @@ export class ClientApiDataSource implements ClientApi {
         }
       );
       if (response?.error) {
-        return await this.handleError(
-          response.error,
-          {},
-          this.getChannelMembers
-        );
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
       }
 
       return {
@@ -380,7 +393,14 @@ export class ClientApiDataSource implements ClientApi {
         }
       );
       if (response?.error) {
-        return await this.handleError(response.error, {}, this.inviteToChannel);
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
       }
       return {
         data: response?.result.output as string,
@@ -425,11 +445,14 @@ export class ClientApiDataSource implements ClientApi {
         }
       );
       if (response?.error) {
-        return await this.handleError(
-          response.error,
-          {},
-          this.getNonMemberUsers
-        );
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
       }
       return {
         data: response?.result.output as UserId[],
@@ -473,7 +496,14 @@ export class ClientApiDataSource implements ClientApi {
         }
       );
       if (response?.error) {
-        return await this.handleError(response.error, {}, this.joinChannel);
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
       }
       return {
         data: response?.result.output as string,
@@ -516,7 +546,14 @@ export class ClientApiDataSource implements ClientApi {
         }
       );
       if (response?.error) {
-        return await this.handleError(response.error, {}, this.leaveChannel);
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
       }
       return {
         data: response?.result.output as string,
@@ -566,7 +603,14 @@ export class ClientApiDataSource implements ClientApi {
         }
       );
       if (response?.error) {
-        return await this.handleError(response.error, {}, this.getMessages);
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
       }
 
       return {
@@ -626,7 +670,14 @@ export class ClientApiDataSource implements ClientApi {
       );
 
       if (response?.error) {
-        return await this.handleError(response.error, {}, this.sendMessage);
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
       }
 
       return {
@@ -668,7 +719,14 @@ export class ClientApiDataSource implements ClientApi {
         }
       );
       if (response?.error) {
-        return await this.handleError(response.error, {}, this.getDms);
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
       }
       return {
         data: response?.result.output as DMChatInfo[],
@@ -710,7 +768,14 @@ export class ClientApiDataSource implements ClientApi {
         }
       );
       if (response?.error) {
-        return await this.handleError(response.error, {}, this.getChatMembers);
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
       }
       return {
         data: response?.result.output as UserId[],
@@ -757,7 +822,14 @@ export class ClientApiDataSource implements ClientApi {
         }
       );
       if (response?.error) {
-        return await this.handleError(response.error, {}, this.createDm);
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
       }
       return {
         data: response?.result.output as string,
@@ -803,7 +875,14 @@ export class ClientApiDataSource implements ClientApi {
         }
       );
       if (response?.error) {
-        return await this.handleError(response.error, {}, this.updateReaction);
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
       }
       return {
         data: response?.result.output as string,
@@ -847,7 +926,14 @@ export class ClientApiDataSource implements ClientApi {
         }
       );
       if (response?.error) {
-        return await this.handleError(response.error, {}, this.deleteMessage);
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
       }
       return {
         data: response?.result.output as string,
@@ -893,7 +979,14 @@ export class ClientApiDataSource implements ClientApi {
         }
       );
       if (response?.error) {
-        return await this.handleError(response.error, {}, this.editMessage);
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
       }
       return {
         data: response?.result.output as Message,
@@ -937,11 +1030,14 @@ export class ClientApiDataSource implements ClientApi {
         }
       );
       if (response?.error) {
-        return await this.handleError(
-          response.error,
-          {},
-          this.updateNewIdentity
-        );
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
       }
       return {
         data: response?.result.output as string,
@@ -988,11 +1084,14 @@ export class ClientApiDataSource implements ClientApi {
         }
       );
       if (response?.error) {
-        return await this.handleError(
-          response.error,
-          {},
-          this.updateInvitationPayload
-        );
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
       }
       return {
         data: response?.result.output as string,
@@ -1036,11 +1135,14 @@ export class ClientApiDataSource implements ClientApi {
         }
       );
       if (response?.error) {
-        return await this.handleError(
-          response.error,
-          {},
-          this.acceptInvitation
-        );
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
       }
       return {
         data: response?.result.output as string,
@@ -1083,7 +1185,14 @@ export class ClientApiDataSource implements ClientApi {
         }
       );
       if (response?.error) {
-        return await this.handleError(response.error, {}, this.deleteDM);
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
       }
       return {
         data: response?.result.output as string,
