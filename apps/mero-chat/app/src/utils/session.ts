@@ -31,3 +31,7 @@ export const setDmContextId = (contextId: string) => {
 export const getDmContextId = () => {
   return localStorage.getItem("dmContextId");
 }
+
+export const clearDmContextId = () => {
+  localStorage.removeItem("dmContextId");
+}

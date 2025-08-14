@@ -10,7 +10,7 @@ import { defaultActiveChat } from "../../mock/mock";
 interface ChannelDetailsPopupProps {
   toggle: React.ReactNode;
   chat: ActiveChat;
-  channelUserList?: UserId[];
+  channelUserList?: Map<string, string>;
   nonInvitedUserList: UserId[];
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
@@ -38,6 +38,7 @@ export default function ChannelDetailsPopup({
     members: [],
     createdAt: "",
     createdBy: "",
+    createdByUsername: "",
     owner: "",
     inviteOnly: false,
     type: "channel",
@@ -58,6 +59,7 @@ export default function ChannelDetailsPopup({
         ...prevMeta,
         createdAt: new Date(channelInfo.data.created_at * 1000).toISOString(),
         createdBy: channelInfo.data.created_by,
+        createdByUsername: channelInfo.data.created_by_username,
       }));
     }
     
@@ -85,7 +87,7 @@ export default function ChannelDetailsPopup({
     <DetailsContainer
       channelName={channelName}
       selectedTabIndex={selectedTabIndex}
-      userList={channelUserList ?? []}
+      userList={channelUserList ?? new Map()}
       nonInvitedUserList={nonInvitedUserList}
       channelMeta={channelMeta}
       handleLeaveChannel={handleLeaveChannel}

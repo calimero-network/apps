@@ -1220,8 +1220,8 @@ impl CurbChat {
                 // user B - invitee
                 own_identity_old: invitee.clone(),
                 own_identity: None,
-                own_username: own_username.clone(),
-                other_username: other_username.clone(),
+                own_username: other_username.clone(),
+                other_username: own_username.clone(),
                 invitation_payload: "".to_string(),
                 did_join: false,
             },

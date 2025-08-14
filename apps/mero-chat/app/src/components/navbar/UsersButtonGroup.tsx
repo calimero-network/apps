@@ -1,10 +1,9 @@
 import styled from "styled-components";
 import UserProfileIcon from "../profileIcon/UserProfileIcon";
 import { useState } from "react";
-import type { UserId } from "../../api/clientApi";
 
 interface UsersButtonGroupProps {
-  channelUserList: UserId[];
+  channelUserList: Map<string, string>;
   openMemberList: () => void;
 }
 
@@ -16,7 +15,10 @@ const AvatarContainer = styled.div`
   align-items: center;
 `;
 
-const ProfileIconContainerGroup = styled.div<{ $counter?: boolean, $isHovered?: boolean }>`
+const ProfileIconContainerGroup = styled.div<{
+  $counter?: boolean;
+  $isHovered?: boolean;
+}>`
   position: relative;
   display: flex;
   justify-content: center;
@@ -34,29 +36,35 @@ const ProfileIconContainerGroup = styled.div<{ $counter?: boolean, $isHovered?: 
   font-weight: 400;
   line-height: 150%; /* 21px */
   margin-left: -8px;
-  border: solid 1px ${({ $isHovered }) => $isHovered ? "#fff" : "#0e0e10"};
+  border: solid 1px ${({ $isHovered }) => ($isHovered ? "#fff" : "#0e0e10")};
 `;
 
 export default function UsersButtonGroup(props: UsersButtonGroupProps) {
   const [isHovered, setIsHovered] = useState(false);
+
+  
   return (
-    <AvatarContainer onClick={props.openMemberList} onMouseEnter={() => {
-      setIsHovered(true);
-    }} onMouseLeave={() => {
-      setIsHovered(false);
-    }}>
-      {props.channelUserList.slice(0, 3).map((user, id) => {
-        return (
+    <AvatarContainer
+      onClick={props.openMemberList}
+      onMouseEnter={() => {
+        setIsHovered(true);
+      }}
+      onMouseLeave={() => {
+        setIsHovered(false);
+      }}
+    >
+      {Object.keys(props.channelUserList)
+        .slice(0, 3)
+        .map(([user, id]) => (
           <div key={id}>
             <ProfileIconContainerGroup $isHovered={isHovered}>
               <UserProfileIcon accountId={user} showStatus={false} />
             </ProfileIconContainerGroup>
           </div>
-        );
-      })}
-      {props.channelUserList.length > 3 && (
+        ))}
+      {Object.keys(props.channelUserList).length > 3 && (
         <ProfileIconContainerGroup $counter={true} $isHovered={isHovered}>
-          {props.channelUserList.length}
+          {Object.keys(props.channelUserList).length}
         </ProfileIconContainerGroup>
       )}
     </AvatarContainer>

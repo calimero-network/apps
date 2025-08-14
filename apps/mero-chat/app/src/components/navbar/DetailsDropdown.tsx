@@ -79,7 +79,7 @@ const PaddingContainer = styled.div`
 interface DetailsDropdownProps {
   activeChat: ActiveChat;
   isOpenSearchChannel: boolean;
-  channelUserList: UserId[];
+  channelUserList: Map<string, string>;
   nonInvitedUserList: UserId[];
   reFetchChannelMembers: () => void;
   setActiveChat: (chat: ActiveChat) => void;
@@ -99,7 +99,7 @@ export default function DetailsDropdown({
   nonInvitedUserList,
   reFetchChannelMembers,
   setActiveChat,
-  fetchChannels
+  fetchChannels,
 }: DetailsDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -134,15 +134,20 @@ export default function DetailsDropdown({
     return <SelectedChannelName>Browse Channels</SelectedChannelName>;
   }
   const title =
-    activeChat.type === "direct_message" ? activeChat.id.toLowerCase() : activeChat.name;
-  
+    activeChat.type === "direct_message"
+      ? activeChat.username || ""
+      : activeChat.name;
+
   // Truncate title on mobile screens: first 6 chars + "..." + last 4 chars
-  const truncatedTitle = title.length > 10 ? `${title.slice(0, 6)}...${title.slice(-4)}` : title;
-  
+  // const truncatedTitle =
+  //   title.length > 10 ? `${title.slice(0, 6)}...${title.slice(-4)}` : title;
+
   return (
     <PaddingContainer>
       <SelectedChannelName className="desktop">{title}</SelectedChannelName>
-      <SelectedChannelName className="mobile">{truncatedTitle}</SelectedChannelName>
+      {/* <SelectedChannelName className="mobile">
+        {truncatedTitle}
+      </SelectedChannelName> */}
     </PaddingContainer>
   );
 }

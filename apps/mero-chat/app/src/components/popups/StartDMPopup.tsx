@@ -141,7 +141,7 @@ interface StartDMPopupProps {
     validator: (value: string) => { isValid: boolean; error: string };
     functionLoader: (value: string) => Promise<CreateContextResult>;
     colors: { disabled: string, base: string, hover: string };
-    chatMembers: UserId[];
+    chatMembers: Map<string, string>;
 }
 
 export default function StartDMPopup({
@@ -173,7 +173,15 @@ export default function StartDMPopup({
   const runProcess = async() => {
     setIsProcessing(true);
     setErrorMessage("");
-    const result = await functionLoader(inputValue);
+    // inputValue is the username -> identity here
+    // @ts-expect-error - chatMembers is a Map<string, string>
+    const identity = Object.keys(chatMembers).find((key) => chatMembers[key] === inputValue);
+    if (!identity) {
+      setErrorMessage("User not found");
+      setIsProcessing(false);
+      return;
+    }
+    const result = await functionLoader(identity);
     if (result.data) {
       setIsProcessing(false);
       setIsOpen(false);
@@ -194,7 +202,7 @@ export default function StartDMPopup({
     const value = e.target.value;
     setInputValue(value);
     if (value.length > 0) {
-      const s = chatMembers.filter((member) => member.toLowerCase().startsWith(value.toLowerCase()));
+      const s = Object.values(chatMembers).filter((member) => member.toLowerCase().startsWith(value.toLowerCase()));
       setSuggestions(s);
       setShowSuggestions(s.length > 0);
     } else {

@@ -34,6 +34,7 @@ export type ActiveChat = {
   name: string;
   readOnly?: boolean;
   account?: string;
+  username?: string;
   canJoin?: boolean;
   invitationPayload?: string;
   otherIdentityNew?: string;
@@ -73,6 +74,7 @@ export interface ChannelMeta {
   members: User[];
   createdAt: string;
   createdBy: string;
+  createdByUsername: string;
   owner: string;
   inviteOnly: boolean;
   unreadMessages: {

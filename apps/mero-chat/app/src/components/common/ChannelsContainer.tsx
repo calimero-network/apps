@@ -2,7 +2,7 @@ import React from "react";
 import type { ActiveChat, ChannelMeta } from "../../types/Common";
 import SideSelector from "../sideSelector/SideSelector";
 import { defaultActiveChat } from "../../mock/mock";
-import type { DMChatInfo, UserId } from "../../api/clientApi";
+import type { DMChatInfo } from "../../api/clientApi";
 import type { CreateContextResult } from "../popups/StartDMPopup";
 
 interface ChannelsContainerProps {
@@ -14,7 +14,7 @@ interface ChannelsContainerProps {
   isOpenSearchChannel: boolean;
   onDMSelected: (dm?: DMChatInfo, sc?: ActiveChat) => void;
   channels: ChannelMeta[];
-  chatMembers: UserId[];
+  chatMembers: Map<string, string>;
   createDM: (value: string) => Promise<CreateContextResult>;
   privateDMs: DMChatInfo[];
 }

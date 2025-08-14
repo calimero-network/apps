@@ -1,7 +1,7 @@
 import { styled } from "styled-components";
 import DMHeader from "./DMHeader";
 import UserList from "./UserList";
-import type { DMChatInfo, UserId } from "../../api/clientApi";
+import type { DMChatInfo } from "../../api/clientApi";
 import type { CreateContextResult } from "../popups/StartDMPopup";
 import type { ActiveChat } from "../../types/Common";
 
@@ -14,7 +14,7 @@ const DMContainer = styled.div`
 `;
 
 interface DMSideSelectorProps {
-  chatMembers: UserId[];
+  chatMembers: Map<string, string>;
   createDM: (value: string) => Promise<CreateContextResult>;
   onDMSelected: (dm?: DMChatInfo, sc?: ActiveChat) => void;
   selectedDM: string;

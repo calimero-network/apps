@@ -28,7 +28,7 @@ const Label = styled.label`
   color: #b8b8d1;
 `;
 
-const Input = styled.input`
+export const Input = styled.input`
   background: rgba(60, 60, 75, 0.8);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;

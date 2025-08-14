@@ -8,11 +8,12 @@ import { updateSessionChat } from "../../utils/session";
 import { CONTEXT_ID } from "../../constants/config";
 import type { ResponseData } from "@calimero-network/calimero-client";
 import type { FetchContextIdentitiesResponse } from "@calimero-network/calimero-client/lib/api/nodeApi";
+import { Input } from "./JoinContextTab";
 
 const TabContent = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1rem;
   align-items: center;
   width: 100%;
 `;
@@ -22,22 +23,22 @@ const ConnectWrapper = styled.div`
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1.5rem;
+  gap: 1rem;
   text-align: center;
 `;
 
 const Subtitle = styled.h2`
   text-align: center;
   color: #b8b8d1;
-  margin-bottom: 1.5rem;
-  font-size: 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
   font-weight: 600;
 `;
 
 const Form = styled.form`
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.75rem;
   width: 100%;
   max-width: 400px;
 `;
@@ -45,11 +46,11 @@ const Form = styled.form`
 const InputGroup = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.4rem;
 `;
 
 const Label = styled.label`
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   font-weight: 500;
   color: #b8b8d1;
 `;
@@ -57,13 +58,13 @@ const Label = styled.label`
 const ConfigBox = styled.div`
   background: rgba(60, 60, 75, 0.8);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 0.75rem;
-  font-size: 0.85rem;
+  border-radius: 6px;
+  padding: 0.5rem;
+  font-size: 0.8rem;
   color: #e0e0e0;
   font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
   word-break: break-all;
-  min-height: 2rem;
+  min-height: 1.5rem;
   display: flex;
   align-items: center;
 `;
@@ -72,13 +73,13 @@ const Button = styled.button`
   background: #111;
   color: white;
   border: none;
-  padding: 0.75rem;
-  border-radius: 8px;
-  font-size: 1rem;
+  padding: 0.6rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
-  margin-top: 1rem;
+  margin-top: 0.75rem;
   border: 1px solid rgba(255, 255, 255, 0.1);
 
   &:hover {
@@ -93,8 +94,14 @@ const Button = styled.button`
   }
 `;
 
+const Note = styled.p`
+  font-size: 0.7rem;
+  color: #b8b8d1;
+  margin-top: 0.2rem;
+`;
+
 const Message = styled.div<{ type?: "success" | "error" }>`
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   text-align: center;
   color: ${({ type }) =>
     type === "success"
@@ -119,6 +126,7 @@ export default function ChatTab({ isAuthenticated, isConfigSet }: ChatTabProps) 
   const [success, setSuccess] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isDisabled, setIsDisabled] = useState(false);
+  const [username, setUsername] = useState("");
 
   useEffect(() => {
     const setupConfigs = async () => {
@@ -126,6 +134,7 @@ export default function ChatTab({ isAuthenticated, isConfigSet }: ChatTabProps) 
         setIsDisabled(false);
         const nodeUrl = getAppEndpointKey() || "";
         const contextId = CONTEXT_ID;
+        setUsername(localStorage.getItem("chat-username") || "");
 
         try {
           const contextIdentityResponse: ResponseData<FetchContextIdentitiesResponse> =
@@ -167,9 +176,11 @@ export default function ChatTab({ isAuthenticated, isConfigSet }: ChatTabProps) 
       setAppEndpointKey(formData.nodeUrl.trim());
       setContextId(formData.contextId.trim());
       setExecutorPublicKey(formData.identityId.trim());
+      localStorage.setItem("chat-username", username);
       const response: ResponseData<string> =
         await new ClientApiDataSource().joinChat({
           isDM: false,
+          username: username,
         });
       if (response.error) {
         const errorMessage = extractErrorMessage(response.error);
@@ -222,6 +233,18 @@ export default function ChatTab({ isAuthenticated, isConfigSet }: ChatTabProps) 
         <InputGroup>
           <Label>Identity ID</Label>
           <ConfigBox>{formData.identityId || "Loading..."}</ConfigBox>
+        </InputGroup>
+        <InputGroup>
+          <Label>Username or Name</Label>
+          <Note>*This will be used to identify you in the chat and can only be set ONCE.</Note>
+          <Input
+            id="invitationPayload"
+            type="text"
+            placeholder="John Doe"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            disabled={isLoading}
+          />
         </InputGroup>
 
         <Button type="submit" disabled={isLoading || isDisabled}>
