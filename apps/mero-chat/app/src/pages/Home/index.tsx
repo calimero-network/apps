@@ -146,6 +146,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
         contextId: dm?.context_id || "",
         isDM: true,
         executor: dm?.own_identity || "",
+        username: dm?.own_username || "",
       });
     }
 

@@ -652,9 +652,13 @@ impl CurbChat {
         message: String,
         parent_message: Option<MessageId>,
         timestamp: u64,
+        sender_username: String,
     ) -> app::Result<Message, String> {
         let executor_id = self.get_executor_id();
-        let sender_username = self.member_usernames.get(&executor_id).unwrap().unwrap();
+        let sender_username = match self.member_usernames.get(&executor_id) {
+            Ok(Some(username)) => username,
+            _ => sender_username,
+        };
         let message_id = self.get_message_id(&executor_id, &group, &message, timestamp);
 
         let message = Message {
