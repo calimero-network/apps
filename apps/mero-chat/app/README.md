@@ -49,7 +49,6 @@ pnpm run dev
 ```bash
 cargo run -p meroctl -- --node node1 context create --application-id 3Hfk2VekXQ58vYHW3hUtA3mh2Rwtb1brV1RKEXtfvfsf --protocol near --params '{"name": "CurbTest","is_dm": false, "default_channels": [{"name": "general"},{"name": "engineering"},
 {"name": "marketing"}],"created_at": 1751652997, "owner_username": "Fran Domovic"}'
-
 ```
 
 ## Calimero Documentation
