@@ -20,11 +20,13 @@ import {
   AlertCircle,
   CheckCircle2,
   MoreVertical,
+  Clock,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button, Card, CardContent } from '../../components/ui';
 import { MobileLayout } from '../../components/MobileLayout';
 import PDFViewer from '../../components/PDFViewer';
+import AuditTrail from '../../components/AuditTrail';
 import { useTheme } from '../../contexts/ThemeContext';
 import { DocumentService } from '../../api/documentService';
 import { ClientApiDataSource } from '../../api/dataSource/ClientApiDataSource';
@@ -191,7 +193,14 @@ const AgreementPage: React.FC = () => {
     error?: any;
     verified?: boolean;
     message?: string;
+    documentId?: string; // Track which document this result is for
   } | null>(null);
+  const [showAuditTrail, setShowAuditTrail] = useState(false);
+  const [selectedDocumentForAudit, setSelectedDocumentForAudit] =
+    useState<UploadedDocument | null>(null);
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [selectedDocumentForVerification, setSelectedDocumentForVerification] =
+    useState<UploadedDocument | null>(null);
 
   const showNotification = useCallback(
     (message: string, type: NotificationType) => {
@@ -676,23 +685,45 @@ const AgreementPage: React.FC = () => {
 
   const handleVerifyDocument = useCallback(
     async (doc: UploadedDocument) => {
+      setSelectedDocumentForVerification(doc);
+      setShowVerificationModal(true);
       setVerifyingDocId(doc.id);
       setVerifyResult(null);
+
       try {
         const result = await documentService.verifyDocumentWithICP(
           doc.id,
           doc.hash || '',
           identity,
         );
-        setVerifyResult(result);
+        setVerifyResult({ ...result, documentId: doc.id });
       } catch (error) {
-        setVerifyResult({ error: { message: 'Verification failed.' } });
+        setVerifyResult({
+          error: { message: 'Verification failed.' },
+          documentId: doc.id,
+        });
       } finally {
         setVerifyingDocId(null);
       }
     },
     [documentService, identity],
   );
+
+  const handleCloseVerificationModal = useCallback(() => {
+    setShowVerificationModal(false);
+    setSelectedDocumentForVerification(null);
+    setVerifyResult(null);
+  }, []);
+
+  const handleShowAuditTrail = useCallback((doc: UploadedDocument) => {
+    setSelectedDocumentForAudit(doc);
+    setShowAuditTrail(true);
+  }, []);
+
+  const handleCloseAuditTrail = useCallback(() => {
+    setShowAuditTrail(false);
+    setSelectedDocumentForAudit(null);
+  }, []);
 
   useEffect(() => {
     if (!currentContextId || !app) return;
@@ -931,11 +962,11 @@ const AgreementPage: React.FC = () => {
                             className="p-2 h-auto w-auto"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setMenuOpenDocId(
+                              const newMenuState =
                                 menuOpenDocId === document.id
                                   ? null
-                                  : document.id,
-                              );
+                                  : document.id;
+                              setMenuOpenDocId(newMenuState);
                             }}
                           >
                             <MoreVertical className="w-5 h-5" />
@@ -944,7 +975,8 @@ const AgreementPage: React.FC = () => {
                             <div className="absolute right-0 mt-2 w-56 rounded-lg border border-border bg-background/95 p-1 shadow-lg backdrop-blur-sm z-10">
                               <button
                                 className="w-full text-center px-3 py-1.5 text-sm text-foreground hover:bg-muted transition rounded-md flex items-center justify-center"
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   setMenuOpenDocId(null);
                                   handleVerifyDocument(document);
                                 }}
@@ -954,33 +986,21 @@ const AgreementPage: React.FC = () => {
                                   ? 'Verifying...'
                                   : 'Verify on ICP'}
                               </button>
+                              <button
+                                className="w-full text-center px-3 py-1.5 text-sm text-foreground hover:bg-muted transition rounded-md flex items-center justify-center"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMenuOpenDocId(null);
+                                  handleShowAuditTrail(document);
+                                }}
+                              >
+                                <Clock className="w-4 h-4 mr-2" />
+                                View Audit Trail
+                              </button>
                             </div>
                           )}
                         </div>
                       </div>
-
-                      {/* Verification result */}
-                      {verifyResult && menuOpenDocId === document.id && (
-                        <div className="mt-2 p-3 rounded bg-muted text-sm">
-                          {verifyResult.error ? (
-                            <span className="text-red-600">
-                              {verifyResult.error.message}
-                            </span>
-                          ) : (
-                            <span
-                              className={
-                                verifyResult.verified
-                                  ? 'text-green-600'
-                                  : 'text-yellow-700'
-                              }
-                            >
-                              {verifyResult.message
-                                ? verifyResult.message
-                                : `ICP Verification Status: ${verifyResult.status}`}
-                            </span>
-                          )}
-                        </div>
-                      )}
 
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-2">
@@ -1353,6 +1373,118 @@ const AgreementPage: React.FC = () => {
                 loadDocuments();
               }}
             />
+          </motion.div>
+        </div>
+      )}
+
+      {/* Audit Trail Modal */}
+      {showAuditTrail && selectedDocumentForAudit && currentContextId && (
+        <AuditTrail
+          contextId={currentContextId}
+          documentId={selectedDocumentForAudit.id}
+          documentName={selectedDocumentForAudit.name}
+          onClose={handleCloseAuditTrail}
+          isOpen={showAuditTrail}
+        />
+      )}
+
+      {/* Verification Result Modal */}
+      {showVerificationModal && selectedDocumentForVerification && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className={`rounded-lg p-6 w-full max-w-md border border-border shadow-2xl ${
+              mode === 'dark' ? 'bg-gray-900' : 'bg-white'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-foreground">
+                ICP Blockchain Verification
+              </h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleCloseVerificationModal}
+                className="p-1 h-auto w-auto"
+              >
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-muted rounded-lg p-4">
+                <h5 className="font-medium text-foreground mb-2">
+                  Document: {selectedDocumentForVerification.name}
+                </h5>
+
+                {verifyingDocId === selectedDocumentForVerification.id ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="flex flex-col items-center space-y-3">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                      <p className="text-sm text-muted-foreground">
+                        Verifying on ICP blockchain...
+                      </p>
+                    </div>
+                  </div>
+                ) : verifyResult &&
+                  verifyResult.documentId ===
+                    selectedDocumentForVerification.id ? (
+                  <div
+                    className={`p-4 rounded-lg border ${
+                      verifyResult.error
+                        ? 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800'
+                        : verifyResult.verified
+                          ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800'
+                          : 'bg-yellow-50 border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800'
+                    }`}
+                  >
+                    {verifyResult.error ? (
+                      <div className="text-center">
+                        <AlertCircle className="w-12 h-12 mx-auto text-red-500 mb-3" />
+                        <p className="text-red-600 dark:text-red-400 font-medium">
+                          Verification Failed
+                        </p>
+                        <p className="text-red-600 dark:text-red-400 text-sm mt-1">
+                          {verifyResult.error.message ||
+                            'Unable to verify document'}
+                        </p>
+                      </div>
+                    ) : verifyResult.verified ? (
+                      <div className="text-center">
+                        <CheckCircle2 className="w-12 h-12 mx-auto text-green-500 mb-3" />
+                        <p className="text-green-700 dark:text-green-300 font-medium text-lg">
+                          ✓ VERIFIED
+                        </p>
+                        <p className="text-green-700 dark:text-green-300 text-sm mt-2">
+                          {verifyResult.message ||
+                            'Document verified on ICP blockchain'}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="text-center">
+                        <AlertCircle className="w-12 h-12 mx-auto text-yellow-500 mb-3" />
+                        <p className="text-yellow-700 dark:text-yellow-300 font-medium">
+                          Not Verified
+                        </p>
+                        <p className="text-yellow-700 dark:text-yellow-300 text-sm mt-1">
+                          {verifyResult.message ||
+                            `Status: ${verifyResult.status || 'Unknown'}`}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+
+              <Button
+                onClick={handleCloseVerificationModal}
+                className="w-full text-white dark:text-black"
+              >
+                Close
+              </Button>
+            </div>
           </motion.div>
         </div>
       )}

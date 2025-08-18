@@ -653,7 +653,7 @@ export default function Dashboard() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="block text-sm font-medium text-foreground">
-                    Identity 
+                    Identity
                   </label>
                   <Button
                     onClick={handleGenerateIdentity}
@@ -703,8 +703,9 @@ export default function Dashboard() {
 
                 {!generatedIdentity && (
                   <p className="text-xs text-muted-foreground">
-                    Generate a new identity. This is
-                    sending your identity to other users for creating invitation payload for you to join agreements.
+                    Generate a new identity. This is sending your identity to
+                    other users for creating invitation payload for you to join
+                    agreements.
                   </p>
                 )}
               </div>

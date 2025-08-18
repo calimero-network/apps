@@ -171,14 +171,17 @@ export class DocumentService {
           try {
             const safeDocumentId = this.sanitizeDocumentId(documentId);
             const icpApi = await backendService(icpIdentity);
+            const signResult = await icpApi.signDocument({
+              document_id: safeDocumentId,
+              consent_acknowledged: true,
+            });
             const icpResponse = await icpApi.recordFinalHash(
               safeDocumentId,
               newHash,
             );
-            console.log('Final hash uploaded to ICP canister', icpResponse);
           } catch (icpError) {
             console.error(
-              'Failed to upload final hash to ICP canister:',
+              'ICP Backend: Failed to record signature/final hash:',
               icpError,
             );
           }

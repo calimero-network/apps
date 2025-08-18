@@ -3,8 +3,10 @@ import { idlFactory } from '../../../../merodocs_registry/src/declarations/backe
 
 // Hardcoded canister and principal for local development
 const network = import.meta.env.VITE_DFX_NETWORK || 'local';
-const LOCAL_CANISTER_ID = import.meta.env.VITE_BACKEND_CANISTER_ID || 'uxrrr-q7777-77774-qaaaq-cai';
-const LOCAL_PRINCIPAL_ID = import.meta.env.VITE_LOCAL_PRINCIPAL_ID || 'uxrrr-q7777-77774-qaaaq-cai';
+const LOCAL_CANISTER_ID =
+  import.meta.env.VITE_BACKEND_CANISTER_ID || 'uxrrr-q7777-77774-qaaaq-cai';
+const LOCAL_PRINCIPAL_ID =
+  import.meta.env.VITE_LOCAL_PRINCIPAL_ID || 'uxrrr-q7777-77774-qaaaq-cai';
 
 const backendCanisterId =
   network === 'local'

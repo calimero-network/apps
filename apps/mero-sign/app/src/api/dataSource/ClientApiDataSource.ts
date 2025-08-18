@@ -13,6 +13,7 @@ import {
   PermissionLevel,
   UserId,
 } from '../clientApi';
+import { backendService } from '../icp/backendService';
 import { DefaultContextService } from '../defaultContextService';
 
 const RequestConfig = { timeout: 30000 };
@@ -57,6 +58,123 @@ export class ClientApiDataSource implements ClientApi {
   constructor(app?: any) {
     this.app = app;
   }
+
+  async setConsent(
+    userId: UserId,
+    documentId: string,
+    agreementContextID?: string,
+    agreementContextUserID?: string,
+  ): ApiResponse<void> {
+    try {
+      const authConfig =
+        agreementContextID && agreementContextUserID
+          ? getContextSpecificAuthConfig(
+              agreementContextID,
+              agreementContextUserID,
+            )
+          : getAuthConfig();
+
+      const response = await rpcClient.execute({
+        ...authConfig,
+        method: ClientMethod.SET_CONSENT,
+        argsJson: {
+          user_id: userId,
+          document_id: documentId,
+        },
+      } as RpcQueryParams<any>);
+
+      if (response?.error) {
+        return {
+          data: undefined,
+          error: {
+            code: response.error.code ?? 500,
+            message: getErrorMessage(response.error),
+          },
+        };
+      }
+
+      try {
+        const safeDocumentId = documentId.replace(/[^a-zA-Z0-9_-]/g, '_');
+        if (documentId !== safeDocumentId) {
+          console.warn('Sanitized documentId for ICP consent recording:', {
+            original: documentId,
+            sanitized: safeDocumentId,
+          });
+        }
+
+        const icpBackend = await backendService();
+        const icpResult = await icpBackend.recordConsent(safeDocumentId);
+      } catch (icpError) {
+        console.warn('Failed to record consent in ICP backend:', icpError);
+      }
+
+      return {
+        data: undefined,
+        error: null,
+      };
+    } catch (error: any) {
+      console.error('ClientApiDataSource: Error in setConsent:', error);
+      return {
+        data: null,
+        error: {
+          code: error.code || 500,
+          message: getErrorMessage(error),
+        },
+      };
+    }
+  }
+
+  async hasConsented(
+    agreementContextUserID: string,
+    documentId: string,
+    agreementContextID?: string,
+  ): ApiResponse<boolean> {
+    try {
+      const authConfig =
+        agreementContextID && agreementContextUserID
+          ? getContextSpecificAuthConfig(
+              agreementContextID,
+              agreementContextUserID,
+            )
+          : getAuthConfig();
+
+      const response = await rpcClient.execute({
+        ...authConfig,
+        method: ClientMethod.HAS_CONSENTED,
+        argsJson: {
+          user_id: agreementContextUserID,
+          document_id: documentId,
+        },
+      } as RpcQueryParams<any>);
+
+      if (response?.error) {
+        return {
+          data: undefined,
+          error: {
+            code: response.error.code ?? 500,
+            message: getErrorMessage(response.error),
+          },
+        };
+      }
+
+      const data = response.result?.output ?? response.result;
+
+      return {
+        data: Boolean(data),
+        error: null,
+      };
+    } catch (error: any) {
+      console.error('ClientApiDataSource: Error in hasConsented:', error);
+      return {
+        data: null,
+        error: {
+          code: error.code || 500,
+          message: getErrorMessage(error),
+        },
+      };
+    }
+  }
+
   async addParticipant(
     contextId: string,
     userId: UserId,
@@ -509,7 +627,6 @@ export class ClientApiDataSource implements ClientApi {
           ClientMethod.LIST_SIGNATURES,
           {},
         );
-
         const extractedData = result.data || result;
 
         if (

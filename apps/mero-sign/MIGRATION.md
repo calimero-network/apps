@@ -6,15 +6,15 @@ This document outlines the files that need to be migrated to the new `@calimero-
 
 - [x] `app/src/App.tsx`
 - [x] `app/src/components/MobileHeader.tsx`
-- [ ] `app/src/components/PDFViewer.tsx`
-- [ ] `app/src/components/Sidebar.tsx`
+- [x]`app/src/components/PDFViewer.tsx`
+- [x]`app/src/components/Sidebar.tsx`
 - [x] `app/src/pages/agreement/index.tsx`
 - [x] `app/src/pages/dashboard/index.tsx`
-- [ ] `app/src/pages/signatures/index.tsx`
+- [x] `app/src/pages/signatures/index.tsx`
 - [x] `app/src/api/agreementService.ts`
-- [ ] `app/src/api/clientApi.ts`
-- [ ] `app/src/api/documentService.ts`
-- [ ] `app/src/api/nodeApi.ts`
+- [x] `app/src/api/clientApi.ts`
+- [x] `app/src/api/documentService.ts`
+- [x] `app/src/api/nodeApi.ts`
 - [x] `app/src/api/dataSource/ClientApiDataSource.ts`
-- [ ] `app/src/api/dataSource/nodeApiDataSource.ts`
+- [x] `app/src/api/dataSource/nodeApiDataSource.ts`
 - [x] `app/src/index.tsx` 
