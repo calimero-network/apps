@@ -72,7 +72,7 @@ class AuthService {
     }
 
     const identity = this.authClient.getIdentity();
-    const isAnonymous = identity.getPrincipal().toString() === '2vxsx-fae';
+    const isAnonymous = identity.getPrincipal().isAnonymous();
     const isAuthenticated = !isAnonymous;
 
     return {

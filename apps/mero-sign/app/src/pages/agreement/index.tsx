@@ -931,50 +931,61 @@ const AgreementPage: React.FC = () => {
                   <Card className="hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 border-border/50 hover:border-primary/20">
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between mb-3">
-                        <div className="flex items-center space-x-3 flex-1">
-                          <div className="p-2 bg-red-100 dark:bg-red-900/20 rounded-lg">
+                        <div className="flex items-center space-x-3 flex-1 min-w-0 pr-2">
+                          <div className="p-2 bg-red-100 dark:bg-red-900/20 rounded-lg flex-shrink-0">
                             <FileText className="w-6 h-6 text-red-600" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <h4 className="font-medium text-foreground mb-1 truncate">
                               {document.name}
                             </h4>
-                            <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-                              <span>{document.size}</span>
-                              <span>•</span>
-                              <span>{document.uploadedAt}</span>
-                              {document.uploadedBy && (
-                                <>
-                                  <span>•</span>
-                                  <span>
-                                    by {document.uploadedBy.slice(0, 8)}...
-                                  </span>
-                                </>
-                              )}
+
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-2 text-sm text-muted-foreground space-y-1 sm:space-y-0">
+                              <div className="flex items-center space-x-2">
+                                <span>{document.size}</span>
+                                <span className="hidden sm:inline">•</span>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <span>{document.uploadedAt}</span>
+                                {document.uploadedBy && (
+                                  <>
+                                    <span className="hidden sm:inline">•</span>
+                                    <span className="truncate max-w-[120px] sm:max-w-none">
+                                      by{' '}
+                                      {document.uploadedBy.length > 9
+                                        ? `${document.uploadedBy.slice(0, 4)}...${document.uploadedBy.slice(-4)}`
+                                        : document.uploadedBy}
+                                    </span>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </div>
                         {/* 3 dots menu */}
-                        <div className="relative">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="p-2 h-auto w-auto"
+                        <div className="relative flex-shrink-0 ml-2">
+                          <button
+                            aria-label="Open document actions"
+                            className="p-0 h-10 w-10 flex items-center justify-center rounded-full hover:bg-muted transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
                             onClick={(e) => {
                               e.stopPropagation();
-                              const newMenuState =
-                                menuOpenDocId === document.id
-                                  ? null
-                                  : document.id;
-                              setMenuOpenDocId(newMenuState);
+                              setMenuOpenDocId((prev) =>
+                                prev === document.id ? null : document.id,
+                              );
                             }}
                           >
-                            <MoreVertical className="w-5 h-5" />
-                          </Button>
+                            <MoreVertical className="w-5 h-5 text-muted-foreground" />
+                          </button>
+
                           {menuOpenDocId === document.id && (
-                            <div className="absolute right-0 mt-2 w-56 rounded-lg border border-border bg-background/95 p-1 shadow-lg backdrop-blur-sm z-10">
+                            <div
+                              role="menu"
+                              aria-label="Document actions"
+                              className="absolute right-0 mt-2 w-64 rounded-lg border border-border bg-background/95 p-2 shadow-lg backdrop-blur-sm z-20"
+                            >
                               <button
-                                className="w-full text-center px-3 py-1.5 text-sm text-foreground hover:bg-muted transition rounded-md flex items-center justify-center"
+                                role="menuitem"
+                                className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-foreground bg-background hover:bg-muted transition border border-transparent hover:border-border focus:outline-none"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setMenuOpenDocId(null);
@@ -982,20 +993,27 @@ const AgreementPage: React.FC = () => {
                                 }}
                                 disabled={verifyingDocId === document.id}
                               >
-                                {verifyingDocId === document.id
-                                  ? 'Verifying...'
-                                  : 'Verify on ICP'}
+                                <CheckCircle2 className="w-4 h-4" />
+                                <span>
+                                  {verifyingDocId === document.id
+                                    ? 'Verifying...'
+                                    : 'Verify on ICP'}
+                                </span>
                               </button>
+
+                              <div className="my-2 border-t border-border/60" />
+
                               <button
-                                className="w-full text-center px-3 py-1.5 text-sm text-foreground hover:bg-muted transition rounded-md flex items-center justify-center"
+                                role="menuitem"
+                                className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-foreground bg-background hover:bg-muted transition border border-transparent hover:border-border focus:outline-none"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setMenuOpenDocId(null);
                                   handleShowAuditTrail(document);
                                 }}
                               >
-                                <Clock className="w-4 h-4 mr-2" />
-                                View Audit Trail
+                                <Clock className="w-4 h-4 text-muted-foreground" />
+                                <span>View Audit Trail</span>
                               </button>
                             </div>
                           )}
@@ -1005,12 +1023,18 @@ const AgreementPage: React.FC = () => {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-2">
                           <div
-                            className={`text-sm px-2 py-1 rounded-full ${
+                            className={`text-sm px-2 py-1 rounded-full font-semibold ${
                               document.status === 'FullySigned'
-                                ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-300'
+                                ? mode === 'dark'
+                                  ? 'bg-green-900/20 text-green-300'
+                                  : 'bg-green-200 text-green-800'
                                 : document.status === 'PartiallySigned'
-                                  ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300'
-                                  : 'bg-gray-100 text-gray-700 dark:bg-gray-900/20 dark:text-gray-300'
+                                  ? mode === 'dark'
+                                    ? 'bg-yellow-900/20 text-yellow-300'
+                                    : 'bg-yellow-200 text-yellow-800'
+                                  : mode === 'dark'
+                                    ? 'bg-gray-900/20 text-gray-300'
+                                    : 'bg-gray-200 text-gray-800'
                             }`}
                           >
                             {document.status === 'FullySigned'
@@ -1414,7 +1438,9 @@ const AgreementPage: React.FC = () => {
             </div>
 
             <div className="space-y-4">
-              <div className="bg-muted rounded-lg p-4">
+              <div
+                className={`${mode === 'dark' ? 'bg-muted/80' : 'bg-muted'} rounded-lg p-4`}
+              >
                 <h5 className="font-medium text-foreground mb-2">
                   Document: {selectedDocumentForVerification.name}
                 </h5>
@@ -1423,7 +1449,9 @@ const AgreementPage: React.FC = () => {
                   <div className="flex items-center justify-center py-8">
                     <div className="flex flex-col items-center space-y-3">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                      <p className="text-sm text-muted-foreground">
+                      <p
+                        className={`text-sm ${mode === 'dark' ? 'text-muted-foreground' : 'text-muted-foreground'}`}
+                      >
                         Verifying on ICP blockchain...
                       </p>
                     </div>
@@ -1434,19 +1462,29 @@ const AgreementPage: React.FC = () => {
                   <div
                     className={`p-4 rounded-lg border ${
                       verifyResult.error
-                        ? 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800'
+                        ? mode === 'dark'
+                          ? 'bg-red-900/20 border-red-800'
+                          : 'bg-red-50 border-red-200'
                         : verifyResult.verified
-                          ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800'
-                          : 'bg-yellow-50 border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800'
+                          ? mode === 'dark'
+                            ? 'bg-green-900/20 border-green-800'
+                            : 'bg-green-50 border-green-200'
+                          : mode === 'dark'
+                            ? 'bg-yellow-900/20 border-yellow-800'
+                            : 'bg-yellow-50 border-yellow-200'
                     }`}
                   >
                     {verifyResult.error ? (
                       <div className="text-center">
                         <AlertCircle className="w-12 h-12 mx-auto text-red-500 mb-3" />
-                        <p className="text-red-600 dark:text-red-400 font-medium">
+                        <p
+                          className={`${mode === 'dark' ? 'text-red-400' : 'text-red-600'} font-medium`}
+                        >
                           Verification Failed
                         </p>
-                        <p className="text-red-600 dark:text-red-400 text-sm mt-1">
+                        <p
+                          className={`${mode === 'dark' ? 'text-red-400' : 'text-red-600'} text-sm mt-1`}
+                        >
                           {verifyResult.error.message ||
                             'Unable to verify document'}
                         </p>
@@ -1454,10 +1492,14 @@ const AgreementPage: React.FC = () => {
                     ) : verifyResult.verified ? (
                       <div className="text-center">
                         <CheckCircle2 className="w-12 h-12 mx-auto text-green-500 mb-3" />
-                        <p className="text-green-700 dark:text-green-300 font-medium text-lg">
-                          ✓ VERIFIED
+                        <p
+                          className={`${mode === 'dark' ? 'text-green-300' : 'text-green-700'} font-medium text-lg`}
+                        >
+                          VERIFIED
                         </p>
-                        <p className="text-green-700 dark:text-green-300 text-sm mt-2">
+                        <p
+                          className={`${mode === 'dark' ? 'text-green-300' : 'text-green-700'} text-sm mt-2`}
+                        >
                           {verifyResult.message ||
                             'Document verified on ICP blockchain'}
                         </p>
@@ -1465,10 +1507,14 @@ const AgreementPage: React.FC = () => {
                     ) : (
                       <div className="text-center">
                         <AlertCircle className="w-12 h-12 mx-auto text-yellow-500 mb-3" />
-                        <p className="text-yellow-700 dark:text-yellow-300 font-medium">
+                        <p
+                          className={`${mode === 'dark' ? 'text-yellow-300' : 'text-yellow-700'} font-medium`}
+                        >
                           Not Verified
                         </p>
-                        <p className="text-yellow-700 dark:text-yellow-300 text-sm mt-1">
+                        <p
+                          className={`${mode === 'dark' ? 'text-yellow-300' : 'text-yellow-700'} text-sm mt-1`}
+                        >
                           {verifyResult.message ||
                             `Status: ${verifyResult.status || 'Unknown'}`}
                         </p>

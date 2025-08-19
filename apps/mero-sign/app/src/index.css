@@ -97,6 +97,7 @@
 
 /* Light theme class */
 .theme-light {
+  --color-primary: #22c55e;
   --current-bg: var(--color-background-light);
   --current-text: var(--color-text-light);
   --current-surface: var(--color-surface-light);

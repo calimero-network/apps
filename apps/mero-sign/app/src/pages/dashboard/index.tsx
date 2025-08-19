@@ -344,10 +344,10 @@ export default function Dashboard() {
 
           {/* Button and Stats Row */}
           <div className="flex flex-col sm:flex-row items-stretch gap-3 sm:gap-4">
-            <div className="flex gap-2 flex-shrink-0">
+            <div className="flex gap-2 w-full sm:w-auto flex-shrink-0">
               <Button
                 onClick={() => setShowCreateModal(true)}
-                className="group dark:text-black h-[52px] px-4 flex-1 sm:flex-none"
+                className="group dark:text-black h-[52px] px-4 w-full sm:w-auto flex-1 sm:flex-none min-w-0"
                 size="sm"
               >
                 <Plus className="w-4 h-4 mr-2" />
@@ -356,7 +356,7 @@ export default function Dashboard() {
               <Button
                 onClick={() => setShowJoinModal(true)}
                 variant="outline"
-                className="group h-[52px] px-4 flex-1 sm:flex-none"
+                className="group h-[52px] px-4 w-full sm:w-auto flex-1 sm:flex-none min-w-0"
                 size="sm"
               >
                 <UserPlus className="w-4 h-4 mr-2" />

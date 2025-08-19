@@ -673,6 +673,8 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
     setShowConsentModal(false);
   };
 
+  const fabBase = `fixed bottom-12 right-6 w-14 h-14 rounded-full transition-shadow z-40 flex items-center justify-center focus:outline-none`;
+
   return (
     <>
       <motion.div
@@ -696,12 +698,13 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
             backgroundColor: 'var(--current-surface)',
           }}
         >
-          <div className="flex items-center space-x-3">
-            <FileText size={20} className="text-primary" />
-            <div>
+          <div className="flex items-center space-x-3 min-w-0">
+            <FileText size={20} className="text-primary flex-shrink-0" />
+            <div className="min-w-0">
               <h3
-                className="font-semibold text-sm"
+                className="font-semibold text-sm truncate"
                 style={{ color: 'var(--current-text)' }}
+                title={title || file.name}
               >
                 {title || file.name}
               </h3>
@@ -711,7 +714,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 flex-shrink-0">
             {/* Sign Document Button - Desktop Only */}
             <Button
               variant="outline"
@@ -791,7 +794,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={onClose}
-                className="h-8 w-8 p-0"
+                className="h-8 w-8 p-0 z-50"
               >
                 <X size={16} />
               </Button>
@@ -1086,20 +1089,20 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
 
         {/* Mobile Floating Action Button */}
         <div className="sm:hidden">
-          {/* FAB */}
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => setShowMobileActions(true)}
-            className="fixed bottom-12 right-6 w-14 h-14 bg-primary text-primary-foreground rounded-full shadow-lg hover:shadow-xl transition-shadow z-40 flex items-center justify-center"
+            aria-label="Open document actions"
+            className={`${fabBase} ${mode === 'dark' ? 'shadow-[0_6px_20px_rgba(34,197,94,0.12)]' : 'shadow-lg'}`}
             style={{
-              backgroundColor: 'var(--primary)',
-              color: 'var(--primary-foreground)',
+              backgroundColor: 'hsl(var(--primary))',
+              color: 'hsl(var(--primary-foreground))',
+              border: mode === 'dark' ? 'none' : '1px solid rgba(0,0,0,0.06)',
             }}
           >
             <PenTool size={24} />
           </motion.button>
-
           {/* Mobile Actions Modal */}
           <AnimatePresence>
             {showMobileActions && (

@@ -76,7 +76,9 @@ export default function SignaturesPage() {
             id: sig.id.toString(),
             name: sig.name,
             dataURL,
-            createdAt: new Date(sig.created_at).toLocaleDateString(),
+            createdAt: new Date(
+              Number(sig.created_at) / 1_000_000,
+            ).toLocaleString(),
           };
         }),
       );
