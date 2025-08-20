@@ -16,7 +16,7 @@ export default function App() {
   return (
     <IcpAuthProvider>
       <ThemeProvider>
-        <BrowserRouter basename="/mero-docs/">
+        <BrowserRouter basename="/">
           <MobileLayout
             sidebarOpen={sidebarOpen}
             onSidebarToggle={setSidebarOpen}
