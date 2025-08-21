@@ -38,7 +38,9 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   const { app } = useCalimero();
   const [isOpenSearchChannel, setIsOpenSearchChannel] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [channelUsers, setChannelUsers] = useState<Map<string, string>>(new Map());
+  const [channelUsers, setChannelUsers] = useState<Map<string, string>>(
+    new Map()
+  );
   const [activeChat, setActiveChat] = useState<ActiveChat | null>(null);
   const [incomingMessages, setIncomingMessages] = useState<CurbMessage[]>([]);
   const [nonInvitedUserList, setNonInvitedUserList] = useState<UserId[]>([]);
@@ -104,6 +106,16 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     getNonInvitedUsers(selectedChat.id);
     setIsSidebarOpen(false);
     updateSessionChat(selectedChat);
+    if (app) {
+      const useDM = (selectedChat.type === "direct_message" &&
+        selectedChat.account &&
+        !selectedChat.canJoin &&
+        selectedChat.otherIdentityNew) as boolean;
+      const contextId = getContextId();
+      const dmContextId = getDmContextId();
+      const currentContextId = (useDM ? dmContextId : contextId) || "";
+      app.subscribeToEvents([currentContextId], eventCallback);
+    }
     setMessagesOffset(20);
     setTotalMessageCount(0);
     setOpenThread(undefined);
@@ -124,6 +136,10 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     activeChatRef.current = chatToUse;
     getChannelUsers(chatToUse.name);
     getNonInvitedUsers(chatToUse.name);
+    if (app) {
+      const currentContextId = chatToUse.contextId || getContextId() || "";
+      app.subscribeToEvents([currentContextId], eventCallback);
+    }
     setMessagesOffset(20);
     setTotalMessageCount(0);
   }, []);
@@ -186,15 +202,9 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     setCurrentOpenThread(undefined);
   }, []);
 
-  useEffect(() => {
-    if (!app) {
-      return;
-    }
-
-    if (!app.subscribeToEvents || !app.unsubscribeFromEvents) {
-      return;
-    }
-
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const eventCallback = async (event: any) => {
+    console.log("event", event);
     const sessionChat = getStoredSession();
     const useDM = (sessionChat?.type === "direct_message" &&
       sessionChat?.account &&
@@ -209,107 +219,89 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
       return;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const eventCallback = async (event: any) => {
-      try {
-        if (event.type === "StateMutation") {
-          fetchChannels();
+    try {
+      if (event.type === "StateMutation") {
+        fetchChannels();
 
-          const updatedDMs = await fetchDms();
+        const updatedDMs = await fetchDms();
 
-          if (
-            sessionChat?.type === "direct_message" &&
-            !sessionChat?.isFinal &&
-            updatedDMs?.length &&
-            (sessionChat?.canJoin ||
-              !sessionChat?.isSynced ||
-              !sessionChat?.account ||
-              !sessionChat?.otherIdentityNew)
-          ) {
-            const currentDM = updatedDMs.find(
-              (dm) => dm.context_id === sessionChat.contextId
-            );
-            onDMSelected(currentDM);
-          }
+        if (
+          sessionChat?.type === "direct_message" &&
+          !sessionChat?.isFinal &&
+          updatedDMs?.length &&
+          (sessionChat?.canJoin ||
+            !sessionChat?.isSynced ||
+            !sessionChat?.account ||
+            !sessionChat?.otherIdentityNew)
+        ) {
+          const currentDM = updatedDMs.find(
+            (dm) => dm.context_id === sessionChat.contextId
+          );
+          onDMSelected(currentDM);
+        }
 
-          if (sessionChat?.type !== "direct_message") {
-            await reFetchChannelMembers();
-          }
+        if (sessionChat?.type !== "direct_message") {
+          await reFetchChannelMembers();
+        }
 
-          const reFetchedMessages: ResponseData<FullMessageResponse> =
-            await new ClientApiDataSource().getMessages({
-              group: {
-                name:
-                  (useDM ? "private_dm" : activeChatRef.current?.name) || "",
-              },
-              limit: 20,
-              offset: 0,
-              is_dm: useDM,
-              dm_identity: activeChatRef.current?.account,
-            });
-          if (reFetchedMessages.data) {
-            const existingMessageIds = new Set(
-              messagesRef.current.map((msg) => msg.id)
-            );
-            const newMessages = reFetchedMessages.data.messages
-              .filter(
-                (message: MessageWithReactions) =>
-                  !existingMessageIds.has(message.id)
-              )
-              .map((message: MessageWithReactions) => ({
-                id: message.id,
-                text: message.text,
-                nonce: Math.random().toString(36).substring(2, 15),
-                key: message.id,
-                timestamp: message.timestamp * 1000,
-                sender: message.sender,
-                senderUsername: message.sender_username,
-                reactions: message.reactions,
-                threadCount: message.thread_count,
-                threadLastTimestamp: message.thread_last_timestamp,
-                editedOn: undefined,
-                mentions: [],
-                files: [],
-                images: [],
-                editMode: false,
-                status: MessageStatus.sent,
-                deleted: message.deleted,
-              }));
+        const reFetchedMessages: ResponseData<FullMessageResponse> =
+          await new ClientApiDataSource().getMessages({
+            group: {
+              name: (useDM ? "private_dm" : activeChatRef.current?.name) || "",
+            },
+            limit: 20,
+            offset: 0,
+            is_dm: useDM,
+            dm_identity: activeChatRef.current?.account,
+          });
+        if (reFetchedMessages.data) {
+          const existingMessageIds = new Set(
+            messagesRef.current.map((msg) => msg.id)
+          );
+          const newMessages = reFetchedMessages.data.messages
+            .filter(
+              (message: MessageWithReactions) =>
+                !existingMessageIds.has(message.id)
+            )
+            .map((message: MessageWithReactions) => ({
+              id: message.id,
+              text: message.text,
+              nonce: Math.random().toString(36).substring(2, 15),
+              key: message.id,
+              timestamp: message.timestamp * 1000,
+              sender: message.sender,
+              senderUsername: message.sender_username,
+              reactions: message.reactions,
+              threadCount: message.thread_count,
+              threadLastTimestamp: message.thread_last_timestamp,
+              editedOn: undefined,
+              mentions: [],
+              files: [],
+              images: [],
+              editMode: false,
+              status: MessageStatus.sent,
+              deleted: message.deleted,
+            }));
 
-            if (newMessages.length > 0) {
-              setIncomingMessages(newMessages);
-              messagesRef.current = [...messagesRef.current, ...newMessages];
-            }
-          }
-        } else if (event.type === "ExecutionEvent" && event.data?.events) {
-          const executionEvents = event.data.events;
-          for (const executionEvent of executionEvents) {
-            if (executionEvent.kind === "MessageSent") {
-              // On sender node do nothing as this will only duplicate the message
-            } else if (executionEvent.kind === "ChannelCreated") {
-              await fetchChannels();
-            }
+          if (newMessages.length > 0) {
+            setIncomingMessages(newMessages);
+            messagesRef.current = [...messagesRef.current, ...newMessages];
           }
         }
-      } catch (callbackError) {
-        console.error("Error in subscription callback:", callbackError);
+      } else if (event.type === "ExecutionEvent" && event.data?.events) {
+        const executionEvents = event.data.events;
+        for (const executionEvent of executionEvents) {
+          if (executionEvent.kind === "MessageSent") {
+            // On sender node do nothing as this will only duplicate the message
+          } else if (executionEvent.kind === "ChannelCreated") {
+            await fetchChannels();
+          }
+        }
       }
-    };
-
-    try {
-      app.subscribeToEvents([currentContextId], eventCallback);
-    } catch (error) {
-      console.warn("Failed to subscribe to context events:", error);
+    } catch (callbackError) {
+      console.error("Error in subscription callback:", callbackError);
     }
-
-    return () => {
-      try {
-        app.unsubscribeFromEvents([currentContextId]);
-      } catch (error) {
-        console.warn("Error during event unsubscription:", error);
-      }
-    };
-  }, [app]);
+  };
 
   const loadInitialChatMessages = async (): Promise<ChatMessagesData> => {
     if (!activeChat?.name) {
@@ -407,7 +399,9 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     }
   };
 
-  const [chatMembers, setChatMembers] = useState<Map<string, string>>(new Map());
+  const [chatMembers, setChatMembers] = useState<Map<string, string>>(
+    new Map()
+  );
 
   const fetchChatMembers = async () => {
     const chatMembers: ResponseData<Map<string, string>> =
@@ -433,6 +427,16 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
         .joinContext(activeChatRef.current?.invitationPayload || "");
       if (joinContextResponse.data) {
         await fetchDms();
+        if (app) {
+          const useDM = (activeChatRef.current?.type === "direct_message" &&
+            activeChatRef.current?.account &&
+            !activeChatRef.current?.canJoin &&
+            activeChatRef.current?.otherIdentityNew) as boolean;
+          const contextId = getContextId();
+          const dmContextId = getDmContextId();
+          const currentContextId = (useDM ? dmContextId : contextId) || "";
+          app.subscribeToEvents([currentContextId], eventCallback);
+        }
       } else {
         canJoin = true;
       }
@@ -678,34 +682,41 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   };
 
   return (
-    <AppContainer
-      isOpenSearchChannel={isOpenSearchChannel}
-      setIsOpenSearchChannel={setIsOpenSearchChannel}
-      isSidebarOpen={isSidebarOpen}
-      setIsSidebarOpen={setIsSidebarOpen}
-      activeChat={activeChat}
-      updateSelectedActiveChat={updateSelectedActiveChat}
-      reFetchChannelMembers={reFetchChannelMembers}
-      openSearchPage={openSearchPage}
-      channelUsers={channelUsers}
-      nonInvitedUserList={nonInvitedUserList}
-      onDMSelected={onDMSelected}
-      loadInitialChatMessages={loadInitialChatMessages}
-      incomingMessages={incomingMessages}
-      channels={channels}
-      fetchChannels={fetchChannels}
-      onJoinedChat={onJoinedChat}
-      loadPrevMessages={loadPrevMessages}
-      chatMembers={chatMembers}
-      createDM={createDM}
-      privateDMs={privateDMs}
-      loadInitialThreadMessages={loadInitialThreadMessages}
-      incomingThreadMessages={incomingThreadMessages}
-      loadPrevThreadMessages={loadPrevThreadMessages}
-      updateCurrentOpenThread={updateCurrentOpenThread}
-      openThread={openThread}
-      setOpenThread={setOpenThread}
-      currentOpenThreadRef={currentOpenThreadRef}
-    />
+    <>
+      <button
+        onClick={() => app?.unsubscribeFromEvents([getContextId() || ""])}
+      >
+        UNSUBSCIBE
+      </button>
+      <AppContainer
+        isOpenSearchChannel={isOpenSearchChannel}
+        setIsOpenSearchChannel={setIsOpenSearchChannel}
+        isSidebarOpen={isSidebarOpen}
+        setIsSidebarOpen={setIsSidebarOpen}
+        activeChat={activeChat}
+        updateSelectedActiveChat={updateSelectedActiveChat}
+        reFetchChannelMembers={reFetchChannelMembers}
+        openSearchPage={openSearchPage}
+        channelUsers={channelUsers}
+        nonInvitedUserList={nonInvitedUserList}
+        onDMSelected={onDMSelected}
+        loadInitialChatMessages={loadInitialChatMessages}
+        incomingMessages={incomingMessages}
+        channels={channels}
+        fetchChannels={fetchChannels}
+        onJoinedChat={onJoinedChat}
+        loadPrevMessages={loadPrevMessages}
+        chatMembers={chatMembers}
+        createDM={createDM}
+        privateDMs={privateDMs}
+        loadInitialThreadMessages={loadInitialThreadMessages}
+        incomingThreadMessages={incomingThreadMessages}
+        loadPrevThreadMessages={loadPrevThreadMessages}
+        updateCurrentOpenThread={updateCurrentOpenThread}
+        openThread={openThread}
+        setOpenThread={setOpenThread}
+        currentOpenThreadRef={currentOpenThreadRef}
+      />
+    </>
   );
 }
