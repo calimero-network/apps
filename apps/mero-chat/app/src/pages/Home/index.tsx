@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState, useRef } from "react";
 import AppContainer from "../../components/common/AppContainer";
 import {
   MessageStatus,
@@ -73,7 +73,6 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
       ) {
         try {
           app.unsubscribeFromEvents([currentSubscriptionContextId]);
-          console.log("Unsubscribed from:", currentSubscriptionContextId);
         } catch (error) {
           console.error(
             "Failed to unsubscribe from:",
@@ -86,7 +85,6 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
       try {
         app.subscribeToEvents([contextId], eventCallback);
         setCurrentSubscriptionContextId(contextId);
-        console.log("Subscribed to:", contextId);
       } catch (error) {
         console.error("Failed to subscribe to:", contextId, error);
       }
@@ -163,7 +161,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     setActiveChat(null);
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const storedSession: ActiveChat | null = getStoredSession();
     const chatToUse = storedSession || defaultActiveChat;
 
@@ -171,12 +169,16 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     activeChatRef.current = chatToUse;
     getChannelUsers(chatToUse.name);
     getNonInvitedUsers(chatToUse.name);
+    
     if (app) {
       const currentContextId = chatToUse.contextId || getContextId() || "";
       if (currentContextId) {
-        manageEventSubscription(currentContextId);
+        setTimeout(() => {
+          manageEventSubscription(currentContextId);
+        }, 0);
       }
     }
+    
     setMessagesOffset(20);
     setTotalMessageCount(0);
   }, [app, manageEventSubscription]);
@@ -241,7 +243,6 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const eventCallback = async (event: any) => {
-    console.log("event", event);
     const sessionChat = getStoredSession();
     const useDM = (sessionChat?.type === "direct_message" &&
       sessionChat?.account &&
