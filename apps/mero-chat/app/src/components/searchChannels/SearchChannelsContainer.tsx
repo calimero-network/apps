@@ -359,7 +359,8 @@ export default function SearchChannelsContainer({
                     $canJoin={!channel.isMember}
                     disabled={
                       channel.name === isLoadingNameId ||
-                      channel.createdBy === localStorage.getItem("accountId")
+                      channel.createdBy === localStorage.getItem("accountId") ||
+                      channel.name === "general"
                     }
                     onClick={() =>
                       clickChannelOption(channel.isMember, channel.name)

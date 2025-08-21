@@ -103,9 +103,6 @@ export default function HandleInvitation({
             updateSessionChat(savedSession);
             onDMSelected(undefined, savedSession);
           }
-          setTimeout(() => {
-            window.location.reload();
-          }, 3000);
         } else {
           setError(
             clientResponse.error?.message ||

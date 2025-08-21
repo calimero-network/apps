@@ -3,6 +3,7 @@ import styled from "styled-components";
 import { timestampToDate } from "../../utils/time";
 
 interface AboutDetailsProps {
+  channelName: string;
   dateCreated: string;
   manager: string;
   handleLeaveChannel: () => void;
@@ -68,11 +69,11 @@ const AboutDetails: React.FC<AboutDetailsProps> = (props) => {
         <Text>{props.manager}</Text>
       </SettingsItem>
       <SettingsItem $roundedBottom>
-        <ButtonLeave>
+        {props.channelName !== "general" && <ButtonLeave>
           <Text $red={true} onClick={props.handleLeaveChannel}>
             Leave Channel
           </Text>
-        </ButtonLeave>
+        </ButtonLeave>}
       </SettingsItem>
     </>
   );

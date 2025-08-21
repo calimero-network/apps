@@ -101,9 +101,6 @@ export default function HandleDMSetup({
             updateSessionChat(savedSession);
             onDMSelected(undefined, savedSession);
           }
-          setTimeout(() => {
-            window.location.reload();
-          }, 3000);
         } else {
           setError(
             updateIdentityResponse.error?.message || "Failed to update identity"
