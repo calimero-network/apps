@@ -60,13 +60,46 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     undefined
   );
 
+  const [currentSubscriptionContextId, setCurrentSubscriptionContextId] =
+    useState<string>("");
+
+  const manageEventSubscription = useCallback(
+    (contextId: string) => {
+      if (!app || !contextId) return;
+
+      if (
+        currentSubscriptionContextId &&
+        currentSubscriptionContextId !== contextId
+      ) {
+        try {
+          app.unsubscribeFromEvents([currentSubscriptionContextId]);
+          console.log("Unsubscribed from:", currentSubscriptionContextId);
+        } catch (error) {
+          console.error(
+            "Failed to unsubscribe from:",
+            currentSubscriptionContextId,
+            error
+          );
+        }
+      }
+
+      try {
+        app.subscribeToEvents([contextId], eventCallback);
+        setCurrentSubscriptionContextId(contextId);
+        console.log("Subscribed to:", contextId);
+      } catch (error) {
+        console.error("Failed to subscribe to:", contextId, error);
+      }
+    },
+    [app, currentSubscriptionContextId]
+  );
+
   useEffect(() => {
     if (!isConfigSet) {
       window.location.href = "/login";
     }
   }, [isConfigSet]);
 
-  // Sync the ref with the state
   useEffect(() => {
     currentOpenThreadRef.current = currentOpenThread;
   }, [currentOpenThread]);
@@ -114,7 +147,9 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
       const contextId = getContextId();
       const dmContextId = getDmContextId();
       const currentContextId = (useDM ? dmContextId : contextId) || "";
-      app.subscribeToEvents([currentContextId], eventCallback);
+      if (currentContextId) {
+        manageEventSubscription(currentContextId);
+      }
     }
     setMessagesOffset(20);
     setTotalMessageCount(0);
@@ -138,11 +173,13 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     getNonInvitedUsers(chatToUse.name);
     if (app) {
       const currentContextId = chatToUse.contextId || getContextId() || "";
-      app.subscribeToEvents([currentContextId], eventCallback);
+      if (currentContextId) {
+        manageEventSubscription(currentContextId);
+      }
     }
     setMessagesOffset(20);
     setTotalMessageCount(0);
-  }, []);
+  }, [app, manageEventSubscription]);
 
   const onDMSelected = useCallback(async (dm?: DMChatInfo, sc?: ActiveChat) => {
     let canJoin = true;
@@ -435,7 +472,9 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
           const contextId = getContextId();
           const dmContextId = getDmContextId();
           const currentContextId = (useDM ? dmContextId : contextId) || "";
-          app.subscribeToEvents([currentContextId], eventCallback);
+          if (currentContextId) {
+            manageEventSubscription(currentContextId);
+          }
         }
       } else {
         canJoin = true;
@@ -682,41 +721,34 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   };
 
   return (
-    <>
-      <button
-        onClick={() => app?.unsubscribeFromEvents([getContextId() || ""])}
-      >
-        UNSUBSCIBE
-      </button>
-      <AppContainer
-        isOpenSearchChannel={isOpenSearchChannel}
-        setIsOpenSearchChannel={setIsOpenSearchChannel}
-        isSidebarOpen={isSidebarOpen}
-        setIsSidebarOpen={setIsSidebarOpen}
-        activeChat={activeChat}
-        updateSelectedActiveChat={updateSelectedActiveChat}
-        reFetchChannelMembers={reFetchChannelMembers}
-        openSearchPage={openSearchPage}
-        channelUsers={channelUsers}
-        nonInvitedUserList={nonInvitedUserList}
-        onDMSelected={onDMSelected}
-        loadInitialChatMessages={loadInitialChatMessages}
-        incomingMessages={incomingMessages}
-        channels={channels}
-        fetchChannels={fetchChannels}
-        onJoinedChat={onJoinedChat}
-        loadPrevMessages={loadPrevMessages}
-        chatMembers={chatMembers}
-        createDM={createDM}
-        privateDMs={privateDMs}
-        loadInitialThreadMessages={loadInitialThreadMessages}
-        incomingThreadMessages={incomingThreadMessages}
-        loadPrevThreadMessages={loadPrevThreadMessages}
-        updateCurrentOpenThread={updateCurrentOpenThread}
-        openThread={openThread}
-        setOpenThread={setOpenThread}
-        currentOpenThreadRef={currentOpenThreadRef}
-      />
-    </>
+    <AppContainer
+      isOpenSearchChannel={isOpenSearchChannel}
+      setIsOpenSearchChannel={setIsOpenSearchChannel}
+      isSidebarOpen={isSidebarOpen}
+      setIsSidebarOpen={setIsSidebarOpen}
+      activeChat={activeChat}
+      updateSelectedActiveChat={updateSelectedActiveChat}
+      reFetchChannelMembers={reFetchChannelMembers}
+      openSearchPage={openSearchPage}
+      channelUsers={channelUsers}
+      nonInvitedUserList={nonInvitedUserList}
+      onDMSelected={onDMSelected}
+      loadInitialChatMessages={loadInitialChatMessages}
+      incomingMessages={incomingMessages}
+      channels={channels}
+      fetchChannels={fetchChannels}
+      onJoinedChat={onJoinedChat}
+      loadPrevMessages={loadPrevMessages}
+      chatMembers={chatMembers}
+      createDM={createDM}
+      privateDMs={privateDMs}
+      loadInitialThreadMessages={loadInitialThreadMessages}
+      incomingThreadMessages={incomingThreadMessages}
+      loadPrevThreadMessages={loadPrevThreadMessages}
+      updateCurrentOpenThread={updateCurrentOpenThread}
+      openThread={openThread}
+      setOpenThread={setOpenThread}
+      currentOpenThreadRef={currentOpenThreadRef}
+    />
   );
 }
