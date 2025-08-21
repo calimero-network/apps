@@ -69,9 +69,6 @@ export default function JoinContext({
             updateSessionChat(savedSession);
             onDMSelected(undefined, savedSession);
           }
-          setTimeout(() => {
-            window.location.href = "/";
-          }, 2000);
         } else {
           setError(
             verifyContextResponse.error?.message || "Failed to verify context"

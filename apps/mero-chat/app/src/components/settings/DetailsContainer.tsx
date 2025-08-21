@@ -88,6 +88,7 @@ const DetailsContainer: React.FC<DetailsContainerProps> = (props) => {
           dateCreated={channelMeta.createdAt}
           manager={channelMeta.createdByUsername}
           handleLeaveChannel={handleLeaveChannel}
+          channelName={channelName}
         />
       )}
       {selectedTabIndex === 1 && (

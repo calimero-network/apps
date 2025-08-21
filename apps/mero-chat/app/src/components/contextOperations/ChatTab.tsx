@@ -1,14 +1,22 @@
 import React, { useState, useEffect } from "react";
 import { styled } from "styled-components";
-import { CalimeroConnectButton, setAppEndpointKey, setContextId, setExecutorPublicKey, getAppEndpointKey, apiClient } from "@calimero-network/calimero-client";
+import {
+  CalimeroConnectButton,
+  setAppEndpointKey,
+  setContextId,
+  setExecutorPublicKey,
+  getAppEndpointKey,
+  apiClient,
+} from "@calimero-network/calimero-client";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 import { extractErrorMessage } from "../../utils/errorParser";
 import { defaultActiveChat } from "../../mock/mock";
-import { updateSessionChat } from "../../utils/session";
+import { getStoredSession, updateSessionChat } from "../../utils/session";
 import { CONTEXT_ID } from "../../constants/config";
 import type { ResponseData } from "@calimero-network/calimero-client";
 import type { FetchContextIdentitiesResponse } from "@calimero-network/calimero-client/lib/api/nodeApi";
 import { Input } from "./JoinContextTab";
+import type { ActiveChat } from "../../types/Common";
 
 const TabContent = styled.div`
   display: flex;
@@ -78,7 +86,9 @@ const Button = styled.button`
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
   margin-top: 0.75rem;
   border: 1px solid rgba(255, 255, 255, 0.1);
 
@@ -104,11 +114,7 @@ const Message = styled.div<{ type?: "success" | "error" }>`
   font-size: 0.8rem;
   text-align: center;
   color: ${({ type }) =>
-    type === "success"
-      ? "#27ae60"
-      : type === "error"
-      ? "#e74c3c"
-      : "#b8b8d1"};
+    type === "success" ? "#27ae60" : type === "error" ? "#e74c3c" : "#b8b8d1"};
 `;
 
 interface ChatTabProps {
@@ -116,7 +122,10 @@ interface ChatTabProps {
   isConfigSet: boolean;
 }
 
-export default function ChatTab({ isAuthenticated, isConfigSet }: ChatTabProps) {
+export default function ChatTab({
+  isAuthenticated,
+  isConfigSet,
+}: ChatTabProps) {
   const [formData, setFormData] = useState({
     nodeUrl: "",
     contextId: "",
@@ -186,14 +195,18 @@ export default function ChatTab({ isAuthenticated, isConfigSet }: ChatTabProps) 
         const errorMessage = extractErrorMessage(response.error);
         if (errorMessage.includes("Already a member")) {
           setSuccess("Already connected to chat!");
-          updateSessionChat(defaultActiveChat);
+          const storedSession: ActiveChat | null = getStoredSession();
+          const chatToUse = storedSession || defaultActiveChat;
+          updateSessionChat(chatToUse);
         } else {
           setError(errorMessage);
           return;
         }
       } else {
         setSuccess("Successfully joined chat!");
-        updateSessionChat(defaultActiveChat);
+        const storedSession: ActiveChat | null = getStoredSession();
+        const chatToUse = storedSession || defaultActiveChat;
+        updateSessionChat(chatToUse);
       }
 
       setTimeout(() => {
@@ -236,7 +249,10 @@ export default function ChatTab({ isAuthenticated, isConfigSet }: ChatTabProps) 
         </InputGroup>
         <InputGroup>
           <Label>Username or Name</Label>
-          <Note>*This will be used to identify you in the chat and can only be set ONCE.</Note>
+          <Note>
+            *This will be used to identify you in the chat and can only be set
+            ONCE.
+          </Note>
           <Input
             id="invitationPayload"
             type="text"
