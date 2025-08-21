@@ -169,7 +169,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     activeChatRef.current = chatToUse;
     getChannelUsers(chatToUse.name);
     getNonInvitedUsers(chatToUse.name);
-    
+
     if (app) {
       const currentContextId = chatToUse.contextId || getContextId() || "";
       if (currentContextId) {
@@ -178,7 +178,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
         }, 0);
       }
     }
-    
+
     setMessagesOffset(20);
     setTotalMessageCount(0);
   }, [app, manageEventSubscription]);
