@@ -54,5 +54,9 @@ The `workflows/` folder contains an example bootstrap workflow that demonstrates
 To run this workflow, you need to install [merobox](https://www.piwheels.org/project/merobox/) on your machine and execute:
 
 ```bash title="Terminal"
+merobox --version
+> merobox, version 0.1.13
 merobox bootstrap workflows/bootstrap.yml
+> ...
+> 🎉 Workflow completed successfully!
 ```
