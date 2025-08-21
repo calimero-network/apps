@@ -1,5 +1,5 @@
-description: A sample workflow that demonstrates the bootstrap functionality with dynamic value capture
-name: Sample Calimero Workflow
+description: Simple bootstrap workflow for Curb Chat application
+name: Curb Chat Bootstrap Workflow
 
 nodes:
   chain_id: testnet-1
@@ -15,20 +15,27 @@ steps:
     node: calimero-node-1
     url: https://calimero-only-peers-dev.s3.amazonaws.com/uploads/curb.wasm.wasm
     dev: true
+    outputs:
+      app_id: applicationId
 
   # Step 2: Create a context using the installed application
   # Uses the captured application ID from step 1
   - name: Create Context on Node 1
     type: create_context
     node: calimero-node-1
-    application_id: '{{install.calimero-node-1}}'
+    application_id: '{{app_id}}'
     params: '{"name": "CurbTest","is_dm": false, "default_channels": [{"name": "general"}],"created_at": 1751952997, "owner_username": "Bob"}'
+    outputs:
+          context_id: contextId
+          member_public_key: memberPublicKey
 
   # Step 3: Generate an identity on the second node
   # This captures the public key for use in invitation and joining
   - name: Create Identity on Node 2
     type: create_identity
     node: calimero-node-2
+    outputs:
+      public_key: publicKey
 
   # Step 4: Wait for identity creation to complete
   - name: Wait for Identity Creation
@@ -40,33 +47,35 @@ steps:
   - name: Invite Node 2 from Node 1
     type: invite_identity
     node: calimero-node-1
-    context_id: '{{context.calimero-node-1}}'
-    grantee_id: '{{identity.calimero-node-2}}'
-    granter_id: '{{context.calimero-node-1.memberPublicKey}}'
+    context_id: '{{context_id}}'
+    grantee_id: '{{public_key}}'
+    granter_id: '{{member_public_key}}'
     capability: member
+    outputs:
+      invitation: invitation
 
   # Step 6: Join the context from the second node
   # Uses captured values: context ID, invitee identity, and invitation data
   - name: Join Context from Node 2
     type: join_context
     node: calimero-node-2
-    context_id: '{{context.calimero-node-1}}'
-    invitee_id: '{{identity.calimero-node-2}}'
-    invitation: '{{invite.calimero-node-1_identity.calimero-node-2}}'
+    context_id: '{{context_id}}'
+    invitee_id: '{{public_key}}'
+    invitation: '{{invitation}}'
 
   - name: Wait for context sync
     type: wait
-    seconds: 10
+    seconds: 3
 
   # Step 7: Join chat from Node 2
   - name: Join Chat from Node 2
     type: call
     node: calimero-node-2
-    context_id: '{{context.calimero-node-1}}'
-    identity_id: '{{identity.calimero-node-2}}'
+    context_id: '{{context_id}}'
+    executor_public_key: '{{public_key}}'
     method: join_chat
     args:
-      username: "Alice"
+      username: Alice
 
   # Step 8: Wait for join operation to complete
   - name: Wait for Join Operation
@@ -77,15 +86,16 @@ steps:
   - name: Send Message from Node 1 - Hello Node1
     type: call
     node: calimero-node-1
-    context_id: '{{context.calimero-node-1}}'
+    context_id: '{{context_id}}'
+    executor_public_key: '{{member_public_key}}'
     method: send_message
     args:
       group:
-        name: "general"
-      message: "hello node1"
+        name: general
+      message: hello node1
       parent_message: null
       timestamp: 1751652997
-      sender_username: "Bob"
+      sender_username: Bob
 
   # Step 10: Wait for message to be sent
   - name: Wait for Message Send
@@ -96,15 +106,16 @@ steps:
   - name: Send Message from Node 2 - Hello Node2
     type: call
     node: calimero-node-2
-    context_id: '{{context.calimero-node-1}}'
+    context_id: '{{context_id}}'
+    executor_public_key: '{{public_key}}'
     method: send_message
     args:
       group:
-        name: "general"
-      message: "hello node2"
+        name: general
+      message: hello node2
       parent_message: null
       timestamp: 1751653000
-      sender_username: "Alice"
+      sender_username: Alice
 
   # Step 12: Wait for message to be sent
   - name: Wait for Second Message Send
@@ -115,11 +126,12 @@ steps:
   - name: Get Messages from Node 1
     type: call
     node: calimero-node-1
-    context_id: '{{context.calimero-node-1}}'
+    context_id: '{{context_id}}'
+    executor_public_key: '{{member_public_key}}'
     method: get_messages
     args:
       group:
-        name: "general"
+        name: general
       parent_message: null
       limit: 10
       offset: 0
