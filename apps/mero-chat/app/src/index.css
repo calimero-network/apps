@@ -960,8 +960,3 @@ body {
 .ql-snow a {
   color: #06c;
 }
-
-/* Hide duplicate toolbar - hide first child toolbar */
-.ql-toolbar.ql-snow:first-child {
-  display: none;
-}
