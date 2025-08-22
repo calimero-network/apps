@@ -1,5 +1,4 @@
-import "./quill.snow.css";
-import React, { useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import Quill from "quill";
 import { sanitizePasteHtml } from "curb-virtualized-chat";
