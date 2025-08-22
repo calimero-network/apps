@@ -1,6 +1,7 @@
 import React, {
   useState,
   useEffect,
+  useLayoutEffect,
   useRef,
   useCallback,
   useMemo,
@@ -725,11 +726,11 @@ const AgreementPage: React.FC = () => {
     setSelectedDocumentForAudit(null);
   }, []);
 
-  useEffect(() => {
-    if (!currentContextId || !app) return;
+  const [currentSubscriptionContextId, setCurrentSubscriptionContextId] =
+    useState<string | null>(null);
 
-    // Event handler for state mutations
-    const eventCallback = async (event: any) => {
+  const eventCallback = useCallback(
+    async (event: any) => {
       try {
         if (event.type === 'StateMutation') {
           await Promise.all([loadDocuments(), loadContextDetails()]);
@@ -737,23 +738,64 @@ const AgreementPage: React.FC = () => {
       } catch (err) {
         console.error('Error handling state mutation event:', err);
       }
-    };
+    },
+    [loadDocuments, loadContextDetails],
+  );
 
-    // Subscribe to events
-    try {
-      app.subscribeToEvents([currentContextId], eventCallback);
-    } catch (error) {
-      console.warn('Failed to subscribe to context events:', error);
-    }
+  useLayoutEffect(() => {
+    if (!currentContextId || !app) return;
 
-    return () => {
+    let isSubscribed = false;
+
+    const subscribeToContext = (contextId: string) => {
+      if (isSubscribed && currentSubscriptionContextId === contextId) {
+        return;
+      }
+
+      if (
+        currentSubscriptionContextId &&
+        currentSubscriptionContextId !== contextId
+      ) {
+        try {
+          app.unsubscribeFromEvents([currentSubscriptionContextId]);
+        } catch (error) {
+          console.error(
+            'WebSocket: Failed to unsubscribe from:',
+            currentSubscriptionContextId,
+            error,
+          );
+        }
+      }
+
       try {
-        app.unsubscribeFromEvents([currentContextId]);
+        app.subscribeToEvents([contextId], eventCallback);
+        setCurrentSubscriptionContextId(contextId);
+        isSubscribed = true;
       } catch (error) {
-        console.warn('Error during event unsubscription:', error);
+        console.error('WebSocket: Failed to subscribe to:', contextId, error);
+        setCurrentSubscriptionContextId(null);
+        isSubscribed = false;
       }
     };
-  }, [currentContextId, loadDocuments, loadContextDetails, app]);
+
+    // Initial subscription with delay for proper initialization
+    const timeoutId = setTimeout(
+      () => subscribeToContext(currentContextId),
+      100,
+    );
+
+    return () => {
+      clearTimeout(timeoutId);
+
+      if (isSubscribed && currentSubscriptionContextId) {
+        try {
+          app.unsubscribeFromEvents([currentSubscriptionContextId]);
+        } catch (error) {
+          console.warn('WebSocket: Error during cleanup:', error);
+        }
+      }
+    };
+  }, [currentContextId, app, eventCallback, currentSubscriptionContextId]);
 
   return (
     <MobileLayout>
