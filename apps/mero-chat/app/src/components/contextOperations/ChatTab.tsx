@@ -263,7 +263,7 @@ export default function ChatTab({
           />
         </InputGroup>
 
-        <Button type="submit" disabled={isLoading || isDisabled}>
+        <Button type="submit" disabled={isLoading || isDisabled || !username.trim()}>
           {isLoading ? "Setting up..." : "Connect"}
         </Button>
 
