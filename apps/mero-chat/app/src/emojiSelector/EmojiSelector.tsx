@@ -197,7 +197,7 @@ export default function EmojiSelector({
       <SelectedTypeTitle>{typesNames[selected]}</SelectedTypeTitle>
       <EmojiGrid>
         {emojiObj[typesIds[selected] as keyof typeof emojiObj].map((item: Emoji, id: number) => (
-          <div key={id}>
+          <div key={id+item.emoji}>
             <EmojiItemDesktop
               key={`desktop-${id}`}
               onMouseEnter={() => updateHoveredEmoji(item)}

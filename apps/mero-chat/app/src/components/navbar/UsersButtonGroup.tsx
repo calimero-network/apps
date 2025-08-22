@@ -56,7 +56,7 @@ export default function UsersButtonGroup(props: UsersButtonGroupProps) {
       {Object.keys(props.channelUserList)
         .slice(0, 3)
         .map(([user, id]) => (
-          <div key={id}>
+          <div key={id+user}>
             <ProfileIconContainerGroup $isHovered={isHovered}>
               <UserProfileIcon accountId={user} showStatus={false} />
             </ProfileIconContainerGroup>
