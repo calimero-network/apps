@@ -1,0 +1,106 @@
+name: Deploy ICP Canister
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy to"
+        required: true
+        default: "mainnet"
+        type: choice
+        options:
+          - mainnet
+          - local
+      cycles_amount:
+        description: "Cycles (in trillions)"
+        required: false
+        default: "1.0"
+        type: string
+
+env:
+  DFX_VERSION: "0.28.0"
+  RUST_VERSION: "1.89.0"
+  DFX_NETWORK: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'local' && 'local' || 'ic' }}
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./merodocs_registry
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ env.RUST_VERSION }}
+          target: wasm32-unknown-unknown
+          override: true
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ./merodocs_registry/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install tools
+        run: |
+          cargo install candid-extractor --version 0.1.4
+          sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)" -- --version ${{ env.DFX_VERSION }}
+          echo "$HOME/bin" >> $GITHUB_PATH
+
+      - name: Setup dfx identity
+        if: env.DFX_NETWORK == 'ic'
+        run: |
+          echo "${{ secrets.DFX_IDENTITY_PEM }}" > identity.pem
+          if dfx identity list | grep -q "deployment"; then
+            dfx identity remove deployment
+          fi
+          dfx identity import deployment identity.pem
+          dfx identity use deployment
+          rm identity.pem
+
+      - name: Start local dfx
+        if: env.DFX_NETWORK == 'local'
+        run: dfx start --background --clean
+
+      - name: Build canister
+        run: |
+          dfx build
+          cargo build --target wasm32-unknown-unknown --release -p backend
+          candid-extractor target/wasm32-unknown-unknown/release/backend.wasm > backend/backend.did
+
+      - name: Deploy canister
+        run: |
+          if [ "${{ env.DFX_NETWORK }}" = "ic" ]; then
+            CYCLES=$(echo "${{ github.event.inputs.cycles_amount || '1.0' }} * 1000000000000" | bc -l | cut -d. -f1)
+            dfx deploy --network ic --with-cycles $CYCLES
+          else
+            dfx deploy
+          fi
+
+      - name: Get canister info
+        run: |
+          if [ "${{ env.DFX_NETWORK }}" = "ic" ]; then
+            CANISTER_ID=$(dfx canister --network ic id backend)
+            echo "**Canister ID**: $CANISTER_ID" >> $GITHUB_STEP_SUMMARY
+            echo "**URL**: https://${CANISTER_ID}.icp0.io" >> $GITHUB_STEP_SUMMARY
+          else
+            CANISTER_ID=$(dfx canister id backend)
+            echo "**Canister ID**: $CANISTER_ID" >> $GITHUB_STEP_SUMMARY
+            echo "**URL**: http://localhost:4943/?canisterId=$CANISTER_ID" >> $GITHUB_STEP_SUMMARY
+            dfx stop
+          fi
