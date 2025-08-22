@@ -170,14 +170,9 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     getChannelUsers(chatToUse.name);
     getNonInvitedUsers(chatToUse.name);
 
-    if (app) {
-      const currentContextId = chatToUse.contextId || getContextId() || "";
-      if (currentContextId) {
-        setTimeout(() => {
-          manageEventSubscription(currentContextId);
-        }, 0);
-      }
-    }
+    setTimeout(() => {
+      updateSelectedActiveChat(chatToUse);
+    }, 500);
 
     setMessagesOffset(20);
     setTotalMessageCount(0);
