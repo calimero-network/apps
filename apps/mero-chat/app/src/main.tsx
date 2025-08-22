@@ -1,7 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
-import "quill/dist/quill.snow.css";
 import App from "./App.tsx";
 import { BrowserRouter } from "react-router-dom";
 import { AppMode, CalimeroProvider } from "@calimero-network/calimero-client";

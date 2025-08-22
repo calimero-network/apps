@@ -319,18 +319,6 @@ export default function MessageInput({
   isOwner,
   isModerator,
 }: MessageInputProps) {
-  
-  // Debug logging for Vercel
-  if (import.meta.env.PROD) {
-    console.log('MessageInput Component Rendered:', {
-      selectedChat,
-      isReadOnly,
-      isOwner,
-      isModerator,
-      openThread: !!openThread,
-      isThread
-    });
-  }
   const [canWriteMessage, setCanWriteMessage] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [message, setMessage] = useState<MessageWithReactions | null>(null);
@@ -422,16 +410,6 @@ export default function MessageInput({
     } else {
       setCanWriteMessage(true);
     }
-    
-    // Debug logging for Vercel
-    if (import.meta.env.PROD) {
-      console.log('MessageInput Debug:', {
-        isReadOnly,
-        isModerator,
-        isOwner,
-        canWriteMessage: !isReadOnly || isModerator || isOwner
-      });
-    }
   }, [isReadOnly, isModerator, isOwner]);
 
   const getCustomStyle = (openThread: boolean, isThread: boolean) => {
@@ -454,104 +432,36 @@ export default function MessageInput({
   };
   return (
     <>
-      {/* Always visible debug container for Vercel */}
-      {import.meta.env.PROD && (
-        <div style={{
-          position: 'fixed',
-          bottom: '0',
-          left: '0',
-          right: '0',
-          backgroundColor: 'red',
-          color: 'white',
-          padding: '8px',
-          fontSize: '12px',
-          zIndex: 9999
-        }}>
-          MessageInput Debug: canWriteMessage={canWriteMessage.toString()}, selectedChat={selectedChat}
-        </div>
-      )}
-      
       {canWriteMessage && (
         <Container style={getCustomStyle(!!openThread, isThread)}>
           <Wrapper>
             <FullWidthWrapper>
-              {/* Debug info for Vercel */}
-              {import.meta.env.PROD && (
-                <div style={{color: 'red', fontSize: '12px', marginBottom: '8px'}}>
-                  Debug: canWriteMessage={canWriteMessage.toString()}, openThread={openThread?.toString()}, isThread={isThread.toString()}
-                </div>
-              )}
-              {/* Try MarkdownEditor first, fallback to simple input if it fails */}
-              <div style={{display: 'flex', flexDirection: 'column', width: '100%'}}>
-                <MarkdownEditor
-                  setValue={(value) =>
-                    setMessage(
-                      message
-                        ? { ...message, text: value }
-                        : {
-                            id: "",
-                            text: value,
-                            nonce: "",
-                            timestamp: Date.now(),
-                            sender: "",
-                            reactions: new Map(),
-                            files: [],
-                            images: [],
-                            thread_count: 0,
-                            thread_last_timestamp: 0,
-                          }
-                    )
-                  }
-                  value={message?.text ?? ""}
-                  selectedEmoji={selectedEmoji}
-                  resetSelectedEmoji={() => setSelectedEmoji("")}
-                  handleMessageSent={(content: string) => {
-                    handleSendMessageEnter(content);
-                  }}
-                />
-                {/* Fallback simple input for debugging */}
-                {import.meta.env.PROD && (
-                  <textarea
-                    style={{
-                      width: '100%',
-                      minHeight: '40px',
-                      backgroundColor: '#333',
-                      color: 'white',
-                      border: '1px solid #666',
-                      borderRadius: '4px',
-                      padding: '8px',
-                      marginTop: '8px',
-                      fontSize: '12px'
-                    }}
-                    placeholder="Fallback input (if Quill fails)"
-                    value={message?.text ?? ""}
-                    onChange={(e) => {
-                      setMessage(
-                        message
-                          ? { ...message, text: e.target.value }
-                          : {
-                              id: "",
-                              text: e.target.value,
-                              nonce: "",
-                              timestamp: Date.now(),
-                              sender: "",
-                              reactions: new Map(),
-                              files: [],
-                              images: [],
-                              thread_count: 0,
-                              thread_last_timestamp: 0,
-                            }
-                      );
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendMessageEnter(e.currentTarget.value);
-                      }
-                    }}
-                  />
-                )}
-              </div>
+              <MarkdownEditor
+                setValue={(value) =>
+                  setMessage(
+                    message
+                      ? { ...message, text: value }
+                      : {
+                          id: "",
+                          text: value,
+                          nonce: "",
+                          timestamp: Date.now(),
+                          sender: "",
+                          reactions: new Map(),
+                          files: [],
+                          images: [],
+                          thread_count: 0,
+                          thread_last_timestamp: 0,
+                        }
+                  )
+                }
+                value={message?.text ?? ""}
+                selectedEmoji={selectedEmoji}
+                resetSelectedEmoji={() => setSelectedEmoji("")}
+                handleMessageSent={(content: string) => {
+                  handleSendMessageEnter(content);
+                }}
+              />
             </FullWidthWrapper>
             {(!message ||
               emptyText.test(markdownParser(message?.text ?? ""))) && (

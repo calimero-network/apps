@@ -60,9 +60,8 @@ export const MarkdownEditor = ({
   };
 
   useEffect(() => {
-    try {
-      if (ref.current) {
-        quillRef.current = new Quill(ref.current, {
+    if (ref.current) {
+      quillRef.current = new Quill(ref.current, {
         modules: {
           toolbar: toolbarOptions,
           keyboard: {
@@ -109,9 +108,6 @@ export const MarkdownEditor = ({
         }
       });
     }
-    } catch (error) {
-      console.error('Failed to initialize Quill editor:', error);
-    }
   }, []);
 
   useEffect(() => {
@@ -147,14 +143,6 @@ export const MarkdownEditor = ({
   }, [selectedEmoji, resetSelectedEmoji]);
 
   return (
-    <>
-      <div ref={ref}></div>
-      {/* Fallback for debugging */}
-      {import.meta.env.PROD && (
-        <div style={{color: 'orange', fontSize: '10px', marginTop: '4px'}}>
-          Quill Editor Debug: ref={!!ref.current}, quill={!!quillRef.current}
-        </div>
-      )}
-    </>
+    <div ref={ref}></div>
   );
 }; 
