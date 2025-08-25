@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Button } from './ui/button';
 import { useCalimero } from '@calimero-network/calimero-client';
 import { ClientApiDataSource } from '../api/dataSource/ClientApiDataSource';
-
+import { useTheme } from '../contexts/ThemeContext';
 interface ConsentModalProps {
   open: boolean;
   userId: string;
@@ -106,6 +106,7 @@ const ConsentModal: React.FC<ConsentModalProps> = ({
   onAccept,
   onClose,
 }) => {
+  const { mode } = useTheme();
   const [checked, setChecked] = useState(false);
   const [showDisclosure, setShowDisclosure] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -139,12 +140,18 @@ const ConsentModal: React.FC<ConsentModalProps> = ({
       {/* Disclosure Modal */}
       {showDisclosure && (
         <div className="fixed inset-0 flex items-center justify-center z-[10000] bg-black/60">
-          <div className="bg-white dark:bg-gray-900 p-6 rounded-lg max-w-lg w-full border shadow-lg relative">
+          <div
+            className={`p-6 rounded-lg max-w-lg w-full border shadow-lg relative ${
+              mode === 'dark' ? 'bg-gray-900' : 'bg-white'
+            }`}
+          >
             <h2 className="text-lg font-semibold mb-4">
               Electronic Records Disclosure and Consent
             </h2>
             <DisclosureText />
-            <div className="flex justify-end mt-6 dark:text-black">
+            <div
+              className={`flex justify-end mt-6 ${mode === 'dark' ? 'text-black' : ''}`}
+            >
               <Button onClick={() => setShowDisclosure(false)}>Close</Button>
             </div>
           </div>
@@ -152,7 +159,9 @@ const ConsentModal: React.FC<ConsentModalProps> = ({
       )}
 
       {/* Main Consent Modal */}
-      <div className="bg-white dark:bg-gray-900 p-6 rounded-lg max-w-md w-full border shadow-lg">
+      <div
+        className={`p-6 rounded-lg max-w-md w-full border shadow-lg ${mode === 'dark' ? 'bg-gray-900' : 'bg-white'}`}
+      >
         <h2 className="text-lg font-semibold mb-4">
           Consent to Electronic Signing
         </h2>
@@ -185,7 +194,7 @@ const ConsentModal: React.FC<ConsentModalProps> = ({
           <Button
             onClick={handleAccept}
             disabled={!checked || loading}
-            className="text-white dark:text-black"
+            className={`${mode === 'dark' ? 'text-black' : 'text-white'}`}
           >
             {loading ? 'Saving...' : 'Continue to Sign'}
           </Button>
