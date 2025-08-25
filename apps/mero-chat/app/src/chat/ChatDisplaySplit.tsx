@@ -61,36 +61,36 @@ const ContainerPadding = styled.div<{ $viewportHeight: number }>`
     
     /* Brave and regular browsers - reduce height by 20px */
     @supports not (-webkit-touch-callout: none) {
-      height: calc(100vh - 110px) !important;
-      min-height: calc(100vh - 110px) !important;
+      height: calc(100vh - 80px) !important;
+      min-height: calc(100vh - 80px) !important;
     }
     
     /* Safari-specific fixes */
     @supports (-webkit-touch-callout: none) {
       /* iOS Safari - use a more conservative approach */
-      height: calc(100vh - 180px) !important;
-      min-height: calc(100vh - 180px) !important;
+      height: calc(100vh - 130px) !important;
+      min-height: calc(100vh - 130px) !important;
     }
     
     /* Additional Safari detection for better compatibility */
     @media screen and (-webkit-min-device-pixel-ratio: 0) {
       @supports (-webkit-appearance: none) {
-        height: calc(100vh - 180px) !important;
-        min-height: calc(100vh - 180px) !important;
+        height: calc(100vh - 130px) !important;
+        min-height: calc(100vh - 130px) !important;
       }
     }
     
     /* Force Safari to use proper height calculations */
     @supports (-webkit-overflow-scrolling: touch) {
-      height: calc(100vh - 180px) !important;
-      min-height: calc(100vh - 180px) !important;
-      max-height: calc(100vh - 180px) !important;
+      height: calc(100vh - 130px) !important;
+      min-height: calc(100vh - 130px) !important;
+      max-height: calc(100vh - 130px) !important;
     }
     
     /* Additional iOS Safari specific rule */
     @supports (-webkit-touch-callout: none) and (max-width: 1024px) {
-      height: calc(100vh - 180px) !important;
-      min-height: calc(100vh - 180px) !important;
+      height: calc(100vh - 130px) !important;
+      min-height: calc(100vh - 130px) !important;
     }
   }
   scrollbar-color: black black;
