@@ -52,11 +52,22 @@ interface ChatDisplaySplitProps {
   messageWithEmojiSelector: CurbMessage | null;
 }
 
-const ContainerPadding = styled.div`
+const ContainerPadding = styled.div<{ $viewportHeight: number }>`
   @media (max-width: 1024px) {
-    height: calc(100vh - 180px) !important;
+    height: calc(100dvh - 180px) !important;
+    height: calc(${props => props.$viewportHeight}px - 180px) !important;
     padding-left: 0px !important;
     padding-right: 0px !important;
+    
+    @supports (-webkit-touch-callout: none) {
+      /* iOS Safari - often needs more space */
+      height: calc(100vh - 200px) !important;
+    }
+    
+    /* Chrome on Android - often has UI on top */
+    @media screen and (max-width: 1024px) and (-webkit-min-device-pixel-ratio: 1) {
+      height: calc(100vh - 130px) !important;
+    }
   }
   scrollbar-color: black black;
   ::-webkit-scrollbar {
@@ -192,11 +203,28 @@ export default function ChatDisplaySplit({
   messageWithEmojiSelector,
 }: ChatDisplaySplitProps) {
   const [accountId, setAccountId] = useState<string | undefined>(undefined);
+  const [viewportHeight, setViewportHeight] = useState(window.innerHeight);
 
   useEffect(() => {
     if (!accountId) {
       setAccountId(getExecutorPublicKey() ?? "");
     }
+  }, []);
+
+  useEffect(() => {
+    const updateHeight = () => {
+      setViewportHeight(window.innerHeight);
+    };
+
+    window.addEventListener('resize', updateHeight);
+    window.addEventListener('orientationchange', updateHeight);
+    
+    updateHeight();
+
+    return () => {
+      window.removeEventListener('resize', updateHeight);
+      window.removeEventListener('orientationchange', updateHeight);
+    };
   }, []);
 
   const isModerator = useMemo(
@@ -209,7 +237,6 @@ export default function ChatDisplaySplit({
 
   const isOwner = accountId === channelMeta.created_by;
 
-  // Create mutable copies of the style objects
   const currentChatStyle = { ...chatStyle };
   const currentContainerPaddingStyle = { ...containerPaddingStyle };
   const currentWrapperStyle = { ...wrapperStyle };
@@ -263,7 +290,7 @@ export default function ChatDisplaySplit({
     <>
       <Wrapper style={currentWrapperStyle}>
         {/* @ts-expect-error - TODO: fix this */}
-        <ContainerPadding style={currentContainerPaddingStyle}>
+        <ContainerPadding style={currentContainerPaddingStyle} $viewportHeight={viewportHeight}>
           {openThread && isThread && (
             <ThreadHeader
               onClose={() => {
