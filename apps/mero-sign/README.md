@@ -27,6 +27,17 @@
   - Members can **view or sign**, according to their permissions
   - Access remains restricted to invited participants—**no third parties have access**
 
+### Signature Library
+
+Each user can maintain a **personal signature library** within their private default context. This feature allows users to:
+
+- **Create and Store Signatures**: Users can draw their digital signatures securely within their private workspace
+- **Reuse Signatures**: Once created, signatures can be applied to multiple documents without recreating them
+- **Privacy-First Storage**: All signatures remain stored locally on the user's node—never exposed to external parties
+- **Quick Access**: Stored signatures are readily available when signing documents, streamlining the signing process
+
+The signature library ensures both convenience and security, allowing users to maintain consistent digital signatures while preserving complete privacy and control over their signing credentials.
+
 ### PDF Upload & Signing with ICP Integration
 
 - When a PDF is uploaded to the context:
@@ -39,12 +50,29 @@
   - Comparing it with the on-chain value
   - Confirms whether the document matches the recorded state or has been tampered with
 
+### Audit Trail
+
+Three user actions are now audited on ICP, ensuring complete transparency and public accountability:
+
+- **Document Upload**  
+  When a user uploads a PDF, an upload event is recorded on the ICP canister.
+
+- **User Consent**  
+  Before signing, the user must provide explicit consent. This action is logged on ICP to form a tamper-proof record of intent.
+
+- **Signing Event**  
+  Once a user signs the document, that signing event (with timestamp and identity) is also logged on ICP.
+
+Together, these logs create a reliable audit trail spanning from upload to signature—empowering both users and auditors with verifiable, immutable proof of every step in the process.
+
+
+
 ---
 
 ## Workflow Flowchart
 
 <p align="center">
-  <img src="assets/MeroDocsFlowDark.png" alt="MeroDocs Workflow" width="700"/>
+  <img src="assets/MeroDocs_Dark.png" alt="MeroDocs Workflow" width="700"/>
 </p>
 
 ---
@@ -60,6 +88,7 @@
 | Collaborative PDF Workflow    | Users upload, view, and sign PDFs based on assigned roles in context.         |
 | ICP Integration for Integrity | Record original and final document hashes on the Internet Computer.           |
 | Verify Document Status        | Button to compare current PDF hash with ICP-stored hashes.                    |
+| Audit Trail                   | Logging the user action on ICP related to Document Signing.                   |
 | End‑to‑End Privacy            | Documents are never exposed outside Calimero if not explicitly shared.        |
 
 ---
