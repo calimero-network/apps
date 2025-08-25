@@ -59,14 +59,32 @@ const ContainerPadding = styled.div<{ $viewportHeight: number }>`
     padding-left: 0px !important;
     padding-right: 0px !important;
     
+    /* Safari-specific fixes */
     @supports (-webkit-touch-callout: none) {
-      /* iOS Safari - often needs more space */
-      height: calc(100vh - 200px) !important;
+      /* iOS Safari - use a more conservative approach */
+      height: calc(100vh - 220px) !important;
+      min-height: calc(100vh - 220px) !important;
     }
     
-    /* Chrome on Android - often has UI on top */
-    @media screen and (max-width: 1024px) and (-webkit-min-device-pixel-ratio: 1) {
-      height: calc(100vh - 130px) !important;
+    /* Additional Safari detection for better compatibility */
+    @media screen and (-webkit-min-device-pixel-ratio: 0) {
+      @supports (-webkit-appearance: none) {
+        height: calc(100vh - 200px) !important;
+        min-height: calc(100vh - 200px) !important;
+      }
+    }
+    
+    /* Force Safari to use proper height calculations */
+    @supports (-webkit-overflow-scrolling: touch) {
+      height: calc(100vh - 200px) !important;
+      min-height: calc(100vh - 200px) !important;
+      max-height: calc(100vh - 200px) !important;
+    }
+    
+    /* Additional iOS Safari specific rule */
+    @supports (-webkit-touch-callout: none) and (max-width: 1024px) {
+      height: calc(100vh - 240px) !important;
+      min-height: calc(100vh - 240px) !important;
     }
   }
   scrollbar-color: black black;
@@ -213,17 +231,42 @@ export default function ChatDisplaySplit({
 
   useEffect(() => {
     const updateHeight = () => {
-      setViewportHeight(window.innerHeight);
+      // Safari-specific handling
+      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent) || 
+                      /iPad|iPhone|iPod/.test(navigator.userAgent);
+      
+      let newHeight = window.innerHeight;
+      
+      if (isSafari) {
+        // Safari often needs more conservative height calculations
+        // Account for address bar and other Safari UI elements
+        newHeight = Math.min(window.innerHeight, window.visualViewport?.height || window.innerHeight);
+        
+        // Additional Safari adjustments
+        if (window.visualViewport) {
+          newHeight = window.visualViewport.height;
+        }
+      }
+      
+      setViewportHeight(newHeight);
     };
 
     window.addEventListener('resize', updateHeight);
     window.addEventListener('orientationchange', updateHeight);
+    
+    // Safari-specific events
+    if ('visualViewport' in window) {
+      window.visualViewport?.addEventListener('resize', updateHeight);
+    }
     
     updateHeight();
 
     return () => {
       window.removeEventListener('resize', updateHeight);
       window.removeEventListener('orientationchange', updateHeight);
+      if ('visualViewport' in window) {
+        window.visualViewport?.removeEventListener('resize', updateHeight);
+      }
     };
   }, []);
 
