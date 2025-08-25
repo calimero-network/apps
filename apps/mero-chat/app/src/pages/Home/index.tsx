@@ -169,13 +169,9 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     activeChatRef.current = chatToUse;
     getChannelUsers(chatToUse.name);
     getNonInvitedUsers(chatToUse.name);
-
-    setTimeout(() => {
-      updateSelectedActiveChat(chatToUse);
-    }, 500);
-
     setMessagesOffset(20);
     setTotalMessageCount(0);
+    updateSelectedActiveChat(chatToUse);
   }, [app, manageEventSubscription]);
 
   const onDMSelected = useCallback(async (dm?: DMChatInfo, sc?: ActiveChat) => {
@@ -224,7 +220,6 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
       };
     }
 
-    updateSelectedActiveChat(selectedChat);
     setDmContextId(sc?.contextId || dm?.context_id || "");
     setIsOpenSearchChannel(false);
     setActiveChat(selectedChat);
@@ -234,6 +229,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     setTotalMessageCount(0);
     setOpenThread(undefined);
     setCurrentOpenThread(undefined);
+    updateSelectedActiveChat(selectedChat);
   }, []);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
