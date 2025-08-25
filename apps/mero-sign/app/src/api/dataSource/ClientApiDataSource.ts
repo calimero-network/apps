@@ -4,7 +4,6 @@ import {
   rpcClient,
   getAuthConfig,
   getAppEndpointKey,
-  WsSubscriptionsClient,
 } from '@calimero-network/calimero-client';
 import {
   ClientApi,
@@ -94,6 +93,10 @@ export class ClientApiDataSource implements ClientApi {
       }
 
       try {
+        const safeContextId = (agreementContextID ?? '').replace(
+          /[^a-zA-Z0-9_-]/g,
+          '_',
+        );
         const safeDocumentId = documentId.replace(/[^a-zA-Z0-9_-]/g, '_');
         if (documentId !== safeDocumentId) {
           console.warn('Sanitized documentId for ICP consent recording:', {
@@ -102,8 +105,17 @@ export class ClientApiDataSource implements ClientApi {
           });
         }
 
-        const icpBackend = await backendService();
-        const icpResult = await icpBackend.recordConsent(safeDocumentId);
+        if (safeContextId) {
+          const icpBackend = await backendService();
+          const icpResult = await (icpBackend as any).recordConsentForContext(
+            safeContextId,
+          );
+          console.log('ICP recordConsentForContext result:', icpResult);
+        } else {
+          console.warn(
+            'No agreementContextID provided; skipping ICP consent recording',
+          );
+        }
       } catch (icpError) {
         console.warn('Failed to record consent in ICP backend:', icpError);
       }
@@ -209,6 +221,25 @@ export class ClientApiDataSource implements ClientApi {
             message: getErrorMessage(response.error),
           },
         };
+      }
+
+      // ICP integration: Add participant in ICP backend after node success
+      try {
+        const safeContextId = contextId.replace(/[^a-zA-Z0-9_-]/g, '_');
+        if (contextId !== safeContextId) {
+          console.warn('Sanitized contextId for ICP addParticipant:', {
+            original: contextId,
+            sanitized: safeContextId,
+          });
+        }
+        const icpBackend = await backendService();
+        const icpResult = await icpBackend.addParticipantToContext(
+          safeContextId,
+          userId as unknown as string,
+        );
+        console.log('ICP addParticipantToContext result:', icpResult);
+      } catch (icpError) {
+        console.warn('Failed to add participant in ICP backend:', icpError);
       }
 
       return {
@@ -739,6 +770,25 @@ export class ClientApiDataSource implements ClientApi {
           params,
         );
 
+        // ICP integration: Add participant in ICP backend after node success
+        try {
+          const safeContextId = contextId.replace(/[^a-zA-Z0-9_-]/g, '_');
+          if (contextId !== safeContextId) {
+            console.warn('Sanitized contextId for ICP addParticipant:', {
+              original: contextId,
+              sanitized: safeContextId,
+            });
+          }
+          const icpBackend = await backendService();
+          const icpResult = await (icpBackend as any).addParticipantToContext(
+            safeContextId,
+            sharedIdentity,
+          );
+          console.log('ICP addParticipantToContext result:', icpResult);
+        } catch (icpError) {
+          console.warn('Failed to add participant in ICP backend:', icpError);
+        }
+
         return {
           data: result.data || result,
         };
@@ -886,6 +936,54 @@ export class ClientApiDataSource implements ClientApi {
       }
 
       const data = response.result?.output || response.result;
+
+      // ICP integration: best-effort upload to ICP backend
+      try {
+        const icpBackend = await backendService();
+        const safeContextId = (agreementContextID ?? contextId).replace(
+          /[^a-zA-Z0-9_-]/g,
+          '_',
+        );
+
+        const nodeData: any = data;
+        const documentIdFromNode = nodeData as string | undefined;
+        console.log('Data ', data);
+        console.log('Document ID from node:', documentIdFromNode);
+        if (documentIdFromNode) {
+          const safeDocumentId = documentIdFromNode.replace(
+            /[^a-zA-Z0-9_-]/g,
+            '_',
+          );
+          const safeName = name.replace(/[^a-zA-Z0-9_-]/g, '_');
+          if (documentIdFromNode !== safeDocumentId) {
+            console.warn('Sanitized documentId for ICP uploadDocument:', {
+              original: documentIdFromNode,
+              sanitized: safeDocumentId,
+            });
+          }
+
+          // Build the request strictly according to the canister's DocumentUploadRequest
+          // which only accepts: context_id, document_id, document_hash
+          const icpRequest = {
+            context_id: safeContextId,
+            document_id: safeDocumentId,
+            document_hash: hash,
+          } as any;
+
+          try {
+            await icpBackend.uploadDocument(icpRequest);
+            console.log('ICP uploadDocument succeeded for', safeDocumentId);
+          } catch (icpErr) {
+            console.warn('ICP uploadDocument failed (non-fatal):', icpErr);
+          }
+        } else {
+          console.warn(
+            'Node did not return document id; skipping ICP uploadDocument',
+          );
+        }
+      } catch (err) {
+        console.warn('ICP backendService unavailable (non-fatal):', err);
+      }
 
       return {
         data: data,

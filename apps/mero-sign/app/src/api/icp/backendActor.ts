@@ -1,37 +1,78 @@
 import { Actor, HttpAgent } from '@dfinity/agent';
+import { AuthClient } from '@dfinity/auth-client';
 import { idlFactory } from '../../../../merodocs_registry/src/declarations/backend/backend.did.js';
+import { validateEnvironment, getNetworkConfig } from './utils';
 
-// Hardcoded canister and principal for local development
-const network = import.meta.env.VITE_DFX_NETWORK || 'local';
-const LOCAL_CANISTER_ID =
-  import.meta.env.VITE_BACKEND_CANISTER_ID || 'uxrrr-q7777-77774-qaaaq-cai';
-const LOCAL_PRINCIPAL_ID =
-  import.meta.env.VITE_LOCAL_PRINCIPAL_ID || 'uxrrr-q7777-77774-qaaaq-cai';
+// Validate environment on import
+validateEnvironment();
 
-const backendCanisterId =
-  network === 'local'
-    ? LOCAL_CANISTER_ID
-    : import.meta.env.VITE_BACKEND_CANISTER_ID;
+const { network, backendCanisterId, isMainnet, hostUrl, identityProvider } =
+  getNetworkConfig();
 
 export async function createBackendActor(identity?: any) {
-  // For local development, using hardcoded principal and skip identity from mainnet
   const agent = await HttpAgent.create({
-    identity: network === 'local' ? undefined : identity,
-    host: network === 'local' ? 'http://127.0.0.1:4943' : 'https://icp-api.io',
+    identity,
+    host: hostUrl,
   });
 
-  // Only fetching root key in local development
   if (network === 'local') {
-    await agent.fetchRootKey().catch((err) => {
-      console.warn('Unable to fetch root key. Is your local replica running?');
-      console.error(err);
-    });
+    try {
+      await agent.fetchRootKey();
+    } catch (err) {
+      console.warn(
+        ' Unable to fetch root key. Check if local replica is running:',
+        err,
+      );
+    }
   }
 
-  // For local,optionally pass the principal to the actor if needed
+  if (!backendCanisterId) {
+    throw new Error(`Missing canister ID for network: ${network}`);
+  }
+
   return Actor.createActor(idlFactory, {
     agent,
     canisterId: backendCanisterId,
-    ...(network === 'local' && { principal: LOCAL_PRINCIPAL_ID }),
   });
+}
+
+let authClient: AuthClient | null = null;
+
+export async function getAuthClient(): Promise<AuthClient> {
+  if (!authClient) {
+    authClient = await AuthClient.create();
+  }
+  return authClient;
+}
+
+export async function loginWithInternetIdentity(): Promise<boolean> {
+  const client = await getAuthClient();
+
+  return new Promise((resolve) => {
+    client.login({
+      identityProvider: identityProvider,
+      onSuccess: () => {
+        resolve(true);
+      },
+      onError: (error) => {
+        console.error('❌ Internet Identity login failed:', error);
+        resolve(false);
+      },
+    });
+  });
+}
+
+export async function logout(): Promise<void> {
+  const client = await getAuthClient();
+  await client.logout();
+}
+
+export async function isAuthenticated(): Promise<boolean> {
+  const client = await getAuthClient();
+  return await client.isAuthenticated();
+}
+
+export async function getIdentity() {
+  const client = await getAuthClient();
+  return client.getIdentity();
 }

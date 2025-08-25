@@ -9,6 +9,7 @@ import type {
   VerifyContextResponse,
 } from '../nodeApi';
 import { apiClient } from '@calimero-network/calimero-client';
+import { backendService } from '../icp/backendService';
 
 export class ContextApiDataSource implements NodeApi {
   private app: any;
@@ -44,6 +45,35 @@ export class ContextApiDataSource implements NodeApi {
       const result = await apiClient
         .node()
         .createContext(applicationId, JSON.stringify(props), 'near');
+
+      // Try to also create the context on ICP backend (best-effort, non-blocking)
+      try {
+        const icp = await backendService();
+        const created = result.data as any;
+        console.log('result ', result);
+        console.log('created ', created);
+        const contextId =
+          created?.contextId || created?.context_id || props.context_name;
+        if (contextId) {
+          const icpRequest = {
+            context_id: contextId,
+            participants: (props as any).participants || [],
+            title: (props as any).context_name || null,
+            description: null,
+            agreement_type: null,
+            expires_at: null,
+          } as any;
+          try {
+            await icp.createContext(icpRequest);
+            console.log('ICP: createContext called for', contextId);
+          } catch (icpErr) {
+            console.warn('ICP: createContext failed (non-fatal):', icpErr);
+          }
+        }
+      } catch (err) {
+        console.warn('ICP backendService unavailable (non-fatal):', err);
+      }
+
       return { data: result.data as CreateContextResponse, error: null };
     } catch (error) {
       let errorMessage = 'An unexpected error occurred during createContext';

@@ -51,25 +51,6 @@ export class DocumentService {
         agreementContextUserID,
       );
 
-      if (!response.error && response.data) {
-        try {
-          let documentId = response.data;
-          const safeDocumentId = this.sanitizeDocumentId(documentId);
-          const icpApi = await backendService(icpIdentity);
-          const icpResponse = await icpApi.recordOriginalHash(
-            safeDocumentId,
-            hash,
-          );
-          console.log('ICP canister recordOriginalHash response:', icpResponse);
-          console.log('Original hash uploaded to ICP canister');
-        } catch (icpError) {
-          console.error(
-            'Failed to upload original hash to ICP canister:',
-            icpError,
-          );
-        }
-      }
-
       return {
         data: response.data || undefined,
         error: response.error,
@@ -171,14 +152,33 @@ export class DocumentService {
           try {
             const safeDocumentId = this.sanitizeDocumentId(documentId);
             const icpApi = await backendService(icpIdentity);
-            const signResult = await icpApi.signDocument({
+
+            // Call the canister signDocument which returns a boolean success flag.
+            const signSuccess = await icpApi.signDocument({
               document_id: safeDocumentId,
               consent_acknowledged: true,
             });
-            const icpResponse = await icpApi.recordFinalHash(
-              safeDocumentId,
-              newHash,
-            );
+
+            if (signSuccess) {
+              // Only record the final hash if the canister sign succeeded.
+              const icpResponse = await icpApi.recordFinalHash(
+                safeDocumentId,
+                newHash,
+              );
+
+              if (icpResponse && (icpResponse as any).error) {
+                console.warn(
+                  'ICP Backend: recordFinalHash returned error',
+                  icpResponse,
+                );
+              } else {
+                console.log('ICP Backend: recorded final hash', icpResponse);
+              }
+            } else {
+              console.warn(
+                'ICP Backend: signDocument returned false — skipping recordFinalHash',
+              );
+            }
           } catch (icpError) {
             console.error(
               'ICP Backend: Failed to record signature/final hash:',

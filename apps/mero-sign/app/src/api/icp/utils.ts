@@ -72,3 +72,43 @@ export const dateToBigint = (date: Date): bigint => {
   // Convert milliseconds to nanoseconds
   return BigInt(date.getTime()) * 1000000n;
 };
+
+/**
+ * Validate required environment variables for ICP integration
+ */
+export const validateEnvironment = (): void => {
+  const network = import.meta.env.VITE_DFX_NETWORK;
+  const backendCanisterId = import.meta.env.VITE_BACKEND_CANISTER_ID;
+
+  if (!network) {
+    console.warn('⚠️ VITE_DFX_NETWORK not set, defaulting to local');
+  }
+
+  if (!backendCanisterId) {
+    throw new Error(
+      '❌ VITE_BACKEND_CANISTER_ID is required but not set in environment variables',
+    );
+  }
+
+  console.log(`✅ Environment configured for ${network || 'local'} network`);
+  console.log(`✅ Backend Canister ID: ${backendCanisterId}`);
+};
+
+/**
+ * Get current network configuration
+ */
+export const getNetworkConfig = () => {
+  const network = import.meta.env.VITE_DFX_NETWORK || 'local';
+  const backendCanisterId = import.meta.env.VITE_BACKEND_CANISTER_ID;
+  const isMainnet = network === 'ic';
+
+  return {
+    network,
+    backendCanisterId,
+    isMainnet,
+    hostUrl: isMainnet ? 'https://ic0.app' : 'http://127.0.0.1:4943',
+    identityProvider: isMainnet
+      ? 'https://identity.ic0.app'
+      : `http://${import.meta.env.VITE_INTERNET_IDENTITY_CANISTER_ID || 'be2us-64aaa-aaaaa-qaabq-cai'}.localhost:4943`,
+  };
+};

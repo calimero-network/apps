@@ -421,28 +421,6 @@ const AgreementPage: React.FC = () => {
           agreementContextUserID || undefined,
         );
 
-        if (!response.error && response.data) {
-          try {
-            let documentId = response.data;
-            const safeDocumentId = sanitizeDocumentId(documentId);
-            const icpApi = await backendService(identity);
-            const icpResponse = await icpApi.recordOriginalHash(
-              safeDocumentId,
-              hash,
-            );
-            console.log(
-              'ICP canister recordOriginalHash response:',
-              icpResponse,
-            );
-            console.log('Original hash uploaded to ICP canister');
-          } catch (icpError) {
-            console.error(
-              'Failed to upload original hash to ICP canister:',
-              icpError,
-            );
-          }
-        }
-
         setUploadFiles((prev) =>
           prev.map((f) =>
             f.file && f.file.name === file.name
