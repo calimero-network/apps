@@ -61,8 +61,8 @@ const ContainerPadding = styled.div<{ $viewportHeight: number }>`
     
     /* Brave and regular browsers - reduce height by 20px */
     @supports not (-webkit-touch-callout: none) {
-      height: calc(100vh - 80px) !important;
-      min-height: calc(100vh - 80px) !important;
+      height: calc(100vh - 130px) !important;
+      min-height: calc(100vh - 130px) !important;
     }
     
     /* Safari-specific fixes */
