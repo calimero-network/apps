@@ -54,37 +54,37 @@ interface ChatDisplaySplitProps {
 
 const ContainerPadding = styled.div<{ $viewportHeight: number }>`
   @media (max-width: 1024px) {
-    height: calc(100dvh - 180px) !important;
-    height: calc(${props => props.$viewportHeight}px - 180px) !important;
+    height: calc(100dvh - 130px) !important;
+    height: calc(${props => props.$viewportHeight}px - 130px) !important;
     padding-left: 0px !important;
     padding-right: 0px !important;
     
     /* Safari-specific fixes */
     @supports (-webkit-touch-callout: none) {
       /* iOS Safari - use a more conservative approach */
-      height: calc(100vh - 220px) !important;
-      min-height: calc(100vh - 220px) !important;
+      height: calc(100vh - 180px) !important;
+      min-height: calc(100vh - 180px) !important;
     }
     
     /* Additional Safari detection for better compatibility */
     @media screen and (-webkit-min-device-pixel-ratio: 0) {
       @supports (-webkit-appearance: none) {
-        height: calc(100vh - 200px) !important;
-        min-height: calc(100vh - 200px) !important;
+        height: calc(100vh - 180px) !important;
+        min-height: calc(100vh - 180px) !important;
       }
     }
     
     /* Force Safari to use proper height calculations */
     @supports (-webkit-overflow-scrolling: touch) {
-      height: calc(100vh - 200px) !important;
-      min-height: calc(100vh - 200px) !important;
-      max-height: calc(100vh - 200px) !important;
+      height: calc(100vh - 180px) !important;
+      min-height: calc(100vh - 180px) !important;
+      max-height: calc(100vh - 180px) !important;
     }
     
     /* Additional iOS Safari specific rule */
     @supports (-webkit-touch-callout: none) and (max-width: 1024px) {
-      height: calc(100vh - 240px) !important;
-      min-height: calc(100vh - 240px) !important;
+      height: calc(100vh - 180px) !important;
+      min-height: calc(100vh - 180px) !important;
     }
   }
   scrollbar-color: black black;
