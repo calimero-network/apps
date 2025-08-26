@@ -104,6 +104,11 @@ export const backendService = async (identity?: any) => {
           BackendResult<AuditEntry[]>
         >,
 
+      getAuditTrailForDocument: (contextId: string, documentId: string) =>
+        actor.get_audit_trail_for_document(contextId, documentId) as Promise<
+          BackendResult<AuditEntry[]>
+        >,
+
       isUserContextParticipant: (contextId: string, userId: string) =>
         actor.is_user_context_participant(
           contextId,
@@ -213,6 +218,37 @@ export const backendService = async (identity?: any) => {
       total: number;
     } | null> {
       const result = await this.raw.getAuditTrail(contextId);
+
+      const handled = safeHandleBackendResult(result);
+
+      if (!handled.success || !handled.data) {
+        return null;
+      }
+
+      const entries = handled.data.map((entry) => {
+        const processedEntry = {
+          ...entry,
+          timestampDate: bigintToDate(entry.timestamp),
+        };
+
+        return processedEntry;
+      });
+
+      const result_final = { entries, total: entries.length };
+
+      return result_final;
+    },
+
+    async getAuditTrailDocument(
+      contextId: string,
+      documentId: string,
+    ): Promise<{
+      entries: Array<AuditEntry & { timestampDate: Date }>;
+      total: number;
+    } | null> {
+      const result = await (this.raw.getAuditTrailForDocument
+        ? this.raw.getAuditTrailForDocument(contextId, documentId)
+        : this.raw.getAuditTrail(contextId));
 
       const handled = safeHandleBackendResult(result);
 

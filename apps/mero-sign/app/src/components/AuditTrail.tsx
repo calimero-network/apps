@@ -112,7 +112,10 @@ const AuditTrail: React.FC<AuditTrailProps> = ({
 
       const service = await backendService();
 
-      const auditResult = await service.getAuditTrail(sanitizedContextId);
+      const auditResult = await service.getAuditTrailDocument(
+        sanitizedContextId,
+        sanitizedDocumentId,
+      );
 
       if (auditResult) {
         // Transform ICP audit entries to component format
