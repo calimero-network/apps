@@ -109,6 +109,11 @@ export const idlFactory = ({ IDL }) => {
     'add_participant_to_context' : IDL.Func([IDL.Text, IDL.Text], [Result], []),
     'create_context' : IDL.Func([CreateContextRequest], [Result], []),
     'get_audit_trail' : IDL.Func([IDL.Text], [Result_1], ['query']),
+    'get_audit_trail_for_document' : IDL.Func(
+        [IDL.Text, IDL.Text],
+        [Result_1],
+        ['query'],
+      ),
     'get_context' : IDL.Func([IDL.Text], [Result_2], ['query']),
     'get_context_documents' : IDL.Func([IDL.Text], [Result_3], ['query']),
     'get_context_signing_progress' : IDL.Func(

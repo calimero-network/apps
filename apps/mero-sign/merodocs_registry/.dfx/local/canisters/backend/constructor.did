@@ -93,6 +93,7 @@ service : {
   add_participant_to_context : (text, text) -> (Result);
   create_context : (CreateContextRequest) -> (Result);
   get_audit_trail : (text) -> (Result_1) query;
+  get_audit_trail_for_document : (text, text) -> (Result_1) query;
   get_context : (text) -> (Result_2) query;
   get_context_documents : (text) -> (Result_3) query;
   get_context_signing_progress : (text) -> (Result_4) query;

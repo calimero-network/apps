@@ -739,6 +739,33 @@ fn get_audit_trail(context_id: String) -> Result<Vec<AuditEntry>, Error> {
 }
 
 #[query]
+fn get_audit_trail_for_document(
+    context_id: String,
+    document_id: String,
+) -> Result<Vec<AuditEntry>, Error> {
+    validate_id(&context_id)?;
+    validate_id(&document_id)?;
+
+    Ok(AUDIT_TRAIL.with(|trail| {
+        trail
+            .borrow()
+            .get(&StorableString(context_id))
+            .map_or_else(Vec::new, |t| {
+                t.get_entries()
+                    .iter()
+                    .filter(|entry| {
+                        entry
+                            .document_id
+                            .as_ref()
+                            .map_or(false, |doc| doc == &document_id)
+                    })
+                    .cloned()
+                    .collect()
+            })
+    }))
+}
+
+#[query]
 fn get_context_signing_progress(
     context_id: String,
 ) -> Result<(Vec<String>, Vec<String>, Vec<(String, DocumentStatus)>), Error> {

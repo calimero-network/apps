@@ -100,6 +100,7 @@ export interface _SERVICE {
   'add_participant_to_context' : ActorMethod<[string, string], Result>,
   'create_context' : ActorMethod<[CreateContextRequest], Result>,
   'get_audit_trail' : ActorMethod<[string], Result_1>,
+  'get_audit_trail_for_document' : ActorMethod<[string, string], Result_1>,
   'get_context' : ActorMethod<[string], Result_2>,
   'get_context_documents' : ActorMethod<[string], Result_3>,
   'get_context_signing_progress' : ActorMethod<[string], Result_4>,
