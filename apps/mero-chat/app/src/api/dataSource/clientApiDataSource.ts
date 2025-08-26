@@ -29,6 +29,7 @@ import {
   type JoinChatProps,
   type LeaveChannelProps,
   type Message,
+  type ReadMessageProps,
   type SendMessageProps,
   type UpdateInvitationPayloadProps,
   type UpdateNewIdentityProps,
@@ -648,6 +649,7 @@ export class ClientApiDataSource implements ClientApi {
             message: props.message,
             parent_message: props.parent_message,
             timestamp: props.timestamp,
+            sender_username: "",
           },
           executorPublicKey:
             (props.is_dm ? props.dm_identity : getExecutorPublicKey()) || "",
@@ -1192,6 +1194,57 @@ export class ClientApiDataSource implements ClientApi {
     } catch (error) {
       console.error("deleteDM failed:", error);
       let errorMessage = "An unexpected error occurred during deleteDM";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+  
+    async readMessage(props: ReadMessageProps): ApiResponse<string> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, string>(
+        {
+          contextId: getContextId() || "",
+          method: ClientMethod.READ_MESSAGE,
+          argsJson: {
+            channel: props.channel,
+            timestamp: props.timestamp,
+          },
+          executorPublicKey: getExecutorPublicKey() || "",
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+      if (response?.error) {
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
+      }
+      return {
+        data: response?.result.output as string,
+        error: null,
+      };
+    } catch (error) {
+      console.error("readMessage failed:", error);
+      let errorMessage = "An unexpected error occurred during readMessage";
       if (error instanceof Error) {
         errorMessage = error.message;
       } else if (typeof error === "string") {

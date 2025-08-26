@@ -123,9 +123,9 @@ export default function ChannelList(props: ChannelListProps) {
               <TextMedium>{channel.name}</TextMedium>
             </NameContainer>
           </div>
-          {channel.unreadMessages.mentions > 0 && (
+          {channel.unreadMessages.count > 0 && (
             <UnreadMessagesBadge
-              messageCount={channel.unreadMessages.mentions}
+              messageCount={channel.unreadMessages.count}
               backgroundColor="#FF5E5E"
             />
           )}

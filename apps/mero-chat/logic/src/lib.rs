@@ -136,6 +136,8 @@ pub struct PublicChannelInfo {
     pub created_by_username: String,
     pub created_by: UserId,
     pub links_allowed: bool,
+    pub unread_count: u32,
+    pub last_read_timestamp: u64,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Clone)]
@@ -162,6 +164,17 @@ pub struct DMChatInfo {
     pub invitation_payload: String,
 }
 
+/// Tracks unread messages for a user in a specific channel
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
+#[serde(crate = "calimero_sdk::serde")]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct UserChannelUnread {
+    /// Timestamp of the last message read by the user in this channel
+    pub last_read_timestamp: u64,
+    /// Number of unread messages for the user in this channel
+    pub unread_count: u32,
+}
+
 #[app::state(emits = Event)]
 #[derive(BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -178,6 +191,7 @@ pub struct CurbChat {
     dm_chats: UnorderedMap<UserId, Vec<DMChatInfo>>,
     is_dm: bool,
     reactions: UnorderedMap<MessageId, UnorderedMap<String, UnorderedSet<UserId>>>,
+    user_channel_unread: UnorderedMap<UserId, UnorderedMap<Channel, UserChannelUnread>>,
 }
 
 #[app::logic]
@@ -261,6 +275,7 @@ impl CurbChat {
             dm_chats: UnorderedMap::new(),
             is_dm,
             reactions: UnorderedMap::new(),
+            user_channel_unread: UnorderedMap::new(),
         }
     }
 
@@ -274,9 +289,12 @@ impl CurbChat {
         let _ = self.members.insert(executor_id);
         let _ = self.member_usernames.insert(executor_id, username);
 
+        let mut user_unread_channels = UnorderedMap::new();
+
         if let Ok(entries) = self.channels.entries() {
             for (channel, channel_info) in entries {
                 if channel_info.channel_type == ChannelType::Default {
+                    let channel_clone = channel.clone();
                     let mut channel_members = match self.channel_members.get(&channel) {
                         Ok(Some(members)) => members,
                         _ => continue,
@@ -284,9 +302,17 @@ impl CurbChat {
 
                     let _ = channel_members.insert(executor_id);
                     let _ = self.channel_members.insert(channel, channel_members);
+
+                    let unread_info = UserChannelUnread {
+                        last_read_timestamp: 0,
+                        unread_count: channel_info.messages.len().unwrap_or(0) as u32,
+                    };
+                    let _ = user_unread_channels.insert(channel_clone, unread_info);
                 }
             }
         }
+
+        let _ = self.user_channel_unread.insert(executor_id, user_unread_channels);
 
         Ok("Successfully joined the chat".to_string())
     }
@@ -297,6 +323,182 @@ impl CurbChat {
 
     pub fn get_chat_name(&self) -> String {
         self.name.clone()
+    }
+
+    fn get_user_channel_unread_info(&self, user_id: &UserId, channel: &Channel) -> (u32, u64) {
+        // Get user's unread info for this channel
+        if let Ok(Some(user_unread)) = self.user_channel_unread.get(user_id) {
+            if let Ok(Some(channel_unread)) = user_unread.get(channel) {
+                return (channel_unread.unread_count, channel_unread.last_read_timestamp);
+            }
+        }
+        
+        (0, 0)
+    }
+
+
+    pub fn mark_messages_as_read(&mut self, channel: Channel, timestamp: u64) -> app::Result<String, String> {
+        let executor_id = self.get_executor_id();
+        
+        if let Ok(Some(members)) = self.channel_members.get(&channel) {
+            if !members.contains(&executor_id).unwrap_or(false) {
+                return Err("You are not a member of this channel".to_string());
+            }
+        } else {
+            return Err("Channel not found".to_string());
+        }
+
+        let mut user_unread = match self.user_channel_unread.get(&executor_id) {
+            Ok(Some(unread)) => unread,
+            _ => UnorderedMap::new(),
+        };
+
+        let mut channel_unread = match user_unread.get(&channel) {
+            Ok(Some(unread)) => unread.clone(),
+            _ => UserChannelUnread {
+                last_read_timestamp: 0,
+                unread_count: 0,
+            },
+        };
+
+        channel_unread.last_read_timestamp = timestamp;
+        
+        if let Ok(Some(channel_info)) = self.channels.get(&channel) {
+            let mut unread_count = 0;
+            if let Ok(iter) = channel_info.messages.iter() {
+                for message in iter {
+                    if message.timestamp > timestamp {
+                        unread_count += 1;
+                    }
+                }
+            }
+            channel_unread.unread_count = unread_count;
+        }
+
+        let _ = user_unread.insert(channel, channel_unread);
+        let _ = self.user_channel_unread.insert(executor_id, user_unread);
+
+        Ok("Messages marked as read successfully".to_string())
+    }
+
+    pub fn get_channel_unread_count(&self, channel: Channel) -> app::Result<u32, String> {
+        let executor_id = self.get_executor_id();
+        
+        if let Ok(Some(members)) = self.channel_members.get(&channel) {
+            if !members.contains(&executor_id).unwrap_or(false) {
+                return Err("You are not a member of this channel".to_string());
+            }
+        } else {
+            return Err("Channel not found".to_string());
+        }
+
+        let (unread_count, _) = self.get_user_channel_unread_info(&executor_id, &channel);
+        Ok(unread_count)
+    }
+
+    pub fn get_channel_last_read_timestamp(&self, channel: Channel) -> app::Result<u64, String> {
+        let executor_id = self.get_executor_id();
+        
+        if let Ok(Some(members)) = self.channel_members.get(&channel) {
+            if !members.contains(&executor_id).unwrap_or(false) {
+                return Err("You are not a member of this channel".to_string());
+            }
+        } else {
+            return Err("Channel not found".to_string());
+        }
+
+        let (_, last_read_timestamp) = self.get_user_channel_unread_info(&executor_id, &channel);
+        Ok(last_read_timestamp)
+    }
+
+    pub fn get_total_unread_count(&self) -> app::Result<u32, String> {
+        let executor_id = self.get_executor_id();
+        let mut total_unread = 0;
+
+        if let Ok(Some(user_unread)) = self.user_channel_unread.get(&executor_id) {
+            if let Ok(entries) = user_unread.entries() {
+                for (_, channel_unread) in entries {
+                    total_unread += channel_unread.unread_count;
+                }
+            }
+        }
+
+        Ok(total_unread)
+    }
+
+    fn reset_unread_tracking_for_user_in_channel(&mut self, user_id: &UserId, channel: &Channel) {
+        if let Ok(Some(mut user_unread)) = self.user_channel_unread.get(user_id) {
+            let _ = user_unread.remove(channel);
+            let _ = self.user_channel_unread.insert(user_id.clone(), user_unread);
+        }
+    }
+
+    fn increment_unread_count_for_channel(&mut self, channel: &Channel, sender_id: &UserId, _message_timestamp: u64) {
+        if let Ok(Some(members)) = self.channel_members.get(channel) {
+            if let Ok(iter) = members.iter() {
+                for member_id in iter {
+                    if member_id == *sender_id {
+                        continue;
+                    }
+                    
+                    let mut user_unread = match self.user_channel_unread.get(&member_id) {
+                        Ok(Some(unread)) => unread,
+                        _ => UnorderedMap::new(),
+                    };
+
+                    let mut channel_unread = match user_unread.get(channel) {
+                        Ok(Some(unread)) => unread.clone(),
+                        _ => UserChannelUnread {
+                            last_read_timestamp: 0,
+                            unread_count: 0,
+                        },
+                    };
+
+                    channel_unread.unread_count += 1;
+
+                    let _ = user_unread.insert(channel.clone(), channel_unread);
+                    let _ = self.user_channel_unread.insert(member_id.clone(), user_unread);
+                }
+            }
+        }
+    }
+
+    fn initialize_unread_tracking_for_user_in_channel(&mut self, user_id: &UserId, channel: &Channel) {
+        let mut user_unread = match self.user_channel_unread.get(user_id) {
+            Ok(Some(unread)) => unread,
+            _ => UnorderedMap::new(),
+        };
+
+        let existing_message_count = if let Ok(Some(channel_info)) = self.channels.get(channel) {
+            channel_info.messages.len().unwrap_or(0) as u32
+        } else {
+            0
+        };
+
+        let unread_info = UserChannelUnread {
+            last_read_timestamp: 0,
+            unread_count: existing_message_count,
+        };
+        let _ = user_unread.insert(channel.clone(), unread_info);
+        let _ = self.user_channel_unread.insert(user_id.clone(), user_unread);
+    }
+
+    fn initialize_unread_tracking_for_channel(&mut self, channel: &Channel, members: &UnorderedSet<UserId>) {
+        if let Ok(iter) = members.iter() {
+            for member_id in iter {
+                let mut user_unread = match self.user_channel_unread.get(&member_id) {
+                    Ok(Some(unread)) => unread,
+                    _ => UnorderedMap::new(),
+                };
+
+                let unread_info = UserChannelUnread {
+                    last_read_timestamp: 0,
+                    unread_count: 0,
+                };
+                let _ = user_unread.insert(channel.clone(), unread_info);
+                let _ = self.user_channel_unread.insert(member_id.clone(), user_unread);
+            }
+        }
     }
 
     pub fn create_channel(
@@ -346,9 +548,21 @@ impl CurbChat {
             let _ = initial_members.insert(moderator.clone());
         }
         let _ = initial_members.insert(executor_id);
+        
+        // Create a copy for unread tracking initialization
+        let mut initial_members_copy = UnorderedSet::new();
+        if let Ok(iter) = initial_members.iter() {
+            for member in iter {
+                let _ = initial_members_copy.insert(member.clone());
+            }
+        }
+        
         let _ = self
             .channel_members
             .insert(channel.clone(), initial_members);
+
+        // Initialize unread tracking for initial members
+        self.initialize_unread_tracking_for_channel(&channel, &initial_members_copy);
 
         app::emit!(Event::ChannelCreated(channel.name.clone()));
         Ok("Channel created".to_string())
@@ -389,6 +603,9 @@ impl CurbChat {
             for (channel, channel_info) in entries {
                 if let Ok(Some(members)) = self.channel_members.get(&channel) {
                     if members.contains(&executor_id).unwrap_or(false) {
+                        // Get unread information for this user and channel
+                        let (unread_count, last_read_timestamp) = self.get_user_channel_unread_info(&executor_id, &channel);
+                        
                         let public_info = PublicChannelInfo {
                             channel_type: channel_info.channel_type,
                             read_only: channel_info.read_only,
@@ -396,6 +613,8 @@ impl CurbChat {
                             created_by: channel_info.meta.created_by,
                             created_by_username: self.member_usernames.get(&channel_info.meta.created_by).unwrap().unwrap(),
                             links_allowed: channel_info.meta.links_allowed,
+                            unread_count,
+                            last_read_timestamp,
                         };
                         channels.insert(channel.name, public_info);
                     }
@@ -425,6 +644,10 @@ impl CurbChat {
 
                 if should_include {
                     let created_by_username = self.member_usernames.get(&channel_info.meta.created_by).unwrap().unwrap();
+                    
+                    // Get unread information for this user and channel
+                    let (unread_count, last_read_timestamp) = self.get_user_channel_unread_info(&executor_id, &channel);
+                    
                     let public_info = PublicChannelInfo {
                         channel_type: channel_info.channel_type,
                         read_only: channel_info.read_only,
@@ -432,6 +655,8 @@ impl CurbChat {
                         created_by_username: created_by_username,
                         created_by: channel_info.meta.created_by,
                         links_allowed: channel_info.meta.links_allowed,
+                        unread_count,
+                        last_read_timestamp,
                     };
                     channels.insert(channel.name, public_info);
                 }
@@ -520,6 +745,9 @@ impl CurbChat {
             .channel_members
             .insert(channel.clone(), updated_members);
 
+        // Initialize unread tracking for the invited user in this channel
+        self.initialize_unread_tracking_for_user_in_channel(&user, &channel);
+
         app::emit!(Event::ChannelInvited(channel.name.clone()));
         Ok("User invited to channel".to_string())
     }
@@ -582,6 +810,9 @@ impl CurbChat {
             .channel_members
             .insert(channel.clone(), updated_members);
 
+        // Initialize unread tracking for this user in this channel
+        self.initialize_unread_tracking_for_user_in_channel(&executor_id, &channel);
+
         app::emit!(Event::ChannelJoined(channel.name.clone()));
         Ok("Joined channel".to_string())
     }
@@ -611,6 +842,9 @@ impl CurbChat {
         let _ = self
             .channel_members
             .insert(channel.clone(), updated_members);
+
+        // Reset unread tracking for this user in this channel
+        self.reset_unread_tracking_for_user_in_channel(&executor_id, &channel);
 
         app::emit!(Event::ChannelLeft(channel.name.clone()));
         Ok("Left channel".to_string())
@@ -684,7 +918,10 @@ impl CurbChat {
             let _ = self.threads.insert(parent_message, thread_messages);
         } else {
             let _ = channel_info.messages.push(message.clone());
-            let _ = self.channels.insert(group, channel_info);
+            let _ = self.channels.insert(group.clone(), channel_info);
+            
+            // Increment unread count for all users in the channel (except the sender)
+            self.increment_unread_count_for_channel(&group, &executor_id, timestamp);
         }
 
         app::emit!(Event::MessageSent(message.clone()));

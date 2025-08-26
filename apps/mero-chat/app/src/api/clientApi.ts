@@ -164,6 +164,11 @@ export interface DeleteDMProps {
   other_user: UserId;
 }
 
+export interface ReadMessageProps {
+  channel: Channel;
+  timestamp: number;
+}
+
 export enum ClientMethod {
   JOIN_CHAT = "join_chat",
   CREATE_CHANNEL = "create_channel",
@@ -189,6 +194,7 @@ export enum ClientMethod {
   DELETE_DM = "delete_dm",
   GET_USERNAME = "get_username",
   GET_CHAT_USERNAMES = "get_chat_usernames",
+  READ_MESSAGE = "mark_messages_as_read",
 }
 
 export interface ClientApi {
@@ -214,4 +220,5 @@ export interface ClientApi {
   updateInvitationPayload(props: UpdateInvitationPayloadProps): ApiResponse<string>;
   acceptInvitation(props: AcceptInvitationProps): ApiResponse<string>;
   deleteDM(props: DeleteDMProps): ApiResponse<string>;
+  readMessage(props: ReadMessageProps): ApiResponse<string>;
 }

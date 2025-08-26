@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useState, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  useRef,
+} from "react";
 import AppContainer from "../../components/common/AppContainer";
 import {
   MessageStatus,
@@ -129,7 +135,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     }
   };
 
-  const updateSelectedActiveChat = (selectedChat: ActiveChat) => {
+  const updateSelectedActiveChat = async (selectedChat: ActiveChat) => {
     setIsOpenSearchChannel(false);
     setActiveChat(selectedChat);
     activeChatRef.current = selectedChat;
@@ -153,6 +159,14 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     setTotalMessageCount(0);
     setOpenThread(undefined);
     setCurrentOpenThread(undefined);
+    if (selectedChat.type === "channel") {
+      const lastMessageTimestamp =
+        messagesRef.current[messagesRef.current.length - 1].timestamp;
+      await new ClientApiDataSource().readMessage({
+        channel: { name: selectedChat.name },
+        timestamp: lastMessageTimestamp,
+      });
+    }
   };
 
   const openSearchPage = useCallback(() => {
@@ -393,6 +407,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     const channels: ResponseData<Channels> =
       await new ClientApiDataSource().getChannels();
     if (channels.data) {
+      console.log("channels", channels.data);
       const channelsArray: ChannelMeta[] = Object.entries(channels.data).map(
         ([name, channelInfo]) => ({
           name,
@@ -405,7 +420,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
           createdBy: channelInfo.created_by,
           inviteOnly: false,
           unreadMessages: {
-            count: 0,
+            count: channelInfo.unread_count,
             mentions: 0,
           },
           isMember: false,
