@@ -44,7 +44,7 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update && sudo apt-get install -y bc
-          cargo install candid-extractor --version 0.1.4
+          cargo install --force candid-extractor --version 0.1.4
           DFXVM_INIT_YES=true DFX_VERSION=${{ env.DFX_VERSION }} sh -c "$(curl -fsSL https://internetcomputer.org/install.sh)"
           echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
 
