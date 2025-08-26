@@ -1,4 +1,5 @@
 import { Actor, HttpAgent } from '@dfinity/agent';
+import { Principal } from '@dfinity/principal';
 import { AuthClient } from '@dfinity/auth-client';
 import { idlFactory } from '../../../../merodocs_registry/src/declarations/backend/backend.did.js';
 import { validateEnvironment, getNetworkConfig } from './utils';
@@ -26,13 +27,25 @@ export async function createBackendActor(identity?: any) {
     }
   }
 
-  if (!backendCanisterId) {
-    throw new Error(`Missing canister ID for network: ${network}`);
+  const canisterIdToUse = backendCanisterId;
+  try {
+    Principal.fromText(canisterIdToUse);
+  } catch (err) {
+    console.error(
+      'Invalid canister id provided to createBackendActor:',
+      canisterIdToUse,
+    );
+    console.error(
+      'Ensure VITE_BACKEND_CANISTER_ID (or your network config) contains the correct canister principal (use `dfx canister id backend` for local).',
+    );
+    throw new Error(
+      `Invalid canister id for network "${network}": ${String(canisterIdToUse)}`,
+    );
   }
 
   return Actor.createActor(idlFactory, {
     agent,
-    canisterId: backendCanisterId,
+    canisterId: canisterIdToUse,
   });
 }
 

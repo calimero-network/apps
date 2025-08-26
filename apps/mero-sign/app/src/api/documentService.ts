@@ -145,53 +145,6 @@ export class DocumentService {
           agreementContextID,
           agreementContextUserID,
         );
-
-        if (!markSignedResp?.error) {
-          // --- ICP CANISTER INTEGRATION ---
-          // On successful sign and mark, also upload the final hash to ICP canister
-          try {
-            const safeDocumentId = this.sanitizeDocumentId(documentId);
-            const icpApi = await backendService(icpIdentity);
-
-            // Call the canister signDocument which returns a boolean success flag.
-            const signSuccess = await icpApi.signDocument({
-              document_id: safeDocumentId,
-              consent_acknowledged: true,
-            });
-
-            if (signSuccess) {
-              // Only record the final hash if the canister sign succeeded.
-              const icpResponse = await icpApi.recordFinalHash(
-                safeDocumentId,
-                newHash,
-              );
-
-              if (icpResponse && (icpResponse as any).error) {
-                console.warn(
-                  'ICP Backend: recordFinalHash returned error',
-                  icpResponse,
-                );
-              } else {
-                console.log('ICP Backend: recorded final hash', icpResponse);
-              }
-            } else {
-              console.warn(
-                'ICP Backend: signDocument returned false — skipping recordFinalHash',
-              );
-            }
-          } catch (icpError) {
-            console.error(
-              'ICP Backend: Failed to record signature/final hash:',
-              icpError,
-            );
-          }
-          // --- END ICP CANISTER INTEGRATION ---
-        } else {
-          console.error(
-            'Failed to mark participant as signed:',
-            markSignedResp.error,
-          );
-        }
       }
 
       return {
@@ -216,14 +169,10 @@ export class DocumentService {
   }> {
     try {
       const safeDocumentId = this.sanitizeDocumentId(documentId);
-      console.log(
-        `Verifying document with ICP canister: ${safeDocumentId}, hash: ${hash}`,
-      );
-      const icpApi = await backendService(icpIdentity);
-      const statusResult = await icpApi.verifyHash(safeDocumentId, hash);
-      console.log('ICP canister verifyHash response:', statusResult);
 
-      // Determine verification result and user-friendly message
+      const icpApi = await backendService();
+      const statusResult = await icpApi.verifyHash(safeDocumentId, hash);
+
       let verified = false;
       let status: string | undefined = undefined;
       let message: string | undefined = undefined;

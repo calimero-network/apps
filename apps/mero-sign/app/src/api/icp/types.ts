@@ -31,9 +31,9 @@ export interface ContextMetadata {
 }
 
 export enum ContextStatus {
-  Active = "Active",
-  Completed = "Completed",
-  Expired = "Expired",
+  Active = 'Active',
+  Completed = 'Completed',
+  Expired = 'Expired',
 }
 
 // Document types
@@ -57,9 +57,9 @@ export interface DocumentMetadata {
 }
 
 export enum DocumentStatus {
-  Pending = "Pending",
-  PartiallySigned = "PartiallySigned",
-  FullySigned = "FullySigned",
+  Pending = 'Pending',
+  PartiallySigned = 'PartiallySigned',
+  FullySigned = 'FullySigned',
 }
 
 // Audit types
@@ -76,13 +76,13 @@ export interface AuditEntry {
 }
 
 export enum AuditAction {
-  ContextCreated = "ContextCreated",
-  ParticipantAdded = "ParticipantAdded",
-  DocumentUploaded = "DocumentUploaded",
-  ConsentGiven = "ConsentGiven",
-  SignatureApplied = "SignatureApplied",
-  DocumentCompleted = "DocumentCompleted",
-  ContextCompleted = "ContextCompleted",
+  ContextCreated = 'ContextCreated',
+  ParticipantAdded = 'ParticipantAdded',
+  DocumentUploaded = 'DocumentUploaded',
+  ConsentGiven = 'ConsentGiven',
+  SignatureApplied = 'SignatureApplied',
+  DocumentCompleted = 'DocumentCompleted',
+  ContextCompleted = 'ContextCompleted',
 }
 
 // Request types
@@ -120,10 +120,10 @@ export interface UserConsentQuery {
 
 // Verification types
 export enum VerificationStatus {
-  Unrecorded = "Unrecorded",
-  OriginalMatch = "OriginalMatch",
-  FinalMatch = "FinalMatch",
-  NoMatch = "NoMatch",
+  Unrecorded = 'Unrecorded',
+  OriginalMatch = 'OriginalMatch',
+  FinalMatch = 'FinalMatch',
+  NoMatch = 'NoMatch',
 }
 
 // Enhanced response types

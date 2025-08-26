@@ -29,6 +29,38 @@ export class ContextApiDataSource implements NodeApi {
         };
 
         const result = await this.app.createContext(undefined, initParams);
+
+        try {
+          const icp = await backendService();
+          const created = result as any;
+          const contextId =
+            created?.contextId || created?.context_id || props.context_name;
+          if (contextId) {
+            const icpRequest = {
+              context_id: contextId,
+              participants: (props as any).participants || [],
+              title: props.context_name ? [props.context_name] : [],
+              description: (props as any).description
+                ? [(props as any).description]
+                : [],
+              agreement_type: (props as any).agreement_type
+                ? [(props as any).agreement_type]
+                : [],
+              expires_at:
+                (props as any).expires_at != null
+                  ? [BigInt((props as any).expires_at)]
+                  : [],
+            } as any;
+            try {
+              await icp.createContext(icpRequest);
+            } catch (icpErr) {
+              console.warn('ICP: createContext failed (non-fatal):', icpErr);
+            }
+          }
+        } catch (err) {
+          console.warn('ICP backendService unavailable (non-fatal):', err);
+        }
+
         return { data: result, error: null };
       }
     } catch (error) {
@@ -46,26 +78,31 @@ export class ContextApiDataSource implements NodeApi {
         .node()
         .createContext(applicationId, JSON.stringify(props), 'near');
 
-      // Try to also create the context on ICP backend (best-effort, non-blocking)
       try {
         const icp = await backendService();
         const created = result.data as any;
-        console.log('result ', result);
-        console.log('created ', created);
+
         const contextId =
           created?.contextId || created?.context_id || props.context_name;
         if (contextId) {
           const icpRequest = {
             context_id: contextId,
             participants: (props as any).participants || [],
-            title: (props as any).context_name || null,
-            description: null,
-            agreement_type: null,
-            expires_at: null,
+            // Candid Opt<T> must be encoded as [] (none) or [value] (some)
+            title: props.context_name ? [props.context_name] : [],
+            description: (props as any).description
+              ? [(props as any).description]
+              : [],
+            agreement_type: (props as any).agreement_type
+              ? [(props as any).agreement_type]
+              : [],
+            expires_at:
+              (props as any).expires_at != null
+                ? [BigInt((props as any).expires_at)]
+                : [],
           } as any;
           try {
             await icp.createContext(icpRequest);
-            console.log('ICP: createContext called for', contextId);
           } catch (icpErr) {
             console.warn('ICP: createContext failed (non-fatal):', icpErr);
           }

@@ -1,4 +1,5 @@
-import { createBackendActor } from './backendActor';
+import { createBackendActor, getAuthClient } from './backendActor';
+import { authService } from '../../contexts/IcpAuthContext';
 import {
   ContextRecord,
   DocumentRecord,
@@ -19,7 +20,28 @@ import {
 } from './utils';
 
 export const backendService = async (identity?: any) => {
-  const actor = await createBackendActor(identity);
+  let identityToUse = identity;
+
+  if (!identityToUse) {
+    try {
+      const uiState = authService.getAuthState();
+      if (uiState?.isAuthenticated && uiState.identity) {
+        identityToUse = uiState.identity;
+      } else {
+        const authClient = await getAuthClient();
+        if (await authClient.isAuthenticated()) {
+          identityToUse = await authClient.getIdentity();
+        }
+      }
+    } catch (err) {
+      console.debug(
+        'backendService: failed to resolve identity from authService/getAuthClient',
+        err,
+      );
+    }
+  }
+
+  const actor = await createBackendActor(identityToUse);
 
   return {
     raw: {
@@ -83,10 +105,21 @@ export const backendService = async (identity?: any) => {
         >,
 
       isUserContextParticipant: (contextId: string, userId: string) =>
-        actor.is_user_context_participant(contextId, userId) as Promise<boolean>,
+        actor.is_user_context_participant(
+          contextId,
+          userId,
+        ) as Promise<boolean>,
 
-      hasUserConsented: (contextId: string, userId: string, documentId: string) =>
-        actor.has_user_consented(contextId, userId, documentId) as Promise<boolean>,
+      hasUserConsented: (
+        contextId: string,
+        userId: string,
+        documentId: string,
+      ) =>
+        actor.has_user_consented(
+          contextId,
+          userId,
+          documentId,
+        ) as Promise<boolean>,
     },
 
     // High-level service methods
@@ -143,9 +176,15 @@ export const backendService = async (identity?: any) => {
     },
 
     // Updated to require documentId for document-specific consent
-    async recordConsentForContext(contextId: string, documentId: string): Promise<boolean> {
-      const result = await this.raw.recordConsentForContext(contextId, documentId);
-      console.log('Raw consent result from ICP canister:', result);
+    async recordConsentForContext(
+      contextId: string,
+      documentId: string,
+    ): Promise<boolean> {
+      const result = await this.raw.recordConsentForContext(
+        contextId,
+        documentId,
+      );
+
       return isBackendSuccess(result);
     },
 
@@ -173,38 +212,25 @@ export const backendService = async (identity?: any) => {
       entries: Array<AuditEntry & { timestampDate: Date }>;
       total: number;
     } | null> {
-      console.log(
-        'BackendService.getAuditTrail called with Context ID:',
-        contextId,
-      );
-
       const result = await this.raw.getAuditTrail(contextId);
-      console.log('Raw result from ICP canister:', result);
 
       const handled = safeHandleBackendResult(result);
-      console.log('Handled result:', handled);
 
       if (!handled.success || !handled.data) {
-        console.log('No successful result or data:', {
-          success: handled.success,
-          hasData: !!handled.data,
-        });
         return null;
       }
 
-      console.log('Processing audit entries, count:', handled.data.length);
       const entries = handled.data.map((entry) => {
-        console.log('Processing entry:', entry);
         const processedEntry = {
           ...entry,
           timestampDate: bigintToDate(entry.timestamp),
         };
-        console.log('Processed entry:', processedEntry);
+
         return processedEntry;
       });
 
       const result_final = { entries, total: entries.length };
-      console.log('Final audit trail result:', result_final);
+
       return result_final;
     },
 
@@ -215,8 +241,11 @@ export const backendService = async (identity?: any) => {
       return await this.raw.isUserContextParticipant(contextId, userId);
     },
 
-    // Updated to require documentId for document-specific consent checking
-    async hasUserConsented(contextId: string, userId: string, documentId: string): Promise<boolean> {
+    async hasUserConsented(
+      contextId: string,
+      userId: string,
+      documentId: string,
+    ): Promise<boolean> {
       return await this.raw.hasUserConsented(contextId, userId, documentId);
     },
 
@@ -305,7 +334,7 @@ export const backendService = async (identity?: any) => {
       const hasConsented = await this.hasUserConsented(
         document.context_id,
         userId,
-        documentId
+        documentId,
       );
       if (!hasConsented) {
         return {
@@ -330,10 +359,13 @@ export const backendService = async (identity?: any) => {
         // Record consent for this specific document
         const consentSuccess = await this.recordConsentForContext(
           document.context_id,
-          documentId
+          documentId,
         );
         if (!consentSuccess) {
-          return { success: false, error: 'Failed to record consent for document' };
+          return {
+            success: false,
+            error: 'Failed to record consent for document',
+          };
         }
 
         // Then sign the document
@@ -367,7 +399,7 @@ export const backendService = async (identity?: any) => {
         const hasConsented = await this.hasUserConsented(
           contextId,
           userId,
-          document.document_id
+          document.document_id,
         );
         consentStatus[document.document_id] = hasConsented;
       }
@@ -379,18 +411,26 @@ export const backendService = async (identity?: any) => {
     async getDocumentSigningStatus(
       contextId: string,
       userId: string,
-    ): Promise<Record<string, { consented: boolean; signed: boolean; canSign: boolean }>> {
+    ): Promise<
+      Record<string, { consented: boolean; signed: boolean; canSign: boolean }>
+    > {
       const documents = await this.getContextDocuments(contextId);
-      const status: Record<string, { consented: boolean; signed: boolean; canSign: boolean }> = {};
+      const status: Record<
+        string,
+        { consented: boolean; signed: boolean; canSign: boolean }
+      > = {};
 
       for (const document of documents) {
         const consented = await this.hasUserConsented(
           contextId,
           userId,
-          document.document_id
+          document.document_id,
         );
         const signed = document.current_signers.includes(userId);
-        const canSignResult = await this.canUserSign(document.document_id, userId);
+        const canSignResult = await this.canUserSign(
+          document.document_id,
+          userId,
+        );
 
         status[document.document_id] = {
           consented,

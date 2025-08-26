@@ -107,57 +107,22 @@ const AuditTrail: React.FC<AuditTrailProps> = ({
     setLoading(true);
     setError(null);
     try {
-      // Step 1: Sanitize document ID (matches DocumentService.sanitizeDocumentId)
       const sanitizedDocumentId = documentId.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const sanitizedContextId = contextId.replace(/[^a-zA-Z0-9_-]/g, '_');
 
-      // Step 2: Generate ICP Document ID for display purposes only
-      const icpDocumentId = generateIcpDocumentId(
-        contextId,
-        sanitizedDocumentId,
-      );
-
-      // Debug logging - standardized ID tracking
-      console.log('🔍 Audit Trail ID Standardization:');
-      console.log('  • Context ID:', contextId);
-      console.log('  • Original Document ID:', documentId);
-      console.log('  • Sanitized Document ID:', sanitizedDocumentId);
-      console.log('  • Display ICP Document ID:', icpDocumentId);
-      console.log(
-        '  • Backend Query ID (sanitized only):',
-        sanitizedDocumentId,
-      );
-
-      // Step 3: Get backend service and query with SANITIZED ID ONLY
       const service = await backendService();
-      console.log('✅ Backend service initialized');
 
-      // Step 4: Query ICP canister with SANITIZED document ID (not the combined ICP ID)
-      console.log(
-        '📡 Querying ICP canister with sanitized ID:',
-        sanitizedDocumentId,
-      );
-      const auditResult = await service.getAuditTrail(sanitizedDocumentId);
-      console.log('📋 ICP canister response:', auditResult);
+      const auditResult = await service.getAuditTrail(sanitizedContextId);
 
       if (auditResult) {
-        console.log('✅ Audit result exists, processing entries...');
-        console.log('Number of entries:', auditResult.entries?.length || 0);
-        console.log('Raw entries:', auditResult.entries);
-
         // Transform ICP audit entries to component format
         const transformedEntries: AuditEntry[] = auditResult.entries.map(
           (entry) => {
-            console.log('🔄 Transforming entry:', entry);
-            console.log('🔄 Entry action type:', typeof entry.action);
-            console.log('🔄 Entry action value:', entry.action);
-
             // Convert action object to string
             let actionString = 'Unknown';
             if (typeof entry.action === 'object' && entry.action !== null) {
-              // Action comes as object like {DocumentUploaded: null} or {DocumentCompleted: null}
               const actionKey = Object.keys(entry.action)[0];
               actionString = actionKey || 'Unknown';
-              console.log('🔄 Extracted action key:', actionString);
             } else if (typeof entry.action === 'string') {
               actionString = entry.action;
             }
@@ -188,11 +153,10 @@ const AuditTrail: React.FC<AuditTrailProps> = ({
               consent_given: consentGiven,
               document_hash_after_action: documentHashAfterAction,
               metadata: metadata,
+              context_id: contextId,
+              document_id: sanitizedDocumentId,
             };
 
-            console.log('🔄 Transformed entry result:', transformedEntry);
-
-            // Verify no objects are being passed as React children (except Date objects which are handled)
             Object.keys(transformedEntry).forEach((key) => {
               const value =
                 transformedEntry[key as keyof typeof transformedEntry];
@@ -210,17 +174,12 @@ const AuditTrail: React.FC<AuditTrailProps> = ({
           },
         );
 
-        console.log('🔄 Transformed entries:', transformedEntries);
-
-        // Sort entries by timestamp (newest first)
         transformedEntries.sort(
           (a, b) => b.timestamp.getTime() - a.timestamp.getTime(),
         );
 
-        console.log('📅 Sorted entries:', transformedEntries);
         setAuditEntries(transformedEntries);
       } else {
-        console.log('❌ No audit result returned from backend');
         setAuditEntries([]);
       }
     } catch (err) {

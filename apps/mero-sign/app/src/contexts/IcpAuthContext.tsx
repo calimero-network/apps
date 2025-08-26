@@ -13,12 +13,26 @@ class AuthService {
   private authClient: AuthClient | null = null;
   private listeners: ((authState: AuthState) => void)[] = [];
   private isInitialized = false;
+  private currentIdentity: Identity | null = null;
 
   async init(): Promise<void> {
     if (this.isInitialized) {
       return;
     }
     this.authClient = await AuthClient.create();
+
+    try {
+      const authenticated = await this.authClient.isAuthenticated();
+      if (authenticated) {
+        this.currentIdentity = this.authClient.getIdentity();
+      } else {
+        this.currentIdentity = null;
+      }
+    } catch (e) {
+      console.warn('AuthService.init: failed to check authentication state', e);
+      this.currentIdentity = null;
+    }
+
     this.isInitialized = true;
     this.notifyListeners();
   }
@@ -42,7 +56,16 @@ class AuthService {
           height=800
         `,
 
-        onSuccess: () => {
+        onSuccess: async () => {
+          try {
+            this.currentIdentity = this.authClient!.getIdentity();
+          } catch (e) {
+            console.warn(
+              'AuthService.login: failed to read identity after login',
+              e,
+            );
+            this.currentIdentity = null;
+          }
           this.notifyListeners();
           resolve();
         },
@@ -59,26 +82,18 @@ class AuthService {
       return;
     }
     await this.authClient.logout();
+    this.currentIdentity = null;
     this.notifyListeners();
   }
 
   getAuthState(): AuthState {
-    if (!this.authClient) {
-      return {
-        isAuthenticated: false,
-        identity: null,
-        principal: null,
-      };
-    }
-
-    const identity = this.authClient.getIdentity();
-    const isAnonymous = identity.getPrincipal().isAnonymous();
-    const isAuthenticated = !isAnonymous;
-
+    const identity = this.currentIdentity;
+    const isAuthenticated =
+      !!identity && !identity.getPrincipal().isAnonymous();
     return {
       isAuthenticated,
       identity: isAuthenticated ? identity : null,
-      principal: isAuthenticated ? identity.getPrincipal() : null,
+      principal: isAuthenticated ? identity!.getPrincipal() : null,
     };
   }
 

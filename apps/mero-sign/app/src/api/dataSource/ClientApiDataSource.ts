@@ -13,6 +13,8 @@ import {
   UserId,
 } from '../clientApi';
 import { backendService } from '../icp/backendService';
+import { authService } from '../../contexts/IcpAuthContext';
+import { Principal } from '@dfinity/principal';
 import { DefaultContextService } from '../defaultContextService';
 
 const RequestConfig = { timeout: 30000 };
@@ -107,10 +109,10 @@ export class ClientApiDataSource implements ClientApi {
 
         if (safeContextId) {
           const icpBackend = await backendService();
-          const icpResult = await (icpBackend as any).recordConsentForContext(
+          const icpResult = await icpBackend.recordConsentForContext(
             safeContextId,
+            safeDocumentId,
           );
-          console.log('ICP recordConsentForContext result:', icpResult);
         } else {
           console.warn(
             'No agreementContextID provided; skipping ICP consent recording',
@@ -221,25 +223,6 @@ export class ClientApiDataSource implements ClientApi {
             message: getErrorMessage(response.error),
           },
         };
-      }
-
-      // ICP integration: Add participant in ICP backend after node success
-      try {
-        const safeContextId = contextId.replace(/[^a-zA-Z0-9_-]/g, '_');
-        if (contextId !== safeContextId) {
-          console.warn('Sanitized contextId for ICP addParticipant:', {
-            original: contextId,
-            sanitized: safeContextId,
-          });
-        }
-        const icpBackend = await backendService();
-        const icpResult = await icpBackend.addParticipantToContext(
-          safeContextId,
-          userId as unknown as string,
-        );
-        console.log('ICP addParticipantToContext result:', icpResult);
-      } catch (icpError) {
-        console.warn('Failed to add participant in ICP backend:', icpError);
       }
 
       return {
@@ -441,6 +424,62 @@ export class ClientApiDataSource implements ClientApi {
             message: getErrorMessage(response.error),
           },
         };
+      }
+
+      try {
+        const icpBackend = await backendService();
+        const safeContextId = (agreementContextID ?? contextId).replace(
+          /[^a-zA-Z0-9_-]/g,
+          '_',
+        );
+        const safeDocumentId = documentId.replace(/[^a-zA-Z0-9_-]/g, '_');
+        if (documentId !== safeDocumentId) {
+          console.warn('Sanitized documentId for ICP signDocument:', {
+            original: documentId,
+            sanitized: safeDocumentId,
+          });
+        }
+
+        try {
+          const signSuccess = await (icpBackend as any).signDocument({
+            document_id: safeDocumentId,
+            consent_acknowledged: true,
+          } as any);
+
+          if (!signSuccess) {
+            console.warn(
+              'ICP Backend: signDocument returned falsy — the canister may have rejected the call (non-fatal).',
+            );
+          } else {
+            // Record the final hash (explicit canister method)
+            if (newHash) {
+              try {
+                const recordRes = await icpBackend.recordFinalHash(
+                  safeDocumentId,
+                  newHash,
+                );
+                if (recordRes && recordRes.success) {
+                } else {
+                  console.warn(
+                    'ICP: recordFinalHash failed for',
+                    safeDocumentId,
+                    recordRes,
+                  );
+                }
+              } catch (recErr) {
+                console.warn('ICP: recordFinalHash threw (non-fatal):', recErr);
+              }
+            } else {
+              console.warn(
+                'ICP: newHash not provided; skipping recordFinalHash',
+              );
+            }
+          }
+        } catch (icpErr) {
+          console.warn('ICP Backend: signDocument failed (non-fatal):', icpErr);
+        }
+      } catch (err) {
+        console.warn('ICP backendService unavailable (non-fatal):', err);
       }
 
       return {
@@ -770,7 +809,6 @@ export class ClientApiDataSource implements ClientApi {
           params,
         );
 
-        // ICP integration: Add participant in ICP backend after node success
         try {
           const safeContextId = contextId.replace(/[^a-zA-Z0-9_-]/g, '_');
           if (contextId !== safeContextId) {
@@ -779,12 +817,33 @@ export class ClientApiDataSource implements ClientApi {
               sanitized: safeContextId,
             });
           }
-          const icpBackend = await backendService();
-          const icpResult = await (icpBackend as any).addParticipantToContext(
-            safeContextId,
-            sharedIdentity,
-          );
-          console.log('ICP addParticipantToContext result:', icpResult);
+
+          const uiState = authService.getAuthState();
+          const icpPrincipal =
+            uiState?.isAuthenticated && uiState.identity
+              ? uiState.identity.getPrincipal().toString()
+              : '';
+
+          if (!icpPrincipal) {
+            console.warn(
+              'ICP: no authenticated ICP principal available; skipping addParticipantToContext (non-fatal)',
+            );
+          } else {
+            try {
+              Principal.fromText(icpPrincipal);
+            } catch {
+              console.warn(
+                'ICP: resolved principal is not a valid Principal text:',
+                icpPrincipal,
+              );
+            }
+            const icpBackend = await backendService();
+
+            const icpResult = await (icpBackend as any).addParticipantToContext(
+              safeContextId,
+              icpPrincipal,
+            );
+          }
         } catch (icpError) {
           console.warn('Failed to add participant in ICP backend:', icpError);
         }
@@ -947,8 +1006,7 @@ export class ClientApiDataSource implements ClientApi {
 
         const nodeData: any = data;
         const documentIdFromNode = nodeData as string | undefined;
-        console.log('Data ', data);
-        console.log('Document ID from node:', documentIdFromNode);
+
         if (documentIdFromNode) {
           const safeDocumentId = documentIdFromNode.replace(
             /[^a-zA-Z0-9_-]/g,
@@ -972,7 +1030,6 @@ export class ClientApiDataSource implements ClientApi {
 
           try {
             await icpBackend.uploadDocument(icpRequest);
-            console.log('ICP uploadDocument succeeded for', safeDocumentId);
           } catch (icpErr) {
             console.warn('ICP uploadDocument failed (non-fatal):', icpErr);
           }
