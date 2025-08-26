@@ -164,6 +164,7 @@ const AgreementPage: React.FC = () => {
   const [showParticipants, setShowParticipants] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteId, setInviteId] = useState('');
+  const [inviteeICP, setInviteeICP] = useState('');
   const [invitePermission, setInvitePermission] = useState<PermissionLevel>(
     PermissionLevel.Sign,
   );
@@ -459,7 +460,6 @@ const AgreementPage: React.FC = () => {
       currentContextId,
       loadDocuments,
       showNotification,
-      identity,
       clientApiService,
     ],
   );
@@ -630,6 +630,7 @@ const AgreementPage: React.FC = () => {
         currentContextId,
         inviteId.trim(),
         invitePermission,
+        inviteeICP.trim(),
         agreementContextID || undefined,
         agreementContextUserID || undefined,
       );
@@ -650,6 +651,7 @@ const AgreementPage: React.FC = () => {
   }, [
     currentContextId,
     inviteId,
+    inviteeICP,
     invitePermission,
     nodeApiService,
     clientApiService,
@@ -1148,6 +1150,14 @@ const AgreementPage: React.FC = () => {
                   placeholder="Enter the ID of invitee"
                   value={inviteId}
                   onChange={(e) => setInviteId(e.target.value)}
+                  disabled={generatingInvite}
+                  className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent mb-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                />
+                <input
+                  type="text"
+                  placeholder="Enter the ICP of invitee"
+                  value={inviteeICP}
+                  onChange={(e) => setInviteeICP(e.target.value)}
                   disabled={generatingInvite}
                   className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent mb-3 disabled:opacity-50 disabled:cursor-not-allowed"
                 />

@@ -193,6 +193,7 @@ export class ClientApiDataSource implements ClientApi {
     contextId: string,
     userId: UserId,
     permission: PermissionLevel,
+    icpPrincipalId: string,
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<void> {
@@ -223,6 +224,32 @@ export class ClientApiDataSource implements ClientApi {
             message: getErrorMessage(response.error),
           },
         };
+      }
+      try {
+        const safeContextId = contextId.replace(/[^a-zA-Z0-9_-]/g, '_');
+        if (contextId !== safeContextId) {
+          console.warn('Sanitized contextId for ICP addParticipant:', {
+            original: contextId,
+            sanitized: safeContextId,
+          });
+        }
+
+        try {
+          Principal.fromText(icpPrincipalId);
+        } catch {
+          console.warn(
+            'ICP: resolved principal is not a valid Principal text:',
+            icpPrincipalId,
+          );
+        }
+
+        const icpBackend = await backendService();
+        await (icpBackend as any).addParticipantToContext(
+          safeContextId,
+          icpPrincipalId,
+        );
+      } catch (icpError) {
+        console.warn('Failed to add participant in ICP backend:', icpError);
       }
 
       return {
@@ -808,45 +835,6 @@ export class ClientApiDataSource implements ClientApi {
           ClientMethod.JOIN_SHARED_CONTEXT,
           params,
         );
-
-        try {
-          const safeContextId = contextId.replace(/[^a-zA-Z0-9_-]/g, '_');
-          if (contextId !== safeContextId) {
-            console.warn('Sanitized contextId for ICP addParticipant:', {
-              original: contextId,
-              sanitized: safeContextId,
-            });
-          }
-
-          const uiState = authService.getAuthState();
-          const icpPrincipal =
-            uiState?.isAuthenticated && uiState.identity
-              ? uiState.identity.getPrincipal().toString()
-              : '';
-
-          if (!icpPrincipal) {
-            console.warn(
-              'ICP: no authenticated ICP principal available; skipping addParticipantToContext (non-fatal)',
-            );
-          } else {
-            try {
-              Principal.fromText(icpPrincipal);
-            } catch {
-              console.warn(
-                'ICP: resolved principal is not a valid Principal text:',
-                icpPrincipal,
-              );
-            }
-            const icpBackend = await backendService();
-
-            const icpResult = await (icpBackend as any).addParticipantToContext(
-              safeContextId,
-              icpPrincipal,
-            );
-          }
-        } catch (icpError) {
-          console.warn('Failed to add participant in ICP backend:', icpError);
-        }
 
         return {
           data: result.data || result,
