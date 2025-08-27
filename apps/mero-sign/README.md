@@ -1,6 +1,21 @@
 # MeroDocs
 
-**MeroDocs** is a privacy-first e‑signature platform built on Calimero. It empowers users on independent nodes to securely collaborate, sign PDF contracts peer‑to‑peer, and publicly attest document integrity via the Internet Computer (ICP)—all without centralized servers or intermediaries.
+**MeroDocs** is a privacy-first e-signature platform built on **Calimero**.  
+It empowers users on independent nodes to securely collaborate, sign PDF contracts peer-to-peer,  
+and publicly attest document integrity via the **Internet Computer (ICP)** — all without centralized servers or intermediaries.
+
+---
+
+## Live Application  
+🔗 [MeroDocs App](https://mero-docs.vercel.app)
+
+---
+
+## ICP Mainnet Deployment  
+
+**Canister Backend**  
+- **Canister ID:** `na3u2-6iaaa-aaaac-qbtcq-cai`  
+- **Candid Interface:** [Backend Canister](https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=na3u2-6iaaa-aaaac-qbtcq-cai)
 
 ---
 
