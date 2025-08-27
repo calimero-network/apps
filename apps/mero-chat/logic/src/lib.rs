@@ -2004,11 +2004,11 @@ impl CurbChat {
     }
 
     /// Updates hash tracking for DM participants when a message is sent
-    pub fn update_dm_hashes(&mut self, sender_id: &UserId, other_user_id: &UserId, new_hash: &str) {
+    pub fn update_dm_hashes(&mut self, sender_id: UserId, other_user_id: UserId, new_hash: &str) {
         // Update sender's DM hash
-        if let Ok(Some(mut dms)) = self.dm_chats.get(sender_id) {
+        if let Ok(Some(mut dms)) = self.dm_chats.get(&sender_id) {
             for dm in dms.iter_mut() {
-                if dm.other_identity_old == *other_user_id {
+                if dm.other_identity_old == other_user_id {
                     dm.old_hash = dm.new_hash.clone();
                     dm.new_hash = new_hash.to_string();
                     break;
@@ -2018,9 +2018,9 @@ impl CurbChat {
         }
 
         // Update other user's DM hash (set old_hash to their current new_hash, new_hash to the new hash)
-        if let Ok(Some(mut dms)) = self.dm_chats.get(other_user_id) {
+        if let Ok(Some(mut dms)) = self.dm_chats.get(&other_user_id) {
             for dm in dms.iter_mut() {
-                if dm.other_identity_old == *sender_id {
+                if dm.other_identity_old == sender_id {
                     dm.old_hash = dm.new_hash.clone();
                     dm.new_hash = new_hash.to_string();
                     break;
