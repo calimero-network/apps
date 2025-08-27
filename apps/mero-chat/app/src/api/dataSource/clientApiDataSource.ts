@@ -804,6 +804,7 @@ export class ClientApiDataSource implements ClientApi {
           method: ClientMethod.CREATE_DM,
           argsJson: {
             context_id: props.context_id,
+            context_hash: props.context_hash,
             creator: props.creator,
             creator_new_identity: props.creator_new_identity,
             invitee: props.invitee,
