@@ -6,23 +6,24 @@ import type {
   ChatMessagesDataWithOlder,
   CurbMessage,
   UpdatedMessages,
-  User,
 } from "../types/Common";
 import { DMSetupState } from "../types/Common";
 import JoinChannel from "./JoinChannel";
 import ChatDisplaySplit from "./ChatDisplaySplit";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import {
+  apiClient,
   getExecutorPublicKey,
   type ResponseData,
 } from "@calimero-network/calimero-client";
-import type { ChannelInfo, DMChatInfo } from "../api/clientApi";
+import type { ChannelInfo, DMChatInfo, UserId } from "../api/clientApi";
 import HandleDMSetup from "./HandleDMSetup";
 import HandleInvitation from "./HandleInvitation";
 import JoinContext from "./JoinContext";
 import InvitationPending from "./InvitationPending";
 import { getDMSetupState } from "../utils/dmSetupState";
 import SyncWaiting from "./SyncWaiting";
+import { extractAndAddMentions } from "../utils/mentions";
 
 interface ChatContainerProps {
   activeChat: ActiveChat;
@@ -41,6 +42,7 @@ interface ChatContainerProps {
   setOpenThread: (thread: CurbMessage | undefined) => void;
   currentOpenThreadRef: React.RefObject<CurbMessage | undefined>;
   onDMSelected: (dm?: DMChatInfo, sc?: ActiveChat) => void;
+  membersList: Map<string, string>;
 }
 
 const ChatContainerWrapper = styled.div`
@@ -89,6 +91,7 @@ export default function ChatContainer({
   setOpenThread,
   currentOpenThreadRef,
   onDMSelected,
+  membersList
 }: ChatContainerProps) {
   const [updatedMessages, setUpdatedMessages] = useState<UpdatedMessages[]>([]);
   const [_updatedThreadMessages, setUpdatedThreadMessages] = useState<
@@ -98,7 +101,6 @@ export default function ChatContainer({
   const [channelMeta, setChannelMeta] = useState<ChannelInfo>(
     {} as ChannelInfo
   );
-  const [channelUserList, _setChannelUserList] = useState<User[]>([]);
   const [openMobileReactions, setOpenMobileReactions] = useState("");
   const [messageWithEmojiSelector, setMessageWithEmojiSelector] =
     useState<CurbMessage | null>(null);
@@ -117,10 +119,15 @@ export default function ChatContainer({
   }, [activeChat]);
 
   const activeChatRef = useRef(activeChat);
+  const membersListRef = useRef(membersList);
 
   useEffect(() => {
     activeChatRef.current = activeChat;
   }, [activeChat]);
+
+  useEffect(() => {
+    membersListRef.current = membersList;
+  }, [membersList]);
 
   const computeReaction = useCallback(
     (message: CurbMessage, reaction: string, sender: string) => {
@@ -188,17 +195,37 @@ export default function ChatContainer({
   );
 
   const sendMessage = async (message: string, isThread: boolean) => {
+
     const isDM = activeChatRef.current?.type === "direct_message";
+
+    const result = extractAndAddMentions(message, membersListRef.current);
+
+    const mentions: UserId[] = [...result.userIdMentions];
+    const usernames: string[] = [...result.usernameMentions];
+
     await new ClientApiDataSource().sendMessage({
       group: {
         name: (isDM ? "private_dm" : activeChatRef.current?.name) ?? "",
       },
       message,
+      mentions,
+      usernames,
       timestamp: Math.floor(Date.now() / 1000),
       is_dm: isDM,
       dm_identity: activeChatRef.current?.account,
       parent_message: isThread ? currentOpenThreadRef.current?.id : undefined,
     });
+
+    if (isDM) {
+      const fetchContextResponse = await apiClient
+      .node()
+      .getContext(activeChatRef.current?.contextId || "");
+      await new ClientApiDataSource().updateDmHash({
+        sender_id: activeChatRef.current?.account || "",
+        other_user_id: activeChatRef.current?.account || "",
+        new_hash: fetchContextResponse.data?.rootHash as string || "",
+      });
+    }
 
     if (isThread && currentOpenThreadRef.current) {
       const newThreadCount =
@@ -322,8 +349,10 @@ export default function ChatContainer({
             onDMSelected={onDMSelected}
           />
         );
-      case DMSetupState.SYNC_WAITING: 
-        return <SyncWaiting activeChat={activeChat} onDMSelected={onDMSelected}/>;
+      case DMSetupState.SYNC_WAITING:
+        return (
+          <SyncWaiting activeChat={activeChat} onDMSelected={onDMSelected} />
+        );
 
       case DMSetupState.ACTIVE:
         return (
@@ -341,7 +370,7 @@ export default function ChatContainer({
             isReadOnly={activeChat.readOnly ?? false}
             toggleEmojiSelector={toggleEmojiSelector}
             channelMeta={channelMeta}
-            channelUserList={channelUserList}
+            //channelUserList={channelUserList}
             openMobileReactions={openMobileReactions}
             setOpenMobileReactions={setOpenMobileReactions}
             onMessageDeletion={handleDeleteMessage}
@@ -390,7 +419,7 @@ export default function ChatContainer({
               isReadOnly={activeChat.readOnly ?? false}
               toggleEmojiSelector={toggleEmojiSelector}
               channelMeta={channelMeta}
-              channelUserList={channelUserList}
+              //channelUserList={channelUserList}
               openMobileReactions={openMobileReactions}
               setOpenMobileReactions={setOpenMobileReactions}
               onMessageDeletion={handleDeleteMessage}

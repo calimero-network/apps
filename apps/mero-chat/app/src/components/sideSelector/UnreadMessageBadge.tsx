@@ -1,9 +1,9 @@
 import { styled } from "styled-components";
 
-const MessagesBubble = styled.div<{ backgroundColor?: string }>`
+const MessagesBubble = styled.div<{ $backgroundColor?: string }>`
   color: #fff;
-  ${({ backgroundColor }) =>
-    backgroundColor && `background-color: ${backgroundColor};`}
+  ${({ $backgroundColor }) =>
+    $backgroundColor && `background-color: ${$backgroundColor};`}
   display: flex;
   border-radius: 9999px;
   justify-content: center;
@@ -24,7 +24,7 @@ interface UnreadMessagesBadgeProps {
 export default function UnreadMessagesBadge(props: UnreadMessagesBadgeProps) {
   const { messageCount, backgroundColor } = props;
   return (
-    <MessagesBubble backgroundColor={backgroundColor}>
+    <MessagesBubble $backgroundColor={backgroundColor}>
       {messageCount}
     </MessagesBubble>
   );

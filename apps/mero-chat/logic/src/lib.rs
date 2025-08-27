@@ -33,6 +33,8 @@ pub struct Message {
     pub timestamp: u64,
     pub sender: UserId,
     pub sender_username: String,
+    pub mentions: Vec<UserId>,
+    pub mentions_usernames: Vec<String>,
     pub id: MessageId,
     pub text: String,
     pub edited_on: Option<u64>,
@@ -46,6 +48,8 @@ pub struct MessageWithReactions {
     pub timestamp: u64,
     pub sender: UserId,
     pub sender_username: String,
+    pub mentions: Vec<UserId>,
+    pub mentions_usernames: Vec<String>,
     pub id: MessageId,
     pub text: String,
     pub edited_on: Option<u64>,
@@ -138,6 +142,7 @@ pub struct PublicChannelInfo {
     pub links_allowed: bool,
     pub unread_count: u32,
     pub last_read_timestamp: u64,
+    pub unread_mention_count: u32,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Clone)]
@@ -162,6 +167,10 @@ pub struct DMChatInfo {
 
     pub did_join: bool,
     pub invitation_payload: String,
+
+    // Hash tracking for new message detection
+    pub old_hash: String,
+    pub new_hash: String,
 }
 
 /// Tracks unread messages for a user in a specific channel
@@ -173,6 +182,27 @@ pub struct UserChannelUnread {
     pub last_read_timestamp: u64,
     /// Number of unread messages for the user in this channel
     pub unread_count: u32,
+}
+
+/// Tracks mentions for a user in a specific channel
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[serde(crate = "calimero_sdk::serde")]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct UserChannelMentions {
+    /// Message ID that caused the mention
+    pub message_id: MessageId,
+    /// Total mention count for this message
+    pub mention_count: u32,
+    /// Types of mentions (@here, @everyone, @username)
+    pub mention_types: Vec<String>,
+    /// Timestamp when the mention occurred
+    pub timestamp: u64,
+}
+
+impl AsRef<[u8]> for UserChannelMentions {
+    fn as_ref(&self) -> &[u8] {
+        self.message_id.as_bytes()
+    }
 }
 
 #[app::state(emits = Event)]
@@ -192,6 +222,7 @@ pub struct CurbChat {
     is_dm: bool,
     reactions: UnorderedMap<MessageId, UnorderedMap<String, UnorderedSet<UserId>>>,
     user_channel_unread: UnorderedMap<UserId, UnorderedMap<Channel, UserChannelUnread>>,
+    user_channel_mentions: UnorderedMap<UserId, UnorderedMap<Channel, Vector<UserChannelMentions>>>,
 }
 
 #[app::logic]
@@ -228,7 +259,6 @@ impl CurbChat {
                     let _ = member_usernames.insert(invitee_id, invitee_username);
                 }
             }
-           
         }
 
         for c in default_channels {
@@ -249,13 +279,13 @@ impl CurbChat {
             let _ = channels.insert(c.clone(), channel_info);
             let mut new_members = UnorderedSet::new();
             let _ = new_members.insert(executor_id);
-            
+
             if is_dm {
                 if let Some(invitee_id) = &invitee {
                     let _ = new_members.insert(invitee_id.clone());
                 }
             }
-            
+
             let _ = channel_members.insert(c.clone(), new_members);
             let _ = moderators.insert(executor_id);
         }
@@ -276,6 +306,7 @@ impl CurbChat {
             is_dm,
             reactions: UnorderedMap::new(),
             user_channel_unread: UnorderedMap::new(),
+            user_channel_mentions: UnorderedMap::new(),
         }
     }
 
@@ -312,9 +343,33 @@ impl CurbChat {
             }
         }
 
-        let _ = self.user_channel_unread.insert(executor_id, user_unread_channels);
+        let _ = self
+            .user_channel_unread
+            .insert(executor_id, user_unread_channels);
+
+        // Initialize mentions tracking for the user
+        self.initialize_mentions_tracking_for_user_in_channels(&executor_id);
 
         Ok("Successfully joined the chat".to_string())
+    }
+
+    fn initialize_mentions_tracking_for_user_in_channels(&mut self, user_id: &UserId) {
+        // Initialize mentions tracking for all default channels
+        let mut channels_to_initialize = Vec::new();
+        if let Ok(entries) = self.channels.entries() {
+            for (channel, _) in entries {
+                if let Ok(Some(members)) = self.channel_members.get(&channel) {
+                    if members.contains(user_id).unwrap_or(false) {
+                        channels_to_initialize.push(channel.clone());
+                    }
+                }
+            }
+        }
+
+        // Now initialize mentions tracking for each channel
+        for channel in channels_to_initialize {
+            self.initialize_mentions_tracking_for_user_in_channel(user_id, &channel);
+        }
     }
 
     fn get_executor_id(&self) -> UserId {
@@ -329,17 +384,40 @@ impl CurbChat {
         // Get user's unread info for this channel
         if let Ok(Some(user_unread)) = self.user_channel_unread.get(user_id) {
             if let Ok(Some(channel_unread)) = user_unread.get(channel) {
-                return (channel_unread.unread_count, channel_unread.last_read_timestamp);
+                return (
+                    channel_unread.unread_count,
+                    channel_unread.last_read_timestamp,
+                );
             }
         }
-        
+
         (0, 0)
     }
 
+    fn get_user_channel_mention_count(&self, user_id: &UserId, channel: &Channel) -> u32 {
+        // Get user's mention count for this channel
+        if let Ok(Some(user_mentions)) = self.user_channel_mentions.get(user_id) {
+            if let Ok(Some(channel_mentions)) = user_mentions.get(channel) {
+                let mut total_mentions = 0;
+                if let Ok(iter) = channel_mentions.iter() {
+                    for mention_entry in iter {
+                        total_mentions += mention_entry.mention_count;
+                    }
+                }
+                return total_mentions;
+            }
+        }
 
-    pub fn mark_messages_as_read(&mut self, channel: Channel, timestamp: u64) -> app::Result<String, String> {
+        0
+    }
+
+    pub fn mark_messages_as_read(
+        &mut self,
+        channel: Channel,
+        timestamp: u64,
+    ) -> app::Result<String, String> {
         let executor_id = self.get_executor_id();
-        
+
         if let Ok(Some(members)) = self.channel_members.get(&channel) {
             if !members.contains(&executor_id).unwrap_or(false) {
                 return Err("You are not a member of this channel".to_string());
@@ -362,7 +440,7 @@ impl CurbChat {
         };
 
         channel_unread.last_read_timestamp = timestamp;
-        
+
         if let Ok(Some(channel_info)) = self.channels.get(&channel) {
             let mut unread_count = 0;
             if let Ok(iter) = channel_info.messages.iter() {
@@ -375,15 +453,18 @@ impl CurbChat {
             channel_unread.unread_count = unread_count;
         }
 
-        let _ = user_unread.insert(channel, channel_unread);
+        let _ = user_unread.insert(channel.clone(), channel_unread);
         let _ = self.user_channel_unread.insert(executor_id, user_unread);
+
+        // Reset mentions for this user in this channel when messages are read
+        self.reset_mentions_for_user_in_channel(&executor_id, &channel);
 
         Ok("Messages marked as read successfully".to_string())
     }
 
     pub fn get_channel_unread_count(&self, channel: Channel) -> app::Result<u32, String> {
         let executor_id = self.get_executor_id();
-        
+
         if let Ok(Some(members)) = self.channel_members.get(&channel) {
             if !members.contains(&executor_id).unwrap_or(false) {
                 return Err("You are not a member of this channel".to_string());
@@ -398,7 +479,7 @@ impl CurbChat {
 
     pub fn get_channel_last_read_timestamp(&self, channel: Channel) -> app::Result<u64, String> {
         let executor_id = self.get_executor_id();
-        
+
         if let Ok(Some(members)) = self.channel_members.get(&channel) {
             if !members.contains(&executor_id).unwrap_or(false) {
                 return Err("You are not a member of this channel".to_string());
@@ -426,21 +507,76 @@ impl CurbChat {
         Ok(total_unread)
     }
 
+    pub fn get_channel_mention_count(&self, channel: Channel) -> app::Result<u32, String> {
+        let executor_id = self.get_executor_id();
+
+        if let Ok(Some(members)) = self.channel_members.get(&channel) {
+            if !members.contains(&executor_id).unwrap_or(false) {
+                return Err("You are not a member of this channel".to_string());
+            }
+        } else {
+            return Err("Channel not found".to_string());
+        }
+
+        // Get mention count for this user and channel
+        if let Ok(Some(user_mentions)) = self.user_channel_mentions.get(&executor_id) {
+            if let Ok(Some(channel_mentions)) = user_mentions.get(&channel) {
+                return Ok(channel_mentions.len().unwrap_or(0) as u32);
+            }
+        }
+
+        Ok(0)
+    }
+
+    pub fn get_total_mention_count(&self) -> app::Result<u32, String> {
+        let executor_id = self.get_executor_id();
+        let mut total_mentions = 0;
+
+        // Get user's mentions tracking
+        if let Ok(Some(user_mentions)) = self.user_channel_mentions.get(&executor_id) {
+            if let Ok(entries) = user_mentions.entries() {
+                for (_, channel_mentions) in entries {
+                    total_mentions += channel_mentions.len().unwrap_or(0) as u32;
+                }
+            }
+        }
+
+        Ok(total_mentions)
+    }
+
     fn reset_unread_tracking_for_user_in_channel(&mut self, user_id: &UserId, channel: &Channel) {
         if let Ok(Some(mut user_unread)) = self.user_channel_unread.get(user_id) {
             let _ = user_unread.remove(channel);
-            let _ = self.user_channel_unread.insert(user_id.clone(), user_unread);
+            let _ = self
+                .user_channel_unread
+                .insert(user_id.clone(), user_unread);
         }
     }
 
-    fn increment_unread_count_for_channel(&mut self, channel: &Channel, sender_id: &UserId, _message_timestamp: u64) {
+    fn reset_mentions_for_user_in_channel(&mut self, user_id: &UserId, channel: &Channel) {
+        if let Ok(Some(mut user_mentions)) = self.user_channel_mentions.get(user_id) {
+            // Create a new empty vector for this channel
+            let empty_mentions = Vector::new();
+            let _ = user_mentions.insert(channel.clone(), empty_mentions);
+            let _ = self
+                .user_channel_mentions
+                .insert(user_id.clone(), user_mentions);
+        }
+    }
+
+    fn increment_unread_count_for_channel(
+        &mut self,
+        channel: &Channel,
+        sender_id: &UserId,
+        _message_timestamp: u64,
+    ) {
         if let Ok(Some(members)) = self.channel_members.get(channel) {
             if let Ok(iter) = members.iter() {
                 for member_id in iter {
                     if member_id == *sender_id {
                         continue;
                     }
-                    
+
                     let mut user_unread = match self.user_channel_unread.get(&member_id) {
                         Ok(Some(unread)) => unread,
                         _ => UnorderedMap::new(),
@@ -457,13 +593,104 @@ impl CurbChat {
                     channel_unread.unread_count += 1;
 
                     let _ = user_unread.insert(channel.clone(), channel_unread);
-                    let _ = self.user_channel_unread.insert(member_id.clone(), user_unread);
+                    let _ = self
+                        .user_channel_unread
+                        .insert(member_id.clone(), user_unread);
                 }
             }
         }
     }
 
-    fn initialize_unread_tracking_for_user_in_channel(&mut self, user_id: &UserId, channel: &Channel) {
+    fn handle_mentions_for_channel(
+        &mut self,
+        channel: &Channel,
+        sender_id: &UserId,
+        message_id: &MessageId,
+        mentions: &[UserId],
+        mentions_usernames: &[String],
+        timestamp: u64,
+    ) {
+        // Get all members of this channel
+        if let Ok(Some(members)) = self.channel_members.get(channel) {
+            if let Ok(iter) = members.iter() {
+                for member_id in iter {
+                    // Skip the sender
+                    if member_id == *sender_id {
+                        continue;
+                    }
+
+                    // Get or create user's mentions tracking
+                    let mut user_mentions = match self.user_channel_mentions.get(&member_id) {
+                        Ok(Some(mentions_map)) => mentions_map,
+                        _ => UnorderedMap::new(),
+                    };
+
+                    // Get or create channel mentions vector
+                    let mut channel_mentions = match user_mentions.get(channel) {
+                        Ok(Some(mentions_vector)) => {
+                            let mut copy = Vector::new();
+                            if let Ok(iter) = mentions_vector.iter() {
+                                for mention in iter {
+                                    let _ = copy.push(mention);
+                                }
+                            }
+                            copy
+                        }
+                        _ => Vector::new(),
+                    };
+
+                    // Check if this member should be notified
+                    let mut mention_types = Vec::new();
+                    let mut should_notify = false;
+
+                    // Check if this member is directly mentioned by username
+                    if mentions.contains(&member_id) {
+                        mention_types.push("user".to_string());
+                        should_notify = true;
+                    }
+
+                    // Check for @here and @everyone mentions (these notify everyone)
+                    for username in mentions_usernames {
+                        if username == "here" || username == "everyone" {
+                            mention_types.push(username.clone());
+                            should_notify = true;
+                        }
+                    }
+
+                    // Skip if no mentions apply to this member
+                    if !should_notify {
+                        continue;
+                    }
+
+                    // Calculate total mention count (1 per message)
+                    let mention_count = 1;
+
+                    // Create the mention tracking entry
+                    let mention_entry = UserChannelMentions {
+                        message_id: message_id.clone(),
+                        mention_count,
+                        mention_types,
+                        timestamp,
+                    };
+
+                    // Add to the vector
+                    let _ = channel_mentions.push(mention_entry);
+
+                    // Update the mentions tracking
+                    let _ = user_mentions.insert(channel.clone(), channel_mentions);
+                    let _ = self
+                        .user_channel_mentions
+                        .insert(member_id.clone(), user_mentions);
+                }
+            }
+        }
+    }
+
+    fn initialize_unread_tracking_for_user_in_channel(
+        &mut self,
+        user_id: &UserId,
+        channel: &Channel,
+    ) {
         let mut user_unread = match self.user_channel_unread.get(user_id) {
             Ok(Some(unread)) => unread,
             _ => UnorderedMap::new(),
@@ -480,10 +707,38 @@ impl CurbChat {
             unread_count: existing_message_count,
         };
         let _ = user_unread.insert(channel.clone(), unread_info);
-        let _ = self.user_channel_unread.insert(user_id.clone(), user_unread);
+        let _ = self
+            .user_channel_unread
+            .insert(user_id.clone(), user_unread);
+
+        // Initialize mentions tracking for this user in this channel
+        self.initialize_mentions_tracking_for_user_in_channel(user_id, channel);
     }
 
-    fn initialize_unread_tracking_for_channel(&mut self, channel: &Channel, members: &UnorderedSet<UserId>) {
+    fn initialize_mentions_tracking_for_user_in_channel(
+        &mut self,
+        user_id: &UserId,
+        channel: &Channel,
+    ) {
+        // Get or create user's mentions tracking
+        let mut user_mentions = match self.user_channel_mentions.get(user_id) {
+            Ok(Some(mentions_map)) => mentions_map,
+            _ => UnorderedMap::new(),
+        };
+
+        // Initialize mentions tracking for this channel
+        let mentions_vector = Vector::new();
+        let _ = user_mentions.insert(channel.clone(), mentions_vector);
+        let _ = self
+            .user_channel_mentions
+            .insert(user_id.clone(), user_mentions);
+    }
+
+    fn initialize_unread_tracking_for_channel(
+        &mut self,
+        channel: &Channel,
+        members: &UnorderedSet<UserId>,
+    ) {
         if let Ok(iter) = members.iter() {
             for member_id in iter {
                 let mut user_unread = match self.user_channel_unread.get(&member_id) {
@@ -496,7 +751,12 @@ impl CurbChat {
                     unread_count: 0,
                 };
                 let _ = user_unread.insert(channel.clone(), unread_info);
-                let _ = self.user_channel_unread.insert(member_id.clone(), user_unread);
+                let _ = self
+                    .user_channel_unread
+                    .insert(member_id.clone(), user_unread);
+
+                // Initialize mentions tracking for this member in this channel
+                self.initialize_mentions_tracking_for_user_in_channel(&member_id, channel);
             }
         }
     }
@@ -548,7 +808,7 @@ impl CurbChat {
             let _ = initial_members.insert(moderator.clone());
         }
         let _ = initial_members.insert(executor_id);
-        
+
         // Create a copy for unread tracking initialization
         let mut initial_members_copy = UnorderedSet::new();
         if let Ok(iter) = initial_members.iter() {
@@ -556,7 +816,7 @@ impl CurbChat {
                 let _ = initial_members_copy.insert(member.clone());
             }
         }
-        
+
         let _ = self
             .channel_members
             .insert(channel.clone(), initial_members);
@@ -604,17 +864,25 @@ impl CurbChat {
                 if let Ok(Some(members)) = self.channel_members.get(&channel) {
                     if members.contains(&executor_id).unwrap_or(false) {
                         // Get unread information for this user and channel
-                        let (unread_count, last_read_timestamp) = self.get_user_channel_unread_info(&executor_id, &channel);
-                        
+                        let (unread_count, last_read_timestamp) =
+                            self.get_user_channel_unread_info(&executor_id, &channel);
+                        let unread_mention_count =
+                            self.get_user_channel_mention_count(&executor_id, &channel);
+
                         let public_info = PublicChannelInfo {
                             channel_type: channel_info.channel_type,
                             read_only: channel_info.read_only,
                             created_at: channel_info.meta.created_at,
                             created_by: channel_info.meta.created_by,
-                            created_by_username: self.member_usernames.get(&channel_info.meta.created_by).unwrap().unwrap(),
+                            created_by_username: self
+                                .member_usernames
+                                .get(&channel_info.meta.created_by)
+                                .unwrap()
+                                .unwrap(),
                             links_allowed: channel_info.meta.links_allowed,
                             unread_count,
                             last_read_timestamp,
+                            unread_mention_count,
                         };
                         channels.insert(channel.name, public_info);
                     }
@@ -643,11 +911,18 @@ impl CurbChat {
                 };
 
                 if should_include {
-                    let created_by_username = self.member_usernames.get(&channel_info.meta.created_by).unwrap().unwrap();
-                    
+                    let created_by_username = self
+                        .member_usernames
+                        .get(&channel_info.meta.created_by)
+                        .unwrap()
+                        .unwrap();
+
                     // Get unread information for this user and channel
-                    let (unread_count, last_read_timestamp) = self.get_user_channel_unread_info(&executor_id, &channel);
-                    
+                    let (unread_count, last_read_timestamp) =
+                        self.get_user_channel_unread_info(&executor_id, &channel);
+                    let unread_mention_count =
+                        self.get_user_channel_mention_count(&executor_id, &channel);
+
                     let public_info = PublicChannelInfo {
                         channel_type: channel_info.channel_type,
                         read_only: channel_info.read_only,
@@ -657,6 +932,7 @@ impl CurbChat {
                         links_allowed: channel_info.meta.links_allowed,
                         unread_count,
                         last_read_timestamp,
+                        unread_mention_count,
                     };
                     channels.insert(channel.name, public_info);
                 }
@@ -665,7 +941,10 @@ impl CurbChat {
         channels
     }
 
-    pub fn get_channel_members(&self, channel: Channel) -> app::Result<HashMap<UserId, String>, String> {
+    pub fn get_channel_members(
+        &self,
+        channel: Channel,
+    ) -> app::Result<HashMap<UserId, String>, String> {
         let executor_id = self.get_executor_id();
         let members = match self.channel_members.get(&channel) {
             Ok(Some(members)) => members,
@@ -696,7 +975,11 @@ impl CurbChat {
         Ok(PublicChannelMetadata {
             created_at: channel_info.meta.created_at,
             created_by: channel_info.meta.created_by,
-            created_by_username: self.member_usernames.get(&channel_info.meta.created_by).unwrap().unwrap(),
+            created_by_username: self
+                .member_usernames
+                .get(&channel_info.meta.created_by)
+                .unwrap()
+                .unwrap(),
             links_allowed: channel_info.meta.links_allowed,
         })
     }
@@ -748,11 +1031,17 @@ impl CurbChat {
         // Initialize unread tracking for the invited user in this channel
         self.initialize_unread_tracking_for_user_in_channel(&user, &channel);
 
+        // Initialize mentions tracking for the invited user in this channel
+        self.initialize_mentions_tracking_for_user_in_channel(&user, &channel);
+
         app::emit!(Event::ChannelInvited(channel.name.clone()));
         Ok("User invited to channel".to_string())
     }
 
-    pub fn get_non_member_users(&self, channel: Channel) -> app::Result<HashMap<UserId, String>, String> {
+    pub fn get_non_member_users(
+        &self,
+        channel: Channel,
+    ) -> app::Result<HashMap<UserId, String>, String> {
         if self.is_dm {
             return Err("Cannot create channels in a DM chat".to_string());
         }
@@ -813,6 +1102,9 @@ impl CurbChat {
         // Initialize unread tracking for this user in this channel
         self.initialize_unread_tracking_for_user_in_channel(&executor_id, &channel);
 
+        // Initialize mentions tracking for this user in this channel
+        self.initialize_mentions_tracking_for_user_in_channel(&executor_id, &channel);
+
         app::emit!(Event::ChannelJoined(channel.name.clone()));
         Ok("Joined channel".to_string())
     }
@@ -845,6 +1137,9 @@ impl CurbChat {
 
         // Reset unread tracking for this user in this channel
         self.reset_unread_tracking_for_user_in_channel(&executor_id, &channel);
+
+        // Reset mentions tracking for this user in this channel
+        self.reset_mentions_for_user_in_channel(&executor_id, &channel);
 
         app::emit!(Event::ChannelLeft(channel.name.clone()));
         Ok("Left channel".to_string())
@@ -884,6 +1179,8 @@ impl CurbChat {
         &mut self,
         group: Channel,
         message: String,
+        mentions: Vec<UserId>,
+        mentions_usernames: Vec<String>,
         parent_message: Option<MessageId>,
         timestamp: u64,
         sender_username: String,
@@ -899,7 +1196,9 @@ impl CurbChat {
             timestamp: timestamp,
             sender: executor_id,
             sender_username: sender_username,
-            id: message_id,
+            mentions: mentions.clone(),
+            mentions_usernames: mentions_usernames.clone(),
+            id: message_id.clone(),
             text: message,
             deleted: None,
             edited_on: None,
@@ -919,9 +1218,21 @@ impl CurbChat {
         } else {
             let _ = channel_info.messages.push(message.clone());
             let _ = self.channels.insert(group.clone(), channel_info);
-            
+
             // Increment unread count for all users in the channel (except the sender)
             self.increment_unread_count_for_channel(&group, &executor_id, timestamp);
+
+            // Handle mentions for all users in the channel (except the sender)
+            let mentions_clone = mentions.clone();
+            let mentions_usernames_clone = mentions_usernames.clone();
+            self.handle_mentions_for_channel(
+                &group,
+                &executor_id,
+                &message_id,
+                &mentions_clone,
+                &mentions_usernames_clone,
+                timestamp,
+            );
         }
 
         app::emit!(Event::MessageSent(message.clone()));
@@ -1017,6 +1328,8 @@ impl CurbChat {
                             sender_username: message.sender_username.clone(),
                             id: message.id.clone(),
                             text: message.text.clone(),
+                            mentions: message.mentions.clone(),
+                            mentions_usernames: message.mentions_usernames.clone(),
                             reactions,
                             deleted: message.deleted,
                             edited_on: message.edited_on,
@@ -1119,6 +1432,8 @@ impl CurbChat {
                         sender_username: message.sender_username.clone(),
                         id: message.id.clone(),
                         text: message.text.clone(),
+                        mentions: message.mentions.clone(),
+                        mentions_usernames: message.mentions_usernames.clone(),
                         reactions,
                         deleted: message.deleted,
                         edited_on: message.edited_on,
@@ -1398,6 +1713,7 @@ impl CurbChat {
         creator_new_identity: UserId,
         invitee: UserId,
         timestamp: u64,
+        context_hash: String,
     ) -> app::Result<String, String> {
         if self.is_dm {
             return Err("Cannot create DMs in a DM chat".to_string());
@@ -1444,6 +1760,9 @@ impl CurbChat {
             other_username: other_username.clone(),
             invitation_payload: "".to_string(),
             did_join: true,
+            // Initialize with same hash for both users
+            old_hash: context_hash.clone(),
+            new_hash: context_hash.clone(),
         };
 
         self.add_dm_to_user(&executor_id, dm_chat_info);
@@ -1465,6 +1784,9 @@ impl CurbChat {
                 other_username: own_username.clone(),
                 invitation_payload: "".to_string(),
                 did_join: false,
+                // Initialize with same hash for both users
+                old_hash: context_hash.clone(),
+                new_hash: context_hash.clone(),
             },
         );
 
@@ -1623,6 +1945,8 @@ impl CurbChat {
                         other_username: dm.other_username.clone(),
                         did_join: dm.did_join,
                         invitation_payload: dm.invitation_payload.clone(),
+                        old_hash: dm.old_hash.clone(),
+                        new_hash: dm.new_hash.clone(),
                     });
                 }
                 Ok(dm_list)
@@ -1641,7 +1965,9 @@ impl CurbChat {
         self.remove_dm_from_user(&executor_id, &other_user);
         self.remove_dm_from_user(&other_user, &executor_id);
 
-        let dm_channel = Channel { name: other_user.to_string() };
+        let dm_channel = Channel {
+            name: other_user.to_string(),
+        };
         let _ = self.channels.remove(&dm_channel);
 
         let _ = self.channel_members.remove(&dm_channel);
@@ -1675,5 +2001,89 @@ impl CurbChat {
             dms.retain(|dm| dm.other_identity_old != *other_user);
             let _ = self.dm_chats.insert(user.clone(), dms);
         }
+    }
+
+    /// Updates hash tracking for DM participants when a message is sent
+    pub fn update_dm_hashes(&mut self, sender_id: &UserId, other_user_id: &UserId, new_hash: &str) {
+        // Update sender's DM hash
+        if let Ok(Some(mut dms)) = self.dm_chats.get(sender_id) {
+            for dm in dms.iter_mut() {
+                if dm.other_identity_old == *other_user_id {
+                    dm.old_hash = dm.new_hash.clone();
+                    dm.new_hash = new_hash.to_string();
+                    break;
+                }
+            }
+            let _ = self.dm_chats.insert(sender_id.clone(), dms);
+        }
+
+        // Update other user's DM hash (set old_hash to their current new_hash, new_hash to the new hash)
+        if let Ok(Some(mut dms)) = self.dm_chats.get(other_user_id) {
+            for dm in dms.iter_mut() {
+                if dm.other_identity_old == *sender_id {
+                    dm.old_hash = dm.new_hash.clone();
+                    dm.new_hash = new_hash.to_string();
+                    break;
+                }
+            }
+            let _ = self.dm_chats.insert(other_user_id.clone(), dms);
+        }
+    }
+
+    /// Checks if a DM has new messages for a user
+    pub fn dm_has_new_messages(&self, user_id: UserId, other_user_id: UserId) -> bool {
+        if let Ok(Some(dms)) = self.dm_chats.get(&user_id) {
+            for dm in dms.iter() {
+                if dm.other_identity_old == other_user_id {
+                    return dm.old_hash != dm.new_hash;
+                }
+            }
+        }
+        false
+    }
+
+    /// Gets DM info with new message status
+    pub fn get_dm_with_status(
+        &self,
+        other_user_id: UserId,
+    ) -> app::Result<(DMChatInfo, bool), String> {
+        if self.is_dm {
+            return Err("Cannot get DM info in a DM chat".to_string());
+        }
+
+        let executor_id = self.get_executor_id();
+
+        if let Ok(Some(dms)) = self.dm_chats.get(&executor_id) {
+            for dm in dms.iter() {
+                if dm.other_identity_old == other_user_id {
+                    let has_new_messages = dm.old_hash != dm.new_hash;
+                    return Ok((dm.clone(), has_new_messages));
+                }
+            }
+        }
+
+        Err("DM not found".to_string())
+    }
+
+    /// Marks DM messages as read for a user (resets hash tracking)
+    pub fn mark_dm_as_read(&mut self, other_user_id: UserId) -> app::Result<String, String> {
+        if self.is_dm {
+            return Err("Cannot mark DM as read in a DM chat".to_string());
+        }
+
+        let executor_id = self.get_executor_id();
+
+        if let Ok(Some(mut dms)) = self.dm_chats.get(&executor_id) {
+            for dm in dms.iter_mut() {
+                if dm.other_identity_old == other_user_id {
+                    // Reset hash tracking - mark as read
+                    dm.old_hash = dm.new_hash.clone();
+                    break;
+                }
+            }
+            let _ = self.dm_chats.insert(executor_id.clone(), dms);
+        }
+
+        Ok("DM marked as read".to_string())
     }
 }

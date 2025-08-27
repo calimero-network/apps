@@ -160,12 +160,18 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     setOpenThread(undefined);
     setCurrentOpenThread(undefined);
     if (selectedChat.type === "channel") {
-      const lastMessageTimestamp =
-        messagesRef.current[messagesRef.current.length - 1].timestamp;
-      await new ClientApiDataSource().readMessage({
-        channel: { name: selectedChat.name },
-        timestamp: lastMessageTimestamp,
-      });
+      const messages = messagesRef.current;
+      if (
+        messages &&
+        messages.length > 0 &&
+        messages[messages.length - 1]?.timestamp
+      ) {
+        const lastMessageTimestamp = messages[messages.length - 1].timestamp;
+        await new ClientApiDataSource().readMessage({
+          channel: { name: selectedChat.name },
+          timestamp: lastMessageTimestamp,
+        });
+      }
     }
   };
 
@@ -188,63 +194,76 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     updateSelectedActiveChat(chatToUse);
   }, [app, manageEventSubscription]);
 
-  const onDMSelected = useCallback(async (dm?: DMChatInfo, sc?: ActiveChat) => {
-    let canJoin = true;
-    const verifyContextResponse = await apiClient
-      .node()
-      .getContext((sc?.contextId ? sc.contextId : dm?.context_id) || "");
-    if (verifyContextResponse.data) {
-      canJoin = !(verifyContextResponse.data.rootHash ? true : false);
-    }
+  const onDMSelected = useCallback(
+    async (dm?: DMChatInfo, sc?: ActiveChat, refetch?: boolean) => {
+      let canJoin = true;
+      const verifyContextResponse = await apiClient
+        .node()
+        .getContext((sc?.contextId ? sc.contextId : dm?.context_id) || "");
+      if (verifyContextResponse.data) {
+        canJoin = !(verifyContextResponse.data.rootHash ? true : false);
+      }
 
-    const isSynced =
-      verifyContextResponse.data?.rootHash !==
-      "11111111111111111111111111111111";
+      const isSynced =
+        verifyContextResponse.data?.rootHash !==
+        "11111111111111111111111111111111";
 
-    if ((sc?.account || dm?.own_identity) && !canJoin && isSynced) {
-      await new ClientApiDataSource().joinChat({
-        contextId: dm?.context_id || "",
-        isDM: true,
-        executor: dm?.own_identity || "",
-        username: dm?.own_username || "",
-      });
-    }
+      if ((sc?.account || dm?.own_identity) && !canJoin && isSynced) {
+        await new ClientApiDataSource().joinChat({
+          contextId: dm?.context_id || "",
+          isDM: true,
+          executor: dm?.own_identity || "",
+          username: dm?.own_username || "",
+        });
+      }
 
-    let selectedChat = {} as ActiveChat;
-    if (sc?.contextId) {
-      selectedChat = {
-        ...sc,
-        canJoin: canJoin,
-        isSynced: isSynced,
-      };
-    } else {
-      selectedChat = {
-        type: "direct_message" as ChatType,
-        contextId: dm?.context_id || "",
-        readOnly: false,
-        canJoin: canJoin,
-        invitationPayload: dm?.invitation_payload || "",
-        id: dm?.other_identity_old || "",
-        name: dm?.other_identity_old || "",
-        username: dm?.other_username || "",
-        account: dm?.own_identity || "",
-        otherIdentityNew: dm?.other_identity_new || "",
-        creator: dm?.created_by || "",
-        isSynced: isSynced,
-      };
-    }
+      let selectedChat = {} as ActiveChat;
+      if (sc?.contextId) {
+        selectedChat = {
+          ...sc,
+          canJoin: canJoin,
+          isSynced: isSynced,
+        };
+      } else {
+        selectedChat = {
+          type: "direct_message" as ChatType,
+          contextId: dm?.context_id || "",
+          readOnly: false,
+          canJoin: canJoin,
+          invitationPayload: dm?.invitation_payload || "",
+          id: dm?.other_identity_old || "",
+          name: dm?.other_identity_old || "",
+          username: dm?.other_username || "",
+          account: dm?.own_identity || "",
+          otherIdentityNew: dm?.other_identity_new || "",
+          creator: dm?.created_by || "",
+          isSynced: isSynced,
+        };
+      }
 
-    setDmContextId(sc?.contextId || dm?.context_id || "");
-    setIsOpenSearchChannel(false);
-    setActiveChat(selectedChat);
-    activeChatRef.current = selectedChat;
-    setIsSidebarOpen(false);
-    setMessagesOffset(20);
-    setTotalMessageCount(0);
-    setOpenThread(undefined);
-    setCurrentOpenThread(undefined);
-    updateSelectedActiveChat(selectedChat);
-  }, []);
+      setDmContextId(sc?.contextId || dm?.context_id || "");
+      setIsOpenSearchChannel(false);
+      setActiveChat(selectedChat);
+      activeChatRef.current = selectedChat;
+      setIsSidebarOpen(false);
+      setMessagesOffset(20);
+      setTotalMessageCount(0);
+      setOpenThread(undefined);
+      setCurrentOpenThread(undefined);
+      updateSelectedActiveChat(selectedChat);
+
+      if (refetch) {
+        try {
+          await new ClientApiDataSource().readDm({
+            other_user_id: dm?.other_identity_old || "",
+          });
+        } catch (error) {
+          console.error("Error in onDMSelected:", error);
+        }
+      }
+    },
+    []
+  );
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const eventCallback = async (event: any) => {
@@ -280,11 +299,15 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
           const currentDM = updatedDMs.find(
             (dm) => dm.context_id === sessionChat.contextId
           );
-          onDMSelected(currentDM);
+          onDMSelected(currentDM, undefined, false);
         }
 
         if (sessionChat?.type !== "direct_message") {
           await reFetchChannelMembers();
+        }
+
+        if (sessionChat?.type === "direct_message") {
+          fetchDms();
         }
 
         const reFetchedMessages: ResponseData<FullMessageResponse> =
@@ -325,8 +348,22 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
               status: MessageStatus.sent,
               deleted: message.deleted,
             }));
-
           if (newMessages.length > 0) {
+            if (activeChat?.type === "channel") {
+              const messages = newMessages;
+              if (
+                messages &&
+                messages.length > 0 &&
+                messages[messages.length - 1]?.timestamp
+              ) {
+                const lastMessageTimestamp =
+                  messages[messages.length - 1].timestamp;
+                await new ClientApiDataSource().readMessage({
+                  channel: { name: activeChat?.name },
+                  timestamp: lastMessageTimestamp,
+                });
+              }
+            }
             setIncomingMessages(newMessages);
             messagesRef.current = [...messagesRef.current, ...newMessages];
           }
@@ -388,6 +425,21 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
 
       messagesRef.current = messagesArray;
       setTotalMessageCount(messages.data.total_count);
+
+      if (activeChat?.type === "channel") {
+        const messages = messagesRef.current;
+        if (
+          messages &&
+          messages.length > 0 &&
+          messages[messages.length - 1]?.timestamp
+        ) {
+          const lastMessageTimestamp = messages[messages.length - 1].timestamp;
+          await new ClientApiDataSource().readMessage({
+            channel: { name: activeChat?.name },
+            timestamp: lastMessageTimestamp,
+          });
+        }
+      }
       return {
         messages: messagesArray,
         totalCount: messages.data.total_count,
@@ -407,7 +459,6 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     const channels: ResponseData<Channels> =
       await new ClientApiDataSource().getChannels();
     if (channels.data) {
-      console.log("channels", channels.data);
       const channelsArray: ChannelMeta[] = Object.entries(channels.data).map(
         ([name, channelInfo]) => ({
           name,
@@ -421,7 +472,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
           inviteOnly: false,
           unreadMessages: {
             count: channelInfo.unread_count,
-            mentions: 0,
+            mentions: channelInfo.unread_mention_count,
           },
           isMember: false,
           readOnly: channelInfo.read_only,
@@ -577,11 +628,19 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
         dmParams.protocol
       );
 
+    const verifyContextResponse = await apiClient
+      .node()
+      .getContext(response?.data?.contextId || "");
+    const hash =
+      verifyContextResponse.data?.rootHash ??
+      "11111111111111111111111111111111";
+
     if (response.data) {
       const createDMResponse = await new ClientApiDataSource().createDm({
         context_id: response.data.contextId,
         creator: getExecutorPublicKey() || "",
         creator_new_identity: response.data.memberPublicKey,
+        context_hash: hash as string,
         invitee: value,
         timestamp: Date.now(),
       });
@@ -759,3 +818,9 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     />
   );
 }
+
+// znaci DM1 DM2 selected
+// n1 posalje poruku -> promjeni hash (u rootu) -> al prvi to ni ne primi jer nije subban na taj trenutno
+// n2 prima poruku -> ima promjenjenih hash al ga ne dohvaca opce -> nije subnna na taj trenutno
+
+// n2 posalje poruku n1 koji nije u DM znaci subban je na C1 -> u eventsima dobije promjenjen hash

@@ -41,7 +41,7 @@ const NameContainer = styled.div`
 `;
 
 interface UserItemProps {
-  onDMSelected: (user?: DMChatInfo, sc?: ActiveChat) => void;
+  onDMSelected: (user?: DMChatInfo, sc?: ActiveChat, refetch?: boolean) => void;
   selected: boolean;
   userDM: DMChatInfo;
 }
@@ -52,11 +52,11 @@ export default function UserItem({
   userDM,
 }: UserItemProps) {
   const handleClick = useCallback(() => {
-    onDMSelected(userDM);
+    onDMSelected(userDM, undefined, true);
   }, [userDM, onDMSelected]);
 
   return (
-    <UserListItem selected={selected} onClick={handleClick}>
+    <UserListItem selected={selected || userDM.old_hash !== userDM.new_hash} onClick={handleClick}>
       <UserInfoContainer>
         <UserProfileIcon accountId={userDM.other_identity_old} active={true} />
         <NameContainer>{`${userDM.other_username}`}</NameContainer>
