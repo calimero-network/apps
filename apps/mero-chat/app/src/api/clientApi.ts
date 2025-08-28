@@ -31,6 +31,8 @@ export interface ChannelInfo {
   created_by_username: string;
   links_allowed: boolean;
   read_only: boolean;
+  unread_count: number;
+  unread_mentions: number;
 }
 
 export type Channels = Map<string, ChannelInfo>;
@@ -74,6 +76,8 @@ export interface MessageWithReactions extends Message {
 export interface SendMessageProps {
   group: Channel;
   message: string;
+  mentions: UserId[];
+  usernames: string[];
   timestamp: number;
   parent_message?: string;
   is_dm?: boolean;
@@ -105,10 +109,14 @@ export interface DMChatInfo {
   own_username: string;
   did_join: boolean;
   invitation_payload: string;
+  old_hash: string;
+  new_hash: string;
+  unread_messages: number;
 }
 
 export interface CreateDmProps {
   context_id: string;
+  context_hash: string;
   creator: UserId;
   creator_new_identity: UserId;
   invitee: UserId;
@@ -164,6 +172,29 @@ export interface DeleteDMProps {
   other_user: UserId;
 }
 
+export interface ReadMessageProps {
+  channel: Channel;
+  timestamp: number;
+}
+
+export interface UpdateDmHashProps {
+  sender_id: UserId;
+  other_user_id: UserId;
+  new_hash: string;
+}
+
+export interface ReadDmProps {
+  other_user_id: UserId;
+}
+
+export interface GetDmUnreadCountProps {
+  other_user_id: UserId;
+}
+
+export type GetTotalDmUnreadCountProps = Record<string, never>;
+
+export type MarkAllDmsAsReadProps = Record<string, never>;
+
 export enum ClientMethod {
   JOIN_CHAT = "join_chat",
   CREATE_CHANNEL = "create_channel",
@@ -189,6 +220,12 @@ export enum ClientMethod {
   DELETE_DM = "delete_dm",
   GET_USERNAME = "get_username",
   GET_CHAT_USERNAMES = "get_chat_usernames",
+  READ_MESSAGE = "mark_messages_as_read",
+  UPDATE_DM_HASH = "update_dm_hashes",
+  READ_DM = "mark_dm_as_read",
+  GET_DM_UNREAD_COUNT = "get_dm_unread_count",
+  GET_TOTAL_DM_UNREAD_COUNT = "get_total_dm_unread_count",
+  MARK_ALL_DMS_AS_READ = "mark_all_dms_as_read"
 }
 
 export interface ClientApi {
@@ -214,4 +251,7 @@ export interface ClientApi {
   updateInvitationPayload(props: UpdateInvitationPayloadProps): ApiResponse<string>;
   acceptInvitation(props: AcceptInvitationProps): ApiResponse<string>;
   deleteDM(props: DeleteDMProps): ApiResponse<string>;
+  readMessage(props: ReadMessageProps): ApiResponse<string>;
+  updateDmHash(props: UpdateDmHashProps): ApiResponse<string>;
+  readDm(props: ReadDmProps): ApiResponse<string>;
 }

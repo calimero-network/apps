@@ -4,7 +4,7 @@ import UserItem from "./UserItem";
 
 interface UserListProps {
   selectedDM: string;
-  onDMSelected: (user?: DMChatInfo, sc?: ActiveChat) => void;
+  onDMSelected: (user?: DMChatInfo, sc?: ActiveChat, refetch?: boolean) => void;
   privateDMs: DMChatInfo[];
 }
 

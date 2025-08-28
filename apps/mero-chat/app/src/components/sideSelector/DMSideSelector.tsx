@@ -16,7 +16,7 @@ const DMContainer = styled.div`
 interface DMSideSelectorProps {
   chatMembers: Map<string, string>;
   createDM: (value: string) => Promise<CreateContextResult>;
-  onDMSelected: (dm?: DMChatInfo, sc?: ActiveChat) => void;
+  onDMSelected: (dm?: DMChatInfo, sc?: ActiveChat, refetch?: boolean) => void;
   selectedDM: string;
   privateDMs: DMChatInfo[];
 }

@@ -29,7 +29,10 @@ import {
   type JoinChatProps,
   type LeaveChannelProps,
   type Message,
+  type ReadDmProps,
+  type ReadMessageProps,
   type SendMessageProps,
+  type UpdateDmHashProps,
   type UpdateInvitationPayloadProps,
   type UpdateNewIdentityProps,
   type UpdateReactionProps,
@@ -646,8 +649,11 @@ export class ClientApiDataSource implements ClientApi {
           argsJson: {
             group: props.group,
             message: props.message,
+            mentions: props.mentions,
+            mentions_usernames: props.usernames,
             parent_message: props.parent_message,
             timestamp: props.timestamp,
+            sender_username: "",
           },
           executorPublicKey:
             (props.is_dm ? props.dm_identity : getExecutorPublicKey()) || "",
@@ -798,6 +804,7 @@ export class ClientApiDataSource implements ClientApi {
           method: ClientMethod.CREATE_DM,
           argsJson: {
             context_id: props.context_id,
+            context_hash: props.context_hash,
             creator: props.creator,
             creator_new_identity: props.creator_new_identity,
             invitee: props.invitee,
@@ -1192,6 +1199,159 @@ export class ClientApiDataSource implements ClientApi {
     } catch (error) {
       console.error("deleteDM failed:", error);
       let errorMessage = "An unexpected error occurred during deleteDM";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+  
+    async readMessage(props: ReadMessageProps): ApiResponse<string> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, string>(
+        {
+          contextId: getContextId() || "",
+          method: ClientMethod.READ_MESSAGE,
+          argsJson: {
+            channel: props.channel,
+            timestamp: props.timestamp,
+          },
+          executorPublicKey: getExecutorPublicKey() || "",
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+      if (response?.error) {
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
+      }
+      return {
+        data: response?.result.output as string,
+        error: null,
+      };
+    } catch (error) {
+      console.error("readMessage failed:", error);
+      let errorMessage = "An unexpected error occurred during readMessage";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+
+  async updateDmHash(props: UpdateDmHashProps): ApiResponse<string> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, string>(
+        {
+          contextId: getContextId() || "",
+          method: ClientMethod.UPDATE_DM_HASH,
+          argsJson: {
+            sender_id: props.sender_id,
+            other_user_id: props.other_user_id,
+            new_hash: props.new_hash,
+          },
+          executorPublicKey: getExecutorPublicKey() || "",
+          },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );  
+      if (response?.error) {
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
+      }
+      return {
+        data: response?.result.output as string,
+        error: null,
+      };
+    } catch (error) {
+      console.error("updateDmHash failed:", error);
+      let errorMessage = "An unexpected error occurred during updateDmHash";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+
+  async readDm(props: ReadDmProps): ApiResponse<string> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, string>(
+        {
+          contextId: getContextId() || "",
+          method: ClientMethod.READ_DM,
+          argsJson: {
+            other_user_id: props.other_user_id,
+          },
+          executorPublicKey: getExecutorPublicKey() || "",
+        },  
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );  
+      if (response?.error) {
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
+      }
+      return {
+        data: response?.result.output as string,
+        error: null,
+      };
+    } catch (error) {
+      console.error("readDM failed:", error);
+      let errorMessage = "An unexpected error occurred during readDM";
       if (error instanceof Error) {
         errorMessage = error.message;
       } else if (typeof error === "string") {

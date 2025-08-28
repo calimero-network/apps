@@ -12,7 +12,7 @@ interface SideSelectorProps {
   channels: ChannelMeta[];
   activeChat: ActiveChat;
   onChatSelected: (chat: ActiveChat) => void;
-  onDMSelected: (dm?: DMChatInfo, sc?: ActiveChat) => void;
+  onDMSelected: (dm?: DMChatInfo, sc?: ActiveChat, refetch?: boolean) => void;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
   setIsOpenSearchChannel: (open: boolean) => void;

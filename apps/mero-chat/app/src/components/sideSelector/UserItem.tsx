@@ -4,8 +4,9 @@ import UserProfileIcon from "../profileIcon/UserProfileIcon";
 // import UnreadMessagesBadge from "./UnreadMessageBadge";
 import type { DMChatInfo } from "../../api/clientApi";
 import type { ActiveChat } from "../../types/Common";
+import UnreadMessagesBadge from "./UnreadMessageBadge";
 
-const UserListItem = styled.div<{ selected: boolean }>`
+const UserListItem = styled.div<{ $selected: boolean, $hasNewMessages: boolean }>`
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -22,10 +23,14 @@ const UserListItem = styled.div<{ selected: boolean }>`
     background-color: #25252a;
   }
   cursor: pointer;
-  ${({ selected }) =>
-    selected
+  ${({ $selected }) =>
+    $selected
       ? "color: #fff; background-color: #25252a;"
       : "color: #777583; background-color: #0E0E10;"}
+  ${({ $hasNewMessages }) =>
+    $hasNewMessages
+      ? "color: #fff !important;"
+      : ""}
 `;
 
 const UserInfoContainer = styled.div`
@@ -41,7 +46,7 @@ const NameContainer = styled.div`
 `;
 
 interface UserItemProps {
-  onDMSelected: (user?: DMChatInfo, sc?: ActiveChat) => void;
+  onDMSelected: (user?: DMChatInfo, sc?: ActiveChat, refetch?: boolean) => void;
   selected: boolean;
   userDM: DMChatInfo;
 }
@@ -52,21 +57,21 @@ export default function UserItem({
   userDM,
 }: UserItemProps) {
   const handleClick = useCallback(() => {
-    onDMSelected(userDM);
+    onDMSelected(userDM, undefined, true);
   }, [userDM, onDMSelected]);
 
   return (
-    <UserListItem selected={selected} onClick={handleClick}>
+    <UserListItem $selected={selected} onClick={handleClick} $hasNewMessages={userDM.unread_messages > 0}>
       <UserInfoContainer>
         <UserProfileIcon accountId={userDM.other_identity_old} active={true} />
         <NameContainer>{`${userDM.other_username}`}</NameContainer>
       </UserInfoContainer>
-      {/* {user?.unreadMessages && user.unreadMessages.count > 0 && (
+      {userDM.unread_messages > 0 && (
         <UnreadMessagesBadge
-          messageCount={user.unreadMessages.count}
+          messageCount={userDM.unread_messages.toString()}
           backgroundColor="#777583"
         />
-      )} */}
+      )}
     </UserListItem>
   );
 }

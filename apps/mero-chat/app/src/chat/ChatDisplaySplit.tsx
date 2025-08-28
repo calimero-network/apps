@@ -1,5 +1,5 @@
 import { styled } from "styled-components";
-import { type MessageWithReactions, type User } from "../types/Common";
+import { type MessageWithReactions } from "../types/Common";
 import type {
   ActiveChat,
   ChatMessagesData,
@@ -7,7 +7,7 @@ import type {
   MessageRendererProps,
   UpdatedMessages,
 } from "../types/Common";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import MessageInput from "./MessageInput";
 import {
   messageRenderer,
@@ -36,7 +36,7 @@ interface ChatDisplaySplitProps {
   isReadOnly: boolean;
   toggleEmojiSelector: (message: CurbMessage) => void;
   channelMeta: ChannelInfo;
-  channelUserList: User[];
+  //channelUserList: User[];
   setOpenMobileReactions: (reactions: string) => void;
   openMobileReactions: string;
   onMessageDeletion: (message: CurbMessage) => void;
@@ -176,7 +176,7 @@ export default function ChatDisplaySplit({
   isReadOnly,
   toggleEmojiSelector,
   channelMeta,
-  channelUserList,
+  //channelUserList,
   setOpenMobileReactions,
   openMobileReactions,
   onMessageDeletion,
@@ -199,13 +199,15 @@ export default function ChatDisplaySplit({
     }
   }, []);
 
-  const isModerator = useMemo(
-    () =>
-      channelUserList?.some(
-        (user) => user.id === accountId && user.moderator === true
-      ),
-    [channelUserList, accountId]
-  );
+  // const isModerator = useMemo(
+  //   () =>
+  //     //channelUserList?.some(
+  //     channelMeta.moderators?.some(
+  //       (user) => user.id === accountId && user.moderator === true
+  //     ),
+  //   [channelMeta, accountId]
+  // );
+  const isModerator = false;
 
   const isOwner = accountId === channelMeta.created_by;
 
