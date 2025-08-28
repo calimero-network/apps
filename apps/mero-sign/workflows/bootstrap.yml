@@ -1,0 +1,291 @@
+description: Bootstrap workflow for MeroDocs e-signature platform
+name: MeroDocs Bootstrap Workflow
+
+nodes:
+  chain_id: testnet-1
+  count: 3
+  image: ghcr.io/calimero-network/merod:edge
+  prefix: merodocs-node
+
+steps:
+  # Step 1: Install the MeroDocs application on the first node
+  - name: Install MeroDocs Application on Node 1
+    type: install_application
+    node: merodocs-node-1
+    url: https://calimero-only-peers-dev.s3.amazonaws.com/uploads/mero_docs.wasm.wasm
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  # Step 2: Install application on other nodes
+  - name: Install MeroDocs Application on Node 2
+    type: install_application
+    node: merodocs-node-2
+    url: https://calimero-only-peers-dev.s3.amazonaws.com/uploads/mero_docs.wasm.wasm
+    dev: true
+
+  - name: Install MeroDocs Application on Node 3
+    type: install_application
+    node: merodocs-node-3
+    url: https://calimero-only-peers-dev.s3.amazonaws.com/uploads/mero_docs.wasm.wasm
+    dev: true
+
+  # Step 3: Generate identities on all nodes
+  - name: Create Identity on Node 1
+    type: create_identity
+    node: merodocs-node-1
+    outputs:
+      node1_public_key: publicKey
+
+  - name: Create Identity on Node 2
+    type: create_identity
+    node: merodocs-node-2
+    outputs:
+      node2_public_key: publicKey
+
+  - name: Create Identity on Node 3
+    type: create_identity
+    node: merodocs-node-3
+    outputs:
+      node3_public_key: publicKey
+
+  # Step 4: Wait for identities to be created
+  - name: Wait for Identity Creation
+    type: wait
+    seconds: 5
+
+  # Step 5: Create default context (user's private workspace) on Node 1
+  - name: Create Default Context on Node 1
+    type: create_context
+    node: merodocs-node-1
+    application_id: "{{app_id}}"
+    params: '{"is_private": true, "context_name": "default"}'
+    outputs:
+      default_context_id: defaultContextId
+      admin_public_key: adminPublicKey
+
+  # Step 6: Create default contexts on other nodes
+  - name: Create Default Context on Node 2
+    type: create_context
+    node: merodocs-node-2
+    application_id: "{{app_id}}"
+    params: '{"is_private": true, "context_name": "default"}'
+
+  - name: Create Default Context on Node 3
+    type: create_context
+    node: merodocs-node-3
+    application_id: "{{app_id}}"
+    params: '{"is_private": true, "context_name": "default"}'
+
+  # Step 7: Wait for default contexts to sync
+  - name: Wait for Default Context Sync
+    type: wait
+    seconds: 3
+
+  # Step 8: Create a shared agreement context from Node 1 (Admin)
+  - name: Create Agreement Context from Node 1
+    type: create_context
+    node: merodocs-node-1
+    application_id: "{{app_id}}"
+    params: '{"is_private": false, "context_name": "contract_agreement_001"}'
+    outputs:
+      agreement_context_id: contextId # Export 'contextId' as 'agreement_context_id'
+      agreement_admin_key: memberPublicKey # Export 'memberPublicKey' as 'agreement_admin_key'
+
+  # Step 9: Invite Node 2 to join the agreement
+  - name: Invite Node 2 to Agreement
+    type: invite_identity
+    node: merodocs-node-1
+    context_id: "{{agreement_context_id}}"
+    grantee_id: "{{node2_public_key}}"
+    granter_id: "{{agreement_admin_key}}"
+    capability: member
+    outputs:
+      node2_invitation: invitation
+
+  # Step 10: Invite Node 3 to join the agreement
+  - name: Invite Node 3 to Agreement
+    type: invite_identity
+    node: merodocs-node-1
+    context_id: "{{agreement_context_id}}"
+    grantee_id: "{{node3_public_key}}"
+    granter_id: "{{agreement_admin_key}}"
+    capability: member
+    outputs:
+      node3_invitation: invitation
+
+  # Step 11: Join agreement from Node 2
+  - name: Join Agreement from Node 2
+    type: join_context
+    node: merodocs-node-2
+    context_id: "{{agreement_context_id}}"
+    invitee_id: "{{node2_public_key}}"
+    invitation: "{{node2_invitation}}"
+
+  # Step 12: Join agreement from Node 3
+  - name: Join Agreement from Node 3
+    type: join_context
+    node: merodocs-node-3
+    context_id: "{{agreement_context_id}}"
+    invitee_id: "{{node3_public_key}}"
+    invitation: "{{node3_invitation}}"
+
+  # Step 13: Wait for context synchronization
+  - name: Wait for Agreement Context Sync
+    type: wait
+    seconds: 5
+
+  # Step 14: Add participants to the shared context with permissions
+  - name: Add Node 2 as Participant with Sign Permission
+    type: call
+    node: merodocs-node-1
+    context_id: "{{agreement_context_id}}"
+    executor_public_key: "{{agreement_admin_key}}"
+    method: add_participant
+    args:
+      context_id: "{{agreement_context_id}}"
+      user_id: "{{node2_public_key}}"
+      permission: "Sign"
+
+  - name: Add Node 3 as Participant with Read Permission
+    type: call
+    node: merodocs-node-1
+    context_id: "{{agreement_context_id}}"
+    executor_public_key: "{{agreement_admin_key}}"
+    method: add_participant
+    args:
+      context_id: "{{agreement_context_id}}"
+      user_id: "{{node3_public_key}}"
+      permission: "Read"
+
+  # Step 15: Wait for participant addition
+  - name: Wait for Participant Addition
+    type: wait
+    seconds: 3
+
+  # Step 16: Upload a document from Node 1 (Admin)
+  # - name: Upload Document from Node 1
+  #   type: call
+  #   node: merodocs-node-1
+  #   context_id: "{{agreement_context_id}}"
+  #   executor_public_key: "{{agreement_admin_key}}"
+  #   method: upload_document
+  #   args:
+  #     context_id: "{{agreement_context_id}}"
+  #     name: "Test Contract Agreement"
+  #     hash: "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456"
+  #     pdf_blob_id_str: "2m7DaACDvdypBwkjCJFzXCALEm78fV8xXHBrP7V98zb9"
+  #     file_size: 1024
+
+  # Step 17: Wait for document upload
+  # - name: Wait for Document Upload
+  #   type: wait
+  #   seconds: 3
+
+  # Step 18: Set consent from Node 1 (Admin)
+  # - name: Set Consent from Node 1
+  #   type: call
+  #   node: merodocs-node-1
+  #   context_id: "{{agreement_context_id}}"
+  #   executor_public_key: "{{agreement_admin_key}}"
+  #   method: set_consent
+  #   args:
+  #     user_id: "{{agreement_admin_key}}"
+  #     document_id: "doc_{{timestamp}}_Test Contract Agreement"
+
+  # # Step 19: Set consent from Node 2
+  # - name: Set Consent from Node 2
+  #   type: call
+  #   node: merodocs-node-2
+  #   context_id: "{{agreement_context_id}}"
+  #   executor_public_key: "{{node2_public_key}}"
+  #   method: set_consent
+  #   args:
+  #     user_id: "{{node2_public_key}}"
+  #     document_id: "doc_{{timestamp}}_Test Contract Agreement"
+
+  # # Step 20: Wait for consent recording
+  # - name: Wait for Consent Recording
+  #   type: wait
+  #   seconds: 3
+
+  # # Step 21: Sign document from Node 1 (Admin)
+  # - name: Sign Document from Node 1
+  #   type: call
+  #   node: merodocs-node-1
+  #   context_id: "{{agreement_context_id}}"
+  #   executor_public_key: "{{agreement_admin_key}}"
+  #   method: sign_document
+  #   args:
+  #     context_id: "{{agreement_context_id}}"
+  #     document_id: "doc_{{timestamp}}_Test Contract Agreement"
+  #     pdf_blob_id_str: "3m8EbBBEwezqCxlkDJGaYDBMFn89gW9yYICsQ8W99ac9"
+  #     file_size: 1124
+  #     new_hash: "b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123457"
+  #     signer_id: "{{agreement_admin_key}}"
+
+  # # Step 22: Sign document from Node 2
+  # - name: Sign Document from Node 2
+  #   type: call
+  #   node: merodocs-node-2
+  #   context_id: "{{agreement_context_id}}"
+  #   executor_public_key: "{{node2_public_key}}"
+  #   method: sign_document
+  #   args:
+  #     context_id: "{{agreement_context_id}}"
+  #     document_id: "doc_{{timestamp}}_Test Contract Agreement"
+  #     pdf_blob_id_str: "4n9FcCCFxfaqDymlEKHbZECNGo9:hX:zZJDtR9X::bd:"
+  #     file_size: 1224
+  #     new_hash: "c3d4e5f6789012345678901234567890abcdef1234567890abcdef123458"
+  #     signer_id: "{{node2_public_key}}"
+
+  # # Step 23: Wait for signatures
+  # - name: Wait for Document Signatures
+  #   type: wait
+  #   seconds: 3
+
+  # # Step 24: List all documents from Node 1
+  # - name: List Documents from Node 1
+  #   type: call
+  #   node: merodocs-node-1
+  #   context_id: "{{agreement_context_id}}"
+  #   executor_public_key: "{{agreement_admin_key}}"
+  #   method: list_documents
+  #   args:
+  #     context_id: "{{agreement_context_id}}"
+
+  # # Step 25: Get document signatures from Node 2
+  # - name: Get Document Signatures from Node 2
+  #   type: call
+  #   node: merodocs-node-2
+  #   context_id: "{{agreement_context_id}}"
+  #   executor_public_key: "{{node2_public_key}}"
+  #   method: get_document_signatures
+  #   args:
+  #     context_id: "{{agreement_context_id}}"
+  #     document_id: "doc_{{timestamp}}_Test Contract Agreement"
+
+  # Step 26: List participants from Node 3
+  - name: List Participants from Node 3
+    type: call
+    node: merodocs-node-3
+    context_id: "{{agreement_context_id}}"
+    executor_public_key: "{{node3_public_key}}"
+    method: list_participants
+    args:
+      context_id: "{{agreement_context_id}}"
+
+  # Step 27: Get context details from Node 1
+  - name: Get Context Details from Node 1
+    type: call
+    node: merodocs-node-1
+    context_id: "{{agreement_context_id}}"
+    executor_public_key: "{{agreement_admin_key}}"
+    method: get_context_details
+    args:
+      context_id: "{{agreement_context_id}}"
+
+# Configuration options
+stop_all_nodes: true
+restart: false
+wait_timeout: 120
