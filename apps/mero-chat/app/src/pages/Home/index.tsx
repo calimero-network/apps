@@ -304,10 +304,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
 
         if (sessionChat?.type !== "direct_message") {
           await reFetchChannelMembers();
-        }
-
-        if (sessionChat?.type === "direct_message") {
-          fetchDms();
+          await fetchDms();
         }
 
         const reFetchedMessages: ResponseData<FullMessageResponse> =
@@ -818,9 +815,3 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     />
   );
 }
-
-// znaci DM1 DM2 selected
-// n1 posalje poruku -> promjeni hash (u rootu) -> al prvi to ni ne primi jer nije subban na taj trenutno
-// n2 prima poruku -> ima promjenjenih hash al ga ne dohvaca opce -> nije subnna na taj trenutno
-
-// n2 posalje poruku n1 koji nije u DM znaci subban je na C1 -> u eventsima dobije promjenjen hash

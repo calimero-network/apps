@@ -4,8 +4,9 @@ import UserProfileIcon from "../profileIcon/UserProfileIcon";
 // import UnreadMessagesBadge from "./UnreadMessageBadge";
 import type { DMChatInfo } from "../../api/clientApi";
 import type { ActiveChat } from "../../types/Common";
+import UnreadMessagesBadge from "./UnreadMessageBadge";
 
-const UserListItem = styled.div<{ selected: boolean }>`
+const UserListItem = styled.div<{ $selected: boolean, $hasNewMessages: boolean }>`
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -22,10 +23,14 @@ const UserListItem = styled.div<{ selected: boolean }>`
     background-color: #25252a;
   }
   cursor: pointer;
-  ${({ selected }) =>
-    selected
+  ${({ $selected }) =>
+    $selected
       ? "color: #fff; background-color: #25252a;"
       : "color: #777583; background-color: #0E0E10;"}
+  ${({ $hasNewMessages }) =>
+    $hasNewMessages
+      ? "color: #fff !important;"
+      : ""}
 `;
 
 const UserInfoContainer = styled.div`
@@ -56,17 +61,17 @@ export default function UserItem({
   }, [userDM, onDMSelected]);
 
   return (
-    <UserListItem selected={selected || userDM.old_hash !== userDM.new_hash} onClick={handleClick}>
+    <UserListItem $selected={selected} onClick={handleClick} $hasNewMessages={userDM.old_hash !== userDM.new_hash}>
       <UserInfoContainer>
         <UserProfileIcon accountId={userDM.other_identity_old} active={true} />
         <NameContainer>{`${userDM.other_username}`}</NameContainer>
       </UserInfoContainer>
-      {/* {user?.unreadMessages && user.unreadMessages.count > 0 && (
+      {userDM.old_hash !== userDM.new_hash && (
         <UnreadMessagesBadge
-          messageCount={user.unreadMessages.count}
+          messageCount={"+"}
           backgroundColor="#777583"
         />
-      )} */}
+      )}
     </UserListItem>
   );
 }

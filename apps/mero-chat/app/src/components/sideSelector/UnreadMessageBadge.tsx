@@ -17,7 +17,7 @@ const MessagesBubble = styled.div<{ $backgroundColor?: string }>`
 `;
 
 interface UnreadMessagesBadgeProps {
-  messageCount: number;
+  messageCount: number | string;
   backgroundColor?: string;
 }
 

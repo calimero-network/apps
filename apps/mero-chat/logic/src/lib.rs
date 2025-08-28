@@ -2008,8 +2008,8 @@ impl CurbChat {
         // Update sender's DM hash
         if let Ok(Some(mut dms)) = self.dm_chats.get(&sender_id) {
             for dm in dms.iter_mut() {
-                if dm.other_identity_old == other_user_id {
-                    dm.old_hash = dm.new_hash.clone();
+                if dm.other_identity_old == other_user_id || dm.other_identity_new.as_ref() == Some(&other_user_id) {
+                    dm.old_hash = new_hash.to_string();
                     dm.new_hash = new_hash.to_string();
                     break;
                 }
@@ -2020,7 +2020,7 @@ impl CurbChat {
         // Update other user's DM hash (set old_hash to their current new_hash, new_hash to the new hash)
         if let Ok(Some(mut dms)) = self.dm_chats.get(&other_user_id) {
             for dm in dms.iter_mut() {
-                if dm.other_identity_old == sender_id {
+                if dm.other_identity_old == sender_id || dm.other_identity_new.as_ref() == Some(&sender_id) {
                     dm.old_hash = dm.new_hash.clone();
                     dm.new_hash = new_hash.to_string();
                     break;
@@ -2034,7 +2034,7 @@ impl CurbChat {
     pub fn dm_has_new_messages(&self, user_id: UserId, other_user_id: UserId) -> bool {
         if let Ok(Some(dms)) = self.dm_chats.get(&user_id) {
             for dm in dms.iter() {
-                if dm.other_identity_old == other_user_id {
+                if dm.other_identity_old == other_user_id || dm.other_identity_new.as_ref() == Some(&other_user_id) {
                     return dm.old_hash != dm.new_hash;
                 }
             }
@@ -2055,7 +2055,7 @@ impl CurbChat {
 
         if let Ok(Some(dms)) = self.dm_chats.get(&executor_id) {
             for dm in dms.iter() {
-                if dm.other_identity_old == other_user_id {
+                if dm.other_identity_old == other_user_id || dm.other_identity_new.as_ref() == Some(&other_user_id) {
                     let has_new_messages = dm.old_hash != dm.new_hash;
                     return Ok((dm.clone(), has_new_messages));
                 }
@@ -2075,7 +2075,7 @@ impl CurbChat {
 
         if let Ok(Some(mut dms)) = self.dm_chats.get(&executor_id) {
             for dm in dms.iter_mut() {
-                if dm.other_identity_old == other_user_id {
+                if dm.other_identity_old == other_user_id || dm.other_identity_new.as_ref() == Some(&other_user_id) {
                     // Reset hash tracking - mark as read
                     dm.old_hash = dm.new_hash.clone();
                     break;
