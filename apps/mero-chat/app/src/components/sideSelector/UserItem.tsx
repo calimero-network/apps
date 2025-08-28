@@ -61,14 +61,14 @@ export default function UserItem({
   }, [userDM, onDMSelected]);
 
   return (
-    <UserListItem $selected={selected} onClick={handleClick} $hasNewMessages={userDM.old_hash !== userDM.new_hash}>
+    <UserListItem $selected={selected} onClick={handleClick} $hasNewMessages={userDM.unread_messages > 0}>
       <UserInfoContainer>
         <UserProfileIcon accountId={userDM.other_identity_old} active={true} />
         <NameContainer>{`${userDM.other_username}`}</NameContainer>
       </UserInfoContainer>
-      {userDM.old_hash !== userDM.new_hash && (
+      {userDM.unread_messages > 0 && (
         <UnreadMessagesBadge
-          messageCount={"+"}
+          messageCount={userDM.unread_messages.toString()}
           backgroundColor="#777583"
         />
       )}

@@ -171,6 +171,9 @@ pub struct DMChatInfo {
     // Hash tracking for new message detection
     pub old_hash: String,
     pub new_hash: String,
+    
+    // Unread message count
+    pub unread_messages: u32,
 }
 
 /// Tracks unread messages for a user in a specific channel
@@ -1763,6 +1766,7 @@ impl CurbChat {
             // Initialize with same hash for both users
             old_hash: context_hash.clone(),
             new_hash: context_hash.clone(),
+            unread_messages: 0,
         };
 
         self.add_dm_to_user(&executor_id, dm_chat_info);
@@ -1787,6 +1791,7 @@ impl CurbChat {
                 // Initialize with same hash for both users
                 old_hash: context_hash.clone(),
                 new_hash: context_hash.clone(),
+                unread_messages: 0,
             },
         );
 
@@ -1947,6 +1952,7 @@ impl CurbChat {
                         invitation_payload: dm.invitation_payload.clone(),
                         old_hash: dm.old_hash.clone(),
                         new_hash: dm.new_hash.clone(),
+                        unread_messages: dm.unread_messages,
                     });
                 }
                 Ok(dm_list)
@@ -2018,11 +2024,13 @@ impl CurbChat {
         }
 
         // Update other user's DM hash (set old_hash to their current new_hash, new_hash to the new hash)
+        // Also increment unread message count for the recipient
         if let Ok(Some(mut dms)) = self.dm_chats.get(&other_user_id) {
             for dm in dms.iter_mut() {
                 if dm.other_identity_old == sender_id || dm.other_identity_new.as_ref() == Some(&sender_id) {
                     dm.old_hash = dm.new_hash.clone();
                     dm.new_hash = new_hash.to_string();
+                    dm.unread_messages += 1;
                     break;
                 }
             }
@@ -2078,6 +2086,8 @@ impl CurbChat {
                 if dm.other_identity_old == other_user_id || dm.other_identity_new.as_ref() == Some(&other_user_id) {
                     // Reset hash tracking - mark as read
                     dm.old_hash = dm.new_hash.clone();
+                    // Reset unread message count
+                    dm.unread_messages = 0;
                     break;
                 }
             }
@@ -2085,5 +2095,59 @@ impl CurbChat {
         }
 
         Ok("DM marked as read".to_string())
+    }
+
+    /// Gets the unread message count for a specific DM
+    pub fn get_dm_unread_count(&self, other_user_id: UserId) -> app::Result<u32, String> {
+        if self.is_dm {
+            return Err("Cannot get DM unread count in a DM chat".to_string());
+        }
+
+        let executor_id = self.get_executor_id();
+
+        if let Ok(Some(dms)) = self.dm_chats.get(&executor_id) {
+            for dm in dms.iter() {
+                if dm.other_identity_old == other_user_id || dm.other_identity_new.as_ref() == Some(&other_user_id) {
+                    return Ok(dm.unread_messages);
+                }
+            }
+        }
+
+        Err("DM not found".to_string())
+    }
+
+    /// Gets the total unread message count across all DMs for a user
+    pub fn get_total_dm_unread_count(&self) -> app::Result<u32, String> {
+        if self.is_dm {
+            return Err("Cannot get total DM unread count in a DM chat".to_string());
+        }
+
+        let executor_id = self.get_executor_id();
+
+        if let Ok(Some(dms)) = self.dm_chats.get(&executor_id) {
+            let total_unread: u32 = dms.iter().map(|dm| dm.unread_messages).sum();
+            return Ok(total_unread);
+        }
+
+        Ok(0)
+    }
+
+    /// Marks all DM messages as read for a user (resets all unread counts)
+    pub fn mark_all_dms_as_read(&mut self) -> app::Result<String, String> {
+        if self.is_dm {
+            return Err("Cannot mark all DMs as read in a DM chat".to_string());
+        }
+
+        let executor_id = self.get_executor_id();
+
+        if let Ok(Some(mut dms)) = self.dm_chats.get(&executor_id) {
+            for dm in dms.iter_mut() {
+                dm.old_hash = dm.new_hash.clone();
+                dm.unread_messages = 0;
+            }
+            let _ = self.dm_chats.insert(executor_id.clone(), dms);
+        }
+
+        Ok("All DMs marked as read".to_string())
     }
 }

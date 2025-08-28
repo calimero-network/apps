@@ -360,6 +360,10 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
                   timestamp: lastMessageTimestamp,
                 });
               }
+            } else {
+              await new ClientApiDataSource().readDm({
+                other_user_id: activeChatRef.current?.name || "",
+              });
             }
             setIncomingMessages(newMessages);
             messagesRef.current = [...messagesRef.current, ...newMessages];

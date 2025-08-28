@@ -111,6 +111,7 @@ export interface DMChatInfo {
   invitation_payload: string;
   old_hash: string;
   new_hash: string;
+  unread_messages: number;
 }
 
 export interface CreateDmProps {
@@ -186,6 +187,14 @@ export interface ReadDmProps {
   other_user_id: UserId;
 }
 
+export interface GetDmUnreadCountProps {
+  other_user_id: UserId;
+}
+
+export type GetTotalDmUnreadCountProps = Record<string, never>;
+
+export type MarkAllDmsAsReadProps = Record<string, never>;
+
 export enum ClientMethod {
   JOIN_CHAT = "join_chat",
   CREATE_CHANNEL = "create_channel",
@@ -213,7 +222,10 @@ export enum ClientMethod {
   GET_CHAT_USERNAMES = "get_chat_usernames",
   READ_MESSAGE = "mark_messages_as_read",
   UPDATE_DM_HASH = "update_dm_hashes",
-  READ_DM = "mark_dm_as_read"
+  READ_DM = "mark_dm_as_read",
+  GET_DM_UNREAD_COUNT = "get_dm_unread_count",
+  GET_TOTAL_DM_UNREAD_COUNT = "get_total_dm_unread_count",
+  MARK_ALL_DMS_AS_READ = "mark_all_dms_as_read"
 }
 
 export interface ClientApi {
@@ -242,4 +254,7 @@ export interface ClientApi {
   readMessage(props: ReadMessageProps): ApiResponse<string>;
   updateDmHash(props: UpdateDmHashProps): ApiResponse<string>;
   readDm(props: ReadDmProps): ApiResponse<string>;
+  getDmUnreadCount(props: GetDmUnreadCountProps): ApiResponse<number>;
+  getTotalDmUnreadCount(props: GetTotalDmUnreadCountProps): ApiResponse<number>;
+  markAllDmsAsRead(props: MarkAllDmsAsReadProps): ApiResponse<string>;
 }
