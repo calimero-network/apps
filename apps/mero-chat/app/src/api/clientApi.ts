@@ -254,7 +254,4 @@ export interface ClientApi {
   readMessage(props: ReadMessageProps): ApiResponse<string>;
   updateDmHash(props: UpdateDmHashProps): ApiResponse<string>;
   readDm(props: ReadDmProps): ApiResponse<string>;
-  getDmUnreadCount(props: GetDmUnreadCountProps): ApiResponse<number>;
-  getTotalDmUnreadCount(props: GetTotalDmUnreadCountProps): ApiResponse<number>;
-  markAllDmsAsRead(props: MarkAllDmsAsReadProps): ApiResponse<string>;
 }
