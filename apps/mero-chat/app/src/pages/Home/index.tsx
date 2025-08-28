@@ -189,6 +189,12 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     activeChatRef.current = chatToUse;
     getChannelUsers(chatToUse.name);
     getNonInvitedUsers(chatToUse.name);
+
+
+    setTimeout(() => {
+      updateSelectedActiveChat(chatToUse);
+    }, 500);
+
     setMessagesOffset(20);
     setTotalMessageCount(0);
     updateSelectedActiveChat(chatToUse);
