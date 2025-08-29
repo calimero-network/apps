@@ -1,7 +1,7 @@
 export const emptyText = /^(\s*<p><br><\/p>\s*)*$/;
 export const markdownParser = (text: string) => {
   const toHTML = text.replace(
-    /(\b(https?:\/\/[^\s<]+\/?)\b)|^(#####|####|###|##|#) (.*)$|(@everyone)|(@here)|(@[a-z\d]+[-_]*[a-z\d]+[-_]*[a-z\d]+\.(near|testnet))|<p><br><\/p>(?=\s*$)/gim,
+    /(\b(https?:\/\/[^\s<]+\/?)\b)|^(#####|####|###|##|#) (.*)$|(@everyone)|(@here)|(@[a-zA-Z\d\s]+[-_]*[a-zA-Z\d\s]+)|<p><br><\/p>(?=\s*$)/gim,
     (
       match,
       url,
