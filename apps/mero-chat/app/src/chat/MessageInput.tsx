@@ -7,6 +7,9 @@ import UploadComponent from "./UploadComponent";
 import MessageFileField from "./MessageFileField";
 import MessageImageField from "./MessageImageField";
 import { MarkdownEditor } from "../markdown/MarkdownEditor";
+import type { ResponseData } from "@calimero-network/calimero-client";
+import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
+import { extractUsernames } from "../utils/mentions";
 
 const Container = styled.div`
   position: fixed;
@@ -353,51 +356,65 @@ export default function MessageInput({
   }, []);
 
   const isActive =
-    (message && !emptyText.test(markdownParser(message?.text ?? ""))) ||
+    (message &&
+      !emptyText.test(markdownParser(message?.text ?? "", []))) ||
     uploadedImage ||
     uploadedFile;
 
-  const handleSendMessage = useCallback(() => {
+  const handleSendMessage = async () => {
     if (
       (uploadedFile && !uploadedFile.file.cid) ||
       (uploadedImage && !uploadedImage.file.cid)
     ) {
       return;
     } else if (
-      emptyText.test(markdownParser(message?.text ?? "")) &&
+      emptyText.test(markdownParser(message?.text ?? "", [])) &&
       !uploadedImage &&
       !uploadedFile
     ) {
       handleMessageChange(null);
     } else {
-      sendMessage(markdownParser(message?.text ?? ""));
+      let tagList: string[] = [];
+      const channelUsers: ResponseData<Map<string, string>> =
+        await new ClientApiDataSource().getChannelMembers({
+          channel: { name: selectedChat },
+        });
+      if (channelUsers.data) {
+        tagList = extractUsernames(channelUsers.data);
+      }
+      sendMessage(markdownParser(message?.text ?? "", tagList));
       resetImageLocal();
       resetFile();
       setShowUpload(false);
       setEmojiSelectorOpen(false);
       handleMessageChange(null);
     }
-  }, [message, uploadedImage, uploadedFile, openThread]);
+  };
 
-  const handleSendMessageEnter = useCallback(
-    (content: string) => {
-      if (
-        emptyText.test(markdownParser(content ?? "")) &&
-        !uploadedImage &&
-        !uploadedFile
-      ) {
-        handleMessageChange(null);
-      } else {
-        sendMessage(markdownParser(content ?? ""));
-        resetImageLocal();
-        resetFile();
-        setShowUpload(false);
-        setEmojiSelectorOpen(false);
-        handleMessageChange(null);
+  const handleSendMessageEnter = async (content: string) => {
+    if (
+      emptyText.test(markdownParser(content ?? "", [])) &&
+      !uploadedImage &&
+      !uploadedFile
+    ) {
+      handleMessageChange(null);
+    } else {
+      let tagList: string[] = [];
+      const channelUsers: ResponseData<Map<string, string>> =
+        await new ClientApiDataSource().getChannelMembers({
+          channel: { name: selectedChat },
+        });
+      if (channelUsers.data) {
+        tagList = extractUsernames(channelUsers.data);
       }
-    },
-    [message, uploadedImage, uploadedFile, openThread]
-  );
+      sendMessage(markdownParser(content ?? "", tagList));
+      resetImageLocal();
+      resetFile();
+      setShowUpload(false);
+      setEmojiSelectorOpen(false);
+      handleMessageChange(null);
+    }
+  };
 
   useEffect(() => {
     setCanWriteMessage(false);
@@ -464,7 +481,9 @@ export default function MessageInput({
               />
             </FullWidthWrapper>
             {(!message ||
-              emptyText.test(markdownParser(message?.text ?? ""))) && (
+              emptyText.test(
+                markdownParser(message?.text ?? "", [])
+              )) && (
               <>
                 <Placeholder
                   $placeholderPosition={placeholderPosition}

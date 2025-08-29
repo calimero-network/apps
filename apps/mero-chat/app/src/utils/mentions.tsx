@@ -1,5 +1,16 @@
 import type { UserId } from "../api/clientApi";
 
+// Helper function to extract just usernames from users map
+export function extractUsernames(users: Map<string, string> | Record<string, string> | null | undefined): string[] {
+  if (!users) return [];
+
+  if (users instanceof Map) {
+    return Array.from(users.values());
+  } else {
+    return Object.values(users);
+  }
+}
+
 export function extractAndAddMentions(message: string, users: Map<string, string> | Record<string, string> | null | undefined): {
   userIdMentions: UserId[];
   usernameMentions: string[];
