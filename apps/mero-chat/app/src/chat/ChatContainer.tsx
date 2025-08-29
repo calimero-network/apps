@@ -91,7 +91,7 @@ export default function ChatContainer({
   setOpenThread,
   currentOpenThreadRef,
   onDMSelected,
-  membersList
+  membersList,
 }: ChatContainerProps) {
   const [updatedMessages, setUpdatedMessages] = useState<UpdatedMessages[]>([]);
   const [_updatedThreadMessages, setUpdatedThreadMessages] = useState<
@@ -195,7 +195,6 @@ export default function ChatContainer({
   );
 
   const sendMessage = async (message: string, isThread: boolean) => {
-
     const isDM = activeChatRef.current?.type === "direct_message";
 
     const result = extractAndAddMentions(message, membersListRef.current);
@@ -218,12 +217,12 @@ export default function ChatContainer({
 
     if (isDM) {
       const fetchContextResponse = await apiClient
-      .node()
-      .getContext(activeChatRef.current?.contextId || "");
+        .node()
+        .getContext(activeChatRef.current?.contextId || "");
       await new ClientApiDataSource().updateDmHash({
         sender_id: getExecutorPublicKey() || "",
         other_user_id: activeChatRef.current?.name || "",
-        new_hash: fetchContextResponse.data?.rootHash as string || "",
+        new_hash: (fetchContextResponse.data?.rootHash as string) || "",
       });
     }
 

@@ -24,6 +24,7 @@ import {
   type GetChatMembersProps,
   type GetMessagesProps,
   type GetNonMemberUsersProps,
+  type GetUsernameProps,
   type InviteToChannelProps,
   type JoinChannelProps,
   type JoinChatProps,
@@ -1352,6 +1353,56 @@ export class ClientApiDataSource implements ClientApi {
     } catch (error) {
       console.error("readDM failed:", error);
       let errorMessage = "An unexpected error occurred during readDM";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+
+  async getUsername(props: GetUsernameProps): ApiResponse<string> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, string>(
+        {
+          contextId: getContextId() || "",
+          method: ClientMethod.GET_USERNAME,
+          argsJson: {
+            user_id: props.user_id,
+          },
+          executorPublicKey: getExecutorPublicKey() || "",
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+      if (response?.error) {
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        }
+      }
+      return {
+        data: response?.result.output as string,
+        error: null,
+      };
+    } catch (error) {
+      console.error("getUsername failed:", error);
+      let errorMessage = "An unexpected error occurred during getUsername";
       if (error instanceof Error) {
         errorMessage = error.message;
       } else if (typeof error === "string") {

@@ -17,6 +17,7 @@ import {
 import type { ChannelInfo } from "../api/clientApi";
 import { getExecutorPublicKey } from "@calimero-network/calimero-client";
 import EmojiSelectorPopup from "../emojiSelector/EmojiSelectorPopup";
+import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 
 interface ChatDisplaySplitProps {
   readMessage: (message: MessageWithReactions) => void;
@@ -192,11 +193,25 @@ export default function ChatDisplaySplit({
   messageWithEmojiSelector,
 }: ChatDisplaySplitProps) {
   const [accountId, setAccountId] = useState<string | undefined>(undefined);
+  const [username, setUsername] = useState<string>("");
 
   useEffect(() => {
-    if (!accountId) {
-      setAccountId(getExecutorPublicKey() ?? "");
+    const setUserInfo = async () => {
+      const executorId = getExecutorPublicKey() ?? "";
+      setAccountId(executorId);
+      const response = await new ClientApiDataSource().getUsername({
+        user_id: executorId ?? "",
+      });
+      if (response.data) {
+        const normalizedClass = response.data
+          .replace(/\s+/g, "")
+          .toLowerCase()
+          .replace(/\./g, "\\.")
+          .replace(/_/g, "\\_");
+        setUsername(normalizedClass);
+      }
     }
+    setUserInfo();
   }, []);
 
   // const isModerator = useMemo(
@@ -237,7 +252,7 @@ export default function ChatDisplaySplit({
 
   const renderMessage = () => {
     const params: MessageRendererProps = {
-      accountId: "fran.near",
+      accountId: username,
       isThread: isThread,
       handleReaction: (message: CurbMessage, reaction: string) =>
         handleReaction(message, reaction, isThread),
