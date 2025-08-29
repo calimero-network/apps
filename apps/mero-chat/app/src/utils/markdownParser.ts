@@ -23,10 +23,14 @@ export const markdownParser = (text: string) => {
       } else if (hereMention) {
         return `<span class='mention-here'>@here</span>`;
       } else if (validMention) {
-        return `<span class='mention mention-user-${validMention
-          .replace("@", "")
+        const username = validMention.replace("@", "");
+        const normalizedClass = username
+          .replace(/\s+/g, "")
+          .toLowerCase()
           .replace(/\./g, "\\.")
-          .replace(/_/g, "\\_")}'>${validMention}</span>`;
+          .replace(/_/g, "\\_");
+        
+        return `<span class='mention mention-user-${normalizedClass}'>${validMention}</span>`;
       } else {
         return "";
       }
