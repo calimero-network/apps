@@ -191,6 +191,10 @@ export interface GetDmUnreadCountProps {
   other_user_id: UserId;
 }
 
+export interface GetUsernameProps {
+  user_id: UserId;
+}
+
 export type GetTotalDmUnreadCountProps = Record<string, never>;
 
 export type MarkAllDmsAsReadProps = Record<string, never>;
@@ -254,4 +258,5 @@ export interface ClientApi {
   readMessage(props: ReadMessageProps): ApiResponse<string>;
   updateDmHash(props: UpdateDmHashProps): ApiResponse<string>;
   readDm(props: ReadDmProps): ApiResponse<string>;
+  getUsername(props: GetUsernameProps): ApiResponse<string>;
 }
