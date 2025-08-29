@@ -1,0 +1,464 @@
+workflows % merobox bootstrap run bootstrap.yml
+
+🚀 Executing Workflow: Curb Chat Bootstrap Workflow
+
+Step 1: Checking workflow nodes (restart=false)...
+Will reuse existing nodes if they're running...
+
+Step 2: Managing nodes...
+Checking 8 nodes with prefix 'calimero-node' (no restart mode)...
+✓ Node 'calimero-node-1' is already running
+✓ Node 'calimero-node-2' is already running
+Node 'calimero-node-3' doesn't exist, creating...
+✓ Image ghcr.io/calimero-network/merod:edge already available locally
+Initializing node calimero-node-3...
+✓ Node calimero-node-3 initialized successfully
+Starting node calimero-node-3...
+✓ Started Calimero node calimero-node-3 (ID: 63ae984abf4b)
+  - P2P Port: 2430
+  - RPC/Admin Port: 2530
+  - Chain ID: testnet-1
+  - Data Directory: ./data/calimero-node-3
+Node 'calimero-node-4' doesn't exist, creating...
+✓ Image ghcr.io/calimero-network/merod:edge already available locally
+Initializing node calimero-node-4...
+✓ Node calimero-node-4 initialized successfully
+Starting node calimero-node-4...
+✓ Started Calimero node calimero-node-4 (ID: 7f192fa098c6)
+  - P2P Port: 2431
+  - RPC/Admin Port: 2531
+  - Chain ID: testnet-1
+  - Data Directory: ./data/calimero-node-4
+Node 'calimero-node-5' doesn't exist, creating...
+✓ Image ghcr.io/calimero-network/merod:edge already available locally
+Initializing node calimero-node-5...
+✓ Node calimero-node-5 initialized successfully
+Starting node calimero-node-5...
+✓ Started Calimero node calimero-node-5 (ID: 07536b077c3d)
+  - P2P Port: 2432
+  - RPC/Admin Port: 2532
+  - Chain ID: testnet-1
+  - Data Directory: ./data/calimero-node-5
+Node 'calimero-node-6' doesn't exist, creating...
+✓ Image ghcr.io/calimero-network/merod:edge already available locally
+Initializing node calimero-node-6...
+✓ Node calimero-node-6 initialized successfully
+Starting node calimero-node-6...
+✓ Started Calimero node calimero-node-6 (ID: 0f2c115a0b08)
+  - P2P Port: 2433
+  - RPC/Admin Port: 2533
+  - Chain ID: testnet-1
+  - Data Directory: ./data/calimero-node-6
+Node 'calimero-node-7' doesn't exist, creating...
+✓ Image ghcr.io/calimero-network/merod:edge already available locally
+Initializing node calimero-node-7...
+✓ Node calimero-node-7 initialized successfully
+Starting node calimero-node-7...
+✓ Started Calimero node calimero-node-7 (ID: 225b3eeccc98)
+  - P2P Port: 2434
+  - RPC/Admin Port: 2534
+  - Chain ID: testnet-1
+  - Data Directory: ./data/calimero-node-7
+Node 'calimero-node-8' doesn't exist, creating...
+✓ Image ghcr.io/calimero-network/merod:edge already available locally
+Initializing node calimero-node-8...
+✓ Node calimero-node-8 initialized successfully
+Starting node calimero-node-8...
+✓ Started Calimero node calimero-node-8 (ID: 271c8536345e)
+  - P2P Port: 2435
+  - RPC/Admin Port: 2535
+  - Chain ID: testnet-1
+  - Data Directory: ./data/calimero-node-8
+✓ 2/8 nodes were already running, 6 started
+✓ Node management completed
+
+Step 3: Waiting for nodes to be ready...
+Waiting up to 120 seconds for 8 nodes to be ready...
+⠋ Waiting for nodes... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━   0% 0:00:00✓ Admin server accessible on localhost:2528 for calimero-node-1
+✓ Node calimero-node-1 is ready
+⠙ Waiting for nodes... ━━━━━╺━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  12% 0:00:00✓ Admin server accessible on localhost:2528 for calimero-node-2
+✓ Node calimero-node-2 is ready
+⠹ Waiting for nodes... ━━━━━━━━━━╺━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  25% 0:00:00✓ Admin server accessible on localhost:2528 for calimero-node-3
+✓ Node calimero-node-3 is ready
+⠹ Waiting for nodes... ━━━━━━━━━━╺━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  25% 0:00:00✓ Admin server accessible on localhost:2528 for calimero-node-4
+✓ Node calimero-node-4 is ready
+⠸ Waiting for nodes... ━━━━━━━━━━━━━━━━━━━━╺━━━━━━━━━━━━━━━━━━━  50% 0:00:00✓ Admin server accessible on localhost:2528 for calimero-node-5
+✓ Node calimero-node-5 is ready
+⠸ Waiting for nodes... ━━━━━━━━━━━━━━━━━━━━╺━━━━━━━━━━━━━━━━━━━  50% 0:00:00✓ Admin server accessible on localhost:2528 for calimero-node-6
+✓ Node calimero-node-6 is ready
+⠴ Waiting for nodes... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╺━━━━━━━━━  75% 0:00:00✓ Admin server accessible on localhost:2528 for calimero-node-7
+✓ Node calimero-node-7 is ready
+⠴ Waiting for nodes... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╺━━━━━━━━━  75% 0:00:00✓ Admin server accessible on localhost:2528 for calimero-node-8
+✓ Node calimero-node-8 is ready
+  Waiting for nodes... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00
+✓ All nodes are ready
+
+Step 4: Executing workflow steps...
+
+Executing Install Application on Node 1 (install_application)...
+✅ Custom outputs configuration validated: 1 outputs defined
+🔍 Install API Response for calimero-node-1:
+  Success: True
+  Data: {'data': {'applicationId': 'CZfDdRCkg6QPcTuFuU6G5ayk9wFroE1x3pTg4H32X1i4'}}
+📝 Install result data: {'data': {'applicationId': 'CZfDdRCkg6QPcTuFuU6G5ayk9wFroE1x3pTg4H32X1i4'}}
+🔧 Processing custom outputs configuration for calimero-node-1:
+📝 Custom export: applicationId → app_id: CZfDdRCkg6QPcTuFuU6G5ayk9wFroE1x3pTg4H32X1i4
+📝 Fallback: Captured application ID for calimero-node-1: CZfDdRCkg6QPcTuFuU6G5ayk9wFroE1x3pTg4H32X1i4
+✓ Step 'Install Application on Node 1' completed
+
+Executing Create Context on Node 1 (create_context)...
+✅ Custom outputs configuration validated: 2 outputs defined
+Using initialization params as bytes: [123, 34, 110, 97, 109, 101, 34, 58, 32, 34, 67, 117, 114, 98, 84, 101, 115, 116, 34, 44, 32, 34, 105, 115, 95, 100, 109, 34, 58, 32, 
+102, 97, 108, 115, 101, 44, 32, 34, 100, 101, 102, 97, 117, 108, 116, 95, 99, 104, 97, 110]...
+🔍 Context Creation API Response for calimero-node-1:
+  Success: True
+  Data: {'data': {'contextId': 'CUAq9gVwk5kXhJ95KHp2F1mE3swQjucoHaKvrVqFqZnm', 'memberPublicKey': 'FWU3otm4xq5StmhFjoQ3te8CCMBPDcJiX6R67z6a4dRB'}}
+🔧 Processing custom outputs configuration for calimero-node-1:
+📝 Custom export: contextId → context_id: CUAq9gVwk5kXhJ95KHp2F1mE3swQjucoHaKvrVqFqZnm
+📝 Custom export: memberPublicKey → member_public_key: FWU3otm4xq5StmhFjoQ3te8CCMBPDcJiX6R67z6a4dRB
+⚠️  No context ID found in response. Available keys: ['data']
+✓ Step 'Create Context on Node 1' completed
+
+Executing Create Identity on Node 2 (create_identity)...
+✅ Custom outputs configuration validated: 1 outputs defined
+🔍 Identity Creation API Response for calimero-node-2:
+  Success: True
+  Data: {'data': {'publicKey': 'HfZ47bqZcbQgsLwkP1CdFJDfHGD52seGtvj7q7KGSnSD'}}
+🔧 Processing custom outputs configuration for calimero-node-2:
+📝 Custom export: publicKey → public_key_2: HfZ47bqZcbQgsLwkP1CdFJDfHGD52seGtvj7q7KGSnSD
+⚠️  No public key found in response. Available keys: ['data']
+✓ Step 'Create Identity on Node 2' completed
+
+Executing Create Identity on Node 3 (create_identity)...
+✅ Custom outputs configuration validated: 1 outputs defined
+🔍 Identity Creation API Response for calimero-node-3:
+  Success: True
+  Data: {'data': {'publicKey': 'Dd9LgA81FMVjvEL59yN38ccakG7hDeSPUKek4y19YCoZ'}}
+🔧 Processing custom outputs configuration for calimero-node-3:
+📝 Custom export: publicKey → public_key_3: Dd9LgA81FMVjvEL59yN38ccakG7hDeSPUKek4y19YCoZ
+⚠️  No public key found in response. Available keys: ['data']
+✓ Step 'Create Identity on Node 3' completed
+
+Executing Create Identity on Node 4 (create_identity)...
+✅ Custom outputs configuration validated: 1 outputs defined
+🔍 Identity Creation API Response for calimero-node-4:
+  Success: True
+  Data: {'data': {'publicKey': '82K3aYEj8d3qHBhoy82quNEnqdJRqscwdciJdH447y7g'}}
+🔧 Processing custom outputs configuration for calimero-node-4:
+📝 Custom export: publicKey → public_key_4: 82K3aYEj8d3qHBhoy82quNEnqdJRqscwdciJdH447y7g
+⚠️  No public key found in response. Available keys: ['data']
+✓ Step 'Create Identity on Node 4' completed
+
+Executing Create Identity on Node 5 (create_identity)...
+✅ Custom outputs configuration validated: 1 outputs defined
+🔍 Identity Creation API Response for calimero-node-5:
+  Success: True
+  Data: {'data': {'publicKey': '9DGVKotza5RQ5QzdHrbthWuEf5ohyW4w5xs9hdHEzEg4'}}
+🔧 Processing custom outputs configuration for calimero-node-5:
+📝 Custom export: publicKey → public_key_5: 9DGVKotza5RQ5QzdHrbthWuEf5ohyW4w5xs9hdHEzEg4
+⚠️  No public key found in response. Available keys: ['data']
+✓ Step 'Create Identity on Node 5' completed
+
+Executing Create Identity on Node 6 (create_identity)...
+✅ Custom outputs configuration validated: 1 outputs defined
+🔍 Identity Creation API Response for calimero-node-6:
+  Success: True
+  Data: {'data': {'publicKey': 'yVFfdt8iGwjWZ71y61j2wtcTXAKwUp5zYFA84p52rwx'}}
+🔧 Processing custom outputs configuration for calimero-node-6:
+📝 Custom export: publicKey → public_key_6: yVFfdt8iGwjWZ71y61j2wtcTXAKwUp5zYFA84p52rwx
+⚠️  No public key found in response. Available keys: ['data']
+✓ Step 'Create Identity on Node 6' completed
+
+Executing Create Identity on Node 7 (create_identity)...
+✅ Custom outputs configuration validated: 1 outputs defined
+🔍 Identity Creation API Response for calimero-node-7:
+  Success: True
+  Data: {'data': {'publicKey': 'AP6gPvTs1AvWEvLedArbuowHTM8F5KBDnTqD2LUwhg9o'}}
+🔧 Processing custom outputs configuration for calimero-node-7:
+📝 Custom export: publicKey → public_key_7: AP6gPvTs1AvWEvLedArbuowHTM8F5KBDnTqD2LUwhg9o
+⚠️  No public key found in response. Available keys: ['data']
+✓ Step 'Create Identity on Node 7' completed
+
+Executing Create Identity on Node 8 (create_identity)...
+✅ Custom outputs configuration validated: 1 outputs defined
+🔍 Identity Creation API Response for calimero-node-8:
+  Success: True
+  Data: {'data': {'publicKey': '9QZFoVQZ2hrQs1hAUCseLyKfg3WvLfs6X2YZotvBpwid'}}
+🔧 Processing custom outputs configuration for calimero-node-8:
+📝 Custom export: publicKey → public_key_8: 9QZFoVQZ2hrQs1hAUCseLyKfg3WvLfs6X2YZotvBpwid
+⚠️  No public key found in response. Available keys: ['data']
+✓ Step 'Create Identity on Node 8' completed
+
+Executing Wait for Identity Creation (wait)...
+Waiting 5 seconds...
+✓ Step 'Wait for Identity Creation' completed
+
+Executing Invite Node 2 from Node 1 (invite_identity)...
+✅ Custom outputs configuration validated: 1 outputs defined
+🔍 Invitation API Response for calimero-node-1:
+  Success: True
+  Data: {'data': 
+'2DKSXVCDcgfamBeg8rTiSrzeRYeXRvibPPZt6XU4UftEfubimNznoEWRw3qT5iSKumJLpawspkF8dFXrixTBYFRS5AFSWgAcgm3pfPa3V6J6YRA1TqdJSDAbvLYgw46Li6P2dQNAe42SBRLdPkmgYXZ49DoRgae63M'}
+  Endpoint: http://localhost:2528/admin-api/contexts/invite
+  Payload Format: 0
+🔧 Processing custom outputs configuration for calimero-node-1:
+📝 Custom export: invitation → invitation_2: 
+2DKSXVCDcgfamBeg8rTiSrzeRYeXRvibPPZt6XU4UftEfubimNznoEWRw3qT5iSKumJLpawspkF8dFXrixTBYFRS5AFSWgAcgm3pfPa3V6J6YRA1TqdJSDAbvLYgw46Li6P2dQNAe42SBRLdPkmgYXZ49DoRgae63M
+✓ Step 'Invite Node 2 from Node 1' completed
+
+Executing Invite Node 3 from Node 1 (invite_identity)...
+✅ Custom outputs configuration validated: 1 outputs defined
+🔍 Invitation API Response for calimero-node-1:
+  Success: True
+  Data: {'data': 
+'2DKSXVCDcgfamBeg8rTiSrzeRYeXRvibPPZt6XU4UftEeUBU3uhDXGPAfbuW3MgQdLPAZob6u6P9XdGgvB6wCP1HzfKTF2Pu27KE4ek9wf3w5KPxTNms9vA77U2UzU7XMAGhws8McqWvxZJ8GDUKFYHcgT7wznrrXm'}
+  Endpoint: http://localhost:2528/admin-api/contexts/invite
+  Payload Format: 0
+🔧 Processing custom outputs configuration for calimero-node-1:
+📝 Custom export: invitation → invitation_3: 
+2DKSXVCDcgfamBeg8rTiSrzeRYeXRvibPPZt6XU4UftEeUBU3uhDXGPAfbuW3MgQdLPAZob6u6P9XdGgvB6wCP1HzfKTF2Pu27KE4ek9wf3w5KPxTNms9vA77U2UzU7XMAGhws8McqWvxZJ8GDUKFYHcgT7wznrrXm
+✓ Step 'Invite Node 3 from Node 1' completed
+
+Executing Invite Node 4 from Node 1 (invite_identity)...
+✅ Custom outputs configuration validated: 1 outputs defined
+🔍 Invitation API Response for calimero-node-1:
+  Success: True
+  Data: {'data': 
+'2DKSXVCDcgfamBeg8rTiSrzeRYeXRvibPPZt6XU4UftEcUaqyZWGA77sAppzdcQcfLvSjT4BdyBGT6JZEmNHii6V6xxRFbz7Btivo5niSRXdLyvUbTjStHcozyf6TtLEY3Pnf3Tvz5dFcwCnsifx1WKiidyeyor1p7'}
+  Endpoint: http://localhost:2528/admin-api/contexts/invite
+  Payload Format: 0
+🔧 Processing custom outputs configuration for calimero-node-1:
+📝 Custom export: invitation → invitation_4: 
+2DKSXVCDcgfamBeg8rTiSrzeRYeXRvibPPZt6XU4UftEcUaqyZWGA77sAppzdcQcfLvSjT4BdyBGT6JZEmNHii6V6xxRFbz7Btivo5niSRXdLyvUbTjStHcozyf6TtLEY3Pnf3Tvz5dFcwCnsifx1WKiidyeyor1p7
+✓ Step 'Invite Node 4 from Node 1' completed
+
+Executing Invite Node 5 from Node 1 (invite_identity)...
+✅ Custom outputs configuration validated: 1 outputs defined
+🔍 Invitation API Response for calimero-node-1:
+  Success: True
+  Data: {'data': 
+'2DKSXVCDcgfamBeg8rTiSrzeRYeXRvibPPZt6XU4UftEcu87RuCXNi1oqYQ9S3RRQUBdjqmqjyvChiXwhGPXj399d6xuuHj8smo3ozMwfD4cZhF8QnGP9eydEDmo6Sjkpon96yQSeYUJ2b87q9u3omTTNWndeSAYsm'}
+  Endpoint: http://localhost:2528/admin-api/contexts/invite
+  Payload Format: 0
+🔧 Processing custom outputs configuration for calimero-node-1:
+📝 Custom export: invitation → invitation_5: 
+2DKSXVCDcgfamBeg8rTiSrzeRYeXRvibPPZt6XU4UftEcu87RuCXNi1oqYQ9S3RRQUBdjqmqjyvChiXwhGPXj399d6xuuHj8smo3ozMwfD4cZhF8QnGP9eydEDmo6Sjkpon96yQSeYUJ2b87q9u3omTTNWndeSAYsm
+✓ Step 'Invite Node 5 from Node 1' completed
+
+Executing Invite Node 6 from Node 1 (invite_identity)...
+✅ Custom outputs configuration validated: 1 outputs defined
+🔍 Invitation API Response for calimero-node-1:
+  Success: True
+  Data: {'data': 
+'2DKSXVCDcgfamBeg8rTiSrzeRYeXRvibPPZt6XU4UftEaKjkpFREA2fC3uVhSAs8b4vUsK5LQQpr9JgK4V3XtYdXkVrpF3WqZa3Cf1XtL71cUGFh1bL91DPHtPXPo3Evw2inwjLJgfjssNcC4QiPQQif2UuqzHjba3'}
+  Endpoint: http://localhost:2528/admin-api/contexts/invite
+  Payload Format: 0
+🔧 Processing custom outputs configuration for calimero-node-1:
+📝 Custom export: invitation → invitation_6: 
+2DKSXVCDcgfamBeg8rTiSrzeRYeXRvibPPZt6XU4UftEaKjkpFREA2fC3uVhSAs8b4vUsK5LQQpr9JgK4V3XtYdXkVrpF3WqZa3Cf1XtL71cUGFh1bL91DPHtPXPo3Evw2inwjLJgfjssNcC4QiPQQif2UuqzHjba3
+✓ Step 'Invite Node 6 from Node 1' completed
+
+Executing Invite Node 7 from Node 1 (invite_identity)...
+✅ Custom outputs configuration validated: 1 outputs defined
+🔍 Invitation API Response for calimero-node-1:
+  Success: True
+  Data: {'data': 
+'2DKSXVCDcgfamBeg8rTiSrzeRYeXRvibPPZt6XU4UftEdKGA3fTbxYWivrDUeRPfL15iCXS4rCFmJY1594fsue6xnrZNkDMJ8wkXuMQ27uMVDVUDGHhwpEE1ycfi8DnV1Vb5npfPL3sz4p7vkAt3gWz9nxfopaBMAT'}
+  Endpoint: http://localhost:2528/admin-api/contexts/invite
+  Payload Format: 0
+🔧 Processing custom outputs configuration for calimero-node-1:
+📝 Custom export: invitation → invitation_7: 
+2DKSXVCDcgfamBeg8rTiSrzeRYeXRvibPPZt6XU4UftEdKGA3fTbxYWivrDUeRPfL15iCXS4rCFmJY1594fsue6xnrZNkDMJ8wkXuMQ27uMVDVUDGHhwpEE1ycfi8DnV1Vb5npfPL3sz4p7vkAt3gWz9nxfopaBMAT
+✓ Step 'Invite Node 7 from Node 1' completed
+
+Executing Invite Node 8 from Node 1 (invite_identity)...
+✅ Custom outputs configuration validated: 1 outputs defined
+🔍 Invitation API Response for calimero-node-1:
+  Success: True
+  Data: {'data': 
+'2DKSXVCDcgfamBeg8rTiSrzeRYeXRvibPPZt6XU4UftEcy97yEzjjZmGbVX2nNVZn96mxdKmqtskSdS67ptm8f17TBfkhuWDCecyQMJdyz4P4k5Se4cbCQSoZHthibGpCyazjY5JiAkWP4s9haoP8BMdYQQLYcggvF'}
+  Endpoint: http://localhost:2528/admin-api/contexts/invite
+  Payload Format: 0
+🔧 Processing custom outputs configuration for calimero-node-1:
+📝 Custom export: invitation → invitation_8: 
+2DKSXVCDcgfamBeg8rTiSrzeRYeXRvibPPZt6XU4UftEcy97yEzjjZmGbVX2nNVZn96mxdKmqtskSdS67ptm8f17TBfkhuWDCecyQMJdyz4P4k5Se4cbCQSoZHthibGpCyazjY5JiAkWP4s9haoP8BMdYQQLYcggvF
+✓ Step 'Invite Node 8 from Node 1' completed
+
+Executing Join Context from Node 2 (join_context)...
+✅ Automatic exports configuration validated: 2 variables defined
+Debug: Resolved values for join step:
+  context_id: CUAq9gVwk5kXhJ95KHp2F1mE3swQjucoHaKvrVqFqZnm
+  invitee_id: HfZ47bqZcbQgsLwkP1CdFJDfHGD52seGtvj7q7KGSnSD
+  invitation: 2DKSXVCDcgfamBeg8rTiSrzeRYeXRvibPPZt6XU4UftEfubimN
+  invitation type: <class 'str'>
+  invitation length: 162
+About to call join function...
+Join function returned: {'success': True, 'data': {'data': {'contextId': 'CUAq9gVwk5kXhJ95KHp2F1mE3swQjucoHaKvrVqFqZnm', 'memberPublicKey': 
+'HfZ47bqZcbQgsLwkP1CdFJDfHGD52seGtvj7q7KGSnSD'}}, 'endpoint': 'http://localhost:2529/admin-api/contexts/join', 'payload_format': 0}
+🔍 Join API Response for calimero-node-2:
+  Success: True
+  Data: {'data': {'contextId': 'CUAq9gVwk5kXhJ95KHp2F1mE3swQjucoHaKvrVqFqZnm', 'memberPublicKey': 'HfZ47bqZcbQgsLwkP1CdFJDfHGD52seGtvj7q7KGSnSD'}}
+  Endpoint: http://localhost:2529/admin-api/contexts/join
+  Payload Format: 0
+⚠️  No outputs configured for this step. Variables will not be exported automatically.
+   To export variables, add an 'outputs' section to your step configuration.
+✓ Step 'Join Context from Node 2' completed
+
+Executing Join Context from Node 3 (join_context)...
+✅ Automatic exports configuration validated: 2 variables defined
+Debug: Resolved values for join step:
+  context_id: CUAq9gVwk5kXhJ95KHp2F1mE3swQjucoHaKvrVqFqZnm
+  invitee_id: Dd9LgA81FMVjvEL59yN38ccakG7hDeSPUKek4y19YCoZ
+  invitation: 2DKSXVCDcgfamBeg8rTiSrzeRYeXRvibPPZt6XU4UftEeUBU3u
+  invitation type: <class 'str'>
+  invitation length: 162
+About to call join function...
+Join function returned: {'success': True, 'data': {'data': {'contextId': 'CUAq9gVwk5kXhJ95KHp2F1mE3swQjucoHaKvrVqFqZnm', 'memberPublicKey': 
+'Dd9LgA81FMVjvEL59yN38ccakG7hDeSPUKek4y19YCoZ'}}, 'endpoint': 'http://localhost:2530/admin-api/contexts/join', 'payload_format': 0}
+🔍 Join API Response for calimero-node-3:
+  Success: True
+  Data: {'data': {'contextId': 'CUAq9gVwk5kXhJ95KHp2F1mE3swQjucoHaKvrVqFqZnm', 'memberPublicKey': 'Dd9LgA81FMVjvEL59yN38ccakG7hDeSPUKek4y19YCoZ'}}
+  Endpoint: http://localhost:2530/admin-api/contexts/join
+  Payload Format: 0
+⚠️  No outputs configured for this step. Variables will not be exported automatically.
+   To export variables, add an 'outputs' section to your step configuration.
+✓ Step 'Join Context from Node 3' completed
+
+Executing Join Context from Node 4 (join_context)...
+✅ Automatic exports configuration validated: 2 variables defined
+Debug: Resolved values for join step:
+  context_id: CUAq9gVwk5kXhJ95KHp2F1mE3swQjucoHaKvrVqFqZnm
+  invitee_id: 82K3aYEj8d3qHBhoy82quNEnqdJRqscwdciJdH447y7g
+  invitation: 2DKSXVCDcgfamBeg8rTiSrzeRYeXRvibPPZt6XU4UftEcUaqyZ
+  invitation type: <class 'str'>
+  invitation length: 162
+About to call join function...
+Join function returned: {'success': True, 'data': {'data': {'contextId': 'CUAq9gVwk5kXhJ95KHp2F1mE3swQjucoHaKvrVqFqZnm', 'memberPublicKey': 
+'82K3aYEj8d3qHBhoy82quNEnqdJRqscwdciJdH447y7g'}}, 'endpoint': 'http://localhost:2531/admin-api/contexts/join', 'payload_format': 0}
+🔍 Join API Response for calimero-node-4:
+  Success: True
+  Data: {'data': {'contextId': 'CUAq9gVwk5kXhJ95KHp2F1mE3swQjucoHaKvrVqFqZnm', 'memberPublicKey': '82K3aYEj8d3qHBhoy82quNEnqdJRqscwdciJdH447y7g'}}
+  Endpoint: http://localhost:2531/admin-api/contexts/join
+  Payload Format: 0
+⚠️  No outputs configured for this step. Variables will not be exported automatically.
+   To export variables, add an 'outputs' section to your step configuration.
+✓ Step 'Join Context from Node 4' completed
+
+Executing Join Context from Node 5 (join_context)...
+✅ Automatic exports configuration validated: 2 variables defined
+Debug: Resolved values for join step:
+  context_id: CUAq9gVwk5kXhJ95KHp2F1mE3swQjucoHaKvrVqFqZnm
+  invitee_id: 9DGVKotza5RQ5QzdHrbthWuEf5ohyW4w5xs9hdHEzEg4
+  invitation: 2DKSXVCDcgfamBeg8rTiSrzeRYeXRvibPPZt6XU4UftEcu87Ru
+  invitation type: <class 'str'>
+  invitation length: 162
+About to call join function...
+Join function returned: {'success': True, 'data': {'data': {'contextId': 'CUAq9gVwk5kXhJ95KHp2F1mE3swQjucoHaKvrVqFqZnm', 'memberPublicKey': 
+'9DGVKotza5RQ5QzdHrbthWuEf5ohyW4w5xs9hdHEzEg4'}}, 'endpoint': 'http://localhost:2532/admin-api/contexts/join', 'payload_format': 0}
+🔍 Join API Response for calimero-node-5:
+  Success: True
+  Data: {'data': {'contextId': 'CUAq9gVwk5kXhJ95KHp2F1mE3swQjucoHaKvrVqFqZnm', 'memberPublicKey': '9DGVKotza5RQ5QzdHrbthWuEf5ohyW4w5xs9hdHEzEg4'}}
+  Endpoint: http://localhost:2532/admin-api/contexts/join
+  Payload Format: 0
+⚠️  No outputs configured for this step. Variables will not be exported automatically.
+   To export variables, add an 'outputs' section to your step configuration.
+✓ Step 'Join Context from Node 5' completed
+
+Executing Join Context from Node 6 (join_context)...
+✅ Automatic exports configuration validated: 2 variables defined
+Debug: Resolved values for join step:
+  context_id: CUAq9gVwk5kXhJ95KHp2F1mE3swQjucoHaKvrVqFqZnm
+  invitee_id: yVFfdt8iGwjWZ71y61j2wtcTXAKwUp5zYFA84p52rwx
+  invitation: 2DKSXVCDcgfamBeg8rTiSrzeRYeXRvibPPZt6XU4UftEaKjkpF
+  invitation type: <class 'str'>
+  invitation length: 162
+About to call join function...
+Join function returned: {'success': True, 'data': {'data': {'contextId': 'CUAq9gVwk5kXhJ95KHp2F1mE3swQjucoHaKvrVqFqZnm', 'memberPublicKey': 
+'yVFfdt8iGwjWZ71y61j2wtcTXAKwUp5zYFA84p52rwx'}}, 'endpoint': 'http://localhost:2533/admin-api/contexts/join', 'payload_format': 0}
+🔍 Join API Response for calimero-node-6:
+  Success: True
+  Data: {'data': {'contextId': 'CUAq9gVwk5kXhJ95KHp2F1mE3swQjucoHaKvrVqFqZnm', 'memberPublicKey': 'yVFfdt8iGwjWZ71y61j2wtcTXAKwUp5zYFA84p52rwx'}}
+  Endpoint: http://localhost:2533/admin-api/contexts/join
+  Payload Format: 0
+⚠️  No outputs configured for this step. Variables will not be exported automatically.
+   To export variables, add an 'outputs' section to your step configuration.
+✓ Step 'Join Context from Node 6' completed
+
+Executing Join Context from Node 7 (join_context)...
+✅ Automatic exports configuration validated: 2 variables defined
+Debug: Resolved values for join step:
+  context_id: CUAq9gVwk5kXhJ95KHp2F1mE3swQjucoHaKvrVqFqZnm
+  invitee_id: AP6gPvTs1AvWEvLedArbuowHTM8F5KBDnTqD2LUwhg9o
+  invitation: 2DKSXVCDcgfamBeg8rTiSrzeRYeXRvibPPZt6XU4UftEdKGA3f
+  invitation type: <class 'str'>
+  invitation length: 162
+About to call join function...
+Join function returned: {'success': True, 'data': {'data': {'contextId': 'CUAq9gVwk5kXhJ95KHp2F1mE3swQjucoHaKvrVqFqZnm', 'memberPublicKey': 
+'AP6gPvTs1AvWEvLedArbuowHTM8F5KBDnTqD2LUwhg9o'}}, 'endpoint': 'http://localhost:2534/admin-api/contexts/join', 'payload_format': 0}
+🔍 Join API Response for calimero-node-7:
+  Success: True
+  Data: {'data': {'contextId': 'CUAq9gVwk5kXhJ95KHp2F1mE3swQjucoHaKvrVqFqZnm', 'memberPublicKey': 'AP6gPvTs1AvWEvLedArbuowHTM8F5KBDnTqD2LUwhg9o'}}
+  Endpoint: http://localhost:2534/admin-api/contexts/join
+  Payload Format: 0
+⚠️  No outputs configured for this step. Variables will not be exported automatically.
+   To export variables, add an 'outputs' section to your step configuration.
+✓ Step 'Join Context from Node 7' completed
+
+Executing Join Context from Node 8 (join_context)...
+✅ Automatic exports configuration validated: 2 variables defined
+Debug: Resolved values for join step:
+  context_id: CUAq9gVwk5kXhJ95KHp2F1mE3swQjucoHaKvrVqFqZnm
+  invitee_id: 9QZFoVQZ2hrQs1hAUCseLyKfg3WvLfs6X2YZotvBpwid
+  invitation: 2DKSXVCDcgfamBeg8rTiSrzeRYeXRvibPPZt6XU4UftEcy97yE
+  invitation type: <class 'str'>
+  invitation length: 162
+About to call join function...
+Join function returned: {'success': True, 'data': {'data': {'contextId': 'CUAq9gVwk5kXhJ95KHp2F1mE3swQjucoHaKvrVqFqZnm', 'memberPublicKey': 
+'9QZFoVQZ2hrQs1hAUCseLyKfg3WvLfs6X2YZotvBpwid'}}, 'endpoint': 'http://localhost:2535/admin-api/contexts/join', 'payload_format': 0}
+🔍 Join API Response for calimero-node-8:
+  Success: True
+  Data: {'data': {'contextId': 'CUAq9gVwk5kXhJ95KHp2F1mE3swQjucoHaKvrVqFqZnm', 'memberPublicKey': '9QZFoVQZ2hrQs1hAUCseLyKfg3WvLfs6X2YZotvBpwid'}}
+  Endpoint: http://localhost:2535/admin-api/contexts/join
+  Payload Format: 0
+⚠️  No outputs configured for this step. Variables will not be exported automatically.
+   To export variables, add an 'outputs' section to your step configuration.
+✓ Step 'Join Context from Node 8' completed
+
+Executing Wait for context sync (wait)...
+Waiting 3 seconds...
+✓ Step 'Wait for context sync' completed
+
+Executing Join Chat from Node 2 (call)...
+⚠️  Step ExecuteStep has no exportable variables defined
+⚠️  Execute step export configuration validation failed
+Debug: Resolved values for execute step:
+  context_id: CUAq9gVwk5kXhJ95KHp2F1mE3swQjucoHaKvrVqFqZnm
+  exec_type: None
+  method: join_chat
+  args: {'username': 'Alice'}
+  executor_public_key: HfZ47bqZcbQgsLwkP1CdFJDfHGD52seGtvj7q7KGSnSD
+🔍 Execute API Response for calimero-node-2:
+  Success: True
+  Data: {'jsonrpc': '2.0', 'id': 1, 'result': {'output': 'Successfully joined the chat'}}
+⚠️  No outputs configured for this step. Variables will not be exported automatically.
+   To export variables, add an 'outputs' section to your step configuration.
+✓ Step 'Join Chat from Node 2' completed
+
+Executing Join Chat from Node 3 (call)...
+⚠️  Step ExecuteStep has no exportable variables defined
+⚠️  Execute step export configuration validation failed
+Debug: Resolved values for execute step:
+  context_id: CUAq9gVwk5kXhJ95KHp2F1mE3swQjucoHaKvrVqFqZnm
+  exec_type: None
+  method: join_chat
+  args: {'username': 'Charlie'}
+  executor_public_key: Dd9LgA81FMVjvEL59yN38ccakG7hDeSPUKek4y19YCoZ
+🔍 Execute API Response for calimero-node-3:
+  Success: True
+  Data: {'jsonrpc': '2.0', 'id': 1, 'error': {'type': 'Uninitialized'}}
+JSON-RPC Error: Uninitialized - No details
+❌ Step 'Join Chat from Node 3' failed
+❌ Workflow steps failed - stopping workflow
+
+❌ Workflow failed!
+frandomovic@Frans-MacBook-Pro-2 workflows % 

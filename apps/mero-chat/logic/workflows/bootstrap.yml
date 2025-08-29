@@ -73,7 +73,7 @@ steps:
   # Step 4: Wait for identity creation to complete
   - name: Wait for Identity Creation
     type: wait
-    seconds: 5
+    seconds: 10
 
   # Step 5: Invite all nodes to join the context from Node 1
   - name: Invite Node 2 from Node 1
@@ -146,6 +146,11 @@ steps:
     outputs:
       invitation_8: invitation
 
+  # Wait after invitations
+  - name: Wait after Invitations
+    type: wait
+    seconds: 10
+
   # Step 6: Join the context from all other nodes
   - name: Join Context from Node 2
     type: join_context
@@ -154,12 +159,22 @@ steps:
     invitee_id: '{{public_key_2}}'
     invitation: '{{invitation_2}}'
 
+  # Wait for Node 2 context sync
+  - name: Wait for Node 2 Context Sync
+    type: wait
+    seconds: 60
+
   - name: Join Context from Node 3
     type: join_context
     node: calimero-node-3
     context_id: '{{context_id}}'
     invitee_id: '{{public_key_3}}'
     invitation: '{{invitation_3}}'
+
+  # Wait for Node 3 context sync
+  - name: Wait for Node 3 Context Sync
+    type: wait
+    seconds: 60
 
   - name: Join Context from Node 4
     type: join_context
@@ -168,12 +183,22 @@ steps:
     invitee_id: '{{public_key_4}}'
     invitation: '{{invitation_4}}'
 
+  # Wait for Node 4 context sync
+  - name: Wait for Node 4 Context Sync
+    type: wait
+    seconds: 60
+
   - name: Join Context from Node 5
     type: join_context
     node: calimero-node-5
     context_id: '{{context_id}}'
     invitee_id: '{{public_key_5}}'
     invitation: '{{invitation_5}}'
+
+  # Wait for Node 5 context sync
+  - name: Wait for Node 5 Context Sync
+    type: wait
+    seconds: 60
 
   - name: Join Context from Node 6
     type: join_context
@@ -182,12 +207,22 @@ steps:
     invitee_id: '{{public_key_6}}'
     invitation: '{{invitation_6}}'
 
+  # Wait for Node 6 context sync
+  - name: Wait for Node 6 Context Sync
+    type: wait
+    seconds: 60
+
   - name: Join Context from Node 7
     type: join_context
     node: calimero-node-7
     context_id: '{{context_id}}'
     invitee_id: '{{public_key_7}}'
     invitation: '{{invitation_7}}'
+
+  # Wait for Node 7 context sync
+  - name: Wait for Node 7 Context Sync
+    type: wait
+    seconds: 60
 
   - name: Join Context from Node 8
     type: join_context
@@ -196,9 +231,14 @@ steps:
     invitee_id: '{{public_key_8}}'
     invitation: '{{invitation_8}}'
 
+  # Wait for Node 8 context sync
+  - name: Wait for Node 8 Context Sync
+    type: wait
+    seconds: 60
+
   - name: Wait for context sync
     type: wait
-    seconds: 3
+    seconds: 60
 
   # Step 7: Join chat from all nodes
   - name: Join Chat from Node 2
@@ -264,10 +304,15 @@ steps:
     args:
       username: Henry
 
+  # Wait after chat joins
+  - name: Wait after Chat Joins
+    type: wait
+    seconds: 10
+
   # Step 8: Wait for join operations to complete
   - name: Wait for Join Operations
     type: wait
-    seconds: 3
+    seconds: 10
 
   # Step 9: Send messages from Node 1 to general channel
   - name: Send Message from Node 1 - Hello Node1
@@ -298,6 +343,11 @@ steps:
       timestamp: 1751652998
       sender_username: Bob
 
+  # Wait after Node 1 messages
+  - name: Wait after Node 1 Messages
+    type: wait
+    seconds: 10
+
   # Step 10: Send messages from Node 2
   - name: Send Message from Node 2 - Hello Node2
     type: call
@@ -326,6 +376,11 @@ steps:
       parent_message: null
       timestamp: 1751653001
       sender_username: Alice
+
+  # Wait after Node 2 messages
+  - name: Wait after Node 2 Messages
+    type: wait
+    seconds: 10
 
   # Step 11: Send messages from Node 3
   - name: Send Message from Node 3 - Hello Node3
@@ -356,6 +411,11 @@ steps:
       timestamp: 1751653003
       sender_username: Charlie
 
+  # Wait after Node 3 messages
+  - name: Wait after Node 3 Messages
+    type: wait
+    seconds: 10
+
   # Step 12: Send messages from Node 4
   - name: Send Message from Node 4 - Hello Node4
     type: call
@@ -384,6 +444,11 @@ steps:
       parent_message: null
       timestamp: 1751653005
       sender_username: David
+
+  # Wait after Node 4 messages
+  - name: Wait after Node 4 Messages
+    type: wait
+    seconds: 10
 
   # Step 13: Send messages from Node 5
   - name: Send Message from Node 5 - Hello Node5
@@ -414,6 +479,11 @@ steps:
       timestamp: 1751653007
       sender_username: Eve
 
+  # Wait after Node 5 messages
+  - name: Wait after Node 5 Messages
+    type: wait
+    seconds: 10
+
   # Step 14: Send messages from Node 6
   - name: Send Message from Node 6 - Hello Node6
     type: call
@@ -443,6 +513,11 @@ steps:
       timestamp: 1751653009
       sender_username: Frank
 
+  # Wait after Node 6 messages
+  - name: Wait after Node 6 Messages
+    type: wait
+    seconds: 10
+
   # Step 15: Send messages from Node 7
   - name: Send Message from Node 7 - Hello Node7
     type: call
@@ -471,6 +546,11 @@ steps:
       parent_message: null
       timestamp: 1751653011
       sender_username: Grace
+
+  # Wait after Node 7 messages
+  - name: Wait after Node 7 Messages
+    type: wait
+    seconds: 10
 
   # Step 16: Send messages from Node 8
   - name: Send Message from Node 8 - Hello Node8
@@ -504,7 +584,7 @@ steps:
   # Step 17: Wait for all messages to be sent
   - name: Wait for All Messages
     type: wait
-    seconds: 5
+    seconds: 10
 
   # Step 18: Get messages from each node
   - name: Get Messages from Node 1
