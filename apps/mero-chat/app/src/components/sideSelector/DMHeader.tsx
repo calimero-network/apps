@@ -1,7 +1,6 @@
 import { styled } from "styled-components";
 import StartDMPopup, { type CreateContextResult } from "../popups/StartDMPopup";
 import { useCallback } from "react";
-import { validateUserId } from "../../utils/validation";
 
 const Container = styled.div`
   display: flex;
@@ -42,8 +41,24 @@ interface DMHeaderProps {
 
 export default function DMHeader({ createDM, chatMembers }: DMHeaderProps) {
   const isValidIdentityId = useCallback((value: string) => {
-    return validateUserId(value);
-  }, []);
+    // Check if the value exists in chatMembers values
+    const userEntries = chatMembers instanceof Map ? Array.from(chatMembers.entries()) : Object.entries(chatMembers);
+    // @ts-expect-error chatMembers is a Map or an object
+    const usernames = userEntries.map(([_, username]) => username.toLowerCase());
+    const isMember = usernames.includes(value.toLowerCase());
+
+    if (!isMember) {
+      return {
+        isValid: false,
+        error: "User not member of this chat"
+      };
+    }
+
+    return {
+      isValid: true,
+      error: ""
+    };
+  }, [chatMembers]);
   
   return (
     <Container>
