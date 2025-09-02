@@ -326,21 +326,9 @@ steps:
         name: general
       message: hello node1
       parent_message: null
+      mentions: []
+      mentions_usernames: []
       timestamp: 1751652997
-      sender_username: Bob
-
-  - name: Send Message from Node 1 - Second Message
-    type: call
-    node: calimero-node-1
-    context_id: '{{context_id}}'
-    executor_public_key: '{{member_public_key}}'
-    method: send_message
-    args:
-      group:
-        name: general
-      message: second message from node1
-      parent_message: null
-      timestamp: 1751652998
       sender_username: Bob
 
   # Wait after Node 1 messages
@@ -360,21 +348,9 @@ steps:
         name: general
       message: hello node2
       parent_message: null
+      mentions: []
+      mentions_usernames: []
       timestamp: 1751653000
-      sender_username: Alice
-
-  - name: Send Message from Node 2 - Second Message
-    type: call
-    node: calimero-node-2
-    context_id: '{{context_id}}'
-    executor_public_key: '{{public_key_2}}'
-    method: send_message
-    args:
-      group:
-        name: general
-      message: second message from node2
-      parent_message: null
-      timestamp: 1751653001
       sender_username: Alice
 
   # Wait after Node 2 messages
@@ -394,21 +370,9 @@ steps:
         name: general
       message: hello node3
       parent_message: null
+      mentions: []
+      mentions_usernames: []
       timestamp: 1751653002
-      sender_username: Charlie
-
-  - name: Send Message from Node 3 - Second Message
-    type: call
-    node: calimero-node-3
-    context_id: '{{context_id}}'
-    executor_public_key: '{{public_key_3}}'
-    method: send_message
-    args:
-      group:
-        name: general
-      message: second message from node3
-      parent_message: null
-      timestamp: 1751653003
       sender_username: Charlie
 
   # Wait after Node 3 messages
@@ -428,21 +392,9 @@ steps:
         name: general
       message: hello node4
       parent_message: null
+      mentions: []
+      mentions_usernames: []
       timestamp: 1751653004
-      sender_username: David
-
-  - name: Send Message from Node 4 - Second Message
-    type: call
-    node: calimero-node-4
-    context_id: '{{context_id}}'
-    executor_public_key: '{{public_key_4}}'
-    method: send_message
-    args:
-      group:
-        name: general
-      message: second message from node4
-      parent_message: null
-      timestamp: 1751653005
       sender_username: David
 
   # Wait after Node 4 messages
@@ -462,21 +414,9 @@ steps:
         name: general
       message: hello node5
       parent_message: null
+      mentions: []
+      mentions_usernames: []
       timestamp: 1751653006
-      sender_username: Eve
-
-  - name: Send Message from Node 5 - Second Message
-    type: call
-    node: calimero-node-5
-    context_id: '{{context_id}}'
-    executor_public_key: '{{public_key_5}}'
-    method: send_message
-    args:
-      group:
-        name: general
-      message: second message from node5
-      parent_message: null
-      timestamp: 1751653007
       sender_username: Eve
 
   # Wait after Node 5 messages
@@ -496,21 +436,9 @@ steps:
         name: general
       message: hello node6
       parent_message: null
+      mentions: []
+      mentions_usernames: []
       timestamp: 1751653008
-      sender_username: Frank
-
-  - name: Send Message from Node 6 - Second Message
-    type: call
-    node: calimero-node-6
-    context_id: '{{context_id}}'
-    executor_public_key: '{{public_key_6}}'
-    method: send_message
-    args:
-      group:
-        name: general
-      message: second message from node6
-      parent_message: null
-      timestamp: 1751653009
       sender_username: Frank
 
   # Wait after Node 6 messages
@@ -530,21 +458,9 @@ steps:
         name: general
       message: hello node7
       parent_message: null
+      mentions: []
+      mentions_usernames: []
       timestamp: 1751653010
-      sender_username: Grace
-
-  - name: Send Message from Node 7 - Second Message
-    type: call
-    node: calimero-node-7
-    context_id: '{{context_id}}'
-    executor_public_key: '{{public_key_7}}'
-    method: send_message
-    args:
-      group:
-        name: general
-      message: second message from node7
-      parent_message: null
-      timestamp: 1751653011
       sender_username: Grace
 
   # Wait after Node 7 messages
@@ -564,21 +480,9 @@ steps:
         name: general
       message: hello node8
       parent_message: null
+      mentions: []
+      mentions_usernames: []
       timestamp: 1751653012
-      sender_username: Henry
-
-  - name: Send Message from Node 8 - Second Message
-    type: call
-    node: calimero-node-8
-    context_id: '{{context_id}}'
-    executor_public_key: '{{public_key_8}}'
-    method: send_message
-    args:
-      group:
-        name: general
-      message: second message from node8
-      parent_message: null
-      timestamp: 1751653013
       sender_username: Henry
 
   # Step 17: Wait for all messages to be sent
