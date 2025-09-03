@@ -12,7 +12,7 @@ steps:
   - name: Install Application on Node 1
     type: install_application
     node: calimero-node-1
-    url: https://calimero-only-peers-dev.s3.amazonaws.com/uploads/curb-new.wasm
+    path: "../logic/res/curb.wasm"
     dev: true
     outputs:
       app_id: applicationId
