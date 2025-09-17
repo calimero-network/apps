@@ -18,6 +18,7 @@ import {
   PenTool,
   Check,
   Upload,
+  MessageSquare,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from './ui/button';
@@ -37,6 +38,7 @@ import { useIcpAuth } from '../contexts/IcpAuthContext';
 import { ClientApiDataSource } from '../api/dataSource/ClientApiDataSource';
 import { blobClient, useCalimero } from '@calimero-network/calimero-client';
 import ConsentModal from './ConsentModal';
+import LegalChatbot from './LegalChatbot';
 
 interface SavedSignature {
   id: string;
@@ -118,6 +120,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
   const [savingToContext, setSavingToContext] = useState(false);
   const [showConsentModal, setShowConsentModal] = useState(false);
   const [consentLoading, setConsentLoading] = useState(false);
+  const [showChatbot, setShowChatbot] = useState(false);
 
   const documentService = new DocumentService();
   const { identity } = useIcpAuth();
@@ -726,6 +729,17 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
               Sign Document
             </Button>
 
+            {/* Legal Chatbot Button - Desktop Only */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowChatbot(true)}
+              className="hidden sm:flex items-center gap-2"
+            >
+              <MessageSquare size={16} />
+              Legal Chat
+            </Button>
+
             {/* Download Signed PDF Button - Desktop Only */}
             {documentSignatures.length > 0 && (
               <Button
@@ -1148,6 +1162,24 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
                       </div>
                     </Button>
 
+                    {/* Legal Chatbot */}
+                    <Button
+                      onClick={() => {
+                        setShowMobileActions(false);
+                        setShowChatbot(true);
+                      }}
+                      className="w-full flex items-center gap-3 p-4 text-left justify-start"
+                      variant="outline"
+                    >
+                      <MessageSquare size={20} />
+                      <div>
+                        <div className="font-medium">Legal Chatbot</div>
+                        <div className="text-sm text-muted-foreground">
+                          Ask legal questions about this document
+                        </div>
+                      </div>
+                    </Button>
+
                     {/* Download Signed PDF */}
                     {documentSignatures.length > 0 && (
                       <Button
@@ -1254,6 +1286,15 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
         agreementContextUserID={agreementContextUserID}
         onAccept={handleConsentAccept}
         onClose={handleConsentClose}
+      />
+
+      <LegalChatbot
+        isOpen={showChatbot}
+        onClose={() => setShowChatbot(false)}
+        documentID={documentId!}
+        contextId={contextId}
+        agreementContextID={agreementContextID}
+        agreementContextUserID={agreementContextUserID}
       />
     </>
   );

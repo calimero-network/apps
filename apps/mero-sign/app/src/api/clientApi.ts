@@ -22,6 +22,7 @@ export enum ClientMethod {
   SET_CONSENT = 'set_consent',
   HAS_CONSENTED = 'has_consented',
   IS_DEFAULT_PRIVATE_CONTEXT = 'is_default_private_context',
+  SEARCH_DOCUMENT_BY_EMBEDDING = 'search_document_by_embedding',
 }
 
 export interface SignatureRecord {
@@ -86,6 +87,8 @@ export interface DocumentInfo {
   status: DocumentStatus;
   pdf_blob_id: string;
   size: number;
+  embeddings?: number[]; // New: Vector embeddings from frontend
+  extracted_text?: string; // New: Extracted text from PDF
 }
 
 export interface Document {
@@ -98,6 +101,8 @@ export interface Document {
   hash: string;
   pdfBlobId: string;
   file?: File;
+  embeddings?: number[];
+  extractedText?: string;
 }
 
 export interface Agreement {
@@ -139,6 +144,9 @@ export interface ClientApi {
     hash: string,
     pdfBlobIdStr: string,
     fileSize: number,
+    embeddings?: number[],
+    extractedText?: string,
+    chunks?: any[],
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<string>;
@@ -183,4 +191,10 @@ export interface ClientApi {
     agreementContextUserID?: string,
   ): ApiResponse<boolean>;
   isDefaultPrivateContext(): ApiResponse<boolean>;
+  searchDocumentByEmbedding(
+    queryEmbedding: number[],
+    documentId: string,
+    agreementContextID?: string,
+    agreementContextUserID?: string,
+  ): ApiResponse<string>;
 }

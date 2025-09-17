@@ -1,6 +1,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import { jsPDF } from 'jspdf';
 import { PDFDocument } from 'pdf-lib';
+import { extractTextFromPDF } from './embeddingService';
 
 // Configure PDF.js worker for version 5.x
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.3.93/pdf.worker.min.mjs`;
@@ -247,3 +248,4 @@ class PDFService {
 }
 
 export const pdfService = new PDFService();
+export { extractTextFromPDF };

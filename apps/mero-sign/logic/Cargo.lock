@@ -108,21 +108,22 @@ dependencies = [
 
 [[package]]
 name = "calimero-sdk"
-version = "0.1.0"
-source = "git+https://github.com/calimero-network/core?branch=master#b0a5d8a38e44b2512e8c1446fb8d984247803b5b"
+version = "0.0.0"
+source = "git+https://github.com/calimero-network/core?branch=master#716c299d6b81db7496e4e22a4a480f2baf356cbd"
 dependencies = [
  "borsh 1.5.7",
  "bs58",
  "calimero-sdk-macros",
- "cfg-if",
+ "calimero-sys",
+ "calimero-wasm-abi",
  "serde",
  "serde_json",
 ]
 
 [[package]]
 name = "calimero-sdk-macros"
-version = "0.1.0"
-source = "git+https://github.com/calimero-network/core?branch=master#b0a5d8a38e44b2512e8c1446fb8d984247803b5b"
+version = "0.0.0"
+source = "git+https://github.com/calimero-network/core?branch=master#716c299d6b81db7496e4e22a4a480f2baf356cbd"
 dependencies = [
  "prettyplease",
  "proc-macro2",
@@ -133,8 +134,8 @@ dependencies = [
 
 [[package]]
 name = "calimero-storage"
-version = "0.1.0"
-source = "git+https://github.com/calimero-network/core?branch=master#b0a5d8a38e44b2512e8c1446fb8d984247803b5b"
+version = "0.0.0"
+source = "git+https://github.com/calimero-network/core?branch=master#716c299d6b81db7496e4e22a4a480f2baf356cbd"
 dependencies = [
  "borsh 1.5.7",
  "calimero-sdk",
@@ -151,12 +152,31 @@ dependencies = [
 
 [[package]]
 name = "calimero-storage-macros"
-version = "0.1.0"
-source = "git+https://github.com/calimero-network/core?branch=master#b0a5d8a38e44b2512e8c1446fb8d984247803b5b"
+version = "0.0.0"
+source = "git+https://github.com/calimero-network/core?branch=master#716c299d6b81db7496e4e22a4a480f2baf356cbd"
 dependencies = [
- "borsh 1.5.7",
  "quote",
  "syn 2.0.104",
+]
+
+[[package]]
+name = "calimero-sys"
+version = "0.0.0"
+source = "git+https://github.com/calimero-network/core?branch=master#716c299d6b81db7496e4e22a4a480f2baf356cbd"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
+name = "calimero-wasm-abi"
+version = "0.0.0"
+source = "git+https://github.com/calimero-network/core?branch=master#716c299d6b81db7496e4e22a4a480f2baf356cbd"
+dependencies = [
+ "proc-macro2",
+ "serde",
+ "serde_json",
+ "syn 2.0.104",
+ "thiserror",
 ]
 
 [[package]]

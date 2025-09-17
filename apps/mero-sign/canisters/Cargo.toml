@@ -1,0 +1,3 @@
+[workspace]
+members = ["merodocs_registry","llm_chatbot"]
+resolver = "2"

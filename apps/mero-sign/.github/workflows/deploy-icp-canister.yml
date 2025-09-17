@@ -1,4 +1,4 @@
-name: Deploy ICP Canister
+name: Deploy MeroDocs ICP Canisters
 
 on:
   push:
@@ -9,14 +9,15 @@ on:
 env:
   DFX_VERSION: "0.28.0"
   RUST_VERSION: "1.89.0"
+  CARGO_TERM_COLOR: always
 
 jobs:
   build-and-deploy:
-    name: Build and Deploy
+    name: Build and Deploy MeroDocs Canisters
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./merodocs_registry
+        working-directory: ./canisters
 
     steps:
       - name: Checkout code
@@ -38,7 +39,7 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            ./merodocs_registry/target/
+            ./canisters/target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install tools
@@ -66,22 +67,54 @@ jobs:
           # Set environment variable to suppress mainnet plaintext identity warning
           echo "DFX_WARNING=-mainnet_plaintext_identity" >> $GITHUB_ENV
 
-      - name: Build canister
+      - name: Build canisters
         run: |
           source "$HOME/.local/share/dfx/env"
+          # First pull dependencies
+          dfx deps pull
+          dfx deps init
+          # Build all canisters
           dfx build
-          cargo build --target wasm32-unknown-unknown --release -p backend
-          candid-extractor target/wasm32-unknown-unknown/release/backend.wasm > backend/backend.did
+          # Verify build artifacts exist
+          ls -la target/wasm32-unknown-unknown/release/
+          test -f target/wasm32-unknown-unknown/release/merodocs_registry.wasm
+          test -f target/wasm32-unknown-unknown/release/llm_chatbot.wasm
 
-      - name: Deploy canister
+      - name: Deploy canisters
         run: |
           source "$HOME/.local/share/dfx/env"
-          CYCLES=$(echo "1.0 * 1000000000000" | bc -l | cut -d. -f1)
+          # Check wallet balance
+          dfx wallet --network ic balance || echo "Warning: Could not check wallet balance"
+          # Calculate cycles for each canister (3T cycles total, split between canisters)
+          CYCLES=$(echo "3.0 * 1000000000000" | bc -l | cut -d. -f1)
+          echo "Deploying with $CYCLES cycles per canister"
+          # Deploy dependencies first
+          dfx deps deploy --network ic || echo "No dependencies to deploy"
+          # Deploy our canisters
           dfx deploy --network ic --with-cycles $CYCLES
 
       - name: Get canister info
         run: |
           source "$HOME/.local/share/dfx/env"
-          CANISTER_ID=$(dfx canister --network ic id backend)
-          echo "**Canister ID**: $CANISTER_ID" >> $GITHUB_STEP_SUMMARY
-          echo "**URL**: https://${CANISTER_ID}.icp0.io" >> $GITHUB_STEP_SUMMARY
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Get canister IDs and show deployment info
+          if dfx canister --network ic id merodocs_registry >/dev/null 2>&1; then
+            REGISTRY_CANISTER_ID=$(dfx canister --network ic id merodocs_registry)
+            echo "### MeroDocs Registry" >> $GITHUB_STEP_SUMMARY
+            echo "- **Canister ID**: \`$REGISTRY_CANISTER_ID\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Candid Interface**: https://${REGISTRY_CANISTER_ID}.icp0.io/_/candid" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if dfx canister --network ic id llm_chatbot >/dev/null 2>&1; then
+            CHATBOT_CANISTER_ID=$(dfx canister --network ic id llm_chatbot)
+            echo "### LLM Chatbot" >> $GITHUB_STEP_SUMMARY
+            echo "- **Canister ID**: \`$CHATBOT_CANISTER_ID\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Candid Interface**: https://${CHATBOT_CANISTER_ID}.icp0.io/_/candid" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Show deployment status
+          dfx canister --network ic status --all >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Could not retrieve canister status" >> $GITHUB_STEP_SUMMARY

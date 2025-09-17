@@ -1,4 +1,8 @@
-import { createBackendActor, getAuthClient } from './backendActor';
+import {
+  createMeroDocsRegistryActor,
+  getAuthClient,
+  createLLMChatbotActor,
+} from './backendActor';
 import { authService } from '../../contexts/IcpAuthContext';
 import {
   ContextRecord,
@@ -18,30 +22,42 @@ import {
   isBackendSuccess,
   bigintToDate,
 } from './utils';
+import { getNetworkConfig } from './utils';
 
 export const backendService = async (identity?: any) => {
   let identityToUse = identity;
 
   if (!identityToUse) {
-    try {
-      const uiState = authService.getAuthState();
-      if (uiState?.isAuthenticated && uiState.identity) {
-        identityToUse = uiState.identity;
+    const { network } = getNetworkConfig();
+    if (network === 'local') {
+      const localIdentity =
+        process.env.DFX_IDENTITY || import.meta.env.VITE_DFX_IDENTITY;
+      if (localIdentity) {
+        identityToUse = localIdentity;
       } else {
-        const authClient = await getAuthClient();
-        if (await authClient.isAuthenticated()) {
-          identityToUse = await authClient.getIdentity();
-        }
+        console.debug('Local network: no DFX_IDENTITY set, using anonymous');
       }
-    } catch (err) {
-      console.debug(
-        'backendService: failed to resolve identity from authService/getAuthClient',
-        err,
-      );
+    } else {
+      try {
+        const uiState = authService.getAuthState();
+        if (uiState?.isAuthenticated && uiState.identity) {
+          identityToUse = uiState.identity;
+        } else {
+          const authClient = await getAuthClient();
+          if (await authClient.isAuthenticated()) {
+            identityToUse = await authClient.getIdentity();
+          }
+        }
+      } catch (err) {
+        console.debug(
+          'backendService: failed to resolve identity from authService/getAuthClient',
+          err,
+        );
+      }
     }
   }
 
-  const actor = await createBackendActor(identityToUse);
+  const actor = await createMeroDocsRegistryActor(identityToUse);
 
   return {
     raw: {
@@ -476,6 +492,57 @@ export const backendService = async (identity?: any) => {
       }
 
       return status;
+    },
+  };
+};
+
+export const llmChatbotService = async (identity?: any) => {
+  let identityToUse = identity;
+
+  if (!identityToUse) {
+    const { network } = getNetworkConfig();
+    if (network === 'local') {
+      const localIdentity =
+        process.env.DFX_IDENTITY || import.meta.env.VITE_DFX_IDENTITY;
+      if (localIdentity) {
+        identityToUse = localIdentity;
+      } else {
+        console.debug('Local network: no DFX_IDENTITY set, using anonymous');
+      }
+    } else {
+      try {
+        const uiState = authService.getAuthState();
+        if (uiState?.isAuthenticated && uiState.identity) {
+          identityToUse = uiState.identity;
+        } else {
+          const authClient = await getAuthClient();
+          if (await authClient.isAuthenticated()) {
+            identityToUse = await authClient.getIdentity();
+          }
+        }
+      } catch (err) {
+        console.debug(
+          'llmChatbotService: failed to resolve identity from authService/getAuthClient',
+          err,
+        );
+      }
+    }
+  }
+
+  const actor = await createLLMChatbotActor(identityToUse);
+
+  return {
+    raw: {
+      getRagResponse: (prompt: string, context: string, history: any[]) =>
+        actor.get_rag_response(prompt, context, history) as Promise<string>,
+    },
+
+    async getRagResponse(
+      prompt: string,
+      context: string,
+      history: any[],
+    ): Promise<string> {
+      return await this.raw.getRagResponse(prompt, context, history);
     },
   };
 };

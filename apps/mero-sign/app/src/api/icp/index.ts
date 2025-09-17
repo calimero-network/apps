@@ -1,6 +1,6 @@
 // Main services
 export { backendService } from './backendService';
-export { createBackendActor } from './backendActor';
+export { createMeroDocsRegistryActor } from './backendActor';
 
 // Types
 export * from './types';

@@ -948,6 +948,9 @@ export class ClientApiDataSource implements ClientApi {
     hash: string,
     pdfBlobIdStr: string,
     fileSize: number,
+    embeddings?: number[],
+    extractedText?: string,
+    chunks?: any[], // Add chunks parameter
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): Promise<any> {
@@ -969,6 +972,9 @@ export class ClientApiDataSource implements ClientApi {
           hash,
           pdf_blob_id_str: pdfBlobIdStr,
           file_size: fileSize,
+          embeddings, 
+          extracted_text: extractedText, 
+          chunks, 
         },
       } as RpcQueryParams<any>);
 
@@ -1188,6 +1194,61 @@ export class ClientApiDataSource implements ClientApi {
     } catch (error: any) {
       console.error(
         'ClientApiDataSource: Error in markParticipantSigned:',
+        error,
+      );
+      return {
+        data: null,
+        error: {
+          code: error.code || 500,
+          message: getErrorMessage(error),
+        },
+      };
+    }
+  }
+
+  async searchDocumentByEmbedding(
+    queryEmbedding: number[],
+    documentId: string,
+    agreementContextID?: string,
+    agreementContextUserID?: string,
+  ): ApiResponse<string> {
+    try {
+      const authConfig =
+        agreementContextID && agreementContextUserID
+          ? getContextSpecificAuthConfig(
+              agreementContextID,
+              agreementContextUserID,
+            )
+          : getAuthConfig();
+
+      const response = await rpcClient.execute({
+        ...authConfig,
+        method: ClientMethod.SEARCH_DOCUMENT_BY_EMBEDDING,
+        argsJson: {
+          query_embedding: queryEmbedding,
+          document_id: documentId,
+        },
+      } as RpcQueryParams<any>);
+
+      if (response?.error) {
+        return {
+          data: undefined,
+          error: {
+            code: response.error.code ?? 500,
+            message: getErrorMessage(response.error),
+          },
+        };
+      }
+
+      const data = response.result?.output || response.result;
+
+      return {
+        data: data as string, // Return the context string
+        error: null,
+      };
+    } catch (error: any) {
+      console.error(
+        'ClientApiDataSource: Error in searchDocumentByEmbedding:',
         error,
       );
       return {

@@ -74,6 +74,8 @@ interface FileUpload {
   uploaded: boolean;
   error?: string;
   blob_id?: string;
+  stage: 'uploading' | 'generating-embeddings' | 'storing' | 'complete';
+  stageProgress: number;
 }
 
 type NotificationType = 'success' | 'error';
@@ -138,7 +140,21 @@ const generateInvitePayload = async (
   }
 };
 
-// Helper functions
+const getStageDescription = (stage: FileUpload['stage']): string => {
+  switch (stage) {
+    case 'uploading':
+      return 'Uploading file...';
+    case 'generating-embeddings':
+      return 'Generating embeddings...';
+    case 'storing':
+      return 'Storing document...';
+    case 'complete':
+      return 'Complete';
+    default:
+      return 'Processing...';
+  }
+};
+
 const calculateFileHash = async (data: Uint8Array): Promise<string> => {
   const buffer = new Uint8Array(data);
   const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
@@ -359,68 +375,85 @@ const AgreementPage: React.FC = () => {
           uploaded: false,
           error: undefined,
           blob_id: undefined,
+          stage: 'uploading',
+          stageProgress: 0,
         },
       ]);
 
       try {
-        const result = await blobClient.uploadBlob(file, (progress: number) => {
-          setUploadFiles((prev) =>
-            prev.map((f) =>
-              f.file && f.file.name === file.name ? { ...f, progress } : f,
-            ),
-          );
-        });
+        const response = await documentService.uploadDocument(
+          currentContextId,
+          file.name,
+          file,
+          agreementContextID || undefined,
+          agreementContextUserID || undefined,
+          (blobProgress: number) => {
+            const totalProgress = Math.min(blobProgress * 0.5, 50);
+            setUploadFiles((prev) =>
+              prev.map((f) =>
+                f.file && f.file.name === file.name
+                  ? {
+                      ...f,
+                      progress: totalProgress,
+                      stageProgress: blobProgress,
+                      stage: 'uploading' as const,
+                    }
+                  : f,
+              ),
+            );
+          },
 
-        if (result.error) {
+          (embeddingProgress: number) => {
+            const totalProgress = 50 + Math.min(embeddingProgress * 0.3, 30);
+            setUploadFiles((prev) =>
+              prev.map((f) =>
+                f.file && f.file.name === file.name
+                  ? {
+                      ...f,
+                      progress: totalProgress,
+                      stageProgress: embeddingProgress,
+                      stage: 'generating-embeddings' as const,
+                    }
+                  : f,
+              ),
+            );
+          },
+
+          () => {
+            setUploadFiles((prev) =>
+              prev.map((f) =>
+                f.file && f.file.name === file.name
+                  ? {
+                      ...f,
+                      progress: 85,
+                      stageProgress: 50,
+                      stage: 'storing' as const,
+                    }
+                  : f,
+              ),
+            );
+          },
+        );
+
+        if (response.error) {
           setUploadFiles((prev) =>
             prev.map((f) =>
               f.file && f.file.name === file.name
-                ? { ...f, uploading: false, error: result.error.message }
+                ? {
+                    ...f,
+                    uploading: false,
+                    error: response.error.message,
+                    stage: 'complete' as const,
+                    stageProgress: 0,
+                  }
                 : f,
             ),
           );
           setUploading(false);
-          setError(result.error.message);
-          console.error(`Failed to upload ${file.name}:`, result.error);
+          setError(response.error.message);
+          console.error(`Failed to upload ${file.name}:`, response.error);
           return;
         }
-        let blobId: string | undefined;
-
-        if (result && result.data && typeof result.data.blobId === 'string') {
-          blobId = result.data.blobId;
-        }
-
-        if (!blobId) {
-          const errorMsg = 'Upload succeeded but no blob ID returned';
-          console.error('uploadBlob result structure:', result);
-          setUploadFiles((prev) =>
-            prev.map((f) => ({
-              ...f,
-              uploading: false,
-              error: errorMsg,
-            })),
-          );
-          setUploading(false);
-          setError(errorMsg);
-          console.error(`Failed to upload ${file.name}:`, errorMsg);
-          return;
-        }
-
-        // Calculate hash from file for verification
-        const arrayBuffer = await file.arrayBuffer();
-        const pdfData = new Uint8Array(arrayBuffer);
-        const hash = await calculateFileHash(pdfData);
-
-        // Register the document with the backend using the blob ID
-        const response = await clientApiService.uploadDocument(
-          currentContextId,
-          file.name,
-          hash,
-          blobId,
-          file.size,
-          agreementContextID || undefined,
-          agreementContextUserID || undefined,
-        );
 
         setUploadFiles((prev) =>
           prev.map((f) =>
@@ -430,7 +463,8 @@ const AgreementPage: React.FC = () => {
                   uploading: false,
                   uploaded: true,
                   progress: 100,
-                  blob_id: blobId,
+                  stage: 'complete' as const,
+                  stageProgress: 100,
                 }
               : f,
           ),
@@ -449,19 +483,15 @@ const AgreementPage: React.FC = () => {
             ...f,
             uploading: false,
             error: `Upload error: ${error}`,
+            stage: 'complete' as const,
+            stageProgress: 0,
           })),
         );
         setUploading(false);
         setError(`Upload error: ${error}`);
       }
     },
-    [
-      app,
-      currentContextId,
-      loadDocuments,
-      showNotification,
-      clientApiService,
-    ],
+    [app, currentContextId, loadDocuments, showNotification, documentService],
   );
 
   const handleUploadClick = useCallback(() => {
@@ -1323,7 +1353,7 @@ const AgreementPage: React.FC = () => {
                             ? 'Complete'
                             : fileUpload.error
                               ? 'Error'
-                              : `${Math.round(fileUpload.progress)}%`}
+                              : `${getStageDescription(fileUpload.stage)} - ${Math.round(fileUpload.progress)}%`}
                         </span>
                       </div>
                       <div className="w-full bg-muted rounded-full h-2">
@@ -1336,7 +1366,7 @@ const AgreementPage: React.FC = () => {
                                 : 'bg-primary'
                           }`}
                           style={{
-                            width: `${fileUpload.uploaded ? 100 : fileUpload.progress}%`,
+                            width: `${fileUpload.uploaded ? 100 : fileUpload.stageProgress ?? fileUpload.progress}%`,
                           }}
                         />
                       </div>

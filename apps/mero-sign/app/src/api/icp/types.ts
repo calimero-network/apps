@@ -1,6 +1,7 @@
 // Backend Result types
-export type BackendResult<T> = { Ok: T } | { Err: Error };
+export type BackendError = Record<string, string>; // Added: Define BackendError as Record<string, string>
 
+export type BackendResult<T> = { Ok: T } | { Err: BackendError };
 export interface Error {
   InvalidInput?: string;
   NotFound?: null;

@@ -2,6 +2,7 @@ import { ClientApiDataSource } from './dataSource/ClientApiDataSource';
 import { DocumentInfo, Document } from './clientApi';
 import { blobClient } from '@calimero-network/calimero-client';
 import { backendService } from './icp/backendService';
+import { processPDFAndGenerateEmbeddings } from '../services/embeddingService';
 
 export class DocumentService {
   private clientApi: ClientApiDataSource;
@@ -16,11 +17,17 @@ export class DocumentService {
     file: File,
     agreementContextID?: string,
     agreementContextUserID?: string,
-    onProgress?: (progress: number) => void,
+    onBlobProgress?: (progress: number) => void,
+    onEmbeddingProgress?: (progress: number) => void,
+    onStorageProgress?: () => void,
     icpIdentity?: any,
   ): Promise<{ data?: string; error?: any }> {
     try {
-      const blobResponse = await blobClient.uploadBlob(file, onProgress, '');
+      const blobResponse = await blobClient.uploadBlob(
+        file,
+        onBlobProgress,
+        '',
+      );
 
       if (blobResponse.error) {
         console.error(
@@ -40,13 +47,44 @@ export class DocumentService {
       const pdfData = new Uint8Array(arrayBuffer);
       const hash = await this.calculateFileHash(pdfData);
 
-      // Register the document with the backend using the blob ID
+      let embeddings: number[] | undefined;
+      let extractedText: string | undefined;
+      let chunks: any[] | undefined;
+      try {
+        onEmbeddingProgress?.(0);
+
+        onEmbeddingProgress?.(20);
+        const {
+          text,
+          fullTextEmbedding,
+          chunks: documentChunks,
+        } = await processPDFAndGenerateEmbeddings(file);
+
+        onEmbeddingProgress?.(100);
+
+        extractedText = text;
+        embeddings = fullTextEmbedding;
+        chunks = documentChunks;
+      } catch (embeddingError) {
+        console.warn(
+          'Embedding generation failed, proceeding without embeddings:',
+          embeddingError,
+        );
+        onEmbeddingProgress?.(100);
+      }
+
+      // Report start of storage
+      onStorageProgress?.();
+
       const response = await this.clientApi.uploadDocument(
         contextId,
         name,
         hash,
         blobResponse.data.blobId,
         file.size,
+        embeddings,
+        extractedText,
+        chunks,
         agreementContextID,
         agreementContextUserID,
       );
@@ -97,7 +135,7 @@ export class DocumentService {
     agreementContextID?: string,
     agreementContextUserID?: string,
     onProgress?: (progress: number) => void,
-    icpIdentity?: any, // Pass ICP identity from outside
+    icpIdentity?: any,
   ): Promise<{ data?: void; error?: any }> {
     try {
       // Upload the new signed PDF via blob API
@@ -206,6 +244,33 @@ export class DocumentService {
         verified: false,
         message: 'Verification failed due to an error.',
       };
+    }
+  }
+
+  async searchDocumentByEmbedding(
+    queryEmbedding: number[],
+    documentId: string,
+    agreementContextID?: string,
+    agreementContextUserID?: string,
+  ): Promise<{ data?: string; error?: any }> {
+    try {
+      const response = await this.clientApi.searchDocumentByEmbedding(
+        queryEmbedding,
+        documentId,
+        agreementContextID,
+        agreementContextUserID,
+      );
+
+      return {
+        data: response.data || undefined,
+        error: response.error,
+      };
+    } catch (error) {
+      console.error(
+        'DocumentService: Error in searchDocumentsByEmbedding:',
+        error,
+      );
+      return { error: { message: `Search error: ${error}` } };
     }
   }
 

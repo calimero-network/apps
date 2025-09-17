@@ -71,6 +71,17 @@ pub enum ParticipantRole {
     Unknown,
 }
 
+/// Document chunk with its embedding
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct DocumentChunk {
+    pub text: String,
+    pub embedding: Vec<f32>,
+    pub start_position: usize,
+    pub end_position: usize,
+}
+
 /// Document information
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -85,6 +96,9 @@ pub struct DocumentInfo {
     #[serde(serialize_with = "serialize_blob_id_bytes")]
     pub pdf_blob_id: [u8; 32],
     pub size: u64,
+    pub embeddings: Option<Vec<f32>>,
+    pub extracted_text: Option<String>,
+    pub chunks: Option<Vec<DocumentChunk>>,
 }
 
 /// Document status tracking
@@ -497,6 +511,9 @@ impl MeroDocsState {
         hash: String,
         pdf_blob_id_str: String,
         file_size: u64,
+        embeddings: Option<Vec<f32>>,
+        extracted_text: Option<String>,
+        chunks: Option<Vec<DocumentChunk>>,
     ) -> Result<String, String> {
         let document_id = format!("doc_{}_{}", env::time_now(), name);
 
@@ -526,6 +543,9 @@ impl MeroDocsState {
             status: DocumentStatus::Pending,
             pdf_blob_id: pdf_blob_id_bytes,
             size: file_size,
+            embeddings,
+            extracted_text,
+            chunks,
         };
 
         self.documents
@@ -906,5 +926,146 @@ impl MeroDocsState {
         } else {
             Err("Cannot resolve private identity from shared context".to_string())
         }
+    }
+
+    pub fn search_document_by_embedding(
+        &self,
+        query_embedding: Vec<f32>,
+        document_id: String,
+    ) -> Result<String, String> {
+        let document = match self.documents.get(&document_id) {
+            Ok(Some(doc)) => doc,
+            Ok(None) => return Err(format!("Document with ID '{}' not found", document_id)),
+            Err(e) => return Err(format!("Failed to access document: {:?}", e)),
+        };
+
+        if let Some(chunks) = &document.chunks {
+            if chunks.is_empty() {
+                return Err("Document has no chunks for semantic search".to_string());
+            }
+
+            if chunks[0].embedding.len() != query_embedding.len() {
+                return Err(format!(
+                    "Embedding dimension mismatch: query={}, document chunks={}",
+                    query_embedding.len(),
+                    chunks[0].embedding.len()
+                ));
+            }
+
+            let mut chunk_similarities: Vec<(&DocumentChunk, f32)> = chunks
+                .iter()
+                .map(|chunk| {
+                    let similarity = cosine_similarity(&query_embedding, &chunk.embedding);
+                    (chunk, similarity)
+                })
+                .filter(|(_, similarity)| *similarity > 0.1)
+                .collect();
+
+            if chunk_similarities.is_empty() {
+                return Ok(format!(
+                    "Document: {}\nNo relevant sections found for your query. The document may not contain information related to your question.",
+                    document.name
+                ));
+            }
+
+            chunk_similarities
+                .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+            let top_chunks: Vec<String> = chunk_similarities
+                .into_iter()
+                .take(3)
+                .map(|(chunk, similarity)| {
+                    let clean_text = chunk
+                        .text
+                        .trim()
+                        .replace('\n', " ")
+                        .replace('\r', " ")
+                        .replace("  ", " ");
+
+                    let max_chars = if similarity > 0.5 {
+                        300
+                    } else if similarity > 0.3 {
+                        200
+                    } else {
+                        150
+                    };
+
+                    let display_text = if clean_text.len() > max_chars {
+                        format!("{}...", &clean_text[..max_chars])
+                    } else {
+                        clean_text
+                    };
+
+                    format!("[Relevance: {:.2}] {}", similarity, display_text)
+                })
+                .collect();
+
+            return Ok(format!(
+                "Document: {}\nMost relevant sections:\n\n{}",
+                document.name,
+                top_chunks.join("\n\n")
+            ));
+        }
+
+        let doc_embedding = match &document.embeddings {
+            Some(embedding) => embedding,
+            None => return Err("Document has no embeddings for semantic search".to_string()),
+        };
+
+        if doc_embedding.len() != query_embedding.len() {
+            return Err(format!(
+                "Embedding dimension mismatch: query={}, document={}",
+                query_embedding.len(),
+                doc_embedding.len()
+            ));
+        }
+
+        let similarity = cosine_similarity(&query_embedding, doc_embedding);
+
+        if similarity < 0.05 {
+            return Ok(format!(
+                "Document: {} (Low relevance: {:.2})\nNo highly relevant content found for your query.",
+                document.name, similarity
+            ));
+        }
+
+        let text_snippet = if let Some(ref full_text) = document.extracted_text {
+            let clean_text = full_text
+                .replace('\n', " ")
+                .replace('\r', " ")
+                .replace("  ", " ");
+
+            let max_chars = if similarity > 0.4 {
+                400
+            } else if similarity > 0.2 {
+                250
+            } else {
+                150
+            };
+
+            if clean_text.len() > max_chars {
+                format!("{}...", &clean_text[..max_chars])
+            } else {
+                clean_text
+            }
+        } else {
+            format!("Document: {} (No extracted text available)", document.name)
+        };
+
+        Ok(format!(
+            "Document: {} (Similarity: {:.2})\n{}",
+            document.name, similarity, text_snippet
+        ))
+    }
+}
+
+fn cosine_similarity(a: &Vec<f32>, b: &Vec<f32>) -> f32 {
+    let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+    let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if norm_a == 0.0 || norm_b == 0.0 {
+        0.0
+    } else {
+        dot_product / (norm_a * norm_b)
     }
 }

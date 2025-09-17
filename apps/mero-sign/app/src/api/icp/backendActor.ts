@@ -1,16 +1,21 @@
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { AuthClient } from '@dfinity/auth-client';
-import { idlFactory } from '../../../../merodocs_registry/src/declarations/backend/backend.did.js';
+import { idlFactory as merodocs_registry_idlFactory } from '../../../../canisters/src/declarations/merodocs_registry/merodocs_registry.did.js';
+import { idlFactory as llm_chatbot_idlFactory } from '../../../../canisters/src/declarations/llm_chatbot/llm_chatbot.did.js';
 import { validateEnvironment, getNetworkConfig } from './utils';
 
-// Validate environment on import
 validateEnvironment();
 
-const { network, backendCanisterId, isMainnet, hostUrl, identityProvider } =
-  getNetworkConfig();
+const { network, hostUrl, identityProvider } = getNetworkConfig();
 
-export async function createBackendActor(identity?: any) {
+const LLM_CHATBOT_CANISTER_ID =
+  import.meta.env.VITE_LLM_CHATBOT_CANISTER_ID || 'ulvla-h7777-77774-qaacq-cai';
+const MERODOCS_REGISTRY_CANISTER_ID =
+  import.meta.env.VITE_MERODOCS_REGISTRY_CANISTER_ID ||
+  'ucwa4-rx777-77774-qaada-cai';
+
+async function createAgent(identity?: any): Promise<HttpAgent> {
   const agent = await HttpAgent.create({
     identity,
     host: hostUrl,
@@ -21,31 +26,43 @@ export async function createBackendActor(identity?: any) {
       await agent.fetchRootKey();
     } catch (err) {
       console.warn(
-        ' Unable to fetch root key. Check if local replica is running:',
+        'Unable to fetch root key. Check if local replica is running:',
         err,
       );
     }
   }
 
-  const canisterIdToUse = backendCanisterId;
+  return agent;
+}
+
+function validateCanisterId(canisterId: string, canisterName: string): void {
   try {
-    Principal.fromText(canisterIdToUse);
+    Principal.fromText(canisterId);
   } catch (err) {
-    console.error(
-      'Invalid canister id provided to createBackendActor:',
-      canisterIdToUse,
-    );
-    console.error(
-      'Ensure VITE_BACKEND_CANISTER_ID (or your network config) contains the correct canister principal (use `dfx canister id backend` for local).',
-    );
+    console.error(`Invalid canister ID for ${canisterName}:`, canisterId);
     throw new Error(
-      `Invalid canister id for network "${network}": ${String(canisterIdToUse)}`,
+      `Invalid canister ID for ${canisterName} on network "${network}": ${canisterId}`,
     );
   }
+}
 
-  return Actor.createActor(idlFactory, {
+export async function createMeroDocsRegistryActor(identity?: any) {
+  const agent = await createAgent(identity);
+  validateCanisterId(MERODOCS_REGISTRY_CANISTER_ID, 'merodocs_registry');
+
+  return Actor.createActor(merodocs_registry_idlFactory, {
     agent,
-    canisterId: canisterIdToUse,
+    canisterId: MERODOCS_REGISTRY_CANISTER_ID,
+  });
+}
+
+export async function createLLMChatbotActor(identity?: any) {
+  const agent = await createAgent(identity);
+  validateCanisterId(LLM_CHATBOT_CANISTER_ID, 'llm_chatbot');
+
+  return Actor.createActor(llm_chatbot_idlFactory, {
+    agent,
+    canisterId: LLM_CHATBOT_CANISTER_ID,
   });
 }
 
@@ -68,7 +85,7 @@ export async function loginWithInternetIdentity(): Promise<boolean> {
         resolve(true);
       },
       onError: (error) => {
-        console.error('❌ Internet Identity login failed:', error);
+        console.error('Internet Identity login failed:', error);
         resolve(false);
       },
     });
