@@ -9,7 +9,6 @@ on:
 env:
   DFX_VERSION: "0.28.0"
   RUST_VERSION: "1.89.0"
-  CARGO_TERM_COLOR: always
 
 jobs:
   build-and-deploy:
@@ -70,51 +69,42 @@ jobs:
       - name: Build canisters
         run: |
           source "$HOME/.local/share/dfx/env"
-          # First pull dependencies
+          # Pull dependencies first
           dfx deps pull
           dfx deps init
-          # Build all canisters
-          dfx build
-          # Verify build artifacts exist
-          ls -la target/wasm32-unknown-unknown/release/
-          test -f target/wasm32-unknown-unknown/release/merodocs_registry.wasm
-          test -f target/wasm32-unknown-unknown/release/llm_chatbot.wasm
+          # Create canisters if they don't exist
+          dfx canister create --network ic merodocs_registry || echo "merodocs_registry already exists"
+          dfx canister create --network ic llm_chatbot || echo "llm_chatbot already exists"
+          # Wait for canister registration to complete
+          sleep 10
+          # Verify canister IDs are available
+          echo "Verifying canister IDs..."
+          dfx canister id merodocs_registry --network ic || echo "merodocs_registry ID not found"
+          dfx canister id llm_chatbot --network ic || echo "llm_chatbot ID not found"
+          # Show canister_ids.json if it exists
+          if [ -f "canister_ids.json" ]; then
+            echo "canister_ids.json contents:"
+            cat canister_ids.json
+          fi
+          # Build canisters with network flag
+          dfx build --network ic
+          cargo build --target wasm32-unknown-unknown --release -p merodocs_registry
+          cargo build --target wasm32-unknown-unknown --release -p llm_chatbot
+          candid-extractor target/wasm32-unknown-unknown/release/merodocs_registry.wasm > merodocs_registry/merodocs_registry.did
+          candid-extractor target/wasm32-unknown-unknown/release/llm_chatbot.wasm > llm_chatbot/llm_chatbot.did
 
       - name: Deploy canisters
         run: |
           source "$HOME/.local/share/dfx/env"
-          # Check wallet balance
-          dfx wallet --network ic balance || echo "Warning: Could not check wallet balance"
-          # Calculate cycles for each canister (3T cycles total, split between canisters)
-          CYCLES=$(echo "3.0 * 1000000000000" | bc -l | cut -d. -f1)
-          echo "Deploying with $CYCLES cycles per canister"
-          # Deploy dependencies first
-          dfx deps deploy --network ic || echo "No dependencies to deploy"
-          # Deploy our canisters
+          CYCLES=$(echo "2.0 * 1000000000000" | bc -l | cut -d. -f1)
           dfx deploy --network ic --with-cycles $CYCLES
 
       - name: Get canister info
         run: |
           source "$HOME/.local/share/dfx/env"
-          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Get canister IDs and show deployment info
-          if dfx canister --network ic id merodocs_registry >/dev/null 2>&1; then
-            REGISTRY_CANISTER_ID=$(dfx canister --network ic id merodocs_registry)
-            echo "### MeroDocs Registry" >> $GITHUB_STEP_SUMMARY
-            echo "- **Canister ID**: \`$REGISTRY_CANISTER_ID\`" >> $GITHUB_STEP_SUMMARY
-            echo "- **Candid Interface**: https://${REGISTRY_CANISTER_ID}.icp0.io/_/candid" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          if dfx canister --network ic id llm_chatbot >/dev/null 2>&1; then
-            CHATBOT_CANISTER_ID=$(dfx canister --network ic id llm_chatbot)
-            echo "### LLM Chatbot" >> $GITHUB_STEP_SUMMARY
-            echo "- **Canister ID**: \`$CHATBOT_CANISTER_ID\`" >> $GITHUB_STEP_SUMMARY
-            echo "- **Candid Interface**: https://${CHATBOT_CANISTER_ID}.icp0.io/_/candid" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          # Show deployment status
-          dfx canister --network ic status --all >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Could not retrieve canister status" >> $GITHUB_STEP_SUMMARY
+          REGISTRY_CANISTER_ID=$(dfx canister --network ic id merodocs_registry)
+          CHATBOT_CANISTER_ID=$(dfx canister --network ic id llm_chatbot)
+          echo "**MeroDocs Registry Canister ID**: $REGISTRY_CANISTER_ID" >> $GITHUB_STEP_SUMMARY
+          echo "**Registry URL**: https://${REGISTRY_CANISTER_ID}.icp0.io" >> $GITHUB_STEP_SUMMARY
+          echo "**LLM Chatbot Canister ID**: $CHATBOT_CANISTER_ID" >> $GITHUB_STEP_SUMMARY
+          echo "**Chatbot URL**: https://${CHATBOT_CANISTER_ID}.icp0.io" >> $GITHUB_STEP_SUMMARY
