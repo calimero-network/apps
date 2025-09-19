@@ -6,16 +6,23 @@ and publicly attest document integrity via the **Internet Computer (ICP)** — a
 
 ---
 
-## Live Application  
+## Live Application
+
 🔗 [MeroDocs App](https://mero-docs.vercel.app)
 
 ---
 
-## ICP Mainnet Deployment  
+## ICP Mainnet Deployment
 
-**Canister Backend**  
-- **Canister ID:** `na3u2-6iaaa-aaaac-qbtcq-cai`  
-- **Candid Interface:** [Backend Canister](https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=na3u2-6iaaa-aaaac-qbtcq-cai)
+**MeroDocs Registry Canister**
+
+- **Canister ID:** `mnklv-lyaaa-aaaas-qbzhq-cai`
+- **Candid interface:** [MeroDocs Interface](https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=mnklv-lyaaa-aaaas-qbzhq-cai)
+
+**LLM Chatbot Canister**
+
+- **Canister ID:** `oqxf5-yqaaa-aaaas-qbzia-cai`
+- **Candid interface:** [LLM Interface](https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=oqxf5-yqaaa-aaaas-qbzia-cai)
 
 ---
 
@@ -60,10 +67,26 @@ The signature library ensures both convenience and security, allowing users to m
 - After signing:
   - The **signed PDF** is saved back into the context
   - The **final document hash** is recorded on ICP
-- A **“Verify on ICP”** button enables:
+- A **"Verify on ICP"** button enables:
   - Recomputing the local PDF hash
   - Comparing it with the on-chain value
   - Confirms whether the document matches the recorded state or has been tampered with
+
+### AI Legal Chatbot (Powered by ICP_LLM)
+
+User can now use **AI-powered legal chatbot** integrated with **ICP_LLM**, leveraging **Llama 3.1 8B parameter model** for document analysis. This feature maintains user privacy by storing all data locally on calimero code and processing all prompts using ICP_LLM .
+
+- **Document Upload & Embedding Generation**: When a user uploads a document (e.g., PDF), the system generates embeddings and store them on the Calimero node. These embeddings capture the semantic content of the document and are securely stored within the user's private context—never leaving the node or being exposed to external parties.
+- **Chatbot Interaction**: Users can query the chatbot about uploaded documents. When a prompt is submitted:
+
+  - The system retrieves the **top relevant embeddings** from the stored document data on the node.
+  - These embeddings, along with the user's prompt and a few previous conversation messages, are sent as context to **ICP_LLM** running on the Internet Computer.
+  - ICP_LLM processes the query using **Llama 3.1 8B model**, generating legal insights, summaries, or answers based on the document content.
+  - Responses are returned to the user, with all processing ensuring that raw document content remains private and encrypted within Calimero.
+
+- **Privacy-First Design**: Only anonymized embeddings and prompts are transmitted to ICP_LLM; the original document text is never shared. This allows for powerful AI assistance while upholding end-to-end privacy and compliance with data protection standards.
+
+The AI legal chatbot enhances document collaboration by providing instant, AI-driven legal analysis, question-answering, and summarization, all while keeping user data secure and decentralized.
 
 ### Audit Trail
 
@@ -80,8 +103,6 @@ Three user actions are now audited on ICP, ensuring complete transparency and pu
 
 Together, these logs create a reliable audit trail spanning from upload to signature—empowering both users and auditors with verifiable, immutable proof of every step in the process.
 
-
-
 ---
 
 ## Workflow Flowchart
@@ -89,22 +110,26 @@ Together, these logs create a reliable audit trail spanning from upload to signa
 <p align="center">
   <img src="assets/MeroDocs_Dark.png" alt="MeroDocs Workflow" width="700"/>
 </p>
+<p align="center">
+  <img src="assets/Legal_Chatbot_dark.png" alt="Legal Chatbot" width="700"/>
+</p>
 
 ---
 
 ## Features Overview
 
-| Feature                       | Description                                                                   |
-| ----------------------------- | ----------------------------------------------------------------------------- |
-| Private Context               | Local workspace per user for signature library and agreement list.            |
-| Agreement Creation            | Create a shared context; you become its administrator.                        |
-| Invitation System             | Generate secure invite payloads tied to Calimero identities with permissions. |
-| Join Agreement                | Input invite payload to create shared context on your node.                   |
-| Collaborative PDF Workflow    | Users upload, view, and sign PDFs based on assigned roles in context.         |
-| ICP Integration for Integrity | Record original and final document hashes on the Internet Computer.           |
-| Verify Document Status        | Button to compare current PDF hash with ICP-stored hashes.                    |
-| Audit Trail                   | Logging the user action on ICP related to Document Signing.                   |
-| End‑to‑End Privacy            | Documents are never exposed outside Calimero if not explicitly shared.        |
+| Feature                       | Description                                                                                                                        |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Private Context               | Local workspace per user for signature library and agreement list.                                                                 |
+| Agreement Creation            | Create a shared context; you become its administrator.                                                                             |
+| Invitation System             | Generate secure invite payloads tied to Calimero identities with permissions.                                                      |
+| Join Agreement                | Input invite payload to create shared context on your node.                                                                        |
+| Collaborative PDF Workflow    | Users upload, view, and sign PDFs based on assigned roles in context.                                                              |
+| ICP Integration for Integrity | Record original and final document hashes on the Internet Computer.                                                                |
+| Verify Document Status        | Button to compare current PDF hash with ICP-stored hashes.                                                                         |
+| AI Legal Chatbot              | Privacy-preserving chatbot using ICP_LLM and Llama 3.1 8B for document analysis, with embeddings stored locally on Calimero nodes. |
+| Audit Trail                   | Logging the user action on ICP related to Document Signing.                                                                        |
+| End‑to‑End Privacy            | Documents are never exposed outside Calimero if not explicitly shared.                                                             |
 
 ---
 
@@ -126,9 +151,9 @@ chmod +x ./build.sh
 
 ### Canister
 
-For detailed canister setup and deployment, see [`merodocs_registry/BUILD.md`](merodocs_registry/BUILD.md).
+For detailed canister setup and deployment, see `merodocs_registry/BUILD.md`.
 
-Once your canister is deployed, set the following environment variables in your `app/.env` file:
+Once your canister is deployed, set the following environment variables in your .env file:
 
 ```
 VITE_DFX_NETWORK=local
@@ -190,6 +215,13 @@ Replace `<APP_ID>`, `nodeX`, and other parameters as needed for your deployment.
 - SHA‑256 hashes recorded for both original and signed PDFs.
 - Public verification without exposing sensitive content.
 
+**AI Legal Chatbot Implementation**
+
+- **Embedding Generation**: Upon document upload, embeddings are generated stored on the Calimero node. These embeddings are stored encrypted within the user's private context.
+- **Query Processing**: User prompts trigger retrieval of top-k relevant embeddings from the node. These are combined with the prompt and recent conversation history, then sent to ICP_LLM on the Internet Computer.
+- **ICP_LLM Integration**: Utilizes **Llama 3.1 8B parameter model** hosted on ICP for inference. The system ensures only contextual embeddings and prompts are transmitted, maintaining full document privacy.
+- **Response Handling**: AI-generated responses are delivered back to the user, with all processing decentralized and secure.
+
 ---
 
 ## Security & Privacy Assurance
@@ -197,5 +229,6 @@ Replace `<APP_ID>`, `nodeX`, and other parameters as needed for your deployment.
 - All documents remain encrypted within Calimero contexts.
 - Only hashes are stored on-chain—no files ever leave user nodes.
 - Access to documents is strictly permissioned, ensuring privacy and control.
+- For the AI legal chatbot, embeddings and document content are never transmitted externally; only anonymized data reaches ICP_LLM, preserving user privacy and compliance with data protection regulations.
 
 ---
