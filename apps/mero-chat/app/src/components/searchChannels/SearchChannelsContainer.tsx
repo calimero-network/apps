@@ -360,7 +360,7 @@ export default function SearchChannelsContainer({
                     disabled={
                       channel.name === isLoadingNameId ||
                       channel.createdBy === localStorage.getItem("accountId") ||
-                      channel.name === "general"
+                      channel.channelType === "Default"
                     }
                     onClick={() =>
                       clickChannelOption(channel.isMember, channel.name)
