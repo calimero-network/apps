@@ -21,7 +21,10 @@ export const MarkdownEditor = ({
   const ref = useRef<HTMLDivElement>(null);
   const quillRef = useRef<Quill | null>(null);
   const cursorPositionRef = useRef<number | null>(null);
-  const toolbarOptions = ['bold', 'italic', 'underline', 'strike', { 'list': 'ordered' }, { 'list': 'bullet' }];
+  const toolbarOptions = [
+    ['bold', 'italic', 'underline', 'strike'],
+    [{ 'list': 'ordered'}, { 'list': 'bullet' }]
+  ];
 
   const sendMessage = () => {
     const content = quillRef?.current?.root?.innerHTML ?? '';
@@ -68,8 +71,12 @@ export const MarkdownEditor = ({
             bindings: {
               enter: {
                 key: 13,
-                handler: function() {
-                  return false;
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                handler: function(range: any, context: any) {
+                  if (context.format.list) {
+                    return false;
+                  }
+                  return true;
                 }
               }
             }
@@ -86,6 +93,17 @@ export const MarkdownEditor = ({
           e.preventDefault();
           e.stopPropagation();
           e.stopImmediatePropagation();
+
+          const currentQuill = quillRef.current;
+          if (currentQuill) {
+            const selection = currentQuill.getSelection();
+            if (selection) {
+              const [blot] = currentQuill.getLine(selection.index);
+              if (blot && blot.domNode && blot.domNode.tagName === 'LI') {
+                currentQuill.format('list', false);
+              }
+            }
+          }
           setTimeout(() => {
             sendMessage();
           }, 0);
