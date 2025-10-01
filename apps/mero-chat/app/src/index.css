@@ -136,6 +136,10 @@ body {
 .ql-editor ol li:before {
   content: counter(list-0, decimal) '. ';
 }
+.ql-editor ul li::before {
+  content: '\2022'; /* bullet symbol */
+  counter-reset: none; /* stop number counters leaking into ul */
+}
 .ql-editor ol li.ql-indent-1 {
   counter-increment: list-1;
 }
@@ -959,4 +963,13 @@ body {
 }
 .ql-snow a {
   color: #06c;
+}
+
+.ql-editor ol li[data-list="bullet"]::before {
+  content: '\2022'; /* • bullet character */
+}
+
+/* Ordered list styling */
+.ql-editor ol li[data-list="ordered"]::before {
+  content: counter(list-0, decimal) '. ';
 }
