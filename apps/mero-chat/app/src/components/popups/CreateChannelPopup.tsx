@@ -199,7 +199,11 @@ export default function CreateChannelPopup({
 
   const runProcess = async () => {
     setIsProcessing(true);
-    await createChannel(inputValue, visibility === "public", readOnly === "yes");
+    await createChannel(
+      inputValue,
+      visibility === "public",
+      readOnly === "yes"
+    );
     setInputValue("");
     setIsProcessing(false);
     setIsOpen(false);
@@ -210,8 +214,9 @@ export default function CreateChannelPopup({
     setIsOpen(false);
   };
 
-  const isInvalid =
-    !!(inputValue && !validInput && errorMessage);
+  const isInvalid = !!(inputValue && !validInput && errorMessage);
+
+  console.log("inputValue", inputValue);
   return (
     <>
       {isOpen && (
@@ -312,10 +317,10 @@ export default function CreateChannelPopup({
                 </div>
               </div>
             </div>
-
             <FunctionButton
               onClick={runProcess}
-              $isDisabled={inputValue ? isInvalid : true}
+              $isDisabled={inputValue.length > 0 ? isInvalid : true}
+              disabled={inputValue.length > 0 ? isInvalid : true}
               $colors={colors}
             >
               {isProcessing ? <Loader size={16} /> : buttonText}

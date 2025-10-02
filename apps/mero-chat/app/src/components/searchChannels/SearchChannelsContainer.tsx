@@ -318,7 +318,7 @@ export default function SearchChannelsContainer({
       <div className="channelListWrapper">
         <div className="listHeader">Channel List</div>
         <div className="list">
-          {channelsStartingWithPrefix.map(
+          {channelsStartingWithPrefix.filter((channel) => channel.name !== "").map(
             (channel: ChannelMeta, id: number) => (
               <div key={id} className="listItem">
                 <div>

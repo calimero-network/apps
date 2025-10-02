@@ -526,7 +526,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
           readOnly: channelInfo.read_only,
           createdAt: new Date(channelInfo.created_at * 1000).toISOString(),
         })
-      );
+      ).filter((channel) => channel.name !== "");
       setChannels(channelsArray);
     }
   };
