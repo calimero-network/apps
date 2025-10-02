@@ -43,22 +43,23 @@ export const MarkdownEditor = ({
 
   const handlePaste = (e: ClipboardEvent) => {
     e.preventDefault();
+    e.stopPropagation();
   
     const clipboardData = e.clipboardData;
     const quill = quillRef.current;
     const selection = quill?.getSelection(true);
   
-    if (!clipboardData) return;
+    if (!clipboardData || !quill) return;
   
     const types = Array.from(clipboardData.types);
   
     if (types.includes('text/html')) {
       const pastedData = clipboardData.getData('text/html');
       const processedData = sanitizePasteHtml(pastedData);
-      quill?.clipboard.dangerouslyPasteHTML(selection?.index ?? 0, processedData);
+      quill.clipboard.dangerouslyPasteHTML(selection?.index ?? 0, processedData);
     } else if (types.includes('text/plain')) {
       const pastedData = clipboardData.getData('text/plain');
-      quill?.insertText(selection?.index ?? 0, pastedData);
+      quill.insertText(selection?.index ?? 0, pastedData);
     }
   };
 
@@ -67,6 +68,9 @@ export const MarkdownEditor = ({
       quillRef.current = new Quill(ref.current, {
         modules: {
           toolbar: toolbarOptions,
+          clipboard: {
+            matchVisual: false,
+          },
           keyboard: {
             bindings: {
               enter: {
@@ -85,7 +89,7 @@ export const MarkdownEditor = ({
         theme: "snow",
       });
       quillRef.current.root.innerHTML = value;
-      quillRef.current.root.addEventListener("paste", handlePaste);
+      quillRef.current.root.addEventListener("paste", handlePaste, true);
       quillRef.current.root.addEventListener("drop", handleDrop);
 
       const handleKeyDown = (e: KeyboardEvent) => {
