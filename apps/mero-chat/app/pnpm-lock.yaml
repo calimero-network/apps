@@ -46,8 +46,8 @@ importers:
         specifier: ^6.0.0
         version: 6.0.0
       curb-virtualized-chat:
-        specifier: ^0.0.8
-        version: 0.0.8(@types/react-dom@19.1.2(@types/react@19.1.2))(@types/react@19.1.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 0.0.9
+        version: 0.0.9(@types/react-dom@19.1.2(@types/react@19.1.2))(@types/react@19.1.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       iframe-resizer-react:
         specifier: ^5.1.5
         version: 5.1.5(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -1368,8 +1368,8 @@ packages:
   csstype@3.1.3:
     resolution: {integrity: sha512-M1uQkMl8rQK/szD0LNhtqxIPLpimGm8sOBwU7lLnCpSbTyY3yeU1Vc7l4KT5zT4s/yOxHH5O7tIuuLOCnLADRw==}
 
-  curb-virtualized-chat@0.0.8:
-    resolution: {integrity: sha512-TNSaALMausjiD9/VvvHXe4DjPlkqivecT1X2t1qsIJvVlt0FwyvyVvlkFQd3gASW1UZSXRRafjDLj2AY3YLbDQ==}
+  curb-virtualized-chat@0.0.9:
+    resolution: {integrity: sha512-gLwJSqexHV0Xi19LKl3olfTBTE8sfhq8kNMp0yEqqwigaZ4F+hEtk+YuPmd1K9unf4V/r61BtUzyA0ls1f968w==}
     peerDependencies:
       react: '>=17.0.0'
       react-dom: '>=17.0.0'
@@ -3851,7 +3851,7 @@ snapshots:
 
   csstype@3.1.3: {}
 
-  curb-virtualized-chat@0.0.8(@types/react-dom@19.1.2(@types/react@19.1.2))(@types/react@19.1.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0):
+  curb-virtualized-chat@0.0.9(@types/react-dom@19.1.2(@types/react@19.1.2))(@types/react@19.1.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0):
     dependencies:
       '@radix-ui/react-dialog': 1.1.14(@types/react-dom@19.1.2(@types/react@19.1.2))(@types/react@19.1.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@uidotdev/usehooks': 2.4.1(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
