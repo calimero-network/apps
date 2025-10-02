@@ -39,6 +39,7 @@ import {
 import type { MessageWithReactions } from "../../api/clientApi";
 import type { CreateContextResult } from "../../components/popups/StartDMPopup";
 import { generateDMParams } from "../../utils/dmSetupState";
+import useNotificationSound from "../../hooks/useNotificationSound";
 
 export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   const { app } = useCalimero();
@@ -68,6 +69,34 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
 
   const [currentSubscriptionContextId, setCurrentSubscriptionContextId] =
     useState<string>("");
+
+  // Initialize notification sound hook
+  const { playSoundForMessage, playSound } = useNotificationSound(
+    {
+      enabled: false, // Start disabled - user needs to enable in settings
+      volume: 0.5,
+      respectFocus: true,
+      respectMute: true,
+    },
+    activeChat?.id
+  );
+
+  // Initialize audio context on first user interaction
+  useEffect(() => {
+    const handleFirstInteraction = () => {
+      playSound('message'); // This will initialize the audio context
+      document.removeEventListener('click', handleFirstInteraction);
+      document.removeEventListener('keydown', handleFirstInteraction);
+    };
+
+    document.addEventListener('click', handleFirstInteraction);
+    document.addEventListener('keydown', handleFirstInteraction);
+
+    return () => {
+      document.removeEventListener('click', handleFirstInteraction);
+      document.removeEventListener('keydown', handleFirstInteraction);
+    };
+  }, [playSound]);
 
   const manageEventSubscription = useCallback(
     (contextId: string) => {
@@ -352,6 +381,18 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
               deleted: message.deleted,
             }));
           if (newMessages.length > 0) {
+            const processedMessageIds = new Set<string>();
+            newMessages.forEach((message) => {
+              if (!processedMessageIds.has(message.id)) {
+                processedMessageIds.add(message.id);
+                const isDM = activeChat?.type === "direct_message";
+                const isMention = message.mentions && message.mentions.length > 0;
+                const notificationType = isDM ? 'dm' : 'channel';
+                
+                playSoundForMessage(message.id, notificationType, isMention);
+              }
+            });
+
             if (activeChat?.type === "channel") {
               const messages = newMessages;
               if (
@@ -496,6 +537,14 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     const dms: ResponseData<DMChatInfo[]> =
       await new ClientApiDataSource().getDms();
     if (dms.data) {
+      // Check for DMs with unread messages and play notification
+      dms.data.forEach((dm) => {
+        if (dm.unread_messages > 0) {
+          // Use a stable ID based on the DM identity, not timestamp
+          playSoundForMessage(`dm-${dm.other_identity_old}`, 'dm');
+        }
+      });
+      
       setPrivateDMs(dms.data);
       return dms.data;
     }
