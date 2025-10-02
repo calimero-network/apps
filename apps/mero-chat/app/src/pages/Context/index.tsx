@@ -7,6 +7,7 @@ import {
 import { Card, Title, Wrapper } from "../Login";
 import { useNavigate } from "react-router-dom";
 import { styled } from "styled-components";
+import NotificationSettings from "../../components/settings/NotificationSettings";
 
 const BackButton = styled.button`
   background: transparent;
@@ -27,6 +28,7 @@ export default function Context() {
     { name: "Join Context", component: <JoinContextTab /> },
     { name: "Invite to Context", component: <InviteToContextTab /> },
     { name: "Create Identity", component: <CreateIdentityTab /> },
+    { name: "Notification Settings", component: <NotificationSettings /> },
   ];
   return (
     <Wrapper>
