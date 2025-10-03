@@ -1,6 +1,6 @@
 import { styled } from "styled-components";
 import StartDMPopup, { type CreateContextResult } from "../popups/StartDMPopup";
-import { useCallback } from "react";
+import { useCallback, memo } from "react";
 
 const Container = styled.div`
   display: flex;
@@ -39,7 +39,7 @@ interface DMHeaderProps {
   chatMembers: Map<string, string>;
 }
 
-export default function DMHeader({ createDM, chatMembers }: DMHeaderProps) {
+const DMHeader = memo(function DMHeader({ createDM, chatMembers }: DMHeaderProps) {
   const isValidIdentityId = useCallback((value: string) => {
     // Check if the value exists in chatMembers values
     const userEntries = chatMembers instanceof Map ? Array.from(chatMembers.entries()) : Object.entries(chatMembers);
@@ -83,4 +83,6 @@ export default function DMHeader({ createDM, chatMembers }: DMHeaderProps) {
       />
     </Container>
   );
-}
+});
+
+export default DMHeader;

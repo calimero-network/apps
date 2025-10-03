@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, memo } from "react";
 import BaseModal from "../common/popups/BaseModal";
 import Loader from "../loader/Loader";
 import { styled } from "styled-components";
 import type { UserId } from "../../api/clientApi";
+import { usePersistentState } from "../../hooks/usePersistentState";
 
 const SuggestionsDropdown = styled.div`
   max-height: 200px;
@@ -144,7 +145,7 @@ interface StartDMPopupProps {
     chatMembers: Map<string, string>;
 }
 
-export default function StartDMPopup({
+const StartDMPopup = memo(function StartDMPopup({
     title,
     toggle,
     placeholder,
@@ -154,9 +155,9 @@ export default function StartDMPopup({
     colors,
     chatMembers,
   }: StartDMPopupProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = usePersistentState('startDMPopupOpen', false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [inputValue, setInputValue] = useState("");
+  const [inputValue, setInputValue] = usePersistentState('startDMInputValue', "");
   const [validInput, setValidInput] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [suggestions, setSuggestions] = useState<UserId[]>([]);
@@ -184,6 +185,7 @@ export default function StartDMPopup({
     const result = await functionLoader(identity);
     if (result.data) {
       setIsProcessing(false);
+      setInputValue(""); // Clear input on success
       setIsOpen(false);
     } else {
       setErrorMessage(result.error);
@@ -286,4 +288,6 @@ export default function StartDMPopup({
       onOpenChange={onOpenChange}
     />
   );
-}
+});
+
+export default StartDMPopup;
