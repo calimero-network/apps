@@ -10,6 +10,7 @@ import { MarkdownEditor } from "../markdown/MarkdownEditor";
 import type { ResponseData } from "@calimero-network/calimero-client";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import { extractUsernames } from "../utils/mentions";
+import { RichTextEditor } from "@calimero-network/mero-ui";
 
 const Container = styled.div`
   position: fixed;
@@ -453,7 +454,33 @@ export default function MessageInput({
         <Container style={getCustomStyle(!!openThread, isThread)}>
           <Wrapper>
             <FullWidthWrapper>
-              <MarkdownEditor
+            <RichTextEditor
+                placeholder={
+                  openThread && isThread
+                    ? `Reply in thread`
+                    : `Type message in ${selectedChat}`
+                }
+                onChange={(value) => {
+                  setMessage(
+                    message
+                      ? { ...message, text: value }
+                      : {
+                          id: "",
+                          text: value,
+                          nonce: "",
+                          timestamp: Date.now(),
+                          sender: "",
+                          reactions: new Map(),
+                          files: [],
+                          images: [],
+                          thread_count: 0,
+                          thread_last_timestamp: 0,
+                        }
+                  )
+                }}
+                maxHeight={50}
+              />
+              {/* <MarkdownEditor
                 setValue={(value) =>
                   setMessage(
                     message
@@ -478,9 +505,9 @@ export default function MessageInput({
                 handleMessageSent={(content: string) => {
                   handleSendMessageEnter(content);
                 }}
-              />
+              /> */}
             </FullWidthWrapper>
-            {(!message ||
+            {/* {(!message ||
               emptyText.test(
                 markdownParser(message?.text ?? "", [])
               )) && (
@@ -504,7 +531,7 @@ export default function MessageInput({
                     : `Type message in ${selectedChat.length == 44 ? `${selectedChat.toLowerCase().slice(0, 6)}...${selectedChat.toLowerCase().slice(-4)}` : selectedChat}`}
                 </Placeholder>
               </>
-            )}
+            )} */}
 
             {uploadedFile?.file.cid && (
               <>
