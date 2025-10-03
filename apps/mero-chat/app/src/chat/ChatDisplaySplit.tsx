@@ -114,6 +114,9 @@ const CloseSvg = styled.svg`
 `;
 
 const Wrapper = styled.div`
+  display: flex;
+  flex-direction: column;
+  height: calc(100% - 20px);
   @media (max-width: 1024px) {
     width: 100% !important;
   }
@@ -125,9 +128,9 @@ const containerPaddingStyle = {
   paddingTop: "1rem",
   paddingLeft: "2.5rem",
   paddingRight: "2.5rem",
-  paddingBottom: "2.5rem",
+  paddingBottom: "0rem",
   scrollBehavior: "smooth",
-  height: "calc(100vh - 173px)",
+  height: "100%",
   width: "",
 };
 const chatStyle = {

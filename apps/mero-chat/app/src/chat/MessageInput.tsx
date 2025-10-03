@@ -12,16 +12,32 @@ import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import { extractUsernames } from "../utils/mentions";
 import { RichTextEditor } from "@calimero-network/mero-ui";
 
+// Force full width for the editor
+const EditorWrapper = styled.div`
+  .full-width-editor {
+    width: 100% !important;
+    min-width: 0 !important;
+    flex: 1 !important;
+    max-width: 100% !important;
+  }
+
+  .full-width-editor > div {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .full-width-editor .ql-editor {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+`;
+
 const Container = styled.div`
-  position: fixed;
-  bottom: 0;
   width: 100%;
-  bottom: 16px;
   padding-left: 16px;
   padding-right: 16px;
-  padding-top: 12px;
+  padding-top: 1px;
   padding-bottom: 12px;
-  background-color: #1d1d21;
   display: flex;
   align-items: end;
   z-index: 10;
@@ -36,11 +52,7 @@ const Container = styled.div`
     isolation: isolate;
   }
   @media (max-width: 1024px) {
-    position: fixed;
     margin: 0 !important;
-    left: 0;
-    right: 0;
-    bottom: 0px;
     border-top-left-radius: 4px;
     border-top-right-radius: 4px;
     gap: 4px;
@@ -50,7 +62,6 @@ const Container = styled.div`
     padding-bottom: 12px;
     padding-top: 12px;
     width: 100% !important;
-    z-index: 10;
     transform: translateZ(0);
     /* Prevent layout shifts when modals open */
     will-change: transform;
@@ -82,18 +93,21 @@ const UploadContainer = styled.div`
 `;
 
 const Wrapper = styled.div`
-  flex-grow: 1;
-  display: contents;
+  flex: 1;
+  display: flex;
   align-items: start;
   background-color: #111111;
+  min-width: 0;
 `;
 
 const FullWidthWrapper = styled.div`
-  display: flow;
+  display: flex;
   flex-direction: row;
   overflow: hidden;
   align-items: start;
   width: 100%;
+  flex: 1;
+  min-width: 0; /* This is crucial for flex items to shrink */
 `;
 
 const EmojiContainer = styled.div`
@@ -302,6 +316,16 @@ const ErrorContainer = styled.div`
   border-radius: 2px;
 `;
 
+const ActionsWrapper = styled.div`
+  position: absolute;
+  right: 42px;
+  bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+`;
+
 interface MessageInputProps {
   selectedChat: string;
   sendMessage: (message: string) => void;
@@ -357,8 +381,7 @@ export default function MessageInput({
   }, []);
 
   const isActive =
-    (message &&
-      !emptyText.test(markdownParser(message?.text ?? "", []))) ||
+    (message && !emptyText.test(markdownParser(message?.text ?? "", []))) ||
     uploadedImage ||
     uploadedFile;
 
@@ -432,55 +455,61 @@ export default function MessageInput({
 
   const getCustomStyle = (openThread: boolean, isThread: boolean) => {
     const customStyle = {
-      width: "calc(100% - 440px)",
-      marginLeft: "2.5rem",
-      marginRight: "2.5rem",
+      width: "100%",
+      maxWidth: "100%",
+      boxSizing: "border-box" as const,
     };
     if (openThread && !isThread) {
       customStyle.width = "calc(60% - 262px)";
-      customStyle.marginRight = "1.25rem";
     } else if (!openThread && !isThread) {
-      customStyle.width = "calc(100% - 440px)";
+      customStyle.width = "100%";
     } else if (openThread && isThread) {
       customStyle.width = "calc(40% - 212px)";
-      customStyle.marginLeft = "0rem";
-      customStyle.marginRight = "1.25rem";
     }
     return customStyle;
   };
   return (
-    <>
-      {canWriteMessage && (
-        <Container style={getCustomStyle(!!openThread, isThread)}>
-          <Wrapper>
-            <FullWidthWrapper>
+    // <>
+    //   {canWriteMessage && (
+    <Container style={getCustomStyle(!!openThread, isThread)}>
+      <Wrapper>
+        <FullWidthWrapper>
+          <EditorWrapper
+            style={{
+              flex: 1,
+              width: "100%",
+              minWidth: 0,
+            }}
+          >
             <RichTextEditor
-                placeholder={
-                  openThread && isThread
-                    ? `Reply in thread`
-                    : `Type message in ${selectedChat}`
-                }
-                onChange={(value) => {
-                  setMessage(
-                    message
-                      ? { ...message, text: value }
-                      : {
-                          id: "",
-                          text: value,
-                          nonce: "",
-                          timestamp: Date.now(),
-                          sender: "",
-                          reactions: new Map(),
-                          files: [],
-                          images: [],
-                          thread_count: 0,
-                          thread_last_timestamp: 0,
-                        }
-                  )
-                }}
-                maxHeight={50}
-              />
-              {/* <MarkdownEditor
+              placeholder={
+                openThread && isThread
+                  ? `Reply in thread`
+                  : `Type message in ${selectedChat}`
+              }
+              onChange={(value) => {
+                setMessage(
+                  message
+                    ? { ...message, text: value }
+                    : {
+                        id: "",
+                        text: value,
+                        nonce: "",
+                        timestamp: Date.now(),
+                        sender: "",
+                        reactions: new Map(),
+                        files: [],
+                        images: [],
+                        thread_count: 0,
+                        thread_last_timestamp: 0,
+                      }
+                );
+              }}
+              maxHeight={50}
+              className="full-width-editor"
+            />
+          </EditorWrapper>
+          {/* <MarkdownEditor
                 setValue={(value) =>
                   setMessage(
                     message
@@ -506,8 +535,8 @@ export default function MessageInput({
                   handleSendMessageEnter(content);
                 }}
               /> */}
-            </FullWidthWrapper>
-            {/* {(!message ||
+        </FullWidthWrapper>
+        {/* {(!message ||
               emptyText.test(
                 markdownParser(message?.text ?? "", [])
               )) && (
@@ -533,77 +562,74 @@ export default function MessageInput({
               </>
             )} */}
 
-            {uploadedFile?.file.cid && (
-              <>
-                <MessageFileField
-                  file={uploadedFile.file}
-                  resetFile={resetFile}
-                />
-              </>
-            )}
-            {uploadedImage?.file.cid && (
-              <>
-                <MessageImageField
-                  file={uploadedImage.file}
-                  resetImage={resetImage}
-                />
-              </>
-            )}
-          </Wrapper>
-          <div onClick={() => setEmojiSelectorOpen(!emojiSelectorOpen)}>
-            <IconEmoji />
-          </div>
-          <IconSend
-            onClick={() => {
-              if (isActive) {
-                handleSendMessage();
-              }
-            }}
-            isActive={!!isActive}
-          />
-          {emojiSelectorOpen && (
-            <EmojiPopupContainer>
-              <EmojiSelector
-                onEmojiSelected={(emoji) => setSelectedEmoji(emoji)}
-              />
-            </EmojiPopupContainer>
-          )}
-          {showUpload &&
-            !uploadedFile?.file.cid &&
-            !uploadedImage?.file.cid && (
-              <UploadPopupContainer>
-                {error && <ErrorContainer>{error}</ErrorContainer>}
-                <UploadContainer>
-                  <UploadComponent
-                    uploadedFile={uploadedImage}
-                    setUploadedFile={setUploadedImage}
-                    type={["image/jpeg", "image/png", "image/gif"]}
-                    icon={<ImageIconSvg />}
-                    text="Upload Image"
-                    setError={setError}
-                    key="images-component"
-                  />
-                  <UploadComponent
-                    uploadedFile={uploadedFile}
-                    setUploadedFile={setUploadedFile}
-                    type={["*/*"]}
-                    icon={<FileIconSvg />}
-                    text="Upload File"
-                    setError={setError}
-                    key="files-component"
-                  />
-                </UploadContainer>
-              </UploadPopupContainer>
-            )}
-        </Container>
+        {uploadedFile?.file.cid && (
+          <>
+            <MessageFileField file={uploadedFile.file} resetFile={resetFile} />
+          </>
+        )}
+        {uploadedImage?.file.cid && (
+          <>
+            <MessageImageField
+              file={uploadedImage.file}
+              resetImage={resetImage}
+            />
+          </>
+        )}
+      </Wrapper>
+      <ActionsWrapper>
+        <div onClick={() => setEmojiSelectorOpen(!emojiSelectorOpen)}>
+          <IconEmoji />
+        </div>
+        <IconSend
+          onClick={() => {
+            if (isActive) {
+              handleSendMessage();
+            }
+          }}
+          isActive={!!isActive}
+        />
+        {emojiSelectorOpen && (
+          <EmojiPopupContainer>
+            <EmojiSelector
+              onEmojiSelected={(emoji) => setSelectedEmoji(emoji)}
+            />
+          </EmojiPopupContainer>
+        )}
+      </ActionsWrapper>
+      {showUpload && !uploadedFile?.file.cid && !uploadedImage?.file.cid && (
+        <UploadPopupContainer>
+          {error && <ErrorContainer>{error}</ErrorContainer>}
+          <UploadContainer>
+            <UploadComponent
+              uploadedFile={uploadedImage}
+              setUploadedFile={setUploadedImage}
+              type={["image/jpeg", "image/png", "image/gif"]}
+              icon={<ImageIconSvg />}
+              text="Upload Image"
+              setError={setError}
+              key="images-component"
+            />
+            <UploadComponent
+              uploadedFile={uploadedFile}
+              setUploadedFile={setUploadedFile}
+              type={["*/*"]}
+              icon={<FileIconSvg />}
+              text="Upload File"
+              setError={setError}
+              key="files-component"
+            />
+          </UploadContainer>
+        </UploadPopupContainer>
       )}
-      {!canWriteMessage && (
-        <Container style={getCustomStyle(!!openThread, isThread)}>
-          <ReadOnlyField>
-            You don&apos;t have permissions to write in this channel
-          </ReadOnlyField>
-        </Container>
-      )}
-    </>
+    </Container>
+    //   )}
+    //   {!canWriteMessage && (
+    //     <Container style={getCustomStyle(!!openThread, isThread)}>
+    //       <ReadOnlyField>
+    //         You don&apos;t have permissions to write in this channel
+    //       </ReadOnlyField>
+    //     </Container>
+    //   )}
+    // </>
   );
 }
