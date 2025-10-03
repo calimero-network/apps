@@ -30,7 +30,7 @@ export default function DMSideSelector({
 }: DMSideSelectorProps) {
   return (
     <DMContainer>
-      <DMHeader createDM={createDM} chatMembers={chatMembers}/>
+      <DMHeader key="dm-header" createDM={createDM} chatMembers={chatMembers}/>
       <UserList selectedDM={selectedDM} onDMSelected={onDMSelected} privateDMs={privateDMs} />
     </DMContainer>
   );

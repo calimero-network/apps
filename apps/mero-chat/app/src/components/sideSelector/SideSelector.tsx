@@ -201,7 +201,7 @@ const SideSelector: React.FC<SideSelectorProps> = (props) => {
           }
         />
         <HorizontalSeparatorLine $isMobile={false} />
-        <ChannelHeader title="Channels" />
+        <ChannelHeader key="channels-header" title="Channels" />
         <ChannelList
           channels={channels}
           selectChannel={props.onChatSelected}

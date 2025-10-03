@@ -3,7 +3,8 @@ import CreateChannelPopup from "../popups/CreateChannelPopup";
 import { isValidChannelName } from "../../utils/validation";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 import { ChannelType } from "../../api/clientApi";
-import { useState } from "react";
+import { memo } from "react";
+import { usePersistentState } from "../../hooks/usePersistentState";
 
 const Container = styled.div`
   display: flex;
@@ -44,9 +45,9 @@ interface ChannelHeaderProps {
   title: string;
 }
 
-export default function ChannelHeader(props: ChannelHeaderProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [inputValue, setInputValue] = useState("");
+const ChannelHeader = memo(function ChannelHeader(props: ChannelHeaderProps) {
+  const [isOpen, setIsOpen] = usePersistentState('createChannelModalOpen', false);
+  const [inputValue, setInputValue] = usePersistentState('createChannelInputValue', "");
   const createChannel = async (
     channelName: string,
     isPublic: boolean,
@@ -60,6 +61,9 @@ export default function ChannelHeader(props: ChannelHeaderProps) {
       links_allowed: true,
       created_at: Math.floor(Date.now() / 1000),
     });
+    // Clear the input and close modal after successful creation
+    setInputValue("");
+    setIsOpen(false);
   };
   return (
     <Container>
@@ -87,4 +91,6 @@ export default function ChannelHeader(props: ChannelHeaderProps) {
       />
     </Container>
   );
-}
+});
+
+export default ChannelHeader;

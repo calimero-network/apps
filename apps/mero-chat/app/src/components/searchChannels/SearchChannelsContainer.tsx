@@ -338,8 +338,7 @@ export default function SearchChannelsContainer({
                     {channel.name}
                   </div>
                   <div className="creatorText">
-                    Created by: {channel.createdBy.slice(0, 6)}...
-                    {channel.createdBy.slice(-4)}
+                    Created by: {channel.createdByUsername}
                   </div>
                 </div>
                 <div className="listItemOptions">

@@ -1,6 +1,7 @@
 import { styled } from "styled-components";
 import Loader from "../loader/Loader";
 import { useState } from "react";
+import BaseModal from "../common/popups/BaseModal";
 
 const Text = styled.div`
   display: flex;
@@ -98,62 +99,13 @@ const ExclamationIcon = () => (
   </IconSvg>
 );
 
-const Wrapper = styled.div`
-  @media (min-width: 1025px) {
-    left: 0px;
-    right: 0px;
-    bottom: 0px;
-    top: 0px;
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    z-index: 20;
-    display: flex;
-    background-color: rgba(0, 0, 0, 0.5);
-    justify-content: center;
-    align-items: center;
-  }
-
-  @media (max-width: 1024px) {
-    position: absolute;
-    z-index: 20;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    width: 100%;
-    height: 100vh;
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    background-color: rgba(0, 0, 0, 0.5);
-  }
-`;
-
 const Container = styled.div`
   position: relative;
   background-color: #1d1d21;
   padding: 1rem;
   border-radius: 8px;
-  width: 540px;
-  @media (max-width: 1024px) {
-    width: calc(100% - 2rem);
-    max-width: calc(100vw - 2rem);
-    position: absolute;
-    left: 50%;
-    top: 20%;
-    transform: translate(-50%, -20%);
-    background-color: #1d1d21;
-    height: fit-content;
-    box-sizing: border-box;
-  }
-  outline: none;
-  &:focus {
-    outline: none;
-  }
-  &:focus-visible {
-    outline: none;
-  }
+  width: 100%;
+  height: 100%;
 `;
 
 const InputWrapper = styled.div`
@@ -216,119 +168,120 @@ export default function CreateChannelPopup({
 
   const isInvalid = !!(inputValue && !validInput && errorMessage);
 
-  console.log("inputValue", inputValue);
-  return (
-    <>
-      {isOpen && (
-        <Wrapper>
-          <Container>
-            <CloseButton onClick={handleClosePopup}>
-              <i className="bi bi-x-lg"></i>
-            </CloseButton>
-            <Text>{title}</Text>
-            <InputWrapper>
-              <Input
-                onChange={(e) => {
-                  setInputValue(e.target.value);
-                  if (channelNameValidator) {
-                    const { isValid, error } = channelNameValidator(
-                      e.target.value
-                    );
-                    setValidInput(isValid);
-                    setErrorMessage(error ? error : "");
-                  }
-                }}
-                value={inputValue}
-                placeholder={placeholder}
-                disabled={isProcessing}
-                style={isInvalid ? customStyle : {}}
-              />
-              {isInvalid && <ExclamationIcon />}
-            </InputWrapper>
-            {isInvalid ? (
-              <ErrorWrapper>{errorMessage}</ErrorWrapper>
-            ) : (
-              <EmptyMessageContainer />
-            )}
-            <div className="mb-3">
-              <label className="form-label">Visibility:</label>
-              <div className="d-flex">
-                <div className="form-check form-check-inline">
-                  <input
-                    className="form-check-input"
-                    type="radio"
-                    name="visibility"
-                    id="public"
-                    value="public"
-                    checked={visibility === "public"}
-                    onChange={() => setVisibility("public")}
-                  />
-                  <label className="form-check-label" htmlFor="public">
-                    Public
-                  </label>
-                </div>
-                <div className="form-check form-check-inline">
-                  <input
-                    className="form-check-input"
-                    type="radio"
-                    name="visibility"
-                    id="private"
-                    value="private"
-                    checked={visibility === "private"}
-                    onChange={() => setVisibility("private")}
-                  />
-                  <label className="form-check-label" htmlFor="private">
-                    Private
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            <div className="mb-3">
-              <label className="form-label">Read-only:</label>
-              <div className="d-flex">
-                <div className="form-check form-check-inline">
-                  <input
-                    className="form-check-input"
-                    type="radio"
-                    name="readOnly"
-                    id="yes"
-                    value="yes"
-                    checked={readOnly === "yes"}
-                    onChange={() => setReadOnly("yes")}
-                  />
-                  <label className="form-check-label" htmlFor="yes">
-                    Yes
-                  </label>
-                </div>
-                <div className="form-check form-check-inline">
-                  <input
-                    className="form-check-input"
-                    type="radio"
-                    name="readOnly"
-                    id="no"
-                    value="no"
-                    checked={readOnly === "no"}
-                    onChange={() => setReadOnly("no")}
-                  />
-                  <label className="form-check-label" htmlFor="no">
-                    No
-                  </label>
-                </div>
-              </div>
-            </div>
-            <FunctionButton
-              onClick={runProcess}
-              $isDisabled={inputValue.length > 0 ? isInvalid : true}
-              disabled={inputValue.length > 0 ? isInvalid : true}
-              $colors={colors}
-            >
-              {isProcessing ? <Loader size={16} /> : buttonText}
-            </FunctionButton>
-          </Container>
-        </Wrapper>
+  const popupContent = (
+    <Container>
+      <CloseButton onClick={handleClosePopup}>
+        <i className="bi bi-x-lg"></i>
+      </CloseButton>
+      <Text>{title}</Text>
+      <InputWrapper>
+        <Input
+          onChange={(e) => {
+            setInputValue(e.target.value);
+            if (channelNameValidator) {
+              const { isValid, error } = channelNameValidator(
+                e.target.value
+              );
+              setValidInput(isValid);
+              setErrorMessage(error ? error : "");
+            }
+          }}
+          value={inputValue}
+          placeholder={placeholder}
+          disabled={isProcessing}
+          style={isInvalid ? customStyle : {}}
+        />
+        {isInvalid && <ExclamationIcon />}
+      </InputWrapper>
+      {isInvalid ? (
+        <ErrorWrapper>{errorMessage}</ErrorWrapper>
+      ) : (
+        <EmptyMessageContainer />
       )}
-      <>{toggle}</>
-    </>
+      <div className="mb-3">
+        <label className="form-label">Visibility:</label>
+        <div className="d-flex">
+          <div className="form-check form-check-inline">
+            <input
+              className="form-check-input"
+              type="radio"
+              name="visibility"
+              id="public"
+              value="public"
+              checked={visibility === "public"}
+              onChange={() => setVisibility("public")}
+            />
+            <label className="form-check-label" htmlFor="public">
+              Public
+            </label>
+          </div>
+          <div className="form-check form-check-inline">
+            <input
+              className="form-check-input"
+              type="radio"
+              name="visibility"
+              id="private"
+              value="private"
+              checked={visibility === "private"}
+              onChange={() => setVisibility("private")}
+            />
+            <label className="form-check-label" htmlFor="private">
+              Private
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div className="mb-3">
+        <label className="form-label">Read-only:</label>
+        <div className="d-flex">
+          <div className="form-check form-check-inline">
+            <input
+              className="form-check-input"
+              type="radio"
+              name="readOnly"
+              id="yes"
+              value="yes"
+              checked={readOnly === "yes"}
+              onChange={() => setReadOnly("yes")}
+            />
+            <label className="form-check-label" htmlFor="yes">
+              Yes
+            </label>
+          </div>
+          <div className="form-check form-check-inline">
+            <input
+              className="form-check-input"
+              type="radio"
+              name="readOnly"
+              id="no"
+              value="no"
+              checked={readOnly === "no"}
+              onChange={() => setReadOnly("no")}
+            />
+            <label className="form-check-label" htmlFor="no">
+              No
+            </label>
+          </div>
+        </div>
+      </div>
+      <FunctionButton
+        onClick={runProcess}
+        $isDisabled={inputValue.length > 0 ? isInvalid : true}
+        disabled={inputValue.length > 0 ? isInvalid : true}
+        $colors={colors}
+      >
+        {isProcessing ? <Loader size={16} /> : buttonText}
+      </FunctionButton>
+    </Container>
+  );
+
+  return (
+    <BaseModal
+      toggle={toggle}
+      content={popupContent}
+      open={isOpen}
+      onOpenChange={setIsOpen}
+    />
   );
 }
