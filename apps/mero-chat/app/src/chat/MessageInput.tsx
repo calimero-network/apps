@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { styled } from "styled-components";
 import type { ChatFile, MessageWithReactions } from "../types/Common";
 import EmojiSelector from "../emojiSelector/EmojiSelector";
@@ -12,21 +12,37 @@ import { extractUsernames } from "../utils/mentions";
 import { RichTextEditor } from "@calimero-network/mero-ui";
 
 const EditorWrapper = styled.div`
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  word-wrap: break-word;
+  word-break: break-word;
+  overflow-wrap: break-word;
+
   .full-width-editor {
     width: 100% !important;
-    min-width: 0 !important;
-    flex: 1 !important;
     max-width: 100% !important;
+    word-wrap: break-word !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
   }
 
   .full-width-editor > div {
     width: 100% !important;
-    min-width: 0 !important;
+    max-width: 100% !important;
+    word-wrap: break-word !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
   }
 
   .full-width-editor .ql-editor {
     width: 100% !important;
-    min-width: 0 !important;
+    max-width: 100% !important;
+    word-wrap: break-word !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    white-space: pre-wrap !important;
   }
 `;
 
@@ -35,7 +51,7 @@ const Container = styled.div`
   padding-left: 16px;
   padding-right: 16px;
   padding-top: 1px;
-  padding-bottom: 12px;
+  padding-bottom: 42px;
   display: flex;
   align-items: end;
   z-index: 10;
@@ -202,7 +218,7 @@ const Placeholder = styled.div<{
     $placeholderPosition && $placeholderPosition};
   left: 25px;
   color: #686672;
-  font-size: 16px;
+  font-size: 14px;
   font-style: normal;
   font-weight: 400;
   line-height: 150%;
@@ -212,8 +228,7 @@ const Placeholder = styled.div<{
     font-style: normal;
     font-weight: 400;
     line-height: 150%;
-    bottom: ${({ $placeholderPositionMobile }) =>
-      $placeholderPositionMobile && $placeholderPositionMobile};
+    bottom: -10px;
     left: 14px;
   }
 
@@ -316,8 +331,12 @@ const ErrorContainer = styled.div`
 
 const ActionsWrapper = styled.div`
   position: absolute;
-  right: 42px;
-  bottom: 14px;
+  right: 24px;
+  bottom: 20px;
+  @media (min-width: 1025px) {
+    right: 42px;
+    bottom: 42px;
+  }
   display: flex;
   align-items: center;
   gap: 10px;
@@ -355,6 +374,8 @@ export default function MessageInput({
   const [error, setError] = useState("");
   const [pendingEmoji, setPendingEmoji] = useState<string | null>(null);
   const placeholderPosition = "16px";
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const editorRef = useRef<any>(null);
 
   const handleMessageChange = useCallback(
     (mesage: MessageWithReactions | null) => {
@@ -364,7 +385,8 @@ export default function MessageInput({
   );
 
   const handleEmojiSelected = useCallback((emoji: string) => {
-    console.log("Emoji selected:", emoji);
+    editorRef.current?.insertContent(emoji);
+    setSelectedEmoji("");
   }, []);
 
   useEffect(() => {
@@ -424,11 +446,21 @@ export default function MessageInput({
       (uploadedImage && !uploadedImage.file.cid)
     ) {
       return;
-    } else if (
-      emptyText.test(markdownParser(message?.text ?? "", [])) &&
-      !uploadedImage &&
-      !uploadedFile
-    ) {
+    }
+
+    const content = message?.text ?? "";
+    const isEmptyContent =
+      !content ||
+      content.trim() === "" ||
+      content === "<p></p>" ||
+      content === "<p><br></p>" ||
+      content
+        .replace(/<p><\/p>/g, "")
+        .replace(/<p><br><\/p>/g, "")
+        .trim() === "" ||
+      emptyText.test(markdownParser(content, []));
+
+    if (isEmptyContent && !uploadedImage && !uploadedFile) {
       handleMessageChange(null);
     } else {
       let tagList: string[] = [];
@@ -449,11 +481,18 @@ export default function MessageInput({
   };
 
   const handleSendMessageEnter = async (content: string) => {
-    if (
-      emptyText.test(markdownParser(content ?? "", [])) &&
-      !uploadedImage &&
-      !uploadedFile
-    ) {
+    const isEmptyContent =
+      !content ||
+      content.trim() === "" ||
+      content === "<p></p>" ||
+      content === "<p><br></p>" ||
+      content
+        .replace(/<p><\/p>/g, "")
+        .replace(/<p><br><\/p>/g, "")
+        .trim() === "" ||
+      emptyText.test(markdownParser(content ?? "", []));
+
+    if (isEmptyContent && !uploadedImage && !uploadedFile) {
       handleMessageChange(null);
     } else {
       let tagList: string[] = [];
@@ -502,138 +541,138 @@ export default function MessageInput({
     return customStyle;
   };
 
-  useEffect(() => {
-    console.log("message", message);
-  }, [message]);
   return (
     <>
       {canWriteMessage && (
-    <Container style={getCustomStyle(!!openThread, isThread)}>
-      <Wrapper>
-        <FullWidthWrapper>
-          <EditorWrapper
-            style={{
-              flex: 1,
-              width: "100%",
-              minWidth: 0,
-            }}
-          >
-            <RichTextEditor
-              value={message?.text ?? ""}
-              sendOnEnter={true}
-              clearOnSend={true}
-              onChange={(value: string) => {
-                setMessage(
-                  message
-                    ? { ...message, text: value }
-                    : {
-                        id: "",
-                        text: value,
-                        nonce: "",
-                        timestamp: Date.now(),
-                        sender: "",
-                        reactions: new Map(),
-                        files: [],
-                        images: [],
-                        thread_count: 0,
-                        thread_last_timestamp: 0,
-                      }
-                );
-              }}
-              onSend={(html: string) => {
-                handleSendMessageEnter(html);
-              }}
-              placeholder={openThread && isThread ? "Reply in thread" : `Type message in ${selectedChat}`}
-              maxHeight={50}
-              className="full-width-editor h-[50px]"
-            />
-          </EditorWrapper>
-        </FullWidthWrapper>
-        {(!message || message?.text === "<p></p>" ||
-              emptyText.test(
-                markdownParser(message?.text ?? "", [])
-              )) && (
+        <Container style={getCustomStyle(!!openThread, isThread)}>
+          <Wrapper>
+            <FullWidthWrapper>
+              <EditorWrapper
+                style={{
+                  flex: 1,
+                  width: "100%",
+                  minWidth: 0,
+                }}
+              >
+                <RichTextEditor
+                  ref={editorRef}
+                  value={message?.text ?? ""}
+                  sendOnEnter={true}
+                  clearOnSend={true}
+                  onChange={(value: string) => {
+                    setMessage(
+                      message
+                        ? { ...message, text: value }
+                        : {
+                            id: "",
+                            text: value,
+                            nonce: "",
+                            timestamp: Date.now(),
+                            sender: "",
+                            reactions: new Map(),
+                            files: [],
+                            images: [],
+                            thread_count: 0,
+                            thread_last_timestamp: 0,
+                          }
+                    );
+                  }}
+                  onSend={(html: string) => {
+                    handleSendMessageEnter(html);
+                  }}
+                  placeholder={
+                    openThread && isThread
+                      ? "Reply in thread"
+                      : `Type message in ${selectedChat}`
+                  }
+                  maxHeight={50}
+                  className="full-width-editor"
+                />
+              </EditorWrapper>
+            </FullWidthWrapper>
+            <>
+              <Placeholder
+                $placeholderPosition={placeholderPosition}
+                $placeholderPositionMobile={placeholderPosition}
+                className="desktop"
+              >
+                {openThread && isThread
+                  ? `Reply in thread`
+                  : `Type message in ${selectedChat}`}
+              </Placeholder>
+              <Placeholder
+                $placeholderPosition={placeholderPosition}
+                $placeholderPositionMobile={placeholderPosition}
+                className="mobile"
+              >
+                {openThread && isThread
+                  ? `Reply in thread`
+                  : `Type message in ${selectedChat.length == 44 ? `${selectedChat.toLowerCase().slice(0, 6)}...${selectedChat.toLowerCase().slice(-4)}` : selectedChat}`}
+              </Placeholder>
+            </>
+            {uploadedFile?.file.cid && (
               <>
-                <Placeholder
-                  $placeholderPosition={placeholderPosition}
-                  $placeholderPositionMobile={placeholderPosition}
-                  className="desktop"
-                >
-                  {openThread && isThread
-                    ? `Reply in thread`
-                    : `Type message in ${selectedChat}`}
-                </Placeholder>
-                <Placeholder
-                  $placeholderPosition={placeholderPosition}
-                  $placeholderPositionMobile={placeholderPosition}
-                  className="mobile"
-                >
-                  {openThread && isThread
-                    ? `Reply in thread`
-                    : `Type message in ${selectedChat.length == 44 ? `${selectedChat.toLowerCase().slice(0, 6)}...${selectedChat.toLowerCase().slice(-4)}` : selectedChat}`}
-                </Placeholder>
+                <MessageFileField
+                  file={uploadedFile.file}
+                  resetFile={resetFile}
+                />
               </>
             )}
-        {uploadedFile?.file.cid && (
-          <>
-            <MessageFileField file={uploadedFile.file} resetFile={resetFile} />
-          </>
-        )}
-        {uploadedImage?.file.cid && (
-          <>
-            <MessageImageField
-              file={uploadedImage.file}
-              resetImage={resetImage}
+            {uploadedImage?.file.cid && (
+              <>
+                <MessageImageField
+                  file={uploadedImage.file}
+                  resetImage={resetImage}
+                />
+              </>
+            )}
+          </Wrapper>
+          <ActionsWrapper>
+            <div onClick={() => setEmojiSelectorOpen(!emojiSelectorOpen)}>
+              <IconEmoji />
+            </div>
+            <IconSend
+              onClick={() => {
+                if (isActive) {
+                  handleSendMessage();
+                }
+              }}
+              isActive={!!isActive}
             />
-          </>
-        )}
-      </Wrapper>
-      <ActionsWrapper>
-        <div onClick={() => setEmojiSelectorOpen(!emojiSelectorOpen)}>
-          <IconEmoji />
-        </div>
-        <IconSend
-          onClick={() => {
-            if (isActive) {
-              handleSendMessage();
-            }
-          }}
-          isActive={!!isActive}
-        />
-         {emojiSelectorOpen && (
-           <EmojiPopupContainer>
-             <EmojiSelector
-               onEmojiSelected={handleEmojiSelected}
-             />
-           </EmojiPopupContainer>
-         )}
-      </ActionsWrapper>
-      {showUpload && !uploadedFile?.file.cid && !uploadedImage?.file.cid && (
-        <UploadPopupContainer>
-          {error && <ErrorContainer>{error}</ErrorContainer>}
-          <UploadContainer>
-            <UploadComponent
-              uploadedFile={uploadedImage}
-              setUploadedFile={setUploadedImage}
-              type={["image/jpeg", "image/png", "image/gif"]}
-              icon={<ImageIconSvg />}
-              text="Upload Image"
-              setError={setError}
-              key="images-component"
-            />
-            <UploadComponent
-              uploadedFile={uploadedFile}
-              setUploadedFile={setUploadedFile}
-              type={["*/*"]}
-              icon={<FileIconSvg />}
-              text="Upload File"
-              setError={setError}
-              key="files-component"
-            />
-          </UploadContainer>
-        </UploadPopupContainer>
-      )}
-    </Container>
+            {emojiSelectorOpen && (
+              <EmojiPopupContainer>
+                <EmojiSelector onEmojiSelected={handleEmojiSelected} />
+              </EmojiPopupContainer>
+            )}
+          </ActionsWrapper>
+          {showUpload &&
+            !uploadedFile?.file.cid &&
+            !uploadedImage?.file.cid && (
+              <UploadPopupContainer>
+                {error && <ErrorContainer>{error}</ErrorContainer>}
+                <UploadContainer>
+                  <UploadComponent
+                    uploadedFile={uploadedImage}
+                    setUploadedFile={setUploadedImage}
+                    type={["image/jpeg", "image/png", "image/gif"]}
+                    icon={<ImageIconSvg />}
+                    text="Upload Image"
+                    setError={setError}
+                    key="images-component"
+                  />
+                  <UploadComponent
+                    uploadedFile={uploadedFile}
+                    setUploadedFile={setUploadedFile}
+                    type={["*/*"]}
+                    icon={<FileIconSvg />}
+                    text="Upload File"
+                    setError={setError}
+                    key="files-component"
+                  />
+                </UploadContainer>
+              </UploadPopupContainer>
+            )}
+        </Container>
       )}
       {!canWriteMessage && (
         <Container style={getCustomStyle(!!openThread, isThread)}>

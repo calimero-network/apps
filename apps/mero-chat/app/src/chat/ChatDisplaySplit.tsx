@@ -55,7 +55,7 @@ interface ChatDisplaySplitProps {
 
 const ContainerPadding = styled.div`
   @media (max-width: 1024px) {
-    height: calc(100dvh - 102px) !important;
+    height: calc(100dvh - 244px) !important;
     padding-left: 0px !important;
     padding-right: 0px !important;
   }
