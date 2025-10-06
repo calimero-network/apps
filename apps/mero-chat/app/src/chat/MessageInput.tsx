@@ -6,13 +6,11 @@ import { emptyText, markdownParser } from "../utils/markdownParser";
 import UploadComponent from "./UploadComponent";
 import MessageFileField from "./MessageFileField";
 import MessageImageField from "./MessageImageField";
-import { MarkdownEditor } from "../markdown/MarkdownEditor";
 import type { ResponseData } from "@calimero-network/calimero-client";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import { extractUsernames } from "../utils/mentions";
 import { RichTextEditor } from "@calimero-network/mero-ui";
 
-// Force full width for the editor
 const EditorWrapper = styled.div`
   .full-width-editor {
     width: 100% !important;
@@ -355,6 +353,7 @@ export default function MessageInput({
   const [emojiSelectorOpen, setEmojiSelectorOpen] = useState(false);
   const [selectedEmoji, setSelectedEmoji] = useState("");
   const [error, setError] = useState("");
+  const [pendingEmoji, setPendingEmoji] = useState<string | null>(null);
   const placeholderPosition = "16px";
 
   const handleMessageChange = useCallback(
@@ -364,11 +363,45 @@ export default function MessageInput({
     []
   );
 
+  const handleEmojiSelected = useCallback((emoji: string) => {
+    console.log("Emoji selected:", emoji);
+  }, []);
+
   useEffect(() => {
     setMessage(null);
     setEmojiSelectorOpen(false);
     setSelectedEmoji("");
   }, [selectedChat]);
+
+  useEffect(() => {
+    if (selectedEmoji) {
+      handleEmojiSelected(selectedEmoji);
+    }
+  }, [selectedEmoji, handleEmojiSelected]);
+
+  useEffect(() => {
+    if (pendingEmoji) {
+      const currentText = message?.text || "";
+      const newText = currentText + pendingEmoji;
+      setMessage(
+        message
+          ? { ...message, text: newText }
+          : {
+              id: "",
+              text: newText,
+              nonce: "",
+              timestamp: Date.now(),
+              sender: "",
+              reactions: new Map(),
+              files: [],
+              images: [],
+              thread_count: 0,
+              thread_last_timestamp: 0,
+            }
+      );
+      setPendingEmoji(null);
+    }
+  }, [pendingEmoji, message]);
 
   const resetFile = useCallback(() => {
     setUploadedFile(null);
@@ -468,9 +501,13 @@ export default function MessageInput({
     }
     return customStyle;
   };
+
+  useEffect(() => {
+    console.log("message", message);
+  }, [message]);
   return (
-    // <>
-    //   {canWriteMessage && (
+    <>
+      {canWriteMessage && (
     <Container style={getCustomStyle(!!openThread, isThread)}>
       <Wrapper>
         <FullWidthWrapper>
@@ -482,12 +519,10 @@ export default function MessageInput({
             }}
           >
             <RichTextEditor
-              placeholder={
-                openThread && isThread
-                  ? `Reply in thread`
-                  : `Type message in ${selectedChat}`
-              }
-              onChange={(value) => {
+              value={message?.text ?? ""}
+              sendOnEnter={true}
+              clearOnSend={true}
+              onChange={(value: string) => {
                 setMessage(
                   message
                     ? { ...message, text: value }
@@ -505,38 +540,16 @@ export default function MessageInput({
                       }
                 );
               }}
+              onSend={(html: string) => {
+                handleSendMessageEnter(html);
+              }}
+              placeholder={openThread && isThread ? "Reply in thread" : `Type message in ${selectedChat}`}
               maxHeight={50}
-              className="full-width-editor"
+              className="full-width-editor h-[50px]"
             />
           </EditorWrapper>
-          {/* <MarkdownEditor
-                setValue={(value) =>
-                  setMessage(
-                    message
-                      ? { ...message, text: value }
-                      : {
-                          id: "",
-                          text: value,
-                          nonce: "",
-                          timestamp: Date.now(),
-                          sender: "",
-                          reactions: new Map(),
-                          files: [],
-                          images: [],
-                          thread_count: 0,
-                          thread_last_timestamp: 0,
-                        }
-                  )
-                }
-                value={message?.text ?? ""}
-                selectedEmoji={selectedEmoji}
-                resetSelectedEmoji={() => setSelectedEmoji("")}
-                handleMessageSent={(content: string) => {
-                  handleSendMessageEnter(content);
-                }}
-              /> */}
         </FullWidthWrapper>
-        {/* {(!message ||
+        {(!message || message?.text === "<p></p>" ||
               emptyText.test(
                 markdownParser(message?.text ?? "", [])
               )) && (
@@ -560,8 +573,7 @@ export default function MessageInput({
                     : `Type message in ${selectedChat.length == 44 ? `${selectedChat.toLowerCase().slice(0, 6)}...${selectedChat.toLowerCase().slice(-4)}` : selectedChat}`}
                 </Placeholder>
               </>
-            )} */}
-
+            )}
         {uploadedFile?.file.cid && (
           <>
             <MessageFileField file={uploadedFile.file} resetFile={resetFile} />
@@ -588,13 +600,13 @@ export default function MessageInput({
           }}
           isActive={!!isActive}
         />
-        {emojiSelectorOpen && (
-          <EmojiPopupContainer>
-            <EmojiSelector
-              onEmojiSelected={(emoji) => setSelectedEmoji(emoji)}
-            />
-          </EmojiPopupContainer>
-        )}
+         {emojiSelectorOpen && (
+           <EmojiPopupContainer>
+             <EmojiSelector
+               onEmojiSelected={handleEmojiSelected}
+             />
+           </EmojiPopupContainer>
+         )}
       </ActionsWrapper>
       {showUpload && !uploadedFile?.file.cid && !uploadedImage?.file.cid && (
         <UploadPopupContainer>
@@ -622,14 +634,14 @@ export default function MessageInput({
         </UploadPopupContainer>
       )}
     </Container>
-    //   )}
-    //   {!canWriteMessage && (
-    //     <Container style={getCustomStyle(!!openThread, isThread)}>
-    //       <ReadOnlyField>
-    //         You don&apos;t have permissions to write in this channel
-    //       </ReadOnlyField>
-    //     </Container>
-    //   )}
-    // </>
+      )}
+      {!canWriteMessage && (
+        <Container style={getCustomStyle(!!openThread, isThread)}>
+          <ReadOnlyField>
+            You don&apos;t have permissions to write in this channel
+          </ReadOnlyField>
+        </Container>
+      )}
+    </>
   );
 }

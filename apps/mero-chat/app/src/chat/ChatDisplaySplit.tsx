@@ -128,7 +128,7 @@ const containerPaddingStyle = {
   paddingTop: "1rem",
   paddingLeft: "2.5rem",
   paddingRight: "2.5rem",
-  paddingBottom: "0rem",
+  paddingBottom: "0px",
   scrollBehavior: "smooth",
   height: "100%",
   width: "",
