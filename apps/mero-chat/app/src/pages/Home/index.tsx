@@ -39,6 +39,7 @@ import {
 import type { MessageWithReactions } from "../../api/clientApi";
 import type { CreateContextResult } from "../../components/popups/StartDMPopup";
 import { generateDMParams } from "../../utils/dmSetupState";
+import useNotificationSound from "../../hooks/useNotificationSound";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const debounce = <T extends (...args: any[]) => any>(
@@ -77,6 +78,33 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   const [openThread, setOpenThread] = useState<CurbMessage | undefined>(
     undefined
   );
+
+  const { playSoundForMessage, playSound } = useNotificationSound(
+    {
+      enabled: false, // Start disabled - user needs to enable in settings
+      volume: 0.5,
+      respectFocus: true,
+      respectMute: true,
+    },
+    activeChat?.id
+  );
+
+  // Initialize audio context on first user interaction
+  useEffect(() => {
+    const handleFirstInteraction = () => {
+      playSound('message'); // This will initialize the audio context
+      document.removeEventListener('click', handleFirstInteraction);
+      document.removeEventListener('keydown', handleFirstInteraction);
+    };
+
+    document.addEventListener('click', handleFirstInteraction);
+    document.addEventListener('keydown', handleFirstInteraction);
+
+    return () => {
+      document.removeEventListener('click', handleFirstInteraction);
+      document.removeEventListener('keydown', handleFirstInteraction);
+    };
+  }, [playSound]);
 
   const [currentSubscriptionContextId, setCurrentSubscriptionContextId] =
     useState<string>("");
@@ -360,6 +388,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
               timestamp: lastMessage.timestamp,
             }).catch(console.error);
           }
+          playSoundForMessage(lastMessage.id, 'message', false);
         } else {
           new ClientApiDataSource().readDm({
             other_user_id: activeChatRef.current?.name || "",
@@ -612,6 +641,11 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     const dms: ResponseData<DMChatInfo[]> =
       await new ClientApiDataSource().getDms();
     if (dms.data) {
+      dms.data.forEach((dm) => {
+        if (dm.unread_messages > 0) {
+          playSoundForMessage(`dm-${dm.other_identity_old}`, 'dm');
+        }
+      });
       setPrivateDMs(dms.data);
       return dms.data;
     }
