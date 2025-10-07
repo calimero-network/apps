@@ -4,6 +4,19 @@ import { MobileLayout } from '../../components/MobileLayout';
 import SignaturePadComponent from '../../components/SignaturePad';
 import { ClientApiDataSource } from '../../api/dataSource/ClientApiDataSource';
 import { blobClient, useCalimero } from '@calimero-network/calimero-client';
+import {
+  Button,
+  Card,
+  Heading,
+  Text,
+  Box,
+  Flex,
+  Modal,
+  Loader,
+  spacing,
+  colors,
+  radius,
+} from '@calimero-network/mero-ui';
 
 interface SavedSignature {
   id: string;
@@ -174,35 +187,62 @@ export default function SignaturesPage() {
   return (
     <MobileLayout>
       {/* Page Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-current mb-2">
+      <Box style={{ marginBottom: spacing[6].value }}>
+        <Heading size="xl" style={{ marginBottom: spacing[2].value }}>
           Signature Library
-        </h1>
-        <p className="text-lg text-secondary">
+        </Heading>
+        <Text size="lg" className="text-muted-foreground">
           Manage your digital signatures for document signing
-        </p>
-      </div>
+        </Text>
+      </Box>
 
       {/* Action Bar */}
-      <div className="flex justify-between items-center mb-6 gap-4">
-        <button
+      <Flex
+        style={{
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: spacing[6].value,
+          gap: spacing[4].value,
+        }}
+      >
+        <Button
           onClick={handleCreateSignature}
-          className="flex items-center gap-2 px-6 py-3 rounded-lg border border-primary bg-primary text-black font-medium cursor-pointer transition-all duration-200 min-h-[44px] hover:-translate-y-1 hover:shadow-button active:translate-y-0"
+          variant="primary"
+          style={{
+            padding: `${spacing[3].value} ${spacing[6].value}`,
+            minHeight: '44px',
+          }}
         >
-          <Plus size={20} />
+          <Plus size={20} className="mr-2" />
           Create New Signature
-        </button>
-      </div>
+        </Button>
+      </Flex>
 
       {/* Signatures Grid or Empty State */}
       {signatures.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-4">
+        <div
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+          style={{ gap: spacing[6].value }}
+        >
           {signatures.map((signature) => (
-            <div
+            <Card
               key={signature.id}
-              className="bg-card border border-current rounded-xl p-6 transition-all duration-300 cursor-pointer hover:-translate-y-1 hover:shadow-large hover:border-primary"
+              className="transition-all duration-300 cursor-pointer hover:-translate-y-1 hover:shadow-lg"
+              style={{
+                padding: spacing[6].value,
+                borderRadius: radius.md.value,
+              }}
             >
-              <div className="h-20 bg-surface border border-current rounded-lg mb-4 flex items-center justify-center overflow-hidden">
+              <Box
+                className="flex items-center justify-center overflow-hidden"
+                style={{
+                  height: '80px',
+                  backgroundColor: colors.background.secondary.value,
+                  border: `1px solid ${colors.neutral[200]?.value || '#e5e7eb'}`,
+                  borderRadius: radius.sm.value,
+                  marginBottom: spacing[4].value,
+                }}
+              >
                 {signature.dataURL ? (
                   <img
                     src={signature.dataURL}
@@ -210,37 +250,65 @@ export default function SignaturesPage() {
                     className="max-w-full max-h-full object-contain"
                   />
                 ) : (
-                  <div className="text-sm text-secondary">Loading...</div>
+                  <Flex style={{ alignItems: 'center', gap: spacing[2].value }}>
+                    <Loader size="small" />
+                    <Text size="sm" className="text-muted-foreground">
+                      Loading...
+                    </Text>
+                  </Flex>
                 )}
-              </div>
-              <div className="text-lg font-semibold text-current mb-2">
+              </Box>
+
+              <Heading size="sm" style={{ marginBottom: spacing[2].value }}>
                 {signature.name}
-              </div>
-              <div className="text-sm text-secondary mb-4">
+              </Heading>
+
+              <Text
+                size="sm"
+                className="text-muted-foreground"
+                style={{ marginBottom: spacing[4].value }}
+              >
                 Created: {signature.createdAt}
-              </div>
-              <div className="flex gap-2">
-                <button
+              </Text>
+
+              <Flex style={{ gap: spacing[2].value }}>
+                <Button
                   onClick={() => handleDeleteSignature(signature.id)}
-                  className="flex-1 flex items-center justify-center gap-1 px-3 py-2 rounded border border-red-500 bg-red-500 text-white text-sm cursor-pointer transition-all duration-200 min-h-[36px] hover:opacity-90 hover:-translate-y-0.5 active:translate-y-0"
+                  variant="error"
+                  className="flex-1"
+                  style={{
+                    minHeight: '36px',
+                    padding: `${spacing[2].value} ${spacing[3].value}`,
+                  }}
                 >
-                  <Trash2 size={16} />
+                  <Trash2 size={16} className="mr-1" />
                   Delete
-                </button>
-              </div>
-            </div>
+                </Button>
+              </Flex>
+            </Card>
           ))}
         </div>
       ) : (
-        <div className="text-center py-16 text-secondary">
-          <PenTool className="w-16 h-16 mx-auto mb-6 text-muted" />
-          <div className="text-xl font-semibold text-current mb-2">
+        <Box
+          className="text-center"
+          style={{ padding: `${spacing[6].value} 0` }}
+        >
+          <PenTool
+            className="mx-auto text-muted-foreground"
+            size={64}
+            style={{ marginBottom: spacing[6].value }}
+          />
+          <Heading size="md" style={{ marginBottom: spacing[2].value }}>
             No Signatures Yet
-          </div>
-          <div className="text-base mb-6">
+          </Heading>
+          <Text
+            size="md"
+            className="text-muted-foreground"
+            style={{ marginBottom: spacing[6].value }}
+          >
             Create your first digital signature to start signing documents
-          </div>
-        </div>
+          </Text>
+        </Box>
       )}
 
       {/* Signature Pad Modal */}
@@ -252,31 +320,41 @@ export default function SignaturesPage() {
 
       {/* Delete Confirmation Modal */}
       {deleteSignatureId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
-          <div className="bg-card rounded-lg p-6 shadow-lg max-w-sm w-full border border-current">
-            <h2 className="text-lg font-semibold mb-4 text-current">
-              Delete Signature
-            </h2>
-            <p className="mb-6 text-secondary">
+        <Modal
+          open={true}
+          onClose={cancelDeleteSignature}
+          title="Delete Signature"
+        >
+          <Box
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: spacing[4].value,
+            }}
+          >
+            <Text size="md" className="text-muted-foreground">
               Are you sure you want to delete this signature? This action cannot
               be undone.
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
+            </Text>
+
+            <Flex style={{ justifyContent: 'flex-end', gap: spacing[2].value }}>
+              <Button
                 onClick={cancelDeleteSignature}
-                className="px-4 py-2 rounded border border-current bg-transparent text-current hover:bg-surface"
+                variant="secondary"
+                style={{ padding: `${spacing[2].value} ${spacing[4].value}` }}
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={confirmDeleteSignature}
-                className="px-4 py-2 rounded border border-red-500 bg-red-500 text-white hover:opacity-90"
+                variant="error"
+                style={{ padding: `${spacing[2].value} ${spacing[4].value}` }}
               >
                 Delete
-              </button>
-            </div>
-          </div>
-        </div>
+              </Button>
+            </Flex>
+          </Box>
+        </Modal>
       )}
     </MobileLayout>
   );
