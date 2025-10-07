@@ -1,9 +1,17 @@
 import React, { useRef, useEffect, useState } from 'react';
 import SignaturePad from 'signature_pad';
-import { Save, RotateCcw, X } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Button } from './ui';
-import { useTheme } from '../contexts/ThemeContext';
+import { Save, RotateCcw } from 'lucide-react';
+import { AnimatePresence } from 'framer-motion';
+import {
+  Button,
+  Modal,
+  Text,
+  Box,
+  Flex,
+  spacing,
+  colors,
+  radius,
+} from '@calimero-network/mero-ui';
 
 interface SignaturePadComponentProps {
   onSave: (signatureData: string) => void;
@@ -19,7 +27,6 @@ const SignaturePadComponent: React.FC<SignaturePadComponentProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [signaturePad, setSignaturePad] = useState<SignaturePad | null>(null);
   const [isEmpty, setIsEmpty] = useState(true);
-  const { mode } = useTheme();
 
   useEffect(() => {
     if (isOpen && canvasRef.current) {
@@ -121,72 +128,73 @@ const SignaturePadComponent: React.FC<SignaturePadComponentProps> = ({
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[9999] pdf-viewer-modal-overlay signature-pad-modal-overlay">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            className={`rounded-lg p-6 w-full max-w-2xl border border-border shadow-2xl ${
-              mode === 'dark' ? 'bg-gray-900' : 'bg-white'
-            }`}
+        <Modal open={isOpen} onClose={onCancel} title="Create Your Signature">
+          <Box
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: spacing[4].value,
+            }}
           >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-foreground">
-                Create Your Signature
-              </h3>
-              <Button
-                variant="ghost"
+            <Box className="text-center">
+              <Text
                 size="sm"
-                onClick={onCancel}
-                className="p-1 h-auto w-auto"
+                className="text-muted-foreground"
+                style={{ marginBottom: spacing[4].value }}
               >
-                <X className="w-5 h-5" />
-              </Button>
-            </div>
+                Draw your signature in the box below
+              </Text>
 
-            <div className="space-y-4">
-              <div className="text-center">
-                <p className="text-sm text-muted-foreground mb-4">
-                  Draw your signature in the box below
-                </p>
-                <div className="relative">
-                  <canvas
-                    ref={canvasRef}
-                    className="w-full h-48 border-2 border-dashed border-border rounded-lg bg-background cursor-crosshair"
-                    width={600}
-                    height={200}
-                  />
-                  {isEmpty && (
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <p className="text-muted-foreground text-sm">
-                        Sign here using your mouse or touch screen
-                      </p>
-                    </div>
-                  )}
-                </div>
+              <Box className="relative">
+                <canvas
+                  ref={canvasRef}
+                  className="w-full cursor-crosshair"
+                  style={{
+                    height: '192px',
+                    border: `2px dashed ${colors.neutral[300]?.value || '#d1d5db'}`,
+                    borderRadius: radius.md.value,
+                    backgroundColor: colors.background.primary.value,
+                  }}
+                  width={600}
+                  height={200}
+                />
+                {isEmpty && (
+                  <Box className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <Text size="sm" className="text-muted-foreground">
+                      Sign here using your mouse or touch screen
+                    </Text>
+                  </Box>
+                )}
+              </Box>
 
-                <div className="flex gap-3 pt-4">
-                  <Button
-                    variant="outline"
-                    onClick={handleClear}
-                    className="flex items-center gap-2"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                    Clear
-                  </Button>
-                  <Button
-                    onClick={handleSave}
-                    disabled={isEmpty}
-                    className="flex items-center gap-2 text-white dark:text-black"
-                  >
-                    <Save className="w-4 h-4" />
-                    Save Signature
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        </div>
+              <Flex
+                style={{
+                  gap: spacing[3].value,
+                  paddingTop: spacing[4].value,
+                  justifyContent: 'center',
+                }}
+              >
+                <Button
+                  variant="secondary"
+                  onClick={handleClear}
+                  style={{ padding: `${spacing[2].value} ${spacing[4].value}` }}
+                >
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                  Clear
+                </Button>
+                <Button
+                  onClick={handleSave}
+                  disabled={isEmpty}
+                  variant="primary"
+                  style={{ padding: `${spacing[2].value} ${spacing[4].value}` }}
+                >
+                  <Save className="w-4 h-4 mr-2" />
+                  Save Signature
+                </Button>
+              </Flex>
+            </Box>
+          </Box>
+        </Modal>
       )}
     </AnimatePresence>
   );

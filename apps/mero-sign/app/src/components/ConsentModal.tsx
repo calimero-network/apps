@@ -1,8 +1,17 @@
 import React, { useMemo, useState } from 'react';
-import { Button } from './ui/button';
 import { useCalimero } from '@calimero-network/calimero-client';
 import { ClientApiDataSource } from '../api/dataSource/ClientApiDataSource';
 import { useTheme } from '../contexts/ThemeContext';
+import {
+  Button,
+  Box,
+  Flex,
+  Heading,
+  Text,
+  spacing,
+  colors,
+  radius,
+} from '@calimero-network/mero-ui';
 interface ConsentModalProps {
   open: boolean;
   userId: string;
@@ -13,79 +22,65 @@ interface ConsentModalProps {
   onClose: () => void;
 }
 
-const DisclosureText = () => (
-  <div className="space-y-3 text-sm text-foreground max-h-[60vh] overflow-y-auto px-1">
-    <p>
-      Please read this Electronic Records Disclosure and Consent (“Disclosure”)
+const DisclosureText: React.FC<{ mode: string }> = ({ mode }) => (
+  <div
+    style={{
+      maxHeight: '60vh',
+      overflowY: 'auto',
+      paddingLeft: spacing[2].value,
+    }}
+  >
+    <Text
+      style={{
+        display: 'block',
+        marginBottom: spacing[3].value,
+        color: mode === 'dark' ? '#e5e7eb' : '#111827',
+      }}
+    >
+      Please read this Electronic Records Disclosure and Consent (“Disclosure")
       carefully and retain a copy for your records.
-    </p>
-    <ol className="list-decimal pl-5 space-y-2">
-      <li>
+    </Text>
+    <ol
+      style={{ paddingLeft: spacing[4].value, marginBottom: spacing[3].value }}
+    >
+      <li style={{ marginBottom: spacing[2].value }}>
         You have the right to receive a paper copy of any record that we provide
         to you electronically. If you would like to receive a paper copy of any
         record, you may request it at any time by contacting us at{' '}
-        <a href="mailto:support@calimero.network" className="underline">
-          support@calimero.network
-        </a>
-        . We may charge a reasonable fee for providing paper copies.
+        <a href="mailto:support@calimero.network">support@calimero.network</a>.
+        We may charge a reasonable fee for providing paper copies.
       </li>
-      <li>
+      <li style={{ marginBottom: spacing[2].value }}>
         You may withdraw your consent to receive records electronically at any
         time. To withdraw your consent, please notify us in writing at{' '}
-        <a href="mailto:support@calimero.network" className="underline">
-          support@calimero.network
-        </a>
-        . There are no fees or penalties for withdrawing your consent. However,
+        <a href="mailto:support@calimero.network">support@calimero.network</a>.
+        There are no fees or penalties for withdrawing your consent. However,
         withdrawing consent may delay the processing of your transaction or
         limit your ability to use certain services.
       </li>
-      <li>
+      <li style={{ marginBottom: spacing[2].value }}>
         Your consent applies to all records and disclosures related to your
         transactions with us, including but not limited to contracts,
         agreements, notices, and other communications.
       </li>
-      <li>
+      <li style={{ marginBottom: spacing[2].value }}>
         To withdraw your consent or to update your electronic contact
         information (such as your email address), please contact us at{' '}
-        <a href="mailto:support@calimero.network" className="underline">
-          support@calimero.network
-        </a>
-        . It is your responsibility to provide us with a true, accurate, and
+        <a href="mailto:support@calimero.network">support@calimero.network</a>.
+        It is your responsibility to provide us with a true, accurate, and
         complete email address and to maintain and update promptly any changes
         in this information.
       </li>
-      <li>
+      <li style={{ marginBottom: spacing[2].value }}>
         To request a paper copy of a record, contact us at{' '}
-        <a href="mailto:support@calimero.network" className="underline">
-          support@calimero.network
-        </a>
-        . Please specify which record(s) you would like to receive. A reasonable
+        <a href="mailto:support@calimero.network">support@calimero.network</a>.
+        Please specify which record(s) you would like to receive. A reasonable
         fee may apply for each paper copy requested.
       </li>
-      <li>
-        To access and retain electronic records, you will need:
-        <ul className="list-disc pl-5 mt-1 space-y-1">
-          <li>
-            A device with internet access (such as a computer, tablet, or
-            smartphone)
-          </li>
-          <li>
-            A current version of a web browser (such as Chrome, Firefox, Safari,
-            or Edge)
-          </li>
-          <li>A valid email address</li>
-          <li>
-            Software capable of viewing PDF files (such as Adobe Acrobat Reader)
-          </li>
-          <li>
-            Sufficient storage space to save electronic records or the ability
-            to print them
-          </li>
-        </ul>
-        If these requirements change in a way that creates a material risk that
-        you may not be able to access or retain electronic records, we will
-        notify you of the new requirements and provide you with the opportunity
-        to withdraw your consent without penalty.
+      <li style={{ marginBottom: spacing[2].value }}>
+        To access and retain electronic records, you will need: a device with
+        internet access, a current web browser, a valid email address, software
+        capable of viewing PDFs, and sufficient storage or printing capability.
       </li>
       <li>
         By checking the box below and clicking “I Agree,” you acknowledge that
@@ -136,70 +131,150 @@ const ConsentModal: React.FC<ConsentModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[9999]">
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 9999,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+      }}
+    >
       {/* Disclosure Modal */}
       {showDisclosure && (
-        <div className="fixed inset-0 flex items-center justify-center z-[10000] bg-black/60">
-          <div
-            className={`p-6 rounded-lg max-w-lg w-full border shadow-lg relative ${
-              mode === 'dark' ? 'bg-gray-900' : 'bg-white'
-            }`}
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            backgroundColor: 'rgba(0,0,0,0.6)',
+          }}
+        >
+          <Box
+            style={{
+              padding: spacing[6].value,
+              borderRadius: radius.lg.value,
+              maxWidth: '32rem',
+              width: '100%',
+              border: `1px solid ${mode === 'dark' ? '#333' : colors.neutral[200].value}`,
+              backgroundColor: mode === 'dark' ? '#1a1a1a' : '#ffffff',
+              boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+            }}
           >
-            <h2 className="text-lg font-semibold mb-4">
-              Electronic Records Disclosure and Consent
-            </h2>
-            <DisclosureText />
-            <div
-              className={`flex justify-end mt-6 ${mode === 'dark' ? 'text-black' : ''}`}
+            <Heading
+              size="sm"
+              style={{
+                marginBottom: spacing[4].value,
+                color: mode === 'dark' ? '#f3f4f6' : 'inherit',
+              }}
             >
-              <Button onClick={() => setShowDisclosure(false)}>Close</Button>
-            </div>
-          </div>
+              Electronic Records Disclosure and Consent
+            </Heading>
+            <DisclosureText mode={mode} />
+            <Flex
+              justifyContent="flex-end"
+              style={{ marginTop: spacing[6].value }}
+            >
+              <Button
+                variant="secondary"
+                onClick={() => setShowDisclosure(false)}
+              >
+                Close
+              </Button>
+            </Flex>
+          </Box>
         </div>
       )}
 
       {/* Main Consent Modal */}
-      <div
-        className={`p-6 rounded-lg max-w-md w-full border shadow-lg ${mode === 'dark' ? 'bg-gray-900' : 'bg-white'}`}
+      <Box
+        style={{
+          padding: spacing[6].value,
+          borderRadius: radius.lg.value,
+          maxWidth: '28rem',
+          width: '100%',
+          border: `1px solid ${mode === 'dark' ? '#333' : colors.neutral[200].value}`,
+          backgroundColor: mode === 'dark' ? '#1a1a1a' : '#ffffff',
+          boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+        }}
       >
-        <h2 className="text-lg font-semibold mb-4">
+        <Heading
+          size="md"
+          style={{
+            marginBottom: spacing[4].value,
+            color: mode === 'dark' ? '#f3f4f6' : 'inherit',
+          }}
+        >
           Consent to Electronic Signing
-        </h2>
-        <p className="mb-4 text-sm text-muted-foreground">
+        </Heading>
+        <Text
+          style={{
+            marginBottom: spacing[4].value,
+            color: mode === 'dark' ? '#9ca3af' : colors.neutral[600].value,
+            fontSize: '0.95rem',
+          }}
+        >
           Before signing, you must agree to conduct business electronically.{' '}
           <button
             type="button"
-            className="underline text-primary hover:text-primary/80"
+            style={{ textDecoration: 'underline', color: 'var(--primary)' }}
             onClick={() => setShowDisclosure(true)}
           >
             Click to view agreement to conduct business
           </button>
           .
-        </p>
-        <label className="flex items-center mb-4">
+        </Text>
+
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            marginBottom: spacing[4].value,
+          }}
+        >
           <input
             type="checkbox"
             checked={checked}
             onChange={() => setChecked(!checked)}
-            className="mr-2"
+            style={{ marginRight: spacing[3].value }}
           />
-          I agree to receive records electronically in accordance with this
-          Disclosure.
+          <Text>
+            I agree to receive records electronically in accordance with this
+            Disclosure.
+          </Text>
         </label>
-        {error && <div className="text-red-600 text-sm mb-2">{error}</div>}
-        <div className="flex justify-end space-x-2 ">
-          <Button variant="outline" onClick={onClose} disabled={loading}>
+        {error && (
+          <div
+            style={{
+              color: colors.semantic.error.value,
+              marginBottom: spacing[3].value,
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        <Flex
+          justifyContent="flex-end"
+          style={{ gap: spacing[3].value, marginTop: spacing[4].value }}
+        >
+          <Button variant="secondary" onClick={onClose} disabled={loading}>
             Cancel
           </Button>
           <Button
+            variant="success"
             onClick={handleAccept}
             disabled={!checked || loading}
-            className={`${mode === 'dark' ? 'text-black' : 'text-white'}`}
           >
             {loading ? 'Saving...' : 'Continue to Sign'}
           </Button>
-        </div>
-      </div>
+        </Flex>
+      </Box>
     </div>
   );
 };
