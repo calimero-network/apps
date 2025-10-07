@@ -41,6 +41,18 @@ import type { CreateContextResult } from "../../components/popups/StartDMPopup";
 import { generateDMParams } from "../../utils/dmSetupState";
 import useNotificationSound from "../../hooks/useNotificationSound";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const debounce = <T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): ((...args: Parameters<T>) => void) => {
+  let timeout: ReturnType<typeof setTimeout>;
+  return (...args: Parameters<T>) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+};
+
 export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   const { app } = useCalimero();
   const [isOpenSearchChannel, setIsOpenSearchChannel] = useState(false);
@@ -67,10 +79,6 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     undefined
   );
 
-  const [currentSubscriptionContextId, setCurrentSubscriptionContextId] =
-    useState<string>("");
-
-  // Initialize notification sound hook
   const { playSoundForMessage, playSound } = useNotificationSound(
     {
       enabled: false, // Start disabled - user needs to enable in settings
@@ -97,6 +105,9 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
       document.removeEventListener('keydown', handleFirstInteraction);
     };
   }, [playSound]);
+
+  const [currentSubscriptionContextId, setCurrentSubscriptionContextId] =
+    useState<string>("");
 
   const manageEventSubscription = useCallback(
     (contextId: string) => {
@@ -300,8 +311,195 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     []
   );
 
+  // Refs to prevent infinite loops and track processing state
+  const isProcessingEvent = useRef(false);
+  const lastEventTime = useRef(0);
+  const eventQueue = useRef<Set<string>>(new Set());
+
+  // Debounced function to prevent rapid-fire events
+  const debouncedFetchChannels = useCallback(
+    debounce(() => {
+      fetchChannels();
+    }, 300),
+    []
+  );
+
+  const debouncedFetchDms = useCallback(
+    debounce(() => {
+      fetchDms();
+    }, 300),
+    []
+  );
+
+  // Self-contained function to handle message updates
+  const handleMessageUpdates = useCallback(async (useDM: boolean) => {
+    if (!activeChatRef.current) return;
+
+    try {
+      const reFetchedMessages: ResponseData<FullMessageResponse> =
+        await new ClientApiDataSource().getMessages({
+          group: {
+            name: (useDM ? "private_dm" : activeChatRef.current?.name) || "",
+          },
+          limit: 20,
+          offset: 0,
+          is_dm: useDM,
+          dm_identity: activeChatRef.current?.account,
+        });
+
+      if (!reFetchedMessages.data) return;
+
+      const existingMessageIds = new Set(
+        messagesRef.current.map((msg) => msg.id)
+      );
+      
+      const newMessages = reFetchedMessages.data.messages
+        .filter(
+          (message: MessageWithReactions) =>
+            !existingMessageIds.has(message.id)
+        )
+        .map((message: MessageWithReactions) => ({
+          id: message.id,
+          text: message.text,
+          nonce: Math.random().toString(36).substring(2, 15),
+          key: message.id,
+          timestamp: message.timestamp * 1000,
+          sender: message.sender,
+          senderUsername: message.sender_username,
+          reactions: message.reactions,
+          threadCount: message.thread_count,
+          threadLastTimestamp: message.thread_last_timestamp,
+          editedOn: undefined,
+          mentions: [],
+          files: [],
+          images: [],
+          editMode: false,
+          status: MessageStatus.sent,
+          deleted: message.deleted,
+        }));
+
+      if (newMessages.length > 0) {
+        // Mark messages as read (but don't await to prevent blocking)
+        if (activeChat?.type === "channel") {
+          const lastMessage = newMessages[newMessages.length - 1];
+          if (lastMessage?.timestamp) {
+            new ClientApiDataSource().readMessage({
+              channel: { name: activeChat?.name },
+              timestamp: lastMessage.timestamp,
+            }).catch(console.error);
+          }
+          playSoundForMessage(lastMessage.id, 'message', false);
+        } else {
+          new ClientApiDataSource().readDm({
+            other_user_id: activeChatRef.current?.name || "",
+          }).catch(console.error);
+        }
+
+        setIncomingMessages(newMessages);
+        messagesRef.current = [...messagesRef.current, ...newMessages];
+      }
+    } catch (error) {
+      console.error("Error handling message updates:", error);
+    }
+  }, [activeChat]);
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const eventCallback = async (event: any) => {
+  const handleDMUpdates = useCallback(async (sessionChat: any) => {
+    if (sessionChat?.type !== "direct_message") return;
+
+    try {
+      const updatedDMs = await fetchDms();
+      
+      if (
+        !sessionChat?.isFinal &&
+        updatedDMs?.length &&
+        (sessionChat?.canJoin ||
+          !sessionChat?.isSynced ||
+          !sessionChat?.account ||
+          !sessionChat?.otherIdentityNew)
+      ) {
+        const currentDM = updatedDMs.find(
+          (dm) => dm.context_id === sessionChat.contextId
+        );
+        onDMSelected(currentDM, undefined, false);
+      }
+    } catch (error) {
+      console.error("Error handling DM updates:", error);
+    }
+  }, []);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleStateMutation = useCallback(async (_event: any) => {
+    const sessionChat = getStoredSession();
+    const useDM = (sessionChat?.type === "direct_message" &&
+      sessionChat?.account &&
+      !sessionChat?.canJoin &&
+      sessionChat?.otherIdentityNew) as boolean;
+
+    // Update channels and DMs
+    debouncedFetchChannels();
+    debouncedFetchDms();
+
+    // Handle DM-specific updates
+    await handleDMUpdates(sessionChat);
+
+    // Handle channel member updates for non-DM chats
+    if (sessionChat?.type !== "direct_message") {
+      await reFetchChannelMembers();
+    }
+
+    // Handle message updates
+    await handleMessageUpdates(useDM);
+  }, [debouncedFetchChannels, debouncedFetchDms, handleDMUpdates, handleMessageUpdates, reFetchChannelMembers]);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleExecutionEvent = useCallback(async (event: any) => {
+    
+    if (!event.data?.events || event.data.events.length === 0) {
+      return;
+    }
+
+    const executionEvents = event.data.events;
+    
+    for (const executionEvent of executionEvents) {
+      switch (executionEvent.kind) {
+        case "MessageSent":
+          // On sender node do nothing as this will only duplicate the message
+          break;
+        case "ChannelCreated":
+          debouncedFetchChannels();
+          break;
+      }
+    }
+  }, [debouncedFetchChannels]);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const eventCallback = useCallback(async (event: any) => {
+    // Prevent infinite loops
+    if (isProcessingEvent.current) {
+      return;
+    }
+
+    // Rate limiting - prevent events from firing too frequently
+    const now = Date.now();
+    if (now - lastEventTime.current < 100) {
+      return;
+    }
+    lastEventTime.current = now;
+
+    // Prevent duplicate events
+    const eventId = `${event.type}-${event.data?.timestamp || now}`;
+    if (eventQueue.current.has(eventId)) {
+      return;
+    }
+    eventQueue.current.add(eventId);
+
+    // Clean up old events from queue (keep only last 10)
+    if (eventQueue.current.size > 10) {
+      const eventsArray = Array.from(eventQueue.current);
+      eventQueue.current = new Set(eventsArray.slice(-5));
+    }
+
     const sessionChat = getStoredSession();
     const useDM = (sessionChat?.type === "direct_message" &&
       sessionChat?.account &&
@@ -313,123 +511,29 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     const currentContextId = (useDM ? dmContextId : contextId) || "";
 
     if (!currentContextId) {
+      eventQueue.current.delete(eventId);
       return;
     }
 
+    isProcessingEvent.current = true;
+
     try {
-      if (event.type === "StateMutation") {
-        fetchChannels();
-
-        const updatedDMs = await fetchDms();
-
-        if (
-          sessionChat?.type === "direct_message" &&
-          !sessionChat?.isFinal &&
-          updatedDMs?.length &&
-          (sessionChat?.canJoin ||
-            !sessionChat?.isSynced ||
-            !sessionChat?.account ||
-            !sessionChat?.otherIdentityNew)
-        ) {
-          const currentDM = updatedDMs.find(
-            (dm) => dm.context_id === sessionChat.contextId
-          );
-          onDMSelected(currentDM, undefined, false);
-        }
-
-        if (sessionChat?.type !== "direct_message") {
-          await reFetchChannelMembers();
-          await fetchDms();
-        }
-
-        const reFetchedMessages: ResponseData<FullMessageResponse> =
-          await new ClientApiDataSource().getMessages({
-            group: {
-              name: (useDM ? "private_dm" : activeChatRef.current?.name) || "",
-            },
-            limit: 20,
-            offset: 0,
-            is_dm: useDM,
-            dm_identity: activeChatRef.current?.account,
-          });
-        if (reFetchedMessages.data) {
-          const existingMessageIds = new Set(
-            messagesRef.current.map((msg) => msg.id)
-          );
-          const newMessages = reFetchedMessages.data.messages
-            .filter(
-              (message: MessageWithReactions) =>
-                !existingMessageIds.has(message.id)
-            )
-            .map((message: MessageWithReactions) => ({
-              id: message.id,
-              text: message.text,
-              nonce: Math.random().toString(36).substring(2, 15),
-              key: message.id,
-              timestamp: message.timestamp * 1000,
-              sender: message.sender,
-              senderUsername: message.sender_username,
-              reactions: message.reactions,
-              threadCount: message.thread_count,
-              threadLastTimestamp: message.thread_last_timestamp,
-              editedOn: undefined,
-              mentions: [],
-              files: [],
-              images: [],
-              editMode: false,
-              status: MessageStatus.sent,
-              deleted: message.deleted,
-            }));
-          if (newMessages.length > 0) {
-            const processedMessageIds = new Set<string>();
-            newMessages.forEach((message) => {
-              if (!processedMessageIds.has(message.id)) {
-                processedMessageIds.add(message.id);
-                const isDM = activeChat?.type === "direct_message";
-                const isMention = message.mentions && message.mentions.length > 0;
-                const notificationType = isDM ? 'dm' : 'channel';
-                
-                playSoundForMessage(message.id, notificationType, isMention);
-              }
-            });
-
-            if (activeChat?.type === "channel") {
-              const messages = newMessages;
-              if (
-                messages &&
-                messages.length > 0 &&
-                messages[messages.length - 1]?.timestamp
-              ) {
-                const lastMessageTimestamp =
-                  messages[messages.length - 1].timestamp;
-                await new ClientApiDataSource().readMessage({
-                  channel: { name: activeChat?.name },
-                  timestamp: lastMessageTimestamp,
-                });
-              }
-            } else {
-              await new ClientApiDataSource().readDm({
-                other_user_id: activeChatRef.current?.name || "",
-              });
-            }
-            setIncomingMessages(newMessages);
-            messagesRef.current = [...messagesRef.current, ...newMessages];
-          }
-        }
-      } else if (event.type === "ExecutionEvent" && event.data?.events) {
-        const executionEvents = event.data.events;
-        for (const executionEvent of executionEvents) {
-          if (executionEvent.kind === "MessageSent") {
-            // On sender node do nothing as this will only duplicate the message
-          } else if (executionEvent.kind === "ChannelCreated") {
-            await fetchChannels();
-          }
-        }
+      switch (event.type) {
+        case "StateMutation":
+          await handleStateMutation(event);
+          break;
+        case "ExecutionEvent":
+          await handleExecutionEvent(event);
+          break;
+        default:
       }
     } catch (callbackError) {
       console.error("Error in subscription callback:", callbackError);
+    } finally {
+      isProcessingEvent.current = false;
+      eventQueue.current.delete(eventId);
     }
-  };
+  }, [handleStateMutation, handleExecutionEvent]);
 
   const loadInitialChatMessages = async (): Promise<ChatMessagesData> => {
     if (!activeChat?.name) {
@@ -526,7 +630,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
           readOnly: channelInfo.read_only,
           createdAt: new Date(channelInfo.created_at * 1000).toISOString(),
         })
-      ).filter((channel) => channel.name !== "");
+      );
       setChannels(channelsArray);
     }
   };
@@ -537,14 +641,11 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     const dms: ResponseData<DMChatInfo[]> =
       await new ClientApiDataSource().getDms();
     if (dms.data) {
-      // Check for DMs with unread messages and play notification
       dms.data.forEach((dm) => {
         if (dm.unread_messages > 0) {
-          // Use a stable ID based on the DM identity, not timestamp
           playSoundForMessage(`dm-${dm.other_identity_old}`, 'dm');
         }
       });
-      
       setPrivateDMs(dms.data);
       return dms.data;
     }
