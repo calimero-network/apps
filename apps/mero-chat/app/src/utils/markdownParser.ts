@@ -2,11 +2,9 @@ export const emptyText = /^(\s*<p><br><\/p>\s*)*$/;
 export const markdownParser = (text: string, channelMembers: string[]) => {
   // First pass: handle urls, headings, everyone/here
   let toHTML = text.replace(
-    /(\b(https?:\/\/[^\s<]+\/?)\b)|^(#####|####|###|##|#) (.*)$|(@everyone)|(@here)|<p><br><\/p>(?=\s*$)/gim,
-    (match, url, url2, heading, headingText, everyoneMention, hereMention) => {
-      if (url || url2) {
-        return `<a href="${url || url2}" class="url-link" target="_blank">${url || url2}</a>`;
-      } else if (heading) {
+    /^(#####|####|###|##|#) (.*)$|(@everyone)|(@here)|<p><br><\/p>(?=\s*$)/gim,
+    (match, heading, headingText, everyoneMention, hereMention) => {
+      if (heading) {
         return headingText;
       } else if (everyoneMention) {
         return `<span class='mention-everyone'>@everyone</span>`;

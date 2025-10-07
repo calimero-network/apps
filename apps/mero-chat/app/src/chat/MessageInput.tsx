@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { styled } from "styled-components";
 import type { ChatFile, MessageWithReactions } from "../types/Common";
 import EmojiSelector from "../emojiSelector/EmojiSelector";
@@ -6,21 +6,52 @@ import { emptyText, markdownParser } from "../utils/markdownParser";
 import UploadComponent from "./UploadComponent";
 import MessageFileField from "./MessageFileField";
 import MessageImageField from "./MessageImageField";
-import { MarkdownEditor } from "../markdown/MarkdownEditor";
 import type { ResponseData } from "@calimero-network/calimero-client";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import { extractUsernames } from "../utils/mentions";
+import { RichTextEditor } from "@calimero-network/mero-ui";
+
+const EditorWrapper = styled.div`
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  word-wrap: break-word;
+  word-break: break-word;
+  overflow-wrap: break-word;
+
+  .full-width-editor {
+    width: 100% !important;
+    max-width: 100% !important;
+    word-wrap: break-word !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .full-width-editor > div {
+    width: 100% !important;
+    max-width: 100% !important;
+    word-wrap: break-word !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .full-width-editor .ql-editor {
+    width: 100% !important;
+    max-width: 100% !important;
+    word-wrap: break-word !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    white-space: pre-wrap !important;
+  }
+`;
 
 const Container = styled.div`
-  position: fixed;
-  bottom: 0;
   width: 100%;
-  bottom: 16px;
   padding-left: 16px;
   padding-right: 16px;
-  padding-top: 12px;
-  padding-bottom: 12px;
-  background-color: #1d1d21;
+  padding-top: 1px;
+  padding-bottom: 42px;
   display: flex;
   align-items: end;
   z-index: 10;
@@ -35,11 +66,7 @@ const Container = styled.div`
     isolation: isolate;
   }
   @media (max-width: 1024px) {
-    position: fixed;
     margin: 0 !important;
-    left: 0;
-    right: 0;
-    bottom: 0px;
     border-top-left-radius: 4px;
     border-top-right-radius: 4px;
     gap: 4px;
@@ -47,9 +74,8 @@ const Container = styled.div`
     padding-left: 8px;
     padding-right: 8px;
     padding-bottom: 12px;
-    padding-top: 12px;
+    padding-top: 0px;
     width: 100% !important;
-    z-index: 10;
     transform: translateZ(0);
     /* Prevent layout shifts when modals open */
     will-change: transform;
@@ -81,18 +107,21 @@ const UploadContainer = styled.div`
 `;
 
 const Wrapper = styled.div`
-  flex-grow: 1;
-  display: contents;
+  flex: 1;
+  display: flex;
   align-items: start;
   background-color: #111111;
+  min-width: 0;
 `;
 
 const FullWidthWrapper = styled.div`
-  display: flow;
+  display: flex;
   flex-direction: row;
   overflow: hidden;
   align-items: start;
   width: 100%;
+  flex: 1;
+  min-width: 0; /* This is crucial for flex items to shrink */
 `;
 
 const EmojiContainer = styled.div`
@@ -189,7 +218,7 @@ const Placeholder = styled.div<{
     $placeholderPosition && $placeholderPosition};
   left: 25px;
   color: #686672;
-  font-size: 16px;
+  font-size: 14px;
   font-style: normal;
   font-weight: 400;
   line-height: 150%;
@@ -199,8 +228,7 @@ const Placeholder = styled.div<{
     font-style: normal;
     font-weight: 400;
     line-height: 150%;
-    bottom: ${({ $placeholderPositionMobile }) =>
-      $placeholderPositionMobile && $placeholderPositionMobile};
+    bottom: -10px;
     left: 14px;
   }
 
@@ -301,6 +329,20 @@ const ErrorContainer = styled.div`
   border-radius: 2px;
 `;
 
+const ActionsWrapper = styled.div`
+  position: absolute;
+  right: 24px;
+  bottom: 20px;
+  @media (min-width: 1025px) {
+    right: 42px;
+    bottom: 42px;
+  }
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+`;
+
 interface MessageInputProps {
   selectedChat: string;
   sendMessage: (message: string) => void;
@@ -330,7 +372,10 @@ export default function MessageInput({
   const [emojiSelectorOpen, setEmojiSelectorOpen] = useState(false);
   const [selectedEmoji, setSelectedEmoji] = useState("");
   const [error, setError] = useState("");
+  const [pendingEmoji, setPendingEmoji] = useState<string | null>(null);
   const placeholderPosition = "16px";
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const editorRef = useRef<any>(null);
 
   const handleMessageChange = useCallback(
     (mesage: MessageWithReactions | null) => {
@@ -339,11 +384,46 @@ export default function MessageInput({
     []
   );
 
+  const handleEmojiSelected = useCallback((emoji: string) => {
+    editorRef.current?.insertContent(emoji);
+    setSelectedEmoji("");
+  }, []);
+
   useEffect(() => {
     setMessage(null);
     setEmojiSelectorOpen(false);
     setSelectedEmoji("");
   }, [selectedChat]);
+
+  useEffect(() => {
+    if (selectedEmoji) {
+      handleEmojiSelected(selectedEmoji);
+    }
+  }, [selectedEmoji, handleEmojiSelected]);
+
+  useEffect(() => {
+    if (pendingEmoji) {
+      const currentText = message?.text || "";
+      const newText = currentText + pendingEmoji;
+      setMessage(
+        message
+          ? { ...message, text: newText }
+          : {
+              id: "",
+              text: newText,
+              nonce: "",
+              timestamp: Date.now(),
+              sender: "",
+              reactions: new Map(),
+              files: [],
+              images: [],
+              thread_count: 0,
+              thread_last_timestamp: 0,
+            }
+      );
+      setPendingEmoji(null);
+    }
+  }, [pendingEmoji, message]);
 
   const resetFile = useCallback(() => {
     setUploadedFile(null);
@@ -356,8 +436,7 @@ export default function MessageInput({
   }, []);
 
   const isActive =
-    (message &&
-      !emptyText.test(markdownParser(message?.text ?? "", []))) ||
+    (message && !emptyText.test(markdownParser(message?.text ?? "", []))) ||
     uploadedImage ||
     uploadedFile;
 
@@ -367,11 +446,21 @@ export default function MessageInput({
       (uploadedImage && !uploadedImage.file.cid)
     ) {
       return;
-    } else if (
-      emptyText.test(markdownParser(message?.text ?? "", [])) &&
-      !uploadedImage &&
-      !uploadedFile
-    ) {
+    }
+
+    const content = message?.text ?? "";
+    const isEmptyContent =
+      !content ||
+      content.trim() === "" ||
+      content === "<p></p>" ||
+      content === "<p><br></p>" ||
+      content
+        .replace(/<p><\/p>/g, "")
+        .replace(/<p><br><\/p>/g, "")
+        .trim() === "" ||
+      emptyText.test(markdownParser(content, []));
+
+    if (isEmptyContent && !uploadedImage && !uploadedFile) {
       handleMessageChange(null);
     } else {
       let tagList: string[] = [];
@@ -392,11 +481,18 @@ export default function MessageInput({
   };
 
   const handleSendMessageEnter = async (content: string) => {
-    if (
-      emptyText.test(markdownParser(content ?? "", [])) &&
-      !uploadedImage &&
-      !uploadedFile
-    ) {
+    const isEmptyContent =
+      !content ||
+      content.trim() === "" ||
+      content === "<p></p>" ||
+      content === "<p><br></p>" ||
+      content
+        .replace(/<p><\/p>/g, "")
+        .replace(/<p><br><\/p>/g, "")
+        .trim() === "" ||
+      emptyText.test(markdownParser(content ?? "", []));
+
+    if (isEmptyContent && !uploadedImage && !uploadedFile) {
       handleMessageChange(null);
     } else {
       let tagList: string[] = [];
@@ -431,81 +527,89 @@ export default function MessageInput({
 
   const getCustomStyle = (openThread: boolean, isThread: boolean) => {
     const customStyle = {
-      width: "calc(100% - 440px)",
-      marginLeft: "2.5rem",
-      marginRight: "2.5rem",
+      width: "100%",
+      maxWidth: "100%",
+      boxSizing: "border-box" as const,
     };
     if (openThread && !isThread) {
       customStyle.width = "calc(60% - 262px)";
-      customStyle.marginRight = "1.25rem";
     } else if (!openThread && !isThread) {
-      customStyle.width = "calc(100% - 440px)";
+      customStyle.width = "100%";
     } else if (openThread && isThread) {
       customStyle.width = "calc(40% - 212px)";
-      customStyle.marginLeft = "0rem";
-      customStyle.marginRight = "1.25rem";
     }
     return customStyle;
   };
+
   return (
     <>
       {canWriteMessage && (
         <Container style={getCustomStyle(!!openThread, isThread)}>
           <Wrapper>
             <FullWidthWrapper>
-              <MarkdownEditor
-                setValue={(value) =>
-                  setMessage(
-                    message
-                      ? { ...message, text: value }
-                      : {
-                          id: "",
-                          text: value,
-                          nonce: "",
-                          timestamp: Date.now(),
-                          sender: "",
-                          reactions: new Map(),
-                          files: [],
-                          images: [],
-                          thread_count: 0,
-                          thread_last_timestamp: 0,
-                        }
-                  )
-                }
-                value={message?.text ?? ""}
-                selectedEmoji={selectedEmoji}
-                resetSelectedEmoji={() => setSelectedEmoji("")}
-                handleMessageSent={(content: string) => {
-                  handleSendMessageEnter(content);
+              <EditorWrapper
+                style={{
+                  flex: 1,
+                  width: "100%",
+                  minWidth: 0,
                 }}
-              />
+              >
+                <RichTextEditor
+                  ref={editorRef}
+                  value={message?.text ?? ""}
+                  sendOnEnter={true}
+                  clearOnSend={true}
+                  onChange={(value: string) => {
+                    setMessage(
+                      message
+                        ? { ...message, text: value }
+                        : {
+                            id: "",
+                            text: value,
+                            nonce: "",
+                            timestamp: Date.now(),
+                            sender: "",
+                            reactions: new Map(),
+                            files: [],
+                            images: [],
+                            thread_count: 0,
+                            thread_last_timestamp: 0,
+                          }
+                    );
+                  }}
+                  onSend={(html: string) => {
+                    handleSendMessageEnter(html);
+                  }}
+                  placeholder={
+                    openThread && isThread
+                      ? "Reply in thread"
+                      : `Type message in ${selectedChat}`
+                  }
+                  maxHeight={50}
+                  className="full-width-editor"
+                />
+              </EditorWrapper>
             </FullWidthWrapper>
-            {(!message ||
-              emptyText.test(
-                markdownParser(message?.text ?? "", [])
-              )) && (
-              <>
-                <Placeholder
-                  $placeholderPosition={placeholderPosition}
-                  $placeholderPositionMobile={placeholderPosition}
-                  className="desktop"
-                >
-                  {openThread && isThread
-                    ? `Reply in thread`
-                    : `Type message in ${selectedChat}`}
-                </Placeholder>
-                <Placeholder
-                  $placeholderPosition={placeholderPosition}
-                  $placeholderPositionMobile={placeholderPosition}
-                  className="mobile"
-                >
-                  {openThread && isThread
-                    ? `Reply in thread`
-                    : `Type message in ${selectedChat.length == 44 ? `${selectedChat.toLowerCase().slice(0, 6)}...${selectedChat.toLowerCase().slice(-4)}` : selectedChat}`}
-                </Placeholder>
-              </>
-            )}
-
+            <>
+              <Placeholder
+                $placeholderPosition={placeholderPosition}
+                $placeholderPositionMobile={placeholderPosition}
+                className="desktop"
+              >
+                {openThread && isThread
+                  ? `Reply in thread`
+                  : `Type message in ${selectedChat}`}
+              </Placeholder>
+              <Placeholder
+                $placeholderPosition={placeholderPosition}
+                $placeholderPositionMobile={placeholderPosition}
+                className="mobile"
+              >
+                {openThread && isThread
+                  ? `Reply in thread`
+                  : `Type message in ${selectedChat.length == 44 ? `${selectedChat.toLowerCase().slice(0, 6)}...${selectedChat.toLowerCase().slice(-4)}` : selectedChat}`}
+              </Placeholder>
+            </>
             {uploadedFile?.file.cid && (
               <>
                 <MessageFileField
@@ -523,24 +627,24 @@ export default function MessageInput({
               </>
             )}
           </Wrapper>
-          <div onClick={() => setEmojiSelectorOpen(!emojiSelectorOpen)}>
-            <IconEmoji />
-          </div>
-          <IconSend
-            onClick={() => {
-              if (isActive) {
-                handleSendMessage();
-              }
-            }}
-            isActive={!!isActive}
-          />
-          {emojiSelectorOpen && (
-            <EmojiPopupContainer>
-              <EmojiSelector
-                onEmojiSelected={(emoji) => setSelectedEmoji(emoji)}
-              />
-            </EmojiPopupContainer>
-          )}
+          <ActionsWrapper>
+            <div onClick={() => setEmojiSelectorOpen(!emojiSelectorOpen)}>
+              <IconEmoji />
+            </div>
+            <IconSend
+              onClick={() => {
+                if (isActive) {
+                  handleSendMessage();
+                }
+              }}
+              isActive={!!isActive}
+            />
+            {emojiSelectorOpen && (
+              <EmojiPopupContainer>
+                <EmojiSelector onEmojiSelected={handleEmojiSelected} />
+              </EmojiPopupContainer>
+            )}
+          </ActionsWrapper>
           {showUpload &&
             !uploadedFile?.file.cid &&
             !uploadedImage?.file.cid && (
