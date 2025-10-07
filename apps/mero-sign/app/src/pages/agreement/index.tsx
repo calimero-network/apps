@@ -11,11 +11,9 @@ import { blobClient, useCalimero } from '@calimero-network/calimero-client';
 import {
   ArrowLeft,
   Plus,
-  Search,
   Users,
   Upload,
   FileText,
-  X,
   Trash2,
   Download,
   AlertCircle,
@@ -24,17 +22,30 @@ import {
   Clock,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Button, Card, CardContent } from '../../components/ui';
+import {
+  Button,
+  Card,
+  Heading,
+  Text,
+  Box,
+  Flex,
+  Input,
+  SearchInput,
+  Modal,
+  Loader,
+  Alert,
+  spacing,
+  colors,
+  radius,
+} from '@calimero-network/mero-ui';
 import { MobileLayout } from '../../components/MobileLayout';
 import PDFViewer from '../../components/PDFViewer';
 import AuditTrail from '../../components/AuditTrail';
-import { useTheme } from '../../contexts/ThemeContext';
 import { DocumentService } from '../../api/documentService';
 import { ClientApiDataSource } from '../../api/dataSource/ClientApiDataSource';
 import { ContextApiDataSource } from '../../api/dataSource/nodeApiDataSource';
 import { ContextDetails, PermissionLevel } from '../../api/clientApi';
 import { useIcpAuth } from '../../contexts/IcpAuthContext';
-import { backendService } from '../../api/icp/backendService';
 
 // Constants
 
@@ -88,28 +99,69 @@ const NotificationPopup: React.FC<{
   notification: NotificationState;
   onClose: () => void;
 }> = ({ notification }) => (
-  <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+  <Box
+    style={{
+      position: 'fixed',
+      inset: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.4)',
+      backdropFilter: 'blur(8px)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 9999,
+      padding: spacing[4].value,
+    }}
+  >
     <motion.div
       initial={{ opacity: 0, scale: 0.8 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9 }}
       transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-      className={`relative p-8 rounded-2xl shadow-2xl border w-full max-w-sm text-center ${
-        notification.type === 'success'
-          ? 'bg-green-100 border-green-300 text-green-900 dark:bg-gray-800 dark:border-green-600 dark:text-green-200'
-          : 'bg-red-100 border-red-300 text-red-900 dark:bg-gray-800 dark:border-red-600 dark:text-red-200'
-      }`}
     >
-      <div className="flex flex-col items-center justify-center">
-        {notification.type === 'success' ? (
-          <CheckCircle2 className="w-16 h-16 mb-5 text-green-500" />
-        ) : (
-          <AlertCircle className="w-16 h-16 mb-5 text-red-500" />
-        )}
-        <p className="text-lg font-medium">{notification.message}</p>
-      </div>
+      <Card
+        style={{
+          padding: spacing[6].value,
+          borderRadius: radius.lg.value,
+          width: '100%',
+          maxWidth: '400px',
+          textAlign: 'center',
+          backgroundColor:
+            notification.type === 'success'
+              ? colors.semantic.success.value
+              : colors.semantic.error.value,
+          borderColor:
+            notification.type === 'success'
+              ? colors.semantic.success.value
+              : colors.semantic.error.value,
+        }}
+      >
+        <Flex direction="column" alignItems="center" justifyContent="center">
+          {notification.type === 'success' ? (
+            <CheckCircle2
+              style={{
+                width: '64px',
+                height: '64px',
+                marginBottom: spacing[4].value,
+                color: '#16a34a',
+              }}
+            />
+          ) : (
+            <AlertCircle
+              style={{
+                width: '64px',
+                height: '64px',
+                marginBottom: spacing[4].value,
+                color: '#dc2626',
+              }}
+            />
+          )}
+          <Text size="lg" weight="medium">
+            {notification.message}
+          </Text>
+        </Flex>
+      </Card>
     </motion.div>
-  </div>
+  </Box>
 );
 
 const generateInvitePayload = async (
@@ -169,7 +221,6 @@ const sanitizeDocumentId = (documentId: string): string => {
 const AgreementPage: React.FC = () => {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { mode } = useTheme();
   const { identity } = useIcpAuth();
   const { app } = useCalimero();
   const documentService = useMemo(() => new DocumentService(), []);
@@ -825,39 +876,53 @@ const AgreementPage: React.FC = () => {
       >
         {/* Header */}
         <motion.section variants={ANIMATION_VARIANTS.item}>
-          <Card className="border-border/50">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => navigate('/')}
-                    className="p-2 h-auto w-auto"
-                  >
-                    <ArrowLeft className="w-5 h-5" />
-                  </Button>
-                  <div>
-                    <h1 className="text-lg font-semibold text-foreground">
-                      {contextDetails?.context_name || 'Loading...'}
-                    </h1>
-                    <p className="text-sm text-muted-foreground">
-                      {contextDetails?.participant_count || 0} participants
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowParticipants(!showParticipants)}
-                    className="p-2 h-auto w-auto"
-                  >
-                    <Users className="w-5 h-5" />
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
+          <Card
+            style={{ padding: spacing[4].value, borderRadius: radius.md.value }}
+          >
+            <Flex
+              alignItems="center"
+              style={{
+                padding: '0px',
+                margin: '0px',
+                backgroundColor: 'transparent',
+                borderRadius: '0px',
+                border: 'none',
+                boxShadow: 'none',
+                display: 'flex',
+                flexFlow: 'row',
+                alignItems: 'center',
+                position: 'static',
+                overflow: 'visible',
+                cursor: 'inherit',
+                justifyContent: 'space-between',
+                width: '100%',
+              }}
+            >
+              <Flex alignItems="center" gap="md">
+                <Button
+                  variant="secondary"
+                  onClick={() => navigate('/')}
+                  style={{ padding: spacing[2].value }}
+                >
+                  <ArrowLeft style={{ width: '20px', height: '20px' }} />
+                </Button>
+                <Box>
+                  <Heading size="lg">
+                    {contextDetails?.context_name || 'Loading...'}
+                  </Heading>
+                  <Text size="sm" style={{ color: colors.neutral[600].value }}>
+                    {contextDetails?.participant_count || 0} participants
+                  </Text>
+                </Box>
+              </Flex>
+              <Button
+                variant="secondary"
+                onClick={() => setShowParticipants(!showParticipants)}
+                style={{ padding: spacing[2].value }}
+              >
+                <Users style={{ width: '20px', height: '20px' }} />
+              </Button>
+            </Flex>
           </Card>
         </motion.section>
 
@@ -867,110 +932,210 @@ const AgreementPage: React.FC = () => {
             variants={ANIMATION_VARIANTS.item}
             initial="hidden"
             animate="visible"
-            className="bg-green-100 dark:bg-green-900/20 border border-green-300 dark:border-green-800 rounded-lg p-4"
           >
-            <div className="flex items-center justify-between mb-4">
-              <h3
-                className={`font-medium ${mode === 'dark' ? 'text-green-300' : 'text-green-900'}`}
+            <Card
+              style={{
+                padding: spacing[4].value,
+                borderRadius: radius.md.value,
+                backgroundColor: 'rgba(22, 163, 74, 0.1)',
+                borderColor: 'rgba(22, 163, 74, 0.2)',
+              }}
+            >
+              <Flex
+                alignItems="center"
+                style={{
+                  marginBottom: spacing[4].value,
+                  padding: '0px',
+                  margin: '0px 0px 16px 0px',
+                  backgroundColor: 'transparent',
+                  borderRadius: '0px',
+                  border: 'none',
+                  boxShadow: 'none',
+                  display: 'flex',
+                  flexFlow: 'row',
+                  position: 'static',
+                  overflow: 'visible',
+                  cursor: 'inherit',
+                  justifyContent: 'space-between',
+                  width: '100%',
+                }}
               >
-                Participants
-              </h3>
-              <Button
-                onClick={() => setShowInviteModal(true)}
-                size="sm"
-                className="bg-green-600 hover:bg-green-700 text-white"
-              >
-                <Plus className="w-4 h-4 mr-1" />
-                Invite
-              </Button>
-            </div>
-            <div className="space-y-3">
-              {contextDetails?.participants?.map((participant) => (
-                <div
-                  key={participant.user_id}
-                  className="flex items-center space-x-3"
+                <Heading size="md">Participants</Heading>
+                <Button
+                  onClick={() => setShowInviteModal(true)}
+                  variant="primary"
                 >
-                  <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center">
-                    <span className="text-white text-sm font-medium">
-                      {participant.user_id.slice(0, 2).toUpperCase()}
-                    </span>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-foreground">
-                      {participant.user_id.slice(0, 6)}...
-                      {participant.user_id.slice(-4)}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {participant.permission_level}
-                    </p>
-                  </div>
-                </div>
-              )) || (
-                <div className="text-sm text-muted-foreground">
-                  {contextLoading
-                    ? 'Loading participants...'
-                    : 'No participants found'}
-                </div>
-              )}
-            </div>
+                  <Plus
+                    style={{
+                      width: '16px',
+                      height: '16px',
+                      marginRight: spacing[2].value,
+                    }}
+                  />
+                  Invite
+                </Button>
+              </Flex>
+              <Box
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: spacing[3].value,
+                }}
+              >
+                {contextDetails?.participants?.map((participant) => (
+                  <Flex key={participant.user_id} alignItems="center" gap="md">
+                    <Box
+                      style={{
+                        width: '32px',
+                        height: '32px',
+                        backgroundColor: '#16a34a',
+                        borderRadius: '50%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Text
+                        size="sm"
+                        weight="medium"
+                        style={{ color: 'white' }}
+                      >
+                        {participant.user_id.slice(0, 2).toUpperCase()}
+                      </Text>
+                    </Box>
+                    <Box>
+                      <Text size="sm" weight="medium">
+                        {participant.user_id.slice(0, 6)}...
+                        {participant.user_id.slice(-4)}
+                      </Text>
+                      <Text
+                        size="xs"
+                        style={{ color: colors.neutral[600].value }}
+                      >
+                        {participant.permission_level}
+                      </Text>
+                    </Box>
+                  </Flex>
+                )) || (
+                  <Text size="sm" style={{ color: colors.neutral[600].value }}>
+                    {contextLoading
+                      ? 'Loading participants...'
+                      : 'No participants found'}
+                  </Text>
+                )}
+              </Box>
+            </Card>
           </motion.section>
         )}
 
         {/* Search Bar */}
-        <motion.section variants={ANIMATION_VARIANTS.item} className="px-1">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search documents..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2.5 sm:py-3 text-sm sm:text-base border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all duration-300"
-            />
-          </div>
+        <motion.section
+          variants={ANIMATION_VARIANTS.item}
+          style={{ padding: spacing[2].value }}
+        >
+          <SearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search documents..."
+            style={{ width: '100%' }}
+          />
         </motion.section>
 
         {/* Documents List */}
         <motion.section variants={ANIMATION_VARIANTS.item}>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-foreground">
-              Uploaded Documents
-            </h3>
-            <span className="text-sm text-muted-foreground">
+          <Flex
+            alignItems="center"
+            style={{
+              marginBottom: spacing[4].value,
+              padding: '0px',
+              margin: `0px 0px ${spacing[4].value} 0px`,
+              backgroundColor: 'transparent',
+              borderRadius: '0px',
+              border: 'none',
+              boxShadow: 'none',
+              display: 'flex',
+              flexFlow: 'row',
+              alignItems: 'center',
+              position: 'static',
+              overflow: 'visible',
+              cursor: 'inherit',
+              justifyContent: 'space-between',
+              width: '100%',
+            }}
+          >
+            <Heading size="lg">Uploaded Documents</Heading>
+            <Text size="sm" style={{ color: colors.neutral[600].value }}>
               {filteredDocuments.length} documents
-            </span>
-          </div>
+            </Text>
+          </Flex>
 
           {loading && (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-              <p className="text-muted-foreground mt-2">Loading documents...</p>
-            </div>
+            <Box
+              style={{ textAlign: 'center', padding: `${spacing[6].value} 0` }}
+            >
+              <Loader size="large" />
+              <Text
+                size="sm"
+                style={{
+                  color: colors.neutral[600].value,
+                  marginTop: spacing[2].value,
+                }}
+              >
+                Loading documents...
+              </Text>
+            </Box>
           )}
 
           {error && !loading && (
-            <div className="text-center py-8">
-              <p className="text-red-500 mb-4">{error}</p>
-              <Button onClick={loadDocuments} variant="outline">
+            <Box
+              style={{ textAlign: 'center', padding: `${spacing[6].value} 0` }}
+            >
+              <Text
+                size="sm"
+                style={{
+                  color: colors.semantic.error.value,
+                  marginBottom: spacing[4].value,
+                }}
+              >
+                {error}
+              </Text>
+              <Button onClick={loadDocuments} variant="secondary">
                 Try Again
               </Button>
-            </div>
+            </Box>
           )}
 
           {!loading && !error && filteredDocuments.length === 0 && (
-            <Card className="border-border/50">
-              <CardContent className="p-8 text-center">
-                <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">
-                  No documents uploaded yet. Upload your first PDF to get
-                  started.
-                </p>
-              </CardContent>
+            <Card
+              style={{
+                padding: spacing[6].value,
+                textAlign: 'center',
+                borderRadius: radius.md.value,
+              }}
+            >
+              <FileText
+                style={{
+                  width: '48px',
+                  height: '48px',
+                  margin: '0 auto',
+                  color: colors.neutral[600].value,
+                  marginBottom: spacing[4].value,
+                }}
+              />
+              <Text size="sm" style={{ color: colors.neutral[600].value }}>
+                No documents uploaded yet. Upload your first PDF to get started.
+              </Text>
             </Card>
           )}
 
           {!loading && !error && filteredDocuments.length > 0 && (
-            <div className="space-y-4">
+            <Box
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: spacing[4].value,
+              }}
+            >
               {filteredDocuments.map((document) => (
                 <motion.div
                   key={document.id}
@@ -978,455 +1143,633 @@ const AgreementPage: React.FC = () => {
                   whileHover={{ y: -2, scale: 1.01 }}
                   whileTap={{ scale: 0.99 }}
                   onClick={() => handleOpenDocument(document)}
-                  className="cursor-pointer"
+                  style={{ cursor: 'pointer' }}
                 >
-                  <Card className="hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 border-border/50 hover:border-primary/20">
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex items-center space-x-3 flex-1 min-w-0 pr-2">
-                          <div className="p-2 bg-red-100 dark:bg-red-900/20 rounded-lg flex-shrink-0">
-                            <FileText className="w-6 h-6 text-red-600" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-medium text-foreground mb-1 truncate">
-                              {document.name}
-                            </h4>
+                  <Card
+                    style={{
+                      padding: spacing[4].value,
+                      borderRadius: radius.md.value,
+                    }}
+                  >
+                    <Flex
+                      alignItems="flex-start"
+                      style={{
+                        marginBottom: spacing[3].value,
+                        padding: '0px',
+                        margin: `0px 0px ${spacing[3].value} 0px`,
+                        backgroundColor: 'transparent',
+                        borderRadius: '0px',
+                        border: 'none',
+                        boxShadow: 'none',
+                        display: 'flex',
+                        flexFlow: 'row',
+                        alignItems: 'flex-start',
+                        position: 'static',
+                        overflow: 'visible',
+                        cursor: 'inherit',
+                        justifyContent: 'space-between',
+                        width: '100%',
+                      }}
+                    >
+                      <Flex
+                        alignItems="center"
+                        gap="md"
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          paddingRight: spacing[2].value,
+                        }}
+                      >
+                        <Box
+                          style={{
+                            padding: spacing[2].value,
+                            backgroundColor: 'transparent',
+                            borderRadius: radius.md.value,
+                            flexShrink: 0,
+                          }}
+                        >
+                          <FileText
+                            style={{
+                              width: '24px',
+                              height: '24px',
+                              color: colors.neutral[600].value,
+                            }}
+                          />
+                        </Box>
+                        <Box style={{ flex: 1, minWidth: 0 }}>
+                          <Heading
+                            size="sm"
+                            style={{ marginBottom: spacing[2].value }}
+                          >
+                            {document.name}
+                          </Heading>
+                          <Flex
+                            direction="column"
+                            gap="xs"
+                            style={{ color: colors.neutral[600].value }}
+                          >
+                            <Flex alignItems="center" gap="sm">
+                              <Text size="sm">{document.size}</Text>
+                              <Text size="sm" className="hidden sm:inline">
+                                •
+                              </Text>
+                            </Flex>
+                            <Flex alignItems="center" gap="sm">
+                              <Text size="sm">{document.uploadedAt}</Text>
+                              {document.uploadedBy && (
+                                <>
+                                  <Text size="sm" className="hidden sm:inline">
+                                    •
+                                  </Text>
+                                  <Text
+                                    size="sm"
+                                    style={{
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      maxWidth: '120px',
+                                    }}
+                                  >
+                                    by{' '}
+                                    {document.uploadedBy.length > 9
+                                      ? `${document.uploadedBy.slice(0, 4)}...${document.uploadedBy.slice(-4)}`
+                                      : document.uploadedBy}
+                                  </Text>
+                                </>
+                              )}
+                            </Flex>
+                          </Flex>
+                        </Box>
+                      </Flex>
+                      <Box
+                        style={{
+                          position: 'relative',
+                          flexShrink: 0,
+                          marginLeft: spacing[2].value,
+                        }}
+                      >
+                        <Button
+                          variant="secondary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuOpenDocId((prev) =>
+                              prev === document.id ? null : document.id,
+                            );
+                          }}
+                          style={{
+                            padding: spacing[2].value,
+                            borderRadius: '50%',
+                            width: '40px',
+                            height: '40px',
+                          }}
+                        >
+                          <MoreVertical
+                            style={{ width: '20px', height: '20px' }}
+                          />
+                        </Button>
 
-                            <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-2 text-sm text-muted-foreground space-y-1 sm:space-y-0">
-                              <div className="flex items-center space-x-2">
-                                <span>{document.size}</span>
-                                <span className="hidden sm:inline">•</span>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                <span>{document.uploadedAt}</span>
-                                {document.uploadedBy && (
-                                  <>
-                                    <span className="hidden sm:inline">•</span>
-                                    <span className="truncate max-w-[120px] sm:max-w-none">
-                                      by{' '}
-                                      {document.uploadedBy.length > 9
-                                        ? `${document.uploadedBy.slice(0, 4)}...${document.uploadedBy.slice(-4)}`
-                                        : document.uploadedBy}
-                                    </span>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                        {/* 3 dots menu */}
-                        <div className="relative flex-shrink-0 ml-2">
-                          <button
-                            aria-label="Open document actions"
-                            className="p-0 h-10 w-10 flex items-center justify-center rounded-full hover:bg-muted transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setMenuOpenDocId((prev) =>
-                                prev === document.id ? null : document.id,
-                              );
+                        {menuOpenDocId === document.id && (
+                          <Box
+                            style={{
+                              position: 'absolute',
+                              right: 0,
+                              marginTop: spacing[2].value,
+                              width: '256px',
+                              borderRadius: radius.md.value,
+                              backgroundColor: colors.background.primary.value,
+                              padding: spacing[2].value,
+                              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                              zIndex: 20,
                             }}
                           >
-                            <MoreVertical className="w-5 h-5 text-muted-foreground" />
-                          </button>
-
-                          {menuOpenDocId === document.id && (
-                            <div
-                              role="menu"
-                              aria-label="Document actions"
-                              className="absolute right-0 mt-2 w-64 rounded-lg border border-border bg-background/95 p-2 shadow-lg backdrop-blur-sm z-20"
+                            <Button
+                              variant="secondary"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMenuOpenDocId(null);
+                                handleVerifyDocument(document);
+                              }}
+                              style={{
+                                width: '100%',
+                                justifyContent: 'flex-start',
+                                gap: spacing[3].value,
+                                marginBottom: spacing[2].value,
+                              }}
                             >
-                              <button
-                                role="menuitem"
-                                className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-foreground bg-background hover:bg-muted transition border border-transparent hover:border-border focus:outline-none"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setMenuOpenDocId(null);
-                                  handleVerifyDocument(document);
+                              <CheckCircle2
+                                style={{ width: '16px', height: '16px' }}
+                              />
+                              <Text size="sm" weight="medium">
+                                {verifyingDocId === document.id
+                                  ? 'Verifying...'
+                                  : 'Verify on ICP'}
+                              </Text>
+                            </Button>
+
+                            <Box
+                              style={{
+                                margin: `${spacing[2].value} 0`,
+                                borderTop: `1px solid ${colors.neutral[300].value}`,
+                              }}
+                            />
+
+                            <Button
+                              variant="secondary"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMenuOpenDocId(null);
+                                handleShowAuditTrail(document);
+                              }}
+                              style={{
+                                width: '100%',
+                                justifyContent: 'flex-start',
+                                gap: spacing[3].value,
+                              }}
+                            >
+                              <Clock
+                                style={{
+                                  width: '16px',
+                                  height: '16px',
+                                  color: colors.neutral[600].value,
                                 }}
-                                disabled={verifyingDocId === document.id}
-                              >
-                                <CheckCircle2 className="w-4 h-4" />
-                                <span>
-                                  {verifyingDocId === document.id
-                                    ? 'Verifying...'
-                                    : 'Verify on ICP'}
-                                </span>
-                              </button>
+                              />
+                              <Text size="sm" weight="medium">
+                                View Audit Trail
+                              </Text>
+                            </Button>
+                          </Box>
+                        )}
+                      </Box>
+                    </Flex>
 
-                              <div className="my-2 border-t border-border/60" />
-
-                              <button
-                                role="menuitem"
-                                className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-foreground bg-background hover:bg-muted transition border border-transparent hover:border-border focus:outline-none"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setMenuOpenDocId(null);
-                                  handleShowAuditTrail(document);
-                                }}
-                              >
-                                <Clock className="w-4 h-4 text-muted-foreground" />
-                                <span>View Audit Trail</span>
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-2">
-                          <div
-                            className={`text-sm px-2 py-1 rounded-full font-semibold ${
+                    <Flex
+                      alignItems="center"
+                      style={{
+                        padding: '0px',
+                        margin: '0px',
+                        backgroundColor: 'transparent',
+                        borderRadius: '0px',
+                        border: 'none',
+                        boxShadow: 'none',
+                        display: 'flex',
+                        flexFlow: 'row',
+                        alignItems: 'center',
+                        position: 'static',
+                        overflow: 'visible',
+                        cursor: 'inherit',
+                        justifyContent: 'space-between',
+                        width: '100%',
+                      }}
+                    >
+                      <Box>
+                        <Text
+                          size="sm"
+                          weight="semibold"
+                          style={{
+                            padding: `${spacing[2].value} ${spacing[3].value}`,
+                            borderRadius: radius.lg.value,
+                            backgroundColor:
                               document.status === 'FullySigned'
-                                ? mode === 'dark'
-                                  ? 'bg-green-900/20 text-green-300'
-                                  : 'bg-green-200 text-green-800'
+                                ? 'rgba(22, 163, 74, 0.15)'
                                 : document.status === 'PartiallySigned'
-                                  ? mode === 'dark'
-                                    ? 'bg-yellow-900/20 text-yellow-300'
-                                    : 'bg-yellow-200 text-yellow-800'
-                                  : mode === 'dark'
-                                    ? 'bg-gray-900/20 text-gray-300'
-                                    : 'bg-gray-200 text-gray-800'
-                            }`}
-                          >
-                            {document.status === 'FullySigned'
-                              ? 'Fully Signed'
-                              : document.status === 'PartiallySigned'
-                                ? 'Partially Signed'
-                                : 'Pending'}
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDownloadDocument(document);
+                                  ? 'rgba(234, 179, 8, 0.15)'
+                                  : 'rgba(163, 163, 163, 0.15)',
+                            color:
+                              document.status === 'FullySigned'
+                                ? '#16a34a'
+                                : document.status === 'PartiallySigned'
+                                  ? '#ca8a04'
+                                  : '#737373',
+                          }}
+                        >
+                          {document.status === 'FullySigned'
+                            ? 'Fully Signed'
+                            : document.status === 'PartiallySigned'
+                              ? 'Partially Signed'
+                              : 'Pending'}
+                        </Text>
+                      </Box>
+                      <Flex alignItems="center" gap="sm">
+                        <Button
+                          variant="secondary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDownloadDocument(document);
+                          }}
+                          style={{ padding: spacing[2].value }}
+                        >
+                          <Download
+                            style={{
+                              width: '16px',
+                              height: '16px',
+                              color: '#2563eb',
                             }}
-                            className="p-2 h-auto w-auto text-blue-600 hover:text-blue-700"
-                          >
-                            <Download className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRemoveDocument(document.id);
-                            }}
-                            className="p-2 h-auto w-auto text-red-600 hover:text-red-700"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
+                          />
+                        </Button>
+                        <Button
+                          variant="error"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveDocument(document.id);
+                          }}
+                          style={{ padding: spacing[2].value }}
+                        >
+                          <Trash2 style={{ width: '16px', height: '16px' }} />
+                        </Button>
+                      </Flex>
+                    </Flex>
                   </Card>
                 </motion.div>
               ))}
-            </div>
+            </Box>
           )}
         </motion.section>
 
         {/* Floating Action Button */}
-        <motion.div
-          variants={ANIMATION_VARIANTS.item}
-          className="fixed bottom-6 right-6 z-50"
+        <Box
+          style={{
+            position: 'fixed',
+            bottom: spacing[6].value,
+            right: spacing[6].value,
+            zIndex: 50,
+          }}
         >
           <Button
             onClick={() => setShowUploadModal(true)}
-            className="h-14 w-14 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 aspect-square"
-            size="lg"
+            variant="primary"
+            style={{
+              height: '56px',
+              width: '56px',
+              borderRadius: '50%',
+              boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+            }}
           >
-            <Plus className="w-6 h-6 text-white dark:text-black" />
+            <Plus style={{ width: '24px', height: '24px' }} />
           </Button>
-        </motion.div>
+        </Box>
       </motion.div>
 
       {/* Invite Modal */}
       {showInviteModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            className={`rounded-lg p-6 w-full max-w-md border border-border shadow-2xl ${
-              mode === 'dark' ? 'bg-gray-900' : 'bg-white'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-foreground">
-                Manage Members
-              </h3>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowInviteModal(false)}
-                disabled={generatingInvite}
-                className="p-1 h-auto w-auto"
-              >
-                <X className="w-5 h-5" />
-              </Button>
-            </div>
+        <Modal
+          open={showInviteModal}
+          onClose={() => setShowInviteModal(false)}
+          title="Create Invite"
+        >
+          <Box style={{ padding: spacing[6].value }}>
+            <Input
+              type="text"
+              placeholder="Enter the ID of invitee"
+              value={inviteId}
+              onChange={(e) => setInviteId(e.target.value)}
+              disabled={generatingInvite}
+              style={{ marginBottom: spacing[3].value }}
+            />
+            <Input
+              type="text"
+              placeholder="Enter the ICP of invitee"
+              value={inviteeICP}
+              onChange={(e) => setInviteeICP(e.target.value)}
+              disabled={generatingInvite}
+              style={{ marginBottom: spacing[3].value }}
+            />
 
-            <div className="space-y-4">
-              <div className="bg-muted rounded-lg p-4">
-                <h5 className="font-medium text-foreground mb-2">
-                  Create Invite
-                </h5>
+            <Text
+              size="sm"
+              weight="medium"
+              style={{
+                marginBottom: spacing[2].value,
+                marginTop: spacing[2].value,
+              }}
+            >
+              Permission Level
+            </Text>
+            <Box
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: spacing[2].value,
+              }}
+            >
+              <label style={{ display: 'flex', alignItems: 'center' }}>
                 <input
-                  type="text"
-                  placeholder="Enter the ID of invitee"
-                  value={inviteId}
-                  onChange={(e) => setInviteId(e.target.value)}
+                  type="radio"
+                  value={PermissionLevel.Sign}
+                  checked={invitePermission === PermissionLevel.Sign}
+                  onChange={() => setInvitePermission(PermissionLevel.Sign)}
+                  style={{ marginRight: spacing[3].value }}
                   disabled={generatingInvite}
-                  className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent mb-3 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
+                <Box>
+                  <Text size="sm" weight="medium">
+                    Signer
+                  </Text>
+                  <Text size="xs" style={{ color: colors.neutral[600].value }}>
+                    Can view and sign documents
+                  </Text>
+                </Box>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center' }}>
                 <input
-                  type="text"
-                  placeholder="Enter the ICP of invitee"
-                  value={inviteeICP}
-                  onChange={(e) => setInviteeICP(e.target.value)}
+                  type="radio"
+                  value={PermissionLevel.Read}
+                  checked={invitePermission === PermissionLevel.Read}
+                  onChange={() => setInvitePermission(PermissionLevel.Read)}
+                  style={{ marginRight: spacing[3].value }}
                   disabled={generatingInvite}
-                  className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent mb-3 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
+                <Box>
+                  <Text size="sm" weight="medium">
+                    Viewer
+                  </Text>
+                  <Text size="xs" style={{ color: colors.neutral[600].value }}>
+                    Can only view documents
+                  </Text>
+                </Box>
+              </label>
+            </Box>
 
-                {/* Permission Level Selection (Radio Buttons) */}
-                <label className="block text-sm font-medium text-foreground mb-2 mt-2">
-                  Permission Level
-                </label>
-                <div className="space-y-2">
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      value={PermissionLevel.Sign}
-                      checked={invitePermission === PermissionLevel.Sign}
-                      onChange={() => setInvitePermission(PermissionLevel.Sign)}
-                      className="mr-3 text-primary"
-                      disabled={generatingInvite}
-                    />
-                    <div>
-                      <span className="font-medium text-foreground">
-                        Signer
-                      </span>
-                      <p className="text-xs text-muted-foreground">
-                        Can view and sign documents
-                      </p>
-                    </div>
-                  </label>
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      value={PermissionLevel.Read}
-                      checked={invitePermission === PermissionLevel.Read}
-                      onChange={() => setInvitePermission(PermissionLevel.Read)}
-                      className="mr-3 text-primary"
-                      disabled={generatingInvite}
-                    />
-                    <div>
-                      <span className="font-medium text-foreground">
-                        Viewer
-                      </span>
-                      <p className="text-xs text-muted-foreground">
-                        Can only view documents
-                      </p>
-                    </div>
-                  </label>
-                </div>
-
-                <Button
-                  onClick={handleGenerateInvite}
-                  disabled={generatingInvite || !inviteId.trim()}
-                  className="w-full text-white dark:text-black text-lg mt-4"
-                >
-                  {generatingInvite ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
-                      Generating...
-                    </>
-                  ) : (
-                    'Generate Invite'
-                  )}
-                </Button>
-              </div>
-            </div>
-          </motion.div>
-        </div>
+            <Button
+              onClick={handleGenerateInvite}
+              disabled={generatingInvite || !inviteId.trim()}
+              variant="primary"
+              style={{ width: '100%', marginTop: spacing[4].value }}
+            >
+              {generatingInvite ? (
+                <Flex alignItems="center" gap="sm">
+                  <Loader size="small" />
+                  <Text>Generating...</Text>
+                </Flex>
+              ) : (
+                'Generate Invite'
+              )}
+            </Button>
+          </Box>
+        </Modal>
       )}
 
       {/* Payload Dialog */}
       {showPayloadDialog && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            className={`rounded-lg p-6 w-full max-w-md border border-border shadow-2xl ${
-              mode === 'dark' ? 'bg-gray-900' : 'bg-white'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-foreground">
-                Generated Invite Payload
-              </h3>
-              <Button
-                variant="ghost"
+        <Modal
+          open={showPayloadDialog}
+          onClose={() => setShowPayloadDialog(false)}
+          title="Generated Invite Payload"
+        >
+          <Box style={{ padding: spacing[6].value }}>
+            <Card
+              style={{
+                padding: spacing[4].value,
+                borderRadius: radius.md.value,
+                backgroundColor: colors.background.secondary.value,
+              }}
+            >
+              <Text
                 size="sm"
-                onClick={() => setShowPayloadDialog(false)}
-                className="p-1 h-auto w-auto"
+                style={{
+                  color: colors.neutral[600].value,
+                  marginBottom: spacing[2].value,
+                }}
               >
-                <X className="w-5 h-5" />
+                Your invite payload:
+              </Text>
+              <Box
+                style={{
+                  backgroundColor: colors.background.primary.value,
+                  borderRadius: radius.md.value,
+                  padding: spacing[3].value,
+                  wordBreak: 'break-all',
+                  minHeight: '100px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  fontFamily: 'monospace',
+                  fontSize: '14px',
+                }}
+              >
+                {generatedPayload || 'Loading...'}
+              </Box>
+            </Card>
+
+            <Flex gap="sm" style={{ marginTop: spacing[4].value }}>
+              <Button
+                onClick={handleCopyPayload}
+                variant="primary"
+                style={{ flex: 1 }}
+              >
+                Copy Payload
               </Button>
-            </div>
-
-            <div className="space-y-4">
-              <div className="bg-muted rounded-lg p-4">
-                <p className="text-sm text-muted-foreground mb-2">
-                  Your invite payload:
-                </p>
-                <div className="bg-background border border-border rounded-lg p-3 break-all text-sm font-mono min-h-[100px] flex items-center">
-                  {generatedPayload || 'Loading...'}
-                </div>
-              </div>
-
-              <div className="flex space-x-2">
-                <Button
-                  onClick={handleCopyPayload}
-                  className="flex-1 text-white dark:text-black"
-                >
-                  Copy Payload
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowPayloadDialog(false)}
-                  className="flex-1"
-                >
-                  Close
-                </Button>
-              </div>
-            </div>
-          </motion.div>
-        </div>
+              <Button
+                variant="secondary"
+                onClick={() => setShowPayloadDialog(false)}
+                style={{ flex: 1 }}
+              >
+                Close
+              </Button>
+            </Flex>
+          </Box>
+        </Modal>
       )}
 
       {/* Upload Modal */}
       {showUploadModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            className={`rounded-lg p-6 w-full max-w-md border border-border shadow-2xl ${
-              mode === 'dark' ? 'bg-gray-900' : 'bg-white'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-foreground">
-                Upload Document
-              </h3>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowUploadModal(false)}
-                className="p-1 h-auto w-auto"
-                disabled={uploading}
+        <Modal
+          open={showUploadModal}
+          onClose={() => setShowUploadModal(false)}
+          title="Upload Document"
+        >
+          <Box style={{ padding: spacing[6].value }}>
+            {uploading && uploadFiles.length > 0 && (
+              <Box
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: spacing[3].value,
+                }}
               >
-                <X className="w-5 h-5" />
-              </Button>
-            </div>
-
-            <div className="space-y-4">
-              {uploading && uploadFiles.length > 0 && (
-                <div className="space-y-3">
-                  <h4 className="text-sm font-medium text-foreground mb-2">
-                    Upload Progress
-                  </h4>
-                  {uploadFiles.map((fileUpload, index) => (
-                    <div key={index} className="space-y-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-foreground truncate flex-1 mr-2">
-                          {fileUpload.file.name}
-                        </span>
-                        <span className="text-muted-foreground">
-                          {fileUpload.uploaded
-                            ? 'Complete'
-                            : fileUpload.error
-                              ? 'Error'
-                              : `${getStageDescription(fileUpload.stage)} - ${Math.round(fileUpload.progress)}%`}
-                        </span>
-                      </div>
-                      <div className="w-full bg-muted rounded-full h-2">
-                        <div
-                          className={`h-2 rounded-full transition-all duration-300 ${
-                            fileUpload.error
-                              ? 'bg-red-500'
-                              : fileUpload.uploaded
-                                ? 'bg-green-500'
-                                : 'bg-primary'
-                          }`}
-                          style={{
-                            width: `${fileUpload.uploaded ? 100 : fileUpload.stageProgress ?? fileUpload.progress}%`,
-                          }}
-                        />
-                      </div>
-                      {fileUpload.error && (
-                        <p className="text-xs text-red-500 mt-1">
-                          {fileUpload.error}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {uploading && uploadFiles.length === 0 && (
-                <div className="text-center py-4">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
-                  <p className="text-sm text-muted-foreground">
-                    Preparing upload...
-                  </p>
-                </div>
-              )}
-
-              {error && (
-                <div className="p-3 bg-red-100 border border-red-300 rounded-lg">
-                  <p className="text-sm text-red-700">{error}</p>
-                </div>
-              )}
-
-              {!uploading && (
-                <div className="text-center">
-                  <Upload className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-                  <h4 className="text-lg font-semibold text-foreground mb-2 ">
-                    Upload PDF Document
-                  </h4>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Select a PDF file to upload for document signing
-                  </p>
-                  <Button
-                    onClick={handleUploadClick}
-                    className="w-full mb-3 text-white dark:text-black"
-                    disabled={uploading}
+                <Heading size="sm" style={{ marginBottom: spacing[2].value }}>
+                  Upload Progress
+                </Heading>
+                {uploadFiles.map((fileUpload, index) => (
+                  <Box
+                    key={index}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: spacing[2].value,
+                    }}
                   >
-                    <Upload className="w-4 h-4 mr-2 text-white dark:text-black" />
-                    Choose PDF File
-                  </Button>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".pdf"
-                    onChange={handleFileUpload}
-                    className="hidden"
+                    <Flex alignItems="center" justifyContent="space-between">
+                      <Text
+                        size="sm"
+                        style={{
+                          flex: 1,
+                          marginRight: spacing[2].value,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {fileUpload.file.name}
+                      </Text>
+                      <Text
+                        size="sm"
+                        style={{ color: colors.neutral[600].value }}
+                      >
+                        {fileUpload.uploaded
+                          ? 'Complete'
+                          : fileUpload.error
+                            ? 'Error'
+                            : `${getStageDescription(fileUpload.stage)} - ${Math.round(fileUpload.progress)}%`}
+                      </Text>
+                    </Flex>
+                    <Box
+                      style={{
+                        width: '100%',
+                        backgroundColor: colors.neutral[300].value,
+                        borderRadius: radius.lg.value,
+                        height: '8px',
+                      }}
+                    >
+                      <Box
+                        style={{
+                          height: '8px',
+                          borderRadius: radius.lg.value,
+                          width: `${fileUpload.uploaded ? 100 : fileUpload.stageProgress ?? fileUpload.progress}%`,
+                          backgroundColor: fileUpload.error
+                            ? colors.semantic.error.value
+                            : fileUpload.uploaded
+                              ? colors.semantic.success.value
+                              : colors.brand[600].value,
+                          transition: 'all 0.3s',
+                        }}
+                      />
+                    </Box>
+                    {fileUpload.error && (
+                      <Text
+                        size="xs"
+                        style={{
+                          color: colors.semantic.error.value,
+                          marginTop: spacing[2].value,
+                        }}
+                      >
+                        {fileUpload.error}
+                      </Text>
+                    )}
+                  </Box>
+                ))}
+              </Box>
+            )}
+
+            {uploading && uploadFiles.length === 0 && (
+              <Box style={{ textAlign: 'center', padding: spacing[4].value }}>
+                <Loader size="large" />
+                <Text
+                  size="sm"
+                  style={{
+                    color: colors.neutral[600].value,
+                    marginTop: spacing[2].value,
+                  }}
+                >
+                  Preparing upload...
+                </Text>
+              </Box>
+            )}
+
+            {error && (
+              <Alert variant="error" style={{ marginBottom: spacing[4].value }}>
+                {error}
+              </Alert>
+            )}
+
+            {!uploading && (
+              <Box style={{ textAlign: 'center' }}>
+                <Upload
+                  style={{
+                    width: '64px',
+                    height: '64px',
+                    margin: '0 auto',
+                    color: colors.neutral[600].value,
+                    marginBottom: spacing[4].value,
+                  }}
+                />
+                <Heading size="md" style={{ marginBottom: spacing[2].value }}>
+                  Upload PDF Document
+                </Heading>
+                <Text
+                  size="sm"
+                  style={{
+                    color: colors.neutral[600].value,
+                    marginBottom: spacing[4].value,
+                  }}
+                >
+                  Select a PDF file to upload for document signing
+                </Text>
+                <Button
+                  onClick={handleUploadClick}
+                  variant="primary"
+                  disabled={uploading}
+                  style={{ width: '100%', marginBottom: spacing[3].value }}
+                >
+                  <Upload
+                    style={{
+                      width: '16px',
+                      height: '16px',
+                      marginRight: spacing[2].value,
+                    }}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Supports: PDF files only
-                  </p>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        </div>
+                  Choose PDF File
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf"
+                  onChange={handleFileUpload}
+                  style={{ display: 'none' }}
+                />
+                <Text size="xs" style={{ color: colors.neutral[600].value }}>
+                  Supports: PDF files only
+                </Text>
+              </Box>
+            )}
+          </Box>
+        </Modal>
       )}
 
       {/* PDF Viewer Modal */}
@@ -1474,125 +1817,156 @@ const AgreementPage: React.FC = () => {
 
       {/* Verification Result Modal */}
       {showVerificationModal && selectedDocumentForVerification && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            className={`rounded-lg p-6 w-full max-w-md border border-border shadow-2xl ${
-              mode === 'dark' ? 'bg-gray-900' : 'bg-white'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-foreground">
-                ICP Blockchain Verification
-              </h3>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleCloseVerificationModal}
-                className="p-1 h-auto w-auto"
-              >
-                <X className="w-5 h-5" />
-              </Button>
-            </div>
+        <Modal
+          open={showVerificationModal}
+          onClose={handleCloseVerificationModal}
+          title="ICP Blockchain Verification"
+        >
+          <Box style={{ padding: spacing[6].value }}>
+            <Card
+              style={{
+                padding: spacing[4].value,
+                borderRadius: radius.md.value,
+                backgroundColor: colors.background.secondary.value,
+              }}
+            >
+              <Heading size="sm" style={{ marginBottom: spacing[2].value }}>
+                Document: {selectedDocumentForVerification.name}
+              </Heading>
 
-            <div className="space-y-4">
-              <div
-                className={`${mode === 'dark' ? 'bg-muted/80' : 'bg-muted'} rounded-lg p-4`}
-              >
-                <h5 className="font-medium text-foreground mb-2">
-                  Document: {selectedDocumentForVerification.name}
-                </h5>
-
-                {verifyingDocId === selectedDocumentForVerification.id ? (
-                  <div className="flex items-center justify-center py-8">
-                    <div className="flex flex-col items-center space-y-3">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                      <p
-                        className={`text-sm ${mode === 'dark' ? 'text-muted-foreground' : 'text-muted-foreground'}`}
-                      >
-                        Verifying on ICP blockchain...
-                      </p>
-                    </div>
-                  </div>
-                ) : verifyResult &&
-                  verifyResult.documentId ===
-                    selectedDocumentForVerification.id ? (
-                  <div
-                    className={`p-4 rounded-lg border ${
-                      verifyResult.error
-                        ? mode === 'dark'
-                          ? 'bg-red-900/20 border-red-800'
-                          : 'bg-red-50 border-red-200'
-                        : verifyResult.verified
-                          ? mode === 'dark'
-                            ? 'bg-green-900/20 border-green-800'
-                            : 'bg-green-50 border-green-200'
-                          : mode === 'dark'
-                            ? 'bg-yellow-900/20 border-yellow-800'
-                            : 'bg-yellow-50 border-yellow-200'
-                    }`}
+              {verifyingDocId === selectedDocumentForVerification.id ? (
+                <Flex
+                  direction="column"
+                  alignItems="center"
+                  justifyContent="center"
+                  style={{ padding: `${spacing[6].value} 0` }}
+                >
+                  <Loader size="large" />
+                  <Text
+                    size="sm"
+                    style={{
+                      color: colors.neutral[600].value,
+                      marginTop: spacing[3].value,
+                    }}
                   >
-                    {verifyResult.error ? (
-                      <div className="text-center">
-                        <AlertCircle className="w-12 h-12 mx-auto text-red-500 mb-3" />
-                        <p
-                          className={`${mode === 'dark' ? 'text-red-400' : 'text-red-600'} font-medium`}
-                        >
-                          Verification Failed
-                        </p>
-                        <p
-                          className={`${mode === 'dark' ? 'text-red-400' : 'text-red-600'} text-sm mt-1`}
-                        >
-                          {verifyResult.error.message ||
-                            'Unable to verify document'}
-                        </p>
-                      </div>
-                    ) : verifyResult.verified ? (
-                      <div className="text-center">
-                        <CheckCircle2 className="w-12 h-12 mx-auto text-green-500 mb-3" />
-                        <p
-                          className={`${mode === 'dark' ? 'text-green-300' : 'text-green-700'} font-medium text-lg`}
-                        >
-                          VERIFIED
-                        </p>
-                        <p
-                          className={`${mode === 'dark' ? 'text-green-300' : 'text-green-700'} text-sm mt-2`}
-                        >
-                          {verifyResult.message ||
-                            'Document verified on ICP blockchain'}
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="text-center">
-                        <AlertCircle className="w-12 h-12 mx-auto text-yellow-500 mb-3" />
-                        <p
-                          className={`${mode === 'dark' ? 'text-yellow-300' : 'text-yellow-700'} font-medium`}
-                        >
-                          Not Verified
-                        </p>
-                        <p
-                          className={`${mode === 'dark' ? 'text-yellow-300' : 'text-yellow-700'} text-sm mt-1`}
-                        >
-                          {verifyResult.message ||
-                            `Status: ${verifyResult.status || 'Unknown'}`}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                ) : null}
-              </div>
+                    Verifying on ICP blockchain...
+                  </Text>
+                </Flex>
+              ) : verifyResult &&
+                verifyResult.documentId ===
+                  selectedDocumentForVerification.id ? (
+                <Card
+                  style={{
+                    padding: spacing[4].value,
+                    borderRadius: radius.md.value,
+                    backgroundColor: verifyResult.error
+                      ? colors.semantic.error.value
+                      : verifyResult.verified
+                        ? colors.semantic.success.value
+                        : colors.semantic.warning.value,
+                  }}
+                >
+                  {verifyResult.error ? (
+                    <Box style={{ textAlign: 'center' }}>
+                      <AlertCircle
+                        style={{
+                          width: '48px',
+                          height: '48px',
+                          margin: '0 auto',
+                          color: '#dc2626',
+                          marginBottom: spacing[3].value,
+                        }}
+                      />
+                      <Text
+                        size="md"
+                        weight="medium"
+                        style={{ color: '#dc2626' }}
+                      >
+                        Verification Failed
+                      </Text>
+                      <Text
+                        size="sm"
+                        style={{
+                          color: '#dc2626',
+                          marginTop: spacing[2].value,
+                        }}
+                      >
+                        {verifyResult.error.message ||
+                          'Unable to verify document'}
+                      </Text>
+                    </Box>
+                  ) : verifyResult.verified ? (
+                    <Box style={{ textAlign: 'center' }}>
+                      <CheckCircle2
+                        style={{
+                          width: '48px',
+                          height: '48px',
+                          margin: '0 auto',
+                          color: '#16a34a',
+                          marginBottom: spacing[3].value,
+                        }}
+                      />
+                      <Text
+                        size="lg"
+                        weight="medium"
+                        style={{ color: '#16a34a' }}
+                      >
+                        VERIFIED
+                      </Text>
+                      <Text
+                        size="sm"
+                        style={{
+                          color: '#16a34a',
+                          marginTop: spacing[2].value,
+                        }}
+                      >
+                        {verifyResult.message ||
+                          'Document verified on ICP blockchain'}
+                      </Text>
+                    </Box>
+                  ) : (
+                    <Box style={{ textAlign: 'center' }}>
+                      <AlertCircle
+                        style={{
+                          width: '48px',
+                          height: '48px',
+                          margin: '0 auto',
+                          color: '#ca8a04',
+                          marginBottom: spacing[3].value,
+                        }}
+                      />
+                      <Text
+                        size="md"
+                        weight="medium"
+                        style={{ color: '#ca8a04' }}
+                      >
+                        Not Verified
+                      </Text>
+                      <Text
+                        size="sm"
+                        style={{
+                          color: '#ca8a04',
+                          marginTop: spacing[2].value,
+                        }}
+                      >
+                        {verifyResult.message ||
+                          `Status: ${verifyResult.status || 'Unknown'}`}
+                      </Text>
+                    </Box>
+                  )}
+                </Card>
+              ) : null}
+            </Card>
 
-              <Button
-                onClick={handleCloseVerificationModal}
-                className="w-full text-white dark:text-black"
-              >
-                Close
-              </Button>
-            </div>
-          </motion.div>
-        </div>
+            <Button
+              onClick={handleCloseVerificationModal}
+              variant="primary"
+              style={{ width: '100%', marginTop: spacing[4].value }}
+            >
+              Close
+            </Button>
+          </Box>
+        </Modal>
       )}
     </MobileLayout>
   );
