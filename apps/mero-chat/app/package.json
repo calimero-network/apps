@@ -20,7 +20,7 @@
     "@radix-ui/react-dropdown-menu": "^2.1.15",
     "@radix-ui/react-navigation-menu": "^1.2.13",
     "@radix-ui/react-toast": "^1.2.14",
-    "axios": "^1.10.0",
+    "axios": "^1.12.0",
     "bootstrap": "^5.3.7",
     "bootstrap-icons": "^1.13.1",
     "bs58": "^6.0.0",
