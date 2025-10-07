@@ -74,7 +74,7 @@ const Container = styled.div`
     padding-left: 8px;
     padding-right: 8px;
     padding-bottom: 12px;
-    padding-top: 12px;
+    padding-top: 0px;
     width: 100% !important;
     transform: translateZ(0);
     /* Prevent layout shifts when modals open */
