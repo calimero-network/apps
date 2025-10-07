@@ -3,11 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useCalimero, apiClient } from '@calimero-network/calimero-client';
 import {
   FileText,
-  Search,
   Plus,
   ArrowRight,
   Layers,
-  X,
   UserPlus,
   CheckCircle2,
   AlertCircle,
@@ -15,9 +13,25 @@ import {
   Copy,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Button, Card, CardContent } from '../../components/ui';
+import {
+  Button,
+  Card,
+  Input,
+  SearchInput,
+  Heading,
+  Text,
+  Box,
+  Flex,
+  Modal,
+  Textarea,
+  Loader,
+  Alert,
+  Spacer,
+  spacing,
+  colors,
+  radius,
+} from '@calimero-network/mero-ui';
 import { MobileLayout } from '../../components/MobileLayout';
-import { useTheme } from '../../contexts/ThemeContext';
 import { AgreementService } from '../../api/agreementService';
 import { ContextApiDataSource } from '../../api/dataSource/nodeApiDataSource';
 import { ClientApiDataSource } from '../../api/dataSource/ClientApiDataSource';
@@ -29,36 +43,8 @@ interface NotificationState {
   type: NotificationType;
 }
 
-const NotificationPopup: React.FC<{
-  notification: NotificationState;
-}> = ({ notification }) => (
-  <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-    <motion.div
-      initial={{ opacity: 0, scale: 0.8 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.9 }}
-      transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-      className={`relative p-8 rounded-2xl shadow-2xl border w-full max-w-sm text-center ${
-        notification.type === 'success'
-          ? 'bg-green-100 border-green-300 text-green-900 dark:bg-gray-800 dark:border-green-600 dark:text-green-200'
-          : 'bg-red-100 border-red-300 text-red-900 dark:bg-gray-800 dark:border-red-600 dark:text-red-200'
-      }`}
-    >
-      <div className="flex flex-col items-center justify-center">
-        {notification.type === 'success' ? (
-          <CheckCircle2 className="w-16 h-16 mb-5 text-green-500" />
-        ) : (
-          <AlertCircle className="w-16 h-16 mb-5 text-red-500" />
-        )}
-        <p className="text-lg font-medium">{notification.message}</p>
-      </div>
-    </motion.div>
-  </div>
-);
-
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { mode } = useTheme();
   const { app } = useCalimero();
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -74,19 +60,18 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [generatedIdentity, setGeneratedIdentity] = useState<string>('');
   const [generatingIdentity, setGeneratingIdentity] = useState(false);
-  const [notification, setNotification] = useState<NotificationState | null>(
-    null,
-  );
+  const [modalNotification, setModalNotification] =
+    useState<NotificationState | null>(null);
 
   const agreementService = useMemo(() => new AgreementService(app), [app]);
   const nodeApiService = useMemo(() => new ContextApiDataSource(app), [app]);
   const clientApiService = useMemo(() => new ClientApiDataSource(app), [app]);
 
-  const showNotification = useCallback(
+  const showModalNotification = useCallback(
     (message: string, type: NotificationType) => {
-      setNotification({ message, type });
+      setModalNotification({ message, type });
       setTimeout(() => {
-        setNotification(null);
+        setModalNotification(null);
       }, 1500);
     },
     [],
@@ -173,10 +158,14 @@ export default function Dashboard() {
         return;
       }
 
-      showNotification('Agreement created successfully!', 'success');
+      // Show success notification for 1 second before closing
+      showModalNotification('Agreement created successfully!', 'success');
+
+      // Wait for notification to be visible
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
       setShowCreateModal(false);
       setAgreementName('');
-
       await loadAgreements();
     } catch (err) {
       console.error('Failed to create agreement:', err);
@@ -254,14 +243,17 @@ export default function Dashboard() {
       }
 
       setJoinProgress('Finalizing...');
+
+      showModalNotification('Successfully joined agreement!', 'success');
+
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
       setShowJoinModal(false);
       setInvitationPayload('');
       setContextName('');
       setGeneratedIdentity('');
 
       await loadAgreements();
-
-      showNotification('Successfully joined agreement!', 'success');
     } catch (err) {
       console.error('Failed to join agreement:', err);
       const errorMessage =
@@ -294,7 +286,7 @@ export default function Dashboard() {
         const identityId =
           identity.publicKey || identity.id || JSON.stringify(identity);
         setGeneratedIdentity(identityId);
-        showNotification('Identity generated successfully!', 'success');
+        showModalNotification('Identity generated successfully!', 'success');
       } else {
         setError('No identity data received');
       }
@@ -309,7 +301,7 @@ export default function Dashboard() {
   const handleCopyIdentity = () => {
     if (generatedIdentity) {
       navigator.clipboard.writeText(generatedIdentity);
-      showNotification('Identity copied to clipboard!', 'success');
+      showModalNotification('Identity copied to clipboard!', 'success');
     }
   };
 
@@ -322,171 +314,262 @@ export default function Dashboard() {
 
   return (
     <MobileLayout>
-      <AnimatePresence>
-        {notification && <NotificationPopup notification={notification} />}
-      </AnimatePresence>
       <motion.div
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="space-y-6"
+        style={{
+          padding: `${spacing[6].value} 0`,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: spacing[6].value,
+        }}
       >
         {/* Header */}
-        <motion.section variants={itemVariants} className="flex flex-col gap-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-1">
+        <motion.section variants={itemVariants}>
+          <Box style={{ marginBottom: spacing[4].value }}>
+            <Heading size="xl" style={{ marginBottom: spacing[2].value }}>
               Dashboard
-            </h1>
-            <p className="text-sm sm:text-base text-muted-foreground">
+            </Heading>
+            <Text size="sm" className="text-muted-foreground">
               Manage your agreements and documents
-            </p>
-          </div>
+            </Text>
+          </Box>
 
           {/* Button and Stats Row */}
-          <div className="flex flex-col sm:flex-row items-stretch gap-3 sm:gap-4">
-            <div className="flex gap-2 w-full sm:w-auto flex-shrink-0">
+          <Flex
+            className="flex-col sm:flex-row items-stretch"
+            style={{ gap: spacing[3].value }}
+          >
+            <Flex
+              style={{ gap: spacing[2].value }}
+              className="w-full sm:w-auto flex-shrink-0"
+            >
               <Button
                 onClick={() => setShowCreateModal(true)}
-                className="group dark:text-black h-[52px] px-4 w-full sm:w-auto flex-1 sm:flex-none min-w-0"
-                size="sm"
+                variant="primary"
+                style={{ height: '52px', padding: `0 ${spacing[4].value}` }}
+                className="w-full sm:w-auto flex-1 sm:flex-none min-w-0"
               >
                 <Plus className="w-4 h-4 mr-2" />
                 New Agreement
               </Button>
               <Button
                 onClick={() => setShowJoinModal(true)}
-                variant="outline"
-                className="group h-[52px] px-4 w-full sm:w-auto flex-1 sm:flex-none min-w-0"
-                size="sm"
+                variant="secondary"
+                style={{ height: '52px', padding: `0 ${spacing[4].value}` }}
+                className="w-full sm:w-auto flex-1 sm:flex-none min-w-0"
               >
                 <UserPlus className="w-4 h-4 mr-2" />
                 Join Agreement
               </Button>
-            </div>
+            </Flex>
 
-            <div className="flex-1">
+            <Box className="flex-1">
               {stats.map((stat, index) => {
                 const Icon = stat.icon;
                 return (
                   <Card
                     key={index}
-                    className="p-3 hover:shadow-lg transition-all duration-300 w-full h-[52px]"
+                    className="w-full"
+                    style={{
+                      padding: spacing[3].value,
+                      height: '52px',
+                      borderRadius: radius.md.value,
+                    }}
                   >
-                    <div className="flex items-center gap-3 h-full">
-                      <div
-                        className={`p-2 rounded-full ${stat.bg} flex-shrink-0`}
+                    <Flex
+                      style={{
+                        alignItems: 'center',
+                        gap: spacing[3].value,
+                        height: '100%',
+                      }}
+                    >
+                      <Box
+                        className={`flex-shrink-0`}
+                        style={{
+                          padding: spacing[2].value,
+                          borderRadius: '50%',
+                          backgroundColor: colors.background.secondary.value,
+                        }}
                       >
-                        <Icon className={`w-4 h-4 ${stat.color}`} />
-                      </div>
-                      <div className="flex min-w-0 gap-2 justify-between items-center">
-                        <div className="text-lg sm:text-xl font-bold text-foreground">
+                        <Icon
+                          className={`w-4 h-4`}
+                          style={{ color: colors.brand[600].value }}
+                        />
+                      </Box>
+                      <Flex
+                        style={{
+                          minWidth: 0,
+                          gap: spacing[2].value,
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          flex: 1,
+                        }}
+                      >
+                        <Text size="lg" weight="bold">
                           {stat.value}
-                        </div>
-                        <div className="text-s text-muted-foreground truncate">
+                        </Text>
+                        <Text
+                          size="sm"
+                          className="text-muted-foreground truncate"
+                        >
                           {stat.label}
-                        </div>
-                      </div>
-                    </div>
+                        </Text>
+                      </Flex>
+                    </Flex>
                   </Card>
                 );
               })}
-            </div>
-          </div>
+            </Box>
+          </Flex>
         </motion.section>
 
         {/* Search */}
-        <motion.section variants={itemVariants} className="px-1">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search agreements ..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2.5 sm:py-3 text-sm sm:text-base border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all duration-300"
-            />
-          </div>
+        <motion.section
+          variants={itemVariants}
+          style={{
+            paddingLeft: spacing[2].value,
+            paddingRight: spacing[2].value,
+          }}
+        >
+          <SearchInput
+            placeholder="Search agreements ..."
+            value={searchQuery}
+            onChange={setSearchQuery}
+            className="w-full"
+          />
         </motion.section>
 
         {/* Context Cards */}
         <motion.section variants={itemVariants}>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-            <h2 className="text-xl sm:text-2xl font-bold text-foreground">
-              Your Agreements
-            </h2>
-          </div>
+          <Flex
+            className="flex-col sm:flex-row sm:items-center sm:justify-between"
+            style={{ gap: spacing[3].value, marginBottom: spacing[4].value }}
+          >
+            <Heading size="lg">Your Agreements</Heading>
+          </Flex>
 
           {loading && (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-              <p className="text-muted-foreground mt-2">
+            <Box
+              className="text-center"
+              style={{ padding: `${spacing[6].value} 0` }}
+            >
+              <Loader size="large" />
+              <Spacer size="sm" />
+              <Text size="sm" className="text-muted-foreground">
                 Loading agreements...
-              </p>
-            </div>
+              </Text>
+            </Box>
           )}
 
           {error && !loading && (
-            <div className="text-center py-8">
-              <p className="text-red-500 mb-4">{error}</p>
-              <Button onClick={loadAgreements} variant="outline">
+            <Box
+              className="text-center"
+              style={{ padding: `${spacing[6].value} 0` }}
+            >
+              <Alert variant="error" style={{ marginBottom: spacing[4].value }}>
+                {error}
+              </Alert>
+              <Button onClick={loadAgreements} variant="secondary">
                 Try Again
               </Button>
-            </div>
+            </Box>
           )}
 
           {!loading && !error && filteredContexts.length === 0 && (
-            <div className="text-center py-8">
-              <FileText className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold text-foreground mb-2">
+            <Box
+              className="text-center"
+              style={{ padding: `${spacing[6].value} 0` }}
+            >
+              <FileText
+                className="w-16 h-16 mx-auto text-muted-foreground"
+                style={{ marginBottom: spacing[4].value }}
+              />
+              <Heading size="md" style={{ marginBottom: spacing[2].value }}>
                 No agreements found
-              </h3>
-              <p className="text-muted-foreground mb-4">
+              </Heading>
+              <Text
+                size="sm"
+                className="text-muted-foreground"
+                style={{ marginBottom: spacing[4].value }}
+              >
                 Create your first agreement to get started with document
                 management.
-              </p>
-            </div>
+              </Text>
+            </Box>
           )}
 
           {!loading && !error && filteredContexts.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+            <div
+              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+              style={{ gap: spacing[6].value }}
+            >
               {filteredContexts.map((context) => (
                 <motion.div
                   key={context.id}
                   whileHover={{ y: -2, scale: 1.01 }}
                   whileTap={{ scale: 0.99 }}
+                  onClick={() => handleAgreementClick(context)}
+                  className="cursor-pointer"
                 >
                   <Card
-                    className="group cursor-pointer h-full hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 border-border/50 hover:border-primary/20"
-                    onClick={() => handleAgreementClick(context)}
+                    className="group h-full hover:shadow-lg transition-all duration-300"
+                    style={{
+                      borderRadius: radius.md.value,
+                      padding: spacing[6].value,
+                    }}
                   >
-                    <CardContent className="p-4 sm:p-6">
+                    <Box>
                       {/* Header */}
-                      <div className="flex items-start justify-between mb-3 sm:mb-4">
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-sm sm:text-base text-foreground mb-1 group-hover:text-primary transition-colors duration-300 line-clamp-1">
+                      <Flex
+                        style={{
+                          alignItems: 'flex-start',
+                          justifyContent: 'space-between',
+                          marginBottom: spacing[4].value,
+                        }}
+                      >
+                        <Box className="flex-1">
+                          <Heading
+                            size="sm"
+                            className="group-hover:text-primary transition-colors duration-300 line-clamp-1"
+                            style={{ marginBottom: spacing[2].value }}
+                          >
                             {context.name}
-                          </h3>
-                          <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed line-clamp-2">
+                          </Heading>
+                          <Text
+                            size="xs"
+                            className="text-muted-foreground leading-relaxed line-clamp-2"
+                          >
                             Context ID: {context.contextId.slice(0, 6)}...
                             {context.contextId.slice(-4)}
-                          </p>
-                        </div>
-                      </div>
+                          </Text>
+                        </Box>
+                      </Flex>
 
                       {/* Content */}
-                      <div className="space-y-2.5 sm:space-y-3">
+                      <Box>
                         {/* Footer */}
-                        <div className="flex items-center justify-between pt-2 border-t border-border/50">
-                          <span className="text-xs text-muted-foreground">
+                        <Flex
+                          style={{
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            paddingTop: spacing[2].value,
+                            borderTop: '1px solid',
+                            borderColor:
+                              colors.neutral[200]?.value || '#e5e7eb',
+                          }}
+                        >
+                          <Text size="xs" className="text-muted-foreground">
                             Joined:{' '}
                             {new Date(
                               context.joinedAt / 1000000,
                             ).toLocaleDateString()}
-                          </span>
+                          </Text>
                           <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all duration-300" />
-                        </div>
-                      </div>
-                    </CardContent>
+                        </Flex>
+                      </Box>
+                    </Box>
                   </Card>
                 </motion.div>
               ))}
@@ -497,263 +580,316 @@ export default function Dashboard() {
 
       {/* Create Agreement Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            className={`rounded-lg p-6 w-full max-w-md border border-border shadow-2xl ${
-              mode === 'dark' ? 'bg-gray-900' : 'bg-white'
-            }`}
+        <Modal
+          open={showCreateModal}
+          onClose={() => {
+            setShowCreateModal(false);
+            setAgreementName('');
+            setError(null);
+          }}
+          title="Create New Agreement"
+        >
+          <Box
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: spacing[4].value,
+            }}
           >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-foreground">
-                Create New Agreement
-              </h3>
-              <Button
-                variant="ghost"
+            {/* Notification inside modal */}
+            <AnimatePresence>
+              {modalNotification && showCreateModal && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <Alert
+                    variant={
+                      modalNotification.type === 'success' ? 'success' : 'error'
+                    }
+                    style={{ marginBottom: spacing[2].value }}
+                  >
+                    <Flex alignItems="center" gap="sm">
+                      {modalNotification.type === 'success' ? (
+                        <CheckCircle2 className="w-4 h-4" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4" />
+                      )}
+                      <Text size="sm" weight="medium">
+                        {modalNotification.message}
+                      </Text>
+                    </Flex>
+                  </Alert>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <Box>
+              <Text
                 size="sm"
+                weight="medium"
+                style={{ marginBottom: spacing[2].value }}
+              >
+                Agreement Name
+              </Text>
+              <Input
+                id="agreementName"
+                type="text"
+                value={agreementName}
+                onChange={(e) => setAgreementName(e.target.value)}
+                placeholder="Enter agreement name..."
+                autoFocus
+              />
+            </Box>
+
+            {error && <Alert variant="error">{error}</Alert>}
+
+            <Flex
+              style={{ gap: spacing[3].value, paddingTop: spacing[4].value }}
+            >
+              <Button
                 onClick={() => {
                   setShowCreateModal(false);
                   setAgreementName('');
                   setError(null);
                 }}
-                className="p-1 h-auto w-auto"
+                variant="secondary"
+                className="flex-1"
+                disabled={creating}
               >
-                <X className="w-5 h-5" />
+                Cancel
               </Button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label
-                  htmlFor="agreementName"
-                  className="block text-sm font-medium text-foreground mb-2"
-                >
-                  Agreement Name
-                </label>
-                <input
-                  id="agreementName"
-                  type="text"
-                  value={agreementName}
-                  onChange={(e) => setAgreementName(e.target.value)}
-                  placeholder="Enter agreement name..."
-                  className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                  autoFocus
-                />
-              </div>
-
-              {error && (
-                <div className="p-3 bg-red-100 border border-red-300 rounded-lg">
-                  <p className="text-sm text-red-700">{error}</p>
-                </div>
-              )}
-
-              <div className="flex gap-3 pt-4">
-                <Button
-                  onClick={() => {
-                    setShowCreateModal(false);
-                    setAgreementName('');
-                    setError(null);
-                  }}
-                  variant="outline"
-                  className="flex-1"
-                  disabled={creating}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleCreateAgreement}
-                  className="flex-1 dark:text-black"
-                  disabled={!agreementName.trim() || creating}
-                >
-                  {creating ? 'Creating...' : 'Create'}
-                </Button>
-              </div>
-            </div>
-          </motion.div>
-        </div>
+              <Button
+                onClick={handleCreateAgreement}
+                variant="primary"
+                className="flex-1"
+                disabled={!agreementName.trim() || creating}
+              >
+                {creating ? 'Creating...' : 'Create'}
+              </Button>
+            </Flex>
+          </Box>
+        </Modal>
       )}
 
       {/* Join Agreement Modal */}
       {showJoinModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            className={`rounded-lg p-6 w-full max-w-md border border-border shadow-2xl ${
-              mode === 'dark' ? 'bg-gray-900' : 'bg-white'
-            }`}
+        <Modal
+          open={showJoinModal}
+          onClose={() => {
+            setShowJoinModal(false);
+            setInvitationPayload('');
+            setContextName('');
+            setGeneratedIdentity('');
+            setError(null);
+            setJoinProgress('');
+          }}
+          title="Join Agreement"
+        >
+          <Box
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: spacing[4].value,
+            }}
           >
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-foreground">
-                  Join Agreement
-                </h3>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setShowJoinModal(false);
-                    setInvitationPayload('');
-                    setContextName('');
-                    setGeneratedIdentity('');
-                    setError(null);
-                    setJoinProgress('');
-                  }}
-                  className="p-1 h-auto w-auto"
-                  disabled={joining}
+            {/* Notification inside modal */}
+            <AnimatePresence>
+              {modalNotification && showJoinModal && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.3 }}
                 >
-                  <X className="w-5 h-5" />
-                </Button>
-              </div>
-              <div>
-                <label
-                  htmlFor="invitationPayload"
-                  className="block text-sm font-medium text-foreground mb-2"
-                >
-                  Invitation Payload
-                </label>
-                <textarea
-                  id="invitationPayload"
-                  value={invitationPayload}
-                  onChange={(e) => setInvitationPayload(e.target.value)}
-                  placeholder="Paste the invitation payload you received..."
-                  className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
-                  rows={4}
-                  disabled={joining}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Enter the invitation payload shared by the agreement owner
-                </p>
-              </div>
-              <div>
-                <label
-                  htmlFor="contextName"
-                  className="block text-sm font-medium text-foreground mb-2"
-                >
-                  Context Name
-                </label>
-                <input
-                  id="contextName"
-                  type="text"
-                  value={contextName}
-                  onChange={(e) => setContextName(e.target.value)}
-                  placeholder="Enter the name of the context you are joining"
-                  className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                  disabled={joining}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  This will be used as the name for the joined context
-                </p>
-              </div>
-
-              {/* Identity Generation Section */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-medium text-foreground">
-                    Identity
-                  </label>
-                  <Button
-                    onClick={handleGenerateIdentity}
-                    variant="outline"
-                    size="sm"
-                    disabled={joining || generatingIdentity}
-                    className="h-8 px-3"
+                  <Alert
+                    variant={
+                      modalNotification.type === 'success' ? 'success' : 'error'
+                    }
+                    style={{ marginBottom: spacing[2].value }}
                   >
-                    {generatingIdentity ? (
-                      <>
-                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current mr-1"></div>
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <Key className="w-3 h-3 mr-1" />
-                        Generate Identity
-                      </>
-                    )}
-                  </Button>
-                </div>
-
-                {generatedIdentity && (
-                  <div className="space-y-2">
-                    <div className="relative">
-                      <input
-                        type="text"
-                        value={generatedIdentity}
-                        readOnly
-                        className="w-full px-3 py-2 pr-10 border border-border rounded-lg bg-muted text-foreground font-mono text-sm"
-                      />
-                      <Button
-                        onClick={handleCopyIdentity}
-                        variant="ghost"
-                        size="sm"
-                        className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6 p-0"
-                      >
-                        <Copy className="w-3 h-3" />
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Your generated identity. Click the copy button to copy it
-                      to clipboard.
-                    </p>
-                  </div>
-                )}
-
-                {!generatedIdentity && (
-                  <p className="text-xs text-muted-foreground">
-                    Generate a new identity. This is sending your identity to
-                    other users for creating invitation payload for you to join
-                    agreements.
-                  </p>
-                )}
-              </div>
-
-              {error && (
-                <div className="p-3 bg-red-100 border border-red-300 rounded-lg">
-                  <p className="text-sm text-red-700">{error}</p>
-                </div>
+                    <Flex alignItems="center" gap="sm">
+                      <Text size="sm" weight="medium">
+                        {modalNotification.message}
+                      </Text>
+                    </Flex>
+                  </Alert>
+                </motion.div>
               )}
-              <div className="flex gap-3 pt-4">
+            </AnimatePresence>
+
+            <Box>
+              <Text
+                size="sm"
+                weight="medium"
+                style={{ marginBottom: spacing[2].value }}
+              >
+                Invitation Payload
+              </Text>
+              <Textarea
+                value={invitationPayload}
+                onChange={(e) => setInvitationPayload(e.target.value)}
+                placeholder="Paste the invitation payload you received..."
+                rows={4}
+                disabled={joining}
+              />
+              <Text
+                size="xs"
+                className="text-muted-foreground"
+                style={{ marginTop: spacing[2].value }}
+              >
+                Enter the invitation payload shared by the agreement owner
+              </Text>
+            </Box>
+
+            <Box>
+              <Text
+                size="sm"
+                weight="medium"
+                style={{ marginBottom: spacing[2].value }}
+              >
+                Context Name
+              </Text>
+              <Input
+                id="contextName"
+                type="text"
+                value={contextName}
+                onChange={(e) => setContextName(e.target.value)}
+                placeholder="Enter the name of the context you are joining"
+                disabled={joining}
+              />
+              <Text
+                size="xs"
+                className="text-muted-foreground"
+                style={{ marginTop: spacing[2].value }}
+              >
+                This will be used as the name for the joined context
+              </Text>
+            </Box>
+
+            {/* Identity Generation Section */}
+            <Box>
+              <Flex
+                style={{
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: spacing[2].value,
+                }}
+              >
+                <Text size="sm" weight="medium">
+                  Identity
+                </Text>
                 <Button
-                  onClick={() => {
-                    setShowJoinModal(false);
-                    setInvitationPayload('');
-                    setContextName('');
-                    setGeneratedIdentity('');
-                    setError(null);
-                    setJoinProgress('');
-                  }}
-                  variant="outline"
-                  className="flex-1"
-                  disabled={joining}
+                  onClick={handleGenerateIdentity}
+                  variant="secondary"
+                  disabled={joining || generatingIdentity}
+                  style={{ height: '32px', padding: `0 ${spacing[3].value}` }}
                 >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleJoinAgreement}
-                  className="flex-1 dark:text-black"
-                  disabled={
-                    !invitationPayload.trim() || !contextName.trim() || joining
-                  }
-                >
-                  {joining ? (
+                  {generatingIdentity ? (
                     <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
-                      {joinProgress || 'Joining...'}
+                      <Loader size="small" />
+                      <Spacer size="xs" />
+                      Generating...
                     </>
                   ) : (
                     <>
-                      <UserPlus className="w-4 h-4 mr-2" />
-                      Join Agreement
+                      <Key className="w-3 h-3 mr-1" />
+                      Generate Identity
                     </>
                   )}
                 </Button>
-              </div>
-            </div>
-          </motion.div>
-        </div>
+              </Flex>
+
+              {generatedIdentity && (
+                <Box
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: spacing[2].value,
+                  }}
+                >
+                  <Flex style={{ gap: spacing[2].value, alignItems: 'center' }}>
+                    <Input
+                      type="text"
+                      value={generatedIdentity}
+                      disabled
+                      className="font-mono text-sm flex-1"
+                    />
+                    <Button
+                      onClick={handleCopyIdentity}
+                      variant="secondary"
+                      style={{
+                        height: '40px',
+                        width: '40px',
+                        padding: 0,
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Copy className="w-4 h-4" />
+                    </Button>
+                  </Flex>
+                  <Text size="xs" className="text-muted-foreground">
+                    Your generated identity. Click the copy button to copy it to
+                    clipboard.
+                  </Text>
+                </Box>
+              )}
+
+              {!generatedIdentity && (
+                <Text size="xs" className="text-muted-foreground">
+                  Generate a new identity. This is sending your identity to
+                  other users for creating invitation payload for you to join
+                  agreements.
+                </Text>
+              )}
+            </Box>
+
+            {error && <Alert variant="error">{error}</Alert>}
+
+            <Flex
+              style={{ gap: spacing[3].value, paddingTop: spacing[4].value }}
+            >
+              <Button
+                onClick={() => {
+                  setShowJoinModal(false);
+                  setInvitationPayload('');
+                  setContextName('');
+                  setGeneratedIdentity('');
+                  setError(null);
+                  setJoinProgress('');
+                }}
+                variant="secondary"
+                className="flex-1"
+                disabled={joining}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleJoinAgreement}
+                variant="primary"
+                className="flex-1"
+                disabled={
+                  !invitationPayload.trim() || !contextName.trim() || joining
+                }
+              >
+                {joining ? (
+                  <>
+                    <Loader size="small" />
+                    <Spacer size="xs" />
+                    {joinProgress || 'Joining...'}
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="w-4 h-4 mr-2" />
+                    Join Agreement
+                  </>
+                )}
+              </Button>
+            </Flex>
+          </Box>
+        </Modal>
       )}
     </MobileLayout>
   );
