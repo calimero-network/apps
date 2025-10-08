@@ -61,7 +61,7 @@ export default function Context() {
         <Title>Context Operations</Title>
         <TabbedInterface tabs={tabs} />
         <LogoutWrapper>
-        <Button onClick={handleLogout}>Logout</Button>
+        <Button onClick={handleLogout} variant="secondary" style={{ width: "80px" }}>Logout</Button>
         </LogoutWrapper>
       </Card>
     </Wrapper>

@@ -131,9 +131,11 @@ export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
             isConfigSet={isConfigSet}
           />
         )}
-        <LogoutWrapper>
-          <Button onClick={handleLogout}>Logout</Button>
-        </LogoutWrapper>
+        {isAuthenticated && (
+          <LogoutWrapper>
+            <Button onClick={handleLogout} variant="secondary">Logout</Button>
+          </LogoutWrapper>
+        )}
       </Card>
     </Wrapper>
   );

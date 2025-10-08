@@ -40,7 +40,7 @@ const TabSwitch: React.FC<TabSwitchProps> = (props) => {
       icon: "bi bi-info-circle-fill",
     },
     {
-      name: `Members ${userCount}`,
+      name: `Members (${userCount})`,
       icon: "bi bi-people-fill",
     },
   ];

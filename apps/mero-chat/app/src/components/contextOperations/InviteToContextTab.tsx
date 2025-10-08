@@ -1,7 +1,15 @@
 import React, { useState, useEffect } from "react";
 import { styled } from "styled-components";
-import { apiClient, getContextId, getExecutorPublicKey } from "@calimero-network/calimero-client";
+import {
+  apiClient,
+  getContextId,
+  getExecutorPublicKey,
+} from "@calimero-network/calimero-client";
 import type { ResponseData } from "@calimero-network/calimero-client";
+import {
+  Button,
+  Input,
+} from "@calimero-network/mero-ui";
 
 const TabContent = styled.div`
   display: flex;
@@ -27,77 +35,16 @@ const Label = styled.label`
   color: #b8b8d1;
 `;
 
-const Input = styled.input`
-  background: rgba(60, 60, 75, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 0.75rem;
-  font-size: 0.9rem;
-  color: #e0e0e0;
-  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
-
-  &:focus {
-    outline: none;
-    border-color: rgba(255, 255, 255, 0.3);
-  }
-
-  &::placeholder {
-    color: #888;
-  }
-`;
-
-const ConfigBox = styled.div`
-  background: rgba(60, 60, 75, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 0.75rem;
-  font-size: 0.85rem;
-  color: #e0e0e0;
-  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
-  word-break: break-all;
-  min-height: 2rem;
-  display: flex;
-  align-items: center;
-`;
-
-const Button = styled.button`
-  background: #111;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: white;
-  padding: 0.75rem;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-
-  &:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-  }
-
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform: none;
-  }
-`;
-
 const Message = styled.div<{ type?: "success" | "error" }>`
   padding: 0.75rem;
   border-radius: 6px;
   font-size: 0.9rem;
   text-align: center;
   color: ${({ type }) =>
-    type === "success"
-      ? "#27ae60"
-      : type === "error"
-      ? "#e74c3c"
-      : "#b8b8d1"};
+    type === "success" ? "#27ae60" : type === "error" ? "#e74c3c" : "#b8b8d1"};
 `;
 
 const ConfigInfo = styled.div`
-  background: rgba(40, 40, 55, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 8px;
   padding: 1rem;
@@ -114,17 +61,22 @@ const ConfigTitle = styled.h4`
 export default function InviteToContextTab() {
   const [inviteeId, setInviteeId] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const [message, setMessage] = useState<{
+    text: string;
+    type: "success" | "error";
+  } | null>(null);
   const [configData, setConfigData] = useState({
     contextId: "",
     executorPublicKey: "",
   });
-  const [invitationPayload, setInvitationPayload] = useState<string | null>(null);
+  const [invitationPayload, setInvitationPayload] = useState<string | null>(
+    null
+  );
 
   useEffect(() => {
-    const storedContextId = getContextId();;
+    const storedContextId = getContextId();
     const storedExecutorPublicKey = getExecutorPublicKey();
-    
+
     if (storedContextId && storedExecutorPublicKey) {
       setConfigData({
         contextId: storedContextId,
@@ -141,7 +93,10 @@ export default function InviteToContextTab() {
     }
 
     if (!configData.contextId || !configData.executorPublicKey) {
-      setMessage({ text: "Context configuration not found. Please set up context first.", type: "error" });
+      setMessage({
+        text: "Context configuration not found. Please set up context first.",
+        type: "error",
+      });
       return;
     }
 
@@ -149,23 +104,44 @@ export default function InviteToContextTab() {
     setMessage(null);
 
     try {
-      const response: ResponseData<string> = await apiClient.node().contextInvite(
-        configData.contextId,
-        configData.executorPublicKey,
-        inviteeId.trim()
-      );
+      const response: ResponseData<string> = await apiClient
+        .node()
+        .contextInvite(
+          configData.contextId,
+          configData.executorPublicKey,
+          inviteeId.trim()
+        );
 
       if (response.error) {
-        setMessage({ text: response.error.message || "Failed to invite to context", type: "error" });
+        setMessage({
+          text: response.error.message || "Failed to invite to context",
+          type: "error",
+        });
       } else {
         setInvitationPayload(response.data);
-        setMessage({ text: "Successfully invited to context!", type: "success" });
+        setMessage({
+          text: "Successfully invited to context!",
+          type: "success",
+        });
         setInviteeId("");
       }
     } catch (_error) {
-      setMessage({ text: "An error occurred while inviting to context", type: "error" });
+      setMessage({
+        text: "An error occurred while inviting to context",
+        type: "error",
+      });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleCopyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setMessage({ text: "Copied to clipboard!", type: "success" });
+      setTimeout(() => setMessage(null), 2000);
+    } catch (_error) {
+      setMessage({ text: "Failed to copy to clipboard", type: "error" });
     }
   };
 
@@ -176,7 +152,26 @@ export default function InviteToContextTab() {
           <ConfigTitle>Invitation Payload</ConfigTitle>
           <InputGroup>
             <Label>Generated Invitation</Label>
-            <ConfigBox>{invitationPayload}</ConfigBox>
+            <Input
+              id="invitationPayload"
+              type="text"
+              value={invitationPayload}
+              disabled={true}
+            />
+            <Button
+                onClick={() => handleCopyToClipboard(invitationPayload)}
+                variant="secondary"
+                style={{ 
+                  width: "80px", 
+                  minWidth: "80px",
+                  whiteSpace: "nowrap",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center"
+                }}
+              >
+                <span>Copy</span>
+              </Button>
           </InputGroup>
         </ConfigInfo>
       ) : (
@@ -184,11 +179,23 @@ export default function InviteToContextTab() {
           <ConfigTitle>Context Configuration</ConfigTitle>
           <InputGroup>
             <Label>Context ID</Label>
-            <ConfigBox>{configData.contextId || "Not found in localStorage"}</ConfigBox>
+            <Input
+              id="contextId"
+              type="text"
+              value={configData.contextId ?? "Not found in localStorage"}
+              disabled={true}
+            />
           </InputGroup>
           <InputGroup>
             <Label>Executor Public Key</Label>
-            <ConfigBox>{configData.executorPublicKey || "Not found in localStorage"}</ConfigBox>
+            <Input
+              id="executorPublicKey"
+              type="text"
+              value={
+                configData.executorPublicKey ?? "Not found in localStorage"
+              }
+              disabled={true}
+            />
           </InputGroup>
         </ConfigInfo>
       )}
@@ -210,11 +217,7 @@ export default function InviteToContextTab() {
           {isLoading ? "Inviting..." : "Invite to Context"}
         </Button>
 
-        {message && (
-          <Message type={message.type}>
-            {message.text}
-          </Message>
-        )}
+        {message && <Message type={message.type}>{message.text}</Message>}
       </Form>
     </TabContent>
   );

@@ -15,8 +15,8 @@ import { getStoredSession, updateSessionChat } from "../../utils/session";
 import { CONTEXT_ID } from "../../constants/config";
 import type { ResponseData } from "@calimero-network/calimero-client";
 import type { FetchContextIdentitiesResponse } from "@calimero-network/calimero-client/lib/api/nodeApi";
-import { Input } from "./JoinContextTab";
 import type { ActiveChat } from "../../types/Common";
+import { Button, Input } from "@calimero-network/mero-ui";
 
 const TabContent = styled.div`
   display: flex;
@@ -61,47 +61,6 @@ const Label = styled.label`
   font-size: 0.8rem;
   font-weight: 500;
   color: #b8b8d1;
-`;
-
-const ConfigBox = styled.div`
-  background: rgba(60, 60, 75, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
-  padding: 0.5rem;
-  font-size: 0.8rem;
-  color: #e0e0e0;
-  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
-  word-break: break-all;
-  min-height: 1.5rem;
-  display: flex;
-  align-items: center;
-`;
-
-const Button = styled.button`
-  background: #111;
-  color: white;
-  border: none;
-  padding: 0.6rem;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease;
-  margin-top: 0.75rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-
-  &:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-  }
-
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform: none;
-  }
 `;
 
 const Note = styled.p`
@@ -235,17 +194,32 @@ export default function ChatTab({
       <Form onSubmit={handleSubmit}>
         <InputGroup>
           <Label>Node URL</Label>
-          <ConfigBox>{formData.nodeUrl || "Loading..."}</ConfigBox>
+          <Input
+            id="nodeUrl"
+            type="text"
+            value={formData.nodeUrl || "Loading..."}
+            disabled={true}
+          />
         </InputGroup>
 
         <InputGroup>
           <Label>Context ID</Label>
-          <ConfigBox>{formData.contextId || "Loading..."}</ConfigBox>
+          <Input
+            id="contextId"
+            type="text"
+            value={formData.contextId || "Loading..."}
+            disabled={true}
+          />
         </InputGroup>
 
         <InputGroup>
           <Label>Identity ID</Label>
-          <ConfigBox>{formData.identityId || "Loading..."}</ConfigBox>
+          <Input
+            id="identityId"
+            type="text"
+            value={formData.identityId || "Loading..."}
+            disabled={true}
+          />
         </InputGroup>
         <InputGroup>
           <Label>Username or Name</Label>
