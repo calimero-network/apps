@@ -67,11 +67,6 @@ const DMHeader = memo(function DMHeader({ createDM, chatMembers }: DMHeaderProps
         title="Create a new private DM context"
         placeholder="invite user by entering their name"
         buttonText="Next"
-        colors={{
-          base: "#5765f2",
-          hover: "#717cf0",
-          disabled: "#3B487A",
-        }}
         toggle={
           <IconPlusContainer>
             <i className="bi bi-plus-circle" />

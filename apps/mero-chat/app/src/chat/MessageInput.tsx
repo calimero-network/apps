@@ -169,7 +169,7 @@ const IconEmoji = () => {
         xmlns="http://www.w3.org/2000/svg"
         width="18"
         height="18"
-        fill="#FFDD1D"
+        fill="#73B30C"
         className={`bi bi-emoji-wink-fill ${
           hovered ? "visible-svg" : "hidden-svg"
         }`}
@@ -184,7 +184,7 @@ const IconEmoji = () => {
 const IconSendSvg = styled.svg`
   margin-bottom: 8px;
   :hover {
-    fill: #4e95ff;
+    fill: #73B30C;
   }
   cursor: pointer;
 `;
@@ -200,7 +200,7 @@ const IconSend = ({
     xmlns="http://www.w3.org/2000/svg"
     width="18"
     height="18"
-    fill={`${isActive ? "#4E95FF" : "#686672"}`}
+    fill={`${isActive ? "#73B30C" : "#686672"}`}
     className="bi bi-send-fill"
     viewBox="0 0 16 16"
   >

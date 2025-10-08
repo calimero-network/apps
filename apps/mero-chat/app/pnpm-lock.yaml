@@ -18,6 +18,9 @@ importers:
       '@calimero-network/calimero-client':
         specifier: 1.20.2
         version: 1.20.2(@near-wallet-selector/modal-ui@8.10.2(near-api-js@3.0.4))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(styled-components@6.1.19(react-dom@19.1.0(react@19.1.0))(react@19.1.0))
+      '@calimero-network/mero-icons':
+        specifier: ^0.0.6
+        version: 0.0.6(react@19.1.0)
       '@calimero-network/mero-ui':
         specifier: 1.3.0
         version: 1.3.0(@floating-ui/dom@1.7.1)(@tiptap/core@3.6.3(@tiptap/pm@3.6.3))(@tiptap/pm@3.6.3)(@types/react-dom@19.1.2(@types/react@19.1.2))(@types/react@19.1.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -49,8 +52,8 @@ importers:
         specifier: ^6.0.0
         version: 6.0.0
       curb-virtualized-chat:
-        specifier: 0.0.10
-        version: 0.0.10(@types/react-dom@19.1.2(@types/react@19.1.2))(@types/react@19.1.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 0.0.14
+        version: 0.0.14(@types/react-dom@19.1.2(@types/react@19.1.2))(@types/react@19.1.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       iframe-resizer-react:
         specifier: ^5.1.5
         version: 5.1.5(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -96,6 +99,10 @@ importers:
       zustand:
         specifier: ^5.0.5
         version: 5.0.5(@types/react@19.1.2)(react@19.1.0)(use-sync-external-store@1.6.0(react@19.1.0))
+    optionalDependencies:
+      '@types/react':
+        specifier: 19.1.2
+        version: 19.1.2
     devDependencies:
       '@eslint/js':
         specifier: ^9.25.0
@@ -133,10 +140,6 @@ importers:
       vite:
         specifier: ^6.3.5
         version: 6.3.5
-    optionalDependencies:
-      '@types/react':
-        specifier: 19.1.2
-        version: 19.1.2
 
 packages:
 
@@ -1564,8 +1567,8 @@ packages:
   csstype@3.1.3:
     resolution: {integrity: sha512-M1uQkMl8rQK/szD0LNhtqxIPLpimGm8sOBwU7lLnCpSbTyY3yeU1Vc7l4KT5zT4s/yOxHH5O7tIuuLOCnLADRw==}
 
-  curb-virtualized-chat@0.0.10:
-    resolution: {integrity: sha512-0A0Q4UTUbqrgOfOrN1mvomGtlGbb5Xef1+sNqNLfvx+ys1Nm7T5D3Eqd/MiCJiREj1B1UbyISpUj14SwXTRCdA==}
+  curb-virtualized-chat@0.0.14:
+    resolution: {integrity: sha512-eAjlqlV6SDOo4691oBpLhT6GBXvLk79A6riUPzLxd1kNNXk3A3Iep7897+CEopyxns2U7/w0X737m5MQjhmYcA==}
     peerDependencies:
       react: '>=17.0.0'
       react-dom: '>=17.0.0'
@@ -4365,7 +4368,7 @@ snapshots:
 
   csstype@3.1.3: {}
 
-  curb-virtualized-chat@0.0.10(@types/react-dom@19.1.2(@types/react@19.1.2))(@types/react@19.1.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0):
+  curb-virtualized-chat@0.0.14(@types/react-dom@19.1.2(@types/react@19.1.2))(@types/react@19.1.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0):
     dependencies:
       '@radix-ui/react-dialog': 1.1.14(@types/react-dom@19.1.2(@types/react@19.1.2))(@types/react@19.1.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@uidotdev/usehooks': 2.4.1(react-dom@19.1.0(react@19.1.0))(react@19.1.0)

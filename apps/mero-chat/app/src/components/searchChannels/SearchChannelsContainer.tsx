@@ -8,6 +8,7 @@ import {
   type ResponseData,
 } from "@calimero-network/calimero-client";
 import type { Channels } from "../../api/clientApi";
+import { Button, SearchInput } from "@calimero-network/mero-ui";
 
 const SearchContainer = styled.div`
   padding: 24px;
@@ -181,14 +182,6 @@ const SearchContainer = styled.div`
   }
 `;
 
-const ChannelOptionButton = styled.button<{ $canJoin: boolean }>`
-  background-color: transparent;
-  :hover {
-    background-color: ${({ $canJoin }) => ($canJoin ? "#727EFA" : "#C03636")};
-    border: 1px solid ${({ $canJoin }) => ($canJoin ? "#727EFA" : "#C03636")};
-  }
-`;
-
 interface SearchChannelsContainerProps {
   onChatSelected: (chat: ActiveChat) => void;
   fetchChannels: () => void;
@@ -296,30 +289,23 @@ export default function SearchChannelsContainer({
   return (
     <SearchContainer>
       <div className="inputFieldWrapper">
-        <input
-          className="searchInput"
-          placeholder="Search Channels"
-          onChange={(e) => setInputValue(e.target.value)}
+        <SearchInput
+          label="Search Channels"
+          style={{ width: "100%" }}
+          onChange={(e) => setInputValue(e)}
           value={inputValue}
+          placeholder="Search channels..."
+          clearable={false}
+          showSuggestions={false}
+          showCategories={false}
         />
-        <svg
-          className="searchIcon"
-          xmlns="http://www.w3.org/2000/svg"
-          width="20"
-          height="20"
-          viewBox="0 0 20 20"
-        >
-          <path
-            d="M14.6799 12.9311C15.8903 11.2795 16.4324 9.23171 16.1978 7.19754C15.9632 5.16336 14.9692 3.29278 13.4146 1.96001C11.8601 0.627253 9.85963 -0.0693934 7.81349 0.00944807C5.76735 0.0882895 3.82642 0.936805 2.37903 2.38524C0.931631 3.83367 0.0845053 5.7752 0.00712805 7.82139C-0.0702492 9.86759 0.627829 11.8676 1.9617 13.4212C3.29557 14.9748 5.16687 15.9674 7.20122 16.2006C9.23556 16.4337 11.2829 15.8902 12.9337 14.6786H12.9324C12.9699 14.7286 13.0099 14.7761 13.0549 14.8224L17.8674 19.6349C18.1018 19.8694 18.4198 20.0012 18.7514 20.0014C19.083 20.0015 19.401 19.8699 19.6356 19.6355C19.8701 19.4011 20.002 19.0831 20.0021 18.7515C20.0022 18.42 19.8706 18.1019 19.6362 17.8674L14.8237 13.0549C14.779 13.0096 14.7309 12.9678 14.6799 12.9299V12.9311ZM15.0024 8.1261C15.0024 9.02894 14.8246 9.92294 14.4791 10.7571C14.1336 11.5912 13.6272 12.3491 12.9888 12.9875C12.3504 13.6259 11.5925 14.1323 10.7584 14.4778C9.92428 14.8233 9.03028 15.0011 8.12744 15.0011C7.2246 15.0011 6.33061 14.8233 5.49649 14.4778C4.66238 14.1323 3.90449 13.6259 3.26608 12.9875C2.62768 12.3491 2.12127 11.5912 1.77577 10.7571C1.43027 9.92294 1.25244 9.02894 1.25244 8.1261C1.25244 6.30274 1.97677 4.55406 3.26608 3.26474C4.5554 1.97543 6.30408 1.2511 8.12744 1.2511C9.9508 1.2511 11.6995 1.97543 12.9888 3.26474C14.2781 4.55406 15.0024 6.30274 15.0024 8.1261V8.1261Z"
-            fill="#777583"
-          />
-        </svg>
       </div>
       <div className="channelListWrapper">
         <div className="listHeader">Channel List</div>
         <div className="list">
-          {channelsStartingWithPrefix.filter((channel) => channel.name !== "").map(
-            (channel: ChannelMeta, id: number) => (
+          {channelsStartingWithPrefix
+            .filter((channel) => channel.name !== "")
+            .map((channel: ChannelMeta, id: number) => (
               <div key={id} className="listItem">
                 <div>
                   <div className="channelNameText">
@@ -347,30 +333,31 @@ export default function SearchChannelsContainer({
                       <Loader size={20} />
                     </div>
                   )}
-                  <div
+                  <Button
                     className="viewChannelButton"
                     onClick={() => onViewChannel(channel)}
+                    variant="secondary"
+                    style={{ border: "none", backgroundColor: "transparent" }}
                   >
                     View
-                  </div>
-                  <ChannelOptionButton
-                    className="joinChannelButton"
-                    $canJoin={!channel.isMember}
+                  </Button>
+                  <Button
                     disabled={
                       channel.name === isLoadingNameId ||
                       channel.createdBy === localStorage.getItem("accountId") ||
                       channel.channelType === "Default"
                     }
+                    variant={channel.isMember ? "secondary" : "primary"}
                     onClick={() =>
                       clickChannelOption(channel.isMember, channel.name)
                     }
+                    style={{ width: "74px"}}
                   >
                     {channel.isMember ? "Leave" : "Join"}
-                  </ChannelOptionButton>
+                  </Button>
                 </div>
               </div>
-            )
-          )}
+            ))}
         </div>
       </div>
     </SearchContainer>

@@ -76,11 +76,6 @@ const ChannelHeader = memo(function ChannelHeader(props: ChannelHeaderProps) {
         setInputValue={setInputValue}
         placeholder={"# channel name"}
         buttonText={"Create"}
-        colors={{
-          base: "#5765f2",
-          hover: "#717cf0",
-          disabled: "#3B487A",
-        }}
         toggle={
           <IconPlusContainer onClick={() => setIsOpen(true)}>
             <i className="bi bi-plus-circle" />

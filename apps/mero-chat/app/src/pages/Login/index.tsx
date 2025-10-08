@@ -1,12 +1,16 @@
-import { CalimeroConnectButton } from "@calimero-network/calimero-client";
+import {
+  CalimeroConnectButton,
+  useCalimero,
+} from "@calimero-network/calimero-client";
 import { styled } from "styled-components";
 import TabbedInterface from "../../components/contextOperations/TabbedInterface";
+import { LogoutWrapper } from "../Context";
+import { Button } from "@calimero-network/mero-ui";
 import {
-  ChatTab,
-  CreateIdentityTab,
-  InviteToContextTab,
-  JoinContextTab,
-} from "../../components/contextOperations";
+  clearDmContextId,
+  clearStoredSession,
+  clearSessionActivity,
+} from "../../utils/session";
 
 export const Wrapper = styled.div`
   display: flex;
@@ -34,6 +38,9 @@ export const Wrapper = styled.div`
 export const Card = styled.div`
   background: transparent;
   backdrop-filter: blur(20px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   border: 1px solid rgba(255, 255, 255, 0.1);
   padding: 2rem;
   border-radius: 20px;
@@ -93,17 +100,20 @@ interface LoginProps {
 }
 
 export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
+  const { logout } = useCalimero();
   const tabs = [
-    {
-      name: "Chat",
-      component: (
-        <ChatTab isAuthenticated={isAuthenticated} isConfigSet={isConfigSet} />
-      ),
-    },
-    { name: "Join Context", component: <JoinContextTab /> },
-    { name: "Invite to Context", component: <InviteToContextTab /> },
-    { name: "Create Identity", component: <CreateIdentityTab /> },
+    { id: "chat", label: "Chat" },
+    { id: "join-context", label: "Join Context" },
+    { id: "invite-to-context", label: "Invite to Context" },
+    { id: "create-identity", label: "Create Identity" },
   ];
+
+  const handleLogout = () => {
+    clearStoredSession();
+    clearDmContextId();
+    clearSessionActivity();
+    logout();
+  };
 
   return (
     <Wrapper>
@@ -117,7 +127,14 @@ export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
         ) : (
           <TabbedInterface
             tabs={tabs}
+            isAuthenticated={isAuthenticated}
+            isConfigSet={isConfigSet}
           />
+        )}
+        {isAuthenticated && (
+          <LogoutWrapper>
+            <Button onClick={handleLogout} variant="secondary">Logout</Button>
+          </LogoutWrapper>
         )}
       </Card>
     </Wrapper>

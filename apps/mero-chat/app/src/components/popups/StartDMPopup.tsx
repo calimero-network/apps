@@ -4,6 +4,7 @@ import Loader from "../loader/Loader";
 import { styled } from "styled-components";
 import type { UserId } from "../../api/clientApi";
 import { usePersistentState } from "../../hooks/usePersistentState";
+import { Button, Input } from "@calimero-network/mero-ui";
 
 const SuggestionsDropdown = styled.div`
   max-height: 200px;
@@ -38,36 +39,10 @@ const Text = styled.div`
   margin-bottom: 1rem;
 `;
 
-const Input = styled.input`
-  color: #fff;
-  width: 100%;
-  height: 40px;
-  padding: 8px 60px 8px 16px;
-  margin-top: 1rem;
-  border-radius: 4px;
-  background-color: #0e0e10;
-  border: none;
-`;
-
 const customStyle = {
   border: "1px solid #dc3545",
   outline: "none",
 };
-
-const FunctionButton = styled.button<{ $disabled: boolean, $baseColors: { disabled: string, base: string, hover: string } }>`
-  background-color: ${({ $disabled, $baseColors }) =>
-    $disabled ? `${$baseColors.disabled};` : `${$baseColors.base};`};
-  :hover {
-    background-color: ${({ $disabled, $baseColors }) =>
-      $disabled ? `${$baseColors.disabled};` : `${$baseColors.hover};`};
-  }
-  color: #fff;
-  border-radius: 4px;
-  padding-top: 0.5rem;
-  padding-bottom: 0.5rem;
-  border: none;
-  width: 100%;
-`;
 
 const CloseButton = styled.div`
   color: #fff;
@@ -127,6 +102,7 @@ const EmptyMessageContainer = styled.div`
 
 const InputWrapper = styled.div`
   position: relative;
+  margin-top: 1rem;
 `;
 
 export interface CreateContextResult {
@@ -141,7 +117,6 @@ interface StartDMPopupProps {
     buttonText: string;
     validator: (value: string) => { isValid: boolean; error: string };
     functionLoader: (value: string) => Promise<CreateContextResult>;
-    colors: { disabled: string, base: string, hover: string };
     chatMembers: Map<string, string>;
 }
 
@@ -152,7 +127,6 @@ const StartDMPopup = memo(function StartDMPopup({
     buttonText,
     validator,
     functionLoader,
-    colors,
     chatMembers,
   }: StartDMPopupProps) {
   const [isOpen, setIsOpen] = usePersistentState('startDMPopupOpen', false);
@@ -270,13 +244,13 @@ const StartDMPopup = memo(function StartDMPopup({
       ) : (
         <EmptyMessageContainer />
       )}
-      <FunctionButton
+      <Button
         onClick={runProcess}
-        $disabled={inputValue ? !!isInvalid : true}
-        $baseColors={colors}
+        disabled={inputValue ? !!isInvalid : true}
+        style={{ width: "100%" }}
       >
         {isProcessing ? <Loader size={16} /> : buttonText}
-      </FunctionButton>
+      </Button>
     </>
   );
 

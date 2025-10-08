@@ -3,6 +3,7 @@ import { styled } from "styled-components";
 import { apiClient } from "@calimero-network/calimero-client";
 import type { ResponseData } from "@calimero-network/calimero-client";
 import type { JoinContextResponse } from "@calimero-network/calimero-client/lib/api/nodeApi";
+import { Button, Input } from "@calimero-network/mero-ui";
 
 const TabContent = styled.div`
   display: flex;
@@ -26,50 +27,6 @@ const Label = styled.label`
   font-size: 0.9rem;
   font-weight: 500;
   color: #b8b8d1;
-`;
-
-export const Input = styled.input`
-  background: rgba(60, 60, 75, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 0.75rem;
-  font-size: 0.9rem;
-  color: #e0e0e0;
-  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
-
-  &:focus {
-    outline: none;
-    border-color: rgba(255, 255, 255, 0.3);
-  }
-
-  &::placeholder {
-    color: #888;
-  }
-`;
-
-const Button = styled.button`
-  background: #111;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: white;
-  padding: 0.75rem;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease;
-
-  &:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-  }
-
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform: none;
-  }
 `;
 
 const Message = styled.div<{ type?: "success" | "error" }>`

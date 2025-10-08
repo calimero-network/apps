@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import useNotificationSound from '../../hooks/useNotificationSound';
+import { Button } from '@calimero-network/mero-ui';
 
 const SettingsContainer = styled.div`
   background-color: #0e0e10;
@@ -39,7 +40,7 @@ const ToggleButton = styled.button<{ $active: boolean }>`
   height: 24px;
   border-radius: 12px;
   border: none;
-  background-color: ${({ $active }) => ($active ? '#5765F2' : '#686672')};
+  background-color: ${({ $active }) => ($active ? '#73B30C' : '#686672')};
   position: relative;
   cursor: pointer;
   transition: background-color 0.2s ease;
@@ -71,7 +72,7 @@ const VolumeSlider = styled.input`
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    background: #5765F2;
+    background: #73B30C;
     cursor: pointer;
   }
 
@@ -79,25 +80,9 @@ const VolumeSlider = styled.input`
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    background: #5765F2;
+    background: #73B30C;
     cursor: pointer;
     border: none;
-  }
-`;
-
-const TestButton = styled.button`
-  background-color: #5765F2;
-  border: none;
-  border-radius: 4px;
-  color: white;
-  padding: 8px 16px;
-  font-family: Helvetica Neue;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background-color 0.2s ease;
-
-  &:hover {
-    background-color: #4752C4;
   }
 `;
 
@@ -162,12 +147,12 @@ const NotificationSettings: React.FC = () => {
 
       <SettingsItem $borderbottom>
         <Text>Test sound</Text>
-        <TestButton
+        <Button
           onClick={handleTestSound}
           disabled={!isEnabled}
         >
           Play
-        </TestButton>
+        </Button>
       </SettingsItem>
     </SettingsContainer>
   );

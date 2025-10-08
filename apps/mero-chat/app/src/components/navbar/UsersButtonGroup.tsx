@@ -1,6 +1,6 @@
 import styled from "styled-components";
-import UserProfileIcon from "../profileIcon/UserProfileIcon";
 import { useState } from "react";
+import { Avatar } from "@calimero-network/mero-ui";
 
 interface UsersButtonGroupProps {
   channelUserList: Map<string, string>;
@@ -42,7 +42,6 @@ const ProfileIconContainerGroup = styled.div<{
 export default function UsersButtonGroup(props: UsersButtonGroupProps) {
   const [isHovered, setIsHovered] = useState(false);
 
-  
   return (
     <AvatarContainer
       onClick={props.openMemberList}
@@ -53,12 +52,12 @@ export default function UsersButtonGroup(props: UsersButtonGroupProps) {
         setIsHovered(false);
       }}
     >
-      {Object.keys(props.channelUserList)
+      {Object.entries(props.channelUserList)
         .slice(0, 3)
-        .map(([user, id]) => (
-          <div key={id+user}>
+        .map(([publicKey, userName]) => (
+          <div key={publicKey}>
             <ProfileIconContainerGroup $isHovered={isHovered}>
-              <UserProfileIcon accountId={user} showStatus={false} />
+              <Avatar size="xs" name={userName} />
             </ProfileIconContainerGroup>
           </div>
         ))}
