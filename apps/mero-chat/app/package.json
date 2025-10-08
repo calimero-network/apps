@@ -25,7 +25,7 @@
     "bootstrap": "^5.3.7",
     "bootstrap-icons": "^1.13.1",
     "bs58": "^6.0.0",
-    "curb-virtualized-chat": "0.0.10",
+    "curb-virtualized-chat": "0.0.14",
     "iframe-resizer-react": "^5.1.5",
     "lodash": "^4.17.21",
     "prettier": "^3.6.0",
