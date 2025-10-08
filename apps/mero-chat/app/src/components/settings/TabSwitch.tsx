@@ -26,7 +26,7 @@ const SwitchOption = styled.div<{ selected?: boolean; leftPadding?: boolean }>`
   padding-right: 1rem;
   ${({ leftPadding }) => leftPadding && "padding-left: 1rem;"}
   cursor: pointer;
-  ${({ selected }) => (selected ? "color: #5765F2" : "color: #fff;")}
+  ${({ selected }) => (selected ? "color: #8AA200" : "color: #fff;")}
 `;
 
 const TabSwitch: React.FC<TabSwitchProps> = (props) => {

@@ -211,14 +211,9 @@ const AddUserDialog = ({
   return (
     <MultipleInputPopup
       title={`Invite user to #${channelName}`}
-      placeholder={"ex: 0x124abc..."}
+      placeholder={"ex: John Doe"}
       buttonText={"Invite"}
       functionLoader={addUser}
-      colors={{
-        base: "#5765f2",
-        hover: "#717cf0",
-        disabled: "#3B487A",
-      }}
       toggle={
         <AddMemberButton>
           <i className="bi bi-plus-circle-fill" />

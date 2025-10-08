@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import styled from "styled-components";
 import BaseModal from "./BaseModal";
 import Loader from "../../loader/Loader";
-import { Avatar } from "@calimero-network/mero-ui";
+import { Avatar, Button, Input } from "@calimero-network/mero-ui";
 import type { UserId } from "../../../api/clientApi";
 
 interface MultipleInputPopupProps {
@@ -11,11 +11,6 @@ interface MultipleInputPopupProps {
   placeholder: string;
   functionLoader: () => void;
   buttonText: string;
-  colors: {
-    base: string;
-    hover: string;
-    disabled: string;
-  };
   isChild?: boolean;
   autocomplete?: boolean;
   nonInvitedUserList: UserId[];
@@ -35,42 +30,6 @@ const Text = styled.div`
   font-weight: 500;
   line-height: 120%;
   margin-bottom: 1rem;
-`;
-
-const Input = styled.input`
-  position: relative;
-  width: 100%;
-  color: #fff;
-  height: 40px;
-  padding: 8px 60px 8px 16px;
-  border-radius: 4px;
-  background-color: #0e0e10;
-  border: none;
-  outline: 0;
-  box-sizing: border-box;
-  :focus {
-    border: none;
-    outline: 0;
-  }
-`;
-
-const FunctionButton = styled.button<{
-  $disabled: boolean;
-  $colors: { base: string; hover: string; disabled: string };
-}>`
-  background-color: ${({ $disabled, $colors }) =>
-    $disabled ? $colors.disabled : $colors.base};
-  :hover {
-    background-color: ${({ $disabled, $colors }) =>
-      $disabled ? $colors.disabled : $colors.hover};
-  }
-  color: #fff;
-  border-radius: 4px;
-  margin-top: 4px;
-  padding-top: 0.5rem;
-  padding-bottom: 0.5rem;
-  border: none;
-  width: 100%;
 `;
 
 const CloseButton = styled.div`
@@ -231,7 +190,6 @@ const MultipleInputPopup: React.FC<MultipleInputPopupProps> = (props) => {
     placeholder,
     functionLoader,
     buttonText,
-    colors,
     isChild,
     autocomplete,
     nonInvitedUserList,
@@ -364,13 +322,13 @@ const MultipleInputPopup: React.FC<MultipleInputPopupProps> = (props) => {
       <RulesWrapper>
         Invite users to group
       </RulesWrapper>
-      <FunctionButton
+      <Button
         onClick={runProcess}
-        $disabled={selectedUsers.length === 0}
-        $colors={colors}
+        disabled={selectedUsers.length === 0}
+        style={{ width: "100%" }}
       >
         {invitationsInProgress ? <Loader size={16} /> : buttonText}
-      </FunctionButton>
+      </Button>
     </div>
   );
 

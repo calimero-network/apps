@@ -2,6 +2,7 @@ import { styled } from "styled-components";
 import Loader from "../loader/Loader";
 import { useState } from "react";
 import BaseModal from "../common/popups/BaseModal";
+import { Button, Input, Radio, RadioGroup } from "@calimero-network/mero-ui";
 
 const Text = styled.div`
   display: flex;
@@ -16,40 +17,10 @@ const Text = styled.div`
   margin-bottom: 1rem;
 `;
 
-const Input = styled.input`
-  color: #fff;
-  width: 100%;
-  height: 40px;
-  padding: 8px 60px 8px 16px;
-  margin-top: 1rem;
-  outline: none;
-  border: none;
-  border-radius: 4px;
-  background-color: #0e0e10;
-`;
-
 const customStyle = {
   border: "1px solid #dc3545",
   outline: "none",
 };
-
-const FunctionButton = styled.button<{
-  $isDisabled?: boolean;
-  $colors?: { base: string; hover: string; disabled: string };
-}>`
-  background-color: ${({ $isDisabled, $colors }) =>
-    $isDisabled ? `${$colors?.disabled};` : `${$colors?.base};`};
-  :hover {
-    background-color: ${({ $isDisabled, $colors }) =>
-      $isDisabled ? `${$colors?.disabled};` : `${$colors?.hover};`};
-  }
-  color: #fff;
-  border-radius: 4px;
-  padding-top: 0.5rem;
-  padding-bottom: 0.5rem;
-  border: none;
-  width: 100%;
-`;
 
 const CloseButton = styled.div`
   color: #fff;
@@ -110,6 +81,7 @@ const Container = styled.div`
 
 const InputWrapper = styled.div`
   position: relative;
+  margin-top: 1rem;
 `;
 
 interface CreateChannelPopupProps {
@@ -127,7 +99,6 @@ interface CreateChannelPopupProps {
   setInputValue: (value: string) => void;
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
-  colors?: { base: string; hover: string; disabled: string };
 }
 
 export default function CreateChannelPopup({
@@ -141,7 +112,6 @@ export default function CreateChannelPopup({
   channelNameValidator,
   inputValue,
   setInputValue,
-  colors,
 }: CreateChannelPopupProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [validInput, setValidInput] = useState(false);
@@ -179,9 +149,7 @@ export default function CreateChannelPopup({
           onChange={(e) => {
             setInputValue(e.target.value);
             if (channelNameValidator) {
-              const { isValid, error } = channelNameValidator(
-                e.target.value
-              );
+              const { isValid, error } = channelNameValidator(e.target.value);
               setValidInput(isValid);
               setErrorMessage(error ? error : "");
             }
@@ -201,78 +169,39 @@ export default function CreateChannelPopup({
       <div className="mb-3">
         <label className="form-label">Visibility:</label>
         <div className="d-flex">
-          <div className="form-check form-check-inline">
-            <input
-              className="form-check-input"
-              type="radio"
-              name="visibility"
-              id="public"
-              value="public"
-              checked={visibility === "public"}
-              onChange={() => setVisibility("public")}
-            />
-            <label className="form-check-label" htmlFor="public">
-              Public
-            </label>
-          </div>
-          <div className="form-check form-check-inline">
-            <input
-              className="form-check-input"
-              type="radio"
-              name="visibility"
-              id="private"
-              value="private"
-              checked={visibility === "private"}
-              onChange={() => setVisibility("private")}
-            />
-            <label className="form-check-label" htmlFor="private">
-              Private
-            </label>
-          </div>
+          <RadioGroup
+            value={visibility}
+            onChange={setVisibility}
+            name="visibility"
+            style={{ display: "flex", flexDirection: "row", gap: "1rem" }}
+          >
+            <Radio label="Public" value="public" />
+            <Radio label="Private" value="private" />
+          </RadioGroup>
         </div>
       </div>
 
       <div className="mb-3">
         <label className="form-label">Read-only:</label>
         <div className="d-flex">
-          <div className="form-check form-check-inline">
-            <input
-              className="form-check-input"
-              type="radio"
-              name="readOnly"
-              id="yes"
-              value="yes"
-              checked={readOnly === "yes"}
-              onChange={() => setReadOnly("yes")}
-            />
-            <label className="form-check-label" htmlFor="yes">
-              Yes
-            </label>
-          </div>
-          <div className="form-check form-check-inline">
-            <input
-              className="form-check-input"
-              type="radio"
-              name="readOnly"
-              id="no"
-              value="no"
-              checked={readOnly === "no"}
-              onChange={() => setReadOnly("no")}
-            />
-            <label className="form-check-label" htmlFor="no">
-              No
-            </label>
-          </div>
+          <RadioGroup
+            value={readOnly}
+            onChange={setReadOnly}
+            name="readOnly"
+            style={{ display: "flex", flexDirection: "row", gap: "1rem" }}
+          >
+            <Radio label="Yes" value="yes" />
+            <Radio label="No" value="no" />
+          </RadioGroup>
         </div>
       </div>
-      <FunctionButton
+      <Button
         onClick={runProcess}
-        $isDisabled={inputValue.length > 0 ? isInvalid : true}
         disabled={inputValue.length > 0 ? isInvalid : true}
-        $colors={colors}
+        style={{ width: "100%" }}
       >
         {isProcessing ? <Loader size={16} /> : buttonText}
-      </FunctionButton>
+      </Button>
     </Container>
   );
 
