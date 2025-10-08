@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import styled from "styled-components";
 import BaseModal from "./BaseModal";
 import Loader from "../../loader/Loader";
-import UserProfileIcon from "../../profileIcon/UserProfileIcon";
+import { Avatar } from "@calimero-network/mero-ui";
 import type { UserId } from "../../../api/clientApi";
 
 interface MultipleInputPopupProps {
@@ -213,7 +213,7 @@ const AutocompleteContainer: React.FC<AutocompleteContainerProps> = ({
           {filteredInviteUsers.map((user, id) => (
             <UserListItem key={id} onClick={() => selectUser(user)}>
               <UserInfo>
-                <UserProfileIcon accountId={user} active={false} />
+                <Avatar size="xs" name={user} />
                 <UserText>{user}</UserText>
               </UserInfo>
             </UserListItem>

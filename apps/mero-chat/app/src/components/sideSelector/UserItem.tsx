@@ -1,12 +1,15 @@
 import { useCallback } from "react";
 import { styled } from "styled-components";
-import UserProfileIcon from "../profileIcon/UserProfileIcon";
+import { Avatar } from "@calimero-network/mero-ui";
 // import UnreadMessagesBadge from "./UnreadMessageBadge";
 import type { DMChatInfo } from "../../api/clientApi";
 import type { ActiveChat } from "../../types/Common";
 import UnreadMessagesBadge from "./UnreadMessageBadge";
 
-const UserListItem = styled.div<{ $selected: boolean, $hasNewMessages: boolean }>`
+const UserListItem = styled.div<{
+  $selected: boolean;
+  $hasNewMessages: boolean;
+}>`
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -27,10 +30,7 @@ const UserListItem = styled.div<{ $selected: boolean, $hasNewMessages: boolean }
     $selected
       ? "color: #fff; background-color: #25252a;"
       : "color: #777583; background-color: #0E0E10;"}
-  ${({ $hasNewMessages }) =>
-    $hasNewMessages
-      ? "color: #fff !important;"
-      : ""}
+  ${({ $hasNewMessages }) => ($hasNewMessages ? "color: #fff !important;" : "")}
 `;
 
 const UserInfoContainer = styled.div`
@@ -61,9 +61,13 @@ export default function UserItem({
   }, [userDM, onDMSelected]);
 
   return (
-    <UserListItem $selected={selected} onClick={handleClick} $hasNewMessages={userDM.unread_messages > 0}>
+    <UserListItem
+      $selected={selected}
+      onClick={handleClick}
+      $hasNewMessages={userDM.unread_messages > 0}
+    >
       <UserInfoContainer>
-        <UserProfileIcon accountId={userDM.other_identity_old} active={true} />
+        <Avatar size="xs" name={userDM.other_username} />
         <NameContainer>{`${userDM.other_username}`}</NameContainer>
       </UserInfoContainer>
       {userDM.unread_messages > 0 && (

@@ -2,7 +2,7 @@ import React, { useCallback, useState } from "react";
 import styled from "styled-components";
 import type { User } from "../../types/Common";
 import MultipleInputPopup from "../common/popups/MultipleInputPopup";
-import UserProfileIcon from "../profileIcon/UserProfileIcon";
+import { Avatar } from "@calimero-network/mero-ui";
 import type { UserId } from "../../api/clientApi";
 
 const AddMemberButton = styled.div`
@@ -313,7 +313,7 @@ const MemberDetails: React.FC<MemberDetailsProps> = (props) => {
           Object.keys(userList).map((user, id) => (
             <UserListItem key={id}>
               <UserInfo>
-                <UserProfileIcon accountId={user ?? ""} active={true}/>
+                <Avatar size="xs" name={user ?? ""} />
                 <Text $isSelected={optionsOpen === Number(id)}>
                   {/* @ts-expect-error - userList is a Map */}
                   {userList[user]}
