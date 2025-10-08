@@ -35,3 +35,35 @@ export const getDmContextId = () => {
 export const clearDmContextId = () => {
   localStorage.removeItem("dmContextId");
 }
+
+// Session timeout tracking
+const SESSION_TIMEOUT_KEY = "sessionLastActivity";
+const SESSION_TIMEOUT_MS = 3600000; // 1 hour
+
+export const updateSessionActivity = () => {
+  localStorage.setItem(SESSION_TIMEOUT_KEY, Date.now().toString());
+};
+
+export const getSessionLastActivity = (): number | null => {
+  try {
+    const stored = localStorage.getItem(SESSION_TIMEOUT_KEY);
+    return stored ? parseInt(stored, 10) : null;
+  } catch (error) {
+    console.error("Error reading session activity from localStorage:", error);
+    return null;
+  }
+};
+
+export const isSessionExpired = (): boolean => {
+  const lastActivity = getSessionLastActivity();
+  if (!lastActivity) return false; // No session data means not expired
+
+  const now = Date.now();
+  const timeSinceActivity = now - lastActivity;
+
+  return timeSinceActivity >= SESSION_TIMEOUT_MS;
+};
+
+export const clearSessionActivity = () => {
+  localStorage.removeItem(SESSION_TIMEOUT_KEY);
+};

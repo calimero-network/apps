@@ -5,9 +5,11 @@ import { getAuthConfig, useCalimero } from "@calimero-network/calimero-client";
 import { useEffect, useState } from "react";
 import Context from "./pages/Context";
 import { LoadingSpinner } from "./components/LoadingSpinner";
+import IdleTimeoutWrapper from "./components/IdleTimeoutWrapper";
+import { isSessionExpired, clearStoredSession, clearDmContextId, clearSessionActivity, updateSessionActivity } from "./utils/session";
 
 function App() {
-  const { isAuthenticated } = useCalimero();
+  const { isAuthenticated, logout } = useCalimero();
   const authConfig = getAuthConfig();
   const [isConfigSet, setIsConfigSet] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -26,6 +28,22 @@ function App() {
 
     return () => clearTimeout(timer);
   }, [authConfig, isAuthenticated]);
+
+  // Check for expired session on app initialization and initialize session activity
+  useEffect(() => {
+    if (isAuthenticated) {
+      if (isSessionExpired()) {
+        // Session has expired, clear everything and logout
+        clearStoredSession();
+        clearDmContextId();
+        clearSessionActivity();
+        logout();
+      } else {
+        // User is authenticated and session is valid, initialize session activity
+        updateSessionActivity();
+      }
+    }
+  }, [isAuthenticated, logout]);
 
   return (
     <Routes>
@@ -48,7 +66,9 @@ function App() {
           isLoading ? (
             <LoadingSpinner />
           ) : isAuthenticated && isConfigSet ? (
-            <Home isConfigSet={isConfigSet} />
+            <IdleTimeoutWrapper>
+              <Home isConfigSet={isConfigSet} />
+            </IdleTimeoutWrapper>
           ) : (
             <Navigate to="/login" replace />
           )
@@ -60,7 +80,9 @@ function App() {
           isLoading ? (
             <LoadingSpinner />
           ) : isAuthenticated && isConfigSet ? (
-            <Context />
+            <IdleTimeoutWrapper>
+              <Context />
+            </IdleTimeoutWrapper>
           ) : (
             <Navigate to="/login" replace />
           )
