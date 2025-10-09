@@ -27,6 +27,7 @@ const SignaturePadComponent: React.FC<SignaturePadComponentProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [signaturePad, setSignaturePad] = useState<SignaturePad | null>(null);
   const [isEmpty, setIsEmpty] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (isOpen && canvasRef.current) {
@@ -104,10 +105,15 @@ const SignaturePadComponent: React.FC<SignaturePadComponentProps> = ({
     }
   }, [isOpen]);
 
-  const handleSave = () => {
-    if (signaturePad && !signaturePad.isEmpty()) {
-      const dataURL = signaturePad.toDataURL('image/png');
-      onSave(dataURL);
+  const handleSave = async () => {
+    if (signaturePad && !signaturePad.isEmpty() && !isSaving) {
+      setIsSaving(true);
+      try {
+        const dataURL = signaturePad.toDataURL('image/png');
+        await onSave(dataURL);
+      } finally {
+        setIsSaving(false);
+      }
     }
   };
 
@@ -177,19 +183,40 @@ const SignaturePadComponent: React.FC<SignaturePadComponentProps> = ({
                 <Button
                   variant="secondary"
                   onClick={handleClear}
-                  style={{ padding: `${spacing[2].value} ${spacing[4].value}` }}
+                  disabled={isSaving}
+                  style={{
+                    padding: `${spacing[2].value} ${spacing[4].value}`,
+                    ...(isSaving
+                      ? {
+                          opacity: 0.6,
+                          cursor: 'not-allowed',
+                          pointerEvents: 'none',
+                        }
+                      : {}),
+                  }}
                 >
                   <RotateCcw className="w-4 h-4 mr-2" />
                   Clear
                 </Button>
                 <Button
                   onClick={handleSave}
-                  disabled={isEmpty}
+                  disabled={isEmpty || isSaving}
                   variant="primary"
-                  style={{ padding: `${spacing[2].value} ${spacing[4].value}` }}
+                  style={{
+                    padding: `${spacing[2].value} ${spacing[4].value}`,
+                    ...(isEmpty || isSaving
+                      ? {
+                          backgroundColor: '#262626',
+                          color: '#ffffff',
+                          border: 'none',
+                          cursor: 'not-allowed',
+                          pointerEvents: 'none',
+                        }
+                      : {}),
+                  }}
                 >
                   <Save className="w-4 h-4 mr-2" />
-                  Save Signature
+                  {isSaving ? 'Saving...' : 'Save Signature'}
                 </Button>
               </Flex>
             </Box>
