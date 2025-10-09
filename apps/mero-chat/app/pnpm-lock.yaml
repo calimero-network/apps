@@ -52,8 +52,8 @@ importers:
         specifier: ^6.0.0
         version: 6.0.0
       curb-virtualized-chat:
-        specifier: 0.0.14
-        version: 0.0.14(@types/react-dom@19.1.2(@types/react@19.1.2))(@types/react@19.1.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: file:../../curb-virtualized-chat/packages/virtualized-chat
+        version: file:../../curb-virtualized-chat/packages/virtualized-chat(@types/react-dom@19.1.2(@types/react@19.1.2))(@types/react@19.1.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       iframe-resizer-react:
         specifier: ^5.1.5
         version: 5.1.5(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -1567,8 +1567,8 @@ packages:
   csstype@3.1.3:
     resolution: {integrity: sha512-M1uQkMl8rQK/szD0LNhtqxIPLpimGm8sOBwU7lLnCpSbTyY3yeU1Vc7l4KT5zT4s/yOxHH5O7tIuuLOCnLADRw==}
 
-  curb-virtualized-chat@0.0.14:
-    resolution: {integrity: sha512-eAjlqlV6SDOo4691oBpLhT6GBXvLk79A6riUPzLxd1kNNXk3A3Iep7897+CEopyxns2U7/w0X737m5MQjhmYcA==}
+  curb-virtualized-chat@file:../../curb-virtualized-chat/packages/virtualized-chat:
+    resolution: {directory: ../../curb-virtualized-chat/packages/virtualized-chat, type: directory}
     peerDependencies:
       react: '>=17.0.0'
       react-dom: '>=17.0.0'
@@ -4368,7 +4368,7 @@ snapshots:
 
   csstype@3.1.3: {}
 
-  curb-virtualized-chat@0.0.14(@types/react-dom@19.1.2(@types/react@19.1.2))(@types/react@19.1.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0):
+  curb-virtualized-chat@file:../../curb-virtualized-chat/packages/virtualized-chat(@types/react-dom@19.1.2(@types/react@19.1.2))(@types/react@19.1.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0):
     dependencies:
       '@radix-ui/react-dialog': 1.1.14(@types/react-dom@19.1.2(@types/react@19.1.2))(@types/react@19.1.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@uidotdev/usehooks': 2.4.1(react-dom@19.1.0(react@19.1.0))(react@19.1.0)

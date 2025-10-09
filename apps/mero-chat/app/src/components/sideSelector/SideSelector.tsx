@@ -3,7 +3,7 @@ import styled from "styled-components";
 import type { ActiveChat, ChannelMeta } from "../../types/Common";
 import ChannelHeader from "./ChannelHeader";
 import ChannelList from "./ChannelList";
-import { CurbLogo, OrgNameContainer } from "../navbar/CurbNavbar";
+import { CurbLogo } from "../navbar/CurbNavbar";
 import DMSideSelector from "./DMSideSelector";
 import type { DMChatInfo } from "../../api/clientApi";
 import type { CreateContextResult } from "../popups/StartDMPopup";
@@ -181,6 +181,7 @@ const MobileHeaderWrapper = styled.div`
   display: flex;
   align-items: center;
   padding-left: 1rem;
+  padding-bottom: 1rem;
   border-bottom: 1px solid #282933;
   margin-bottom: 0.5rem;
 `;
@@ -233,7 +234,6 @@ const SideSelector: React.FC<SideSelectorProps> = (props) => {
         <SideMenuMobile>
           <MobileHeaderWrapper>
             <CurbLogo isMobile={true} />
-            <OrgNameContainer $isMobile={true}>Calimero P2P</OrgNameContainer>
           </MobileHeaderWrapper>
           <SideMenuContent />
         </SideMenuMobile>
