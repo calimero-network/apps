@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import '@calimero-network/mero-ui/styles.css';
 
 @layer base {
   :root {

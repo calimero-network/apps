@@ -1,10 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Button } from './ui/button';
+import { Button } from '@calimero-network/mero-ui';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, X } from 'lucide-react';
 import { generateQueryEmbedding } from '../services/embeddingService';
 import { DocumentService } from '../api/documentService';
-import { LoadingSpinner } from './ui/Loading';
+import {
+  Loader,
+  Box,
+  spacing,
+  colors,
+  radius,
+} from '@calimero-network/mero-ui';
 import { llmChatbotService } from '../api/icp/backendService';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -248,11 +254,9 @@ const LegalChatbot: React.FC<LegalChatbotProps> = ({
     >
       <div
         className={`max-w-xs px-4 py-2 rounded-lg ${
-          msg.sender === 'user'
-            ? 'bg-blue-500 text-white'
-            : mode === 'dark'
-              ? 'bg-gray-700 text-white'
-              : 'bg-gray-200 text-gray-900'
+          mode === 'dark'
+            ? 'bg-gray-700 text-white'
+            : 'bg-gray-200 text-gray-900'
         }`}
       >
         <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
@@ -285,14 +289,14 @@ const LegalChatbot: React.FC<LegalChatbotProps> = ({
           exit={{ scale: 0.9, opacity: 0 }}
           className={`rounded-lg shadow-2xl w-full max-w-md h-[600px] flex flex-col ${
             mode === 'dark'
-              ? 'bg-gray-900 border border-gray-700'
+              ? 'bg-[#1a1a1a] border border-[#333]'
               : 'bg-white border border-gray-200'
           }`}
         >
           {/* Header */}
           <div
             className={`flex items-center justify-between p-4 border-b ${
-              mode === 'dark' ? 'border-gray-700' : 'border-gray-200'
+              mode === 'dark' ? 'border-[#333]' : 'border-gray-200'
             }`}
           >
             <h3
@@ -302,7 +306,11 @@ const LegalChatbot: React.FC<LegalChatbotProps> = ({
             >
               Legal Assistant
             </h3>
-            <Button variant="ghost" size="sm" onClick={onClose}>
+            <Button
+              variant="secondary"
+              onClick={onClose}
+              style={{ minWidth: 34, minHeight: 34 }}
+            >
               <X size={20} />
             </Button>
           </div>
@@ -313,13 +321,18 @@ const LegalChatbot: React.FC<LegalChatbotProps> = ({
 
             {isLoading && (
               <div className="flex justify-start">
-                <div
-                  className={`px-4 py-2 rounded-lg ${
-                    mode === 'dark' ? 'bg-gray-700' : 'bg-gray-200'
-                  }`}
+                <Box
+                  style={{
+                    padding: `${spacing[3].value}px ${spacing[4].value}px`,
+                    borderRadius: radius.lg.value,
+                    background:
+                      mode === 'dark'
+                        ? colors.neutral[800].value
+                        : colors.neutral[200].value,
+                  }}
                 >
-                  <LoadingSpinner size="sm" />
-                </div>
+                  <Loader size="small" />
+                </Box>
               </div>
             )}
             <div ref={messagesEndRef} />
@@ -328,7 +341,7 @@ const LegalChatbot: React.FC<LegalChatbotProps> = ({
           {/* Input */}
           <div
             className={`p-4 border-t ${
-              mode === 'dark' ? 'border-gray-700' : 'border-gray-200'
+              mode === 'dark' ? 'border-[#333]' : 'border-gray-200'
             }`}
           >
             <div className="flex space-x-2">
@@ -339,7 +352,7 @@ const LegalChatbot: React.FC<LegalChatbotProps> = ({
                 placeholder="Ask a legal question about the document..."
                 className={`flex-1 px-4 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   mode === 'dark'
-                    ? 'border-gray-700 bg-gray-800 text-white placeholder-gray-400'
+                    ? 'border-[#333] bg-[#262626] text-white placeholder-gray-400'
                     : 'border-gray-300 bg-white text-gray-900 placeholder-gray-500'
                 }`}
                 disabled={isLoading}
@@ -348,12 +361,7 @@ const LegalChatbot: React.FC<LegalChatbotProps> = ({
               <Button
                 onClick={handleSend}
                 disabled={isLoading || !input.trim()}
-                className={`rounded-full shadow-lg hover:shadow-xl transition-all duration-300 ${
-                  mode === 'dark'
-                    ? 'bg-green-600 hover:bg-green-700 text-white'
-                    : 'bg-green-500 hover:bg-green-600 text-white'
-                }`}
-                size="lg"
+                style={{ borderRadius: 9999, padding: '8px 12px' }}
               >
                 <Send className="w-5 h-5" />
               </Button>

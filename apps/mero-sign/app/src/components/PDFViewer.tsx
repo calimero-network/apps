@@ -21,8 +21,17 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Button } from './ui/button';
-import { LoadingSpinner } from './ui/Loading';
+import {
+  Button,
+  Box,
+  Flex,
+  Text,
+  Heading,
+  Loader,
+  spacing,
+  colors,
+  radius,
+} from '@calimero-network/mero-ui';
 import {
   pdfService,
   type PDFPage,
@@ -119,7 +128,6 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
   const [showMobileActions, setShowMobileActions] = useState(false);
   const [savingToContext, setSavingToContext] = useState(false);
   const [showConsentModal, setShowConsentModal] = useState(false);
-  const [consentLoading, setConsentLoading] = useState(false);
   const [showChatbot, setShowChatbot] = useState(false);
 
   const documentService = new DocumentService();
@@ -582,73 +590,121 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
 
   if (loading) {
     return (
-      <div
+      <Box
         className={`pdf-viewer-container ${className}`}
         style={{
           maxHeight,
-          backgroundColor: 'var(--current-surface)',
-          border: '1px solid var(--current-border)',
+          backgroundColor: mode === 'dark' ? '#1a1a1a' : '#ffffff',
+          border: `1px solid ${mode === 'dark' ? '#333' : colors.neutral[200].value}`,
+          borderRadius: radius.lg.value,
+          padding: spacing[6].value,
         }}
       >
-        <div className="flex flex-col items-center justify-center h-full min-h-[300px] space-y-4">
-          <LoadingSpinner size="lg" />
-          <p className="text-secondary">Loading PDF...</p>
-        </div>
-      </div>
+        <Flex
+          direction="column"
+          alignItems="center"
+          justifyContent="center"
+          style={{ minHeight: '300px' }}
+        >
+          <Loader size="large" />
+          <Text
+            style={{
+              marginTop: spacing[4].value,
+              color: mode === 'dark' ? '#9ca3af' : colors.neutral[600].value,
+            }}
+          >
+            Loading PDF...
+          </Text>
+        </Flex>
+      </Box>
     );
   }
 
   if (error) {
     return (
-      <div
+      <Box
         className={`pdf-viewer-container ${className}`}
         style={{
           maxHeight,
-          backgroundColor: 'var(--current-surface)',
-          border: '1px solid var(--current-border)',
+          backgroundColor: mode === 'dark' ? '#1a1a1a' : '#ffffff',
+          border: `1px solid ${mode === 'dark' ? '#333' : colors.neutral[200].value}`,
+          borderRadius: radius.lg.value,
+          padding: spacing[6].value,
         }}
       >
-        <div className="flex flex-col items-center justify-center h-full min-h-[300px] space-y-4">
-          <AlertCircle size={48} className="text-red-500" />
-          <p className="text-center text-secondary px-4">{error}</p>
+        <Flex
+          direction="column"
+          alignItems="center"
+          justifyContent="center"
+          style={{ minHeight: '300px', gap: spacing[4].value }}
+        >
+          <AlertCircle
+            size={48}
+            style={{ color: colors.semantic.error.value }}
+          />
+          <Text
+            style={{
+              textAlign: 'center',
+              color: mode === 'dark' ? '#9ca3af' : colors.neutral[600].value,
+              padding: `0 ${spacing[4].value}`,
+            }}
+          >
+            {error}
+          </Text>
           <Button
-            variant="outline"
+            variant="secondary"
             onClick={() => file && loadPDF()}
-            className="mt-4"
+            style={{ marginTop: spacing[4].value }}
           >
             Try Again
           </Button>
-        </div>
-      </div>
+        </Flex>
+      </Box>
     );
   }
 
   if (!file || !pdf) {
     return (
-      <div
+      <Box
         className={`pdf-viewer-container ${className}`}
         style={{
           maxHeight,
-          backgroundColor: 'var(--current-surface)',
-          border: '1px solid var(--current-border)',
+          backgroundColor: mode === 'dark' ? '#1a1a1a' : '#ffffff',
+          border: `1px solid ${mode === 'dark' ? '#333' : colors.neutral[200].value}`,
+          borderRadius: radius.lg.value,
+          padding: spacing[6].value,
         }}
       >
-        <div className="flex flex-col items-center justify-center h-full min-h-[300px] space-y-4">
-          <FileText size={48} className="text-secondary" />
-          <p className="text-center text-secondary px-4">
+        <Flex
+          direction="column"
+          alignItems="center"
+          justifyContent="center"
+          style={{ minHeight: '300px', gap: spacing[4].value }}
+        >
+          <FileText
+            size={48}
+            style={{
+              color: mode === 'dark' ? '#9ca3af' : colors.neutral[600].value,
+            }}
+          />
+          <Text
+            style={{
+              textAlign: 'center',
+              color: mode === 'dark' ? '#9ca3af' : colors.neutral[600].value,
+              padding: `0 ${spacing[4].value}`,
+            }}
+          >
             No PDF selected. Please upload a PDF to get started.
-          </p>
-        </div>
-      </div>
+          </Text>
+        </Flex>
+      </Box>
     );
   }
 
   // Call this when user clicks "Sign Document"
   const handleSignDocument = async () => {
-    setConsentLoading(true);
     if (!agreementContextID || !agreementContextUserID) {
       setError('Missing user identity for consent check.');
-      setConsentLoading(false);
       return;
     }
     const resp = await api.hasConsented(
@@ -656,7 +712,6 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
       documentId!,
       agreementContextID,
     );
-    setConsentLoading(false);
 
     if (resp.data) {
       setShowSignatureOptions(true);
@@ -683,599 +738,837 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className={`pdf-viewer-container ${className}`}
-        style={{
-          maxHeight,
-          backgroundColor: 'var(--current-surface)',
-          border: '1px solid var(--current-border)',
-          borderRadius: '12px',
-          overflow: 'hidden',
-          boxShadow: 'var(--shadow-card)',
-        }}
+        style={{ width: '100%' }}
       >
-        {/* Header */}
-        <div
-          className="flex items-center justify-between p-4 border-b"
+        <Box
+          className={`pdf-viewer-container ${className}`}
           style={{
-            borderColor: 'var(--current-border)',
-            backgroundColor: 'var(--current-surface)',
+            maxHeight,
+            backgroundColor: mode === 'dark' ? '#1a1a1a' : '#ffffff',
+            border: `1px solid ${mode === 'dark' ? '#333' : colors.neutral[200].value}`,
+            borderRadius: radius.lg.value,
+            overflow: 'hidden',
+            boxShadow:
+              '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)',
           }}
         >
-          <div className="flex items-center space-x-3 min-w-0">
-            <FileText size={20} className="text-primary flex-shrink-0" />
-            <div className="min-w-0">
-              <h3
-                className="font-semibold text-sm truncate"
-                style={{ color: 'var(--current-text)' }}
-                title={title || file.name}
-              >
-                {title || file.name}
-              </h3>
-              <p className="text-xs text-secondary">
-                {(file.size / 1024 / 1024).toFixed(1)} MB
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-2 flex-shrink-0">
-            {/* Sign Document Button - Desktop Only */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSignDocument}
-              className="hidden sm:flex items-center gap-2"
-            >
-              <PenTool size={16} />
-              Sign Document
-            </Button>
-
-            {/* Legal Chatbot Button - Desktop Only */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowChatbot(true)}
-              className="hidden sm:flex items-center gap-2"
-            >
-              <MessageSquare size={16} />
-              Legal Chat
-            </Button>
-
-            {/* Download Signed PDF Button - Desktop Only */}
-            {documentSignatures.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleDownloadSignedPDF}
-                disabled={savingPDF}
-                className="hidden sm:flex items-center gap-2"
-                title="Download signed PDF"
-              >
-                {savingPDF ? (
-                  <LoadingSpinner size="sm" />
-                ) : (
-                  <Download size={16} />
-                )}
-                Download Signed
-              </Button>
-            )}
-
-            {/* Save Document to Context Button - Desktop Only */}
-            {showSaveToContext &&
-              documentSignatures.length > 0 &&
-              contextId &&
-              documentId && (
-                <Button
-                  variant="default"
+          {/* Header */}
+          <Flex
+            alignItems="center"
+            justifyContent="space-between"
+            style={{
+              padding: spacing[4].value,
+              justifyContent: 'space-between',
+              borderBottom: `1px solid ${mode === 'dark' ? '#333' : colors.neutral[200].value}`,
+              backgroundColor: mode === 'dark' ? '#1a1a1a' : '#ffffff',
+            }}
+          >
+            <Flex alignItems="center" gap="md" style={{ minWidth: 0 }}>
+              <FileText
+                size={20}
+                style={{
+                  color:
+                    mode === 'dark' ? '#9ca3af' : colors.neutral[600].value,
+                  flexShrink: 0,
+                }}
+              />
+              <Box style={{ minWidth: 0 }}>
+                <Heading
                   size="sm"
-                  onClick={handleSaveDocumentToContext}
-                  disabled={savingToContext}
-                  className="hidden sm:flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white"
-                  title="Save signed document to context"
+                  style={{
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    color: mode === 'dark' ? '#f3f4f6' : 'inherit',
+                  }}
                 >
-                  {savingToContext ? (
-                    <LoadingSpinner size="sm" />
-                  ) : (
-                    <Upload size={16} />
-                  )}
-                  Save Document
-                </Button>
-              )}
+                  {title || file.name}
+                </Heading>
+                <Text
+                  size="xs"
+                  style={{
+                    color:
+                      mode === 'dark' ? '#9ca3af' : colors.neutral[600].value,
+                  }}
+                >
+                  {(file.size / 1024 / 1024).toFixed(1)} MB
+                </Text>
+              </Box>
+            </Flex>
 
-            {showDownload && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleDownload}
-                className="h-8 w-8 p-0"
-              >
-                <Download size={16} />
-              </Button>
-            )}
-            {showSignatureControls && signatures.length > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleSaveSignedPDF}
-                disabled={savingPDF}
-                className="h-8 w-8 p-0"
-                title="Save signed PDF"
-              >
-                {savingPDF ? <LoadingSpinner size="sm" /> : <Save size={16} />}
-              </Button>
-            )}
-            {showClose && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onClose}
-                className="h-8 w-8 p-0 z-50"
-              >
-                <X size={16} />
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {/* Controls */}
-        <div
-          className="flex items-center justify-between p-3 border-b"
-          style={{
-            borderColor: 'var(--current-border)',
-            backgroundColor: 'var(--current-card)',
-          }}
-        >
-          {/* Page controls */}
-          <div className="flex items-center space-x-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={prevPage}
-              disabled={currentPage === 1}
-              className="h-8 w-8 p-0"
-            >
-              <ChevronLeft size={16} />
-            </Button>
-
-            <span className="text-sm font-medium px-2">
-              <span style={{ color: 'var(--current-text)' }}>
-                {currentPage}
-              </span>
-              <span className="text-secondary"> / {pdf.numPages}</span>
-              {(signaturesOnCurrentPage.length > 0 ||
-                documentSignatures.filter(
-                  (sig) => sig.pageNumber === currentPage,
-                ).length > 0) && (
-                <span className="text-secondary">
-                  {' '}
-                  (
-                  {signaturesOnCurrentPage.length +
-                    documentSignatures.filter(
-                      (sig) => sig.pageNumber === currentPage,
-                    ).length}{' '}
-                  signature
-                  {signaturesOnCurrentPage.length +
-                    documentSignatures.filter(
-                      (sig) => sig.pageNumber === currentPage,
-                    ).length !==
-                  1
-                    ? 's'
-                    : ''}
-                  )
-                </span>
-              )}
-            </span>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={nextPage}
-              disabled={currentPage === pdf.numPages}
-              className="h-8 w-8 p-0"
-            >
-              <ChevronRight size={16} />
-            </Button>
-          </div>
-
-          {/* Zoom controls */}
-          <div className="flex items-center space-x-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={zoomOut}
-              disabled={scale <= 0.5}
-              className="h-8 w-8 p-0"
-            >
-              <ZoomOut size={16} />
-            </Button>
-
-            <span className="text-sm font-medium px-2 text-secondary">
-              {Math.round(scale * 100)}%
-            </span>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={zoomIn}
-              disabled={scale >= 3}
-              className="h-8 w-8 p-0"
-            >
-              <ZoomIn size={16} />
-            </Button>
-          </div>
-        </div>
-
-        {/* PDF Content - Mobile Optimized */}
-        <div
-          className="flex-1 overflow-auto p-2 bg-gray-50"
-          style={{
-            backgroundColor: 'var(--current-bg)',
-            maxHeight: `calc(${maxHeight} - 200px)`,
-          }}
-          ref={containerRef}
-        >
-          <div className="flex justify-center">
-            <div className="relative w-full max-w-full">
-              <AnimatePresence mode="wait">
-                {currentPageData ? (
-                  <motion.div
-                    key={`page-${currentPage}`}
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
-                    transition={{ duration: 0.2 }}
-                    className="relative w-full"
-                  >
-                    <canvas
-                      className={`w-full h-auto border border-gray-300 rounded-lg shadow-sm ${
-                        selectedSignature || signingMode
-                          ? 'cursor-crosshair'
-                          : ''
-                      }`}
-                      onClick={handleCanvasClick}
-                      onTouchStart={handleCanvasTouch}
-                      style={{
-                        backgroundColor: 'white',
-                        borderColor: 'var(--current-border)',
-                        width: currentPageData.width * scale,
-                        height: currentPageData.height * scale,
-                        display: 'block',
-                        maxWidth: '100%',
-                        touchAction: 'pan-x pan-y',
-                      }}
-                      ref={(canvas) => {
-                        if (canvas && currentPageData) {
-                          canvas.width = currentPageData.width;
-                          canvas.height = currentPageData.height;
-                          const ctx = canvas.getContext('2d');
-                          if (ctx) {
-                            ctx.clearRect(0, 0, canvas.width, canvas.height);
-                            ctx.drawImage(currentPageData.canvas, 0, 0);
-                          }
-                        }
-                      }}
-                    />
-
-                    {/* External Signature Overlays */}
-                    {signatures
-                      .filter((sig) => sig.pageNumber === currentPage)
-                      .map((signature) => (
-                        <SignatureOverlay
-                          key={signature.id}
-                          signature={signature}
-                          scale={scale}
-                          onUpdate={handleSignatureUpdate}
-                          onDelete={handleSignatureDelete}
-                          isSelected={selectedSignatureId === signature.id}
-                          onSelect={handleSignatureSelect}
-                        />
-                      ))}
-
-                    {/* Document Signature Overlays */}
-                    {documentSignatures
-                      .filter((sig) => sig.pageNumber === currentPage)
-                      .map((signature) => (
-                        <SignatureOverlay
-                          key={signature.id}
-                          signature={signature}
-                          scale={scale}
-                          onUpdate={handleSignatureUpdate}
-                          onDelete={handleSignatureDelete}
-                          isSelected={selectedSignatureId === signature.id}
-                          onSelect={handleSignatureSelect}
-                        />
-                      ))}
-
-                    {/* Signature placement hint */}
-                    {(selectedSignature || signingMode) && (
-                      <div className="absolute top-2 left-2 bg-blue-500 text-white px-2 py-1 rounded text-xs">
-                        {signingMode
-                          ? 'Click on the document to place your signature'
-                          : 'Click on the document to place your signature'}
-                      </div>
-                    )}
-                  </motion.div>
-                ) : null}
-              </AnimatePresence>
-            </div>
-          </div>
-        </div>
-
-        {/* Mobile Signature Options Modal */}
-        {showSignatureOptions && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 z-[9999] pdf-viewer-modal-overlay">
-            <motion.div
-              initial={{ opacity: 0, y: 100 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 100 }}
-              className={`rounded-t-2xl sm:rounded-lg p-4 w-full max-w-md border border-border shadow-2xl max-h-[80vh] overflow-hidden flex flex-col ${mode === 'dark' ? 'bg-gray-900' : 'bg-white'} ${
-                mode === 'dark' ? 'text-gray-200' : 'text-gray-800'
-              }`}
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between mb-4 pb-2 border-b">
-                <h3 className="text-lg font-semibold">Choose Signature</h3>
+            <Flex alignItems="center" gap="sm" style={{ flexShrink: 0 }}>
+              {/* Sign Document Button - Desktop Only */}
+              <div className="hidden sm:block">
                 <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowSignatureOptions(false)}
-                  className="p-1 h-8 w-8"
+                  variant="secondary"
+                  onClick={handleSignDocument}
+                  style={{
+                    padding: `${spacing[2].value} ${spacing[3].value}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: spacing[2].value,
+                  }}
+                >
+                  <PenTool size={16} />
+                  Sign Document
+                </Button>
+              </div>
+
+              {/* Legal Chatbot Button - Desktop Only */}
+              <div className="hidden sm:block">
+                <Button
+                  variant="secondary"
+                  onClick={() => setShowChatbot(true)}
+                  style={{
+                    padding: `${spacing[2].value} ${spacing[3].value}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: spacing[2].value,
+                  }}
+                >
+                  <MessageSquare size={16} />
+                  Legal Chat
+                </Button>
+              </div>
+
+              {/* Download Signed PDF Button - Desktop Only */}
+              {documentSignatures.length > 0 && (
+                <div className="hidden sm:block">
+                  <Button
+                    variant="secondary"
+                    onClick={handleDownloadSignedPDF}
+                    disabled={savingPDF}
+                    title="Download signed PDF"
+                    style={{
+                      padding: `${spacing[2].value} ${spacing[3].value}`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: spacing[2].value,
+                    }}
+                  >
+                    {savingPDF ? (
+                      <Loader size="small" />
+                    ) : (
+                      <Download size={16} />
+                    )}
+                    Download Signed
+                  </Button>
+                </div>
+              )}
+
+              {/* Save Document to Context Button - Desktop Only */}
+              {showSaveToContext &&
+                documentSignatures.length > 0 &&
+                contextId &&
+                documentId && (
+                  <div className="hidden sm:block">
+                    <Button
+                      variant="success"
+                      onClick={handleSaveDocumentToContext}
+                      disabled={savingToContext}
+                      title="Save signed document to context"
+                      style={{
+                        padding: `${spacing[2].value} ${spacing[3].value}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: spacing[2].value,
+                      }}
+                    >
+                      {savingToContext ? (
+                        <Loader size="small" />
+                      ) : (
+                        <Upload size={16} />
+                      )}
+                      Save Document
+                    </Button>
+                  </div>
+                )}
+
+              {/* Download Original Button - Desktop Only */}
+              {showDownload && (
+                <div className="hidden sm:block">
+                  <Button
+                    variant="secondary"
+                    onClick={handleDownload}
+                    style={{
+                      padding: spacing[2].value,
+                      minWidth: '32px',
+                      minHeight: '32px',
+                    }}
+                  >
+                    <Download size={16} />
+                  </Button>
+                </div>
+              )}
+              {/* Save Signed PDF Button - Desktop Only */}
+              {showSignatureControls && signatures.length > 0 && (
+                <div className="hidden sm:block">
+                  <Button
+                    variant="secondary"
+                    onClick={handleSaveSignedPDF}
+                    disabled={savingPDF}
+                    title="Save signed PDF"
+                    style={{
+                      padding: spacing[2].value,
+                      minWidth: '32px',
+                      minHeight: '32px',
+                    }}
+                  >
+                    {savingPDF ? <Loader size="small" /> : <Save size={16} />}
+                  </Button>
+                </div>
+              )}
+              {/* Close Button - Always Visible */}
+              {showClose && (
+                <Button
+                  variant="secondary"
+                  onClick={onClose}
+                  style={{
+                    padding: spacing[2].value,
+                    minWidth: '32px',
+                    minHeight: '32px',
+                    zIndex: 50,
+                  }}
                 >
                   <X size={16} />
                 </Button>
-              </div>
+              )}
+            </Flex>
+          </Flex>
 
-              {/* Content */}
-              <div className="space-y-3 flex-1 overflow-y-auto">
-                {/* Create New Button */}
-                <Button
-                  onClick={handleCreateNewSignature}
-                  className="w-full flex items-center gap-3 p-4 border border-border rounded-lg hover:bg-muted transition-colors"
-                  variant="outline"
-                >
-                  <div className="text-left">
-                    <div className="font-medium">Draw Signature</div>
-                    <div className="text-sm text-muted-foreground">
-                      Draw a signature for signing now
-                    </div>
-                  </div>
-                </Button>
-
-                {/* Existing Signatures */}
-                {savedSignatures.length > 0 && (
-                  <>
-                    <div className="text-sm font-medium text-muted-foreground pt-2">
-                      Saved Signatures ({savedSignatures.length}):
-                    </div>
-                    <div className="space-y-2">
-                      {savedSignatures.map((signature) => (
-                        <button
-                          key={signature.id}
-                          onClick={() =>
-                            handleSelectExistingSignature(signature.dataURL)
-                          }
-                          className="w-full p-3 border border-border rounded-lg hover:bg-muted transition-colors flex items-center gap-3 text-left"
-                        >
-                          <div className="w-16 h-8 bg-background border rounded flex items-center justify-center overflow-hidden flex-shrink-0">
-                            <img
-                              src={signature.dataURL}
-                              alt={signature.name}
-                              className="max-w-full max-h-full object-contain"
-                            />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-sm truncate">
-                              {signature.name}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              Created: {signature.createdAt}
-                            </div>
-                          </div>
-                          <Check
-                            size={16}
-                            className="text-green-600 opacity-0"
-                          />
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-
-                {savedSignatures.length === 0 && (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <PenTool size={32} className="mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">No saved signatures found.</p>
-                    <p className="text-xs">
-                      Create your first signature above.
-                    </p>
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          </div>
-        )}
-
-        {/* Signature Pad Modal */}
-        <SignaturePadComponent
-          isOpen={showSignaturePad}
-          onSave={handleSignaturePadSave}
-          onCancel={handleSignaturePadCancel}
-        />
-
-        {/* Mobile Floating Action Button */}
-        <div className="sm:hidden">
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => setShowMobileActions(true)}
-            aria-label="Open document actions"
-            className={`${fabBase} ${mode === 'dark' ? 'shadow-[0_6px_20px_rgba(34,197,94,0.12)]' : 'shadow-lg'}`}
+          {/* Controls */}
+          <Flex
+            alignItems="center"
+            justifyContent="space-between"
             style={{
-              backgroundColor: 'hsl(var(--primary))',
-              color: 'hsl(var(--primary-foreground))',
-              border: mode === 'dark' ? 'none' : '1px solid rgba(0,0,0,0.06)',
+              padding: spacing[3].value,
+              borderBottom: `1px solid ${mode === 'dark' ? '#333' : colors.neutral[200].value}`,
+              backgroundColor: mode === 'dark' ? '#262626' : '#fafafa',
+              gap: spacing[4].value,
             }}
           >
-            <PenTool size={24} />
-          </motion.button>
-          {/* Mobile Actions Modal */}
-          <AnimatePresence>
-            {showMobileActions && (
-              <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end justify-center z-[9999] pdf-viewer-modal-overlay">
-                <motion.div
-                  initial={{ opacity: 0, y: 100 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 100 }}
-                  className={` rounded-t-2xl p-6 w-full max-w-md border border-border shadow-2xl ${mode === 'dark' ? 'bg-gray-900' : 'bg-white'} ${
-                    mode === 'dark' ? 'text-gray-200' : 'text-gray-800'
-                  } `}
+            {/* Page controls */}
+            <Flex alignItems="center" gap="sm">
+              <Button
+                variant="secondary"
+                onClick={prevPage}
+                disabled={currentPage === 1}
+                style={{
+                  padding: spacing[2].value,
+                  minWidth: '32px',
+                  minHeight: '32px',
+                }}
+              >
+                <ChevronLeft size={16} />
+              </Button>
+
+              <span
+                style={{
+                  fontSize: '14px',
+                  padding: `0 ${spacing[2].value}`,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <span
+                  style={{
+                    fontWeight: 500,
+                    color: mode === 'dark' ? '#f3f4f6' : 'inherit',
+                  }}
                 >
-                  {/* Header */}
-                  <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-lg font-semibold">Document Actions</h3>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setShowMobileActions(false)}
-                      className="p-1 h-8 w-8"
-                    >
-                      <X size={16} />
-                    </Button>
-                  </div>
+                  {currentPage}
+                </span>
+                <span
+                  style={{
+                    color:
+                      mode === 'dark' ? '#9ca3af' : colors.neutral[600].value,
+                  }}
+                >
+                  {' '}
+                  / {pdf.numPages}
+                </span>
+                {(signaturesOnCurrentPage.length > 0 ||
+                  documentSignatures.filter(
+                    (sig) => sig.pageNumber === currentPage,
+                  ).length > 0) && (
+                  <span
+                    style={{
+                      color:
+                        mode === 'dark' ? '#9ca3af' : colors.neutral[600].value,
+                    }}
+                  >
+                    {' '}
+                    (
+                    {signaturesOnCurrentPage.length +
+                      documentSignatures.filter(
+                        (sig) => sig.pageNumber === currentPage,
+                      ).length}{' '}
+                    signature
+                    {signaturesOnCurrentPage.length +
+                      documentSignatures.filter(
+                        (sig) => sig.pageNumber === currentPage,
+                      ).length !==
+                    1
+                      ? 's'
+                      : ''}
+                    )
+                  </span>
+                )}
+              </span>
 
-                  {/* Actions */}
-                  <div className="space-y-3">
-                    {/* Sign Document */}
-                    <Button
-                      onClick={() => {
-                        setShowMobileActions(false);
-                        handleSignDocument();
-                      }}
-                      className="w-full flex items-center gap-3 p-4 text-left justify-start"
-                      variant="outline"
+              <Button
+                variant="secondary"
+                onClick={nextPage}
+                disabled={currentPage === pdf.numPages}
+                style={{
+                  padding: spacing[2].value,
+                  minWidth: '32px',
+                  minHeight: '32px',
+                }}
+              >
+                <ChevronRight size={16} />
+              </Button>
+            </Flex>
+
+            {/* Zoom controls */}
+            <Flex alignItems="center" gap="sm">
+              <Button
+                variant="secondary"
+                onClick={zoomOut}
+                disabled={scale <= 0.5}
+                style={{
+                  padding: spacing[2].value,
+                  minWidth: '32px',
+                  minHeight: '32px',
+                }}
+              >
+                <ZoomOut size={16} />
+              </Button>
+
+              <span
+                style={{
+                  fontSize: '14px',
+                  padding: `0 ${spacing[2].value}`,
+                  color:
+                    mode === 'dark' ? '#9ca3af' : colors.neutral[600].value,
+                  whiteSpace: 'nowrap',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                }}
+              >
+                {Math.round(scale * 100)}%
+              </span>
+
+              <Button
+                variant="secondary"
+                onClick={zoomIn}
+                disabled={scale >= 3}
+                style={{
+                  padding: spacing[2].value,
+                  minWidth: '32px',
+                  minHeight: '32px',
+                }}
+              >
+                <ZoomIn size={16} />
+              </Button>
+            </Flex>
+          </Flex>
+
+          {/* PDF Content - Mobile Optimized */}
+          <div
+            className="flex-1 overflow-auto p-2 bg-gray-50"
+            style={{
+              backgroundColor: 'var(--current-bg)',
+              maxHeight: `calc(${maxHeight} - 200px)`,
+            }}
+            ref={containerRef}
+          >
+            <div className="flex justify-center">
+              <div className="relative w-full max-w-full">
+                <AnimatePresence mode="wait">
+                  {currentPageData ? (
+                    <motion.div
+                      key={`page-${currentPage}`}
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      transition={{ duration: 0.2 }}
+                      className="relative w-full"
                     >
-                      <PenTool size={20} />
-                      <div>
-                        <div className="font-medium">Sign Document</div>
-                        <div className="text-sm text-muted-foreground">
-                          Add your signature to this document
+                      <canvas
+                        className={`w-full h-auto border border-gray-300 rounded-lg shadow-sm ${
+                          selectedSignature || signingMode
+                            ? 'cursor-crosshair'
+                            : ''
+                        }`}
+                        onClick={handleCanvasClick}
+                        onTouchStart={handleCanvasTouch}
+                        style={{
+                          backgroundColor: 'white',
+                          borderColor: 'var(--current-border)',
+                          width: currentPageData.width * scale,
+                          height: currentPageData.height * scale,
+                          display: 'block',
+                          maxWidth: '100%',
+                          touchAction: 'pan-x pan-y',
+                        }}
+                        ref={(canvas) => {
+                          if (canvas && currentPageData) {
+                            canvas.width = currentPageData.width;
+                            canvas.height = currentPageData.height;
+                            const ctx = canvas.getContext('2d');
+                            if (ctx) {
+                              ctx.clearRect(0, 0, canvas.width, canvas.height);
+                              ctx.drawImage(currentPageData.canvas, 0, 0);
+                            }
+                          }
+                        }}
+                      />
+
+                      {/* External Signature Overlays */}
+                      {signatures
+                        .filter((sig) => sig.pageNumber === currentPage)
+                        .map((signature) => (
+                          <SignatureOverlay
+                            key={signature.id}
+                            signature={signature}
+                            scale={scale}
+                            onUpdate={handleSignatureUpdate}
+                            onDelete={handleSignatureDelete}
+                            isSelected={selectedSignatureId === signature.id}
+                            onSelect={handleSignatureSelect}
+                          />
+                        ))}
+
+                      {/* Document Signature Overlays */}
+                      {documentSignatures
+                        .filter((sig) => sig.pageNumber === currentPage)
+                        .map((signature) => (
+                          <SignatureOverlay
+                            key={signature.id}
+                            signature={signature}
+                            scale={scale}
+                            onUpdate={handleSignatureUpdate}
+                            onDelete={handleSignatureDelete}
+                            isSelected={selectedSignatureId === signature.id}
+                            onSelect={handleSignatureSelect}
+                          />
+                        ))}
+
+                      {/* Signature placement hint */}
+                      {(selectedSignature || signingMode) && (
+                        <div className="absolute top-2 left-2 bg-blue-500 text-white px-2 py-1 rounded text-xs">
+                          {signingMode
+                            ? 'Click on the document to place your signature'
+                            : 'Click on the document to place your signature'}
                         </div>
-                      </div>
-                    </Button>
+                      )}
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
+              </div>
+            </div>
+          </div>
 
-                    {/* Legal Chatbot */}
-                    <Button
-                      onClick={() => {
-                        setShowMobileActions(false);
-                        setShowChatbot(true);
+          {/* Mobile Signature Options Modal */}
+          {showSignatureOptions && (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 z-[9999] pdf-viewer-modal-overlay">
+              <motion.div
+                initial={{ opacity: 0, y: 100 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 100 }}
+                style={{
+                  backgroundColor: mode === 'dark' ? '#1a1a1a' : '#ffffff',
+                  color: mode === 'dark' ? '#f3f4f6' : '#1f2937',
+                  borderTopLeftRadius: radius.lg.value,
+                  borderTopRightRadius: radius.lg.value,
+                  padding: spacing[4].value,
+                  width: '100%',
+                  maxWidth: '28rem',
+                  border: `1px solid ${mode === 'dark' ? '#333' : colors.neutral[200].value}`,
+                  boxShadow:
+                    '0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)',
+                  maxHeight: '80vh',
+                  overflow: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column',
+                }}
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between mb-4 pb-2 border-b">
+                  <h3 className="text-lg font-semibold">Choose Signature</h3>
+                  <Button
+                    variant="secondary"
+                    onClick={() => setShowSignatureOptions(false)}
+                    style={{
+                      padding: spacing[2].value,
+                      minWidth: '32px',
+                      minHeight: '32px',
+                    }}
+                  >
+                    <X size={16} />
+                  </Button>
+                </div>
+
+                {/* Content */}
+                <div className="space-y-3 flex-1 overflow-y-auto">
+                  {/* Create New Button */}
+                  <Button
+                    onClick={handleCreateNewSignature}
+                    className="w-full flex items-center gap-3 p-4 border border-border rounded-lg hover:bg-muted transition-colors"
+                    variant="secondary"
+                  >
+                    <div className="text-left">
+                      <div className="font-medium">Draw Signature</div>
+                      <div className="text-sm text-muted-foreground">
+                        Draw a signature for signing now
+                      </div>
+                    </div>
+                  </Button>
+
+                  {/* Existing Signatures */}
+                  {savedSignatures.length > 0 && (
+                    <>
+                      <div className="text-sm font-medium text-muted-foreground pt-2">
+                        Saved Signatures ({savedSignatures.length}):
+                      </div>
+                      <div className="space-y-2">
+                        {savedSignatures.map((signature) => (
+                          <button
+                            key={signature.id}
+                            onClick={() =>
+                              handleSelectExistingSignature(signature.dataURL)
+                            }
+                            className="w-full p-3 border border-border rounded-lg hover:bg-muted transition-colors flex items-center gap-3 text-left"
+                          >
+                            <div className="w-16 h-8 bg-background border rounded flex items-center justify-center overflow-hidden flex-shrink-0">
+                              <img
+                                src={signature.dataURL}
+                                alt={signature.name}
+                                className="max-w-full max-h-full object-contain"
+                              />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-sm truncate">
+                                {signature.name}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                Created: {signature.createdAt}
+                              </div>
+                            </div>
+                            <Check
+                              size={16}
+                              className="text-green-600 opacity-0"
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {savedSignatures.length === 0 && (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <PenTool size={32} className="mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">No saved signatures found.</p>
+                      <p className="text-xs">
+                        Create your first signature above.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            </div>
+          )}
+
+          {/* Signature Pad Modal */}
+          <SignaturePadComponent
+            isOpen={showSignaturePad}
+            onSave={handleSignaturePadSave}
+            onCancel={handleSignaturePadCancel}
+          />
+
+          {/* Mobile Floating Action Button */}
+          <div className="sm:hidden">
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setShowMobileActions(true)}
+              aria-label="Open document actions"
+              className={`${fabBase} ${mode === 'dark' ? 'shadow-[0_6px_20px_rgba(34,197,94,0.12)]' : 'shadow-lg'}`}
+              style={{
+                backgroundColor: 'hsl(var(--primary))',
+                color: 'hsl(var(--primary-foreground))',
+                border: mode === 'dark' ? 'none' : '1px solid rgba(0,0,0,0.06)',
+              }}
+            >
+              <PenTool size={24} />
+            </motion.button>
+            {/* Mobile Actions Modal */}
+            <AnimatePresence>
+              {showMobileActions && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end justify-center z-[9999] pdf-viewer-modal-overlay">
+                  <motion.div
+                    initial={{ opacity: 0, y: 100 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 100 }}
+                    style={{
+                      backgroundColor: mode === 'dark' ? '#1a1a1a' : '#ffffff',
+                      borderTopLeftRadius: radius.lg.value,
+                      borderTopRightRadius: radius.lg.value,
+                      padding: spacing[6].value,
+                      width: '100%',
+                      maxWidth: '28rem',
+                      border: `1px solid ${mode === 'dark' ? '#333' : colors.neutral[200].value}`,
+                      boxShadow:
+                        '0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)',
+                      color: mode === 'dark' ? '#f3f4f6' : '#1f2937',
+                    }}
+                  >
+                    {/* Header */}
+                    <Flex
+                      alignItems="center"
+                      justifyContent="space-between"
+                      style={{
+                        marginBottom: spacing[6].value,
+                        justifyContent: 'space-between',
                       }}
-                      className="w-full flex items-center gap-3 p-4 text-left justify-start"
-                      variant="outline"
                     >
-                      <MessageSquare size={20} />
-                      <div>
-                        <div className="font-medium">Legal Chatbot</div>
-                        <div className="text-sm text-muted-foreground">
-                          Ask legal questions about this document
-                        </div>
-                      </div>
-                    </Button>
+                      <Heading
+                        size="md"
+                        style={{
+                          color: mode === 'dark' ? '#f3f4f6' : 'inherit',
+                        }}
+                      >
+                        Document Actions
+                      </Heading>
+                      <Button
+                        variant="secondary"
+                        onClick={() => setShowMobileActions(false)}
+                        style={{
+                          padding: spacing[2].value,
+                          minWidth: '32px',
+                          minHeight: '32px',
+                        }}
+                      >
+                        <X size={16} />
+                      </Button>
+                    </Flex>
 
-                    {/* Download Signed PDF */}
-                    {documentSignatures.length > 0 && (
+                    {/* Actions */}
+                    <Flex direction="column" gap="sm">
+                      {/* Sign Document */}
                       <Button
                         onClick={() => {
                           setShowMobileActions(false);
-                          handleDownloadSignedPDF();
+                          handleSignDocument();
                         }}
-                        disabled={savingPDF}
-                        className="w-full flex items-center gap-3 p-4 text-left justify-start"
-                        variant="outline"
+                        variant="secondary"
+                        style={{
+                          width: '100%',
+                          padding: spacing[4].value,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'flex-start',
+                          gap: spacing[3].value,
+                          textAlign: 'left',
+                        }}
                       >
-                        {savingPDF ? (
-                          <LoadingSpinner size="sm" />
-                        ) : (
-                          <Download size={20} />
-                        )}
-                        <div>
-                          <div className="font-medium">Download Signed PDF</div>
-                          <div className="text-sm text-muted-foreground">
-                            Save the signed document
+                        <PenTool size={20} style={{ flexShrink: 0 }} />
+                        <div style={{ flex: 1, textAlign: 'left' }}>
+                          <div style={{ fontWeight: 500, marginBottom: '2px' }}>
+                            Sign Document
+                          </div>
+                          <div style={{ fontSize: '0.875rem', opacity: 0.7 }}>
+                            Add your signature to this document
                           </div>
                         </div>
                       </Button>
-                    )}
 
-                    {/* Save Document to Context */}
-                    {showSaveToContext &&
-                      documentSignatures.length > 0 &&
-                      contextId &&
-                      documentId && (
+                      {/* Legal Chatbot */}
+                      <Button
+                        onClick={() => {
+                          setShowMobileActions(false);
+                          setShowChatbot(true);
+                        }}
+                        variant="secondary"
+                        style={{
+                          width: '100%',
+                          padding: spacing[4].value,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'flex-start',
+                          gap: spacing[3].value,
+                          textAlign: 'left',
+                        }}
+                      >
+                        <MessageSquare size={20} style={{ flexShrink: 0 }} />
+                        <div style={{ flex: 1, textAlign: 'left' }}>
+                          <div style={{ fontWeight: 500, marginBottom: '2px' }}>
+                            Legal Chatbot
+                          </div>
+                          <div style={{ fontSize: '0.875rem', opacity: 0.7 }}>
+                            Ask legal questions about this document
+                          </div>
+                        </div>
+                      </Button>
+
+                      {/* Download Signed PDF */}
+                      {documentSignatures.length > 0 && (
                         <Button
                           onClick={() => {
                             setShowMobileActions(false);
-                            handleSaveDocumentToContext();
+                            handleDownloadSignedPDF();
                           }}
-                          disabled={savingToContext}
-                          className="w-full flex items-center gap-3 p-4 text-left justify-start bg-green-600 hover:bg-green-700 text-white border-0"
+                          disabled={savingPDF}
+                          variant="secondary"
+                          style={{
+                            width: '100%',
+                            padding: spacing[4].value,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'flex-start',
+                            gap: spacing[3].value,
+                            textAlign: 'left',
+                          }}
                         >
-                          {savingToContext ? (
-                            <LoadingSpinner size="sm" />
+                          {savingPDF ? (
+                            <Loader size="small" />
                           ) : (
-                            <Upload size={20} />
+                            <Download size={20} style={{ flexShrink: 0 }} />
                           )}
-                          <div>
-                            <div className="font-medium">Save Document</div>
-                            <div className="text-sm text-white/80">
-                              Save signed document to context
+                          <div style={{ flex: 1, textAlign: 'left' }}>
+                            <div
+                              style={{ fontWeight: 500, marginBottom: '2px' }}
+                            >
+                              Download Signed PDF
+                            </div>
+                            <div style={{ fontSize: '0.875rem', opacity: 0.7 }}>
+                              Save the signed document
                             </div>
                           </div>
                         </Button>
                       )}
 
-                    {/* Download Original */}
-                    {showDownload && (
-                      <Button
-                        onClick={() => {
-                          setShowMobileActions(false);
-                          handleDownload();
-                        }}
-                        className="w-full flex items-center gap-3 p-4 text-left justify-start"
-                        variant="outline"
-                      >
-                        <Download size={20} />
-                        <div>
-                          <div className="font-medium">Download Original</div>
-                          <div className="text-sm text-muted-foreground">
-                            Download the original document
-                          </div>
-                        </div>
-                      </Button>
-                    )}
-
-                    {/* Document Info */}
-                    <div className="pt-4 border-t">
-                      <div className="text-sm text-muted-foreground">
-                        <div className="flex items-center gap-2 mb-1">
-                          <FileText size={16} />
-                          <span>{file.name}</span>
-                        </div>
-                        <div className="ml-6">
-                          Size: {(file.size / 1024 / 1024).toFixed(1)} MB
-                        </div>
-                        <div className="ml-6">Pages: {pdf.numPages}</div>
-                        {documentSignatures.length > 0 && (
-                          <div className="ml-6">
-                            Signatures: {documentSignatures.length}
-                          </div>
+                      {/* Save Document to Context */}
+                      {showSaveToContext &&
+                        documentSignatures.length > 0 &&
+                        contextId &&
+                        documentId && (
+                          <Button
+                            onClick={() => {
+                              setShowMobileActions(false);
+                              handleSaveDocumentToContext();
+                            }}
+                            disabled={savingToContext}
+                            variant="success"
+                            style={{
+                              width: '100%',
+                              padding: spacing[4].value,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'flex-start',
+                              gap: spacing[3].value,
+                              textAlign: 'left',
+                            }}
+                          >
+                            {savingToContext ? (
+                              <Loader size="small" />
+                            ) : (
+                              <Upload size={20} style={{ flexShrink: 0 }} />
+                            )}
+                            <div style={{ flex: 1, textAlign: 'left' }}>
+                              <div
+                                style={{ fontWeight: 500, marginBottom: '2px' }}
+                              >
+                                Save Document
+                              </div>
+                              <div
+                                style={{ fontSize: '0.875rem', opacity: 0.7 }}
+                              >
+                                Save signed document to context
+                              </div>
+                            </div>
+                          </Button>
                         )}
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              </div>
-            )}
-          </AnimatePresence>
-        </div>
+
+                      {/* Download Original */}
+                      {showDownload && (
+                        <Button
+                          onClick={() => {
+                            setShowMobileActions(false);
+                            handleDownload();
+                          }}
+                          variant="secondary"
+                          style={{
+                            width: '100%',
+                            padding: spacing[4].value,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'flex-start',
+                            gap: spacing[3].value,
+                            textAlign: 'left',
+                          }}
+                        >
+                          <Download size={20} style={{ flexShrink: 0 }} />
+                          <div style={{ flex: 1, textAlign: 'left' }}>
+                            <div
+                              style={{ fontWeight: 500, marginBottom: '2px' }}
+                            >
+                              Download Original
+                            </div>
+                            <div style={{ fontSize: '0.875rem', opacity: 0.7 }}>
+                              Download the original document
+                            </div>
+                          </div>
+                        </Button>
+                      )}
+
+                      {/* Document Info */}
+                      <Box
+                        style={{
+                          paddingTop: spacing[4].value,
+                          borderTop: `1px solid ${mode === 'dark' ? '#333' : colors.neutral[200].value}`,
+                          marginTop: spacing[2].value,
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: '0.875rem',
+                            color:
+                              mode === 'dark'
+                                ? '#9ca3af'
+                                : colors.neutral[600].value,
+                          }}
+                        >
+                          <Flex
+                            alignItems="center"
+                            gap="sm"
+                            style={{ marginBottom: spacing[2].value }}
+                          >
+                            <FileText size={16} />
+                            <span>{file.name}</span>
+                          </Flex>
+                          <div style={{ marginLeft: spacing[6].value }}>
+                            Size: {(file.size / 1024 / 1024).toFixed(1)} MB
+                          </div>
+                          <div style={{ marginLeft: spacing[6].value }}>
+                            Pages: {pdf.numPages}
+                          </div>
+                          {documentSignatures.length > 0 && (
+                            <div style={{ marginLeft: spacing[6].value }}>
+                              Signatures: {documentSignatures.length}
+                            </div>
+                          )}
+                        </div>
+                      </Box>
+                    </Flex>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
+          </div>
+        </Box>
       </motion.div>
 
       <ConsentModal
