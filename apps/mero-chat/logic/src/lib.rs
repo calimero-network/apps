@@ -293,8 +293,6 @@ impl CurbChat {
             let _ = moderators.insert(executor_id);
         }
 
-        app::emit!(Event::ChatInitialized(name.clone()));
-
         CurbChat {
             owner: executor_id,
             name,
@@ -1343,8 +1341,6 @@ impl CurbChat {
                 }
             }
 
-            app::emit!(Event::MessageReceived(group.name.clone()));
-
             return Ok(FullMessageResponse {
                 total_count: total_messages as u32,
                 messages: messages,
@@ -1447,7 +1443,6 @@ impl CurbChat {
             }
         }
 
-        app::emit!(Event::MessageReceived(group.name.clone()));
 
         Ok(FullMessageResponse {
             total_count: total_messages as u32,
@@ -1795,7 +1790,6 @@ impl CurbChat {
             },
         );
 
-        app::emit!(Event::DMCreated("Private DM created!".to_string()));
         Ok(context_id)
     }
 
@@ -1842,9 +1836,6 @@ impl CurbChat {
             let _ = self.dm_chats.insert(other_user.clone(), dms);
         }
 
-        app::emit!(Event::NewIdentityUpdated(
-            "New identity updated!".to_string()
-        ));
         Ok("Identity updated successfully".to_string())
     }
 
@@ -1889,9 +1880,6 @@ impl CurbChat {
             let _ = self.dm_chats.insert(other_user.clone(), dms);
         }
 
-        app::emit!(Event::InvitationPayloadUpdated(
-            "Invitation payload updated!".to_string()
-        ));
         Ok("Invitation payload updated successfully".to_string())
     }
 
@@ -1922,9 +1910,6 @@ impl CurbChat {
             let _ = self.dm_chats.insert(executor_id.clone(), dms);
         }
 
-        app::emit!(Event::InvitationAccepted(
-            "Invitation accepted!".to_string()
-        ));
         Ok("Invitation accepted successfully".to_string())
     }
 
@@ -1978,7 +1963,6 @@ impl CurbChat {
 
         let _ = self.channel_members.remove(&dm_channel);
 
-        app::emit!(Event::DMCreated("DM deleted successfully".to_string()));
         Ok("DM deleted successfully".to_string())
     }
 
