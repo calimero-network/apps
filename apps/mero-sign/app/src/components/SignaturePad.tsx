@@ -19,6 +19,7 @@ const SignaturePadComponent: React.FC<SignaturePadComponentProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [signaturePad, setSignaturePad] = useState<SignaturePad | null>(null);
   const [isEmpty, setIsEmpty] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const { mode } = useTheme();
 
   useEffect(() => {
@@ -97,10 +98,15 @@ const SignaturePadComponent: React.FC<SignaturePadComponentProps> = ({
     }
   }, [isOpen]);
 
-  const handleSave = () => {
-    if (signaturePad && !signaturePad.isEmpty()) {
-      const dataURL = signaturePad.toDataURL('image/png');
-      onSave(dataURL);
+  const handleSave = async () => {
+    if (signaturePad && !signaturePad.isEmpty() && !isSaving) {
+      setIsSaving(true);
+      try {
+        const dataURL = signaturePad.toDataURL('image/png');
+        await onSave(dataURL);
+      } finally {
+        setIsSaving(false);
+      }
     }
   };
 
@@ -169,6 +175,7 @@ const SignaturePadComponent: React.FC<SignaturePadComponentProps> = ({
                   <Button
                     variant="outline"
                     onClick={handleClear}
+                    disabled={isSaving}
                     className="flex items-center gap-2"
                   >
                     <RotateCcw className="w-4 h-4" />
@@ -176,11 +183,17 @@ const SignaturePadComponent: React.FC<SignaturePadComponentProps> = ({
                   </Button>
                   <Button
                     onClick={handleSave}
-                    disabled={isEmpty}
+                    disabled={isEmpty || isSaving}
                     className="flex items-center gap-2 text-white dark:text-black"
+                    style={{
+                      backgroundColor:
+                        isEmpty || isSaving ? '#262626' : undefined,
+                      borderColor: isEmpty || isSaving ? '#262626' : undefined,
+                      color: isEmpty || isSaving ? '#ffffff' : undefined,
+                    }}
                   >
                     <Save className="w-4 h-4" />
-                    Save Signature
+                    {isSaving ? 'Saving...' : 'Save Signature'}
                   </Button>
                 </div>
               </div>
