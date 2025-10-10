@@ -4,7 +4,6 @@ import {
 } from "@calimero-network/calimero-client";
 import { styled } from "styled-components";
 import TabbedInterface from "../../components/contextOperations/TabbedInterface";
-import { LogoutWrapper } from "../Context";
 import { Button } from "@calimero-network/mero-ui";
 import {
   clearDmContextId,
@@ -92,6 +91,12 @@ export const Subtitle = styled.h2`
   font-weight: 400;
   line-height: 1.6;
   opacity: 0.9;
+`;
+
+export const LogoutWrapper = styled.div`
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
 `;
 
 interface LoginProps {

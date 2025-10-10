@@ -10,7 +10,7 @@ const Text = styled.div`
   align-items: center;
   color: #fff;
   font-family: Helvetica Neue;
-  font-size: 18px;
+  font-size: 16px;
   font-style: normal;
   font-weight: 500;
   line-height: 120%

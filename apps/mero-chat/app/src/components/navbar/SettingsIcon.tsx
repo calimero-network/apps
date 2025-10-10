@@ -1,17 +1,16 @@
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
+import SettingsPopup from "../popups/SettingsPopup";
 
 export default function SettingsIcon() {
-  const navigate = useNavigate();
-  return (
+  const [isOpen, setIsOpen] = useState(false);
+
+  const settingsIcon = (
     <div
       style={{
         cursor: "pointer",
         display: "flex",
         alignItems: "center",
         gap: "0.375rem",
-      }}
-      onClick={() => {
-        navigate("/context");
       }}
     >
       <svg
@@ -28,5 +27,13 @@ export default function SettingsIcon() {
         <circle cx="12" cy="12" r="3" />
       </svg>
     </div>
+  );
+
+  return (
+    <SettingsPopup
+      isOpen={isOpen}
+      setIsOpen={setIsOpen}
+      toggle={settingsIcon}
+    />
   );
 }
