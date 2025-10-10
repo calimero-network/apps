@@ -8,31 +8,31 @@ import { Button, Input } from "@calimero-network/mero-ui";
 const TabContent = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 0.75rem;
 `;
 
 const Form = styled.form`
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.5rem;
 `;
 
 const InputGroup = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.25rem;
 `;
 
 const Label = styled.label`
-  font-size: 0.9rem;
+  font-size: 0.7rem;
   font-weight: 500;
   color: #b8b8d1;
 `;
 
 const Message = styled.div<{ type?: "success" | "error" }>`
-  padding: 0.75rem;
+  padding: 0.5rem;
   border-radius: 6px;
-  font-size: 0.9rem;
+  font-size: 0.7rem;
   text-align: center;
   color: ${({ type }) =>
     type === "success" ? "#27ae60" : type === "error" ? "#e74c3c" : "#b8b8d1"};

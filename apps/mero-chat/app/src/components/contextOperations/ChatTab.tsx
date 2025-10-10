@@ -21,7 +21,7 @@ import { Button, Input } from "@calimero-network/mero-ui";
 const TabContent = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.5rem;
   align-items: center;
   width: 100%;
 `;
@@ -31,22 +31,22 @@ const ConnectWrapper = styled.div`
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1rem;
+  gap: 0.5rem;
   text-align: center;
 `;
 
 const Subtitle = styled.h2`
   text-align: center;
   color: #b8b8d1;
-  margin-bottom: 1rem;
-  font-size: 0.9rem;
+  margin-bottom: 0.6rem;
+  font-size: 0.7rem;
   font-weight: 600;
 `;
 
 const Form = styled.form`
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.4rem;
   width: 100%;
   max-width: 400px;
 `;
@@ -54,23 +54,23 @@ const Form = styled.form`
 const InputGroup = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.2rem;
 `;
 
 const Label = styled.label`
-  font-size: 0.8rem;
+  font-size: 0.7rem;
   font-weight: 500;
   color: #b8b8d1;
 `;
 
 const Note = styled.p`
-  font-size: 0.7rem;
+  font-size: 0.6rem;
   color: #b8b8d1;
   margin-top: 0.2rem;
 `;
 
 const Message = styled.div<{ type?: "success" | "error" }>`
-  font-size: 0.8rem;
+  font-size: 0.7rem;
   text-align: center;
   color: ${({ type }) =>
     type === "success" ? "#27ae60" : type === "error" ? "#e74c3c" : "#b8b8d1"};

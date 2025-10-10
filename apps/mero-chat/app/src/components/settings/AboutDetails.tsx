@@ -38,12 +38,12 @@ const Text = styled.h6<TextProps>`
     $red ? "color: #DC3545; :hover { color: #f76560 }" : "color: #FFF;"}
   /* Body/Regular */
     font-family: Helvetica Neue;
-  font-size: 16px;
+  font-size: 14px;
   font-style: normal;
   font-weight: 400;
   line-height: 150%; /* 24px */
-  margin-top: 1rem;
-  margin-bottom: 1rem;
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
   padding: 0;
 `;
 

@@ -9,16 +9,17 @@ import UnreadMessagesBadge from "./UnreadMessageBadge";
 const UserListItem = styled.div<{
   $selected: boolean;
   $hasNewMessages: boolean;
+  $isCollapsed?: boolean;
 }>`
   display: flex;
-  justify-content: space-between;
+  justify-content: ${props => props.$isCollapsed ? 'center' : 'space-between'};
   align-items: center;
   color: #777583;
-  padding-top: 0.5rem;
-  padding-bottom: 0.5rem;
-  padding-left: 1rem;
-  padding-right: 1rem;
-  border-radius: 0.5rem;
+  padding-top: 0.375rem;
+  padding-bottom: 0.375rem;
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+  border-radius: 0.375rem;
   &:hover {
     color: #ffffff;
   }
@@ -35,7 +36,7 @@ const UserListItem = styled.div<{
 
 const UserInfoContainer = styled.div`
   display: flex;
-  column-gap: 0.5rem;
+  column-gap: 0.375rem;
 `;
 
 const NameContainer = styled.div`
@@ -49,12 +50,14 @@ interface UserItemProps {
   onDMSelected: (user?: DMChatInfo, sc?: ActiveChat, refetch?: boolean) => void;
   selected: boolean;
   userDM: DMChatInfo;
+  isCollapsed?: boolean;
 }
 
 export default function UserItem({
   onDMSelected,
   selected,
   userDM,
+  isCollapsed,
 }: UserItemProps) {
   const handleClick = useCallback(() => {
     onDMSelected(userDM, undefined, true);
@@ -65,16 +68,23 @@ export default function UserItem({
       $selected={selected}
       onClick={handleClick}
       $hasNewMessages={userDM.unread_messages > 0}
+      $isCollapsed={isCollapsed}
     >
-      <UserInfoContainer>
+      {isCollapsed ? (
         <Avatar size="xs" name={userDM.other_username} />
-        <NameContainer>{`${userDM.other_username}`}</NameContainer>
-      </UserInfoContainer>
-      {userDM.unread_messages > 0 && (
-        <UnreadMessagesBadge
-          messageCount={userDM.unread_messages.toString()}
-          backgroundColor="#777583"
-        />
+      ) : (
+        <>
+          <UserInfoContainer>
+            <Avatar size="xs" name={userDM.other_username} />
+            <NameContainer>{`${userDM.other_username}`}</NameContainer>
+          </UserInfoContainer>
+          {userDM.unread_messages > 0 && (
+            <UnreadMessagesBadge
+              messageCount={userDM.unread_messages.toString()}
+              backgroundColor="#777583"
+            />
+          )}
+        </>
       )}
     </UserListItem>
   );

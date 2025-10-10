@@ -10,11 +10,11 @@ const Text = styled.div`
   align-items: center;
   color: #fff;
   font-family: Helvetica Neue;
-  font-size: 24px;
+  font-size: 16px;
   font-style: normal;
   font-weight: 500;
   line-height: 120%
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
 `;
 
 const customStyle = {
@@ -36,10 +36,10 @@ const ErrorWrapper = styled.div`
   color: #dc3545;
   /* Body/Small */
   font-family: Helvetica Neue;
-  font-size: 14px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 400;
-  line-height: 150%; /* 21px */
+  line-height: 150%; /* 18px */
   margin-top: 6px;
 `;
 
@@ -73,15 +73,23 @@ const ExclamationIcon = () => (
 const Container = styled.div`
   position: relative;
   background-color: #1d1d21;
-  padding: 1rem;
-  border-radius: 8px;
+  padding: 0.5rem;
+  border-radius: 6px;
   width: 100%;
   height: 100%;
 `;
 
+const FormLabel = styled.label`
+  font-size: 12px;
+  font-weight: 500;
+  color: #fff;
+  margin-bottom: 0.25rem;
+  display: block;
+`;
+
 const InputWrapper = styled.div`
   position: relative;
-  margin-top: 1rem;
+  margin-top: 0.5rem;
 `;
 
 interface CreateChannelPopupProps {
@@ -166,14 +174,14 @@ export default function CreateChannelPopup({
       ) : (
         <EmptyMessageContainer />
       )}
-      <div className="mb-3">
-        <label className="form-label">Visibility:</label>
+      <div style={{ marginBottom: "0.5rem" }}>
+        <FormLabel>Visibility:</FormLabel>
         <div className="d-flex">
           <RadioGroup
             value={visibility}
             onChange={setVisibility}
             name="visibility"
-            style={{ display: "flex", flexDirection: "row", gap: "1rem" }}
+            style={{ display: "flex", flexDirection: "row", gap: "0.5rem" }}
           >
             <Radio label="Public" value="public" />
             <Radio label="Private" value="private" />
@@ -181,14 +189,14 @@ export default function CreateChannelPopup({
         </div>
       </div>
 
-      <div className="mb-3">
-        <label className="form-label">Read-only:</label>
+      <div style={{ marginBottom: "0.5rem" }}>
+        <FormLabel>Read-only:</FormLabel>
         <div className="d-flex">
           <RadioGroup
             value={readOnly}
             onChange={setReadOnly}
             name="readOnly"
-            style={{ display: "flex", flexDirection: "row", gap: "1rem" }}
+            style={{ display: "flex", flexDirection: "row", gap: "0.5rem" }}
           >
             <Radio label="Yes" value="yes" />
             <Radio label="No" value="no" />

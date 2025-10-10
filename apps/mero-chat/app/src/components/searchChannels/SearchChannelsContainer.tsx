@@ -39,7 +39,7 @@ const SearchContainer = styled.div`
     outline: 0;
     color: #fff;
     font-family: Helvetica Neue;
-    font-size: 16px;
+    font-size: 14px;
     font-style: normal;
     font-weight: 400;
     line-height: 150%;
@@ -103,7 +103,7 @@ const SearchContainer = styled.div`
     width: 100%;
     color: #777583;
     font-family: Helvetica Neue;
-    font-size: 16px;
+    font-size: 14px;
     font-style: normal;
     font-weight: 700;
     line-height: 150%;
@@ -132,7 +132,7 @@ const SearchContainer = styled.div`
   .channelNameText {
     color: #777583;
     font-family: Helvetica Neue;
-    font-size: 16px;
+    font-size: 14px;
     font-style: normal;
     font-weight: 400;
     line-height: 150%;
@@ -141,7 +141,7 @@ const SearchContainer = styled.div`
   .creatorText {
     color: #777583;
     font-family: Helvetica Neue;
-    font-size: 14px;
+    font-size: 12px;
     font-style: normal;
     font-weight: 400;
     line-height: 150%;
@@ -151,7 +151,7 @@ const SearchContainer = styled.div`
     display: flex;
     gap: 8px;
     font-family: Helvetica Neue;
-    font-size: 14px;
+    font-size: 12px;
     font-style: normal;
     font-weight: 400;
     line-height: 150%;

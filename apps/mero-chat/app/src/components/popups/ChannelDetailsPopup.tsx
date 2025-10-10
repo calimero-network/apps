@@ -60,6 +60,7 @@ export default function ChannelDetailsPopup({
         createdAt: new Date(channelInfo.data.created_at * 1000).toISOString(),
         createdBy: channelInfo.data.created_by,
         createdByUsername: channelInfo.data.created_by_username,
+        channelType: chat.channelType || "",
       }));
     }
     

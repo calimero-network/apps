@@ -27,7 +27,7 @@ const SettingsItem = styled.div<{ $borderbottom?: boolean; $roundedTop?: boolean
 const Text = styled.h6`
   color: #FFF;
   font-family: Helvetica Neue;
-  font-size: 16px;
+  font-size: 14px;
   font-style: normal;
   font-weight: 400;
   line-height: 150%;

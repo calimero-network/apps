@@ -6,15 +6,15 @@ import { ChannelType } from "../../api/clientApi";
 import { memo } from "react";
 import { usePersistentState } from "../../hooks/usePersistentState";
 
-const Container = styled.div`
+const Container = styled.div<{ $isCollapsed?: boolean }>`
   display: flex;
-  justify-content: space-between;
+  justify-content: ${props => props.$isCollapsed ? 'center' : 'space-between'};
   align-items: center;
   background-color: #0e0e10;
-  padding-top: 0.5rem;
-  padding-bottom: 0.5rem;
-  padding-left: 1rem;
-  padding-right: 1rem;
+  padding-top: 0.375rem;
+  padding-bottom: 0.375rem;
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
   color: #777583;
   :hover {
     color: #ffffff;
@@ -27,7 +27,7 @@ const Container = styled.div`
 
 const TextBold = styled.div`
   font-family: Helvetica Neue;
-  font-size: 16px;
+  font-size: 14px;
   font-style: normal;
   font-weight: 700;
   line-height: 150%;
@@ -38,11 +38,12 @@ const IconPlusContainer = styled.div`
   cursor: pointer;
   justify-content: center;
   align-items: center;
-  font-size: 1.25rem;
+  font-size: 1.125rem;
 `;
 
 interface ChannelHeaderProps {
   title: string;
+  isCollapsed?: boolean;
 }
 
 const ChannelHeader = memo(function ChannelHeader(props: ChannelHeaderProps) {
@@ -66,8 +67,8 @@ const ChannelHeader = memo(function ChannelHeader(props: ChannelHeaderProps) {
     setIsOpen(false);
   };
   return (
-    <Container>
-      <TextBold>{props.title}</TextBold>
+    <Container $isCollapsed={props.isCollapsed}>
+      {!props.isCollapsed && <TextBold>{props.title}</TextBold>}
       <CreateChannelPopup
         title={"Create new Channel"}
         inputValue={inputValue}

@@ -8,19 +8,19 @@ import { Button, Input } from "@calimero-network/mero-ui";
 const TabContent = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 0.75rem;
   text-align: center;
 `;
 
 const InputGroup = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
 `;
 
 const Label = styled.label`
-  font-size: 0.9rem;
+  font-size: 0.7rem;
   font-weight: 500;
   color: #b8b8d1;
   margin-bottom: 0.25rem;
@@ -28,44 +28,44 @@ const Label = styled.label`
 
 const IdentityDisplay = styled.div`
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 1rem;
-  margin-top: 1rem;
+  border-radius: 6px;
+  padding: 0.5rem;
+  margin-top: 0.5rem;
 `;
 
 const IdentityTitle = styled.h4`
   color: #ffffff;
-  font-size: 1rem;
+  font-size: 0.8rem;
   font-weight: 600;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.4rem;
 `;
 
 const IdentityValue = styled.div`
   display: flex;
-  gap: 1rem;
+  gap: 0.5rem;
   align-items: center;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
-  padding: 0.75rem;
+  border-radius: 4px;
+  padding: 0.5rem;
   font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
-  font-size: 0.85rem;
+  font-size: 0.7rem;
   color: #e0e0e0;
   word-break: break-all;
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
   position: relative;
 `;
 
 const CopyButton = styled.button`
   background: rgba(255, 255, 255, 0.1);
-  width: 80px;
+  width: 60px;
   color: #b8b8d1;
   border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-  padding: 0.5rem 1rem;
-  font-size: 0.8rem;
+  border-radius: 3px;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.6rem;
   cursor: pointer;
   transition: all 0.2s ease;
-  margin-right: 0.5rem;
+  margin-right: 0.25rem;
 
   &:hover {
     background: rgba(255, 255, 255, 0.2);
@@ -74,7 +74,7 @@ const CopyButton = styled.button`
 `;
 
 const Message = styled.div<{ type?: "success" | "error" }>`
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   text-align: center;
   color: ${({ type }) =>
     type === "success" ? "#27ae60" : type === "error" ? "#e74c3c" : "#b8b8d1"};

@@ -19,6 +19,7 @@ interface DMSideSelectorProps {
   onDMSelected: (dm?: DMChatInfo, sc?: ActiveChat, refetch?: boolean) => void;
   selectedDM: string;
   privateDMs: DMChatInfo[];
+  isCollapsed?: boolean;
 }
 
 export default function DMSideSelector({
@@ -26,12 +27,13 @@ export default function DMSideSelector({
   createDM,
   onDMSelected,
   selectedDM,
-  privateDMs
+  privateDMs,
+  isCollapsed
 }: DMSideSelectorProps) {
   return (
     <DMContainer>
-      <DMHeader key="dm-header" createDM={createDM} chatMembers={chatMembers}/>
-      <UserList selectedDM={selectedDM} onDMSelected={onDMSelected} privateDMs={privateDMs} />
+      <DMHeader key="dm-header" createDM={createDM} chatMembers={chatMembers} isCollapsed={isCollapsed}/>
+      <UserList selectedDM={selectedDM} onDMSelected={onDMSelected} privateDMs={privateDMs} isCollapsed={isCollapsed} />
     </DMContainer>
   );
 }

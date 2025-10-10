@@ -4,7 +4,6 @@ import {
 } from "@calimero-network/calimero-client";
 import { styled } from "styled-components";
 import TabbedInterface from "../../components/contextOperations/TabbedInterface";
-import { LogoutWrapper } from "../Context";
 import { Button } from "@calimero-network/mero-ui";
 import {
   clearDmContextId,
@@ -42,36 +41,36 @@ export const Card = styled.div`
   flex-direction: column;
   justify-content: center;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 2rem;
+  padding: 1rem;
   border-radius: 20px;
   box-shadow:
     0 25px 50px rgba(0, 0, 0, 0.5),
     0 0 0 1px rgba(255, 255, 255, 0.05),
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
   width: 90%;
-  max-width: 600px;
+  max-width: 450px;
   position: relative;
   z-index: 1;
 
   @media (max-width: 768px) {
     padding: 1.5rem;
     width: 95%;
-    max-width: 500px;
+    max-width: 400px;
   }
 `;
 
 export const Title = styled.h1`
   text-align: center;
   color: #ffffff;
-  margin-bottom: 1.5rem;
-  font-size: 2rem;
+  margin-bottom: 1rem;
+  font-size: 1.6rem;
   font-weight: 600;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
   white-space: nowrap;
 
   @media (max-width: 768px) {
-    font-size: 1.7rem;
-    margin-bottom: 1rem;
+    font-size: 1.4rem;
+    margin-bottom: 0.75rem;
   }
 `;
 
@@ -80,18 +79,24 @@ export const ConnectWrapper = styled.div`
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1.5rem;
+  gap: 1rem;
   text-align: center;
 `;
 
 export const Subtitle = styled.h2`
   text-align: center;
   color: #b8b8d1;
-  margin-bottom: 1.5rem;
-  font-size: 1.1rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
   font-weight: 400;
   line-height: 1.6;
   opacity: 0.9;
+`;
+
+export const LogoutWrapper = styled.div`
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
 `;
 
 interface LoginProps {
@@ -118,7 +123,7 @@ export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
   return (
     <Wrapper>
       <Card>
-        <Title>Welcome to Curb Chat</Title>
+        <Title>Welcome to Calimero Chat</Title>
         {!isAuthenticated && !isConfigSet ? (
           <ConnectWrapper>
             <Subtitle>Connect your Node to get started</Subtitle>

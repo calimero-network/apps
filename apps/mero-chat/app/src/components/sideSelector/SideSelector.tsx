@@ -1,9 +1,9 @@
-import React from "react";
+import React, { useState } from "react";
 import styled from "styled-components";
 import type { ActiveChat, ChannelMeta } from "../../types/Common";
 import ChannelHeader from "./ChannelHeader";
 import ChannelList from "./ChannelList";
-import { CurbLogo, OrgNameContainer } from "../navbar/CurbNavbar";
+import { CurbLogo } from "../navbar/CurbNavbar";
 import DMSideSelector from "./DMSideSelector";
 import type { DMChatInfo } from "../../api/clientApi";
 import type { CreateContextResult } from "../popups/StartDMPopup";
@@ -26,22 +26,23 @@ const HorizontalSeparatorLine = styled.div<{ $isMobile: boolean }>`
   background-color: "#BF4F74";
   height: 1px;
   background-color: #282933;
-  margin-top: 1rem;
-  margin-bottom: 1rem;
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
   @media (max-width: 1024px) {
     width: 100%;
     display: ${({ $isMobile }) => ($isMobile ? "flex" : "none")};
   }
 `;
 
-const SideMenu = styled.div`
+const SideMenu = styled.div<{ $isCollapsed: boolean }>`
   background-color: #0e0e10;
-  padding-top: 1rem;
-  width: 318px;
+  padding-top: 0.75rem;
+  width: ${props => props.$isCollapsed ? '60px' : '244px'};
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 81px);
+  height: calc(100vh - 75px);
   overflow-y: scroll;
+  transition: width 0.3s ease-in-out;
   @media (max-width: 1024px) {
     display: none;
   }
@@ -71,19 +72,24 @@ const SideMenu = styled.div`
   }
 `;
 
-const SideMenuMobile = styled.div`
+const SideMenuMobile = styled.div<{ $isOpen: boolean }>`
   display: none;
   background-color: #0e0e10;
-  padding-top: 1rem;
+  padding-top: 0.75rem;
   overflow-y: scroll;
   height: 100vh;
   @media (max-width: 1024px) {
     display: block;
-    position: relative;
-    z-index: 10;
-    padding-top: 12px;
+    position: fixed;
+    top: 0;
+    left: 0;
     width: 100%;
+    height: 100vh;
+    z-index: 1000;
+    padding-top: 12px;
     padding-bottom: 30px;
+    transform: ${props => props.$isOpen ? 'translateX(0)' : 'translateX(-100%)'};
+    transition: transform 0.3s ease-in-out;
   }
   scrollbar-color: black black;
   ::-webkit-scrollbar {
@@ -111,15 +117,16 @@ const SideMenuMobile = styled.div`
   }
 `;
 
-const SearchChannelsWrapper = styled.div`
-  padding: 8px 16px;
+const SearchChannelsWrapper = styled.div<{ $isCollapsed: boolean }>`
+  padding: 6px 12px;
   color: #777583;
   fill: #777583;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: 6px;
+  justify-content: ${props => props.$isCollapsed ? 'center' : 'flex-start'};
   &:hover {
     background-color: #25252a;
     color: #fff;
@@ -127,7 +134,7 @@ const SearchChannelsWrapper = styled.div`
   }
   .searchTitle {
     font-family: Helvetica Neue;
-    font-size: 16px;
+    font-size: 14px;
     font-style: normal;
     font-weight: 700;
     line-height: 150%;
@@ -137,11 +144,15 @@ const SearchChannelsWrapper = styled.div`
 interface SearchChannelsProps {
   isOpenSearchChannel: boolean;
   setIsOpenSearchChannel: () => void;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
 const SearchChannels: React.FC<SearchChannelsProps> = ({
   isOpenSearchChannel,
   setIsOpenSearchChannel,
+  isCollapsed,
+  onToggleCollapse,
 }) => {
   const style = isOpenSearchChannel
     ? {
@@ -151,11 +162,11 @@ const SearchChannels: React.FC<SearchChannelsProps> = ({
       }
     : {};
   return (
-    <SearchChannelsWrapper onClick={setIsOpenSearchChannel} style={style}>
+    <SearchChannelsWrapper $isCollapsed={isCollapsed} onClick={setIsOpenSearchChannel} style={style}>
       <svg
         xmlns="http://www.w3.org/2000/svg"
-        width="20"
-        height="20"
+        width="12"
+        height="12"
         viewBox="0 0 20 20"
       >
         <g clipPath="url(#clip0_1877_27323)">
@@ -172,7 +183,31 @@ const SearchChannels: React.FC<SearchChannelsProps> = ({
           </clipPath>
         </defs>
       </svg>
-      <span className="searchTitle">Browse Channels</span>
+      {!isCollapsed && <span className="searchTitle">Browse Channels</span>}
+      <CollapseButton 
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleCollapse();
+        }}
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          {isCollapsed ? (
+            <path d="m9 18 6-6-6-6"/>
+          ) : (
+            <path d="m15 18-6-6 6-6"/>
+          )}
+        </svg>
+      </CollapseButton>
     </SearchChannelsWrapper>
   );
 };
@@ -181,8 +216,51 @@ const MobileHeaderWrapper = styled.div`
   display: flex;
   align-items: center;
   padding-left: 1rem;
+  padding-bottom: 1rem;
   border-bottom: 1px solid #282933;
   margin-bottom: 0.5rem;
+`;
+
+const CollapseButton = styled.button`
+  background: none;
+  border: none;
+  color: #777583;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  margin-left: auto;
+  
+  &:hover {
+    background-color: #25252a;
+    color: #fff;
+  }
+  
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+  
+  @media (max-width: 1024px) {
+    display: none !important;
+  }
+`;
+
+const SectionLabel = styled.div`
+  color: #777583;
+  font-family: Helvetica Neue;
+  font-size: 10px;
+  font-weight: 600;
+  text-align: center;
+  padding: 0.25rem 0;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  @media (max-width: 1024px) {
+    display: none;
+  }
 `;
 
 const SideSelector: React.FC<SideSelectorProps> = (props) => {
@@ -190,6 +268,7 @@ const SideSelector: React.FC<SideSelectorProps> = (props) => {
   const isSidebarOpen = props.isSidebarOpen;
   const setIsOpenSearchChannel = props.setIsOpenSearchChannel;
   const isOpenSearchChannel = props.isOpenSearchChannel;
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   const SideMenuContent = () => {
     return (
@@ -199,9 +278,12 @@ const SideSelector: React.FC<SideSelectorProps> = (props) => {
           setIsOpenSearchChannel={() =>
             setIsOpenSearchChannel(!isOpenSearchChannel)
           }
+          isCollapsed={isCollapsed}
+          onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
         />
         <HorizontalSeparatorLine $isMobile={false} />
-        <ChannelHeader key="channels-header" title="Channels" />
+        {isCollapsed && <SectionLabel>CH</SectionLabel>}
+        <ChannelHeader key="channels-header" title="Channels" isCollapsed={isCollapsed} />
         <ChannelList
           channels={channels}
           selectChannel={props.onChatSelected}
@@ -210,8 +292,10 @@ const SideSelector: React.FC<SideSelectorProps> = (props) => {
               ? props.activeChat.name
               : props.activeChat.id
           }
+          isCollapsed={isCollapsed}
         />
         <HorizontalSeparatorLine $isMobile={true} />
+        {isCollapsed && <SectionLabel>DM</SectionLabel>}
         <DMSideSelector
           chatMembers={props.chatMembers}
           onDMSelected={props.onDMSelected}
@@ -222,6 +306,7 @@ const SideSelector: React.FC<SideSelectorProps> = (props) => {
           }
           createDM={props.createDM}
           privateDMs={props.privateDMs}
+          isCollapsed={isCollapsed}
         />
       </>
     );
@@ -230,15 +315,14 @@ const SideSelector: React.FC<SideSelectorProps> = (props) => {
   return (
     <>
       {isSidebarOpen && (
-        <SideMenuMobile>
+        <SideMenuMobile $isOpen={isSidebarOpen}>
           <MobileHeaderWrapper>
             <CurbLogo isMobile={true} />
-            <OrgNameContainer $isMobile={true}>Calimero P2P</OrgNameContainer>
           </MobileHeaderWrapper>
           <SideMenuContent />
         </SideMenuMobile>
       )}
-      <SideMenu>
+      <SideMenu $isCollapsed={isCollapsed}>
         <SideMenuContent />
       </SideMenu>
     </>

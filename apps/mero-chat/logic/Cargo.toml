@@ -1,6 +1,6 @@
 [package]
 name = "curb"
-description = "Calimero Curb"
+description = "Calimero chat"
 version = "0.0.1"
 edition = "2021"
 

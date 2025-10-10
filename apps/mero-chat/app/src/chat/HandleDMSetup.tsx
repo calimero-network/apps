@@ -22,7 +22,7 @@ export const Wrapper = styled.div`
 `;
 
 export const Title = styled.h1`
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 500;
   line-height: 120%;
   margin-bottom: 1rem;
@@ -30,7 +30,7 @@ export const Title = styled.h1`
 `;
 
 export const Message = styled.p`
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 400;
   line-height: 150%;
   color: #777583;
@@ -48,7 +48,7 @@ const Button = styled.button`
   border: none;
   border-radius: 4px;
   font-family: Helvetica Neue;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 400;
   line-height: 150%;
   padding: 12px 24px;

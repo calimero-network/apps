@@ -32,11 +32,11 @@ const Text = styled.div`
   align-items: center;
   color: #fff;
   font-family: Helvetica Neue;
-  font-size: 24px;
+  font-size: 16px;
   font-style: normal;
   font-weight: 500;
   line-height: 120%
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
 `;
 
 const customStyle = {
@@ -58,10 +58,10 @@ const ErrorWrapper = styled.div`
   color: #dc3545;
   /* Body/Small */
   font-family: Helvetica Neue;
-  font-size: 14px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 400;
-  line-height: 150%; /* 21px */
+  line-height: 150%; /* 18px */
   margin-top: 6px;
 `;
 
@@ -102,7 +102,7 @@ const EmptyMessageContainer = styled.div`
 
 const InputWrapper = styled.div`
   position: relative;
-  margin-top: 1rem;
+  margin-top: 0.5rem;
 `;
 
 export interface CreateContextResult {

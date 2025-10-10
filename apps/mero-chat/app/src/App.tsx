@@ -3,7 +3,6 @@ import Login from "./pages/Login";
 import Home from "./pages/Home";
 import { getAuthConfig, useCalimero } from "@calimero-network/calimero-client";
 import { useEffect, useState } from "react";
-import Context from "./pages/Context";
 import { LoadingSpinner } from "./components/LoadingSpinner";
 import IdleTimeoutWrapper from "./components/IdleTimeoutWrapper";
 import { isSessionExpired, clearStoredSession, clearDmContextId, clearSessionActivity, updateSessionActivity } from "./utils/session";
@@ -68,20 +67,6 @@ function App() {
           ) : isAuthenticated && isConfigSet ? (
             <IdleTimeoutWrapper>
               <Home isConfigSet={isConfigSet} />
-            </IdleTimeoutWrapper>
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
-      <Route
-        path="/context"
-        element={
-          isLoading ? (
-            <LoadingSpinner />
-          ) : isAuthenticated && isConfigSet ? (
-            <IdleTimeoutWrapper>
-              <Context />
             </IdleTimeoutWrapper>
           ) : (
             <Navigate to="/login" replace />
