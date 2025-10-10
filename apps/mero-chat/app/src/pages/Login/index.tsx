@@ -118,7 +118,7 @@ export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
   return (
     <Wrapper>
       <Card>
-        <Title>Welcome to Curb Chat</Title>
+        <Title>Welcome to Calimero Chat</Title>
         {!isAuthenticated && !isConfigSet ? (
           <ConnectWrapper>
             <Subtitle>Connect your Node to get started</Subtitle>

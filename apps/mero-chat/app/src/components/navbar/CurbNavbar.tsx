@@ -113,7 +113,7 @@ const FlexContainer = styled.div`
 export const CurbLogo = ({ isMobile }: { isMobile: boolean }) => {
   return (
     <LogoContainer $isMobile={isMobile}>
-      <img src={CurbLogoIcon} alt="Curb Logo" height="40px" width="auto" />
+      <img src={CurbLogoIcon} alt="Calimero Logo" height="40px" width="auto" />
       <CurbNameContainer></CurbNameContainer>
     </LogoContainer>
   );

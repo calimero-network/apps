@@ -1,5 +1,5 @@
-description: Simple bootstrap workflow for Curb Chat application
-name: Curb Chat Bootstrap Workflow
+description: Simple bootstrap workflow for Calimero Chat application
+name: Calimero Chat Bootstrap Workflow
 
 nodes:
   chain_id: testnet-1
