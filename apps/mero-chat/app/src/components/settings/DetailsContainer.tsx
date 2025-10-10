@@ -52,7 +52,6 @@ const DetailsContainer: React.FC<DetailsContainerProps> = (props) => {
 
   const ChannelName = () => {
     const isPrivateChannel = channelMeta.channelType === "Private";
-    console.log("Channel type:", channelMeta.channelType, "Is private:", isPrivateChannel);
     
     return (
       <ChannelTitle>
