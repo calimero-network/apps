@@ -6,7 +6,7 @@ import UsersButtonGroup from "./UsersButtonGroup";
 import { useState } from "react";
 import type { UserId } from "../../api/clientApi";
 import SettingsIcon from "./SettingsIcon";
-import CurbLogoIcon from "/curb.svg";
+import CurbLogoIcon from "/logo.svg";
 
 const NavigationBar = styled.div<{ $isSidebarOpen: boolean }>`
   display: flex;
@@ -27,16 +27,11 @@ const NavigationBar = styled.div<{ $isSidebarOpen: boolean }>`
 
 const CurbNameContainer = styled.div`
   display: flex;
-  padding-left: 8px;
-  column-gap: 0.5rem;
   align-items: center;
+  gap: 0.125rem;
   color: #fff;
-  font-size: 20.923px;
-  font-style: normal;
-  font-weight: 700;
-  line-height: 150%;
   @media (min-width: 1025px) {
-    padding-right: 13.375rem;
+    padding-right: 8.375rem;
   }
   @media (max-width: 1024px) {
     padding-right: 0.875rem;
@@ -118,10 +113,8 @@ const FlexContainer = styled.div`
 export const CurbLogo = ({ isMobile }: { isMobile: boolean }) => {
   return (
     <LogoContainer $isMobile={isMobile}>
-      <img src={CurbLogoIcon} alt="Curb Logo" width="28" height="28" />
-      <CurbNameContainer>
-        <img src="/section-name.svg" alt="Section Name" height="20" />
-      </CurbNameContainer>
+      <img src={CurbLogoIcon} alt="Curb Logo" height="40px" width="auto" />
+      <CurbNameContainer></CurbNameContainer>
     </LogoContainer>
   );
 };
