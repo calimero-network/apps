@@ -9,15 +9,15 @@ const AddMemberButton = styled.div`
   display: flex;
   column-gap: 0.5rem;
   padding-left: 1rem;
-  padding-top: 0.5rem;
-  padding-bottom: 0.5rem;
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
   color: #fff;
   :hover {
     background-color: #5765f2;
   }
   border-radius: 4px;
   font-family: Helvetica Neue;
-  font-size: 16px;
+  font-size: 14px;
   font-style: normal;
   font-weight: 400;
   line-height: 150%;
@@ -29,8 +29,8 @@ const UserListItem = styled.div`
   justify-content: space-between;
   align-items: center;
   color: #777583;
-  padding-top: 0.5rem;
-  padding-bottom: 0.5rem;
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
   padding-left: 1rem;
   padding-right: 1rem;
   border-radius: 0.5rem;
@@ -83,6 +83,11 @@ const Text = styled.div<{ $isSelected?: boolean }>`
   align-items: center;
   width: 100%;
   color: ${({ $isSelected }) => ($isSelected ? "#5765F2" : "#fff")};
+  font-family: Helvetica Neue;
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 150%;
   :hover {
     background-color: transparent;
   }

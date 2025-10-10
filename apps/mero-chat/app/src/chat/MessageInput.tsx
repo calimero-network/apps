@@ -51,7 +51,7 @@ const Container = styled.div`
   padding-left: 16px;
   padding-right: 16px;
   padding-top: 1px;
-  padding-bottom: 42px;
+  padding-bottom: 10px;
   display: flex;
   align-items: end;
   z-index: 10;
@@ -218,13 +218,13 @@ const Placeholder = styled.div<{
     $placeholderPosition && $placeholderPosition};
   left: 25px;
   color: #686672;
-  font-size: 14px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 400;
   line-height: 150%;
   pointer-events: none;
   @media (max-width: 1024px) {
-    font-size: 14px;
+    font-size: 12px;
     font-style: normal;
     font-weight: 400;
     line-height: 150%;
@@ -335,7 +335,7 @@ const ActionsWrapper = styled.div`
   bottom: 20px;
   @media (min-width: 1025px) {
     right: 42px;
-    bottom: 42px;
+    bottom: 12px;
   }
   display: flex;
   align-items: center;
@@ -373,7 +373,7 @@ export default function MessageInput({
   const [selectedEmoji, setSelectedEmoji] = useState("");
   const [error, setError] = useState("");
   const [pendingEmoji, setPendingEmoji] = useState<string | null>(null);
-  const placeholderPosition = "16px";
+  const placeholderPosition = "-10px";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const editorRef = useRef<any>(null);
 
@@ -586,6 +586,7 @@ export default function MessageInput({
                       : `Type message in ${selectedChat}`
                   }
                   maxHeight={50}
+                  style={{fontSize: "14px"}}
                   className="full-width-editor"
                 />
               </EditorWrapper>

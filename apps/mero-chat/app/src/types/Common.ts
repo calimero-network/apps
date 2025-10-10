@@ -41,6 +41,7 @@ export type ActiveChat = {
   creator?: string;
   isSynced?: boolean;
   isFinal?: boolean;
+  channelType?: string;
 };
 
 export interface User {

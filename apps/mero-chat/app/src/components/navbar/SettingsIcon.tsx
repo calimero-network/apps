@@ -8,15 +8,15 @@ export default function SettingsIcon() {
         cursor: "pointer",
         display: "flex",
         alignItems: "center",
-        gap: "0.5rem",
+        gap: "0.375rem",
       }}
       onClick={() => {
         navigate("/context");
       }}
     >
       <svg
-        width="20"
-        height="20"
+        width="18"
+        height="18"
         viewBox="0 0 24 24"
         fill="none"
         stroke="#777583"

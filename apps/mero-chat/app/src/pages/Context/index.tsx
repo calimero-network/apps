@@ -14,12 +14,12 @@ const BackButton = styled.button`
   background: transparent;
   border: none;
   color: #b8b8d1;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
   text-align: left;
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
 `;
 
 export const LogoutWrapper = styled.div`

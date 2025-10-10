@@ -11,13 +11,13 @@ const Popup = styled.div`
   display: flex;
   align-items: center;
   font-family: Helvetica Neue;
-  font-size: 16px;
+  font-size: 14px;
   font-style: normal;
   font-weight: 400;
   line-height: 150%;
-  padding-top: 1rem;
+  padding-top: 0.75rem;
   border-bottom: solid 1px #282933;
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
 `;
 
 const SwitchOption = styled.div<{ selected?: boolean; leftPadding?: boolean }>`

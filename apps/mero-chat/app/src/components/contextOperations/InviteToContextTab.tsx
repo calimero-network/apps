@@ -14,31 +14,31 @@ import {
 const TabContent = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 0.75rem;
 `;
 
 const Form = styled.form`
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.5rem;
 `;
 
 const InputGroup = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.25rem;
 `;
 
 const Label = styled.label`
-  font-size: 0.9rem;
+  font-size: 0.7rem;
   font-weight: 500;
   color: #b8b8d1;
 `;
 
 const Message = styled.div<{ type?: "success" | "error" }>`
-  padding: 0.75rem;
+  padding: 0.6rem;
   border-radius: 6px;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   text-align: center;
   color: ${({ type }) =>
     type === "success" ? "#27ae60" : type === "error" ? "#e74c3c" : "#b8b8d1"};
@@ -46,14 +46,14 @@ const Message = styled.div<{ type?: "success" | "error" }>`
 
 const ConfigInfo = styled.div`
   border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 8px;
-  padding: 1rem;
-  margin-bottom: 1rem;
+  border-radius: 6px;
+  padding: 0.5rem;
+  margin-bottom: 0.5rem;
 `;
 
 const ConfigTitle = styled.h4`
   color: #ffffff;
-  font-size: 1rem;
+  font-size: 0.8rem;
   font-weight: 600;
   margin-bottom: 0.5rem;
 `;

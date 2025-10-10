@@ -176,6 +176,12 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   };
 
   const updateSelectedActiveChat = async (selectedChat: ActiveChat) => {
+    // Find the channel metadata to get channelType
+    const channelMeta = channels.find(ch => ch.name === selectedChat.name);
+    if (channelMeta && selectedChat.type === "channel") {
+      selectedChat.channelType = channelMeta.channelType;
+    }
+    
     setIsOpenSearchChannel(false);
     setActiveChat(selectedChat);
     activeChatRef.current = selectedChat;
