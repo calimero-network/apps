@@ -28,7 +28,7 @@ export const MessageJoinWrapper = styled.div`
     justify-content: center;
     color: #fff;
     font-family: Helvetica Neue;
-    font-size: 24px;
+    font-size: 20px;
     font-style: normal;
     font-weight: 500;
     line-height: 120%;
@@ -45,7 +45,7 @@ export const MessageJoinWrapper = styled.div`
     padding: 16px 12px;
     align-items: center;
     text-align: center;
-    font-size: 16px;
+    font-size: 14px;
     color: #777583;
   }
   .wrapper {
@@ -61,7 +61,7 @@ export const MessageJoinWrapper = styled.div`
     color: white;
     border-radius: 4px;
     font-family: Helvetica Neue;
-    font-size: 16px;
+    font-size: 14px;
     font-style: normal;
     font-weight: 400;
     line-height: 150%;
@@ -76,7 +76,7 @@ export const MessageJoinWrapper = styled.div`
     }
   }
   .backButton {
-    font-size: 14px;
+    font-size: 12px;
     color: #fff;
     cursor: pointer;
   }
