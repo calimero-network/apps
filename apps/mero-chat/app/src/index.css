@@ -1010,3 +1010,25 @@ body {
 .ql-editor ol li[data-list="ordered"]::before {
   content: counter(list-0, decimal) '. ';
 }
+
+/* Prevent mobile zoom without changing font sizes */
+@media screen and (max-width: 768px) {
+  /* Prevent zoom on input focus using transform scale */
+  input, textarea, select, .ql-editor {
+    transform: scale(1) !important;
+    transform-origin: top left !important;
+  }
+  
+  /* Prevent zoom on focus for all form elements */
+  input:focus, textarea:focus, select:focus, .ql-editor:focus {
+    transform: scale(1) !important;
+    transform-origin: top left !important;
+  }
+  
+  /* Additional zoom prevention for touch devices */
+  * {
+    -webkit-text-size-adjust: 100% !important;
+    -ms-text-size-adjust: 100% !important;
+    text-size-adjust: 100% !important;
+  }
+}
