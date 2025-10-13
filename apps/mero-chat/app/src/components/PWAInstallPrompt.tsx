@@ -24,6 +24,7 @@ const PWAInstallPrompt: React.FC = () => {
       }
       
       // Check for iOS Safari
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((window.navigator as any).standalone === true) {
         setIsInstalled(true);
         return;
@@ -65,14 +66,6 @@ const PWAInstallPrompt: React.FC = () => {
     if (!deferredPrompt) return;
 
     deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    
-    if (outcome === 'accepted') {
-      console.log('User accepted the install prompt');
-    } else {
-      console.log('User dismissed the install prompt');
-    }
-    
     setDeferredPrompt(null);
     setShowInstallModal(false);
   };
