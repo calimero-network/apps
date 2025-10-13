@@ -130,16 +130,17 @@ export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
             <CalimeroConnectButton />
           </ConnectWrapper>
         ) : (
-          <TabbedInterface
+          <>
+           <TabbedInterface
             tabs={tabs}
             isAuthenticated={isAuthenticated}
             isConfigSet={isConfigSet}
           />
-        )}
-        {isAuthenticated && (
           <LogoutWrapper>
             <Button onClick={handleLogout} variant="secondary">Logout</Button>
           </LogoutWrapper>
+          </>
+         
         )}
       </Card>
     </Wrapper>
