@@ -8,7 +8,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['curb.svg', 'logo.svg', 'section-name.svg'],
+      includeAssets: ['curb-pwa.svg', 'logo.svg', 'section-name.svg'],
       manifest: {
         name: 'Calimero Chat',
         short_name: 'Calimero',
@@ -72,6 +72,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        skipWaiting: true,
+        clientsClaim: true,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
