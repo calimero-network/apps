@@ -144,6 +144,7 @@ export default function CreateChannelPopup({
     setIsOpen(false);
   };
 
+
   const isInvalid = !!(inputValue && !validInput && errorMessage);
 
   const popupContent = (

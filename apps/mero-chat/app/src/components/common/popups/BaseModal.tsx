@@ -41,7 +41,6 @@ const OverlayContainer = styled.div`
 
   @media (max-width: 1024px) {
     position: fixed;
-    z-index: 1001;
     top: 0;
     left: 0;
     right: 0;

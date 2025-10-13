@@ -111,27 +111,30 @@ export interface CreateContextResult {
 }
 
 interface StartDMPopupProps {
-    title: string;
-    toggle: React.ReactNode;
-    placeholder: string;
-    buttonText: string;
-    validator: (value: string) => { isValid: boolean; error: string };
-    functionLoader: (value: string) => Promise<CreateContextResult>;
-    chatMembers: Map<string, string>;
+  title: string;
+  toggle: React.ReactNode;
+  placeholder: string;
+  buttonText: string;
+  validator: (value: string) => { isValid: boolean; error: string };
+  functionLoader: (value: string) => Promise<CreateContextResult>;
+  chatMembers: Map<string, string>;
 }
 
 const StartDMPopup = memo(function StartDMPopup({
-    title,
-    toggle,
-    placeholder,
-    buttonText,
-    validator,
-    functionLoader,
-    chatMembers,
-  }: StartDMPopupProps) {
-  const [isOpen, setIsOpen] = usePersistentState('startDMPopupOpen', false);
+  title,
+  toggle,
+  placeholder,
+  buttonText,
+  validator,
+  functionLoader,
+  chatMembers,
+}: StartDMPopupProps) {
+  const [isOpen, setIsOpen] = usePersistentState("startDMPopupOpen", false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [inputValue, setInputValue] = usePersistentState('startDMInputValue', "");
+  const [inputValue, setInputValue] = usePersistentState(
+    "startDMInputValue",
+    ""
+  );
   const [validInput, setValidInput] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [suggestions, setSuggestions] = useState<UserId[]>([]);
@@ -145,12 +148,15 @@ const StartDMPopup = memo(function StartDMPopup({
     inputRef.current = inputValue;
   }, [inputValue]);
 
-  const runProcess = async() => {
+  const runProcess = async () => {
     setIsProcessing(true);
     setErrorMessage("");
     // inputValue is the username -> identity here
-    // @ts-expect-error - chatMembers is a Map<string, string>
-    const identity = Object.keys(chatMembers).find((key) => chatMembers[key] === inputValue);
+
+    const identity = Object.keys(chatMembers).find(
+      // @ts-expect-error - chatMembers is a Map<string, string>
+      (key) => chatMembers[key] === inputValue
+    );
     if (!identity) {
       setErrorMessage("User not found");
       setIsProcessing(false);
@@ -179,7 +185,9 @@ const StartDMPopup = memo(function StartDMPopup({
     setInputValue(value);
     setErrorMessage("");
     if (value.length > 0) {
-      const s = Object.values(chatMembers).filter((member) => member.toLowerCase().startsWith(value.toLowerCase()));
+      const s = Object.values(chatMembers).filter((member) =>
+        member.toLowerCase().startsWith(value.toLowerCase())
+      );
       setSuggestions(s);
       setShowSuggestions(s.length > 0);
     } else {
@@ -192,7 +200,6 @@ const StartDMPopup = memo(function StartDMPopup({
       setValidInput(isValid);
       setErrorMessage(error ? error : "");
     }
-
   };
 
   const handleClosePopup = () => {
@@ -227,17 +234,17 @@ const StartDMPopup = memo(function StartDMPopup({
         {/* {errorMessage && <CreationError>{errorMessage}</CreationError>} */}
         {/* {isInvalid && <ExclamationIcon />} */}
         {showSuggestions && suggestions && suggestions.length > 0 && (
-        <SuggestionsDropdown>
-          {suggestions.map((suggestion, index) => (
-            <SuggestionItem
-              key={index}
-              onClick={() => handleSuggestionClick(suggestion)}
-            >
-              {suggestion}
-            </SuggestionItem>
-          ))}
-        </SuggestionsDropdown>
-      )}
+          <SuggestionsDropdown>
+            {suggestions.map((suggestion, index) => (
+              <SuggestionItem
+                key={index}
+                onClick={() => handleSuggestionClick(suggestion)}
+              >
+                {suggestion}
+              </SuggestionItem>
+            ))}
+          </SuggestionsDropdown>
+        )}
       </InputWrapper>
       {isInvalid ? (
         <ErrorWrapper>{errorMessage}</ErrorWrapper>

@@ -45,7 +45,8 @@ const CloseButton = styled.div`
 const UserList = styled.div`
   position: absolute;
   overflow-y: scroll;
-  max-height: 150px;
+  max-height: 200px;
+  min-height: 120px;
   width: 100%;
   background-color: #1d1d21;
   border-radius: 4px;
@@ -163,7 +164,10 @@ const AutocompleteContainer: React.FC<AutocompleteContainerProps> = ({
   selectedUsers,
 }) => {
   const filteredInviteUsers = Object.values(inviteUsers).filter(
-    (user) => user !== value && !selectedUsers.includes(user)
+    (user) => 
+      user.toLowerCase().startsWith(value.toLowerCase()) && 
+      user !== value && 
+      !selectedUsers.includes(user)
   );
   return (
     <>
