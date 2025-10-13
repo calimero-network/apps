@@ -313,7 +313,8 @@ const MemberDetails: React.FC<MemberDetailsProps> = (props) => {
           Object.keys(userList).map((user, id) => (
             <UserListItem key={id}>
               <UserInfo>
-                <Avatar size="xs" name={user ?? ""} />
+                {/* @ts-expect-error - userList is a Map */}
+                <Avatar size="xs" name={userList[user] ?? ""} />
                 <Text $isSelected={optionsOpen === Number(id)}>
                   {/* @ts-expect-error - userList is a Map */}
                   {userList[user]}
