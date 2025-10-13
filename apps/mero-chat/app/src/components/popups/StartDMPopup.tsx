@@ -14,7 +14,7 @@ const SuggestionsDropdown = styled.div`
   position: absolute;
   top: 100%;
   width: 100%;
-  z-index: 10;
+  z-index: 100;
 `;
 
 const SuggestionItem = styled.div`
@@ -177,6 +177,10 @@ const StartDMPopup = memo(function StartDMPopup({
     if (isProcessing && !isOpen) {
       return;
     }
+    // Only allow closing via the X button, not by clicking outside
+    if (!isOpen) {
+      return; // Prevent closing
+    }
     setIsOpen(isOpen);
   };
 
@@ -219,7 +223,7 @@ const StartDMPopup = memo(function StartDMPopup({
   };
 
   const popupContent = (
-    <>
+    <div style={{ pointerEvents: 'auto' }}>
       <CloseButton onClick={handleClosePopup}>
         <i className="bi bi-x-lg"></i>
       </CloseButton>
@@ -258,7 +262,7 @@ const StartDMPopup = memo(function StartDMPopup({
       >
         {isProcessing ? <Loader size={16} /> : buttonText}
       </Button>
-    </>
+    </div>
   );
 
   return (
@@ -267,6 +271,7 @@ const StartDMPopup = memo(function StartDMPopup({
       content={popupContent}
       open={isOpen}
       onOpenChange={onOpenChange}
+      isChild={true}
     />
   );
 });

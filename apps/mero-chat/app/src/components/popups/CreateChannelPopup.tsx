@@ -144,11 +144,19 @@ export default function CreateChannelPopup({
     setIsOpen(false);
   };
 
+  const handleOpenChange = (newOpen: boolean) => {
+    // Only allow closing via the X button, not by clicking outside
+    if (!newOpen) {
+      return; // Prevent closing
+    }
+    setIsOpen(newOpen);
+  };
+
 
   const isInvalid = !!(inputValue && !validInput && errorMessage);
 
   const popupContent = (
-    <Container>
+    <Container style={{ pointerEvents: 'auto' }}>
       <CloseButton onClick={handleClosePopup}>
         <i className="bi bi-x-lg"></i>
       </CloseButton>
@@ -219,7 +227,8 @@ export default function CreateChannelPopup({
       toggle={toggle}
       content={popupContent}
       open={isOpen}
-      onOpenChange={setIsOpen}
+      onOpenChange={handleOpenChange}
+      isChild={true}
     />
   );
 }
