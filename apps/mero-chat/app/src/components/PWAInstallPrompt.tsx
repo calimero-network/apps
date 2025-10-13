@@ -90,7 +90,7 @@ const PWAInstallPrompt: React.FC = () => {
       keyboard={false}
     >
       <Modal.Header closeButton>
-        <Modal.Title>Install Curb Chat</Modal.Title>
+        <Modal.Title>Install Calimero Chat</Modal.Title>
       </Modal.Header>
       <Modal.Body>
         <div className="text-center">
@@ -99,7 +99,7 @@ const PWAInstallPrompt: React.FC = () => {
           </div>
           <h5>Get the full app experience!</h5>
           <p className="text-muted">
-            Install Curb Chat on your device for faster access, offline support, and a native app-like experience.
+            Install Calimero Chat on your device for faster access, offline support, and a native app-like experience.
           </p>
           <ul className="list-unstyled text-start">
             <li className="mb-2">

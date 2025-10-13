@@ -10,9 +10,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['curb.svg', 'logo.svg', 'section-name.svg'],
       manifest: {
-        name: 'Curb Chat',
-        short_name: 'Curb',
-        description: 'Calimero Curb Chat is a P2P chat application built on top of the Calimero Network.',
+        name: 'Calimero Chat',
+        short_name: 'Calimero',
+        description: 'Calimero Chat is a P2P chat application built on top of the Calimero Network.',
         theme_color: '#000000',
         background_color: '#ffffff',
         display: 'standalone',
@@ -20,6 +20,12 @@ export default defineConfig({
         scope: '/',
         start_url: '/',
         icons: [
+          {
+            src: 'curb.svg',
+            sizes: 'any',
+            type: 'image/svg+xml',
+            purpose: 'maskable any'
+          },
           {
             src: 'icons/icon-192x192.png',
             sizes: '192x192',
