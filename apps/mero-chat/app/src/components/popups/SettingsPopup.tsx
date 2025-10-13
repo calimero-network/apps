@@ -16,6 +16,11 @@ const Container = styled.div`
   height: 100%;
   max-height: 80vh;
   overflow-y: auto;
+  
+  @media (max-width: 1024px) {
+    max-height: calc(100vh - 140px);
+    overflow-y: auto;
+  }
 `;
 
 const Header = styled.div`

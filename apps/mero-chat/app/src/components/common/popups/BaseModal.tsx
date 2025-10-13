@@ -41,7 +41,7 @@ const OverlayContainer = styled.div`
 
   @media (max-width: 1024px) {
     position: fixed;
-    z-index: 20;
+    z-index: 1001;
     top: 0;
     left: 0;
     right: 0;
@@ -52,6 +52,7 @@ const OverlayContainer = styled.div`
     justify-content: center;
     align-items: flex-start;
     background-color: rgba(0, 0, 0, 0.5);
+    padding-top: 60px;
   }
 `;
 
@@ -78,11 +79,12 @@ const OverlayContainerChild = styled.div`
     right: 0;
     top: 0;
     bottom: 0;
-    z-index: 20;
+    z-index: 1001;
     display: flex;
     justify-content: center;
     align-items: flex-start;
     background-color: rgba(0, 0, 0, 0.5);
+    padding-top: 60px;
   }
 `;
 
@@ -95,13 +97,16 @@ const PopupContainer = styled.div`
   @media (max-width: 1024px) {
     width: calc(100% - 2rem);
     max-width: calc(100vw - 2rem);
-    position: absolute;
-    left: 50%;
-    top: 20%;
-    transform: translate(-50%, -20%);
+    position: relative;
+    left: auto;
+    top: auto;
+    transform: none;
     background-color: #1d1d21;
     height: fit-content;
     box-sizing: border-box;
+    margin: 1rem;
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
   }
   outline: none;
   &:focus {
@@ -125,7 +130,7 @@ const PopupContainerChild = styled.div`
     height: fit-content;
   }
   @media (max-width: 1024px) {
-    position: absolute;
+    position: relative;
     background-color: #1d1d21;
     padding: 1rem;
     border-radius: 8px;
@@ -133,6 +138,9 @@ const PopupContainerChild = styled.div`
     max-width: calc(100vw - 2rem);
     height: fit-content;
     box-sizing: border-box;
+    margin: 1rem;
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
   }
 `;
 
