@@ -5,6 +5,7 @@ import { getAuthConfig, useCalimero } from "@calimero-network/calimero-client";
 import { useEffect, useState } from "react";
 import { LoadingSpinner } from "./components/LoadingSpinner";
 import IdleTimeoutWrapper from "./components/IdleTimeoutWrapper";
+import PWAInstallPrompt from "./components/PWAInstallPrompt";
 import { isSessionExpired, clearStoredSession, clearDmContextId, clearSessionActivity, updateSessionActivity } from "./utils/session";
 
 function App() {
@@ -45,36 +46,39 @@ function App() {
   }, [isAuthenticated, logout]);
 
   return (
-    <Routes>
-      <Route
-        path="/login"
-        element={
-          isAuthenticated && isConfigSet ? (
-            <Navigate to="/" replace />
-          ) : (
-            <Login
-              isAuthenticated={isAuthenticated}
-              isConfigSet={isConfigSet}
-            />
-          )
-        }
-      />
-      <Route
-        path="/"
-        element={
-          isLoading ? (
-            <LoadingSpinner />
-          ) : isAuthenticated && isConfigSet ? (
-            <IdleTimeoutWrapper>
-              <Home isConfigSet={isConfigSet} />
-            </IdleTimeoutWrapper>
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
-      <Route path="*" element={<Navigate to="/login" replace />} />
-    </Routes>
+    <>
+      <Routes>
+        <Route
+          path="/login"
+          element={
+            isAuthenticated && isConfigSet ? (
+              <Navigate to="/" replace />
+            ) : (
+              <Login
+                isAuthenticated={isAuthenticated}
+                isConfigSet={isConfigSet}
+              />
+            )
+          }
+        />
+        <Route
+          path="/"
+          element={
+            isLoading ? (
+              <LoadingSpinner />
+            ) : isAuthenticated && isConfigSet ? (
+              <IdleTimeoutWrapper>
+                <Home isConfigSet={isConfigSet} />
+              </IdleTimeoutWrapper>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+      <PWAInstallPrompt />
+    </>
   );
 }
 
