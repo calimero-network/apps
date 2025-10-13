@@ -182,16 +182,12 @@ export default function DetailsDropdown({
       ? activeChat.username || ""
       : activeChat.name;
 
-  // Truncate title on mobile screens: first 6 chars + "..." + last 4 chars
-  // const truncatedTitle =
-  //   title.length > 10 ? `${title.slice(0, 6)}...${title.slice(-4)}` : title;
-
   return (
     <PaddingContainer>
       <SelectedChannelName className="desktop">{title}</SelectedChannelName>
-      {/* <SelectedChannelName className="mobile">
-        {truncatedTitle}
-      </SelectedChannelName> */}
+      <SelectedChannelName className="mobile">
+        {title}
+      </SelectedChannelName>
     </PaddingContainer>
   );
 }
