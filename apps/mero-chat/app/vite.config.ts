@@ -14,7 +14,7 @@ export default defineConfig({
         short_name: 'Calimero',
         description: 'Calimero Chat is a P2P chat application built on top of the Calimero Network.',
         theme_color: '#000000',
-        background_color: '#ffffff',
+        background_color: '#111111',
         display: 'standalone',
         orientation: 'portrait-primary',
         scope: '/',
