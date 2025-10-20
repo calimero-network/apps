@@ -291,11 +291,12 @@ export default function ChatContainer({
 
   const handleEditedMessage = useCallback(
     async (message: CurbMessage) => {
+      const editedOn = Math.floor(Date.now() / 1000);
       const response = await new ClientApiDataSource().editMessage({
         group: { name: activeChatRef.current?.name ?? "" },
         messageId: message.id,
         newMessage: message.text,
-        timestamp: Math.floor(Date.now() / 1000),
+        timestamp: editedOn,
       });
       if (response.data) {
         const update = [
@@ -305,6 +306,7 @@ export default function ChatContainer({
               updatedFields: {
                 text: message.text,
                 editMode: false,
+                editedOn: editedOn
               },
             },
           },

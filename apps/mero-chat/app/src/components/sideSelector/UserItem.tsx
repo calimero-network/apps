@@ -12,7 +12,8 @@ const UserListItem = styled.div<{
   $isCollapsed?: boolean;
 }>`
   display: flex;
-  justify-content: ${props => props.$isCollapsed ? 'center' : 'space-between'};
+  justify-content: ${(props) =>
+    props.$isCollapsed ? "center" : "space-between"};
   align-items: center;
   color: #777583;
   padding-top: 0.375rem;
@@ -44,6 +45,10 @@ const NameContainer = styled.div`
   justify-content: start;
   align-items: center;
   width: 100%;
+  font-family: Helvetica Neue;
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 400;
 `;
 
 interface UserItemProps {
