@@ -1,0 +1,1 @@
+cd ../../curb-virtualized-chat/packages/virtualized-chat && pnpm build && cd ../../../curb/app && rm -rf node_modules && pnpm install && pnpm dev
