@@ -145,6 +145,7 @@ export default function ChatContainer({
 
   const handleReaction = useCallback(
     async (message: CurbMessage, reaction: string, isThread: boolean) => {
+      const isDM = activeChatRef.current?.type === "direct_message";
       const accountId = getExecutorPublicKey() ?? "";
       const accounts = message.reactions?.[reaction] ?? [];
       const isAdding = !(
@@ -157,6 +158,8 @@ export default function ChatContainer({
           emoji: reaction,
           userId: accountId,
           add: isAdding,
+          is_dm: isDM,
+          dm_identity: activeChatRef.current?.account,
         });
         if (response.data) {
           const updateFunction = (message: CurbMessage) =>
@@ -261,9 +264,12 @@ export default function ChatContainer({
 
   const handleDeleteMessage = useCallback(
     async (message: CurbMessage) => {
+      const isDM = activeChatRef.current?.type === "direct_message";
       const response = await new ClientApiDataSource().deleteMessage({
         group: { name: activeChatRef.current?.name ?? "" },
         messageId: message.id,
+        is_dm: isDM,
+        dm_identity: activeChatRef.current?.account,
       });
       if (response.data) {
         updateDeletedMessage(message);
@@ -291,12 +297,15 @@ export default function ChatContainer({
 
   const handleEditedMessage = useCallback(
     async (message: CurbMessage) => {
+      const isDM = activeChatRef.current?.type === "direct_message";
       const editedOn = Math.floor(Date.now() / 1000);
       const response = await new ClientApiDataSource().editMessage({
         group: { name: activeChatRef.current?.name ?? "" },
         messageId: message.id,
         newMessage: message.text,
         timestamp: editedOn,
+        is_dm: isDM,
+        dm_identity: activeChatRef.current?.account,
       });
       if (response.data) {
         const update = [
@@ -306,7 +315,7 @@ export default function ChatContainer({
               updatedFields: {
                 text: message.text,
                 editMode: false,
-                editedOn: editedOn
+                editedOn: editedOn,
               },
             },
           },

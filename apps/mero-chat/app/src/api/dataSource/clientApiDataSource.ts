@@ -856,7 +856,7 @@ export class ClientApiDataSource implements ClientApi {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await getJsonRpcClient().execute<any, string>(
         {
-          contextId: getContextId() || "",
+          contextId: (props.is_dm ? getDmContextId() : getContextId()) || "",
           method: ClientMethod.UPDATE_REACTION,
           argsJson: {
             message_id: props.messageId,
@@ -864,7 +864,8 @@ export class ClientApiDataSource implements ClientApi {
             user: props.userId,
             add: props.add,
           },
-          executorPublicKey: getExecutorPublicKey() || "",
+          executorPublicKey:
+            (props.is_dm ? props.dm_identity : getExecutorPublicKey()) || "",
         },
         {
           headers: {
@@ -909,13 +910,14 @@ export class ClientApiDataSource implements ClientApi {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await getJsonRpcClient().execute<any, string>(
         {
-          contextId: getContextId() || "",
+          contextId: (props.is_dm ? getDmContextId() : getContextId()) || "",
           method: ClientMethod.DELETE_MESSAGE,
           argsJson: {
-            group: props.group,
+            group: props.is_dm ? {"name": "private_dm"} : props.group,
             message_id: props.messageId,
           },
-          executorPublicKey: getExecutorPublicKey() || "",
+          executorPublicKey:
+            (props.is_dm ? props.dm_identity : getExecutorPublicKey()) || "",
         },
         {
           headers: {
@@ -960,15 +962,16 @@ export class ClientApiDataSource implements ClientApi {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await getJsonRpcClient().execute<any, Message>(
         {
-          contextId: getContextId() || "",
+          contextId: (props.is_dm ? getDmContextId() : getContextId()) || "",
           method: ClientMethod.EDIT_MESSAGE,
           argsJson: {
-            group: props.group,
+            group: props.is_dm ? {"name": "private_dm"} : props.group,
             message_id: props.messageId,
             new_message: props.newMessage,
             timestamp: props.timestamp,
           },
-          executorPublicKey: getExecutorPublicKey() || "",
+          executorPublicKey:
+            (props.is_dm ? props.dm_identity : getExecutorPublicKey()) || "",
         },
         {
           headers: {

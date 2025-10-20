@@ -128,11 +128,15 @@ export interface UpdateReactionProps {
   emoji: string;
   userId: UserId;
   add: boolean;
+  is_dm?: boolean;
+  dm_identity?: UserId;
 }
 
 export interface DeleteMessageProps {
   group: Channel;
   messageId: string;
+  is_dm?: boolean;
+  dm_identity?: UserId;
 }
 
 export interface EditMessageProps {
@@ -140,6 +144,8 @@ export interface EditMessageProps {
   messageId: string;
   newMessage: string;
   timestamp: number;
+  is_dm?: boolean;
+  dm_identity?: UserId;
 }
 
 export interface UpdateNewIdentityProps {
