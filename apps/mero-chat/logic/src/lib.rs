@@ -16,7 +16,7 @@ pub enum Event {
     ChannelCreated(String),
     ChannelInvited(String),
     ChannelLeft(String),
-    MessageSent(Message),
+    MessageSent(String),
     MessageReceived(String),
     ChannelJoined(String),
     DMCreated(String),
@@ -1236,7 +1236,7 @@ impl CurbChat {
             );
         }
 
-        app::emit!(Event::MessageSent(message.clone()));
+        app::emit!(Event::MessageSent(message_id.clone()));
 
         Ok(message)
     }
@@ -1545,7 +1545,7 @@ impl CurbChat {
 
             match updated_message {
                 Some(msg) => {
-                    app::emit!(Event::MessageSent(msg.clone()));
+                    app::emit!(Event::MessageSent(msg.id.clone()));
                     Ok(msg)
                 }
                 None => Err("Failed to update thread message".to_string()),
@@ -1588,7 +1588,7 @@ impl CurbChat {
 
             match updated_message {
                 Some(msg) => {
-                    app::emit!(Event::MessageSent(msg.clone()));
+                    app::emit!(Event::MessageSent(msg.id.clone()));
                     Ok(msg)
                 }
                 None => Err("Failed to update message".to_string()),
@@ -1649,7 +1649,7 @@ impl CurbChat {
 
             let _ = self.threads.insert(parent_message_id, thread_messages);
 
-            app::emit!(Event::MessageSent(message.clone()));
+            app::emit!(Event::MessageSent(message.id.clone()));
             Ok("Thread message deleted successfully".to_string())
         } else {
             let mut channel_info = match self.channels.get(&group) {
@@ -1696,7 +1696,7 @@ impl CurbChat {
 
             let _ = self.channels.insert(group, channel_info);
 
-            app::emit!(Event::MessageSent(message.clone()));
+            app::emit!(Event::MessageSent(message.id.clone()));
             Ok("Message deleted successfully".to_string())
         }
     }
