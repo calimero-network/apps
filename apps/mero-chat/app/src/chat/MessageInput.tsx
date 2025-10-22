@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { styled } from "styled-components";
 import type { ChatFile, MessageWithReactions } from "../types/Common";
 import EmojiSelector from "../emojiSelector/EmojiSelector";
@@ -184,7 +184,7 @@ const IconEmoji = () => {
 const IconSendSvg = styled.svg`
   margin-bottom: 8px;
   :hover {
-    fill: #73B30C;
+    fill: #73b30c;
   }
   cursor: pointer;
 `;
@@ -370,60 +370,45 @@ export default function MessageInput({
   const [uploadedFile, setUploadedFile] = useState<ChatFile | null>(null);
   const [uploadedImage, setUploadedImage] = useState<ChatFile | null>(null);
   const [emojiSelectorOpen, setEmojiSelectorOpen] = useState(false);
-  const [selectedEmoji, setSelectedEmoji] = useState("");
   const [error, setError] = useState("");
-  const [pendingEmoji, setPendingEmoji] = useState<string | null>(null);
   const placeholderPosition = "-10px";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const editorRef = useRef<any>(null);
+
+  // Memoize placeholder text to avoid recalculation
+  const placeholderText = useMemo(() => {
+    if (openThread && isThread) {
+      return "Reply in thread";
+    }
+    return `Type message in ${selectedChat}`;
+  }, [openThread, isThread, selectedChat]);
+
+  const placeholderTextMobile = useMemo(() => {
+    if (openThread && isThread) {
+      return "Reply in thread";
+    }
+    const chatName =
+      selectedChat.length === 44
+        ? `${selectedChat.toLowerCase().slice(0, 6)}...${selectedChat.toLowerCase().slice(-4)}`
+        : selectedChat;
+    return `Type message in ${chatName}`;
+  }, [openThread, isThread, selectedChat]);
 
   const handleMessageChange = useCallback(
     (mesage: MessageWithReactions | null) => {
       setMessage(mesage);
     },
-    []
+    [],
   );
 
   const handleEmojiSelected = useCallback((emoji: string) => {
     editorRef.current?.insertContent(emoji);
-    setSelectedEmoji("");
   }, []);
 
   useEffect(() => {
     setMessage(null);
     setEmojiSelectorOpen(false);
-    setSelectedEmoji("");
   }, [selectedChat]);
-
-  useEffect(() => {
-    if (selectedEmoji) {
-      handleEmojiSelected(selectedEmoji);
-    }
-  }, [selectedEmoji, handleEmojiSelected]);
-
-  useEffect(() => {
-    if (pendingEmoji) {
-      const currentText = message?.text || "";
-      const newText = currentText + pendingEmoji;
-      setMessage(
-        message
-          ? { ...message, text: newText }
-          : {
-              id: "",
-              text: newText,
-              nonce: "",
-              timestamp: Date.now(),
-              sender: "",
-              reactions: new Map(),
-              files: [],
-              images: [],
-              thread_count: 0,
-              thread_last_timestamp: 0,
-            }
-      );
-      setPendingEmoji(null);
-    }
-  }, [pendingEmoji, message]);
 
   const resetFile = useCallback(() => {
     setUploadedFile(null);
@@ -525,26 +510,25 @@ export default function MessageInput({
     }
   }, [isReadOnly, isModerator, isOwner]);
 
-  const getCustomStyle = (openThread: boolean, isThread: boolean) => {
-    const customStyle = {
+  // Memoize custom style to avoid recalculation on every render
+  const customStyle = useMemo(() => {
+    const style = {
       width: "100%",
       maxWidth: "100%",
       boxSizing: "border-box" as const,
     };
     if (openThread && !isThread) {
-      customStyle.width = "calc(60% - 262px)";
-    } else if (!openThread && !isThread) {
-      customStyle.width = "100%";
+      style.width = "100%"; // Main chat input should use full width when thread is open
     } else if (openThread && isThread) {
-      customStyle.width = "calc(40% - 212px)";
+      style.width = "100%"; // Thread input should use full width
     }
-    return customStyle;
-  };
+    return style;
+  }, [openThread, isThread]);
 
   return (
     <>
       {canWriteMessage && (
-        <Container style={getCustomStyle(!!openThread, isThread)}>
+        <Container style={customStyle}>
           <Wrapper>
             <FullWidthWrapper>
               <EditorWrapper
@@ -574,19 +558,13 @@ export default function MessageInput({
                             images: [],
                             thread_count: 0,
                             thread_last_timestamp: 0,
-                          }
+                          },
                     );
                   }}
-                  onSend={(html: string) => {
-                    handleSendMessageEnter(html);
-                  }}
-                  placeholder={
-                    openThread && isThread
-                      ? "Reply in thread"
-                      : `Type message in ${selectedChat}`
-                  }
+                  onSend={handleSendMessageEnter}
+                  placeholder={placeholderText}
                   maxHeight={50}
-                  style={{fontSize: "14px"}}
+                  style={{ fontSize: "14px" }}
                   className="full-width-editor"
                 />
               </EditorWrapper>
@@ -597,18 +575,14 @@ export default function MessageInput({
                 $placeholderPositionMobile={placeholderPosition}
                 className="desktop"
               >
-                {openThread && isThread
-                  ? `Reply in thread`
-                  : `Type message in ${selectedChat}`}
+                {placeholderText}
               </Placeholder>
               <Placeholder
                 $placeholderPosition={placeholderPosition}
                 $placeholderPositionMobile={placeholderPosition}
                 className="mobile"
               >
-                {openThread && isThread
-                  ? `Reply in thread`
-                  : `Type message in ${selectedChat.length == 44 ? `${selectedChat.toLowerCase().slice(0, 6)}...${selectedChat.toLowerCase().slice(-4)}` : selectedChat}`}
+                {placeholderTextMobile}
               </Placeholder>
             </>
             {uploadedFile?.file.cid && (
@@ -676,7 +650,7 @@ export default function MessageInput({
         </Container>
       )}
       {!canWriteMessage && (
-        <Container style={getCustomStyle(!!openThread, isThread)}>
+        <Container style={customStyle}>
           <ReadOnlyField>
             You don&apos;t have permissions to write in this channel
           </ReadOnlyField>

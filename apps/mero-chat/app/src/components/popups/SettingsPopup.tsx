@@ -16,7 +16,7 @@ const Container = styled.div`
   height: 100%;
   max-height: 80vh;
   overflow-y: auto;
-  
+
   @media (max-width: 1024px) {
     max-height: calc(100vh - 140px);
     overflow-y: auto;
@@ -69,7 +69,11 @@ interface SettingsPopupProps {
   toggle: React.ReactNode;
 }
 
-export default function SettingsPopup({ isOpen, setIsOpen, toggle }: SettingsPopupProps) {
+export default function SettingsPopup({
+  isOpen,
+  setIsOpen,
+  toggle,
+}: SettingsPopupProps) {
   const { logout } = useCalimero();
 
   const handleLogout = () => {
@@ -81,6 +85,7 @@ export default function SettingsPopup({ isOpen, setIsOpen, toggle }: SettingsPop
   };
 
   const tabs = [
+    { id: "context-switcher", label: "Switch Context" },
     { id: "join-context", label: "Join Context" },
     { id: "invite-to-context", label: "Invite to Context" },
     { id: "create-identity", label: "Create Identity" },
@@ -95,11 +100,15 @@ export default function SettingsPopup({ isOpen, setIsOpen, toggle }: SettingsPop
           <i className="bi bi-x-lg"></i>
         </CloseButton>
       </Header>
-      
+
       <TabbedInterface tabs={tabs} />
-      
+
       <LogoutWrapper>
-        <Button onClick={handleLogout} variant="secondary" style={{ width: "80px" }}>
+        <Button
+          onClick={handleLogout}
+          variant="secondary"
+          style={{ width: "80px" }}
+        >
           Logout
         </Button>
       </LogoutWrapper>

@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import styled from 'styled-components';
-import useNotificationSound from '../../hooks/useNotificationSound';
-import { Button } from '@calimero-network/mero-ui';
+import React, { useState, useEffect } from "react";
+import styled from "styled-components";
+import useNotificationSound from "../../hooks/useNotificationSound";
+import { Button } from "@calimero-network/mero-ui";
 
 const SettingsContainer = styled.div`
   background-color: #0e0e10;
@@ -9,7 +9,11 @@ const SettingsContainer = styled.div`
   overflow: hidden;
 `;
 
-const SettingsItem = styled.div<{ $borderbottom?: boolean; $roundedTop?: boolean; $roundedBottom?: boolean }>`
+const SettingsItem = styled.div<{
+  $borderbottom?: boolean;
+  $roundedTop?: boolean;
+  $roundedBottom?: boolean;
+}>`
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -25,7 +29,7 @@ const SettingsItem = styled.div<{ $borderbottom?: boolean; $roundedTop?: boolean
 `;
 
 const Text = styled.h6`
-  color: #FFF;
+  color: #fff;
   font-family: Helvetica Neue;
   font-size: 14px;
   font-style: normal;
@@ -40,16 +44,16 @@ const ToggleButton = styled.button<{ $active: boolean }>`
   height: 24px;
   border-radius: 12px;
   border: none;
-  background-color: ${({ $active }) => ($active ? '#73B30C' : '#686672')};
+  background-color: ${({ $active }) => ($active ? "#73B30C" : "#686672")};
   position: relative;
   cursor: pointer;
   transition: background-color 0.2s ease;
 
   &::after {
-    content: '';
+    content: "";
     position: absolute;
     top: 2px;
-    left: ${({ $active }) => ($active ? '22px' : '2px')};
+    left: ${({ $active }) => ($active ? "22px" : "2px")};
     width: 20px;
     height: 20px;
     border-radius: 50%;
@@ -72,7 +76,7 @@ const VolumeSlider = styled.input`
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    background: #73B30C;
+    background: #73b30c;
     cursor: pointer;
   }
 
@@ -80,7 +84,7 @@ const VolumeSlider = styled.input`
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    background: #73B30C;
+    background: #73b30c;
     cursor: pointer;
     border: none;
   }
@@ -93,7 +97,8 @@ const VolumeContainer = styled.div`
 `;
 
 const NotificationSettings: React.FC = () => {
-  const { isEnabled, volume, setEnabled, setVolume, playSound } = useNotificationSound();
+  const { isEnabled, volume, setEnabled, setVolume, playSound } =
+    useNotificationSound();
   const [localVolume, setLocalVolume] = useState(volume);
 
   useEffect(() => {
@@ -107,14 +112,15 @@ const NotificationSettings: React.FC = () => {
 
   const handleTestSound = () => {
     // Initialize audio context on user interaction
-    if (typeof window !== 'undefined' && window.AudioContext) {
+    if (typeof window !== "undefined" && window.AudioContext) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      if (audioContext.state === 'suspended') {
+      const audioContext = new (window.AudioContext ||
+        (window as any).webkitAudioContext)();
+      if (audioContext.state === "suspended") {
         audioContext.resume();
       }
     }
-    playSound('message');
+    playSound("message");
   };
 
   return (
@@ -126,7 +132,7 @@ const NotificationSettings: React.FC = () => {
           onClick={() => setEnabled(!isEnabled)}
         />
       </SettingsItem>
-      
+
       <SettingsItem $borderbottom>
         <Text>Volume</Text>
         <VolumeContainer>
@@ -139,7 +145,7 @@ const NotificationSettings: React.FC = () => {
             onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
             disabled={!isEnabled}
           />
-          <Text style={{ minWidth: '30px', textAlign: 'right' }}>
+          <Text style={{ minWidth: "30px", textAlign: "right" }}>
             {Math.round(localVolume * 100)}%
           </Text>
         </VolumeContainer>
@@ -147,10 +153,7 @@ const NotificationSettings: React.FC = () => {
 
       <SettingsItem $borderbottom>
         <Text>Test sound</Text>
-        <Button
-          onClick={handleTestSound}
-          disabled={!isEnabled}
-        >
+        <Button onClick={handleTestSound} disabled={!isEnabled}>
           Play
         </Button>
       </SettingsItem>

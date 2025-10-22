@@ -29,7 +29,7 @@ const IconContainer = styled.div<{ selected: boolean }>`
   justify-content: center;
   align-items: center;
   cursor: pointer;
-  ${({ selected }) => selected && 'border-bottom: 1px solid #009900;'}
+  ${({ selected }) => selected && "border-bottom: 1px solid #009900;"}
   transition: background-color 500ms ease
 `;
 
@@ -44,36 +44,36 @@ const SelectedTypeTitle = styled.div`
 `;
 
 const typesIcons = [
-  'bi-emoji-smile',
-  'bi-tree',
-  'bi-egg-fill',
-  'bi-controller',
-  'bi-globe-americas',
-  'bi-lamp-fill',
-  'bi-shield',
-  'bi-flag-fill',
+  "bi-emoji-smile",
+  "bi-tree",
+  "bi-egg-fill",
+  "bi-controller",
+  "bi-globe-americas",
+  "bi-lamp-fill",
+  "bi-shield",
+  "bi-flag-fill",
 ];
 
 const typesNames = [
-  'People',
-  'Nature',
-  'Food and Drinks',
-  'Activity',
-  'Travel Places',
-  'Objects',
-  'Symbols',
-  'Flags',
+  "People",
+  "Nature",
+  "Food and Drinks",
+  "Activity",
+  "Travel Places",
+  "Objects",
+  "Symbols",
+  "Flags",
 ];
 
 const typesIds = [
-  'People',
-  'Nature',
-  'Food-drink',
-  'Activity',
-  'Travel-places',
-  'Objects',
-  'Symbols',
-  'Flags',
+  "People",
+  "Nature",
+  "Food-drink",
+  "Activity",
+  "Travel-places",
+  "Objects",
+  "Symbols",
+  "Flags",
 ];
 
 const EmojiGrid = styled.div`
@@ -158,21 +158,18 @@ interface EmojiSelectorProps {
   onEmojiSelected: (emoji: string) => void;
 }
 
-export default function EmojiSelector({
-  onEmojiSelected,
-}: EmojiSelectorProps) {
+export default function EmojiSelector({ onEmojiSelected }: EmojiSelectorProps) {
   const [selected, setSelected] = useState(0);
   const [hoverStateHeader, setHoverStateHeader] = useState(-1);
   const [hoveredEmoji, setHoveredEmoji] = useState<Emoji | null>(null);
-  
-  
+
   const updateHoveredEmoji = (emoji: Emoji | null) => {
     setHoveredEmoji(emoji);
   };
   const updateHoverStateHeader = (id: number) => {
     setHoverStateHeader(id);
   };
-  
+
   const updateSelectedType = (id: number) => {
     setSelected(id);
   };
@@ -196,28 +193,30 @@ export default function EmojiSelector({
       </TypeSelectorHeader>
       <SelectedTypeTitle>{typesNames[selected]}</SelectedTypeTitle>
       <EmojiGrid>
-        {emojiObj[typesIds[selected] as keyof typeof emojiObj].map((item: Emoji, id: number) => (
-          <div key={id+item.emoji}>
-            <EmojiItemDesktop
-              key={`desktop-${id}`}
-              onMouseEnter={() => updateHoveredEmoji(item)}
-              onMouseLeave={() => updateHoveredEmoji(null)}
-              onClick={() => {
-                onEmojiSelected(item.emoji);
-              }}
-            >
-              <p>{item.emoji}</p>
-            </EmojiItemDesktop>
-            <EmojiItemMobile
-              key={`mobile-${id}`}
-              onClick={() => {
-                onEmojiSelected(item.emoji);
-              }}
-            >
-              <p>{item.emoji}</p>
-            </EmojiItemMobile>
-          </div>
-        ))}
+        {emojiObj[typesIds[selected] as keyof typeof emojiObj].map(
+          (item: Emoji, id: number) => (
+            <div key={id + item.emoji}>
+              <EmojiItemDesktop
+                key={`desktop-${id}`}
+                onMouseEnter={() => updateHoveredEmoji(item)}
+                onMouseLeave={() => updateHoveredEmoji(null)}
+                onClick={() => {
+                  onEmojiSelected(item.emoji);
+                }}
+              >
+                <p>{item.emoji}</p>
+              </EmojiItemDesktop>
+              <EmojiItemMobile
+                key={`mobile-${id}`}
+                onClick={() => {
+                  onEmojiSelected(item.emoji);
+                }}
+              >
+                <p>{item.emoji}</p>
+              </EmojiItemMobile>
+            </div>
+          ),
+        )}
       </EmojiGrid>
       <DisplayEmojiGrid>
         <p>Emoji: </p>
@@ -230,5 +229,4 @@ export default function EmojiSelector({
       </DisplayEmojiGrid>
     </EmojiComponentContainer>
   );
-  
 }

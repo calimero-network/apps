@@ -6,10 +6,7 @@ import {
   getExecutorPublicKey,
 } from "@calimero-network/calimero-client";
 import type { ResponseData } from "@calimero-network/calimero-client";
-import {
-  Button,
-  Input,
-} from "@calimero-network/mero-ui";
+import { Button, Input } from "@calimero-network/mero-ui";
 
 const TabContent = styled.div`
   display: flex;
@@ -70,7 +67,7 @@ export default function InviteToContextTab() {
     executorPublicKey: "",
   });
   const [invitationPayload, setInvitationPayload] = useState<string | null>(
-    null
+    null,
   );
 
   useEffect(() => {
@@ -109,7 +106,7 @@ export default function InviteToContextTab() {
         .contextInvite(
           configData.contextId,
           configData.executorPublicKey,
-          inviteeId.trim()
+          inviteeId.trim(),
         );
 
       if (response.error) {
@@ -159,19 +156,19 @@ export default function InviteToContextTab() {
               disabled={true}
             />
             <Button
-                onClick={() => handleCopyToClipboard(invitationPayload)}
-                variant="secondary"
-                style={{ 
-                  width: "80px", 
-                  minWidth: "80px",
-                  whiteSpace: "nowrap",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center"
-                }}
-              >
-                <span>Copy</span>
-              </Button>
+              onClick={() => handleCopyToClipboard(invitationPayload)}
+              variant="secondary"
+              style={{
+                width: "80px",
+                minWidth: "80px",
+                whiteSpace: "nowrap",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <span>Copy</span>
+            </Button>
           </InputGroup>
         </ConfigInfo>
       ) : (

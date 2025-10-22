@@ -235,7 +235,7 @@ export enum ClientMethod {
   READ_DM = "mark_dm_as_read",
   GET_DM_UNREAD_COUNT = "get_dm_unread_count",
   GET_TOTAL_DM_UNREAD_COUNT = "get_total_dm_unread_count",
-  MARK_ALL_DMS_AS_READ = "mark_all_dms_as_read"
+  MARK_ALL_DMS_AS_READ = "mark_all_dms_as_read",
 }
 
 export interface ClientApi {
@@ -243,7 +243,9 @@ export interface ClientApi {
   createChannel(props: CreateChannelProps): ApiResponse<CreateChannelResponse>;
   getChannels(): ApiResponse<Channels>;
   getAllChannelsSearch(): ApiResponse<Channels>;
-  getChannelMembers(props: GetChannelMembersProps): ApiResponse<Map<string, string>>;
+  getChannelMembers(
+    props: GetChannelMembersProps,
+  ): ApiResponse<Map<string, string>>;
   getChannelInfo(props: GetChannelInfoProps): ApiResponse<ChannelInfo>;
   inviteToChannel(props: InviteToChannelProps): ApiResponse<string>;
   getNonMemberUsers(props: GetNonMemberUsersProps): ApiResponse<UserId[]>;
@@ -258,7 +260,9 @@ export interface ClientApi {
   editMessage(props: EditMessageProps): ApiResponse<Message>;
   deleteMessage(props: DeleteMessageProps): ApiResponse<string>;
   updateNewIdentity(props: UpdateNewIdentityProps): ApiResponse<string>;
-  updateInvitationPayload(props: UpdateInvitationPayloadProps): ApiResponse<string>;
+  updateInvitationPayload(
+    props: UpdateInvitationPayloadProps,
+  ): ApiResponse<string>;
   acceptInvitation(props: AcceptInvitationProps): ApiResponse<string>;
   deleteDM(props: DeleteDMProps): ApiResponse<string>;
   readMessage(props: ReadMessageProps): ApiResponse<string>;

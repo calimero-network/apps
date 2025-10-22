@@ -217,7 +217,7 @@ export default function SearchChannelsContainer({
             let isMember = false;
             if (channelMembers.data) {
               isMember = Object.keys(channelMembers.data).includes(
-                getExecutorPublicKey() || ""
+                getExecutorPublicKey() || "",
               );
             } else {
               isMember = false;
@@ -240,7 +240,7 @@ export default function SearchChannelsContainer({
               readOnly: channelInfo.read_only,
               createdAt: new Date(channelInfo.created_at * 1000).toISOString(),
             };
-          })
+          }),
         );
         setAllChannels(channelsArray);
       }
@@ -271,7 +271,7 @@ export default function SearchChannelsContainer({
       setIsLoadingNameId("");
       fetchChannels();
     },
-    [setAllChannels, allChannels]
+    [setAllChannels, allChannels],
   );
 
   const onViewChannel = useCallback((chatSelected: ChannelMeta) => {
@@ -351,7 +351,7 @@ export default function SearchChannelsContainer({
                     onClick={() =>
                       clickChannelOption(channel.isMember, channel.name)
                     }
-                    style={{ width: "74px"}}
+                    style={{ width: "74px" }}
                   >
                     {channel.isMember ? "Leave" : "Join"}
                   </Button>

@@ -120,7 +120,7 @@ export default function CreateIdentityTab() {
         // Auto-save to localStorage
         localStorage.setItem(
           "new-context-identity",
-          JSON.stringify(response.data)
+          JSON.stringify(response.data),
         );
         setMessage({
           text: "Identity created and saved successfully!",
@@ -164,13 +164,13 @@ export default function CreateIdentityTab() {
               <Button
                 onClick={() => handleCopyToClipboard(identity.publicKey)}
                 variant="secondary"
-                style={{ 
-                  width: "80px", 
+                style={{
+                  width: "80px",
                   minWidth: "80px",
                   whiteSpace: "nowrap",
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "center"
+                  justifyContent: "center",
                 }}
               >
                 <span>Copy</span>

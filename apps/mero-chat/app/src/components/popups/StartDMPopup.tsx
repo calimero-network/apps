@@ -133,7 +133,7 @@ const StartDMPopup = memo(function StartDMPopup({
   const [isProcessing, setIsProcessing] = useState(false);
   const [inputValue, setInputValue] = usePersistentState(
     "startDMInputValue",
-    ""
+    "",
   );
   const [validInput, setValidInput] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -155,7 +155,7 @@ const StartDMPopup = memo(function StartDMPopup({
 
     const identity = Object.keys(chatMembers).find(
       // @ts-expect-error - chatMembers is a Map<string, string>
-      (key) => chatMembers[key] === inputValue
+      (key) => chatMembers[key] === inputValue,
     );
     if (!identity) {
       setErrorMessage("User not found");
@@ -190,7 +190,7 @@ const StartDMPopup = memo(function StartDMPopup({
     setErrorMessage("");
     if (value.length > 0) {
       const s = Object.values(chatMembers).filter((member) =>
-        member.toLowerCase().startsWith(value.toLowerCase())
+        member.toLowerCase().startsWith(value.toLowerCase()),
       );
       setSuggestions(s);
       setShowSuggestions(s.length > 0);
@@ -223,7 +223,7 @@ const StartDMPopup = memo(function StartDMPopup({
   };
 
   const popupContent = (
-    <div style={{ pointerEvents: 'auto' }}>
+    <div style={{ pointerEvents: "auto" }}>
       <CloseButton onClick={handleClosePopup}>
         <i className="bi bi-x-lg"></i>
       </CloseButton>

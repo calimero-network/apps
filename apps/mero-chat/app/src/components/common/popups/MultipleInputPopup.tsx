@@ -164,10 +164,10 @@ const AutocompleteContainer: React.FC<AutocompleteContainerProps> = ({
   selectedUsers,
 }) => {
   const filteredInviteUsers = Object.values(inviteUsers).filter(
-    (user) => 
-      user.toLowerCase().startsWith(value.toLowerCase()) && 
-      user !== value && 
-      !selectedUsers.includes(user)
+    (user) =>
+      user.toLowerCase().startsWith(value.toLowerCase()) &&
+      user !== value &&
+      !selectedUsers.includes(user),
   );
   return (
     <>
@@ -209,7 +209,8 @@ const MultipleInputPopup: React.FC<MultipleInputPopupProps> = (props) => {
   const isAutocompleteListOpen =
     autocomplete &&
     inputValue &&
-    nonInvitedUserList && Object.keys(nonInvitedUserList).length > 0 &&
+    nonInvitedUserList &&
+    Object.keys(nonInvitedUserList).length > 0 &&
     showAutocomplete;
 
   const selectUser = (userId: string) => {
@@ -236,7 +237,7 @@ const MultipleInputPopup: React.FC<MultipleInputPopupProps> = (props) => {
 
   const unselectUser = (accountId: string) => {
     const filteredArray = selectedUsers.filter(
-      (itemId) => itemId !== accountId
+      (itemId) => itemId !== accountId,
     );
     setSelectedUsers(filteredArray);
   };
@@ -261,7 +262,7 @@ const MultipleInputPopup: React.FC<MultipleInputPopupProps> = (props) => {
   };
 
   const popupContent = (
-    <div style={{ width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
+    <div style={{ width: "100%", maxWidth: "100%", overflow: "hidden" }}>
       <CloseButton onClick={handleClosePopup}>
         <i className="bi bi-x-lg"></i>
       </CloseButton>
@@ -323,9 +324,7 @@ const MultipleInputPopup: React.FC<MultipleInputPopupProps> = (props) => {
           />
         )}
       </InputWrapper>
-      <RulesWrapper>
-        Invite users to group
-      </RulesWrapper>
+      <RulesWrapper>Invite users to group</RulesWrapper>
       <Button
         onClick={runProcess}
         disabled={selectedUsers.length === 0}

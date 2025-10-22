@@ -30,7 +30,7 @@ export default function ChannelDetailsPopup({
   selectedTabIndex,
   reFetchChannelMembers,
   setActiveChat,
-  fetchChannels
+  fetchChannels,
 }: ChannelDetailsPopupProps) {
   const [channelMeta, setChannelMeta] = useState<ChannelMeta>({
     name: chat.name,
@@ -51,11 +51,12 @@ export default function ChannelDetailsPopup({
   const channelName = chat.type === "channel" ? chat.name : chat.id;
 
   const getChannelMetadata = async (channelName: string) => {
-    const channelInfo: ResponseData<ChannelInfo> = await new ClientApiDataSource().getChannelInfo({
-      channel: { name: channelName },
-    });
+    const channelInfo: ResponseData<ChannelInfo> =
+      await new ClientApiDataSource().getChannelInfo({
+        channel: { name: channelName },
+      });
     if (channelInfo.data) {
-      setChannelMeta(prevMeta => ({
+      setChannelMeta((prevMeta) => ({
         ...prevMeta,
         createdAt: new Date(channelInfo.data.created_at * 1000).toISOString(),
         createdBy: channelInfo.data.created_by,
@@ -63,7 +64,6 @@ export default function ChannelDetailsPopup({
         channelType: chat.channelType || "",
       }));
     }
-    
   };
 
   const handleLeaveChannel = async () => {
@@ -80,7 +80,7 @@ export default function ChannelDetailsPopup({
       if (chat.name) {
         await getChannelMetadata(chat.name);
       }
-    }
+    };
     fetchMetadata();
   }, [chat]);
 

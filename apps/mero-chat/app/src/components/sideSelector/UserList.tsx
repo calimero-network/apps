@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { DMChatInfo } from "../../api/clientApi";
 import type { ActiveChat } from "../../types/Common";
 import UserItem from "./UserItem";
@@ -8,20 +9,20 @@ const ScrollableUserList = styled.div`
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: #282933 transparent;
-  
+
   &::-webkit-scrollbar {
     width: 4px;
   }
-  
+
   &::-webkit-scrollbar-track {
     background: transparent;
   }
-  
+
   &::-webkit-scrollbar-thumb {
     background-color: #282933;
     border-radius: 2px;
   }
-  
+
   &::-webkit-scrollbar-thumb:hover {
     background-color: #404040;
   }
@@ -34,7 +35,7 @@ interface UserListProps {
   isCollapsed?: boolean;
 }
 
-export default function UserList({
+const UserList = memo(function UserList({
   selectedDM,
   onDMSelected,
   privateDMs,
@@ -54,4 +55,6 @@ export default function UserList({
         ))}
     </ScrollableUserList>
   );
-}
+});
+
+export default UserList;

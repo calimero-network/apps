@@ -67,7 +67,7 @@ interface HandleInvitationProps {
 
 export default function HandleInvitation({
   activeChat,
-  onDMSelected
+  onDMSelected,
 }: HandleInvitationProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,11 +83,13 @@ export default function HandleInvitation({
   const handleInvite = async () => {
     setLoading(true);
     try {
-      const response = await apiClient.node().contextInvite(
-        activeChat.contextId ?? "",
-        activeChat.account ?? "",
-        activeChat.otherIdentityNew ?? "",
-      );
+      const response = await apiClient
+        .node()
+        .contextInvite(
+          activeChat.contextId ?? "",
+          activeChat.account ?? "",
+          activeChat.otherIdentityNew ?? "",
+        );
       if (response.data) {
         const invitationPayload = response.data;
         const clientResponse =
@@ -106,7 +108,7 @@ export default function HandleInvitation({
         } else {
           setError(
             clientResponse.error?.message ||
-              "Failed to update invitation payload"
+              "Failed to update invitation payload",
           );
         }
       } else {
@@ -114,7 +116,7 @@ export default function HandleInvitation({
       }
     } catch (error) {
       setError(
-        error instanceof Error ? error.message : "An unexpected error occurred"
+        error instanceof Error ? error.message : "An unexpected error occurred",
       );
     } finally {
       setLoading(false);

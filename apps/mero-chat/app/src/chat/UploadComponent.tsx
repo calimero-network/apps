@@ -34,7 +34,10 @@ interface UploadComponentProps {
   setError: (error: string) => void;
 }
 
-declare function asyncFetch(url: string, options: RequestInit): Promise<{ status: number; body: { cid: string } }>;
+declare function asyncFetch(
+  url: string,
+  options: RequestInit,
+): Promise<{ status: number; body: { cid: string } }>;
 
 export default function UploadComponent({
   uploadedFile: _uploadedFile,
@@ -50,32 +53,34 @@ export default function UploadComponent({
   const uploadFileUpdateState = (file: globalThis.File) => {
     setError("");
     setUploading(true);
-    
+
     asyncFetch("https://ipfs.near.social/add", {
       method: "POST",
       headers: { Accept: "application/json" },
       body: file as BodyInit,
-    }).then((res) => {
-      setUploading(false);
-      if (res.status === 500) {
-        setError("Maximum file size is 10MB!");
+    })
+      .then((res) => {
+        setUploading(false);
+        if (res.status === 500) {
+          setError("Maximum file size is 10MB!");
+          setUploadedFile(null);
+        } else {
+          setError("");
+          const cid = res.body.cid;
+          const fileObject: FileObject = {
+            cid,
+            name: file.name,
+            size: file.size,
+            type: file.type,
+          };
+          setUploadedFile({ file: fileObject });
+        }
+      })
+      .catch((_err) => {
+        setUploading(false);
+        setError("Upload failed");
         setUploadedFile(null);
-      } else {
-        setError("");
-        const cid = res.body.cid;
-        const fileObject: FileObject = {
-          cid, 
-          name: file.name,
-          size: file.size,
-          type: file.type
-        };
-        setUploadedFile({ file: fileObject });
-      }
-    }).catch((_err) => {
-      setUploading(false);
-      setError("Upload failed");
-      setUploadedFile(null);
-    });
+      });
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -86,7 +91,7 @@ export default function UploadComponent({
         cid: "",
         name: file.name,
         size: file.size,
-        type: file.type
+        type: file.type,
       };
       setUploadedFile({ file: fileObject });
       uploadFileUpdateState(file);

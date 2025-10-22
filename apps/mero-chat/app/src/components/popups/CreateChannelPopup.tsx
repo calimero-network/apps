@@ -99,7 +99,7 @@ interface CreateChannelPopupProps {
   createChannel: (
     channelName: string,
     isPublic: boolean,
-    isReadOnly: boolean
+    isReadOnly: boolean,
   ) => Promise<void>;
   buttonText: string;
   channelNameValidator: (value: string) => { isValid: boolean; error: string };
@@ -132,7 +132,7 @@ export default function CreateChannelPopup({
     await createChannel(
       inputValue,
       visibility === "public",
-      readOnly === "yes"
+      readOnly === "yes",
     );
     setInputValue("");
     setIsProcessing(false);
@@ -152,11 +152,10 @@ export default function CreateChannelPopup({
     setIsOpen(newOpen);
   };
 
-
   const isInvalid = !!(inputValue && !validInput && errorMessage);
 
   const popupContent = (
-    <Container style={{ pointerEvents: 'auto' }}>
+    <Container style={{ pointerEvents: "auto" }}>
       <CloseButton onClick={handleClosePopup}>
         <i className="bi bi-x-lg"></i>
       </CloseButton>

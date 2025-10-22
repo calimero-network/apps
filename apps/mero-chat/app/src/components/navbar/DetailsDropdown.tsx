@@ -124,7 +124,7 @@ export default function DetailsDropdown({
   if (activeChat.type === "channel") {
     // Use the actual channelType from the activeChat
     const isPrivateChannel = activeChat.channelType === "Private";
-    
+
     const toggle = (
       <DropdownSelector>
         <ChannelIconContainer>
@@ -185,9 +185,7 @@ export default function DetailsDropdown({
   return (
     <PaddingContainer>
       <SelectedChannelName className="desktop">{title}</SelectedChannelName>
-      <SelectedChannelName className="mobile">
-        {title}
-      </SelectedChannelName>
+      <SelectedChannelName className="mobile">{title}</SelectedChannelName>
     </PaddingContainer>
   );
 }

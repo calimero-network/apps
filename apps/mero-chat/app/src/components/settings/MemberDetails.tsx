@@ -203,7 +203,7 @@ const AddUserDialog = ({
     selectedUsers.forEach((account) => {
       const identityId = Object.keys(nonInvitedUserList).find(
         // @ts-expect-error - nonInvitedUserList is a Map
-        (u) => nonInvitedUserList[u] === account
+        (u) => nonInvitedUserList[u] === account,
       ) as string;
       addMember(identityId, channelName);
     });

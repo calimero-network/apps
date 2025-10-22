@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { styled } from "styled-components";
 import DMHeader from "./DMHeader";
 import UserList from "./UserList";
@@ -22,18 +23,30 @@ interface DMSideSelectorProps {
   isCollapsed?: boolean;
 }
 
-export default function DMSideSelector({
+function DMSideSelector({
   chatMembers,
   createDM,
   onDMSelected,
   selectedDM,
   privateDMs,
-  isCollapsed
+  isCollapsed,
 }: DMSideSelectorProps) {
   return (
     <DMContainer>
-      <DMHeader key="dm-header" createDM={createDM} chatMembers={chatMembers} isCollapsed={isCollapsed}/>
-      <UserList selectedDM={selectedDM} onDMSelected={onDMSelected} privateDMs={privateDMs} isCollapsed={isCollapsed} />
+      <DMHeader
+        key="dm-header"
+        createDM={createDM}
+        chatMembers={chatMembers}
+        isCollapsed={isCollapsed}
+      />
+      <UserList
+        selectedDM={selectedDM}
+        onDMSelected={onDMSelected}
+        privateDMs={privateDMs}
+        isCollapsed={isCollapsed}
+      />
     </DMContainer>
   );
 }
+
+export default memo(DMSideSelector);

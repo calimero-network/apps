@@ -47,9 +47,7 @@ export default function EmojiSelectorPopup({
           <i className="bi bi-x-lg"></i>
         </CloseButton>
       </CloseButtonContainer>
-      <EmojiSelector
-        onEmojiSelected={(emoji) => onEmojiSelected(emoji)}
-      />
+      <EmojiSelector onEmojiSelected={(emoji) => onEmojiSelected(emoji)} />
     </EmojiPopupContainer>
   );
 }

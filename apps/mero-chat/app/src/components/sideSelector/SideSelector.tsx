@@ -7,6 +7,7 @@ import { CurbLogo } from "../navbar/CurbNavbar";
 import DMSideSelector from "./DMSideSelector";
 import type { DMChatInfo } from "../../api/clientApi";
 import type { CreateContextResult } from "../popups/StartDMPopup";
+import { scrollbarStyles } from "../../styles/scrollbar";
 
 interface SideSelectorProps {
   channels: ChannelMeta[];
@@ -37,39 +38,19 @@ const HorizontalSeparatorLine = styled.div<{ $isMobile: boolean }>`
 const SideMenu = styled.div<{ $isCollapsed: boolean }>`
   background-color: #0e0e10;
   padding-top: 0.75rem;
-  width: ${props => props.$isCollapsed ? '60px' : '244px'};
+  width: ${(props) => (props.$isCollapsed ? "60px" : "244px")};
   display: flex;
   flex-direction: column;
   height: calc(100vh - 75px);
   overflow-y: scroll;
   transition: width 0.3s ease-in-out;
+
   @media (max-width: 1024px) {
     display: none;
   }
-  scrollbar-color: black black;
-  ::-webkit-scrollbar {
-    width: 6px;
-  }
-  ::-webkit-scrollbar-thumb {
-    background-color: black;
-    border-radius: 6px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background-color: black;
-  }
-  * {
-    scrollbar-color: black black;
-  }
-  html::-webkit-scrollbar {
-    width: 12px;
-  }
-  html::-webkit-scrollbar-thumb {
-    background-color: black;
-    border-radius: 6px;
-  }
-  html::-webkit-scrollbar-thumb:hover {
-    background-color: black;
-  }
+
+  /* Apply shared scrollbar styles */
+  ${scrollbarStyles}
 `;
 
 const SideMenuMobile = styled.div<{ $isOpen: boolean }>`
@@ -78,6 +59,7 @@ const SideMenuMobile = styled.div<{ $isOpen: boolean }>`
   padding-top: 0.75rem;
   overflow-y: scroll;
   height: 100vh;
+
   @media (max-width: 1024px) {
     display: block;
     position: fixed;
@@ -88,33 +70,13 @@ const SideMenuMobile = styled.div<{ $isOpen: boolean }>`
     z-index: 1000;
     padding-top: 12px;
     padding-bottom: 30px;
-    transform: ${props => props.$isOpen ? 'translateX(0)' : 'translateX(-100%)'};
+    transform: ${(props) =>
+      props.$isOpen ? "translateX(0)" : "translateX(-100%)"};
     transition: transform 0.3s ease-in-out;
   }
-  scrollbar-color: black black;
-  ::-webkit-scrollbar {
-    width: 6px;
-  }
-  ::-webkit-scrollbar-thumb {
-    background-color: black;
-    border-radius: 6px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background-color: black;
-  }
-  * {
-    scrollbar-color: black black;
-  }
-  html::-webkit-scrollbar {
-    width: 12px;
-  }
-  html::-webkit-scrollbar-thumb {
-    background-color: black;
-    border-radius: 6px;
-  }
-  html::-webkit-scrollbar-thumb:hover {
-    background-color: black;
-  }
+
+  /* Apply shared scrollbar styles */
+  ${scrollbarStyles}
 `;
 
 const SearchChannelsWrapper = styled.div<{ $isCollapsed: boolean }>`
@@ -126,7 +88,7 @@ const SearchChannelsWrapper = styled.div<{ $isCollapsed: boolean }>`
   gap: 3px;
   cursor: pointer;
   border-radius: 6px;
-  justify-content: ${props => props.$isCollapsed ? 'center' : 'flex-start'};
+  justify-content: ${(props) => (props.$isCollapsed ? "center" : "flex-start")};
   &:hover {
     background-color: #25252a;
     color: #fff;
@@ -162,7 +124,11 @@ const SearchChannels: React.FC<SearchChannelsProps> = ({
       }
     : {};
   return (
-    <SearchChannelsWrapper $isCollapsed={isCollapsed} onClick={setIsOpenSearchChannel} style={style}>
+    <SearchChannelsWrapper
+      $isCollapsed={isCollapsed}
+      onClick={setIsOpenSearchChannel}
+      style={style}
+    >
       <svg
         xmlns="http://www.w3.org/2000/svg"
         width="12"
@@ -184,7 +150,7 @@ const SearchChannels: React.FC<SearchChannelsProps> = ({
         </defs>
       </svg>
       {!isCollapsed && <span className="searchTitle">Browse Channels</span>}
-      <CollapseButton 
+      <CollapseButton
         onClick={(e) => {
           e.stopPropagation();
           onToggleCollapse();
@@ -202,9 +168,9 @@ const SearchChannels: React.FC<SearchChannelsProps> = ({
           strokeLinejoin="round"
         >
           {isCollapsed ? (
-            <path d="m9 18 6-6-6-6"/>
+            <path d="m9 18 6-6-6-6" />
           ) : (
-            <path d="m15 18-6-6 6-6"/>
+            <path d="m15 18-6-6 6-6" />
           )}
         </svg>
       </CollapseButton>
@@ -233,17 +199,17 @@ const CollapseButton = styled.button`
   justify-content: center;
   transition: all 0.2s ease;
   margin-left: auto;
-  
+
   &:hover {
     background-color: #25252a;
     color: #fff;
   }
-  
+
   svg {
     width: 16px;
     height: 16px;
   }
-  
+
   @media (max-width: 1024px) {
     display: none !important;
   }
@@ -283,7 +249,11 @@ const SideSelector: React.FC<SideSelectorProps> = (props) => {
         />
         <HorizontalSeparatorLine $isMobile={false} />
         {isCollapsed && <SectionLabel>CH</SectionLabel>}
-        <ChannelHeader key="channels-header" title="Channels" isCollapsed={isCollapsed} />
+        <ChannelHeader
+          key="channels-header"
+          title="Channels"
+          isCollapsed={isCollapsed}
+        />
         <ChannelList
           channels={channels}
           selectChannel={props.onChatSelected}

@@ -1,5 +1,12 @@
 import { styled } from "styled-components";
-import type { ActiveChat, ChannelMeta, ChatMessagesData, ChatMessagesDataWithOlder, CurbMessage } from "../../types/Common";
+import { memo } from "react";
+import type {
+  ActiveChat,
+  ChannelMeta,
+  ChatMessagesData,
+  ChatMessagesDataWithOlder,
+  CurbMessage,
+} from "../../types/Common";
 import ChannelsContainer from "./ChannelsContainer";
 import CurbNavbar from "../navbar/CurbNavbar";
 import SearchChannelsContainer from "../searchChannels/SearchChannelsContainer";
@@ -42,15 +49,19 @@ interface AppContainerProps {
   chatMembers: Map<string, string>;
   createDM: (value: string) => Promise<CreateContextResult>;
   privateDMs: DMChatInfo[];
-  loadInitialThreadMessages: (parentMessageId: string) => Promise<ChatMessagesData>;
+  loadInitialThreadMessages: (
+    parentMessageId: string,
+  ) => Promise<ChatMessagesData>;
   incomingThreadMessages: CurbMessage[];
   loadPrevThreadMessages: (id: string) => Promise<ChatMessagesDataWithOlder>;
   updateCurrentOpenThread: (thread: CurbMessage | undefined) => void;
   openThread: CurbMessage | undefined;
   setOpenThread: (thread: CurbMessage | undefined) => void;
   currentOpenThreadRef: React.RefObject<CurbMessage | undefined>;
+  addOptimisticMessage?: (message: CurbMessage) => void;
+  addOptimisticThreadMessage?: (message: CurbMessage) => void;
 }
-export default function AppContainer({
+function AppContainer({
   activeChat,
   isSidebarOpen,
   setIsSidebarOpen,
@@ -77,7 +88,9 @@ export default function AppContainer({
   updateCurrentOpenThread,
   openThread,
   setOpenThread,
-  currentOpenThreadRef
+  currentOpenThreadRef,
+  addOptimisticMessage,
+  addOptimisticThreadMessage,
 }: AppContainerProps) {
   return (
     <>
@@ -126,6 +139,8 @@ export default function AppContainer({
                 currentOpenThreadRef={currentOpenThreadRef}
                 onDMSelected={onDMSelected}
                 membersList={chatMembers}
+                addOptimisticMessage={addOptimisticMessage}
+                addOptimisticThreadMessage={addOptimisticThreadMessage}
               />
             )}
             {isOpenSearchChannel && (
@@ -140,3 +155,5 @@ export default function AppContainer({
     </>
   );
 }
+
+export default memo(AppContainer);

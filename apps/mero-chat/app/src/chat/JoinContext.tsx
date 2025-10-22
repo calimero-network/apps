@@ -29,7 +29,7 @@ interface JoinContextProps {
 export default function JoinContext({
   activeChat,
   invitationPayload,
-  onDMSelected
+  onDMSelected,
 }: JoinContextProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,23 +55,24 @@ export default function JoinContext({
         .node()
         .joinContext(invitationPayload.trim());
 
-
       if (response.data) {
-        const verifyContextResponse =
-          await apiClient.node().getContext(activeChat.contextId ?? "");
+        const verifyContextResponse = await apiClient
+          .node()
+          .getContext(activeChat.contextId ?? "");
         if (verifyContextResponse.data) {
           setSuccess("Context joined successfully");
           const savedSession = getStoredSession();
           if (savedSession) {
             savedSession.canJoin = false;
-            savedSession.isSynced = verifyContextResponse.data.rootHash !==
-            "11111111111111111111111111111111";
+            savedSession.isSynced =
+              verifyContextResponse.data.rootHash !==
+              "11111111111111111111111111111111";
             updateSessionChat(savedSession);
             onDMSelected(undefined, savedSession);
           }
         } else {
           setError(
-            verifyContextResponse.error?.message || "Failed to verify context"
+            verifyContextResponse.error?.message || "Failed to verify context",
           );
         }
       } else {
@@ -79,7 +80,7 @@ export default function JoinContext({
       }
     } catch (error) {
       setError(
-        error instanceof Error ? error.message : "An unexpected error occurred"
+        error instanceof Error ? error.message : "An unexpected error occurred",
       );
     } finally {
       setLoading(false);
@@ -97,11 +98,17 @@ export default function JoinContext({
         </div>
         {error && <div className="error">{error}</div>}
         {success && <div className="success">{success}</div>}
-        {!success && <div className="wrapper">
-          <button className="join-button" onClick={joinContext} disabled={loading || !invitationPayload}>
-            {loading ? <Loader size={16} /> : "Join Context"}
-          </button>
-        </div>}
+        {!success && (
+          <div className="wrapper">
+            <button
+              className="join-button"
+              onClick={joinContext}
+              disabled={loading || !invitationPayload}
+            >
+              {loading ? <Loader size={16} /> : "Join Context"}
+            </button>
+          </div>
+        )}
       </div>
     </MessageJoinWrapper>
   );

@@ -131,16 +131,17 @@ export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
           </ConnectWrapper>
         ) : (
           <>
-           <TabbedInterface
-            tabs={tabs}
-            isAuthenticated={isAuthenticated}
-            isConfigSet={isConfigSet}
-          />
-          <LogoutWrapper>
-            <Button onClick={handleLogout} variant="secondary">Logout</Button>
-          </LogoutWrapper>
+            <TabbedInterface
+              tabs={tabs}
+              isAuthenticated={isAuthenticated}
+              isConfigSet={isConfigSet}
+            />
+            <LogoutWrapper>
+              <Button onClick={handleLogout} variant="secondary">
+                Logout
+              </Button>
+            </LogoutWrapper>
           </>
-         
         )}
       </Card>
     </Wrapper>

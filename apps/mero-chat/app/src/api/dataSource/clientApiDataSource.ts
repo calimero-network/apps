@@ -45,7 +45,7 @@ export function getJsonRpcClient() {
   const appEndpointKey = getAppEndpointKey();
   if (!appEndpointKey) {
     throw new Error(
-      "Application endpoint key is missing. Please check your configuration."
+      "Application endpoint key is missing. Please check your configuration.",
     );
   }
   return rpcClient;
@@ -70,7 +70,7 @@ export class ClientApiDataSource implements ClientApi {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
+        },
       );
       if (response?.error) {
         return {
@@ -80,7 +80,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
       return {
         data: response?.result.output as string,
@@ -104,7 +104,7 @@ export class ClientApiDataSource implements ClientApi {
   }
 
   async createChannel(
-    props: CreateChannelProps
+    props: CreateChannelProps,
   ): ApiResponse<CreateChannelResponse> {
     try {
       const response = await getJsonRpcClient().execute<
@@ -130,7 +130,7 @@ export class ClientApiDataSource implements ClientApi {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
+        },
       );
 
       if (response?.error) {
@@ -141,7 +141,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
 
       return {
@@ -180,7 +180,7 @@ export class ClientApiDataSource implements ClientApi {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
+        },
       );
       if (response?.error) {
         return {
@@ -190,7 +190,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
 
       return {
@@ -229,7 +229,7 @@ export class ClientApiDataSource implements ClientApi {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
+        },
       );
       if (response?.error) {
         return {
@@ -239,7 +239,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
       return {
         data: response?.result.output as Channels,
@@ -280,7 +280,7 @@ export class ClientApiDataSource implements ClientApi {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
+        },
       );
       if (response?.error) {
         return {
@@ -290,7 +290,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
       return {
         data: response?.result.output as ChannelInfo,
@@ -314,11 +314,14 @@ export class ClientApiDataSource implements ClientApi {
   }
 
   async getChannelMembers(
-    props: GetChannelMembersProps
+    props: GetChannelMembersProps,
   ): ApiResponse<Map<string, string>> {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await getJsonRpcClient().execute<any, Map<string, string>>(
+      const response = await getJsonRpcClient().execute<
+        any,
+        Map<string, string>
+      >(
         {
           contextId: getContextId() || "",
           method: ClientMethod.GET_CHANNEL_MEMBERS,
@@ -332,7 +335,7 @@ export class ClientApiDataSource implements ClientApi {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
+        },
       );
       if (response?.error) {
         return {
@@ -342,7 +345,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
 
       return {
@@ -385,7 +388,7 @@ export class ClientApiDataSource implements ClientApi {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
+        },
       );
       if (response?.error) {
         return {
@@ -395,7 +398,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
       return {
         data: response?.result.output as string,
@@ -419,7 +422,7 @@ export class ClientApiDataSource implements ClientApi {
   }
 
   async getNonMemberUsers(
-    props: GetNonMemberUsersProps
+    props: GetNonMemberUsersProps,
   ): ApiResponse<UserId[]> {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -437,7 +440,7 @@ export class ClientApiDataSource implements ClientApi {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
+        },
       );
       if (response?.error) {
         return {
@@ -447,7 +450,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
       return {
         data: response?.result.output as UserId[],
@@ -488,7 +491,7 @@ export class ClientApiDataSource implements ClientApi {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
+        },
       );
       if (response?.error) {
         return {
@@ -498,7 +501,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
       return {
         data: response?.result.output as string,
@@ -538,7 +541,7 @@ export class ClientApiDataSource implements ClientApi {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
+        },
       );
       if (response?.error) {
         return {
@@ -548,7 +551,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
       return {
         data: response?.result.output as string,
@@ -595,7 +598,7 @@ export class ClientApiDataSource implements ClientApi {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
+        },
       );
       if (response?.error) {
         return {
@@ -605,7 +608,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
 
       return {
@@ -664,7 +667,7 @@ export class ClientApiDataSource implements ClientApi {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
+        },
       );
 
       if (response?.error) {
@@ -675,7 +678,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
 
       return {
@@ -714,7 +717,7 @@ export class ClientApiDataSource implements ClientApi {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
+        },
       );
       if (response?.error) {
         return {
@@ -724,7 +727,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
       return {
         data: response?.result.output as DMChatInfo[],
@@ -747,10 +750,15 @@ export class ClientApiDataSource implements ClientApi {
     }
   }
 
-  async getChatMembers(props: GetChatMembersProps): ApiResponse<Map<string, string>> {
+  async getChatMembers(
+    props: GetChatMembersProps,
+  ): ApiResponse<Map<string, string>> {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await getJsonRpcClient().execute<any, Map<string, string>>(
+      const response = await getJsonRpcClient().execute<
+        any,
+        Map<string, string>
+      >(
         {
           contextId: (props.isDM ? getDmContextId() : getContextId()) || "",
           method: ClientMethod.GET_CHAT_USERNAMES,
@@ -763,7 +771,7 @@ export class ClientApiDataSource implements ClientApi {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
+        },
       );
       if (response?.error) {
         return {
@@ -773,7 +781,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
       return {
         data: response?.result.output as Map<string, string>,
@@ -818,7 +826,7 @@ export class ClientApiDataSource implements ClientApi {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
+        },
       );
       if (response?.error) {
         return {
@@ -828,7 +836,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
       return {
         data: response?.result.output as string,
@@ -872,7 +880,7 @@ export class ClientApiDataSource implements ClientApi {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
+        },
       );
       if (response?.error) {
         return {
@@ -882,7 +890,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
       return {
         data: response?.result.output as string,
@@ -913,7 +921,7 @@ export class ClientApiDataSource implements ClientApi {
           contextId: (props.is_dm ? getDmContextId() : getContextId()) || "",
           method: ClientMethod.DELETE_MESSAGE,
           argsJson: {
-            group: props.is_dm ? {"name": "private_dm"} : props.group,
+            group: props.is_dm ? { name: "private_dm" } : props.group,
             message_id: props.messageId,
           },
           executorPublicKey:
@@ -924,7 +932,7 @@ export class ClientApiDataSource implements ClientApi {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
+        },
       );
       if (response?.error) {
         return {
@@ -934,7 +942,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
       return {
         data: response?.result.output as string,
@@ -965,7 +973,7 @@ export class ClientApiDataSource implements ClientApi {
           contextId: (props.is_dm ? getDmContextId() : getContextId()) || "",
           method: ClientMethod.EDIT_MESSAGE,
           argsJson: {
-            group: props.is_dm ? {"name": "private_dm"} : props.group,
+            group: props.is_dm ? { name: "private_dm" } : props.group,
             message_id: props.messageId,
             new_message: props.newMessage,
             timestamp: props.timestamp,
@@ -978,7 +986,7 @@ export class ClientApiDataSource implements ClientApi {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
+        },
       );
       if (response?.error) {
         return {
@@ -988,7 +996,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
       return {
         data: response?.result.output as Message,
@@ -1029,7 +1037,7 @@ export class ClientApiDataSource implements ClientApi {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
+        },
       );
       if (response?.error) {
         return {
@@ -1039,7 +1047,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
       return {
         data: response?.result.output as string,
@@ -1064,7 +1072,7 @@ export class ClientApiDataSource implements ClientApi {
   }
 
   async updateInvitationPayload(
-    props: UpdateInvitationPayloadProps
+    props: UpdateInvitationPayloadProps,
   ): ApiResponse<string> {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1083,7 +1091,7 @@ export class ClientApiDataSource implements ClientApi {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
+        },
       );
       if (response?.error) {
         return {
@@ -1093,7 +1101,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
       return {
         data: response?.result.output as string,
@@ -1134,7 +1142,7 @@ export class ClientApiDataSource implements ClientApi {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
+        },
       );
       if (response?.error) {
         return {
@@ -1144,7 +1152,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
       return {
         data: response?.result.output as string,
@@ -1184,7 +1192,7 @@ export class ClientApiDataSource implements ClientApi {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
+        },
       );
       if (response?.error) {
         return {
@@ -1194,7 +1202,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
       return {
         data: response?.result.output as string,
@@ -1216,8 +1224,8 @@ export class ClientApiDataSource implements ClientApi {
       };
     }
   }
-  
-    async readMessage(props: ReadMessageProps): ApiResponse<string> {
+
+  async readMessage(props: ReadMessageProps): ApiResponse<string> {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await getJsonRpcClient().execute<any, string>(
@@ -1235,7 +1243,7 @@ export class ClientApiDataSource implements ClientApi {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
+        },
       );
       if (response?.error) {
         return {
@@ -1245,7 +1253,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
       return {
         data: response?.result.output as string,
@@ -1281,14 +1289,14 @@ export class ClientApiDataSource implements ClientApi {
             new_hash: props.new_hash,
           },
           executorPublicKey: getExecutorPublicKey() || "",
-          },
+        },
         {
           headers: {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
-      );  
+        },
+      );
       if (response?.error) {
         return {
           data: null,
@@ -1297,7 +1305,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
       return {
         data: response?.result.output as string,
@@ -1331,14 +1339,14 @@ export class ClientApiDataSource implements ClientApi {
             other_user_id: props.other_user_id,
           },
           executorPublicKey: getExecutorPublicKey() || "",
-        },  
+        },
         {
           headers: {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
-      );  
+        },
+      );
       if (response?.error) {
         return {
           data: null,
@@ -1347,7 +1355,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
       return {
         data: response?.result.output as string,
@@ -1387,7 +1395,7 @@ export class ClientApiDataSource implements ClientApi {
             "Content-Type": "application/json",
           },
           timeout: 10000,
-        }
+        },
       );
       if (response?.error) {
         return {
@@ -1397,7 +1405,7 @@ export class ClientApiDataSource implements ClientApi {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             message: (response?.error.error.cause.info as any).message,
           },
-        }
+        };
       }
       return {
         data: response?.result.output as string,

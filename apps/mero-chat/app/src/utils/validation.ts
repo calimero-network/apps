@@ -15,4 +15,3 @@ export const isValidChannelName = (value: string) => {
 
   return { isValid, error };
 };
-

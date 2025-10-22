@@ -4,7 +4,8 @@ import { useCallback, memo } from "react";
 
 const Container = styled.div<{ $isCollapsed?: boolean }>`
   display: flex;
-  justify-content: ${props => props.$isCollapsed ? 'center' : 'space-between'};
+  justify-content: ${(props) =>
+    props.$isCollapsed ? "center" : "space-between"};
   align-items: center;
   background-color: #0e0e10;
   padding-bottom: 0.375rem;
@@ -40,27 +41,38 @@ interface DMHeaderProps {
   isCollapsed?: boolean;
 }
 
-const DMHeader = memo(function DMHeader({ createDM, chatMembers, isCollapsed }: DMHeaderProps) {
-  const isValidIdentityId = useCallback((value: string) => {
-    // Check if the value exists in chatMembers values
-    const userEntries = chatMembers instanceof Map ? Array.from(chatMembers.entries()) : Object.entries(chatMembers);
-    // @ts-expect-error chatMembers is a Map or an object
-    const usernames = userEntries.map(([_, username]) => username.toLowerCase());
-    const isMember = usernames.includes(value.toLowerCase());
+const DMHeader = memo(function DMHeader({
+  createDM,
+  chatMembers,
+  isCollapsed,
+}: DMHeaderProps) {
+  const isValidIdentityId = useCallback(
+    (value: string) => {
+      // Check if the value exists in chatMembers values
+      const userEntries =
+        chatMembers instanceof Map
+          ? Array.from(chatMembers.entries())
+          : Object.entries(chatMembers);
+      const usernames = userEntries.map(([_, username]) =>
+        (username as string).toLowerCase(),
+      );
+      const isMember = usernames.includes(value.toLowerCase());
 
-    if (!isMember) {
+      if (!isMember) {
+        return {
+          isValid: false,
+          error: "User not member of this chat",
+        };
+      }
+
       return {
-        isValid: false,
-        error: "User not member of this chat"
+        isValid: true,
+        error: "",
       };
-    }
+    },
+    [chatMembers],
+  );
 
-    return {
-      isValid: true,
-      error: ""
-    };
-  }, [chatMembers]);
-  
   return (
     <Container $isCollapsed={isCollapsed}>
       {!isCollapsed && <TextBold>{"Direct Messages"}</TextBold>}

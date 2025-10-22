@@ -127,7 +127,7 @@ export default function JoinChannel({
           channelMeta.created_by &&
           channelMeta.created_at &&
           `@${channelMeta.created_by_username} created this channel on ${timestampToDate(
-            new Date(channelMeta.created_at * 1000).toISOString()
+            new Date(channelMeta.created_at * 1000).toISOString(),
           )}`}
         <div className="wrapper">
           <Button onClick={joinChannel} style={{ width: "100%" }}>

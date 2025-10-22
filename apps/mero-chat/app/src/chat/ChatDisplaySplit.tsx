@@ -7,27 +7,31 @@ import type {
   MessageRendererProps,
   UpdatedMessages,
 } from "../types/Common";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, memo } from "react";
 import MessageInput from "./MessageInput";
 import {
   messageRenderer,
   VirtualizedChat,
   type CurbMessage,
-} from "curb-virtualized-chat";
+} from "../components/virtualized-chat";
 import type { ChannelInfo } from "../api/clientApi";
 import { getExecutorPublicKey } from "@calimero-network/calimero-client";
 import EmojiSelectorPopup from "../emojiSelector/EmojiSelectorPopup";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
+import { scrollbarStyles } from "../styles/scrollbar";
+import { StorageHelper } from "../utils/storage";
+import { log } from "../utils/logger";
 
 interface ChatDisplaySplitProps {
-  readMessage: (message: MessageWithReactions) => void;
+  readMessage: (message: CurbMessage) => void;
   handleReaction: (
     message: CurbMessage,
     emoji: string,
-    isThread: boolean
+    isThread: boolean,
   ) => void;
   openThread: CurbMessage | undefined;
   setOpenThread: (message: CurbMessage) => void;
+  closeThread?: () => void;
   activeChat: ActiveChat;
   updatedMessages: UpdatedMessages[];
   resetImage: () => void;
@@ -59,30 +63,13 @@ const ContainerPadding = styled.div`
     padding-left: 0px !important;
     padding-right: 0px !important;
   }
-  scrollbar-color: black black;
-  ::-webkit-scrollbar {
-    width: 6px;
-  }
-  ::-webkit-scrollbar-thumb {
-    background-color: black;
-    border-radius: 6px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background-color: black;
-  }
-  * {
-    scrollbar-color: black black;
-  }
-  html::-webkit-scrollbar {
-    width: 12px;
-  }
-  html::-webkit-scrollbar-thumb {
-    background-color: black;
-    border-radius: 6px;
-  }
-  html::-webkit-scrollbar-thumb:hover {
-    background-color: black;
-  }
+
+  /* Apply shared scrollbar styles */
+  ${scrollbarStyles}
+
+  /* Optimize scrolling performance */
+  contain: layout style paint;
+  overflow-anchor: none;
 `;
 
 const ThreadTitle = styled.div`
@@ -117,6 +104,10 @@ const Wrapper = styled.div`
   display: flex;
   flex-direction: column;
   height: calc(100% - 20px);
+  /* GPU acceleration for smoother rendering */
+  transform: translateZ(0);
+  backface-visibility: hidden;
+
   @media (max-width: 1024px) {
     width: 100% !important;
   }
@@ -166,11 +157,12 @@ const ThreadHeader = ({ onClose }: { onClose: () => void }) => (
   </ThreadContainer>
 );
 
-export default function ChatDisplaySplit({
+const ChatDisplaySplit = memo(function ChatDisplaySplit({
   readMessage,
   handleReaction,
   openThread,
   setOpenThread,
+  closeThread,
   activeChat,
   updatedMessages,
   resetImage,
@@ -197,11 +189,36 @@ export default function ChatDisplaySplit({
 }: ChatDisplaySplitProps) {
   const [accountId, setAccountId] = useState<string | undefined>(undefined);
   const [username, setUsername] = useState<string>("");
+  const hasLoadedUsername = useRef(false);
 
   useEffect(() => {
+    // Update accountId whenever activeChat changes (DM vs Channel have different IDs)
+    const isDM = activeChat?.type === "direct_message";
+    const currentAccountId = isDM
+      ? activeChat?.account || getExecutorPublicKey() || ""
+      : getExecutorPublicKey() || "";
+    setAccountId(currentAccountId);
+
+    // Only fetch username once, not on every render
+    if (hasLoadedUsername.current) return;
+
     const setUserInfo = async () => {
       const executorId = getExecutorPublicKey() ?? "";
-      setAccountId(executorId);
+
+      // Check if we already have the username in storage
+      const cachedUsername = StorageHelper.getItem("chat-username");
+      if (cachedUsername) {
+        const normalizedClass = cachedUsername
+          .replace(/\s+/g, "")
+          .toLowerCase()
+          .replace(/\./g, "\\.")
+          .replace(/_/g, "\\_");
+        setUsername(normalizedClass);
+        hasLoadedUsername.current = true;
+        return;
+      }
+
+      // Fetch from API if not cached
       const response = await new ClientApiDataSource().getUsername({
         user_id: executorId ?? "",
       });
@@ -212,10 +229,11 @@ export default function ChatDisplaySplit({
           .replace(/\./g, "\\.")
           .replace(/_/g, "\\_");
         setUsername(normalizedClass);
+        hasLoadedUsername.current = true;
       }
-    }
+    };
     setUserInfo();
-  }, []);
+  }, [activeChat]);
 
   // const isModerator = useMemo(
   //   () =>
@@ -253,7 +271,18 @@ export default function ChatDisplaySplit({
     currentChatStyle.overflow = "hidden";
   }
 
-  const renderMessage = () => {
+  // Debug logging for incomingMessages
+  useEffect(() => {
+    if (isThread) {
+      log.debug(
+        "ChatDisplaySplit",
+        `Thread component received incomingMessages:`,
+        incomingMessages,
+      );
+    }
+  }, [incomingMessages, isThread]);
+
+  const renderMessage = (message: CurbMessage, prevMessage?: CurbMessage) => {
     const params: MessageRendererProps = {
       accountId: username,
       isThread: isThread,
@@ -264,8 +293,16 @@ export default function ChatDisplaySplit({
       toggleEmojiSelector: toggleEmojiSelector,
       openMobileReactions: openMobileReactions,
       setOpenMobileReactions: setOpenMobileReactions,
-      editable: (message: CurbMessage) =>  message.sender === (activeChat.type === "direct_message" ? activeChat.account : getExecutorPublicKey()),
-      deleteable: (message: CurbMessage) =>  message.sender === (activeChat.type === "direct_message" ? activeChat.account : getExecutorPublicKey()),
+      editable: (message: CurbMessage) =>
+        message.sender ===
+        (activeChat.type === "direct_message"
+          ? activeChat.account
+          : getExecutorPublicKey()),
+      deleteable: (message: CurbMessage) =>
+        message.sender ===
+        (activeChat.type === "direct_message"
+          ? activeChat.account
+          : getExecutorPublicKey()),
       onEditModeRequested: onEditModeRequested,
       onEditModeCancelled: onEditModeCancelled,
       onMessageUpdated: onMessageUpdated,
@@ -275,7 +312,7 @@ export default function ChatDisplaySplit({
       authToken: undefined,
       privateIpfsEndpoint: "https://ipfs.io",
     };
-    return messageRenderer(params);
+    return messageRenderer(params)(message, prevMessage);
   };
 
   return (
@@ -286,7 +323,11 @@ export default function ChatDisplaySplit({
           {openThread && isThread && (
             <ThreadHeader
               onClose={() => {
-                setOpenThread("");
+                if (closeThread) {
+                  closeThread();
+                } else {
+                  setOpenThread(undefined as any); // Fallback
+                }
                 if (currentOpenThreadRef) {
                   currentOpenThreadRef.current = undefined;
                 }
@@ -299,21 +340,25 @@ export default function ChatDisplaySplit({
             incomingMessages={incomingMessages}
             updatedMessages={updatedMessages}
             onItemNewItemRender={readMessage}
-            shouldTriggerNewItemIndicator={(message: MessageWithReactions) =>
+            shouldTriggerNewItemIndicator={(message: CurbMessage) =>
               message.sender !== accountId
             }
-            render={renderMessage()}
-            chatId={isThread ? openThread?.id : activeChat}
+            render={renderMessage}
+            chatId={
+              isThread && openThread?.id ? openThread.id : activeChat.id || ""
+            }
             style={currentChatStyle}
           />
         </ContainerPadding>
         <MessageInput
           selectedChat={
-            activeChat.type === "channel" ? activeChat.name : activeChat.username || ""
+            activeChat.type === "channel"
+              ? activeChat.name
+              : activeChat.username || ""
           }
           sendMessage={sendMessage}
           resetImage={resetImage}
-          openThread={openThread}
+          openThread={openThread as any} // Type mismatch between CurbMessage and MessageWithReactions
           isThread={isThread}
           isReadOnly={isReadOnly}
           isOwner={isOwner}
@@ -332,4 +377,18 @@ export default function ChatDisplaySplit({
       )}
     </>
   );
-}
+});
+
+// Custom comparison to prevent re-renders from function reference changes
+export default memo(ChatDisplaySplit, (prevProps, nextProps) => {
+  // Only re-render if these critical values change
+  return (
+    prevProps.activeChat.id === nextProps.activeChat.id &&
+    prevProps.activeChat.contextId === nextProps.activeChat.contextId &&
+    prevProps.incomingMessages === nextProps.incomingMessages &&
+    prevProps.updatedMessages === nextProps.updatedMessages &&
+    prevProps.openThread?.id === nextProps.openThread?.id &&
+    prevProps.isEmojiSelectorVisible === nextProps.isEmojiSelectorVisible &&
+    prevProps.openMobileReactions === nextProps.openMobileReactions
+  );
+});

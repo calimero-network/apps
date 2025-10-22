@@ -13,12 +13,15 @@ export const markdownParser = (text: string, channelMembers: string[]) => {
       } else {
         return "";
       }
-    }
+    },
   );
 
   // Second pass: handle @mentions by looking for channel members in the message
-  channelMembers.forEach(member => {
-    const mentionPattern = new RegExp(`@${member.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'gi');
+  channelMembers.forEach((member) => {
+    const mentionPattern = new RegExp(
+      `@${member.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+      "gi",
+    );
     toHTML = toHTML.replace(mentionPattern, () => {
       const normalizedClass = member
         .replace(/\s+/g, "")

@@ -5,6 +5,7 @@ import { Message, Title, Wrapper } from "./HandleDMSetup";
 import { getStoredSession, updateSessionChat } from "../utils/session";
 import Loader from "../components/loader/Loader";
 import { apiClient } from "@calimero-network/calimero-client";
+import { log } from "../utils/logger";
 
 interface SyncWaitingProps {
   activeChat: ActiveChat;
@@ -26,9 +27,9 @@ export default function SyncWaiting({
           const data = {
             joined: verifyResponse.data.rootHash ? true : false,
             isSynced:
-            verifyResponse.data.rootHash !==
+              verifyResponse.data.rootHash !==
               "11111111111111111111111111111111",
-          }
+          };
           const savedSession = getStoredSession();
           if (savedSession) {
             savedSession.isSynced = data.isSynced;
@@ -40,7 +41,7 @@ export default function SyncWaiting({
           }
         }
       } catch (error) {
-        console.error("Error verifying context:", error);
+        log.error("SyncWaiting", "Error verifying context", error);
       }
     }, 3000);
 

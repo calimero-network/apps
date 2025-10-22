@@ -72,7 +72,7 @@ interface HandleDMSetupProps {
 
 export default function HandleDMSetup({
   activeChat,
-  onDMSelected
+  onDMSelected,
 }: HandleDMSetupProps) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -93,7 +93,7 @@ export default function HandleDMSetup({
 
         if (updateIdentityResponse.data) {
           setSuccess(
-            "New identity created successfully and saved in context. You will soon receive an invitation to join the context."
+            "New identity created successfully and saved in context. You will soon receive an invitation to join the context.",
           );
           const savedSession = getStoredSession();
           if (savedSession) {
@@ -103,7 +103,8 @@ export default function HandleDMSetup({
           }
         } else {
           setError(
-            updateIdentityResponse.error?.message || "Failed to update identity"
+            updateIdentityResponse.error?.message ||
+              "Failed to update identity",
           );
         }
       } else {
@@ -111,7 +112,7 @@ export default function HandleDMSetup({
       }
     } catch (error) {
       setError(
-        error instanceof Error ? error.message : "An unexpected error occurred"
+        error instanceof Error ? error.message : "An unexpected error occurred",
       );
     } finally {
       setLoading(false);
@@ -121,7 +122,9 @@ export default function HandleDMSetup({
   const dmSetupState = getDMSetupState(activeChat);
 
   // If we're the creator waiting for invitee setup
-  if (dmSetupState === DMSetupState.CREATOR_WAITING_FOR_INVITEE_TO_CREATE_IDENTITY) {
+  if (
+    dmSetupState === DMSetupState.CREATOR_WAITING_FOR_INVITEE_TO_CREATE_IDENTITY
+  ) {
     return (
       <Wrapper>
         <Title>Setup</Title>
@@ -137,7 +140,10 @@ export default function HandleDMSetup({
   }
 
   // If we're the invitee and need to create identity
-  if (dmSetupState === DMSetupState.INVITEE_CONTEXT_CREATE_IDENTITY && !activeChat.account) {
+  if (
+    dmSetupState === DMSetupState.INVITEE_CONTEXT_CREATE_IDENTITY &&
+    !activeChat.account
+  ) {
     return (
       <Wrapper>
         <Title>Create new identity</Title>

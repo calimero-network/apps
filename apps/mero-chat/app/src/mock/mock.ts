@@ -92,7 +92,7 @@ export const mockMessages: MessageWithReactions[] = [
     sender: "1",
     reactions: new Map([
       ["👍", ["2", "3"]],
-      ["❤️", ["1"]]
+      ["❤️", ["1"]],
     ]),
     files: [],
     images: [],
@@ -107,7 +107,7 @@ export const mockMessages: MessageWithReactions[] = [
     sender: "2",
     reactions: new Map([
       ["🚀", ["1", "3", "4"]],
-      ["👏", ["2"]]
+      ["👏", ["2"]],
     ]),
     files: [],
     images: [],
@@ -122,7 +122,7 @@ export const mockMessages: MessageWithReactions[] = [
     sender: "3",
     reactions: new Map([
       ["✅", ["1", "2"]],
-      ["🎉", ["3"]]
+      ["🎉", ["3"]],
     ]),
     files: [],
     images: [],
@@ -135,9 +135,7 @@ export const mockMessages: MessageWithReactions[] = [
     nonce: "nonce-4",
     timestamp: Date.now() - 1800000, // 30 minutes ago
     sender: "1",
-    reactions: new Map([
-      ["👀", ["2", "3"]]
-    ]),
+    reactions: new Map([["👀", ["2", "3"]]]),
     files: [],
     images: [],
     thread_count: 0,
@@ -149,9 +147,7 @@ export const mockMessages: MessageWithReactions[] = [
     nonce: "nonce-5",
     timestamp: Date.now() - 1200000, // 20 minutes ago
     sender: "2",
-    reactions: new Map([
-      ["👍", ["1"]]
-    ]),
+    reactions: new Map([["👍", ["1"]]]),
     files: [],
     images: [],
     thread_count: 0,
@@ -175,9 +171,7 @@ export const mockMessages: MessageWithReactions[] = [
     nonce: "nonce-7",
     timestamp: Date.now() - 300000, // 5 minutes ago
     sender: "2",
-    reactions: new Map([
-      ["👌", ["1"]]
-    ]),
+    reactions: new Map([["👌", ["1"]]]),
     files: [],
     images: [],
     thread_count: 0,
@@ -191,13 +185,13 @@ export const mockMessages: MessageWithReactions[] = [
     sender: "3",
     reactions: new Map([
       ["⏰", ["1", "2", "4"]],
-      ["📝", ["3"]]
+      ["📝", ["3"]],
     ]),
     files: [],
     images: [],
     thread_count: 0,
     thread_last_timestamp: 0,
-  }
+  },
 ];
 
 export const mockThreadMessages: MessageWithReactions[] = [
@@ -207,9 +201,7 @@ export const mockThreadMessages: MessageWithReactions[] = [
     nonce: "thread-nonce-1",
     timestamp: Date.now() - 1800000,
     sender: "2",
-    reactions: new Map([
-      ["👍", ["1"]]
-    ]),
+    reactions: new Map([["👍", ["1"]]]),
     files: [],
     images: [],
     thread_count: 0,
@@ -233,14 +225,12 @@ export const mockThreadMessages: MessageWithReactions[] = [
     nonce: "thread-nonce-3",
     timestamp: Date.now() - 600000,
     sender: "1",
-    reactions: new Map([
-      ["🎯", ["2"]]
-    ]),
+    reactions: new Map([["🎯", ["2"]]]),
     files: [],
     images: [],
     thread_count: 0,
     thread_last_timestamp: 0,
-  }
+  },
 ];
 
 // Mock functions for VirtualizedChat
@@ -252,10 +242,10 @@ export const mockLoadInitialMessages = () => {
 export const mockLoadPrevMessages = (id: string) => {
   console.log("Mock: Loading previous messages before", id);
   // Return some older messages
-  const olderMessages = mockMessages.map(msg => ({
+  const olderMessages = mockMessages.map((msg) => ({
     ...msg,
     id: `older-${msg.id}`,
-    timestamp: msg.timestamp - 86400000 // 1 day older
+    timestamp: msg.timestamp - 86400000, // 1 day older
   }));
   return Promise.resolve(olderMessages);
 };
@@ -266,20 +256,26 @@ export const mockReadMessage = (message: MessageWithReactions) => {
   return Promise.resolve();
 };
 
-export const mockHandleReaction = (message: MessageWithReactions, emoji: string) => {
+export const mockHandleReaction = (
+  message: MessageWithReactions,
+  emoji: string,
+) => {
   console.log("Mock: Handling reaction", emoji, "on message", message.id);
   // Simulate adding/removing reaction
   const currentReactions = message.reactions.get(emoji) || [];
   const currentUser = "1"; // Mock current user ID
-  
+
   if (currentReactions.includes(currentUser)) {
     // Remove reaction
-    message.reactions.set(emoji, currentReactions.filter(id => id !== currentUser));
+    message.reactions.set(
+      emoji,
+      currentReactions.filter((id) => id !== currentUser),
+    );
   } else {
     // Add reaction
     message.reactions.set(emoji, [...currentReactions, currentUser]);
   }
-  
+
   return Promise.resolve();
 };
 
@@ -298,7 +294,7 @@ export const mockSendMessage = (message: string) => {
     thread_count: 0,
     thread_last_timestamp: 0,
   };
-  
+
   return Promise.resolve(newMessage);
 };
 
@@ -309,7 +305,7 @@ export const mockGetIconFromCache = (accountId: string) => {
     "https://i.imgur.com/e8buxpa.png",
     "https://i.imgur.com/abc123.png",
     "https://i.imgur.com/def456.png",
-    "https://i.imgur.com/ghi789.png"
+    "https://i.imgur.com/ghi789.png",
   ];
   const index = parseInt(accountId) % avatars.length;
   return avatars[index];

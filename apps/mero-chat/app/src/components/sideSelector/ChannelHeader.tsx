@@ -8,7 +8,8 @@ import { usePersistentState } from "../../hooks/usePersistentState";
 
 const Container = styled.div<{ $isCollapsed?: boolean }>`
   display: flex;
-  justify-content: ${props => props.$isCollapsed ? 'center' : 'space-between'};
+  justify-content: ${(props) =>
+    props.$isCollapsed ? "center" : "space-between"};
   align-items: center;
   background-color: #0e0e10;
   padding-top: 0.375rem;
@@ -47,12 +48,18 @@ interface ChannelHeaderProps {
 }
 
 const ChannelHeader = memo(function ChannelHeader(props: ChannelHeaderProps) {
-  const [isOpen, setIsOpen] = usePersistentState('createChannelModalOpen', false);
-  const [inputValue, setInputValue] = usePersistentState('createChannelInputValue', "");
+  const [isOpen, setIsOpen] = usePersistentState(
+    "createChannelModalOpen",
+    false,
+  );
+  const [inputValue, setInputValue] = usePersistentState(
+    "createChannelInputValue",
+    "",
+  );
   const createChannel = async (
     channelName: string,
     isPublic: boolean,
-    isReadyOnly: boolean
+    isReadyOnly: boolean,
   ) => {
     await new ClientApiDataSource().createChannel({
       channel: { name: channelName },

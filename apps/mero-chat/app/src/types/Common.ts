@@ -1,3 +1,13 @@
+// Import types from virtualized-chat for use throughout this file
+import type {
+  CurbMessage,
+  CurbFile,
+  AccountData,
+  Option,
+  HashMap,
+} from "../components/virtualized-chat";
+import { MessageStatus } from "../components/virtualized-chat";
+
 /**
  * Types of chats.
  * @typedef {object} ChatTypes
@@ -127,42 +137,10 @@ export interface ChatFile {
   file: FileObject;
 }
 
-export enum MessageStatus {
-  sending = "sending",
-  sent = "sent",
-}
-
-export type Option<T> = T | undefined;
-export type HashMap<K extends string | number, V> = { [key in K]: V };
-export interface CurbFile {
-  name: Option<string>;
-  ipfs_cid: string;
-}
-
-export interface CurbMessage {
-  id: string; // id can be temporary or permanent
-  text: string;
-  nonce: string;
-  key: string;
-  timestamp: number;
-  sender: string;
-  reactions: Option<HashMap<string, Array<string>>>;
-  threadCount?: number;
-  threadLastTimestamp?: number;
-  editedOn: Option<number>;
-  mentions: Array<string>;
-  files: Array<CurbFile>;
-  images: Array<CurbFile>;
-  temporalId?: number;
-  editMode?: boolean;
-  deleted?: boolean;
-  status: MessageStatus;
-}
-
-export interface AccountData {
-  id: string;
-  active: boolean;
-}
+// Re-export types from virtualized-chat to maintain backwards compatibility
+export type { CurbMessage, CurbFile, AccountData, Option, HashMap };
+// MessageStatus is an enum, so it must be exported as a value, not just a type
+export { MessageStatus };
 
 export interface MessageRendererProps {
   accountId: string;
