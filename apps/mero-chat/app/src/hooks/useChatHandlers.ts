@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect } from "react";
+import { useCallback, useRef } from "react";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import type { ActiveChat } from "../types/Common";
 import type { DMChatInfo } from "../api/clientApi";
@@ -9,6 +9,7 @@ import type {
   WebSocketEvent,
   ExecutionEventData,
 } from "../types/WebSocketTypes";
+import { getExecutorPublicKey } from "@calimero-network/calimero-client";
 
 /**
  * Custom hook for handling chat-related events (messages, DMs, channels)
@@ -29,6 +30,25 @@ interface ChatHandlersRefs {
   }>;
   playSoundForMessage: React.MutableRefObject<
     (messageId: string, type?: NotificationType, isMention?: boolean) => void
+  >;
+  notifyMessage: React.MutableRefObject<
+    (
+      messageId: string,
+      sender: string,
+      text: string,
+      isMention?: boolean,
+    ) => void
+  >;
+  notifyDM: React.MutableRefObject<
+    (messageId: string, sender: string, text: string) => void
+  >;
+  notifyChannel: React.MutableRefObject<
+    (
+      messageId: string,
+      channelName: string,
+      sender: string,
+      text: string,
+    ) => void
   >;
   fetchDms: React.MutableRefObject<() => Promise<DMChatInfo[] | undefined>>;
   onDMSelected: React.MutableRefObject<
@@ -112,12 +132,28 @@ export function useChatHandlers(
                     ),
                   );
               }
-              refs.playSoundForMessage.current(
-                lastMessage.id,
-                "message",
-                false,
-              );
+              // Only trigger notifications for messages from other users
+              const currentUserId = getExecutorPublicKey();
+              const isFromCurrentUser = lastMessage.sender === currentUserId;
+
+              if (!isFromCurrentUser) {
+                refs.playSoundForMessage.current(
+                  lastMessage.id,
+                  "message",
+                  false,
+                );
+                // Trigger notification for channel message
+                if (lastMessage.senderUsername && lastMessage.text) {
+                  refs.notifyChannel.current(
+                    lastMessage.id,
+                    activeChat.name,
+                    lastMessage.senderUsername,
+                    lastMessage.text,
+                  );
+                }
+              }
             } else {
+              const lastMessage = newMessages[newMessages.length - 1];
               new ClientApiDataSource()
                 .readDm({
                   other_user_id: activeChatRef.current?.name || "",
@@ -128,6 +164,29 @@ export function useChatHandlers(
                 .catch((error) =>
                   log.error("ChatHandlers", "Failed to mark DM as read", error),
                 );
+
+              // Only trigger notifications for messages from other users
+              // For DMs, check both the main identity and the DM-specific identity
+              const currentUserId = getExecutorPublicKey();
+              const currentDMIdentity = activeChatRef.current?.account;
+              const isFromCurrentUser =
+                lastMessage &&
+                (lastMessage.sender === currentUserId ||
+                  lastMessage.sender === currentDMIdentity);
+
+              // Trigger notification for DM
+              if (
+                !isFromCurrentUser &&
+                lastMessage &&
+                lastMessage.senderUsername &&
+                lastMessage.text
+              ) {
+                refs.notifyDM.current(
+                  lastMessage.id,
+                  lastMessage.senderUsername,
+                  lastMessage.text,
+                );
+              }
             }
           }
         }

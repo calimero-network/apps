@@ -200,7 +200,7 @@ function ChatContainer({
         log.error("ChatContainer", "Error updating reaction", error);
       }
     },
-    [],
+    [computeReaction],
   );
 
   const getIconFromCache = useCallback(
@@ -352,15 +352,8 @@ function ChatContainer({
     }
   };
 
-  const updateDeletedMessage = (message: CurbMessage) => {
-    const update = [
-      { id: message.id, descriptor: { updatedFields: { deleted: true } } },
-    ];
-    setUpdatedMessages(update);
-  };
-
   const handleDeleteMessage = useCallback(
-    async (message: CurbMessage) => {
+    async (message: CurbMessage, isThread: boolean) => {
       const isDM = activeChatRef.current?.type === "direct_message";
       const response = await new ClientApiDataSource().deleteMessage({
         group: { name: activeChatRef.current?.name ?? "" },
@@ -369,14 +362,21 @@ function ChatContainer({
         dm_identity: activeChatRef.current?.account,
       });
       if (response.data) {
-        updateDeletedMessage(message);
+        const update = [
+          { id: message.id, descriptor: { updatedFields: { deleted: true } } },
+        ];
+        if (isThread) {
+          setUpdatedThreadMessages(update);
+        } else {
+          setUpdatedMessages(update);
+        }
       }
     },
     [], // Uses refs which don't need to be in dependencies
   );
 
   const handleEditMode = useCallback(
-    (message: CurbMessage) => {
+    (message: CurbMessage, isThread: boolean) => {
       const update = [
         {
           id: message.id,
@@ -385,13 +385,17 @@ function ChatContainer({
           },
         },
       ];
-      setUpdatedMessages(update);
+      if (isThread) {
+        setUpdatedThreadMessages(update);
+      } else {
+        setUpdatedMessages(update);
+      }
     },
     [], // No external dependencies needed
   );
 
   const handleEditedMessage = useCallback(
-    async (message: CurbMessage) => {
+    async (message: CurbMessage, isThread: boolean) => {
       const isDM = activeChatRef.current?.type === "direct_message";
       const editedOn = Math.floor(Date.now() / 1000);
       const response = await new ClientApiDataSource().editMessage({
@@ -415,7 +419,11 @@ function ChatContainer({
             },
           },
         ];
-        setUpdatedMessages(update);
+        if (isThread) {
+          setUpdatedThreadMessages(update);
+        } else {
+          setUpdatedMessages(update);
+        }
       }
     },
     [], // Uses refs which don't need to be in dependencies

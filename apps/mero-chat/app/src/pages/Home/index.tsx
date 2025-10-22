@@ -32,7 +32,7 @@ import {
 import type { MessageWithReactions } from "../../api/clientApi";
 import type { CreateContextResult } from "../../components/popups/StartDMPopup";
 import { generateDMParams } from "../../utils/dmSetupState";
-import useNotificationSound from "../../hooks/useNotificationSound";
+import { useAppNotifications } from "../../hooks/useAppNotifications";
 import { SUBSCRIPTION_INIT_DELAY_MS } from "../../constants/app";
 import { log } from "../../utils/logger";
 import type { WebSocketEvent } from "../../types/WebSocketTypes";
@@ -68,16 +68,14 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   const mainMessages = useMessages();
   const threadMessages = useThreadMessages();
 
-  // Simplified - no complex callback stabilization needed
-  const { playSoundForMessage, playSound } = useNotificationSound(
-    {
-      enabled: false,
-      volume: 0.5,
-      respectFocus: true,
-      respectMute: true,
-    },
-    activeChat?.id,
-  );
+  // App notifications with toast and notification center
+  const {
+    notifyMessage,
+    notifyDM,
+    notifyChannel,
+    playSoundForMessage,
+    playSound,
+  } = useAppNotifications(activeChat?.id);
 
   // Use custom hooks for data management - simplified, no props needed
   const channelsHook = useChannels();
@@ -281,6 +279,9 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   const mainMessagesRef = useRef(mainMessages);
   const threadMessagesRef = useRef(threadMessages);
   const playSoundForMessageRef = useRef(playSoundForMessage);
+  const notifyMessageRef = useRef(notifyMessage);
+  const notifyDMRef = useRef(notifyDM);
+  const notifyChannelRef = useRef(notifyChannel);
   const onDMSelectedRef = useRef<
     (dm?: DMChatInfo, sc?: ActiveChat, refetch?: boolean) => void
   >(() => {});
@@ -289,11 +290,17 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   mainMessagesRef.current = mainMessages;
   threadMessagesRef.current = threadMessages;
   playSoundForMessageRef.current = playSoundForMessage;
+  notifyMessageRef.current = notifyMessage;
+  notifyDMRef.current = notifyDM;
+  notifyChannelRef.current = notifyChannel;
 
   const chatHandlersRefs = useRef({
     mainMessages: mainMessagesRef,
     threadMessages: threadMessagesRef,
     playSoundForMessage: playSoundForMessageRef,
+    notifyMessage: notifyMessageRef,
+    notifyDM: notifyDMRef,
+    notifyChannel: notifyChannelRef,
     fetchDms: fetchDmsRef,
     onDMSelected: onDMSelectedRef,
     fetchChannels: { current: debouncedFetchChannels },

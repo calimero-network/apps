@@ -153,7 +153,7 @@ export interface MessageRendererProps {
   setOpenMobileReactions: (messageId: string) => void;
   editable: (message: CurbMessage) => boolean;
   deleteable: (message: CurbMessage) => boolean;
-  onEditModeRequested: (message: CurbMessage, isThread: boolean) => void;
+  onEditModeRequested: (message: CurbMessage) => void;
   onEditModeCancelled: (message: CurbMessage) => void;
   onMessageUpdated: (message: CurbMessage) => void;
   onDeleteMessageRequested: (message: CurbMessage) => void;

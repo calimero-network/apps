@@ -1,5 +1,4 @@
 import { styled } from "styled-components";
-import { type MessageWithReactions } from "../types/Common";
 import type {
   ActiveChat,
   ChatMessagesData,
@@ -44,10 +43,10 @@ interface ChatDisplaySplitProps {
   //channelUserList: User[];
   setOpenMobileReactions: (reactions: string) => void;
   openMobileReactions: string;
-  onMessageDeletion: (message: CurbMessage) => void;
+  onMessageDeletion: (message: CurbMessage, isThread: boolean) => void;
   onEditModeRequested: (message: CurbMessage, isThread: boolean) => void;
-  onEditModeCancelled: (message: CurbMessage) => void;
-  onMessageUpdated: (message: CurbMessage) => void;
+  onEditModeCancelled: (message: CurbMessage, isThread: boolean) => void;
+  onMessageUpdated: (message: CurbMessage, isThread: boolean) => void;
   loadInitialChatMessages: () => Promise<ChatMessagesData>;
   incomingMessages: CurbMessage[];
   loadPrevMessages: (id: string) => Promise<ChatMessagesDataWithOlder>;
@@ -303,10 +302,14 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
         (activeChat.type === "direct_message"
           ? activeChat.account
           : getExecutorPublicKey()),
-      onEditModeRequested: onEditModeRequested,
-      onEditModeCancelled: onEditModeCancelled,
-      onMessageUpdated: onMessageUpdated,
-      onDeleteMessageRequested: onMessageDeletion,
+      onEditModeRequested: (message: CurbMessage) =>
+        onEditModeRequested(message, isThread),
+      onEditModeCancelled: (message: CurbMessage) =>
+        onEditModeCancelled(message, isThread),
+      onMessageUpdated: (message: CurbMessage) =>
+        onMessageUpdated(message, isThread),
+      onDeleteMessageRequested: (message: CurbMessage) =>
+        onMessageDeletion(message, isThread),
       fetchAccounts: (_prefix: string) => {},
       autocompleteAccounts: [],
       authToken: undefined,
@@ -325,8 +328,6 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
               onClose={() => {
                 if (closeThread) {
                   closeThread();
-                } else {
-                  setOpenThread(undefined as any); // Fallback
                 }
                 if (currentOpenThreadRef) {
                   currentOpenThreadRef.current = undefined;
@@ -358,7 +359,8 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
           }
           sendMessage={sendMessage}
           resetImage={resetImage}
-          openThread={openThread as any} // Type mismatch between CurbMessage and MessageWithReactions
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          openThread={openThread as any}
           isThread={isThread}
           isReadOnly={isReadOnly}
           isOwner={isOwner}
