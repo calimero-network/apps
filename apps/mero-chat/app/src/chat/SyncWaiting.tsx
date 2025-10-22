@@ -5,7 +5,6 @@ import { Message, Title, Wrapper } from "./HandleDMSetup";
 import { getStoredSession, updateSessionChat } from "../utils/session";
 import Loader from "../components/loader/Loader";
 import { apiClient } from "@calimero-network/calimero-client";
-import { log } from "../utils/logger";
 
 interface SyncWaitingProps {
   activeChat: ActiveChat;
@@ -41,7 +40,7 @@ export default function SyncWaiting({
           }
         }
       } catch (error) {
-        log.error("SyncWaiting", "Error verifying context", error);
+        console.error("Error verifying context:", error);
       }
     }, 3000);
 

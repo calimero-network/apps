@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback, memo } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import { useCalimero } from '@calimero-network/calimero-client';
 import { clearStoredSession, clearDmContextId, updateSessionActivity, clearSessionActivity } from '../utils/session';
 
@@ -15,7 +15,7 @@ interface IdleTimeoutWrapperProps {
   timeoutMs?: number;
 }
 
-const IdleTimeoutWrapper = memo(function IdleTimeoutWrapper({ 
+export default function IdleTimeoutWrapper({ 
   children, 
   timeoutMs = 3600000 // 1 hour
 }: IdleTimeoutWrapperProps) {
@@ -52,12 +52,10 @@ const IdleTimeoutWrapper = memo(function IdleTimeoutWrapper({
 
   useEffect(() => {
     if (isAuthenticated) {
-      // Essential events for both desktop and mobile
-      // mousedown (desktop clicks), touchstart (mobile taps), keypress (typing), mousemove (mouse activity)
-      const events = ['mousedown', 'touchstart', 'keypress', 'mousemove'];
+      const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
       
       events.forEach(event => {
-        document.addEventListener(event, handleUserActivity, { capture: true, passive: true });
+        document.addEventListener(event, handleUserActivity, true);
       });
 
       resetTimeout();
@@ -88,6 +86,4 @@ const IdleTimeoutWrapper = memo(function IdleTimeoutWrapper({
   }, []);
 
   return <>{children}</>;
-});
-
-export default IdleTimeoutWrapper;
+}

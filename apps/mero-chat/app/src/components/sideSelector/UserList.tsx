@@ -1,4 +1,3 @@
-import { memo } from "react";
 import type { DMChatInfo } from "../../api/clientApi";
 import type { ActiveChat } from "../../types/Common";
 import UserItem from "./UserItem";
@@ -35,7 +34,7 @@ interface UserListProps {
   isCollapsed?: boolean;
 }
 
-const UserList = memo(function UserList({
+export default function UserList({
   selectedDM,
   onDMSelected,
   privateDMs,
@@ -55,6 +54,4 @@ const UserList = memo(function UserList({
         ))}
     </ScrollableUserList>
   );
-});
-
-export default UserList;
+}

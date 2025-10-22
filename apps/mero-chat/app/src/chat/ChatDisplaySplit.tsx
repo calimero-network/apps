@@ -7,23 +7,20 @@ import type {
   MessageRendererProps,
   UpdatedMessages,
 } from "../types/Common";
-import { useEffect, useState, useRef, memo } from "react";
+import { useEffect, useState } from "react";
 import MessageInput from "./MessageInput";
 import {
   messageRenderer,
   VirtualizedChat,
   type CurbMessage,
-} from "../components/virtualized-chat";
+} from "curb-virtualized-chat";
 import type { ChannelInfo } from "../api/clientApi";
 import { getExecutorPublicKey } from "@calimero-network/calimero-client";
 import EmojiSelectorPopup from "../emojiSelector/EmojiSelectorPopup";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
-import { scrollbarStyles } from "../styles/scrollbar";
-import { StorageHelper } from "../utils/storage";
-import { log } from "../utils/logger";
 
 interface ChatDisplaySplitProps {
-  readMessage: (message: CurbMessage) => void;
+  readMessage: (message: MessageWithReactions) => void;
   handleReaction: (
     message: CurbMessage,
     emoji: string,
@@ -31,7 +28,6 @@ interface ChatDisplaySplitProps {
   ) => void;
   openThread: CurbMessage | undefined;
   setOpenThread: (message: CurbMessage) => void;
-  closeThread?: () => void;
   activeChat: ActiveChat;
   updatedMessages: UpdatedMessages[];
   resetImage: () => void;
@@ -63,13 +59,30 @@ const ContainerPadding = styled.div`
     padding-left: 0px !important;
     padding-right: 0px !important;
   }
-  
-  /* Apply shared scrollbar styles */
-  ${scrollbarStyles}
-  
-  /* Optimize scrolling performance */
-  contain: layout style paint;
-  overflow-anchor: none;
+  scrollbar-color: black black;
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: black;
+    border-radius: 6px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: black;
+  }
+  * {
+    scrollbar-color: black black;
+  }
+  html::-webkit-scrollbar {
+    width: 12px;
+  }
+  html::-webkit-scrollbar-thumb {
+    background-color: black;
+    border-radius: 6px;
+  }
+  html::-webkit-scrollbar-thumb:hover {
+    background-color: black;
+  }
 `;
 
 const ThreadTitle = styled.div`
@@ -104,10 +117,6 @@ const Wrapper = styled.div`
   display: flex;
   flex-direction: column;
   height: calc(100% - 20px);
-  /* GPU acceleration for smoother rendering */
-  transform: translateZ(0);
-  backface-visibility: hidden;
-  
   @media (max-width: 1024px) {
     width: 100% !important;
   }
@@ -157,12 +166,11 @@ const ThreadHeader = ({ onClose }: { onClose: () => void }) => (
   </ThreadContainer>
 );
 
-const ChatDisplaySplit = memo(function ChatDisplaySplit({
+export default function ChatDisplaySplit({
   readMessage,
   handleReaction,
   openThread,
   setOpenThread,
-  closeThread,
   activeChat,
   updatedMessages,
   resetImage,
@@ -189,36 +197,11 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
 }: ChatDisplaySplitProps) {
   const [accountId, setAccountId] = useState<string | undefined>(undefined);
   const [username, setUsername] = useState<string>("");
-  const hasLoadedUsername = useRef(false);
 
   useEffect(() => {
-    // Update accountId whenever activeChat changes (DM vs Channel have different IDs)
-    const isDM = activeChat?.type === "direct_message";
-    const currentAccountId = isDM 
-      ? (activeChat?.account || getExecutorPublicKey() || "")
-      : (getExecutorPublicKey() || "");
-    setAccountId(currentAccountId);
-    
-    // Only fetch username once, not on every render
-    if (hasLoadedUsername.current) return;
-    
     const setUserInfo = async () => {
       const executorId = getExecutorPublicKey() ?? "";
-      
-      // Check if we already have the username in storage
-      const cachedUsername = StorageHelper.getItem("chat-username");
-      if (cachedUsername) {
-        const normalizedClass = cachedUsername
-          .replace(/\s+/g, "")
-          .toLowerCase()
-          .replace(/\./g, "\\.")
-          .replace(/_/g, "\\_");
-        setUsername(normalizedClass);
-        hasLoadedUsername.current = true;
-        return;
-      }
-      
-      // Fetch from API if not cached
+      setAccountId(executorId);
       const response = await new ClientApiDataSource().getUsername({
         user_id: executorId ?? "",
       });
@@ -229,11 +212,10 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
           .replace(/\./g, "\\.")
           .replace(/_/g, "\\_");
         setUsername(normalizedClass);
-        hasLoadedUsername.current = true;
       }
     }
     setUserInfo();
-  }, [activeChat]);
+  }, []);
 
   // const isModerator = useMemo(
   //   () =>
@@ -271,14 +253,7 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
     currentChatStyle.overflow = "hidden";
   }
 
-  // Debug logging for incomingMessages
-  useEffect(() => {
-    if (isThread) {
-      log.debug('ChatDisplaySplit', `Thread component received incomingMessages:`, incomingMessages);
-    }
-  }, [incomingMessages, isThread]);
-
-  const renderMessage = (message: CurbMessage, prevMessage?: CurbMessage) => {
+  const renderMessage = () => {
     const params: MessageRendererProps = {
       accountId: username,
       isThread: isThread,
@@ -300,7 +275,7 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
       authToken: undefined,
       privateIpfsEndpoint: "https://ipfs.io",
     };
-    return messageRenderer(params)(message, prevMessage);
+    return messageRenderer(params);
   };
 
   return (
@@ -311,11 +286,7 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
           {openThread && isThread && (
             <ThreadHeader
               onClose={() => {
-                if (closeThread) {
-                  closeThread();
-                } else {
-                  setOpenThread(undefined as any); // Fallback
-                }
+                setOpenThread("");
                 if (currentOpenThreadRef) {
                   currentOpenThreadRef.current = undefined;
                 }
@@ -328,11 +299,11 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
             incomingMessages={incomingMessages}
             updatedMessages={updatedMessages}
             onItemNewItemRender={readMessage}
-            shouldTriggerNewItemIndicator={(message: CurbMessage) =>
+            shouldTriggerNewItemIndicator={(message: MessageWithReactions) =>
               message.sender !== accountId
             }
-            render={renderMessage}
-            chatId={isThread && openThread?.id ? openThread.id : activeChat.id || ''}
+            render={renderMessage()}
+            chatId={isThread ? openThread?.id : activeChat}
             style={currentChatStyle}
           />
         </ContainerPadding>
@@ -342,7 +313,7 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
           }
           sendMessage={sendMessage}
           resetImage={resetImage}
-          openThread={openThread as any} // Type mismatch between CurbMessage and MessageWithReactions
+          openThread={openThread}
           isThread={isThread}
           isReadOnly={isReadOnly}
           isOwner={isOwner}
@@ -361,18 +332,4 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
       )}
     </>
   );
-});
-
-// Custom comparison to prevent re-renders from function reference changes
-export default memo(ChatDisplaySplit, (prevProps, nextProps) => {
-  // Only re-render if these critical values change
-  return (
-    prevProps.activeChat.id === nextProps.activeChat.id &&
-    prevProps.activeChat.contextId === nextProps.activeChat.contextId &&
-    prevProps.incomingMessages === nextProps.incomingMessages &&
-    prevProps.updatedMessages === nextProps.updatedMessages &&
-    prevProps.openThread?.id === nextProps.openThread?.id &&
-    prevProps.isEmojiSelectorVisible === nextProps.isEmojiSelectorVisible &&
-    prevProps.openMobileReactions === nextProps.openMobileReactions
-  );
-});
+}

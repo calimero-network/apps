@@ -5,8 +5,6 @@ import {
   setNotificationVolume,
   type NotificationType 
 } from '../utils/notificationSound';
-import { StorageHelper } from '../utils/storage';
-import { log } from '../utils/logger';
 
 interface UseNotificationSoundOptions {
   enabled?: boolean;
@@ -45,18 +43,27 @@ export const useNotificationSound = (
   const lastMessageRef = useRef<string>('');
 
   useEffect(() => {
-    const savedSettings = StorageHelper.getJSON<typeof defaultSettings>(STORAGE_KEY);
-    if (savedSettings) {
-      setIsEnabled(savedSettings.enabled ?? defaultSettings.enabled);
-      setVolumeState(savedSettings.volume ?? defaultSettings.volume);
+    try {
+      const savedSettings = localStorage.getItem(STORAGE_KEY);
+      if (savedSettings) {
+        const parsed = JSON.parse(savedSettings);
+        setIsEnabled(parsed.enabled ?? defaultSettings.enabled);
+        setVolumeState(parsed.volume ?? defaultSettings.volume);
+      }
+    } catch (error) {
+      console.warn('Failed to load notification settings:', error);
     }
   }, []);
 
   useEffect(() => {
-    StorageHelper.setJSON(STORAGE_KEY, {
-      enabled: isEnabled,
-      volume: volume,
-    });
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        enabled: isEnabled,
+        volume: volume,
+      }));
+    } catch (error) {
+      console.warn('Failed to save notification settings:', error);
+    }
   }, [isEnabled, volume]);
 
   useEffect(() => {

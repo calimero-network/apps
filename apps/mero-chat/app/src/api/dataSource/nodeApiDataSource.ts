@@ -1,7 +1,6 @@
 import axios from "axios";
 import {
   getAppEndpointKey,
-  getAuthConfig,
   type ApiResponse,
 } from "@calimero-network/calimero-client";
 import type {
@@ -17,20 +16,6 @@ import type {
 } from "../nodeApi";
 
 const DEFAULT_NODE_ENDPOINT = "http://localhost:2428";
-
-// Helper function to get auth headers
-function getAuthHeaders() {
-  const authConfig = getAuthConfig();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  
-  if (authConfig?.jwtToken) {
-    headers["Authorization"] = `Bearer ${authConfig.jwtToken}`;
-  }
-  
-  return headers;
-}
 
 export class ContextApiDataSource implements NodeApi {
   async createContext(
@@ -50,17 +35,11 @@ export class ContextApiDataSource implements NodeApi {
 
       const nodeEndpoint = getAppEndpointKey() || DEFAULT_NODE_ENDPOINT;
 
-      const response = await axios.post(
-        `${nodeEndpoint}/admin-api/contexts`, 
-        {
-          applicationId: import.meta.env.VITE_APPLICATION_ID || "",
-          protocol: "near",
-          initializationParams: byteArray,
-        },
-        {
-          headers: getAuthHeaders(),
-        }
-      );
+      const response = await axios.post(`${nodeEndpoint}/admin-api/contexts`, {
+        applicationId: import.meta.env.VITE_APPLICATION_ID || "",
+        protocol: "near",
+        initializationParams: byteArray,
+      });
 
       if (response.status === 200) {
         return {
@@ -101,9 +80,6 @@ export class ContextApiDataSource implements NodeApi {
           contextId: props.contextId,
           inviterId: props.inviter,
           inviteeId: props.invitee,
-        },
-        {
-          headers: getAuthHeaders(),
         }
       );
 
@@ -144,9 +120,6 @@ export class ContextApiDataSource implements NodeApi {
         `${nodeEndpoint}/admin-api/contexts/join`,
         {
           invitationPayload: props.invitationPayload,
-        },
-        {
-          headers: getAuthHeaders(),
         }
       );
 
@@ -186,10 +159,7 @@ export class ContextApiDataSource implements NodeApi {
     try {
       const nodeEndpoint = getAppEndpointKey() || DEFAULT_NODE_ENDPOINT;
       const response = await axios.get(
-        `${nodeEndpoint}/admin-api/contexts/${props.contextId}`,
-        {
-          headers: getAuthHeaders(),
-        }
+        `${nodeEndpoint}/admin-api/contexts/${props.contextId}`
       );
 
       if (response.status === 200) {
@@ -224,11 +194,7 @@ export class ContextApiDataSource implements NodeApi {
     try {
       const nodeEndpoint = getAppEndpointKey() || DEFAULT_NODE_ENDPOINT;
       const response = await axios.post(
-        `${nodeEndpoint}/admin-api/identity/context`,
-        {},
-        {
-          headers: getAuthHeaders(),
-        }
+        `${nodeEndpoint}/admin-api/identity/context`
       );
 
       if (response.status === 200) {
@@ -259,10 +225,7 @@ export class ContextApiDataSource implements NodeApi {
     try {
       const nodeEndpoint = getAppEndpointKey() || DEFAULT_NODE_ENDPOINT;
       const response = await axios.delete(
-        `${nodeEndpoint}/admin-api/contexts/${props.contextId}`,
-        {
-          headers: getAuthHeaders(),
-        }
+        `${nodeEndpoint}/admin-api/contexts/${props.contextId}`
       );
       if (response.status === 200) {
         return {
@@ -278,52 +241,6 @@ export class ContextApiDataSource implements NodeApi {
     } catch (error) {
       console.error("Delete context failed:", error);
       let errorMessage = "An unexpected error occurred during delete context";
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      }
-      return {
-        data: null,
-        error: { code: 500, message: errorMessage },
-      };
-    }
-  }
-
-  async listContexts(): ApiResponse<import("../nodeApi").ContextInfo[]> {
-    try {
-      const nodeEndpoint = getAppEndpointKey() || DEFAULT_NODE_ENDPOINT;
-      const response = await axios.get(
-        `${nodeEndpoint}/admin-api/contexts`,
-        {
-          headers: getAuthHeaders(),
-        }
-      );
-      
-      if (response.status === 200) {
-        // The response structure is { data: { contexts: [...] } }
-        const rawContexts = response.data.data?.contexts || response.data?.contexts || [];
-        
-        // Map the API response to our ContextInfo interface
-        // API uses 'id' but our interface expects 'contextId'
-        const contexts = rawContexts.map((ctx: any) => ({
-          contextId: ctx.id,
-          applicationId: ctx.applicationId,
-          lastUpdate: ctx.lastUpdate || 0,
-          rootHash: ctx.rootHash,
-        }));
-        
-        return {
-          data: contexts,
-          error: null,
-        };
-      } else {
-        return {
-          data: null,
-          error: { code: response.status, message: response.statusText },
-        };
-      }
-    } catch (error) {
-      console.error("listContexts failed:", error);
-      let errorMessage = "An unexpected error occurred while fetching contexts";
       if (error instanceof Error) {
         errorMessage = error.message;
       }

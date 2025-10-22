@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import Quill from "quill";
-import { sanitizePasteHtml } from "../components/virtualized-chat";
+import { sanitizePasteHtml } from "curb-virtualized-chat";
 
 interface MarkdownEditorProps {
     handleMessageSent: (content: string) => void;

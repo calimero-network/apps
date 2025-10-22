@@ -37,13 +37,6 @@ export interface DeleteContextProps {
   contextId: string;
 }
 
-export interface ContextInfo {
-  contextId: string;
-  applicationId: string;
-  lastUpdate: number;
-  rootHash: string;
-}
-
 export interface NodeApi {
   createContext(props: CreateContextProps): ApiResponse<CreateContextResponse>;
   deleteContext(props: DeleteContextProps): ApiResponse<string>;
@@ -51,5 +44,4 @@ export interface NodeApi {
   joinContext(props: JoinContextProps): ApiResponse<string>;
   verifyContext(props: VerifyContextProps): ApiResponse<VerifyContextResponse>;
   createIdentity(): ApiResponse<CreateIdentityResponse>;
-  listContexts(): ApiResponse<ContextInfo[]>;
 }

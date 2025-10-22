@@ -1,5 +1,4 @@
 import { styled } from "styled-components";
-import { memo } from 'react';
 import type { ActiveChat, ChannelMeta, ChatMessagesData, ChatMessagesDataWithOlder, CurbMessage } from "../../types/Common";
 import ChannelsContainer from "./ChannelsContainer";
 import CurbNavbar from "../navbar/CurbNavbar";
@@ -50,10 +49,8 @@ interface AppContainerProps {
   openThread: CurbMessage | undefined;
   setOpenThread: (thread: CurbMessage | undefined) => void;
   currentOpenThreadRef: React.RefObject<CurbMessage | undefined>;
-  addOptimisticMessage?: (message: CurbMessage) => void;
-  addOptimisticThreadMessage?: (message: CurbMessage) => void;
 }
-function AppContainer({
+export default function AppContainer({
   activeChat,
   isSidebarOpen,
   setIsSidebarOpen,
@@ -80,9 +77,7 @@ function AppContainer({
   updateCurrentOpenThread,
   openThread,
   setOpenThread,
-  currentOpenThreadRef,
-  addOptimisticMessage,
-  addOptimisticThreadMessage,
+  currentOpenThreadRef
 }: AppContainerProps) {
   return (
     <>
@@ -131,8 +126,6 @@ function AppContainer({
                 currentOpenThreadRef={currentOpenThreadRef}
                 onDMSelected={onDMSelected}
                 membersList={chatMembers}
-                addOptimisticMessage={addOptimisticMessage}
-                addOptimisticThreadMessage={addOptimisticThreadMessage}
               />
             )}
             {isOpenSearchChannel && (
@@ -147,5 +140,3 @@ function AppContainer({
     </>
   );
 }
-
-export default memo(AppContainer);

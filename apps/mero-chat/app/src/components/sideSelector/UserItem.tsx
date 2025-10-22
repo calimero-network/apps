@@ -1,6 +1,7 @@
-import { useCallback, memo } from "react";
+import { useCallback } from "react";
 import { styled } from "styled-components";
 import { Avatar } from "@calimero-network/mero-ui";
+// import UnreadMessagesBadge from "./UnreadMessageBadge";
 import type { DMChatInfo } from "../../api/clientApi";
 import type { ActiveChat } from "../../types/Common";
 import UnreadMessagesBadge from "./UnreadMessageBadge";
@@ -57,7 +58,7 @@ interface UserItemProps {
   isCollapsed?: boolean;
 }
 
-function UserItem({
+export default function UserItem({
   onDMSelected,
   selected,
   userDM,
@@ -93,5 +94,3 @@ function UserItem({
     </UserListItem>
   );
 }
-
-export default memo(UserItem);

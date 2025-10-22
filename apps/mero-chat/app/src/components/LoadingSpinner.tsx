@@ -1,8 +1,5 @@
 export const LoadingSpinner = () => (
   <div
-    role="status"
-    aria-live="polite"
-    aria-label="Loading"
     style={{
       display: "flex",
       justifyContent: "center",
@@ -12,6 +9,6 @@ export const LoadingSpinner = () => (
       fontSize: "1.2rem",
     }}
   >
-    <span>Loading authentication...</span>
+    Loading authentication...
   </div>
 );

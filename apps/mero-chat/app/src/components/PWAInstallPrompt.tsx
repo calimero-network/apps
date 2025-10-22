@@ -1,4 +1,4 @@
-import React, { useState, useEffect, memo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button, Modal } from 'react-bootstrap';
 
 interface BeforeInstallPromptEvent extends Event {
@@ -10,7 +10,7 @@ interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
 }
 
-const PWAInstallPrompt = memo(function PWAInstallPrompt() {
+const PWAInstallPrompt: React.FC = () => {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
@@ -20,19 +20,18 @@ const PWAInstallPrompt = memo(function PWAInstallPrompt() {
     const checkIfInstalled = () => {
       if (window.matchMedia('(display-mode: standalone)').matches) {
         setIsInstalled(true);
-        return true;
+        return;
       }
       
       // Check for iOS Safari
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((window.navigator as any).standalone === true) {
         setIsInstalled(true);
-        return true;
+        return;
       }
-      return false;
     };
 
-    const installed = checkIfInstalled();
+    checkIfInstalled();
 
     // Listen for the beforeinstallprompt event
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -40,9 +39,8 @@ const PWAInstallPrompt = memo(function PWAInstallPrompt() {
       setDeferredPrompt(e as BeforeInstallPromptEvent);
       
       // Show install modal after a delay to not be too aggressive
-      // Check installed status at the time of showing, not from state
       setTimeout(() => {
-        if (!checkIfInstalled()) {
+        if (!isInstalled) {
           setShowInstallModal(true);
         }
       }, 3000);
@@ -62,7 +60,7 @@ const PWAInstallPrompt = memo(function PWAInstallPrompt() {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
     };
-  }, []); // Only run once on mount
+  }, [isInstalled]);
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
@@ -133,6 +131,6 @@ const PWAInstallPrompt = memo(function PWAInstallPrompt() {
       </Modal.Footer>
     </Modal>
   );
-});
+};
 
 export default PWAInstallPrompt;

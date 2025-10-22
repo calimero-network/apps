@@ -1,4 +1,3 @@
-import { memo } from "react";
 import { styled } from "styled-components";
 import type { ActiveChat, ChannelMeta, ChatType } from "../../types/Common";
 import UnreadMessagesBadge from "./UnreadMessageBadge";
@@ -90,7 +89,7 @@ interface ChannelListProps {
   isCollapsed?: boolean;
 }
 
-const ChannelList = memo(function ChannelList(props: ChannelListProps) {
+export default function ChannelList(props: ChannelListProps) {
   const { channels, selectedChannelId, selectChannel, isCollapsed } = props;
 
   return (
@@ -188,6 +187,4 @@ const ChannelList = memo(function ChannelList(props: ChannelListProps) {
       </ScrollableChannelList>
     </ChannelListContainer>
   );
-});
-
-export default ChannelList;
+}
