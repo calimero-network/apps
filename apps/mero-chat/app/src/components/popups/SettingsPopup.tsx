@@ -81,6 +81,7 @@ export default function SettingsPopup({ isOpen, setIsOpen, toggle }: SettingsPop
   };
 
   const tabs = [
+    { id: "context-switcher", label: "Switch Context" },
     { id: "join-context", label: "Join Context" },
     { id: "invite-to-context", label: "Invite to Context" },
     { id: "create-identity", label: "Create Identity" },

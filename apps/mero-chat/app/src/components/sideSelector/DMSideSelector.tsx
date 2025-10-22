@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { styled } from "styled-components";
 import DMHeader from "./DMHeader";
 import UserList from "./UserList";
@@ -22,7 +23,7 @@ interface DMSideSelectorProps {
   isCollapsed?: boolean;
 }
 
-export default function DMSideSelector({
+function DMSideSelector({
   chatMembers,
   createDM,
   onDMSelected,
@@ -37,3 +38,5 @@ export default function DMSideSelector({
     </DMContainer>
   );
 }
+
+export default memo(DMSideSelector);

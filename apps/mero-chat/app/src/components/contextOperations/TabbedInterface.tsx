@@ -5,6 +5,7 @@ import JoinContextTab from "./JoinContextTab";
 import CreateIdentityTab from "./CreateIdentityTab";
 import InviteToContextTab from "./InviteToContextTab";
 import NotificationSettings from "../settings/NotificationSettings";
+import ContextSwitcher from "../settings/ContextSwitcher";
 import ChatTab from "./ChatTab";
 
 interface TabbedInterfaceProps {
@@ -31,6 +32,9 @@ export default function TabbedInterface({ tabs, isAuthenticated, isConfigSet }: 
       </TabPanel>
       <TabPanel when="notification-settings" active={activeTab}>
         <NotificationSettings />
+      </TabPanel>
+      <TabPanel when="context-switcher" active={activeTab}>
+        <ContextSwitcher />
       </TabPanel>
       <TabPanel when="chat" active={activeTab}>
         <ChatTab isAuthenticated={isAuthenticated || false} isConfigSet={isConfigSet || false} />

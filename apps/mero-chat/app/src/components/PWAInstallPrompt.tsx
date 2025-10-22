@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import { Button, Modal } from 'react-bootstrap';
 
 interface BeforeInstallPromptEvent extends Event {
@@ -10,7 +10,7 @@ interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
 }
 
-const PWAInstallPrompt: React.FC = () => {
+const PWAInstallPrompt = memo(function PWAInstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
@@ -20,18 +20,19 @@ const PWAInstallPrompt: React.FC = () => {
     const checkIfInstalled = () => {
       if (window.matchMedia('(display-mode: standalone)').matches) {
         setIsInstalled(true);
-        return;
+        return true;
       }
       
       // Check for iOS Safari
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((window.navigator as any).standalone === true) {
         setIsInstalled(true);
-        return;
+        return true;
       }
+      return false;
     };
 
-    checkIfInstalled();
+    const installed = checkIfInstalled();
 
     // Listen for the beforeinstallprompt event
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -39,8 +40,9 @@ const PWAInstallPrompt: React.FC = () => {
       setDeferredPrompt(e as BeforeInstallPromptEvent);
       
       // Show install modal after a delay to not be too aggressive
+      // Check installed status at the time of showing, not from state
       setTimeout(() => {
-        if (!isInstalled) {
+        if (!checkIfInstalled()) {
           setShowInstallModal(true);
         }
       }, 3000);
@@ -60,7 +62,7 @@ const PWAInstallPrompt: React.FC = () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
     };
-  }, [isInstalled]);
+  }, []); // Only run once on mount
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
@@ -131,6 +133,6 @@ const PWAInstallPrompt: React.FC = () => {
       </Modal.Footer>
     </Modal>
   );
-};
+});
 
 export default PWAInstallPrompt;

@@ -7,6 +7,7 @@ import { CurbLogo } from "../navbar/CurbNavbar";
 import DMSideSelector from "./DMSideSelector";
 import type { DMChatInfo } from "../../api/clientApi";
 import type { CreateContextResult } from "../popups/StartDMPopup";
+import { scrollbarStyles } from "../../styles/scrollbar";
 
 interface SideSelectorProps {
   channels: ChannelMeta[];
@@ -43,33 +44,13 @@ const SideMenu = styled.div<{ $isCollapsed: boolean }>`
   height: calc(100vh - 75px);
   overflow-y: scroll;
   transition: width 0.3s ease-in-out;
+  
   @media (max-width: 1024px) {
     display: none;
   }
-  scrollbar-color: black black;
-  ::-webkit-scrollbar {
-    width: 6px;
-  }
-  ::-webkit-scrollbar-thumb {
-    background-color: black;
-    border-radius: 6px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background-color: black;
-  }
-  * {
-    scrollbar-color: black black;
-  }
-  html::-webkit-scrollbar {
-    width: 12px;
-  }
-  html::-webkit-scrollbar-thumb {
-    background-color: black;
-    border-radius: 6px;
-  }
-  html::-webkit-scrollbar-thumb:hover {
-    background-color: black;
-  }
+  
+  /* Apply shared scrollbar styles */
+  ${scrollbarStyles}
 `;
 
 const SideMenuMobile = styled.div<{ $isOpen: boolean }>`
@@ -78,6 +59,7 @@ const SideMenuMobile = styled.div<{ $isOpen: boolean }>`
   padding-top: 0.75rem;
   overflow-y: scroll;
   height: 100vh;
+  
   @media (max-width: 1024px) {
     display: block;
     position: fixed;
@@ -91,30 +73,9 @@ const SideMenuMobile = styled.div<{ $isOpen: boolean }>`
     transform: ${props => props.$isOpen ? 'translateX(0)' : 'translateX(-100%)'};
     transition: transform 0.3s ease-in-out;
   }
-  scrollbar-color: black black;
-  ::-webkit-scrollbar {
-    width: 6px;
-  }
-  ::-webkit-scrollbar-thumb {
-    background-color: black;
-    border-radius: 6px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background-color: black;
-  }
-  * {
-    scrollbar-color: black black;
-  }
-  html::-webkit-scrollbar {
-    width: 12px;
-  }
-  html::-webkit-scrollbar-thumb {
-    background-color: black;
-    border-radius: 6px;
-  }
-  html::-webkit-scrollbar-thumb:hover {
-    background-color: black;
-  }
+  
+  /* Apply shared scrollbar styles */
+  ${scrollbarStyles}
 `;
 
 const SearchChannelsWrapper = styled.div<{ $isCollapsed: boolean }>`

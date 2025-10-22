@@ -1,21 +1,28 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import Login from "./pages/Login";
-import Home from "./pages/Home";
 import { getAuthConfig, useCalimero } from "@calimero-network/calimero-client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, lazy, Suspense, useRef } from "react";
 import { LoadingSpinner } from "./components/LoadingSpinner";
-import IdleTimeoutWrapper from "./components/IdleTimeoutWrapper";
-import PWAInstallPrompt from "./components/PWAInstallPrompt";
 import { isSessionExpired, clearStoredSession, clearDmContextId, clearSessionActivity, updateSessionActivity } from "./utils/session";
+
+// Lazy load pages for better performance
+const Login = lazy(() => import("./pages/Login"));
+const Home = lazy(() => import("./pages/Home"));
+const IdleTimeoutWrapper = lazy(() => import("./components/IdleTimeoutWrapper"));
+const PWAInstallPrompt = lazy(() => import("./components/PWAInstallPrompt"));
 
 function App() {
   const { isAuthenticated, logout } = useCalimero();
-  const authConfig = getAuthConfig();
   const [isConfigSet, setIsConfigSet] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const hasInitializedRef = useRef(false);
 
   useEffect(() => {
+    // Only check config once to avoid repeated auth checks
+    if (hasInitializedRef.current) return;
+    
     const timer = setTimeout(() => {
+      // Get authConfig inside effect to avoid unnecessary re-renders
+      const authConfig = getAuthConfig();
       const hasRequiredConfig =
         authConfig?.appEndpointKey &&
         authConfig?.contextId &&
@@ -24,10 +31,11 @@ function App() {
 
       setIsConfigSet(Boolean(hasRequiredConfig));
       setIsLoading(false);
+      hasInitializedRef.current = true;
     }, 100);
 
     return () => clearTimeout(timer);
-  }, [authConfig, isAuthenticated]);
+  }, []); // Empty deps - only run once on mount
 
   // Check for expired session on app initialization and initialize session activity
   useEffect(() => {
@@ -46,7 +54,7 @@ function App() {
   }, [isAuthenticated, logout]);
 
   return (
-    <>
+    <Suspense fallback={<LoadingSpinner />}>
       <Routes>
         <Route
           path="/login"
@@ -78,7 +86,7 @@ function App() {
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
       <PWAInstallPrompt />
-    </>
+    </Suspense>
   );
 }
 

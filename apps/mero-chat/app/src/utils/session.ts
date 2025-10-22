@@ -1,57 +1,59 @@
 import type { ActiveChat } from "../types/Common";
-
-export const updateSessionChat = (session: ActiveChat) => {
-  localStorage.setItem("lastSession", JSON.stringify(session));
-};
-
-export const getStoredSession = (): ActiveChat | null => {
-  try {
-    const storedSession = localStorage.getItem("lastSession");
-    if (storedSession) {
-      const parsedSession = JSON.parse(storedSession);
-      // Validate that the stored session has the required properties
-      if (parsedSession && parsedSession.type && parsedSession.id && parsedSession.name) {
-        return parsedSession as ActiveChat;
-      }
-    }
-  } catch (error) {
-    console.error("Error reading session from localStorage:", error);
-  }
-  return null;
-};
-
-export const clearStoredSession = () => {
-  localStorage.removeItem("lastSession");
-};
-
-export const setDmContextId = (contextId: string) => {
-  localStorage.setItem("dmContextId", contextId);
-}
-
-export const getDmContextId = () => {
-  return localStorage.getItem("dmContextId");
-}
-
-export const clearDmContextId = () => {
-  localStorage.removeItem("dmContextId");
-}
+import { StorageHelper } from "./storage";
+import { log } from "./logger";
 
 // Session timeout tracking
 const SESSION_TIMEOUT_KEY = "sessionLastActivity";
 const SESSION_TIMEOUT_MS = 3600000; // 1 hour
 
-export const updateSessionActivity = () => {
-  localStorage.setItem(SESSION_TIMEOUT_KEY, Date.now().toString());
+/**
+ * Validator for ActiveChat to ensure it has required properties
+ */
+const isValidActiveChat = (data: unknown): boolean => {
+  if (!data || typeof data !== 'object') return false;
+  const chat = data as Record<string, unknown>;
+  return !!(chat.type && chat.id && chat.name);
+};
+
+export const updateSessionChat = (session: ActiveChat): void => {
+  StorageHelper.setJSON("lastSession", session);
+};
+
+export const getStoredSession = (): ActiveChat | null => {
+  const session = StorageHelper.getJSON<ActiveChat>("lastSession", isValidActiveChat);
+  if (!session) {
+    log.debug("Session", "No valid session found in storage");
+  }
+  return session;
+};
+
+export const clearStoredSession = (): void => {
+  StorageHelper.removeItem("lastSession");
+  log.debug("Session", "Session cleared from storage");
+};
+
+export const setDmContextId = (contextId: string): void => {
+  StorageHelper.setItem("dmContextId", contextId);
+};
+
+export const getDmContextId = (): string | null => {
+  return StorageHelper.getItem("dmContextId");
+};
+
+export const clearDmContextId = (): void => {
+  StorageHelper.removeItem("dmContextId");
+};
+
+export const updateSessionActivity = (): void => {
+  StorageHelper.setItem(SESSION_TIMEOUT_KEY, Date.now().toString());
 };
 
 export const getSessionLastActivity = (): number | null => {
-  try {
-    const stored = localStorage.getItem(SESSION_TIMEOUT_KEY);
-    return stored ? parseInt(stored, 10) : null;
-  } catch (error) {
-    console.error("Error reading session activity from localStorage:", error);
-    return null;
-  }
+  const stored = StorageHelper.getItem(SESSION_TIMEOUT_KEY);
+  if (!stored) return null;
+  
+  const parsed = parseInt(stored, 10);
+  return isNaN(parsed) ? null : parsed;
 };
 
 export const isSessionExpired = (): boolean => {
@@ -64,6 +66,6 @@ export const isSessionExpired = (): boolean => {
   return timeSinceActivity >= SESSION_TIMEOUT_MS;
 };
 
-export const clearSessionActivity = () => {
-  localStorage.removeItem(SESSION_TIMEOUT_KEY);
+export const clearSessionActivity = (): void => {
+  StorageHelper.removeItem(SESSION_TIMEOUT_KEY);
 };

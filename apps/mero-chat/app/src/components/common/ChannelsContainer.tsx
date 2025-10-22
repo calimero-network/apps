@@ -1,4 +1,4 @@
-import React from "react";
+import React, { memo } from "react";
 import type { ActiveChat, ChannelMeta } from "../../types/Common";
 import SideSelector from "../sideSelector/SideSelector";
 import { defaultActiveChat } from "../../mock/mock";
@@ -19,7 +19,7 @@ interface ChannelsContainerProps {
   privateDMs: DMChatInfo[];
 }
 
-const ChannelsContainer: React.FC<ChannelsContainerProps> = (props) => {
+function ChannelsContainer(props: ChannelsContainerProps) {
   const {
     onChatSelected,
     activeChat,
@@ -49,6 +49,6 @@ const ChannelsContainer: React.FC<ChannelsContainerProps> = (props) => {
       privateDMs={privateDMs}
     />
   );
-};
+}
 
-export default ChannelsContainer;
+export default memo(ChannelsContainer);
