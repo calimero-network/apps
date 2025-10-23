@@ -17,7 +17,7 @@ const Container = styled.div`
 const ReplyText = styled.div`
   font-size: 12px;
   line-height: 150%;
-  color: #4e95ff;
+  color: #A5FF11;
   text-decoration: none;
   &:hover {
     text-decoration: underline;
