@@ -557,9 +557,7 @@ const Message = (props: MessageProps) => {
         {props.message.reactions && (
           <MessageReactionsField
             reactions={props.message.reactions}
-            accountId={props.accountId}
             handleReaction={props.handleReaction}
-            getIconFromCache={props.getIconFromCache}
             selectedReaction={selectedReaction}
             openMessageReactionsList={openMessageReactionsList}
             closeMessageReactionsList={closeMessageReactionsList}

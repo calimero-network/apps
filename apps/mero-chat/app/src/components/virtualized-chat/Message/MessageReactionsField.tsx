@@ -7,11 +7,14 @@ import MessageReactionsList from "./MessageReactionsList";
 
 const ReactionsWrapper = styled.div`
   display: flex;
+  flex-wrap: wrap;
   padding-top: 2px;
   padding-left: 2.5rem;
   width: fit-content;
+  max-width: 100%;
   padding-bottom: 4px;
   column-gap: 0.25rem;
+  row-gap: 0.25rem;
   font-size: 1rem;
   line-height: 1rem;
   cursor: pointer;
@@ -148,7 +151,6 @@ const ReactionDescription = ({
 };
 
 interface EmojiComponentButtonProps {
-  accountId: string;
   reaction: {
     reaction: string;
     accounts: string[];
@@ -161,7 +163,6 @@ interface EmojiComponentButtonProps {
 }
 
 const ReactionEmojiComponentButton = ({
-  accountId,
   reaction,
   handleReaction,
   openMessageReactionsList,
@@ -205,9 +206,7 @@ const ReactionEmojiComponentButton = ({
 
 const MessageReactionsField: React.FC<{
   reactions: HashMap<CurbString, Vec<AccountId>>;
-  accountId: string;
   handleReaction: (reaction: string) => void;
-  getIconFromCache: (accountId: string) => Promise<string | null>;
   isMessageRectionListVisible: boolean;
   openMessageReactionsList: (reaction: {
     reaction: string;
@@ -222,15 +221,12 @@ const MessageReactionsField: React.FC<{
     | undefined;
 }> = ({
   reactions,
-  accountId,
   handleReaction,
-  getIconFromCache,
   isMessageRectionListVisible,
   openMessageReactionsList,
   closeMessageReactionsList,
   selectedReaction,
 }) => {
-  console.log("reactions", reactions);
   const parsedReactions = parseReactions(reactions);
 
   return (
@@ -241,7 +237,6 @@ const MessageReactionsField: React.FC<{
             {parsedReaction.accounts.length > 0 && (
               <ReactionEmojiComponentButton
                 key={id}
-                accountId={accountId}
                 reaction={parsedReaction}
                 handleReaction={handleReaction}
                 openMessageReactionsList={openMessageReactionsList}
@@ -254,8 +249,13 @@ const MessageReactionsField: React.FC<{
         <MessageReactionsList
           reactions={parsedReactions}
           selectedReaction={selectedReaction ?? parsedReactions[0]}
-          getIconFromCache={getIconFromCache}
           closeMessageReactionsList={closeMessageReactionsList}
+          isOpen={isMessageRectionListVisible}
+          setIsOpen={(isOpen) => {
+            if (!isOpen) {
+              closeMessageReactionsList();
+            }
+          }}
         />
       )}
     </>
