@@ -62,7 +62,7 @@ export const sanitizePasteHtml = (html: string) =>
 export const elapsedTime = (timestampInSeconds: number) => {
   const now = new Date();
   const timestamp = new Date(timestampInSeconds * 1000);
-  const diffInSeconds = (now.getTime() - timestamp.getTime()) / 1000;
+  const diffInSeconds = Math.floor((now.getTime() - timestamp.getTime()) / 1000);
 
   if (diffInSeconds < 60) {
     return "now";
@@ -83,14 +83,9 @@ export const elapsedTime = (timestampInSeconds: number) => {
   } else if (diffInSeconds < 29030400) {
     const months = Math.floor(diffInSeconds / 2592000);
     return `${months} month${months === 1 ? "" : "s"} ago`;
-  } else if (diffInSeconds >= 29030400) {
+  } else {
     const years = Math.floor(diffInSeconds / 31556952);
     return `${years} year${years === 1 ? "" : "s"} ago`;
-  } else {
-    const day = timestamp.getDate().toString().padStart(2, "0");
-    const month = (timestamp.getMonth() + 1).toString().padStart(2, "0");
-    const year = timestamp.getFullYear();
-    return `${day}/${month}/${year}`;
   }
 };
 

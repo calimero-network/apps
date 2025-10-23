@@ -570,7 +570,7 @@ const Message = (props: MessageProps) => {
       {!props.isThread && (props.message.threadCount || 0) > 0 && (
         <ReplyContainerButton
           replyCount={props.message.threadCount ?? 0}
-          lastTimestamp={(props.message.threadLastTimestamp ?? 0) / 1000}
+          lastTimestamp={(props.message.threadLastTimestamp ?? 0)}
           onClick={() => {
             props.openThread();
           }}
