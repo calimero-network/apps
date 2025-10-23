@@ -4,29 +4,13 @@ import styled from "styled-components";
 import { ElementPosition } from "../types/curbTypes";
 
 import ChatTextIcon from "./Icons/ChatTextIcon";
+import CheckMarkIcon from "./Icons/CheckMarkIcon";
 import EditMessageIcon from "./Icons/EditMessageIcon";
 import EmojiWinkIcon from "./Icons/EmojiWinkIcon";
+import GrinningFaceIcon from "./Icons/GrinningFaceIcon";
+import ThumbsUpIcon from "./Icons/ThumbsUpIcon";
 import ThreeDotsIcon from "./Icons/ThreeDotsIcon";
 import TrashIcon from "./Icons/TrashIcon";
-//
-// This component is not properly converted to styled-components
-// const ReactionsContainer = styled.div`
-//   display: flex;
-//   flex-direction: row;
-//   height: 26px;
-//   column-gap: 0.5rem;
-//   font-size: 1.5rem;
-//   line-height: 1.75rem;
-//   cursor: pointer;
-//   background: #0e0e10;
-//   border-radius: 4px;
-//   padding-left: 2rem;
-//   padding-right: 2px;
-//   padding-top: 2px;
-//   padding-bottom: 0px;
-// `;
-
-//background: '#2E2F3D',
 
 const styles: CSSProperties = {
   display: "flex",
@@ -37,7 +21,7 @@ const styles: CSSProperties = {
   fontSize: "1.5rem",
   lineHeight: "1.75rem",
   cursor: "pointer",
-  background: "#2E2F3D",
+  background: "rgb(17, 17, 17)",
   borderRadius: "4px",
   paddingTop: "7px",
   paddingBottom: "7px",
@@ -49,10 +33,9 @@ const styles: CSSProperties = {
 const EmojiContainer = styled.span`
   width: 24px;
   height: 24px;
+  font-size: 16px;
   border-radius: 4px;
-  &:hover {
-    background-color: #1d1e27;
-  }
+  cursor: pointer;
   text-align: center;
   display: flex;
   justify-content: center;
@@ -95,25 +78,24 @@ const MoreActionContainer = styled.div`
   padding: 2px;
   border-radius: 4px;
   gap: 4px;
-  background-color: #25252a;
+  background-color: rgb(17, 17, 17);
 `;
-
-// const MoreActionIcon = styled.div`
-//   padding-top: 5px;
-// `;
 
 const reactionsArray = [
   {
     emoji: "✅",
     title: "Check Mark Button",
+    icon: <CheckMarkIcon />,
   },
   {
     emoji: "👍",
     title: "Thumbs Up",
+    icon: <ThumbsUpIcon />,
   },
   {
     emoji: "😀",
     title: "Grinning Face",
+    icon: <GrinningFaceIcon />,
   },
 ];
 
@@ -209,8 +191,7 @@ const ActionsPopup: React.FC<{
         >
           {moreActionArray.map((action, id) => (
             <ActionContainer key={id} onClick={action.onClick}>
-              {action.icon}
-              <span>{action.name}</span>
+              <span style={{ fontSize: "14px" }}>{action.name}</span>
             </ActionContainer>
           ))}
         </MoreActionContainer>
@@ -220,14 +201,13 @@ const ActionsPopup: React.FC<{
           onClick={() => toggleReaction(reaction.emoji)}
           key={"reaction" + id}
         >
-          {reaction.emoji}
+          {reaction.icon}
         </EmojiContainer>
       ))}
       {(isThread ? ThreadActionsArray : actionsArray).map((action, id) => (
         <EmojiContainer
           key={"action" + id}
           onClick={action.onClick}
-          style={{ paddingBottom: "10px" }}
         >
           {action.icon}
         </EmojiContainer>

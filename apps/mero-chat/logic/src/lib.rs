@@ -53,7 +53,7 @@ pub struct MessageWithReactions {
     pub id: MessageId,
     pub text: String,
     pub edited_on: Option<u64>,
-    pub reactions: Option<HashMap<String, Vec<UserId>>>,
+    pub reactions: Option<HashMap<String, Vec<String>>>,
     pub deleted: Option<bool>,
     pub thread_count: u32,
     pub thread_last_timestamp: u64,
@@ -223,7 +223,7 @@ pub struct CurbChat {
     moderators: UnorderedSet<UserId>,
     dm_chats: UnorderedMap<UserId, Vec<DMChatInfo>>,
     is_dm: bool,
-    reactions: UnorderedMap<MessageId, UnorderedMap<String, UnorderedSet<UserId>>>,
+    reactions: UnorderedMap<MessageId, UnorderedMap<String, UnorderedSet<String>>>,
     user_channel_unread: UnorderedMap<UserId, UnorderedMap<Channel, UserChannelUnread>>,
     user_channel_mentions: UnorderedMap<UserId, UnorderedMap<Channel, Vector<UserChannelMentions>>>,
 }
@@ -316,6 +316,24 @@ impl CurbChat {
 
         if self.members.contains(&executor_id).unwrap_or(false) {
             return Err("Already a member of the chat".to_string());
+        }
+
+        // Validate username
+        if username.trim().is_empty() {
+            return Err("Username cannot be empty".to_string());
+        }
+
+        if username.len() > 50 {
+            return Err("Username cannot be longer than 50 characters".to_string());
+        }
+
+        // Check if username is already taken
+        if let Ok(entries) = self.member_usernames.entries() {
+            for (_, existing_username) in entries {
+                if existing_username == username {
+                    return Err("Username is already taken".to_string());
+                }
+            }
         }
 
         let _ = self.members.insert(executor_id);
@@ -1455,10 +1473,10 @@ impl CurbChat {
         &mut self,
         message_id: MessageId,
         emoji: String,
-        user: UserId,
+        user: String,
         add: bool,
     ) -> app::Result<String, String> {
-        let mut reactions = match self.reactions.get(&message_id) {
+        let mut reactions = match self.reactions.get(&message_id.clone()) {
             Ok(Some(reactions)) => reactions,
             _ => UnorderedMap::new(),
         };
@@ -1475,13 +1493,10 @@ impl CurbChat {
         }
 
         let _ = reactions.insert(emoji, emoji_reactions);
-        let _ = self.reactions.insert(message_id, reactions);
+        let _ = self.reactions.insert(message_id.clone(), reactions);
 
         let action = if add { "added" } else { "removed" };
-        app::emit!(Event::ReactionUpdated(format!(
-            "Reaction {} successfully",
-            action
-        )));
+        app::emit!(Event::ReactionUpdated(message_id.to_string()));
         Ok(format!("Reaction {} successfully", action))
     }
 
