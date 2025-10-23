@@ -7,6 +7,7 @@ import { AppMode, CalimeroProvider } from "@calimero-network/calimero-client";
 import { ToastProvider } from "@calimero-network/mero-ui";
 import { APPLICATION_ID, APPLICATION_PATH } from "./constants/config.ts";
 import ErrorBoundary from "./components/ErrorBoundary.tsx";
+import { WebSocketProvider } from "./contexts/WebSocketContext.tsx";
 import { log } from "./utils/logger.ts";
 
 // Register service worker for PWA
@@ -40,9 +41,11 @@ createRoot(document.getElementById("root")!).render(
           mode={AppMode.MultiContext}
           applicationPath={APPLICATION_PATH}
         >
-          <ToastProvider>
-            <App />
-          </ToastProvider>
+          <WebSocketProvider>
+            <ToastProvider>
+              <App />
+            </ToastProvider>
+          </WebSocketProvider>
         </CalimeroProvider>
       </BrowserRouter>
     </ErrorBoundary>

@@ -7,6 +7,7 @@ import { useState } from "react";
 import type { UserId } from "../../api/clientApi";
 import SettingsIcon from "./SettingsIcon";
 import NotificationCenterWidget from "./NotificationCenterWidget";
+import { WebSocketStatus } from "../WebSocketStatus";
 import CurbLogoIcon from "/logo.svg";
 
 const NavigationBar = styled.div<{ $isSidebarOpen: boolean }>`
@@ -168,6 +169,9 @@ interface CurbNavbarProps {
   reFetchChannelMembers: () => void;
   setActiveChat: (chat: ActiveChat) => void;
   fetchChannels: () => void;
+  wsIsSubscribed?: boolean;
+  wsContextId?: string | null;
+  wsSubscriptionCount?: number;
 }
 
 export default function CurbNavbar({
@@ -180,6 +184,9 @@ export default function CurbNavbar({
   reFetchChannelMembers,
   setActiveChat,
   fetchChannels,
+  wsIsSubscribed = false,
+  wsContextId = null,
+  wsSubscriptionCount = 0,
 }: CurbNavbarProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -237,6 +244,11 @@ export default function CurbNavbar({
               />
             </ItemsContainer>
           )}
+        <WebSocketStatus 
+          isSubscribed={wsIsSubscribed} 
+          contextId={wsContextId}
+          subscriptionCount={wsSubscriptionCount}
+        />
         <NotificationCenterWidget />
         <SettingsIcon />
       </FlexContainer>

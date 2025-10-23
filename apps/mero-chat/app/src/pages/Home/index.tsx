@@ -42,7 +42,7 @@ import { useChatMembers } from "../../hooks/useChatMembers";
 import { useChannelMembers } from "../../hooks/useChannelMembers";
 import { useMessages } from "../../hooks/useMessages";
 import { useThreadMessages } from "../../hooks/useThreadMessages";
-import { useWebSocketSubscription } from "../../hooks/useWebSocketSubscription";
+import { useWebSocket, useWebSocketEvents } from "../../contexts/WebSocketContext";
 import { useChatHandlers } from "../../hooks/useChatHandlers";
 
 export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
@@ -59,10 +59,8 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     undefined,
   );
 
-  // Ref for subscription to avoid circular dependency
-  const subscriptionRef = useRef<{
-    subscribe: (contextId: string) => void;
-  } | null>(null);
+  // Get WebSocket subscription from context
+  const webSocket = useWebSocket();
 
   // Use message hooks for cleaner message management
   const mainMessages = useMessages();
@@ -182,19 +180,9 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
       channelsHook.fetchChannels();
     }, 1000);
 
-    // Subscribe to websocket events for this chat
-    if (app && subscriptionRef.current) {
-      const useDM = (selectedChat.type === "direct_message" &&
-        selectedChat.account &&
-        !selectedChat.canJoin &&
-        selectedChat.otherIdentityNew) as boolean;
-      const contextId = getContextId();
-      const dmContextId = getDmContextId();
-      const currentContextId = (useDM ? dmContextId : contextId) || "";
-      if (currentContextId) {
-        subscriptionRef.current.subscribe(currentContextId);
-      }
-    }
+    // Note: With multi-context subscription, we're already subscribed to all channels
+    // No need to switch subscriptions when changing active chat
+    log.debug("Home", `Active chat changed to: ${selectedChat.name} (multi-context subscription active)`);
   };
 
   const openSearchPage = useCallback(() => {
@@ -438,42 +426,10 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     handleExecutionEvents,
   } = useChatHandlers(activeChatRef, activeChat, chatHandlersRefs);
 
-  // Track event processing to prevent overlap
-  const isProcessingEventRef = useRef(false);
-  const eventBatchRef = useRef<WebSocketEvent[]>([]);
-  const batchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  /**
-   * Process batched events efficiently
-   * Since we only get StateMutation events, batch them and only process the latest
-   */
-  const processBatchedEvents = useCallback(async () => {
-    if (isProcessingEventRef.current || eventBatchRef.current.length === 0) {
-      return;
-    }
-
-    isProcessingEventRef.current = true;
-    const events = [...eventBatchRef.current];
-    eventBatchRef.current = [];
-
-    if (batchTimerRef.current) {
-      clearTimeout(batchTimerRef.current);
-      batchTimerRef.current = null;
-    }
-
+  // Listen to WebSocket events via context
+  useWebSocketEvents(useCallback(async (event: WebSocketEvent) => {
     try {
-      // Since all events are StateMutations, only process the latest one
-      // (it will fetch all new messages anyway)
-      const latestEvent = events[events.length - 1];
-
-      if (import.meta.env.DEV && events.length > 1) {
-        log.debug(
-          "WebSocket",
-          `Batched ${events.length} StateMutations, processing only the latest`,
-        );
-      }
-
-      await handleStateMutation(latestEvent);
+      await handleStateMutation(event);
 
       // Also handle thread messages if a thread is open
       if (openThread) {
@@ -486,58 +442,9 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
         await handleThreadMessageUpdates(useDM, openThread.id);
       }
     } catch (error) {
-      log.error("WebSocket", "Error processing batched events", error);
-    } finally {
-      isProcessingEventRef.current = false;
+      log.error("Home", "Error processing WebSocket event", error);
     }
-  }, [handleStateMutation, handleThreadMessageUpdates, openThread]);
-
-  // Create event callback for websocket subscription
-  const eventCallbackFn = useCallback(
-    async (event: WebSocketEvent) => {
-      // Validate context before processing
-      const sessionChat = getStoredSession();
-      const useDM = (sessionChat?.type === "direct_message" &&
-        sessionChat?.account &&
-        !sessionChat?.canJoin &&
-        sessionChat?.otherIdentityNew) as boolean;
-
-      const contextId = getContextId();
-      const dmContextId = getDmContextId();
-      const currentContextId = (useDM ? dmContextId : contextId) || "";
-
-      if (!currentContextId) {
-        return; // Skip if no valid context
-      }
-
-      // Add event to batch
-      eventBatchRef.current.push(event);
-
-      // Clear existing timer
-      if (batchTimerRef.current) {
-        clearTimeout(batchTimerRef.current);
-      }
-
-      // Check if we should process immediately or wait for more events
-      const shouldProcessNow = eventBatchRef.current.length >= 20; // Increase to 20 to batch more
-
-      if (shouldProcessNow) {
-        processBatchedEvents();
-      } else {
-        // Increase timer to 300ms to batch more events together and reduce processing frequency
-        batchTimerRef.current = setTimeout(() => {
-          processBatchedEvents();
-        }, 300);
-      }
-    },
-    [processBatchedEvents],
-  );
-
-  // Use WebSocket subscription hook (pass callback directly, hook handles refs internally)
-  const subscription = useWebSocketSubscription(app, eventCallbackFn);
-
-  // Store subscription in ref for updateSelectedActiveChat
-  subscriptionRef.current = subscription;
+  }, [handleStateMutation, handleThreadMessageUpdates, openThread]));
 
   // Track if initial fetch has been done - using useState to ensure it persists
   const initialFetchDone = useRef(false);
@@ -565,8 +472,46 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
         });
     }
 
-    // Cleanup is handled by useWebSocketSubscription hook
+    // Cleanup is handled by useMultiWebSocketSubscription hook
   }, [channelsHook, dmsHook, chatMembersHook]);
+
+  // Subscribe to all channels and DMs for real-time updates
+  useEffect(() => {
+    if (!app) return;
+
+    const mainContextId = getContextId();
+    
+    // Collect all context IDs to subscribe to
+    const contextIds: string[] = [];
+    
+    // Add main context (for ALL channels - they share one context)
+    if (mainContextId) {
+      contextIds.push(mainContextId);
+      log.debug("Home", `Adding main context for channels: ${mainContextId}`);
+    }
+    
+    // Add ALL DM contexts (each DM has its own context_id)
+    if (privateDMs && privateDMs.length > 0) {
+      privateDMs.forEach((dm) => {
+        if (dm.context_id && !contextIds.includes(dm.context_id)) {
+          contextIds.push(dm.context_id);
+        }
+      });
+      log.debug("Home", `Added ${privateDMs.length} DM contexts`);
+    }
+
+    // Subscribe to all collected contexts via context
+    if (contextIds.length > 0) {
+      log.info(
+        "Home", 
+        `Subscribing to ${contextIds.length} contexts (1 main + ${contextIds.length - 1} DMs)`,
+        { totalContexts: contextIds.length, mainContext: mainContextId, dmCount: privateDMs.length }
+      );
+      webSocket.subscribeToContexts(contextIds);
+    } else {
+      log.warn("Home", "No contexts to subscribe to");
+    }
+  }, [app, privateDMs, webSocket]); // Trigger when privateDMs changes
 
   const onJoinedChat = async () => {
     let canJoin = false;
@@ -576,18 +521,9 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
         .joinContext(activeChatRef.current?.invitationPayload || "");
       if (joinContextResponse.data) {
         await fetchDms();
-        if (app) {
-          const useDM = (activeChatRef.current?.type === "direct_message" &&
-            activeChatRef.current?.account &&
-            !activeChatRef.current?.canJoin &&
-            activeChatRef.current?.otherIdentityNew) as boolean;
-          const contextId = getContextId();
-          const dmContextId = getDmContextId();
-          const currentContextId = (useDM ? dmContextId : contextId) || "";
-          if (currentContextId) {
-            subscription.subscribe(currentContextId);
-          }
-        }
+        // Note: Multi-context subscription will automatically pick up the new DM context
+        // when DMs are refetched above
+        log.info("Home", "Joined chat successfully, multi-context subscription will update");
       } else {
         canJoin = true;
       }
@@ -732,6 +668,9 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
       currentOpenThreadRef={currentOpenThreadRef}
       addOptimisticMessage={addOptimisticMessage}
       addOptimisticThreadMessage={addOptimisticThreadMessage}
+      wsIsSubscribed={webSocket.isSubscribed()}
+      wsContextId={webSocket.getSubscribedContexts().join(", ") || null}
+      wsSubscriptionCount={webSocket.getSubscriptionCount()}
     />
   );
 }

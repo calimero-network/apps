@@ -60,6 +60,9 @@ interface AppContainerProps {
   currentOpenThreadRef: React.RefObject<CurbMessage | undefined>;
   addOptimisticMessage?: (message: CurbMessage) => void;
   addOptimisticThreadMessage?: (message: CurbMessage) => void;
+  wsIsSubscribed?: boolean;
+  wsContextId?: string | null;
+  wsSubscriptionCount?: number;
 }
 function AppContainer({
   activeChat,
@@ -91,6 +94,9 @@ function AppContainer({
   currentOpenThreadRef,
   addOptimisticMessage,
   addOptimisticThreadMessage,
+  wsIsSubscribed,
+  wsContextId,
+  wsSubscriptionCount,
 }: AppContainerProps) {
   return (
     <>
@@ -105,6 +111,9 @@ function AppContainer({
         nonInvitedUserList={nonInvitedUserList}
         reFetchChannelMembers={reFetchChannelMembers}
         fetchChannels={fetchChannels}
+        wsIsSubscribed={wsIsSubscribed}
+        wsContextId={wsContextId}
+        wsSubscriptionCount={wsSubscriptionCount}
       />
       <ContentDivContainer>
         <ChannelsContainer

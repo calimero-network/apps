@@ -132,21 +132,28 @@ export function useChatHandlers(
                     ),
                   );
               }
-              // Only trigger notifications for messages from other users
+              // Only trigger notifications and sounds for messages from other users
+              // AND when we're viewing the active chat (not from background channels)
               const currentUserId = getExecutorPublicKey();
               const isFromCurrentUser = lastMessage.sender === currentUserId;
+              
+              // Check if this message is in the currently visible/active channel
+              const isActiveChannel = activeChat && activeChatRef.current && 
+                                      activeChat.name === activeChatRef.current.name;
 
-              if (!isFromCurrentUser) {
+              if (!isFromCurrentUser && isActiveChannel) {
+                // Play sound and show notification only for the active channel
                 refs.playSoundForMessage.current(
                   lastMessage.id,
                   "message",
                   false,
                 );
-                // Trigger notification for channel message
-                if (lastMessage.senderUsername && lastMessage.text) {
+                // Note: With multi-context subscription, we only handle the active channel here
+                // Background channel notifications would require fetching all channels
+                if (lastMessage.senderUsername && lastMessage.text && activeChatRef.current) {
                   refs.notifyChannel.current(
                     lastMessage.id,
-                    activeChat.name,
+                    activeChatRef.current.name,
                     lastMessage.senderUsername,
                     lastMessage.text,
                   );
