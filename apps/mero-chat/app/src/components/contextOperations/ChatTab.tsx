@@ -21,6 +21,7 @@ import type { ActiveChat } from "../../types/Common";
 //import type { ContextInfo } from "../../api/nodeApi";
 import { CONTEXT_ID } from "../../constants/config";
 import { Button, Input } from "@calimero-network/mero-ui";
+import { StorageHelper } from "../../utils/storage";
 
 const TabContent = styled.div`
   display: flex;
@@ -220,7 +221,7 @@ export default function ChatTab({
           setExecutorPublicKey(contextIdentity);
           setUsername(usernameResponse.data);
           setContextId(contextId);
-          localStorage.setItem("chat-username", username);
+          StorageHelper.setItem("chat-username", usernameResponse.data);
 
           const storedSession: ActiveChat | null = getStoredSession();
           const chatToUse = storedSession || defaultActiveChat;

@@ -291,9 +291,9 @@ const shouldShowHeader = (message: CurbMessage, prevMessage?: CurbMessage) => {
   ) {
     return true; // Previous message was deleted or empty
   }
-  // Group messages from same sender within 5 minutes
+  // Group messages from same sender within 1 minute
   const timeDiff = message.timestamp - prevMessage.timestamp;
-  return timeDiff >= 300000; // 5 minutes or more between messages
+  return timeDiff >= 60000; // 1 minute or more between messages
 };
 
 interface MessageProps {
@@ -570,7 +570,7 @@ const Message = (props: MessageProps) => {
       {!props.isThread && (props.message.threadCount || 0) > 0 && (
         <ReplyContainerButton
           replyCount={props.message.threadCount ?? 0}
-          lastTimestamp={(props.message.threadLastTimestamp ?? 0) / 1000}
+          lastTimestamp={(props.message.threadLastTimestamp ?? 0)}
           onClick={() => {
             props.openThread();
           }}
