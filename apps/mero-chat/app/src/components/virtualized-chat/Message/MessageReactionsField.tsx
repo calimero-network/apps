@@ -167,13 +167,16 @@ const ReactionEmojiComponentButton = ({
   openMessageReactionsList,
 }: EmojiComponentButtonProps) => {
   const [showWhoReacted, setShowWhoReacted] = useState(false);
+  // Get current username from localStorage for reaction checking
+  const currentUsername = localStorage.getItem("chat-username") || "";
+  
   return (
     <ReactionEmojiComponentButtonContainer
       onMouseEnter={() => setShowWhoReacted(true)}
       onMouseLeave={() => setShowWhoReacted(false)}
     >
       <ReactionEmojiWrapper
-        $isOwnReaction={reaction.accounts.includes(accountId)}
+        $isOwnReaction={reaction.accounts.includes(currentUsername)}
         onClick={() => handleReaction(reaction.reaction)}
       >
         {reaction.reaction}
@@ -227,6 +230,7 @@ const MessageReactionsField: React.FC<{
   closeMessageReactionsList,
   selectedReaction,
 }) => {
+  console.log("reactions", reactions);
   const parsedReactions = parseReactions(reactions);
 
   return (
