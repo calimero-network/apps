@@ -7,17 +7,21 @@ import {
   setExecutorPublicKey,
   getAppEndpointKey,
   apiClient,
+  //getContextId,
+  //getExecutorPublicKey,
 } from "@calimero-network/calimero-client";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
-import { ContextApiDataSource } from "../../api/dataSource/nodeApiDataSource";
+// import { ContextApiDataSource } from "../../api/dataSource/nodeApiDataSource";
 import { extractErrorMessage } from "../../utils/errorParser";
 import { defaultActiveChat } from "../../mock/mock";
 import { getStoredSession, updateSessionChat } from "../../utils/session";
 import type { ResponseData } from "@calimero-network/calimero-client";
 import type { FetchContextIdentitiesResponse } from "@calimero-network/calimero-client/lib/api/nodeApi";
 import type { ActiveChat } from "../../types/Common";
-import type { ContextInfo } from "../../api/nodeApi";
+//import type { ContextInfo } from "../../api/nodeApi";
+import { CONTEXT_ID } from "../../constants/config";
 import { Button, Input } from "@calimero-network/mero-ui";
+import { StorageHelper } from "../../utils/storage";
 
 const TabContent = styled.div`
   display: flex;
@@ -70,7 +74,7 @@ const Note = styled.p`
   margin-top: 0.2rem;
 `;
 
-const Select = styled.select`
+const _Select = styled.select`
   padding: 0.6rem;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -129,8 +133,8 @@ export default function ChatTab({
     contextId: "",
     identityId: "",
   });
-  const [availableContexts, setAvailableContexts] = useState<ContextInfo[]>([]);
-  const [fetchingContexts, setFetchingContexts] = useState(false);
+  // const [availableContexts, setAvailableContexts] = useState<ContextInfo[]>([]);
+  // const [fetchingContexts, setFetchingContexts] = useState(false);
   const [fetchingIdentity, setFetchingIdentity] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -142,35 +146,37 @@ export default function ChatTab({
   useEffect(() => {
     const fetchAvailableContexts = async () => {
       if (isAuthenticated && !isConfigSet) {
-        setFetchingContexts(true);
+        //setFetchingContexts(true);
         const nodeUrl = getAppEndpointKey() || "";
-        setUsername(localStorage.getItem("chat-username") || "");
-        setFormData((prev) => ({ ...prev, nodeUrl }));
+        const contextId = CONTEXT_ID || "";
+        setFormData((prev) => ({ ...prev, nodeUrl, contextId }));
+        await fetchIdentityForContext(contextId);
 
-        try {
-          const nodeApi = new ContextApiDataSource();
-          const response = await nodeApi.listContexts();
-          if (response.data && response.data.length > 0) {
-            setAvailableContexts(response.data);
-            // Auto-select first context if only one available
-            if (response.data.length === 1) {
-              const contextId = response.data[0].contextId;
-              setFormData((prev) => ({ ...prev, contextId }));
-              await fetchIdentityForContext(contextId);
-            }
-          } else {
-            setError(
-              "No contexts found on this node. Please join or create a context first.",
-            );
-            setIsDisabled(true);
-          }
-        } catch (err) {
-          console.error("Error fetching contexts:", err);
-          setError("Failed to fetch available contexts from node");
-          setIsDisabled(true);
-        } finally {
-          setFetchingContexts(false);
-        }
+        // try {
+        //   const nodeApi = new ContextApiDataSource();
+        //   const response = await nodeApi.listContexts();
+        //   console.log("response", response);
+        //   if (response.data && response.data.length > 0) {
+        //     //setAvailableContexts(response.data);
+        //     // Auto-select first context if only one available
+        //     if (response.data.length === 1) {
+        //       const contextId = response.data[0].contextId;
+        //       setFormData((prev) => ({ ...prev, contextId }));
+        //       await fetchIdentityForContext(contextId);
+        //     }
+        //   } else {
+        //     setError(
+        //       "No contexts found on this node. Please join or create a context first.",
+        //     );
+        //     setIsDisabled(true);
+        //   }
+        // } catch (err) {
+        //   console.error("Error fetching contexts:", err);
+        //   setError("Failed to fetch available contexts from node");
+        //   setIsDisabled(true);
+        // } finally {
+        //   //setFetchingContexts(false);
+        // }
       }
     };
 
@@ -178,6 +184,8 @@ export default function ChatTab({
       fetchAvailableContexts();
     }
   }, [isAuthenticated, isConfigSet]);
+
+  const [fetchUsername, setFetchingUsername] = useState(false);
 
   // Fetch identity for selected context
   const fetchIdentityForContext = async (contextId: string) => {
@@ -190,6 +198,7 @@ export default function ChatTab({
     try {
       const contextIdentityResponse: ResponseData<FetchContextIdentitiesResponse> =
         await apiClient.node().fetchContextIdentities(contextId);
+      setContextId(contextId);
 
       if (
         contextIdentityResponse.data &&
@@ -197,17 +206,39 @@ export default function ChatTab({
       ) {
         const contextIdentity: string =
           contextIdentityResponse.data.identities[0];
+        setFetchingUsername(true);
+        const usernameResponse = await new ClientApiDataSource().getUsername({
+          userId: contextIdentity,
+          executorPublicKey: contextIdentity,
+          contextId: contextId,
+        });
         setFormData((prev) => ({
           ...prev,
           contextId,
           identityId: contextIdentity,
         }));
+        if (usernameResponse.data) {
+          setExecutorPublicKey(contextIdentity);
+          setUsername(usernameResponse.data);
+          setContextId(contextId);
+          StorageHelper.setItem("chat-username", usernameResponse.data);
+
+          const storedSession: ActiveChat | null = getStoredSession();
+          const chatToUse = storedSession || defaultActiveChat;
+
+          updateSessionChat(chatToUse);
+          setSuccess("Already joined the chat!");
+          setTimeout(() => {
+            window.location.href = "/";
+          }, 1000);
+        }
+        setFetchingUsername(false);
       } else if (
         contextIdentityResponse.error?.message === "Context not found"
       ) {
         setIsDisabled(true);
         setError(
-          "You are not a member of this context. Please join the context first.",
+          "You are not a member of this context. Please join the context first."
         );
       } else {
         setError("Failed to fetch identity for this context");
@@ -220,8 +251,8 @@ export default function ChatTab({
   };
 
   // Handle context selection change
-  const handleContextChange = async (
-    e: React.ChangeEvent<HTMLSelectElement>,
+  const _handleContextChange = async (
+    e: React.ChangeEvent<HTMLSelectElement>
   ) => {
     const contextId = e.target.value;
     if (contextId) {
@@ -296,8 +327,17 @@ export default function ChatTab({
             disabled={true}
           />
         </InputGroup>
-
         <InputGroup>
+          <Label>Context ID</Label>
+          <Input
+            id="contextId"
+            type="text"
+            value={formData.contextId || "Loading..."}
+            disabled={true}
+          />
+        </InputGroup>
+
+        {/* <InputGroup>
           <Label>Select Context</Label>
           <Select
             id="contextSelect"
@@ -323,25 +363,23 @@ export default function ChatTab({
               ? `${availableContexts.length} context${availableContexts.length !== 1 ? "s" : ""} available`
               : "Connect to a node to see available contexts"}
           </Note>
-        </InputGroup>
+        </InputGroup> */}
 
-        {fetchingIdentity && (
+        {/* {fetchingIdentity && (
           <Message type="info">
             Fetching identity for selected context...
           </Message>
-        )}
+        )} */}
 
-        {formData.identityId && (
-          <InputGroup>
-            <Label>Identity ID</Label>
-            <Input
-              id="identityId"
-              type="text"
-              value={formData.identityId}
-              disabled={true}
-            />
-          </InputGroup>
-        )}
+        <InputGroup>
+          <Label>Identity ID</Label>
+          <Input
+            id="identityId"
+            type="text"
+            value={fetchUsername ? "Loading..." : formData.identityId}
+            disabled={true}
+          />
+        </InputGroup>
 
         <InputGroup>
           <Label>Username or Name</Label>

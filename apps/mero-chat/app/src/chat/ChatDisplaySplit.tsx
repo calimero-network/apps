@@ -219,7 +219,7 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
 
       // Fetch from API if not cached
       const response = await new ClientApiDataSource().getUsername({
-        user_id: executorId ?? "",
+        userId: executorId ?? "",
       });
       if (response.data) {
         const normalizedClass = response.data

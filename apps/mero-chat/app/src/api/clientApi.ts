@@ -172,6 +172,7 @@ export interface JoinChatProps {
   contextId?: string;
   executor?: UserId;
   username?: string;
+  executorPublicKey?: string;
 }
 
 export interface DeleteDMProps {
@@ -198,7 +199,9 @@ export interface GetDmUnreadCountProps {
 }
 
 export interface GetUsernameProps {
-  user_id: UserId;
+  userId: UserId;
+  executorPublicKey?: string;
+  contextId?: string;
 }
 
 export type GetTotalDmUnreadCountProps = Record<string, never>;

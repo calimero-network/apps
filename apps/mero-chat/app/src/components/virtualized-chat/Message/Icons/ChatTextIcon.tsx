@@ -1,7 +1,6 @@
 import styled from "styled-components";
 
-const Container = styled.div`
-  color: #fff;
+const CustomSvg = styled.svg`
   @media (max-width: 1024px) {
     -webkit-user-select: none;
     -khtml-user-select: none;
@@ -11,7 +10,12 @@ const Container = styled.div`
   }
 `;
 
-const CustomSvg = styled.svg`
+const Container = styled.div`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 24px;
+  height: 24px;
   @media (max-width: 1024px) {
     -webkit-user-select: none;
     -khtml-user-select: none;
@@ -25,9 +29,9 @@ const ChatTextIcon: React.FC = () => {
   return (
     <Container>
       <CustomSvg
-        width="24"
-        height="24"
-        viewBox="0 0 18 18"
+        width="16"
+        height="16"
+        viewBox="0 0 20 20"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
       >

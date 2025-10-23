@@ -152,13 +152,13 @@ function ChatContainer({
   }, [membersList]);
 
   const computeReaction = useCallback(
-    (message: CurbMessage, reaction: string, sender: string) => {
+    (message: CurbMessage, reaction: string, username: string) => {
       const accounts = message.reactions?.[reaction] ?? [];
       let update;
-      if (accounts.includes(sender)) {
-        update = accounts.filter((a: string) => a !== sender);
+      if (accounts.includes(username)) {
+        update = accounts.filter((a: string) => a !== username);
       } else {
-        update = [...accounts, sender];
+        update = [...accounts, username];
       }
       return { reactions: { ...message.reactions, [reaction]: update } };
     },
@@ -168,24 +168,24 @@ function ChatContainer({
   const handleReaction = useCallback(
     async (message: CurbMessage, reaction: string, isThread: boolean) => {
       const isDM = activeChatRef.current?.type === "direct_message";
-      const accountId = getExecutorPublicKey() ?? "";
+      const username = StorageHelper.getItem("chat-username") || "";
       const accounts = message.reactions?.[reaction] ?? [];
       const isAdding = !(
-        Array.isArray(accounts) && accounts.includes(accountId)
+        Array.isArray(accounts) && accounts.includes(username)
       );
 
       try {
         const response = await new ClientApiDataSource().updateReaction({
           messageId: message.id,
           emoji: reaction,
-          userId: accountId,
+          userId: username,
           add: isAdding,
           is_dm: isDM,
           dm_identity: activeChatRef.current?.account,
         });
         if (response.data) {
           const updateFunction = (message: CurbMessage) =>
-            computeReaction(message, reaction, accountId);
+            computeReaction(message, reaction, username);
           if (isThread) {
             setUpdatedThreadMessages([
               { id: message.id, descriptor: { updateFunction } },

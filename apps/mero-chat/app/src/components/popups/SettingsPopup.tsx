@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import { styled } from "styled-components";
 import BaseModal from "../common/popups/BaseModal";
 import TabbedInterface from "../contextOperations/TabbedInterface";
@@ -85,7 +85,6 @@ export default function SettingsPopup({
   };
 
   const tabs = [
-    { id: "context-switcher", label: "Switch Context" },
     { id: "join-context", label: "Join Context" },
     { id: "invite-to-context", label: "Invite to Context" },
     { id: "create-identity", label: "Create Identity" },

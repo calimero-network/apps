@@ -57,13 +57,13 @@ export class ClientApiDataSource implements ClientApi {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await getJsonRpcClient().execute<any, string>(
         {
-          contextId: (props.isDM ? getDmContextId() : getContextId()) || "",
+          contextId: (props.isDM ? getDmContextId() : props.contextId || getContextId()) || "",
           method: ClientMethod.JOIN_CHAT,
           argsJson: {
             username: props.username,
           },
           executorPublicKey:
-            (props.isDM ? props.executor : getExecutorPublicKey()) || "",
+            (props.isDM ? props.executor : (props.executorPublicKey || getExecutorPublicKey())) || "",
         },
         {
           headers: {
@@ -317,8 +317,8 @@ export class ClientApiDataSource implements ClientApi {
     props: GetChannelMembersProps,
   ): ApiResponse<Map<string, string>> {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await getJsonRpcClient().execute<
+       // eslint-disable-next-line @typescript-eslint/no-explicit-any
         any,
         Map<string, string>
       >(
@@ -754,8 +754,8 @@ export class ClientApiDataSource implements ClientApi {
     props: GetChatMembersProps,
   ): ApiResponse<Map<string, string>> {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await getJsonRpcClient().execute<
+       // eslint-disable-next-line @typescript-eslint/no-explicit-any
         any,
         Map<string, string>
       >(
@@ -1383,12 +1383,12 @@ export class ClientApiDataSource implements ClientApi {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await getJsonRpcClient().execute<any, string>(
         {
-          contextId: getContextId() || "",
+          contextId: props.contextId || getContextId() || "",
           method: ClientMethod.GET_USERNAME,
           argsJson: {
-            user_id: props.user_id,
+            user_id: props.userId,
           },
-          executorPublicKey: getExecutorPublicKey() || "",
+          executorPublicKey: props.executorPublicKey || getExecutorPublicKey() || "",
         },
         {
           headers: {

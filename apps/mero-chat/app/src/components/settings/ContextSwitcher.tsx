@@ -282,7 +282,7 @@ export default function ContextSwitcher() {
       {success && <SuccessMessage>{success}</SuccessMessage>}
 
       {loading ? (
-        <LoadingMessage>Loading contexts...</LoadingMessage>
+        <LoadingMessage>Loading context...</LoadingMessage>
       ) : (
         <>
           <Section>

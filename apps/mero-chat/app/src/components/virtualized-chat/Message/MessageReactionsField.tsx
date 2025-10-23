@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import styled from "styled-components";
 
 import type { AccountId, CurbString, HashMap, Vec } from "../types/curbTypes";
@@ -7,11 +7,14 @@ import MessageReactionsList from "./MessageReactionsList";
 
 const ReactionsWrapper = styled.div`
   display: flex;
+  flex-wrap: wrap;
   padding-top: 2px;
   padding-left: 2.5rem;
   width: fit-content;
+  max-width: 100%;
   padding-bottom: 4px;
   column-gap: 0.25rem;
+  row-gap: 0.25rem;
   font-size: 1rem;
   line-height: 1rem;
   cursor: pointer;
@@ -67,20 +70,22 @@ const ReactionAccountsContainer = styled.div`
   color: #fff;
   display: flex;
   align-items: center;
-  height: 80px;
+  min-height: 40px;
   width: 281px;
   column-gap: 8px;
   font-size: 1.5rem;
   line-height: 1.75rem;
   background-color: #1d1d21;
   border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   padding: 8px;
 `;
 
-const HoverContainer = styled.div`
+const HoverContainer = styled.div<{ $isRightSide?: boolean }>`
   position: absolute;
   bottom: 1rem;
-  left: 0rem;
+  left: ${props => props.$isRightSide ? 'auto' : '0rem'};
+  right: ${props => props.$isRightSide ? '0rem' : 'auto'};
   z-index: 40;
   padding: 16px 16px 16px 0px;
   @media (max-width: 1024px) {
@@ -148,7 +153,6 @@ const ReactionDescription = ({
 };
 
 interface EmojiComponentButtonProps {
-  accountId: string;
   reaction: {
     reaction: string;
     accounts: string[];
@@ -161,19 +165,33 @@ interface EmojiComponentButtonProps {
 }
 
 const ReactionEmojiComponentButton = ({
-  accountId,
   reaction,
   handleReaction,
   openMessageReactionsList,
 }: EmojiComponentButtonProps) => {
   const [showWhoReacted, setShowWhoReacted] = useState(false);
+  const [isRightSide, setIsRightSide] = useState(false);
+  const currentUsername = localStorage.getItem("chat-username") || "";
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const handleMouseEnter = () => {
+    setShowWhoReacted(true);
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      // Check if the right edge of the container is close to the right edge of the viewport
+      setIsRightSide(rect.right > viewportWidth - 300); // 300px buffer for the hover container
+    }
+  };
+  
   return (
     <ReactionEmojiComponentButtonContainer
-      onMouseEnter={() => setShowWhoReacted(true)}
+      ref={containerRef}
+      onMouseEnter={handleMouseEnter}
       onMouseLeave={() => setShowWhoReacted(false)}
     >
       <ReactionEmojiWrapper
-        $isOwnReaction={reaction.accounts.includes(accountId)}
+        $isOwnReaction={reaction.accounts.includes(currentUsername)}
         onClick={() => handleReaction(reaction.reaction)}
       >
         {reaction.reaction}
@@ -182,7 +200,7 @@ const ReactionEmojiComponentButton = ({
         </ReactionCountWrapper>
       </ReactionEmojiWrapper>
       {showWhoReacted && (
-        <HoverContainer>
+        <HoverContainer $isRightSide={isRightSide}>
           <ReactionAccountsContainer>
             <ReactedByReaction>{reaction.reaction}</ReactedByReaction>
             <ReactedByContainer>
@@ -202,9 +220,7 @@ const ReactionEmojiComponentButton = ({
 
 const MessageReactionsField: React.FC<{
   reactions: HashMap<CurbString, Vec<AccountId>>;
-  accountId: string;
   handleReaction: (reaction: string) => void;
-  getIconFromCache: (accountId: string) => Promise<string | null>;
   isMessageRectionListVisible: boolean;
   openMessageReactionsList: (reaction: {
     reaction: string;
@@ -219,9 +235,7 @@ const MessageReactionsField: React.FC<{
     | undefined;
 }> = ({
   reactions,
-  accountId,
   handleReaction,
-  getIconFromCache,
   isMessageRectionListVisible,
   openMessageReactionsList,
   closeMessageReactionsList,
@@ -237,7 +251,6 @@ const MessageReactionsField: React.FC<{
             {parsedReaction.accounts.length > 0 && (
               <ReactionEmojiComponentButton
                 key={id}
-                accountId={accountId}
                 reaction={parsedReaction}
                 handleReaction={handleReaction}
                 openMessageReactionsList={openMessageReactionsList}
@@ -250,8 +263,13 @@ const MessageReactionsField: React.FC<{
         <MessageReactionsList
           reactions={parsedReactions}
           selectedReaction={selectedReaction ?? parsedReactions[0]}
-          getIconFromCache={getIconFromCache}
           closeMessageReactionsList={closeMessageReactionsList}
+          isOpen={isMessageRectionListVisible}
+          setIsOpen={(isOpen) => {
+            if (!isOpen) {
+              closeMessageReactionsList();
+            }
+          }}
         />
       )}
     </>
