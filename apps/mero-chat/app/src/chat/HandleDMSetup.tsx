@@ -103,6 +103,7 @@ export default function HandleDMSetup({
             savedSession.ownIdentity = response.data.publicKey;
             savedSession.ownUsername = activeChat.ownUsername || activeChat.username || "";
             updateSessionChat(savedSession);
+            // Trigger DM list refresh to update UI state
             onDMSelected(undefined, savedSession);
           }
         } else {

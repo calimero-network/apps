@@ -53,16 +53,6 @@ export function getJsonRpcClient() {
 
 export class ClientApiDataSource implements ClientApi {
   async joinChat(props: JoinChatProps): ApiResponse<string> {
-    console.log("from inside:", {
-      contextId: (props.isDM ? getDmContextId() : props.contextId || getContextId()) || "",
-      method: ClientMethod.JOIN_CHAT,
-      argsJson: {
-        username: props.username,
-        is_dm: props.isDM || false,
-      },
-      executorPublicKey:
-        (props.isDM ? props.executor : (props.executorPublicKey || getExecutorPublicKey())) || "",
-    })
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await getJsonRpcClient().execute<any, string>(

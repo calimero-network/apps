@@ -28,7 +28,6 @@ export function useMessages() {
   const [totalCount, setTotalCount] = useState(0);
   const [offset, setOffset] = useState(MESSAGE_PAGE_SIZE);
   const messagesRef = useRef<CurbMessage[]>([]);
-  const lastCheckRef = useRef<number>(0);
 
   /**
    * Load initial messages for a chat
@@ -135,13 +134,7 @@ export function useMessages() {
     ): Promise<CurbMessage[]> => {
       if (!activeChat) return [];
 
-      // Aggressive throttling: only check once every 3 seconds per chat
-      const now = Date.now();
-      if (now - lastCheckRef.current < 3000) {
-        log.debug("useMessages", "Skipping message check - throttled");
-        return [];
-      }
-      lastCheckRef.current = now;
+      // Removed throttling to allow real-time message updates
 
       const response: ResponseData<FullMessageResponse> =
         await new ClientApiDataSource().getMessages({
