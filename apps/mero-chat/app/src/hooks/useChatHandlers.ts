@@ -69,7 +69,6 @@ export function useChatHandlers(
   // Track if we're already fetching messages to prevent concurrent calls
   const isFetchingMessagesRef = useRef(false);
   const isFetchingThreadMessagesRef = useRef(false);
-  const lastMessageCheckRef = useRef<number>(0);
   const lastThreadMessageCheckRef = useRef<number>(0);
   const lastReadMessageRef = useRef<{ chatId: string; timestamp: number }>({
     chatId: "",
@@ -86,13 +85,8 @@ export function useChatHandlers(
       // Prevent concurrent message fetches
       if (isFetchingMessagesRef.current) return;
 
-      // Aggressive throttle to 5 seconds to prevent API hammering
+      // Removed throttling to allow real-time message updates
       const now = Date.now();
-      if (now - lastMessageCheckRef.current < 5000) {
-        log.debug("ChatHandlers", "Skipping message check - throttled");
-        return;
-      }
-      lastMessageCheckRef.current = now;
 
       try {
         isFetchingMessagesRef.current = true;
@@ -309,6 +303,7 @@ export function useChatHandlers(
               contextId: sessionChat.contextId,
               timestamp: now,
             };
+            // Trigger DM selection to update UI state
             refs.onDMSelected.current(currentDM, undefined, false);
           }
         }
@@ -396,7 +391,7 @@ export function useChatHandlers(
 
           case "NewIdentityUpdated":
           case "InvitationPayloadUpdated":
-            // Refresh DM list to update metadata
+            // Refresh DM list to update metadata and trigger state updates
             actions.fetchDMs = true;
             log.debug("ChatHandlers", "DM metadata updated, refreshing DM list");
             break;
@@ -419,6 +414,14 @@ export function useChatHandlers(
       }
       if (actions.fetchDMs) {
         refs.fetchDMs.current();
+        // Trigger DM state update to refresh UI
+        const sessionChat = getStoredSession();
+        if (sessionChat?.type === "direct_message") {
+          // Add a small delay to ensure DM list is updated before triggering state update
+          setTimeout(() => {
+            handleDMUpdates(sessionChat);
+          }, 100);
+        }
       }
       if (actions.fetchMembers) {
         // Always fetch members for channels, and for DMs when appropriate

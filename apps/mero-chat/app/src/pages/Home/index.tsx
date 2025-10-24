@@ -336,13 +336,6 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
         const executor = sc?.ownIdentity || sc?.account || dm?.own_identity || "";
         const username = sc?.ownUsername || sc?.username || dm?.own_username || "";
         
-        console.log("here", {
-          contextId: dm?.context_id || "",
-          isDM: true,
-          executor: executor,
-          username: username,
-        })
-        
         if (executor && username) {
           await new ClientApiDataSource().joinChat({
             contextId: dm?.context_id || "",

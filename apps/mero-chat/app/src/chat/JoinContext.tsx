@@ -75,6 +75,7 @@ export default function JoinContext({
               savedSession.ownUsername = activeChat.username;
             }
             updateSessionChat(savedSession);
+            // Trigger DM list refresh to update UI state
             onDMSelected(undefined, savedSession);
           }
         } else {

@@ -29,8 +29,6 @@ export function useThreadMessages() {
   const [totalCount, setTotalCount] = useState(0);
   const [offset, setOffset] = useState(MESSAGE_PAGE_SIZE);
   const messagesRef = useRef<CurbMessage[]>([]);
-  const lastCheckRef = useRef<number>(0);
-  const lastThreadCheckRef = useRef<number>(0);
 
   // Debug logging for state changes
   useEffect(() => {
@@ -210,16 +208,7 @@ export function useThreadMessages() {
         return [];
       }
 
-      // Aggressive throttling: only check once every 3 seconds per thread
-      const now = Date.now();
-      if (now - lastThreadCheckRef.current < 3000) {
-        log.debug(
-          "useThreadMessages",
-          "Skipping thread message check - throttled",
-        );
-        return [];
-      }
-      lastThreadCheckRef.current = now;
+      // Removed throttling to allow real-time thread message updates
 
       const isDM = activeChat.type === "direct_message";
       const groupName = isDM ? "private_dm" : activeChat.name || "";
