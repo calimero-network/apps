@@ -13,6 +13,7 @@ type MessageId = String;
 #[app::event]
 pub enum Event {
     ChatInitialized(String),
+    ChatJoined(String),
     ChannelCreated(String),
     ChannelInvited(String),
     ChannelLeft(String),
@@ -369,6 +370,8 @@ impl CurbChat {
 
         // Initialize mentions tracking for the user
         self.initialize_mentions_tracking_for_user_in_channels(&executor_id);
+
+        app::emit!(Event::ChatJoined(executor_id.clone().to_string()));
 
         Ok("Successfully joined the chat".to_string())
     }
