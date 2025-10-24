@@ -101,7 +101,15 @@ export default function HandleInvitation({
           setSuccess("Invitation sent successfully!");
           const savedSession = getStoredSession();
           if (savedSession) {
+            // Preserve existing identity information
             savedSession.invitationPayload = invitationPayload;
+            // Ensure identity information is maintained
+            if (!savedSession.ownIdentity && activeChat.account) {
+              savedSession.ownIdentity = activeChat.account;
+            }
+            if (!savedSession.ownUsername && activeChat.username) {
+              savedSession.ownUsername = activeChat.username;
+            }
             updateSessionChat(savedSession);
             onDMSelected(undefined, savedSession);
           }

@@ -67,6 +67,13 @@ export default function JoinContext({
             savedSession.isSynced =
               verifyContextResponse.data.rootHash !==
               "11111111111111111111111111111111";
+            // Preserve identity information during context join
+            if (!savedSession.ownIdentity && activeChat.account) {
+              savedSession.ownIdentity = activeChat.account;
+            }
+            if (!savedSession.ownUsername && activeChat.username) {
+              savedSession.ownUsername = activeChat.username;
+            }
             updateSessionChat(savedSession);
             onDMSelected(undefined, savedSession);
           }

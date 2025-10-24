@@ -95,9 +95,13 @@ export default function HandleDMSetup({
           setSuccess(
             "New identity created successfully and saved in context. You will soon receive an invitation to join the context.",
           );
+          // Update session with new identity information
           const savedSession = getStoredSession();
           if (savedSession) {
+            // Update with new identity information
             savedSession.account = response.data.publicKey;
+            savedSession.ownIdentity = response.data.publicKey;
+            savedSession.ownUsername = activeChat.ownUsername || activeChat.username || "";
             updateSessionChat(savedSession);
             onDMSelected(undefined, savedSession);
           }

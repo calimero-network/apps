@@ -304,6 +304,8 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     async (dm?: DMChatInfo, sc?: ActiveChat, refetch?: boolean) => {
       const contextId = sc?.contextId || dm?.context_id || "";
 
+      console.log("contextId: ", contextId);
+
       // Prevent rapid re-selection of the same DM (within 1 second)
       const now = Date.now();
       if (
@@ -330,12 +332,27 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
         "11111111111111111111111111111111";
 
       if ((sc?.account || dm?.own_identity) && !canJoin && isSynced) {
-        await new ClientApiDataSource().joinChat({
+        // Use session identity information if available, fallback to DM data
+        const executor = sc?.ownIdentity || sc?.account || dm?.own_identity || "";
+        const username = sc?.ownUsername || sc?.username || dm?.own_username || "";
+        
+        console.log("here", {
           contextId: dm?.context_id || "",
           isDM: true,
-          executor: dm?.own_identity || "",
-          username: dm?.own_username || "",
-        });
+          executor: executor,
+          username: username,
+        })
+        
+        if (executor && username) {
+          await new ClientApiDataSource().joinChat({
+            contextId: dm?.context_id || "",
+            isDM: true,
+            executor: executor,
+            username: username,
+          });
+        } else {
+          console.warn("Missing executor or username for DM join:", { executor, username });
+        }
       }
 
       let selectedChat = {} as ActiveChat;
@@ -359,6 +376,8 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
           otherIdentityNew: dm?.other_identity_new || "",
           creator: dm?.created_by || "",
           isSynced: isSynced,
+          ownIdentity: dm?.own_identity || "",
+          ownUsername: dm?.own_username || "",
         };
       }
 
@@ -428,6 +447,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
 
   // Listen to WebSocket events via context
   useWebSocketEvents(useCallback(async (event: WebSocketEvent) => {
+    console.log("EVENT: ", event);
     try {
       await handleStateMutation(event);
 

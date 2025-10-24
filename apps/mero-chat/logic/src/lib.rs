@@ -13,6 +13,7 @@ type MessageId = String;
 #[app::event]
 pub enum Event {
     ChatInitialized(String),
+    ChatJoined(String),
     ChannelCreated(String),
     ChannelInvited(String),
     ChannelLeft(String),
@@ -311,7 +312,7 @@ impl CurbChat {
         }
     }
 
-    pub fn join_chat(&mut self, username: String) -> app::Result<String, String> {
+    pub fn join_chat(&mut self, username: String, is_dm: bool) -> app::Result<String, String> {
         let executor_id = self.get_executor_id();
 
         if self.members.contains(&executor_id).unwrap_or(false) {
@@ -327,11 +328,12 @@ impl CurbChat {
             return Err("Username cannot be longer than 50 characters".to_string());
         }
 
-        // Check if username is already taken
-        if let Ok(entries) = self.member_usernames.entries() {
-            for (_, existing_username) in entries {
-                if existing_username == username {
-                    return Err("Username is already taken".to_string());
+        if !is_dm {
+            if let Ok(entries) = self.member_usernames.entries() {
+                for (_, existing_username) in entries {
+                    if existing_username == username {
+                        return Err("Username is already taken".to_string());
+                    }
                 }
             }
         }
@@ -368,6 +370,8 @@ impl CurbChat {
 
         // Initialize mentions tracking for the user
         self.initialize_mentions_tracking_for_user_in_channels(&executor_id);
+
+        app::emit!(Event::ChatJoined(executor_id.clone().to_string()));
 
         Ok("Successfully joined the chat".to_string())
     }
@@ -1805,6 +1809,8 @@ impl CurbChat {
             },
         );
 
+        app::emit!(Event::DMCreated(context_id.clone()));
+
         Ok(context_id)
     }
 
@@ -1851,6 +1857,8 @@ impl CurbChat {
             let _ = self.dm_chats.insert(other_user.clone(), dms);
         }
 
+        app::emit!(Event::NewIdentityUpdated(other_user.clone().to_string()));
+
         Ok("Identity updated successfully".to_string())
     }
 
@@ -1895,6 +1903,8 @@ impl CurbChat {
             let _ = self.dm_chats.insert(other_user.clone(), dms);
         }
 
+        app::emit!(Event::InvitationPayloadUpdated(other_user.clone().to_string()));
+
         Ok("Invitation payload updated successfully".to_string())
     }
 
@@ -1924,6 +1934,8 @@ impl CurbChat {
             }
             let _ = self.dm_chats.insert(executor_id.clone(), dms);
         }
+
+        app::emit!(Event::InvitationAccepted(other_user.clone().to_string()));
 
         Ok("Invitation accepted successfully".to_string())
     }
