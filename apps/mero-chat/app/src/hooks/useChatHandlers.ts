@@ -333,6 +333,11 @@ export function useChatHandlers(
         fetchMembers: false,
       };
 
+      // Log events for debugging
+      if (executionEvents.length > 0) {
+        log.debug("ChatHandlers", "Processing events:", executionEvents.map(e => e.kind));
+      }
+
       for (const executionEvent of executionEvents) {
         switch (executionEvent.kind) {
           case "MessageSent":
@@ -355,45 +360,57 @@ export function useChatHandlers(
             // Refresh channel list and members
             actions.fetchChannels = true;
             actions.fetchMembers = true;
+            log.debug("ChatHandlers", "Channel joined, refreshing channel list and members");
             break;
 
           case "ChannelLeft":
             // Refresh channel list and members
             actions.fetchChannels = true;
             actions.fetchMembers = true;
+            log.debug("ChatHandlers", "Channel left, refreshing channel list and members");
             break;
 
           case "ChannelInvited":
             // Refresh channel list and members
             actions.fetchChannels = true;
             actions.fetchMembers = true;
+            log.debug("ChatHandlers", "User invited to channel, refreshing channel list and members");
+            break;
+
+          case "ChatJoined":
+            // When a new user joins the chat, refresh members list
+            actions.fetchMembers = true;
             break;
 
           case "DMCreated":
-            // Refresh DM list only
+            // Refresh DM list and potentially trigger DM selection
             actions.fetchDMs = true;
+            log.debug("ChatHandlers", "DM created, refreshing DM list");
             break;
 
           case "InvitationAccepted":
-            // Refresh DM list only
+            // Refresh DM list and potentially trigger DM selection
             actions.fetchDMs = true;
+            log.debug("ChatHandlers", "Invitation accepted, refreshing DM list");
             break;
 
           case "NewIdentityUpdated":
           case "InvitationPayloadUpdated":
             // Refresh DM list to update metadata
             actions.fetchDMs = true;
+            log.debug("ChatHandlers", "DM metadata updated, refreshing DM list");
             break;
 
           case "ChatInitialized":
             // Full refresh on initialization
             actions.fetchChannels = true;
             actions.fetchDMs = true;
+            actions.fetchMembers = true;
             break;
         }
       }
 
-      // Execute only the necessary actions
+      // Execute only the necessary actions with proper sequencing
       if (actions.fetchMessages) {
         handleMessageUpdates(useDM);
       }
@@ -403,8 +420,24 @@ export function useChatHandlers(
       if (actions.fetchDMs) {
         refs.fetchDMs.current();
       }
-      if (actions.fetchMembers && !useDM) {
-        refs.fetchMembers.current();
+      if (actions.fetchMembers) {
+        // Always fetch members for channels, and for DMs when appropriate
+        if (!useDM) {
+          refs.fetchMembers.current();
+        }
+        // For DMs, we might need to refresh DM data to get updated member info
+        if (useDM && actions.fetchDMs) {
+          // DM member updates are handled through DM list refresh
+          refs.fetchDMs.current();
+        }
+      }
+
+      // Log what actions were taken for debugging
+      const takenActions = Object.entries(actions)
+        .filter(([_, value]) => value)
+        .map(([key, _]) => key);
+      if (takenActions.length > 0) {
+        log.debug("ChatHandlers", "Executing actions:", takenActions);
       }
     },
     [handleMessageUpdates, refs],
