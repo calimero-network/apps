@@ -71,6 +71,7 @@ const ThreadWrapper = styled.div`
   @media (max-width: 1024px) {
     border-left: none;
     position: fixed;
+    padding-left: 0px;
     left: 0;
     right: 0;
     top: 50%;

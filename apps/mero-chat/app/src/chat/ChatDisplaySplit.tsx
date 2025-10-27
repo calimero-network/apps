@@ -73,7 +73,7 @@ const ContainerPadding = styled.div`
 
 const ThreadTitle = styled.div`
   color: #fff;
-  font-size: 24px;
+  font-size: 18px;
   font-style: normal;
   font-weight: 500;
   line-height: 120%;
@@ -87,6 +87,7 @@ const ThreadContainer = styled.div`
   justify-content: space-between;
   @media (max-width: 1024px) {
     margin-right: 16px;
+    margin-left: 16px;
     padding-top: 42px;
   }
 `;
@@ -251,7 +252,7 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
   const currentWrapperStyle = { ...wrapperStyle };
 
   if (openThread && isThread) {
-    currentChatStyle.height = "calc(100% - 124px)";
+    currentChatStyle.height = "100%";
     currentChatStyle.width = "100%";
     currentChatStyle.overflow = "hidden";
     currentContainerPaddingStyle.flexDirection = "column";
