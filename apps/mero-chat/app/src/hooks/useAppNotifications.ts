@@ -1,7 +1,8 @@
 import { useCallback } from "react";
-import { useToast, useNotifications } from "@calimero-network/mero-ui";
+import { useNotifications } from "@calimero-network/mero-ui";
 import { useNotificationSound } from "./useNotificationSound";
 import type { NotificationType } from "../utils/notificationSound";
+import { useToast } from "../contexts/ToastContext";
 
 export interface AppNotification {
   title: string;
@@ -16,8 +17,8 @@ export interface AppNotification {
  * Combines the existing sound system with Mero UI's toast system
  */
 export function useAppNotifications(currentChatId?: string) {
-  const { show: showToast } = useToast();
   const { addNotification } = useNotifications();
+  const { addToast } = useToast();
   const {
     playSoundForMessage,
     playSound,
@@ -37,6 +38,7 @@ export function useAppNotifications(currentChatId?: string) {
    */
   const notify = useCallback(
     (notification: AppNotification) => {
+      console.log("notify", notification);
       const {
         title,
         message,
@@ -46,18 +48,16 @@ export function useAppNotifications(currentChatId?: string) {
       } = notification;
 
       // Determine variant based on notification type
-      const toastVariant =
-        type === "mention" ? "warning" : type === "dm" ? "info" : "info";
       const notificationVariant = type === "mention" ? "warning" : "info";
       const priority =
         type === "mention" ? "high" : type === "dm" ? "medium" : "low";
 
-      // Show toast notification (temporary)
-      showToast({
+      // Show custom toast notification (temporary)
+      addToast({
         title,
-        description: message,
-        variant: toastVariant,
-        durationMs: duration,
+        message,
+        type: type === "mention" ? "mention" : type === "dm" ? "dm" : "channel",
+        duration,
       });
 
       // Add to notification center (persistent)
@@ -75,7 +75,7 @@ export function useAppNotifications(currentChatId?: string) {
         playSound(type);
       }
     },
-    [showToast, addNotification, playSound, soundEnabled],
+    [addToast, addNotification, playSound, soundEnabled],
   );
 
   /**

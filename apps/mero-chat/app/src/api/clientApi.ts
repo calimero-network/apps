@@ -67,6 +67,7 @@ export interface Message {
   reactions: HashMap<string, UserId[]>;
   thread_count: number;
   thread_last_timestamp: number;
+  group?: string;
 }
 
 export interface MessageWithReactions extends Message {

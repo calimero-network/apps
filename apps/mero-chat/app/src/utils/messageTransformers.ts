@@ -26,6 +26,7 @@ export function transformMessageToUI(
     editMode: false,
     status: MessageStatus.sent,
     deleted: message.deleted,
+    group: message.group,
   };
 }
 

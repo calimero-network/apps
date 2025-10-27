@@ -190,6 +190,7 @@ function BackgroundChannelNotifications() {
     if (event.data?.events) {
       event.data.events.forEach(execEvent => {
         if (execEvent.kind === 'MessageReceived') {
+
           const msgData = execEvent.data as any;
           
           // Find which channel this message is for

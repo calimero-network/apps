@@ -10,6 +10,14 @@ use std::fmt::Write;
 id::define!(pub UserId<32, 44>);
 type MessageId = String;
 
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
+#[serde(crate = "calimero_sdk::serde")]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct MessageSentEvent {
+    pub message_id: String,
+    pub channel: String,
+}
+
 #[app::event]
 pub enum Event {
     ChatInitialized(String),
@@ -17,7 +25,7 @@ pub enum Event {
     ChannelCreated(String),
     ChannelInvited(String),
     ChannelLeft(String),
-    MessageSent(String),
+    MessageSent(MessageSentEvent),
     MessageReceived(String),
     ChannelJoined(String),
     DMCreated(String),
@@ -40,6 +48,7 @@ pub struct Message {
     pub text: String,
     pub edited_on: Option<u64>,
     pub deleted: Option<bool>,
+    pub group: String,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
@@ -58,6 +67,7 @@ pub struct MessageWithReactions {
     pub deleted: Option<bool>,
     pub thread_count: u32,
     pub thread_last_timestamp: u64,
+    pub group: String,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, PartialEq, Eq, Clone)]
@@ -1225,6 +1235,7 @@ impl CurbChat {
             text: message,
             deleted: None,
             edited_on: None,
+            group: group.name.clone(),
         };
 
         let mut channel_info = match self.channels.get(&group) {
@@ -1258,7 +1269,10 @@ impl CurbChat {
             );
         }
 
-        app::emit!(Event::MessageSent(message_id.clone()));
+        app::emit!(Event::MessageSent(MessageSentEvent {
+            message_id: message_id.clone(),
+            channel: group.name.clone(),
+        }));
 
         Ok(message)
     }
@@ -1358,6 +1372,7 @@ impl CurbChat {
                             edited_on: message.edited_on,
                             thread_count: 0,
                             thread_last_timestamp: 0,
+                            group: message.group.clone(),
                         });
                     }
                 }
@@ -1460,6 +1475,7 @@ impl CurbChat {
                         edited_on: message.edited_on,
                         thread_count: threads_count as u32,
                         thread_last_timestamp: last_timestamp,
+                        group: message.group.clone(),
                     });
                 }
             }
@@ -1564,7 +1580,10 @@ impl CurbChat {
 
             match updated_message {
                 Some(msg) => {
-                    app::emit!(Event::MessageSent(msg.id.clone()));
+                    app::emit!(Event::MessageSent(MessageSentEvent {
+                        message_id: msg.id.clone(),
+                        channel: group.name.clone(),
+                    }));
                     Ok(msg)
                 }
                 None => Err("Failed to update thread message".to_string()),
@@ -1603,11 +1622,14 @@ impl CurbChat {
             } else {
                 return Err("Message not found".to_string());
             }
-            let _ = self.channels.insert(group, channel_info);
+            let _ = self.channels.insert(group.clone(), channel_info);
 
             match updated_message {
                 Some(msg) => {
-                    app::emit!(Event::MessageSent(msg.id.clone()));
+                    app::emit!(Event::MessageSent(MessageSentEvent {
+                        message_id: msg.id.clone(),
+                        channel: group.name.clone(),
+                    }));
                     Ok(msg)
                 }
                 None => Err("Failed to update message".to_string()),
@@ -1668,7 +1690,10 @@ impl CurbChat {
 
             let _ = self.threads.insert(parent_message_id, thread_messages);
 
-            app::emit!(Event::MessageSent(message.id.clone()));
+            app::emit!(Event::MessageSent(MessageSentEvent {
+                message_id: message.id.clone(),
+                channel: group.name.clone(),
+            }));
             Ok("Thread message deleted successfully".to_string())
         } else {
             let mut channel_info = match self.channels.get(&group) {
@@ -1713,9 +1738,12 @@ impl CurbChat {
 
             let _ = self.reactions.remove(&message_id);
 
-            let _ = self.channels.insert(group, channel_info);
+            let _ = self.channels.insert(group.clone(), channel_info);
 
-            app::emit!(Event::MessageSent(message.id.clone()));
+            app::emit!(Event::MessageSent(MessageSentEvent {
+                message_id: message.id.clone(),
+                channel: group.name.clone(),
+            }));
             Ok("Message deleted successfully".to_string())
         }
     }

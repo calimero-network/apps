@@ -18,14 +18,18 @@ import { getExecutorPublicKey } from "@calimero-network/calimero-client";
 // Simplified interface - accept refs directly instead of creating them internally
 interface ChatHandlersRefs {
   mainMessages: React.MutableRefObject<{
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     checkForNewMessages: (chat: ActiveChat, isDM: boolean) => Promise<any[]>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     addIncoming: (messages: any[]) => void;
   }>;
   threadMessages: React.MutableRefObject<{
     checkForNewThreadMessages: (
       chat: ActiveChat,
       parentMessageId: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ) => Promise<any[]>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     addIncoming: (messages: any[]) => void;
   }>;
   playSoundForMessage: React.MutableRefObject<
@@ -95,6 +99,7 @@ export function useChatHandlers(
           activeChatRef.current,
           useDM,
         );
+        console.log("newMessages: ", newMessages);
 
         if (newMessages.length > 0) {
           refs.mainMessages.current.addIncoming(newMessages);
@@ -145,9 +150,11 @@ export function useChatHandlers(
                 // Note: With multi-context subscription, we only handle the active channel here
                 // Background channel notifications would require fetching all channels
                 if (lastMessage.senderUsername && lastMessage.text && activeChatRef.current) {
+                  // Use message.group if available, otherwise fall back to active chat name
+                  const channelName = lastMessage.group || activeChatRef.current.name;
                   refs.notifyChannel.current(
                     lastMessage.id,
-                    activeChatRef.current.name,
+                    channelName,
                     lastMessage.senderUsername,
                     lastMessage.text,
                   );
@@ -323,14 +330,41 @@ export function useChatHandlers(
       // Track which specific actions we need to take
       const actions = {
         fetchMessages: false,
+        fetchMessageGroup: "",
         fetchChannels: false,
         fetchDMs: false,
         fetchMembers: false,
       };
 
+      console.log("executionEvents: ", executionEvents);
+
       // Log events for debugging
       if (executionEvents.length > 0) {
         log.debug("ChatHandlers", "Processing events:", executionEvents.map(e => e.kind));
+        
+        // Convert and log bytes to ASCII for debugging
+        executionEvents.forEach((event, index) => {
+          if (event.data) {
+            let asciiString = '';
+            try {
+              // Check if data is a Uint8Array or array of numbers
+              if (event.data instanceof Uint8Array) {
+                asciiString = new TextDecoder('utf-8').decode(event.data);
+              } else if (Array.isArray(event.data)) {
+                const bytes = new Uint8Array(event.data);
+                asciiString = new TextDecoder('utf-8').decode(bytes);
+              } else if (typeof event.data === 'string') {
+                asciiString = event.data;
+              } else if (event.data instanceof ArrayBuffer) {
+                const bytes = new Uint8Array(event.data);
+                asciiString = new TextDecoder('utf-8').decode(bytes);
+              }
+              console.log(`Event ${index} (${event.kind}) data as ASCII:`, asciiString);
+            } catch (e) {
+              console.log(`Event ${index} (${event.kind}) data (couldn't decode):`, event.data);
+            }
+          }
+        });
       }
 
       for (const executionEvent of executionEvents) {

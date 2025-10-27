@@ -35,6 +35,7 @@ export interface CurbMessage {
   editMode?: boolean;
   deleted?: boolean;
   status: MessageStatus;
+  group?: string; // Channel name where the message was sent
 }
 export interface AccountData {
   id: string;

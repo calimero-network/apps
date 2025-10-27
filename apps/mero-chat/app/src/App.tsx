@@ -9,6 +9,8 @@ import {
   clearSessionActivity,
   updateSessionActivity,
 } from "./utils/session";
+import { ToastProvider, useToast } from "./contexts/ToastContext";
+import { ToastManager } from "./components/common/ToastManager";
 
 // Lazy load pages for better performance
 const Login = lazy(() => import("./pages/Login"));
@@ -17,6 +19,12 @@ const IdleTimeoutWrapper = lazy(
   () => import("./components/IdleTimeoutWrapper"),
 );
 const PWAInstallPrompt = lazy(() => import("./components/PWAInstallPrompt"));
+
+// Toast display component
+function ToastDisplay() {
+  const { toasts, removeToast } = useToast();
+  return <ToastManager toasts={toasts} onRemoveToast={removeToast} />;
+}
 
 function App() {
   const { isAuthenticated, logout } = useCalimero();
@@ -62,39 +70,42 @@ function App() {
   }, [isAuthenticated, logout]);
 
   return (
-    <Suspense fallback={<LoadingSpinner />}>
-      <Routes>
-        <Route
-          path="/login"
-          element={
-            isAuthenticated && isConfigSet ? (
-              <Navigate to="/" replace />
-            ) : (
-              <Login
-                isAuthenticated={isAuthenticated}
-                isConfigSet={isConfigSet}
-              />
-            )
-          }
-        />
-        <Route
-          path="/"
-          element={
-            isLoading ? (
-              <LoadingSpinner />
-            ) : isAuthenticated && isConfigSet ? (
-              <IdleTimeoutWrapper>
-                <Home isConfigSet={isConfigSet} />
-              </IdleTimeoutWrapper>
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
-      <PWAInstallPrompt />
-    </Suspense>
+    <ToastProvider>
+      <Suspense fallback={<LoadingSpinner />}>
+        <Routes>
+          <Route
+            path="/login"
+            element={
+              isAuthenticated && isConfigSet ? (
+                <Navigate to="/" replace />
+              ) : (
+                <Login
+                  isAuthenticated={isAuthenticated}
+                  isConfigSet={isConfigSet}
+                />
+              )
+            }
+          />
+          <Route
+            path="/"
+            element={
+              isLoading ? (
+                <LoadingSpinner />
+              ) : isAuthenticated && isConfigSet ? (
+                <IdleTimeoutWrapper>
+                  <Home isConfigSet={isConfigSet} />
+                </IdleTimeoutWrapper>
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            }
+          />
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </Routes>
+        <PWAInstallPrompt />
+        <ToastDisplay />
+      </Suspense>
+    </ToastProvider>
   );
 }
 
