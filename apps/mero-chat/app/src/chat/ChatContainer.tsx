@@ -69,13 +69,15 @@ const ThreadWrapper = styled.div`
   border-left: 2px solid #282933;
   padding-left: 20px;
   @media (max-width: 1024px) {
+    height: 100dvh;
     border-left: none;
     position: fixed;
     padding-left: 0px;
+    padding-top: 0px;
     left: 0;
     right: 0;
-    top: 50%;
-    transform: translateY(-50%);
+    top: 0;
+    bottom: 0;
     z-index: 30;
     background-color: #0e0e10;
   }

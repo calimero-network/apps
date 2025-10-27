@@ -56,9 +56,12 @@ interface ChatDisplaySplitProps {
   messageWithEmojiSelector: CurbMessage | null;
 }
 
-const ContainerPadding = styled.div`
+const ContainerPadding = styled.div<{ $isThread?: boolean }>`
   @media (max-width: 1024px) {
-    height: calc(100dvh - 234px) !important;
+    height: ${props => props.$isThread 
+      ? 'calc(100% - 188px)' 
+      : 'calc(100dvh - 230px)'
+    } !important;
     padding-left: 0px !important;
     padding-right: 0px !important;
   }
@@ -82,6 +85,7 @@ const ThreadTitle = styled.div`
 const ThreadContainer = styled.div`
   position: relative;
   padding-bottom: 20px;
+  margin-right: 16px;
   border-bottom: 2px solid #282933;
   display: flex;
   justify-content: space-between;
@@ -110,6 +114,7 @@ const Wrapper = styled.div`
 
   @media (max-width: 1024px) {
     width: 100% !important;
+    height: 100%;
   }
 `;
 
@@ -257,9 +262,11 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
     currentChatStyle.overflow = "hidden";
     currentContainerPaddingStyle.flexDirection = "column";
     currentContainerPaddingStyle.paddingLeft = "0px";
+    currentContainerPaddingStyle.paddingRight = "0px";
     currentContainerPaddingStyle.height = "100%";
     currentContainerPaddingStyle.width = "100%";
     currentWrapperStyle.width = "100%";
+    currentWrapperStyle.height = "100%";
   } else if (openThread && !isThread) {
     currentChatStyle.height = "100%";
     currentChatStyle.width = "100%";
@@ -322,8 +329,10 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
   return (
     <>
       <Wrapper style={currentWrapperStyle}>
-        {/* @ts-expect-error - TODO: fix this */}
-        <ContainerPadding style={currentContainerPaddingStyle}>
+        <ContainerPadding 
+          style={currentContainerPaddingStyle}
+          $isThread={isThread && !!openThread}
+        >
           {openThread && isThread && (
             <ThreadHeader
               onClose={() => {
