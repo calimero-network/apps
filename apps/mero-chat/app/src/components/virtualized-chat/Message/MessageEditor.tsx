@@ -1,11 +1,18 @@
-import { useEffect, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import styled from "styled-components";
 
 import EmojiSelectorPopup from "../EmojiSelector/EmojiSelectorPopup";
-import InputField from "../InputField/InputField";
 import type { AccountData } from "../types/curbTypes";
 
-import AutocompleteList from "./AutocompleteList";
+import { RichTextEditor } from "@calimero-network/mero-ui";
+import {
+  ActionsWrapper,
+  EditorWrapper,
+  FullWidthWrapper,
+  IconEmoji,
+  IconSendSvg,
+} from "../../../chat/MessageInput";
+import { emptyText, markdownParser } from "../../../utils/markdownParser";
 
 interface MessageEditorProps {
   text: string;
@@ -35,8 +42,8 @@ const MessageEditorWrapper = styled.div`
     position: relative;
     z-index: 10;
     border-radius: 4px;
-    padding: 10px 6px;
-    background: #1d1d21;
+    padding: 11px 8px;
+    background: rgb(17, 17, 17);
     display: flex;
     justify-content: center;
     gap: 4px;
@@ -76,7 +83,7 @@ const MessageEditorWrapper = styled.div`
     display: flex;
   }
   .option {
-    color: #5765f2;
+    color: #A5FF11;
     cursor: pointer;
     padding-left: 3px;
     padding-right: 3px;
@@ -124,46 +131,6 @@ const MessageEditorWrapper = styled.div`
   }
 `;
 
-interface EmojiWinkProps {
-  onClick: () => void;
-}
-
-const EmojiWink = ({ onClick }: EmojiWinkProps) => {
-  const [hovered, setHovered] = useState(false);
-  return (
-    <div
-      className="svgwrapper"
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="18"
-        height="18"
-        fill="#686672"
-        className={`bi bi-emoji-wink ${hovered ? "hidden-svg" : "visible-svg"}`}
-        viewBox="0 0 16 16"
-      >
-        <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z" />
-        <path d="M4.285 9.567a.5.5 0 0 1 .683.183A3.498 3.498 0 0 0 8 11.5a3.498 3.498 0 0 0 3.032-1.75.5.5 0 1 1 .866.5A4.498 4.498 0 0 1 8 12.5a4.498 4.498 0 0 1-3.898-2.25.5.5 0 0 1 .183-.683zM7 6.5C7 7.328 6.552 8 6 8s-1-.672-1-1.5S5.448 5 6 5s1 .672 1 1.5zm1.757-.437a.5.5 0 0 1 .68.194.934.934 0 0 0 .813.493c.339 0 .645-.19.813-.493a.5.5 0 1 1 .874.486A1.934 1.934 0 0 1 10.25 7.75c-.73 0-1.356-.412-1.687-1.007a.5.5 0 0 1 .194-.68z" />
-      </svg>
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="18"
-        height="18"
-        fill="#73B30C"
-        className={`bi bi-emoji-wink-fill ${
-          hovered ? "visible-svg" : "hidden-svg"
-        }`}
-        viewBox="0 0 16 16"
-      >
-        <path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0zM7 6.5C7 5.672 6.552 5 6 5s-1 .672-1 1.5S5.448 8 6 8s1-.672 1-1.5zM4.285 9.567a.5.5 0 0 0-.183.683A4.498 4.498 0 0 0 8 12.5a4.5 4.5 0 0 0 3.898-2.25.5.5 0 1 0-.866-.5A3.498 3.498 0 0 1 8 11.5a3.498 3.498 0 0 1-3.032-1.75.5.5 0 0 0-.683-.183zm5.152-3.31a.5.5 0 0 0-.874.486c.33.595.958 1.007 1.687 1.007.73 0 1.356-.412 1.687-1.007a.5.5 0 0 0-.874-.486.934.934 0 0 1-.813.493.934.934 0 0 1-.813-.493z" />
-      </svg>
-    </div>
-  );
-};
-
 const IconFile = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -186,23 +153,22 @@ const IconFile = () => (
 );
 
 interface SendIconProps {
-  fill: string;
+  isActive: boolean;
   onClick: () => void;
 }
 
-const SendIcon = ({ fill, onClick }: SendIconProps) => (
-  <div className="sendIconWrapper" onClick={onClick}>
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="18"
-      height="18"
-      fill={fill}
-      className="sendIcon"
-      viewBox="0 0 16 16"
-    >
-      <path d="M15.964.686a.5.5 0 0 0-.65-.65L.767 5.855H.766l-.452.18a.5.5 0 0 0-.082.887l.41.26.001.002 4.995 3.178 3.178 4.995.002.002.26.41a.5.5 0 0 0 .886-.083l6-15Zm-1.833 1.89L6.637 10.07l-.215-.338a.5.5 0 0 0-.154-.154l-.338-.215 7.494-7.494 1.178-.471-.47 1.178Z" />
-    </svg>
-  </div>
+const SendIcon = ({ isActive, onClick }: SendIconProps) => (
+  <IconSendSvg
+    onClick={onClick}
+    xmlns="http://www.w3.org/2000/svg"
+    width="18"
+    height="18"
+    fill={`${isActive ? "#73B30C" : "#686672"}`}
+    className="bi bi-send-fill"
+    viewBox="0 0 16 16"
+  >
+    <path d="M15.964.686a.5.5 0 0 0-.65-.65L.767 5.855H.766l-.452.18a.5.5 0 0 0-.082.887l.41.26.001.002 4.995 3.178 3.178 4.995.002.002.26.41a.5.5 0 0 0 .886-.083l6-15Zm-1.833 1.89L6.637 10.07l-.215-.338a.5.5 0 0 0-.154-.154l-.338-.215 7.494-7.494 1.178-.471-.47 1.178Z" />
+  </IconSendSvg>
 );
 
 function MessageEditor({
@@ -210,106 +176,112 @@ function MessageEditor({
   onSubmit,
   onCancelEdit,
   deleteMessage,
-  getIconFromCache,
-  fetchAccounts,
-  autocompleteAccounts,
 }: MessageEditorProps) {
   const [inputText, setInputText] = useState(text);
   const [openEmojisPopup, setOpenEmojisPopup] = useState(false);
-  const [showAutocomplete, setShowAutocomplete] = useState(false);
-
-  const autoCompleteAccountId = (accountId: string) => {
-    let tempText = inputText.replace(/[\s]{0,1}@[^\s]*$/, "");
-    tempText = `${tempText} @${accountId}`.trim() + " \u200B";
-    setInputText(tempText);
-    setShowAutocomplete(false);
-  };
-
-  useEffect(() => {
-    const showAccountAutocomplete = /@[\w][^\s]*$/.test(inputText);
-    setShowAutocomplete(showAccountAutocomplete);
-  }, [inputText]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const editorRef = useRef<any>(null);
 
   const INPUT_FIELD_EMPTY_VALUE = "<p><br></p>";
 
   const updateEditedMessage = (libValue?: string) => {
+    const isEmptyContent =
+      !libValue ||
+      libValue.trim() === "" ||
+      libValue === "<p></p>" ||
+      libValue === "<p><br></p>" ||
+      libValue
+        .replace(/<p><\/p>/g, "")
+        .replace(/<p><br><\/p>/g, "")
+        .trim() === "" ||
+      emptyText.test(markdownParser(libValue ?? "", []));
+
     const updatedValue = libValue ?? inputText;
-    if (updatedValue && updatedValue !== INPUT_FIELD_EMPTY_VALUE) {
+    if (updatedValue && isEmptyContent) {
       onSubmit(updatedValue);
     } else {
       deleteMessage();
     }
   };
 
-  const updateFieldValue = (emoji: string) => {
-    setOpenEmojisPopup(false);
-    if (!inputText) {
-      setInputText(`<p>${emoji}</p>`);
-    }
-    const endingsToCheck = [
-      "<br>",
-      "<br></p>",
-      "</p>",
-      "</strong>",
-      "<br></li></ul>",
-      "</li></ul>",
-      "</em>",
-      "</u>",
-      "<br></li></ol>",
-      "</li></ol>",
-    ];
+  const handleEmojiSelected = useCallback((emoji: string) => {
+    editorRef.current?.insertContent(emoji);
+  }, []);
 
-    for (const ending of endingsToCheck) {
-      if (inputText.endsWith(ending)) {
-        const lastIndex = inputText.lastIndexOf(ending);
-        setInputText(inputText.substring(0, lastIndex) + emoji + ending);
-      }
+  const handleMessageChange = useCallback((mesage: string | null) => {
+    setInputText(mesage ?? "");
+  }, []);
+
+  const handleSendMessageEnter = async (content: string) => {
+    const isEmptyContent =
+      !content ||
+      content.trim() === "" ||
+      content === "<p></p>" ||
+      content === "<p><br></p>" ||
+      content
+        .replace(/<p><\/p>/g, "")
+        .replace(/<p><br><\/p>/g, "")
+        .trim() === "" ||
+      emptyText.test(markdownParser(content ?? "", []));
+
+    if (isEmptyContent) {
+      onSubmit("");
+      setOpenEmojisPopup(false);
+      handleMessageChange(null);
+    } else {
+      onSubmit(markdownParser(content ?? "", []));
+      setOpenEmojisPopup(false);
+      handleMessageChange(null);
     }
   };
-
-  useEffect(() => {
-    const term = inputText.split("@").pop()?.split("<")[0];
-    if (term && showAutocomplete) {
-      fetchAccounts(term.toLowerCase());
-    }
-  }, [showAutocomplete, inputText]);
 
   return (
     <MessageEditorWrapper>
       {openEmojisPopup && (
         <EmojiSelectorPopup
           onClose={() => setOpenEmojisPopup(false)}
-          onEmojiSelected={(emoji) => updateFieldValue(emoji)}
+          onEmojiSelected={handleEmojiSelected}
         />
       )}
       <div className="inputFieldWrapper">
-        {showAutocomplete && autocompleteAccounts.length > 0 && (
-          <AutocompleteList
-            onSelect={autoCompleteAccountId}
-            autocompleteAccounts={autocompleteAccounts}
-            getIconFromCache={getIconFromCache}
-          />
-        )}
         <div className="wrapper">
-          <InputField
-            value={inputText}
-            setValue={setInputText}
-            handleMessageSend={updateEditedMessage}
-            isEditMode={true}
-            discardChanges={onCancelEdit}
-          />
+          <FullWidthWrapper>
+            <EditorWrapper
+              style={{
+                flex: 1,
+                width: "100%",
+                minWidth: 0,
+              }}
+            >
+              <RichTextEditor
+                ref={editorRef}
+                value={inputText}
+                sendOnEnter={true}
+                clearOnSend={true}
+                onChange={(value: string) => setInputText(value)}
+                onSend={handleSendMessageEnter}
+                placeholder={"Edit message"}
+                maxHeight={30}
+                style={{ fontSize: "14px" }}
+                className="full-width-editor"
+              />
+            </EditorWrapper>
+          </FullWidthWrapper>
         </div>
-        <EmojiWink onClick={() => setOpenEmojisPopup(!openEmojisPopup)} />
-        <SendIcon
-          onClick={() => updateEditedMessage()}
-          fill={inputText !== INPUT_FIELD_EMPTY_VALUE ? "#4E95FF" : "#686672"}
-        />
+        <ActionsWrapper>
+          <div onClick={() => setOpenEmojisPopup(!openEmojisPopup)}>
+            <IconEmoji />
+          </div>
+          <SendIcon
+            onClick={() => updateEditedMessage()}
+            isActive={inputText !== INPUT_FIELD_EMPTY_VALUE}
+          />
+        </ActionsWrapper>
       </div>
       <div className="helperWrapper">
         <IconFile />
         <div className="helperTitle">Editing message</div>
         <div className="helperOptions">
-          escape to{" "}
           <span className="option" onClick={onCancelEdit}>
             cancel
           </span>{" "}

@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import styled from "styled-components";
 
 import type { AccountData } from "../types/curbTypes";
@@ -6,28 +7,36 @@ import MessageEditor from "./MessageEditor";
 
 const EditorWrapper = styled.div`
   position: fixed;
-  z-index: 200;
+  bottom: 0;
+  z-index: 2000;
+  background-color: #0e0e10;
+  padding-left: 1px;
+  padding-bottom: 21px;
   margin: 0 !important;
   left: 0;
   right: 0;
-  bottom: 0;
-  border-top-left-radius: 4px;
-  border-top-right-radius: 4px;
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+  border-top: 1px solid #282933;
   gap: 4px;
   width: 100% !important;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.4);
 
   .closeEdit {
     display: flex;
-    gap: 4px;
-    padding: 4px 16px;
-    border-radius: 4px;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 0;
     color: #fff;
     font-family: Helvetica Neue;
     font-size: 12px;
     font-style: normal;
     font-weight: 400;
     line-height: 150%;
-    background-color: #1d1d21;
+    background-color: transparent;
+    align-items: center;
+    cursor: pointer;
+    border-bottom: 1px solid #282933;
   }
 `;
 
@@ -72,7 +81,7 @@ const MessageEditorMobile = ({
   fetchAccounts,
   autocompleteAccounts,
 }: MessageEditorMobileProps) => {
-  return (
+  const editorContent = (
     <EditorWrapper>
       <div className="closeEdit" onClick={onCancelEdit}>
         <CloseIcon />
@@ -89,6 +98,13 @@ const MessageEditorMobile = ({
       />
     </EditorWrapper>
   );
+
+  // Render outside the virtualized container using a portal
+  if (typeof document !== "undefined") {
+    return createPortal(editorContent, document.body);
+  }
+  
+  return editorContent;
 };
 
 export default MessageEditorMobile;
