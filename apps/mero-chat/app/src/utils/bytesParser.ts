@@ -17,7 +17,7 @@ export const bytesParser = (DataBytes: any): string => {
 
     return asciiString;
   } catch (e) {
-    console.log(`BytesParser - Couldn't decode data:`, DataBytes, e);
+    console.error(`BytesParser - Couldn't decode data:`, DataBytes, e);
     return "";
   }
 };

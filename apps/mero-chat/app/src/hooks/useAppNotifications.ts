@@ -38,7 +38,6 @@ export function useAppNotifications(currentChatId?: string) {
    */
   const notify = useCallback(
     (notification: AppNotification) => {
-      console.log("notify", notification);
       const {
         title,
         message,

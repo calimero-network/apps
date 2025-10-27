@@ -46,8 +46,6 @@ import { useWebSocketEvents } from '../contexts/WebSocketContext';
 function MyComponent() {
   // Automatically handles cleanup on unmount
   useWebSocketEvents((event) => {
-    console.log('WebSocket event received:', event);
-    
     if (event.type === 'StateMutation') {
       // Handle state mutation
       if (event.data?.events) {

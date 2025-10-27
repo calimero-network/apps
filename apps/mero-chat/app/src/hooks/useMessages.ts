@@ -145,7 +145,6 @@ export function useMessages() {
         });
         if (identityResponse.data) {
           refetchIdentity = identityResponse.data;
-          console.log("Fetched DM identity for context:", contextId, "->", refetchIdentity);
         }
       }
 

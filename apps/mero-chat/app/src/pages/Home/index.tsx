@@ -304,8 +304,6 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     async (dm?: DMChatInfo, sc?: ActiveChat, refetch?: boolean) => {
       const contextId = sc?.contextId || dm?.context_id || "";
 
-      console.log("contextId: ", contextId);
-
       // Prevent rapid re-selection of the same DM (within 1 second)
       const now = Date.now();
       if (

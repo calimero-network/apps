@@ -102,9 +102,6 @@ export function useChatHandlers(
           group,
           contextId,
         );
-        console.log("newMessages: ", newMessages);
-
-        console.log("usedm", useDM);
 
 
         if (newMessages.length > 0) {
@@ -341,8 +338,6 @@ export function useChatHandlers(
         fetchDMs: false,
         fetchMembers: false,
       };
-
-      console.log("executionEvents: ", executionEvents);
 
         for (const executionEvent of executionEvents) {
           switch (executionEvent.kind) {
