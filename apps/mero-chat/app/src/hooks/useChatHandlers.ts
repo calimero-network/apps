@@ -107,11 +107,12 @@ export function useChatHandlers(
         if (newMessages.length > 0) {
           // Check if messages belong to the currently active chat
           const activeChatName = activeChatRef.current.name;
+          const activeDMName = activeChatRef.current.username;
           const messagesBelongToActiveChat = newMessages.every(msg => {
             // For channels, check if message.group matches the active channel name
             // For DMs, check if we're in a DM context
             if (useDM) {
-              return true; // For DMs, assume messages belong to the active DM
+              return msg.senderUsername === activeDMName;
             }
             return msg.group === activeChatName;
           });
