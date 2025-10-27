@@ -10,6 +10,7 @@ import type {
   ExecutionEventData,
 } from "../types/WebSocketTypes";
 import { getExecutorPublicKey } from "@calimero-network/calimero-client";
+import { bytesParser } from "../utils/bytesParser";
 
 /**
  * Custom hook for handling chat-related events (messages, DMs, channels)
@@ -19,7 +20,7 @@ import { getExecutorPublicKey } from "@calimero-network/calimero-client";
 interface ChatHandlersRefs {
   mainMessages: React.MutableRefObject<{
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    checkForNewMessages: (chat: ActiveChat, isDM: boolean) => Promise<any[]>;
+    checkForNewMessages: (chat: ActiveChat, isDM: boolean, group: string, contextId: string) => Promise<any[]>;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     addIncoming: (messages: any[]) => void;
   }>;
@@ -83,8 +84,8 @@ export function useChatHandlers(
    * Handle message updates from websocket events
    */
   const handleMessageUpdates = useCallback(
-    async (useDM: boolean) => {
-      if (!activeChatRef.current) return;
+    async (useDM: boolean, group: string, contextId: string) => {
+      if (!activeChatRef.current || !group) return;
 
       // Prevent concurrent message fetches
       if (isFetchingMessagesRef.current) return;
@@ -98,104 +99,108 @@ export function useChatHandlers(
         const newMessages = await refs.mainMessages.current.checkForNewMessages(
           activeChatRef.current,
           useDM,
+          group,
+          contextId,
         );
         console.log("newMessages: ", newMessages);
 
+        console.log("usedm", useDM);
+
+
         if (newMessages.length > 0) {
-          refs.mainMessages.current.addIncoming(newMessages);
+          // Check if messages belong to the currently active chat
+          const activeChatName = activeChatRef.current.name;
+          const messagesBelongToActiveChat = newMessages.every(msg => {
+            // For channels, check if message.group matches the active channel name
+            // For DMs, check if we're in a DM context
+            if (useDM) {
+              return true; // For DMs, assume messages belong to the active DM
+            }
+            return msg.group === activeChatName;
+          });
 
-          const chatId = activeChatRef.current.id || activeChatRef.current.name;
-          const shouldMarkAsRead =
-            lastReadMessageRef.current.chatId !== chatId ||
-            now - lastReadMessageRef.current.timestamp > 2000;
+          // Always show notifications for all messages (even if not in active chat)
+          const lastMessage = newMessages[newMessages.length - 1];
+          const currentUserId = getExecutorPublicKey();
+          
+          if (!useDM) {
+            const isFromCurrentUser = lastMessage.sender === currentUserId;
+            
+            // Show notification for ALL channel messages (not just active chat)
+            if (!isFromCurrentUser && lastMessage.senderUsername && lastMessage.text) {
+              // Use message.group to show the correct channel name
+              const channelName = lastMessage.group || activeChatName;
+              refs.notifyChannel.current(
+                lastMessage.id,
+                channelName,
+                lastMessage.senderUsername,
+                lastMessage.text,
+              );
+            }
+          } else {
+            // For DMs, check both the main identity and the DM-specific identity
+            const currentDMIdentity = activeChatRef.current?.account;
+            const isFromCurrentUser =
+              lastMessage &&
+              (lastMessage.sender === currentUserId ||
+                lastMessage.sender === currentDMIdentity);
 
-          if (shouldMarkAsRead) {
-            lastReadMessageRef.current = { chatId, timestamp: now };
+            // Show notification for DM messages from other users
+            if (!isFromCurrentUser && lastMessage.senderUsername && lastMessage.text) {
+              refs.notifyDM.current(
+                lastMessage.id,
+                lastMessage.senderUsername,
+                lastMessage.text,
+              );
+            }
+          }
 
-            if (activeChat?.type === "channel") {
-              const lastMessage = newMessages[newMessages.length - 1];
-              if (lastMessage?.timestamp) {
+          // ONLY append messages if they belong to the active chat
+          if (messagesBelongToActiveChat) {
+            refs.mainMessages.current.addIncoming(newMessages);
+
+            const chatId = activeChatRef.current.id || activeChatRef.current.name;
+            const shouldMarkAsRead =
+              lastReadMessageRef.current.chatId !== chatId ||
+              now - lastReadMessageRef.current.timestamp > 2000;
+
+            if (shouldMarkAsRead) {
+              lastReadMessageRef.current = { chatId, timestamp: now };
+
+              if (activeChat?.type === "channel") {
+                const lastMessage = newMessages[newMessages.length - 1];
+                if (lastMessage?.timestamp) {
+                  new ClientApiDataSource()
+                    .readMessage({
+                      channel: { name: activeChat?.name },
+                      timestamp: lastMessage.timestamp,
+                    })
+                    .then(() => {
+                      refs.fetchChannels.current();
+                    })
+                    .catch((error) =>
+                      log.error(
+                        "ChatHandlers",
+                        "Failed to mark message as read",
+                        error,
+                      ),
+                    );
+                }
+              } else {
                 new ClientApiDataSource()
-                  .readMessage({
-                    channel: { name: activeChat?.name },
-                    timestamp: lastMessage.timestamp,
+                  .readDm({
+                    other_user_id: activeChatRef.current?.name || "",
                   })
                   .then(() => {
-                    refs.fetchChannels.current();
+                    refs.fetchDMs.current();
                   })
                   .catch((error) =>
-                    log.error(
-                      "ChatHandlers",
-                      "Failed to mark message as read",
-                      error,
-                    ),
+                    log.error("ChatHandlers", "Failed to mark DM as read", error),
                   );
-              }
-              // Only trigger notifications and sounds for messages from other users
-              // AND when we're viewing the active chat (not from background channels)
-              const currentUserId = getExecutorPublicKey();
-              const isFromCurrentUser = lastMessage.sender === currentUserId;
-              
-              // Check if this message is in the currently visible/active channel
-              const isActiveChannel = activeChat && activeChatRef.current && 
-                                      activeChat.name === activeChatRef.current.name;
-
-              if (!isFromCurrentUser && isActiveChannel) {
-                // Play sound and show notification only for the active channel
-                refs.playSoundForMessage.current(
-                  lastMessage.id,
-                  "message",
-                  false,
-                );
-                // Note: With multi-context subscription, we only handle the active channel here
-                // Background channel notifications would require fetching all channels
-                if (lastMessage.senderUsername && lastMessage.text && activeChatRef.current) {
-                  // Use message.group if available, otherwise fall back to active chat name
-                  const channelName = lastMessage.group || activeChatRef.current.name;
-                  refs.notifyChannel.current(
-                    lastMessage.id,
-                    channelName,
-                    lastMessage.senderUsername,
-                    lastMessage.text,
-                  );
-                }
-              }
-            } else {
-              const lastMessage = newMessages[newMessages.length - 1];
-              new ClientApiDataSource()
-                .readDm({
-                  other_user_id: activeChatRef.current?.name || "",
-                })
-                .then(() => {
-                  refs.fetchDMs.current();
-                })
-                .catch((error) =>
-                  log.error("ChatHandlers", "Failed to mark DM as read", error),
-                );
-
-              // Only trigger notifications for messages from other users
-              // For DMs, check both the main identity and the DM-specific identity
-              const currentUserId = getExecutorPublicKey();
-              const currentDMIdentity = activeChatRef.current?.account;
-              const isFromCurrentUser =
-                lastMessage &&
-                (lastMessage.sender === currentUserId ||
-                  lastMessage.sender === currentDMIdentity);
-
-              // Trigger notification for DM
-              if (
-                !isFromCurrentUser &&
-                lastMessage &&
-                lastMessage.senderUsername &&
-                lastMessage.text
-              ) {
-                refs.notifyDM.current(
-                  lastMessage.id,
-                  lastMessage.senderUsername,
-                  lastMessage.text,
-                );
               }
             }
+          } else {
+            console.log("Messages received but not appended - they don't belong to the active chat. Active:", activeChatName, "Message group:", newMessages[0]?.group);
           }
         }
       } catch (error) {
@@ -326,11 +331,12 @@ export function useChatHandlers(
    * Map each event type to its specific data refresh action
    */
   const handleExecutionEvents = useCallback(
-    (executionEvents: ExecutionEventData[], useDM: boolean) => {
+    (contextId: string, executionEvents: ExecutionEventData[]) => {
       // Track which specific actions we need to take
       const actions = {
         fetchMessages: false,
         fetchMessageGroup: "",
+        isDM: false,
         fetchChannels: false,
         fetchDMs: false,
         fetchMembers: false,
@@ -338,39 +344,27 @@ export function useChatHandlers(
 
       console.log("executionEvents: ", executionEvents);
 
-      // Log events for debugging
-      if (executionEvents.length > 0) {
-        log.debug("ChatHandlers", "Processing events:", executionEvents.map(e => e.kind));
-        
-        // Convert and log bytes to ASCII for debugging
-        executionEvents.forEach((event, index) => {
-          if (event.data) {
-            let asciiString = '';
-            try {
-              // Check if data is a Uint8Array or array of numbers
-              if (event.data instanceof Uint8Array) {
-                asciiString = new TextDecoder('utf-8').decode(event.data);
-              } else if (Array.isArray(event.data)) {
-                const bytes = new Uint8Array(event.data);
-                asciiString = new TextDecoder('utf-8').decode(bytes);
-              } else if (typeof event.data === 'string') {
-                asciiString = event.data;
-              } else if (event.data instanceof ArrayBuffer) {
-                const bytes = new Uint8Array(event.data);
-                asciiString = new TextDecoder('utf-8').decode(bytes);
+        for (const executionEvent of executionEvents) {
+          switch (executionEvent.kind) {
+            case "MessageSent":
+              actions.fetchMessages = true;
+              // Convert bytes to ASCII and extract channel/group
+              if (executionEvent.data) {
+                try {
+                  const asciiString = bytesParser(executionEvent.data);
+                  
+                  // Parse the JSON to get channel/group and message_id
+                  const parsed = JSON.parse(asciiString);
+                  if (parsed.channel) {
+                    actions.fetchMessageGroup = parsed.channel;
+                    actions.isDM = parsed.channel === "private_dm";
+                  }
+                } catch (e) {
+                  console.log(`MessageSent - Couldn't decode data:`, executionEvent.data, e);
+                }
               }
-              console.log(`Event ${index} (${event.kind}) data as ASCII:`, asciiString);
-            } catch (e) {
-              console.log(`Event ${index} (${event.kind}) data (couldn't decode):`, event.data);
-            }
-          }
-        });
-      }
-
-      for (const executionEvent of executionEvents) {
-        switch (executionEvent.kind) {
-          case "MessageSent":
-          case "MessageReceived":
+              break;
+            case "MessageReceived":
             // Fetch new messages for current chat
             actions.fetchMessages = true;
             break;
@@ -441,7 +435,7 @@ export function useChatHandlers(
 
       // Execute only the necessary actions with proper sequencing
       if (actions.fetchMessages) {
-        handleMessageUpdates(useDM);
+        handleMessageUpdates(actions.isDM, actions.fetchMessageGroup, contextId);
       }
       if (actions.fetchChannels) {
         refs.fetchChannels.current();
@@ -459,11 +453,11 @@ export function useChatHandlers(
       }
       if (actions.fetchMembers) {
         // Always fetch members for channels, and for DMs when appropriate
-        if (!useDM) {
+        if (!actions.isDM) {
           refs.fetchMembers.current();
         }
         // For DMs, we might need to refresh DM data to get updated member info
-        if (useDM && actions.fetchDMs) {
+        if (actions.isDM && actions.fetchDMs) {
           // DM member updates are handled through DM list refresh
           refs.fetchDMs.current();
         }
@@ -486,16 +480,17 @@ export function useChatHandlers(
    * Each event type triggers only the specific data refresh it needs
    */
   const handleStateMutation = useCallback(
+    // NOTE: chefsale - return executor public key for event contextID
     async (event: WebSocketEvent) => {
-      const sessionChat = getStoredSession();
-      const useDM = (sessionChat?.type === "direct_message" &&
-        sessionChat?.account &&
-        !sessionChat?.canJoin &&
-        sessionChat?.otherIdentityNew) as boolean;
+      // const sessionChat = getStoredSession();
+      // const useDM = (sessionChat?.type === "direct_message" &&
+      //   sessionChat?.account &&
+      //   !sessionChat?.canJoin &&
+      //   sessionChat?.otherIdentityNew) as boolean;
 
       // Process execution events if present - this handles all the specific refreshes
       if (event.data?.events && event.data.events.length > 0) {
-        handleExecutionEvents(event.data.events, useDM);
+        handleExecutionEvents(event.contextId, event.data.events);
       }
     },
     [handleExecutionEvents],

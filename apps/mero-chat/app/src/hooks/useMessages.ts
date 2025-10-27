@@ -16,7 +16,6 @@ import {
   MESSAGE_PAGE_SIZE,
   RECENT_MESSAGES_CHECK_SIZE,
 } from "../constants/app";
-import { log } from "../utils/logger";
 
 /**
  * Custom hook for managing messages in a chat
@@ -131,20 +130,34 @@ export function useMessages() {
     async (
       activeChat: ActiveChat | null,
       isDM: boolean,
+      group: string,
+      contextId: string,
     ): Promise<CurbMessage[]> => {
       if (!activeChat) return [];
 
       // Removed throttling to allow real-time message updates
 
+      // If it's a DM, fetch the DM identity for this context
+      let refetchIdentity: string | undefined = undefined;
+      if (isDM && contextId) {
+        const identityResponse = await new ClientApiDataSource().getDmIdentityByContext({
+          context_id: contextId,
+        });
+        if (identityResponse.data) {
+          refetchIdentity = identityResponse.data;
+          console.log("Fetched DM identity for context:", contextId, "->", refetchIdentity);
+        }
+      }
+
       const response: ResponseData<FullMessageResponse> =
         await new ClientApiDataSource().getMessages({
           group: {
-            name: (isDM ? "private_dm" : activeChat.name) || "",
+            name: (isDM ? "private_dm" : group) || "",
           },
           limit: RECENT_MESSAGES_CHECK_SIZE,
           offset: 0,
           is_dm: isDM,
-          dm_identity: activeChat.account,
+          dm_identity: refetchIdentity || activeChat.account,
           parent_message: undefined, // Only get main chat messages, not thread messages
         });
 

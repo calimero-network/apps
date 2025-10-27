@@ -2002,6 +2002,29 @@ impl CurbChat {
         }
     }
 
+    /// Gets the own_identity for a DM context by context_id
+    pub fn get_dm_identity_by_context(&self, context_id: String) -> app::Result<UserId, String> {
+        if self.is_dm {
+            return Err("Cannot get DM identity in a DM chat".to_string());
+        }
+        
+        let executor_id = self.get_executor_id();
+        
+        match self.dm_chats.get(&executor_id) {
+            Ok(Some(dms)) => {
+                for dm in dms.iter() {
+                    if dm.context_id == context_id {
+                        // Return the own_identity if it exists, otherwise return own_identity_old
+                        return Ok(dm.own_identity.clone().unwrap_or(dm.own_identity_old.clone()));
+                    }
+                }
+                Err("DM context not found".to_string())
+            }
+            Ok(None) => Err("No DMs found".to_string()),
+            Err(_) => Err("Failed to retrieve DM identity".to_string()),
+        }
+    }
+
     pub fn delete_dm(&mut self, other_user: UserId) -> app::Result<String, String> {
         if self.is_dm {
             return Err("Cannot delete DMs in a DM chat".to_string());
