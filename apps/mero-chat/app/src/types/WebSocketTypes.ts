@@ -33,6 +33,7 @@ export interface StateMutationData {
 }
 
 export interface WebSocketEvent {
+  contextId: string;
   type: "StateMutation" | string;
   data?: StateMutationData;
   timestamp?: number;

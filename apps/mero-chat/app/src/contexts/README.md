@@ -46,8 +46,6 @@ import { useWebSocketEvents } from '../contexts/WebSocketContext';
 function MyComponent() {
   // Automatically handles cleanup on unmount
   useWebSocketEvents((event) => {
-    console.log('WebSocket event received:', event);
-    
     if (event.type === 'StateMutation') {
       // Handle state mutation
       if (event.data?.events) {
@@ -190,6 +188,7 @@ function BackgroundChannelNotifications() {
     if (event.data?.events) {
       event.data.events.forEach(execEvent => {
         if (execEvent.kind === 'MessageReceived') {
+
           const msgData = execEvent.data as any;
           
           // Find which channel this message is for

@@ -54,6 +54,8 @@ export interface GetMessagesProps {
   offset?: number;
   is_dm?: boolean;
   dm_identity?: UserId;
+  refetch_context_id?: string;
+  refetch_identity?: UserId;
 }
 
 export interface Message {
@@ -67,6 +69,7 @@ export interface Message {
   reactions: HashMap<string, UserId[]>;
   thread_count: number;
   thread_last_timestamp: number;
+  group?: string;
 }
 
 export interface MessageWithReactions extends Message {
@@ -238,6 +241,7 @@ export enum ClientMethod {
   READ_DM = "mark_dm_as_read",
   GET_DM_UNREAD_COUNT = "get_dm_unread_count",
   GET_TOTAL_DM_UNREAD_COUNT = "get_total_dm_unread_count",
+  GET_DM_IDENTITY_BY_CONTEXT = "get_dm_identity_by_context",
   MARK_ALL_DMS_AS_READ = "mark_all_dms_as_read",
 }
 
@@ -272,4 +276,5 @@ export interface ClientApi {
   updateDmHash(props: UpdateDmHashProps): ApiResponse<string>;
   readDm(props: ReadDmProps): ApiResponse<string>;
   getUsername(props: GetUsernameProps): ApiResponse<string>;
+  getDmIdentityByContext(props: { context_id: string }): ApiResponse<string>;
 }

@@ -53,16 +53,6 @@ export function getJsonRpcClient() {
 
 export class ClientApiDataSource implements ClientApi {
   async joinChat(props: JoinChatProps): ApiResponse<string> {
-    console.log("from inside:", {
-      contextId: (props.isDM ? getDmContextId() : props.contextId || getContextId()) || "",
-      method: ClientMethod.JOIN_CHAT,
-      argsJson: {
-        username: props.username,
-        is_dm: props.isDM || false,
-      },
-      executorPublicKey:
-        (props.isDM ? props.executor : (props.executorPublicKey || getExecutorPublicKey())) || "",
-    })
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await getJsonRpcClient().execute<any, string>(
@@ -587,13 +577,15 @@ export class ClientApiDataSource implements ClientApi {
 
   async getMessages(props: GetMessagesProps): ApiResponse<FullMessageResponse> {
     try {
+      const useContext = props.refetch_context_id ? props.refetch_context_id : (props.is_dm ? getDmContextId() : getContextId()) || "";
+      const useIdentity = props.refetch_identity ? props.refetch_identity : (props.is_dm ? props.dm_identity : getExecutorPublicKey()) || "";
       const response = await getJsonRpcClient().execute<
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         any,
         FullMessageResponse
       >(
         {
-          contextId: (props.is_dm ? getDmContextId() : getContextId()) || "",
+          contextId: useContext,
           method: ClientMethod.GET_MESSAGES,
           argsJson: {
             group: props.group,
@@ -601,8 +593,7 @@ export class ClientApiDataSource implements ClientApi {
             limit: props.limit,
             offset: props.offset,
           },
-          executorPublicKey:
-            (props.is_dm ? props.dm_identity : getExecutorPublicKey()) || "",
+          executorPublicKey: useIdentity,
         },
         {
           headers: {
@@ -699,6 +690,61 @@ export class ClientApiDataSource implements ClientApi {
     } catch (error) {
       console.error("sendMessage failed:", error);
       let errorMessage = "An unexpected error occurred during sendMessage";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: {
+          code: 500,
+          message: errorMessage,
+        },
+      };
+    }
+  }
+
+  async getDmIdentityByContext(props: { context_id: string }): ApiResponse<string> {
+    try {
+      const response = await getJsonRpcClient().execute<
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        any,
+        string
+      >(
+        {
+          contextId: getContextId() || "",
+          method: ClientMethod.GET_DM_IDENTITY_BY_CONTEXT,
+          argsJson: {
+            context_id: props.context_id,
+          },
+          executorPublicKey: getExecutorPublicKey() || "",
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        },
+      );
+
+      if (response?.error) {
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        };
+      }
+
+      return {
+        data: response?.result.output as string,
+        error: null,
+      };
+    } catch (error) {
+      console.error("getDmIdentityByContext failed:", error);
+      let errorMessage = "An unexpected error occurred during getDmIdentityByContext";
       if (error instanceof Error) {
         errorMessage = error.message;
       } else if (typeof error === "string") {
