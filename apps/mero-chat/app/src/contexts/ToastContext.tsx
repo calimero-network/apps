@@ -1,5 +1,7 @@
-import React, { createContext, useContext, ReactNode } from 'react';
-import { useToastManager, ToastNotification } from '../components/common/ToastManager';
+import React, { createContext, useContext } from 'react';
+import type { ReactNode } from 'react';
+import { useToastManager } from '../components/common/ToastManager';
+import type { ToastNotification } from '../components/common/ToastManager';
 
 interface ToastContextValue {
   toasts: ToastNotification[];
