@@ -403,7 +403,6 @@ function ChatContainer({
 
   const handleDeleteMessage = useCallback(
     async (message: CurbMessage, isThread: boolean) => {
-      console.log("tu sam", message, isThread);
       const isDM = activeChatRef.current?.type === "direct_message";
       
       // Get parent message ID for thread messages
