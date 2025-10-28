@@ -383,7 +383,7 @@ const Message = (props: MessageProps) => {
 
   // Memoize message status icon to prevent recreating on every render
   const statusIcon = useMemo(() => {
-    return props.message.status === MessageStatus.sending ? (
+    return props.message.id.includes("temp-") ? (
       <MessageSendingIcon />
     ) : (
       <MessageSentIcon />
