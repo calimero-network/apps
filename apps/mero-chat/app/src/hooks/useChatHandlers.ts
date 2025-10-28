@@ -20,15 +20,20 @@ import { bytesParser } from "../utils/bytesParser";
 interface ChatHandlersRefs {
   mainMessages: React.MutableRefObject<{
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    checkForNewMessages: (chat: ActiveChat, isDM: boolean, group: string, contextId: string) => Promise<any[]>;
+    checkForNewMessages: (
+      chat: ActiveChat,
+      isDM: boolean,
+      group: string,
+      contextId: string
+    ) => Promise<any[]>;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     addIncoming: (messages: any[]) => void;
   }>;
   threadMessages: React.MutableRefObject<{
     checkForNewThreadMessages: (
       chat: ActiveChat,
-      parentMessageId: string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      parentMessageId: string
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ) => Promise<any[]>;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     addIncoming: (messages: any[]) => void;
@@ -41,7 +46,7 @@ interface ChatHandlersRefs {
       messageId: string,
       sender: string,
       text: string,
-      isMention?: boolean,
+      isMention?: boolean
     ) => void
   >;
   notifyDM: React.MutableRefObject<
@@ -52,7 +57,7 @@ interface ChatHandlersRefs {
       messageId: string,
       channelName: string,
       sender: string,
-      text: string,
+      text: string
     ) => void
   >;
   fetchDms: React.MutableRefObject<() => Promise<DMChatInfo[] | undefined>>;
@@ -67,7 +72,7 @@ interface ChatHandlersRefs {
 export function useChatHandlers(
   activeChatRef: React.RefObject<ActiveChat | null>,
   activeChat: ActiveChat | null,
-  refs: ChatHandlersRefs,
+  refs: ChatHandlersRefs
 ) {
   // All callbacks come through refs - much simpler!
 
@@ -100,39 +105,46 @@ export function useChatHandlers(
           activeChatRef.current,
           useDM,
           group,
-          contextId,
+          contextId
         );
-
 
         if (newMessages.length > 0) {
           // Check if messages belong to the currently active chat
           const activeChatName = activeChatRef.current.name;
           const activeDMName = activeChatRef.current.username;
-          const messagesBelongToActiveChat = newMessages.every(msg => {
-            // For channels, check if message.group matches the active channel name
-            // For DMs, check if we're in a DM context
-            if (useDM) {
-              return msg.senderUsername === activeDMName;
-            }
-            return msg.group === activeChatName;
-          });
+          const lastIndex = newMessages.length - 1;
+          const lastMessageTest = newMessages[lastIndex];
+
+          let messagesBelongToActiveChat = false;
+
+          if (useDM) {
+            messagesBelongToActiveChat =
+              lastMessageTest.senderUsername === activeDMName;
+          } else {
+            messagesBelongToActiveChat =
+              lastMessageTest.group === activeChatName;
+          }
 
           // Always show notifications for all messages (even if not in active chat)
           const lastMessage = newMessages[newMessages.length - 1];
           const currentUserId = getExecutorPublicKey();
-          
+
           if (!useDM) {
             const isFromCurrentUser = lastMessage.sender === currentUserId;
-            
+
             // Show notification for ALL channel messages (not just active chat)
-            if (!isFromCurrentUser && lastMessage.senderUsername && lastMessage.text) {
+            if (
+              !isFromCurrentUser &&
+              lastMessage.senderUsername &&
+              lastMessage.text
+            ) {
               // Use message.group to show the correct channel name
               const channelName = lastMessage.group || activeChatName;
               refs.notifyChannel.current(
                 lastMessage.id,
                 channelName,
                 lastMessage.senderUsername,
-                lastMessage.text,
+                lastMessage.text
               );
             }
           } else {
@@ -144,11 +156,15 @@ export function useChatHandlers(
                 lastMessage.sender === currentDMIdentity);
 
             // Show notification for DM messages from other users
-            if (!isFromCurrentUser && lastMessage.senderUsername && lastMessage.text) {
+            if (
+              !isFromCurrentUser &&
+              lastMessage.senderUsername &&
+              lastMessage.text
+            ) {
               refs.notifyDM.current(
                 lastMessage.id,
                 lastMessage.senderUsername,
-                lastMessage.text,
+                lastMessage.text
               );
             }
           }
@@ -157,7 +173,8 @@ export function useChatHandlers(
           if (messagesBelongToActiveChat) {
             refs.mainMessages.current.addIncoming(newMessages);
 
-            const chatId = activeChatRef.current.id || activeChatRef.current.name;
+            const chatId =
+              activeChatRef.current.id || activeChatRef.current.name;
             const shouldMarkAsRead =
               lastReadMessageRef.current.chatId !== chatId ||
               now - lastReadMessageRef.current.timestamp > 2000;
@@ -180,8 +197,8 @@ export function useChatHandlers(
                       log.error(
                         "ChatHandlers",
                         "Failed to mark message as read",
-                        error,
-                      ),
+                        error
+                      )
                     );
                 }
               } else {
@@ -193,12 +210,21 @@ export function useChatHandlers(
                     refs.fetchDMs.current();
                   })
                   .catch((error) =>
-                    log.error("ChatHandlers", "Failed to mark DM as read", error),
+                    log.error(
+                      "ChatHandlers",
+                      "Failed to mark DM as read",
+                      error
+                    )
                   );
               }
             }
           } else {
-            console.log("Messages received but not appended - they don't belong to the active chat. Active:", activeChatName, "Message group:", newMessages[0]?.group);
+            console.log(
+              "Messages received but not appended - they don't belong to the active chat. Active:",
+              activeChatName,
+              "Message group:",
+              newMessages[0]?.group
+            );
           }
         }
       } catch (error) {
@@ -207,7 +233,7 @@ export function useChatHandlers(
         isFetchingMessagesRef.current = false;
       }
     },
-    [activeChatRef, activeChat, refs],
+    [activeChatRef, activeChat, refs]
   );
 
   /**
@@ -218,7 +244,7 @@ export function useChatHandlers(
       if (!activeChatRef.current || !parentMessageId) {
         log.debug(
           "ChatHandlers",
-          "Skipping thread message check - no active chat or parent message ID",
+          "Skipping thread message check - no active chat or parent message ID"
         );
         return;
       }
@@ -227,7 +253,7 @@ export function useChatHandlers(
       if (isFetchingThreadMessagesRef.current) {
         log.debug(
           "ChatHandlers",
-          "Skipping thread message check - already fetching thread messages",
+          "Skipping thread message check - already fetching thread messages"
         );
         return;
       }
@@ -244,19 +270,19 @@ export function useChatHandlers(
         isFetchingThreadMessagesRef.current = true;
         log.debug(
           "ChatHandlers",
-          `Checking for new thread messages for parent: ${parentMessageId}`,
+          `Checking for new thread messages for parent: ${parentMessageId}`
         );
 
         const newThreadMessages =
           await refs.threadMessages.current.checkForNewThreadMessages(
             activeChatRef.current,
-            parentMessageId,
+            parentMessageId
           );
 
         if (newThreadMessages.length > 0) {
           log.debug(
             "ChatHandlers",
-            `Found ${newThreadMessages.length} new thread messages`,
+            `Found ${newThreadMessages.length} new thread messages`
           );
           refs.threadMessages.current.addIncoming(newThreadMessages);
         } else {
@@ -268,7 +294,7 @@ export function useChatHandlers(
         isFetchingThreadMessagesRef.current = false;
       }
     },
-    [refs],
+    [refs]
   );
 
   // Track last DM update to prevent infinite loops
@@ -305,7 +331,7 @@ export function useChatHandlers(
             !sessionChat?.otherIdentityNew)
         ) {
           const currentDM = updatedDMs.find(
-            (dm) => dm.context_id === sessionChat.contextId,
+            (dm) => dm.context_id === sessionChat.contextId
           );
 
           if (currentDM && sessionChat.contextId) {
@@ -321,7 +347,7 @@ export function useChatHandlers(
         log.error("ChatHandlers", "Error handling DM updates", error);
       }
     },
-    [refs],
+    [refs]
   );
 
   /**
@@ -340,27 +366,31 @@ export function useChatHandlers(
         fetchMembers: false,
       };
 
-        for (const executionEvent of executionEvents) {
-          switch (executionEvent.kind) {
-            case "MessageSent":
-              actions.fetchMessages = true;
-              // Convert bytes to ASCII and extract channel/group
-              if (executionEvent.data) {
-                try {
-                  const asciiString = bytesParser(executionEvent.data);
-                  
-                  // Parse the JSON to get channel/group and message_id
-                  const parsed = JSON.parse(asciiString);
-                  if (parsed.channel) {
-                    actions.fetchMessageGroup = parsed.channel;
-                    actions.isDM = parsed.channel === "private_dm";
-                  }
-                } catch (e) {
-                  console.log(`MessageSent - Couldn't decode data:`, executionEvent.data, e);
+      for (const executionEvent of executionEvents) {
+        switch (executionEvent.kind) {
+          case "MessageSent":
+            actions.fetchMessages = true;
+            // Convert bytes to ASCII and extract channel/group
+            if (executionEvent.data) {
+              try {
+                const asciiString = bytesParser(executionEvent.data);
+
+                // Parse the JSON to get channel/group and message_id
+                const parsed = JSON.parse(asciiString);
+                if (parsed.channel) {
+                  actions.fetchMessageGroup = parsed.channel;
+                  actions.isDM = parsed.channel === "private_dm";
                 }
+              } catch (e) {
+                console.log(
+                  `MessageSent - Couldn't decode data:`,
+                  executionEvent.data,
+                  e
+                );
               }
-              break;
-            case "MessageReceived":
+            }
+            break;
+          case "MessageReceived":
             // Fetch new messages for current chat
             actions.fetchMessages = true;
             break;
@@ -379,21 +409,30 @@ export function useChatHandlers(
             // Refresh channel list and members
             actions.fetchChannels = true;
             actions.fetchMembers = true;
-            log.debug("ChatHandlers", "Channel joined, refreshing channel list and members");
+            log.debug(
+              "ChatHandlers",
+              "Channel joined, refreshing channel list and members"
+            );
             break;
 
           case "ChannelLeft":
             // Refresh channel list and members
             actions.fetchChannels = true;
             actions.fetchMembers = true;
-            log.debug("ChatHandlers", "Channel left, refreshing channel list and members");
+            log.debug(
+              "ChatHandlers",
+              "Channel left, refreshing channel list and members"
+            );
             break;
 
           case "ChannelInvited":
             // Refresh channel list and members
             actions.fetchChannels = true;
             actions.fetchMembers = true;
-            log.debug("ChatHandlers", "User invited to channel, refreshing channel list and members");
+            log.debug(
+              "ChatHandlers",
+              "User invited to channel, refreshing channel list and members"
+            );
             break;
 
           case "ChatJoined":
@@ -410,14 +449,20 @@ export function useChatHandlers(
           case "InvitationAccepted":
             // Refresh DM list and potentially trigger DM selection
             actions.fetchDMs = true;
-            log.debug("ChatHandlers", "Invitation accepted, refreshing DM list");
+            log.debug(
+              "ChatHandlers",
+              "Invitation accepted, refreshing DM list"
+            );
             break;
 
           case "NewIdentityUpdated":
           case "InvitationPayloadUpdated":
             // Refresh DM list to update metadata and trigger state updates
             actions.fetchDMs = true;
-            log.debug("ChatHandlers", "DM metadata updated, refreshing DM list");
+            log.debug(
+              "ChatHandlers",
+              "DM metadata updated, refreshing DM list"
+            );
             break;
 
           case "ChatInitialized":
@@ -431,7 +476,11 @@ export function useChatHandlers(
 
       // Execute only the necessary actions with proper sequencing
       if (actions.fetchMessages) {
-        handleMessageUpdates(actions.isDM, actions.fetchMessageGroup, contextId);
+        handleMessageUpdates(
+          actions.isDM,
+          actions.fetchMessageGroup,
+          contextId
+        );
       }
       if (actions.fetchChannels) {
         refs.fetchChannels.current();
@@ -467,7 +516,7 @@ export function useChatHandlers(
         log.debug("ChatHandlers", "Executing actions:", takenActions);
       }
     },
-    [handleMessageUpdates, refs],
+    [handleMessageUpdates, refs]
   );
 
   /**
@@ -489,7 +538,7 @@ export function useChatHandlers(
         handleExecutionEvents(event.contextId, event.data.events);
       }
     },
-    [handleExecutionEvents],
+    [handleExecutionEvents]
   );
 
   return {
