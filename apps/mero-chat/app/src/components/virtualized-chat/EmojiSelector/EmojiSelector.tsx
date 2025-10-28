@@ -28,7 +28,8 @@ const EmojiSelector = (props: EmojiSelectorProps) => {
     pointer-events: auto;
     position: relative;
     border-radius: 8px;
-    background: #1d1d21;
+    background: #0e0e10;
+    border: 1px solid #777583;
     width: 375px;
     padding: 16px;
     height: 200px;
@@ -44,7 +45,7 @@ const EmojiSelector = (props: EmojiSelectorProps) => {
       gap: 8px;
       cursor: pointer;
       overflow: scroll;
-      height: 170px;
+      height: 135px;
     }
     .header {
       display: flex;

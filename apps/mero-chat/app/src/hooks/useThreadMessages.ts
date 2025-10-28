@@ -257,6 +257,7 @@ export function useThreadMessages() {
    * Add incoming messages (from websocket)
    */
   const addIncoming = useCallback((newMessages: CurbMessage[]) => {
+
     log.debug(
       "useThreadMessages",
       `addIncoming called with ${newMessages.length} messages`,

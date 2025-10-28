@@ -55,6 +55,7 @@ interface AppContainerProps {
   incomingThreadMessages: CurbMessage[];
   loadPrevThreadMessages: (id: string) => Promise<ChatMessagesDataWithOlder>;
   updateCurrentOpenThread: (thread: CurbMessage | undefined) => void;
+  clearThreadsMessagesOnSwitch: () => void;
   openThread: CurbMessage | undefined;
   setOpenThread: (thread: CurbMessage | undefined) => void;
   currentOpenThreadRef: React.RefObject<CurbMessage | undefined>;
@@ -88,6 +89,7 @@ function AppContainer({
   loadInitialThreadMessages,
   incomingThreadMessages,
   loadPrevThreadMessages,
+  clearThreadsMessagesOnSwitch,
   updateCurrentOpenThread,
   openThread,
   setOpenThread,
@@ -150,6 +152,7 @@ function AppContainer({
                 membersList={chatMembers}
                 addOptimisticMessage={addOptimisticMessage}
                 addOptimisticThreadMessage={addOptimisticThreadMessage}
+                clearThreadsMessagesOnSwitch={clearThreadsMessagesOnSwitch}
               />
             )}
             {isOpenSearchChannel && (

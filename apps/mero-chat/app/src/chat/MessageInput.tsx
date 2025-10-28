@@ -11,7 +11,7 @@ import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import { extractUsernames } from "../utils/mentions";
 import { RichTextEditor } from "@calimero-network/mero-ui";
 
-const EditorWrapper = styled.div`
+export const EditorWrapper = styled.div`
   flex: 1;
   min-width: 0;
   max-width: 100%;
@@ -114,7 +114,7 @@ const Wrapper = styled.div`
   min-width: 0;
 `;
 
-const FullWidthWrapper = styled.div`
+export const FullWidthWrapper = styled.div`
   display: flex;
   flex-direction: row;
   overflow: hidden;
@@ -146,7 +146,7 @@ const EmojiContainer = styled.div`
   }
 `;
 
-const IconEmoji = () => {
+export const IconEmoji = () => {
   const [hovered, setHovered] = useState(false);
 
   return (
@@ -181,14 +181,14 @@ const IconEmoji = () => {
   );
 };
 
-const IconSendSvg = styled.svg`
+export const IconSendSvg = styled.svg`
   margin-bottom: 8px;
   :hover {
     fill: #73b30c;
   }
   cursor: pointer;
 `;
-const IconSend = ({
+export const IconSend = ({
   onClick,
   isActive,
 }: {
@@ -329,7 +329,7 @@ const ErrorContainer = styled.div`
   border-radius: 2px;
 `;
 
-const ActionsWrapper = styled.div`
+export const ActionsWrapper = styled.div`
   position: absolute;
   right: 24px;
   bottom: 20px;

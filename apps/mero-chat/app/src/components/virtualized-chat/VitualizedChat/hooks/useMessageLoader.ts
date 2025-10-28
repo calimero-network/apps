@@ -141,9 +141,16 @@ export function useMessageLoader<T extends Message>({
 
   useEffect(() => {
     if (chatId && !isInitialLoadingRef.current) {
+      // Clear the store when chatId changes (switching between threads/chats)
+      console.log(`useMessageLoader: Clearing store for chatId change: ${chatId}`);
+      store.reset();
+      setMessages([]);
+      setFirstItemIndex(10000);
+      setTotalCount(10000);
+      setHasMore(false);
       fetchInitialMessages();
     }
-  }, [chatId, fetchInitialMessages]);
+  }, [chatId, fetchInitialMessages, store]);
 
   return {
     messages,

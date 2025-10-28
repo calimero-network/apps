@@ -16,7 +16,14 @@ class Logger {
 
   private constructor() {
     this.isDevelopment = import.meta.env.DEV;
-    this.logLevel = this.isDevelopment ? LogLevel.DEBUG : LogLevel.WARN;
+    
+    // Allow environment variable to override log level
+    const envLogLevel = import.meta.env.VITE_LOG_LEVEL;
+    if (envLogLevel) {
+      this.logLevel = parseInt(envLogLevel) as LogLevel;
+    } else {
+      this.logLevel = this.isDevelopment ? LogLevel.INFO : LogLevel.WARN;
+    }
   }
 
   static getInstance(): Logger {

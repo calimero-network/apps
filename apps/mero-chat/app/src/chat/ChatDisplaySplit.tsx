@@ -56,9 +56,12 @@ interface ChatDisplaySplitProps {
   messageWithEmojiSelector: CurbMessage | null;
 }
 
-const ContainerPadding = styled.div`
+const ContainerPadding = styled.div<{ $isThread?: boolean }>`
   @media (max-width: 1024px) {
-    height: calc(100dvh - 234px) !important;
+    height: ${props => props.$isThread 
+      ? 'calc(100% - 188px)' 
+      : 'calc(100dvh - 230px)'
+    } !important;
     padding-left: 0px !important;
     padding-right: 0px !important;
   }
@@ -73,7 +76,7 @@ const ContainerPadding = styled.div`
 
 const ThreadTitle = styled.div`
   color: #fff;
-  font-size: 24px;
+  font-size: 18px;
   font-style: normal;
   font-weight: 500;
   line-height: 120%;
@@ -82,11 +85,13 @@ const ThreadTitle = styled.div`
 const ThreadContainer = styled.div`
   position: relative;
   padding-bottom: 20px;
+  margin-right: 16px;
   border-bottom: 2px solid #282933;
   display: flex;
   justify-content: space-between;
   @media (max-width: 1024px) {
     margin-right: 16px;
+    margin-left: 16px;
     padding-top: 42px;
   }
 `;
@@ -109,10 +114,11 @@ const Wrapper = styled.div`
 
   @media (max-width: 1024px) {
     width: 100% !important;
+    height: 100%;
   }
 `;
 
-const containerPaddingStyle = {
+const containerPaddingStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "row",
   paddingTop: "1rem",
@@ -123,13 +129,13 @@ const containerPaddingStyle = {
   height: "100%",
   width: "",
 };
-const chatStyle = {
+const chatStyle: React.CSSProperties = {
   height: "",
   width: "",
   overflow: "",
 };
 
-const wrapperStyle = {
+const wrapperStyle: React.CSSProperties = {
   height: "100%",
   width: "100%",
   overflow: "",
@@ -251,14 +257,16 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
   const currentWrapperStyle = { ...wrapperStyle };
 
   if (openThread && isThread) {
-    currentChatStyle.height = "calc(100% - 124px)";
+    currentChatStyle.height = "100%";
     currentChatStyle.width = "100%";
     currentChatStyle.overflow = "hidden";
     currentContainerPaddingStyle.flexDirection = "column";
     currentContainerPaddingStyle.paddingLeft = "0px";
+    currentContainerPaddingStyle.paddingRight = "0px";
     currentContainerPaddingStyle.height = "100%";
     currentContainerPaddingStyle.width = "100%";
     currentWrapperStyle.width = "100%";
+    currentWrapperStyle.height = "100%";
   } else if (openThread && !isThread) {
     currentChatStyle.height = "100%";
     currentChatStyle.width = "100%";
@@ -321,8 +329,10 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
   return (
     <>
       <Wrapper style={currentWrapperStyle}>
-        {/* @ts-expect-error - TODO: fix this */}
-        <ContainerPadding style={currentContainerPaddingStyle}>
+        <ContainerPadding 
+          style={currentContainerPaddingStyle}
+          $isThread={isThread && !!openThread}
+        >
           {openThread && isThread && (
             <ThreadHeader
               onClose={() => {

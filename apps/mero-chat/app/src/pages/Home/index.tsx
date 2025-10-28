@@ -671,6 +671,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
       privateDMs={privateDMs}
       loadInitialThreadMessages={loadInitialThreadMessages}
       incomingThreadMessages={threadMessages.incomingMessages}
+      clearThreadsMessagesOnSwitch={threadMessages.clear}
       loadPrevThreadMessages={loadPrevThreadMessages}
       updateCurrentOpenThread={updateCurrentOpenThread}
       openThread={openThread}
