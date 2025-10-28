@@ -980,6 +980,7 @@ export class ClientApiDataSource implements ClientApi {
           argsJson: {
             group: props.is_dm ? { name: "private_dm" } : props.group,
             message_id: props.messageId,
+            parent_id: props.parent_id,
           },
           executorPublicKey:
             (props.is_dm ? props.dm_identity : getExecutorPublicKey()) || "",
@@ -1034,6 +1035,7 @@ export class ClientApiDataSource implements ClientApi {
             message_id: props.messageId,
             new_message: props.newMessage,
             timestamp: props.timestamp,
+            parent_id: props.parent_id,
           },
           executorPublicKey:
             (props.is_dm ? props.dm_identity : getExecutorPublicKey()) || "",

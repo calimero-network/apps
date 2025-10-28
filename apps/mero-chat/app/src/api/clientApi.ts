@@ -138,6 +138,7 @@ export interface UpdateReactionProps {
 export interface DeleteMessageProps {
   group: Channel;
   messageId: string;
+  parent_id?: string;
   is_dm?: boolean;
   dm_identity?: UserId;
 }
@@ -147,6 +148,7 @@ export interface EditMessageProps {
   messageId: string;
   newMessage: string;
   timestamp: number;
+  parent_id?: string;
   is_dm?: boolean;
   dm_identity?: UserId;
 }
