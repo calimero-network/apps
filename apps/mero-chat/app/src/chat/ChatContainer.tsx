@@ -47,6 +47,7 @@ interface ChatContainerProps {
   membersList: Map<string, string>;
   addOptimisticMessage?: (message: CurbMessage) => void;
   addOptimisticThreadMessage?: (message: CurbMessage) => void;
+  clearThreadsMessagesOnSwitch: () => void;
 }
 
 const ChatContainerWrapper = styled.div`
@@ -101,6 +102,7 @@ function ChatContainer({
   membersList,
   addOptimisticMessage,
   addOptimisticThreadMessage,
+  clearThreadsMessagesOnSwitch
 }: ChatContainerProps) {
   const [updatedMessages, setUpdatedMessages] = useState<UpdatedMessages[]>([]);
   const [_updatedThreadMessages, setUpdatedThreadMessages] = useState<
@@ -495,6 +497,7 @@ function ChatContainer({
   );
 
   const selectThread = (message: CurbMessage) => {
+    clearThreadsMessagesOnSwitch();
     // Extract the real message ID from the key (before any _nonce_version suffix)
     // The key format is: originalId_nonce_version, but we need just the originalId for API calls
     const realMessageId = message.key || message.id;
