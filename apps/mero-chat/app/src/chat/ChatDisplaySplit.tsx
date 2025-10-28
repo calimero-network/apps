@@ -118,7 +118,7 @@ const Wrapper = styled.div`
   }
 `;
 
-const containerPaddingStyle = {
+const containerPaddingStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "row",
   paddingTop: "1rem",
@@ -129,13 +129,13 @@ const containerPaddingStyle = {
   height: "100%",
   width: "",
 };
-const chatStyle = {
+const chatStyle: React.CSSProperties = {
   height: "",
   width: "",
   overflow: "",
 };
 
-const wrapperStyle = {
+const wrapperStyle: React.CSSProperties = {
   height: "100%",
   width: "100%",
   overflow: "",
