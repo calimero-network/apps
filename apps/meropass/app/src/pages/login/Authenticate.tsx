@@ -37,8 +37,7 @@ export default function Authenticate() {
         <NavbarBrand text="MeroPass" />
         <NavbarMenu align="right">
           <NavbarItem>
-            <CalimeroConnectButton
-            />
+            <CalimeroConnectButton />
           </NavbarItem>
         </NavbarMenu>
       </MeroNavbar>

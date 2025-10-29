@@ -61,17 +61,17 @@ const SecretForm: React.FC<SecretFormProps> = ({
   memberPublicKey,
   secret,
   onSuccess,
-  trigger
+  trigger,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Form state
   const [name, setName] = useState(secret?.name || '');
   const [secretType, setSecretType] = useState(secret?.secret_type || 'login');
   const [tags, setTags] = useState(secret?.tags.join(', ') || '');
-  
+
   // Type-specific data
   const [loginData, setLoginData] = useState<LoginData>(() => {
     if (secret?.secret_type === 'login' && secret.data) {
@@ -106,16 +106,30 @@ const SecretForm: React.FC<SecretFormProps> = ({
     return { private_key: '', public_key: '', passphrase: '' };
   });
 
-  const [paymentCardData, setPaymentCardData] = useState<PaymentCardData>(() => {
-    if (secret?.secret_type === 'payment_card' && secret.data) {
-      try {
-        return JSON.parse(secret.data);
-      } catch {
-        return { card_number: '', expiry_date: '', cvv: '', cardholder_name: '', notes: '' };
+  const [paymentCardData, setPaymentCardData] = useState<PaymentCardData>(
+    () => {
+      if (secret?.secret_type === 'payment_card' && secret.data) {
+        try {
+          return JSON.parse(secret.data);
+        } catch {
+          return {
+            card_number: '',
+            expiry_date: '',
+            cvv: '',
+            cardholder_name: '',
+            notes: '',
+          };
+        }
       }
-    }
-    return { card_number: '', expiry_date: '', cvv: '', cardholder_name: '', notes: '' };
-  });
+      return {
+        card_number: '',
+        expiry_date: '',
+        cvv: '',
+        cardholder_name: '',
+        notes: '',
+      };
+    },
+  );
 
   const [secureNoteData, setSecureNoteData] = useState<SecureNoteData>(() => {
     if (secret?.secret_type === 'secure_note' && secret.data) {
@@ -157,7 +171,10 @@ const SecretForm: React.FC<SecretFormProps> = ({
 
     try {
       const secretData = getSecretData();
-      const tagsArray = tags.split(',').map(tag => tag.trim()).filter(tag => tag);
+      const tagsArray = tags
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter((tag) => tag);
 
       if (secret) {
         // Update existing secret
@@ -167,7 +184,7 @@ const SecretForm: React.FC<SecretFormProps> = ({
           name,
           data: secretData,
           tags: tagsArray,
-          member_public_key: memberPublicKey
+          member_public_key: memberPublicKey,
         });
       } else {
         // Create new secret
@@ -177,7 +194,7 @@ const SecretForm: React.FC<SecretFormProps> = ({
           secret_type: secretType,
           data: secretData,
           tags: tagsArray,
-          member_public_key: memberPublicKey
+          member_public_key: memberPublicKey,
         });
       }
 
@@ -196,39 +213,70 @@ const SecretForm: React.FC<SecretFormProps> = ({
         return (
           <div className="space-y-4">
             <div>
-              <label htmlFor="username" className="block text-sm font-medium mb-1">Username</label>
+              <label
+                htmlFor="username"
+                className="block text-sm font-medium mb-1"
+              >
+                Username
+              </label>
               <Input
                 id="username"
                 value={loginData.username}
-                onChange={(e) => setLoginData(prev => ({ ...prev, username: e.target.value }))}
+                onChange={(e) =>
+                  setLoginData((prev) => ({
+                    ...prev,
+                    username: e.target.value,
+                  }))
+                }
                 placeholder="Enter username"
               />
             </div>
             <div>
-              <label htmlFor="password" className="block text-sm font-medium mb-1">Password</label>
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium mb-1"
+              >
+                Password
+              </label>
               <Input
                 id="password"
                 type="password"
                 value={loginData.password}
-                onChange={(e) => setLoginData(prev => ({ ...prev, password: e.target.value }))}
+                onChange={(e) =>
+                  setLoginData((prev) => ({
+                    ...prev,
+                    password: e.target.value,
+                  }))
+                }
                 placeholder="Enter password"
               />
             </div>
             <div>
-              <label htmlFor="url" className="block text-sm font-medium mb-1">URL</label>
+              <label htmlFor="url" className="block text-sm font-medium mb-1">
+                URL
+              </label>
               <Input
                 id="url"
                 value={loginData.url}
-                onChange={(e) => setLoginData(prev => ({ ...prev, url: e.target.value }))}
+                onChange={(e) =>
+                  setLoginData((prev) => ({ ...prev, url: e.target.value }))
+                }
                 placeholder="https://example.com"
               />
             </div>
             <div>
-              <label htmlFor="login-notes" className="block text-sm font-medium mb-1">Notes</label>
+              <label
+                htmlFor="login-notes"
+                className="block text-sm font-medium mb-1"
+              >
+                Notes
+              </label>
               <Textarea
                 id="login-notes"
                 value={loginData.notes || ''}
-                onChange={(e) => setLoginData(prev => ({ ...prev, notes: e.target.value }))}
+                onChange={(e) =>
+                  setLoginData((prev) => ({ ...prev, notes: e.target.value }))
+                }
                 placeholder="Additional notes"
               />
             </div>
@@ -239,29 +287,50 @@ const SecretForm: React.FC<SecretFormProps> = ({
         return (
           <div className="space-y-4">
             <div>
-              <label htmlFor="secret" className="block text-sm font-medium mb-1">Secret Key</label>
+              <label
+                htmlFor="secret"
+                className="block text-sm font-medium mb-1"
+              >
+                Secret Key
+              </label>
               <Input
                 id="secret"
                 value={totpData.secret}
-                onChange={(e) => setTotpData(prev => ({ ...prev, secret: e.target.value }))}
+                onChange={(e) =>
+                  setTotpData((prev) => ({ ...prev, secret: e.target.value }))
+                }
                 placeholder="Enter TOTP secret"
               />
             </div>
             <div>
-              <label htmlFor="issuer" className="block text-sm font-medium mb-1">Issuer</label>
+              <label
+                htmlFor="issuer"
+                className="block text-sm font-medium mb-1"
+              >
+                Issuer
+              </label>
               <Input
                 id="issuer"
                 value={totpData.issuer}
-                onChange={(e) => setTotpData(prev => ({ ...prev, issuer: e.target.value }))}
+                onChange={(e) =>
+                  setTotpData((prev) => ({ ...prev, issuer: e.target.value }))
+                }
                 placeholder="e.g., Google, GitHub"
               />
             </div>
             <div>
-              <label htmlFor="account" className="block text-sm font-medium mb-1">Account</label>
+              <label
+                htmlFor="account"
+                className="block text-sm font-medium mb-1"
+              >
+                Account
+              </label>
               <Input
                 id="account"
                 value={totpData.account}
-                onChange={(e) => setTotpData(prev => ({ ...prev, account: e.target.value }))}
+                onChange={(e) =>
+                  setTotpData((prev) => ({ ...prev, account: e.target.value }))
+                }
                 placeholder="user@example.com"
               />
             </div>
@@ -272,32 +341,62 @@ const SecretForm: React.FC<SecretFormProps> = ({
         return (
           <div className="space-y-4">
             <div>
-              <label htmlFor="private-key" className="block text-sm font-medium mb-1">Private Key</label>
+              <label
+                htmlFor="private-key"
+                className="block text-sm font-medium mb-1"
+              >
+                Private Key
+              </label>
               <Textarea
                 id="private-key"
                 value={sshKeyData.private_key}
-                onChange={(e) => setSshKeyData(prev => ({ ...prev, private_key: e.target.value }))}
+                onChange={(e) =>
+                  setSshKeyData((prev) => ({
+                    ...prev,
+                    private_key: e.target.value,
+                  }))
+                }
                 placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
                 rows={6}
               />
             </div>
             <div>
-              <label htmlFor="public-key" className="block text-sm font-medium mb-1">Public Key</label>
+              <label
+                htmlFor="public-key"
+                className="block text-sm font-medium mb-1"
+              >
+                Public Key
+              </label>
               <Textarea
                 id="public-key"
                 value={sshKeyData.public_key}
-                onChange={(e) => setSshKeyData(prev => ({ ...prev, public_key: e.target.value }))}
+                onChange={(e) =>
+                  setSshKeyData((prev) => ({
+                    ...prev,
+                    public_key: e.target.value,
+                  }))
+                }
                 placeholder="ssh-rsa AAAAB3NzaC1yc2E..."
                 rows={3}
               />
             </div>
             <div>
-              <label htmlFor="passphrase" className="block text-sm font-medium mb-1">Passphrase (optional)</label>
+              <label
+                htmlFor="passphrase"
+                className="block text-sm font-medium mb-1"
+              >
+                Passphrase (optional)
+              </label>
               <Input
                 id="passphrase"
                 type="password"
                 value={sshKeyData.passphrase || ''}
-                onChange={(e) => setSshKeyData(prev => ({ ...prev, passphrase: e.target.value }))}
+                onChange={(e) =>
+                  setSshKeyData((prev) => ({
+                    ...prev,
+                    passphrase: e.target.value,
+                  }))
+                }
                 placeholder="Enter passphrase"
               />
             </div>
@@ -308,49 +407,96 @@ const SecretForm: React.FC<SecretFormProps> = ({
         return (
           <div className="space-y-4">
             <div>
-              <label htmlFor="card-number" className="block text-sm font-medium mb-1">Card Number</label>
+              <label
+                htmlFor="card-number"
+                className="block text-sm font-medium mb-1"
+              >
+                Card Number
+              </label>
               <Input
                 id="card-number"
                 value={paymentCardData.card_number}
-                onChange={(e) => setPaymentCardData(prev => ({ ...prev, card_number: e.target.value }))}
+                onChange={(e) =>
+                  setPaymentCardData((prev) => ({
+                    ...prev,
+                    card_number: e.target.value,
+                  }))
+                }
                 placeholder="1234 5678 9012 3456"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label htmlFor="expiry" className="block text-sm font-medium mb-1">Expiry Date</label>
+                <label
+                  htmlFor="expiry"
+                  className="block text-sm font-medium mb-1"
+                >
+                  Expiry Date
+                </label>
                 <Input
                   id="expiry"
                   value={paymentCardData.expiry_date}
-                  onChange={(e) => setPaymentCardData(prev => ({ ...prev, expiry_date: e.target.value }))}
+                  onChange={(e) =>
+                    setPaymentCardData((prev) => ({
+                      ...prev,
+                      expiry_date: e.target.value,
+                    }))
+                  }
                   placeholder="MM/YY"
                 />
               </div>
               <div>
-                <label htmlFor="cvv" className="block text-sm font-medium mb-1">CVV</label>
+                <label htmlFor="cvv" className="block text-sm font-medium mb-1">
+                  CVV
+                </label>
                 <Input
                   id="cvv"
                   value={paymentCardData.cvv}
-                  onChange={(e) => setPaymentCardData(prev => ({ ...prev, cvv: e.target.value }))}
+                  onChange={(e) =>
+                    setPaymentCardData((prev) => ({
+                      ...prev,
+                      cvv: e.target.value,
+                    }))
+                  }
                   placeholder="123"
                 />
               </div>
             </div>
             <div>
-              <label htmlFor="cardholder" className="block text-sm font-medium mb-1">Cardholder Name</label>
+              <label
+                htmlFor="cardholder"
+                className="block text-sm font-medium mb-1"
+              >
+                Cardholder Name
+              </label>
               <Input
                 id="cardholder"
                 value={paymentCardData.cardholder_name}
-                onChange={(e) => setPaymentCardData(prev => ({ ...prev, cardholder_name: e.target.value }))}
+                onChange={(e) =>
+                  setPaymentCardData((prev) => ({
+                    ...prev,
+                    cardholder_name: e.target.value,
+                  }))
+                }
                 placeholder="John Doe"
               />
             </div>
             <div>
-              <label htmlFor="card-notes" className="block text-sm font-medium mb-1">Notes</label>
+              <label
+                htmlFor="card-notes"
+                className="block text-sm font-medium mb-1"
+              >
+                Notes
+              </label>
               <Textarea
                 id="card-notes"
                 value={paymentCardData.notes || ''}
-                onChange={(e) => setPaymentCardData(prev => ({ ...prev, notes: e.target.value }))}
+                onChange={(e) =>
+                  setPaymentCardData((prev) => ({
+                    ...prev,
+                    notes: e.target.value,
+                  }))
+                }
                 placeholder="Additional notes"
               />
             </div>
@@ -361,21 +507,41 @@ const SecretForm: React.FC<SecretFormProps> = ({
         return (
           <div className="space-y-4">
             <div>
-              <label htmlFor="content" className="block text-sm font-medium mb-1">Content</label>
+              <label
+                htmlFor="content"
+                className="block text-sm font-medium mb-1"
+              >
+                Content
+              </label>
               <Textarea
                 id="content"
                 value={secureNoteData.content}
-                onChange={(e) => setSecureNoteData(prev => ({ ...prev, content: e.target.value }))}
+                onChange={(e) =>
+                  setSecureNoteData((prev) => ({
+                    ...prev,
+                    content: e.target.value,
+                  }))
+                }
                 placeholder="Enter your secure note"
                 rows={6}
               />
             </div>
             <div>
-              <label htmlFor="note-notes" className="block text-sm font-medium mb-1">Notes</label>
+              <label
+                htmlFor="note-notes"
+                className="block text-sm font-medium mb-1"
+              >
+                Notes
+              </label>
               <Textarea
                 id="note-notes"
                 value={secureNoteData.notes || ''}
-                onChange={(e) => setSecureNoteData(prev => ({ ...prev, notes: e.target.value }))}
+                onChange={(e) =>
+                  setSecureNoteData((prev) => ({
+                    ...prev,
+                    notes: e.target.value,
+                  }))
+                }
                 placeholder="Additional notes"
               />
             </div>
@@ -394,24 +560,21 @@ const SecretForm: React.FC<SecretFormProps> = ({
           {secret ? 'Edit Secret' : 'Add Secret'}
         </Button>
       )}
-      
-      <Modal 
-        open={isOpen} 
+
+      <Modal
+        open={isOpen}
         onClose={() => setIsOpen(false)}
         title={secret ? 'Edit Secret' : 'Add New Secret'}
         className="max-w-2xl max-h-[90vh] overflow-y-auto"
       >
-        
         <form onSubmit={handleSubmit} className="space-y-6">
-          {error && (
-            <Alert>
-              {error}
-            </Alert>
-          )}
+          {error && <Alert>{error}</Alert>}
 
           <div className="space-y-4">
             <div>
-              <label htmlFor="name" className="block text-sm font-medium mb-1">Name *</label>
+              <label htmlFor="name" className="block text-sm font-medium mb-1">
+                Name *
+              </label>
               <Input
                 id="name"
                 value={name}
@@ -422,23 +585,27 @@ const SecretForm: React.FC<SecretFormProps> = ({
             </div>
 
             <div>
-              <label htmlFor="type" className="block text-sm font-medium mb-1">Type</label>
-              <Select 
-                value={secretType} 
+              <label htmlFor="type" className="block text-sm font-medium mb-1">
+                Type
+              </label>
+              <Select
+                value={secretType}
                 onChange={setSecretType}
                 options={[
-                  { value: "login", label: "🔐 Login" },
-                  { value: "secure_note", label: "📝 Secure Note" },
-                  { value: "totp", label: "⏰ TOTP" },
-                  { value: "ssh_key", label: "🔑 SSH Key" },
-                  { value: "payment_card", label: "💳 Payment Card" }
+                  { value: 'login', label: '🔐 Login' },
+                  { value: 'secure_note', label: '📝 Secure Note' },
+                  { value: 'totp', label: '⏰ TOTP' },
+                  { value: 'ssh_key', label: '🔑 SSH Key' },
+                  { value: 'payment_card', label: '💳 Payment Card' },
                 ]}
                 placeholder="Select secret type"
               />
             </div>
 
             <div>
-              <label htmlFor="tags" className="block text-sm font-medium mb-1">Tags</label>
+              <label htmlFor="tags" className="block text-sm font-medium mb-1">
+                Tags
+              </label>
               <Input
                 id="tags"
                 value={tags}
@@ -452,9 +619,7 @@ const SecretForm: React.FC<SecretFormProps> = ({
             <CardHeader>
               <CardTitle>Secret Data</CardTitle>
             </CardHeader>
-            <CardContent>
-              {renderTypeSpecificFields()}
-            </CardContent>
+            <CardContent>{renderTypeSpecificFields()}</CardContent>
           </Card>
 
           <div className="flex justify-end gap-2">
@@ -466,7 +631,7 @@ const SecretForm: React.FC<SecretFormProps> = ({
               Cancel
             </Button>
             <Button type="submit" disabled={isLoading}>
-              {isLoading ? 'Saving...' : (secret ? 'Update' : 'Create')}
+              {isLoading ? 'Saving...' : secret ? 'Update' : 'Create'}
             </Button>
           </div>
         </form>

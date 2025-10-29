@@ -31,10 +31,12 @@ app/
 ## Development
 
 ### Prerequisites
+
 - Node.js 18+
 - pnpm
 
 ### Setup
+
 ```bash
 # Install dependencies
 pnpm install
