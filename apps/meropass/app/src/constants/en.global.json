@@ -1,0 +1,45 @@
+{
+  "home": {
+    "welcome": "Welcome to MeroPass!",
+    "demoDescription": "A secure secret management application built on Calimero's P2P network. Store, share, and manage your secrets with real-time synchronization across the network.",
+    "calimeroIntro": "Calimero is a privacy-focused blockchain network that enables developers to build scalable, private applications. Our platform provides the infrastructure for creating decentralized applications with enhanced privacy and performance.",
+    "learnMore": "Learn more about Calimero:",
+    "documentation": "Documentation",
+    "github": "GitHub",
+    "website": "Website",
+    "addEntry": "Add new secret",
+    "key": "Name",
+    "value": "Value",
+    "noEntries": "No secrets",
+    "setEntry": "Add Secret",
+    "resetEntries": "Reset Secrets",
+    "contextActions": "Vault Actions",
+    "logout": "Logout",
+    "errors": {
+      "setFailed": "Failed to add secret",
+      "loadFailed": "Failed to load secrets",
+      "clearFailed": "Failed to clear secrets",
+      "removeFailed": "Failed to remove secret"
+    }
+  },
+  "auth": {
+    "title": "MeroPass",
+    "back": "Back",
+    "goToContext": "Go to vault actions",
+    "description": {
+      "title": "Welcome to MeroPass",
+      "subtitle": "A secure secret management application",
+      "features": [
+        "Store and manage secrets securely on the Calimero P2P network",
+        "Real-time synchronization across P2P nodes",
+        "Role-based access control for team collaboration",
+        "Comprehensive audit logging and versioning"
+      ],
+      "getStarted": "Connect your wallet to get started"
+    }
+  },
+  "context": {
+    "backToLogin": "Back to Login",
+    "goToHome": "Go to Home"
+  }
+}

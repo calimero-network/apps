@@ -1,0 +1,141 @@
+auth_image: ghcr.io/calimero-network/mero-auth:edge
+auth_service: true
+description: MeroPass secret management app workflow with demo data
+force_pull_image: false
+name: MeroPass Secret Vault Workflow
+nodes:
+  chain_id: testnet-1
+  count: 2
+  image: ghcr.io/calimero-network/merod:edge
+  prefix: calimero-node
+steps:
+- dev: true
+  name: Install Application on Node 1
+  node: calimero-node-1
+  outputs:
+    app_id: applicationId
+  path: logic/res/meropass.wasm
+  type: install_application
+
+- application_id: '{{app_id}}'
+  name: Create Context on Node 1
+  node: calimero-node-1
+  outputs:
+    context_id: contextId
+    member_public_key: memberPublicKey
+  type: create_context
+
+- name: Create Identity on Node 2
+  node: calimero-node-2
+  outputs:
+    public_key: publicKey
+  type: create_identity
+
+- capability: member
+  context_id: '{{context_id}}'
+  grantee_id: '{{public_key}}'
+  granter_id: '{{member_public_key}}'
+  name: Invite Identity to Context
+  node: calimero-node-1
+  outputs:
+    invitation: invitation
+  type: invite_identity
+
+- context_id: '{{context_id}}'
+  invitation: '{{invitation}}'
+  invitee_id: '{{public_key}}'
+  name: Join Context from Node 2
+  node: calimero-node-2
+  type: join_context
+
+- args:
+    name: "GitHub Account"
+    secret_type: "login"
+    data: '{"username":"dev@company.com","password":"secure_password_123","url":"https://github.com"}'
+    tags: ["development","github","critical"]
+  context_id: '{{context_id}}'
+  executor_public_key: "{{member_public_key}}"
+  method: add_secret
+  name: Add GitHub Login Secret
+  node: calimero-node-1
+  type: call
+
+- args:
+    name: "Google Authenticator"
+    secret_type: "totp"
+    data: '{"secret":"JBSWY3DPEHPK3PXP","issuer":"Google","account":"dev@company.com"}'
+    tags: ["2fa","google","security"]
+  context_id: '{{context_id}}'
+  executor_public_key: "{{member_public_key}}"
+  method: add_secret
+  name: Add TOTP Secret
+  node: calimero-node-1
+  type: call
+
+- args:
+    name: "Production Server SSH"
+    secret_type: "ssh_key"
+    data: '{"private_key":"-----BEGIN OPENSSH PRIVATE KEY-----\n...","public_key":"ssh-rsa AAAAB3NzaC1yc2E...","host":"prod-server.company.com"}'
+    tags: ["ssh","production","server"]
+  context_id: '{{context_id}}'
+  executor_public_key: "{{member_public_key}}"
+  method: add_secret
+  name: Add SSH Key Secret
+  node: calimero-node-1
+  type: call
+
+- args: {}
+  context_id: '{{context_id}}'
+  executor_public_key: "{{member_public_key}}"
+  method: list_secrets
+  name: List All Secrets from Node 1
+  node: calimero-node-1
+  type: call
+
+- args:
+    query: "github"
+  context_id: '{{context_id}}'
+  executor_public_key: "{{member_public_key}}"
+  method: search_secrets
+  name: Search for GitHub Secrets
+  node: calimero-node-1
+  type: call
+
+- args: {}
+  context_id: '{{context_id}}'
+  executor_public_key: "{{member_public_key}}"
+  method: get_audit_logs
+  name: Get Audit Logs from Node 1
+  node: calimero-node-1
+  type: call
+
+- args: {}
+  context_id: '{{context_id}}'
+  executor_public_key: "{{public_key}}"
+  method: list_secrets
+  name: List Secrets from Node 2
+  node: calimero-node-2
+  type: call
+
+- args:
+    name: "Database Credentials"
+    secret_type: "login"
+    data: '{"username":"db_user","password":"db_pass_456","host":"db.company.com","port":"5432"}'
+    tags: ["database","postgres","production"]
+  context_id: '{{context_id}}'
+  executor_public_key: "{{public_key}}"
+  method: add_secret
+  name: Add Database Secret from Node 2
+  node: calimero-node-2
+  type: call
+
+- args: {}
+  context_id: '{{context_id}}'
+  executor_public_key: "{{member_public_key}}"
+  method: list_secrets
+  name: Final State - All Secrets
+  node: calimero-node-1
+  type: call
+
+stop_all_nodes: true
+wait_timeout: 60
