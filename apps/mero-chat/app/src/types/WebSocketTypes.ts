@@ -12,6 +12,7 @@ export type ExecutionEventKind =
   | "ChannelInvited"
   | "ChannelLeft"
   | "MessageSent"
+  | "MessageSentThread"
   | "MessageReceived"
   | "ChannelJoined"
   | "DMCreated"

@@ -25,6 +25,7 @@ interface ChatHandlersRefs {
       isDM: boolean,
       group: string,
       contextId: string
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ) => Promise<any[]>;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     addIncoming: (messages: any[]) => void;
@@ -399,6 +400,29 @@ export function useChatHandlers(
                 if (parsed.channel) {
                   actions.fetchMessageGroup = parsed.channel;
                   actions.isDM = parsed.channel === "private_dm";
+                }
+              } catch (e) {
+                console.log(
+                  `MessageSent - Couldn't decode data:`,
+                  executionEvent.data,
+                  e
+                );
+              }
+            }
+            break;
+          case "MessageSentThread":
+            actions.fetchMessages = true;
+            // Convert bytes to ASCII and extract channel/group
+            if (executionEvent.data) {
+              try {
+                const asciiString = bytesParser(executionEvent.data);
+
+                // Parse the JSON to get channel/group and message_id
+                const parsed = JSON.parse(asciiString);
+                if (parsed.channel) {
+                  actions.fetchMessageGroup = parsed.channel;
+                  actions.isDM = parsed.channel === "private_dm";
+                  actions.shouldNotifyMessage = false;
                 }
               } catch (e) {
                 console.log(
