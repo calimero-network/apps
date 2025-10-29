@@ -324,28 +324,16 @@ const VaultDashboard: React.FC = () => {
 
       {/* Main Content */}
       <div className="sticky top-16 z-10 -mx-6 px-6 bg-black/40 backdrop-blur supports-[backdrop-filter]:bg-black/30 border-b border-white/10">
-      <Tabs 
-        tabs={[
-          { id: "secrets", label: `Secrets (${filteredSecrets.length})` },
-          { id: "audit", label: `Audit Log (${auditLogs.length})` }
-        ]}
-        value={activeTab}
-        onValueChange={setActiveTab}
-        className="space-y-4"
-      >
-      </Tabs>
-      </div>
-
-      <Tabs 
-        tabs={[
-          { id: "secrets", label: `Secrets (${filteredSecrets.length})` },
-          { id: "audit", label: `Audit Log (${auditLogs.length})` }
-        ]}
-        value={activeTab}
-        onValueChange={setActiveTab}
-        className="space-y-4"
-      >
-        <TabPanel when="secrets" active={activeTab} className="space-y-4">
+        <Tabs 
+          tabs={[
+            { id: "secrets", label: `Secrets (${filteredSecrets.length})` },
+            { id: "audit", label: `Audit Log (${auditLogs.length})` }
+          ]}
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className="space-y-4"
+        >
+          <TabPanel when="secrets" active={activeTab} className="space-y-4">
           {filteredSecrets.length === 0 ? (
             <Card>
               <CardContent className="p-8 text-center">
@@ -444,6 +432,7 @@ const VaultDashboard: React.FC = () => {
           </Card>
         </TabPanel>
       </Tabs>
+      </div>
       </div>
 
       {/* Secret Viewing Modal */}
