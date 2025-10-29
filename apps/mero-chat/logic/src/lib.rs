@@ -26,6 +26,7 @@ pub enum Event {
     ChannelInvited(String),
     ChannelLeft(String),
     MessageSent(MessageSentEvent),
+    MessageSentThread(MessageSentEvent),
     MessageReceived(String),
     ChannelJoined(String),
     DMCreated(String),
@@ -182,7 +183,7 @@ pub struct DMChatInfo {
     // Hash tracking for new message detection
     pub old_hash: String,
     pub new_hash: String,
-    
+
     // Unread message count
     pub unread_messages: u32,
 }
@@ -1242,7 +1243,7 @@ impl CurbChat {
             Ok(Some(info)) => info,
             _ => return Err("Channel not found".to_string()),
         };
-        if let Some(parent_message) = parent_message {
+        if let Some(parent_message) = parent_message.clone() {
             let mut thread_messages = match self.threads.get(&parent_message) {
                 Ok(Some(messages)) => messages,
                 _ => Vector::new(),
@@ -1269,10 +1270,17 @@ impl CurbChat {
             );
         }
 
-        app::emit!(Event::MessageSent(MessageSentEvent {
-            message_id: message_id.clone(),
-            channel: group.name.clone(),
-        }));
+        if parent_message.is_some() {
+            app::emit!(Event::MessageSentThread(MessageSentEvent {
+                message_id: message_id.clone(),
+                channel: group.name.clone(),
+            }));
+        } else {
+            app::emit!(Event::MessageSent(MessageSentEvent {
+                message_id: message_id.clone(),
+                channel: group.name.clone(),
+            }));
+        }
 
         Ok(message)
     }
@@ -1481,7 +1489,6 @@ impl CurbChat {
             }
         }
 
-
         Ok(FullMessageResponse {
             total_count: total_messages as u32,
             messages: messages,
@@ -1541,7 +1548,7 @@ impl CurbChat {
             return Err("You are not a member of this channel".to_string());
         }
 
-        if let Some(parent_message_id) = parent_id {
+        if let Some(parent_message_id) = parent_id.clone() {
             let mut thread_messages = match self.threads.get(&parent_message_id) {
                 Ok(Some(messages)) => messages,
                 _ => return Err("Thread not found".to_string()),
@@ -1580,10 +1587,17 @@ impl CurbChat {
 
             match updated_message {
                 Some(msg) => {
-                    app::emit!(Event::MessageSent(MessageSentEvent {
-                        message_id: msg.id.clone(),
-                        channel: group.name.clone(),
-                    }));
+                    if parent_id.is_some() {
+                        app::emit!(Event::MessageSentThread(MessageSentEvent {
+                            message_id: msg.id.clone(),
+                            channel: group.name.clone(),
+                        }));
+                    } else {
+                        app::emit!(Event::MessageSent(MessageSentEvent {
+                            message_id: msg.id.clone(),
+                            channel: group.name.clone(),
+                        }));
+                    }
                     Ok(msg)
                 }
                 None => Err("Failed to update thread message".to_string()),
@@ -1626,10 +1640,17 @@ impl CurbChat {
 
             match updated_message {
                 Some(msg) => {
-                    app::emit!(Event::MessageSent(MessageSentEvent {
+                    if parent_id.is_some() {
+                        app::emit!(Event::MessageSentThread(MessageSentEvent {
+                            message_id: msg.id.clone(),
+                            channel: group.name.clone(),
+                        }));
+                    } else {
+                        app::emit!(Event::MessageSent(MessageSentEvent {
                         message_id: msg.id.clone(),
                         channel: group.name.clone(),
                     }));
+                    }
                     Ok(msg)
                 }
                 None => Err("Failed to update message".to_string()),
@@ -1645,7 +1666,7 @@ impl CurbChat {
     ) -> app::Result<String, String> {
         let executor_id = self.get_executor_id();
 
-        if let Some(parent_message_id) = parent_id {
+        if let Some(parent_message_id) = parent_id.clone() {
             let mut thread_messages = match self.threads.get(&parent_message_id) {
                 Ok(Some(messages)) => messages,
                 _ => return Err("Thread not found".to_string()),
@@ -1690,10 +1711,18 @@ impl CurbChat {
 
             let _ = self.threads.insert(parent_message_id, thread_messages);
 
-            app::emit!(Event::MessageSent(MessageSentEvent {
-                message_id: message.id.clone(),
-                channel: group.name.clone(),
-            }));
+            if parent_id.is_some() {
+                app::emit!(Event::MessageSentThread(MessageSentEvent {
+                    message_id: message.id.clone(),
+                    channel: group.name.clone(),
+                }));
+            } else {
+                app::emit!(Event::MessageSent(MessageSentEvent {
+                    message_id: message.id.clone(),
+                    channel: group.name.clone(),
+                }));
+            }
+               
             Ok("Thread message deleted successfully".to_string())
         } else {
             let mut channel_info = match self.channels.get(&group) {
@@ -1740,10 +1769,18 @@ impl CurbChat {
 
             let _ = self.channels.insert(group.clone(), channel_info);
 
-            app::emit!(Event::MessageSent(MessageSentEvent {
-                message_id: message.id.clone(),
-                channel: group.name.clone(),
-            }));
+            if parent_id.is_some() {
+                app::emit!(Event::MessageSentThread(MessageSentEvent {
+                    message_id: message.id.clone(),
+                    channel: group.name.clone(),
+                }));
+            } else {
+                app::emit!(Event::MessageSent(MessageSentEvent {
+                    message_id: message.id.clone(),
+                    channel: group.name.clone(),
+                }));
+            }
+               
             Ok("Message deleted successfully".to_string())
         }
     }
@@ -1931,7 +1968,9 @@ impl CurbChat {
             let _ = self.dm_chats.insert(other_user.clone(), dms);
         }
 
-        app::emit!(Event::InvitationPayloadUpdated(other_user.clone().to_string()));
+        app::emit!(Event::InvitationPayloadUpdated(
+            other_user.clone().to_string()
+        ));
 
         Ok("Invitation payload updated successfully".to_string())
     }
@@ -2007,15 +2046,18 @@ impl CurbChat {
         if self.is_dm {
             return Err("Cannot get DM identity in a DM chat".to_string());
         }
-        
+
         let executor_id = self.get_executor_id();
-        
+
         match self.dm_chats.get(&executor_id) {
             Ok(Some(dms)) => {
                 for dm in dms.iter() {
                     if dm.context_id == context_id {
                         // Return the own_identity if it exists, otherwise return own_identity_old
-                        return Ok(dm.own_identity.clone().unwrap_or(dm.own_identity_old.clone()));
+                        return Ok(dm
+                            .own_identity
+                            .clone()
+                            .unwrap_or(dm.own_identity_old.clone()));
                     }
                 }
                 Err("DM context not found".to_string())
@@ -2076,7 +2118,9 @@ impl CurbChat {
         // Update sender's DM hash
         if let Ok(Some(mut dms)) = self.dm_chats.get(&sender_id) {
             for dm in dms.iter_mut() {
-                if dm.other_identity_old == other_user_id || dm.other_identity_new.as_ref() == Some(&other_user_id) {
+                if dm.other_identity_old == other_user_id
+                    || dm.other_identity_new.as_ref() == Some(&other_user_id)
+                {
                     dm.old_hash = new_hash.to_string();
                     dm.new_hash = new_hash.to_string();
                     break;
@@ -2089,7 +2133,9 @@ impl CurbChat {
         // Also increment unread message count for the recipient
         if let Ok(Some(mut dms)) = self.dm_chats.get(&other_user_id) {
             for dm in dms.iter_mut() {
-                if dm.other_identity_old == sender_id || dm.other_identity_new.as_ref() == Some(&sender_id) {
+                if dm.other_identity_old == sender_id
+                    || dm.other_identity_new.as_ref() == Some(&sender_id)
+                {
                     dm.old_hash = dm.new_hash.clone();
                     dm.new_hash = new_hash.to_string();
                     dm.unread_messages += 1;
@@ -2104,7 +2150,9 @@ impl CurbChat {
     pub fn dm_has_new_messages(&self, user_id: UserId, other_user_id: UserId) -> bool {
         if let Ok(Some(dms)) = self.dm_chats.get(&user_id) {
             for dm in dms.iter() {
-                if dm.other_identity_old == other_user_id || dm.other_identity_new.as_ref() == Some(&other_user_id) {
+                if dm.other_identity_old == other_user_id
+                    || dm.other_identity_new.as_ref() == Some(&other_user_id)
+                {
                     return dm.old_hash != dm.new_hash;
                 }
             }
@@ -2125,7 +2173,9 @@ impl CurbChat {
 
         if let Ok(Some(dms)) = self.dm_chats.get(&executor_id) {
             for dm in dms.iter() {
-                if dm.other_identity_old == other_user_id || dm.other_identity_new.as_ref() == Some(&other_user_id) {
+                if dm.other_identity_old == other_user_id
+                    || dm.other_identity_new.as_ref() == Some(&other_user_id)
+                {
                     let has_new_messages = dm.old_hash != dm.new_hash;
                     return Ok((dm.clone(), has_new_messages));
                 }
@@ -2145,7 +2195,9 @@ impl CurbChat {
 
         if let Ok(Some(mut dms)) = self.dm_chats.get(&executor_id) {
             for dm in dms.iter_mut() {
-                if dm.other_identity_old == other_user_id || dm.other_identity_new.as_ref() == Some(&other_user_id) {
+                if dm.other_identity_old == other_user_id
+                    || dm.other_identity_new.as_ref() == Some(&other_user_id)
+                {
                     // Reset hash tracking - mark as read
                     dm.old_hash = dm.new_hash.clone();
                     // Reset unread message count
@@ -2169,7 +2221,9 @@ impl CurbChat {
 
         if let Ok(Some(dms)) = self.dm_chats.get(&executor_id) {
             for dm in dms.iter() {
-                if dm.other_identity_old == other_user_id || dm.other_identity_new.as_ref() == Some(&other_user_id) {
+                if dm.other_identity_old == other_user_id
+                    || dm.other_identity_new.as_ref() == Some(&other_user_id)
+                {
                     return Ok(dm.unread_messages);
                 }
             }
@@ -2213,3 +2267,4 @@ impl CurbChat {
         Ok("All DMs marked as read".to_string())
     }
 }
+

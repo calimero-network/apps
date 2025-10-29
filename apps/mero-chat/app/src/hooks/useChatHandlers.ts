@@ -89,18 +89,28 @@ export function useChatHandlers(
    * Handle message updates from websocket events
    */
   const handleMessageUpdates = useCallback(
-    async (useDM: boolean, group: string, contextId: string) => {
+    async (
+      useDM: boolean,
+      group: string,
+      contextId: string,
+      shouldNotifyMessage: boolean
+    ) => {
       if (!activeChatRef.current || !group) return;
+
+      // group is private_dm
+      // useDM is true
+      // shouldNotify is false
+      // with this combination it means we are getting
+      // a reaction back meaning we should apply all new messages to the
+      // active chat
 
       // Prevent concurrent message fetches
       if (isFetchingMessagesRef.current) return;
 
       // Removed throttling to allow real-time message updates
       const now = Date.now();
-
       try {
         isFetchingMessagesRef.current = true;
-
         const newMessages = await refs.mainMessages.current.checkForNewMessages(
           activeChatRef.current,
           useDM,
@@ -118,8 +128,12 @@ export function useChatHandlers(
           let messagesBelongToActiveChat = false;
 
           if (useDM) {
-            messagesBelongToActiveChat =
-              lastMessageTest.senderUsername === activeDMName;
+            if (!shouldNotifyMessage) {
+              messagesBelongToActiveChat = true;
+            } else {
+              messagesBelongToActiveChat =
+                lastMessageTest.senderUsername === activeDMName;
+            }
           } else {
             messagesBelongToActiveChat =
               lastMessageTest.group === activeChatName;
@@ -140,12 +154,14 @@ export function useChatHandlers(
             ) {
               // Use message.group to show the correct channel name
               const channelName = lastMessage.group || activeChatName;
-              refs.notifyChannel.current(
-                lastMessage.id,
-                channelName,
-                lastMessage.senderUsername,
-                lastMessage.text
-              );
+              if (shouldNotifyMessage) {
+                refs.notifyChannel.current(
+                  lastMessage.id,
+                  channelName,
+                  lastMessage.senderUsername,
+                  lastMessage.text
+                );
+              }
             }
           } else {
             // For DMs, check both the main identity and the DM-specific identity
@@ -161,11 +177,13 @@ export function useChatHandlers(
               lastMessage.senderUsername &&
               lastMessage.text
             ) {
-              refs.notifyDM.current(
-                lastMessage.id,
-                lastMessage.senderUsername,
-                lastMessage.text
-              );
+              if (shouldNotifyMessage) {
+                refs.notifyDM.current(
+                  lastMessage.id,
+                  lastMessage.senderUsername,
+                  lastMessage.text
+                );
+              }
             }
           }
 
@@ -360,6 +378,7 @@ export function useChatHandlers(
       const actions = {
         fetchMessages: false,
         fetchMessageGroup: "",
+        shouldNotifyMessage: true,
         isDM: false,
         fetchChannels: false,
         fetchDMs: false,
@@ -395,10 +414,22 @@ export function useChatHandlers(
             actions.fetchMessages = true;
             break;
 
-          case "ReactionUpdated":
+          case "ReactionUpdated": {
             // Fetch messages to get updated reactions
+            const currentChat = activeChatRef.current;
+
+            if (currentChat) {
+              actions.isDM = currentChat.type === "direct_message";
+              if (currentChat.type === "channel") {
+                actions.fetchMessageGroup = currentChat.name;
+              } else {
+                actions.fetchMessageGroup = "private_dm";
+              }
+            }
+            actions.shouldNotifyMessage = false;
             actions.fetchMessages = true;
             break;
+          }
 
           case "ChannelCreated":
             // Refresh channel list only
@@ -473,13 +504,13 @@ export function useChatHandlers(
             break;
         }
       }
-
       // Execute only the necessary actions with proper sequencing
       if (actions.fetchMessages) {
         handleMessageUpdates(
           actions.isDM,
           actions.fetchMessageGroup,
-          contextId
+          contextId,
+          actions.shouldNotifyMessage
         );
       }
       if (actions.fetchChannels) {

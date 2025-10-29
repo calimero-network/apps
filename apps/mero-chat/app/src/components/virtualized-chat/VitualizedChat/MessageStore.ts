@@ -99,8 +99,12 @@ class MessageStore<
 
     // Process all incoming messages in a single pass - O(n)
     for (const msg of messages) {
-      // Skip if already exists
+      // If already exists, treat as in-place update (e.g., reactions/edits)
       if (this.messageMap.has(msg.id)) {
+        // Merge all provided fields except id into the existing message
+        const { id: _ignoreId, ...rest } = msg as Partial<T> & { id: string };
+        this._updateWithoutVersion(msg.id, rest as Partial<T>);
+        updatedCount++;
         continue;
       }
 
