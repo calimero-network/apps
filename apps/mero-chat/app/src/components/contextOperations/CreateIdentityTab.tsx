@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { styled } from "styled-components";
 import { apiClient } from "@calimero-network/calimero-client";
 import type { ResponseData } from "@calimero-network/calimero-client";
@@ -87,19 +87,6 @@ export default function CreateIdentityTab() {
     text: string;
     type: "success" | "error";
   } | null>(null);
-
-  // Load existing identity from localStorage on component mount
-  useEffect(() => {
-    const savedIdentity = localStorage.getItem("new-context-identity");
-    if (savedIdentity) {
-      try {
-        const parsedIdentity = JSON.parse(savedIdentity);
-        setIdentity(parsedIdentity);
-      } catch (error) {
-        console.error("Failed to parse saved identity:", error);
-      }
-    }
-  }, []);
 
   const handleCreateIdentity = async () => {
     setIsLoading(true);

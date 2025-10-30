@@ -35,6 +35,7 @@ pub enum Event {
     NewIdentityUpdated(String),
     InvitationPayloadUpdated(String),
     InvitationAccepted(String),
+    DMDeleted(String),
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
@@ -1854,6 +1855,7 @@ impl CurbChat {
     // STEP1
     // Create DM chat - new Context with created old and new identity and invitee old identity
     // Each of them have new objects for DM chat
+    // RC.11 update - invitation payload is now signed and sent to the user
     pub fn create_dm_chat(
         &mut self,
         context_id: String,
@@ -1862,6 +1864,7 @@ impl CurbChat {
         invitee: UserId,
         timestamp: u64,
         context_hash: String,
+        invitation_payload: String,
     ) -> app::Result<String, String> {
         if self.is_dm {
             return Err("Cannot create DMs in a DM chat".to_string());
@@ -1906,12 +1909,13 @@ impl CurbChat {
             other_identity_old: invitee.clone(),
             other_identity_new: None,
             other_username: other_username.clone(),
-            invitation_payload: "".to_string(),
             did_join: true,
             // Initialize with same hash for both users
             old_hash: context_hash.clone(),
             new_hash: context_hash.clone(),
             unread_messages: 0,
+            // Add signed invitation payload - json string -> don't need to deserialize it
+            invitation_payload: invitation_payload.clone(),
         };
 
         self.add_dm_to_user(&executor_id, dm_chat_info);
@@ -1931,7 +1935,7 @@ impl CurbChat {
                 own_identity: None,
                 own_username: other_username.clone(),
                 other_username: own_username.clone(),
-                invitation_payload: "".to_string(),
+                invitation_payload,
                 did_join: false,
                 // Initialize with same hash for both users
                 old_hash: context_hash.clone(),
@@ -1946,7 +1950,7 @@ impl CurbChat {
     }
 
     // STEP2
-    // User updates his new identity he will be invited with
+    // User updates his new identity and joins context as payload is now open invitation
     pub fn update_new_identity(
         &mut self,
         other_user: UserId,
@@ -1983,6 +1987,8 @@ impl CurbChat {
                 if let Ok(Some(dm)) = dms.get(i) {
                     let mut updated = dm.clone();
                     updated.own_identity = Some(new_identity.clone());
+                    // We create new identtiy -> accept invitation -> if its okay then we save the new identity and new node joined the context
+                    updated.did_join = true;
                     let _ = dms.update(i, updated);
                 }
             }
@@ -2015,122 +2021,6 @@ impl CurbChat {
         app::emit!(Event::NewIdentityUpdated(other_user.clone().to_string()));
 
         Ok("Identity updated successfully".to_string())
-    }
-
-    // STEP3
-    // Inviter uses the new identity of invitee to create new invitation and save payload
-    pub fn update_invitation_payload(
-        &mut self,
-        other_user: UserId,
-        invitation_payload: String,
-    ) -> app::Result<String, String> {
-        if self.is_dm {
-            return Err("Cannot update invitation payload in a DM chat".to_string());
-        }
-
-        let executor_id = self.get_executor_id();
-
-        if !self.members.contains(&executor_id).unwrap_or(false) {
-            return Err("You are not a member of the chat".to_string());
-        }
-
-        if !self.dm_exists(&executor_id, &other_user) {
-            return Err("DM does not exist".to_string());
-        }
-
-        if let Ok(Some(mut dms)) = self.dm_chats.get(&executor_id) {
-            let mut target_idx: Option<usize> = None;
-            let mut idx = 0usize;
-            if let Ok(iter) = dms.iter() {
-                for dm in iter {
-                    if dm.other_identity_old == other_user {
-                        target_idx = Some(idx);
-                        break;
-                    }
-                    idx += 1;
-                }
-            }
-            if let Some(i) = target_idx {
-                if let Ok(Some(dm)) = dms.get(i) {
-                    let mut updated = dm.clone();
-                    updated.invitation_payload = invitation_payload.clone();
-                    let _ = dms.update(i, updated);
-                }
-            }
-            let _ = self.dm_chats.insert(executor_id.clone(), dms);
-        }
-
-        if let Ok(Some(mut dms)) = self.dm_chats.get(&other_user) {
-            let mut target_idx: Option<usize> = None;
-            let mut idx = 0usize;
-            if let Ok(iter) = dms.iter() {
-                for dm in iter {
-                    if dm.other_identity_old == executor_id {
-                        target_idx = Some(idx);
-                        break;
-                    }
-                    idx += 1;
-                }
-            }
-            if let Some(i) = target_idx {
-                if let Ok(Some(dm)) = dms.get(i) {
-                    let mut updated = dm.clone();
-                    updated.invitation_payload = invitation_payload.clone();
-                    let _ = dms.update(i, updated);
-                }
-            }
-            let _ = self.dm_chats.insert(other_user.clone(), dms);
-        }
-
-        app::emit!(Event::InvitationPayloadUpdated(
-            other_user.clone().to_string()
-        ));
-
-        Ok("Invitation payload updated successfully".to_string())
-    }
-
-    // STEP4
-    // Invitee accepts invitation and updates "is joined" to be true so we know the process is done
-    pub fn accept_invitation(&mut self, other_user: UserId) -> app::Result<String, String> {
-        if self.is_dm {
-            return Err("Cannot accept invitation in a DM chat".to_string());
-        }
-
-        let executor_id = self.get_executor_id();
-
-        if !self.members.contains(&executor_id).unwrap_or(false) {
-            return Err("You are not a member of the chat".to_string());
-        }
-
-        if !self.dm_exists(&executor_id, &other_user) {
-            return Err("DM does not exist".to_string());
-        }
-
-        if let Ok(Some(mut dms)) = self.dm_chats.get(&executor_id) {
-            let mut target_idx: Option<usize> = None;
-            let mut idx = 0usize;
-            if let Ok(iter) = dms.iter() {
-                for dm in iter {
-                    if dm.other_identity_old == other_user {
-                        target_idx = Some(idx);
-                        break;
-                    }
-                    idx += 1;
-                }
-            }
-            if let Some(i) = target_idx {
-                if let Ok(Some(dm)) = dms.get(i) {
-                    let mut updated = dm.clone();
-                    updated.did_join = true;
-                    let _ = dms.update(i, updated);
-                }
-            }
-            let _ = self.dm_chats.insert(executor_id.clone(), dms);
-        }
-
-        app::emit!(Event::InvitationAccepted(other_user.clone().to_string()));
-
-        Ok("Invitation accepted successfully".to_string())
     }
 
     pub fn get_dms(&self) -> app::Result<Vec<DMChatInfo>, String> {
@@ -2181,25 +2071,6 @@ impl CurbChat {
         }
     }
 
-    pub fn delete_dm(&mut self, other_user: UserId) -> app::Result<String, String> {
-        if self.is_dm {
-            return Err("Cannot delete DMs in a DM chat".to_string());
-        }
-        let executor_id = self.get_executor_id();
-
-        self.remove_dm_from_user(&executor_id, &other_user);
-        self.remove_dm_from_user(&other_user, &executor_id);
-
-        let dm_channel = Channel {
-            name: other_user.to_string(),
-        };
-        let _ = self.channels.remove(&dm_channel);
-
-        let _ = self.channel_members.remove(&dm_channel);
-
-        Ok("DM deleted successfully".to_string())
-    }
-
     fn dm_exists(&self, user1: &UserId, user2: &UserId) -> bool {
         if let Ok(Some(dms)) = self.dm_chats.get(user1) {
             if let Ok(iter) = dms.iter() {
@@ -2234,6 +2105,54 @@ impl CurbChat {
             }
             let _ = self.dm_chats.insert(user.clone(), new_vec);
         }
+    }
+
+    pub fn delete_dm(&mut self, other_user: UserId) -> app::Result<String, String> {
+        if self.is_dm {
+            return Err("Cannot delete DMs in a DM chat".to_string());
+        }
+        let executor_id = self.get_executor_id();
+        // Remove DM records for both participants
+        self.remove_dm_from_user(&executor_id, &other_user);
+        self.remove_dm_from_user(&other_user, &executor_id);
+
+        // Remove DM channel and related per-channel data
+        let dm_channel = Channel {
+            name: other_user.to_string(),
+        };
+
+        // Remove unread/mentions for all members of this channel first
+        if let Ok(Some(members)) = self.channel_members.get(&dm_channel) {
+            if let Ok(iter) = members.iter() {
+                for member_id in iter {
+                    // Remove unread entry for this channel
+                    if let Ok(Some(mut user_unread)) = self.user_channel_unread.get(&member_id) {
+                        let _ = user_unread.remove(&dm_channel);
+                        let _ = self
+                            .user_channel_unread
+                            .insert(member_id.clone(), user_unread);
+                    }
+
+                    // Remove mentions entry for this channel
+                    if let Ok(Some(mut user_mentions)) = self.user_channel_mentions.get(&member_id) {
+                        let _ = user_mentions.remove(&dm_channel);
+                        let _ = self
+                            .user_channel_mentions
+                            .insert(member_id.clone(), user_mentions);
+                    }
+                }
+            }
+            // Remove member set for this channel
+            let _ = self.channel_members.remove(&dm_channel);
+        }
+
+        // Finally remove the channel itself
+        let _ = self.channels.remove(&dm_channel);
+
+        // Emit DMDeleted with executor_id
+        app::emit!(Event::DMDeleted(executor_id.clone().to_string()));
+
+        Ok("DM deleted successfully".to_string())
     }
 
     /// Updates hash tracking for DM participants when a message is sent
@@ -2447,4 +2366,3 @@ impl CurbChat {
         Ok("All DMs marked as read".to_string())
     }
 }
-

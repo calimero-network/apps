@@ -1,8 +1,11 @@
 import React, { useState } from "react";
 import { styled } from "styled-components";
-import { apiClient } from "@calimero-network/calimero-client";
-import type { ResponseData } from "@calimero-network/calimero-client";
-import type { JoinContextResponse } from "@calimero-network/calimero-client/lib/api/nodeApi";
+import { apiClient, type ResponseData } from "@calimero-network/calimero-client";
+import type {
+  JoinContextResponse,
+  NodeIdentity,
+  SignedOpenInvitation,
+} from "@calimero-network/calimero-client/lib/api/nodeApi";
 import { Button, Input } from "@calimero-network/mero-ui";
 
 const TabContent = styled.div`
@@ -56,7 +59,27 @@ export default function JoinContextTab() {
     setIsLoading(true);
     setMessage(null);
 
-    const executorPublicKey = localStorage.getItem("new-context-identity");
+    let executorPublicKey = "";
+
+    const response: ResponseData<NodeIdentity> = await apiClient
+      .node()
+      .createNewIdentity();
+
+    if (response.error) {
+      setMessage({
+        text:
+          response.error.message ||
+          "Failed to create identity for this invitation",
+        type: "error",
+      });
+    } else if (response.data) {
+      executorPublicKey = response.data.publicKey;
+      // Auto-save to localStorage
+      localStorage.setItem(
+        "new-context-identity",
+        JSON.stringify(response.data)
+      );
+    }
 
     if (!executorPublicKey) {
       setMessage({ text: "Please create an identity first", type: "error" });
@@ -66,7 +89,10 @@ export default function JoinContextTab() {
     try {
       const response: ResponseData<JoinContextResponse> = await apiClient
         .node()
-        .joinContext(invitationPayload.trim());
+        .joinContextByOpenInvitation(
+          JSON.parse(invitationPayload.trim()) as SignedOpenInvitation,
+          executorPublicKey
+        );
 
       if (response.error) {
         setMessage({
@@ -77,7 +103,8 @@ export default function JoinContextTab() {
         setMessage({ text: "Successfully joined context!", type: "success" });
         setInvitationPayload("");
       }
-    } catch (_error) {
+    } catch (error) {
+      console.error(error);
       setMessage({
         text: "An error occurred while joining context",
         type: "error",
@@ -91,11 +118,11 @@ export default function JoinContextTab() {
     <TabContent>
       <Form onSubmit={handleSubmit}>
         <InputGroup>
-          <Label htmlFor="invitationPayload">Invitation Payload</Label>
+          <Label htmlFor="invitationPayload">Invitation</Label>
           <Input
             id="invitationPayload"
             type="text"
-            placeholder="Enter invitation payload"
+            placeholder="Enter invitation"
             value={invitationPayload}
             onChange={(e) => setInvitationPayload(e.target.value)}
             disabled={isLoading}

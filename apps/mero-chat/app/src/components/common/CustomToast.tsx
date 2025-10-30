@@ -31,7 +31,7 @@ const ToastContainer = styled.div<{ $isVisible: boolean; $type: 'channel' | 'dm'
   background-color: #1a1a1f;
   border: 1px solid ${props => {
     if (props.$type === 'mention') return '#73b30c';
-    if (props.$type === 'dm') return '#4e95ff';
+    if (props.$type === 'dm') return '#73b30c';
     return '#282933';
   }};
   border-radius: 8px;
@@ -70,7 +70,7 @@ const ToastIcon = styled.div<{ $type: 'channel' | 'dm' | 'mention' }>`
   justify-content: center;
   background-color: ${props => {
     if (props.$type === 'mention') return '#73b30c';
-    if (props.$type === 'dm') return '#4e95ff';
+    if (props.$type === 'dm') return '#73b30c';
     return '#282933';
   }};
   color: #fff;
@@ -156,7 +156,11 @@ const getIcon = (type: 'channel' | 'dm' | 'mention') => {
     case 'channel':
       return '#';
     case 'dm':
-      return '💬';
+      return (
+        <svg width="12" height="12" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path fill="#73B30C" d="M20 2H4C2.895 2 2 2.895 2 4V18C2 19.105 2.895 20 4 20H7V23L12 20H20C21.105 20 22 19.105 22 18V4C22 2.895 21.105 2 20 2ZM20 18H11.586L9 19.828V18H4V4H20V18Z"/>
+        </svg>
+      );
     case 'mention':
       return '@';
     default:

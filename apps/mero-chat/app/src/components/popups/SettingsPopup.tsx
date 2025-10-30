@@ -85,10 +85,7 @@ export default function SettingsPopup({
   };
 
   const tabs = [
-    { id: "join-context", label: "Join Context" },
     { id: "invite-to-context", label: "Invite to Context" },
-    { id: "create-identity", label: "Create Identity" },
-    { id: "notification-settings", label: "Notification Settings" },
   ];
 
   const popupContent = (

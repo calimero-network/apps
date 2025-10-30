@@ -39,44 +39,19 @@ export function getDMSetupState(activeChat: ActiveChat): DMSetupState {
   const canJoin = activeChat.canJoin;
   const isSynced = activeChat.isSynced;
 
-  //NODE1 - CASE0
-  if (hasAccount && !hasOtherIdentity && !hasInvitationPayload && !canJoin) {
-    return DMSetupState.CREATOR_WAITING_FOR_INVITEE_TO_CREATE_IDENTITY;
-  }
-
-  //NODE2 - CASE0
-  if (!hasAccount && hasOtherIdentity && !hasInvitationPayload && canJoin) {
-    return DMSetupState.INVITEE_CONTEXT_CREATE_IDENTITY;
-  }
-
-  //NODE1 - CASE1
-  if (hasAccount && hasOtherIdentity && !hasInvitationPayload && !canJoin) {
-    return DMSetupState.CREATOR_CONTEXT_INVITATION_POPUP;
-  }
-
-  //NODE2 - CASE1
-  if (hasAccount && hasOtherIdentity && !hasInvitationPayload && canJoin) {
-    return DMSetupState.INVITEE_WAITING_INVITATION;
-  }
-
-  // NODE2 - Context created and waiting for sync - NODE1 never goes here because is isSynced
-  if (
-    hasAccount &&
-    hasOtherIdentity &&
-    hasInvitationPayload &&
-    !canJoin &&
-    !isSynced
-  ) {
+  // Context created but not yet synced: gate chat until sync completes.
+  // This applies to both creator and invitee after join, regardless of invitation payload presence.
+  if (!canJoin && !isSynced) {
     return DMSetupState.SYNC_WAITING;
   }
 
   //NODE1 - CASE2
-  if (hasAccount && hasOtherIdentity && hasInvitationPayload && !canJoin) {
+  if (hasAccount && hasInvitationPayload && !canJoin) {
     return DMSetupState.ACTIVE;
   }
 
   // NODE2 - CASE2
-  if (hasAccount && hasOtherIdentity && hasInvitationPayload && canJoin) {
+  if (!hasAccount && hasOtherIdentity && hasInvitationPayload && canJoin) {
     return DMSetupState.INVITEE_CONTEXT_ACCEPT_POPUP;
   }
 

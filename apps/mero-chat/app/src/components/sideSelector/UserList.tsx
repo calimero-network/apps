@@ -33,6 +33,7 @@ interface UserListProps {
   onDMSelected: (user?: DMChatInfo, sc?: ActiveChat, refetch?: boolean) => void;
   privateDMs: DMChatInfo[];
   isCollapsed?: boolean;
+  selectChannel: (channel: ActiveChat) => void;
 }
 
 const UserList = memo(function UserList({
@@ -40,6 +41,7 @@ const UserList = memo(function UserList({
   onDMSelected,
   privateDMs,
   isCollapsed,
+  selectChannel
 }: UserListProps) {
   return (
     <ScrollableUserList>
@@ -51,6 +53,7 @@ const UserList = memo(function UserList({
             selected={selectedDM === userDM.other_identity_old}
             key={userDM.other_identity_old}
             isCollapsed={isCollapsed}
+            selectChannel={selectChannel}
           />
         ))}
     </ScrollableUserList>

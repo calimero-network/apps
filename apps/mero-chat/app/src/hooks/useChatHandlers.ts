@@ -383,6 +383,7 @@ export function useChatHandlers(
         isDM: false,
         fetchChannels: false,
         fetchDMs: false,
+        dmDeleted: false,
         fetchMembers: false,
       };
 
@@ -500,6 +501,11 @@ export function useChatHandlers(
             actions.fetchDMs = true;
             log.debug("ChatHandlers", "DM created, refreshing DM list");
             break;
+          case "DMDeleted":
+            actions.fetchDMs = true;
+            actions.dmDeleted = true;
+            log.debug("ChatHandlers", "DM deleted, refreshing DM list");
+            break;
 
           case "InvitationAccepted":
             // Refresh DM list and potentially trigger DM selection
@@ -542,13 +548,37 @@ export function useChatHandlers(
       }
       if (actions.fetchDMs) {
         refs.fetchDMs.current();
-        // Trigger DM state update to refresh UI
+        // Trigger DM state update to refresh UI and handle deletion
         const sessionChat = getStoredSession();
         if (sessionChat?.type === "direct_message") {
-          // Add a small delay to ensure DM list is updated before triggering state update
-          setTimeout(() => {
-            handleDMUpdates(sessionChat);
-          }, 100);
+          // Add a small delay to ensure DM list is updated before making decisions
+          setTimeout(async () => {
+            try {
+              const updated = await refs.fetchDms.current();
+              // If current active DM no longer exists, switch to another DM or general
+              const stillExists = updated?.some(
+                (dm) => dm.other_identity_old === sessionChat.id
+              );
+              if (!stillExists) {
+                if (updated && updated.length > 0) {
+                  // pick the first DM
+                  refs.onDMSelected.current(updated[0], undefined, true);
+                } else {
+                  // fallback to general channel
+                  refs.onDMSelected.current(undefined, {
+                    type: "channel",
+                    id: "general",
+                    name: "general",
+                  } as ActiveChat);
+                }
+              } else if (!actions.dmDeleted) {
+                // Normal DM update flow (e.g., metadata changes)
+                handleDMUpdates(sessionChat);
+              }
+            } catch (e) {
+              log.error("ChatHandlers", "Error handling DMDeleted switch", e);
+            }
+          }, 150);
         }
       }
       if (actions.fetchMembers) {

@@ -109,7 +109,6 @@ export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
   const tabs = [
     { id: "chat", label: "Chat" },
     { id: "join-context", label: "Join Context" },
-    { id: "create-identity", label: "Create Identity" },
   ];
 
   const handleLogout = () => {

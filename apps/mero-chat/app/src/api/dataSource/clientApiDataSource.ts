@@ -875,6 +875,7 @@ export class ClientApiDataSource implements ClientApi {
             creator_new_identity: props.creator_new_identity,
             invitee: props.invitee,
             timestamp: props.timestamp,
+            invitation_payload: props.payload,
           },
           executorPublicKey: getExecutorPublicKey() || "",
         },

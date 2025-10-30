@@ -269,6 +269,7 @@ const SideSelector: React.FC<SideSelectorProps> = (props) => {
         <DMSideSelector
           chatMembers={props.chatMembers}
           onDMSelected={props.onDMSelected}
+          selectChannel={props.onChatSelected}
           selectedDM={
             props.activeChat.type === "direct_message"
               ? props.activeChat.id

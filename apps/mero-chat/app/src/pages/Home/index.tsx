@@ -44,6 +44,7 @@ import { useMessages } from "../../hooks/useMessages";
 import { useThreadMessages } from "../../hooks/useThreadMessages";
 import { useWebSocket, useWebSocketEvents } from "../../contexts/WebSocketContext";
 import { useChatHandlers } from "../../hooks/useChatHandlers";
+import type { ContextInviteByOpenInvitationResponse } from "@calimero-network/calimero-client/lib/api/nodeApi";
 
 export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   const { app } = useCalimero();
@@ -304,6 +305,8 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     async (dm?: DMChatInfo, sc?: ActiveChat, refetch?: boolean) => {
       const contextId = sc?.contextId || dm?.context_id || "";
 
+      console.log("tu sam nakon joinanog contexta");
+
       // Prevent rapid re-selection of the same DM (within 1 second)
       const now = Date.now();
       if (
@@ -324,23 +327,26 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
       if (verifyContextResponse.data) {
         canJoin = !(verifyContextResponse.data.rootHash ? true : false);
       }
+      console.log("verifyContextResponse", verifyContextResponse);
 
-      const isSynced =
+      const isSynced = verifyContextResponse.data ? 
         verifyContextResponse.data?.rootHash !==
-        "11111111111111111111111111111111";
+        "11111111111111111111111111111111" : false;
+      console.log("jel sync", isSynced);
 
-      if ((sc?.account || dm?.own_identity) && !canJoin && isSynced) {
+      if ((sc?.account || dm?.own_identity) && isSynced) {
         // Use session identity information if available, fallback to DM data
         const executor = sc?.ownIdentity || sc?.account || dm?.own_identity || "";
         const username = sc?.ownUsername || sc?.username || dm?.own_username || "";
-        
+        console.log("executor , username", executor, username);
         if (executor && username) {
-          await new ClientApiDataSource().joinChat({
+          const joinChatResponse = await new ClientApiDataSource().joinChat({
             contextId: dm?.context_id || "",
             isDM: true,
             executor: executor,
             username: username,
           });
+          console.log("joinChat response", joinChatResponse);
         } else {
           console.warn("Missing executor or username for DM join:", { executor, username });
         }
@@ -438,6 +444,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
 
   // Listen to WebSocket events via context
   useWebSocketEvents(useCallback(async (event: WebSocketEvent) => {
+    console.log("event", event);
     try {
       await handleStateMutation(event);
 
@@ -585,6 +592,21 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
       "11111111111111111111111111111111";
 
     if (response.data) {
+      const invitationPayloadResponse: ResponseData<ContextInviteByOpenInvitationResponse> =
+        await apiClient
+          .node()
+          .contextInviteByOpenInvitation(
+            response.data.contextId,
+            response.data.memberPublicKey as string,
+            86400
+          );
+      if (invitationPayloadResponse.error) {
+        await apiClient.node().deleteContext(response.data.contextId);
+        return {
+          data: "",
+          error: "Failed to create DM - failed to generate invitation payload",
+        };
+      }
       const createDMResponse = await new ClientApiDataSource().createDm({
         context_id: response.data.contextId,
         creator: getExecutorPublicKey() || "",
@@ -592,6 +614,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
         context_hash: hash as string,
         invitee: value,
         timestamp: Date.now(),
+        payload: JSON.stringify(invitationPayloadResponse.data),
       });
       if (createDMResponse.data) {
         await fetchDms();

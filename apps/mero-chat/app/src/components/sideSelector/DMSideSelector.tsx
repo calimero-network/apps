@@ -21,6 +21,7 @@ interface DMSideSelectorProps {
   selectedDM: string;
   privateDMs: DMChatInfo[];
   isCollapsed?: boolean;
+  selectChannel: (channel: ActiveChat) => void;
 }
 
 function DMSideSelector({
@@ -30,6 +31,7 @@ function DMSideSelector({
   selectedDM,
   privateDMs,
   isCollapsed,
+  selectChannel,
 }: DMSideSelectorProps) {
   return (
     <DMContainer>
@@ -44,6 +46,7 @@ function DMSideSelector({
         onDMSelected={onDMSelected}
         privateDMs={privateDMs}
         isCollapsed={isCollapsed}
+        selectChannel={selectChannel}
       />
     </DMContainer>
   );

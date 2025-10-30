@@ -7,6 +7,7 @@ import {
 } from "@calimero-network/calimero-client";
 import type { ResponseData } from "@calimero-network/calimero-client";
 import { Button, Input } from "@calimero-network/mero-ui";
+import type { ContextInviteByOpenInvitationResponse } from "@calimero-network/calimero-client/lib/api/nodeApi";
 
 const TabContent = styled.div`
   display: flex;
@@ -56,7 +57,6 @@ const ConfigTitle = styled.h4`
 `;
 
 export default function InviteToContextTab() {
-  const [inviteeId, setInviteeId] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{
     text: string;
@@ -66,9 +66,7 @@ export default function InviteToContextTab() {
     contextId: "",
     executorPublicKey: "",
   });
-  const [invitationPayload, setInvitationPayload] = useState<string | null>(
-    null,
-  );
+  const [invitation, setInvitation] = useState<string | null>(null);
 
   useEffect(() => {
     const storedContextId = getContextId();
@@ -84,11 +82,6 @@ export default function InviteToContextTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inviteeId.trim()) {
-      setMessage({ text: "Please enter invitee ID", type: "error" });
-      return;
-    }
-
     if (!configData.contextId || !configData.executorPublicKey) {
       setMessage({
         text: "Context configuration not found. Please set up context first.",
@@ -101,30 +94,30 @@ export default function InviteToContextTab() {
     setMessage(null);
 
     try {
-      const response: ResponseData<string> = await apiClient
-        .node()
-        .contextInvite(
-          configData.contextId,
-          configData.executorPublicKey,
-          inviteeId.trim(),
-        );
+      const response: ResponseData<ContextInviteByOpenInvitationResponse> =
+        await apiClient
+          .node()
+          .contextInviteByOpenInvitation(
+            configData.contextId,
+            configData.executorPublicKey,
+            86400
+          );
 
       if (response.error) {
         setMessage({
-          text: response.error.message || "Failed to invite to context",
+          text: response.error.message || "Failed to generate invitation",
           type: "error",
         });
       } else {
-        setInvitationPayload(response.data);
+        setInvitation(JSON.stringify(response.data));
         setMessage({
-          text: "Successfully invited to context!",
+          text: "Successfully generated invitation!",
           type: "success",
         });
-        setInviteeId("");
       }
     } catch (_error) {
       setMessage({
-        text: "An error occurred while inviting to context",
+        text: "An error occurred while generation invitation for context",
         type: "error",
       });
     } finally {
@@ -144,19 +137,19 @@ export default function InviteToContextTab() {
 
   return (
     <TabContent>
-      {invitationPayload ? (
+      {invitation ? (
         <ConfigInfo>
-          <ConfigTitle>Invitation Payload</ConfigTitle>
+          <ConfigTitle>Invitation</ConfigTitle>
           <InputGroup>
             <Label>Generated Invitation</Label>
             <Input
               id="invitationPayload"
               type="text"
-              value={invitationPayload}
+              value={invitation}
               disabled={true}
             />
             <Button
-              onClick={() => handleCopyToClipboard(invitationPayload)}
+              onClick={() => handleCopyToClipboard(invitation)}
               variant="secondary"
               style={{
                 width: "80px",
@@ -198,20 +191,8 @@ export default function InviteToContextTab() {
       )}
 
       <Form onSubmit={handleSubmit}>
-        <InputGroup>
-          <Label htmlFor="inviteeId">Invitee ID</Label>
-          <Input
-            id="inviteeId"
-            type="text"
-            placeholder="Enter invitee ID"
-            value={inviteeId}
-            onChange={(e) => setInviteeId(e.target.value)}
-            disabled={isLoading}
-          />
-        </InputGroup>
-
         <Button type="submit" disabled={isLoading}>
-          {isLoading ? "Inviting..." : "Invite to Context"}
+          {isLoading ? "creating..." : "Create Invitation"}
         </Button>
 
         {message && <Message type={message.type}>{message.text}</Message>}

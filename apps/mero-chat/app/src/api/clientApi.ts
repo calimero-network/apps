@@ -124,6 +124,7 @@ export interface CreateDmProps {
   creator_new_identity: UserId;
   invitee: UserId;
   timestamp: number;
+  payload: string;
 }
 
 export interface UpdateReactionProps {
