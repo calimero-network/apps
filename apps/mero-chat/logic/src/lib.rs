@@ -2,6 +2,7 @@ use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, env};
 use calimero_storage::collections::{UnorderedMap, UnorderedSet, Vector};
+use calimero_storage::collections::crdt_meta::{MergeError, Mergeable};
 use types::id;
 mod types;
 use std::collections::HashMap;
@@ -52,6 +53,15 @@ pub struct Message {
     pub group: String,
 }
 
+impl Mergeable for Message {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        if other.timestamp >= self.timestamp {
+            *self = other.clone();
+        }
+        Ok(())
+    }
+}
+
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
 #[serde(crate = "calimero_sdk::serde")]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -78,6 +88,13 @@ pub enum ChannelType {
     Public,
     Private,
     Default,
+}
+
+impl Mergeable for ChannelType {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        *self = other.clone();
+        Ok(())
+    }
 }
 
 #[derive(
@@ -134,6 +151,28 @@ pub struct ChannelInfo {
     pub last_read: UnorderedMap<UserId, MessageId>,
 }
 
+impl Mergeable for ChannelInfo {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // Keep channel_type as-is (assumed immutable after creation)
+
+        // Monotonic booleans
+        self.read_only |= other.read_only;
+        self.meta.links_allowed |= other.meta.links_allowed;
+
+        // LWW on created_at
+        if other.meta.created_at > self.meta.created_at {
+            self.meta.created_at = other.meta.created_at;
+        }
+
+        // Prefer Some username over None
+        if self.meta.created_by_username.is_none() {
+            self.meta.created_by_username = other.meta.created_by_username.clone();
+        }
+
+        Ok(())
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct FullMessageResponse {
@@ -188,6 +227,15 @@ pub struct DMChatInfo {
     pub unread_messages: u32,
 }
 
+impl Mergeable for DMChatInfo {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        if other.created_at >= self.created_at {
+            *self = other.clone();
+        }
+        Ok(())
+    }
+}
+
 /// Tracks unread messages for a user in a specific channel
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
 #[serde(crate = "calimero_sdk::serde")]
@@ -197,6 +245,15 @@ pub struct UserChannelUnread {
     pub last_read_timestamp: u64,
     /// Number of unread messages for the user in this channel
     pub unread_count: u32,
+}
+
+impl Mergeable for UserChannelUnread {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        if other.last_read_timestamp >= self.last_read_timestamp {
+            *self = other.clone();
+        }
+        Ok(())
+    }
 }
 
 /// Tracks mentions for a user in a specific channel
@@ -220,6 +277,15 @@ impl AsRef<[u8]> for UserChannelMentions {
     }
 }
 
+impl Mergeable for UserChannelMentions {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        if other.timestamp >= self.timestamp {
+            *self = other.clone();
+        }
+        Ok(())
+    }
+}
+
 #[app::state(emits = Event)]
 #[derive(BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -233,7 +299,7 @@ pub struct CurbChat {
     threads: UnorderedMap<MessageId, Vector<Message>>,
     channel_members: UnorderedMap<Channel, UnorderedSet<UserId>>,
     moderators: UnorderedSet<UserId>,
-    dm_chats: UnorderedMap<UserId, Vec<DMChatInfo>>,
+    dm_chats: UnorderedMap<UserId, Vector<DMChatInfo>>,
     is_dm: bool,
     reactions: UnorderedMap<MessageId, UnorderedMap<String, UnorderedSet<String>>>,
     user_channel_unread: UnorderedMap<UserId, UnorderedMap<Channel, UserChannelUnread>>,
@@ -1902,10 +1968,22 @@ impl CurbChat {
 
         if let Ok(Some(mut dms)) = self.dm_chats.get(&executor_id) {
             // He calls for himself - he is not the owner he has it like this
-            for dm in dms.iter_mut() {
-                if dm.other_identity_old == other_user {
-                    dm.own_identity = Some(new_identity.clone());
-                    break;
+            let mut target_idx: Option<usize> = None;
+            let mut idx = 0usize;
+            if let Ok(iter) = dms.iter() {
+                for dm in iter {
+                    if dm.other_identity_old == other_user {
+                        target_idx = Some(idx);
+                        break;
+                    }
+                    idx += 1;
+                }
+            }
+            if let Some(i) = target_idx {
+                if let Ok(Some(dm)) = dms.get(i) {
+                    let mut updated = dm.clone();
+                    updated.own_identity = Some(new_identity.clone());
+                    let _ = dms.update(i, updated);
                 }
             }
             let _ = self.dm_chats.insert(executor_id.clone(), dms);
@@ -1913,10 +1991,22 @@ impl CurbChat {
 
         if let Ok(Some(mut dms)) = self.dm_chats.get(&other_user) {
             // He calls for the creator
-            for dm in dms.iter_mut() {
-                if dm.other_identity_old == executor_id {
-                    dm.other_identity_new = Some(new_identity.clone());
-                    break;
+            let mut target_idx: Option<usize> = None;
+            let mut idx = 0usize;
+            if let Ok(iter) = dms.iter() {
+                for dm in iter {
+                    if dm.other_identity_old == executor_id {
+                        target_idx = Some(idx);
+                        break;
+                    }
+                    idx += 1;
+                }
+            }
+            if let Some(i) = target_idx {
+                if let Ok(Some(dm)) = dms.get(i) {
+                    let mut updated = dm.clone();
+                    updated.other_identity_new = Some(new_identity.clone());
+                    let _ = dms.update(i, updated);
                 }
             }
             let _ = self.dm_chats.insert(other_user.clone(), dms);
@@ -1949,20 +2039,44 @@ impl CurbChat {
         }
 
         if let Ok(Some(mut dms)) = self.dm_chats.get(&executor_id) {
-            for dm in dms.iter_mut() {
-                if dm.other_identity_old == other_user {
-                    dm.invitation_payload = invitation_payload.clone();
-                    break;
+            let mut target_idx: Option<usize> = None;
+            let mut idx = 0usize;
+            if let Ok(iter) = dms.iter() {
+                for dm in iter {
+                    if dm.other_identity_old == other_user {
+                        target_idx = Some(idx);
+                        break;
+                    }
+                    idx += 1;
+                }
+            }
+            if let Some(i) = target_idx {
+                if let Ok(Some(dm)) = dms.get(i) {
+                    let mut updated = dm.clone();
+                    updated.invitation_payload = invitation_payload.clone();
+                    let _ = dms.update(i, updated);
                 }
             }
             let _ = self.dm_chats.insert(executor_id.clone(), dms);
         }
 
         if let Ok(Some(mut dms)) = self.dm_chats.get(&other_user) {
-            for dm in dms.iter_mut() {
-                if dm.other_identity_old == executor_id {
-                    dm.invitation_payload = invitation_payload.clone();
-                    break;
+            let mut target_idx: Option<usize> = None;
+            let mut idx = 0usize;
+            if let Ok(iter) = dms.iter() {
+                for dm in iter {
+                    if dm.other_identity_old == executor_id {
+                        target_idx = Some(idx);
+                        break;
+                    }
+                    idx += 1;
+                }
+            }
+            if let Some(i) = target_idx {
+                if let Ok(Some(dm)) = dms.get(i) {
+                    let mut updated = dm.clone();
+                    updated.invitation_payload = invitation_payload.clone();
+                    let _ = dms.update(i, updated);
                 }
             }
             let _ = self.dm_chats.insert(other_user.clone(), dms);
@@ -1993,10 +2107,22 @@ impl CurbChat {
         }
 
         if let Ok(Some(mut dms)) = self.dm_chats.get(&executor_id) {
-            for dm in dms.iter_mut() {
-                if dm.other_identity_old == other_user {
-                    dm.did_join = true;
-                    break;
+            let mut target_idx: Option<usize> = None;
+            let mut idx = 0usize;
+            if let Ok(iter) = dms.iter() {
+                for dm in iter {
+                    if dm.other_identity_old == other_user {
+                        target_idx = Some(idx);
+                        break;
+                    }
+                    idx += 1;
+                }
+            }
+            if let Some(i) = target_idx {
+                if let Ok(Some(dm)) = dms.get(i) {
+                    let mut updated = dm.clone();
+                    updated.did_join = true;
+                    let _ = dms.update(i, updated);
                 }
             }
             let _ = self.dm_chats.insert(executor_id.clone(), dms);
@@ -2015,24 +2141,10 @@ impl CurbChat {
         match self.dm_chats.get(&executor_id) {
             Ok(Some(dms)) => {
                 let mut dm_list = Vec::new();
-                for dm in dms.iter() {
-                    dm_list.push(DMChatInfo {
-                        channel_type: dm.channel_type.clone(),
-                        created_at: dm.created_at,
-                        created_by: dm.created_by.clone(),
-                        context_id: dm.context_id.clone(),
-                        own_identity_old: dm.own_identity_old.clone(),
-                        own_identity: dm.own_identity.clone(),
-                        other_identity_old: dm.other_identity_old.clone(),
-                        other_identity_new: dm.other_identity_new.clone(),
-                        own_username: dm.own_username.clone(),
-                        other_username: dm.other_username.clone(),
-                        did_join: dm.did_join,
-                        invitation_payload: dm.invitation_payload.clone(),
-                        old_hash: dm.old_hash.clone(),
-                        new_hash: dm.new_hash.clone(),
-                        unread_messages: dm.unread_messages,
-                    });
+                if let Ok(iter) = dms.iter() {
+                    for dm in iter {
+                        dm_list.push(dm.clone());
+                    }
                 }
                 Ok(dm_list)
             }
@@ -2051,7 +2163,8 @@ impl CurbChat {
 
         match self.dm_chats.get(&executor_id) {
             Ok(Some(dms)) => {
-                for dm in dms.iter() {
+                if let Ok(iter) = dms.iter() {
+                    for dm in iter {
                     if dm.context_id == context_id {
                         // Return the own_identity if it exists, otherwise return own_identity_old
                         return Ok(dm
@@ -2059,6 +2172,7 @@ impl CurbChat {
                             .clone()
                             .unwrap_or(dm.own_identity_old.clone()));
                     }
+                }
                 }
                 Err("DM context not found".to_string())
             }
@@ -2088,10 +2202,12 @@ impl CurbChat {
 
     fn dm_exists(&self, user1: &UserId, user2: &UserId) -> bool {
         if let Ok(Some(dms)) = self.dm_chats.get(user1) {
-            for dm in dms.iter() {
+            if let Ok(iter) = dms.iter() {
+                for dm in iter {
                 if dm.other_identity_old == *user2 {
                     return true;
                 }
+            }
             }
         }
         false
@@ -2100,16 +2216,23 @@ impl CurbChat {
     fn add_dm_to_user(&mut self, user: &UserId, dm_info: DMChatInfo) {
         let mut dms = match self.dm_chats.get(user) {
             Ok(Some(existing_dms)) => existing_dms,
-            _ => Vec::new(),
+            _ => Vector::new(),
         };
-        dms.push(dm_info);
+        let _ = dms.push(dm_info);
         let _ = self.dm_chats.insert(user.clone(), dms);
     }
 
     fn remove_dm_from_user(&mut self, user: &UserId, other_user: &UserId) {
-        if let Ok(Some(mut dms)) = self.dm_chats.get(user) {
-            dms.retain(|dm| dm.other_identity_old != *other_user);
-            let _ = self.dm_chats.insert(user.clone(), dms);
+        if let Ok(Some(dms)) = self.dm_chats.get(user) {
+            let mut new_vec = Vector::new();
+            if let Ok(iter) = dms.iter() {
+                for dm in iter {
+                    if dm.other_identity_old != *other_user {
+                        let _ = new_vec.push(dm.clone());
+                    }
+                }
+            }
+            let _ = self.dm_chats.insert(user.clone(), new_vec);
         }
     }
 
@@ -2117,13 +2240,25 @@ impl CurbChat {
     pub fn update_dm_hashes(&mut self, sender_id: UserId, other_user_id: UserId, new_hash: &str) {
         // Update sender's DM hash
         if let Ok(Some(mut dms)) = self.dm_chats.get(&sender_id) {
-            for dm in dms.iter_mut() {
-                if dm.other_identity_old == other_user_id
-                    || dm.other_identity_new.as_ref() == Some(&other_user_id)
-                {
-                    dm.old_hash = new_hash.to_string();
-                    dm.new_hash = new_hash.to_string();
-                    break;
+            let mut target_idx: Option<usize> = None;
+            let mut idx = 0usize;
+            if let Ok(iter) = dms.iter() {
+                for dm in iter {
+                    if dm.other_identity_old == other_user_id
+                        || dm.other_identity_new.as_ref() == Some(&other_user_id)
+                    {
+                        target_idx = Some(idx);
+                        break;
+                    }
+                    idx += 1;
+                }
+            }
+            if let Some(i) = target_idx {
+                if let Ok(Some(dm)) = dms.get(i) {
+                    let mut updated = dm.clone();
+                    updated.old_hash = new_hash.to_string();
+                    updated.new_hash = new_hash.to_string();
+                    let _ = dms.update(i, updated);
                 }
             }
             let _ = self.dm_chats.insert(sender_id.clone(), dms);
@@ -2132,14 +2267,26 @@ impl CurbChat {
         // Update other user's DM hash (set old_hash to their current new_hash, new_hash to the new hash)
         // Also increment unread message count for the recipient
         if let Ok(Some(mut dms)) = self.dm_chats.get(&other_user_id) {
-            for dm in dms.iter_mut() {
-                if dm.other_identity_old == sender_id
-                    || dm.other_identity_new.as_ref() == Some(&sender_id)
-                {
-                    dm.old_hash = dm.new_hash.clone();
-                    dm.new_hash = new_hash.to_string();
-                    dm.unread_messages += 1;
-                    break;
+            let mut target_idx: Option<usize> = None;
+            let mut idx = 0usize;
+            if let Ok(iter) = dms.iter() {
+                for dm in iter {
+                    if dm.other_identity_old == sender_id
+                        || dm.other_identity_new.as_ref() == Some(&sender_id)
+                    {
+                        target_idx = Some(idx);
+                        break;
+                    }
+                    idx += 1;
+                }
+            }
+            if let Some(i) = target_idx {
+                if let Ok(Some(dm)) = dms.get(i) {
+                    let mut updated = dm.clone();
+                    updated.old_hash = updated.new_hash.clone();
+                    updated.new_hash = new_hash.to_string();
+                    updated.unread_messages += 1;
+                    let _ = dms.update(i, updated);
                 }
             }
             let _ = self.dm_chats.insert(other_user_id.clone(), dms);
@@ -2149,12 +2296,14 @@ impl CurbChat {
     /// Checks if a DM has new messages for a user
     pub fn dm_has_new_messages(&self, user_id: UserId, other_user_id: UserId) -> bool {
         if let Ok(Some(dms)) = self.dm_chats.get(&user_id) {
-            for dm in dms.iter() {
+            if let Ok(iter) = dms.iter() {
+                for dm in iter {
                 if dm.other_identity_old == other_user_id
                     || dm.other_identity_new.as_ref() == Some(&other_user_id)
                 {
                     return dm.old_hash != dm.new_hash;
                 }
+            }
             }
         }
         false
@@ -2172,13 +2321,15 @@ impl CurbChat {
         let executor_id = self.get_executor_id();
 
         if let Ok(Some(dms)) = self.dm_chats.get(&executor_id) {
-            for dm in dms.iter() {
+            if let Ok(iter) = dms.iter() {
+                for dm in iter {
                 if dm.other_identity_old == other_user_id
                     || dm.other_identity_new.as_ref() == Some(&other_user_id)
                 {
                     let has_new_messages = dm.old_hash != dm.new_hash;
                     return Ok((dm.clone(), has_new_messages));
                 }
+            }
             }
         }
 
@@ -2194,15 +2345,27 @@ impl CurbChat {
         let executor_id = self.get_executor_id();
 
         if let Ok(Some(mut dms)) = self.dm_chats.get(&executor_id) {
-            for dm in dms.iter_mut() {
-                if dm.other_identity_old == other_user_id
-                    || dm.other_identity_new.as_ref() == Some(&other_user_id)
-                {
+            let mut target_idx: Option<usize> = None;
+            let mut idx = 0usize;
+            if let Ok(iter) = dms.iter() {
+                for dm in iter {
+                    if dm.other_identity_old == other_user_id
+                        || dm.other_identity_new.as_ref() == Some(&other_user_id)
+                    {
+                        target_idx = Some(idx);
+                        break;
+                    }
+                    idx += 1;
+                }
+            }
+            if let Some(i) = target_idx {
+                if let Ok(Some(dm)) = dms.get(i) {
+                    let mut updated = dm.clone();
                     // Reset hash tracking - mark as read
-                    dm.old_hash = dm.new_hash.clone();
+                    updated.old_hash = updated.new_hash.clone();
                     // Reset unread message count
-                    dm.unread_messages = 0;
-                    break;
+                    updated.unread_messages = 0;
+                    let _ = dms.update(i, updated);
                 }
             }
             let _ = self.dm_chats.insert(executor_id.clone(), dms);
@@ -2220,11 +2383,13 @@ impl CurbChat {
         let executor_id = self.get_executor_id();
 
         if let Ok(Some(dms)) = self.dm_chats.get(&executor_id) {
-            for dm in dms.iter() {
-                if dm.other_identity_old == other_user_id
-                    || dm.other_identity_new.as_ref() == Some(&other_user_id)
-                {
-                    return Ok(dm.unread_messages);
+            if let Ok(iter) = dms.iter() {
+                for dm in iter {
+                    if dm.other_identity_old == other_user_id
+                        || dm.other_identity_new.as_ref() == Some(&other_user_id)
+                    {
+                        return Ok(dm.unread_messages);
+                    }
                 }
             }
         }
@@ -2241,7 +2406,12 @@ impl CurbChat {
         let executor_id = self.get_executor_id();
 
         if let Ok(Some(dms)) = self.dm_chats.get(&executor_id) {
-            let total_unread: u32 = dms.iter().map(|dm| dm.unread_messages).sum();
+            let mut total_unread: u32 = 0;
+            if let Ok(iter) = dms.iter() {
+                for dm in iter {
+                    total_unread += dm.unread_messages;
+                }
+            }
             return Ok(total_unread);
         }
 
@@ -2257,9 +2427,19 @@ impl CurbChat {
         let executor_id = self.get_executor_id();
 
         if let Ok(Some(mut dms)) = self.dm_chats.get(&executor_id) {
-            for dm in dms.iter_mut() {
-                dm.old_hash = dm.new_hash.clone();
-                dm.unread_messages = 0;
+            let mut idx = 0usize;
+            let mut to_update: Vec<(usize, DMChatInfo)> = Vec::new();
+            if let Ok(iter) = dms.iter() {
+                for dm in iter {
+                    let mut updated = dm.clone();
+                    updated.old_hash = updated.new_hash.clone();
+                    updated.unread_messages = 0;
+                    to_update.push((idx, updated));
+                    idx += 1;
+                }
+            }
+            for (i, updated) in to_update {
+                let _ = dms.update(i, updated);
             }
             let _ = self.dm_chats.insert(executor_id.clone(), dms);
         }
