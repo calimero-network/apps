@@ -80,7 +80,6 @@ export function useChatHandlers(
   // Track if we're already fetching messages to prevent concurrent calls
   const isFetchingMessagesRef = useRef(false);
   const isFetchingThreadMessagesRef = useRef(false);
-  const lastThreadMessageCheckRef = useRef<number>(0);
   const lastReadMessageRef = useRef<{ chatId: string; timestamp: number }>({
     chatId: "",
     timestamp: 0,
@@ -277,13 +276,7 @@ export function useChatHandlers(
         return;
       }
 
-      // Aggressive throttle to 5 seconds to prevent API hammering
-      const now = Date.now();
-      if (now - lastThreadMessageCheckRef.current < 5000) {
-        log.debug("ChatHandlers", "Skipping thread message check - throttled");
-        return;
-      }
-      lastThreadMessageCheckRef.current = now;
+      // Removed throttling to allow real-time thread message updates
 
       try {
         isFetchingThreadMessagesRef.current = true;
