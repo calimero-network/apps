@@ -14,6 +14,7 @@ borsh-derive = "0.10.3"
 bs58 = "0.5.1"
 calimero-sdk = { git = "https://github.com/calimero-network/core", branch = "master" }
 calimero-storage = { git = "https://github.com/calimero-network/core", branch = "master" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core", branch = "master" }
 thiserror = "1.0.56"
 
 [profile.app-release]

@@ -305,8 +305,6 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     async (dm?: DMChatInfo, sc?: ActiveChat, refetch?: boolean) => {
       const contextId = sc?.contextId || dm?.context_id || "";
 
-      console.log("tu sam nakon joinanog contexta");
-
       // Prevent rapid re-selection of the same DM (within 1 second)
       const now = Date.now();
       if (
@@ -327,26 +325,21 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
       if (verifyContextResponse.data) {
         canJoin = !(verifyContextResponse.data.rootHash ? true : false);
       }
-      console.log("verifyContextResponse", verifyContextResponse);
-
       const isSynced = verifyContextResponse.data ? 
         verifyContextResponse.data?.rootHash !==
         "11111111111111111111111111111111" : false;
-      console.log("jel sync", isSynced);
 
       if ((sc?.account || dm?.own_identity) && isSynced) {
         // Use session identity information if available, fallback to DM data
         const executor = sc?.ownIdentity || sc?.account || dm?.own_identity || "";
         const username = sc?.ownUsername || sc?.username || dm?.own_username || "";
-        console.log("executor , username", executor, username);
         if (executor && username) {
-          const joinChatResponse = await new ClientApiDataSource().joinChat({
+          await new ClientApiDataSource().joinChat({
             contextId: dm?.context_id || "",
             isDM: true,
             executor: executor,
             username: username,
           });
-          console.log("joinChat response", joinChatResponse);
         } else {
           console.warn("Missing executor or username for DM join:", { executor, username });
         }
@@ -444,7 +437,6 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
 
   // Listen to WebSocket events via context
   useWebSocketEvents(useCallback(async (event: WebSocketEvent) => {
-    console.log("event", event);
     try {
       await handleStateMutation(event);
 

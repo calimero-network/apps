@@ -8,6 +8,7 @@ import {
 import type { ResponseData } from "@calimero-network/calimero-client";
 import { Button, Input } from "@calimero-network/mero-ui";
 import type { ContextInviteByOpenInvitationResponse } from "@calimero-network/calimero-client/lib/api/nodeApi";
+import { generateInvitationUrl } from "../../utils/invitation";
 
 const TabContent = styled.div`
   display: flex;
@@ -56,6 +57,14 @@ const ConfigTitle = styled.h4`
   margin-bottom: 0.5rem;
 `;
 
+const SuccessMessage = styled.div`
+  color: #27ae60;
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-align: center;
+  margin: 1rem 0;
+`;
+
 export default function InviteToContextTab() {
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{
@@ -67,6 +76,7 @@ export default function InviteToContextTab() {
     executorPublicKey: "",
   });
   const [invitation, setInvitation] = useState<string | null>(null);
+  const [invitationUrl, setInvitationUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const storedContextId = getContextId();
@@ -109,9 +119,12 @@ export default function InviteToContextTab() {
           type: "error",
         });
       } else {
-        setInvitation(JSON.stringify(response.data));
+        const invitationPayload = JSON.stringify(response.data);
+        setInvitation(invitationPayload);
+        const url = generateInvitationUrl(invitationPayload);
+        setInvitationUrl(url);
         setMessage({
-          text: "Successfully generated invitation!",
+          text: "Invitation Created",
           type: "success",
         });
       }
@@ -137,30 +150,26 @@ export default function InviteToContextTab() {
 
   return (
     <TabContent>
-      {invitation ? (
+      {invitation && invitationUrl ? (
         <ConfigInfo>
-          <ConfigTitle>Invitation</ConfigTitle>
+          <SuccessMessage>✓ Invitation Created</SuccessMessage>
           <InputGroup>
-            <Label>Generated Invitation</Label>
+            <Label>Invitation URL</Label>
             <Input
-              id="invitationPayload"
+              id="invitationUrl"
               type="text"
-              value={invitation}
+              value={invitationUrl}
               disabled={true}
             />
             <Button
-              onClick={() => handleCopyToClipboard(invitation)}
-              variant="secondary"
+              onClick={() => handleCopyToClipboard(invitationUrl)}
+              variant="primary"
               style={{
-                width: "80px",
-                minWidth: "80px",
-                whiteSpace: "nowrap",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+                width: "100%",
+                marginTop: "0.5rem",
               }}
             >
-              <span>Copy</span>
+              Copy Invitation URL
             </Button>
           </InputGroup>
         </ConfigInfo>

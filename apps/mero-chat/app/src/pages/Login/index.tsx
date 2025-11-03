@@ -10,6 +10,9 @@ import {
   clearStoredSession,
   clearSessionActivity,
 } from "../../utils/session";
+import { useState, useEffect } from "react";
+import { getInvitationFromStorage } from "../../utils/invitation";
+import InvitationHandlerPopup from "../../components/popups/InvitationHandlerPopup";
 
 export const Wrapper = styled.div`
   display: flex;
@@ -106,10 +109,16 @@ interface LoginProps {
 
 export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
   const { logout } = useCalimero();
-  const tabs = [
-    { id: "chat", label: "Chat" },
-    { id: "join-context", label: "Join Context" },
-  ];
+  const [hasInvitation, setHasInvitation] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const tabs = [{ id: "chat", label: "Chat" }];
+
+  useEffect(() => {
+    // Check for pending invitation ONLY after user is authenticated
+    const invitation = getInvitationFromStorage();
+    setHasInvitation(!!invitation);
+  }, []);
 
   const handleLogout = () => {
     clearStoredSession();
@@ -118,8 +127,26 @@ export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
     logout();
   };
 
+  const handleInvitationSuccess = () => {
+    // Close popup and force TabbedInterface to refetch by changing key
+    setHasInvitation(false);
+    setRefreshKey((prev) => prev + 1);
+  };
+
+  const handleInvitationError = () => {
+    // Close popup on error/cancel
+    setHasInvitation(false);
+  };
+
   return (
     <Wrapper>
+      {/* Show invitation popup on top of everything when user has authenticated */}
+      {hasInvitation && isAuthenticated && (
+        <InvitationHandlerPopup
+          onSuccess={handleInvitationSuccess}
+          onError={handleInvitationError}
+        />
+      )}
       <Card>
         <Title>Welcome to Calimero Chat</Title>
         {!isAuthenticated && !isConfigSet ? (
@@ -130,6 +157,7 @@ export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
         ) : (
           <>
             <TabbedInterface
+              key={refreshKey}
               tabs={tabs}
               isAuthenticated={isAuthenticated}
               isConfigSet={isConfigSet}

@@ -11,6 +11,7 @@ import {
 } from "./utils/session";
 import { ToastProvider, useToast } from "./contexts/ToastContext";
 import { ToastManager } from "./components/common/ToastManager";
+import { extractInvitationFromUrl, saveInvitationToStorage } from "./utils/invitation";
 
 // Lazy load pages for better performance
 const Login = lazy(() => import("./pages/Login"));
@@ -37,6 +38,16 @@ function App() {
     if (hasInitializedRef.current) return;
 
     const timer = setTimeout(() => {
+      // Check for invitation in URL and save to localStorage
+      const invitation = extractInvitationFromUrl();
+      if (invitation) {
+        saveInvitationToStorage(invitation);
+        // Clean URL by removing invitation parameter
+        const url = new URL(window.location.href);
+        url.searchParams.delete('invitation');
+        window.history.replaceState({}, '', url.toString());
+      }
+
       // Get authConfig inside effect to avoid unnecessary re-renders
       const authConfig = getAuthConfig();
       const hasRequiredConfig =
