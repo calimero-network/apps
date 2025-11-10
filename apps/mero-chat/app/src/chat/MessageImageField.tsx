@@ -1,72 +1,259 @@
-import type { FileObject } from "../types/Common";
+import { useEffect, useState } from "react";
 import { styled } from "styled-components";
+import type { FileObject } from "../types/Common";
+import { blobClient } from "@calimero-network/calimero-client";
+import { PhotoProvider, PhotoView } from "react-photo-view";
 
-interface MessageImageFieldProps {
-  file: FileObject;
-  resetImage: () => void;
-}
-
-const RemoveButton = styled.div`
+const ImageWrapper = styled.div<{ $size: number }>`
   position: relative;
-  top: 0;
-  right: 16px;
-  z-index: 20;
+  display: inline-flex;
+  margin: 4px 8px 4px 0;
+  border-radius: 6px;
+  overflow: hidden;
+  width: ${({ $size }) => $size}px;
+  height: ${({ $size }) => $size}px;
+  background-color: #1d1d21;
+  border: 1px solid #25252a;
   cursor: pointer;
 `;
 
-const ResetFileIcon = ({ resetFile }: { resetFile: () => void }) => {
-  return (
-    <RemoveButton onClick={resetFile}>
-      <svg
-        width="12"
-        height="12"
-        viewBox="0 0 12 12"
-        fill="#fff"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <g clipPath="url(#clip0_972_45209)">
-          <path
-            d="M12 6C12 7.5913 11.3679 9.11742 10.2426 10.2426C9.11742 11.3679 7.5913 12 6 12C4.4087 12 2.88258 11.3679 1.75736 10.2426C0.632141 9.11742 0 7.5913 0 6C0 4.4087 0.632141 2.88258 1.75736 1.75736C2.88258 0.632141 4.4087 0 6 0C7.5913 0 9.11742 0.632141 10.2426 1.75736C11.3679 2.88258 12 4.4087 12 6ZM4.0155 3.4845C3.94509 3.41408 3.84958 3.37453 3.75 3.37453C3.65042 3.37453 3.55491 3.41408 3.4845 3.4845C3.41408 3.55491 3.37453 3.65042 3.37453 3.75C3.37453 3.84958 3.41408 3.94509 3.4845 4.0155L5.46975 6L3.4845 7.9845C3.44963 8.01937 3.42198 8.06076 3.40311 8.10631C3.38424 8.15187 3.37453 8.20069 3.37453 8.25C3.37453 8.29931 3.38424 8.34813 3.40311 8.39369C3.42198 8.43924 3.44963 8.48063 3.4845 8.5155C3.55491 8.58591 3.65042 8.62547 3.75 8.62547C3.79931 8.62547 3.84813 8.61576 3.89369 8.59689C3.93924 8.57802 3.98063 8.55037 4.0155 8.5155L6 6.53025L7.9845 8.5155C8.01937 8.55037 8.06076 8.57802 8.10631 8.59689C8.15187 8.61576 8.20069 8.62547 8.25 8.62547C8.29931 8.62547 8.34813 8.61576 8.39369 8.59689C8.43924 8.57802 8.48063 8.55037 8.5155 8.5155C8.55037 8.48063 8.57802 8.43924 8.59689 8.39369C8.61576 8.34813 8.62547 8.29931 8.62547 8.25C8.62547 8.20069 8.61576 8.15187 8.59689 8.10631C8.57802 8.06076 8.55037 8.01937 8.5155 7.9845L6.53025 6L8.5155 4.0155C8.55037 3.98063 8.57802 3.93924 8.59689 3.89369C8.61576 3.84813 8.62547 3.79931 8.62547 3.75C8.62547 3.70069 8.61576 3.65187 8.59689 3.60631C8.57802 3.56076 8.55037 3.51937 8.5155 3.4845C8.48063 3.44963 8.43924 3.42198 8.39369 3.40311C8.34813 3.38424 8.29931 3.37453 8.25 3.37453C8.20069 3.37453 8.15187 3.38424 8.10631 3.40311C8.06076 3.42198 8.01937 3.44963 7.9845 3.4845L6 5.46975L4.0155 3.4845Z"
-            fill="white"
-          />
-        </g>
-        <defs>
-          <clipPath id="clip0_972_45209">
-            <rect width="12" height="12" fill="white" />
-          </clipPath>
-        </defs>
-      </svg>
-    </RemoveButton>
-  );
-};
+const StyledImg = styled.img`
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+`;
 
-const ImageWrapper = styled.div`
+const Placeholder = styled.div`
   display: flex;
-  height: 64px;
-  width: 64px;
-  margin-left: 8px;
-  margin-bottom: 8px;
+  align-items: center;
+  justify-content: center;
+  width: 120px;
+  height: 120px;
+  border-radius: 6px;
+  background-color: #25252a;
+  color: #7a7a85;
+  font-size: 12px;
+`;
+
+interface MessageImageFieldProps {
+  file: FileObject;
+  previewUrl?: string;
+  isInput: boolean;
+  onRemove?: () => void;
+  contextId?: string;
+  containerSize: number;
+}
+
+const HoverContainer = styled.div`
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background-color: rgba(0, 0, 0, 0.7);
+  border-radius: 4px;
+  padding: 4px;
+`;
+
+const HoverContainerRemove = styled.div`
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  background-color: rgba(0, 0, 0, 0.7);
+  border-radius: 4px;
+  padding: 1px;
+`;
+
+const IconButton = styled.button`
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+  line-height: 1;
+`;
+
+const DownloadButton = styled(IconButton)`
+  color: #73b30c;
+  font-size: 16px;
+  padding: 0 3px;
+`;
+
+const RemoveButton = styled(IconButton)`
+  color: #ff6b6b;
+  font-size: 16px;
+  padding: 0 3px;
 `;
 
 export default function MessageImageField({
   file,
-  resetImage,
+  previewUrl,
+  isInput,
+  onRemove,
+  contextId,
+  containerSize,
 }: MessageImageFieldProps) {
-  if (!file) return null;
-  const cid = file?.cid;
+  const [imageSrc, setImageSrc] = useState<string | undefined>(previewUrl);
+  const [isLoading, setIsLoading] = useState(!previewUrl);
+  const [hasError, setHasError] = useState(false);
+  const [isHovering, setIsHovering] = useState(false);
+  const [blockHovering, setBlockHovering] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const { innerWidth: width } = window;
+      if (width < 1024) {
+        setIsHovering(true);
+        setBlockHovering(true);
+      } else {
+        setIsHovering(false);
+      }
+    };
+    handleResize();
+  }, []);
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+
+    if (!previewUrl && contextId && file.blobId) {
+      setIsLoading(true);
+      setHasError(false);
+
+      blobClient
+        .downloadBlob(file.blobId, contextId)
+        .then((blob) => {
+          if (!blob) {
+            setHasError(true);
+            return;
+          }
+          objectUrl = URL.createObjectURL(blob);
+          setImageSrc(objectUrl);
+        })
+        .catch(() => {
+          setHasError(true);
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
+    } else if (!previewUrl) {
+      setIsLoading(false);
+      if (!contextId) {
+        setHasError(true);
+      }
+    }
+
+    return () => {
+      if (!previewUrl && objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [previewUrl, contextId, file.blobId]);
+
+  const handleDownload = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    if (!contextId || !file.blobId) {
+      return;
+    }
+
+    try {
+      const blob = await blobClient.downloadBlob(file.blobId, contextId);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = file.name || "image";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      console.error("MessageImageField", "Failed to download image", error);
+    }
+  };
+
+  if (hasError) {
+    return <Placeholder>Failed to load image</Placeholder>;
+  }
+
+  if (isLoading && !imageSrc) {
+    return <Placeholder>Loading…</Placeholder>;
+  }
+
+  if (!imageSrc) {
+    return null;
+  }
+
   return (
-    <ImageWrapper>
-      <img
-        src={`https://ipfs.near.social/ipfs/${cid}`}
-        alt="uploaded"
-        height="64px"
-        width="64px"
-        style={{
-          maxHeight: "64px",
-          maxWidth: "64px",
+    <PhotoProvider>
+      <ImageWrapper
+        $size={containerSize}
+        onMouseEnter={() => {
+          if (!blockHovering) {
+            setIsHovering(true);
+          }
         }}
-      />
-      <ResetFileIcon resetFile={resetImage} />
-    </ImageWrapper>
+        onMouseLeave={() => {
+          if (!blockHovering) {
+            setIsHovering(false);
+          }
+        }}
+      >
+        <PhotoView src={imageSrc}>
+          <div>
+            <StyledImg src={imageSrc} alt={file.name || "attachment"} />
+            {!isInput && isHovering && (
+              <HoverContainer>
+                <DownloadButton
+                  aria-label="Download attachment"
+                  onClick={handleDownload}
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M12 4v10m0 0 4-4m-4 4-4-4"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M5 18h14"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </DownloadButton>
+              </HoverContainer>
+            )}
+            {isInput && isHovering && (
+              <HoverContainerRemove>
+                <RemoveButton aria-label="Remove attachment" onClick={onRemove}>
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M6 18L18 6M6 6l12 12"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </RemoveButton>
+              </HoverContainerRemove>
+            )}
+          </div>
+        </PhotoView>
+      </ImageWrapper>
+    </PhotoProvider>
   );
 }

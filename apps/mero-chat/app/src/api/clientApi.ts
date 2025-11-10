@@ -70,10 +70,27 @@ export interface Message {
   thread_count: number;
   thread_last_timestamp: number;
   group?: string;
+  files?: AttachmentResponse[];
+  images?: AttachmentResponse[];
 }
 
 export interface MessageWithReactions extends Message {
   reactions: HashMap<string, UserId[]>;
+}
+
+export interface AttachmentRequest {
+  name: string;
+  blob_id_str: string;
+  mime_type: string;
+  size: number;
+}
+
+export interface AttachmentResponse {
+  name: string;
+  blob_id: string;
+  mime_type: string;
+  size: number;
+  uploaded_at: number;
 }
 
 export interface SendMessageProps {
@@ -85,6 +102,8 @@ export interface SendMessageProps {
   parent_message?: string;
   is_dm?: boolean;
   dm_identity?: UserId;
+  files?: AttachmentRequest[];
+  images?: AttachmentRequest[];
 }
 
 export interface FullMessageResponse {

@@ -1,15 +1,29 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { styled } from "styled-components";
-import type { ChatFile, MessageWithReactions } from "../types/Common";
+import type {
+  AttachmentDraft,
+  ChatFile,
+  MessageWithReactions,
+  SendMessagePayload,
+} from "../types/Common";
 import EmojiSelector from "../emojiSelector/EmojiSelector";
 import { emptyText, markdownParser } from "../utils/markdownParser";
-import UploadComponent from "./UploadComponent";
+import UploadComponent, {
+  FileUploadIcon,
+  ImageUploadIcon,
+} from "./UploadComponent";
 import MessageFileField from "./MessageFileField";
 import MessageImageField from "./MessageImageField";
-import type { ResponseData } from "@calimero-network/calimero-client";
+import {
+  blobClient,
+  getContextId,
+  type ResponseData,
+} from "@calimero-network/calimero-client";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import { extractUsernames } from "../utils/mentions";
 import { RichTextEditor } from "@calimero-network/mero-ui";
+import { getDmContextId } from "../utils/session";
+import { useToast } from "../contexts/ToastContext";
 
 export const EditorWrapper = styled.div`
   flex: 1;
@@ -93,17 +107,18 @@ const EmojiPopupContainer = styled.div`
 const UploadPopupContainer = styled.div`
   position: absolute;
   bottom: 46px;
-  left: 16px;
+  right: 108px;
   z-index: 1000;
   @media (max-width: 1024px) {
-    left: 8px;
+    right: 88px;
+    bottom: 52px;
   }
 `;
 
 const UploadContainer = styled.div`
-  background-color: #25252a;
-  border-radius: 2px;
-  width: fit-content;
+  background-color: rgb(17, 17, 17);
+  border-radius: 4px;
+  border: 1px solid rgb(42, 42, 42);
 `;
 
 const Wrapper = styled.div`
@@ -180,6 +195,61 @@ export const IconEmoji = () => {
     </EmojiContainer>
   );
 };
+
+export const IconUploadSvg = styled.div`
+  width: 26px;
+  height: 26px;
+  display: flex;
+  justify-content: center;
+  align-items: start;
+  cursor: pointer;
+
+  svg {
+    fill: #686672;
+  }
+
+  .stroke-path {
+    stroke: #686672;
+  }
+
+  &:hover {
+    svg {
+      fill: #73b30c;
+    }
+
+    .stroke-path {
+      stroke: #73b30c;
+      fill: #73b30c;
+    }
+  }
+`;
+
+export const IconUpload = ({ onClick }: { onClick: () => void }) => (
+  <IconUploadSvg onClick={onClick}>
+    <svg
+      width="20px"
+      height="20px"
+      viewBox="0 0 24 24"
+      fill="#686672"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M13.5 3H12H8C6.34315 3 5 4.34315 5 6V18C5 19.6569 6.34315 21 8 21H12M13.5 3L19 8.625M13.5 3V7.625C13.5 8.17728 13.9477 8.625 14.5 8.625H19M19 8.625V11.8125"
+        className="stroke-path"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M17.5 21L17.5 15M17.5 15L20 17.5M17.5 15L15 17.5"
+        className="stroke-path"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  </IconUploadSvg>
+);
 
 export const IconSendSvg = styled.svg`
   margin-bottom: 8px;
@@ -270,65 +340,6 @@ const ReadOnlyField = styled.div`
   }
 `;
 
-const ImageIconSvg = () => (
-  <svg
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="#fff"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path
-      d="M15.75 12.75C15.75 13.7446 15.3549 14.6984 14.6517 15.4017C13.9484 16.1049 12.9946 16.5 12 16.5C11.0054 16.5 10.0516 16.1049 9.34835 15.4017C8.64509 14.6984 8.25 13.7446 8.25 12.75C8.25 11.7554 8.64509 10.8016 9.34835 10.0983C10.0516 9.39509 11.0054 9 12 9C12.9946 9 13.9484 9.39509 14.6517 10.0983C15.3549 10.8016 15.75 11.7554 15.75 12.75Z"
-      fill="white"
-    />
-    <path
-      d="M3 6C2.20435 6 1.44129 6.31607 0.87868 6.87868C0.316071 7.44129 0 8.20435 0 9V18C0 18.7956 0.316071 19.5587 0.87868 20.1213C1.44129 20.6839 2.20435 21 3 21H21C21.7956 21 22.5587 20.6839 23.1213 20.1213C23.6839 19.5587 24 18.7956 24 18V9C24 8.20435 23.6839 7.44129 23.1213 6.87868C22.5587 6.31607 21.7956 6 21 6H19.242C18.4464 5.99983 17.6835 5.68365 17.121 5.121L15.879 3.879C15.3165 3.31635 14.5536 3.00017 13.758 3H10.242C9.44641 3.00017 8.68348 3.31635 8.121 3.879L6.879 5.121C6.31652 5.68365 5.55358 5.99983 4.758 6H3ZM3.75 9C3.55109 9 3.36032 8.92098 3.21967 8.78033C3.07902 8.63968 3 8.44891 3 8.25C3 8.05109 3.07902 7.86032 3.21967 7.71967C3.36032 7.57902 3.55109 7.5 3.75 7.5C3.94891 7.5 4.13968 7.57902 4.28033 7.71967C4.42098 7.86032 4.5 8.05109 4.5 8.25C4.5 8.44891 4.42098 8.63968 4.28033 8.78033C4.13968 8.92098 3.94891 9 3.75 9ZM17.25 12.75C17.25 14.1424 16.6969 15.4777 15.7123 16.4623C14.7277 17.4469 13.3924 18 12 18C10.6076 18 9.27226 17.4469 8.28769 16.4623C7.30312 15.4777 6.75 14.1424 6.75 12.75C6.75 11.3576 7.30312 10.0223 8.28769 9.03769C9.27226 8.05312 10.6076 7.5 12 7.5C13.3924 7.5 14.7277 8.05312 15.7123 9.03769C16.6969 10.0223 17.25 11.3576 17.25 12.75Z"
-      fill="white"
-    />
-  </svg>
-);
-
-const FileIconSvg = () => (
-  <svg
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="#fff"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <g clipPath="url(#clip0_952_64107)">
-      <path
-        d="M13.9395 0H6C5.20435 0 4.44129 0.316071 3.87868 0.87868C3.31607 1.44129 3 2.20435 3 3V21C3 21.7956 3.31607 22.5587 3.87868 23.1213C4.44129 23.6839 5.20435 24 6 24H18C18.7956 24 19.5587 23.6839 20.1213 23.1213C20.6839 22.5587 21 21.7956 21 21V7.0605C20.9999 6.66271 20.8418 6.28124 20.5605 6L15 0.4395C14.7188 0.158176 14.3373 8.49561e-05 13.9395 0V0ZM14.25 5.25V2.25L18.75 6.75H15.75C15.3522 6.75 14.9706 6.59196 14.6893 6.31066C14.408 6.02936 14.25 5.64782 14.25 5.25ZM9.75 8.25V9.201L10.5735 8.7255C10.6588 8.67548 10.7532 8.64283 10.8512 8.62943C10.9492 8.61603 11.0489 8.62214 11.1445 8.64743C11.2401 8.67271 11.3298 8.71665 11.4084 8.77674C11.487 8.83682 11.5529 8.91185 11.6023 8.9975C11.6518 9.08316 11.6838 9.17776 11.6966 9.27584C11.7093 9.37393 11.7025 9.47357 11.6766 9.56902C11.6507 9.66447 11.6062 9.75386 11.5456 9.83203C11.4849 9.9102 11.4095 9.97561 11.3235 10.0245L10.5 10.5L11.3235 10.9755C11.4095 11.0244 11.4849 11.0898 11.5456 11.168C11.6062 11.2461 11.6507 11.3355 11.6766 11.431C11.7025 11.5264 11.7093 11.6261 11.6966 11.7242C11.6838 11.8222 11.6518 11.9168 11.6023 12.0025C11.5529 12.0882 11.487 12.1632 11.4084 12.2233C11.3298 12.2833 11.2401 12.3273 11.1445 12.3526C11.0489 12.3779 10.9492 12.384 10.8512 12.3706C10.7532 12.3572 10.6588 12.3245 10.5735 12.2745L9.75 11.799V12.75C9.75 12.9489 9.67098 13.1397 9.53033 13.2803C9.38968 13.421 9.19891 13.5 9 13.5C8.80109 13.5 8.61032 13.421 8.46967 13.2803C8.32902 13.1397 8.25 12.9489 8.25 12.75V11.799L7.4265 12.2745C7.34117 12.3245 7.24679 12.3572 7.14879 12.3706C7.0508 12.384 6.95111 12.3779 6.85549 12.3526C6.75987 12.3273 6.67019 12.2833 6.59162 12.2233C6.51304 12.1632 6.44713 12.0882 6.39768 12.0025C6.34822 11.9168 6.3162 11.8222 6.30345 11.7242C6.2907 11.6261 6.29748 11.5264 6.32339 11.431C6.34931 11.3355 6.39385 11.2461 6.45445 11.168C6.51505 11.0898 6.59052 11.0244 6.6765 10.9755L7.5 10.5L6.6765 10.0245C6.50565 9.92434 6.38134 9.76066 6.33072 9.56919C6.2801 9.37772 6.30727 9.174 6.40629 9.00248C6.50532 8.83096 6.66817 8.70558 6.8593 8.65369C7.05043 8.6018 7.25433 8.62761 7.4265 8.7255L8.25 9.201V8.25C8.25 8.05109 8.32902 7.86032 8.46967 7.71967C8.61032 7.57902 8.80109 7.5 9 7.5C9.19891 7.5 9.38968 7.57902 9.53033 7.71967C9.67098 7.86032 9.75 8.05109 9.75 8.25ZM6.75 15H14.25C14.4489 15 14.6397 15.079 14.7803 15.2197C14.921 15.3603 15 15.5511 15 15.75C15 15.9489 14.921 16.1397 14.7803 16.2803C14.6397 16.421 14.4489 16.5 14.25 16.5H6.75C6.55109 16.5 6.36032 16.421 6.21967 16.2803C6.07902 16.1397 6 15.9489 6 15.75C6 15.5511 6.07902 15.3603 6.21967 15.2197C6.36032 15.079 6.55109 15 6.75 15ZM6.75 18H14.25C14.4489 18 14.6397 18.079 14.7803 18.2197C14.921 18.3603 15 18.5511 15 18.75C15 18.9489 14.921 19.1397 14.7803 19.2803C14.6397 19.421 14.4489 19.5 14.25 19.5H6.75C6.55109 19.5 6.36032 19.421 6.21967 19.2803C6.07902 19.1397 6 18.9489 6 18.75C6 18.5511 6.07902 18.3603 6.21967 18.2197C6.36032 18.079 6.55109 18 6.75 18Z"
-        fill="white"
-      />
-    </g>
-    <defs>
-      <clipPath id="clip0_952_64107">
-        <rect width="24" height="24" fill="white" />
-      </clipPath>
-    </defs>
-  </svg>
-);
-
-const ErrorContainer = styled.div`
-  position: relative;
-  top: 0;
-  padding-top: 4px;
-  padding-bottom: 4px;
-  padding-left: 8px;
-  display: flex;
-  width: 206px;
-  color: #dc3545;
-  font-family: Helvetica Neue;
-  font-size: 14px;
-  font-style: normal;
-  font-weight: 400;
-  line-height: 150%;
-  background-color: #25252a;
-  border-radius: 2px;
-`;
-
 export const ActionsWrapper = styled.div`
   position: absolute;
   right: 24px;
@@ -343,9 +354,20 @@ export const ActionsWrapper = styled.div`
   flex-shrink: 0;
 `;
 
+const AttachmentPreviewContainer = styled.div`
+  position: absolute;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  right: 24px;
+  top: 32px;
+`;
+
 interface MessageInputProps {
   selectedChat: string;
-  sendMessage: (message: string) => void;
+  contextId?: string;
+  sendMessage: (payload: SendMessagePayload) => Promise<void> | void;
   resetImage: () => void;
   openThread: MessageWithReactions | undefined;
   isThread: boolean;
@@ -356,6 +378,7 @@ interface MessageInputProps {
 
 export default function MessageInput({
   selectedChat,
+  contextId,
   sendMessage,
   resetImage,
   openThread,
@@ -367,13 +390,88 @@ export default function MessageInput({
   const [canWriteMessage, setCanWriteMessage] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [message, setMessage] = useState<MessageWithReactions | null>(null);
-  const [uploadedFile, setUploadedFile] = useState<ChatFile | null>(null);
-  const [uploadedImage, setUploadedImage] = useState<ChatFile | null>(null);
+  const [uploadedFileState, setUploadedFileState] = useState<ChatFile | null>(
+    null
+  );
+  const [uploadedImageState, setUploadedImageState] = useState<ChatFile | null>(
+    null
+  );
+  const uploadedFile = uploadedFileState;
+  const uploadedImage = uploadedImageState;
+  const setUploadedFile = useCallback((file: ChatFile | null) => {
+    setUploadedFileState((prev) => {
+      if (prev?.previewUrl) {
+        URL.revokeObjectURL(prev.previewUrl);
+      }
+      return file;
+    });
+  }, []);
+  const setUploadedImage = useCallback((file: ChatFile | null) => {
+    setUploadedImageState((prev) => {
+      if (prev?.previewUrl) {
+        URL.revokeObjectURL(prev.previewUrl);
+      }
+      return file;
+    });
+  }, []);
   const [emojiSelectorOpen, setEmojiSelectorOpen] = useState(false);
-  const [error, setError] = useState("");
   const placeholderPosition = "-10px";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const editorRef = useRef<any>(null);
+  const { addToast } = useToast();
+
+  const deleteBlobById = useCallback(async (blobId?: string) => {
+    if (!blobId) {
+      return;
+    }
+
+    try {
+      const response = await blobClient.deleteBlob(blobId);
+      if (response?.error) {
+        console.error("MessageInput", "Failed to delete blob", response.error);
+      }
+    } catch (error) {
+      console.error("MessageInput", "Failed to delete blob", error);
+    }
+  }, []);
+
+  const handleUploadError = useCallback(
+    (message: string | null) => {
+      if (!message) {
+        return;
+      }
+
+      addToast({
+        title: "Upload error",
+        message: `Error while uploading file: ${message}`,
+        type: "channel",
+        duration: 5000,
+      });
+    },
+    [addToast]
+  );
+
+  const handleReplaceImage = useCallback(
+    async (previous: ChatFile | null) => {
+      if (!previous) {
+        return;
+      }
+      await deleteBlobById(previous.file.blobId);
+      setUploadedImage(null);
+    },
+    [deleteBlobById, setUploadedImage]
+  );
+
+  const handleReplaceFile = useCallback(
+    async (previous: ChatFile | null) => {
+      if (!previous) {
+        return;
+      }
+      await deleteBlobById(previous.file.blobId);
+      setUploadedFile(null);
+    },
+    [deleteBlobById, setUploadedFile]
+  );
 
   // Memoize placeholder text to avoid recalculation
   const placeholderText = useMemo(() => {
@@ -394,108 +492,198 @@ export default function MessageInput({
     return `Type message in ${chatName}`;
   }, [openThread, isThread, selectedChat]);
 
+  const resolvedContextId = useMemo(() => {
+    if (contextId && contextId.length > 0) {
+      return contextId;
+    }
+    return getContextId() ?? getDmContextId() ?? "";
+  }, [contextId]);
+
   const handleMessageChange = useCallback(
     (mesage: MessageWithReactions | null) => {
       setMessage(mesage);
     },
-    [],
+    []
   );
 
   const handleEmojiSelected = useCallback((emoji: string) => {
     editorRef.current?.insertContent(emoji);
   }, []);
 
+  const toggleEmojiPopup = useCallback(() => {
+    setEmojiSelectorOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        setShowUpload(false);
+      }
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     setMessage(null);
     setEmojiSelectorOpen(false);
+    setShowUpload(false);
+    clearUploadedFile();
+    clearUploadedImage();
   }, [selectedChat]);
 
-  const resetFile = useCallback(() => {
+  const removeUploadedFile = useCallback(() => {
+    if (uploadedFile?.file.blobId) {
+      void deleteBlobById(uploadedFile.file.blobId);
+    }
     setUploadedFile(null);
     setShowUpload(false);
-  }, []);
+  }, [deleteBlobById, setShowUpload, uploadedFile]);
 
-  const resetImageLocal = useCallback(() => {
+  const removeUploadedImage = useCallback(() => {
+    if (uploadedImage?.file.blobId) {
+      void deleteBlobById(uploadedImage.file.blobId);
+    }
     setUploadedImage(null);
     setShowUpload(false);
-  }, []);
+    resetImage();
+  }, [deleteBlobById, resetImage, setShowUpload, uploadedImage]);
 
-  const isActive =
-    (message && !emptyText.test(markdownParser(message?.text ?? "", []))) ||
-    uploadedImage ||
-    uploadedFile;
+  const clearUploadedFile = useCallback(() => {
+    setUploadedFile(null);
+  }, [setUploadedFile]);
+
+  const clearUploadedImage = useCallback(() => {
+    setUploadedImage(null);
+  }, [setUploadedImage]);
+
+  useEffect(() => {
+    return () => {
+      if (uploadedFile?.previewUrl) {
+        URL.revokeObjectURL(uploadedFile.previewUrl);
+      }
+      if (uploadedImage?.previewUrl) {
+        URL.revokeObjectURL(uploadedImage.previewUrl);
+      }
+    };
+  }, [uploadedFile, uploadedImage]);
+
+  const hasText = useMemo(() => {
+    const content = message?.text ?? "";
+    if (!content) {
+      return false;
+    }
+    return !emptyText.test(markdownParser(content, []));
+  }, [message]);
+
+  const hasAttachments = Boolean(uploadedImage || uploadedFile);
+
+  const isActive = hasText;
+
+  const buildAttachmentDraft = useCallback(
+    (chatFile: ChatFile | null): AttachmentDraft | null => {
+      if (!chatFile?.file?.blobId) {
+        return null;
+      }
+
+      return {
+        blobId: chatFile.file.blobId,
+        name: chatFile.file.name,
+        size: chatFile.file.size,
+        mimeType: chatFile.file.type,
+        previewUrl: chatFile.previewUrl,
+        uploadedAt: chatFile.file.uploadedAt,
+      };
+    },
+    []
+  );
+
+  const sendPayload = useCallback(
+    async (content: string) => {
+      const rawContent = content ?? "";
+      const fileDraft = buildAttachmentDraft(uploadedFile);
+      const imageDraft = buildAttachmentDraft(uploadedImage);
+
+      const isEmptyContent =
+        !rawContent ||
+        rawContent.trim() === "" ||
+        rawContent === "<p></p>" ||
+        rawContent === "<p><br></p>" ||
+        rawContent
+          .replace(/<p><\/p>/g, "")
+          .replace(/<p><br><\/p>/g, "")
+          .trim() === "" ||
+        emptyText.test(markdownParser(rawContent, []));
+
+      if (isEmptyContent) {
+        handleMessageChange(null);
+        return;
+      }
+
+      let tagList: string[] = [];
+      try {
+        const channelUsers: ResponseData<Map<string, string>> =
+          await new ClientApiDataSource().getChannelMembers({
+            channel: { name: selectedChat },
+          });
+        if (channelUsers.data) {
+          tagList = extractUsernames(channelUsers.data);
+        }
+      } catch (error) {
+        console.error("MessageInput", "Failed to fetch channel members", error);
+      }
+
+      const payload: SendMessagePayload = {
+        text: markdownParser(rawContent ?? "", tagList),
+        files: fileDraft ? [fileDraft] : [],
+        images: imageDraft ? [imageDraft] : [],
+      };
+
+      try {
+        await sendMessage(payload);
+        clearUploadedImage();
+        clearUploadedFile();
+        setShowUpload(false);
+        setEmojiSelectorOpen(false);
+        handleMessageChange(null);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to send message";
+        addToast({
+          title: "Message error",
+          message,
+          type: "channel",
+          duration: 5000,
+        });
+      }
+    },
+    [
+      buildAttachmentDraft,
+      uploadedFile,
+      uploadedImage,
+      selectedChat,
+      sendMessage,
+      clearUploadedImage,
+      clearUploadedFile,
+      setShowUpload,
+      setEmojiSelectorOpen,
+      handleMessageChange,
+      addToast,
+    ]
+  );
 
   const handleSendMessage = async () => {
-    if (
-      (uploadedFile && !uploadedFile.file.cid) ||
-      (uploadedImage && !uploadedImage.file.cid)
-    ) {
-      return;
-    }
-
-    const content = message?.text ?? "";
-    const isEmptyContent =
-      !content ||
-      content.trim() === "" ||
-      content === "<p></p>" ||
-      content === "<p><br></p>" ||
-      content
-        .replace(/<p><\/p>/g, "")
-        .replace(/<p><br><\/p>/g, "")
-        .trim() === "" ||
-      emptyText.test(markdownParser(content, []));
-
-    if (isEmptyContent && !uploadedImage && !uploadedFile) {
-      handleMessageChange(null);
-    } else {
-      let tagList: string[] = [];
-      const channelUsers: ResponseData<Map<string, string>> =
-        await new ClientApiDataSource().getChannelMembers({
-          channel: { name: selectedChat },
-        });
-      if (channelUsers.data) {
-        tagList = extractUsernames(channelUsers.data);
-      }
-      sendMessage(markdownParser(message?.text ?? "", tagList));
-      resetImageLocal();
-      resetFile();
-      setShowUpload(false);
-      setEmojiSelectorOpen(false);
-      handleMessageChange(null);
-    }
+    await sendPayload(message?.text ?? "");
   };
 
   const handleSendMessageEnter = async (content: string) => {
-    const isEmptyContent =
-      !content ||
-      content.trim() === "" ||
-      content === "<p></p>" ||
-      content === "<p><br></p>" ||
-      content
-        .replace(/<p><\/p>/g, "")
-        .replace(/<p><br><\/p>/g, "")
-        .trim() === "" ||
-      emptyText.test(markdownParser(content ?? "", []));
-
-    if (isEmptyContent && !uploadedImage && !uploadedFile) {
-      handleMessageChange(null);
-    } else {
-      let tagList: string[] = [];
-      const channelUsers: ResponseData<Map<string, string>> =
-        await new ClientApiDataSource().getChannelMembers({
-          channel: { name: selectedChat },
-        });
-      if (channelUsers.data) {
-        tagList = extractUsernames(channelUsers.data);
-      }
-      sendMessage(markdownParser(content ?? "", tagList));
-      resetImageLocal();
-      resetFile();
-      setShowUpload(false);
-      setEmojiSelectorOpen(false);
-      handleMessageChange(null);
-    }
+    await sendPayload(content ?? "");
   };
+
+  const handleAttachmentUploaded = useCallback(() => {
+    setShowUpload(false);
+  }, [setShowUpload]);
+
+  const toggleUploadPopup = useCallback(() => {
+    setShowUpload((prev) => !prev);
+    setEmojiSelectorOpen(false);
+  }, [setShowUpload, setEmojiSelectorOpen]);
 
   useEffect(() => {
     setCanWriteMessage(false);
@@ -558,7 +746,7 @@ export default function MessageInput({
                             images: [],
                             thread_count: 0,
                             thread_last_timestamp: 0,
-                          },
+                          }
                     );
                   }}
                   onSend={handleSendMessageEnter}
@@ -568,6 +756,26 @@ export default function MessageInput({
                   className="full-width-editor"
                 />
               </EditorWrapper>
+              {hasAttachments && (
+                <AttachmentPreviewContainer>
+                  {uploadedImage && (
+                    <MessageImageField
+                      file={uploadedImage.file}
+                      previewUrl={uploadedImage.previewUrl}
+                      onRemove={removeUploadedImage}
+                      contextId={resolvedContextId}
+                      isInput={true}
+                      containerSize={45}
+                    />
+                  )}
+                  {uploadedFile && (
+                    <MessageFileField
+                      file={uploadedFile.file}
+                      onRemove={removeUploadedFile}
+                    />
+                  )}
+                </AttachmentPreviewContainer>
+              )}
             </FullWidthWrapper>
             <>
               <Placeholder
@@ -585,32 +793,15 @@ export default function MessageInput({
                 {placeholderTextMobile}
               </Placeholder>
             </>
-            {uploadedFile?.file.cid && (
-              <>
-                <MessageFileField
-                  file={uploadedFile.file}
-                  resetFile={resetFile}
-                />
-              </>
-            )}
-            {uploadedImage?.file.cid && (
-              <>
-                <MessageImageField
-                  file={uploadedImage.file}
-                  resetImage={resetImage}
-                />
-              </>
-            )}
           </Wrapper>
           <ActionsWrapper>
-            <div onClick={() => setEmojiSelectorOpen(!emojiSelectorOpen)}>
+            <IconUpload onClick={toggleUploadPopup} />
+            <div onClick={toggleEmojiPopup}>
               <IconEmoji />
             </div>
             <IconSend
               onClick={() => {
-                if (isActive) {
-                  handleSendMessage();
-                }
+                handleSendMessage();
               }}
               isActive={!!isActive}
             />
@@ -620,33 +811,34 @@ export default function MessageInput({
               </EmojiPopupContainer>
             )}
           </ActionsWrapper>
-          {showUpload &&
-            !uploadedFile?.file.cid &&
-            !uploadedImage?.file.cid && (
-              <UploadPopupContainer>
-                {error && <ErrorContainer>{error}</ErrorContainer>}
-                <UploadContainer>
-                  <UploadComponent
-                    uploadedFile={uploadedImage}
-                    setUploadedFile={setUploadedImage}
-                    type={["image/jpeg", "image/png", "image/gif"]}
-                    icon={<ImageIconSvg />}
-                    text="Upload Image"
-                    setError={setError}
-                    key="images-component"
-                  />
-                  <UploadComponent
-                    uploadedFile={uploadedFile}
-                    setUploadedFile={setUploadedFile}
-                    type={["*/*"]}
-                    icon={<FileIconSvg />}
-                    text="Upload File"
-                    setError={setError}
-                    key="files-component"
-                  />
-                </UploadContainer>
-              </UploadPopupContainer>
-            )}
+          {showUpload && (
+            <UploadPopupContainer>
+              <UploadContainer>
+                <UploadComponent
+                  uploadedFile={uploadedImage}
+                  setUploadedFile={setUploadedImage}
+                  type={["image/jpeg", "image/png", "image/gif"]}
+                  icon={<ImageUploadIcon />}
+                  text={uploadedImage ? "Replace Image" : "Upload Image"}
+                  onError={handleUploadError}
+                  onUploaded={handleAttachmentUploaded}
+                  onReplace={handleReplaceImage}
+                  key="images-component"
+                />
+                <UploadComponent
+                  uploadedFile={uploadedFile}
+                  setUploadedFile={setUploadedFile}
+                  type={["*/*"]}
+                  icon={<FileUploadIcon />}
+                  text={uploadedFile ? "Replace File" : "Upload File"}
+                  onError={handleUploadError}
+                  onUploaded={handleAttachmentUploaded}
+                  onReplace={handleReplaceFile}
+                  key="files-component"
+                />
+              </UploadContainer>
+            </UploadPopupContainer>
+          )}
         </Container>
       )}
       {!canWriteMessage && (

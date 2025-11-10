@@ -1,11 +1,12 @@
 import { useLongPress } from "@uidotdev/usehooks";
-import { useEffect, useState, useMemo, memo } from "react";
+import { useEffect, useState, useMemo, memo, useCallback } from "react";
 import styled from "styled-components";
 
 import { MessageActions } from "..";
-import type { AccountData, CurbMessage } from "../types/curbTypes";
-import { ElementPosition, MessageStatus } from "../types/curbTypes";
+import type { AccountData, CurbMessage, CurbFile } from "../types/curbTypes";
+import { ElementPosition } from "../types/curbTypes";
 import { formatTimeAgo } from "../utils";
+import { blobClient } from "@calimero-network/calimero-client";
 
 import { POPUP_POSITION_SWITCH_HEIGHT } from "./AutocompleteList";
 import { Avatar } from "./Avatar";
@@ -14,10 +15,12 @@ import MessageSendingIcon from "./Icons/MessageSendingIcon";
 import MessageSentIcon from "./Icons/MessageSentIcon";
 import MessageEditor from "./MessageEditor";
 import MessageEditorMobile from "./MessageEditorMobile";
-// MessageFileField and MessageImageField removed - using our own versions
+import MessageFileField from "../../../chat/MessageFileField";
+import MessageImageField from "../../../chat/MessageImageField";
 import MessageReactionsField from "./MessageReactionsField";
 import RenderHtml from "./RenderHtml";
 import ReplyContainerButton from "./ReplyContainerButton";
+import type { FileObject } from "../../../types/Common";
 
 const ActionsContainer = styled.div`
   position: absolute;
@@ -214,7 +217,7 @@ const MessageText = styled.div<MessageTextProps>`
 
 const Tick = styled.div`
   padding-right: 2rem;
-  width: 24px
+  width: 24px;
   text-align: right;
   align-self: flex-end;
   display: flex;
@@ -227,6 +230,15 @@ const Tick = styled.div`
   font-style: normal;
   font-weight: 400;
   line-height: 150%;
+`;
+
+const AttachmentsContainer = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 2rem;
+  margin-top: 8px;
+  align-items: flex-end;
 `;
 
 const MessageContentContainer = styled.div`
@@ -317,6 +329,7 @@ interface MessageProps {
   autocompleteAccounts: AccountData[];
   authToken: string | undefined;
   privateIpfsEndpoint: string;
+  contextId?: string;
 }
 
 const Message = (props: MessageProps) => {
@@ -408,6 +421,68 @@ const Message = (props: MessageProps) => {
       text?.includes(`mention-user-${props.accountId}`)
     );
   }, [text, props.accountId]);
+
+  const toFileObject = useCallback(
+    (attachment: CurbFile): FileObject => ({
+      blobId: attachment.ipfs_cid,
+      name: attachment.name ?? "Attachment",
+      size: attachment.size ?? 0,
+      type: attachment.mime_type ?? "application/octet-stream",
+      uploadedAt: attachment.uploaded_at,
+    }),
+    [],
+  );
+
+  const imageAttachments = useMemo(
+    () =>
+      (props.message.images ?? []).map((attachment, index) => ({
+        key: `${attachment.ipfs_cid}-${index}`,
+        file: toFileObject(attachment),
+        previewUrl: attachment.preview_url,
+      })),
+    [props.message.images, toFileObject],
+  );
+
+  const fileAttachments = useMemo(
+    () =>
+      (props.message.files ?? []).map((attachment, index) => ({
+        key: `${attachment.ipfs_cid}-${index}`,
+        attachment,
+        file: toFileObject(attachment),
+      })),
+    [props.message.files, toFileObject],
+  );
+
+  const hasAttachments =
+    imageAttachments.length > 0 || fileAttachments.length > 0;
+
+  const handleFileDownload = useCallback(
+    async (attachment: CurbFile) => {
+      if (!props.contextId || props.contextId.length === 0) {
+        console.warn("Message", "Missing contextId for file download");
+        return;
+      }
+
+      try {
+        const blob = await blobClient.downloadBlob(
+          attachment.ipfs_cid,
+          props.contextId,
+        );
+
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = attachment.name ?? "attachment";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } catch (error) {
+        console.error("Message", "Failed to download file attachment", error);
+      }
+    },
+    [props.contextId],
+  );
 
   useEffect(() => {
     const handleResize = () => {
@@ -533,27 +608,28 @@ const Message = (props: MessageProps) => {
             </Tick>
           </MessageContentContainer>
         )}
-        {/* MessageImageField and MessageFileField components commented out - using versions from chat folder */}
-        {/* {props.message.images.length > 0 && (
-          <MessageImageField
-            images={props.message.images}
-            encryptionKey={props.message.key}
-            nonce={props.message.nonce}
-            authToken={props.authToken}
-            privateIpfsEndpoint={props.privateIpfsEndpoint}
-          />
+        {hasAttachments && (
+          <AttachmentsContainer>
+            {imageAttachments.map(({ key, file, previewUrl }) => (
+              <MessageImageField
+                key={key}
+                file={file}
+                previewUrl={previewUrl}
+                contextId={props.contextId}
+                containerSize={80}
+                isInput={false}
+              />
+            ))}
+            {fileAttachments.map(({ key, file, attachment }) => (
+              <MessageFileField
+                key={key}
+                file={file}
+                truncate={false}
+                onDownload={() => handleFileDownload(attachment)}
+              />
+            ))}
+          </AttachmentsContainer>
         )}
-        {props.message.files.length > 0 && (
-          <div style={{ paddingTop: !!text ? '8px' : '0px' }}>
-            <MessageFileField
-              files={props.message.files}
-              encryptionKey={props.message.key}
-              nonce={props.message.nonce}
-              authToken={props.authToken}
-              privateIpfsEndpoint={props.privateIpfsEndpoint}
-            />
-          </div>
-        )} */}
         {props.message.reactions && (
           <MessageReactionsField
             reactions={props.message.reactions}

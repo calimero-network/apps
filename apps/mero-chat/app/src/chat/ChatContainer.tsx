@@ -4,9 +4,12 @@ import { StorageHelper } from "../utils/storage";
 import { log } from "../utils/logger";
 import type {
   ActiveChat,
+  AttachmentDraft,
   ChatMessagesData,
   ChatMessagesDataWithOlder,
+  CurbFile,
   CurbMessage,
+  SendMessagePayload,
   UpdatedMessages,
 } from "../types/Common";
 import { DMSetupState, MessageStatus } from "../types/Common";
@@ -224,71 +227,67 @@ function ChatContainer({
     [setIsEmojiSelectorVisible]
   );
 
-  const sendMessage = async (message: string, isThread: boolean) => {
+  const sendMessage = async (
+    payload: SendMessagePayload,
+    isThread: boolean,
+  ) => {
+    const messageText = payload.text ?? "";
     log.debug(
       "ChatContainer",
-      `sendMessage called with message: "${message}", isThread: ${isThread}`
-    );
-    log.debug(
-      "ChatContainer",
-      `addOptimisticMessage: ${addOptimisticMessage ? "provided" : "missing"}`
-    );
-    log.debug(
-      "ChatContainer",
-      `addOptimisticThreadMessage: ${addOptimisticThreadMessage ? "provided" : "missing"}`
+      `sendMessage called with payload:${payload}, isThread: ${isThread}`,
     );
     const isDM = activeChatRef.current?.type === "direct_message";
 
-    const result = extractAndAddMentions(message, membersListRef.current);
-
+    const result = extractAndAddMentions(messageText, membersListRef.current);
     const mentions: UserId[] = [...result.userIdMentions];
     const usernames: string[] = [...result.usernameMentions];
 
-    // Add optimistic message immediately (if function is provided)
     const optimisticFunction = isThread
       ? addOptimisticThreadMessage
       : addOptimisticMessage;
-    log.debug(
-      "ChatContainer",
-      `sendMessage called - isThread: ${isThread}, optimisticFunction: ${optimisticFunction ? "provided" : "missing"}`
-    );
+
     const tempId = `temp-${Date.now()}`;
+
+    const buildCurbFiles = (
+      drafts: AttachmentDraft[] | undefined,
+    ): CurbFile[] =>
+      (drafts ?? []).map((draft) => ({
+        name: draft.name,
+        ipfs_cid: draft.blobId,
+        mime_type: draft.mimeType,
+        size: draft.size,
+        uploaded_at: draft.uploadedAt ?? Date.now(),
+        preview_url: draft.previewUrl,
+      }));
+
+    const optimisticFiles = buildCurbFiles(payload.files);
+    const optimisticImages = buildCurbFiles(payload.images);
+
     if (optimisticFunction) {
-      // For DMs, use the DM-specific identity (activeChat.account)
-      // For Channels, use the main identity (getExecutorPublicKey)
       const sender = isDM
         ? activeChatRef.current?.account || getExecutorPublicKey() || ""
         : getExecutorPublicKey() || "";
 
-      
       const optimisticMessage: CurbMessage = {
         id: tempId,
-        text: message,
+        text: messageText,
         nonce: Math.random().toString(36).substring(2, 15),
         key: tempId,
         timestamp: Date.now(),
-        sender: sender,
+        sender,
         senderUsername: StorageHelper.getItem("chat-username") || undefined,
         reactions: {},
         editedOn: undefined,
-        mentions: mentions,
-        files: [],
-        images: [],
+        mentions,
+        files: optimisticFiles,
+        images: optimisticImages,
         editMode: false,
         status: MessageStatus.sent,
         deleted: false,
       };
+
       try {
-        log.debug(
-          "ChatContainer",
-          `Adding optimistic ${isThread ? "thread" : "main"} message:`,
-          optimisticMessage
-        );
         optimisticFunction(optimisticMessage);
-        log.debug(
-          "ChatContainer",
-          `Optimistic ${isThread ? "thread" : "main"} message added successfully`
-        );
       } catch (error) {
         log.error("ChatContainer", "Error adding optimistic message", error);
       }
@@ -297,50 +296,74 @@ function ChatContainer({
     const parentMessageId = isThread
       ? currentOpenThreadRef.current?.key || currentOpenThreadRef.current?.id
       : undefined;
-    if (isThread) {
-      log.debug(
-        "ChatContainer",
-        `Sending thread message with parent_message: ${parentMessageId}`
-      );
-      log.debug("ChatContainer", `currentOpenThreadRef.current:`, {
-        id: currentOpenThreadRef.current?.id,
-        key: currentOpenThreadRef.current?.key,
-        text: currentOpenThreadRef.current?.text,
-      });
-    }
 
     const response = await new ClientApiDataSource().sendMessage({
       group: {
         name: (isDM ? "private_dm" : activeChatRef.current?.name) ?? "",
       },
-      message,
+      message: messageText,
       mentions,
       usernames,
       timestamp: Math.floor(Date.now() / 1000),
       is_dm: isDM,
       dm_identity: activeChatRef.current?.account,
       parent_message: parentMessageId,
+      files:
+        payload.files && payload.files.length > 0
+          ? payload.files.map((attachment) => ({
+              name: attachment.name,
+              blob_id_str: attachment.blobId,
+              mime_type: attachment.mimeType,
+              size: attachment.size,
+            }))
+          : undefined,
+      images:
+        payload.images && payload.images.length > 0
+          ? payload.images.map((attachment) => ({
+              name: attachment.name,
+              blob_id_str: attachment.blobId,
+              mime_type: attachment.mimeType,
+              size: attachment.size,
+            }))
+          : undefined,
     });
 
-    // Update the optimistic message with the real message ID
     if (response.data?.id && optimisticFunction) {
       const realMessageId = response.data.id;
-      // Create updated message with real ID
+      const responseFiles = buildCurbFiles(
+        response.data.files?.map((file) => ({
+          blobId: file.blob_id,
+          name: file.name,
+          mimeType: file.mime_type,
+          size: file.size,
+          uploadedAt: file.uploaded_at,
+        })),
+      );
+      const responseImages = buildCurbFiles(
+        response.data.images?.map((file) => ({
+          blobId: file.blob_id,
+          name: file.name,
+          mimeType: file.mime_type,
+          size: file.size,
+          uploadedAt: file.uploaded_at,
+        })),
+      );
+
       const updatedMessage: CurbMessage = {
         id: realMessageId,
-        text: message,
+        text: messageText,
         nonce: Math.random().toString(36).substring(2, 15),
-        key: realMessageId, // Use real ID as key for React rendering
-        timestamp: Math.floor(Date.now() / 1000) * 1000, // Convert to milliseconds
+        key: realMessageId,
+        timestamp: Math.floor(Date.now() / 1000) * 1000,
         sender: isDM
           ? activeChatRef.current?.account || getExecutorPublicKey() || ""
           : getExecutorPublicKey() || "",
         senderUsername: StorageHelper.getItem("chat-username") || undefined,
         reactions: {},
         editedOn: undefined,
-        mentions: mentions,
-        files: [],
-        images: [],
+        mentions,
+        files: responseFiles.length ? responseFiles : optimisticFiles,
+        images: responseImages.length ? responseImages : optimisticImages,
         editMode: false,
         status: MessageStatus.sent,
         deleted: false,
@@ -361,9 +384,8 @@ function ChatContainer({
       } else {
         setUpdatedMessages(update);
       }
-      // Replace the optimistic message with the real one
+
       optimisticFunction(updatedMessage);
-      console.log(`Updated optimistic message with real ID: ${realMessageId}`);
     }
 
     if (isDM) {
@@ -590,7 +612,7 @@ function ChatContainer({
               activeChat={activeChat}
               updatedMessages={updatedMessages}
               resetImage={() => {}}
-              sendMessage={(message: string) => sendMessage(message, false)}
+              sendMessage={(payload) => sendMessage(payload, false)}
               getIconFromCache={getIconFromCache}
               isThread={false}
               isReadOnly={activeChat.readOnly ?? false}
@@ -622,7 +644,7 @@ function ChatContainer({
                   activeChat={activeChat}
                   updatedMessages={_updatedThreadMessages}
                   resetImage={() => {}}
-                  sendMessage={(message: string) => sendMessage(message, true)}
+                  sendMessage={(payload) => sendMessage(payload, true)}
                   getIconFromCache={getIconFromCache}
                   isThread={true}
                   isReadOnly={activeChat.readOnly ?? false}
@@ -683,7 +705,7 @@ function ChatContainer({
                 activeChat={activeChat}
                 updatedMessages={updatedMessages}
                 resetImage={() => {}}
-                sendMessage={(message: string) => sendMessage(message, false)}
+                sendMessage={(payload) => sendMessage(payload, false)}
                 getIconFromCache={getIconFromCache}
                 isThread={false}
                 isReadOnly={activeChat.readOnly ?? false}
@@ -714,9 +736,7 @@ function ChatContainer({
                     activeChat={activeChat}
                     updatedMessages={_updatedThreadMessages}
                     resetImage={() => {}}
-                    sendMessage={(message: string) =>
-                      sendMessage(message, true)
-                    }
+                  sendMessage={(payload) => sendMessage(payload, true)}
                     getIconFromCache={getIconFromCache}
                     isThread={true}
                     isReadOnly={activeChat.readOnly ?? false}

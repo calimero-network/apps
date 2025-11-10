@@ -1,8 +1,11 @@
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
+use calimero_sdk::serde::de::Error as SerdeDeError;
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, env};
-use calimero_storage::collections::{LwwRegister, Mergeable as MergeableTrait, UnorderedMap, UnorderedSet, Vector};
 use calimero_storage::collections::crdt_meta::MergeError;
+use calimero_storage::collections::{
+    LwwRegister, Mergeable as MergeableTrait, UnorderedMap, UnorderedSet, Vector,
+};
 use types::id;
 mod types;
 use std::collections::HashMap;
@@ -11,12 +14,128 @@ use std::fmt::Write;
 id::define!(pub UserId<32, 44>);
 type MessageId = String;
 
+const BLOB_ID_SIZE: usize = 32;
+const BASE58_ENCODED_MAX_SIZE: usize = 44;
+
+fn encode_blob_id_base58(blob_id_bytes: &[u8; BLOB_ID_SIZE]) -> String {
+    let mut buf = [0u8; BASE58_ENCODED_MAX_SIZE];
+    let len = bs58::encode(blob_id_bytes).onto(&mut buf[..]).unwrap();
+    std::str::from_utf8(&buf[..len]).unwrap().to_owned()
+}
+
+fn parse_blob_id_base58(blob_id_str: &str) -> Result<[u8; BLOB_ID_SIZE], String> {
+    match bs58::decode(blob_id_str).into_vec() {
+        Ok(bytes) if bytes.len() == BLOB_ID_SIZE => {
+            let mut blob_id = [0u8; BLOB_ID_SIZE];
+            blob_id.copy_from_slice(&bytes);
+            Ok(blob_id)
+        }
+        Ok(bytes) => Err(format!(
+            "Invalid blob ID length: expected {} bytes, got {}",
+            BLOB_ID_SIZE,
+            bytes.len()
+        )),
+        Err(e) => Err(format!("Failed to decode blob ID '{blob_id_str}': {e}")),
+    }
+}
+
+fn serialize_blob_id_bytes<S>(
+    blob_id_bytes: &[u8; BLOB_ID_SIZE],
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: calimero_sdk::serde::Serializer,
+{
+    let safe_string = encode_blob_id_base58(blob_id_bytes);
+    serializer.serialize_str(&safe_string)
+}
+
+fn deserialize_blob_id_bytes<'de, D>(deserializer: D) -> Result<[u8; BLOB_ID_SIZE], D::Error>
+where
+    D: calimero_sdk::serde::Deserializer<'de>,
+{
+    let blob_id_str = <String as calimero_sdk::serde::Deserialize>::deserialize(deserializer)?;
+    match bs58::decode(&blob_id_str).into_vec() {
+        Ok(bytes) if bytes.len() == BLOB_ID_SIZE => {
+            let mut blob_id = [0u8; BLOB_ID_SIZE];
+            blob_id.copy_from_slice(&bytes);
+            Ok(blob_id)
+        }
+        Ok(bytes) => Err(SerdeDeError::custom(format!(
+            "Invalid blob ID length: expected {} bytes, got {}",
+            BLOB_ID_SIZE,
+            bytes.len()
+        ))),
+        Err(e) => Err(SerdeDeError::custom(format!(
+            "Failed to decode blob ID '{}': {}",
+            blob_id_str, e
+        ))),
+    }
+}
+
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
 #[serde(crate = "calimero_sdk::serde")]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct MessageSentEvent {
     pub message_id: String,
     pub channel: String,
+}
+
+#[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Attachment {
+    pub name: String,
+    pub mime_type: String,
+    pub size: u64,
+    #[serde(
+        serialize_with = "serialize_blob_id_bytes",
+        deserialize_with = "deserialize_blob_id_bytes"
+    )]
+    pub blob_id: [u8; BLOB_ID_SIZE],
+    pub uploaded_at: u64,
+}
+
+impl MergeableTrait for Attachment {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        if other.uploaded_at > self.uploaded_at {
+            *self = other.clone();
+        }
+        Ok(())
+    }
+}
+
+impl Attachment {
+    fn to_public(&self) -> AttachmentPublic {
+        AttachmentPublic {
+            name: self.name.clone(),
+            mime_type: self.mime_type.clone(),
+            size: self.size,
+            blob_id: encode_blob_id_base58(&self.blob_id),
+            uploaded_at: self.uploaded_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct AttachmentPublic {
+    pub name: String,
+    pub mime_type: String,
+    pub size: u64,
+    pub blob_id: String,
+    pub uploaded_at: u64,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct AttachmentInput {
+    pub name: String,
+    pub mime_type: String,
+    pub size: u64,
+    pub blob_id_str: String,
 }
 
 #[app::event]
@@ -46,6 +165,8 @@ pub struct Message {
     pub sender_username: LwwRegister<String>,
     pub mentions: UnorderedSet<UserId>,
     pub mentions_usernames: Vector<LwwRegister<String>>,
+    pub files: Vector<Attachment>,
+    pub images: Vector<Attachment>,
     pub id: LwwRegister<MessageId>,
     pub text: LwwRegister<String>,
     pub edited_on: Option<LwwRegister<u64>>,
@@ -61,6 +182,8 @@ impl MergeableTrait for Message {
         MergeableTrait::merge(&mut self.text, &other.text)?;
         MergeableTrait::merge(&mut self.mentions, &other.mentions)?;
         MergeableTrait::merge(&mut self.mentions_usernames, &other.mentions_usernames)?;
+        MergeableTrait::merge(&mut self.files, &other.files)?;
+        MergeableTrait::merge(&mut self.images, &other.images)?;
         if let Some(ref b) = other.edited_on {
             if let Some(ref mut a) = self.edited_on {
                 MergeableTrait::merge(a, b)?;
@@ -106,6 +229,24 @@ impl Clone for Message {
                 }
                 new_vec
             },
+            files: {
+                let mut new_vec = Vector::new();
+                if let Ok(iter) = self.files.iter() {
+                    for attachment in iter {
+                        let _ = new_vec.push(attachment.clone());
+                    }
+                }
+                new_vec
+            },
+            images: {
+                let mut new_vec = Vector::new();
+                if let Ok(iter) = self.images.iter() {
+                    for attachment in iter {
+                        let _ = new_vec.push(attachment.clone());
+                    }
+                }
+                new_vec
+            },
             id: self.id.clone(),
             text: self.text.clone(),
             edited_on: self.edited_on.clone(),
@@ -122,11 +263,11 @@ impl Serialize for Message {
         S: calimero_sdk::serde::Serializer,
     {
         use calimero_sdk::serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("Message", 10)?;
+        let mut state = serializer.serialize_struct("Message", 12)?;
         state.serialize_field("timestamp", &*self.timestamp)?;
         state.serialize_field("sender", &self.sender)?;
         state.serialize_field("sender_username", self.sender_username.get())?;
-        
+
         // Convert UnorderedSet to Vec
         let mentions_vec: Vec<UserId> = if let Ok(iter) = self.mentions.iter() {
             iter.collect()
@@ -134,7 +275,7 @@ impl Serialize for Message {
             Vec::new()
         };
         state.serialize_field("mentions", &mentions_vec)?;
-        
+
         // Convert Vector<LwwRegister<String>> to Vec<String>
         let mentions_usernames_vec: Vec<String> = if let Ok(iter) = self.mentions_usernames.iter() {
             iter.map(|r| r.get().clone()).collect()
@@ -142,7 +283,11 @@ impl Serialize for Message {
             Vec::new()
         };
         state.serialize_field("mentions_usernames", &mentions_usernames_vec)?;
-        
+        let files_vec = attachments_vector_to_public(&self.files);
+        state.serialize_field("files", &files_vec)?;
+        let images_vec = attachments_vector_to_public(&self.images);
+        state.serialize_field("images", &images_vec)?;
+
         state.serialize_field("id", self.id.get())?;
         state.serialize_field("text", self.text.get())?;
         state.serialize_field("edited_on", &self.edited_on.as_ref().map(|r| **r))?;
@@ -161,6 +306,8 @@ pub struct MessageWithReactions {
     pub sender_username: String,
     pub mentions: Vec<UserId>,
     pub mentions_usernames: Vec<String>,
+    pub files: Vec<AttachmentPublic>,
+    pub images: Vec<AttachmentPublic>,
     pub id: MessageId,
     pub text: String,
     pub edited_on: Option<u64>,
@@ -169,6 +316,50 @@ pub struct MessageWithReactions {
     pub thread_count: u32,
     pub thread_last_timestamp: u64,
     pub group: String,
+}
+
+fn attachments_vector_to_public(vector: &Vector<Attachment>) -> Vec<AttachmentPublic> {
+    let mut attachments = Vec::new();
+    if let Ok(iter) = vector.iter() {
+        for attachment in iter {
+            attachments.push(attachment.to_public());
+        }
+    }
+    attachments
+}
+
+fn attachment_inputs_to_vector(
+    inputs: Option<Vec<AttachmentInput>>,
+    context_id: &[u8; 32],
+) -> Result<Vector<Attachment>, String> {
+    let mut vector = Vector::new();
+
+    if let Some(attachment_inputs) = inputs {
+        for attachment_input in attachment_inputs {
+            let blob_id = parse_blob_id_base58(&attachment_input.blob_id_str)?;
+
+            if !env::blob_announce_to_context(&blob_id, context_id) {
+                let context_b58 = encode_blob_id_base58(context_id);
+                app::log!(
+                    "Warning: failed to announce blob {} to context {}",
+                    attachment_input.blob_id_str,
+                    context_b58
+                );
+            }
+
+            let attachment = Attachment {
+                name: attachment_input.name,
+                mime_type: attachment_input.mime_type,
+                size: attachment_input.size,
+                blob_id,
+                uploaded_at: env::time_now(),
+            };
+
+            let _ = vector.push(attachment);
+        }
+    }
+
+    Ok(vector)
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, PartialEq, Eq, Clone)]
@@ -180,11 +371,7 @@ pub enum ChannelType {
     Default,
 }
 
-#[derive(
-    BorshDeserialize,
-    BorshSerialize,
-    Clone,
-)]
+#[derive(BorshDeserialize, BorshSerialize, Clone)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct Channel {
     pub name: LwwRegister<String>,
@@ -221,7 +408,7 @@ impl<'de> Deserialize<'de> for Channel {
         struct ChannelHelper {
             name: String,
         }
-        
+
         let helper = ChannelHelper::deserialize(deserializer)?;
         Ok(Channel {
             name: LwwRegister::new(helper.name),
@@ -278,7 +465,9 @@ impl MergeableTrait for ChannelMetadata {
         MergeableTrait::merge(&mut self.read_only, &other.read_only)?;
         MergeableTrait::merge(&mut self.moderators, &other.moderators)?;
         MergeableTrait::merge(&mut self.links_allowed, &other.links_allowed)?;
-        if let (Some(ref mut a), Some(ref b)) = (&mut self.created_by_username, &other.created_by_username) {
+        if let (Some(ref mut a), Some(ref b)) =
+            (&mut self.created_by_username, &other.created_by_username)
+        {
             MergeableTrait::merge(a, b)?;
         } else if other.created_by_username.is_some() {
             self.created_by_username = other.created_by_username.clone();
@@ -636,7 +825,9 @@ impl CurbChat {
         }
 
         let _ = self.members.insert(executor_id);
-        let _ = self.member_usernames.insert(executor_id, LwwRegister::new(username));
+        let _ = self
+            .member_usernames
+            .insert(executor_id, LwwRegister::new(username));
 
         let mut user_unread_channels = UnorderedMap::new();
 
@@ -654,7 +845,9 @@ impl CurbChat {
 
                     let unread_info = UserChannelUnread {
                         last_read_timestamp: LwwRegister::new(0),
-                        unread_count: LwwRegister::new(channel_info.messages.len().unwrap_or(0) as u32),
+                        unread_count: LwwRegister::new(
+                            channel_info.messages.len().unwrap_or(0) as u32
+                        ),
                     };
                     let _ = user_unread_channels.insert(channel_clone, unread_info);
                 }
@@ -910,7 +1103,9 @@ impl CurbChat {
                         },
                     };
 
-                    channel_unread.unread_count.set(*channel_unread.unread_count + 1);
+                    channel_unread
+                        .unread_count
+                        .set(*channel_unread.unread_count + 1);
 
                     let _ = user_unread.insert(channel.clone(), channel_unread);
                     let _ = self
@@ -1113,7 +1308,9 @@ impl CurbChat {
             meta: ChannelMetadata {
                 created_at: LwwRegister::new(created_at),
                 created_by: executor_id,
-                created_by_username: self.member_usernames.get(&executor_id)
+                created_by_username: self
+                    .member_usernames
+                    .get(&executor_id)
                     .ok()
                     .flatten()
                     .map(|u| LwwRegister::new(u.get().clone())),
@@ -1162,7 +1359,12 @@ impl CurbChat {
     }
 
     pub fn get_username(&self, user_id: UserId) -> String {
-        self.member_usernames.get(&user_id).unwrap().unwrap().get().clone()
+        self.member_usernames
+            .get(&user_id)
+            .unwrap()
+            .unwrap()
+            .get()
+            .clone()
     }
 
     pub fn get_chat_members(&self) -> Vec<UserId> {
@@ -1511,6 +1713,8 @@ impl CurbChat {
         parent_message: Option<MessageId>,
         timestamp: u64,
         sender_username: String,
+        files: Option<Vec<AttachmentInput>>,
+        images: Option<Vec<AttachmentInput>>,
     ) -> app::Result<Message, String> {
         let executor_id = self.get_executor_id();
         let sender_username = match self.member_usernames.get(&executor_id) {
@@ -1518,6 +1722,10 @@ impl CurbChat {
             _ => sender_username,
         };
         let message_id = self.get_message_id(&executor_id, &group, &message, timestamp);
+        let current_context = env::context_id();
+
+        let files_vector = attachment_inputs_to_vector(files, &current_context)?;
+        let images_vector = attachment_inputs_to_vector(images, &current_context)?;
 
         let mut mentions_set = UnorderedSet::new();
         for m in mentions.clone() {
@@ -1533,6 +1741,8 @@ impl CurbChat {
             sender_username: LwwRegister::new(sender_username),
             mentions: mentions_set,
             mentions_usernames: mentions_usernames_vec,
+            files: files_vector,
+            images: images_vector,
             id: LwwRegister::new(message_id.clone()),
             text: LwwRegister::new(message),
             deleted: None,
@@ -1674,12 +1884,15 @@ impl CurbChat {
                         } else {
                             Vec::new()
                         };
-                        let mentions_usernames_vec: Vec<String> = if let Ok(iter) = message.mentions_usernames.iter() {
-                            iter.map(|r| r.get().clone()).collect()
-                        } else {
-                            Vec::new()
-                        };
-                        
+                        let mentions_usernames_vec: Vec<String> =
+                            if let Ok(iter) = message.mentions_usernames.iter() {
+                                iter.map(|r| r.get().clone()).collect()
+                            } else {
+                                Vec::new()
+                            };
+                        let files_vec = attachments_vector_to_public(&message.files);
+                        let images_vec = attachments_vector_to_public(&message.images);
+
                         messages.push(MessageWithReactions {
                             timestamp: *message.timestamp,
                             sender: message.sender.clone(),
@@ -1688,6 +1901,8 @@ impl CurbChat {
                             text: message.text.get().clone(),
                             mentions: mentions_vec,
                             mentions_usernames: mentions_usernames_vec,
+                            files: files_vec,
+                            images: images_vec,
                             reactions,
                             deleted: message.deleted.as_ref().map(|r| **r),
                             edited_on: message.edited_on.as_ref().map(|r| **r),
@@ -1742,7 +1957,7 @@ impl CurbChat {
 
                 for i in start_idx..end_idx {
                     let message = &all_messages[i];
-                     let message_reactions = self.reactions.get(message.id.get());
+                    let message_reactions = self.reactions.get(message.id.get());
 
                     let reactions = match message_reactions {
                         Ok(Some(reactions)) => {
@@ -1789,11 +2004,14 @@ impl CurbChat {
                     } else {
                         Vec::new()
                     };
-                    let mentions_usernames_vec: Vec<String> = if let Ok(iter) = message.mentions_usernames.iter() {
-                        iter.map(|r| r.get().clone()).collect()
-                    } else {
-                        Vec::new()
-                    };
+                    let mentions_usernames_vec: Vec<String> =
+                        if let Ok(iter) = message.mentions_usernames.iter() {
+                            iter.map(|r| r.get().clone()).collect()
+                        } else {
+                            Vec::new()
+                        };
+                    let files_vec = attachments_vector_to_public(&message.files);
+                    let images_vec = attachments_vector_to_public(&message.images);
 
                     messages.push(MessageWithReactions {
                         timestamp: *message.timestamp,
@@ -1803,8 +2021,10 @@ impl CurbChat {
                         text: message.text.get().clone(),
                         mentions: mentions_vec,
                         mentions_usernames: mentions_usernames_vec,
+                        files: files_vec,
+                        images: images_vec,
                         reactions,
-                         deleted: message.deleted.as_ref().map(|r| **r),
+                        deleted: message.deleted.as_ref().map(|r| **r),
                         edited_on: message.edited_on.as_ref().map(|r| **r),
                         thread_count: threads_count as u32,
                         thread_last_timestamp: last_timestamp,
@@ -1972,9 +2192,9 @@ impl CurbChat {
                         }));
                     } else {
                         app::emit!(Event::MessageSent(MessageSentEvent {
-                        message_id: msg.id.get().clone(),
-                        channel: group.name.get().clone(),
-                    }));
+                            message_id: msg.id.get().clone(),
+                            channel: group.name.get().clone(),
+                        }));
                     }
                     Ok(msg)
                 }
@@ -2047,7 +2267,7 @@ impl CurbChat {
                     channel: group.name.get().clone(),
                 }));
             }
-               
+
             Ok("Thread message deleted successfully".to_string())
         } else {
             let mut channel_info = match self.channels.get(&group) {
@@ -2105,7 +2325,7 @@ impl CurbChat {
                     channel: group.name.get().clone(),
                 }));
             }
-               
+
             Ok("Message deleted successfully".to_string())
         }
     }
@@ -2313,14 +2533,14 @@ impl CurbChat {
             Ok(Some(dms)) => {
                 if let Ok(iter) = dms.iter() {
                     for dm in iter {
-                    if *dm.context_id == context_id {
-                        // Return the own_identity if it exists, otherwise return own_identity_old
-                        return Ok(dm
-                            .own_identity
-                            .clone()
-                            .unwrap_or(dm.own_identity_old.clone()));
+                        if *dm.context_id == context_id {
+                            // Return the own_identity if it exists, otherwise return own_identity_old
+                            return Ok(dm
+                                .own_identity
+                                .clone()
+                                .unwrap_or(dm.own_identity_old.clone()));
+                        }
                     }
-                }
                 }
                 Err("DM context not found".to_string())
             }
@@ -2333,10 +2553,10 @@ impl CurbChat {
         if let Ok(Some(dms)) = self.dm_chats.get(user1) {
             if let Ok(iter) = dms.iter() {
                 for dm in iter {
-                if dm.other_identity_old == *user2 {
-                    return true;
+                    if dm.other_identity_old == *user2 {
+                        return true;
+                    }
                 }
-            }
             }
         }
         false
@@ -2392,7 +2612,8 @@ impl CurbChat {
                     }
 
                     // Remove mentions entry for this channel
-                    if let Ok(Some(mut user_mentions)) = self.user_channel_mentions.get(&member_id) {
+                    if let Ok(Some(mut user_mentions)) = self.user_channel_mentions.get(&member_id)
+                    {
                         let _ = user_mentions.remove(&dm_channel);
                         let _ = self
                             .user_channel_mentions
@@ -2475,12 +2696,12 @@ impl CurbChat {
         if let Ok(Some(dms)) = self.dm_chats.get(&user_id) {
             if let Ok(iter) = dms.iter() {
                 for dm in iter {
-                if dm.other_identity_old == other_user_id
-                    || dm.other_identity_new.as_ref() == Some(&other_user_id)
-                {
-                    return dm.old_hash.get() != dm.new_hash.get();
+                    if dm.other_identity_old == other_user_id
+                        || dm.other_identity_new.as_ref() == Some(&other_user_id)
+                    {
+                        return dm.old_hash.get() != dm.new_hash.get();
+                    }
                 }
-            }
             }
         }
         false
@@ -2500,13 +2721,13 @@ impl CurbChat {
         if let Ok(Some(dms)) = self.dm_chats.get(&executor_id) {
             if let Ok(iter) = dms.iter() {
                 for dm in iter {
-                if dm.other_identity_old == other_user_id
-                    || dm.other_identity_new.as_ref() == Some(&other_user_id)
-                {
-                    let has_new_messages = dm.old_hash.get() != dm.new_hash.get();
-                    return Ok((dm.clone(), has_new_messages));
+                    if dm.other_identity_old == other_user_id
+                        || dm.other_identity_new.as_ref() == Some(&other_user_id)
+                    {
+                        let has_new_messages = dm.old_hash.get() != dm.new_hash.get();
+                        return Ok((dm.clone(), has_new_messages));
+                    }
                 }
-            }
             }
         }
 

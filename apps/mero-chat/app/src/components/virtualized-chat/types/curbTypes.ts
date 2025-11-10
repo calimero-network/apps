@@ -9,6 +9,10 @@ export type CurbString = string;
 export interface CurbFile {
   name: Option<CurbString>;
   ipfs_cid: CurbString;
+  mime_type?: CurbString;
+  size?: U64;
+  uploaded_at?: U64;
+  preview_url?: CurbString;
 }
 
 export enum MessageStatus {

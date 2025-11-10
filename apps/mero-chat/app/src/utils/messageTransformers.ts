@@ -1,6 +1,19 @@
-import type { MessageWithReactions } from "../api/clientApi";
-import type { CurbMessage } from "../types/Common";
+import type {
+  AttachmentResponse,
+  MessageWithReactions,
+} from "../api/clientApi";
+import type { CurbFile, CurbMessage } from "../types/Common";
 import { MessageStatus } from "../types/Common";
+
+function mapAttachmentToCurbFile(attachment: AttachmentResponse): CurbFile {
+  return {
+    name: attachment.name,
+    ipfs_cid: attachment.blob_id,
+    mime_type: attachment.mime_type,
+    size: attachment.size,
+    uploaded_at: attachment.uploaded_at,
+  };
+}
 
 /**
  * Transforms a MessageWithReactions from the API to a CurbMessage for UI display
@@ -21,8 +34,8 @@ export function transformMessageToUI(
     threadLastTimestamp: message.thread_last_timestamp,
     editedOn: message.edited_on,
     mentions: [],
-    files: [],
-    images: [],
+    files: (message.files ?? []).map(mapAttachmentToCurbFile),
+    images: (message.images ?? []).map(mapAttachmentToCurbFile),
     editMode: false,
     status: MessageStatus.sent,
     deleted: message.deleted,

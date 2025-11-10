@@ -660,6 +660,12 @@ export class ClientApiDataSource implements ClientApi {
             parent_message: props.parent_message,
             timestamp: props.timestamp,
             sender_username: "",
+            ...(props.files && props.files.length > 0
+              ? { files: props.files }
+              : {}),
+            ...(props.images && props.images.length > 0
+              ? { images: props.images }
+              : {}),
           },
           executorPublicKey:
             (props.is_dm ? props.dm_identity : getExecutorPublicKey()) || "",

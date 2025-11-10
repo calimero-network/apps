@@ -110,6 +110,14 @@ export interface Message {
   mentions: Map<string, number>;
 }
 
+export interface AttachmentResponse {
+  name: string;
+  mime_type: string;
+  size: number;
+  blob_id: string;
+  uploaded_at: number;
+}
+
 export interface MessageWithReactions {
   id: string;
   text: string;
@@ -118,8 +126,8 @@ export interface MessageWithReactions {
   sender: string;
   reactions: Map<string, string[]>;
   edited_on?: number;
-  files: FileObject[];
-  images: FileObject[];
+  files: AttachmentResponse[];
+  images: AttachmentResponse[];
   thread_count: number;
   thread_last_timestamp: number;
 }
@@ -129,14 +137,31 @@ export interface Thread {
 }
 
 export interface FileObject {
-  cid: string;
+  blobId: string;
   name: string;
   size: number;
   type: string;
+  uploadedAt?: number;
 }
 
 export interface ChatFile {
   file: FileObject;
+  previewUrl?: string;
+}
+
+export interface AttachmentDraft {
+  blobId: string;
+  name: string;
+  size: number;
+  mimeType: string;
+  previewUrl?: string;
+  uploadedAt?: number;
+}
+
+export interface SendMessagePayload {
+  text: string;
+  files: AttachmentDraft[];
+  images: AttachmentDraft[];
 }
 
 // Re-export types from virtualized-chat to maintain backwards compatibility
@@ -163,6 +188,7 @@ export interface MessageRendererProps {
   autocompleteAccounts: AccountData[];
   authToken: string | undefined;
   privateIpfsEndpoint: string;
+  contextId?: string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -4,9 +4,10 @@ import type {
   ChatMessagesData,
   ChatMessagesDataWithOlder,
   MessageRendererProps,
+  SendMessagePayload,
   UpdatedMessages,
 } from "../types/Common";
-import { useEffect, useState, useRef, memo } from "react";
+import { useEffect, useState, useRef, memo, useMemo } from "react";
 import MessageInput from "./MessageInput";
 import {
   messageRenderer,
@@ -14,7 +15,11 @@ import {
   type CurbMessage,
 } from "../components/virtualized-chat";
 import type { ChannelInfo } from "../api/clientApi";
-import { getExecutorPublicKey } from "@calimero-network/calimero-client";
+import {
+  getContextId as getGlobalContextId,
+  getExecutorPublicKey,
+} from "@calimero-network/calimero-client";
+import { getDmContextId } from "../utils/session";
 import EmojiSelectorPopup from "../emojiSelector/EmojiSelectorPopup";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import { scrollbarStyles } from "../styles/scrollbar";
@@ -34,7 +39,7 @@ interface ChatDisplaySplitProps {
   activeChat: ActiveChat;
   updatedMessages: UpdatedMessages[];
   resetImage: () => void;
-  sendMessage: (message: string) => void;
+  sendMessage: (payload: SendMessagePayload) => void | Promise<void>;
   getIconFromCache: (accountId: string) => Promise<string | null>;
   isThread: boolean;
   isReadOnly: boolean;
@@ -289,6 +294,16 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
     }
   }, [incomingMessages, isThread]);
 
+  const resolvedContextId = useMemo(() => {
+    if (activeChat.contextId && activeChat.contextId.length > 0) {
+      return activeChat.contextId;
+    }
+    if (activeChat.type === "direct_message") {
+      return getDmContextId() ?? "";
+    }
+    return getGlobalContextId() ?? "";
+  }, [activeChat.contextId, activeChat.type]);
+
   const renderMessage = (message: CurbMessage, prevMessage?: CurbMessage) => {
     const params: MessageRendererProps = {
       accountId: username,
@@ -322,6 +337,7 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
       autocompleteAccounts: [],
       authToken: undefined,
       privateIpfsEndpoint: "https://ipfs.io",
+      contextId: resolvedContextId,
     };
     return messageRenderer(params)(message, prevMessage);
   };
@@ -367,6 +383,7 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
               ? activeChat.name
               : activeChat.username || ""
           }
+          contextId={resolvedContextId}
           sendMessage={sendMessage}
           resetImage={resetImage}
           // eslint-disable-next-line @typescript-eslint/no-explicit-any

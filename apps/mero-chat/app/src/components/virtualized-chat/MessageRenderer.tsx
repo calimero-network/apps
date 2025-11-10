@@ -23,6 +23,7 @@ interface MessageRendererProps {
   autocompleteAccounts: AccountData[];
   authToken: string | undefined;
   privateIpfsEndpoint: string;
+  contextId?: string;
 }
 
 // Create ImageRepository singleton outside the function to prevent memory leaks
@@ -48,6 +49,7 @@ const messageRender = ({
   autocompleteAccounts,
   authToken,
   privateIpfsEndpoint,
+  contextId,
 }: MessageRendererProps) => {
   // Reuse the same ImageRepository instance to maintain cache and prevent memory leaks
   if (!imageRepositoryInstance) {
@@ -93,6 +95,7 @@ const messageRender = ({
         autocompleteAccounts={autocompleteAccounts}
         authToken={authToken}
         privateIpfsEndpoint={privateIpfsEndpoint}
+        contextId={contextId}
       />
     );
   };
