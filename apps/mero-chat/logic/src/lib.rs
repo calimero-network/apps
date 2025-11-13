@@ -1704,6 +1704,19 @@ impl CurbChat {
         }
     }
 
+    fn message_matches_search(message: &Message, search_term: Option<&str>) -> bool {
+        match search_term {
+            Some(term) => {
+                let message_text = message.text.get();
+                if message_text.to_lowercase().contains(term) {
+                    return true;
+                }
+                message.sender_username.get().to_lowercase().contains(term)
+            }
+            None => true,
+        }
+    }
+
     pub fn send_message(
         &mut self,
         group: Channel,
@@ -1802,8 +1815,10 @@ impl CurbChat {
         parent_message: Option<MessageId>,
         limit: Option<usize>,
         offset: Option<usize>,
+        search_term: Option<String>,
     ) -> app::Result<FullMessageResponse, String> {
         let executor_id = self.get_executor_id();
+        let normalized_search = search_term.map(|term| term.to_lowercase());
 
         let members = match self.channel_members.get(&group) {
             Ok(Some(members)) => members,
@@ -1827,8 +1842,6 @@ impl CurbChat {
             };
 
             let total_messages = thread_messages.len().unwrap_or(0);
-            let limit = limit.unwrap_or(total_messages);
-            let offset = offset.unwrap_or(0);
 
             if total_messages == 0 {
                 return Ok(FullMessageResponse {
@@ -1838,125 +1851,12 @@ impl CurbChat {
                 });
             }
 
-            let mut messages: Vec<MessageWithReactions> = Vec::new();
+            let mut filtered_messages: Vec<MessageWithReactions> = Vec::new();
             if let Ok(iter) = thread_messages.iter() {
-                let all_messages: Vec<_> = iter.collect();
-
-                if !all_messages.is_empty() {
-                    let total_len = all_messages.len();
-                    if offset >= total_len {
-                        return Ok(FullMessageResponse {
-                            total_count: total_messages as u32,
-                            messages: Vec::new(),
-                            start_position: offset as u32,
-                        });
+                for message in iter {
+                    if !Self::message_matches_search(&message, normalized_search.as_deref()) {
+                        continue;
                     }
-
-                    let end_idx = total_len - offset;
-                    let start_idx = if end_idx > limit { end_idx - limit } else { 0 };
-
-                    for i in start_idx..end_idx {
-                        let message = &all_messages[i];
-                        let message_reactions = self.reactions.get(message.id.get());
-
-                        let reactions = match message_reactions {
-                            Ok(Some(reactions)) => {
-                                let mut hashmap = HashMap::new();
-                                if let Ok(entries) = reactions.entries() {
-                                    for (emoji, users) in entries {
-                                        let mut user_vec = Vec::new();
-                                        if let Ok(iter) = users.iter() {
-                                            for user in iter {
-                                                user_vec.push(user.clone());
-                                            }
-                                        }
-                                        hashmap.insert(emoji, user_vec);
-                                    }
-                                }
-                                Some(hashmap)
-                            }
-                            _ => None,
-                        };
-
-                        // Convert mentions sets/vectors to vecs for API response
-                        let mentions_vec: Vec<UserId> = if let Ok(iter) = message.mentions.iter() {
-                            iter.collect()
-                        } else {
-                            Vec::new()
-                        };
-                        let mentions_usernames_vec: Vec<String> =
-                            if let Ok(iter) = message.mentions_usernames.iter() {
-                                iter.map(|r| r.get().clone()).collect()
-                            } else {
-                                Vec::new()
-                            };
-                        let files_vec = attachments_vector_to_public(&message.files);
-                        let images_vec = attachments_vector_to_public(&message.images);
-
-                        messages.push(MessageWithReactions {
-                            timestamp: *message.timestamp,
-                            sender: message.sender.clone(),
-                            sender_username: message.sender_username.get().clone(),
-                            id: message.id.get().clone(),
-                            text: message.text.get().clone(),
-                            mentions: mentions_vec,
-                            mentions_usernames: mentions_usernames_vec,
-                            files: files_vec,
-                            images: images_vec,
-                            reactions,
-                            deleted: message.deleted.as_ref().map(|r| **r),
-                            edited_on: message.edited_on.as_ref().map(|r| **r),
-                            thread_count: 0,
-                            thread_last_timestamp: 0,
-                            group: message.group.get().clone(),
-                        });
-                    }
-                }
-            }
-
-            return Ok(FullMessageResponse {
-                total_count: total_messages as u32,
-                messages: messages,
-                start_position: offset as u32,
-            });
-        }
-
-        let channel_info = match self.channels.get(&group) {
-            Ok(Some(info)) => info,
-            _ => return Err("Channel not found".to_string()),
-        };
-
-        let total_messages = channel_info.messages.len().unwrap_or(0);
-        let limit = limit.unwrap_or(total_messages);
-        let offset = offset.unwrap_or(0);
-
-        if total_messages == 0 {
-            return Ok(FullMessageResponse {
-                total_count: 0,
-                messages: Vec::new(),
-                start_position: 0,
-            });
-        }
-
-        let mut messages: Vec<MessageWithReactions> = Vec::new();
-        if let Ok(iter) = channel_info.messages.iter() {
-            let all_messages: Vec<_> = iter.collect();
-
-            if !all_messages.is_empty() {
-                let total_len = all_messages.len();
-                if offset >= total_len {
-                    return Ok(FullMessageResponse {
-                        total_count: total_messages as u32,
-                        messages: Vec::new(),
-                        start_position: offset as u32,
-                    });
-                }
-
-                let end_idx = total_len - offset;
-                let start_idx = if end_idx > limit { end_idx - limit } else { 0 };
-
-                for i in start_idx..end_idx {
-                    let message = &all_messages[i];
                     let message_reactions = self.reactions.get(message.id.get());
 
                     let reactions = match message_reactions {
@@ -1978,26 +1878,6 @@ impl CurbChat {
                         _ => None,
                     };
 
-                    let threads_count = match self.threads.get(message.id.get()) {
-                        Ok(Some(messages)) => messages.len().unwrap_or(0),
-                        _ => 0,
-                    };
-
-                    let last_timestamp = match self.threads.get(message.id.get()) {
-                        Ok(Some(messages)) => {
-                            if threads_count > 0 {
-                                if let Ok(Some(last_message)) = messages.get(threads_count - 1) {
-                                    *last_message.timestamp
-                                } else {
-                                    0
-                                }
-                            } else {
-                                0
-                            }
-                        }
-                        _ => 0,
-                    };
-
                     // Convert mentions sets/vectors to vecs for API response
                     let mentions_vec: Vec<UserId> = if let Ok(iter) = message.mentions.iter() {
                         iter.collect()
@@ -2013,7 +1893,7 @@ impl CurbChat {
                     let files_vec = attachments_vector_to_public(&message.files);
                     let images_vec = attachments_vector_to_public(&message.images);
 
-                    messages.push(MessageWithReactions {
+                    filtered_messages.push(MessageWithReactions {
                         timestamp: *message.timestamp,
                         sender: message.sender.clone(),
                         sender_username: message.sender_username.get().clone(),
@@ -2026,18 +1906,177 @@ impl CurbChat {
                         reactions,
                         deleted: message.deleted.as_ref().map(|r| **r),
                         edited_on: message.edited_on.as_ref().map(|r| **r),
-                        thread_count: threads_count as u32,
-                        thread_last_timestamp: last_timestamp,
+                        thread_count: 0,
+                        thread_last_timestamp: 0,
                         group: message.group.get().clone(),
                     });
                 }
             }
+
+            let filtered_total = filtered_messages.len();
+            if filtered_total == 0 {
+                return Ok(FullMessageResponse {
+                    total_count: 0,
+                    messages: Vec::new(),
+                    start_position: 0,
+                });
+            }
+
+            let limit_value = limit.unwrap_or(filtered_total);
+            let offset_value = offset.unwrap_or(0);
+
+            if offset_value >= filtered_total {
+                return Ok(FullMessageResponse {
+                    total_count: filtered_total as u32,
+                    messages: Vec::new(),
+                    start_position: offset_value as u32,
+                });
+            }
+
+            let end_idx = filtered_total - offset_value;
+            let start_idx = if end_idx > limit_value {
+                end_idx - limit_value
+            } else {
+                0
+            };
+
+            let paginated = filtered_messages[start_idx..end_idx].to_vec();
+
+            return Ok(FullMessageResponse {
+                total_count: filtered_total as u32,
+                messages: paginated,
+                start_position: offset_value as u32,
+            });
         }
 
+        let channel_info = match self.channels.get(&group) {
+            Ok(Some(info)) => info,
+            _ => return Err("Channel not found".to_string()),
+        };
+
+        if channel_info.messages.len().unwrap_or(0) == 0 {
+            return Ok(FullMessageResponse {
+                total_count: 0,
+                messages: Vec::new(),
+                start_position: 0,
+            });
+        }
+
+        let mut filtered_messages: Vec<MessageWithReactions> = Vec::new();
+        if let Ok(iter) = channel_info.messages.iter() {
+            for message in iter {
+                if !Self::message_matches_search(&message, normalized_search.as_deref()) {
+                    continue;
+                }
+                let message_reactions = self.reactions.get(message.id.get());
+
+                let reactions = match message_reactions {
+                    Ok(Some(reactions)) => {
+                        let mut hashmap = HashMap::new();
+                        if let Ok(entries) = reactions.entries() {
+                            for (emoji, users) in entries {
+                                let mut user_vec = Vec::new();
+                                if let Ok(iter) = users.iter() {
+                                    for user in iter {
+                                        user_vec.push(user.clone());
+                                    }
+                                }
+                                hashmap.insert(emoji, user_vec);
+                            }
+                        }
+                        Some(hashmap)
+                    }
+                    _ => None,
+                };
+
+                let threads_count = match self.threads.get(message.id.get()) {
+                    Ok(Some(messages)) => messages.len().unwrap_or(0),
+                    _ => 0,
+                };
+
+                let last_timestamp = match self.threads.get(message.id.get()) {
+                    Ok(Some(messages)) => {
+                        if threads_count > 0 {
+                            if let Ok(Some(last_message)) = messages.get(threads_count - 1) {
+                                *last_message.timestamp
+                            } else {
+                                0
+                            }
+                        } else {
+                            0
+                        }
+                    }
+                    _ => 0,
+                };
+
+                // Convert mentions sets/vectors to vecs for API response
+                let mentions_vec: Vec<UserId> = if let Ok(iter) = message.mentions.iter() {
+                    iter.collect()
+                } else {
+                    Vec::new()
+                };
+                let mentions_usernames_vec: Vec<String> =
+                    if let Ok(iter) = message.mentions_usernames.iter() {
+                        iter.map(|r| r.get().clone()).collect()
+                    } else {
+                        Vec::new()
+                    };
+                let files_vec = attachments_vector_to_public(&message.files);
+                let images_vec = attachments_vector_to_public(&message.images);
+
+                filtered_messages.push(MessageWithReactions {
+                    timestamp: *message.timestamp,
+                    sender: message.sender.clone(),
+                    sender_username: message.sender_username.get().clone(),
+                    id: message.id.get().clone(),
+                    text: message.text.get().clone(),
+                    mentions: mentions_vec,
+                    mentions_usernames: mentions_usernames_vec,
+                    files: files_vec,
+                    images: images_vec,
+                    reactions,
+                    deleted: message.deleted.as_ref().map(|r| **r),
+                    edited_on: message.edited_on.as_ref().map(|r| **r),
+                    thread_count: threads_count as u32,
+                    thread_last_timestamp: last_timestamp,
+                    group: message.group.get().clone(),
+                });
+            }
+        }
+
+        let filtered_total = filtered_messages.len();
+        if filtered_total == 0 {
+            return Ok(FullMessageResponse {
+                total_count: 0,
+                messages: Vec::new(),
+                start_position: 0,
+            });
+        }
+
+        let limit_value = limit.unwrap_or(filtered_total);
+        let offset_value = offset.unwrap_or(0);
+
+        if offset_value >= filtered_total {
+            return Ok(FullMessageResponse {
+                total_count: filtered_total as u32,
+                messages: Vec::new(),
+                start_position: offset_value as u32,
+            });
+        }
+
+        let end_idx = filtered_total - offset_value;
+        let start_idx = if end_idx > limit_value {
+            end_idx - limit_value
+        } else {
+            0
+        };
+
+        let paginated = filtered_messages[start_idx..end_idx].to_vec();
+
         Ok(FullMessageResponse {
-            total_count: total_messages as u32,
-            messages: messages,
-            start_position: offset as u32,
+            total_count: filtered_total as u32,
+            messages: paginated,
+            start_position: offset_value as u32,
         })
     }
 

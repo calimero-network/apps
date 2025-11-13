@@ -26,6 +26,12 @@ export function useMessages() {
   const [incomingMessages, setIncomingMessages] = useState<CurbMessage[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [offset, setOffset] = useState(MESSAGE_PAGE_SIZE);
+  const [searchResults, setSearchResults] = useState<CurbMessage[]>([]);
+  const [searchTotalCount, setSearchTotalCount] = useState(0);
+  const [searchOffset, setSearchOffset] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const messagesRef = useRef<CurbMessage[]>([]);
 
   /**
@@ -104,12 +110,19 @@ export function useMessages() {
 
       if (response.data) {
         const messagesArray = transformMessagesToUI(response.data.messages);
-        setOffset(offset + MESSAGE_PAGE_SIZE);
+        const returnedCount = messagesArray.length;
+        if (returnedCount > 0) {
+          setOffset((prev) => prev + returnedCount);
+        }
+
+        const nextOffset = offset + returnedCount;
+        const total = response.data.total_count;
+        const hasOlder = nextOffset < total;
 
         return {
           messages: messagesArray,
-          totalCount: response.data.total_count,
-          hasOlder: response.data.start_position < response.data.total_count,
+          totalCount: total,
+          hasOlder,
         };
       }
 
@@ -179,6 +192,120 @@ export function useMessages() {
   );
 
   /**
+   * Clear current search state
+   */
+  const clearSearch = useCallback(() => {
+    setSearchResults([]);
+    setSearchTotalCount(0);
+    setSearchOffset(0);
+    setSearchQuery("");
+    setSearchError(null);
+  }, []);
+
+  /**
+   * Search within messages without mutating primary message state
+   */
+  const searchMessages = useCallback(
+    async (
+      activeChat: ActiveChat | null,
+      query: string,
+      options: { reset?: boolean; offset?: number } = {},
+    ): Promise<{
+      messages: CurbMessage[];
+      totalCount: number;
+      hasMore: boolean;
+      nextOffset: number;
+    }> => {
+      const normalizedQuery = query.trim();
+      const shouldReset = options.reset ?? false;
+      const offsetOverride = options.offset;
+
+      if (!activeChat?.name || normalizedQuery.length === 0) {
+        if (shouldReset) {
+          clearSearch();
+          setSearchQuery(normalizedQuery);
+        }
+        return {
+          messages: [],
+          totalCount: 0,
+          hasMore: false,
+          nextOffset: 0,
+        };
+      }
+
+      const isDM = activeChat.type === "direct_message";
+      const effectiveOffset = shouldReset
+        ? 0
+        : offsetOverride ?? searchOffset;
+
+      setIsSearching(true);
+      setSearchError(null);
+
+      try {
+        const response: ResponseData<FullMessageResponse> =
+          await new ClientApiDataSource().getMessages({
+            group: { name: (isDM ? "private_dm" : activeChat.name) || "" },
+            limit: MESSAGE_PAGE_SIZE,
+            offset: effectiveOffset,
+            is_dm: isDM,
+            dm_identity: activeChat.account,
+            search_term: normalizedQuery,
+          });
+
+        if (response.data) {
+          const transformed = transformMessagesToUI(response.data.messages).reverse();
+          setSearchResults((prev) =>
+            shouldReset ? transformed : [...prev, ...transformed],
+          );
+          setSearchTotalCount(response.data.total_count);
+          setSearchOffset(effectiveOffset + transformed.length);
+          setSearchQuery(normalizedQuery);
+
+          const hasMore =
+            effectiveOffset + transformed.length < response.data.total_count;
+
+          return {
+            messages: transformed,
+            totalCount: response.data.total_count,
+            hasMore,
+            nextOffset: effectiveOffset + transformed.length,
+          };
+        }
+
+        if (shouldReset) {
+          clearSearch();
+          setSearchQuery(normalizedQuery);
+        }
+
+        return {
+          messages: [],
+          totalCount: 0,
+          hasMore: false,
+          nextOffset: effectiveOffset,
+        };
+      } catch (error) {
+        console.error("searchMessages failed:", error);
+        setSearchError(
+          error instanceof Error ? error.message : "Search failed",
+        );
+        if (shouldReset) {
+          clearSearch();
+          setSearchQuery(normalizedQuery);
+        }
+        return {
+          messages: [],
+          totalCount: 0,
+          hasMore: false,
+          nextOffset: effectiveOffset,
+        };
+      } finally {
+        setIsSearching(false);
+      }
+    },
+    [clearSearch, searchOffset],
+  );
+
+  /**
    * Add incoming messages (from websocket)
    * MessageStore handles deduplication of optimistic messages
    */
@@ -209,7 +336,8 @@ export function useMessages() {
     setIncomingMessages([]);
     setTotalCount(0);
     setOffset(MESSAGE_PAGE_SIZE);
-  }, []);
+    clearSearch();
+  }, [clearSearch]);
 
   /**
    * Get current messages from ref (for immediate access)
@@ -230,5 +358,13 @@ export function useMessages() {
     addOptimistic,
     clear,
     getCurrent,
+    searchResults,
+    searchTotalCount,
+    searchOffset,
+    searchQuery,
+    isSearching,
+    searchError,
+    searchMessages,
+    clearSearch,
   };
 }

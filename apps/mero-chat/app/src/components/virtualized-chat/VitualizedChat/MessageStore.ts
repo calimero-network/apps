@@ -48,9 +48,18 @@ class MessageStore<
     const sortedMessages = [...messages].sort(
       (a, b) => a.timestamp - b.timestamp,
     );
-    this.messages = sortedMessages.concat(this.messages);
-    this.startOffset -= sortedMessages.length;
-    this.updateLookup(sortedMessages, true);
+    const existingIds = new Set(this.messages.map((msg) => msg.id));
+    const uniqueMessages = sortedMessages.filter(
+      (message) => !existingIds.has(message.id),
+    );
+
+    if (uniqueMessages.length === 0) {
+      return;
+    }
+
+    this.messages = uniqueMessages.concat(this.messages);
+    this.startOffset -= uniqueMessages.length;
+    this.updateLookup(uniqueMessages, true);
   }
 
   initial(messages: T[]): void {

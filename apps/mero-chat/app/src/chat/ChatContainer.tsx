@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState, memo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
+import type { FormEvent } from "react";
 import { styled } from "styled-components";
 import { StorageHelper } from "../utils/storage";
 import { log } from "../utils/logger";
@@ -18,6 +19,7 @@ import ChatDisplaySplit from "./ChatDisplaySplit";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import {
   apiClient,
+  getContextId,
   getExecutorPublicKey,
   type ResponseData,
 } from "@calimero-network/calimero-client";
@@ -29,6 +31,8 @@ import InvitationPending from "./InvitationPending";
 import { getDMSetupState } from "../utils/dmSetupState";
 import SyncWaiting from "./SyncWaiting";
 import { extractAndAddMentions } from "../utils/mentions";
+import { getDmContextId } from "../utils/session";
+import ChatSearchOverlay from "./ChatSearchOverlay";
 
 interface ChatContainerProps {
   activeChat: ActiveChat;
@@ -51,9 +55,21 @@ interface ChatContainerProps {
   addOptimisticMessage?: (message: CurbMessage) => void;
   addOptimisticThreadMessage?: (message: CurbMessage) => void;
   clearThreadsMessagesOnSwitch: () => void;
+  searchResults: CurbMessage[];
+  searchTotalCount: number;
+  searchQuery: string;
+  isSearchingMessages: boolean;
+  searchHasMore: boolean;
+  searchError: string | null;
+  onSearchMessages: (query: string) => Promise<void>;
+  onLoadMoreSearch: () => Promise<void>;
+  onClearSearch: () => void;
+  isSearchOverlayOpen: boolean;
+  onCloseSearchOverlay: () => void;
 }
 
 const ChatContainerWrapper = styled.div`
+  position: relative;
   display: flex;
   background-color: #0e0e10;
   @media (min-width: 1025px) {
@@ -105,7 +121,18 @@ function ChatContainer({
   membersList,
   addOptimisticMessage,
   addOptimisticThreadMessage,
-  clearThreadsMessagesOnSwitch
+  clearThreadsMessagesOnSwitch,
+  searchResults,
+  searchTotalCount,
+  searchQuery,
+  isSearchingMessages,
+  searchHasMore,
+  searchError,
+  onSearchMessages,
+  onLoadMoreSearch,
+  onClearSearch,
+  isSearchOverlayOpen,
+  onCloseSearchOverlay,
 }: ChatContainerProps) {
   const [updatedMessages, setUpdatedMessages] = useState<UpdatedMessages[]>([]);
   const [_updatedThreadMessages, setUpdatedThreadMessages] = useState<
@@ -118,9 +145,14 @@ function ChatContainer({
   const [openMobileReactions, setOpenMobileReactions] = useState("");
   const [messageWithEmojiSelector, setMessageWithEmojiSelector] =
     useState<CurbMessage | null>(null);
+  const [searchInputValue, setSearchInputValue] = useState(searchQuery);
 
   // Track last fetched channel to prevent excessive API calls
   const lastFetchedChannelRef = useRef<string>("");
+
+  useEffect(() => {
+    setSearchInputValue(searchQuery);
+  }, [searchQuery]);
 
   useEffect(() => {
     const fetchChannelMeta = async () => {
@@ -453,7 +485,7 @@ function ChatContainer({
         }
       }
     },
-    [] // Uses refs which don't need to be in dependencies
+    [currentOpenThreadRef],
   );
 
   const handleEditMode = useCallback(
@@ -515,7 +547,7 @@ function ChatContainer({
         }
       }
     },
-    [] // Uses refs which don't need to be in dependencies
+    [currentOpenThreadRef],
   );
 
   const selectThread = (message: CurbMessage) => {
@@ -570,6 +602,40 @@ function ChatContainer({
   }, [openThread]);
 
   const dmSetupState = getDMSetupState(activeChat);
+
+  const handleSearchSubmit = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      await onSearchMessages(searchInputValue);
+    },
+    [onSearchMessages, searchInputValue],
+  );
+
+  const handleClearSearch = useCallback(() => {
+    setSearchInputValue("");
+    onClearSearch();
+  }, [onClearSearch]);
+
+  useEffect(() => {
+    if (!isSearchOverlayOpen) {
+      handleClearSearch();
+    }
+  }, [isSearchOverlayOpen, handleClearSearch]);
+
+  const handleLoadMoreSearch = useCallback(async () => {
+    if (!searchQuery) return;
+    await onLoadMoreSearch();
+  }, [onLoadMoreSearch, searchQuery]);
+
+  const searchContextId = useMemo(() => {
+    if (activeChat.contextId && activeChat.contextId.length > 0) {
+      return activeChat.contextId;
+    }
+    if (activeChat.type === "direct_message") {
+      return getDmContextId() ?? "";
+    }
+    return getContextId() ?? "";
+  }, [activeChat.contextId, activeChat.type]);
 
   const renderDMContent = () => {
     switch (dmSetupState) {
@@ -681,8 +747,43 @@ function ChatContainer({
     }
   };
 
+  const trimmedSearchInput = searchInputValue.trim();
+  const hasSearchResults = searchResults.length > 0;
+  const hasSearchQuery = searchQuery.length > 0;
+  const searchButtonDisabled =
+    trimmedSearchInput.length === 0 || isSearchingMessages;
+  const clearButtonDisabled =
+    (trimmedSearchInput.length === 0 &&
+      !hasSearchQuery &&
+      !hasSearchResults) ||
+    isSearchingMessages;
+
   return (
     <ChatContainerWrapper>
+      {isSearchOverlayOpen && (
+        <ChatSearchOverlay
+          searchInputValue={searchInputValue}
+          onSearchInputChange={setSearchInputValue}
+          searchButtonDisabled={searchButtonDisabled}
+          isSearchingMessages={isSearchingMessages}
+          onSearchSubmit={handleSearchSubmit}
+          onClearSearch={handleClearSearch}
+          clearButtonDisabled={clearButtonDisabled}
+          searchError={searchError}
+          hasSearchQuery={hasSearchQuery}
+          hasSearchResults={hasSearchResults}
+          searchQuery={searchQuery}
+          searchResults={searchResults}
+          searchTotalCount={searchTotalCount}
+          searchHasMore={searchHasMore}
+          onLoadMoreSearch={handleLoadMoreSearch}
+          onClose={() => {
+            handleClearSearch();
+            onCloseSearchOverlay();
+          }}
+          searchContextId={searchContextId}
+        />
+      )}
       {activeChat.type === "direct_message" ? (
         renderDMContent()
       ) : (
@@ -736,7 +837,7 @@ function ChatContainer({
                     activeChat={activeChat}
                     updatedMessages={_updatedThreadMessages}
                     resetImage={() => {}}
-                  sendMessage={(payload) => sendMessage(payload, true)}
+                    sendMessage={(payload) => sendMessage(payload, true)}
                     getIconFromCache={getIconFromCache}
                     isThread={true}
                     isReadOnly={activeChat.readOnly ?? false}
@@ -782,6 +883,12 @@ export default memo(ChatContainer, (prevProps, nextProps) => {
     prevProps.activeChat.contextId === nextProps.activeChat.contextId &&
     prevProps.incomingMessages === nextProps.incomingMessages &&
     prevProps.incomingThreadMessages === nextProps.incomingThreadMessages &&
-    prevProps.openThread?.id === nextProps.openThread?.id
+    prevProps.openThread?.id === nextProps.openThread?.id &&
+    prevProps.searchResults === nextProps.searchResults &&
+    prevProps.searchQuery === nextProps.searchQuery &&
+    prevProps.isSearchingMessages === nextProps.isSearchingMessages &&
+    prevProps.searchHasMore === nextProps.searchHasMore &&
+    prevProps.searchError === nextProps.searchError &&
+    prevProps.isSearchOverlayOpen === nextProps.isSearchOverlayOpen
   );
 });

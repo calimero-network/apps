@@ -1,5 +1,5 @@
 import { styled } from "styled-components";
-import { memo } from "react";
+import { memo, useEffect, useState } from "react";
 import type {
   ActiveChat,
   ChannelMeta,
@@ -64,6 +64,15 @@ interface AppContainerProps {
   wsIsSubscribed?: boolean;
   wsContextId?: string | null;
   wsSubscriptionCount?: number;
+  searchResults: CurbMessage[];
+  searchTotalCount: number;
+  searchQuery: string;
+  isSearchingMessages: boolean;
+  searchHasMore: boolean;
+  searchError: string | null;
+  onSearchMessages: (query: string) => Promise<void>;
+  onLoadMoreSearch: () => Promise<void>;
+  onClearSearch: () => void;
 }
 function AppContainer({
   activeChat,
@@ -99,7 +108,28 @@ function AppContainer({
   wsIsSubscribed,
   wsContextId,
   wsSubscriptionCount,
+  searchResults,
+  searchTotalCount,
+  searchQuery,
+  isSearchingMessages,
+  searchHasMore,
+  searchError,
+  onSearchMessages,
+  onLoadMoreSearch,
+  onClearSearch,
 }: AppContainerProps) {
+  const [isSearchOverlayOpen, setIsSearchOverlayOpen] = useState(false);
+
+  useEffect(() => {
+    setIsSearchOverlayOpen(false);
+  }, [activeChat?.id]);
+
+  useEffect(() => {
+    if (isOpenSearchChannel) {
+      setIsSearchOverlayOpen(false);
+    }
+  }, [isOpenSearchChannel]);
+
   return (
     <>
       <CurbNavbar
@@ -116,6 +146,10 @@ function AppContainer({
         wsIsSubscribed={wsIsSubscribed}
         wsContextId={wsContextId}
         wsSubscriptionCount={wsSubscriptionCount}
+        onToggleSearchOverlay={() =>
+          setIsSearchOverlayOpen((previous) => !previous)
+        }
+        isSearchOverlayOpen={isSearchOverlayOpen}
       />
       <ContentDivContainer>
         <ChannelsContainer
@@ -153,6 +187,17 @@ function AppContainer({
                 addOptimisticMessage={addOptimisticMessage}
                 addOptimisticThreadMessage={addOptimisticThreadMessage}
                 clearThreadsMessagesOnSwitch={clearThreadsMessagesOnSwitch}
+                searchResults={searchResults}
+                searchTotalCount={searchTotalCount}
+                searchQuery={searchQuery}
+                isSearchingMessages={isSearchingMessages}
+                searchHasMore={searchHasMore}
+                searchError={searchError}
+                onSearchMessages={onSearchMessages}
+                onLoadMoreSearch={onLoadMoreSearch}
+                onClearSearch={onClearSearch}
+                isSearchOverlayOpen={isSearchOverlayOpen}
+                onCloseSearchOverlay={() => setIsSearchOverlayOpen(false)}
               />
             )}
             {isOpenSearchChannel && (

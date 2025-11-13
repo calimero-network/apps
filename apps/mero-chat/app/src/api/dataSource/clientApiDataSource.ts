@@ -592,6 +592,9 @@ export class ClientApiDataSource implements ClientApi {
             parent_message: props.parent_message,
             limit: props.limit,
             offset: props.offset,
+            ...(props.search_term
+              ? { search_term: props.search_term }
+              : {}),
           },
           executorPublicKey: useIdentity,
         },

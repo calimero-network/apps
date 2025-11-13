@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+rm -rf res target
+
 cd "$(dirname $0)"
 
 TARGET="${CARGO_TARGET_DIR:-target}"

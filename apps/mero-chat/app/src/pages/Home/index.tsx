@@ -66,6 +66,17 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   // Use message hooks for cleaner message management
   const mainMessages = useMessages();
   const threadMessages = useThreadMessages();
+  const {
+    searchResults,
+    searchTotalCount,
+    searchQuery,
+    isSearching: isSearchingMessages,
+    searchOffset,
+    searchMessages: executeSearchMessages,
+    clearSearch: clearMessageSearch,
+    searchError,
+  } = mainMessages;
+  const searchHasMore = searchOffset < searchTotalCount;
 
   // App notifications with toast and notification center
   const {
@@ -191,6 +202,24 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     setIsSidebarOpen(false);
     setActiveChat(null);
   }, []);
+
+  const handleSearchMessages = useCallback(
+    async (query: string) => {
+      await executeSearchMessages(activeChatRef.current, query, { reset: true });
+    },
+    [executeSearchMessages],
+  );
+
+  const handleLoadMoreSearch = useCallback(async () => {
+    if (!searchQuery) return;
+    await executeSearchMessages(activeChatRef.current, searchQuery, {
+      offset: searchOffset,
+    });
+  }, [executeSearchMessages, searchOffset, searchQuery]);
+
+  const handleClearSearch = useCallback(() => {
+    clearMessageSearch();
+  }, [clearMessageSearch]);
 
   useEffect(() => {
     const storedSession: ActiveChat | null = getStoredSession();
@@ -697,6 +726,15 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
       wsIsSubscribed={webSocket.isSubscribed()}
       wsContextId={webSocket.getSubscribedContexts().join(", ") || null}
       wsSubscriptionCount={webSocket.getSubscriptionCount()}
+      searchResults={searchResults}
+      searchTotalCount={searchTotalCount}
+      searchQuery={searchQuery}
+      isSearchingMessages={isSearchingMessages}
+      searchHasMore={searchHasMore}
+      searchError={searchError}
+      onSearchMessages={handleSearchMessages}
+      onLoadMoreSearch={handleLoadMoreSearch}
+      onClearSearch={handleClearSearch}
     />
   );
 }

@@ -113,12 +113,12 @@ const NameContainerSender = styled.div`
   line-height: 100%;
 `;
 
-interface MessageTextProps {
+export interface MessageTextProps {
   $globalMention: boolean;
   $accountId: string;
 }
 
-const MessageText = styled.div<MessageTextProps>`
+export const MessageText = styled.div<MessageTextProps>`
   flex-grow: 1;
   flex-shrink: 1;
   overflow: hidden;

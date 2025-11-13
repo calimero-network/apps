@@ -112,6 +112,41 @@ const FlexContainer = styled.div`
   gap: 0.75rem;
 `;
 
+const SearchButton = styled.button<{ $active: boolean }>`
+  border: none;
+  background: ${(props) =>
+    props.$active ? "rgba(87, 101, 242, 0.2)" : "transparent"};
+  color: ${(props) => (props.$active ? "#ffffff" : "#c8c7d1")};
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  fill: #777583;
+  cursor: pointer;
+  transition:
+    color 0.2s ease,
+    background 0.2s ease;
+  &:hover {
+    color: #ffffff;
+    fill: #ffffff;
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+    transition: background-color 0.2s;
+`;
+
+const SearchIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="18"
+    height="18"
+    viewBox="0 0 18 18"
+  >
+    <path d="M12.5 11h-.79l-.28-.27a6 6 0 1 0-.71.71l.27.28v.79l4.25 4.24L16.74 15.5 12.5 11zm-5.5 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z" />
+  </svg>
+);
+
 export const CurbLogo = ({ isMobile }: { isMobile: boolean }) => {
   return (
     <LogoContainer $isMobile={isMobile} role="banner">
@@ -172,6 +207,8 @@ interface CurbNavbarProps {
   wsIsSubscribed?: boolean;
   wsContextId?: string | null;
   wsSubscriptionCount?: number;
+  onToggleSearchOverlay: () => void;
+  isSearchOverlayOpen: boolean;
 }
 
 export default function CurbNavbar({
@@ -187,6 +224,8 @@ export default function CurbNavbar({
   wsIsSubscribed = false,
   wsContextId = null,
   wsSubscriptionCount = 0,
+  onToggleSearchOverlay,
+  isSearchOverlayOpen,
 }: CurbNavbarProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -244,11 +283,19 @@ export default function CurbNavbar({
               />
             </ItemsContainer>
           )}
-        <WebSocketStatus 
-          isSubscribed={wsIsSubscribed} 
+        <WebSocketStatus
+          isSubscribed={wsIsSubscribed}
           contextId={wsContextId}
           subscriptionCount={wsSubscriptionCount}
         />
+        <SearchButton
+          type="button"
+          onClick={onToggleSearchOverlay}
+          aria-label="Toggle message search"
+          $active={isSearchOverlayOpen}
+        >
+          <SearchIcon />
+        </SearchButton>
         <NotificationCenterWidget />
         <SettingsIcon />
       </FlexContainer>
