@@ -5,3 +5,5 @@
 data/
 **/target/
 **/res/
+**/build/
+**/node_modules/

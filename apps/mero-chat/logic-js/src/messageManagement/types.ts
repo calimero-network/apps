@@ -1,0 +1,93 @@
+import type { UserId } from '../types';
+
+export type Attachment = {
+  name: string;
+  mime_type: string;
+  size: number;
+  blob_id_str: string;
+};
+
+export type StoredMessage = {
+  id: string;
+  channelId: string;
+  senderId: UserId;
+  senderUsername: string;
+  text: string;
+  timestamp: bigint;
+  parentId?: string | null;
+  deleted: boolean;
+  editedAt?: bigint | null;
+  images?: Attachment[];
+  files?: Attachment[];
+  mentions: UserId[];
+  mentionUsernames: string[];
+  threadCount?: number;
+  threadLastTimestamp?: bigint;
+};
+
+export type SendMessageArgs = {
+  channelId: string;
+  text: string;
+  parentId?: string | null;
+  images?: Attachment[];
+  files?: Attachment[];
+  messageId?: string;
+  mentions?: UserId[];
+  mentionUsernames?: string[];
+};
+
+export type EditMessageArgs = {
+  channelId: string;
+  messageId: string;
+  text: string;
+  parentId?: string | null;
+};
+
+export type DeleteMessageArgs = {
+  channelId: string;
+  messageId: string;
+  parentId?: string | null;
+};
+
+export type UpdateReactionArgs = {
+  messageId: string;
+  emoji: string;
+  add: boolean;
+  username?: string; // Optional - will be retrieved from channel members if not provided
+};
+
+export type GetMessagesArgs = {
+  channelId: string;
+  parentId?: string | null;
+  limit?: number;
+  offset?: number;
+};
+
+export type ReadMessageProps = {
+  channelId: string;
+  messageId: string;
+};
+
+export type ReadDmProps = {
+  contextId: string;
+};
+
+export type UpdateDmHashProps = {
+  contextId: string;
+  newHash: string;
+};
+
+export type Reaction = {
+  emoji: string;
+  users: string[];
+};
+
+export type MessageWithReactions = StoredMessage & {
+  reactions: Reaction[];
+};
+
+export interface FullMessageResponse {
+  messages: MessageWithReactions[];
+  total_count: number;
+  start_position: number;
+}
