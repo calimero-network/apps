@@ -12,9 +12,6 @@ import {
   PermissionLevel,
   UserId,
 } from '../clientApi';
-import { backendService } from '../icp/backendService';
-import { authService } from '../../contexts/IcpAuthContext';
-import { Principal } from '@dfinity/principal';
 import { DefaultContextService } from '../defaultContextService';
 
 const RequestConfig = { timeout: 30000 };
@@ -94,33 +91,6 @@ export class ClientApiDataSource implements ClientApi {
         };
       }
 
-      try {
-        const safeContextId = (agreementContextID ?? '').replace(
-          /[^a-zA-Z0-9_-]/g,
-          '_',
-        );
-        const safeDocumentId = documentId.replace(/[^a-zA-Z0-9_-]/g, '_');
-        if (documentId !== safeDocumentId) {
-          console.warn('Sanitized documentId for ICP consent recording:', {
-            original: documentId,
-            sanitized: safeDocumentId,
-          });
-        }
-
-        if (safeContextId) {
-          const icpBackend = await backendService();
-          const icpResult = await icpBackend.recordConsentForContext(
-            safeContextId,
-            safeDocumentId,
-          );
-        } else {
-          console.warn(
-            'No agreementContextID provided; skipping ICP consent recording',
-          );
-        }
-      } catch (icpError) {
-        console.warn('Failed to record consent in ICP backend:', icpError);
-      }
 
       return {
         data: undefined,
@@ -193,7 +163,6 @@ export class ClientApiDataSource implements ClientApi {
     contextId: string,
     userId: UserId,
     permission: PermissionLevel,
-    icpPrincipalId: string,
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<void> {
@@ -224,32 +193,6 @@ export class ClientApiDataSource implements ClientApi {
             message: getErrorMessage(response.error),
           },
         };
-      }
-      try {
-        const safeContextId = contextId.replace(/[^a-zA-Z0-9_-]/g, '_');
-        if (contextId !== safeContextId) {
-          console.warn('Sanitized contextId for ICP addParticipant:', {
-            original: contextId,
-            sanitized: safeContextId,
-          });
-        }
-
-        try {
-          Principal.fromText(icpPrincipalId);
-        } catch {
-          console.warn(
-            'ICP: resolved principal is not a valid Principal text:',
-            icpPrincipalId,
-          );
-        }
-
-        const icpBackend = await backendService();
-        await (icpBackend as any).addParticipantToContext(
-          safeContextId,
-          icpPrincipalId,
-        );
-      } catch (icpError) {
-        console.warn('Failed to add participant in ICP backend:', icpError);
       }
 
       return {
@@ -453,61 +396,6 @@ export class ClientApiDataSource implements ClientApi {
         };
       }
 
-      try {
-        const icpBackend = await backendService();
-        const safeContextId = (agreementContextID ?? contextId).replace(
-          /[^a-zA-Z0-9_-]/g,
-          '_',
-        );
-        const safeDocumentId = documentId.replace(/[^a-zA-Z0-9_-]/g, '_');
-        if (documentId !== safeDocumentId) {
-          console.warn('Sanitized documentId for ICP signDocument:', {
-            original: documentId,
-            sanitized: safeDocumentId,
-          });
-        }
-
-        try {
-          const signSuccess = await (icpBackend as any).signDocument({
-            document_id: safeDocumentId,
-            consent_acknowledged: true,
-          } as any);
-
-          if (!signSuccess) {
-            console.warn(
-              'ICP Backend: signDocument returned falsy — the canister may have rejected the call (non-fatal).',
-            );
-          } else {
-            // Record the final hash (explicit canister method)
-            if (newHash) {
-              try {
-                const recordRes = await icpBackend.recordFinalHash(
-                  safeDocumentId,
-                  newHash,
-                );
-                if (recordRes && recordRes.success) {
-                } else {
-                  console.warn(
-                    'ICP: recordFinalHash failed for',
-                    safeDocumentId,
-                    recordRes,
-                  );
-                }
-              } catch (recErr) {
-                console.warn('ICP: recordFinalHash threw (non-fatal):', recErr);
-              }
-            } else {
-              console.warn(
-                'ICP: newHash not provided; skipping recordFinalHash',
-              );
-            }
-          }
-        } catch (icpErr) {
-          console.warn('ICP Backend: signDocument failed (non-fatal):', icpErr);
-        }
-      } catch (err) {
-        console.warn('ICP backendService unavailable (non-fatal):', err);
-      }
 
       return {
         data: undefined,
@@ -989,52 +877,6 @@ export class ClientApiDataSource implements ClientApi {
       }
 
       const data = response.result?.output || response.result;
-
-      // ICP integration: best-effort upload to ICP backend
-      try {
-        const icpBackend = await backendService();
-        const safeContextId = (agreementContextID ?? contextId).replace(
-          /[^a-zA-Z0-9_-]/g,
-          '_',
-        );
-
-        const nodeData: any = data;
-        const documentIdFromNode = nodeData as string | undefined;
-
-        if (documentIdFromNode) {
-          const safeDocumentId = documentIdFromNode.replace(
-            /[^a-zA-Z0-9_-]/g,
-            '_',
-          );
-          const safeName = name.replace(/[^a-zA-Z0-9_-]/g, '_');
-          if (documentIdFromNode !== safeDocumentId) {
-            console.warn('Sanitized documentId for ICP uploadDocument:', {
-              original: documentIdFromNode,
-              sanitized: safeDocumentId,
-            });
-          }
-
-          // Build the request strictly according to the canister's DocumentUploadRequest
-          // which only accepts: context_id, document_id, document_hash
-          const icpRequest = {
-            context_id: safeContextId,
-            document_id: safeDocumentId,
-            document_hash: hash,
-          } as any;
-
-          try {
-            await icpBackend.uploadDocument(icpRequest);
-          } catch (icpErr) {
-            console.warn('ICP uploadDocument failed (non-fatal):', icpErr);
-          }
-        } else {
-          console.warn(
-            'Node did not return document id; skipping ICP uploadDocument',
-          );
-        }
-      } catch (err) {
-        console.warn('ICP backendService unavailable (non-fatal):', err);
-      }
 
       return {
         data: data,

@@ -45,7 +45,6 @@ import { DocumentService } from '../../api/documentService';
 import { ClientApiDataSource } from '../../api/dataSource/ClientApiDataSource';
 import { ContextApiDataSource } from '../../api/dataSource/nodeApiDataSource';
 import { ContextDetails, PermissionLevel } from '../../api/clientApi';
-import { useIcpAuth } from '../../contexts/IcpAuthContext';
 
 // Constants
 
@@ -221,7 +220,6 @@ const sanitizeDocumentId = (documentId: string): string => {
 const AgreementPage: React.FC = () => {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { identity } = useIcpAuth();
   const { app } = useCalimero();
   const documentService = useMemo(() => new DocumentService(), []);
   const clientApiService = useMemo(() => new ClientApiDataSource(app), [app]);
@@ -231,7 +229,6 @@ const AgreementPage: React.FC = () => {
   const [showParticipants, setShowParticipants] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteId, setInviteId] = useState('');
-  const [inviteeICP, setInviteeICP] = useState('');
   const [invitePermission, setInvitePermission] = useState<PermissionLevel>(
     PermissionLevel.Sign,
   );
@@ -711,7 +708,6 @@ const AgreementPage: React.FC = () => {
         currentContextId,
         inviteId.trim(),
         invitePermission,
-        inviteeICP.trim(),
         agreementContextID || undefined,
         agreementContextUserID || undefined,
       );
@@ -732,7 +728,6 @@ const AgreementPage: React.FC = () => {
   }, [
     currentContextId,
     inviteId,
-    inviteeICP,
     invitePermission,
     nodeApiService,
     clientApiService,
@@ -747,28 +742,20 @@ const AgreementPage: React.FC = () => {
 
   const handleVerifyDocument = useCallback(
     async (doc: UploadedDocument) => {
+      // ICP verification removed - TODO: Implement Calimero-based verification
       setSelectedDocumentForVerification(doc);
       setShowVerificationModal(true);
       setVerifyingDocId(doc.id);
-      setVerifyResult(null);
-
-      try {
-        const result = await documentService.verifyDocumentWithICP(
-          doc.id,
-          doc.hash || '',
-          identity,
-        );
-        setVerifyResult({ ...result, documentId: doc.id });
-      } catch (error) {
-        setVerifyResult({
-          error: { message: 'Verification failed.' },
-          documentId: doc.id,
-        });
-      } finally {
-        setVerifyingDocId(null);
-      }
+      setVerifyResult({
+        error: {
+          message:
+            'Document verification is currently unavailable. This feature will be re-implemented using Calimero.',
+        },
+        documentId: doc.id,
+      });
+      setVerifyingDocId(null);
     },
-    [documentService, identity],
+    [],
   );
 
   const handleCloseVerificationModal = useCallback(() => {
@@ -1301,7 +1288,7 @@ const AgreementPage: React.FC = () => {
                               <Text size="sm" weight="medium">
                                 {verifyingDocId === document.id
                                   ? 'Verifying...'
-                                  : 'Verify on ICP'}
+                                  : 'Verify Document'}
                               </Text>
                             </Button>
 
@@ -1461,14 +1448,6 @@ const AgreementPage: React.FC = () => {
               placeholder="Enter the ID of invitee"
               value={inviteId}
               onChange={(e) => setInviteId(e.target.value)}
-              disabled={generatingInvite}
-              style={{ marginBottom: spacing[3].value }}
-            />
-            <Input
-              type="text"
-              placeholder="Enter the ICP of invitee"
-              value={inviteeICP}
-              onChange={(e) => setInviteeICP(e.target.value)}
               disabled={generatingInvite}
               style={{ marginBottom: spacing[3].value }}
             />
@@ -1820,7 +1799,7 @@ const AgreementPage: React.FC = () => {
         <Modal
           open={showVerificationModal}
           onClose={handleCloseVerificationModal}
-          title="ICP Blockchain Verification"
+          title="Document Verification"
         >
           <Box style={{ padding: spacing[6].value }}>
             <Card
@@ -1849,7 +1828,7 @@ const AgreementPage: React.FC = () => {
                       marginTop: spacing[3].value,
                     }}
                   >
-                    Verifying on ICP blockchain...
+                    Verifying document...
                   </Text>
                 </Flex>
               ) : verifyResult &&
@@ -1921,7 +1900,7 @@ const AgreementPage: React.FC = () => {
                         }}
                       >
                         {verifyResult.message ||
-                          'Document verified on ICP blockchain'}
+                          'Document verification unavailable'}
                       </Text>
                     </Box>
                   ) : (

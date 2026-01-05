@@ -16,17 +16,21 @@ import {
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui';
 import { useTheme } from '../contexts/ThemeContext';
-import { backendService } from '../api/icp/backendService';
-import { AuditEntry as IcpAuditEntry } from '../api/icp/types';
 import {
-  generateIcpDocumentId,
   formatUserId,
   formatTimestamp,
 } from '../lib/utils';
 
-interface AuditEntry extends Omit<IcpAuditEntry, 'timestamp' | 'action'> {
+interface AuditEntry {
+  entry_id: string;
+  user_id: string;
   action: string;
   timestamp: Date;
+  consent_given?: boolean;
+  document_hash_after_action?: string;
+  metadata?: string;
+  context_id: string;
+  document_id: string;
 }
 
 interface AuditTrailProps {
@@ -107,100 +111,15 @@ const AuditTrail: React.FC<AuditTrailProps> = ({
     setLoading(true);
     setError(null);
     try {
-      const sanitizedDocumentId = documentId.replace(/[^a-zA-Z0-9_-]/g, '_');
-      const sanitizedContextId = contextId.replace(/[^a-zA-Z0-9_-]/g, '_');
-
-      const service = await backendService();
-
-      const auditResult = await service.getAuditTrailDocument(
-        sanitizedContextId,
-        sanitizedDocumentId,
+      //TODO: Implement Calimero-based audit trail
+      setError(
+        'Audit trail functionality is currently unavailable. This feature will be re-implemented using Calimero.',
       );
-
-      if (auditResult) {
-        // Transform ICP audit entries to component format
-        const transformedEntries: AuditEntry[] = auditResult.entries.map(
-          (entry) => {
-            // Convert action object to string
-            let actionString = 'Unknown';
-            if (typeof entry.action === 'object' && entry.action !== null) {
-              const actionKey = Object.keys(entry.action)[0];
-              actionString = actionKey || 'Unknown';
-            } else if (typeof entry.action === 'string') {
-              actionString = entry.action;
-            }
-
-            // Convert optional arrays to proper values
-            const consentGiven =
-              Array.isArray(entry.consent_given) &&
-              entry.consent_given.length > 0
-                ? entry.consent_given[0]
-                : undefined;
-
-            const documentHashAfterAction =
-              Array.isArray(entry.document_hash_after_action) &&
-              entry.document_hash_after_action.length > 0
-                ? entry.document_hash_after_action[0]
-                : undefined;
-
-            const metadata =
-              Array.isArray(entry.metadata) && entry.metadata.length > 0
-                ? entry.metadata[0]
-                : undefined;
-
-            const transformedEntry = {
-              entry_id: entry.entry_id,
-              user_id: entry.user_id,
-              action: actionString,
-              timestamp: entry.timestampDate, // Already converted in backendService
-              consent_given: consentGiven,
-              document_hash_after_action: documentHashAfterAction,
-              metadata: metadata,
-              context_id: contextId,
-              document_id: sanitizedDocumentId,
-            };
-
-            Object.keys(transformedEntry).forEach((key) => {
-              const value =
-                transformedEntry[key as keyof typeof transformedEntry];
-              if (
-                value !== null &&
-                value !== undefined &&
-                typeof value === 'object' &&
-                !(value instanceof Date)
-              ) {
-                console.error(`❌ Object found in ${key}:`, value);
-              }
-            });
-
-            return transformedEntry;
-          },
-        );
-
-        transformedEntries.sort(
-          (a, b) => b.timestamp.getTime() - a.timestamp.getTime(),
-        );
-
-        setAuditEntries(transformedEntries);
-      } else {
-        setAuditEntries([]);
-      }
+      setAuditEntries([]);
     } catch (err) {
       console.error('💥 Failed to load audit trail:', err);
-      console.error('Error details:', {
-        message: err instanceof Error ? err.message : String(err),
-        stack: err instanceof Error ? err.stack : undefined,
-        contextId,
-        originalDocumentId: documentId,
-        sanitizedDocumentId: documentId.replace(/[^a-zA-Z0-9_-]/g, '_'),
-        backendQueryId: documentId.replace(/[^a-zA-Z0-9_-]/g, '_'),
-        displayIcpDocumentId: generateIcpDocumentId(
-          contextId,
-          documentId.replace(/[^a-zA-Z0-9_-]/g, '_'),
-        ),
-      });
       setError(
-        'Failed to load audit trail from blockchain: ' +
+        'Failed to load audit trail: ' +
           (err instanceof Error ? err.message : String(err)),
       );
       setAuditEntries([]);
@@ -254,7 +173,7 @@ const AuditTrail: React.FC<AuditTrailProps> = ({
               Audit Trail
             </h2>
             <p className="text-sm text-muted-foreground">
-              Complete blockchain audit history for "{documentName}"
+              Audit history for "{documentName}"
             </p>
           </div>
           <Button
@@ -300,13 +219,6 @@ const AuditTrail: React.FC<AuditTrailProps> = ({
                       • Backend Query ID:{' '}
                       {documentId.replace(/[^a-zA-Z0-9_-]/g, '_')}
                     </div>
-                    <div>
-                      • Display ICP Document ID:{' '}
-                      {generateIcpDocumentId(
-                        contextId,
-                        documentId.replace(/[^a-zA-Z0-9_-]/g, '_'),
-                      )}
-                    </div>
                   </div>
                   <Button
                     onClick={loadAuditTrail}
@@ -327,7 +239,7 @@ const AuditTrail: React.FC<AuditTrailProps> = ({
                 <CardContent className="p-8 text-center">
                   <Clock className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
                   <p className="text-muted-foreground mb-4">
-                    No audit entries found for this document on the blockchain.
+                    Audit trail functionality is currently unavailable.
                   </p>
                   <div className="text-xs text-muted-foreground space-y-1">
                     <p>Document ID: {documentId}</p>
@@ -482,8 +394,7 @@ const AuditTrail: React.FC<AuditTrailProps> = ({
         <div className="p-4 border-t border-border bg-muted/30">
           <div className="flex items-center justify-between">
             <p className="text-xs text-muted-foreground">
-              All entries are cryptographically secured on the Internet Computer
-              blockchain
+              Audit trail functionality will be available with Calimero integration
             </p>
             <Button onClick={onClose} variant="outline" size="sm">
               Close

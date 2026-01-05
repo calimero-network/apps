@@ -11,7 +11,6 @@ import {
   colors,
   radius,
 } from '@calimero-network/mero-ui';
-import { llmChatbotService } from '../api/icp/backendService';
 import { useTheme } from '../contexts/ThemeContext';
 
 // Constants
@@ -203,31 +202,11 @@ const LegalChatbot: React.FC<LegalChatbotProps> = ({
         limitedHistory.length = 0;
       }
 
-      const llmService = await llmChatbotService();
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error('Request timeout')),
-          CHAT_CONFIG.REQUEST_TIMEOUT,
-        ),
+      // TODO: Implement Calimero-based LLM chatbot service
+      addMessage(
+        'LLM chatbot functionality is currently unavailable. This feature will be re-implemented using Calimero.',
+        'bot',
       );
-
-      const llmResponse = (await Promise.race([
-        llmService.getRagResponse(userInput, context, limitedHistory),
-        timeoutPromise,
-      ])) as string;
-
-      let responseText = llmResponse;
-      try {
-        if (llmResponse && typeof llmResponse === 'string') {
-          const parsedResponse = JSON.parse(llmResponse);
-          responseText = parsedResponse.answer || llmResponse;
-        }
-      } catch (parseError) {
-        console.warn('Failed to parse LLM response as JSON:', parseError);
-        responseText = llmResponse || 'No response received from AI assistant.';
-      }
-
-      addMessage(responseText, 'bot');
     } catch (error) {
       console.error('Error processing message:', error);
       const errorMessage =

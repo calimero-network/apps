@@ -1,7 +1,6 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, PenTool, X, Copy, Check } from 'lucide-react';
-import { useIcpAuth } from '../contexts/IcpAuthContext';
+import { Home, PenTool, X } from 'lucide-react';
 import { CalimeroConnectButton } from '@calimero-network/calimero-client';
 import { useDefaultContext } from '../hooks/useDefaultContext';
 
@@ -13,9 +12,6 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const icpAuth = useIcpAuth();
-  const [isCopying, setIsCopying] = React.useState(false);
-  const [isLoading, setIsLoading] = React.useState(false);
   const { isCreating: isCreatingDefaultContext, error: defaultContextError } =
     useDefaultContext();
 
@@ -27,35 +23,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const handleNavigation = (path: string) => {
     navigate(path);
     onClose();
-  };
-
-  const handleIcpLogin = async () => {
-    setIsLoading(true);
-    try {
-      await icpAuth.login();
-    } catch (error) {
-      console.error('ICP Login failed:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleIcpLogout = async () => {
-    setIsLoading(true);
-    try {
-      await icpAuth.logout();
-    } catch (error) {
-      console.error('ICP Logout failed:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const formatPrincipal = (principal: string) => {
-    if (principal.length > 20) {
-      return `${principal.slice(0, 8)}...${principal.slice(-8)}`;
-    }
-    return principal;
   };
 
   return (
@@ -181,143 +148,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           </nav>
         </div>
 
-        {/* ICP Auth Button & Calimero Connect Button */}
+        {/* Calimero Connect Button */}
         <div className="px-6 pb-6 flex flex-col items-center space-y-4 w-full">
-          {icpAuth.isAuthenticated && icpAuth.principal ? (
-            <div className="flex flex-col items-center space-y-4 w-full">
-              {/* ICP Info */}
-              <div className="flex flex-col items-center space-y-2 w-full">
-                <div
-                  className="flex h-8 w-8 items-center justify-center rounded-full mb-1"
-                  style={{
-                    background:
-                      'linear-gradient(135deg, var(--color-primary) 0%, #8ce619 100%)',
-                  }}
-                >
-                  <svg
-                    className="h-4 w-4 text-white"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </div>
-                <p
-                  className="text-sm font-medium"
-                  style={{ color: 'var(--current-text)' }}
-                >
-                  Connected
-                </p>
-                <div className="flex items-center space-x-2">
-                  <p
-                    className="text-xs"
-                    style={{ color: 'var(--current-text-secondary)' }}
-                    title={icpAuth.principal.toText()}
-                  >
-                    {formatPrincipal(icpAuth.principal.toText())}
-                  </p>
-                  <button
-                    onClick={async () => {
-                      try {
-                        setIsCopying(true);
-                        await navigator.clipboard.writeText(
-                          icpAuth.principal ? icpAuth.principal.toText() : '',
-                        );
-                        setTimeout(() => setIsCopying(false), 1500);
-                      } catch (err) {
-                        console.error('Failed to copy principal', err);
-                        setIsCopying(false);
-                      }
-                    }}
-                    aria-label="Copy ICP principal"
-                    title="Copy full ICP principal"
-                    className="inline-flex items-center justify-center p-1 rounded-md"
-                    style={{
-                      backgroundColor: 'var(--current-surface)',
-                      border: '1px solid var(--current-border)',
-                      color: 'var(--color-primary)',
-                    }}
-                  >
-                    {isCopying ? (
-                      <Check className="w-3 h-3" />
-                    ) : (
-                      <Copy className="w-3 h-3" />
-                    )}
-                  </button>
-                </div>
-              </div>
-              {/* Disconnect Button */}
-              <button
-                onClick={handleIcpLogout}
-                disabled={isLoading}
-                className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium shadow hover:shadow-lg transition-all duration-150 disabled:opacity-50 w-full justify-center"
-                style={{
-                  background:
-                    'linear-gradient(135deg, var(--color-primary) 0%, #8ce619 100%)',
-                  color: 'var(--color-background-dark)',
-                  border: 'none',
-                }}
-                aria-label="Disconnect ICP"
-                title="Disconnect Internet Identity"
-              >
-                <svg
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                  />
-                </svg>
-                <span className="hidden sm:inline">Disconnect</span>
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={handleIcpLogin}
-              disabled={isLoading}
-              className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium shadow hover:shadow-lg transition-all duration-150 disabled:opacity-50 w-full justify-center"
-              style={{
-                background:
-                  'linear-gradient(135deg, var(--color-primary) 0%, #8ce619 100%)',
-                color: 'var(--color-background-dark)',
-                border: 'none',
-              }}
-              aria-label="Connect ICP"
-              title="Connect with Internet Identity"
-            >
-              {isLoading ? (
-                <div
-                  className="h-4 w-4 animate-spin rounded-full border-b-2"
-                  style={{ borderColor: 'var(--color-background-dark)' }}
-                />
-              ) : (
-                <svg
-                  className="h-4 w-4"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                  aria-hidden="true"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11.707 4.707a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              )}
-              <span className="hidden sm:inline">Connect</span>
-            </button>
-          )}
-          {/* Calimero Connect Button centered below */}
           <div className="w-full flex justify-center">
             <CalimeroConnectButton />
           </div>
