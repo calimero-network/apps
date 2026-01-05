@@ -219,8 +219,6 @@ const AuditTrail: React.FC<AuditTrailProps> = ({
                       • Backend Query ID:{' '}
                       {documentId.replace(/[^a-zA-Z0-9_-]/g, '_')}
                     </div>
-                    <div>
-                    </div>
                   </div>
                   <Button
                     onClick={loadAuditTrail}
