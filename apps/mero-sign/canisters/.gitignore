@@ -1,5 +1,0 @@
-# dfx build artifacts
-.dfx/
-target/
-dist/
-node_modules/
