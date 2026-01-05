@@ -1,7 +1,6 @@
 import { ClientApiDataSource } from './dataSource/ClientApiDataSource';
 import { DocumentInfo, Document } from './clientApi';
 import { blobClient } from '@calimero-network/calimero-client';
-import { backendService } from './icp/backendService';
 import { processPDFAndGenerateEmbeddings } from '../services/embeddingService';
 
 export class DocumentService {
@@ -20,7 +19,6 @@ export class DocumentService {
     onBlobProgress?: (progress: number) => void,
     onEmbeddingProgress?: (progress: number) => void,
     onStorageProgress?: () => void,
-    icpIdentity?: any,
   ): Promise<{ data?: string; error?: any }> {
     try {
       const blobResponse = await blobClient.uploadBlob(
@@ -135,7 +133,6 @@ export class DocumentService {
     agreementContextID?: string,
     agreementContextUserID?: string,
     onProgress?: (progress: number) => void,
-    icpIdentity?: any,
   ): Promise<{ data?: void; error?: any }> {
     try {
       // Upload the new signed PDF via blob API
@@ -195,57 +192,6 @@ export class DocumentService {
     }
   }
 
-  async verifyDocumentWithICP(
-    documentId: string,
-    hash: string,
-    icpIdentity?: any,
-  ): Promise<{
-    status?: string;
-    verified?: boolean;
-    message?: string;
-    error?: any;
-  }> {
-    try {
-      const safeDocumentId = this.sanitizeDocumentId(documentId);
-
-      const icpApi = await backendService();
-      const statusResult = await icpApi.verifyHash(safeDocumentId, hash);
-
-      let verified = false;
-      let status: string | undefined = undefined;
-      let message: string | undefined = undefined;
-
-      if (statusResult && typeof statusResult === 'object') {
-        const key = Object.keys(statusResult)[0];
-        status = key;
-        if (key === 'FinalMatch') {
-          verified = true;
-          message =
-            'This document is verified and matches the final signed version on ICP.';
-        } else if (key === 'OriginalMatch') {
-          verified = true;
-          message =
-            'This document matches the original uploaded version on ICP.';
-        } else if (key === 'NoMatch') {
-          message = 'This document does not match any version recorded on ICP.';
-        } else if (key === 'Unrecorded') {
-          message = 'This document has not been recorded on ICP.';
-        }
-      } else if (typeof statusResult === 'string') {
-        status = statusResult;
-        message = statusResult;
-      }
-
-      return { status, verified, message };
-    } catch (error) {
-      console.error('Failed to verify document with ICP canister:', error);
-      return {
-        error: { message: 'Failed to verify document with ICP canister.' },
-        verified: false,
-        message: 'Verification failed due to an error.',
-      };
-    }
-  }
 
   async searchDocumentByEmbedding(
     queryEmbedding: number[],

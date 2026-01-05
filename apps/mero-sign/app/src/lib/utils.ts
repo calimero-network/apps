@@ -6,16 +6,6 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * Generates an ICP document ID from context and document IDs
- */
-export function generateIcpDocumentId(
-  contextId: string,
-  documentId: string,
-): string {
-  return `icp_${contextId}_${documentId}`;
-}
-
-/**
  * Formats a user ID for display (truncates long IDs)
  */
 export function formatUserId(userId: string): string {

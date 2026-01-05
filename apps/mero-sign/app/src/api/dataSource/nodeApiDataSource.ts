@@ -9,7 +9,6 @@ import type {
   VerifyContextResponse,
 } from '../nodeApi';
 import { apiClient } from '@calimero-network/calimero-client';
-import { backendService } from '../icp/backendService';
 
 export class ContextApiDataSource implements NodeApi {
   private app: any;
@@ -30,37 +29,6 @@ export class ContextApiDataSource implements NodeApi {
 
         const result = await this.app.createContext(undefined, initParams);
 
-        try {
-          const icp = await backendService();
-          const created = result as any;
-          const contextId =
-            created?.contextId || created?.context_id || props.context_name;
-          if (contextId) {
-            const icpRequest = {
-              context_id: contextId,
-              participants: (props as any).participants || [],
-              title: props.context_name ? [props.context_name] : [],
-              description: (props as any).description
-                ? [(props as any).description]
-                : [],
-              agreement_type: (props as any).agreement_type
-                ? [(props as any).agreement_type]
-                : [],
-              expires_at:
-                (props as any).expires_at != null
-                  ? [BigInt((props as any).expires_at)]
-                  : [],
-            } as any;
-            try {
-              await icp.createContext(icpRequest);
-            } catch (icpErr) {
-              console.warn('ICP: createContext failed (non-fatal):', icpErr);
-            }
-          }
-        } catch (err) {
-          console.warn('ICP backendService unavailable (non-fatal):', err);
-        }
-
         return { data: result, error: null };
       }
     } catch (error) {
@@ -77,39 +45,6 @@ export class ContextApiDataSource implements NodeApi {
       const result = await apiClient
         .node()
         .createContext(applicationId, JSON.stringify(props), 'near');
-
-      try {
-        const icp = await backendService();
-        const created = result.data as any;
-
-        const contextId =
-          created?.contextId || created?.context_id || props.context_name;
-        if (contextId) {
-          const icpRequest = {
-            context_id: contextId,
-            participants: (props as any).participants || [],
-            // Candid Opt<T> must be encoded as [] (none) or [value] (some)
-            title: props.context_name ? [props.context_name] : [],
-            description: (props as any).description
-              ? [(props as any).description]
-              : [],
-            agreement_type: (props as any).agreement_type
-              ? [(props as any).agreement_type]
-              : [],
-            expires_at:
-              (props as any).expires_at != null
-                ? [BigInt((props as any).expires_at)]
-                : [],
-          } as any;
-          try {
-            await icp.createContext(icpRequest);
-          } catch (icpErr) {
-            console.warn('ICP: createContext failed (non-fatal):', icpErr);
-          }
-        }
-      } catch (err) {
-        console.warn('ICP backendService unavailable (non-fatal):', err);
-      }
 
       return { data: result.data as CreateContextResponse, error: null };
     } catch (error) {

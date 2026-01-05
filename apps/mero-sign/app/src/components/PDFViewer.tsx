@@ -43,7 +43,6 @@ import * as pdfjsLib from 'pdfjs-dist';
 import './PDFViewer.css';
 import { useTheme } from '../contexts/ThemeContext';
 import { DocumentService } from '../api/documentService';
-import { useIcpAuth } from '../contexts/IcpAuthContext';
 import { ClientApiDataSource } from '../api/dataSource/ClientApiDataSource';
 import { blobClient, useCalimero } from '@calimero-network/calimero-client';
 import ConsentModal from './ConsentModal';
@@ -131,7 +130,6 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
   const [showChatbot, setShowChatbot] = useState(false);
 
   const documentService = new DocumentService();
-  const { identity } = useIcpAuth();
 
   const agreementContextID =
     localStorage.getItem('agreementContextID') || undefined;
@@ -510,7 +508,6 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
         agreementContextID,
         agreementContextUserID,
         undefined,
-        identity,
       );
 
       if (response.error) {
