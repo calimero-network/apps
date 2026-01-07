@@ -1,7 +1,8 @@
 import { ClientApiDataSource } from './dataSource/ClientApiDataSource';
 import { DocumentInfo, Document } from './clientApi';
 import { blobClient } from '@calimero-network/calimero-client';
-import { processPDFAndGenerateEmbeddings } from '../services/embeddingService';
+// TODO: Re-enable when AI chatbot is re-implemented
+// import { processPDFAndGenerateEmbeddings } from '../services/embeddingService';
 
 export class DocumentService {
   private clientApi: ClientApiDataSource;
@@ -45,34 +46,40 @@ export class DocumentService {
       const pdfData = new Uint8Array(arrayBuffer);
       const hash = await this.calculateFileHash(pdfData);
 
-      let embeddings: number[] | undefined;
-      let extractedText: string | undefined;
-      let chunks: any[] | undefined;
-      try {
-        onEmbeddingProgress?.(0);
+      // TODO: Re-enable embedding generation when AI chatbot is re-implemented
+      // let embeddings: number[] | undefined;
+      // let extractedText: string | undefined;
+      // let chunks: any[] | undefined;
+      // try {
+      //   onEmbeddingProgress?.(0);
 
-        onEmbeddingProgress?.(20);
-        const {
-          text,
-          fullTextEmbedding,
-          chunks: documentChunks,
-        } = await processPDFAndGenerateEmbeddings(file);
+      //   onEmbeddingProgress?.(20);
+      //   const {
+      //     text,
+      //     fullTextEmbedding,
+      //     chunks: documentChunks,
+      //   } = await processPDFAndGenerateEmbeddings(file);
 
-        onEmbeddingProgress?.(100);
+      //   onEmbeddingProgress?.(100);
 
-        extractedText = text;
-        embeddings = fullTextEmbedding;
-        chunks = documentChunks;
-      } catch (embeddingError) {
-        console.warn(
-          'Embedding generation failed, proceeding without embeddings:',
-          embeddingError,
-        );
-        onEmbeddingProgress?.(100);
-      }
+      //   extractedText = text;
+      //   embeddings = fullTextEmbedding;
+      //   chunks = documentChunks;
+      // } catch (embeddingError) {
+      //   console.warn(
+      //     'Embedding generation failed, proceeding without embeddings:',
+      //     embeddingError,
+      //   );
+      //   onEmbeddingProgress?.(100);
+      // }
 
       // Report start of storage
       onStorageProgress?.();
+
+      // Set embeddings to undefined since AI chatbot is disabled
+      const embeddings: number[] | undefined = undefined;
+      const extractedText: string | undefined = undefined;
+      const chunks: any[] | undefined = undefined;
 
       const response = await this.clientApi.uploadDocument(
         contextId,
@@ -191,7 +198,6 @@ export class DocumentService {
       return { error: { message: 'Failed to sign document' } };
     }
   }
-
 
   async searchDocumentByEmbedding(
     queryEmbedding: number[],
