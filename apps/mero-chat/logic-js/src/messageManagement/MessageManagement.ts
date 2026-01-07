@@ -176,13 +176,29 @@ export class MessageManagement {
       };
     }
 
+    // Filter by searchTerm if provided (case-insensitive search in message text and sender username)
+    let filteredItems = allItems;
+    if (args.searchTerm && args.searchTerm.trim().length > 0) {
+      const searchTermLower = args.searchTerm.trim().toLowerCase();
+      filteredItems = allItems.filter((message) => {
+        // Search in message text
+        const textMatch = message.text.toLowerCase().includes(searchTermLower);
+        // Search in sender username
+        const senderMatch = message.senderUsername
+          .toLowerCase()
+          .includes(searchTermLower);
+        return textMatch || senderMatch;
+      });
+      totalCount = filteredItems.length;
+    }
+
     const startPosition = args.offset ?? 0;
     const limit = args.limit;
 
-    // Get the sliced messages (use allItems we already fetched to avoid calling toArray again)
+    // Get the sliced messages (use filteredItems we already fetched to avoid calling toArray again)
     const start = startPosition;
-    const end = limit ? start + limit : allItems.length;
-    const slicedMessages = allItems.slice(Math.max(0, start), Math.min(allItems.length, end));
+    const end = limit ? start + limit : filteredItems.length;
+    const slicedMessages = filteredItems.slice(Math.max(0, start),Math.min(filteredItems.length, end));
 
     // Add reactions and thread info to each message
     const messagesWithReactions: MessageWithReactions[] = slicedMessages.map(message => {

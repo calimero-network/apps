@@ -61,6 +61,7 @@ export type GetMessagesArgs = {
   parentId?: string | null;
   limit?: number;
   offset?: number;
+  searchTerm?: string;
 };
 
 export type ReadMessageProps = {
