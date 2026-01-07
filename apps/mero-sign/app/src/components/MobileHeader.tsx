@@ -49,7 +49,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({ onMenuToggle }) => {
               className="text-lg font-semibold"
               style={{ color: 'var(--current-text)' }}
             >
-              MeroDocs
+              MeroSign
             </div>
           </button>
         </div>

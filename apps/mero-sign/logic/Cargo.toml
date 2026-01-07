@@ -1,6 +1,6 @@
 [package]
-name = "mero_docs"
-description = "Calimero MeroDocs logic"
+name = "mero_sign"
+description = "Calimero MeroSign logic"
 version = "0.1.0"
 edition = "2021"
 

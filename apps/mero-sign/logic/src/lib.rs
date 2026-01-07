@@ -130,10 +130,10 @@ pub enum PermissionLevel {
     Admin,
 }
 
-#[app::state(emits = MeroDocsEvent)]
+#[app::state(emits = MeroSignEvent)]
 #[derive(BorshDeserialize, BorshSerialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
-pub struct MeroDocsState {
+pub struct MeroSignState {
     // Context type flag
     pub is_private: bool,
 
@@ -203,7 +203,7 @@ pub struct ContextDetails {
 }
 
 #[app::event]
-pub enum MeroDocsEvent {
+pub enum MeroSignEvent {
     // Private context events
     SignatureCreated {
         id: u64,
@@ -247,13 +247,13 @@ pub enum MeroDocsEvent {
 }
 
 #[app::logic]
-impl MeroDocsState {
+impl MeroSignState {
     #[app::init]
-    pub fn init(is_private: bool, context_name: String) -> MeroDocsState {
+    pub fn init(is_private: bool, context_name: String) -> MeroSignState {
         let owner_raw = env::executor_id();
         let owner = UserId::new(owner_raw);
 
-        let mut state = MeroDocsState {
+        let mut state = MeroSignState {
             is_private,
             owner,
             context_name,
@@ -325,7 +325,7 @@ impl MeroDocsState {
             .insert(signature_id.to_string(), signature)
             .map_err(|e| format!("Failed to store signature: {:?}", e))?;
 
-        app::emit!(MeroDocsEvent::SignatureCreated {
+        app::emit!(MeroSignEvent::SignatureCreated {
             id: signature_id,
             name,
             size: data_size,
@@ -344,7 +344,7 @@ impl MeroDocsState {
 
         match self.signatures.remove(&key) {
             Ok(Some(_)) => {
-                app::emit!(MeroDocsEvent::SignatureDeleted { id: signature_id });
+                app::emit!(MeroSignEvent::SignatureDeleted { id: signature_id });
                 Ok(())
             }
             Ok(None) => Err(format!("Signature not found: {}", signature_id)),
@@ -408,7 +408,7 @@ impl MeroDocsState {
             .insert(context_id.clone(), identity_mapping)
             .map_err(|e| format!("Failed to store identity mapping: {:?}", e))?;
 
-        app::emit!(MeroDocsEvent::ContextJoined {
+        app::emit!(MeroSignEvent::ContextJoined {
             context_id,
             context_name
         });
@@ -423,7 +423,7 @@ impl MeroDocsState {
 
         match self.joined_contexts.remove(&context_id) {
             Ok(Some(_)) => {
-                app::emit!(MeroDocsEvent::ContextLeft { context_id });
+                app::emit!(MeroSignEvent::ContextLeft { context_id });
                 Ok(())
             }
             Ok(None) => Err("Context not found".to_string()),
@@ -553,7 +553,7 @@ impl MeroDocsState {
             .insert(document_id.clone(), Vector::new())
             .map_err(|e| format!("Failed to initialize document signatures: {:?}", e))?;
 
-        app::emit!(MeroDocsEvent::DocumentUploaded {
+        app::emit!(MeroSignEvent::DocumentUploaded {
             id: document_id.clone(),
             name,
             uploaded_by: self.owner,
@@ -570,7 +570,7 @@ impl MeroDocsState {
             Ok(Some(_)) => {
                 let _ = self.document_signatures.remove(&document_id);
 
-                app::emit!(MeroDocsEvent::DocumentDeleted { id: document_id });
+                app::emit!(MeroSignEvent::DocumentDeleted { id: document_id });
 
                 Ok(())
             }
@@ -685,7 +685,7 @@ impl MeroDocsState {
             .insert(document_id.clone(), signatures)
             .map_err(|e| format!("Failed to update document signatures: {:?}", e))?;
 
-        app::emit!(MeroDocsEvent::DocumentSigned {
+        app::emit!(MeroSignEvent::DocumentSigned {
             document_id,
             signer: signer_id,
         });
@@ -815,7 +815,7 @@ impl MeroDocsState {
             let _ = self.documents.insert(document.id.clone(), document);
         }
 
-        app::emit!(MeroDocsEvent::ParticipantJoined {
+        app::emit!(MeroSignEvent::ParticipantJoined {
             user_id: executor_id
         });
 
@@ -859,7 +859,7 @@ impl MeroDocsState {
             }
         }
 
-        app::emit!(MeroDocsEvent::ParticipantJoined { user_id });
+        app::emit!(MeroSignEvent::ParticipantJoined { user_id });
 
         Ok(())
     }
@@ -880,7 +880,7 @@ impl MeroDocsState {
             .remove(&user_id_str)
             .map_err(|e| format!("Failed to remove permissions: {:?}", e))?;
 
-        app::emit!(MeroDocsEvent::ParticipantLeft { user_id });
+        app::emit!(MeroSignEvent::ParticipantLeft { user_id });
 
         Ok(())
     }

@@ -2,7 +2,7 @@
  * Invitation utility functions for handling invitation payloads
  */
 
-const INVITATION_STORAGE_KEY = 'merodocs-invitation-payload';
+const INVITATION_STORAGE_KEY = 'merosign-invitation-payload';
 
 /**
  * Save invitation payload to localStorage
@@ -67,5 +67,3 @@ export function extractInvitationFromUrl(): string | null {
 export function hasPendingInvitation(): boolean {
   return !!(extractInvitationFromUrl() || getInvitationFromStorage());
 }
-
-

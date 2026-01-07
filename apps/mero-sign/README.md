@@ -1,6 +1,6 @@
-# MeroDocs
+# MeroSign
 
-**MeroDocs** is a privacy-first e-signature platform built on **Calimero**.  
+**MeroSign** is a privacy-first e-signature platform built on **Calimero**.  
 It empowers users on independent nodes to securely collaborate and sign PDF contracts peer-to-peer,  
 all without centralized servers or intermediaries.
 
@@ -8,7 +8,7 @@ all without centralized servers or intermediaries.
 
 ## Live Application
 
-🔗 [MeroDocs App](https://mero-docs.vercel.app)
+🔗 [MeroSign App](https://mero-sign.vercel.app)
 
 ---
 
@@ -80,7 +80,7 @@ _Note: This feature is currently under development and will be available in a fu
 ## Workflow Flowchart
 
 <p align="center">
-  <img src="assets/MeroDocs_Dark.png" alt="MeroDocs Workflow" width="700"/>
+  <img src="assets/MeroSign_Dark.png" alt="MeroSign Workflow" width="700"/>
 </p>
 <p align="center">
   <img src="assets/Legal_Chatbot_dark.png" alt="Legal Chatbot" width="700"/>
@@ -123,7 +123,7 @@ chmod +x ./build.sh
 
 ### Canister
 
-For detailed canister setup and deployment, see `merodocs_registry/BUILD.md`.
+For detailed canister setup and deployment, see `merosign_registry/BUILD.md`.
 
 Set up your environment variables as needed for your Calimero deployment.
 

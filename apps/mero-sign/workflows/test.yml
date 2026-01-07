@@ -1,5 +1,5 @@
-description: MeroDocs Application Test Workflow
-name: MeroDocs App Test
+description: MeroSign Application Test Workflow
+name: MeroSign App Test
 
 auth_service: true
 
@@ -7,22 +7,22 @@ nodes:
   chain_id: testnet-1
   count: 2
   image: ghcr.io/calimero-network/merod:edge
-  prefix: merodocs-node
+  prefix: merosign-node
 
 steps:
-  # Step 1: Install the MeroDocs application
-  - name: Install MeroDocs Application
+  # Step 1: Install the MeroSign application
+  - name: Install MeroSign Application
     type: install_application
-    node: merodocs-node-1
-    path: "../logic/res/mero_docs.wasm"
+    node: merosign-node-1
+    path: "../logic/res/mero_sign.wasm"
     dev: true
     outputs:
       app_id: applicationId
 
-  # Step 2: Create a default private context for the MeroDocs app
+  # Step 2: Create a default private context for the MeroSign app
   - name: Create Default Private Context
     type: create_context
-    node: merodocs-node-1
+    node: merosign-node-1
     application_id: "{{app_id}}"
     params: '{"is_private": true, "context_name": "default"}'
     outputs:
