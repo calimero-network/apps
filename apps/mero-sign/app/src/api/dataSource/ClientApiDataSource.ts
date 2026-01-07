@@ -198,7 +198,6 @@ export class ClientApiDataSource implements ClientApi {
           contextId: authConfig.contextId || getContextId() || '',
           method: ClientMethod.ADD_PARTICIPANT,
           argsJson: {
-            context_id: contextId,
             user_id: userId,
             permission: permission,
           },
@@ -225,6 +224,51 @@ export class ClientApiDataSource implements ClientApi {
       };
     } catch (error: any) {
       console.error('ClientApiDataSource: Error in addParticipant:', error);
+      return {
+        data: undefined,
+        error: {
+          code: 500,
+          message: getErrorMessage(error),
+        },
+      };
+    }
+  }
+
+  // Register self as participant in a shared context (for users who joined via invitation)
+  async registerSelfAsParticipant(
+    agreementContextID: string,
+    agreementContextUserID: string,
+  ): ApiResponse<void> {
+    try {
+      const response = await rpcClient.execute(
+        {
+          contextId: agreementContextID,
+          method: ClientMethod.REGISTER_SELF_AS_PARTICIPANT,
+          argsJson: {},
+          executorPublicKey: agreementContextUserID,
+        },
+        RequestConfig,
+      );
+
+      if (response?.error) {
+        return {
+          data: undefined,
+          error: {
+            code: response.error.code ?? 500,
+            message: getErrorMessage(response.error),
+          },
+        };
+      }
+
+      return {
+        data: undefined,
+        error: null,
+      };
+    } catch (error: any) {
+      console.error(
+        'ClientApiDataSource: Error in registerSelfAsParticipant:',
+        error,
+      );
       return {
         data: undefined,
         error: {
@@ -391,7 +435,6 @@ export class ClientApiDataSource implements ClientApi {
       }
 
       const params: RpcQueryParams<{
-        context_id: string;
         document_id: string;
         pdf_blob_id_str: string;
         file_size: number;
@@ -401,7 +444,6 @@ export class ClientApiDataSource implements ClientApi {
         contextId: contextId,
         method: ClientMethod.SIGN_DOCUMENT,
         argsJson: {
-          context_id: contextId,
           document_id: documentId,
           pdf_blob_id_str: pdfBlobIdStr,
           file_size: fileSize,
@@ -413,7 +455,6 @@ export class ClientApiDataSource implements ClientApi {
 
       const response = await rpcClient.execute<
         {
-          context_id: string;
           document_id: string;
           pdf_blob_id_str: string;
           file_size: number;
@@ -938,7 +979,6 @@ export class ClientApiDataSource implements ClientApi {
           contextId: authConfig.contextId || contextId || getContextId() || '',
           method: ClientMethod.UPLOAD_DOCUMENT,
           argsJson: {
-            context_id: contextId,
             name,
             hash,
             pdf_blob_id_str: pdfBlobIdStr,
@@ -1001,7 +1041,6 @@ export class ClientApiDataSource implements ClientApi {
           contextId: authConfig.contextId || getContextId() || '',
           method: ClientMethod.DELETE_DOCUMENT,
           argsJson: {
-            context_id: agreementContextID || '',
             document_id: documentId,
           },
           executorPublicKey: (authConfig.executorPublicKey ||
@@ -1055,9 +1094,7 @@ export class ClientApiDataSource implements ClientApi {
         {
           contextId: authConfig.contextId || contextId || getContextId() || '',
           method: ClientMethod.LIST_DOCUMENTS,
-          argsJson: {
-            context_id: contextId,
-          },
+          argsJson: {},
           executorPublicKey: (authConfig.executorPublicKey ||
             getExecutorPublicKey() ||
             '') as string,
@@ -1114,7 +1151,6 @@ export class ClientApiDataSource implements ClientApi {
           contextId: authConfig.contextId || getContextId() || '',
           method: ClientMethod.MARK_PARTICIPANT_SIGNED,
           argsJson: {
-            context_id: contextId,
             document_id: documentId,
             user_id: userId,
           },

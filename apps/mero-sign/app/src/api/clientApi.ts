@@ -18,6 +18,7 @@ export enum ClientMethod {
   MARK_DOCUMENT_FULLY_SIGNED = 'mark_document_fully_signed',
   GET_CONTEXT_DETAILS = 'get_context_details',
   ADD_PARTICIPANT = 'add_participant',
+  REGISTER_SELF_AS_PARTICIPANT = 'register_self_as_participant',
   MARK_PARTICIPANT_SIGNED = 'mark_participant_signed',
   SET_CONSENT = 'set_consent',
   HAS_CONSENTED = 'has_consented',
