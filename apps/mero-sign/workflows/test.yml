@@ -1,0 +1,39 @@
+description: MeroDocs Application Test Workflow
+name: MeroDocs App Test
+
+auth_service: true
+
+nodes:
+  chain_id: testnet-1
+  count: 2
+  image: ghcr.io/calimero-network/merod:edge
+  prefix: merodocs-node
+
+steps:
+  # Step 1: Install the MeroDocs application
+  - name: Install MeroDocs Application
+    type: install_application
+    node: merodocs-node-1
+    path: "../logic/res/mero_docs.wasm"
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  # Step 2: Create a default private context for the MeroDocs app
+  - name: Create Default Private Context
+    type: create_context
+    node: merodocs-node-1
+    application_id: "{{app_id}}"
+    params: '{"is_private": true, "context_name": "default"}'
+    outputs:
+      context_id: contextId
+      member_public_key: memberPublicKey
+
+  # Step 3: Wait for context creation and sync
+  - name: Wait For Context Sync
+    type: wait
+    seconds: 1
+
+stop_all_nodes: false
+restart: true
+wait_timeout: 60
