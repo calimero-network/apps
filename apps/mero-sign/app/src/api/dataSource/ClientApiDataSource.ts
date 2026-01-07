@@ -4,6 +4,8 @@ import {
   rpcClient,
   getAuthConfig,
   getAppEndpointKey,
+  getExecutorPublicKey,
+  getContextId,
 } from '@calimero-network/calimero-client';
 import {
   ClientApi,
@@ -14,7 +16,12 @@ import {
 } from '../clientApi';
 import { DefaultContextService } from '../defaultContextService';
 
-const RequestConfig = { timeout: 30000 };
+const RequestConfig = {
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  timeout: 10000,
+};
 
 function getErrorMessage(error: any): string {
   if (
@@ -72,14 +79,20 @@ export class ClientApiDataSource implements ClientApi {
             )
           : getAuthConfig();
 
-      const response = await rpcClient.execute({
-        ...authConfig,
-        method: ClientMethod.SET_CONSENT,
-        argsJson: {
-          user_id: userId,
-          document_id: documentId,
+      const response = await rpcClient.execute(
+        {
+          contextId: authConfig.contextId || getContextId() || '',
+          method: ClientMethod.SET_CONSENT,
+          argsJson: {
+            user_id: userId,
+            document_id: documentId,
+          },
+          executorPublicKey: (authConfig.executorPublicKey ||
+            getExecutorPublicKey() ||
+            '') as string,
         },
-      } as RpcQueryParams<any>);
+        RequestConfig,
+      );
 
       if (response?.error) {
         return {
@@ -90,7 +103,6 @@ export class ClientApiDataSource implements ClientApi {
           },
         };
       }
-
 
       return {
         data: undefined,
@@ -122,14 +134,20 @@ export class ClientApiDataSource implements ClientApi {
             )
           : getAuthConfig();
 
-      const response = await rpcClient.execute({
-        ...authConfig,
-        method: ClientMethod.HAS_CONSENTED,
-        argsJson: {
-          user_id: agreementContextUserID,
-          document_id: documentId,
+      const response = await rpcClient.execute(
+        {
+          contextId: authConfig.contextId || getContextId() || '',
+          method: ClientMethod.HAS_CONSENTED,
+          argsJson: {
+            user_id: agreementContextUserID,
+            document_id: documentId,
+          },
+          executorPublicKey: (authConfig.executorPublicKey ||
+            getExecutorPublicKey() ||
+            '') as string,
         },
-      } as RpcQueryParams<any>);
+        RequestConfig,
+      );
 
       if (response?.error) {
         return {
@@ -175,15 +193,21 @@ export class ClientApiDataSource implements ClientApi {
             )
           : getAuthConfig();
 
-      const response = await rpcClient.execute({
-        ...authConfig,
-        method: ClientMethod.ADD_PARTICIPANT,
-        argsJson: {
-          context_id: contextId,
-          user_id: userId,
-          permission: permission,
+      const response = await rpcClient.execute(
+        {
+          contextId: authConfig.contextId || getContextId() || '',
+          method: ClientMethod.ADD_PARTICIPANT,
+          argsJson: {
+            context_id: contextId,
+            user_id: userId,
+            permission: permission,
+          },
+          executorPublicKey: (authConfig.executorPublicKey ||
+            getExecutorPublicKey() ||
+            '') as string,
         },
-      } as RpcQueryParams<any>);
+        RequestConfig,
+      );
 
       if (response?.error) {
         return {
@@ -239,11 +263,17 @@ export class ClientApiDataSource implements ClientApi {
         // Fallback to old API
         const authConfig = getAuthConfig();
 
-        const response = await rpcClient.execute({
-          ...authConfig,
-          method: ClientMethod.IS_DEFAULT_PRIVATE_CONTEXT,
-          argsJson: {},
-        } as RpcQueryParams<any>);
+        const response = await rpcClient.execute(
+          {
+            contextId: authConfig.contextId || getContextId() || '',
+            method: ClientMethod.IS_DEFAULT_PRIVATE_CONTEXT,
+            argsJson: {},
+            executorPublicKey: (authConfig.executorPublicKey ||
+              getExecutorPublicKey() ||
+              '') as string,
+          },
+          RequestConfig,
+        );
 
         if (response?.error) {
           return {
@@ -290,13 +320,19 @@ export class ClientApiDataSource implements ClientApi {
             )
           : getAuthConfig();
 
-      const response = await rpcClient.execute({
-        ...authConfig,
-        method: ClientMethod.GET_CONTEXT_DETAILS,
-        argsJson: {
-          context_id: contextId,
+      const response = await rpcClient.execute(
+        {
+          contextId: authConfig.contextId || getContextId() || '',
+          method: ClientMethod.GET_CONTEXT_DETAILS,
+          argsJson: {
+            context_id: contextId,
+          },
+          executorPublicKey: (authConfig.executorPublicKey ||
+            getExecutorPublicKey() ||
+            '') as string,
         },
-      } as RpcQueryParams<any>);
+        RequestConfig,
+      );
 
       if (response?.error) {
         return {
@@ -396,7 +432,6 @@ export class ClientApiDataSource implements ClientApi {
         };
       }
 
-
       return {
         data: undefined,
         error: null,
@@ -477,8 +512,6 @@ export class ClientApiDataSource implements ClientApi {
           authConfig = {
             ...baseAuthConfig,
             contextId: contextId,
-            executorPublicKey:
-              signatureContextUserID || baseAuthConfig.executorPublicKey,
           };
         } else {
           authConfig =
@@ -496,11 +529,26 @@ export class ClientApiDataSource implements ClientApi {
           data_size: dataSize,
         };
 
-        const response = await rpcClient.execute({
-          ...authConfig,
-          method: ClientMethod.CREATE_SIGNATURE,
-          argsJson,
-        } as RpcQueryParams<any>);
+        // Ensure executorPublicKey is always set - prioritize signatureContextUserID, then authConfig, then getExecutorPublicKey
+        const executorPublicKey = (signatureContextUserID ||
+          authConfig.executorPublicKey ||
+          getExecutorPublicKey() ||
+          '') as string;
+
+        if (!executorPublicKey) {
+          throw new Error('executorPublicKey is required but was not found');
+        }
+
+        const response = await rpcClient.execute(
+          {
+            contextId:
+              authConfig.contextId || contextId || getContextId() || '',
+            method: ClientMethod.CREATE_SIGNATURE,
+            argsJson,
+            executorPublicKey,
+          },
+          RequestConfig,
+        );
         return {
           data: response.result,
         };
@@ -571,11 +619,18 @@ export class ClientApiDataSource implements ClientApi {
           signature_id: signatureId,
         };
 
-        const response = await rpcClient.execute({
-          ...authConfig,
-          method: ClientMethod.DELETE_SIGNATURE,
-          argsJson,
-        } as RpcQueryParams<any>);
+        const response = await rpcClient.execute(
+          {
+            contextId:
+              authConfig.contextId || contextId || getContextId() || '',
+            method: ClientMethod.DELETE_SIGNATURE,
+            argsJson,
+            executorPublicKey: (authConfig.executorPublicKey ||
+              getExecutorPublicKey() ||
+              '') as string,
+          },
+          RequestConfig,
+        );
         return {
           data: response.result,
         };
@@ -652,11 +707,18 @@ export class ClientApiDataSource implements ClientApi {
               : getAuthConfig();
         }
 
-        const response = await rpcClient.execute({
-          ...authConfig,
-          method: ClientMethod.LIST_SIGNATURES,
-          argsJson: {},
-        } as RpcQueryParams<any>);
+        const response = await rpcClient.execute(
+          {
+            contextId:
+              authConfig.contextId || contextId || getContextId() || '',
+            method: ClientMethod.LIST_SIGNATURES,
+            argsJson: {},
+            executorPublicKey: (authConfig.executorPublicKey ||
+              getExecutorPublicKey() ||
+              '') as string,
+          },
+          RequestConfig,
+        );
 
         const extractedData = response.result?.output || response.result;
 
@@ -734,11 +796,18 @@ export class ClientApiDataSource implements ClientApi {
           shared_identity: sharedIdentity,
           context_name: name,
         };
-        const response = await rpcClient.execute({
-          ...getAuthConfig(),
-          method: ClientMethod.JOIN_SHARED_CONTEXT,
-          argsJson,
-        } as RpcQueryParams<any>);
+        const authConfig = getAuthConfig();
+        const response = await rpcClient.execute(
+          {
+            contextId: authConfig.contextId || getContextId() || '',
+            method: ClientMethod.JOIN_SHARED_CONTEXT,
+            argsJson,
+            executorPublicKey: (authConfig.executorPublicKey ||
+              getExecutorPublicKey() ||
+              '') as string,
+          },
+          RequestConfig,
+        );
         return {
           data: response.result,
         };
@@ -791,11 +860,17 @@ export class ClientApiDataSource implements ClientApi {
 
         const authConfig = getAuthConfig();
 
-        const response = await rpcClient.execute({
-          ...authConfig,
-          method: ClientMethod.LIST_JOINED_CONTEXTS,
-          argsJson: {},
-        } as RpcQueryParams<any>);
+        const response = await rpcClient.execute(
+          {
+            contextId: authConfig.contextId || getContextId() || '',
+            method: ClientMethod.LIST_JOINED_CONTEXTS,
+            argsJson: {},
+            executorPublicKey: (authConfig.executorPublicKey ||
+              getExecutorPublicKey() ||
+              '') as string,
+          },
+          RequestConfig,
+        );
 
         const data = response.result?.output || response.result;
 
@@ -813,13 +888,20 @@ export class ClientApiDataSource implements ClientApi {
 
   async leaveSharedContext(contextId: string): Promise<any> {
     try {
-      const response = await rpcClient.execute({
-        ...getAuthConfig(),
-        method: ClientMethod.LEAVE_SHARED_CONTEXT,
-        argsJson: {
-          context_id: contextId,
+      const authConfig = getAuthConfig();
+      const response = await rpcClient.execute(
+        {
+          contextId: authConfig.contextId || getContextId() || '',
+          method: ClientMethod.LEAVE_SHARED_CONTEXT,
+          argsJson: {
+            context_id: contextId,
+          },
+          executorPublicKey: (authConfig.executorPublicKey ||
+            getExecutorPublicKey() ||
+            '') as string,
         },
-      } as RpcQueryParams<any>);
+        RequestConfig,
+      );
       return {
         data: response.result,
       };
@@ -851,20 +933,26 @@ export class ClientApiDataSource implements ClientApi {
             )
           : getAuthConfig();
 
-      const response = await rpcClient.execute({
-        ...authConfig,
-        method: ClientMethod.UPLOAD_DOCUMENT,
-        argsJson: {
-          context_id: contextId,
-          name,
-          hash,
-          pdf_blob_id_str: pdfBlobIdStr,
-          file_size: fileSize,
-          embeddings, 
-          extracted_text: extractedText, 
-          chunks, 
+      const response = await rpcClient.execute(
+        {
+          contextId: authConfig.contextId || contextId || getContextId() || '',
+          method: ClientMethod.UPLOAD_DOCUMENT,
+          argsJson: {
+            context_id: contextId,
+            name,
+            hash,
+            pdf_blob_id_str: pdfBlobIdStr,
+            file_size: fileSize,
+            embeddings,
+            extracted_text: extractedText,
+            chunks,
+          },
+          executorPublicKey: (authConfig.executorPublicKey ||
+            getExecutorPublicKey() ||
+            '') as string,
         },
-      } as RpcQueryParams<any>);
+        RequestConfig,
+      );
 
       if (response?.error) {
         return {
@@ -908,14 +996,20 @@ export class ClientApiDataSource implements ClientApi {
             )
           : getAuthConfig();
 
-      const response = await rpcClient.execute({
-        ...authConfig,
-        method: ClientMethod.DELETE_DOCUMENT,
-        argsJson: {
-          context_id: agreementContextID || '',
-          document_id: documentId,
+      const response = await rpcClient.execute(
+        {
+          contextId: authConfig.contextId || getContextId() || '',
+          method: ClientMethod.DELETE_DOCUMENT,
+          argsJson: {
+            context_id: agreementContextID || '',
+            document_id: documentId,
+          },
+          executorPublicKey: (authConfig.executorPublicKey ||
+            getExecutorPublicKey() ||
+            '') as string,
         },
-      } as RpcQueryParams<any>);
+        RequestConfig,
+      );
 
       if (response?.error) {
         return {
@@ -957,13 +1051,19 @@ export class ClientApiDataSource implements ClientApi {
             )
           : getAuthConfig();
 
-      const response = await rpcClient.execute({
-        ...authConfig,
-        method: ClientMethod.LIST_DOCUMENTS,
-        argsJson: {
-          context_id: contextId,
+      const response = await rpcClient.execute(
+        {
+          contextId: authConfig.contextId || contextId || getContextId() || '',
+          method: ClientMethod.LIST_DOCUMENTS,
+          argsJson: {
+            context_id: contextId,
+          },
+          executorPublicKey: (authConfig.executorPublicKey ||
+            getExecutorPublicKey() ||
+            '') as string,
         },
-      } as RpcQueryParams<any>);
+        RequestConfig,
+      );
 
       if (response?.error) {
         return {
@@ -1009,15 +1109,21 @@ export class ClientApiDataSource implements ClientApi {
             )
           : getAuthConfig();
 
-      const response = await rpcClient.execute({
-        ...authConfig,
-        method: ClientMethod.MARK_PARTICIPANT_SIGNED,
-        argsJson: {
-          context_id: contextId,
-          document_id: documentId,
-          user_id: userId,
+      const response = await rpcClient.execute(
+        {
+          contextId: authConfig.contextId || getContextId() || '',
+          method: ClientMethod.MARK_PARTICIPANT_SIGNED,
+          argsJson: {
+            context_id: contextId,
+            document_id: documentId,
+            user_id: userId,
+          },
+          executorPublicKey: (authConfig.executorPublicKey ||
+            getExecutorPublicKey() ||
+            '') as string,
         },
-      } as RpcQueryParams<any>);
+        RequestConfig,
+      );
 
       if (response?.error) {
         return {
@@ -1063,14 +1169,20 @@ export class ClientApiDataSource implements ClientApi {
             )
           : getAuthConfig();
 
-      const response = await rpcClient.execute({
-        ...authConfig,
-        method: ClientMethod.SEARCH_DOCUMENT_BY_EMBEDDING,
-        argsJson: {
-          query_embedding: queryEmbedding,
-          document_id: documentId,
+      const response = await rpcClient.execute(
+        {
+          contextId: authConfig.contextId || getContextId() || '',
+          method: ClientMethod.SEARCH_DOCUMENT_BY_EMBEDDING,
+          argsJson: {
+            query_embedding: queryEmbedding,
+            document_id: documentId,
+          },
+          executorPublicKey: (authConfig.executorPublicKey ||
+            getExecutorPublicKey() ||
+            '') as string,
         },
-      } as RpcQueryParams<any>);
+        RequestConfig,
+      );
 
       if (response?.error) {
         return {
