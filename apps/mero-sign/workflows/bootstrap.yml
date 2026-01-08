@@ -12,7 +12,7 @@ steps:
   - name: Install MeroSign Application on Node 1
     type: install_application
     node: merosign-node-1
-    url: https://calimero-only-peers-dev.s3.amazonaws.com/uploads/mero_sign_test_v1.wasm
+    path: "logic/res/mero_sign.wasm"
     dev: true
     outputs:
       app_id: applicationId
@@ -21,13 +21,13 @@ steps:
   - name: Install MeroSign Application on Node 2
     type: install_application
     node: merosign-node-2
-    url: https://calimero-only-peers-dev.s3.amazonaws.com/uploads/mero_sign_test_v1.wasm
+    path: "logic/res/mero_sign.wasm"
     dev: true
 
   - name: Install MeroSign Application on Node 3
     type: install_application
     node: merosign-node-3
-    url: https://calimero-only-peers-dev.s3.amazonaws.com/uploads/mero_sign_test_v1.wasm
+    path: "logic/res/mero_sign.wasm"
     dev: true
 
   # Step 3: Generate identities on all nodes
@@ -186,6 +186,7 @@ steps:
       context_id: "{{agreement_context_id}}"
 
 # Configuration options
+auth_service: true
 stop_all_nodes: true
 force_pull_image: true
 restart: false
