@@ -147,7 +147,7 @@ steps:
 
 # Configuration options
 auth_service: true
-stop_all_nodes: true
+stop_all_nodes: false
 force_pull_image: true
 restart: false
 wait_timeout: 120
