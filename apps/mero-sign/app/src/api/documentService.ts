@@ -180,7 +180,7 @@ export class DocumentService {
       );
 
       if (!response.error) {
-        const markSignedResp = await this.clientApi.markParticipantSigned(
+        await this.clientApi.markParticipantSigned(
           contextId,
           documentId,
           signerId,

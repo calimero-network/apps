@@ -1,7 +1,7 @@
 import { type ApiResponse } from '@calimero-network/calimero-client';
 import { ContextApiDataSource } from './dataSource/nodeApiDataSource';
 import { ClientApiDataSource } from './dataSource/ClientApiDataSource';
-import { Agreement, ContextMetadata } from './clientApi';
+import { Agreement } from './clientApi';
 import { CreateContextProps, CreateContextResponse } from './nodeApi';
 
 export class AgreementService {

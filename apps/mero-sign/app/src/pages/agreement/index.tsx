@@ -191,17 +191,6 @@ const getStageDescription = (stage: FileUpload['stage']): string => {
   }
 };
 
-const calculateFileHash = async (data: Uint8Array): Promise<string> => {
-  const buffer = new Uint8Array(data);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-};
-
-const sanitizeDocumentId = (documentId: string): string => {
-  return documentId.replace(/[^a-zA-Z0-9_-]/g, '_');
-};
-
 const AgreementPage: React.FC = () => {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -215,9 +204,7 @@ const AgreementPage: React.FC = () => {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteMode, setInviteMode] = useState<'url' | 'payload'>('url');
   const [inviteId, setInviteId] = useState('');
-  const [invitePermission, setInvitePermission] = useState<PermissionLevel>(
-    PermissionLevel.Sign,
-  );
+  const [invitePermission] = useState<PermissionLevel>(PermissionLevel.Sign);
   const [invitationUrl, setInvitationUrl] = useState<string | null>(null);
   const [generatedPayload, setGeneratedPayload] = useState('');
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -229,7 +216,6 @@ const AgreementPage: React.FC = () => {
   const [showPDFViewer, setShowPDFViewer] = useState(false);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [loadingPDFPreview, setLoadingPDFPreview] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [contextDetails, setContextDetails] = useState<ContextDetails | null>(
     null,
@@ -595,7 +581,6 @@ const AgreementPage: React.FC = () => {
       }
 
       try {
-        setLoadingPDFPreview(true);
         const contextID = localStorage.getItem('agreementContextID');
         const blob = await blobClient.downloadBlob(
           document.pdfBlobId,
@@ -616,8 +601,6 @@ const AgreementPage: React.FC = () => {
           error,
         );
         showNotification(`Failed to load PDF: "${document.name}".`, 'error');
-      } finally {
-        setLoadingPDFPreview(false);
       }
     },
     [showNotification, app],
@@ -783,6 +766,7 @@ const AgreementPage: React.FC = () => {
     try {
       setGeneratingInvite(true);
 
+      // Step 1: Generate the invitation payload
       const response = await nodeApiService.inviteToContext({
         contextId: agreementContextID,
         inviter: agreementContextUserID,
@@ -797,17 +781,48 @@ const AgreementPage: React.FC = () => {
         return;
       }
 
-      if (response.data) {
-        setGeneratedPayload(response.data);
-        showNotification('Payload generated!', 'success');
+      if (!response.data) {
+        showNotification(
+          'Failed to generate payload: No data returned',
+          'error',
+        );
+        return;
       }
+
+      // Step 2: Pre-register the invitee as a participant with the selected permission
+      const addParticipantResponse = await clientApiService.addParticipant(
+        agreementContextID,
+        inviteId.trim(),
+        invitePermission,
+        agreementContextID,
+        agreementContextUserID,
+      );
+
+      if (addParticipantResponse.error) {
+        // Log the error but don't fail the entire flow - the user can still join and register themselves
+        console.warn(
+          'Failed to pre-register participant, but invitation was generated:',
+          addParticipantResponse.error,
+        );
+        // Still show success since the invitation was generated
+        // The invitee can register themselves when they join
+      }
+
+      setGeneratedPayload(response.data);
+      showNotification('Payload generated!', 'success');
     } catch (error) {
       console.error('Failed to generate payload:', error);
       showNotification('Failed to generate payload', 'error');
     } finally {
       setGeneratingInvite(false);
     }
-  }, [inviteId, nodeApiService, showNotification]);
+  }, [
+    inviteId,
+    invitePermission,
+    nodeApiService,
+    clientApiService,
+    showNotification,
+  ]);
 
   const handleCopyPayload = useCallback(() => {
     if (generatedPayload) {

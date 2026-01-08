@@ -94,6 +94,12 @@ export default function InvitationHandlerPopup({
   const [errorMessage, setErrorMessage] = useState('');
   const hasAttemptedJoin = useRef(false);
   const syncIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const appRef = useRef(app);
+
+  // Keep appRef in sync with the latest app value
+  useEffect(() => {
+    appRef.current = app;
+  }, [app]);
 
   const waitForContextSync = useCallback(async (contextId: string) => {
     return new Promise<void>((resolve) => {
@@ -184,6 +190,7 @@ export default function InvitationHandlerPopup({
       if (!invitationPayload) {
         setErrorMessage('No invitation found');
         setStatus('error');
+        hasAttemptedJoin.current = false;
         return;
       }
 
@@ -196,24 +203,30 @@ export default function InvitationHandlerPopup({
         );
       }
 
-      if (!app) {
+      // Wait for app to be available, checking the ref which is kept in sync
+      if (!appRef.current) {
         let waitAttempts = 0;
         const maxWaitAttempts = 20;
-        while (!app && waitAttempts < maxWaitAttempts) {
+        while (!appRef.current && waitAttempts < maxWaitAttempts) {
           await new Promise((resolve) => setTimeout(resolve, 500));
           waitAttempts++;
         }
 
-        if (!app) {
+        if (!appRef.current) {
           setErrorMessage(
             'Application is still initializing. Please wait a moment and try again.',
           );
           setStatus('error');
+          // Reset the flag so retry can work
+          hasAttemptedJoin.current = false;
           return;
         }
       } else {
         await new Promise((resolve) => setTimeout(resolve, 500));
       }
+
+      // Use the ref value for the rest of the function to ensure we have the latest
+      const currentApp = appRef.current;
 
       const identityResponse: ResponseData<NodeIdentity> = await apiClient
         .node()
@@ -225,6 +238,7 @@ export default function InvitationHandlerPopup({
             'Failed to create identity for invitation',
         );
         setStatus('error');
+        hasAttemptedJoin.current = false;
         return;
       }
 
@@ -242,6 +256,7 @@ export default function InvitationHandlerPopup({
           joinResponse.error?.message || 'Failed to join context',
         );
         setStatus('error');
+        hasAttemptedJoin.current = false;
         return;
       }
 
@@ -252,6 +267,7 @@ export default function InvitationHandlerPopup({
       if (verifyContextResponse.error || !verifyContextResponse.data) {
         setErrorMessage('Failed to verify context');
         setStatus('error');
+        hasAttemptedJoin.current = false;
         return;
       }
 
@@ -276,7 +292,7 @@ export default function InvitationHandlerPopup({
         '../api/defaultContextService'
       );
 
-      const clientApi = new ClientApiDataSource(app);
+      const clientApi = new ClientApiDataSource(currentApp);
 
       // Wait for RPC to be ready by testing with a read call
       // The state might not be ready even after rootHash changes
@@ -419,8 +435,8 @@ export default function InvitationHandlerPopup({
       }
 
       // Step 3: Register the context in the user's private context
-      if (app) {
-        const defaultContextService = DefaultContextService.getInstance(app);
+      if (currentApp) {
+        const defaultContextService = DefaultContextService.getInstance(currentApp);
         const ensureResult = await defaultContextService.ensureDefaultContext();
 
         if (ensureResult.success) {
@@ -454,8 +470,10 @@ export default function InvitationHandlerPopup({
         error instanceof Error ? error.message : 'An unexpected error occurred',
       );
       setStatus('error');
+      // Reset the flag on error so retry can work
+      hasAttemptedJoin.current = false;
     }
-  }, [waitForContextSync, app, onSuccess]);
+  }, [waitForContextSync, onSuccess]);
 
   useEffect(() => {
     joinContextWithInvitation();

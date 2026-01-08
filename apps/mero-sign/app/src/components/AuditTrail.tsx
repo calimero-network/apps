@@ -126,7 +126,7 @@ const AuditTrail: React.FC<AuditTrailProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [contextId, documentId]);
+  }, []);
 
   useEffect(() => {
     if (isOpen) {

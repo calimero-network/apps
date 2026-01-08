@@ -1,9 +1,9 @@
 export const APPLICATION_ID =
   import.meta.env.VITE_APPLICATION_ID ||
-  'Ddb3UTgegRPyt78btZkFWypSz7TRhespt9BDUB2nYfsv';
+  '46M9ayEPkpgDBoDDUP8bHJEwqCN78PXcndTUTW9crGc9';
 export const APPLICATION_PATH =
   import.meta.env.VITE_APPLICATION_PATH ||
-  'https://calimero-only-peers-dev.s3.amazonaws.com/uploads/mero_sign_v3.wasm';
+  'https://calimero-only-peers-dev.s3.amazonaws.com/uploads/mero_sign_test_v1.wasm';
 export const CONTEXT_ID =
   import.meta.env.VITE_CONTEXT_ID ||
-  'sAMbSAU8rT2F37Kc1EW3YyFKEpvYrLsXskhB56B73Ry';
+  'B8jh5twBKBXGvL4Cve2NHiBbGPm9cQzmD2uE9xamu9ke';

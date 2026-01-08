@@ -246,8 +246,76 @@ export default function Dashboard() {
       }
 
       const { contextId, memberPublicKey } = joinResponse.data;
+
+      // Validate that both contextId and memberPublicKey are present
+      if (!contextId || !memberPublicKey) {
+        setError(
+          'Invalid join response: missing contextId or memberPublicKey',
+        );
+        return;
+      }
+
       localStorage.setItem('agreementContextID', contextId);
       localStorage.setItem('agreementContextUserID', memberPublicKey);
+
+      // Wait a bit for context to sync after joining
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      // Register self as participant in the shared context
+      // This is required for users joining via payload invitation
+      let registerSuccess = false;
+      let registerAttempts = 0;
+      const maxRegisterAttempts = 5;
+
+      while (!registerSuccess && registerAttempts < maxRegisterAttempts) {
+        registerAttempts++;
+        try {
+          const registerResponse = await clientApiService.registerSelfAsParticipant(
+            contextId,
+            memberPublicKey,
+          );
+
+          if (registerResponse.error) {
+            const errorMessage = registerResponse.error.message || '';
+
+            // If already registered, that's fine - continue
+            if (errorMessage.includes('Already registered')) {
+              console.log('Already registered as participant');
+              registerSuccess = true;
+            } else if (
+              errorMessage.includes('Uninitialized') &&
+              registerAttempts < maxRegisterAttempts
+            ) {
+              // State not ready yet, wait and retry
+              console.log(
+                `Register attempt ${registerAttempts} failed with Uninitialized, retrying...`,
+              );
+              await new Promise((resolve) => setTimeout(resolve, 2000));
+            } else {
+              console.warn(
+                'Failed to register as participant:',
+                registerResponse.error,
+              );
+              // Don't block the flow - user can still proceed
+              registerSuccess = true;
+            }
+          } else {
+            console.log('Successfully registered as participant in context');
+            registerSuccess = true;
+          }
+        } catch (error) {
+          console.warn(
+            `Error registering as participant (attempt ${registerAttempts}):`,
+            error,
+          );
+          if (registerAttempts < maxRegisterAttempts) {
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+          } else {
+            // Don't block the flow - user can still proceed
+            registerSuccess = true;
+          }
+        }
+      }
 
       const joinSharedResponse = await clientApiService.joinSharedContext(
         contextId,
