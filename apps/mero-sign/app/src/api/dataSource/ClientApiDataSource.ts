@@ -5,6 +5,7 @@ import {
   getAuthConfig,
   getAppEndpointKey,
   getExecutorPublicKey,
+  setExecutorPublicKey,
   getContextId,
 } from '@calimero-network/calimero-client';
 import {
@@ -193,6 +194,9 @@ export class ClientApiDataSource implements ClientApi {
             )
           : getAuthConfig();
 
+      if (authConfig.executorPublicKey) {
+        setExecutorPublicKey(authConfig.executorPublicKey);
+      }
       const response = await rpcClient.execute(
         {
           contextId: authConfig.contextId || getContextId() || '',
@@ -364,6 +368,9 @@ export class ClientApiDataSource implements ClientApi {
             )
           : getAuthConfig();
 
+      if (authConfig.executorPublicKey) {
+        setExecutorPublicKey(authConfig.executorPublicKey);
+      }
       const response = await rpcClient.execute(
         {
           contextId: authConfig.contextId || getContextId() || '',
@@ -974,6 +981,9 @@ export class ClientApiDataSource implements ClientApi {
             )
           : getAuthConfig();
 
+      if (authConfig.executorPublicKey) {
+        setExecutorPublicKey(authConfig.executorPublicKey);
+      }
       const response = await rpcClient.execute(
         {
           contextId: authConfig.contextId || contextId || getContextId() || '',
@@ -1036,6 +1046,9 @@ export class ClientApiDataSource implements ClientApi {
             )
           : getAuthConfig();
 
+      if (authConfig.executorPublicKey) {
+        setExecutorPublicKey(authConfig.executorPublicKey);
+      }
       const response = await rpcClient.execute(
         {
           contextId: authConfig.contextId || getContextId() || '',
@@ -1090,6 +1103,9 @@ export class ClientApiDataSource implements ClientApi {
             )
           : getAuthConfig();
 
+      if (authConfig.executorPublicKey) {
+        setExecutorPublicKey(authConfig.executorPublicKey);
+      }
       const response = await rpcClient.execute(
         {
           contextId: authConfig.contextId || contextId || getContextId() || '',
@@ -1146,6 +1162,9 @@ export class ClientApiDataSource implements ClientApi {
             )
           : getAuthConfig();
 
+      if (authConfig.executorPublicKey) {
+        setExecutorPublicKey(authConfig.executorPublicKey);
+      }
       const response = await rpcClient.execute(
         {
           contextId: authConfig.contextId || getContextId() || '',
@@ -1205,6 +1224,9 @@ export class ClientApiDataSource implements ClientApi {
             )
           : getAuthConfig();
 
+      if (authConfig.executorPublicKey) {
+        setExecutorPublicKey(authConfig.executorPublicKey);
+      }
       const response = await rpcClient.execute(
         {
           contextId: authConfig.contextId || getContextId() || '',

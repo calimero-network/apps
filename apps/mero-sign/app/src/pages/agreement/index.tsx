@@ -273,6 +273,10 @@ const AgreementPage: React.FC = () => {
         'agreementContextUserID',
       );
 
+      if (agreementContextUserID) {
+        setExecutorPublicKey(agreementContextUserID);
+      }
+
       const response = await clientApiService.getContextDetails(
         currentContextId,
         agreementContextID || undefined,
@@ -305,6 +309,9 @@ const AgreementPage: React.FC = () => {
       const agreementContextUserID = localStorage.getItem(
         'agreementContextUserID',
       );
+      if (agreementContextUserID) {
+        setExecutorPublicKey(agreementContextUserID);
+      }
 
       const response = await documentService.listDocuments(
         currentContextId,

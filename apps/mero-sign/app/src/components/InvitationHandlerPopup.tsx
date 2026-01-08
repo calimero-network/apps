@@ -270,16 +270,17 @@ export default function InvitationHandlerPopup({
         hasAttemptedJoin.current = false;
         return;
       }
+      const memberPublicKey = joinResponse.data.memberPublicKey;
 
       localStorage.setItem(
         'new-context-identity',
         JSON.stringify(identityResponse.data),
       );
       localStorage.setItem('agreementContextID', joinResponse.data.contextId);
-      localStorage.setItem('agreementContextUserID', executorPublicKey);
+      localStorage.setItem('agreementContextUserID', memberPublicKey);
 
       setContextId(joinResponse.data.contextId);
-      setExecutorPublicKey(executorPublicKey);
+      setExecutorPublicKey(memberPublicKey);
 
       setStatus('syncing');
       await waitForContextSync(joinResponse.data.contextId);
@@ -308,7 +309,7 @@ export default function InvitationHandlerPopup({
           const testResponse = await clientApi.getContextDetails(
             joinResponse.data.contextId,
             joinResponse.data.contextId,
-            executorPublicKey,
+            memberPublicKey,
           );
 
           if (testResponse.error?.message?.includes('Uninitialized')) {
@@ -339,6 +340,7 @@ export default function InvitationHandlerPopup({
 
       // Step 1: Register self as participant in the shared context
       // This is required for newly joined users via open invitation
+      // Use the memberPublicKey from the join response
       // Retry logic for "Uninitialized" errors which can occur if state isn't fully ready
       let registerSuccess = false;
       let registerAttempts = 0;
@@ -349,7 +351,7 @@ export default function InvitationHandlerPopup({
         try {
           const registerResponse = await clientApi.registerSelfAsParticipant(
             joinResponse.data.contextId,
-            executorPublicKey,
+            memberPublicKey,
           );
 
           if (registerResponse.error) {
@@ -404,7 +406,7 @@ export default function InvitationHandlerPopup({
           const contextDetailsResponse = await clientApi.getContextDetails(
             joinResponse.data.contextId,
             joinResponse.data.contextId,
-            executorPublicKey,
+            memberPublicKey,
           );
 
           if (contextDetailsResponse.data?.context_name) {
@@ -436,13 +438,14 @@ export default function InvitationHandlerPopup({
 
       // Step 3: Register the context in the user's private context
       if (currentApp) {
-        const defaultContextService = DefaultContextService.getInstance(currentApp);
+        const defaultContextService =
+          DefaultContextService.getInstance(currentApp);
         const ensureResult = await defaultContextService.ensureDefaultContext();
 
         if (ensureResult.success) {
           const joinSharedResponse = await clientApi.joinSharedContext(
             joinResponse.data.contextId,
-            executorPublicKey,
+            memberPublicKey,
             contextName,
           );
 
