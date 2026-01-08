@@ -135,7 +135,7 @@ jobs:
           fi
 
           set +e
-          merobox bootstrap run workflows/test.yml \
+          merobox bootstrap run workflows/bootstrap.yml \
             --near-devnet \
             --contracts-dir "$GITHUB_WORKSPACE/contracts/near" \
             2>&1 | tee workflow_output.log
