@@ -94,7 +94,7 @@ steps:
     executor_public_key: "{{private_key_1}}"
     method: is_default_private_context
     outputs:
-      is_default_result: result
+      is_default_result: output
 
   # Upload blob for signature
   - name: Upload Signature Image Blob
@@ -123,7 +123,7 @@ steps:
       blob_id_str: "{{sig_blob_id}}"
       data_size: "{{sig_blob_size}}"
     outputs:
-      signature_id: result
+      signature_id: output
 
   - name: Assert signature created
     type: assert
@@ -138,7 +138,7 @@ steps:
     executor_public_key: "{{private_key_1}}"
     method: list_signatures
     outputs:
-      signatures_list: result
+      signatures_list: output
 
   - name: Assert signatures list not empty
     type: assert
@@ -214,7 +214,7 @@ steps:
     executor_public_key: "{{joined_key_2}}"
     method: register_self_as_participant
     outputs:
-      register_result_2: result
+      register_result_2: output
 
   - name: Wait for Participant Registration Sync
     type: wait_for_sync
@@ -234,7 +234,7 @@ steps:
     executor_public_key: "{{admin_key}}"
     method: list_participants
     outputs:
-      participants_list: result
+      participants_list: output
 
   - name: Assert participants list
     type: assert
@@ -251,7 +251,7 @@ steps:
     args:
       user_id_str: "{{joined_key_2}}"
     outputs:
-      node2_permission: result
+      node2_permission: output
 
   # Get context details
   - name: Get Context Details
@@ -263,7 +263,7 @@ steps:
     args:
       context_id: "{{shared_ctx}}"
     outputs:
-      context_details: result
+      context_details: output
 
   - name: Assert context details
     type: assert
@@ -303,7 +303,7 @@ steps:
       extracted_text: "This is a sample legal agreement document for MeroSign E2E testing."
       chunks: null
     outputs:
-      document_id: result
+      document_id: output
 
   - name: Assert document uploaded
     type: assert
@@ -328,7 +328,7 @@ steps:
     executor_public_key: "{{admin_key}}"
     method: list_documents
     outputs:
-      docs_node1: result
+      docs_node1: output
 
   - name: List Documents - Node 2
     type: call
@@ -337,7 +337,7 @@ steps:
     executor_public_key: "{{joined_key_2}}"
     method: list_documents
     outputs:
-      docs_node2: result
+      docs_node2: output
 
   - name: Assert documents visible on all nodes
     type: assert
@@ -358,7 +358,7 @@ steps:
       user_id_str: "{{joined_key_2}}"
       document_id: "{{document_id}}"
     outputs:
-      consent_result_2: result
+      consent_result_2: output
 
   # Check if Node 2 has consented
   - name: Check Consent - Node 2
@@ -371,7 +371,7 @@ steps:
       user_id_str: "{{joined_key_2}}"
       document_id: "{{document_id}}"
     outputs:
-      has_consent_2: result
+      has_consent_2: output
 
   # Upload signed document blob
   - name: Upload Signed Document Blob
@@ -397,7 +397,7 @@ steps:
       new_hash: "signed_hash_node2_abc123"
       signer_id_str: "{{joined_key_2}}"
     outputs:
-      sign_result_2: result
+      sign_result_2: output
 
   - name: Wait for Signature Sync
     type: wait_for_sync
@@ -419,7 +419,7 @@ steps:
     args:
       document_id: "{{document_id}}"
     outputs:
-      signatures: result
+      signatures: output
 
   - name: Assert signatures exist
     type: assert
@@ -501,7 +501,7 @@ steps:
       user_id_str: "{{admin_key}}"
       document_id: "{{document_id}}"
     outputs:
-      consent_result_1: result
+      consent_result_1: output
 
   # Upload another signed blob for Node 1
   - name: Upload Signed Document Blob - Node 1
@@ -527,7 +527,7 @@ steps:
       new_hash: "signed_hash_node1_def456"
       signer_id_str: "{{admin_key}}"
     outputs:
-      sign_result_1: result
+      sign_result_1: output
 
   - name: Wait for Final Signature Sync
     type: wait_for_sync
@@ -549,7 +549,7 @@ steps:
     args:
       document_id: "{{document_id}}"
     outputs:
-      final_signatures: result
+      final_signatures: output
 
   - name: Assert final signatures
     type: assert
@@ -566,7 +566,7 @@ steps:
     executor_public_key: "{{admin_key}}"
     method: list_documents
     outputs:
-      final_docs_node1: result
+      final_docs_node1: output
 
   - name: Final Document List - Node 2
     type: call
@@ -575,7 +575,7 @@ steps:
     executor_public_key: "{{joined_key_2}}"
     method: list_documents
     outputs:
-      final_docs_node2: result
+      final_docs_node2: output
 
   # Get context ID from contract
   - name: Get Context ID
@@ -585,7 +585,7 @@ steps:
     executor_public_key: "{{admin_key}}"
     method: get_context_id
     outputs:
-      contract_context_id: result
+      contract_context_id: output
 
   - name: Assert final state consistency
     type: assert
@@ -606,7 +606,7 @@ steps:
     args:
       signature_id: 0
     outputs:
-      delete_sig_result: result
+      delete_sig_result: output
 
   # Verify signature is deleted
   - name: List Signatures After Delete
@@ -616,7 +616,7 @@ steps:
     executor_public_key: "{{private_key_1}}"
     method: list_signatures
     outputs:
-      signatures_after_delete: result
+      signatures_after_delete: output
 
 # Configuration options
 auth_service: true
