@@ -85,7 +85,7 @@ export class ClientApiDataSource implements ClientApi {
           contextId: authConfig.contextId || getContextId() || '',
           method: ClientMethod.SET_CONSENT,
           argsJson: {
-            user_id: userId,
+            user_id_str: userId,
             document_id: documentId,
           },
           executorPublicKey: (authConfig.executorPublicKey ||
@@ -140,7 +140,7 @@ export class ClientApiDataSource implements ClientApi {
           contextId: authConfig.contextId || getContextId() || '',
           method: ClientMethod.HAS_CONSENTED,
           argsJson: {
-            user_id: agreementContextUserID,
+            user_id_str: agreementContextUserID,
             document_id: documentId,
           },
           executorPublicKey: (authConfig.executorPublicKey ||
@@ -202,7 +202,7 @@ export class ClientApiDataSource implements ClientApi {
           contextId: authConfig.contextId || getContextId() || '',
           method: ClientMethod.ADD_PARTICIPANT,
           argsJson: {
-            user_id: userId,
+            user_id_str: userId,
             permission: permission,
           },
           executorPublicKey: (authConfig.executorPublicKey ||
@@ -446,7 +446,7 @@ export class ClientApiDataSource implements ClientApi {
         pdf_blob_id_str: string;
         file_size: number;
         new_hash: string;
-        signer_id: string;
+        signer_id_str: string;
       }> = {
         contextId: contextId,
         method: ClientMethod.SIGN_DOCUMENT,
@@ -455,7 +455,7 @@ export class ClientApiDataSource implements ClientApi {
           pdf_blob_id_str: pdfBlobIdStr,
           file_size: fileSize,
           new_hash: newHash,
-          signer_id: signerId,
+          signer_id_str: signerId,
         },
         executorPublicKey: signerId,
       };
@@ -466,7 +466,7 @@ export class ClientApiDataSource implements ClientApi {
           pdf_blob_id_str: string;
           file_size: number;
           new_hash: string;
-          signer_id: string;
+          signer_id_str: string;
         },
         void
       >(params, RequestConfig);
@@ -824,7 +824,7 @@ export class ClientApiDataSource implements ClientApi {
 
         const params = {
           context_id: contextId,
-          shared_identity: sharedIdentity,
+          shared_identity_str: sharedIdentity,
           context_name: name,
         };
 
@@ -841,7 +841,7 @@ export class ClientApiDataSource implements ClientApi {
         // Fallback to old API
         const argsJson: any = {
           context_id: contextId,
-          shared_identity: sharedIdentity,
+          shared_identity_str: sharedIdentity,
           context_name: name,
         };
         const authConfig = getAuthConfig();
@@ -1171,7 +1171,7 @@ export class ClientApiDataSource implements ClientApi {
           method: ClientMethod.MARK_PARTICIPANT_SIGNED,
           argsJson: {
             document_id: documentId,
-            user_id: userId,
+            user_id_str: userId,
           },
           executorPublicKey: (authConfig.executorPublicKey ||
             getExecutorPublicKey() ||

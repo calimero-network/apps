@@ -126,9 +126,10 @@ export interface ClientApi {
   deleteSignature(signatureId: number): ApiResponse<void>;
   listSignatures(): ApiResponse<SignatureRecord[]>;
 
+  // Contract expects: shared_identity_str (base58 public key string)
   joinSharedContext(
     contextId: string,
-    sharedIdentity: UserId,
+    sharedIdentityStr: UserId,
     name: string,
   ): ApiResponse<void>;
   listJoinedContexts(): ApiResponse<ContextMetadata[]>;
@@ -162,31 +163,35 @@ export interface ClientApi {
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<DocumentInfo[]>;
+  // Contract expects: signer_id_str (base58 public key string)
   signDocument(
     contextId: string,
     documentId: string,
     pdfBlobIdStr: string,
     fileSize: number,
     newHash: string,
-    signerId: string,
+    signerIdStr: string,
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<void>;
+  // Contract expects: user_id_str (base58 public key string)
   addParticipant(
     contextId: string,
-    userId: UserId,
+    userIdStr: UserId,
     permission: PermissionLevel,
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<void>;
+  // Contract expects: user_id_str (base58 public key string)
   setConsent(
-    userId: UserId,
+    userIdStr: UserId,
     documentId: string,
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<void>;
+  // Contract expects: user_id_str (base58 public key string)
   hasConsented(
-    userId: UserId,
+    userIdStr: UserId,
     documentId: string,
     agreementContextID?: string,
     agreementContextUserID?: string,
