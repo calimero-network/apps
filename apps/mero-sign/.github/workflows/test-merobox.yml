@@ -1,4 +1,4 @@
-name: CI - Test MeroSign Bootstrap Workflow
+name: CI - Test MeroSign Workflows
 
 on:
   push:
@@ -116,11 +116,11 @@ jobs:
           ls -lh logic/res/mero_sign.wasm
 
       - name: Run MeroSign Bootstrap Workflow
-        id: run_workflow
+        id: run_bootstrap
         working-directory: ${{ github.workspace }}
         run: |
-          if [ ! -f workflows/test.yml ]; then
-            echo "Workflow file not found: workflows/test.yml"
+          if [ ! -f workflows/bootstrap.yml ]; then
+            echo "Workflow file not found: workflows/bootstrap.yml"
             exit 1
           fi
 
@@ -138,13 +138,48 @@ jobs:
           merobox bootstrap run workflows/bootstrap.yml \
             --near-devnet \
             --contracts-dir "$GITHUB_WORKSPACE/contracts/near" \
-            2>&1 | tee workflow_output.log
+            2>&1 | tee bootstrap_output.log
           WORKFLOW_EXIT_CODE=${PIPESTATUS[0]}
           set -e
           echo "workflow_exit_code=$WORKFLOW_EXIT_CODE" >> $GITHUB_OUTPUT
           exit $WORKFLOW_EXIT_CODE
 
-      - name: Cleanup after workflow
+      - name: Cleanup after bootstrap workflow
+        if: always()
+        run: |
+          merobox stop --all || true
+          merobox nuke -f || true
+
+      - name: Run MeroSign E2E Test Workflow
+        id: run_e2e
+        working-directory: ${{ github.workspace }}
+        run: |
+          if [ ! -f workflows/e2e-test.yml ]; then
+            echo "Workflow file not found: workflows/e2e-test.yml"
+            exit 1
+          fi
+
+          if [ ! -f logic/res/mero_sign.wasm ]; then
+            echo "WASM file not found: logic/res/mero_sign.wasm"
+            exit 1
+          fi
+
+          if [ ! -d "$GITHUB_WORKSPACE/contracts/near" ]; then
+            echo "Contracts directory not found: $GITHUB_WORKSPACE/contracts/near"
+            exit 1
+          fi
+
+          set +e
+          merobox bootstrap run workflows/e2e-test.yml \
+            --near-devnet \
+            --contracts-dir "$GITHUB_WORKSPACE/contracts/near" \
+            2>&1 | tee e2e_output.log
+          WORKFLOW_EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          echo "e2e_exit_code=$WORKFLOW_EXIT_CODE" >> $GITHUB_OUTPUT
+          exit $WORKFLOW_EXIT_CODE
+
+      - name: Cleanup after E2E workflow
         if: always()
         run: |
           merobox stop --all || true
@@ -155,15 +190,19 @@ jobs:
         run: |
           mkdir -p workflow_logs
 
-          if [ -f workflow_output.log ]; then
-            cp workflow_output.log workflow_logs/workflow_output.log
+          if [ -f bootstrap_output.log ]; then
+            cp bootstrap_output.log workflow_logs/bootstrap_output.log
+          fi
+
+          if [ -f e2e_output.log ]; then
+            cp e2e_output.log workflow_logs/e2e_output.log
           fi
 
           if [ -d data ]; then
             find data -type f \( -name "*.log" -o -name "*.txt" \) -exec cp --parents {} workflow_logs/ \; 2>/dev/null || true
           fi
 
-          CONTAINERS=$(docker ps -a --format "{{.Names}}" | grep -E "merosign-node|near-sandbox|calimero" || true)
+          CONTAINERS=$(docker ps -a --format "{{.Names}}" | grep -E "merosign|near-sandbox|calimero" || true)
           if [ -n "$CONTAINERS" ]; then
             echo "$CONTAINERS" | while read container; do
               if [ -n "$container" ]; then
@@ -179,8 +218,15 @@ jobs:
 
           # Create a summary log
           echo "=== Workflow Execution Summary ===" > workflow_logs/summary.txt
-          echo "Exit Code: ${{ steps.run_workflow.outputs.workflow_exit_code }}" >> workflow_logs/summary.txt
-          echo "Workflow Outcome: ${{ steps.run_workflow.outcome }}" >> workflow_logs/summary.txt
+          echo "" >> workflow_logs/summary.txt
+          echo "--- Bootstrap Workflow ---" >> workflow_logs/summary.txt
+          echo "Exit Code: ${{ steps.run_bootstrap.outputs.workflow_exit_code }}" >> workflow_logs/summary.txt
+          echo "Outcome: ${{ steps.run_bootstrap.outcome }}" >> workflow_logs/summary.txt
+          echo "" >> workflow_logs/summary.txt
+          echo "--- E2E Test Workflow ---" >> workflow_logs/summary.txt
+          echo "Exit Code: ${{ steps.run_e2e.outputs.e2e_exit_code }}" >> workflow_logs/summary.txt
+          echo "Outcome: ${{ steps.run_e2e.outcome }}" >> workflow_logs/summary.txt
+          echo "" >> workflow_logs/summary.txt
           echo "Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> workflow_logs/summary.txt
           echo "GitHub Run ID: ${{ github.run_id }}" >> workflow_logs/summary.txt
           echo "GitHub Run Number: ${{ github.run_number }}" >> workflow_logs/summary.txt
@@ -198,7 +244,8 @@ jobs:
           name: workflow-logs-${{ github.run_id }}
           path: |
             workflow_logs/
-            workflow_output.log
+            bootstrap_output.log
+            e2e_output.log
           retention-days: 7
           if-no-files-found: warn
 
@@ -208,7 +255,19 @@ jobs:
           if [ -f workflow_logs/summary.txt ]; then
             cat workflow_logs/summary.txt
           fi
-          if [ "${{ steps.run_workflow.outcome }}" != "success" ]; then
-            echo "Workflow failed. Check the uploaded logs for details."
+
+          FAILED=0
+          if [ "${{ steps.run_bootstrap.outcome }}" != "success" ]; then
+            echo "Bootstrap workflow failed. Check the uploaded logs for details."
+            FAILED=1
+          fi
+          if [ "${{ steps.run_e2e.outcome }}" != "success" ]; then
+            echo "E2E test workflow failed. Check the uploaded logs for details."
+            FAILED=1
+          fi
+
+          if [ $FAILED -eq 1 ]; then
             exit 1
           fi
+
+          echo "All workflows completed successfully!"

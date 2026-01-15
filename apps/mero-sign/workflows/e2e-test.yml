@@ -1,0 +1,684 @@
+description: Comprehensive E2E test workflow for MeroSign e-signature platform
+name: MeroSign E2E Test Workflow
+
+# Force pull Docker images to ensure latest version
+force_pull_image: true
+
+nodes:
+  chain_id: testnet-1
+  count: 3
+  image: ghcr.io/calimero-network/merod:edge
+  prefix: merosign-e2e
+
+steps:
+  # PHASE 1: APPLICATION INSTALLATION
+
+  - name: Install MeroSign on Node 1
+    type: install_application
+    node: merosign-e2e-1
+    path: "logic/res/mero_sign.wasm"
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install MeroSign on Node 2
+    type: install_application
+    node: merosign-e2e-2
+    path: "logic/res/mero_sign.wasm"
+    dev: true
+
+  - name: Install MeroSign on Node 3
+    type: install_application
+    node: merosign-e2e-3
+    path: "logic/res/mero_sign.wasm"
+    dev: true
+
+  - name: Assert application installed
+    type: assert
+    statements:
+      - "is_set({{app_id}})"
+
+  # PHASE 2: IDENTITY CREATION
+
+  - name: Create Identity on Node 1
+    type: create_identity
+    node: merosign-e2e-1
+    outputs:
+      node1_identity: publicKey
+
+  - name: Create Identity on Node 2
+    type: create_identity
+    node: merosign-e2e-2
+    outputs:
+      node2_identity: publicKey
+
+  - name: Create Identity on Node 3
+    type: create_identity
+    node: merosign-e2e-3
+    outputs:
+      node3_identity: publicKey
+
+  - name: Wait for Identity Creation
+    type: wait
+    seconds: 3
+
+  - name: Assert identities created
+    type: assert
+    statements:
+      - "is_set({{node1_identity}})"
+      - "is_set({{node2_identity}})"
+      - "is_set({{node3_identity}})"
+
+  # PHASE 3: PRIVATE CONTEXT TESTS (Signature Management)
+
+  - name: Create Private Context on Node 1
+    type: create_context
+    node: merosign-e2e-1
+    application_id: "{{app_id}}"
+    params: '{"is_private": true, "context_name": "default"}'
+    outputs:
+      private_ctx_1: contextId
+      private_key_1: memberPublicKey
+
+  - name: Create Private Context on Node 2
+    type: create_context
+    node: merosign-e2e-2
+    application_id: "{{app_id}}"
+    params: '{"is_private": true, "context_name": "default"}'
+    outputs:
+      private_ctx_2: contextId
+      private_key_2: memberPublicKey
+
+  - name: Assert private contexts created
+    type: assert
+    statements:
+      - "is_set({{private_ctx_1}})"
+      - "is_set({{private_ctx_2}})"
+
+  - name: Wait for Private Contexts
+    type: wait
+    seconds: 2
+
+  # Test is_default_private_context
+  - name: Check Default Private Context - Node 1
+    type: call
+    node: merosign-e2e-1
+    context_id: "{{private_ctx_1}}"
+    executor_public_key: "{{private_key_1}}"
+    method: is_default_private_context
+    outputs:
+      is_default_result: result
+
+  # Upload blob for signature
+  - name: Upload Signature Image Blob
+    type: upload_blob
+    node: merosign-e2e-1
+    file_path: workflows/test-files/sample-agreement.txt
+    context_id: "{{private_ctx_1}}"
+    outputs:
+      sig_blob_id: blob_id
+      sig_blob_size: size
+
+  - name: Assert blob uploaded
+    type: assert
+    statements:
+      - "is_set({{sig_blob_id}})"
+
+  # Create signature in private context
+  - name: Create Signature - Node 1
+    type: call
+    node: merosign-e2e-1
+    context_id: "{{private_ctx_1}}"
+    executor_public_key: "{{private_key_1}}"
+    method: create_signature
+    args:
+      name: "John Doe Signature"
+      blob_id_str: "{{sig_blob_id}}"
+      data_size: "{{sig_blob_size}}"
+    outputs:
+      signature_id: result
+
+  - name: Assert signature created
+    type: assert
+    statements:
+      - "is_set({{signature_id}})"
+
+  # List signatures
+  - name: List Signatures - Node 1
+    type: call
+    node: merosign-e2e-1
+    context_id: "{{private_ctx_1}}"
+    executor_public_key: "{{private_key_1}}"
+    method: list_signatures
+    outputs:
+      signatures_list: result
+
+  - name: Assert signatures list not empty
+    type: assert
+    statements:
+      - "is_set({{signatures_list}})"
+
+  # PHASE 4: SHARED CONTEXT TESTS (Agreement Management)
+
+  # Create shared agreement context from Node 1 (will be Admin)
+  - name: Create Shared Agreement Context
+    type: create_context
+    node: merosign-e2e-1
+    application_id: "{{app_id}}"
+    params: '{"is_private": false, "context_name": "contract_agreement_e2e"}'
+    outputs:
+      shared_ctx: contextId
+      admin_key: memberPublicKey
+
+  - name: Assert shared context created
+    type: assert
+    statements:
+      - "is_set({{shared_ctx}})"
+      - "is_set({{admin_key}})"
+
+  # Create open invitation
+  - name: Create Open Invitation for Agreement
+    type: invite_open
+    node: merosign-e2e-1
+    context_id: "{{shared_ctx}}"
+    granter_id: "{{admin_key}}"
+    valid_for_blocks: 1000
+    outputs:
+      open_invitation: invitation
+
+  - name: Assert invitation created
+    type: assert
+    statements:
+      - "is_set({{open_invitation}})"
+
+  # Node 2 joins via open invitation
+  - name: Node 2 Joins Agreement via Open Invitation
+    type: join_open
+    node: merosign-e2e-2
+    invitee_id: "{{node2_identity}}"
+    invitation: "{{open_invitation}}"
+    outputs:
+      joined_ctx_2: contextId
+      joined_key_2: memberPublicKey
+
+  # Node 3 joins via open invitation
+  - name: Node 3 Joins Agreement via Open Invitation
+    type: join_open
+    node: merosign-e2e-3
+    invitee_id: "{{node3_identity}}"
+    invitation: "{{open_invitation}}"
+    outputs:
+      joined_ctx_3: contextId
+      joined_key_3: memberPublicKey
+
+  - name: Assert nodes joined
+    type: assert
+    statements:
+      - "is_set({{joined_ctx_2}})"
+      - "is_set({{joined_ctx_3}})"
+
+  # Wait for sync
+  - name: Wait for Shared Context Sync
+    type: wait_for_sync
+    context_id: "{{shared_ctx}}"
+    nodes:
+      - merosign-e2e-1
+      - merosign-e2e-2
+      - merosign-e2e-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # PHASE 5: PARTICIPANT MANAGEMENT
+
+  # Register Node 2 as participant (self-registration after open invite join)
+  - name: Register Node 2 as Participant
+    type: call
+    node: merosign-e2e-2
+    context_id: "{{shared_ctx}}"
+    executor_public_key: "{{joined_key_2}}"
+    method: register_self_as_participant
+    outputs:
+      register_result_2: result
+
+  # Register Node 3 as participant
+  - name: Register Node 3 as Participant
+    type: call
+    node: merosign-e2e-3
+    context_id: "{{shared_ctx}}"
+    executor_public_key: "{{joined_key_3}}"
+    method: register_self_as_participant
+    outputs:
+      register_result_3: result
+
+  - name: Wait for Participant Registration Sync
+    type: wait_for_sync
+    context_id: "{{shared_ctx}}"
+    nodes:
+      - merosign-e2e-1
+      - merosign-e2e-2
+      - merosign-e2e-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # List participants from Node 1
+  - name: List Participants - Node 1
+    type: call
+    node: merosign-e2e-1
+    context_id: "{{shared_ctx}}"
+    executor_public_key: "{{admin_key}}"
+    method: list_participants
+    outputs:
+      participants_list: result
+
+  - name: Assert participants list
+    type: assert
+    statements:
+      - "is_set({{participants_list}})"
+
+  # Get user permission for Node 2
+  - name: Get Permission for Node 2
+    type: call
+    node: merosign-e2e-1
+    context_id: "{{shared_ctx}}"
+    executor_public_key: "{{admin_key}}"
+    method: get_user_permission
+    args:
+      user_id_str: "{{joined_key_2}}"
+    outputs:
+      node2_permission: result
+
+  # Get context details
+  - name: Get Context Details
+    type: call
+    node: merosign-e2e-1
+    context_id: "{{shared_ctx}}"
+    executor_public_key: "{{admin_key}}"
+    method: get_context_details
+    args:
+      context_id: "{{shared_ctx}}"
+    outputs:
+      context_details: result
+
+  - name: Assert context details
+    type: assert
+    statements:
+      - "is_set({{context_details}})"
+
+  # PHASE 6: DOCUMENT UPLOAD AND MANAGEMENT
+
+  # Upload document blob
+  - name: Upload Document Blob
+    type: upload_blob
+    node: merosign-e2e-1
+    file_path: workflows/test-files/sample-agreement.txt
+    context_id: "{{shared_ctx}}"
+    outputs:
+      doc_blob_id: blob_id
+      doc_blob_size: size
+
+  - name: Assert document blob uploaded
+    type: assert
+    statements:
+      - "is_set({{doc_blob_id}})"
+
+  # Upload document to contract
+  - name: Upload Document to Agreement
+    type: call
+    node: merosign-e2e-1
+    context_id: "{{shared_ctx}}"
+    executor_public_key: "{{admin_key}}"
+    method: upload_document
+    args:
+      name: "Employment Contract"
+      hash: "abc123def456"
+      pdf_blob_id_str: "{{doc_blob_id}}"
+      file_size: "{{doc_blob_size}}"
+      embeddings: null
+      extracted_text: "This is a sample legal agreement document for MeroSign E2E testing."
+      chunks: null
+    outputs:
+      document_id: result
+
+  - name: Assert document uploaded
+    type: assert
+    statements:
+      - "is_set({{document_id}})"
+
+  - name: Wait for Document Upload Sync
+    type: wait_for_sync
+    context_id: "{{shared_ctx}}"
+    nodes:
+      - merosign-e2e-1
+      - merosign-e2e-2
+      - merosign-e2e-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # List documents from all nodes
+  - name: List Documents - Node 1
+    type: call
+    node: merosign-e2e-1
+    context_id: "{{shared_ctx}}"
+    executor_public_key: "{{admin_key}}"
+    method: list_documents
+    outputs:
+      docs_node1: result
+
+  - name: List Documents - Node 2
+    type: call
+    node: merosign-e2e-2
+    context_id: "{{shared_ctx}}"
+    executor_public_key: "{{joined_key_2}}"
+    method: list_documents
+    outputs:
+      docs_node2: result
+
+  - name: List Documents - Node 3
+    type: call
+    node: merosign-e2e-3
+    context_id: "{{shared_ctx}}"
+    executor_public_key: "{{joined_key_3}}"
+    method: list_documents
+    outputs:
+      docs_node3: result
+
+  - name: Assert documents visible on all nodes
+    type: assert
+    statements:
+      - "is_set({{docs_node1}})"
+      - "is_set({{docs_node2}})"
+      - "is_set({{docs_node3}})"
+
+  # PHASE 7: CONSENT AND DOCUMENT SIGNING
+
+  # Node 2 gives consent
+  - name: Node 2 Gives Consent
+    type: call
+    node: merosign-e2e-2
+    context_id: "{{shared_ctx}}"
+    executor_public_key: "{{joined_key_2}}"
+    method: set_consent
+    args:
+      user_id_str: "{{joined_key_2}}"
+      document_id: "{{document_id}}"
+    outputs:
+      consent_result_2: result
+
+  # Check if Node 2 has consented
+  - name: Check Consent - Node 2
+    type: call
+    node: merosign-e2e-2
+    context_id: "{{shared_ctx}}"
+    executor_public_key: "{{joined_key_2}}"
+    method: has_consented
+    args:
+      user_id_str: "{{joined_key_2}}"
+      document_id: "{{document_id}}"
+    outputs:
+      has_consent_2: result
+
+  # Upload signed document blob
+  - name: Upload Signed Document Blob
+    type: upload_blob
+    node: merosign-e2e-2
+    file_path: workflows/test-files/sample-agreement.txt
+    context_id: "{{shared_ctx}}"
+    outputs:
+      signed_blob_id: blob_id
+      signed_blob_size: size
+
+  # Node 2 signs document
+  - name: Node 2 Signs Document
+    type: call
+    node: merosign-e2e-2
+    context_id: "{{shared_ctx}}"
+    executor_public_key: "{{joined_key_2}}"
+    method: sign_document
+    args:
+      document_id: "{{document_id}}"
+      pdf_blob_id_str: "{{signed_blob_id}}"
+      file_size: "{{signed_blob_size}}"
+      new_hash: "signed_hash_node2_abc123"
+      signer_id_str: "{{joined_key_2}}"
+    outputs:
+      sign_result_2: result
+
+  - name: Wait for Signature Sync
+    type: wait_for_sync
+    context_id: "{{shared_ctx}}"
+    nodes:
+      - merosign-e2e-1
+      - merosign-e2e-2
+      - merosign-e2e-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # Get document signatures
+  - name: Get Document Signatures
+    type: call
+    node: merosign-e2e-1
+    context_id: "{{shared_ctx}}"
+    executor_public_key: "{{admin_key}}"
+    method: get_document_signatures
+    args:
+      document_id: "{{document_id}}"
+    outputs:
+      signatures: result
+
+  - name: Assert signatures exist
+    type: assert
+    statements:
+      - "is_set({{signatures}})"
+
+  # PHASE 8: NEGATIVE TESTING
+
+  # Try to sign without consent (Node 3 hasn't given consent yet)
+  - name: Expected Failure - Sign Without Consent
+    type: call
+    node: merosign-e2e-3
+    context_id: "{{shared_ctx}}"
+    executor_public_key: "{{joined_key_3}}"
+    method: sign_document
+    args:
+      document_id: "{{document_id}}"
+      pdf_blob_id_str: "{{signed_blob_id}}"
+      file_size: "{{signed_blob_size}}"
+      new_hash: "should_fail_hash"
+      signer_id_str: "{{joined_key_3}}"
+    expected_failure: true
+    outputs:
+      no_consent_error: error_message
+
+  - name: Assert sign without consent failed
+    type: assert
+    statements:
+      - "is_set({{no_consent_error}})"
+      - "contains({{no_consent_error}}, consent)"
+
+  # Try to create signature in shared context (should fail)
+  - name: Expected Failure - Signature in Shared Context
+    type: call
+    node: merosign-e2e-1
+    context_id: "{{shared_ctx}}"
+    executor_public_key: "{{admin_key}}"
+    method: create_signature
+    args:
+      name: "Should Fail"
+      blob_id_str: "{{sig_blob_id}}"
+      data_size: "100"
+    expected_failure: true
+    outputs:
+      sig_shared_error: error_message
+
+  - name: Assert signature in shared context failed
+    type: assert
+    statements:
+      - "is_set({{sig_shared_error}})"
+      - "contains({{sig_shared_error}}, private)"
+
+  # Try to access signatures from shared context (should fail)
+  - name: Expected Failure - List Signatures in Shared Context
+    type: call
+    node: merosign-e2e-1
+    context_id: "{{shared_ctx}}"
+    executor_public_key: "{{admin_key}}"
+    method: list_signatures
+    expected_failure: true
+    outputs:
+      list_sig_error: error_message
+
+  - name: Assert list signatures in shared context failed
+    type: assert
+    statements:
+      - "is_set({{list_sig_error}})"
+
+  # PHASE 9: COMPLETE SIGNING FLOW (Node 3)
+
+  # Node 3 gives consent
+  - name: Node 3 Gives Consent
+    type: call
+    node: merosign-e2e-3
+    context_id: "{{shared_ctx}}"
+    executor_public_key: "{{joined_key_3}}"
+    method: set_consent
+    args:
+      user_id_str: "{{joined_key_3}}"
+      document_id: "{{document_id}}"
+    outputs:
+      consent_result_3: result
+
+  # Upload another signed blob for Node 3
+  - name: Upload Signed Document Blob - Node 3
+    type: upload_blob
+    node: merosign-e2e-3
+    file_path: workflows/test-files/sample-agreement.txt
+    context_id: "{{shared_ctx}}"
+    outputs:
+      signed_blob_id_3: blob_id
+      signed_blob_size_3: size
+
+  # Node 3 signs document (should succeed now)
+  - name: Node 3 Signs Document
+    type: call
+    node: merosign-e2e-3
+    context_id: "{{shared_ctx}}"
+    executor_public_key: "{{joined_key_3}}"
+    method: sign_document
+    args:
+      document_id: "{{document_id}}"
+      pdf_blob_id_str: "{{signed_blob_id_3}}"
+      file_size: "{{signed_blob_size_3}}"
+      new_hash: "signed_hash_node3_def456"
+      signer_id_str: "{{joined_key_3}}"
+    outputs:
+      sign_result_3: result
+
+  - name: Wait for Final Signature Sync
+    type: wait_for_sync
+    context_id: "{{shared_ctx}}"
+    nodes:
+      - merosign-e2e-1
+      - merosign-e2e-2
+      - merosign-e2e-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # Get final document signatures (should have 2 signatures)
+  - name: Get Final Document Signatures
+    type: call
+    node: merosign-e2e-1
+    context_id: "{{shared_ctx}}"
+    executor_public_key: "{{admin_key}}"
+    method: get_document_signatures
+    args:
+      document_id: "{{document_id}}"
+    outputs:
+      final_signatures: result
+
+  - name: Assert final signatures
+    type: assert
+    statements:
+      - "is_set({{final_signatures}})"
+
+  # PHASE 10: FINAL VERIFICATION
+
+  # List documents on all nodes to verify state consistency
+  - name: Final Document List - Node 1
+    type: call
+    node: merosign-e2e-1
+    context_id: "{{shared_ctx}}"
+    executor_public_key: "{{admin_key}}"
+    method: list_documents
+    outputs:
+      final_docs_node1: result
+
+  - name: Final Document List - Node 2
+    type: call
+    node: merosign-e2e-2
+    context_id: "{{shared_ctx}}"
+    executor_public_key: "{{joined_key_2}}"
+    method: list_documents
+    outputs:
+      final_docs_node2: result
+
+  - name: Final Document List - Node 3
+    type: call
+    node: merosign-e2e-3
+    context_id: "{{shared_ctx}}"
+    executor_public_key: "{{joined_key_3}}"
+    method: list_documents
+    outputs:
+      final_docs_node3: result
+
+  # Get context ID from contract
+  - name: Get Context ID
+    type: call
+    node: merosign-e2e-1
+    context_id: "{{shared_ctx}}"
+    executor_public_key: "{{admin_key}}"
+    method: get_context_id
+    outputs:
+      contract_context_id: result
+
+  - name: Assert final state consistency
+    type: assert
+    statements:
+      - "is_set({{final_docs_node1}})"
+      - "is_set({{final_docs_node2}})"
+      - "is_set({{final_docs_node3}})"
+      - "is_set({{contract_context_id}})"
+
+  # PHASE 11: CLEANUP - Delete Signature from Private Context
+
+  # Delete signature we created earlier
+  - name: Delete Signature - Node 1
+    type: call
+    node: merosign-e2e-1
+    context_id: "{{private_ctx_1}}"
+    executor_public_key: "{{private_key_1}}"
+    method: delete_signature
+    args:
+      signature_id: 0
+    outputs:
+      delete_sig_result: result
+
+  # Verify signature is deleted
+  - name: List Signatures After Delete
+    type: call
+    node: merosign-e2e-1
+    context_id: "{{private_ctx_1}}"
+    executor_public_key: "{{private_key_1}}"
+    method: list_signatures
+    outputs:
+      signatures_after_delete: result
+
+# Configuration options
+auth_service: true
+stop_all_nodes: false
+restart: false
+wait_timeout: 120

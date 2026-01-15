@@ -113,7 +113,7 @@ steps:
     executor_public_key: "{{agreement_admin_key}}"
     method: add_participant
     args:
-      user_id: "{{node2_public_key}}"
+      user_id_str: "{{node2_public_key}}"
       permission: "Sign"
 
   # Step 15: Wait for participant addition to sync
