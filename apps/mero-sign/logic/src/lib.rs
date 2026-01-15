@@ -2,53 +2,32 @@
 
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::{app, env};
-use calimero_storage::collections::{UnorderedMap, UnorderedSet, Vector};
+use calimero_sdk::{app, env, PublicKey};
+use calimero_storage::collections::{LwwRegister, UnorderedMap, UnorderedSet, Vector};
 
-mod types;
-use types::id::UserId;
-
-fn encode_blob_id_base58(blob_id_bytes: &[u8; 32]) -> String {
-    let mut buf = [0u8; 44];
-    let len = bs58::encode(blob_id_bytes).onto(&mut buf[..]).unwrap();
-    std::str::from_utf8(&buf[..len]).unwrap().to_owned()
-}
-
-fn parse_blob_id_base58(blob_id_str: &str) -> Result<[u8; 32], String> {
-    match bs58::decode(blob_id_str).into_vec() {
-        Ok(bytes) => {
-            if bytes.len() != 32 {
-                return Err(format!(
-                    "Invalid blob ID length: expected 32 bytes, got {}",
-                    bytes.len()
-                ));
-            }
-            let mut blob_id = [0u8; 32];
-            blob_id.copy_from_slice(&bytes);
-            Ok(blob_id)
-        }
-        Err(e) => Err(format!("Failed to decode blob ID '{}': {}", blob_id_str, e)),
-    }
-}
-
-fn serialize_blob_id_bytes<S>(blob_id_bytes: &[u8; 32], serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: calimero_sdk::serde::Serializer,
-{
-    let safe_string = encode_blob_id_base58(blob_id_bytes);
-    serializer.serialize_str(&safe_string)
-}
-
+/// Signature record - uses LWW based on created_at timestamp
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct SignatureRecord {
     pub id: u64,
     pub name: String,
-    #[serde(serialize_with = "serialize_blob_id_bytes")]
     pub blob_id: [u8; 32],
     pub size: u64,
     pub created_at: u64,
+}
+
+impl calimero_storage::collections::Mergeable for SignatureRecord {
+    fn merge(
+        &mut self,
+        other: &Self,
+    ) -> Result<(), calimero_storage::collections::crdt_meta::MergeError> {
+        // LWW based on created_at - newer wins
+        if other.created_at > self.created_at {
+            *self = other.clone();
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize)]
@@ -61,7 +40,7 @@ pub struct ContextAgreement {
 }
 
 /// Participant roles in shared contexts
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub enum ParticipantRole {
@@ -69,6 +48,31 @@ pub enum ParticipantRole {
     Signer,
     Viewer,
     Unknown,
+}
+
+impl calimero_storage::collections::Mergeable for ParticipantRole {
+    fn merge(
+        &mut self,
+        other: &Self,
+    ) -> Result<(), calimero_storage::collections::crdt_meta::MergeError> {
+        // Take higher priority role (Owner > Signer > Viewer > Unknown)
+        let self_priority = match self {
+            ParticipantRole::Owner => 3,
+            ParticipantRole::Signer => 2,
+            ParticipantRole::Viewer => 1,
+            ParticipantRole::Unknown => 0,
+        };
+        let other_priority = match other {
+            ParticipantRole::Owner => 3,
+            ParticipantRole::Signer => 2,
+            ParticipantRole::Viewer => 1,
+            ParticipantRole::Unknown => 0,
+        };
+        if other_priority > self_priority {
+            *self = other.clone();
+        }
+        Ok(())
+    }
 }
 
 /// Document chunk with its embedding
@@ -82,7 +86,7 @@ pub struct DocumentChunk {
     pub end_position: usize,
 }
 
-/// Document information
+/// Document information - uses LWW based on uploaded_at timestamp
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -90,15 +94,27 @@ pub struct DocumentInfo {
     pub id: String,
     pub name: String,
     pub hash: String,
-    pub uploaded_by: UserId,
+    pub uploaded_by: [u8; 32],
     pub uploaded_at: u64,
     pub status: DocumentStatus,
-    #[serde(serialize_with = "serialize_blob_id_bytes")]
     pub pdf_blob_id: [u8; 32],
     pub size: u64,
     pub embeddings: Option<Vec<f32>>,
     pub extracted_text: Option<String>,
     pub chunks: Option<Vec<DocumentChunk>>,
+}
+
+impl calimero_storage::collections::Mergeable for DocumentInfo {
+    fn merge(
+        &mut self,
+        other: &Self,
+    ) -> Result<(), calimero_storage::collections::crdt_meta::MergeError> {
+        // LWW based on uploaded_at - newer wins
+        if other.uploaded_at > self.uploaded_at {
+            *self = other.clone();
+        }
+        Ok(())
+    }
 }
 
 /// Document status tracking
@@ -111,13 +127,26 @@ pub enum DocumentStatus {
     FullySigned,
 }
 
-/// Signature record for documents
+/// Signature record for documents - uses LWW based on signed_at timestamp
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct DocumentSignature {
-    pub signer: UserId,
+    pub signer: [u8; 32],
     pub signed_at: u64,
+}
+
+impl calimero_storage::collections::Mergeable for DocumentSignature {
+    fn merge(
+        &mut self,
+        other: &Self,
+    ) -> Result<(), calimero_storage::collections::crdt_meta::MergeError> {
+        // LWW based on signed_at - newer wins
+        if other.signed_at > self.signed_at {
+            *self = other.clone();
+        }
+        Ok(())
+    }
 }
 
 /// Permission levels for participants
@@ -130,28 +159,27 @@ pub enum PermissionLevel {
     Admin,
 }
 
-#[app::state(emits = MeroSignEvent)]
-#[derive(BorshDeserialize, BorshSerialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct MeroSignState {
-    // Context type flag
-    pub is_private: bool,
-
-    pub owner: UserId,
-    pub context_name: String,
-
-    // Private context data
-    pub signatures: UnorderedMap<String, SignatureRecord>,
-    pub joined_contexts: UnorderedMap<String, ContextMetadata>,
-    pub identity_mappings: UnorderedMap<String, IdentityMapping>, // Map context_id -> identity mapping
-    pub signature_count: u64,
-
-    // Shared context data
-    pub participants: UnorderedSet<UserId>,
-    pub documents: UnorderedMap<String, DocumentInfo>,
-    pub document_signatures: UnorderedMap<String, Vector<DocumentSignature>>,
-    pub permissions: UnorderedMap<String, PermissionLevel>,
-    pub consents: UnorderedMap<String, bool>, // "user_id|document_id" -> consent
+impl calimero_storage::collections::Mergeable for PermissionLevel {
+    fn merge(
+        &mut self,
+        other: &Self,
+    ) -> Result<(), calimero_storage::collections::crdt_meta::MergeError> {
+        // Take higher permission (Admin > Sign > Read)
+        let self_priority = match self {
+            PermissionLevel::Admin => 2,
+            PermissionLevel::Sign => 1,
+            PermissionLevel::Read => 0,
+        };
+        let other_priority = match other {
+            PermissionLevel::Admin => 2,
+            PermissionLevel::Sign => 1,
+            PermissionLevel::Read => 0,
+        };
+        if other_priority > self_priority {
+            *self = other.clone();
+        }
+        Ok(())
+    }
 }
 
 /// Metadata for tracking joined shared contexts
@@ -163,8 +191,21 @@ pub struct ContextMetadata {
     pub context_name: String,
     pub role: ParticipantRole,
     pub joined_at: u64,
-    pub private_identity: UserId, // User's private context identity
-    pub shared_identity: UserId,  // User's identity in this shared context
+    pub private_identity: [u8; 32],
+    pub shared_identity: [u8; 32],
+}
+
+impl calimero_storage::collections::Mergeable for ContextMetadata {
+    fn merge(
+        &mut self,
+        other: &Self,
+    ) -> Result<(), calimero_storage::collections::crdt_meta::MergeError> {
+        // LWW based on joined_at - newer wins
+        if other.joined_at > self.joined_at {
+            *self = other.clone();
+        }
+        Ok(())
+    }
 }
 
 /// Identity mapping for tracking user identities across contexts
@@ -172,10 +213,23 @@ pub struct ContextMetadata {
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct IdentityMapping {
-    pub private_identity: UserId, // Original private context identity
-    pub shared_identity: UserId,  // Identity used in specific shared context
-    pub context_id: String,       // Which shared context this mapping is for
-    pub created_at: u64,          // When this mapping was created
+    pub private_identity: [u8; 32],
+    pub shared_identity: [u8; 32],
+    pub context_id: String,
+    pub created_at: u64,
+}
+
+impl calimero_storage::collections::Mergeable for IdentityMapping {
+    fn merge(
+        &mut self,
+        other: &Self,
+    ) -> Result<(), calimero_storage::collections::crdt_meta::MergeError> {
+        // LWW based on created_at - newer wins
+        if other.created_at > self.created_at {
+            *self = other.clone();
+        }
+        Ok(())
+    }
 }
 
 /// Participant information with permission level
@@ -183,7 +237,7 @@ pub struct IdentityMapping {
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct ParticipantInfo {
-    pub user_id: UserId,
+    pub user_id: [u8; 32],
     pub permission_level: PermissionLevel,
 }
 
@@ -194,12 +248,36 @@ pub struct ParticipantInfo {
 pub struct ContextDetails {
     pub context_id: String,
     pub context_name: String,
-    pub owner: UserId,
+    pub owner: [u8; 32],
     pub is_private: bool,
     pub participant_count: u64,
     pub participants: Vec<ParticipantInfo>,
     pub document_count: u64,
     pub created_at: u64,
+}
+
+#[app::state(emits = MeroSignEvent)]
+#[derive(BorshDeserialize, BorshSerialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct MeroSignState {
+    // Context type flag
+    pub is_private: LwwRegister<bool>,
+
+    pub owner: LwwRegister<[u8; 32]>,
+    pub context_name: LwwRegister<String>,
+
+    // Private context data
+    pub signatures: UnorderedMap<String, SignatureRecord>,
+    pub joined_contexts: UnorderedMap<String, ContextMetadata>,
+    pub identity_mappings: UnorderedMap<String, IdentityMapping>,
+    pub signature_count: LwwRegister<u64>,
+
+    // Shared context data
+    pub participants: UnorderedSet<[u8; 32]>,
+    pub documents: UnorderedMap<String, DocumentInfo>,
+    pub document_signatures: UnorderedMap<String, Vector<DocumentSignature>>,
+    pub permissions: UnorderedMap<String, PermissionLevel>,
+    pub consents: UnorderedMap<String, LwwRegister<bool>>,
 }
 
 #[app::event]
@@ -225,25 +303,51 @@ pub enum MeroSignEvent {
     DocumentUploaded {
         id: String,
         name: String,
-        uploaded_by: UserId,
+        uploaded_by: [u8; 32],
     },
     DocumentDeleted {
         id: String,
     },
     DocumentSigned {
         document_id: String,
-        signer: UserId,
+        signer: [u8; 32],
     },
     ParticipantInvited {
-        user_id: UserId,
+        user_id: [u8; 32],
         role: ParticipantRole,
     },
     ParticipantJoined {
-        user_id: UserId,
+        user_id: [u8; 32],
     },
     ParticipantLeft {
-        user_id: UserId,
+        user_id: [u8; 32],
     },
+}
+
+/// Helper to decode base58 blob_id from API input
+fn parse_blob_id_base58(blob_id_str: &str) -> Result<[u8; 32], String> {
+    match bs58::decode(blob_id_str).into_vec() {
+        Ok(bytes) => {
+            if bytes.len() != 32 {
+                return Err(format!(
+                    "Invalid blob ID length: expected 32 bytes, got {}",
+                    bytes.len()
+                ));
+            }
+            let mut blob_id = [0u8; 32];
+            blob_id.copy_from_slice(&bytes);
+            Ok(blob_id)
+        }
+        Err(e) => Err(format!("Failed to decode blob ID '{}': {}", blob_id_str, e)),
+    }
+}
+
+/// Helper to decode base58 public key from API input
+fn parse_public_key_base58(key_str: &str) -> Result<[u8; 32], String> {
+    key_str
+        .parse::<PublicKey>()
+        .map(|pk| *pk.as_ref())
+        .map_err(|e| format!("Failed to parse public key '{}': {}", key_str, e))
 }
 
 #[app::logic]
@@ -251,17 +355,16 @@ impl MeroSignState {
     #[app::init]
     pub fn init(is_private: bool, context_name: String) -> MeroSignState {
         let owner_raw = env::executor_id();
-        let owner = UserId::new(owner_raw);
 
         let mut state = MeroSignState {
-            is_private,
-            owner,
-            context_name,
+            is_private: is_private.into(),
+            owner: owner_raw.into(),
+            context_name: context_name.into(),
 
             signatures: UnorderedMap::new(),
             joined_contexts: UnorderedMap::new(),
             identity_mappings: UnorderedMap::new(),
-            signature_count: 0,
+            signature_count: 0u64.into(),
             participants: UnorderedSet::new(),
             documents: UnorderedMap::new(),
             document_signatures: UnorderedMap::new(),
@@ -271,8 +374,8 @@ impl MeroSignState {
 
         // For shared contexts, add the creator as a participant with admin permissions
         if !is_private {
-            let _ = state.participants.insert(owner);
-            let owner_str = format!("{:?}", owner);
+            let _ = state.participants.insert(owner_raw);
+            let owner_str = bs58::encode(&owner_raw).into_string();
             let _ = state.permissions.insert(owner_str, PermissionLevel::Admin);
         }
 
@@ -280,7 +383,7 @@ impl MeroSignState {
     }
 
     pub fn is_default_private_context(&self) -> bool {
-        self.is_private && self.context_name == "default"
+        *self.is_private.get() && self.context_name.get() == "default"
     }
 
     /// Create a new signature and store its blob ID
@@ -290,12 +393,12 @@ impl MeroSignState {
         blob_id_str: String,
         data_size: u64,
     ) -> Result<u64, String> {
-        if !self.is_private {
+        if !*self.is_private.get() {
             return Err("Signatures can only be created in private context".to_string());
         }
 
-        let signature_id = self.signature_count;
-        self.signature_count += 1;
+        let signature_id = *self.signature_count.get();
+        self.signature_count.set(signature_id + 1);
 
         let blob_id = parse_blob_id_base58(&blob_id_str)?;
 
@@ -336,7 +439,7 @@ impl MeroSignState {
 
     /// Delete a signature by ID
     pub fn delete_signature(&mut self, signature_id: u64) -> Result<(), String> {
-        if !self.is_private {
+        if !*self.is_private.get() {
             return Err("Signatures can only be deleted in private context".to_string());
         }
 
@@ -354,7 +457,7 @@ impl MeroSignState {
 
     /// Get all signatures
     pub fn list_signatures(&self) -> Result<Vec<SignatureRecord>, String> {
-        if !self.is_private {
+        if !*self.is_private.get() {
             return Err("Signatures can only be accessed in private context".to_string());
         }
 
@@ -371,10 +474,10 @@ impl MeroSignState {
     pub fn join_shared_context(
         &mut self,
         context_id: String,
-        shared_identity: UserId,
+        shared_identity_str: String,
         context_name: String,
     ) -> Result<(), String> {
-        if !self.is_private {
+        if !*self.is_private.get() {
             return Err("Context joining can only be managed in private context".to_string());
         }
 
@@ -382,7 +485,8 @@ impl MeroSignState {
             return Err("Already joined this context".to_string());
         }
 
-        let private_identity = self.owner;
+        let private_identity = *self.owner.get();
+        let shared_identity = parse_public_key_base58(&shared_identity_str)?;
 
         let metadata = ContextMetadata {
             context_id: context_id.clone(),
@@ -417,7 +521,7 @@ impl MeroSignState {
 
     /// Leave a shared context
     pub fn leave_shared_context(&mut self, context_id: String) -> Result<(), String> {
-        if !self.is_private {
+        if !*self.is_private.get() {
             return Err("Context leaving can only be managed in private context".to_string());
         }
 
@@ -433,7 +537,7 @@ impl MeroSignState {
 
     /// List all joined contexts
     pub fn list_joined_contexts(&self) -> Result<Vec<ContextMetadata>, String> {
-        if !self.is_private {
+        if !*self.is_private.get() {
             return Err("Joined contexts can only be accessed in private context".to_string());
         }
 
@@ -454,7 +558,7 @@ impl MeroSignState {
 
         if let Ok(iter) = self.participants.iter() {
             for participant in iter {
-                let user_id_str = format!("{:?}", participant);
+                let user_id_str = bs58::encode(&participant).into_string();
                 let permission = self
                     .permissions
                     .get(&user_id_str)
@@ -474,10 +578,10 @@ impl MeroSignState {
                 .map_err(|e| format!("Failed to get document count: {:?}", e))? as u64;
 
         let context_details = ContextDetails {
-            context_id: context_id.clone(),
-            context_name: self.context_name.clone(),
-            owner: self.owner,
-            is_private: self.is_private,
+            context_id,
+            context_name: self.context_name.get().clone(),
+            owner: *self.owner.get(),
+            is_private: *self.is_private.get(),
             participant_count: participants_with_permissions.len() as u64,
             participants: participants_with_permissions,
             document_count,
@@ -488,11 +592,11 @@ impl MeroSignState {
     }
 
     fn validate_admin_permissions(&self) -> Result<(), String> {
-        if self.is_private {
+        if *self.is_private.get() {
             return Err("This method can only be called from shared context".to_string());
         }
 
-        let current_user_str = format!("{:?}", self.owner);
+        let current_user_str = bs58::encode(self.owner.get()).into_string();
         match self.permissions.get(&current_user_str) {
             Ok(Some(PermissionLevel::Admin)) => Ok(()),
             Ok(Some(_)) => Err("Admin permissions required for this operation".to_string()),
@@ -518,11 +622,11 @@ impl MeroSignState {
             return Err("Document with this ID already exists".to_string());
         }
 
-        let pdf_blob_id_bytes = parse_blob_id_base58(&pdf_blob_id_str)?;
+        let pdf_blob_id = parse_blob_id_base58(&pdf_blob_id_str)?;
 
         // Announce blob to the network for discovery
         let current_context = env::context_id();
-        if env::blob_announce_to_context(&pdf_blob_id_bytes, &current_context) {
+        if env::blob_announce_to_context(&pdf_blob_id, &current_context) {
             app::log!(
                 "Successfully announced PDF blob {} to network",
                 pdf_blob_id_str
@@ -531,14 +635,15 @@ impl MeroSignState {
             app::log!("Failed to announce PDF blob {} to network", pdf_blob_id_str);
         }
 
+        let uploaded_by = *self.owner.get();
         let document = DocumentInfo {
             id: document_id.clone(),
             name: name.clone(),
             hash,
-            uploaded_by: self.owner,
+            uploaded_by,
             uploaded_at: env::time_now(),
             status: DocumentStatus::Pending,
-            pdf_blob_id: pdf_blob_id_bytes,
+            pdf_blob_id,
             size: file_size,
             embeddings,
             extracted_text,
@@ -556,7 +661,7 @@ impl MeroSignState {
         app::emit!(MeroSignEvent::DocumentUploaded {
             id: document_id.clone(),
             name,
-            uploaded_by: self.owner,
+            uploaded_by,
         });
 
         Ok(document_id)
@@ -590,33 +695,42 @@ impl MeroSignState {
         Ok(documents)
     }
 
-    /// In your set_consent and has_consented methods:
-    pub fn set_consent(&mut self, user_id: UserId, document_id: String) -> Result<(), String> {
-        let key = format!("{:?}|{}", user_id, document_id);
+    /// Set consent for a user on a document
+    pub fn set_consent(&mut self, user_id_str: String, document_id: String) -> Result<(), String> {
+        let user_id = parse_public_key_base58(&user_id_str)?;
+        let key = format!("{}|{}", bs58::encode(&user_id).into_string(), document_id);
         self.consents
-            .insert(key, true)
+            .insert(key, true.into())
             .map_err(|e| format!("Failed to store consent: {:?}", e))?;
         Ok(())
     }
 
-    /// Check if user has given consent for a document
-    pub fn has_consented(&self, user_id: UserId, document_id: String) -> Result<bool, String> {
-        let key = format!("{:?}|{}", user_id, document_id);
+    /// Check if user has given consent for a document (internal helper)
+    fn check_consent(&self, user_id: &[u8; 32], document_id: &str) -> Result<bool, String> {
+        let key = format!("{}|{}", bs58::encode(user_id).into_string(), document_id);
         match self.consents.get(&key) {
-            Ok(Some(consented)) => Ok(consented),
+            Ok(Some(consented)) => Ok(*consented.get()),
             Ok(None) => Ok(false),
             Err(e) => Err(format!("Failed to check consent: {:?}", e)),
         }
     }
+
+    /// Check if user has given consent for a document (public API)
+    pub fn has_consented(&self, user_id_str: String, document_id: String) -> Result<bool, String> {
+        let user_id = parse_public_key_base58(&user_id_str)?;
+        self.check_consent(&user_id, &document_id)
+    }
+
     pub fn sign_document(
         &mut self,
         document_id: String,
         pdf_blob_id_str: String,
         file_size: u64,
         new_hash: String,
-        signer_id: UserId,
+        signer_id_str: String,
     ) -> Result<(), String> {
-        let has_consent = self.has_consented(signer_id.clone(), document_id.clone())?;
+        let signer_id = parse_public_key_base58(&signer_id_str)?;
+        let has_consent = self.check_consent(&signer_id, &document_id)?;
         if !has_consent {
             return Err("User must provide consent before signing this document".to_string());
         }
@@ -627,11 +741,11 @@ impl MeroSignState {
             Err(e) => return Err(format!("Failed to get document: {:?}", e)),
         };
 
-        let pdf_blob_id_bytes = parse_blob_id_base58(&pdf_blob_id_str)?;
+        let pdf_blob_id = parse_blob_id_base58(&pdf_blob_id_str)?;
 
         // Announce the signed blob to the network for discovery
         let current_context = env::context_id();
-        if env::blob_announce_to_context(&pdf_blob_id_bytes, &current_context) {
+        if env::blob_announce_to_context(&pdf_blob_id, &current_context) {
             app::log!(
                 "Successfully announced signed PDF blob {} to network",
                 pdf_blob_id_str
@@ -643,21 +757,7 @@ impl MeroSignState {
             );
         }
 
-        // Announce the signed blob to the network for discovery
-        let current_context = env::context_id();
-        if env::blob_announce_to_context(&pdf_blob_id_bytes, &current_context) {
-            app::log!(
-                "Successfully announced signed PDF blob {} to network",
-                pdf_blob_id_str
-            );
-        } else {
-            app::log!(
-                "Failed to announce signed PDF blob {} to network",
-                pdf_blob_id_str
-            );
-        }
-
-        document.pdf_blob_id = pdf_blob_id_bytes;
+        document.pdf_blob_id = pdf_blob_id;
         document.size = file_size;
         document.hash = new_hash;
         document.status = DocumentStatus::PartiallySigned;
@@ -675,7 +775,7 @@ impl MeroSignState {
             .document_signatures
             .get(&document_id)
             .map_err(|e| format!("Failed to get document signatures: {:?}", e))?
-            .unwrap_or_else(|| Vector::new());
+            .unwrap_or_else(Vector::new);
 
         signatures
             .push(signature)
@@ -713,9 +813,10 @@ impl MeroSignState {
     pub fn mark_participant_signed(
         &mut self,
         document_id: String,
-        user_id: UserId,
+        user_id_str: String,
     ) -> Result<(), String> {
-        let has_consent = self.has_consented(user_id.clone(), document_id.clone())?;
+        let user_id = parse_public_key_base58(&user_id_str)?;
+        let has_consent = self.check_consent(&user_id, &document_id)?;
         if !has_consent {
             return Err("User must provide consent before being marked as signed".to_string());
         }
@@ -730,7 +831,7 @@ impl MeroSignState {
             .document_signatures
             .get(&document_id)
             .map_err(|e| format!("Failed to get document signatures: {:?}", e))?
-            .unwrap_or_else(|| Vector::new());
+            .unwrap_or_else(Vector::new);
 
         let mut already_signed = false;
         if let Ok(iter) = signatures.iter() {
@@ -767,7 +868,7 @@ impl MeroSignState {
         if all_signed {
             document.status = DocumentStatus::FullySigned;
             self.documents
-                .insert(document_id.clone(), document)
+                .insert(document_id, document)
                 .map_err(|e| format!("Failed to update document status: {:?}", e))?;
         }
 
@@ -775,27 +876,24 @@ impl MeroSignState {
     }
 
     /// Register self as participant (for users who joined via open invitation)
-    /// This method allows a user who has joined the context at the node level
-    /// to register themselves in the application state without admin permissions
     pub fn register_self_as_participant(&mut self) -> Result<(), String> {
-        if self.is_private {
+        if *self.is_private.get() {
             return Err("Cannot register as participant in private context".to_string());
         }
 
-        let executor_id_raw = env::executor_id();
-        let executor_id = UserId::new(executor_id_raw);
+        let executor_id = env::executor_id();
 
         // Check if already a participant
         if self.participants.contains(&executor_id).unwrap_or(false) {
             return Err("Already registered as participant".to_string());
         }
 
-        // Add as participant with Sign permission (can sign documents)
+        // Add as participant with Sign permission
         self.participants
             .insert(executor_id)
             .map_err(|e| format!("Failed to register as participant: {:?}", e))?;
 
-        let user_id_str = format!("{:?}", executor_id);
+        let user_id_str = bs58::encode(&executor_id).into_string();
         self.permissions
             .insert(user_id_str, PermissionLevel::Sign)
             .map_err(|e| format!("Failed to set permissions: {:?}", e))?;
@@ -825,10 +923,12 @@ impl MeroSignState {
     /// Add participant to shared context (admin only)
     pub fn add_participant(
         &mut self,
-        user_id: UserId,
+        user_id_str: String,
         permission: PermissionLevel,
     ) -> Result<(), String> {
         self.validate_admin_permissions()?;
+
+        let user_id = parse_public_key_base58(&user_id_str)?;
 
         if self.participants.contains(&user_id).unwrap_or(false) {
             return Err("User is already a participant".to_string());
@@ -838,9 +938,9 @@ impl MeroSignState {
             .insert(user_id)
             .map_err(|e| format!("Failed to add participant: {:?}", e))?;
 
-        let user_id_str = format!("{:?}", user_id);
+        let user_id_key = bs58::encode(&user_id).into_string();
         self.permissions
-            .insert(user_id_str, permission.clone())
+            .insert(user_id_key, permission.clone())
             .map_err(|e| format!("Failed to set permissions: {:?}", e))?;
 
         if permission == PermissionLevel::Sign {
@@ -863,9 +963,12 @@ impl MeroSignState {
 
         Ok(())
     }
+
     /// Remove participant from shared context
-    pub fn remove_participant(&mut self, user_id: UserId) -> Result<(), String> {
+    pub fn remove_participant(&mut self, user_id_str: String) -> Result<(), String> {
         self.validate_admin_permissions()?;
+
+        let user_id = parse_public_key_base58(&user_id_str)?;
 
         if !self.participants.contains(&user_id).unwrap_or(false) {
             return Err("User is not a participant".to_string());
@@ -875,9 +978,9 @@ impl MeroSignState {
             .remove(&user_id)
             .map_err(|e| format!("Failed to remove participant: {:?}", e))?;
 
-        let user_id_str = format!("{:?}", user_id);
+        let user_id_key = bs58::encode(&user_id).into_string();
         self.permissions
-            .remove(&user_id_str)
+            .remove(&user_id_key)
             .map_err(|e| format!("Failed to remove permissions: {:?}", e))?;
 
         app::emit!(MeroSignEvent::ParticipantLeft { user_id });
@@ -886,7 +989,7 @@ impl MeroSignState {
     }
 
     /// List all participants
-    pub fn list_participants(&self) -> Result<Vec<UserId>, String> {
+    pub fn list_participants(&self) -> Result<Vec<[u8; 32]>, String> {
         let mut participants = Vec::new();
         if let Ok(iter) = self.participants.iter() {
             for participant in iter {
@@ -897,9 +1000,10 @@ impl MeroSignState {
     }
 
     /// Get user permission level
-    pub fn get_user_permission(&self, user_id: UserId) -> Result<PermissionLevel, String> {
-        let user_id_str = format!("{:?}", user_id);
-        match self.permissions.get(&user_id_str) {
+    pub fn get_user_permission(&self, user_id_str: String) -> Result<PermissionLevel, String> {
+        let user_id = parse_public_key_base58(&user_id_str)?;
+        let user_id_key = bs58::encode(&user_id).into_string();
+        match self.permissions.get(&user_id_key) {
             Ok(Some(perm)) => Ok(perm.clone()),
             Ok(None) => Err("User not found".to_string()),
             Err(e) => Err(format!("Failed to get permission: {:?}", e)),
@@ -908,16 +1012,16 @@ impl MeroSignState {
 
     /// Get current context ID
     pub fn get_context_id(&self) -> String {
-        if self.is_private {
-            format!("private_{}", format!("{:?}", self.owner))
+        if *self.is_private.get() {
+            format!("private_{}", bs58::encode(self.owner.get()).into_string())
         } else {
-            self.context_name.clone()
+            self.context_name.get().clone()
         }
     }
 
     /// Get identity mapping for a specific context
     pub fn get_identity_mapping(&self, context_id: String) -> Result<IdentityMapping, String> {
-        if !self.is_private {
+        if !*self.is_private.get() {
             return Err("Identity mappings can only be accessed in private context".to_string());
         }
 
@@ -929,8 +1033,8 @@ impl MeroSignState {
     }
 
     /// Get shared identity for a specific context
-    pub fn get_shared_identity(&self, context_id: String) -> Result<UserId, String> {
-        if !self.is_private {
+    pub fn get_shared_identity(&self, context_id: String) -> Result<[u8; 32], String> {
+        if !*self.is_private.get() {
             return Err("Identity resolution can only be done in private context".to_string());
         }
 
@@ -941,9 +1045,10 @@ impl MeroSignState {
     /// Resolve private identity from shared identity
     pub fn resolve_private_identity(
         &self,
-        shared_identity: UserId,
-    ) -> Result<Option<UserId>, String> {
-        if self.is_private {
+        shared_identity_str: String,
+    ) -> Result<Option<[u8; 32]>, String> {
+        if *self.is_private.get() {
+            let shared_identity = parse_public_key_base58(&shared_identity_str)?;
             if let Ok(entries) = self.identity_mappings.entries() {
                 for (_, mapping) in entries {
                     if mapping.shared_identity == shared_identity {
@@ -1088,7 +1193,7 @@ impl MeroSignState {
     }
 }
 
-fn cosine_similarity(a: &Vec<f32>, b: &Vec<f32>) -> f32 {
+fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
     let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
     let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
