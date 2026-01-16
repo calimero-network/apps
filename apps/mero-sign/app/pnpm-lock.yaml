@@ -41,6 +41,9 @@ importers:
       axios:
         specifier: ^1.10.0
         version: 1.10.0
+      bs58:
+        specifier: ^4.0.0
+        version: 4.0.0
       buffer:
         specifier: ^6.0.3
         version: 6.0.3
@@ -96,6 +99,9 @@ importers:
       '@eslint/js':
         specifier: ^9.4.0
         version: 9.31.0
+      '@types/bs58':
+        specifier: ^4.0.4
+        version: 4.0.4
       '@types/eslint__js':
         specifier: ^8.42.3
         version: 8.42.3
@@ -1654,6 +1660,9 @@ packages:
   '@types/babel__traverse@7.20.7':
     resolution: {integrity: sha512-dkO5fhS7+/oos4ciWxyEyjWe48zmG6wbCheo/G2ZnHx4fs3EU6YC6UM8rk56gAjNJ9P3MTH2jo5jb92/K6wbng==}
 
+  '@types/bs58@4.0.4':
+    resolution: {integrity: sha512-0IEpMFXXQi2zXaXl9GJ3sRwQo0uEkD+yFOv+FnAU5lkPtcu6h61xb7jc2CFPEZ5BUOaiP13ThuGc9HD4R8lR5g==}
+
   '@types/eslint@9.6.1':
     resolution: {integrity: sha512-FXx2pKgId/WyYo2jXw63kk7/+TY7u7AziEJxJAnSFzHlqTAS3Ync6SvgYAN/k4/PQpnnVuzoMuVnByKK2qp0ag==}
 
@@ -2026,6 +2035,9 @@ packages:
     resolution: {integrity: sha512-UAmjxz9KbK+YIi66xej+pZVo/vxUOh49ubEvZW5egCbxhur05pBb+hwuireQwKO4nDpsNm64/jEei17LEpsr5g==}
     engines: {node: '>=4.5.0'}
     deprecated: use 3.0.0 instead, safe-buffer has been merged and release for compatability
+
+  base-x@3.0.11:
+    resolution: {integrity: sha512-xz7wQ8xDhdyP7tQxwdteLYeFfS68tSMNCZ/Y37WJ4bhGfKPpqEIlmIyueQHqOyoPhE6xNUqjzRr8ra0eF9VRvA==}
 
   base64-arraybuffer@1.0.2:
     resolution: {integrity: sha512-I3yl4r9QB5ZRY3XuJVEPfc2XhZO6YweFPI+UovAzn+8/hb3oJ6lnysaFcjVpkCPfVWFUDvoZ8kmVDP7WyRtYtQ==}
@@ -5894,6 +5906,11 @@ snapshots:
     dependencies:
       '@babel/types': 7.28.1
 
+  '@types/bs58@4.0.4':
+    dependencies:
+      '@types/node': 16.18.126
+      base-x: 3.0.11
+
   '@types/eslint@9.6.1':
     dependencies:
       '@types/estree': 1.0.8
@@ -6378,6 +6395,10 @@ snapshots:
   balanced-match@1.0.2: {}
 
   base-x@2.0.6:
+    dependencies:
+      safe-buffer: 5.2.1
+
+  base-x@3.0.11:
     dependencies:
       safe-buffer: 5.2.1
 

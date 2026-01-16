@@ -47,6 +47,7 @@ import { ClientApiDataSource } from '../api/dataSource/ClientApiDataSource';
 import { blobClient, useCalimero } from '@calimero-network/calimero-client';
 import ConsentModal from './ConsentModal';
 import LegalChatbot from './LegalChatbot';
+import bs58 from 'bs58';
 
 interface SavedSignature {
   id: string;
@@ -379,10 +380,11 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
           signaturesArray.map(async (sig: any) => {
             let dataURL = '';
             try {
+              // Convert blob_id from byte array to base58 string if needed
               const blobId =
                 typeof sig.blob_id === 'string'
                   ? sig.blob_id
-                  : Buffer.from(sig.blob_id).toString('hex');
+                  : bs58.encode(new Uint8Array(sig.blob_id));
               const contextId =
                 localStorage.getItem('agreementContextID') || '';
               const blob = await blobClient.downloadBlob(blobId, contextId);

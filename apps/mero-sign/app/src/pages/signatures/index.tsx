@@ -4,6 +4,31 @@ import { MobileLayout } from '../../components/MobileLayout';
 import SignaturePadComponent from '../../components/SignaturePad';
 import { ClientApiDataSource } from '../../api/dataSource/ClientApiDataSource';
 import { blobClient, useCalimero } from '@calimero-network/calimero-client';
+import bs58 from 'bs58';
+
+/**
+ * Normalize blob ID to base58 format for the contract.
+ * The blob API may return hex-encoded IDs (64 chars) or base58 IDs.
+ * The contract expects base58-encoded 32-byte blob IDs.
+ */
+function normalizeBlobIdToBase58(blobId: string): string {
+  // Remove any '0x' prefix if present
+  const cleanId = blobId.startsWith('0x') ? blobId.slice(2) : blobId;
+
+  // Check if it's a 64-character hex string (32 bytes in hex)
+  const isHex = /^[0-9a-fA-F]{64}$/.test(cleanId);
+
+  if (isHex) {
+    // Convert hex to bytes, then encode to base58
+    const bytes = new Uint8Array(
+      cleanId.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || [],
+    );
+    return bs58.encode(bytes);
+  }
+
+  // Already in base58 or another format - return as-is
+  return cleanId;
+}
 import {
   Button,
   Card,
@@ -66,10 +91,11 @@ export default function SignaturesPage() {
         signaturesArray.map(async (sig: any) => {
           let dataURL = '';
           try {
+            // Convert blob_id from byte array to base58 string if needed
             const blobId =
               typeof sig.blob_id === 'string'
                 ? sig.blob_id
-                : Buffer.from(sig.blob_id).toString('hex');
+                : bs58.encode(new Uint8Array(sig.blob_id));
             const contextId = localStorage.getItem('defaultContextId') || '';
             const blob = await blobClient.downloadBlob(blobId, contextId);
             if (blob) {
@@ -133,8 +159,11 @@ export default function SignaturesPage() {
       throw new Error(errorMessage);
     }
 
+    // Normalize blob ID to base58 for the contract
+    const base58BlobId = normalizeBlobIdToBase58(blobResponse.data.blobId);
+
     return {
-      blobId: blobResponse.data.blobId,
+      blobId: base58BlobId,
       size: file.size,
     };
   };

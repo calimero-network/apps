@@ -3,6 +3,24 @@ import { ContextApiDataSource } from './dataSource/nodeApiDataSource';
 import { ClientApiDataSource } from './dataSource/ClientApiDataSource';
 import { Agreement } from './clientApi';
 import { CreateContextProps, CreateContextResponse } from './nodeApi';
+import bs58 from 'bs58';
+
+/**
+ * Convert a value to base58 string.
+ * Handles byte arrays from the contract and passes through strings.
+ */
+function toBase58String(value: string | number[] | Uint8Array): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return bs58.encode(new Uint8Array(value));
+  }
+  if (value instanceof Uint8Array) {
+    return bs58.encode(value);
+  }
+  return String(value);
+}
 
 export class AgreementService {
   private contextApi: ContextApiDataSource;
@@ -128,15 +146,19 @@ export class AgreementService {
         }
 
         // Handle old API structure (fallback)
+        // Convert byte arrays to base58 strings
+        const sharedIdentity = toBase58String(context.shared_identity);
+        const privateIdentity = toBase58String(context.private_identity);
+
         return {
           id: context.context_id,
           name: context.context_name,
           contextId: context.context_id,
-          memberPublicKey: context.shared_identity,
+          memberPublicKey: sharedIdentity,
           role: context.role,
           joinedAt: context.joined_at,
-          privateIdentity: context.private_identity,
-          sharedIdentity: context.shared_identity,
+          privateIdentity: privateIdentity,
+          sharedIdentity: sharedIdentity,
         };
       });
 

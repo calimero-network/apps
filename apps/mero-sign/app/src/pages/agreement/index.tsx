@@ -56,6 +56,24 @@ import { DocumentService } from '../../api/documentService';
 import { ClientApiDataSource } from '../../api/dataSource/ClientApiDataSource';
 import { ContextApiDataSource } from '../../api/dataSource/nodeApiDataSource';
 import { ContextDetails, PermissionLevel } from '../../api/clientApi';
+import bs58 from 'bs58';
+
+/**
+ * Convert a value to base58 string.
+ * Handles byte arrays from the contract and passes through strings.
+ */
+function toBase58String(value: string | number[] | Uint8Array): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return bs58.encode(new Uint8Array(value));
+  }
+  if (value instanceof Uint8Array) {
+    return bs58.encode(value);
+  }
+  return String(value);
+}
 
 // Constants
 
@@ -1064,41 +1082,46 @@ const AgreementPage: React.FC = () => {
                   gap: spacing[3].value,
                 }}
               >
-                {contextDetails?.participants?.map((participant) => (
-                  <Flex key={participant.user_id} alignItems="center" gap="md">
-                    <Box
-                      style={{
-                        width: '32px',
-                        height: '32px',
-                        backgroundColor: '#16a34a',
-                        borderRadius: '50%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Text
-                        size="sm"
-                        weight="medium"
-                        style={{ color: 'white' }}
-                      >
-                        {participant.user_id.slice(0, 2).toUpperCase()}
-                      </Text>
-                    </Box>
-                    <Box>
-                      <Text size="sm" weight="medium">
-                        {participant.user_id.slice(0, 6)}...
-                        {participant.user_id.slice(-4)}
-                      </Text>
-                      <Text
-                        size="xs"
-                        style={{ color: colors.neutral[600].value }}
-                      >
-                        {participant.permission_level}
-                      </Text>
-                    </Box>
-                  </Flex>
-                )) || (
+                {contextDetails?.participants && contextDetails.participants.length > 0 ? (
+                  contextDetails.participants.map((participant) => {
+                    const userId = toBase58String(participant.user_id);
+                    return (
+                      <Flex key={userId} alignItems="center" gap="md">
+                        <Box
+                          style={{
+                            width: '32px',
+                            height: '32px',
+                            backgroundColor: '#16a34a',
+                            borderRadius: '50%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Text
+                            size="sm"
+                            weight="medium"
+                            style={{ color: 'white' }}
+                          >
+                            {userId.slice(0, 2).toUpperCase()}
+                          </Text>
+                        </Box>
+                        <Box>
+                          <Text size="sm" weight="medium">
+                            {userId.slice(0, 6)}...
+                            {userId.slice(-4)}
+                          </Text>
+                          <Text
+                            size="xs"
+                            style={{ color: colors.neutral[600].value }}
+                          >
+                            {participant.permission_level}
+                          </Text>
+                        </Box>
+                      </Flex>
+                    );
+                  })
+                ) : (
                   <Text size="sm" style={{ color: colors.neutral[600].value }}>
                     {contextLoading
                       ? 'Loading participants...'
