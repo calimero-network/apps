@@ -12,8 +12,7 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isCreating: isCreatingDefaultContext, error: defaultContextError } =
-    useDefaultContext();
+  const { isCreating: isCreatingDefaultContext } = useDefaultContext();
 
   const navItems = [
     { icon: Home, label: 'Dashboard', path: '/' },
@@ -67,7 +66,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
               className="text-lg font-semibold"
               style={{ color: 'var(--current-text)' }}
             >
-              MeroDocs
+              MeroSign
             </div>
           </div>
           <button

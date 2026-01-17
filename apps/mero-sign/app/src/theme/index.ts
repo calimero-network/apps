@@ -1,4 +1,4 @@
-// MeroDocs Theme Configuration
+// MeroSign Theme Configuration
 export const lightTheme = {
   colors: {
     primary: '#A9FF1F', // Bright green

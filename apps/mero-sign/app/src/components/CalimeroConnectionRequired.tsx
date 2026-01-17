@@ -44,7 +44,7 @@ export const CalimeroConnectionRequired: React.FC<
             className="mb-6 leading-relaxed"
             style={{ color: 'var(--current-text-secondary)' }}
           >
-            To access MeroDocs, you need to connect to the Calimero network.
+            To access MeroSign, you need to connect to the Calimero network.
             This enables secure document signing and sharing capabilities.
           </p>
 

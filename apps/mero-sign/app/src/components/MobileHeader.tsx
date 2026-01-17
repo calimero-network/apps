@@ -1,14 +1,12 @@
 import React from 'react';
-import { Menu, Sun, Moon } from 'lucide-react';
+import { Menu } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useTheme } from '../contexts/ThemeContext';
 
 interface MobileHeaderProps {
   onMenuToggle: () => void;
 }
 
 export const MobileHeader: React.FC<MobileHeaderProps> = ({ onMenuToggle }) => {
-  const { mode, toggleTheme } = useTheme();
   const navigate = useNavigate();
 
   return (
@@ -49,31 +47,10 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({ onMenuToggle }) => {
               className="text-lg font-semibold"
               style={{ color: 'var(--current-text)' }}
             >
-              MeroDocs
+              MeroSign
             </div>
           </button>
         </div>
-      </div>
-
-      <div className="flex items-center">
-        <button
-          onClick={toggleTheme}
-          className="bg-transparent border-none p-2 rounded-lg cursor-pointer flex items-center justify-center min-w-[44px] min-h-[44px] transition-all duration-200 hover:bg-opacity-10 active:scale-95"
-          style={{
-            color: 'var(--current-text-secondary)',
-            backgroundColor: 'transparent',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = 'var(--current-border)';
-            e.currentTarget.style.color = 'var(--current-text)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'transparent';
-            e.currentTarget.style.color = 'var(--current-text-secondary)';
-          }}
-        >
-          {mode === 'light' ? <Moon size={20} /> : <Sun size={20} />}
-        </button>
       </div>
     </header>
   );

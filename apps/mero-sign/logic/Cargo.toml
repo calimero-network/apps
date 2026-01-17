@@ -1,6 +1,6 @@
 [package]
-name = "mero_docs"
-description = "Calimero MeroDocs logic"
+name = "mero_sign"
+description = "Calimero MeroSign logic"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,12 +8,11 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-base64 = "0.22.1"
-borsh = "0.10.3"
-borsh-derive = "0.10.3"
 bs58 = "0.5.1"
-calimero-sdk = { git = "https://github.com/calimero-network/core", branch = "master" }
-calimero-storage = { git = "https://github.com/calimero-network/core", branch = "master" }
+calimero-sdk = { git = "https://github.com/calimero-network/core", rev = "770d93c1240ed9a3fce35f89b63c9393948ded11" }
+calimero-storage = { git = "https://github.com/calimero-network/core", rev = "770d93c1240ed9a3fce35f89b63c9393948ded11" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core", rev = "770d93c1240ed9a3fce35f89b63c9393948ded11" }
+
 [profile.app-release]
 inherits = "release"
 codegen-units = 1

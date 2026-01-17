@@ -1,16 +1,15 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCalimero, apiClient } from '@calimero-network/calimero-client';
+import type { ResponseData } from '@calimero-network/calimero-client';
+import type { NodeIdentity } from '@calimero-network/calimero-client/lib/api/nodeApi';
 import {
   FileText,
   Plus,
   ArrowRight,
   Layers,
-  UserPlus,
   CheckCircle2,
   AlertCircle,
-  Key,
-  Copy,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -23,7 +22,6 @@ import {
   Box,
   Flex,
   Modal,
-  Textarea,
   Loader,
   Alert,
   Spacer,
@@ -36,6 +34,8 @@ import { AgreementService } from '../../api/agreementService';
 import { ContextApiDataSource } from '../../api/dataSource/nodeApiDataSource';
 import { ClientApiDataSource } from '../../api/dataSource/ClientApiDataSource';
 import { Agreement } from '../../api/clientApi';
+import { UserPlus, Key, Copy } from 'lucide-react';
+import { Textarea } from '@calimero-network/mero-ui';
 
 type NotificationType = 'success' | 'error';
 interface NotificationState {
@@ -52,14 +52,14 @@ export default function Dashboard() {
   const [agreementName, setAgreementName] = useState('');
   const [invitationPayload, setInvitationPayload] = useState('');
   const [contextName, setContextName] = useState('');
+  const [generatedIdentity, setGeneratedIdentity] =
+    useState<NodeIdentity | null>(null);
+  const [generatingIdentity, setGeneratingIdentity] = useState(false);
   const [agreements, setAgreements] = useState<Agreement[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
-  const [joinProgress, setJoinProgress] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [generatedIdentity, setGeneratedIdentity] = useState<string>('');
-  const [generatingIdentity, setGeneratingIdentity] = useState(false);
   const [modalNotification, setModalNotification] =
     useState<NotificationState | null>(null);
 
@@ -175,120 +175,28 @@ export default function Dashboard() {
     }
   };
 
-  const handleJoinAgreement = async () => {
-    if (!invitationPayload.trim()) {
-      setError('Please enter a valid invitation payload');
-      return;
-    }
-    if (!contextName.trim()) {
-      setError('Please enter the context name you are joining');
-      return;
-    }
-
-    const payload = invitationPayload.trim();
-
-    if (payload.length < 10) {
-      setError('Invitation payload appears to be invalid (too short)');
-      return;
-    }
-
-    try {
-      setJoining(true);
-      setError(null);
-      setJoinProgress('Joining context...');
-
-      const joinResponse = await nodeApiService.joinContext({
-        invitationPayload: payload,
-      });
-
-      if (joinResponse.error) {
-        console.error('Join context error:', joinResponse.error);
-        setError(joinResponse.error.message || 'Failed to join context');
-        setJoining(false);
-        return;
-      }
-
-      setJoinProgress('Storing context information...');
-      if (!joinResponse.data) {
-        setError('No data received from join context response');
-        setJoining(false);
-        return;
-      }
-
-      const { contextId, memberPublicKey } = joinResponse.data;
-      if (!contextId || !memberPublicKey) {
-        setError('Invalid join context response data');
-        setJoining(false);
-        return;
-      }
-
-      localStorage.setItem('agreementContextID', contextId);
-      localStorage.setItem('agreementContextUserID', memberPublicKey);
-
-      setJoinProgress('Joining shared context...');
-
-      const joinSharedResponse = await clientApiService.joinSharedContext(
-        contextId,
-        memberPublicKey,
-        contextName.trim(),
-      );
-
-      if (joinSharedResponse.error) {
-        console.error('Join shared context error:', joinSharedResponse.error);
-        setError(
-          'Failed to join shared context: ' + joinSharedResponse.error.message,
-        );
-        setJoining(false);
-        return;
-      }
-
-      setJoinProgress('Finalizing...');
-
-      showModalNotification('Successfully joined agreement!', 'success');
-
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      setShowJoinModal(false);
-      setInvitationPayload('');
-      setContextName('');
-      setGeneratedIdentity('');
-
-      await loadAgreements();
-    } catch (err) {
-      console.error('Failed to join agreement:', err);
-      const errorMessage =
-        err instanceof Error ? err.message : 'Failed to join agreement';
-      setError(errorMessage);
-    } finally {
-      setJoining(false);
-      setJoinProgress('');
-    }
-  };
-
   const handleGenerateIdentity = async () => {
     try {
       setGeneratingIdentity(true);
       setError(null);
 
-      // Create new identity
-      const identityResponse = await apiClient.node().createNewIdentity();
+      const response: ResponseData<NodeIdentity> = await apiClient
+        .node()
+        .createNewIdentity();
 
-      if (identityResponse.error) {
-        setError(
-          'Failed to generate identity: ' + identityResponse.error.message,
-        );
+      if (response.error) {
+        setError(response.error.message || 'Failed to create identity');
         return;
       }
 
-      if (identityResponse.data) {
-        // Extract the public key or ID from the NodeIdentity object
-        const identity = identityResponse.data as any;
-        const identityId =
-          identity.publicKey || identity.id || JSON.stringify(identity);
-        setGeneratedIdentity(identityId);
-        showModalNotification('Identity generated successfully!', 'success');
-      } else {
-        setError('No identity data received');
+      if (response.data) {
+        setGeneratedIdentity(response.data);
+        // Auto-save to localStorage
+        localStorage.setItem(
+          'new-context-identity',
+          JSON.stringify(response.data),
+        );
+        showModalNotification('Identity created successfully!', 'success');
       }
     } catch (err) {
       console.error('Failed to generate identity:', err);
@@ -299,9 +207,138 @@ export default function Dashboard() {
   };
 
   const handleCopyIdentity = () => {
-    if (generatedIdentity) {
-      navigator.clipboard.writeText(generatedIdentity);
-      showModalNotification('Identity copied to clipboard!', 'success');
+    if (generatedIdentity?.publicKey) {
+      navigator.clipboard.writeText(generatedIdentity.publicKey);
+      showModalNotification('Public key copied to clipboard!', 'success');
+    }
+  };
+
+  const handleJoinByPayload = async () => {
+    if (!invitationPayload.trim()) {
+      setError('Please enter a valid invitation payload');
+      return;
+    }
+
+    try {
+      setJoining(true);
+      setError(null);
+
+      // If identity was generated, save it for potential future use
+      if (generatedIdentity) {
+        localStorage.setItem(
+          'new-context-identity',
+          JSON.stringify(generatedIdentity),
+        );
+      }
+
+      const joinResponse = await nodeApiService.joinContext({
+        invitationPayload: invitationPayload.trim(),
+      });
+
+      if (joinResponse.error) {
+        setError(joinResponse.error.message || 'Failed to join context');
+        return;
+      }
+
+      if (!joinResponse.data) {
+        setError('No data received from join context response');
+        return;
+      }
+
+      const { contextId, memberPublicKey } = joinResponse.data;
+
+      // Validate that both contextId and memberPublicKey are present
+      if (!contextId || !memberPublicKey) {
+        setError(
+          'Invalid join response: missing contextId or memberPublicKey',
+        );
+        return;
+      }
+
+      localStorage.setItem('agreementContextID', contextId);
+      localStorage.setItem('agreementContextUserID', memberPublicKey);
+
+      // Wait a bit for context to sync after joining
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      // Register self as participant in the shared context
+      // This is required for users joining via payload invitation
+      let registerSuccess = false;
+      let registerAttempts = 0;
+      const maxRegisterAttempts = 5;
+
+      while (!registerSuccess && registerAttempts < maxRegisterAttempts) {
+        registerAttempts++;
+        try {
+          const registerResponse = await clientApiService.registerSelfAsParticipant(
+            contextId,
+            memberPublicKey,
+          );
+
+          if (registerResponse.error) {
+            const errorMessage = registerResponse.error.message || '';
+
+            // If already registered, that's fine - continue
+            if (errorMessage.includes('Already registered')) {
+              console.log('Already registered as participant');
+              registerSuccess = true;
+            } else if (
+              errorMessage.includes('Uninitialized') &&
+              registerAttempts < maxRegisterAttempts
+            ) {
+              // State not ready yet, wait and retry
+              console.log(
+                `Register attempt ${registerAttempts} failed with Uninitialized, retrying...`,
+              );
+              await new Promise((resolve) => setTimeout(resolve, 2000));
+            } else {
+              console.warn(
+                'Failed to register as participant:',
+                registerResponse.error,
+              );
+              // Don't block the flow - user can still proceed
+              registerSuccess = true;
+            }
+          } else {
+            console.log('Successfully registered as participant in context');
+            registerSuccess = true;
+          }
+        } catch (error) {
+          console.warn(
+            `Error registering as participant (attempt ${registerAttempts}):`,
+            error,
+          );
+          if (registerAttempts < maxRegisterAttempts) {
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+          } else {
+            // Don't block the flow - user can still proceed
+            registerSuccess = true;
+          }
+        }
+      }
+
+      const joinSharedResponse = await clientApiService.joinSharedContext(
+        contextId,
+        memberPublicKey,
+        contextName.trim() || 'Agreement',
+      );
+
+      if (joinSharedResponse.error) {
+        setError(
+          'Failed to join shared context: ' + joinSharedResponse.error.message,
+        );
+        return;
+      }
+
+      showModalNotification('Successfully joined agreement!', 'success');
+      setShowJoinModal(false);
+      setInvitationPayload('');
+      setContextName('');
+      await loadAgreements();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to join agreement');
+    } finally {
+      setJoining(false);
     }
   };
 
@@ -323,12 +360,13 @@ export default function Dashboard() {
           display: 'flex',
           flexDirection: 'column',
           gap: spacing[6].value,
+          color: 'var(--current-text)',
         }}
       >
         {/* Header */}
         <motion.section variants={itemVariants}>
           <Box style={{ marginBottom: spacing[4].value }}>
-            <Heading size="xl" style={{ marginBottom: spacing[2].value }}>
+            <Heading size="xl" style={{ marginBottom: spacing[2].value, color: 'var(--current-text)' }}>
               Dashboard
             </Heading>
             <Text size="sm" className="text-muted-foreground">
@@ -390,7 +428,7 @@ export default function Dashboard() {
                         style={{
                           padding: spacing[2].value,
                           borderRadius: '50%',
-                          backgroundColor: colors.background.secondary.value,
+                          backgroundColor: 'var(--current-surface)',
                         }}
                       >
                         <Icon
@@ -407,7 +445,7 @@ export default function Dashboard() {
                           flex: 1,
                         }}
                       >
-                        <Text size="lg" weight="bold">
+                        <Text size="lg" weight="bold" style={{ color: 'var(--current-text)' }}>
                           {stat.value}
                         </Text>
                         <Text
@@ -447,7 +485,7 @@ export default function Dashboard() {
             className="flex-col sm:flex-row sm:items-center sm:justify-between"
             style={{ gap: spacing[3].value, marginBottom: spacing[4].value }}
           >
-            <Heading size="lg">Your Agreements</Heading>
+            <Heading size="lg" style={{ color: 'var(--current-text)' }}>Your Agreements</Heading>
           </Flex>
 
           {loading && (
@@ -486,7 +524,7 @@ export default function Dashboard() {
                 className="w-16 h-16 mx-auto text-muted-foreground"
                 style={{ marginBottom: spacing[4].value }}
               />
-              <Heading size="md" style={{ marginBottom: spacing[2].value }}>
+              <Heading size="md" style={{ marginBottom: spacing[2].value, color: 'var(--current-text)' }}>
                 No agreements found
               </Heading>
               <Text
@@ -533,7 +571,7 @@ export default function Dashboard() {
                           <Heading
                             size="sm"
                             className="group-hover:text-primary transition-colors duration-300 line-clamp-1"
-                            style={{ marginBottom: spacing[2].value }}
+                            style={{ marginBottom: spacing[2].value, color: 'var(--current-text)' }}
                           >
                             {context.name}
                           </Heading>
@@ -556,8 +594,7 @@ export default function Dashboard() {
                             justifyContent: 'space-between',
                             paddingTop: spacing[2].value,
                             borderTop: '1px solid',
-                            borderColor:
-                              colors.neutral[200]?.value || '#e5e7eb',
+                            borderColor: 'var(--current-border)',
                           }}
                         >
                           <Text size="xs" className="text-muted-foreground">
@@ -630,7 +667,7 @@ export default function Dashboard() {
               <Text
                 size="sm"
                 weight="medium"
-                style={{ marginBottom: spacing[2].value }}
+                style={{ marginBottom: spacing[2].value, color: 'var(--current-text)' }}
               >
                 Agreement Name
               </Text>
@@ -682,45 +719,111 @@ export default function Dashboard() {
             setShowJoinModal(false);
             setInvitationPayload('');
             setContextName('');
-            setGeneratedIdentity('');
+            setGeneratedIdentity(null);
             setError(null);
-            setJoinProgress('');
           }}
           title="Join Agreement"
         >
-          <Box
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: spacing[4].value,
-            }}
-          >
-            {/* Notification inside modal */}
-            <AnimatePresence>
-              {modalNotification && showJoinModal && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.3 }}
-                >
-                  <Alert
-                    variant={
-                      modalNotification.type === 'success' ? 'success' : 'error'
-                    }
-                    style={{ marginBottom: spacing[2].value }}
-                  >
-                    <Flex alignItems="center" gap="sm">
-                      <Text size="sm" weight="medium">
-                        {modalNotification.message}
-                      </Text>
-                    </Flex>
-                  </Alert>
-                </motion.div>
-              )}
-            </AnimatePresence>
+          <Box style={{ padding: spacing[6].value }}>
+            <Text
+              size="sm"
+              style={{
+                marginBottom: spacing[4].value,
+                color: 'var(--current-text-secondary)',
+              }}
+            >
+              Generate a new identity (optional) or paste the invitation payload
+              to join an agreement.
+            </Text>
 
-            <Box>
+            {/* Generate Identity Section */}
+            <Box style={{ marginBottom: spacing[4].value }}>
+              <Flex
+                style={{
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: spacing[2].value,
+                }}
+              >
+                <Text size="sm" weight="medium" style={{ color: 'var(--current-text)' }}>
+                  Identity
+                </Text>
+                <Button
+                  onClick={handleGenerateIdentity}
+                  disabled={generatingIdentity || !!generatedIdentity}
+                  variant="secondary"
+                  style={{ height: '36px', padding: `0 ${spacing[3].value}` }}
+                >
+                  {generatingIdentity ? (
+                    <Flex alignItems="center" gap="sm">
+                      <Loader size="small" />
+                      <Text size="sm">Generating...</Text>
+                    </Flex>
+                  ) : generatedIdentity ? (
+                    <Flex alignItems="center" gap="sm">
+                      <CheckCircle2 className="w-4 h-4" />
+                      <Text size="sm">Generated</Text>
+                    </Flex>
+                  ) : (
+                    <Flex alignItems="center" gap="sm">
+                      <Key className="w-4 h-4" />
+                      <Text size="sm">Generate ID</Text>
+                    </Flex>
+                  )}
+                </Button>
+              </Flex>
+
+              {generatedIdentity && (
+                <Card
+                  style={{
+                    padding: spacing[3].value,
+                    borderRadius: radius.md.value,
+                    backgroundColor: 'var(--current-surface)',
+                    marginTop: spacing[2].value,
+                  }}
+                >
+                  <Text
+                    size="xs"
+                    weight="medium"
+                    style={{
+                      color: 'var(--current-text-secondary)',
+                      marginBottom: spacing[2].value,
+                    }}
+                  >
+                    Public Key
+                  </Text>
+                  <Flex
+                    style={{
+                      alignItems: 'center',
+                      gap: spacing[2].value,
+                    }}
+                  >
+                    <Input
+                      type="text"
+                      value={generatedIdentity.publicKey}
+                      disabled={true}
+                      style={{
+                        flex: 1,
+                        fontFamily: 'monospace',
+                        fontSize: '11px',
+                      }}
+                    />
+                    <Button
+                      onClick={handleCopyIdentity}
+                      variant="secondary"
+                      style={{
+                        minWidth: '80px',
+                        height: '36px',
+                      }}
+                    >
+                      <Copy className="w-4 h-4" />
+                    </Button>
+                  </Flex>
+                </Card>
+              )}
+            </Box>
+
+            <Box style={{ marginBottom: spacing[4].value }}>
               <Text
                 size="sm"
                 weight="medium"
@@ -731,160 +834,61 @@ export default function Dashboard() {
               <Textarea
                 value={invitationPayload}
                 onChange={(e) => setInvitationPayload(e.target.value)}
-                placeholder="Paste the invitation payload you received..."
+                placeholder="Paste invitation payload..."
                 rows={4}
                 disabled={joining}
               />
-              <Text
-                size="xs"
-                className="text-muted-foreground"
-                style={{ marginTop: spacing[2].value }}
-              >
-                Enter the invitation payload shared by the agreement owner
-              </Text>
             </Box>
 
-            <Box>
+            <Box style={{ marginBottom: spacing[4].value }}>
               <Text
                 size="sm"
                 weight="medium"
                 style={{ marginBottom: spacing[2].value }}
               >
-                Context Name
+                Context Name (Optional)
               </Text>
               <Input
-                id="contextName"
-                type="text"
                 value={contextName}
                 onChange={(e) => setContextName(e.target.value)}
-                placeholder="Enter the name of the context you are joining"
+                placeholder="Enter context name"
                 disabled={joining}
               />
-              <Text
-                size="xs"
-                className="text-muted-foreground"
-                style={{ marginTop: spacing[2].value }}
-              >
-                This will be used as the name for the joined context
-              </Text>
             </Box>
 
-            {/* Identity Generation Section */}
-            <Box>
-              <Flex
-                style={{
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: spacing[2].value,
-                }}
-              >
-                <Text size="sm" weight="medium">
-                  Identity
-                </Text>
-                <Button
-                  onClick={handleGenerateIdentity}
-                  variant="secondary"
-                  disabled={joining || generatingIdentity}
-                  style={{ height: '32px', padding: `0 ${spacing[3].value}` }}
-                >
-                  {generatingIdentity ? (
-                    <>
-                      <Loader size="small" />
-                      <Spacer size="xs" />
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <Key className="w-3 h-3 mr-1" />
-                      Generate Identity
-                    </>
-                  )}
-                </Button>
-              </Flex>
+            {error && (
+              <Alert variant="error" style={{ marginBottom: spacing[4].value }}>
+                {error}
+              </Alert>
+            )}
 
-              {generatedIdentity && (
-                <Box
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: spacing[2].value,
-                  }}
-                >
-                  <Flex style={{ gap: spacing[2].value, alignItems: 'center' }}>
-                    <Input
-                      type="text"
-                      value={generatedIdentity}
-                      disabled
-                      className="font-mono text-sm flex-1"
-                    />
-                    <Button
-                      onClick={handleCopyIdentity}
-                      variant="secondary"
-                      style={{
-                        height: '40px',
-                        width: '40px',
-                        padding: 0,
-                        flexShrink: 0,
-                      }}
-                    >
-                      <Copy className="w-4 h-4" />
-                    </Button>
-                  </Flex>
-                  <Text size="xs" className="text-muted-foreground">
-                    Your generated identity. Click the copy button to copy it to
-                    clipboard.
-                  </Text>
-                </Box>
-              )}
-
-              {!generatedIdentity && (
-                <Text size="xs" className="text-muted-foreground">
-                  Generate a new identity. This is sending your identity to
-                  other users for creating invitation payload for you to join
-                  agreements.
-                </Text>
-              )}
-            </Box>
-
-            {error && <Alert variant="error">{error}</Alert>}
-
-            <Flex
-              style={{ gap: spacing[3].value, paddingTop: spacing[4].value }}
-            >
+            <Flex gap="sm">
               <Button
+                variant="secondary"
                 onClick={() => {
                   setShowJoinModal(false);
                   setInvitationPayload('');
                   setContextName('');
-                  setGeneratedIdentity('');
                   setError(null);
-                  setJoinProgress('');
                 }}
-                variant="secondary"
-                className="flex-1"
+                style={{ flex: 1 }}
                 disabled={joining}
               >
                 Cancel
               </Button>
               <Button
-                onClick={handleJoinAgreement}
+                onClick={handleJoinByPayload}
                 variant="primary"
-                className="flex-1"
-                disabled={
-                  !invitationPayload.trim() || !contextName.trim() || joining
-                }
+                style={{ flex: 1 }}
+                disabled={!invitationPayload.trim() || joining}
               >
                 {joining ? (
-                  <>
+                  <Flex alignItems="center" gap="sm">
                     <Loader size="small" />
-                    <Spacer size="xs" />
-                    {joinProgress || 'Joining...'}
-                  </>
+                    <Text>Joining...</Text>
+                  </Flex>
                 ) : (
-                  <>
-                    <UserPlus className="w-4 h-4 mr-2" />
-                    Join Agreement
-                  </>
+                  'Join Agreement'
                 )}
               </Button>
             </Flex>

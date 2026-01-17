@@ -1,0 +1,273 @@
+name: CI - Test MeroSign Workflows
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "workflows/**"
+      - "logic/**"
+  pull_request:
+    branches: [master]
+    paths:
+      - "workflows/**"
+      - "logic/**"
+  workflow_dispatch:
+
+env:
+  # Or you can use 'prerelease-{PR-NUMBER}'
+  CALIMERO_CONTRACTS_VERSION: "latest"
+  CALIMERO_CONTRACTS_DIR: "contracts"
+
+jobs:
+  test-merobox-workflow:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install Docker
+        uses: docker/setup-buildx-action@v3
+
+      - name: Start Docker daemon
+        run: |
+          sudo systemctl start docker
+          sudo docker --version
+
+      - name: Install required tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq curl
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: wasm32-unknown-unknown
+          override: true
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            logic/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('logic/Cargo.lock') }}
+
+      - name: Install wasm-opt
+        run: |
+          curl -L https://github.com/WebAssembly/binaryen/releases/download/version_116/binaryen-version_116-x86_64-linux.tar.gz -o binaryen.tar.gz
+          tar -xzf binaryen.tar.gz
+          sudo mv binaryen-version_116/bin/wasm-opt /usr/local/bin/
+          rm -rf binaryen.tar.gz binaryen-version_116
+          wasm-opt --version
+
+      - name: Build WASM application
+        run: |
+          chmod +x logic/build.sh
+          cd logic
+          ./build.sh
+          ls -lh res/
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Install merobox - try PyPI first, then git repository
+          pip install merobox 2>/dev/null || \
+          pip install git+https://github.com/calimero-network/merobox.git || \
+          (echo "Failed to install merobox. Please check installation method." && exit 1)
+
+      - name: Make download script executable
+        run: |
+          chmod +x workflows/scripts/download_contracts.sh
+
+      - name: Download Context contracts
+        run: |
+          ./workflows/scripts/download_contracts.sh
+
+      - name: Verify contracts directory
+        run: |
+          ls -la contracts/ || echo "Contracts directory not found"
+          if [ -d contracts/near ]; then
+            find contracts/near -type f -name "*.wasm" | head -10 || echo "No NEAR WASM files found"
+          else
+            echo "contracts/near directory not found"
+          fi
+
+      - name: Test merobox CLI
+        run: |
+          merobox --version
+          merobox --help
+
+      - name: Verify WASM file exists
+        run: |
+          if [ ! -f logic/res/mero_sign.wasm ]; then
+            echo "WASM file not found: logic/res/mero_sign.wasm"
+            exit 1
+          fi
+          ls -lh logic/res/mero_sign.wasm
+
+      - name: Run MeroSign Bootstrap Workflow
+        id: run_bootstrap
+        working-directory: ${{ github.workspace }}
+        run: |
+          if [ ! -f workflows/bootstrap.yml ]; then
+            echo "Workflow file not found: workflows/bootstrap.yml"
+            exit 1
+          fi
+
+          if [ ! -f logic/res/mero_sign.wasm ]; then
+            echo "WASM file not found: logic/res/mero_sign.wasm"
+            exit 1
+          fi
+
+          if [ ! -d "$GITHUB_WORKSPACE/contracts/near" ]; then
+            echo "Contracts directory not found: $GITHUB_WORKSPACE/contracts/near"
+            exit 1
+          fi
+
+          set +e
+          merobox bootstrap run workflows/bootstrap.yml \
+            --near-devnet \
+            --contracts-dir "$GITHUB_WORKSPACE/contracts/near" \
+            2>&1 | tee bootstrap_output.log
+          WORKFLOW_EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          echo "workflow_exit_code=$WORKFLOW_EXIT_CODE" >> $GITHUB_OUTPUT
+          exit $WORKFLOW_EXIT_CODE
+
+      - name: Cleanup after bootstrap workflow
+        if: always()
+        run: |
+          merobox stop --all || true
+          merobox nuke -f || true
+
+      - name: Run MeroSign E2E Test Workflow
+        id: run_e2e
+        working-directory: ${{ github.workspace }}
+        run: |
+          if [ ! -f workflows/e2e-test.yml ]; then
+            echo "Workflow file not found: workflows/e2e-test.yml"
+            exit 1
+          fi
+
+          if [ ! -f logic/res/mero_sign.wasm ]; then
+            echo "WASM file not found: logic/res/mero_sign.wasm"
+            exit 1
+          fi
+
+          if [ ! -d "$GITHUB_WORKSPACE/contracts/near" ]; then
+            echo "Contracts directory not found: $GITHUB_WORKSPACE/contracts/near"
+            exit 1
+          fi
+
+          set +e
+          merobox bootstrap run workflows/e2e-test.yml \
+            --near-devnet \
+            --contracts-dir "$GITHUB_WORKSPACE/contracts/near" \
+            2>&1 | tee e2e_output.log
+          WORKFLOW_EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          echo "e2e_exit_code=$WORKFLOW_EXIT_CODE" >> $GITHUB_OUTPUT
+          exit $WORKFLOW_EXIT_CODE
+
+      - name: Cleanup after E2E workflow
+        if: always()
+        run: |
+          merobox stop --all || true
+          merobox nuke -f || true
+
+      - name: Collect workflow logs
+        if: always()
+        run: |
+          mkdir -p workflow_logs
+
+          if [ -f bootstrap_output.log ]; then
+            cp bootstrap_output.log workflow_logs/bootstrap_output.log
+          fi
+
+          if [ -f e2e_output.log ]; then
+            cp e2e_output.log workflow_logs/e2e_output.log
+          fi
+
+          if [ -d data ]; then
+            find data -type f \( -name "*.log" -o -name "*.txt" \) -exec cp --parents {} workflow_logs/ \; 2>/dev/null || true
+          fi
+
+          CONTAINERS=$(docker ps -a --format "{{.Names}}" | grep -E "merosign|near-sandbox|calimero" || true)
+          if [ -n "$CONTAINERS" ]; then
+            echo "$CONTAINERS" | while read container; do
+              if [ -n "$container" ]; then
+                docker logs "$container" > "workflow_logs/${container}.log" 2>&1 || true
+                docker logs --tail 100 "$container" > "workflow_logs/${container}_summary.log" 2>&1 || true
+              fi
+            done
+          fi
+
+          # Collect Docker container status
+          echo "=== Docker Container Status ===" > workflow_logs/docker_status.txt
+          docker ps -a >> workflow_logs/docker_status.txt 2>&1 || true
+
+          # Create a summary log
+          echo "=== Workflow Execution Summary ===" > workflow_logs/summary.txt
+          echo "" >> workflow_logs/summary.txt
+          echo "--- Bootstrap Workflow ---" >> workflow_logs/summary.txt
+          echo "Exit Code: ${{ steps.run_bootstrap.outputs.workflow_exit_code }}" >> workflow_logs/summary.txt
+          echo "Outcome: ${{ steps.run_bootstrap.outcome }}" >> workflow_logs/summary.txt
+          echo "" >> workflow_logs/summary.txt
+          echo "--- E2E Test Workflow ---" >> workflow_logs/summary.txt
+          echo "Exit Code: ${{ steps.run_e2e.outputs.e2e_exit_code }}" >> workflow_logs/summary.txt
+          echo "Outcome: ${{ steps.run_e2e.outcome }}" >> workflow_logs/summary.txt
+          echo "" >> workflow_logs/summary.txt
+          echo "Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> workflow_logs/summary.txt
+          echo "GitHub Run ID: ${{ github.run_id }}" >> workflow_logs/summary.txt
+          echo "GitHub Run Number: ${{ github.run_number }}" >> workflow_logs/summary.txt
+          echo "" >> workflow_logs/summary.txt
+          echo "=== Available Logs ===" >> workflow_logs/summary.txt
+          ls -lh workflow_logs/ >> workflow_logs/summary.txt
+          echo "" >> workflow_logs/summary.txt
+          echo "=== Log File Sizes ===" >> workflow_logs/summary.txt
+          du -h workflow_logs/* 2>/dev/null | sort -h >> workflow_logs/summary.txt || true
+
+      - name: Upload workflow logs
+        if: failure() || always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workflow-logs-${{ github.run_id }}
+          path: |
+            workflow_logs/
+            bootstrap_output.log
+            e2e_output.log
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Display workflow summary
+        if: always()
+        run: |
+          if [ -f workflow_logs/summary.txt ]; then
+            cat workflow_logs/summary.txt
+          fi
+
+          FAILED=0
+          if [ "${{ steps.run_bootstrap.outcome }}" != "success" ]; then
+            echo "Bootstrap workflow failed. Check the uploaded logs for details."
+            FAILED=1
+          fi
+          if [ "${{ steps.run_e2e.outcome }}" != "success" ]; then
+            echo "E2E test workflow failed. Check the uploaded logs for details."
+            FAILED=1
+          fi
+
+          if [ $FAILED -eq 1 ]; then
+            exit 1
+          fi
+
+          echo "All workflows completed successfully!"

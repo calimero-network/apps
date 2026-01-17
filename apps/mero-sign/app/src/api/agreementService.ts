@@ -1,8 +1,26 @@
 import { type ApiResponse } from '@calimero-network/calimero-client';
 import { ContextApiDataSource } from './dataSource/nodeApiDataSource';
 import { ClientApiDataSource } from './dataSource/ClientApiDataSource';
-import { Agreement, ContextMetadata } from './clientApi';
+import { Agreement } from './clientApi';
 import { CreateContextProps, CreateContextResponse } from './nodeApi';
+import bs58 from 'bs58';
+
+/**
+ * Convert a value to base58 string.
+ * Handles byte arrays from the contract and passes through strings.
+ */
+function toBase58String(value: string | number[] | Uint8Array): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return bs58.encode(new Uint8Array(value));
+  }
+  if (value instanceof Uint8Array) {
+    return bs58.encode(value);
+  }
+  return String(value);
+}
 
 export class AgreementService {
   private contextApi: ContextApiDataSource;
@@ -112,31 +130,46 @@ export class AgreementService {
       }
 
       const agreements: Agreement[] = contextsArray.map((context: any) => {
-        if (context.contextId) {
+        // Convert context_id from byte array to base58 string if needed
+        const contextId = context.contextId
+          ? typeof context.contextId === 'string'
+            ? context.contextId
+            : toBase58String(context.contextId)
+          : context.context_id
+            ? typeof context.context_id === 'string'
+              ? context.context_id
+              : toBase58String(context.context_id)
+            : '';
+
+        if (context.contextId || context.context_id) {
           return {
-            id: context.contextId,
+            id: contextId,
             name:
               context.context_name ||
-              `Agreement ${context.contextId.slice(0, 8)}...`,
-            contextId: context.contextId,
-            memberPublicKey: context.executorId,
+              `Agreement ${contextId.slice(0, 8)}...`,
+            contextId: contextId,
+            memberPublicKey: context.executorId || toBase58String(context.shared_identity),
             role: context.role || ' ',
-            joinedAt: context.joinedAt || ' ',
-            privateIdentity: context.executorId,
-            sharedIdentity: context.executorId,
+            joinedAt: context.joinedAt || context.joined_at || ' ',
+            privateIdentity: context.executorId || toBase58String(context.private_identity),
+            sharedIdentity: context.executorId || toBase58String(context.shared_identity),
           };
         }
 
         // Handle old API structure (fallback)
+        // Convert byte arrays to base58 strings
+        const sharedIdentity = toBase58String(context.shared_identity);
+        const privateIdentity = toBase58String(context.private_identity);
+
         return {
-          id: context.context_id,
+          id: contextId,
           name: context.context_name,
-          contextId: context.context_id,
-          memberPublicKey: context.shared_identity,
+          contextId: contextId,
+          memberPublicKey: sharedIdentity,
           role: context.role,
           joinedAt: context.joined_at,
-          privateIdentity: context.private_identity,
-          sharedIdentity: context.shared_identity,
+          privateIdentity: privateIdentity,
+          sharedIdentity: sharedIdentity,
         };
       });
 

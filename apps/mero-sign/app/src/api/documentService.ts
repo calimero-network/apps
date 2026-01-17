@@ -1,7 +1,33 @@
 import { ClientApiDataSource } from './dataSource/ClientApiDataSource';
 import { DocumentInfo, Document } from './clientApi';
 import { blobClient } from '@calimero-network/calimero-client';
-import { processPDFAndGenerateEmbeddings } from '../services/embeddingService';
+import bs58 from 'bs58';
+// TODO: Re-enable when AI chatbot is re-implemented
+// import { processPDFAndGenerateEmbeddings } from '../services/embeddingService';
+
+/**
+ * Normalize blob ID to base58 format for the contract.
+ * The blob API may return hex-encoded IDs (64 chars) or base58 IDs.
+ * The contract expects base58-encoded 32-byte blob IDs.
+ */
+function normalizeBlobIdToBase58(blobId: string): string {
+  // Remove any '0x' prefix if present
+  const cleanId = blobId.startsWith('0x') ? blobId.slice(2) : blobId;
+
+  // Check if it's a 64-character hex string (32 bytes in hex)
+  const isHex = /^[0-9a-fA-F]{64}$/.test(cleanId);
+
+  if (isHex) {
+    // Convert hex to bytes, then encode to base58
+    const bytes = new Uint8Array(
+      cleanId.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || [],
+    );
+    return bs58.encode(bytes);
+  }
+
+  // Already in base58 or another format - return as-is
+  return cleanId;
+}
 
 export class DocumentService {
   private clientApi: ClientApiDataSource;
@@ -45,40 +71,49 @@ export class DocumentService {
       const pdfData = new Uint8Array(arrayBuffer);
       const hash = await this.calculateFileHash(pdfData);
 
-      let embeddings: number[] | undefined;
-      let extractedText: string | undefined;
-      let chunks: any[] | undefined;
-      try {
-        onEmbeddingProgress?.(0);
+      // TODO: Re-enable embedding generation when AI chatbot is re-implemented
+      // let embeddings: number[] | undefined;
+      // let extractedText: string | undefined;
+      // let chunks: any[] | undefined;
+      // try {
+      //   onEmbeddingProgress?.(0);
 
-        onEmbeddingProgress?.(20);
-        const {
-          text,
-          fullTextEmbedding,
-          chunks: documentChunks,
-        } = await processPDFAndGenerateEmbeddings(file);
+      //   onEmbeddingProgress?.(20);
+      //   const {
+      //     text,
+      //     fullTextEmbedding,
+      //     chunks: documentChunks,
+      //   } = await processPDFAndGenerateEmbeddings(file);
 
-        onEmbeddingProgress?.(100);
+      //   onEmbeddingProgress?.(100);
 
-        extractedText = text;
-        embeddings = fullTextEmbedding;
-        chunks = documentChunks;
-      } catch (embeddingError) {
-        console.warn(
-          'Embedding generation failed, proceeding without embeddings:',
-          embeddingError,
-        );
-        onEmbeddingProgress?.(100);
-      }
+      //   extractedText = text;
+      //   embeddings = fullTextEmbedding;
+      //   chunks = documentChunks;
+      // } catch (embeddingError) {
+      //   console.warn(
+      //     'Embedding generation failed, proceeding without embeddings:',
+      //     embeddingError,
+      //   );
+      //   onEmbeddingProgress?.(100);
+      // }
 
       // Report start of storage
       onStorageProgress?.();
+
+      // Set embeddings to undefined since AI chatbot is disabled
+      const embeddings: number[] | undefined = undefined;
+      const extractedText: string | undefined = undefined;
+      const chunks: any[] | undefined = undefined;
+
+      // Normalize blob ID to base58 for the contract
+      const base58BlobId = normalizeBlobIdToBase58(blobResponse.data.blobId);
 
       const response = await this.clientApi.uploadDocument(
         contextId,
         name,
         hash,
-        blobResponse.data.blobId,
+        base58BlobId,
         file.size,
         embeddings,
         extractedText,
@@ -160,11 +195,14 @@ export class DocumentService {
       const updatedPdfData = new Uint8Array(arrayBuffer);
       const newHash = await this.calculateFileHash(updatedPdfData);
 
+      // Normalize blob ID to base58 for the contract
+      const base58BlobId = normalizeBlobIdToBase58(blobResponse.data.blobId);
+
       // Call the backend signDocument API with updated PDF data and hash
       const response = await this.clientApi.signDocument(
         contextId,
         documentId,
-        blobResponse.data.blobId,
+        base58BlobId,
         updatedPdfFile.size,
         newHash,
         signerId,
@@ -173,7 +211,7 @@ export class DocumentService {
       );
 
       if (!response.error) {
-        const markSignedResp = await this.clientApi.markParticipantSigned(
+        await this.clientApi.markParticipantSigned(
           contextId,
           documentId,
           signerId,
@@ -191,7 +229,6 @@ export class DocumentService {
       return { error: { message: 'Failed to sign document' } };
     }
   }
-
 
   async searchDocumentByEmbedding(
     queryEmbedding: number[],
@@ -235,15 +272,37 @@ export class DocumentService {
       hour12: true,
     });
 
+    // Convert pdf_blob_id from byte array to base58 string if needed
+    let pdfBlobId: string;
+    if (typeof documentInfo.pdf_blob_id === 'string') {
+      pdfBlobId = documentInfo.pdf_blob_id;
+    } else if (Array.isArray(documentInfo.pdf_blob_id)) {
+      // pdf_blob_id is a byte array from the contract, convert to base58
+      pdfBlobId = bs58.encode(new Uint8Array(documentInfo.pdf_blob_id));
+    } else {
+      // Fallback - try to use as-is
+      pdfBlobId = String(documentInfo.pdf_blob_id);
+    }
+
+    // Convert uploaded_by from byte array to base58 string if needed
+    let uploadedBy: string;
+    if (typeof documentInfo.uploaded_by === 'string') {
+      uploadedBy = documentInfo.uploaded_by;
+    } else if (Array.isArray(documentInfo.uploaded_by)) {
+      uploadedBy = bs58.encode(new Uint8Array(documentInfo.uploaded_by));
+    } else {
+      uploadedBy = String(documentInfo.uploaded_by);
+    }
+
     return {
       id: documentInfo.id,
       name: documentInfo.name,
       size: this.formatFileSize(documentInfo.size),
       uploadedAt: uploadedAtStr,
       status: documentInfo.status,
-      uploadedBy: documentInfo.uploaded_by,
+      uploadedBy: uploadedBy,
       hash: documentInfo.hash,
-      pdfBlobId: documentInfo.pdf_blob_id,
+      pdfBlobId: pdfBlobId,
     };
   }
 

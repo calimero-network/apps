@@ -18,6 +18,7 @@ export enum ClientMethod {
   MARK_DOCUMENT_FULLY_SIGNED = 'mark_document_fully_signed',
   GET_CONTEXT_DETAILS = 'get_context_details',
   ADD_PARTICIPANT = 'add_participant',
+  REGISTER_SELF_AS_PARTICIPANT = 'register_self_as_participant',
   MARK_PARTICIPANT_SIGNED = 'mark_participant_signed',
   SET_CONSENT = 'set_consent',
   HAS_CONSENTED = 'has_consented',
@@ -125,9 +126,10 @@ export interface ClientApi {
   deleteSignature(signatureId: number): ApiResponse<void>;
   listSignatures(): ApiResponse<SignatureRecord[]>;
 
+  // Contract expects: shared_identity_str (base58 public key string)
   joinSharedContext(
     contextId: string,
-    sharedIdentity: UserId,
+    sharedIdentityStr: UserId,
     name: string,
   ): ApiResponse<void>;
   listJoinedContexts(): ApiResponse<ContextMetadata[]>;
@@ -161,31 +163,35 @@ export interface ClientApi {
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<DocumentInfo[]>;
+  // Contract expects: signer_id_str (base58 public key string)
   signDocument(
     contextId: string,
     documentId: string,
     pdfBlobIdStr: string,
     fileSize: number,
     newHash: string,
-    signerId: string,
+    signerIdStr: string,
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<void>;
+  // Contract expects: user_id_str (base58 public key string)
   addParticipant(
     contextId: string,
-    userId: UserId,
+    userIdStr: UserId,
     permission: PermissionLevel,
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<void>;
+  // Contract expects: user_id_str (base58 public key string)
   setConsent(
-    userId: UserId,
+    userIdStr: UserId,
     documentId: string,
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<void>;
+  // Contract expects: user_id_str (base58 public key string)
   hasConsented(
-    userId: UserId,
+    userIdStr: UserId,
     documentId: string,
     agreementContextID?: string,
     agreementContextUserID?: string,

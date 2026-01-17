@@ -47,6 +47,7 @@ import { ClientApiDataSource } from '../api/dataSource/ClientApiDataSource';
 import { blobClient, useCalimero } from '@calimero-network/calimero-client';
 import ConsentModal from './ConsentModal';
 import LegalChatbot from './LegalChatbot';
+import bs58 from 'bs58';
 
 interface SavedSignature {
   id: string;
@@ -379,10 +380,11 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
           signaturesArray.map(async (sig: any) => {
             let dataURL = '';
             try {
+              // Convert blob_id from byte array to base58 string if needed
               const blobId =
                 typeof sig.blob_id === 'string'
                   ? sig.blob_id
-                  : Buffer.from(sig.blob_id).toString('hex');
+                  : bs58.encode(new Uint8Array(sig.blob_id));
               const contextId =
                 localStorage.getItem('agreementContextID') || '';
               const blob = await blobClient.downloadBlob(blobId, contextId);
@@ -781,15 +783,17 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
                 >
                   {title || file.name}
                 </Heading>
-                <Text
-                  size="xs"
-                  style={{
-                    color:
-                      mode === 'dark' ? '#9ca3af' : colors.neutral[600].value,
-                  }}
-                >
-                  {(file.size / 1024 / 1024).toFixed(1)} MB
-                </Text>
+                {file.size !== undefined && (
+                  <Text
+                    size="xs"
+                    style={{
+                      color:
+                        mode === 'dark' ? '#9ca3af' : colors.neutral[600].value,
+                    }}
+                  >
+                    {(file.size / 1024 / 1024).toFixed(1)} MB
+                  </Text>
+                )}
               </Box>
             </Flex>
 
@@ -1546,9 +1550,11 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
                             <FileText size={16} />
                             <span>{file.name}</span>
                           </Flex>
-                          <div style={{ marginLeft: spacing[6].value }}>
-                            Size: {(file.size / 1024 / 1024).toFixed(1)} MB
-                          </div>
+                          {file.size !== undefined && (
+                            <div style={{ marginLeft: spacing[6].value }}>
+                              Size: {(file.size / 1024 / 1024).toFixed(1)} MB
+                            </div>
+                          )}
                           <div style={{ marginLeft: spacing[6].value }}>
                             Pages: {pdf.numPages}
                           </div>

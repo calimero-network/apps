@@ -9,9 +9,9 @@ import {
   Box,
   Flex,
   spacing,
-  colors,
   radius,
 } from '@calimero-network/mero-ui';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface SignaturePadComponentProps {
   onSave: (signatureData: string) => void;
@@ -24,6 +24,7 @@ const SignaturePadComponent: React.FC<SignaturePadComponentProps> = ({
   onCancel,
   isOpen,
 }) => {
+  const { mode } = useTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [signaturePad, setSignaturePad] = useState<SignaturePad | null>(null);
   const [isEmpty, setIsEmpty] = useState(true);
@@ -157,9 +158,9 @@ const SignaturePadComponent: React.FC<SignaturePadComponentProps> = ({
                   className="w-full cursor-crosshair"
                   style={{
                     height: '192px',
-                    border: `2px dashed ${colors.neutral[300]?.value || '#d1d5db'}`,
+                    border: `2px dashed ${mode === 'dark' ? '#4b5563' : '#d1d5db'}`,
                     borderRadius: radius.md.value,
-                    backgroundColor: colors.background.primary.value,
+                    backgroundColor: '#ffffff', // Keep white for signature visibility
                   }}
                   width={600}
                   height={200}
