@@ -143,7 +143,7 @@ steps:
     executor_public_key: "{{agreement_admin_key}}"
     method: get_context_details
     args:
-      context_id: "{{agreement_context_id}}"
+      context_id_str: "{{agreement_context_id}}"
 
 # Configuration options
 auth_service: true

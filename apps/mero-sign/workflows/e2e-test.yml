@@ -261,7 +261,7 @@ steps:
     executor_public_key: "{{admin_key}}"
     method: get_context_details
     args:
-      context_id: "{{shared_ctx}}"
+      context_id_str: "{{shared_ctx}}"
     outputs:
       context_details: result.output
 
