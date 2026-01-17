@@ -783,15 +783,17 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
                 >
                   {title || file.name}
                 </Heading>
-                <Text
-                  size="xs"
-                  style={{
-                    color:
-                      mode === 'dark' ? '#9ca3af' : colors.neutral[600].value,
-                  }}
-                >
-                  {(file.size / 1024 / 1024).toFixed(1)} MB
-                </Text>
+                {file.size !== undefined && (
+                  <Text
+                    size="xs"
+                    style={{
+                      color:
+                        mode === 'dark' ? '#9ca3af' : colors.neutral[600].value,
+                    }}
+                  >
+                    {(file.size / 1024 / 1024).toFixed(1)} MB
+                  </Text>
+                )}
               </Box>
             </Flex>
 
@@ -1548,9 +1550,11 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
                             <FileText size={16} />
                             <span>{file.name}</span>
                           </Flex>
-                          <div style={{ marginLeft: spacing[6].value }}>
-                            Size: {(file.size / 1024 / 1024).toFixed(1)} MB
-                          </div>
+                          {file.size !== undefined && (
+                            <div style={{ marginLeft: spacing[6].value }}>
+                              Size: {(file.size / 1024 / 1024).toFixed(1)} MB
+                            </div>
+                          )}
                           <div style={{ marginLeft: spacing[6].value }}>
                             Pages: {pdf.numPages}
                           </div>

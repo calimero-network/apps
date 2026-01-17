@@ -39,7 +39,6 @@ import {
   Modal,
   Loader,
   spacing,
-  colors,
   radius,
 } from '@calimero-network/mero-ui';
 
@@ -215,9 +214,10 @@ export default function SignaturesPage() {
 
   return (
     <MobileLayout>
+      <div style={{ color: 'var(--current-text)' }}>
       {/* Page Header */}
       <Box style={{ marginBottom: spacing[6].value }}>
-        <Heading size="xl" style={{ marginBottom: spacing[2].value }}>
+        <Heading size="xl" style={{ marginBottom: spacing[2].value, color: 'var(--current-text)' }}>
           Signature Library
         </Heading>
         <Text size="lg" className="text-muted-foreground">
@@ -266,8 +266,8 @@ export default function SignaturesPage() {
                 className="flex items-center justify-center overflow-hidden"
                 style={{
                   height: '80px',
-                  backgroundColor: colors.background.secondary.value,
-                  border: `1px solid ${colors.neutral[200]?.value || '#e5e7eb'}`,
+                  backgroundColor: 'var(--current-surface)',
+                  border: '1px solid var(--current-border)',
                   borderRadius: radius.sm.value,
                   marginBottom: spacing[4].value,
                 }}
@@ -288,7 +288,7 @@ export default function SignaturesPage() {
                 )}
               </Box>
 
-              <Heading size="sm" style={{ marginBottom: spacing[2].value }}>
+              <Heading size="sm" style={{ marginBottom: spacing[2].value, color: 'var(--current-text)' }}>
                 {signature.name}
               </Heading>
 
@@ -327,7 +327,7 @@ export default function SignaturesPage() {
             size={64}
             style={{ marginBottom: spacing[6].value }}
           />
-          <Heading size="md" style={{ marginBottom: spacing[2].value }}>
+          <Heading size="md" style={{ marginBottom: spacing[2].value, color: 'var(--current-text)' }}>
             No Signatures Yet
           </Heading>
           <Text
@@ -385,6 +385,7 @@ export default function SignaturesPage() {
           </Box>
         </Modal>
       )}
+      </div>
     </MobileLayout>
   );
 }

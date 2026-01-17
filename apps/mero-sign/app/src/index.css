@@ -97,7 +97,8 @@
 }
 
 /* Light theme class */
-.theme-light {
+.theme-light,
+html.light {
   --color-primary: #22c55e;
   --current-bg: var(--color-background-light);
   --current-text: var(--color-text-light);
@@ -108,7 +109,8 @@
 }
 
 /* Dark theme class (default) */
-.theme-dark {
+.theme-dark,
+html.dark {
   --current-bg: var(--color-background-dark);
   --current-text: var(--color-text-dark);
   --current-surface: var(--color-surface-dark);
@@ -145,6 +147,62 @@ body {
 
 * {
   box-sizing: border-box;
+}
+
+/* Force all text colors in light mode to use theme colors */
+.theme-light,
+html.light {
+  /* Override any hardcoded text colors */
+  --mero-text-primary: var(--color-text-light);
+  --mero-text-secondary: var(--color-text-secondary-light);
+  --mero-bg-primary: var(--color-background-light);
+  --mero-bg-secondary: var(--color-surface-light);
+  --mero-border: var(--color-border-light);
+}
+
+/* Force text color inheritance in light mode */
+.theme-light *:not(.text-muted-foreground):not([class*="text-"]):not(button):not(a),
+html.light *:not(.text-muted-foreground):not([class*="text-"]):not(button):not(a) {
+  color: inherit;
+}
+
+/* Headings in light mode */
+.theme-light h1,
+.theme-light h2,
+.theme-light h3,
+.theme-light h4,
+.theme-light h5,
+.theme-light h6,
+html.light h1,
+html.light h2,
+html.light h3,
+html.light h4,
+html.light h5,
+html.light h6 {
+  color: var(--current-text) !important;
+}
+
+/* Paragraphs and spans in light mode */
+.theme-light p,
+.theme-light span,
+html.light p,
+html.light span {
+  color: var(--current-text);
+}
+
+/* Ensure main content area uses correct colors */
+.theme-light main,
+html.light main {
+  color: var(--current-text);
+}
+
+/* Cards in light mode */
+.theme-light [class*="Card"],
+.theme-light [class*="card"],
+html.light [class*="Card"],
+html.light [class*="card"] {
+  background-color: var(--current-card) !important;
+  color: var(--current-text) !important;
 }
 
 .modal-content {

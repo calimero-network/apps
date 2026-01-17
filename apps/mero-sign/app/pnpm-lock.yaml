@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@calimero-network/calimero-client':
-        specifier: 1.24.1
-        version: 1.24.1(@near-wallet-selector/modal-ui@8.10.2(near-api-js@3.0.4))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(styled-components@6.1.19(react-dom@18.3.1(react@18.3.1))(react@18.3.1))
+        specifier: ^1.25.0-beta.1
+        version: 1.25.0-beta.1(@near-wallet-selector/modal-ui@8.10.2(near-api-js@3.0.4))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(styled-components@6.1.19(react-dom@18.3.1(react@18.3.1))(react@18.3.1))
       '@calimero-network/mero-icons':
         specifier: ^0.0.6
         version: 0.0.6(react@18.3.1)
@@ -836,8 +836,8 @@ packages:
     resolution: {integrity: sha512-x0LvFTekgSX+83TI28Y9wYPUfzrnl2aT5+5QLnO6v7mSJYtEEevuDRN0F0uSHRk1G1IWZC43o00Y0xDDrpBGPQ==}
     engines: {node: '>=6.9.0'}
 
-  '@calimero-network/calimero-client@1.24.1':
-    resolution: {integrity: sha512-mmpNzGKbdZCLj1f6lC2OXLej2LTi8sLUc5OLOpR8Xc6eCLxvq9INpmKj7hw7Y7NNjaOrrL/CsDkVSNas/VMOuQ==}
+  '@calimero-network/calimero-client@1.25.0-beta.1':
+    resolution: {integrity: sha512-cBSc3PhUs0enMpxbUMnkPxqg8YSzTv/wkMnKddQcpRQ5CylbwLmh/DY9okRefcEXjzh5/TswGzTiiBPoAkABvw==}
     peerDependencies:
       '@near-wallet-selector/modal-ui': ^8.9.7
       react: ^18.3.0
@@ -5087,17 +5087,15 @@ snapshots:
       '@babel/helper-string-parser': 7.27.1
       '@babel/helper-validator-identifier': 7.27.1
 
-  '@calimero-network/calimero-client@1.24.1(@near-wallet-selector/modal-ui@8.10.2(near-api-js@3.0.4))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(styled-components@6.1.19(react-dom@18.3.1(react@18.3.1))(react@18.3.1))':
+  '@calimero-network/calimero-client@1.25.0-beta.1(@near-wallet-selector/modal-ui@8.10.2(near-api-js@3.0.4))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(styled-components@6.1.19(react-dom@18.3.1(react@18.3.1))(react@18.3.1))':
     dependencies:
       '@near-wallet-selector/modal-ui': 8.10.2(near-api-js@3.0.4)
-      axios: 1.10.0
       jwt-decode: 4.0.0
       near-api-js: 3.0.4
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
       styled-components: 6.1.19(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
     transitivePeerDependencies:
-      - debug
       - encoding
 
   '@calimero-network/mero-icons@0.0.6(react@18.3.1)':

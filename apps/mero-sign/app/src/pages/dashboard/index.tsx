@@ -360,12 +360,13 @@ export default function Dashboard() {
           display: 'flex',
           flexDirection: 'column',
           gap: spacing[6].value,
+          color: 'var(--current-text)',
         }}
       >
         {/* Header */}
         <motion.section variants={itemVariants}>
           <Box style={{ marginBottom: spacing[4].value }}>
-            <Heading size="xl" style={{ marginBottom: spacing[2].value }}>
+            <Heading size="xl" style={{ marginBottom: spacing[2].value, color: 'var(--current-text)' }}>
               Dashboard
             </Heading>
             <Text size="sm" className="text-muted-foreground">
@@ -427,7 +428,7 @@ export default function Dashboard() {
                         style={{
                           padding: spacing[2].value,
                           borderRadius: '50%',
-                          backgroundColor: colors.background.secondary.value,
+                          backgroundColor: 'var(--current-surface)',
                         }}
                       >
                         <Icon
@@ -444,7 +445,7 @@ export default function Dashboard() {
                           flex: 1,
                         }}
                       >
-                        <Text size="lg" weight="bold">
+                        <Text size="lg" weight="bold" style={{ color: 'var(--current-text)' }}>
                           {stat.value}
                         </Text>
                         <Text
@@ -484,7 +485,7 @@ export default function Dashboard() {
             className="flex-col sm:flex-row sm:items-center sm:justify-between"
             style={{ gap: spacing[3].value, marginBottom: spacing[4].value }}
           >
-            <Heading size="lg">Your Agreements</Heading>
+            <Heading size="lg" style={{ color: 'var(--current-text)' }}>Your Agreements</Heading>
           </Flex>
 
           {loading && (
@@ -523,7 +524,7 @@ export default function Dashboard() {
                 className="w-16 h-16 mx-auto text-muted-foreground"
                 style={{ marginBottom: spacing[4].value }}
               />
-              <Heading size="md" style={{ marginBottom: spacing[2].value }}>
+              <Heading size="md" style={{ marginBottom: spacing[2].value, color: 'var(--current-text)' }}>
                 No agreements found
               </Heading>
               <Text
@@ -570,7 +571,7 @@ export default function Dashboard() {
                           <Heading
                             size="sm"
                             className="group-hover:text-primary transition-colors duration-300 line-clamp-1"
-                            style={{ marginBottom: spacing[2].value }}
+                            style={{ marginBottom: spacing[2].value, color: 'var(--current-text)' }}
                           >
                             {context.name}
                           </Heading>
@@ -593,8 +594,7 @@ export default function Dashboard() {
                             justifyContent: 'space-between',
                             paddingTop: spacing[2].value,
                             borderTop: '1px solid',
-                            borderColor:
-                              colors.neutral[200]?.value || '#e5e7eb',
+                            borderColor: 'var(--current-border)',
                           }}
                         >
                           <Text size="xs" className="text-muted-foreground">
@@ -667,7 +667,7 @@ export default function Dashboard() {
               <Text
                 size="sm"
                 weight="medium"
-                style={{ marginBottom: spacing[2].value }}
+                style={{ marginBottom: spacing[2].value, color: 'var(--current-text)' }}
               >
                 Agreement Name
               </Text>
@@ -729,7 +729,7 @@ export default function Dashboard() {
               size="sm"
               style={{
                 marginBottom: spacing[4].value,
-                color: colors.neutral[600].value,
+                color: 'var(--current-text-secondary)',
               }}
             >
               Generate a new identity (optional) or paste the invitation payload
@@ -745,7 +745,7 @@ export default function Dashboard() {
                   marginBottom: spacing[2].value,
                 }}
               >
-                <Text size="sm" weight="medium">
+                <Text size="sm" weight="medium" style={{ color: 'var(--current-text)' }}>
                   Identity
                 </Text>
                 <Button
@@ -778,7 +778,7 @@ export default function Dashboard() {
                   style={{
                     padding: spacing[3].value,
                     borderRadius: radius.md.value,
-                    backgroundColor: colors.background.secondary.value,
+                    backgroundColor: 'var(--current-surface)',
                     marginTop: spacing[2].value,
                   }}
                 >
@@ -786,7 +786,7 @@ export default function Dashboard() {
                     size="xs"
                     weight="medium"
                     style={{
-                      color: colors.neutral[600].value,
+                      color: 'var(--current-text-secondary)',
                       marginBottom: spacing[2].value,
                     }}
                   >

@@ -130,18 +130,29 @@ export class AgreementService {
       }
 
       const agreements: Agreement[] = contextsArray.map((context: any) => {
-        if (context.contextId) {
+        // Convert context_id from byte array to base58 string if needed
+        const contextId = context.contextId
+          ? typeof context.contextId === 'string'
+            ? context.contextId
+            : toBase58String(context.contextId)
+          : context.context_id
+            ? typeof context.context_id === 'string'
+              ? context.context_id
+              : toBase58String(context.context_id)
+            : '';
+
+        if (context.contextId || context.context_id) {
           return {
-            id: context.contextId,
+            id: contextId,
             name:
               context.context_name ||
-              `Agreement ${context.contextId.slice(0, 8)}...`,
-            contextId: context.contextId,
-            memberPublicKey: context.executorId,
+              `Agreement ${contextId.slice(0, 8)}...`,
+            contextId: contextId,
+            memberPublicKey: context.executorId || toBase58String(context.shared_identity),
             role: context.role || ' ',
-            joinedAt: context.joinedAt || ' ',
-            privateIdentity: context.executorId,
-            sharedIdentity: context.executorId,
+            joinedAt: context.joinedAt || context.joined_at || ' ',
+            privateIdentity: context.executorId || toBase58String(context.private_identity),
+            sharedIdentity: context.executorId || toBase58String(context.shared_identity),
           };
         }
 
@@ -151,9 +162,9 @@ export class AgreementService {
         const privateIdentity = toBase58String(context.private_identity);
 
         return {
-          id: context.context_id,
+          id: contextId,
           name: context.context_name,
-          contextId: context.context_id,
+          contextId: contextId,
           memberPublicKey: sharedIdentity,
           role: context.role,
           joinedAt: context.joined_at,

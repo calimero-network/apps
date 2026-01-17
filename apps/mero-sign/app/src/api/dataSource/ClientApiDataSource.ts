@@ -16,6 +16,7 @@ import {
   UserId,
 } from '../clientApi';
 import { DefaultContextService } from '../defaultContextService';
+import bs58 from 'bs58';
 
 const RequestConfig = {
   headers: {
@@ -376,7 +377,7 @@ export class ClientApiDataSource implements ClientApi {
           contextId: authConfig.contextId || getContextId() || '',
           method: ClientMethod.GET_CONTEXT_DETAILS,
           argsJson: {
-            context_id: contextId,
+            context_id_str: contextId,
           },
           executorPublicKey: (authConfig.executorPublicKey ||
             getExecutorPublicKey() ||
@@ -395,7 +396,18 @@ export class ClientApiDataSource implements ClientApi {
         };
       }
 
-      const data = response.result?.output || response.result;
+      let data: any = response.result?.output || response.result;
+
+      // Convert context_id from byte array to base58 string if needed
+      if (data && typeof data === 'object' && data.context_id) {
+        if (typeof data.context_id !== 'string') {
+          if (Array.isArray(data.context_id)) {
+            data.context_id = bs58.encode(new Uint8Array(data.context_id));
+          } else if (data.context_id instanceof Uint8Array) {
+            data.context_id = bs58.encode(data.context_id);
+          }
+        }
+      }
 
       return {
         data: data as ContextDetails,
@@ -823,7 +835,7 @@ export class ClientApiDataSource implements ClientApi {
         }
 
         const params = {
-          context_id: contextId,
+          context_id_str: contextId,
           shared_identity_str: sharedIdentity,
           context_name: name,
         };
@@ -840,7 +852,7 @@ export class ClientApiDataSource implements ClientApi {
       } else {
         // Fallback to old API
         const argsJson: any = {
-          context_id: contextId,
+          context_id_str: contextId,
           shared_identity_str: sharedIdentity,
           context_name: name,
         };
@@ -900,8 +912,25 @@ export class ClientApiDataSource implements ClientApi {
           {},
         );
 
+        const data = result.data || result;
+
+        // Convert context_id from byte array to base58 string if needed
+        if (Array.isArray(data)) {
+          data.forEach((context: any) => {
+            if (context.context_id && typeof context.context_id !== 'string') {
+              if (Array.isArray(context.context_id)) {
+                context.context_id = bs58.encode(
+                  new Uint8Array(context.context_id),
+                );
+              } else if (context.context_id instanceof Uint8Array) {
+                context.context_id = bs58.encode(context.context_id);
+              }
+            }
+          });
+        }
+
         return {
-          data: result.data || result,
+          data: data,
         };
       } else {
         // Fallback to old API
@@ -921,6 +950,21 @@ export class ClientApiDataSource implements ClientApi {
         );
 
         const data = response.result?.output || response.result;
+
+        // Convert context_id from byte array to base58 string if needed
+        if (Array.isArray(data)) {
+          data.forEach((context: any) => {
+            if (context.context_id && typeof context.context_id !== 'string') {
+              if (Array.isArray(context.context_id)) {
+                context.context_id = bs58.encode(
+                  new Uint8Array(context.context_id),
+                );
+              } else if (context.context_id instanceof Uint8Array) {
+                context.context_id = bs58.encode(context.context_id);
+              }
+            }
+          });
+        }
 
         return {
           data: data,

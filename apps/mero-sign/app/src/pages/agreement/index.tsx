@@ -973,6 +973,7 @@ const AgreementPage: React.FC = () => {
         initial="hidden"
         animate="visible"
         className="space-y-6"
+        style={{ color: 'var(--current-text)' }}
       >
         {/* Header */}
         <motion.section variants={ANIMATION_VARIANTS.item}>
@@ -1007,10 +1008,10 @@ const AgreementPage: React.FC = () => {
                   <ArrowLeft style={{ width: '20px', height: '20px' }} />
                 </Button>
                 <Box>
-                  <Heading size="lg">
+                  <Heading size="lg" style={{ color: 'var(--current-text)' }}>
                     {contextDetails?.context_name || 'Loading...'}
                   </Heading>
-                  <Text size="sm" style={{ color: colors.neutral[600].value }}>
+                  <Text size="sm" style={{ color: 'var(--current-text-secondary)' }}>
                     {contextDetails?.participant_count || 0} participants
                   </Text>
                 </Box>
@@ -1060,7 +1061,7 @@ const AgreementPage: React.FC = () => {
                   width: '100%',
                 }}
               >
-                <Heading size="md">Participants</Heading>
+                <Heading size="md" style={{ color: 'var(--current-text)' }}>Participants</Heading>
                 <Button
                   onClick={() => setShowInviteModal(true)}
                   variant="primary"
@@ -1113,7 +1114,7 @@ const AgreementPage: React.FC = () => {
                           </Text>
                           <Text
                             size="xs"
-                            style={{ color: colors.neutral[600].value }}
+                            style={{ color: 'var(--current-text-secondary)' }}
                           >
                             {participant.permission_level}
                           </Text>
@@ -1122,7 +1123,7 @@ const AgreementPage: React.FC = () => {
                     );
                   })
                 ) : (
-                  <Text size="sm" style={{ color: colors.neutral[600].value }}>
+                  <Text size="sm" style={{ color: 'var(--current-text-secondary)' }}>
                     {contextLoading
                       ? 'Loading participants...'
                       : 'No participants found'}
@@ -1168,8 +1169,8 @@ const AgreementPage: React.FC = () => {
               width: '100%',
             }}
           >
-            <Heading size="lg">Uploaded Documents</Heading>
-            <Text size="sm" style={{ color: colors.neutral[600].value }}>
+            <Heading size="lg" style={{ color: 'var(--current-text)' }}>Uploaded Documents</Heading>
+            <Text size="sm" style={{ color: 'var(--current-text-secondary)' }}>
               {filteredDocuments.length} documents
             </Text>
           </Flex>
@@ -1182,7 +1183,7 @@ const AgreementPage: React.FC = () => {
               <Text
                 size="sm"
                 style={{
-                  color: colors.neutral[600].value,
+                  color: 'var(--current-text-secondary)',
                   marginTop: spacing[2].value,
                 }}
               >
@@ -1223,11 +1224,11 @@ const AgreementPage: React.FC = () => {
                   width: '48px',
                   height: '48px',
                   margin: '0 auto',
-                  color: colors.neutral[600].value,
+                  color: 'var(--current-text-secondary)',
                   marginBottom: spacing[4].value,
                 }}
               />
-              <Text size="sm" style={{ color: colors.neutral[600].value }}>
+              <Text size="sm" style={{ color: 'var(--current-text-secondary)' }}>
                 No documents uploaded yet. Upload your first PDF to get started.
               </Text>
             </Card>
@@ -1297,21 +1298,21 @@ const AgreementPage: React.FC = () => {
                             style={{
                               width: '24px',
                               height: '24px',
-                              color: colors.neutral[600].value,
+                              color: 'var(--current-text-secondary)',
                             }}
                           />
                         </Box>
                         <Box style={{ flex: 1, minWidth: 0 }}>
                           <Heading
                             size="sm"
-                            style={{ marginBottom: spacing[2].value }}
+                            style={{ marginBottom: spacing[2].value, color: 'var(--current-text)' }}
                           >
                             {document.name}
                           </Heading>
                           <Flex
                             direction="column"
                             gap="xs"
-                            style={{ color: colors.neutral[600].value }}
+                            style={{ color: 'var(--current-text-secondary)' }}
                           >
                             <Flex alignItems="center" gap="sm">
                               <Text size="sm">{document.size}</Text>
@@ -1380,7 +1381,7 @@ const AgreementPage: React.FC = () => {
                               marginTop: spacing[2].value,
                               width: '256px',
                               borderRadius: radius.md.value,
-                              backgroundColor: colors.background.primary.value,
+                              backgroundColor: 'var(--current-card)',
                               padding: spacing[2].value,
                               boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
                               zIndex: 20,
@@ -1413,7 +1414,7 @@ const AgreementPage: React.FC = () => {
                             <Box
                               style={{
                                 margin: `${spacing[2].value} 0`,
-                                borderTop: `1px solid ${colors.neutral[300].value}`,
+                                borderTop: '1px solid var(--current-border)',
                               }}
                             />
 
@@ -1434,7 +1435,7 @@ const AgreementPage: React.FC = () => {
                                 style={{
                                   width: '16px',
                                   height: '16px',
-                                  color: colors.neutral[600].value,
+                                  color: 'var(--current-text-secondary)',
                                 }}
                               />
                               <Text size="sm" weight="medium">
@@ -1601,7 +1602,7 @@ const AgreementPage: React.FC = () => {
                     style={{
                       padding: spacing[4].value,
                       borderRadius: radius.md.value,
-                      backgroundColor: colors.background.secondary.value,
+                      backgroundColor: 'var(--current-surface)',
                       marginBottom: spacing[4].value,
                     }}
                   >
@@ -1618,7 +1619,7 @@ const AgreementPage: React.FC = () => {
                     <Text
                       size="sm"
                       style={{
-                        color: colors.neutral[600].value,
+                        color: 'var(--current-text-secondary)',
                         marginBottom: spacing[3].value,
                       }}
                     >
@@ -1660,7 +1661,7 @@ const AgreementPage: React.FC = () => {
                   <Text
                     size="sm"
                     style={{
-                      color: colors.neutral[600].value,
+                      color: 'var(--current-text-secondary)',
                       marginBottom: spacing[4].value,
                     }}
                   >
@@ -1692,7 +1693,7 @@ const AgreementPage: React.FC = () => {
                   style={{
                     padding: spacing[4].value,
                     borderRadius: radius.md.value,
-                    backgroundColor: colors.background.secondary.value,
+                    backgroundColor: 'var(--current-surface)',
                     marginBottom: spacing[4].value,
                   }}
                 >
@@ -1709,7 +1710,7 @@ const AgreementPage: React.FC = () => {
                   <Text
                     size="sm"
                     style={{
-                      color: colors.neutral[600].value,
+                      color: 'var(--current-text-secondary)',
                       marginBottom: spacing[3].value,
                     }}
                   >
@@ -1751,7 +1752,7 @@ const AgreementPage: React.FC = () => {
                 <Text
                   size="sm"
                   style={{
-                    color: colors.neutral[600].value,
+                    color: 'var(--current-text-secondary)',
                     marginBottom: spacing[4].value,
                   }}
                 >
@@ -1803,7 +1804,7 @@ const AgreementPage: React.FC = () => {
                   gap: spacing[3].value,
                 }}
               >
-                <Heading size="sm" style={{ marginBottom: spacing[2].value }}>
+                <Heading size="sm" style={{ marginBottom: spacing[2].value, color: 'var(--current-text)' }}>
                   Upload Progress
                 </Heading>
                 {uploadFiles.map((fileUpload, index) => (
@@ -1829,7 +1830,7 @@ const AgreementPage: React.FC = () => {
                       </Text>
                       <Text
                         size="sm"
-                        style={{ color: colors.neutral[600].value }}
+                        style={{ color: 'var(--current-text-secondary)' }}
                       >
                         {fileUpload.uploaded
                           ? 'Complete'
@@ -1841,7 +1842,7 @@ const AgreementPage: React.FC = () => {
                     <Box
                       style={{
                         width: '100%',
-                        backgroundColor: colors.neutral[300].value,
+                        backgroundColor: 'var(--current-border)',
                         borderRadius: radius.lg.value,
                         height: '8px',
                       }}
@@ -1882,7 +1883,7 @@ const AgreementPage: React.FC = () => {
                 <Text
                   size="sm"
                   style={{
-                    color: colors.neutral[600].value,
+                    color: 'var(--current-text-secondary)',
                     marginTop: spacing[2].value,
                   }}
                 >
@@ -1904,17 +1905,17 @@ const AgreementPage: React.FC = () => {
                     width: '64px',
                     height: '64px',
                     margin: '0 auto',
-                    color: colors.neutral[600].value,
+                    color: 'var(--current-text-secondary)',
                     marginBottom: spacing[4].value,
                   }}
                 />
-                <Heading size="md" style={{ marginBottom: spacing[2].value }}>
+                <Heading size="md" style={{ marginBottom: spacing[2].value, color: 'var(--current-text)' }}>
                   Upload PDF Document
                 </Heading>
                 <Text
                   size="sm"
                   style={{
-                    color: colors.neutral[600].value,
+                    color: 'var(--current-text-secondary)',
                     marginBottom: spacing[4].value,
                   }}
                 >
@@ -1942,7 +1943,7 @@ const AgreementPage: React.FC = () => {
                   onChange={handleFileUpload}
                   style={{ display: 'none' }}
                 />
-                <Text size="xs" style={{ color: colors.neutral[600].value }}>
+                <Text size="xs" style={{ color: 'var(--current-text-secondary)' }}>
                   Supports: PDF files only
                 </Text>
               </Box>
@@ -2006,10 +2007,10 @@ const AgreementPage: React.FC = () => {
               style={{
                 padding: spacing[4].value,
                 borderRadius: radius.md.value,
-                backgroundColor: colors.background.secondary.value,
+                backgroundColor: 'var(--current-surface)',
               }}
             >
-              <Heading size="sm" style={{ marginBottom: spacing[2].value }}>
+              <Heading size="sm" style={{ marginBottom: spacing[2].value, color: 'var(--current-text)' }}>
                 Document: {selectedDocumentForVerification.name}
               </Heading>
 
@@ -2024,7 +2025,7 @@ const AgreementPage: React.FC = () => {
                   <Text
                     size="sm"
                     style={{
-                      color: colors.neutral[600].value,
+                      color: 'var(--current-text-secondary)',
                       marginTop: spacing[3].value,
                     }}
                   >
