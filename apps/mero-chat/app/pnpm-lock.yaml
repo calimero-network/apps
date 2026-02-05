@@ -111,10 +111,6 @@ importers:
       zustand:
         specifier: ^5.0.5
         version: 5.0.5(@types/react@19.1.2)(react@19.1.0)(use-sync-external-store@1.6.0(react@19.1.0))
-    optionalDependencies:
-      '@types/react':
-        specifier: 19.1.2
-        version: 19.1.2
     devDependencies:
       '@eslint/js':
         specifier: ^9.25.0
@@ -158,6 +154,10 @@ importers:
       workbox-window:
         specifier: ^7.3.0
         version: 7.3.0
+    optionalDependencies:
+      '@types/react':
+        specifier: 19.1.2
+        version: 19.1.2
 
 packages:
 
