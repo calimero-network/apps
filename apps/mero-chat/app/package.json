@@ -2,6 +2,14 @@
   "name": "calimero-chat",
   "private": true,
   "version": "0.0.1",
+  "description": "Calimero Chat frontend application built with React",
+  "keywords": [
+    "calimero",
+    "chat",
+    "react",
+    "vite",
+    "web3"
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite",
