@@ -1,5 +1,34 @@
 # Calimero Calimero Chat
 
+[![Rust](https://img.shields.io/badge/rust-1.89+-orange.svg)](https://www.rust-lang.org/)
+[![Version](https://img.shields.io/badge/version-0.0.1-blue)](https://github.com/calimero-network/calimero-curb-chat)
+
+A chat application built on the Calimero Network, enabling private, decentralized messaging.
+
+## Quick Start
+
+### Prerequisites
+
+- [Rust 1.89+](https://www.rust-lang.org/tools/install)
+- [pnpm](https://pnpm.io/installation)
+- [merobox](https://www.piwheels.org/project/merobox/) (optional, for workflows)
+
+### Build and Run
+
+```bash
+# Build the logic (Rust WASM)
+cd logic
+chmod +x ./build.sh
+./build.sh
+
+# Start the app
+cd ../app
+pnpm install
+pnpm run dev
+```
+
+Open the app in your browser and connect to a running Calimero node.
+
 ## Logic
 
 ```bash title="Terminal"
