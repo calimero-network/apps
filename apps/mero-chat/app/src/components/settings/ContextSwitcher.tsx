@@ -10,7 +10,7 @@ import {
 import type { FetchContextIdentitiesResponse } from "@calimero-network/calimero-client/lib/api/nodeApi";
 import { ContextApiDataSource } from "../../api/dataSource/nodeApiDataSource";
 import type { ContextInfo } from "../../api/nodeApi";
-import { CONTEXT_ID } from "../../constants/config";
+import { getContextIdFromUrl } from "../../constants/config";
 
 const Container = styled.div`
   padding: 1rem;
@@ -168,7 +168,7 @@ export default function ContextSwitcher() {
   const [success, setSuccess] = useState<string>("");
 
   useEffect(() => {
-    const currentId = getContextId() || CONTEXT_ID || "";
+    const currentId = getContextId() || getContextIdFromUrl() || "";
     setCurrentContextId(currentId);
     setSelectedContextId(currentId);
     fetchContexts();

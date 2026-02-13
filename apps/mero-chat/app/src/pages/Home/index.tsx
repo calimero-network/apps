@@ -597,13 +597,15 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     // @ts-expect-error - chatMembers is a Map<string, string>
     const inviteeUsername = chatMembers[value];
     const dmParams = generateDMParams(value, creatorUsername, inviteeUsername);
-    const response = await apiClient
+    try {
+      const response = await apiClient
       .node()
       .createContext(
         dmParams.applicationId,
         dmParams.params,
         dmParams.protocol,
       );
+      console.log("response", response)
 
     const verifyContextResponse = await apiClient
       .node()
@@ -651,6 +653,13 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
         };
       }
     } else {
+      return {
+        data: "",
+        error: "Failed to create DM",
+      };
+    }
+    } catch (error) {
+      console.error("createDM failed:", error);
       return {
         data: "",
         error: "Failed to create DM",

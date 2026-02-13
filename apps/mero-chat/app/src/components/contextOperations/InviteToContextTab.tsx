@@ -8,7 +8,10 @@ import {
 import type { ResponseData } from "@calimero-network/calimero-client";
 import { Button, Input } from "@calimero-network/mero-ui";
 import type { ContextInviteByOpenInvitationResponse } from "@calimero-network/calimero-client/lib/api/nodeApi";
-import { generateInvitationUrl } from "../../utils/invitation";
+import {
+  generateInvitationUrl,
+  generateInvitationDeepLink,
+} from "../../utils/invitation";
 
 const TabContent = styled.div`
   display: flex;
@@ -76,7 +79,8 @@ export default function InviteToContextTab() {
     executorPublicKey: "",
   });
   const [invitation, setInvitation] = useState<string | null>(null);
-  const [invitationUrl, setInvitationUrl] = useState<string | null>(null);
+  const [invitationWebUrl, setInvitationWebUrl] = useState<string | null>(null);
+  const [invitationDesktopLink, setInvitationDesktopLink] = useState<string | null>(null);
 
   useEffect(() => {
     const storedContextId = getContextId();
@@ -121,8 +125,8 @@ export default function InviteToContextTab() {
       } else {
         const invitationPayload = JSON.stringify(response.data);
         setInvitation(invitationPayload);
-        const url = generateInvitationUrl(invitationPayload);
-        setInvitationUrl(url);
+        setInvitationWebUrl(generateInvitationUrl(invitationPayload));
+        setInvitationDesktopLink(generateInvitationDeepLink(invitationPayload));
         setMessage({
           text: "Invitation Created",
           type: "success",
@@ -150,28 +154,43 @@ export default function InviteToContextTab() {
 
   return (
     <TabContent>
-      {invitation && invitationUrl ? (
+      {invitation && invitationWebUrl && invitationDesktopLink ? (
         <ConfigInfo>
           <SuccessMessage>✓ Invitation Created</SuccessMessage>
           <InputGroup>
-            <Label>Invitation URL</Label>
+            <Label>Web invitation</Label>
             <Input
-              id="invitationUrl"
+              id="invitationWebUrl"
               type="text"
-              value={invitationUrl}
-              disabled={true}
+              value={invitationWebUrl}
+              disabled
             />
             <Button
-              onClick={() => handleCopyToClipboard(invitationUrl)}
+              onClick={() => handleCopyToClipboard(invitationWebUrl)}
               variant="primary"
-              style={{
-                width: "100%",
-                marginTop: "0.5rem",
-              }}
+              style={{ width: "100%", marginTop: "0.5rem" }}
             >
-              Copy Invitation URL
+              Copy web link
             </Button>
           </InputGroup>
+          <div style={{ marginTop: "0.75rem" }}>
+            <InputGroup>
+              <Label>Calimero Desktop app invitation</Label>
+            <Input
+              id="invitationDesktopLink"
+              type="text"
+              value={invitationDesktopLink}
+              disabled
+            />
+            <Button
+              onClick={() => handleCopyToClipboard(invitationDesktopLink)}
+              variant="secondary"
+              style={{ width: "100%", marginTop: "0.5rem" }}
+            >
+              Copy desktop link
+            </Button>
+            </InputGroup>
+          </div>
         </ConfigInfo>
       ) : (
         <ConfigInfo>

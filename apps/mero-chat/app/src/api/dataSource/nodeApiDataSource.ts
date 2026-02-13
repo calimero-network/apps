@@ -4,6 +4,7 @@ import {
   getAuthConfig,
   type ApiResponse,
 } from "@calimero-network/calimero-client";
+import { getApplicationId } from "../../constants/config";
 import type {
   CreateContextProps,
   CreateContextResponse,
@@ -52,7 +53,7 @@ export class ContextApiDataSource implements NodeApi {
       const response = await axios.post(
         `${nodeEndpoint}/admin-api/contexts`,
         {
-          applicationId: import.meta.env.VITE_APPLICATION_ID || "",
+          applicationId: getApplicationId(),
           protocol: "near",
           initializationParams: byteArray,
         },

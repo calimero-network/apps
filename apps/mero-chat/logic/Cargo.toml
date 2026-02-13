@@ -17,6 +17,10 @@ calimero-storage = { git = "https://github.com/calimero-network/core", branch = 
 calimero-storage-macros = { git = "https://github.com/calimero-network/core", branch = "master" }
 thiserror = "1.0.56"
 
+[build-dependencies]
+calimero-wasm-abi = { git = "https://github.com/calimero-network/core", branch = "master" }
+serde_json = "1.0.113"
+
 [profile.app-release]
 inherits = "release"
 codegen-units = 1

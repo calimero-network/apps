@@ -12,6 +12,7 @@ import {
 import { ToastProvider, useToast } from "./contexts/ToastContext";
 import { ToastManager } from "./components/common/ToastManager";
 import { extractInvitationFromUrl, saveInvitationToStorage } from "./utils/invitation";
+import { StorageHelper } from "./utils/storage";
 
 // Lazy load pages for better performance
 const Login = lazy(() => import("./pages/Login"));
@@ -87,7 +88,7 @@ function App() {
           <Route
             path="/login"
             element={
-              isAuthenticated && isConfigSet ? (
+              isAuthenticated && isConfigSet && StorageHelper.getItem("chat-username") ? (
                 <Navigate to="/" replace />
               ) : (
                 <Login
@@ -102,7 +103,7 @@ function App() {
             element={
               isLoading ? (
                 <LoadingSpinner />
-              ) : isAuthenticated && isConfigSet ? (
+              ) : isAuthenticated && isConfigSet && StorageHelper.getItem("chat-username") ? (
                 <IdleTimeoutWrapper>
                   <Home isConfigSet={isConfigSet} />
                 </IdleTimeoutWrapper>

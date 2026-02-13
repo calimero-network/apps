@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { styled } from "styled-components";
 import {
   CalimeroConnectButton,
@@ -6,22 +6,25 @@ import {
   setContextId,
   setExecutorPublicKey,
   getAppEndpointKey,
+  getContextId,
+  getExecutorPublicKey,
   apiClient,
-  //getContextId,
-  //getExecutorPublicKey,
 } from "@calimero-network/calimero-client";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
-// import { ContextApiDataSource } from "../../api/dataSource/nodeApiDataSource";
+import { ContextApiDataSource } from "../../api/dataSource/nodeApiDataSource";
 import { extractErrorMessage } from "../../utils/errorParser";
 import { defaultActiveChat } from "../../mock/mock";
 import { getStoredSession, updateSessionChat } from "../../utils/session";
 import type { ResponseData } from "@calimero-network/calimero-client";
 import type { FetchContextIdentitiesResponse } from "@calimero-network/calimero-client/lib/api/nodeApi";
 import type { ActiveChat } from "../../types/Common";
-//import type { ContextInfo } from "../../api/nodeApi";
-import { CONTEXT_ID } from "../../constants/config";
+import type { ContextInfo } from "../../api/nodeApi";
 import { Button, Input } from "@calimero-network/mero-ui";
 import { StorageHelper } from "../../utils/storage";
+import {
+  saveInvitationToStorage,
+  parseInvitationInput,
+} from "../../utils/invitation";
 
 const TabContent = styled.div`
   display: flex;
@@ -74,7 +77,7 @@ const Note = styled.p`
   margin-top: 0.2rem;
 `;
 
-const _Select = styled.select`
+const Select = styled.select`
   padding: 0.6rem;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -83,6 +86,7 @@ const _Select = styled.select`
   font-size: 0.75rem;
   cursor: pointer;
   transition: all 0.2s ease;
+  width: 100%;
 
   &:hover:not(:disabled) {
     background: rgba(255, 255, 255, 0.08);
@@ -122,159 +126,214 @@ const Message = styled.div<{ type?: "success" | "error" | "info" }>`
 interface ChatTabProps {
   isAuthenticated: boolean;
   isConfigSet: boolean;
+  onInvitationSaved?: () => void;
 }
 
 export default function ChatTab({
   isAuthenticated,
   isConfigSet,
+  onInvitationSaved,
 }: ChatTabProps) {
-  const [formData, setFormData] = useState({
-    nodeUrl: "",
-    contextId: "",
-    identityId: "",
-  });
-  // const [availableContexts, setAvailableContexts] = useState<ContextInfo[]>([]);
-  // const [fetchingContexts, setFetchingContexts] = useState(false);
-  const [fetchingIdentity, setFetchingIdentity] = useState(false);
+  const [nodeUrl, setNodeUrl] = useState("");
+  const [availableContexts, setAvailableContexts] = useState<ContextInfo[]>([]);
+  const [selectedContextId, setSelectedContextId] = useState("");
+  const [contextIdentities, setContextIdentities] = useState<string[]>([]);
+  const [selectedIdentityId, setSelectedIdentityId] = useState("");
+  const [username, setUsername] = useState("");
+  const [fetchingContexts, setFetchingContexts] = useState(false);
+  const [fetchingIdentities, setFetchingIdentities] = useState(false);
+  const [checkingUsername, setCheckingUsername] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isDisabled, setIsDisabled] = useState(false);
-  const [username, setUsername] = useState("");
+  const lastCheckedIdentityRef = useRef<string | null>(null);
+  const [invitationInput, setInvitationInput] = useState("");
+  const [invitationError, setInvitationError] = useState("");
+  const [submittingInvitation, setSubmittingInvitation] = useState(false);
+  const [completeJoinUsername, setCompleteJoinUsername] = useState("");
+  const [completeJoinLoading, setCompleteJoinLoading] = useState(false);
+  const [completeJoinError, setCompleteJoinError] = useState("");
+  const [completeJoinSuccess, setCompleteJoinSuccess] = useState("");
 
-  // Fetch available contexts when authenticated
-  useEffect(() => {
-    const fetchAvailableContexts = async () => {
-      if (isAuthenticated && !isConfigSet) {
-        //setFetchingContexts(true);
-        const nodeUrl = getAppEndpointKey() || "";
-        const contextId = CONTEXT_ID || "";
-        setFormData((prev) => ({ ...prev, nodeUrl, contextId }));
-        await fetchIdentityForContext(contextId);
-
-        // try {
-        //   const nodeApi = new ContextApiDataSource();
-        //   const response = await nodeApi.listContexts();
-        //   console.log("response", response);
-        //   if (response.data && response.data.length > 0) {
-        //     //setAvailableContexts(response.data);
-        //     // Auto-select first context if only one available
-        //     if (response.data.length === 1) {
-        //       const contextId = response.data[0].contextId;
-        //       setFormData((prev) => ({ ...prev, contextId }));
-        //       await fetchIdentityForContext(contextId);
-        //     }
-        //   } else {
-        //     setError(
-        //       "No contexts found on this node. Please join or create a context first.",
-        //     );
-        //     setIsDisabled(true);
-        //   }
-        // } catch (err) {
-        //   console.error("Error fetching contexts:", err);
-        //   setError("Failed to fetch available contexts from node");
-        //   setIsDisabled(true);
-        // } finally {
-        //   //setFetchingContexts(false);
-        // }
-      }
-    };
-
-    if (isAuthenticated && !isConfigSet) {
-      fetchAvailableContexts();
-    }
-  }, [isAuthenticated, isConfigSet]);
-
-  const [fetchUsername, setFetchingUsername] = useState(false);
-
-  // Fetch identity for selected context
-  const fetchIdentityForContext = async (contextId: string) => {
-    if (!contextId) return;
-
-    setFetchingIdentity(true);
+  // Fetch contexts from node API when authenticated (no hardcoded contextId)
+  const fetchContexts = useCallback(async () => {
+    const url = getAppEndpointKey();
+    if (!url) return;
+    setFetchingContexts(true);
     setError("");
-    setIsDisabled(false);
-
     try {
-      const contextIdentityResponse: ResponseData<FetchContextIdentitiesResponse> =
-        await apiClient.node().fetchContextIdentities(contextId);
-      setContextId(contextId);
+      const nodeApi = new ContextApiDataSource();
+      const response = await nodeApi.listContexts();
+      if (response.data && response.data.length > 0) {
+        setAvailableContexts(response.data);
+        if (response.data.length === 1) {
+          setSelectedContextId(response.data[0].contextId);
+        }
+      } else if (response.error) {
+        setError(response.error.message || "Failed to fetch contexts");
+        setAvailableContexts([]);
+      } else {
+        setError("No contexts found on this node. Join or create a context first.");
+        setAvailableContexts([]);
+        setIsDisabled(true);
+      }
+    } catch (_err) {
+      setError("Failed to fetch contexts from node");
+      setAvailableContexts([]);
+    } finally {
+      setFetchingContexts(false);
+    }
+  }, []);
 
-      if (
-        contextIdentityResponse.data &&
-        contextIdentityResponse.data.identities.length > 0
-      ) {
-        const contextIdentity: string =
-          contextIdentityResponse.data.identities[0];
-        setFetchingUsername(true);
+  useEffect(() => {
+    if (isAuthenticated && !isConfigSet) {
+      setNodeUrl(getAppEndpointKey() || "");
+      fetchContexts();
+    }
+  }, [isAuthenticated, isConfigSet, fetchContexts]);
+
+  // When context is selected, fetch identities for that context
+  useEffect(() => {
+    if (!selectedContextId) {
+      setContextIdentities([]);
+      setSelectedIdentityId("");
+      return;
+    }
+    let cancelled = false;
+    setFetchingIdentities(true);
+    setError("");
+    apiClient
+      .node()
+      .fetchContextIdentities(selectedContextId)
+      .then((res: ResponseData<FetchContextIdentitiesResponse>) => {
+        if (cancelled) return;
+        if (res.error) {
+          setError(res.error.message || "Failed to fetch identities");
+          if (res.error.message === "Context not found") {
+            setIsDisabled(true);
+            setError("You are not a member of this context. Join the context first.");
+          }
+          setContextIdentities([]);
+          return;
+        }
+        if (res.data?.identities && res.data.identities.length > 0) {
+          setContextIdentities(res.data.identities);
+          if (res.data.identities.length === 1) {
+            setSelectedIdentityId(res.data.identities[0]);
+          }
+        } else {
+          setContextIdentities([]);
+          setError("No identities found for this context.");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setError("Failed to fetch identities");
+        setContextIdentities([]);
+      })
+      .finally(() => {
+        if (!cancelled) setFetchingIdentities(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedContextId]);
+
+  // When context + identity are selected, check username: if exists -> login & redirect; else show username step
+  const onIdentitySelected = useCallback(
+    async (identityId: string) => {
+      if (!selectedContextId || !identityId) return;
+      setContextId(selectedContextId);
+      setExecutorPublicKey(identityId);
+      setCheckingUsername(true);
+      setError("");
+      try {
         const usernameResponse = await new ClientApiDataSource().getUsername({
-          userId: contextIdentity,
-          executorPublicKey: contextIdentity,
-          contextId: contextId,
+          userId: identityId,
+          executorPublicKey: identityId,
+          contextId: selectedContextId,
         });
-        setFormData((prev) => ({
-          ...prev,
-          contextId,
-          identityId: contextIdentity,
-        }));
         if (usernameResponse.data) {
-          setExecutorPublicKey(contextIdentity);
           setUsername(usernameResponse.data);
-          setContextId(contextId);
           StorageHelper.setItem("chat-username", usernameResponse.data);
-
           const storedSession: ActiveChat | null = getStoredSession();
           const chatToUse = storedSession || defaultActiveChat;
-
           updateSessionChat(chatToUse);
           setSuccess("Already joined the chat!");
           setTimeout(() => {
-            window.location.href = "/";
+            window.location.href = "/" + (window.location.search || "");
           }, 1000);
         }
-        setFetchingUsername(false);
-      } else if (
-        contextIdentityResponse.error?.message === "Context not found"
-      ) {
-        setIsDisabled(true);
-        setError(
-          "You are not a member of this context. Please join the context first."
-        );
-      } else {
-        setError("Failed to fetch identity for this context");
+      } catch {
+        setError("Failed to check username");
+      } finally {
+        setCheckingUsername(false);
       }
-    } catch (_error) {
-      setError("Failed to fetch context identity");
-    } finally {
-      setFetchingIdentity(false);
+    },
+    [selectedContextId],
+  );
+
+  useEffect(() => {
+    const key = `${selectedContextId}:${selectedIdentityId}`;
+    if (
+      !selectedIdentityId ||
+      !selectedContextId ||
+      lastCheckedIdentityRef.current === key
+    ) {
+      return;
     }
+    lastCheckedIdentityRef.current = key;
+    onIdentitySelected(selectedIdentityId);
+  }, [selectedIdentityId, selectedContextId, onIdentitySelected]);
+
+  const handleContextChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const id = e.target.value;
+    setSelectedContextId(id);
+    setSelectedIdentityId("");
+    setContextIdentities([]);
+    setError("");
   };
 
-  // Handle context selection change
-  const _handleContextChange = async (
-    e: React.ChangeEvent<HTMLSelectElement>
-  ) => {
-    const contextId = e.target.value;
-    if (contextId) {
-      await fetchIdentityForContext(contextId);
+  const handleIdentityChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedIdentityId(e.target.value);
+    setError("");
+  };
+
+  const handleUseInvitation = (e: React.FormEvent) => {
+    e.preventDefault();
+    setInvitationError("");
+    setSubmittingInvitation(true);
+    const payload = parseInvitationInput(invitationInput);
+    if (!payload) {
+      setInvitationError("Invalid invitation. Paste a full invite URL or the encoded invitation.");
+      setSubmittingInvitation(false);
+      return;
     }
+    saveInvitationToStorage(payload);
+    setInvitationInput("");
+    setSubmittingInvitation(false);
+    onInvitationSaved?.();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedContextId || !selectedIdentityId || !username.trim()) return;
     setIsLoading(true);
     setError("");
     setSuccess("");
 
     try {
-      setAppEndpointKey(formData.nodeUrl.trim());
-      setContextId(formData.contextId.trim());
-      setExecutorPublicKey(formData.identityId.trim());
-      localStorage.setItem("chat-username", username);
+      const url = getAppEndpointKey() || nodeUrl;
+      if (url) setAppEndpointKey(url.trim());
+      setContextId(selectedContextId);
+      setExecutorPublicKey(selectedIdentityId);
+      StorageHelper.setItem("chat-username", username.trim());
       const response: ResponseData<string> =
         await new ClientApiDataSource().joinChat({
           isDM: false,
-          username: username,
+          username: username.trim(),
+          contextId: selectedContextId,
+          executorPublicKey: selectedIdentityId,
         });
       if (response.error) {
         const errorMessage = extractErrorMessage(response.error);
@@ -295,7 +354,7 @@ export default function ChatTab({
       }
 
       setTimeout(() => {
-        window.location.href = "/";
+        window.location.href = "/" + (window.location.search || "");
       }, 1000);
     } catch (_err) {
       setError("Failed to save login information");
@@ -315,6 +374,89 @@ export default function ChatTab({
     );
   }
 
+  // Config set but no chat username yet — show join form. Only hide when they have chat-username (nothing else).
+  const hasChatUsername = !!StorageHelper.getItem("chat-username");
+  if (isConfigSet && !hasChatUsername) {
+    return (
+      <TabContent>
+        <Form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!completeJoinUsername.trim()) return;
+            const ctxId = getContextId();
+            const execKey = getExecutorPublicKey();
+            if (!ctxId || !execKey) {
+              setCompleteJoinError("Context or identity missing. Please log out and select context and identity again.");
+              return;
+            }
+            setCompleteJoinLoading(true);
+            setCompleteJoinError("");
+            setCompleteJoinSuccess("");
+            try {
+              StorageHelper.setItem("chat-username", completeJoinUsername.trim());
+              const response = await new ClientApiDataSource().joinChat({
+                isDM: false,
+                username: completeJoinUsername.trim(),
+                contextId: ctxId,
+                executorPublicKey: execKey,
+              });
+              if (response.error) {
+                const msg = extractErrorMessage(response.error);
+                if (msg.includes("Already a member")) {
+                  setCompleteJoinSuccess("Already connected! Taking you to chat...");
+                  const storedSession = getStoredSession();
+                  const chatToUse = storedSession || defaultActiveChat;
+                  updateSessionChat(chatToUse);
+                } else {
+                  setCompleteJoinError(msg);
+                  setCompleteJoinLoading(false);
+                  return;
+                }
+              } else {
+                setCompleteJoinSuccess("Joined! Taking you to chat...");
+                const storedSession = getStoredSession();
+                const chatToUse = storedSession || defaultActiveChat;
+                updateSessionChat(chatToUse);
+              }
+              setTimeout(() => {
+                window.location.href = "/" + (window.location.search || "");
+              }, 1000);
+            } catch {
+              setCompleteJoinError("Failed to join chat");
+            } finally {
+              setCompleteJoinLoading(false);
+            }
+          }}
+        >
+          <InputGroup>
+            <Label>Context and identity are set</Label>
+            <Note>Enter your username to join the chat (this may help set up the connection).</Note>
+          </InputGroup>
+          <InputGroup>
+            <Label>Username</Label>
+            <Input
+              type="text"
+              placeholder="e.g. John"
+              value={completeJoinUsername}
+              onChange={(e) => setCompleteJoinUsername(e.target.value)}
+              disabled={completeJoinLoading}
+            />
+          </InputGroup>
+          <Button
+            type="submit"
+            disabled={completeJoinLoading || !completeJoinUsername.trim()}
+          >
+            {completeJoinLoading ? "Joining..." : "Join chat"}
+          </Button>
+          {completeJoinError && <Message type="error">{completeJoinError}</Message>}
+          {completeJoinSuccess && <Message type="success">{completeJoinSuccess}</Message>}
+        </Form>
+      </TabContent>
+    );
+  }
+
+  const needUsernameStep = true
+
   return (
     <TabContent>
       <Form onSubmit={handleSubmit}>
@@ -323,25 +465,16 @@ export default function ChatTab({
           <Input
             id="nodeUrl"
             type="text"
-            value={formData.nodeUrl || "Loading..."}
-            disabled={true}
-          />
-        </InputGroup>
-        <InputGroup>
-          <Label>Context ID</Label>
-          <Input
-            id="contextId"
-            type="text"
-            value={formData.contextId || "Loading..."}
-            disabled={true}
+            value={nodeUrl || "Loading..."}
+            disabled
           />
         </InputGroup>
 
-        {/* <InputGroup>
-          <Label>Select Context</Label>
+        <InputGroup>
+          <Label>Context</Label>
           <Select
             id="contextSelect"
-            value={formData.contextId}
+            value={selectedContextId}
             onChange={handleContextChange}
             disabled={fetchingContexts || availableContexts.length === 0}
           >
@@ -352,64 +485,118 @@ export default function ChatTab({
                   ? "No contexts available"
                   : "Select a context..."}
             </option>
-            {availableContexts.map((context) => (
-              <option key={context.contextId} value={context.contextId}>
-                {context.contextId}
+            {availableContexts.map((ctx) => (
+              <option key={ctx.contextId} value={ctx.contextId}>
+                {ctx.contextId.substring(0, 12)}...
               </option>
             ))}
           </Select>
           <Note>
             {availableContexts.length > 0
               ? `${availableContexts.length} context${availableContexts.length !== 1 ? "s" : ""} available`
-              : "Connect to a node to see available contexts"}
+              : "Connect to a node to see contexts"}
           </Note>
-        </InputGroup> */}
-
-        {/* {fetchingIdentity && (
-          <Message type="info">
-            Fetching identity for selected context...
-          </Message>
-        )} */}
-
-        <InputGroup>
-          <Label>Identity ID</Label>
-          <Input
-            id="identityId"
-            type="text"
-            value={fetchUsername ? "Loading..." : formData.identityId}
-            disabled={true}
-          />
         </InputGroup>
 
-        <InputGroup>
-          <Label>Username or Name</Label>
-          <Note>
-            *This will be used to identify you in the chat and can only be set
-            ONCE.
-          </Note>
-          <Input
-            id="invitationPayload"
-            type="text"
-            placeholder="John Doe"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            disabled={isLoading || !formData.identityId}
-          />
-        </InputGroup>
+        {!fetchingContexts && availableContexts.length === 0 && (
+          <div style={{ marginTop: "0.75rem" }}>
+            <InputGroup>
+              <Label>No contexts yet — join with an invitation</Label>
+              <Note>
+                Paste an invitation link (web or desktop) or the encoded payload.
+              </Note>
+              <Input
+                id="invitationInput"
+                type="text"
+                placeholder="https://...?invitation=... or calimero://curb/join?invitation=... or paste encoded"
+                value={invitationInput}
+                onChange={(e) => {
+                  setInvitationInput(e.target.value);
+                  setInvitationError("");
+                }}
+                disabled={submittingInvitation}
+              />
+              <Button
+                type="button"
+                variant="primary"
+                style={{ width: "100%", marginTop: "0.5rem" }}
+                onClick={handleUseInvitation}
+                disabled={submittingInvitation || !invitationInput.trim()}
+              >
+                {submittingInvitation ? "Using invitation..." : "Use invitation"}
+              </Button>
+              {invitationError && (
+                <Message type="error" style={{ marginTop: "0.5rem" }}>
+                  {invitationError}
+                </Message>
+              )}
+            </InputGroup>
+          </div>
+        )}
 
-        <Button
-          type="submit"
-          disabled={
-            isLoading ||
-            isDisabled ||
-            !username.trim() ||
-            !formData.contextId ||
-            !formData.identityId ||
-            fetchingIdentity
-          }
-        >
-          {isLoading ? "Setting up..." : "Connect"}
-        </Button>
+        {selectedContextId && (
+          <InputGroup>
+            <Label>Identity</Label>
+            <Select
+              id="identitySelect"
+              value={selectedIdentityId}
+              onChange={handleIdentityChange}
+              disabled={fetchingIdentities || contextIdentities.length === 0}
+            >
+              <option value="">
+                {fetchingIdentities
+                  ? "Loading identities..."
+                  : contextIdentities.length === 0
+                    ? "No identities"
+                    : "Select your identity..."}
+              </option>
+              {contextIdentities.map((id) => (
+                <option key={id} value={id}>
+                  {id.substring(0, 12)}...
+                </option>
+              ))}
+            </Select>
+          </InputGroup>
+        )}
+
+        {(checkingUsername || needUsernameStep) && (
+          <>
+            {checkingUsername && (
+              <Message type="info">Checking if you already joined...</Message>
+            )}
+            {needUsernameStep && (
+              <>
+                <InputGroup>
+                  <Label>Username</Label>
+                  <Note>
+                    Choose a unique name to identify you in the chat (can only be
+                    set once).
+                  </Note>
+                  <Input
+                    id="username"
+                    type="text"
+                    placeholder="e.g. John"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    disabled={isLoading}
+                  />
+                </InputGroup>
+                <Button
+                  type="submit"
+                  disabled={
+                    isLoading ||
+                    isDisabled ||
+                    !username.trim() ||
+                    !selectedContextId ||
+                    !selectedIdentityId
+                  }
+                >
+                  {isLoading ? "Joining..." : "Join chat"}
+                </Button>
+              </>
+            )}
+          </>
+        )}
 
         {error && <Message type="error">{error}</Message>}
         {success && <Message type="success">{success}</Message>}

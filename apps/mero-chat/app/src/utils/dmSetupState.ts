@@ -1,5 +1,6 @@
 import type { ActiveChat } from "../types/Common";
 import { DMSetupState } from "../types/Common";
+import { getApplicationId } from "../constants/config";
 
 // **
 //  ------STEP 1-------
@@ -88,7 +89,7 @@ export function generateDMParams(
   };
   const jsonString = JSON.stringify(jsonData);
   return {
-    applicationId: import.meta.env.VITE_APPLICATION_ID || "",
+    applicationId: getApplicationId(),
     protocol: "near",
     params: jsonString,
   };

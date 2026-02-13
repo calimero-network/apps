@@ -10,7 +10,7 @@ import {
   clearStoredSession,
   clearSessionActivity,
 } from "../../utils/session";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { getInvitationFromStorage } from "../../utils/invitation";
 import InvitationHandlerPopup from "../../components/popups/InvitationHandlerPopup";
 
@@ -114,11 +114,13 @@ export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
 
   const tabs = [{ id: "chat", label: "Chat" }];
 
-  useEffect(() => {
-    // Check for pending invitation ONLY after user is authenticated
-    const invitation = getInvitationFromStorage();
-    setHasInvitation(!!invitation);
+  const refreshInvitation = useCallback(() => {
+    setHasInvitation(!!getInvitationFromStorage());
   }, []);
+
+  useEffect(() => {
+    refreshInvitation();
+  }, [refreshInvitation]);
 
   const handleLogout = () => {
     clearStoredSession();
@@ -161,6 +163,7 @@ export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
               tabs={tabs}
               isAuthenticated={isAuthenticated}
               isConfigSet={isConfigSet}
+              onInvitationSaved={refreshInvitation}
             />
             <LogoutWrapper>
               <Button onClick={handleLogout} variant="secondary">

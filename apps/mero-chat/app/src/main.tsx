@@ -5,7 +5,6 @@ import App from "./App.tsx";
 import { BrowserRouter } from "react-router-dom";
 import { AppMode, CalimeroProvider } from "@calimero-network/calimero-client";
 import { ToastProvider } from "@calimero-network/mero-ui";
-import { APPLICATION_ID, APPLICATION_PATH } from "./constants/config.ts";
 import ErrorBoundary from "./components/ErrorBoundary.tsx";
 import { WebSocketProvider } from "./contexts/WebSocketContext.tsx";
 import { log } from "./utils/logger.ts";
@@ -39,9 +38,9 @@ createRoot(document.getElementById("root")!).render(
     >
       <BrowserRouter>
         <CalimeroProvider
-          clientApplicationId={APPLICATION_ID}
+          packageName={import.meta.env.VITE_APPLICATION_PACKAGE}
+          registryUrl="https://apps.calimero.network"
           mode={AppMode.MultiContext}
-          applicationPath={APPLICATION_PATH}
         >
           <WebSocketProvider>
             <ToastProvider>

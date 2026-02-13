@@ -16,8 +16,8 @@ importers:
         specifier: ^7.1.1
         version: 7.1.1
       '@calimero-network/calimero-client':
-        specifier: 1.23.1
-        version: 1.23.1(@near-wallet-selector/modal-ui@8.10.2(near-api-js@3.0.4))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(styled-components@6.1.19(react-dom@19.1.0(react@19.1.0))(react@19.1.0))
+        specifier: 1.25.0-beta.1
+        version: 1.25.0-beta.1(@near-wallet-selector/modal-ui@8.10.2(near-api-js@3.0.4))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(styled-components@6.1.19(react-dom@19.1.0(react@19.1.0))(react@19.1.0))
       '@calimero-network/mero-icons':
         specifier: ^0.0.6
         version: 0.0.6(react@19.1.0)
@@ -111,6 +111,10 @@ importers:
       zustand:
         specifier: ^5.0.5
         version: 5.0.5(@types/react@19.1.2)(react@19.1.0)(use-sync-external-store@1.6.0(react@19.1.0))
+    optionalDependencies:
+      '@types/react':
+        specifier: 19.1.2
+        version: 19.1.2
     devDependencies:
       '@eslint/js':
         specifier: ^9.25.0
@@ -154,10 +158,6 @@ importers:
       workbox-window:
         specifier: ^7.3.0
         version: 7.3.0
-    optionalDependencies:
-      '@types/react':
-        specifier: 19.1.2
-        version: 19.1.2
 
 packages:
 
@@ -669,8 +669,8 @@ packages:
   '@braintree/sanitize-url@7.1.1':
     resolution: {integrity: sha512-i1L7noDNxtFyL5DmZafWy1wRVhGehQmzZaz1HiN5e7iylJMSZR7ekOV7NsIqa5qBldlLrsKv4HbgFUVlQrz8Mw==}
 
-  '@calimero-network/calimero-client@1.23.1':
-    resolution: {integrity: sha512-lUkqZMLORd+iq7LBVmpvjjVgTPH1+m0WZQsC3z7asau8NPs6l7RSz2DafYPN4odcNwNdY7wa2bEQ3T+VwSOZqQ==}
+  '@calimero-network/calimero-client@1.25.0-beta.1':
+    resolution: {integrity: sha512-cBSc3PhUs0enMpxbUMnkPxqg8YSzTv/wkMnKddQcpRQ5CylbwLmh/DY9okRefcEXjzh5/TswGzTiiBPoAkABvw==}
     peerDependencies:
       '@near-wallet-selector/modal-ui': ^8.9.7
       react: ^18.3.0
@@ -2541,7 +2541,7 @@ packages:
 
   glob@7.2.3:
     resolution: {integrity: sha512-nFR0zLpU2YCaRxwoCJvL6UvCH2JFyFVIvwTLsIf21AuHlMskA1hhTdk+LlYJtOlYt9v6dvszD2BGRqBL+iQK9Q==}
-    deprecated: Glob versions prior to v9 are no longer supported
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 
   globals@14.0.0:
     resolution: {integrity: sha512-oahGvuMGQlPw/ivIYBjVSrWAfWLBeku5tpPE2fOPLi+WHffIWbuh2tCjhyQhTBPMf5E9jDEH4FOmTYgYwbKwtQ==}
@@ -4674,17 +4674,15 @@ snapshots:
 
   '@braintree/sanitize-url@7.1.1': {}
 
-  '@calimero-network/calimero-client@1.23.1(@near-wallet-selector/modal-ui@8.10.2(near-api-js@3.0.4))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(styled-components@6.1.19(react-dom@19.1.0(react@19.1.0))(react@19.1.0))':
+  '@calimero-network/calimero-client@1.25.0-beta.1(@near-wallet-selector/modal-ui@8.10.2(near-api-js@3.0.4))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(styled-components@6.1.19(react-dom@19.1.0(react@19.1.0))(react@19.1.0))':
     dependencies:
       '@near-wallet-selector/modal-ui': 8.10.2(near-api-js@3.0.4)
-      axios: 1.12.0
       jwt-decode: 4.0.0
       near-api-js: 3.0.4
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
       styled-components: 6.1.19(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
     transitivePeerDependencies:
-      - debug
       - encoding
 
   '@calimero-network/mero-icons@0.0.6(react@19.1.0)':
