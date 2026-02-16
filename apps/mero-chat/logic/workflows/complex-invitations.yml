@@ -1,0 +1,312 @@
+name: Complex Invitations Workflow
+description: >
+  Tests both private (invite_identity/join_context) and open (invite_open/join_open)
+  invitation flows in one context: Node 2 joins via private invite, Nodes 3 and 4
+  via open invitation. Then join_chat, messaging, and sync checks across all nodes.
+
+nodes:
+  chain_id: testnet-1
+  count: 4
+  image: ghcr.io/calimero-network/merod:prerelease
+  prefix: calimero-node
+
+steps:
+  # ── Bootstrap ──────────────────────────────────────────────────────────────
+  - name: Install Application
+    type: install_application
+    node: calimero-node-1
+    path: "../logic/res/curb.wasm"
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Create Context
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    params: '{"name": "ComplexInviteTest", "is_dm": false, "default_channels": [{"name": "general"}], "created_at": 1751952997, "owner_username": "Alice"}'
+    outputs:
+      context_id: contextId
+      member_public_key: memberPublicKey
+
+  - name: Create Identity on Node 2
+    type: create_identity
+    node: calimero-node-2
+    outputs:
+      public_key_2: publicKey
+
+  - name: Create Identity on Node 3
+    type: create_identity
+    node: calimero-node-3
+    outputs:
+      public_key_3: publicKey
+
+  - name: Create Identity on Node 4
+    type: create_identity
+    node: calimero-node-4
+    outputs:
+      public_key_4: publicKey
+
+  - name: Wait for Identity Setup
+    type: wait
+    seconds: 5
+
+  # ── Private invitation (Node 2) ─────────────────────────────────────────────
+  - name: Invite Node 2 (Private)
+    type: invite_identity
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    grantee_id: "{{public_key_2}}"
+    granter_id: "{{member_public_key}}"
+    capability: member
+    outputs:
+      invitation_2: invitation
+
+  - name: Join Context from Node 2
+    type: join_context
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    invitee_id: "{{public_key_2}}"
+    invitation: "{{invitation_2}}"
+
+  # ── Open invitation (1 invite = 1 node) ─────────────────────────────────────
+  - name: Create Open Invitation for Node 3
+    type: invite_open
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    granter_id: "{{member_public_key}}"
+    valid_for_blocks: 1000
+    outputs:
+      open_invitation_3: invitation
+
+  - name: Join via Open Invitation - Node 3
+    type: join_open
+    node: calimero-node-3
+    invitee_id: "{{public_key_3}}"
+    invitation: "{{open_invitation_3}}"
+    outputs:
+      joined_context_id_3: contextId
+      joined_member_key_3: memberPublicKey
+
+  - name: Create Open Invitation for Node 4
+    type: invite_open
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    granter_id: "{{member_public_key}}"
+    valid_for_blocks: 1000
+    outputs:
+      open_invitation_4: invitation
+
+  - name: Join via Open Invitation - Node 4
+    type: join_open
+    node: calimero-node-4
+    invitee_id: "{{public_key_4}}"
+    invitation: "{{open_invitation_4}}"
+    outputs:
+      joined_context_id_4: contextId
+      joined_member_key_4: memberPublicKey
+
+  - name: Assert All Joins Succeeded
+    type: assert
+    statements:
+      - "is_set({{invitation_2}})"
+      - "is_set({{joined_context_id_3}})"
+      - "is_set({{joined_context_id_4}})"
+
+  - name: Wait for All Nodes to Sync After Joins
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+      - calimero-node-3
+      - calimero-node-4
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # ── Join chat (usernames) ───────────────────────────────────────────────────
+  - name: Join Chat - Node 2 (Bob)
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: join_chat
+    args:
+      username: Bob
+      is_dm: false
+
+  - name: Join Chat - Node 3 (Charlie)
+    type: call
+    node: calimero-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_3}}"
+    method: join_chat
+    args:
+      username: Charlie
+      is_dm: false
+
+  - name: Join Chat - Node 4 (Dave)
+    type: call
+    node: calimero-node-4
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_4}}"
+    method: join_chat
+    args:
+      username: Dave
+      is_dm: false
+
+  - name: Wait for Chat Join Sync
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+      - calimero-node-3
+      - calimero-node-4
+    timeout: 30
+    check_interval: 2
+    trigger_sync: true
+
+  # ── Verify members ─────────────────────────────────────────────────────────
+  # get_chat_members returns result = {"output": [userId, ...]} (other members)
+  - name: Get Chat Members
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_chat_members
+    outputs:
+      members: result
+
+  - name: Assert All Four Members Present
+    type: assert
+    statements:
+      - "is_set({{members}})"
+      - "contains({{members}}, '{{public_key_2}}')"
+      - "contains({{members}}, '{{public_key_3}}')"
+      - "contains({{members}}, '{{public_key_4}}')"
+
+  # ── Messaging from all nodes ───────────────────────────────────────────────
+  - name: Send Message - Alice
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: send_message
+    args:
+      group:
+        name: general
+      message: "Hello from Alice (private + open invite test)"
+      parent_message: null
+      mentions: []
+      mentions_usernames: []
+      timestamp: 1751953001
+      sender_username: Alice
+
+  - name: Send Message - Bob
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: send_message
+    args:
+      group:
+        name: general
+      message: "Bob here (joined via private invite)"
+      parent_message: null
+      mentions: []
+      mentions_usernames: []
+      timestamp: 1751953002
+      sender_username: Bob
+
+  - name: Send Message - Charlie
+    type: call
+    node: calimero-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_3}}"
+    method: send_message
+    args:
+      group:
+        name: general
+      message: "Charlie here (joined via open invite)"
+      parent_message: null
+      mentions: []
+      mentions_usernames: []
+      timestamp: 1751953003
+      sender_username: Charlie
+
+  - name: Send Message - Dave
+    type: call
+    node: calimero-node-4
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_4}}"
+    method: send_message
+    args:
+      group:
+        name: general
+      message: "Dave here (also open invite)"
+      parent_message: null
+      mentions: []
+      mentions_usernames: []
+      timestamp: 1751953004
+      sender_username: Dave
+
+  - name: Wait for Message Sync
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+      - calimero-node-3
+      - calimero-node-4
+    timeout: 30
+    check_interval: 2
+    trigger_sync: true
+
+  # ── Verify messages on multiple nodes ─────────────────────────────────────
+  - name: Get Messages - Node 1
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_messages
+    args:
+      group:
+        name: general
+      parent_message: null
+      limit: 10
+      offset: 0
+    outputs:
+      messages_node1: result
+
+  - name: Get Messages - Node 4
+    type: call
+    node: calimero-node-4
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_4}}"
+    method: get_messages
+    args:
+      group:
+        name: general
+      parent_message: null
+      limit: 10
+      offset: 0
+    outputs:
+      messages_node4: result
+
+  - name: Assert All Messages Synced
+    type: assert
+    statements:
+      - "contains({{messages_node1}}, 'Hello from Alice')"
+      - "contains({{messages_node1}}, 'Bob here')"
+      - "contains({{messages_node1}}, 'Charlie here')"
+      - "contains({{messages_node1}}, 'Dave here')"
+      - "contains({{messages_node4}}, 'Hello from Alice')"
+      - "contains({{messages_node4}}, 'Bob here')"
+      - "contains({{messages_node4}}, 'Charlie here')"
+      - "contains({{messages_node4}}, 'Dave here')"
+
+stop_all_nodes: true
+restart: false
+wait_timeout: 90

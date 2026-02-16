@@ -1,0 +1,139 @@
+# Run merobox workflow tests when logic changes.
+# Only triggers on pushes/PRs that modify files under logic/
+
+name: Workflow Tests
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'logic/**'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'logic/**'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  workflow-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.89.0"
+          targets: wasm32-unknown-unknown
+
+      - name: Build curb WASM
+        run: |
+          cd logic
+          cargo build --target wasm32-unknown-unknown --profile app-release
+          mkdir -p res
+          cp target/wasm32-unknown-unknown/app-release/curb.wasm res/
+
+      - name: Install merobox
+        run: |
+          curl -fsSL https://calimero-network.github.io/merobox/gpg.key | sudo tee /usr/share/keyrings/merobox.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/merobox.gpg] https://calimero-network.github.io/merobox stable main" | sudo tee /etc/apt/sources.list.d/merobox.list
+          sudo apt update
+          sudo apt install -y merobox
+
+      - name: Verify merobox installation
+        run: merobox --version
+
+      - name: Run simple-invitation workflow
+        working-directory: workflows
+        run: |
+          max_attempts=2
+          attempt=1
+          success=false
+          while [ $attempt -le $max_attempts ]; do
+            if [ $attempt -gt 1 ]; then
+              merobox stop --all || true
+              merobox nuke --force || true
+              sleep 2
+            fi
+            if merobox bootstrap run simple-invitation.yml; then
+              success=true
+              break
+            fi
+            attempt=$((attempt + 1))
+          done
+          merobox stop --all || true
+          merobox nuke --force || true
+          if [ "$success" = false ]; then exit 1; fi
+
+      - name: Run simple-open-invitation workflow
+        working-directory: workflows
+        run: |
+          max_attempts=2
+          attempt=1
+          success=false
+          while [ $attempt -le $max_attempts ]; do
+            if [ $attempt -gt 1 ]; then
+              merobox stop --all || true
+              merobox nuke --force || true
+              sleep 2
+            fi
+            if merobox bootstrap run simple-open-invitation.yml; then
+              success=true
+              break
+            fi
+            attempt=$((attempt + 1))
+          done
+          merobox stop --all || true
+          merobox nuke --force || true
+          if [ "$success" = false ]; then exit 1; fi
+
+      - name: Run complex-invitations workflow
+        working-directory: workflows
+        run: |
+          max_attempts=2
+          attempt=1
+          success=false
+          while [ $attempt -le $max_attempts ]; do
+            if [ $attempt -gt 1 ]; then
+              merobox stop --all || true
+              merobox nuke --force || true
+              sleep 2
+            fi
+            if merobox bootstrap run complex-invitations.yml; then
+              success=true
+              break
+            fi
+            attempt=$((attempt + 1))
+          done
+          merobox stop --all || true
+          merobox nuke --force || true
+          if [ "$success" = false ]; then exit 1; fi
+
+      - name: Run full-logic-test workflow
+        working-directory: workflows
+        run: |
+          max_attempts=2
+          attempt=1
+          success=false
+          while [ $attempt -le $max_attempts ]; do
+            if [ $attempt -gt 1 ]; then
+              merobox stop --all || true
+              merobox nuke --force || true
+              sleep 2
+            fi
+            if merobox bootstrap run full-logic-test.yml; then
+              success=true
+              break
+            fi
+            attempt=$((attempt + 1))
+          done
+          merobox stop --all || true
+          merobox nuke --force || true
+          if [ "$success" = false ]; then exit 1; fi

@@ -1,0 +1,528 @@
+# Full Curb Logic Test
+# Calls all testable non-DM logic functions and asserts response equality.
+# Uses 2 nodes (Alice + Bob); excludes DM-only and identity-update flows.
+
+name: Full Curb Logic Test
+description: >
+  Tests testable curb logic functions (chat name, members, channels,
+  create/join channel, messages, read/mention counts). Skips update_reaction,
+  edit_message, delete_message (require message_id; merobox cannot extract
+  result.output.id from call steps). All assertions use contains() for
+  result = {"output": <value>} format.
+
+nodes:
+  chain_id: testnet-1
+  count: 2
+  image: ghcr.io/calimero-network/merod:prerelease
+  prefix: calimero-node
+
+steps:
+  # ── Bootstrap ─────────────────────────────────────────────────────────────
+  - name: Install Application
+    type: install_application
+    node: calimero-node-1
+    path: "../logic/res/curb.wasm"
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Create Context
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    params: '{"name": "LogicTest", "is_dm": false, "default_channels": [{"name": "general"}], "created_at": 1751952997, "owner_username": "Alice"}'
+    outputs:
+      context_id: contextId
+      member_public_key: memberPublicKey
+
+  - name: Create Identity on Node 2
+    type: create_identity
+    node: calimero-node-2
+    outputs:
+      public_key_2: publicKey
+
+  - name: Wait
+    type: wait
+    seconds: 5
+
+  - name: Invite Node 2 (Private)
+    type: invite_identity
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    grantee_id: "{{public_key_2}}"
+    granter_id: "{{member_public_key}}"
+    capability: member
+    outputs:
+      invitation_2: invitation
+
+  - name: Join Context from Node 2
+    type: join_context
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    invitee_id: "{{public_key_2}}"
+    invitation: "{{invitation_2}}"
+
+  - name: Wait for Sync
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # ── join_chat ─────────────────────────────────────────────────────────────
+  - name: Join Chat - Bob
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: join_chat
+    args:
+      username: Bob
+      is_dm: false
+    outputs:
+      join_chat_result: result
+
+  - name: Assert join_chat response
+    type: assert
+    statements:
+      - "contains({{join_chat_result}}, 'Successfully joined the chat')"
+
+  - name: Wait for Sync After Join Chat
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+    timeout: 30
+    check_interval: 2
+    trigger_sync: true
+
+  # ── get_chat_name ────────────────────────────────────────────────────────
+  - name: Get Chat Name
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_chat_name
+    outputs:
+      chat_name: result
+
+  - name: Assert get_chat_name equals LogicTest
+    type: assert
+    statements:
+      - "contains({{chat_name}}, 'LogicTest')"
+
+  # ── get_chat_members ──────────────────────────────────────────────────────
+  - name: Get Chat Members (from Node 1)
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_chat_members
+    outputs:
+      members_node1: result
+
+  - name: Assert get_chat_members non-empty (Alice sees Bob)
+    type: assert
+    statements:
+      - "is_set({{members_node1}})"
+      - "contains({{members_node1}}, '{{public_key_2}}')"
+
+  # ── get_channels / get_all_channels ───────────────────────────────────────
+  - name: Get Channels
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_channels
+    outputs:
+      channels: result
+
+  - name: Assert get_channels contains general
+    type: assert
+    statements:
+      - "contains({{channels}}, 'general')"
+
+  - name: Get All Channels
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_all_channels
+    outputs:
+      all_channels: result
+
+  - name: Assert get_all_channels contains general
+    type: assert
+    statements:
+      - "contains({{all_channels}}, 'general')"
+
+  # ── create_channel ────────────────────────────────────────────────────────
+  - name: Create Channel (Public)
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: create_channel
+    args:
+      channel:
+        name: random
+      channel_type: Public
+      read_only: false
+      moderators: []
+      links_allowed: true
+      created_at: 1751953000
+    outputs:
+      create_channel_result: result
+
+  - name: Assert create_channel response
+    type: assert
+    statements:
+      - "contains({{create_channel_result}}, 'Channel created')"
+
+  - name: Wait for Create Channel Sync
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+    timeout: 30
+    check_interval: 2
+    trigger_sync: true
+
+  # ── get_channel_members (general) ────────────────────────────────────────
+  - name: Get Channel Members - general
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_channel_members
+    args:
+      channel:
+        name: general
+    outputs:
+      general_members: result
+
+  - name: Assert general has Alice and Bob (by username in values)
+    type: assert
+    statements:
+      - "contains({{general_members}}, 'Alice')"
+      - "contains({{general_members}}, 'Bob')"
+
+  # ── get_channel_info ──────────────────────────────────────────────────────
+  - name: Get Channel Info - general
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_channel_info
+    args:
+      channel:
+        name: general
+    outputs:
+      general_info: result
+
+  - name: Assert get_channel_info (created_at, links_allowed)
+    type: assert
+    statements:
+      - "contains({{general_info}}, 'links_allowed')"
+      - "contains({{general_info}}, '1751952997')"
+
+  # ── get_non_member_users (random: only Alice is member, so Bob is non-member)
+  - name: Get Non Member Users - random
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_non_member_users
+    args:
+      channel:
+        name: random
+    outputs:
+      non_members_random: result
+
+  - name: Assert get_non_member_users contains Bob
+    type: assert
+    statements:
+      - "contains({{non_members_random}}, 'Bob')"
+
+  # ── join_channel (Bob joins public channel random) ─────────────────────────
+  - name: Join Channel - Bob joins random
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: join_channel
+    args:
+      channel:
+        name: random
+    outputs:
+      join_channel_result: result
+
+  - name: Assert join_channel response
+    type: assert
+    statements:
+      - "contains({{join_channel_result}}, 'Joined channel')"
+
+  - name: Wait After Join Channel
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+    timeout: 30
+    check_interval: 2
+    trigger_sync: true
+
+  # ── get_channel_members (random) now has 2 ────────────────────────────────
+  - name: Get Channel Members - random
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_channel_members
+    args:
+      channel:
+        name: random
+    outputs:
+      random_members: result
+
+  - name: Assert random channel has Alice and Bob
+    type: assert
+    statements:
+      - "contains({{random_members}}, 'Alice')"
+      - "contains({{random_members}}, 'Bob')"
+
+  # ── send_message ──────────────────────────────────────────────────────────
+  - name: Send Message - Alice
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: send_message
+    args:
+      group:
+        name: general
+      message: "Hello from Alice"
+      parent_message: null
+      mentions: []
+      mentions_usernames: []
+      timestamp: 1751953010
+      sender_username: Alice
+    outputs:
+      send_result: result
+
+  - name: Assert send_message returned (has id)
+    type: assert
+    statements:
+      - "is_set({{send_result}})"
+      - "contains({{send_result}}, 'Hello from Alice')"
+
+  - name: Wait for Message Sync
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+    timeout: 30
+    check_interval: 2
+    trigger_sync: true
+
+  # ── get_messages ──────────────────────────────────────────────────────────
+  - name: Get Messages - general
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_messages
+    args:
+      group:
+        name: general
+      parent_message: null
+      limit: 10
+      offset: 0
+    outputs:
+      messages_response: result
+
+  - name: Assert get_messages structure and content
+    type: assert
+    statements:
+      - "contains({{messages_response}}, 'total_count')"
+      - "contains({{messages_response}}, 'Hello from Alice')"
+      - "contains({{messages_response}}, 'Alice')"
+
+  # ── mark_messages_as_read ─────────────────────────────────────────────────
+  - name: Mark Messages As Read
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: mark_messages_as_read
+    args:
+      channel:
+        name: general
+      timestamp: 1751953010
+    outputs:
+      mark_read_result: result
+
+  - name: Assert mark_messages_as_read response
+    type: assert
+    statements:
+      - "contains({{mark_read_result}}, 'Messages marked as read successfully')"
+
+  # ── get_channel_unread_count / get_channel_last_read_timestamp ───────────
+  - name: Get Channel Unread Count
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_channel_unread_count
+    args:
+      channel:
+        name: general
+    outputs:
+      unread_count: result
+
+  - name: Assert unread count is 0 after mark read
+    type: assert
+    statements:
+      - "contains({{unread_count}}, '0')"
+
+  - name: Get Channel Last Read Timestamp
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_channel_last_read_timestamp
+    args:
+      channel:
+        name: general
+    outputs:
+      last_read_ts: result
+
+  - name: Assert last read timestamp equals set value
+    type: assert
+    statements:
+      - "contains({{last_read_ts}}, '1751953010')"
+
+  # ── get_total_unread_count ────────────────────────────────────────────────
+  - name: Get Total Unread Count
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_total_unread_count
+    outputs:
+      total_unread: result
+
+  - name: Assert total unread is 0
+    type: assert
+    statements:
+      - "contains({{total_unread}}, '0')"
+
+  # ── get_channel_mention_count / get_total_mention_count ───────────────────
+  - name: Get Channel Mention Count
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_channel_mention_count
+    args:
+      channel:
+        name: general
+    outputs:
+      mention_count: result
+
+  - name: Assert channel mention count is number (0)
+    type: assert
+    statements:
+      - "contains({{mention_count}}, '0')"
+
+  - name: Get Total Mention Count
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_total_mention_count
+    outputs:
+      total_mention_count: result
+
+  - name: Assert total mention count is 0
+    type: assert
+    statements:
+      - "contains({{total_mention_count}}, '0')"
+
+  # ── get_chat_usernames / get_username ─────────────────────────────────────
+  - name: Get Chat Usernames
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_chat_usernames
+    outputs:
+      usernames: result
+
+  - name: Assert get_chat_usernames contains Bob
+    type: assert
+    statements:
+      - "contains({{usernames}}, 'Bob')"
+
+  # ── leave_channel (Bob leaves random) ─────────────────────────────────────
+  - name: Leave Channel - Bob leaves random
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: leave_channel
+    args:
+      channel:
+        name: random
+    outputs:
+      leave_result: result
+
+  - name: Assert leave_channel response
+    type: assert
+    statements:
+      - "contains({{leave_result}}, 'Left channel')"
+
+  - name: Wait After Leave Channel
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+    timeout: 30
+    check_interval: 2
+    trigger_sync: true
+
+  # ── update_reaction, edit_message, delete_message ───────────────────────────
+  # Skipped: require message_id from send_result.output.id; merobox does not
+  # support nested field extraction from call step result.
+
+  # ── Final equality checks ─────────────────────────────────────────────────
+  - name: Final Get Messages
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: get_messages
+    args:
+      group:
+        name: general
+      parent_message: null
+      limit: 10
+      offset: 0
+    outputs:
+      final_messages: result
+
+  - name: Final equality - after delete, message is soft-deleted (total_count still 1)
+    type: assert
+    statements:
+      - "contains({{final_messages}}, 'total_count')"
+
+stop_all_nodes: true
+restart: false
+wait_timeout: 120

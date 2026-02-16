@@ -1,0 +1,198 @@
+name: Simple Private Invitation Workflow
+description: >
+  Tests the basic private (regular) invitation flow: install app, create context,
+  invite a second node via invite_identity, join, send messages, and verify sync.
+force_pull_image: true
+
+nodes:
+  chain_id: testnet-1
+  count: 2
+  image: ghcr.io/calimero-network/merod:prerelease
+  prefix: calimero-node
+
+steps:
+  # ── Bootstrap ──────────────────────────────────────────────────────────────
+  - name: Install Application
+    type: install_application
+    node: calimero-node-1
+    path: "../logic/res/curb.wasm"
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Create Context
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    params: '{"name": "PrivateInviteTest", "is_dm": false, "default_channels": [{"name": "general"}], "created_at": 1751952997, "owner_username": "Alice"}'
+    outputs:
+      context_id: contextId
+      member_public_key: memberPublicKey
+
+  - name: Create Identity on Node 2
+    type: create_identity
+    node: calimero-node-2
+    outputs:
+      public_key_2: publicKey
+
+  - name: Wait for Identity Setup
+    type: wait
+    seconds: 5
+
+  # ── Private Invitation ─────────────────────────────────────────────────────
+  - name: Invite Node 2 (Private)
+    type: invite_identity
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    grantee_id: "{{public_key_2}}"
+    granter_id: "{{member_public_key}}"
+    capability: member
+    outputs:
+      invitation_2: invitation
+
+  - name: Assert Invitation Created
+    type: assert
+    statements:
+      - "is_set({{invitation_2}})"
+      - "{{invitation_2}} != ''"
+
+  - name: Join Context from Node 2
+    type: join_context
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    invitee_id: "{{public_key_2}}"
+    invitation: "{{invitation_2}}"
+
+  - name: Wait for Context Sync
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # ── Join Chat ──────────────────────────────────────────────────────────────
+  - name: Join Chat - Node 2 (Bob)
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: join_chat
+    args:
+      username: Bob
+      is_dm: false
+
+  - name: Wait for Join Sync
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+    timeout: 30
+    check_interval: 2
+    trigger_sync: true
+
+  # ── Verify Members ─────────────────────────────────────────────────────────
+  # get_chat_members returns result = {"output": [userId, ...]} (other members)
+  - name: Get Chat Members from Node 1
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_chat_members
+    outputs:
+      members_node1: result
+
+  - name: Assert Both Members Present
+    type: assert
+    statements:
+      - "is_set({{members_node1}})"
+      - "contains({{members_node1}}, '{{public_key_2}}')"
+
+  # ── Messaging ──────────────────────────────────────────────────────────────
+  - name: Send Message - Alice
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: send_message
+    args:
+      group:
+        name: general
+      message: "Hello from Alice!"
+      parent_message: null
+      mentions: []
+      mentions_usernames: []
+      timestamp: 1751953001
+      sender_username: Alice
+
+  - name: Send Message - Bob
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: send_message
+    args:
+      group:
+        name: general
+      message: "Hey Alice - Bob here!"
+      parent_message: null
+      mentions: []
+      mentions_usernames: []
+      timestamp: 1751953002
+      sender_username: Bob
+
+  - name: Wait for Message Sync
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+    timeout: 30
+    check_interval: 2
+    trigger_sync: true
+
+  # ── Verify Messages ────────────────────────────────────────────────────────
+  - name: Get Messages from Node 1
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_messages
+    args:
+      group:
+        name: general
+      parent_message: null
+      limit: 10
+      offset: 0
+    outputs:
+      messages_node1: result
+
+  - name: Get Messages from Node 2
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: get_messages
+    args:
+      group:
+        name: general
+      parent_message: null
+      limit: 10
+      offset: 0
+    outputs:
+      messages_node2: result
+
+  - name: Assert Messages Synced on Both Nodes
+    type: assert
+    statements:
+      - "contains({{messages_node1}}, 'Hello from Alice!')"
+      - "contains({{messages_node1}}, 'Hey Alice - Bob here!')"
+      - "contains({{messages_node2}}, 'Hello from Alice!')"
+      - "contains({{messages_node2}}, 'Hey Alice - Bob here!')"
+
+stop_all_nodes: true
+restart: false
+wait_timeout: 60
