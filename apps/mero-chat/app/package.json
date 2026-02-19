@@ -37,7 +37,7 @@
     "dompurify": "^3.3.0",
     "iframe-resizer-react": "^5.1.5",
     "install": "^0.13.0",
-    "lodash": "^4.17.21",
+    "lodash": "^4.17.23",
     "prettier": "^3.6.0",
     "quill": "^2.0.3",
     "react": "^19.1.0",
