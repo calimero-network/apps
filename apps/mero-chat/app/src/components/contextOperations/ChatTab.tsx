@@ -217,10 +217,11 @@ export default function ChatTab({
           setContextIdentities([]);
           return;
         }
-        if (res.data?.identities && res.data.identities.length > 0) {
-          setContextIdentities(res.data.identities);
-          if (res.data.identities.length === 1) {
-            setSelectedIdentityId(res.data.identities[0]);
+        const identities = res.data?.data?.identities;
+        if (identities && identities.length > 0) {
+          setContextIdentities(identities);
+          if (identities.length === 1) {
+            setSelectedIdentityId(identities[0]);
           }
         } else {
           setContextIdentities([]);

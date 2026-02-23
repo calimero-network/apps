@@ -1,5 +1,5 @@
 import {
-  CalimeroConnectButton,
+  DesktopConnectButton,
   useCalimero,
 } from "@calimero-network/calimero-client";
 import { styled } from "styled-components";
@@ -154,7 +154,7 @@ export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
         {!isAuthenticated && !isConfigSet ? (
           <ConnectWrapper>
             <Subtitle>Connect your Node to get started</Subtitle>
-            <CalimeroConnectButton />
+            <DesktopConnectButton />
           </ConnectWrapper>
         ) : (
           <>

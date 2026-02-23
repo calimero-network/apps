@@ -27,6 +27,11 @@ export function getContextIdFromUrl(): string {
   return getUrlParam("context-id") || import.meta.env.VITE_CONTEXT_ID || "";
 }
 
+/** Node URL: URL param `node_url` or `node-url` for connect flow (empty if not set) */
+export function getNodeUrlFromUrl(): string {
+  return getUrlParam("node_url") || getUrlParam("node-url") || "";
+}
+
 /** @deprecated Use getApplicationId() for dynamic app-id (URL/env). */
 export const APPLICATION_ID =
   import.meta.env.VITE_APPLICATION_ID ||
