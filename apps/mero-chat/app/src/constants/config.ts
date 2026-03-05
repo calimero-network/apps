@@ -1,7 +1,11 @@
 const getUrlParam = (name: string): string => {
   if (typeof window === "undefined") return "";
-  const params = new URLSearchParams(window.location.search);
-  return params.get(name)?.trim() || "";
+  const searchParams = new URLSearchParams(window.location.search);
+  const fromSearch = searchParams.get(name)?.trim() || "";
+  if (fromSearch) return fromSearch;
+  // Also check hash params (used by Tauri desktop integration)
+  const hashParams = new URLSearchParams(window.location.hash.slice(1));
+  return hashParams.get(name)?.trim() || "";
 };
 
 /** Application ID: URL param `app-id` > env VITE_APPLICATION_ID > fallback */
