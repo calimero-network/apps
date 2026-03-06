@@ -108,11 +108,16 @@ export default function InvitationHandlerPopup({ onSuccess, onError }: Invitatio
 
       const executorPublicKey = identityResponse.data.publicKey;
 
-      // Join context using the invitation
+      // Join context using the invitation.
+      // The stored payload may be wrapped in a { data: ... } envelope —
+      // unwrap it if so, since the node API expects { invitation, inviter_signature } directly.
+      const parsed = JSON.parse(invitationPayload.trim());
+      const signedInvitation: SignedOpenInvitation = parsed.data ?? parsed;
+
       const joinResponse: ResponseData<JoinContextResponse> = await apiClient
         .node()
         .joinContextByOpenInvitation(
-          JSON.parse(invitationPayload.trim()) as SignedOpenInvitation,
+          signedInvitation,
           executorPublicKey
         );
 
