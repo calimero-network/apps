@@ -106,7 +106,10 @@ export default function InvitationHandlerPopup({ onSuccess, onError }: Invitatio
         return;
       }
 
-      const executorPublicKey = identityResponse.data.publicKey;
+      // Server returns { data: { publicKey } } wrapped in withResponseData → identityResponse.data = { data: { publicKey } }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const identityData = (identityResponse.data as any).data ?? identityResponse.data;
+      const executorPublicKey: string = identityData.publicKey;
 
       // Join context using the invitation.
       // The stored payload may be wrapped in a { data: ... } envelope —
@@ -139,7 +142,7 @@ export default function InvitationHandlerPopup({ onSuccess, onError }: Invitatio
       }
 
       // Store the new context data
-      localStorage.setItem("new-context-identity", JSON.stringify(identityResponse.data));
+      localStorage.setItem("new-context-identity", JSON.stringify(identityData));
       setContextId(joinResponse.data.contextId);
       setExecutorPublicKey(executorPublicKey);
       
