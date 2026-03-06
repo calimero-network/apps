@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { styled } from "styled-components";
 import {
-  CalimeroConnectButton,
   setAppEndpointKey,
   setContextId,
   setExecutorPublicKey,
@@ -14,7 +13,7 @@ import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 import { ContextApiDataSource } from "../../api/dataSource/nodeApiDataSource";
 import { extractErrorMessage } from "../../utils/errorParser";
 import { defaultActiveChat } from "../../mock/mock";
-import { getStoredSession, updateSessionChat } from "../../utils/session";
+import { getAllDmContextIds, getStoredSession, updateSessionChat } from "../../utils/session";
 import type { ResponseData } from "@calimero-network/calimero-client";
 import type { FetchContextIdentitiesResponse } from "@calimero-network/calimero-client/lib/api/nodeApi";
 import type { ActiveChat } from "../../types/Common";
@@ -34,22 +33,6 @@ const TabContent = styled.div`
   width: 100%;
 `;
 
-const ConnectWrapper = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  text-align: center;
-`;
-
-const Subtitle = styled.h2`
-  text-align: center;
-  color: #b8b8d1;
-  margin-bottom: 0.6rem;
-  font-size: 0.7rem;
-  font-weight: 600;
-`;
 
 const Form = styled.form`
   display: flex;
@@ -78,35 +61,42 @@ const Note = styled.p`
 `;
 
 const Select = styled.select`
-  padding: 0.6rem;
-  background: rgba(255, 255, 255, 0.05);
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0.65rem 2.5rem 0.65rem 0.85rem;
+  background-color: rgba(255, 255, 255, 0.06);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23b8b8d1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 16px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  border-radius: 10px;
   color: #fff;
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
   width: 100%;
 
   &:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.2);
+    background-color: rgba(255, 255, 255, 0.09);
+    border-color: rgba(255, 255, 255, 0.22);
   }
 
   &:focus {
     outline: none;
     border-color: #7c3aed;
-    background: rgba(255, 255, 255, 0.08);
+    background-color: rgba(255, 255, 255, 0.09);
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.18);
   }
 
   &:disabled {
-    opacity: 0.5;
+    opacity: 0.45;
     cursor: not-allowed;
   }
 
   option {
-    background: #1a1a1f;
-    color: #fff;
+    background: #18181c;
+    color: #e8e8f0;
   }
 `;
 
@@ -134,7 +124,7 @@ export default function ChatTab({
   isConfigSet,
   onInvitationSaved,
 }: ChatTabProps) {
-  const [nodeUrl, setNodeUrl] = useState("");
+  const [, setNodeUrl] = useState("");
   const [availableContexts, setAvailableContexts] = useState<ContextInfo[]>([]);
   const [selectedContextId, setSelectedContextId] = useState("");
   const [contextIdentities, setContextIdentities] = useState<string[]>([]);
@@ -166,9 +156,14 @@ export default function ChatTab({
       const nodeApi = new ContextApiDataSource();
       const response = await nodeApi.listContexts();
       if (response.data && response.data.length > 0) {
-        setAvailableContexts(response.data);
-        if (response.data.length === 1) {
-          setSelectedContextId(response.data[0].contextId);
+        const dmContextIds = new Set(getAllDmContextIds());
+        const nonDmContexts = response.data.filter(
+          (ctx) => !dmContextIds.has(ctx.contextId)
+        );
+        const contextsToShow = nonDmContexts.length > 0 ? nonDmContexts : response.data;
+        setAvailableContexts(contextsToShow);
+        if (contextsToShow.length === 1) {
+          setSelectedContextId(contextsToShow[0].contextId);
         }
       } else if (response.error) {
         setError(response.error.message || "Failed to fetch contexts");
@@ -324,7 +319,7 @@ export default function ChatTab({
     setSuccess("");
 
     try {
-      const url = getAppEndpointKey() || nodeUrl;
+      const url = getAppEndpointKey();
       if (url) setAppEndpointKey(url.trim());
       setContextId(selectedContextId);
       setExecutorPublicKey(selectedIdentityId);
@@ -364,15 +359,8 @@ export default function ChatTab({
     }
   };
 
-  if (!isAuthenticated && !isConfigSet) {
-    return (
-      <TabContent>
-        <ConnectWrapper>
-          <Subtitle>Connect your Node to get started</Subtitle>
-          <CalimeroConnectButton />
-        </ConnectWrapper>
-      </TabContent>
-    );
+  if (!getAppEndpointKey()) {
+    return null;
   }
 
   // Config set but no chat username yet — show join form. Only hide when they have chat-username (nothing else).
@@ -461,16 +449,6 @@ export default function ChatTab({
   return (
     <TabContent>
       <Form onSubmit={handleSubmit}>
-        <InputGroup>
-          <Label>Node URL</Label>
-          <Input
-            id="nodeUrl"
-            type="text"
-            value={nodeUrl || "Loading..."}
-            disabled
-          />
-        </InputGroup>
-
         <InputGroup>
           <Label>Context</Label>
           <Select

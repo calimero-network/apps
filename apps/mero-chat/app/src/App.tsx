@@ -34,7 +34,6 @@ function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const [isConfigSet, setIsConfigSet] = useState(false);
-  const [hasEndpoint, setHasEndpoint] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const hasInitializedRef = useRef(false);
 
@@ -75,7 +74,6 @@ function App() {
         authConfig?.jwtToken;
 
       setIsConfigSet(Boolean(hasRequiredConfig));
-      setHasEndpoint(Boolean(authConfig?.appEndpointKey));
       setIsLoading(false);
       hasInitializedRef.current = true;
     }, 100);
@@ -112,7 +110,6 @@ function App() {
                 <Login
                   isAuthenticated={isAuthenticated}
                   isConfigSet={isConfigSet}
-                  hasEndpoint={hasEndpoint}
                 />
               )
             }

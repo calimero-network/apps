@@ -1,7 +1,4 @@
-import {
-  DesktopConnectButton,
-  useCalimero,
-} from "@calimero-network/calimero-client";
+import { useCalimero } from "@calimero-network/calimero-client";
 import { styled } from "styled-components";
 import TabbedInterface from "../../components/contextOperations/TabbedInterface";
 import { Button } from "@calimero-network/mero-ui";
@@ -9,10 +6,17 @@ import {
   clearDmContextId,
   clearStoredSession,
   clearSessionActivity,
+  getAllDmContextIds,
 } from "../../utils/session";
 import { useState, useEffect, useCallback } from "react";
 import { getInvitationFromStorage } from "../../utils/invitation";
 import InvitationHandlerPopup from "../../components/popups/InvitationHandlerPopup";
+
+declare global {
+  interface Window {
+    __TAURI_INVOKE__?: (cmd: string, args?: unknown) => Promise<unknown>;
+  }
+}
 
 export const Wrapper = styled.div`
   display: flex;
@@ -105,13 +109,13 @@ export const LogoutWrapper = styled.div`
 interface LoginProps {
   isAuthenticated: boolean;
   isConfigSet: boolean;
-  hasEndpoint: boolean;
 }
 
-export default function Login({ isAuthenticated, isConfigSet, hasEndpoint }: LoginProps) {
+export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
   const { logout } = useCalimero();
   const [hasInvitation, setHasInvitation] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [loggedOut, setLoggedOut] = useState(false);
 
   const tabs = [{ id: "chat", label: "Chat" }];
 
@@ -123,13 +127,29 @@ export default function Login({ isAuthenticated, isConfigSet, hasEndpoint }: Log
     refreshInvitation();
   }, [refreshInvitation]);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     clearStoredSession();
     clearDmContextId();
     clearSessionActivity();
     logout();
+    // Preserve the persistent DM context IDs across the clear so the
+    // context dropdown can still filter them on next login.
+    const dmContextIds = getAllDmContextIds();
     localStorage.clear();
-    window.close();
+    if (dmContextIds.length > 0) {
+      localStorage.setItem("allDmContextIds", JSON.stringify(dmContextIds));
+    }
+    setLoggedOut(true);
+    // Close the Tauri window via IPC (same mechanism as proxy_script.js)
+    try {
+      if (window.__TAURI_INVOKE__) {
+        await window.__TAURI_INVOKE__("close_current_window");
+      } else {
+        window.close();
+      }
+    } catch {
+      // Window close failed — the loggedOut message is already shown
+    }
   };
 
   const handleInvitationSuccess = () => {
@@ -143,6 +163,21 @@ export default function Login({ isAuthenticated, isConfigSet, hasEndpoint }: Log
     setHasInvitation(false);
   };
 
+  if (loggedOut) {
+    return (
+      <Wrapper>
+        <Card>
+          <Title>You've been logged out</Title>
+          <ConnectWrapper>
+            <Subtitle>
+              Close this window and re-open the app from the desktop application.
+            </Subtitle>
+          </ConnectWrapper>
+        </Card>
+      </Wrapper>
+    );
+  }
+
   return (
     <Wrapper>
       {/* Show invitation popup on top of everything when user has authenticated */}
@@ -154,26 +189,19 @@ export default function Login({ isAuthenticated, isConfigSet, hasEndpoint }: Log
       )}
       <Card>
         <Title>Welcome to Calimero Chat</Title>
-        {!hasEndpoint ? (
-          <ConnectWrapper>
-            <Subtitle>Connect your Node to get started</Subtitle>
-            <DesktopConnectButton />
-          </ConnectWrapper>
-        ) : (
-          <>
-            <TabbedInterface
-              key={refreshKey}
-              tabs={tabs}
-              isAuthenticated={isAuthenticated}
-              isConfigSet={isConfigSet}
-              onInvitationSaved={refreshInvitation}
-            />
-            <LogoutWrapper>
-              <Button onClick={handleLogout} variant="secondary">
-                Logout
-              </Button>
-            </LogoutWrapper>
-          </>
+        <TabbedInterface
+          key={refreshKey}
+          tabs={tabs}
+          isAuthenticated={isAuthenticated}
+          isConfigSet={isConfigSet}
+          onInvitationSaved={refreshInvitation}
+        />
+        {(isAuthenticated || isConfigSet) && (
+          <LogoutWrapper>
+            <Button onClick={handleLogout} variant="secondary">
+              Logout
+            </Button>
+          </LogoutWrapper>
         )}
       </Card>
     </Wrapper>

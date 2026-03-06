@@ -10,6 +10,7 @@ import {
   type CurbMessage,
 } from "../../types/Common";
 import {
+  addDmContextId,
   getDmContextId,
   getStoredSession,
   setDmContextId,
@@ -400,7 +401,9 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
         };
       }
 
-      setDmContextId(sc?.contextId || dm?.context_id || "");
+      const dmCtxId = sc?.contextId || dm?.context_id || "";
+      setDmContextId(dmCtxId);
+      if (dmCtxId) addDmContextId(dmCtxId);
       mainMessagesRef.current.clear();
       threadMessagesRef.current.clear();
 
