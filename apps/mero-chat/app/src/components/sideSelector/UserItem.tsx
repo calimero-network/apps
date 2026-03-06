@@ -16,56 +16,69 @@ const UserListItem = styled.div<{
   $isCollapsed?: boolean;
 }>`
   display: flex;
-  justify-content: ${(props) =>
-    props.$isCollapsed ? "center" : "space-between"};
+  justify-content: ${(props) => (props.$isCollapsed ? "center" : "space-between")};
   align-items: center;
-  color: #777583;
-  padding-top: 0.375rem;
-  padding-bottom: 0.375rem;
-  padding-left: 0.75rem;
-  padding-right: 0.75rem;
-  border-radius: 0.375rem;
-  &:hover {
-    color: #ffffff;
-  }
-  &:hover {
-    background-color: #25252a;
-  }
+  padding: 0.35rem ${(props) => (props.$isCollapsed ? "0" : "0.625rem")};
+  border-radius: 7px;
   cursor: pointer;
-  ${({ $selected }) =>
-    $selected
-      ? "color: #fff; background-color: #25252a;"
-      : "color: #777583; background-color: #0E0E10;"}
-  ${({ $hasNewMessages }) => ($hasNewMessages ? "color: #fff !important;" : "")}
+  margin-bottom: 1px;
+  transition: all 0.12s ease;
+  position: relative;
+  border-left: 2px solid ${(props) => (props.$selected ? "#a5ff11" : "transparent")};
+
+  background: ${(props) => (props.$selected ? "rgba(165,255,17,0.07)" : "transparent")};
+  color: ${(props) =>
+    props.$selected
+      ? "#fff"
+      : props.$hasNewMessages
+      ? "#c8c7d1"
+      : "#5e5e6e"};
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.05) !important;
+    color: #d0d0d8 !important;
+    border-left-color: ${(props) => (props.$selected ? "#a5ff11" : "rgba(165,255,17,0.3)")} !important;
+  }
 `;
 
 const UserInfoContainer = styled.div`
   display: flex;
-  column-gap: 0.375rem;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1;
 `;
 
 const NameContainer = styled.div`
-  display: flex;
-  justify-content: start;
-  align-items: center;
-  width: 100%;
-  font-family: Helvetica Neue;
-  font-size: 14px;
-  font-style: normal;
+  font-size: 13.5px;
   font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+const ActionsContainer = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 `;
 
 const TrashButton = styled.button`
   background: transparent;
   border: none;
-  color: #777583;
+  color: rgba(255, 255, 255, 0.2);
   cursor: pointer;
-  padding: 4px;
-  margin-left: 8px;
+  padding: 3px;
   border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+
   &:hover {
-    background-color: #2a2a2e;
-    color: #fff;
+    background: rgba(255, 80, 80, 0.1);
+    color: rgba(255, 100, 100, 0.8);
   }
 `;
 
@@ -87,13 +100,13 @@ function UserItem({
   const { addToast } = useToast();
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 
-  // Persist delete modal openness across list refetch/re-render
   useEffect(() => {
     const key = sessionStorage.getItem("dm-delete-open");
     if (key && key === userDM.other_identity_old) {
       setIsDeleteOpen(true);
     }
   }, [userDM.other_identity_old]);
+
   const handleClick = useCallback(() => {
     onDMSelected(userDM, undefined, true);
   }, [userDM, onDMSelected]);
@@ -117,10 +130,8 @@ function UserItem({
       }
 
       addToast({ title: "DM", message: "DM deleted", type: "dm", duration: 2500 });
-
-      // Switch to a channel via provided selector (default to general)
       selectChannel({ type: "channel", id: "general", name: "general" });
-    } catch (_err) {
+    } catch {
       addToast({ title: "DM", message: "Failed to delete DM", type: "dm", duration: 3000 });
     }
   }, [userDM, addToast, selectChannel]);
@@ -138,50 +149,51 @@ function UserItem({
         <>
           <UserInfoContainer>
             <Avatar size="xs" name={userDM.other_username} />
-            <NameContainer>{`${userDM.other_username}`}</NameContainer>
+            <NameContainer>{userDM.other_username}</NameContainer>
           </UserInfoContainer>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {userDM.unread_messages > 0 && (
-            <UnreadMessagesBadge
-              messageCount={userDM.unread_messages.toString()}
-              backgroundColor="#777583"
-            />
-          )}
-          <ConfirmPopup
-            title="Delete DM"
-            message="This will delete the DM and its context for you. Are you sure?"
-            confirmLabel="Delete"
-            cancelLabel="Cancel"
-            onConfirm={confirmDelete}
-            onCancel={() => {
-              sessionStorage.removeItem("dm-delete-open");
-            }}
-            toggle={
-              <TrashButton
-                title="Delete DM"
-                aria-label="Delete DM"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  sessionStorage.setItem(
-                    "dm-delete-open",
-                    userDM.other_identity_old
-                  );
-                  setIsDeleteOpen(true);
-                }}
-              >
-                🗑
-              </TrashButton>
-            }
-            isOpen={isDeleteOpen}
-            setIsOpen={(open) => {
-              if (!open) {
+          <ActionsContainer>
+            {userDM.unread_messages > 0 && (
+              <UnreadMessagesBadge
+                messageCount={userDM.unread_messages.toString()}
+                backgroundColor="rgba(165,255,17,0.2)"
+                color="rgba(165,255,17,0.9)"
+              />
+            )}
+            <ConfirmPopup
+              title="Delete DM"
+              message="This will delete the DM and its context for you. Are you sure?"
+              confirmLabel="Delete"
+              cancelLabel="Cancel"
+              onConfirm={confirmDelete}
+              onCancel={() => {
                 sessionStorage.removeItem("dm-delete-open");
+              }}
+              toggle={
+                <TrashButton
+                  title="Delete DM"
+                  aria-label="Delete DM"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    sessionStorage.setItem("dm-delete-open", userDM.other_identity_old);
+                    setIsDeleteOpen(true);
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                    <path d="M10 11v6M14 11v6" />
+                    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                  </svg>
+                </TrashButton>
               }
-              setIsDeleteOpen(open);
-            }}
-            isChild
-          />
-          </div>
+              isOpen={isDeleteOpen}
+              setIsOpen={(open) => {
+                if (!open) sessionStorage.removeItem("dm-delete-open");
+                setIsDeleteOpen(open);
+              }}
+              isChild
+            />
+          </ActionsContainer>
         </>
       )}
     </UserListItem>

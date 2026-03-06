@@ -1,79 +1,253 @@
 import React, { useState, useEffect } from "react";
-import { styled } from "styled-components";
+import { styled, keyframes } from "styled-components";
 import {
   apiClient,
   getContextId,
   getExecutorPublicKey,
 } from "@calimero-network/calimero-client";
 import type { ResponseData } from "@calimero-network/calimero-client";
-import { Button, Input } from "@calimero-network/mero-ui";
 import type { ContextInviteByOpenInvitationResponse } from "@calimero-network/calimero-client/lib/api/nodeApi";
 import {
   generateInvitationUrl,
   generateInvitationDeepLink,
 } from "../../utils/invitation";
 
+// ─── Animations ────────────────────────────────────────────────────────────────
+
+const shimmer = keyframes`
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+`;
+
+const fadeSlideIn = keyframes`
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+`;
+
+const checkPop = keyframes`
+  0%   { transform: scale(0.5); opacity: 0; }
+  70%  { transform: scale(1.15); }
+  100% { transform: scale(1); opacity: 1; }
+`;
+
+// ─── Styled components ─────────────────────────────────────────────────────────
+
 const TabContent = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 1rem;
+  animation: ${fadeSlideIn} 0.2s ease both;
 `;
 
-const Form = styled.form`
+const InfoCard = styled.div`
+  background: rgba(165, 255, 17, 0.03);
+  border: 1px solid rgba(165, 255, 17, 0.1);
+  border-radius: 10px;
+  padding: 0.875rem;
+`;
+
+const CardLabel = styled.div`
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(165, 255, 17, 0.5);
+  margin-bottom: 0.625rem;
+`;
+
+const FieldRow = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-`;
-
-const InputGroup = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-`;
-
-const Label = styled.label`
-  font-size: 0.7rem;
-  font-weight: 500;
-  color: #b8b8d1;
-`;
-
-const Message = styled.div<{ type?: "success" | "error" }>`
-  padding: 0.6rem;
-  border-radius: 6px;
-  font-size: 0.8rem;
-  text-align: center;
-  color: ${({ type }) =>
-    type === "success" ? "#27ae60" : type === "error" ? "#e74c3c" : "#b8b8d1"};
-`;
-
-const ConfigInfo = styled.div`
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 6px;
-  padding: 0.5rem;
+  gap: 0.2rem;
   margin-bottom: 0.5rem;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
 `;
 
-const ConfigTitle = styled.h4`
-  color: #ffffff;
+const FieldLabel = styled.label`
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.3);
+  font-weight: 500;
+`;
+
+const FieldValue = styled.div`
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.55);
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`;
+
+// ── Success state ──────────────────────────────────────────────────────────────
+
+const SuccessCard = styled.div`
+  background: rgba(165, 255, 17, 0.04);
+  border: 1px solid rgba(165, 255, 17, 0.15);
+  border-radius: 10px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+`;
+
+const SuccessHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(165, 255, 17, 0.1);
+`;
+
+const CheckIcon = styled.div`
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(165, 255, 17, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: ${checkPop} 0.35s ease both;
+
+  svg { stroke: #a5ff11; }
+`;
+
+const SuccessText = styled.span`
   font-size: 0.8rem;
   font-weight: 600;
-  margin-bottom: 0.5rem;
+  color: rgba(165, 255, 17, 0.9);
 `;
 
-const SuccessMessage = styled.div`
-  color: #27ae60;
-  font-size: 0.9rem;
-  font-weight: 500;
-  text-align: center;
-  margin: 1rem 0;
+const LinkBlock = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
 `;
+
+const LinkLabel = styled.div`
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.3);
+  font-weight: 500;
+`;
+
+const LinkRow = styled.div`
+  display: flex;
+  gap: 0.375rem;
+`;
+
+const LinkInput = styled.input`
+  flex: 1;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 7px;
+  padding: 0.4rem 0.625rem;
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.5);
+  outline: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+
+  &:focus {
+    border-color: rgba(165, 255, 17, 0.2);
+  }
+`;
+
+const CopyButton = styled.button<{ $copied?: boolean }>`
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 7px;
+  border: 1px solid ${p => p.$copied ? "rgba(165,255,17,0.35)" : "rgba(165,255,17,0.2)"};
+  background: ${p => p.$copied ? "rgba(165,255,17,0.12)" : "rgba(165,255,17,0.06)"};
+  color: ${p => p.$copied ? "#a5ff11" : "rgba(165,255,17,0.7)"};
+  font-size: 0.72rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover:not(:disabled) {
+    border-color: rgba(165, 255, 17, 0.4);
+    background: rgba(165, 255, 17, 0.1);
+    color: #a5ff11;
+  }
+`;
+
+// ── Generate button + feedback ─────────────────────────────────────────────────
+
+const GenerateButton = styled.button<{ $loading?: boolean }>`
+  width: 100%;
+  padding: 0.625rem;
+  border-radius: 8px;
+  border: 1px solid rgba(165, 255, 17, 0.25);
+  background: ${p => p.$loading
+    ? "rgba(165,255,17,0.06)"
+    : "linear-gradient(135deg, rgba(165,255,17,0.12) 0%, rgba(165,255,17,0.06) 100%)"};
+  color: ${p => p.$loading ? "rgba(165,255,17,0.5)" : "rgba(165,255,17,0.9)"};
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: ${p => p.$loading ? "default" : "pointer"};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.15s ease;
+  letter-spacing: 0.01em;
+
+  background-size: 200% auto;
+  animation: ${p => p.$loading ? "none" : shimmer} 4s linear infinite;
+
+  &:hover:not(:disabled) {
+    border-color: rgba(165, 255, 17, 0.45);
+    background: rgba(165, 255, 17, 0.15);
+    color: #a5ff11;
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+`;
+
+const Spinner = styled.span`
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border: 1.5px solid rgba(165, 255, 17, 0.2);
+  border-top-color: rgba(165, 255, 17, 0.7);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+`;
+
+const ErrorMsg = styled.div`
+  background: rgba(255, 80, 80, 0.06);
+  border: 1px solid rgba(255, 80, 80, 0.15);
+  border-radius: 7px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.76rem;
+  color: rgba(255, 100, 100, 0.8);
+  text-align: center;
+`;
+
+// ─── Component ─────────────────────────────────────────────────────────────────
 
 export default function InviteToContextTab() {
   const [isLoading, setIsLoading] = useState(false);
-  const [message, setMessage] = useState<{
-    text: string;
-    type: "success" | "error";
-  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [configData, setConfigData] = useState({
     contextId: "",
     executorPublicKey: "",
@@ -81,150 +255,155 @@ export default function InviteToContextTab() {
   const [invitation, setInvitation] = useState<string | null>(null);
   const [invitationWebUrl, setInvitationWebUrl] = useState<string | null>(null);
   const [invitationDesktopLink, setInvitationDesktopLink] = useState<string | null>(null);
+  const [copiedWeb, setCopiedWeb] = useState(false);
+  const [copiedDesktop, setCopiedDesktop] = useState(false);
 
   useEffect(() => {
     const storedContextId = getContextId();
     const storedExecutorPublicKey = getExecutorPublicKey();
-
     if (storedContextId && storedExecutorPublicKey) {
-      setConfigData({
-        contextId: storedContextId,
-        executorPublicKey: storedExecutorPublicKey,
-      });
+      setConfigData({ contextId: storedContextId, executorPublicKey: storedExecutorPublicKey });
     }
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!configData.contextId || !configData.executorPublicKey) {
-      setMessage({
-        text: "Context configuration not found. Please set up context first.",
-        type: "error",
-      });
+      setError("Context configuration not found. Please set up context first.");
       return;
     }
-
     setIsLoading(true);
-    setMessage(null);
-
+    setError(null);
     try {
       const response: ResponseData<ContextInviteByOpenInvitationResponse> =
-        await apiClient
-          .node()
-          .contextInviteByOpenInvitation(
-            configData.contextId,
-            configData.executorPublicKey,
-            86400
-          );
-
+        await apiClient.node().contextInviteByOpenInvitation(
+          configData.contextId,
+          configData.executorPublicKey,
+          86400,
+        );
       if (response.error) {
-        setMessage({
-          text: response.error.message || "Failed to generate invitation",
-          type: "error",
-        });
+        setError(response.error.message || "Failed to generate invitation");
       } else {
-        const invitationPayload = JSON.stringify(response.data);
-        setInvitation(invitationPayload);
-        setInvitationWebUrl(generateInvitationUrl(invitationPayload));
-        setInvitationDesktopLink(generateInvitationDeepLink(invitationPayload));
-        setMessage({
-          text: "Invitation Created",
-          type: "success",
-        });
+        const payload = JSON.stringify(response.data);
+        setInvitation(payload);
+        setInvitationWebUrl(generateInvitationUrl(payload));
+        setInvitationDesktopLink(generateInvitationDeepLink(payload));
       }
-    } catch (_error) {
-      setMessage({
-        text: "An error occurred while generation invitation for context",
-        type: "error",
-      });
+    } catch {
+      setError("An error occurred while generating invitation");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleCopyToClipboard = async (text: string) => {
+  const copy = async (text: string, which: "web" | "desktop") => {
     try {
       await navigator.clipboard.writeText(text);
-      setMessage({ text: "Copied to clipboard!", type: "success" });
-      setTimeout(() => setMessage(null), 2000);
-    } catch (_error) {
-      setMessage({ text: "Failed to copy to clipboard", type: "error" });
+      if (which === "web") {
+        setCopiedWeb(true);
+        setTimeout(() => setCopiedWeb(false), 2000);
+      } else {
+        setCopiedDesktop(true);
+        setTimeout(() => setCopiedDesktop(false), 2000);
+      }
+    } catch {
+      // ignore
     }
   };
 
   return (
     <TabContent>
+      {/* Context info */}
+      <InfoCard>
+        <CardLabel>Context</CardLabel>
+        <FieldRow>
+          <FieldLabel>Context ID</FieldLabel>
+          <FieldValue title={configData.contextId}>
+            {configData.contextId || "Not configured"}
+          </FieldValue>
+        </FieldRow>
+        <FieldRow>
+          <FieldLabel>Executor Key</FieldLabel>
+          <FieldValue title={configData.executorPublicKey}>
+            {configData.executorPublicKey || "Not configured"}
+          </FieldValue>
+        </FieldRow>
+      </InfoCard>
+
+      {/* Invitation result */}
       {invitation && invitationWebUrl && invitationDesktopLink ? (
-        <ConfigInfo>
-          <SuccessMessage>✓ Invitation Created</SuccessMessage>
-          <InputGroup>
-            <Label>Web invitation</Label>
-            <Input
-              id="invitationWebUrl"
-              type="text"
-              value={invitationWebUrl}
-              disabled
-            />
-            <Button
-              onClick={() => handleCopyToClipboard(invitationWebUrl)}
-              variant="primary"
-              style={{ width: "100%", marginTop: "0.5rem" }}
-            >
-              Copy web link
-            </Button>
-          </InputGroup>
-          <div style={{ marginTop: "0.75rem" }}>
-            <InputGroup>
-              <Label>Calimero Desktop app invitation</Label>
-            <Input
-              id="invitationDesktopLink"
-              type="text"
-              value={invitationDesktopLink}
-              disabled
-            />
-            <Button
-              onClick={() => handleCopyToClipboard(invitationDesktopLink)}
-              variant="secondary"
-              style={{ width: "100%", marginTop: "0.5rem" }}
-            >
-              Copy desktop link
-            </Button>
-            </InputGroup>
-          </div>
-        </ConfigInfo>
+        <SuccessCard>
+          <SuccessHeader>
+            <CheckIcon>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </CheckIcon>
+            <SuccessText>Invitation created</SuccessText>
+          </SuccessHeader>
+
+          <LinkBlock>
+            <LinkLabel>Web link</LinkLabel>
+            <LinkRow>
+              <LinkInput readOnly value={invitationWebUrl} />
+              <CopyButton $copied={copiedWeb} onClick={() => copy(invitationWebUrl, "web")}>
+                {copiedWeb ? (
+                  <>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+                    Copied
+                  </>
+                ) : (
+                  <>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    Copy
+                  </>
+                )}
+              </CopyButton>
+            </LinkRow>
+          </LinkBlock>
+
+          <LinkBlock>
+            <LinkLabel>Desktop link</LinkLabel>
+            <LinkRow>
+              <LinkInput readOnly value={invitationDesktopLink} />
+              <CopyButton $copied={copiedDesktop} onClick={() => copy(invitationDesktopLink, "desktop")}>
+                {copiedDesktop ? (
+                  <>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+                    Copied
+                  </>
+                ) : (
+                  <>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    Copy
+                  </>
+                )}
+              </CopyButton>
+            </LinkRow>
+          </LinkBlock>
+
+          <GenerateButton type="button" onClick={handleSubmit} disabled={isLoading}>
+            Regenerate
+          </GenerateButton>
+        </SuccessCard>
       ) : (
-        <ConfigInfo>
-          <ConfigTitle>Context Configuration</ConfigTitle>
-          <InputGroup>
-            <Label>Context ID</Label>
-            <Input
-              id="contextId"
-              type="text"
-              value={configData.contextId ?? "Not found in localStorage"}
-              disabled={true}
-            />
-          </InputGroup>
-          <InputGroup>
-            <Label>Executor Public Key</Label>
-            <Input
-              id="executorPublicKey"
-              type="text"
-              value={
-                configData.executorPublicKey ?? "Not found in localStorage"
-              }
-              disabled={true}
-            />
-          </InputGroup>
-        </ConfigInfo>
+        <form onSubmit={handleSubmit}>
+          <GenerateButton type="submit" $loading={isLoading} disabled={isLoading}>
+            {isLoading ? (
+              <><Spinner /> Generating…</>
+            ) : (
+              <>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                </svg>
+                Generate Invitation Link
+              </>
+            )}
+          </GenerateButton>
+          {error && <ErrorMsg style={{ marginTop: "0.625rem" }}>{error}</ErrorMsg>}
+        </form>
       )}
-
-      <Form onSubmit={handleSubmit}>
-        <Button type="submit" disabled={isLoading}>
-          {isLoading ? "creating..." : "Create Invitation"}
-        </Button>
-
-        {message && <Message type={message.type}>{message.text}</Message>}
-      </Form>
     </TabContent>
   );
 }

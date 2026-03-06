@@ -4,35 +4,42 @@ import { useCallback, memo } from "react";
 
 const Container = styled.div<{ $isCollapsed?: boolean }>`
   display: flex;
-  justify-content: ${(props) =>
-    props.$isCollapsed ? "center" : "space-between"};
+  justify-content: ${(props) => (props.$isCollapsed ? "center" : "space-between")};
   align-items: center;
-  background-color: #0e0e10;
-  padding-bottom: 0.375rem;
-  padding-left: 0.75rem;
-  padding-right: 0.75rem;
-  color: #777583;
-  :hover {
-    color: #ffffff;
-  }
+  padding: 0.25rem 0.75rem 0.25rem ${(props) => (props.$isCollapsed ? "0.75rem" : "1rem")};
+  margin-bottom: 0.125rem;
   @media (max-width: 1024px) {
     width: 100%;
   }
 `;
 
 const TextBold = styled.div`
-  font-family: Helvetica Neue;
-  font-size: 14px;
-  font-style: normal;
+  font-size: 11px;
   font-weight: 700;
-  line-height: 150%;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.3);
 `;
-const IconPlusContainer = styled.div`
+
+const PlusButton = styled.div`
   display: flex;
   cursor: pointer;
   justify-content: center;
   align-items: center;
-  font-size: 1.125rem;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  color: rgba(255, 255, 255, 0.25);
+  transition: all 0.15s ease;
+
+  &:hover {
+    color: #a5ff11;
+    background: rgba(165, 255, 17, 0.1);
+  }
+
+  svg {
+    stroke: currentColor;
+  }
 `;
 
 interface DMHeaderProps {
@@ -48,7 +55,6 @@ const DMHeader = memo(function DMHeader({
 }: DMHeaderProps) {
   const isValidIdentityId = useCallback(
     (value: string) => {
-      // Check if the value exists in chatMembers values
       const userEntries =
         chatMembers instanceof Map
           ? Array.from(chatMembers.entries())
@@ -59,16 +65,9 @@ const DMHeader = memo(function DMHeader({
       const isMember = usernames.includes(value.toLowerCase());
 
       if (!isMember) {
-        return {
-          isValid: false,
-          error: "User not member of this chat",
-        };
+        return { isValid: false, error: "User not member of this chat" };
       }
-
-      return {
-        isValid: true,
-        error: "",
-      };
+      return { isValid: true, error: "" };
     },
     [chatMembers],
   );
@@ -81,9 +80,11 @@ const DMHeader = memo(function DMHeader({
         placeholder="invite user by entering their name"
         buttonText="Next"
         toggle={
-          <IconPlusContainer>
-            <i className="bi bi-plus-circle" />
-          </IconPlusContainer>
+          <PlusButton>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth="2.5" strokeLinecap="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </PlusButton>
         }
         chatMembers={chatMembers}
         validator={isValidIdentityId}

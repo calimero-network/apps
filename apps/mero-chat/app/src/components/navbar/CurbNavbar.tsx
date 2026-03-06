@@ -77,7 +77,8 @@ const ItemsContainer = styled.div<{ $align: boolean }>`
 
 const LogoContainer = styled.div<{ $isMobile: boolean; justify?: boolean }>`
   display: flex;
-  gap: 0.375rem;
+  gap: 0.5rem;
+  padding: 0 1rem;
   @media (max-width: 1024px) {
       display: ${(props) => (props.$isMobile ? "flex" : "none")};
     }
@@ -115,8 +116,8 @@ const FlexContainer = styled.div`
 const SearchButton = styled.button<{ $active: boolean }>`
   border: none;
   background: ${(props) =>
-    props.$active ? "rgba(87, 101, 242, 0.2)" : "transparent"};
-  color: ${(props) => (props.$active ? "#ffffff" : "#c8c7d1")};
+    props.$active ? "rgba(165, 255, 17, 0.12)" : "transparent"};
+  color: ${(props) => (props.$active ? "#a5ff11" : "#c8c7d1")};
   width: 36px;
   height: 36px;
   border-radius: 4px;

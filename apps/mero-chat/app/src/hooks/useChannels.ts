@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
-import type { ResponseData } from "@calimero-network/calimero-client";
+import { getExecutorPublicKey, type ResponseData } from "@calimero-network/calimero-client";
 import type { Channels } from "../api/clientApi";
 import type { ChannelMeta } from "../types/Common";
 import { log } from "../utils/logger";
@@ -44,6 +44,11 @@ export function useChannels() {
           }),
         );
         setChannels(channelsArray);
+        const myKey = getExecutorPublicKey();
+        const isOwner = myKey
+          ? channelsArray.some((c) => c.createdBy === myKey)
+          : false;
+        sessionStorage.setItem("curb_is_context_owner", String(isOwner));
       } else if (response.error) {
         setError(response.error.message || "Failed to fetch channels");
       }
