@@ -105,9 +105,10 @@ export const LogoutWrapper = styled.div`
 interface LoginProps {
   isAuthenticated: boolean;
   isConfigSet: boolean;
+  hasEndpoint: boolean;
 }
 
-export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
+export default function Login({ isAuthenticated, isConfigSet, hasEndpoint }: LoginProps) {
   const { logout } = useCalimero();
   const [hasInvitation, setHasInvitation] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -127,6 +128,8 @@ export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
     clearDmContextId();
     clearSessionActivity();
     logout();
+    localStorage.clear();
+    window.close();
   };
 
   const handleInvitationSuccess = () => {
@@ -151,7 +154,7 @@ export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
       )}
       <Card>
         <Title>Welcome to Calimero Chat</Title>
-        {!isAuthenticated && !isConfigSet ? (
+        {!hasEndpoint ? (
           <ConnectWrapper>
             <Subtitle>Connect your Node to get started</Subtitle>
             <DesktopConnectButton />
