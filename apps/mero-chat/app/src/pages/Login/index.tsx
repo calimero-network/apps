@@ -11,6 +11,7 @@ import {
 import { useState, useEffect, useCallback } from "react";
 import { getInvitationFromStorage } from "../../utils/invitation";
 import InvitationHandlerPopup from "../../components/popups/InvitationHandlerPopup";
+import LandingPage from "./LandingPage";
 
 declare global {
   interface Window {
@@ -164,18 +165,12 @@ export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
   };
 
   if (loggedOut) {
-    return (
-      <Wrapper>
-        <Card>
-          <Title>You've been logged out</Title>
-          <ConnectWrapper>
-            <Subtitle>
-              Close this window and re-open the app from the desktop application.
-            </Subtitle>
-          </ConnectWrapper>
-        </Card>
-      </Wrapper>
-    );
+    return <LandingPage />;
+  }
+
+  // Nothing configured — no node URL, not authenticated. Show landing page.
+  if (!isAuthenticated && !isConfigSet) {
+    return <LandingPage />;
   }
 
   return (
