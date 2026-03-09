@@ -21,8 +21,6 @@ const Home = lazy(() => import("./pages/Home"));
 const IdleTimeoutWrapper = lazy(
   () => import("./components/IdleTimeoutWrapper"),
 );
-const PWAInstallPrompt = lazy(() => import("./components/PWAInstallPrompt"));
-
 // Toast display component
 function ToastDisplay() {
   const { toasts, removeToast } = useToast();
@@ -130,7 +128,6 @@ function App() {
           />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
-        <PWAInstallPrompt />
         <ToastDisplay />
       </Suspense>
     </ToastProvider>
