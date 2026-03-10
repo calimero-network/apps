@@ -1,7 +1,7 @@
 {
-  "name": "Curb Chat",
-  "short_name": "Curb",
-  "description": "Calimero Curb Chat is a P2P chat application built on top of the Calimero Network.",
+  "name": "Mero Chat",
+  "short_name": "Mero Chat",
+  "description": "Mero Chat is a P2P chat application built on top of the Calimero Network.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#111111",

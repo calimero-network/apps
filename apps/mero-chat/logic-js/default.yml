@@ -1,5 +1,5 @@
-description: Curb Application Test Workflow
-name: Curb App Test
+description: Mero Chat Application Test Workflow
+name: Mero Chat App Test
 
 auth_service: true
 
@@ -9,8 +9,8 @@ nodes:
   image: ghcr.io/calimero-network/merod:edge
   prefix: curb-node
 steps:
-  # Step 1: Install the Curb application
-  - name: Install Curb Application
+  # Step 1: Install the Mero Chat application
+  - name: Install Mero Chat Application
     type: install_application
     node: curb-node-1
     path: './build/curb.wasm'
@@ -18,8 +18,8 @@ steps:
     outputs:
       app_id: applicationId
 
-  # Step 2: Create a context for the Curb app
-  - name: Create Curb Context
+  # Step 2: Create a context for the Mero Chat app
+  - name: Create Mero Chat Context
     type: create_context
     node: curb-node-1
     application_id: '{{app_id}}'

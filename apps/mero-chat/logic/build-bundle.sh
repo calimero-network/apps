@@ -32,8 +32,8 @@ cat > res/bundle-temp/manifest.json <<EOF
   "appVersion": "0.1.0",
   "minRuntimeVersion": "0.1.0",
   "metadata": {
-    "name": "Curb Chat",
-    "description": "Calimero Curb Chat is a P2P chat application built on top of the Calimero Network.",
+    "name": "Mero Chat",
+    "description": "Mero Chat is a P2P chat application built on top of the Calimero Network.",
     "author": "Calimero"
   },
   "wasm": {

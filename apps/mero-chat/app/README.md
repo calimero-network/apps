@@ -1,4 +1,4 @@
-# CURB CHAT
+# MERO CHAT
 
 A modern Slack-like chat application built with [React](https://reactjs.org/), [Vite](https://vitejs.dev/), and [TypeScript](https://www.typescriptlang.org/). It uses [Calimero](https://calimero.network/) as the backend for secure peer-to-peer (P2P) communications.
 

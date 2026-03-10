@@ -153,7 +153,7 @@ export const CurbLogo = ({ isMobile }: { isMobile: boolean }) => {
     <LogoContainer $isMobile={isMobile} role="banner">
       <img
         src={CurbLogoIcon}
-        alt="Curb Chat Application Logo"
+        alt="Mero Chat Application Logo"
         height="32px"
         width="auto"
       />

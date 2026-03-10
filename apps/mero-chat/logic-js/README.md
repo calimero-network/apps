@@ -1,6 +1,6 @@
-# Curb Chat Logic (JavaScript)
+# Mero Chat Logic (JavaScript)
 
-Curb Chat application logic built with Calimero JavaScript SDK. This project compiles TypeScript to WebAssembly for the Calimero P2P platform.
+Mero Chat application logic built with Calimero JavaScript SDK. This project compiles TypeScript to WebAssembly for the Calimero P2P platform.
 
 ## Prerequisites
 

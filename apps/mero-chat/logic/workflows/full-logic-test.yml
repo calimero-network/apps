@@ -1,10 +1,10 @@
-# Full Curb Logic Test
+# Full Mero Chat Logic Test
 # Calls all testable non-DM logic functions and asserts response equality.
 # Uses 2 nodes (Alice + Bob); excludes DM-only and identity-update flows.
 
-name: Full Curb Logic Test
+name: Full Mero Chat Logic Test
 description: >
-  Tests testable curb logic functions (chat name, members, channels,
+  Tests testable mero chat logic functions (chat name, members, channels,
   create/join channel, messages, read/mention counts). Skips update_reaction,
   edit_message, delete_message (require message_id; merobox cannot extract
   result.output.id from call steps). All assertions use contains() for

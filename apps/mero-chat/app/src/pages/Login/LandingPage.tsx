@@ -291,7 +291,7 @@ export default function LandingPage() {
       <Content>
         <LogoBadge>
           <LogoImg src="/curb.svg" alt="Calimero" />
-          <AppName>Calimero Curb</AppName>
+          <AppName>Mero Chat</AppName>
         </LogoBadge>
 
         <Headline>
@@ -300,7 +300,7 @@ export default function LandingPage() {
         </Headline>
 
         <Sub>
-          Curb is a decentralized chat app that runs on your own Calimero node.
+          Mero Chat is a decentralized chat app that runs on your own Calimero node.
           No servers. No surveillance. Your conversations stay yours.
         </Sub>
 
@@ -338,7 +338,7 @@ export default function LandingPage() {
         <TerminalBox>
           <StatusDot />
           <TerminalText>
-            Open <span className="cmd">Calimero Desktop</span> and launch Curb to get started
+            Open <span className="cmd">Calimero Desktop</span> and launch Mero Chat to get started
             <span className="cursor" />
           </TerminalText>
         </TerminalBox>
