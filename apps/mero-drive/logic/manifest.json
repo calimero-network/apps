@@ -1,0 +1,11 @@
+{
+  "package": "com.calimero.docs-app8",
+  "version": "6.1.0",
+  "name": "Private Docs v6.1",
+  "description": "Calimero Private Docs Application v6.1 - Open invitations for collaboration",
+  "output": "dist/com.calimero.docs-app-6.1.0.mpk",
+  "abi": "res/abi.json",
+  "frontend": "https://experiments-git-ai-builder-docs-fj2byts-540cc0-calimero-network.vercel.app/",
+  "github": "https://github.com/calimero-network/experiments",
+  "docs": "https://docs.calimero.network/getting-started/"
+}

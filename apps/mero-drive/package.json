@@ -1,0 +1,33 @@
+{
+  "scripts": {
+    "prepare": "husky",
+    "logic:build": "bash ./logic/build.sh",
+    "logic:clean": "rm -rf ./logic/target ./logic/res",
+    "logic:sync": "bash ./scripts/sync-wasm.sh",
+    "logic:bundle": "cd logic && VERSION=$(grep '^version =' Cargo.toml | sed 's/version = \"\\(.*\\)\"/\\1/') && jq --arg version \"$VERSION\" --arg output \"dist/com.calimero.docs-app-$VERSION.mpk\" '.version = $version | .output = $output' manifest.json > manifest.json.tmp && mv manifest.json.tmp manifest.json && npx @calimero-network/registry-cli@1.6.1 bundle create res/docs_app.wasm --manifest manifest.json --abi res/abi.json",
+    "logic:publish:remote": "cd logic && npx @calimero-network/registry-cli@1.6.1 bundle push $(jq -r .output manifest.json) --remote",
+    "logic:watch": "chokidar \"logic/res/**/*\" -c \"node scripts/on-res-change.mjs {path}\"",
+    "app:install": "pnpm --dir app install",
+    "app:dev": "concurrently -n web,res -c green,magenta \"pnpm --dir app dev\" \"pnpm run logic:watch\"",
+    "app:build": "pnpm --dir app build",
+    "app:preview": "pnpm --dir app preview",
+    "app:generate-client": "npx @calimero-network/abi-codegen@0.1.1 -i logic/res/abi.json -o app/src/api ",
+    "network:bootstrap": "npx @calimero-network/merobox-js@latest bootstrap run workflows/workflow-example.yml",
+    "dev": "pnpm run app:dev",
+    "dev:full": "concurrently -n registry,web,res -c blue,green,magenta \"pnpm run registry:start\" \"pnpm --dir app dev\" \"pnpm run logic:watch\"",
+    "registry:start": "calimero-registry local start --port 8082",
+    "registry:sync": "bash ./scripts/registry-sync.sh",
+    "registry:status": "curl -sf http://localhost:8082/healthz > /dev/null && echo '✅ Registry is running' || echo '❌ Registry is not running'"
+  },
+  "devDependencies": {
+    "@calimero-network/merobox-js": "^0.0.3",
+    "chokidar-cli": "^3.0.0",
+    "concurrently": "^9.2.1",
+    "husky": "^9.0.11"
+  },
+  "dependencies": {
+    "@calimero-network/mero-icons": "^0.0.4",
+    "@calimero-network/mero-ui": "^0.3.4"
+  },
+  "name": "docs-fj2bytsru5m6bjb0"
+}

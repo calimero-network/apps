@@ -1,0 +1,55 @@
+{
+  "home": {
+    "welcome": "Welcome to Private Docs!",
+    "demoDescription": "A private document management application built on Calimero's P2P network. Create, edit, and organize your documents securely.",
+    "calimeroIntro": "Calimero is a privacy-focused blockchain network that enables developers to build scalable, private applications. Our platform provides the infrastructure for creating decentralized applications with enhanced privacy and performance.",
+    "learnMore": "Learn more about Calimero:",
+    "documentation": "Documentation",
+    "github": "GitHub",
+    "website": "Website",
+    "createDocument": "Create New Document",
+    "title": "Title",
+    "content": "Content",
+    "tags": "Tags (comma separated)",
+    "noDocuments": "No documents yet. Create your first document above!",
+    "createDoc": "Create Document",
+    "searchPlaceholder": "Search documents...",
+    "includeArchived": "Include Archived",
+    "contextActions": "Context Actions",
+    "logout": "Logout",
+    "editDocument": "Edit Document",
+    "viewDocument": "View Document",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "archive": "Archive",
+    "unarchive": "Unarchive",
+    "errors": {
+      "createFailed": "Failed to create document",
+      "loadFailed": "Failed to load documents",
+      "updateFailed": "Failed to update document",
+      "deleteFailed": "Failed to delete document",
+      "archiveFailed": "Failed to update archive status"
+    }
+  },
+  "auth": {
+    "title": "Private Docs",
+    "back": "Back",
+    "goToContext": "Go to context actions",
+    "description": {
+      "title": "Welcome to Private Docs",
+      "subtitle": "Secure document management on the Calimero P2P network",
+      "features": [
+        "Create and manage private documents",
+        "Real-time sync across P2P nodes",
+        "Tag-based organization",
+        "Secure and encrypted storage"
+      ],
+      "getStarted": "Connect your wallet to get started"
+    }
+  },
+  "context": {
+    "backToLogin": "Back to Login",
+    "goToHome": "Go to Home"
+  }
+}
