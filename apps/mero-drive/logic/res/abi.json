@@ -56,6 +56,30 @@
             "fields": [],
             "crdt_type": "counter"
           }
+        },
+        {
+          "name": "context_name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "folder_registry",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "FolderMeta"
+            },
+            "crdt_type": "unordered_map"
+          }
         }
       ]
     },
@@ -355,6 +379,85 @@
             "inner_type": {
               "kind": "string"
             }
+          }
+        }
+      ]
+    },
+    "FolderMeta": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "context_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        }
+      ]
+    },
+    "FolderRegistryEntry": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "context_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
           }
         }
       ]
@@ -953,6 +1056,98 @@
       "params": [],
       "returns": {
         "kind": "u32"
+      }
+    },
+    {
+      "name": "set_context_name",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "get_context_name",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "register_folder",
+      "params": [
+        {
+          "name": "context_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "update_folder_name",
+      "params": [
+        {
+          "name": "context_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "unregister_folder",
+      "params": [
+        {
+          "name": "context_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "get_folder_registry",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "FolderRegistryEntry"
+        }
       }
     }
   ],

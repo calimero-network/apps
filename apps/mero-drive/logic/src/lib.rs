@@ -52,6 +52,30 @@ impl Mergeable for Folder {
     }
 }
 
+/// Registry entry for cross-context folder visibility.
+/// Stored in the General context's folder_registry map.
+#[derive(Debug, BorshSerialize, BorshDeserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct FolderMeta {
+    pub context_id: LwwRegister<String>,
+    pub name: LwwRegister<String>,
+    pub color: LwwRegister<Option<String>>,
+    pub created_at: LwwRegister<u64>,
+}
+
+impl Mergeable for FolderMeta {
+    fn merge(
+        &mut self,
+        other: &Self,
+    ) -> Result<(), calimero_storage::collections::crdt_meta::MergeError> {
+        self.context_id.merge(&other.context_id);
+        self.name.merge(&other.name);
+        self.color.merge(&other.color);
+        self.created_at.merge(&other.created_at);
+        Ok(())
+    }
+}
+
 /// Document with all fields as CRDTs.
 /// Content uses LwwRegister<String> for simplicity.
 #[derive(Debug, BorshSerialize, BorshDeserialize)]
@@ -142,6 +166,16 @@ pub struct FolderTreeItem {
     pub children: Vec<FolderTreeItem>,
 }
 
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct FolderRegistryEntry {
+    pub context_id: String,
+    pub name: String,
+    pub color: Option<String>,
+    pub created_at: u64,
+}
+
 #[app::state(emits = DocsEvent)]
 #[derive(BorshDeserialize, BorshSerialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -151,6 +185,8 @@ pub struct DocsApp {
     pub folders: UnorderedMap<String, Folder>,
     pub doc_counter: Counter,
     pub folder_counter: Counter,
+    pub context_name: LwwRegister<String>,
+    pub folder_registry: UnorderedMap<String, FolderMeta>,
 }
 
 #[app::event]
@@ -166,6 +202,10 @@ pub enum DocsEvent {
     FolderUpdated { id: String, name: String },
     FolderDeleted { id: String, name: String },
     FolderMoved { id: String, from_parent: Option<String>, to_parent: Option<String> },
+    ContextNameSet { name: String },
+    FolderRegistered { context_id: String, name: String },
+    FolderNameUpdated { context_id: String, name: String },
+    FolderUnregistered { context_id: String },
 }
 
 fn extract_tags(tags: &UnorderedSet<String>) -> Result<Vec<String>, String> {
@@ -187,6 +227,8 @@ impl DocsApp {
             folders: UnorderedMap::new(),
             doc_counter: Counter::new(),
             folder_counter: Counter::new(),
+            context_name: String::new().into(),
+            folder_registry: UnorderedMap::new(),
         }
     }
 
@@ -1146,5 +1188,104 @@ impl DocsApp {
     pub fn get_folder_count(&self) -> Result<usize, String> {
         self.folders.len()
             .map_err(|e| format!("Failed to get folder count: {:?}", e))
+    }
+
+    /// Set the display name for this context (workspace)
+    pub fn set_context_name(&mut self, name: String) -> Result<(), String> {
+        if name.is_empty() {
+            return Err("Context name cannot be empty".to_string());
+        }
+        self.context_name = name.clone().into();
+        app::emit!(DocsEvent::ContextNameSet { name });
+        Ok(())
+    }
+
+    /// Get the display name for this context
+    pub fn get_context_name(&self) -> Result<String, String> {
+        Ok(self.context_name.get().clone())
+    }
+
+    /// Register a folder in the General context's folder registry
+    pub fn register_folder(
+        &mut self,
+        context_id: String,
+        name: String,
+        color: Option<String>,
+    ) -> Result<(), String> {
+        if context_id.is_empty() {
+            return Err("context_id cannot be empty".to_string());
+        }
+        if name.is_empty() {
+            return Err("Folder name cannot be empty".to_string());
+        }
+        if self.folder_registry.get(&context_id)
+            .map_err(|e| format!("Failed to check registry: {:?}", e))?
+            .is_some()
+        {
+            return Err(format!("Folder already registered: {}", context_id));
+        }
+        let now = env::time_now();
+        let meta = FolderMeta {
+            context_id: context_id.clone().into(),
+            name: name.clone().into(),
+            color: color.into(),
+            created_at: now.into(),
+        };
+        self.folder_registry.insert(context_id.clone(), meta)
+            .map_err(|e| format!("Failed to register folder: {:?}", e))?;
+        app::emit!(DocsEvent::FolderRegistered { context_id, name });
+        Ok(())
+    }
+
+    /// Update the display name of a registered folder
+    pub fn update_folder_name(
+        &mut self,
+        context_id: String,
+        name: String,
+    ) -> Result<(), String> {
+        if name.is_empty() {
+            return Err("Folder name cannot be empty".to_string());
+        }
+        let existing = self.folder_registry.get(&context_id)
+            .map_err(|e| format!("Failed to access registry: {:?}", e))?
+            .ok_or_else(|| format!("Folder not found in registry: {}", context_id))?;
+        let updated = FolderMeta {
+            context_id: existing.context_id.clone(),
+            name: name.clone().into(),
+            color: existing.color.clone(),
+            created_at: existing.created_at.clone(),
+        };
+        self.folder_registry.insert(context_id.clone(), updated)
+            .map_err(|e| format!("Failed to update registry: {:?}", e))?;
+        app::emit!(DocsEvent::FolderNameUpdated { context_id, name });
+        Ok(())
+    }
+
+    /// Remove a folder from the registry
+    pub fn unregister_folder(&mut self, context_id: String) -> Result<(), String> {
+        self.folder_registry.get(&context_id)
+            .map_err(|e| format!("Failed to access registry: {:?}", e))?
+            .ok_or_else(|| format!("Folder not found in registry: {}", context_id))?;
+        self.folder_registry.remove(&context_id)
+            .map_err(|e| format!("Failed to remove from registry: {:?}", e))?;
+        app::emit!(DocsEvent::FolderUnregistered { context_id });
+        Ok(())
+    }
+
+    /// Get all registered folders sorted alphabetically by name
+    pub fn get_folder_registry(&self) -> Result<Vec<FolderRegistryEntry>, String> {
+        let entries = self.folder_registry.entries()
+            .map_err(|e| format!("Failed to read registry: {:?}", e))?;
+        let mut result: Vec<FolderRegistryEntry> = Vec::new();
+        for (_, meta) in entries {
+            result.push(FolderRegistryEntry {
+                context_id: meta.context_id.get().clone(),
+                name: meta.name.get().clone(),
+                color: meta.color.get().clone(),
+                created_at: *meta.created_at.get(),
+            });
+        }
+        result.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(result)
     }
 }
