@@ -48,6 +48,13 @@ export interface FolderTreeItem {
   children: FolderTreeItem[];
 }
 
+export interface FolderRegistryEntry {
+  context_id: string;
+  name: string;
+  color: string | null;
+  created_at: number;
+}
+
 export type AbiEvent =
   | { name: 'DocumentCreated'; id: string; title: string; author: string }
   | { name: 'DocumentUpdated'; id: string; title: string; editor: string }
@@ -57,7 +64,11 @@ export type AbiEvent =
   | { name: 'FolderCreated'; id: string; folder_name: string; parent_id: string | null }
   | { name: 'FolderUpdated'; id: string; folder_name: string }
   | { name: 'FolderDeleted'; id: string; folder_name: string }
-  | { name: 'FolderMoved'; id: string; from_parent: string | null; to_parent: string | null };
+  | { name: 'FolderMoved'; id: string; from_parent: string | null; to_parent: string | null }
+  | { name: 'ContextNameSet'; contextName: string }
+  | { name: 'FolderRegistered'; context_id: string; folderName: string }
+  | { name: 'FolderNameUpdated'; context_id: string; folderName: string }
+  | { name: 'FolderUnregistered'; context_id: string };
 
 /**
  * Utility class for handling byte conversions in Calimero
@@ -104,15 +115,27 @@ export class CalimeroBytes {
 export class AbiClient {
   private app: CalimeroApp;
   private context: Context | null = null;
+  private contextId: string | undefined;
 
-  constructor(app: CalimeroApp) {
+  constructor(app: CalimeroApp, contextId?: string) {
     this.app = app;
+    this.contextId = contextId;
   }
 
   private async getContext(): Promise<Context> {
     if (this.context) return this.context;
-    
+
     const contexts = await this.app.fetchContexts();
+
+    if (this.contextId) {
+      const found = contexts.find(c => c.contextId === this.contextId);
+      if (!found) {
+        throw new Error(`Context not found: ${this.contextId}`);
+      }
+      this.context = found;
+      return this.context;
+    }
+
     if (contexts.length === 0) {
       // Create a new context if none exists
       this.context = await this.app.createContext();
@@ -620,6 +643,91 @@ export class AbiClient {
     const response = await this.execute('get_folder_count', {});
     if (response.success) {
       return response.result as number;
+    } else {
+      throw new Error(response.error || 'Execution failed');
+    }
+  }
+
+  // ========== CONTEXT GROUP METHODS ==========
+
+  /**
+   * Set the human-readable name for this context
+   */
+  public async setContextName(params: { name: string }): Promise<void> {
+    const response = await this.execute('set_context_name', params);
+    if (response.success) {
+      return response.result as void;
+    } else {
+      throw new Error(response.error || 'Execution failed');
+    }
+  }
+
+  /**
+   * Get the human-readable name for this context
+   */
+  public async getContextName(): Promise<string> {
+    const response = await this.execute('get_context_name', {});
+    if (response.success) {
+      return response.result as string;
+    } else {
+      throw new Error(response.error || 'Execution failed');
+    }
+  }
+
+  /**
+   * Register a folder context in the General context's registry
+   */
+  public async registerFolder(params: {
+    context_id: string;
+    name: string;
+    color?: string | null;
+  }): Promise<void> {
+    const response = await this.execute('register_folder', {
+      context_id: params.context_id,
+      name: params.name,
+      color: params.color ?? null,
+    });
+    if (response.success) {
+      return response.result as void;
+    } else {
+      throw new Error(response.error || 'Execution failed');
+    }
+  }
+
+  /**
+   * Update the registered name of a folder context in the General registry
+   */
+  public async updateFolderName(params: {
+    context_id: string;
+    name: string;
+  }): Promise<void> {
+    const response = await this.execute('update_folder_name', params);
+    if (response.success) {
+      return response.result as void;
+    } else {
+      throw new Error(response.error || 'Execution failed');
+    }
+  }
+
+  /**
+   * Remove a folder context from the General context's registry
+   */
+  public async unregisterFolder(params: { context_id: string }): Promise<void> {
+    const response = await this.execute('unregister_folder', params);
+    if (response.success) {
+      return response.result as void;
+    } else {
+      throw new Error(response.error || 'Execution failed');
+    }
+  }
+
+  /**
+   * Get all folder contexts registered in the General context
+   */
+  public async getFolderRegistry(): Promise<FolderRegistryEntry[]> {
+    const response = await this.execute('get_folder_registry', {});
+    if (response.success) {
+      return (response.result as FolderRegistryEntry[]) || [];
     } else {
       throw new Error(response.error || 'Execution failed');
     }

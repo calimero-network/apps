@@ -2,6 +2,7 @@ import React from 'react';
 import {
   FolderTreeItem,
   DocumentSummary,
+  FolderRegistryEntry,
 } from '@/api/AbiClient';
 import {
   Folder,
@@ -15,6 +16,8 @@ import {
   Trash2,
   FolderPlus,
   Home,
+  Lock,
+  Settings,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -36,6 +39,14 @@ interface FolderTreeProps {
   onOpenDocument: (docId: string) => void;
   expandedFolders: Set<string>;
   onToggleFolder: (folderId: string) => void;
+  // Top-level context-level folders
+  topLevelFolders: FolderRegistryEntry[];
+  activeContextId: string | null;
+  generalContextId: string | null;
+  onTopLevelFolderSelect: (contextId: string) => void;
+  onCreateTopLevelFolder: () => void;
+  onTopLevelFolderSettings: (folder: FolderRegistryEntry) => void;
+  canCreateContext: boolean;
 }
 
 // Color options for folders
@@ -210,6 +221,66 @@ const FolderTreeNode: React.FC<{
   );
 };
 
+// ─── Top-level context folder entry ──────────────────────────────────────────
+
+interface TopLevelFolderEntryProps {
+  folder: FolderRegistryEntry;
+  isActive: boolean;
+  isRestricted?: boolean;
+  isMember?: boolean;
+  onSelect: (contextId: string) => void;
+  onSettings: (folder: FolderRegistryEntry) => void;
+}
+
+const TopLevelFolderEntry: React.FC<TopLevelFolderEntryProps> = ({
+  folder,
+  isActive,
+  isRestricted = false,
+  isMember = true,
+  onSelect,
+  onSettings,
+}) => {
+  const colorClass = folder.color
+    ? FOLDER_COLORS[folder.color] || FOLDER_COLORS.default
+    : FOLDER_COLORS.default;
+
+  const canEnter = !isRestricted || isMember;
+
+  return (
+    <div
+      className={`group flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors ${
+        canEnter ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
+      } ${isActive ? 'bg-primary/10 text-primary' : canEnter ? 'hover:bg-muted' : ''}`}
+      onClick={() => canEnter && onSelect(folder.context_id)}
+    >
+      {isRestricted ? (
+        <Lock className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
+      ) : (
+        <Folder className={`w-4 h-4 flex-shrink-0 ${colorClass}`} />
+      )}
+
+      <span className="text-sm truncate flex-1">
+        {folder.name || 'Untitled Folder'}
+      </span>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+        onClick={(e) => {
+          e.stopPropagation();
+          onSettings(folder);
+        }}
+        title="Folder Settings"
+      >
+        <Settings className="w-3.5 h-3.5" />
+      </Button>
+    </div>
+  );
+};
+
+// ─── Main FolderTree export ───────────────────────────────────────────────────
+
 export const FolderTree: React.FC<FolderTreeProps> = ({
   folders,
   documents,
@@ -221,14 +292,62 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
   onOpenDocument,
   expandedFolders,
   onToggleFolder,
+  topLevelFolders,
+  activeContextId,
+  generalContextId,
+  onTopLevelFolderSelect,
+  onCreateTopLevelFolder,
+  onTopLevelFolderSettings,
+  canCreateContext,
 }) => {
   // Get documents at root level (no folder)
   const rootDocs = documents.filter(d => d.folder_id === null);
   const isRootSelected = selectedFolderId === null;
+  const isGeneralContext = activeContextId === generalContextId;
 
   return (
     <div className="flex flex-col gap-0.5">
-      {/* Root / All Documents */}
+      {/* ── Tier 1: Top-level context folders ── */}
+      {topLevelFolders.length > 0 && (
+        <div className="mb-2">
+          <div className="flex items-center justify-between px-2 mb-1">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Workspaces
+            </span>
+            {canCreateContext && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5"
+                onClick={onCreateTopLevelFolder}
+                title="New Top-level Folder"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </Button>
+            )}
+          </div>
+          {topLevelFolders.map((folder) => (
+            <TopLevelFolderEntry
+              key={folder.context_id}
+              folder={folder}
+              isActive={activeContextId === folder.context_id}
+              onSelect={onTopLevelFolderSelect}
+              onSettings={onTopLevelFolderSettings}
+            />
+          ))}
+          {canCreateContext && topLevelFolders.length === 0 && (
+            <button
+              className="w-full text-left px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              onClick={onCreateTopLevelFolder}
+            >
+              + New Folder
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ── Tier 2: Subfolders within active context ── */}
+      {/* Root / All Documents — only shown when in general context or no top-level folders */}
       <div
         className={`group flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
           isRootSelected
@@ -238,7 +357,9 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
         onClick={() => onSelectFolder(null)}
       >
         <Home className="w-4 h-4" />
-        <span className="text-sm font-medium flex-1">All Documents</span>
+        <span className="text-sm font-medium flex-1">
+          {isGeneralContext ? 'General' : 'All Documents'}
+        </span>
         <Button
           variant="ghost"
           size="icon"

@@ -1,13 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCalimero } from '@calimero-network/calimero-client';
-import { AbiClient, DocumentSummary, FolderTreeItem, FolderResponse } from '@/api/AbiClient';
+import { AbiClient, DocumentSummary, FolderTreeItem, FolderResponse, FolderRegistryEntry } from '@/api/AbiClient';
+import { FolderContextManager } from '@/api/FolderContextManager';
+import { useWorkspace } from '@/context/WorkspaceContext';
 import { LogoWithText } from '@/components/icons/Logo';
 import { Button } from '@/components/ui/button';
 import { FolderTree } from '@/components/folders/FolderTree';
 import { FolderDialog } from '@/components/folders/FolderDialog';
+import { FolderSettingsPanel } from '@/components/folders/FolderSettingsPanel';
 import { ShareDialog } from '@/components/sharing/ShareDialog';
 import { MembersIndicator } from '@/components/sharing/MembersIndicator';
+import { WorkspaceSwitcher } from '@/components/workspace/WorkspaceSwitcher';
 import {
   Plus,
   Search,
@@ -42,11 +46,13 @@ import {
 const HomePage: React.FC = () => {
   const { app, logout, isAuthenticated } = useCalimero();
   const navigate = useNavigate();
+  const { activeContextId, generalContextId, activeGroupId, setActiveContext } = useWorkspace();
 
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [allDocuments, setAllDocuments] = useState<DocumentSummary[]>([]);
   const [folders, setFolders] = useState<FolderTreeItem[]>([]);
   const [flatFolders, setFlatFolders] = useState<FolderResponse[]>([]);
+  const [topLevelFolders, setTopLevelFolders] = useState<FolderRegistryEntry[]>([]);
   const [allTags, setAllTags] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState('');
@@ -71,9 +77,15 @@ const HomePage: React.FC = () => {
   const [folderDialogInitialName, setFolderDialogInitialName] = useState('');
   const [folderDialogInitialColor, setFolderDialogInitialColor] = useState<string | null>(null);
 
+  // Top-level folder creation
+  const [topLevelFolderDialogOpen, setTopLevelFolderDialogOpen] = useState(false);
+
+  // Folder settings panel state
+  const [folderSettingsOpen, setFolderSettingsOpen] = useState(false);
+  const [folderSettingsTarget, setFolderSettingsTarget] = useState<FolderRegistryEntry | null>(null);
+
   // Share dialog state
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
-  const [currentContextId, setCurrentContextId] = useState<string | null>(null);
 
   // Persist view mode preference
   useEffect(() => {
@@ -92,15 +104,24 @@ const HomePage: React.FC = () => {
     }
   }, [isAuthenticated, navigate]);
 
-  // Load documents and folders
+  // Load top-level folders when workspace changes
+  useEffect(() => {
+    if (!app || !generalContextId) return;
+    const manager = new FolderContextManager(app);
+    manager.listFolderContexts(generalContextId)
+      .then(setTopLevelFolders)
+      .catch((err) => console.error('[HomePage] Failed to load top-level folders:', err));
+  }, [app, generalContextId]);
+
+  // Load documents and folders — re-runs when active context changes
   const loadData = useCallback(async () => {
-    if (!app) return;
+    if (!app || !activeContextId) return;
 
     setIsLoading(true);
     setSyncStatus('syncing');
     try {
-      const client = new AbiClient(app);
-      
+      const client = new AbiClient(app, activeContextId);
+
       // Load folders
       const [folderTree, folderList] = await Promise.all([
         client.getFolderTree(),
@@ -108,7 +129,7 @@ const HomePage: React.FC = () => {
       ]);
       setFolders(folderTree);
       setFlatFolders(folderList);
-      
+
       // Load documents based on filters
       let docs: DocumentSummary[];
       if (searchQuery) {
@@ -118,20 +139,19 @@ const HomePage: React.FC = () => {
       } else if (selectedFolderId !== null) {
         docs = await client.getDocumentsInFolder({ folder_id: selectedFolderId, include_archived: includeArchived });
       } else {
-        // Show all documents when "All Documents" is selected
         docs = await client.listDocuments({ include_archived: includeArchived });
       }
-      
+
       setDocuments(docs);
-      
+
       // Also load all documents for folder tree display
       const allDocs = await client.listDocuments({ include_archived: includeArchived });
       setAllDocuments(allDocs);
-      
+
       // Load all tags
       const tags = await client.getAllTags();
       setAllTags(tags);
-      
+
       setSyncStatus('synced');
     } catch (error) {
       console.error('Failed to load data:', error);
@@ -139,30 +159,13 @@ const HomePage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [app, searchQuery, selectedTag, selectedFolderId, includeArchived]);
+  }, [app, activeContextId, searchQuery, selectedTag, selectedFolderId, includeArchived]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // Fetch context ID for sharing
-  useEffect(() => {
-    const fetchContextId = async () => {
-      if (!app) return;
-      try {
-        const contexts = await app.fetchContexts();
-        if (contexts.length > 0) {
-          setCurrentContextId(contexts[0].contextId);
-        }
-      } catch (error) {
-        console.error('Failed to fetch context:', error);
-      }
-    };
-    fetchContextId();
-  }, [app]);
-
   const createNewDocument = () => {
-    // Pass selected folder as state
     navigate('/editor', { state: { folderId: selectedFolderId } });
   };
 
@@ -171,9 +174,9 @@ const HomePage: React.FC = () => {
   };
 
   const handleArchive = async (id: string, archived: boolean) => {
-    if (!app) return;
+    if (!app || !activeContextId) return;
     try {
-      const client = new AbiClient(app);
+      const client = new AbiClient(app, activeContextId);
       await client.setArchived({ id, archived: !archived });
       loadData();
     } catch (error) {
@@ -182,10 +185,10 @@ const HomePage: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!app) return;
+    if (!app || !activeContextId) return;
     if (window.confirm('Are you sure you want to delete this document?')) {
       try {
-        const client = new AbiClient(app);
+        const client = new AbiClient(app, activeContextId);
         await client.deleteDocument({ id });
         loadData();
       } catch (error) {
@@ -195,9 +198,9 @@ const HomePage: React.FC = () => {
   };
 
   const handleMoveDocument = async (docId: string, folderId: string | null) => {
-    if (!app) return;
+    if (!app || !activeContextId) return;
     try {
-      const client = new AbiClient(app);
+      const client = new AbiClient(app, activeContextId);
       await client.moveDocument({ doc_id: docId, folder_id: folderId });
       loadData();
     } catch (error) {
@@ -216,7 +219,7 @@ const HomePage: React.FC = () => {
     window.location.replace('/');
   };
 
-  // Folder handlers
+  // Subfolder handlers (within active context)
   const handleCreateFolder = (parentId: string | null) => {
     setFolderDialogMode('create');
     setFolderDialogParentId(parentId);
@@ -227,9 +230,9 @@ const HomePage: React.FC = () => {
   };
 
   const handleRenameFolder = async (folderId: string) => {
-    if (!app) return;
+    if (!app || !activeContextId) return;
     try {
-      const client = new AbiClient(app);
+      const client = new AbiClient(app, activeContextId);
       const folder = await client.getFolder({ folder_id: folderId });
       if (folder) {
         setFolderDialogMode('rename');
@@ -245,10 +248,10 @@ const HomePage: React.FC = () => {
   };
 
   const handleDeleteFolder = async (folderId: string) => {
-    if (!app) return;
+    if (!app || !activeContextId) return;
     if (window.confirm('Are you sure you want to delete this folder? Documents will be moved to root.')) {
       try {
-        const client = new AbiClient(app);
+        const client = new AbiClient(app, activeContextId);
         await client.deleteFolder({ folder_id: folderId, recursive: true });
         if (selectedFolderId === folderId) {
           setSelectedFolderId(null);
@@ -261,16 +264,15 @@ const HomePage: React.FC = () => {
   };
 
   const handleFolderDialogSubmit = async (name: string, color: string | null) => {
-    if (!app) return;
+    if (!app || !activeContextId) return;
     try {
-      const client = new AbiClient(app);
+      const client = new AbiClient(app, activeContextId);
       if (folderDialogMode === 'create') {
         await client.createFolder({
           name,
           parent_id: folderDialogParentId,
           color,
         });
-        // Expand parent if creating subfolder
         if (folderDialogParentId) {
           setExpandedFolders(prev => new Set([...prev, folderDialogParentId!]));
         }
@@ -298,6 +300,57 @@ const HomePage: React.FC = () => {
     });
   };
 
+  // Top-level folder (context-level) handlers
+  const handleTopLevelFolderSelect = (contextId: string) => {
+    setActiveContext(contextId);
+    setSelectedFolderId(null);
+    setSearchQuery('');
+    setSelectedTag('');
+  };
+
+  const handleCreateTopLevelFolder = () => {
+    setTopLevelFolderDialogOpen(true);
+  };
+
+  const handleTopLevelFolderDialogSubmit = async (name: string, color: string | null) => {
+    if (!app || !activeGroupId || !generalContextId) return;
+    try {
+      const manager = new FolderContextManager(app);
+      const contextId = await manager.createFolderContext(
+        activeGroupId,
+        generalContextId,
+        name,
+        color ?? undefined,
+      );
+      // Refresh the top-level folder list
+      const updated = await manager.listFolderContexts(generalContextId);
+      setTopLevelFolders(updated);
+      // Switch into the new folder context
+      handleTopLevelFolderSelect(contextId);
+    } catch (error) {
+      console.error('Failed to create top-level folder:', error);
+    }
+  };
+
+  const handleTopLevelFolderSettings = (folder: FolderRegistryEntry) => {
+    setFolderSettingsTarget(folder);
+    setFolderSettingsOpen(true);
+  };
+
+  const handleFolderRenamed = (contextId: string, newName: string) => {
+    setTopLevelFolders(prev =>
+      prev.map(f => f.context_id === contextId ? { ...f, name: newName } : f)
+    );
+  };
+
+  const handleFolderDeleted = (contextId: string) => {
+    setTopLevelFolders(prev => prev.filter(f => f.context_id !== contextId));
+    // If the user was inside the deleted folder, navigate to General
+    if (activeContextId === contextId && generalContextId) {
+      setActiveContext(generalContextId);
+    }
+  };
+
   const formatDate = (timestamp: number) => {
     let ms = timestamp;
     if (timestamp > 1e18) {
@@ -307,13 +360,13 @@ const HomePage: React.FC = () => {
     } else if (timestamp < 1e12) {
       ms = timestamp * 1000;
     }
-    
+
     const date = new Date(ms);
-    
+
     if (isNaN(date.getTime())) {
       return 'Unknown date';
     }
-    
+
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
@@ -332,11 +385,8 @@ const HomePage: React.FC = () => {
   // Strip HTML tags and decode entities for preview text
   const stripHtml = (html: string): string => {
     if (!html) return '';
-    // Create a temporary element to decode HTML entities
     const doc = new DOMParser().parseFromString(html, 'text/html');
-    // Get text content (strips all tags)
     const text = doc.body.textContent || '';
-    // Clean up whitespace
     return text.replace(/\s+/g, ' ').trim();
   };
 
@@ -371,7 +421,7 @@ const HomePage: React.FC = () => {
       <aside className="w-72 border-r border-border flex flex-col bg-card">
         {/* Header */}
         <div className="p-4 border-b border-border">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-3">
             <LogoWithText size={28} />
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               {syncStatus === 'synced' && (
@@ -394,25 +444,29 @@ const HomePage: React.FC = () => {
               )}
             </div>
           </div>
-          <div className="flex gap-2">
+
+          {/* Workspace Switcher */}
+          <WorkspaceSwitcher />
+
+          <div className="flex gap-2 mt-3">
             <Button onClick={createNewDocument} className="flex-1 gap-2">
               <Plus className="w-4 h-4" />
               New Doc
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               size="icon"
               onClick={() => handleCreateFolder(null)}
               title="New Folder"
             >
               <FolderPlus className="w-4 h-4" />
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               size="icon"
               onClick={() => setShareDialogOpen(true)}
               title="Share Workspace"
-              disabled={!currentContextId}
+              disabled={!activeContextId}
             >
               <Share2 className="w-4 h-4" />
             </Button>
@@ -457,6 +511,13 @@ const HomePage: React.FC = () => {
             onOpenDocument={openDocument}
             expandedFolders={expandedFolders}
             onToggleFolder={handleToggleFolder}
+            topLevelFolders={topLevelFolders}
+            activeContextId={activeContextId}
+            generalContextId={generalContextId}
+            onTopLevelFolderSelect={handleTopLevelFolderSelect}
+            onCreateTopLevelFolder={handleCreateTopLevelFolder}
+            onTopLevelFolderSettings={handleTopLevelFolderSettings}
+            canCreateContext={!!activeGroupId}
           />
         </div>
 
@@ -549,7 +610,7 @@ const HomePage: React.FC = () => {
                   <List className="w-4 h-4" />
                 </Button>
               </div>
-              <MembersIndicator contextId={currentContextId} />
+              <MembersIndicator contextId={activeContextId} />
               <div className="security-badge">
                 <Shield className="w-3.5 h-3.5" />
                 <span>End-to-End Encrypted</span>
@@ -710,7 +771,7 @@ const HomePage: React.FC = () => {
                 <div className="col-span-2">Tags</div>
                 <div className="col-span-1"></div>
               </div>
-              
+
               {/* Table Body */}
               <div className="divide-y divide-border">
                 {documents.map((doc) => (
@@ -742,19 +803,19 @@ const HomePage: React.FC = () => {
                         </div>
                       </div>
                     </div>
-                    
+
                     {/* Folder */}
                     <div className="col-span-2 min-w-0">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Folder className="w-3.5 h-3.5 flex-shrink-0" />
                         <span className="truncate">
-                          {doc.folder_id 
+                          {doc.folder_id
                             ? flatFolders.find(f => f.id === doc.folder_id)?.name || 'Unknown'
                             : 'Root'}
                         </span>
                       </div>
                     </div>
-                    
+
                     {/* Modified Date */}
                     <div className="col-span-2">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -762,7 +823,7 @@ const HomePage: React.FC = () => {
                         <span>{formatDate(doc.updated_at)}</span>
                       </div>
                     </div>
-                    
+
                     {/* Tags */}
                     <div className="col-span-2 min-w-0">
                       {doc.tags.length > 0 ? (
@@ -785,7 +846,7 @@ const HomePage: React.FC = () => {
                         <span className="text-xs text-muted-foreground/50">—</span>
                       )}
                     </div>
-                    
+
                     {/* Actions */}
                     <div className="col-span-1 flex justify-end">
                       <DropdownMenu>
@@ -861,7 +922,7 @@ const HomePage: React.FC = () => {
         </div>
       </main>
 
-      {/* Folder Dialog */}
+      {/* Subfolder Dialog */}
       <FolderDialog
         isOpen={folderDialogOpen}
         onClose={() => setFolderDialogOpen(false)}
@@ -872,12 +933,39 @@ const HomePage: React.FC = () => {
         parentFolderName={getParentFolderName()}
       />
 
+      {/* Top-level Folder Creation Dialog */}
+      <FolderDialog
+        isOpen={topLevelFolderDialogOpen}
+        onClose={() => setTopLevelFolderDialogOpen(false)}
+        onSubmit={handleTopLevelFolderDialogSubmit}
+        mode="create"
+        initialName=""
+        initialColor={null}
+        parentFolderName={null}
+      />
+
       {/* Share Dialog */}
-      {currentContextId && (
+      {activeContextId && (
         <ShareDialog
           isOpen={shareDialogOpen}
           onClose={() => setShareDialogOpen(false)}
-          contextId={currentContextId}
+          contextId={activeContextId}
+        />
+      )}
+
+      {/* Folder Settings Panel */}
+      {folderSettingsTarget && activeGroupId && generalContextId && (
+        <FolderSettingsPanel
+          folder={folderSettingsTarget}
+          groupId={activeGroupId}
+          generalContextId={generalContextId}
+          isOpen={folderSettingsOpen}
+          onClose={() => {
+            setFolderSettingsOpen(false);
+            setFolderSettingsTarget(null);
+          }}
+          onRenamed={handleFolderRenamed}
+          onDeleted={handleFolderDeleted}
         />
       )}
     </div>
