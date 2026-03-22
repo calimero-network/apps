@@ -1,8 +1,12 @@
 import React from 'react';
 import { Shield, Zap } from 'lucide-react';
-import { CalimeroConnectButton } from '@calimero-network/calimero-client';
+import { Button } from '@/components/ui/button';
 
-export const CTA: React.FC = () => {
+interface CTAProps {
+  onConnect?: () => void;
+}
+
+export const CTA: React.FC<CTAProps> = ({ onConnect }) => {
   return (
     <section className="py-24 px-6">
       <div className="max-w-4xl mx-auto text-center">
@@ -13,18 +17,20 @@ export const CTA: React.FC = () => {
               <Zap className="w-4 h-4" />
               Ready to start
             </div>
-            
+
             <h2 className="text-3xl sm:text-4xl font-bold mb-4">
-              Take back control of your documents
+              Take back control of your files
             </h2>
-            
+
             <p className="text-text-secondary max-w-xl mx-auto mb-8">
-              Start writing with confidence. Your documents stay private, 
+              Store and share with confidence. Your files stay private,
               sync seamlessly, and work everywhere — with or without internet.
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <CalimeroConnectButton />
+              <Button size="lg" onClick={onConnect}>
+                Get Started
+              </Button>
               <div className="flex items-center gap-2 text-sm text-text-secondary">
                 <Shield className="w-4 h-4 text-secure" />
                 No account required

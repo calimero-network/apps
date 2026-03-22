@@ -1,4 +1,4 @@
-//! # Private Docs Application
+//! # Mero Drive Application
 //!
 //! A private document management application built on Calimero.
 //! Uses LwwRegister for content with pure insert() updates (no remove() first).
@@ -25,16 +25,20 @@ fn generate_folder_id(counter: u64) -> String {
     format!("folder_{}", counter)
 }
 
+fn generate_file_id(counter: u64) -> String {
+    format!("file_{}", counter)
+}
+
 /// Folder for organizing documents hierarchically.
 #[derive(Debug, BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct Folder {
     pub id: LwwRegister<String>,
     pub name: LwwRegister<String>,
-    pub parent_id: LwwRegister<Option<String>>,  // None = root level
+    pub parent_id: LwwRegister<Option<String>>, // None = root level
     pub created_at: LwwRegister<u64>,
     pub updated_at: LwwRegister<u64>,
-    pub color: LwwRegister<Option<String>>,  // Optional color for folder icon
+    pub color: LwwRegister<Option<String>>, // Optional color for folder icon
 }
 
 impl Mergeable for Folder {
@@ -48,6 +52,40 @@ impl Mergeable for Folder {
         self.created_at.merge(&other.created_at);
         self.updated_at.merge(&other.updated_at);
         self.color.merge(&other.color);
+        Ok(())
+    }
+}
+
+/// Uploaded file with metadata stored as CRDTs.
+/// The binary content lives in Calimero blob storage; this struct holds the reference.
+#[derive(Debug, BorshSerialize, BorshDeserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct FileEntry {
+    pub id: LwwRegister<String>,
+    pub name: LwwRegister<String>,
+    pub blob_id: LwwRegister<String>,
+    pub mime_type: LwwRegister<String>,
+    pub size: LwwRegister<u64>,
+    pub folder_id: LwwRegister<Option<String>>,
+    pub created_at: LwwRegister<u64>,
+    pub updated_at: LwwRegister<u64>,
+    pub uploaded_by: LwwRegister<String>,
+}
+
+impl Mergeable for FileEntry {
+    fn merge(
+        &mut self,
+        other: &Self,
+    ) -> Result<(), calimero_storage::collections::crdt_meta::MergeError> {
+        self.id.merge(&other.id);
+        self.name.merge(&other.name);
+        self.blob_id.merge(&other.blob_id);
+        self.mime_type.merge(&other.mime_type);
+        self.size.merge(&other.size);
+        self.folder_id.merge(&other.folder_id);
+        self.created_at.merge(&other.created_at);
+        self.updated_at.merge(&other.updated_at);
+        self.uploaded_by.merge(&other.uploaded_by);
         Ok(())
     }
 }
@@ -89,7 +127,7 @@ pub struct Document {
     pub updated_at: LwwRegister<u64>,
     pub tags: UnorderedSet<String>,
     pub archived: LwwRegister<bool>,
-    pub folder_id: LwwRegister<Option<String>>,  // None = root level
+    pub folder_id: LwwRegister<Option<String>>, // None = root level
 }
 
 impl Mergeable for Document {
@@ -176,6 +214,21 @@ pub struct FolderRegistryEntry {
     pub created_at: u64,
 }
 
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct FileEntryResponse {
+    pub id: String,
+    pub name: String,
+    pub blob_id: String,
+    pub mime_type: String,
+    pub size: u64,
+    pub folder_id: Option<String>,
+    pub created_at: u64,
+    pub updated_at: u64,
+    pub uploaded_by: String,
+}
+
 #[app::state(emits = DocsEvent)]
 #[derive(BorshDeserialize, BorshSerialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -183,8 +236,10 @@ pub struct DocsApp {
     pub owner: LwwRegister<String>,
     pub documents: UnorderedMap<String, Document>,
     pub folders: UnorderedMap<String, Folder>,
+    pub files: UnorderedMap<String, FileEntry>,
     pub doc_counter: Counter,
     pub folder_counter: Counter,
+    pub file_counter: Counter,
     pub context_name: LwwRegister<String>,
     pub folder_registry: UnorderedMap<String, FolderMeta>,
 }
@@ -193,23 +248,81 @@ pub struct DocsApp {
 #[derive(Debug, BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub enum DocsEvent {
-    DocumentCreated { id: String, title: String, author: String },
-    DocumentUpdated { id: String, title: String, editor: String },
-    DocumentDeleted { id: String, title: String },
-    DocumentArchived { id: String, archived: bool },
-    DocumentMoved { id: String, from_folder: Option<String>, to_folder: Option<String> },
-    FolderCreated { id: String, name: String, parent_id: Option<String> },
-    FolderUpdated { id: String, name: String },
-    FolderDeleted { id: String, name: String },
-    FolderMoved { id: String, from_parent: Option<String>, to_parent: Option<String> },
-    ContextNameSet { name: String },
-    FolderRegistered { context_id: String, name: String },
-    FolderNameUpdated { context_id: String, name: String },
-    FolderUnregistered { context_id: String },
+    DocumentCreated {
+        id: String,
+        title: String,
+        author: String,
+    },
+    DocumentUpdated {
+        id: String,
+        title: String,
+        editor: String,
+    },
+    DocumentDeleted {
+        id: String,
+        title: String,
+    },
+    DocumentArchived {
+        id: String,
+        archived: bool,
+    },
+    DocumentMoved {
+        id: String,
+        from_folder: Option<String>,
+        to_folder: Option<String>,
+    },
+    FolderCreated {
+        id: String,
+        name: String,
+        parent_id: Option<String>,
+    },
+    FolderUpdated {
+        id: String,
+        name: String,
+    },
+    FolderDeleted {
+        id: String,
+        name: String,
+    },
+    FolderMoved {
+        id: String,
+        from_parent: Option<String>,
+        to_parent: Option<String>,
+    },
+    ContextNameSet {
+        name: String,
+    },
+    FolderRegistered {
+        context_id: String,
+        name: String,
+    },
+    FolderNameUpdated {
+        context_id: String,
+        name: String,
+    },
+    FolderUnregistered {
+        context_id: String,
+    },
+    FileCreated {
+        id: String,
+        name: String,
+        uploaded_by: String,
+    },
+    FileDeleted {
+        id: String,
+        name: String,
+    },
+    FileMoved {
+        id: String,
+        from_folder: Option<String>,
+        to_folder: Option<String>,
+    },
 }
 
 fn extract_tags(tags: &UnorderedSet<String>) -> Result<Vec<String>, String> {
-    let iter = tags.iter().map_err(|e| format!("Failed to iterate tags: {:?}", e))?;
+    let iter = tags
+        .iter()
+        .map_err(|e| format!("Failed to iterate tags: {:?}", e))?;
     Ok(iter.collect())
 }
 
@@ -219,14 +332,16 @@ impl DocsApp {
     pub fn init() -> DocsApp {
         let owner_id = env::executor_id();
         let owner = encode_identity(&owner_id);
-        app::log!("Initializing Private Docs app for owner: {}", owner);
+        app::log!("Initializing Mero Drive app for owner: {}", owner);
 
         DocsApp {
             owner: owner.into(),
             documents: UnorderedMap::new(),
             folders: UnorderedMap::new(),
+            files: UnorderedMap::new(),
             doc_counter: Counter::new(),
             folder_counter: Counter::new(),
+            file_counter: Counter::new(),
             context_name: String::new().into(),
             folder_registry: UnorderedMap::new(),
         }
@@ -245,7 +360,9 @@ impl DocsApp {
 
         // Verify folder exists if specified
         if let Some(ref fid) = folder_id {
-            let folder_exists = self.folders.get(fid)
+            let folder_exists = self
+                .folders
+                .get(fid)
                 .map_err(|e| format!("Failed to check folder: {:?}", e))?
                 .is_some();
             if !folder_exists {
@@ -253,9 +370,12 @@ impl DocsApp {
             }
         }
 
-        let counter_value = self.doc_counter.value()
+        let counter_value = self
+            .doc_counter
+            .value()
             .map_err(|e| format!("Failed to get counter: {:?}", e))?;
-        self.doc_counter.increment()
+        self.doc_counter
+            .increment()
             .map_err(|e| format!("Failed to increment counter: {:?}", e))?;
 
         let doc_id = generate_doc_id(counter_value);
@@ -265,7 +385,9 @@ impl DocsApp {
 
         let mut tags_set = UnorderedSet::new();
         for tag in &tags {
-            tags_set.insert(tag.clone()).map_err(|e| format!("Failed to add tag: {:?}", e))?;
+            tags_set
+                .insert(tag.clone())
+                .map_err(|e| format!("Failed to add tag: {:?}", e))?;
         }
 
         let document = Document {
@@ -280,7 +402,8 @@ impl DocsApp {
             folder_id: LwwRegister::new(folder_id),
         };
 
-        self.documents.insert(doc_id.clone(), document)
+        self.documents
+            .insert(doc_id.clone(), document)
             .map_err(|e| format!("Failed to store document: {:?}", e))?;
 
         app::emit!(DocsEvent::DocumentCreated {
@@ -296,7 +419,9 @@ impl DocsApp {
     /// Set content using pure insert() - no remove() first
     pub fn set_content(&mut self, doc_id: String, content: String) -> Result<(), String> {
         // Get current document to preserve other fields
-        let old_doc = self.documents.get(&doc_id)
+        let old_doc = self
+            .documents
+            .get(&doc_id)
             .map_err(|e| format!("Failed to access document: {:?}", e))?
             .ok_or_else(|| format!("Document not found: {}", doc_id))?;
 
@@ -309,7 +434,9 @@ impl DocsApp {
         let mut new_tags = UnorderedSet::new();
         let old_tags_vec = extract_tags(&old_doc.tags)?;
         for tag in old_tags_vec {
-            new_tags.insert(tag).map_err(|e| format!("Failed to copy tag: {:?}", e))?;
+            new_tags
+                .insert(tag)
+                .map_err(|e| format!("Failed to copy tag: {:?}", e))?;
         }
 
         let new_doc = Document {
@@ -327,7 +454,8 @@ impl DocsApp {
         let doc_title = new_doc.title.get().clone();
 
         // Use insert() directly - this overwrites without remove()
-        self.documents.insert(doc_id.clone(), new_doc)
+        self.documents
+            .insert(doc_id.clone(), new_doc)
             .map_err(|e| format!("Failed to save document: {:?}", e))?;
 
         app::emit!(DocsEvent::DocumentUpdated {
@@ -347,7 +475,9 @@ impl DocsApp {
         title: Option<String>,
         archived: Option<bool>,
     ) -> Result<(), String> {
-        let old_doc = self.documents.get(&doc_id)
+        let old_doc = self
+            .documents
+            .get(&doc_id)
             .map_err(|e| format!("Failed to access document: {:?}", e))?
             .ok_or_else(|| format!("Document not found: {}", doc_id))?;
 
@@ -355,14 +485,17 @@ impl DocsApp {
         let editor = encode_identity(&editor_id);
         let timestamp = env::time_now();
 
-        let new_title = title.filter(|t| !t.trim().is_empty())
+        let new_title = title
+            .filter(|t| !t.trim().is_empty())
             .unwrap_or_else(|| old_doc.title.get().clone());
         let new_archived = archived.unwrap_or_else(|| *old_doc.archived.get());
 
         let mut new_tags = UnorderedSet::new();
         let old_tags_vec = extract_tags(&old_doc.tags)?;
         for tag in old_tags_vec {
-            new_tags.insert(tag).map_err(|e| format!("Failed to copy tag: {:?}", e))?;
+            new_tags
+                .insert(tag)
+                .map_err(|e| format!("Failed to copy tag: {:?}", e))?;
         }
 
         let new_doc = Document {
@@ -377,7 +510,8 @@ impl DocsApp {
             folder_id: LwwRegister::new(old_doc.folder_id.get().clone()),
         };
 
-        self.documents.insert(doc_id.clone(), new_doc)
+        self.documents
+            .insert(doc_id.clone(), new_doc)
             .map_err(|e| format!("Failed to save document: {:?}", e))?;
 
         app::emit!(DocsEvent::DocumentUpdated {
@@ -391,7 +525,9 @@ impl DocsApp {
     }
 
     pub fn add_tag(&mut self, doc_id: String, tag: String) -> Result<(), String> {
-        let old_doc = self.documents.get(&doc_id)
+        let old_doc = self
+            .documents
+            .get(&doc_id)
             .map_err(|e| format!("Failed to access document: {:?}", e))?
             .ok_or_else(|| format!("Document not found: {}", doc_id))?;
 
@@ -400,9 +536,13 @@ impl DocsApp {
         let mut new_tags = UnorderedSet::new();
         let old_tags_vec = extract_tags(&old_doc.tags)?;
         for t in old_tags_vec {
-            new_tags.insert(t).map_err(|e| format!("Failed to copy tag: {:?}", e))?;
+            new_tags
+                .insert(t)
+                .map_err(|e| format!("Failed to copy tag: {:?}", e))?;
         }
-        new_tags.insert(tag.clone()).map_err(|e| format!("Failed to add tag: {:?}", e))?;
+        new_tags
+            .insert(tag.clone())
+            .map_err(|e| format!("Failed to add tag: {:?}", e))?;
 
         let new_doc = Document {
             id: LwwRegister::new(old_doc.id.get().clone()),
@@ -416,7 +556,8 @@ impl DocsApp {
             folder_id: LwwRegister::new(old_doc.folder_id.get().clone()),
         };
 
-        self.documents.insert(doc_id.clone(), new_doc)
+        self.documents
+            .insert(doc_id.clone(), new_doc)
             .map_err(|e| format!("Failed to save document: {:?}", e))?;
 
         app::log!("Tag '{}' added to document {}", tag, doc_id);
@@ -424,7 +565,9 @@ impl DocsApp {
     }
 
     pub fn set_tags(&mut self, doc_id: String, tags: Vec<String>) -> Result<(), String> {
-        let old_doc = self.documents.get(&doc_id)
+        let old_doc = self
+            .documents
+            .get(&doc_id)
             .map_err(|e| format!("Failed to access document: {:?}", e))?
             .ok_or_else(|| format!("Document not found: {}", doc_id))?;
 
@@ -434,12 +577,16 @@ impl DocsApp {
         // Keep old tags
         let old_tags_vec = extract_tags(&old_doc.tags)?;
         for t in old_tags_vec {
-            new_tags.insert(t).map_err(|e| format!("Failed to copy tag: {:?}", e))?;
+            new_tags
+                .insert(t)
+                .map_err(|e| format!("Failed to copy tag: {:?}", e))?;
         }
         // Add new tags
         for tag in tags {
             if !tag.is_empty() {
-                new_tags.insert(tag).map_err(|e| format!("Failed to add tag: {:?}", e))?;
+                new_tags
+                    .insert(tag)
+                    .map_err(|e| format!("Failed to add tag: {:?}", e))?;
             }
         }
 
@@ -455,7 +602,8 @@ impl DocsApp {
             folder_id: LwwRegister::new(old_doc.folder_id.get().clone()),
         };
 
-        self.documents.insert(doc_id.clone(), new_doc)
+        self.documents
+            .insert(doc_id.clone(), new_doc)
             .map_err(|e| format!("Failed to save document: {:?}", e))?;
 
         app::log!("Tags updated for document {}", doc_id);
@@ -463,13 +611,16 @@ impl DocsApp {
     }
 
     pub fn delete_document(&mut self, doc_id: String) -> Result<(), String> {
-        let doc = self.documents.get(&doc_id)
+        let doc = self
+            .documents
+            .get(&doc_id)
             .map_err(|e| format!("Failed to access document: {:?}", e))?
             .ok_or_else(|| format!("Document not found: {}", doc_id))?;
 
         let title = doc.title.get().clone();
 
-        self.documents.remove(&doc_id)
+        self.documents
+            .remove(&doc_id)
             .map_err(|e| format!("Failed to delete document: {:?}", e))?;
 
         app::emit!(DocsEvent::DocumentDeleted {
@@ -482,7 +633,9 @@ impl DocsApp {
     }
 
     pub fn set_archived(&mut self, doc_id: String, archived: bool) -> Result<(), String> {
-        let old_doc = self.documents.get(&doc_id)
+        let old_doc = self
+            .documents
+            .get(&doc_id)
             .map_err(|e| format!("Failed to access document: {:?}", e))?
             .ok_or_else(|| format!("Document not found: {}", doc_id))?;
 
@@ -491,7 +644,9 @@ impl DocsApp {
         let mut new_tags = UnorderedSet::new();
         let old_tags_vec = extract_tags(&old_doc.tags)?;
         for tag in old_tags_vec {
-            new_tags.insert(tag).map_err(|e| format!("Failed to copy tag: {:?}", e))?;
+            new_tags
+                .insert(tag)
+                .map_err(|e| format!("Failed to copy tag: {:?}", e))?;
         }
 
         let new_doc = Document {
@@ -506,7 +661,8 @@ impl DocsApp {
             folder_id: LwwRegister::new(old_doc.folder_id.get().clone()),
         };
 
-        self.documents.insert(doc_id.clone(), new_doc)
+        self.documents
+            .insert(doc_id.clone(), new_doc)
             .map_err(|e| format!("Failed to save document: {:?}", e))?;
 
         app::emit!(DocsEvent::DocumentArchived {
@@ -514,12 +670,18 @@ impl DocsApp {
             archived,
         });
 
-        app::log!("Document {} archive status: {}", doc_id, if archived { "archived" } else { "unarchived" });
+        app::log!(
+            "Document {} archive status: {}",
+            doc_id,
+            if archived { "archived" } else { "unarchived" }
+        );
         Ok(())
     }
 
     pub fn get_document(&self, doc_id: String) -> Result<DocumentResponse, String> {
-        let doc = self.documents.get(&doc_id)
+        let doc = self
+            .documents
+            .get(&doc_id)
             .map_err(|e| format!("Failed to access document: {:?}", e))?
             .ok_or_else(|| format!("Document not found: {}", doc_id))?;
 
@@ -539,14 +701,18 @@ impl DocsApp {
     }
 
     pub fn get_content(&self, doc_id: String) -> Result<String, String> {
-        let doc = self.documents.get(&doc_id)
+        let doc = self
+            .documents
+            .get(&doc_id)
             .map_err(|e| format!("Failed to access document: {:?}", e))?
             .ok_or_else(|| format!("Document not found: {}", doc_id))?;
         Ok(doc.content.get().clone())
     }
 
     pub fn get_content_length(&self, doc_id: String) -> Result<usize, String> {
-        let doc = self.documents.get(&doc_id)
+        let doc = self
+            .documents
+            .get(&doc_id)
             .map_err(|e| format!("Failed to access document: {:?}", e))?
             .ok_or_else(|| format!("Document not found: {}", doc_id))?;
         Ok(doc.content.get().len())
@@ -555,7 +721,9 @@ impl DocsApp {
     pub fn list_documents(&self, include_archived: bool) -> Result<Vec<DocumentSummary>, String> {
         let mut documents = Vec::new();
 
-        let entries = self.documents.entries()
+        let entries = self
+            .documents
+            .entries()
             .map_err(|e| format!("Failed to list documents: {:?}", e))?;
 
         for (_, doc) in entries {
@@ -589,11 +757,17 @@ impl DocsApp {
         Ok(documents)
     }
 
-    pub fn search_documents(&self, query: String, include_archived: bool) -> Result<Vec<DocumentSummary>, String> {
+    pub fn search_documents(
+        &self,
+        query: String,
+        include_archived: bool,
+    ) -> Result<Vec<DocumentSummary>, String> {
         let mut results = Vec::new();
         let query_lower = query.to_lowercase();
 
-        let entries = self.documents.entries()
+        let entries = self
+            .documents
+            .entries()
             .map_err(|e| format!("Failed to search documents: {:?}", e))?;
 
         for (_, doc) in entries {
@@ -605,7 +779,9 @@ impl DocsApp {
             let title_match = doc.title.get().to_lowercase().contains(&query_lower);
             let content_match = content.to_lowercase().contains(&query_lower);
             let tags = extract_tags(&doc.tags)?;
-            let tags_match = tags.iter().any(|tag| tag.to_lowercase().contains(&query_lower));
+            let tags_match = tags
+                .iter()
+                .any(|tag| tag.to_lowercase().contains(&query_lower));
 
             if title_match || content_match || tags_match {
                 let preview = if content.len() > 200 {
@@ -633,11 +809,17 @@ impl DocsApp {
         Ok(results)
     }
 
-    pub fn get_documents_by_tag(&self, tag: String, include_archived: bool) -> Result<Vec<DocumentSummary>, String> {
+    pub fn get_documents_by_tag(
+        &self,
+        tag: String,
+        include_archived: bool,
+    ) -> Result<Vec<DocumentSummary>, String> {
         let mut results = Vec::new();
         let tag_lower = tag.to_lowercase();
 
-        let entries = self.documents.entries()
+        let entries = self
+            .documents
+            .entries()
             .map_err(|e| format!("Failed to filter documents: {:?}", e))?;
 
         for (_, doc) in entries {
@@ -678,7 +860,9 @@ impl DocsApp {
     pub fn get_all_tags(&self) -> Result<Vec<String>, String> {
         let mut tags_set = std::collections::BTreeSet::new();
 
-        let entries = self.documents.entries()
+        let entries = self
+            .documents
+            .entries()
             .map_err(|e| format!("Failed to get tags: {:?}", e))?;
 
         for (_, doc) in entries {
@@ -698,7 +882,9 @@ impl DocsApp {
         let mut archived_docs = 0u64;
         let mut total_tags = std::collections::BTreeSet::new();
 
-        let entries = self.documents.entries()
+        let entries = self
+            .documents
+            .entries()
             .map_err(|e| format!("Failed to get stats: {:?}", e))?;
 
         for (_, doc) in entries {
@@ -715,7 +901,7 @@ impl DocsApp {
         let owner = self.owner.get();
 
         Ok(format!(
-            "Private Docs Statistics:\n\
+            "Mero Drive Statistics:\n\
              - Total documents: {}\n\
              - Active documents: {}\n\
              - Archived documents: {}\n\
@@ -730,7 +916,8 @@ impl DocsApp {
     }
 
     pub fn get_document_count(&self) -> Result<usize, String> {
-        self.documents.len()
+        self.documents
+            .len()
             .map_err(|e| format!("Failed to get document count: {:?}", e))
     }
 
@@ -749,7 +936,9 @@ impl DocsApp {
 
         // Verify parent folder exists if specified
         if let Some(ref pid) = parent_id {
-            let parent_exists = self.folders.get(pid)
+            let parent_exists = self
+                .folders
+                .get(pid)
                 .map_err(|e| format!("Failed to check parent folder: {:?}", e))?
                 .is_some();
             if !parent_exists {
@@ -757,9 +946,12 @@ impl DocsApp {
             }
         }
 
-        let counter_value = self.folder_counter.value()
+        let counter_value = self
+            .folder_counter
+            .value()
             .map_err(|e| format!("Failed to get folder counter: {:?}", e))?;
-        self.folder_counter.increment()
+        self.folder_counter
+            .increment()
             .map_err(|e| format!("Failed to increment folder counter: {:?}", e))?;
 
         let folder_id = generate_folder_id(counter_value);
@@ -774,7 +966,8 @@ impl DocsApp {
             color: LwwRegister::new(color),
         };
 
-        self.folders.insert(folder_id.clone(), folder)
+        self.folders
+            .insert(folder_id.clone(), folder)
             .map_err(|e| format!("Failed to store folder: {:?}", e))?;
 
         app::emit!(DocsEvent::FolderCreated {
@@ -793,7 +986,9 @@ impl DocsApp {
             return Err("Folder name cannot be empty".to_string());
         }
 
-        let old_folder = self.folders.get(&folder_id)
+        let old_folder = self
+            .folders
+            .get(&folder_id)
             .map_err(|e| format!("Failed to access folder: {:?}", e))?
             .ok_or_else(|| format!("Folder not found: {}", folder_id))?;
 
@@ -808,7 +1003,8 @@ impl DocsApp {
             color: LwwRegister::new(old_folder.color.get().clone()),
         };
 
-        self.folders.insert(folder_id.clone(), new_folder)
+        self.folders
+            .insert(folder_id.clone(), new_folder)
             .map_err(|e| format!("Failed to save folder: {:?}", e))?;
 
         app::emit!(DocsEvent::FolderUpdated {
@@ -821,8 +1017,14 @@ impl DocsApp {
     }
 
     /// Update folder color
-    pub fn set_folder_color(&mut self, folder_id: String, color: Option<String>) -> Result<(), String> {
-        let old_folder = self.folders.get(&folder_id)
+    pub fn set_folder_color(
+        &mut self,
+        folder_id: String,
+        color: Option<String>,
+    ) -> Result<(), String> {
+        let old_folder = self
+            .folders
+            .get(&folder_id)
             .map_err(|e| format!("Failed to access folder: {:?}", e))?
             .ok_or_else(|| format!("Folder not found: {}", folder_id))?;
 
@@ -837,7 +1039,8 @@ impl DocsApp {
             color: LwwRegister::new(color),
         };
 
-        self.folders.insert(folder_id.clone(), new_folder)
+        self.folders
+            .insert(folder_id.clone(), new_folder)
             .map_err(|e| format!("Failed to save folder: {:?}", e))?;
 
         app::log!("Folder color updated (ID: {})", folder_id);
@@ -845,7 +1048,11 @@ impl DocsApp {
     }
 
     /// Move a folder to a new parent (or root if parent_id is None)
-    pub fn move_folder(&mut self, folder_id: String, new_parent_id: Option<String>) -> Result<(), String> {
+    pub fn move_folder(
+        &mut self,
+        folder_id: String,
+        new_parent_id: Option<String>,
+    ) -> Result<(), String> {
         // Prevent moving folder into itself
         if let Some(ref pid) = new_parent_id {
             if pid == &folder_id {
@@ -857,21 +1064,27 @@ impl DocsApp {
                 if cid == folder_id {
                     return Err("Cannot create circular folder structure".to_string());
                 }
-                let parent = self.folders.get(&cid)
+                let parent = self
+                    .folders
+                    .get(&cid)
                     .map_err(|e| format!("Failed to check folder hierarchy: {:?}", e))?;
                 current_id = parent.and_then(|f| f.parent_id.get().clone());
             }
         }
 
-        let old_folder = self.folders.get(&folder_id)
+        let old_folder = self
+            .folders
+            .get(&folder_id)
             .map_err(|e| format!("Failed to access folder: {:?}", e))?
             .ok_or_else(|| format!("Folder not found: {}", folder_id))?;
 
         let from_parent = old_folder.parent_id.get().clone();
-        
+
         // Verify new parent exists if specified
         if let Some(ref pid) = new_parent_id {
-            let parent_exists = self.folders.get(pid)
+            let parent_exists = self
+                .folders
+                .get(pid)
                 .map_err(|e| format!("Failed to check new parent folder: {:?}", e))?
                 .is_some();
             if !parent_exists {
@@ -890,7 +1103,8 @@ impl DocsApp {
             color: LwwRegister::new(old_folder.color.get().clone()),
         };
 
-        self.folders.insert(folder_id.clone(), new_folder)
+        self.folders
+            .insert(folder_id.clone(), new_folder)
             .map_err(|e| format!("Failed to save folder: {:?}", e))?;
 
         app::emit!(DocsEvent::FolderMoved {
@@ -905,14 +1119,18 @@ impl DocsApp {
 
     /// Delete a folder (optionally recursively)
     pub fn delete_folder(&mut self, folder_id: String, recursive: bool) -> Result<(), String> {
-        let folder = self.folders.get(&folder_id)
+        let folder = self
+            .folders
+            .get(&folder_id)
             .map_err(|e| format!("Failed to access folder: {:?}", e))?
             .ok_or_else(|| format!("Folder not found: {}", folder_id))?;
 
         let folder_name = folder.name.get().clone();
 
         // Check for subfolders
-        let subfolder_ids: Vec<String> = self.folders.entries()
+        let subfolder_ids: Vec<String> = self
+            .folders
+            .entries()
             .map_err(|e| format!("Failed to list folders: {:?}", e))?
             .filter_map(|(id, f)| {
                 if f.parent_id.get().as_ref() == Some(&folder_id) {
@@ -924,7 +1142,9 @@ impl DocsApp {
             .collect();
 
         // Check for documents in folder
-        let doc_ids: Vec<String> = self.documents.entries()
+        let doc_ids: Vec<String> = self
+            .documents
+            .entries()
             .map_err(|e| format!("Failed to list documents: {:?}", e))?
             .filter_map(|(id, d)| {
                 if d.folder_id.get().as_ref() == Some(&folder_id) {
@@ -935,7 +1155,22 @@ impl DocsApp {
             })
             .collect();
 
-        if !recursive && (!subfolder_ids.is_empty() || !doc_ids.is_empty()) {
+        // Check for files in folder
+        let file_ids: Vec<String> = self
+            .files
+            .entries()
+            .map_err(|e| format!("Failed to list files: {:?}", e))?
+            .filter_map(|(id, f)| {
+                if f.folder_id.get().as_ref() == Some(&folder_id) {
+                    Some(id)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if !recursive && (!subfolder_ids.is_empty() || !doc_ids.is_empty() || !file_ids.is_empty())
+        {
             return Err("Folder is not empty. Use recursive=true to delete contents.".to_string());
         }
 
@@ -949,8 +1184,14 @@ impl DocsApp {
             self.move_document(doc_id, None)?;
         }
 
+        // Move files to root
+        for fid in file_ids {
+            self.move_file(fid, None)?;
+        }
+
         // Delete the folder
-        self.folders.remove(&folder_id)
+        self.folders
+            .remove(&folder_id)
             .map_err(|e| format!("Failed to delete folder: {:?}", e))?;
 
         app::emit!(DocsEvent::FolderDeleted {
@@ -964,18 +1205,24 @@ impl DocsApp {
 
     /// Get a single folder
     pub fn get_folder(&self, folder_id: String) -> Result<FolderResponse, String> {
-        let folder = self.folders.get(&folder_id)
+        let folder = self
+            .folders
+            .get(&folder_id)
             .map_err(|e| format!("Failed to access folder: {:?}", e))?
             .ok_or_else(|| format!("Folder not found: {}", folder_id))?;
 
         // Count documents in folder
-        let document_count = self.documents.entries()
+        let document_count = self
+            .documents
+            .entries()
             .map_err(|e| format!("Failed to count documents: {:?}", e))?
             .filter(|(_, d)| d.folder_id.get().as_ref() == Some(&folder_id))
             .count();
 
         // Count subfolders
-        let subfolder_count = self.folders.entries()
+        let subfolder_count = self
+            .folders
+            .entries()
             .map_err(|e| format!("Failed to count subfolders: {:?}", e))?
             .filter(|(_, f)| f.parent_id.get().as_ref() == Some(&folder_id))
             .count();
@@ -996,18 +1243,24 @@ impl DocsApp {
     pub fn list_folders(&self) -> Result<Vec<FolderResponse>, String> {
         let mut folders = Vec::new();
 
-        let entries = self.folders.entries()
+        let entries = self
+            .folders
+            .entries()
             .map_err(|e| format!("Failed to list folders: {:?}", e))?;
 
         for (folder_id, folder) in entries {
             // Count documents in folder
-            let document_count = self.documents.entries()
+            let document_count = self
+                .documents
+                .entries()
                 .map_err(|e| format!("Failed to count documents: {:?}", e))?
                 .filter(|(_, d)| d.folder_id.get().as_ref() == Some(&folder_id))
                 .count();
 
             // Count subfolders
-            let subfolder_count = self.folders.entries()
+            let subfolder_count = self
+                .folders
+                .entries()
                 .map_err(|e| format!("Failed to count subfolders: {:?}", e))?
                 .filter(|(_, f)| f.parent_id.get().as_ref() == Some(&folder_id))
                 .count();
@@ -1031,7 +1284,9 @@ impl DocsApp {
 
     /// Get folder tree structure
     pub fn get_folder_tree(&self) -> Result<Vec<FolderTreeItem>, String> {
-        let all_folders: Vec<_> = self.folders.entries()
+        let all_folders: Vec<_> = self
+            .folders
+            .entries()
             .map_err(|e| format!("Failed to list folders: {:?}", e))?
             .collect();
 
@@ -1051,7 +1306,8 @@ impl DocsApp {
                 };
 
                 if matches {
-                    let document_count = documents.entries()
+                    let document_count = documents
+                        .entries()
                         .map_err(|e| format!("Failed to count documents: {:?}", e))?
                         .filter(|(_, d)| d.folder_id.get().as_ref() == Some(folder_id))
                         .count();
@@ -1085,7 +1341,9 @@ impl DocsApp {
     ) -> Result<Vec<DocumentSummary>, String> {
         let mut documents = Vec::new();
 
-        let entries = self.documents.entries()
+        let entries = self
+            .documents
+            .entries()
             .map_err(|e| format!("Failed to list documents: {:?}", e))?;
 
         for (_, doc) in entries {
@@ -1096,8 +1354,8 @@ impl DocsApp {
 
             let doc_folder = doc.folder_id.get();
             let matches = match (&folder_id, doc_folder.as_ref()) {
-                (None, None) => true,  // Both root
-                (Some(fid), Some(dfid)) => fid == dfid,  // Same folder
+                (None, None) => true,                   // Both root
+                (Some(fid), Some(dfid)) => fid == dfid, // Same folder
                 _ => false,
             };
 
@@ -1131,8 +1389,14 @@ impl DocsApp {
     }
 
     /// Move a document to a different folder
-    pub fn move_document(&mut self, doc_id: String, folder_id: Option<String>) -> Result<(), String> {
-        let old_doc = self.documents.get(&doc_id)
+    pub fn move_document(
+        &mut self,
+        doc_id: String,
+        folder_id: Option<String>,
+    ) -> Result<(), String> {
+        let old_doc = self
+            .documents
+            .get(&doc_id)
             .map_err(|e| format!("Failed to access document: {:?}", e))?
             .ok_or_else(|| format!("Document not found: {}", doc_id))?;
 
@@ -1140,7 +1404,9 @@ impl DocsApp {
 
         // Verify new folder exists if specified
         if let Some(ref fid) = folder_id {
-            let folder_exists = self.folders.get(fid)
+            let folder_exists = self
+                .folders
+                .get(fid)
                 .map_err(|e| format!("Failed to check folder: {:?}", e))?
                 .is_some();
             if !folder_exists {
@@ -1155,7 +1421,9 @@ impl DocsApp {
         let mut new_tags = UnorderedSet::new();
         let old_tags_vec = extract_tags(&old_doc.tags)?;
         for tag in old_tags_vec {
-            new_tags.insert(tag).map_err(|e| format!("Failed to copy tag: {:?}", e))?;
+            new_tags
+                .insert(tag)
+                .map_err(|e| format!("Failed to copy tag: {:?}", e))?;
         }
 
         let new_doc = Document {
@@ -1170,7 +1438,8 @@ impl DocsApp {
             folder_id: LwwRegister::new(folder_id.clone()),
         };
 
-        self.documents.insert(doc_id.clone(), new_doc)
+        self.documents
+            .insert(doc_id.clone(), new_doc)
             .map_err(|e| format!("Failed to save document: {:?}", e))?;
 
         app::emit!(DocsEvent::DocumentMoved {
@@ -1186,7 +1455,8 @@ impl DocsApp {
 
     /// Get folder count
     pub fn get_folder_count(&self) -> Result<usize, String> {
-        self.folders.len()
+        self.folders
+            .len()
             .map_err(|e| format!("Failed to get folder count: {:?}", e))
     }
 
@@ -1218,7 +1488,9 @@ impl DocsApp {
         if name.is_empty() {
             return Err("Folder name cannot be empty".to_string());
         }
-        if self.folder_registry.get(&context_id)
+        if self
+            .folder_registry
+            .get(&context_id)
             .map_err(|e| format!("Failed to check registry: {:?}", e))?
             .is_some()
         {
@@ -1231,22 +1503,21 @@ impl DocsApp {
             color: color.into(),
             created_at: now.into(),
         };
-        self.folder_registry.insert(context_id.clone(), meta)
+        self.folder_registry
+            .insert(context_id.clone(), meta)
             .map_err(|e| format!("Failed to register folder: {:?}", e))?;
         app::emit!(DocsEvent::FolderRegistered { context_id, name });
         Ok(())
     }
 
     /// Update the display name of a registered folder
-    pub fn update_folder_name(
-        &mut self,
-        context_id: String,
-        name: String,
-    ) -> Result<(), String> {
+    pub fn update_folder_name(&mut self, context_id: String, name: String) -> Result<(), String> {
         if name.is_empty() {
             return Err("Folder name cannot be empty".to_string());
         }
-        let existing = self.folder_registry.get(&context_id)
+        let existing = self
+            .folder_registry
+            .get(&context_id)
             .map_err(|e| format!("Failed to access registry: {:?}", e))?
             .ok_or_else(|| format!("Folder not found in registry: {}", context_id))?;
         let updated = FolderMeta {
@@ -1255,7 +1526,8 @@ impl DocsApp {
             color: existing.color.clone(),
             created_at: existing.created_at.clone(),
         };
-        self.folder_registry.insert(context_id.clone(), updated)
+        self.folder_registry
+            .insert(context_id.clone(), updated)
             .map_err(|e| format!("Failed to update registry: {:?}", e))?;
         app::emit!(DocsEvent::FolderNameUpdated { context_id, name });
         Ok(())
@@ -1263,10 +1535,12 @@ impl DocsApp {
 
     /// Remove a folder from the registry
     pub fn unregister_folder(&mut self, context_id: String) -> Result<(), String> {
-        self.folder_registry.get(&context_id)
+        self.folder_registry
+            .get(&context_id)
             .map_err(|e| format!("Failed to access registry: {:?}", e))?
             .ok_or_else(|| format!("Folder not found in registry: {}", context_id))?;
-        self.folder_registry.remove(&context_id)
+        self.folder_registry
+            .remove(&context_id)
             .map_err(|e| format!("Failed to remove from registry: {:?}", e))?;
         app::emit!(DocsEvent::FolderUnregistered { context_id });
         Ok(())
@@ -1274,7 +1548,9 @@ impl DocsApp {
 
     /// Get all registered folders sorted alphabetically by name
     pub fn get_folder_registry(&self) -> Result<Vec<FolderRegistryEntry>, String> {
-        let entries = self.folder_registry.entries()
+        let entries = self
+            .folder_registry
+            .entries()
             .map_err(|e| format!("Failed to read registry: {:?}", e))?;
         let mut result: Vec<FolderRegistryEntry> = Vec::new();
         for (_, meta) in entries {
@@ -1287,5 +1563,452 @@ impl DocsApp {
         }
         result.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(result)
+    }
+
+    // ========== FILE METHODS ==========
+
+    /// Create a new file entry after blob upload completes
+    pub fn create_file(
+        &mut self,
+        name: String,
+        blob_id: String,
+        mime_type: String,
+        size: u64,
+        folder_id: Option<String>,
+    ) -> Result<String, String> {
+        if name.trim().is_empty() {
+            return Err("File name cannot be empty".to_string());
+        }
+        if blob_id.trim().is_empty() {
+            return Err("Blob ID cannot be empty".to_string());
+        }
+
+        if let Some(ref fid) = folder_id {
+            let exists = self
+                .folders
+                .get(fid)
+                .map_err(|e| format!("Failed to check folder: {:?}", e))?
+                .is_some();
+            if !exists {
+                return Err(format!("Folder not found: {}", fid));
+            }
+        }
+
+        let counter_value = self
+            .file_counter
+            .value()
+            .map_err(|e| format!("Failed to get file counter: {:?}", e))?;
+        self.file_counter
+            .increment()
+            .map_err(|e| format!("Failed to increment file counter: {:?}", e))?;
+
+        let file_id = generate_file_id(counter_value);
+        let uploader_id = env::executor_id();
+        let uploaded_by = encode_identity(&uploader_id);
+        let timestamp = env::time_now();
+
+        let file = FileEntry {
+            id: LwwRegister::new(file_id.clone()),
+            name: LwwRegister::new(name.clone()),
+            blob_id: LwwRegister::new(blob_id),
+            mime_type: LwwRegister::new(mime_type),
+            size: LwwRegister::new(size),
+            folder_id: LwwRegister::new(folder_id),
+            created_at: LwwRegister::new(timestamp),
+            updated_at: LwwRegister::new(timestamp),
+            uploaded_by: LwwRegister::new(uploaded_by.clone()),
+        };
+
+        self.files
+            .insert(file_id.clone(), file)
+            .map_err(|e| format!("Failed to store file: {:?}", e))?;
+
+        app::emit!(DocsEvent::FileCreated {
+            id: file_id.clone(),
+            name: name.clone(),
+            uploaded_by,
+        });
+
+        app::log!("File created: {} (ID: {})", name, file_id);
+        Ok(file_id)
+    }
+
+    /// Get a single file by ID
+    pub fn get_file(&self, file_id: String) -> Result<FileEntryResponse, String> {
+        let file = self
+            .files
+            .get(&file_id)
+            .map_err(|e| format!("Failed to access file: {:?}", e))?
+            .ok_or_else(|| format!("File not found: {}", file_id))?;
+
+        Ok(FileEntryResponse {
+            id: file.id.get().clone(),
+            name: file.name.get().clone(),
+            blob_id: file.blob_id.get().clone(),
+            mime_type: file.mime_type.get().clone(),
+            size: *file.size.get(),
+            folder_id: file.folder_id.get().clone(),
+            created_at: *file.created_at.get(),
+            updated_at: *file.updated_at.get(),
+            uploaded_by: file.uploaded_by.get().clone(),
+        })
+    }
+
+    /// List all files, sorted by most recently updated
+    pub fn list_files(&self) -> Result<Vec<FileEntryResponse>, String> {
+        let mut files = Vec::new();
+
+        let entries = self
+            .files
+            .entries()
+            .map_err(|e| format!("Failed to list files: {:?}", e))?;
+
+        for (_, file) in entries {
+            files.push(FileEntryResponse {
+                id: file.id.get().clone(),
+                name: file.name.get().clone(),
+                blob_id: file.blob_id.get().clone(),
+                mime_type: file.mime_type.get().clone(),
+                size: *file.size.get(),
+                folder_id: file.folder_id.get().clone(),
+                created_at: *file.created_at.get(),
+                updated_at: *file.updated_at.get(),
+                uploaded_by: file.uploaded_by.get().clone(),
+            });
+        }
+
+        files.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        app::log!("Listed {} files", files.len());
+        Ok(files)
+    }
+
+    /// List files in a specific folder (or root if folder_id is None)
+    pub fn list_files_in_folder(
+        &self,
+        folder_id: Option<String>,
+    ) -> Result<Vec<FileEntryResponse>, String> {
+        let mut files = Vec::new();
+
+        let entries = self
+            .files
+            .entries()
+            .map_err(|e| format!("Failed to list files: {:?}", e))?;
+
+        for (_, file) in entries {
+            let file_folder = file.folder_id.get();
+            let matches = match (&folder_id, file_folder.as_ref()) {
+                (None, None) => true,
+                (Some(fid), Some(ffid)) => fid == ffid,
+                _ => false,
+            };
+
+            if matches {
+                files.push(FileEntryResponse {
+                    id: file.id.get().clone(),
+                    name: file.name.get().clone(),
+                    blob_id: file.blob_id.get().clone(),
+                    mime_type: file.mime_type.get().clone(),
+                    size: *file.size.get(),
+                    folder_id: file.folder_id.get().clone(),
+                    created_at: *file.created_at.get(),
+                    updated_at: *file.updated_at.get(),
+                    uploaded_by: file.uploaded_by.get().clone(),
+                });
+            }
+        }
+
+        files.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        app::log!("Found {} files in folder", files.len());
+        Ok(files)
+    }
+
+    /// Delete a file entry (does not remove the blob itself)
+    pub fn delete_file(&mut self, file_id: String) -> Result<(), String> {
+        let file = self
+            .files
+            .get(&file_id)
+            .map_err(|e| format!("Failed to access file: {:?}", e))?
+            .ok_or_else(|| format!("File not found: {}", file_id))?;
+
+        let name = file.name.get().clone();
+
+        self.files
+            .remove(&file_id)
+            .map_err(|e| format!("Failed to delete file: {:?}", e))?;
+
+        app::emit!(DocsEvent::FileDeleted {
+            id: file_id.clone(),
+            name: name.clone(),
+        });
+
+        app::log!("File deleted: {} (ID: {})", name, file_id);
+        Ok(())
+    }
+
+    /// Move a file to a different folder (or root if folder_id is None)
+    pub fn move_file(&mut self, file_id: String, folder_id: Option<String>) -> Result<(), String> {
+        let old_file = self
+            .files
+            .get(&file_id)
+            .map_err(|e| format!("Failed to access file: {:?}", e))?
+            .ok_or_else(|| format!("File not found: {}", file_id))?;
+
+        let from_folder = old_file.folder_id.get().clone();
+
+        if let Some(ref fid) = folder_id {
+            let exists = self
+                .folders
+                .get(fid)
+                .map_err(|e| format!("Failed to check folder: {:?}", e))?
+                .is_some();
+            if !exists {
+                return Err(format!("Folder not found: {}", fid));
+            }
+        }
+
+        let timestamp = env::time_now();
+
+        let new_file = FileEntry {
+            id: LwwRegister::new(old_file.id.get().clone()),
+            name: LwwRegister::new(old_file.name.get().clone()),
+            blob_id: LwwRegister::new(old_file.blob_id.get().clone()),
+            mime_type: LwwRegister::new(old_file.mime_type.get().clone()),
+            size: LwwRegister::new(*old_file.size.get()),
+            folder_id: LwwRegister::new(folder_id.clone()),
+            created_at: LwwRegister::new(*old_file.created_at.get()),
+            updated_at: LwwRegister::new(timestamp),
+            uploaded_by: LwwRegister::new(old_file.uploaded_by.get().clone()),
+        };
+
+        self.files
+            .insert(file_id.clone(), new_file)
+            .map_err(|e| format!("Failed to save file: {:?}", e))?;
+
+        app::emit!(DocsEvent::FileMoved {
+            id: file_id.clone(),
+            from_folder,
+            to_folder: folder_id,
+        });
+
+        app::log!("File moved (ID: {})", file_id);
+        Ok(())
+    }
+
+    /// Get the total number of files
+    pub fn get_file_count(&self) -> Result<usize, String> {
+        self.files
+            .len()
+            .map_err(|e| format!("Failed to get file count: {:?}", e))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_file_id() {
+        assert_eq!(generate_file_id(0), "file_0");
+        assert_eq!(generate_file_id(1), "file_1");
+        assert_eq!(generate_file_id(999), "file_999");
+    }
+
+    #[test]
+    fn test_generate_doc_id() {
+        assert_eq!(generate_doc_id(0), "doc_0");
+        assert_eq!(generate_doc_id(5), "doc_5");
+    }
+
+    #[test]
+    fn test_generate_folder_id() {
+        assert_eq!(generate_folder_id(0), "folder_0");
+        assert_eq!(generate_folder_id(3), "folder_3");
+    }
+
+    #[test]
+    fn test_encode_identity() {
+        let id: [u8; IDENTITY_SIZE] = [0u8; IDENTITY_SIZE];
+        let encoded = encode_identity(&id);
+        assert!(!encoded.is_empty());
+        assert_eq!(encoded, bs58::encode([0u8; 32]).into_string());
+    }
+
+    #[test]
+    fn test_file_entry_response_fields() {
+        let resp = FileEntryResponse {
+            id: "file_0".to_string(),
+            name: "photo.jpg".to_string(),
+            blob_id: "blob_abc123".to_string(),
+            mime_type: "image/jpeg".to_string(),
+            size: 1024,
+            folder_id: None,
+            created_at: 100,
+            updated_at: 100,
+            uploaded_by: "alice".to_string(),
+        };
+        assert_eq!(resp.id, "file_0");
+        assert_eq!(resp.name, "photo.jpg");
+        assert_eq!(resp.blob_id, "blob_abc123");
+        assert_eq!(resp.mime_type, "image/jpeg");
+        assert_eq!(resp.size, 1024);
+        assert!(resp.folder_id.is_none());
+    }
+
+    #[test]
+    fn test_file_entry_response_with_folder() {
+        let resp = FileEntryResponse {
+            id: "file_1".to_string(),
+            name: "report.pdf".to_string(),
+            blob_id: "blob_def456".to_string(),
+            mime_type: "application/pdf".to_string(),
+            size: 2048,
+            folder_id: Some("folder_0".to_string()),
+            created_at: 200,
+            updated_at: 300,
+            uploaded_by: "bob".to_string(),
+        };
+        assert_eq!(resp.folder_id, Some("folder_0".to_string()));
+        assert_eq!(resp.uploaded_by, "bob");
+        assert!(resp.updated_at > resp.created_at);
+    }
+
+    #[test]
+    fn test_file_entry_response_sorting() {
+        let mut files = vec![
+            FileEntryResponse {
+                id: "file_0".to_string(),
+                name: "old.txt".to_string(),
+                blob_id: "b1".to_string(),
+                mime_type: "text/plain".to_string(),
+                size: 10,
+                folder_id: None,
+                created_at: 100,
+                updated_at: 100,
+                uploaded_by: "u".to_string(),
+            },
+            FileEntryResponse {
+                id: "file_1".to_string(),
+                name: "new.txt".to_string(),
+                blob_id: "b2".to_string(),
+                mime_type: "text/plain".to_string(),
+                size: 20,
+                folder_id: None,
+                created_at: 200,
+                updated_at: 200,
+                uploaded_by: "u".to_string(),
+            },
+        ];
+
+        files.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        assert_eq!(files[0].id, "file_1");
+        assert_eq!(files[1].id, "file_0");
+    }
+
+    #[test]
+    fn test_file_entry_response_folder_matching() {
+        let files = vec![
+            FileEntryResponse {
+                id: "file_0".to_string(),
+                name: "root.txt".to_string(),
+                blob_id: "b1".to_string(),
+                mime_type: "text/plain".to_string(),
+                size: 10,
+                folder_id: None,
+                created_at: 100,
+                updated_at: 100,
+                uploaded_by: "u".to_string(),
+            },
+            FileEntryResponse {
+                id: "file_1".to_string(),
+                name: "in_folder.txt".to_string(),
+                blob_id: "b2".to_string(),
+                mime_type: "text/plain".to_string(),
+                size: 20,
+                folder_id: Some("folder_0".to_string()),
+                created_at: 200,
+                updated_at: 200,
+                uploaded_by: "u".to_string(),
+            },
+            FileEntryResponse {
+                id: "file_2".to_string(),
+                name: "also_in_folder.txt".to_string(),
+                blob_id: "b3".to_string(),
+                mime_type: "text/plain".to_string(),
+                size: 30,
+                folder_id: Some("folder_0".to_string()),
+                created_at: 300,
+                updated_at: 300,
+                uploaded_by: "u".to_string(),
+            },
+        ];
+
+        let target_folder = Some("folder_0".to_string());
+        let in_folder: Vec<_> = files
+            .iter()
+            .filter(|f| match (&target_folder, f.folder_id.as_ref()) {
+                (None, None) => true,
+                (Some(fid), Some(ffid)) => fid == ffid,
+                _ => false,
+            })
+            .collect();
+        assert_eq!(in_folder.len(), 2);
+
+        let at_root: Vec<_> = files.iter().filter(|f| f.folder_id.is_none()).collect();
+        assert_eq!(at_root.len(), 1);
+        assert_eq!(at_root[0].id, "file_0");
+    }
+
+    #[test]
+    fn test_file_entry_crdt_construction() {
+        let file = FileEntry {
+            id: LwwRegister::new("file_0".to_string()),
+            name: LwwRegister::new("test.png".to_string()),
+            blob_id: LwwRegister::new("blob_xyz".to_string()),
+            mime_type: LwwRegister::new("image/png".to_string()),
+            size: LwwRegister::new(4096u64),
+            folder_id: LwwRegister::new(Some("folder_0".to_string())),
+            created_at: LwwRegister::new(1000u64),
+            updated_at: LwwRegister::new(1000u64),
+            uploaded_by: LwwRegister::new("uploader".to_string()),
+        };
+
+        assert_eq!(file.id.get(), "file_0");
+        assert_eq!(file.name.get(), "test.png");
+        assert_eq!(file.blob_id.get(), "blob_xyz");
+        assert_eq!(file.mime_type.get(), "image/png");
+        assert_eq!(*file.size.get(), 4096);
+        assert_eq!(*file.folder_id.get(), Some("folder_0".to_string()));
+        assert_eq!(*file.created_at.get(), 1000);
+        assert_eq!(*file.updated_at.get(), 1000);
+        assert_eq!(file.uploaded_by.get(), "uploader");
+    }
+
+    #[test]
+    fn test_file_entry_merge() {
+        let mut file_a = FileEntry {
+            id: LwwRegister::new("file_0".to_string()),
+            name: LwwRegister::new("original.txt".to_string()),
+            blob_id: LwwRegister::new("blob_1".to_string()),
+            mime_type: LwwRegister::new("text/plain".to_string()),
+            size: LwwRegister::new(100u64),
+            folder_id: LwwRegister::new(None),
+            created_at: LwwRegister::new(1000u64),
+            updated_at: LwwRegister::new(1000u64),
+            uploaded_by: LwwRegister::new("alice".to_string()),
+        };
+
+        let file_b = FileEntry {
+            id: LwwRegister::new("file_0".to_string()),
+            name: LwwRegister::new("renamed.txt".to_string()),
+            blob_id: LwwRegister::new("blob_1".to_string()),
+            mime_type: LwwRegister::new("text/plain".to_string()),
+            size: LwwRegister::new(100u64),
+            folder_id: LwwRegister::new(Some("folder_1".to_string())),
+            created_at: LwwRegister::new(1000u64),
+            updated_at: LwwRegister::new(2000u64),
+            uploaded_by: LwwRegister::new("alice".to_string()),
+        };
+
+        file_a.merge(&file_b).expect("merge should succeed");
     }
 }

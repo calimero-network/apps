@@ -4,7 +4,7 @@
     "logic:build": "bash ./logic/build.sh",
     "logic:clean": "rm -rf ./logic/target ./logic/res",
     "logic:sync": "bash ./scripts/sync-wasm.sh",
-    "logic:bundle": "cd logic && VERSION=$(grep '^version =' Cargo.toml | sed 's/version = \"\\(.*\\)\"/\\1/') && jq --arg version \"$VERSION\" --arg output \"dist/com.calimero.docs-app-$VERSION.mpk\" '.version = $version | .output = $output' manifest.json > manifest.json.tmp && mv manifest.json.tmp manifest.json && npx @calimero-network/registry-cli@1.6.1 bundle create res/docs_app.wasm --manifest manifest.json --abi res/abi.json",
+    "logic:bundle": "cd logic && VERSION=$(grep '^version =' Cargo.toml | sed 's/version = \"\\(.*\\)\"/\\1/') && jq --arg version \"$VERSION\" --arg output \"dist/com.calimero.mero-drive-$VERSION.mpk\" '.version = $version | .output = $output' manifest.json > manifest.json.tmp && mv manifest.json.tmp manifest.json && npx @calimero-network/registry-cli@1.6.1 bundle create res/docs_app.wasm --manifest manifest.json --abi res/abi.json",
     "logic:publish:remote": "cd logic && npx @calimero-network/registry-cli@1.6.1 bundle push $(jq -r .output manifest.json) --remote",
     "logic:watch": "chokidar \"logic/res/**/*\" -c \"node scripts/on-res-change.mjs {path}\"",
     "app:install": "pnpm --dir app install",
@@ -29,5 +29,5 @@
     "@calimero-network/mero-icons": "^0.0.4",
     "@calimero-network/mero-ui": "^0.3.4"
   },
-  "name": "docs-fj2bytsru5m6bjb0"
+  "name": "mero-drive"
 }

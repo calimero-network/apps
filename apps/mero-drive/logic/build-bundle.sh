@@ -28,7 +28,7 @@ ABI_SIZE=$(stat -f%z res/abi.json 2>/dev/null || stat -c%s res/abi.json 2>/dev/n
 cat > res/bundle-temp/manifest.json <<EOF
 {
   "version": "1.0",
-  "package": "com.calimero.docs-app8",
+  "package": "com.calimero.mero-drive",
   "appVersion": "7.0.0",
   "minRuntimeVersion": "0.1.0",
   "metadata": {
@@ -60,7 +60,7 @@ cargo run --manifest-path ../../core/Cargo.toml -p mero-sign --quiet -- \
 
 # Create .mpk bundle (tar.gz archive)
 cd res/bundle-temp
-tar -czf ../docs-app-7.0.0.mpk manifest.json app.wasm abi.json 2>/dev/null || \
-tar -czf ../docs-app-7.0.0.mpk manifest.json app.wasm 2>/dev/null
+tar -czf ../mero-drive-7.0.0.mpk manifest.json app.wasm abi.json 2>/dev/null || \
+tar -czf ../mero-drive-7.0.0.mpk manifest.json app.wasm 2>/dev/null
 
-echo "Bundle created: res/docs-app-7.0.0.mpk"
+echo "Bundle created: res/mero-drive-7.0.0.mpk"

@@ -1,0 +1,31 @@
+{
+  "abi": {
+    "hash": null,
+    "path": "abi.json",
+    "size": 27993
+  },
+  "appVersion": "7.0.0",
+  "links": {
+    "frontend": "http://localhost:5173/"
+  },
+  "metadata": {
+    "author": "Calimero",
+    "description": "Mero Drive v7.0 — multi-workspace document management with context group integration.",
+    "name": "Mero Drive"
+  },
+  "migrations": [],
+  "minRuntimeVersion": "0.1.0",
+  "package": "com.calimero.mero-drive",
+  "signature": {
+    "algorithm": "ed25519",
+    "publicKey": "zJxVbfNGrbfwgbtupMfpQX2KzStI6wWA3AVpQmxi5pM",
+    "signature": "ChwKx4EV1igbBDetxryEaSsYZtwcsjIFzUTfL7csypr1jhplLL1hmyrkB44LRIsWw2GH9jbhRyhqlrxA7gNwBw"
+  },
+  "signerId": "did:key:z6MktDyUgjyGaEMxMyuZMs2v2L46zvVKNqB5K3KTvFxudtKL",
+  "version": "1.0",
+  "wasm": {
+    "hash": null,
+    "path": "app.wasm",
+    "size": 665944
+  }
+}

@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useCalimero } from '@calimero-network/calimero-client';
 import { WorkspaceManager, WorkspaceInfo } from '@/api/WorkspaceManager';
+import { adminRequest, AdminApiError } from '@/api/AdminApi';
+import { getGroupMemberIdentity, setGroupMemberIdentity } from '@/constants/config';
 import { useWorkspace } from '@/context/WorkspaceContext';
 import { Button } from '@/components/ui/button';
 import {
@@ -21,14 +23,10 @@ export const WorkspaceSwitcher: React.FC = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const activeWorkspace = workspaces.find(w => w.id === activeGroupId);
-
-  useEffect(() => {
-    if (!app) return;
-    loadWorkspaces();
-  }, [app]);
 
   useEffect(() => {
     if (isCreating && inputRef.current) {
@@ -36,50 +34,152 @@ export const WorkspaceSwitcher: React.FC = () => {
     }
   }, [isCreating]);
 
-  const loadWorkspaces = async () => {
-    if (!app) return;
+  const loadWorkspaces = useCallback(async () => {
     setIsLoading(true);
+    setErrorMessage(null);
     try {
       const manager = new WorkspaceManager(app);
-      const list = await manager.listWorkspaces();
+      const list = await manager.listWorkspaces(activeGroupId);
       setWorkspaces(list);
 
-      // Auto-select first workspace if none active
+      // Auto-select first workspace if none active (hydration usually sets activeGroupId from storage)
       if (!activeGroupId && list.length > 0 && list[0].generalContextId) {
-        setActiveWorkspace(list[0].id, list[0].generalContextId);
+        const first = list[0];
+        try {
+          const joined = await manager.isMemberOfContext(first.id, first.generalContextId);
+          if (!joined) {
+            await manager.joinContextViaGroup(first.id, first.generalContextId);
+          }
+        } catch {
+          // proceed with workspace selection
+        }
+        setActiveWorkspace(first.id, first.generalContextId);
       }
     } catch (err) {
       console.error('[WorkspaceSwitcher] Failed to load workspaces:', err);
+      setErrorMessage('Failed to load workspaces from the current Calimero node.');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [activeGroupId, app, setActiveWorkspace]);
 
-  const handleSelectWorkspace = (workspace: WorkspaceInfo) => {
-    if (!workspace.generalContextId) return;
-    setActiveWorkspace(workspace.id, workspace.generalContextId);
+  useEffect(() => {
+    loadWorkspaces();
+  }, [loadWorkspaces]);
+
+  const handleSelectWorkspace = async (workspace: WorkspaceInfo) => {
+    setErrorMessage(null);
+
+    try {
+      const manager = new WorkspaceManager(app);
+      const generalContextId =
+        workspace.generalContextId || await manager.resolveGeneralContextId(workspace.id);
+
+      if (!generalContextId) {
+        setErrorMessage('This workspace does not have a General context yet.');
+        return;
+      }
+
+      try {
+        const joined = await manager.isMemberOfContext(workspace.id, generalContextId);
+        if (!joined) {
+          await manager.joinContextViaGroup(workspace.id, generalContextId);
+        }
+      } catch {
+        // proceed with selection
+      }
+
+      setWorkspaces((current) => current.map((entry) => (
+        entry.id === workspace.id
+          ? { ...entry, generalContextId }
+          : entry
+      )));
+      setActiveWorkspace(workspace.id, generalContextId);
+
+      // Pre-cache identity for instant permission resolution
+      if (!getGroupMemberIdentity(workspace.id) && generalContextId) {
+        try {
+          const data = await adminRequest<{ identities: string[] }>(
+            `/contexts/${generalContextId}/identities-owned`,
+          );
+          const { members } = await manager.getWorkspaceMembers(workspace.id);
+          const match = (data.identities ?? []).find((id) =>
+            members.some((m) => m.identity === id),
+          );
+          if (match) {
+            setGroupMemberIdentity(workspace.id, match);
+          }
+        } catch {
+          // Non-blocking — permissions hook will resolve it later
+        }
+      }
+    } catch (err) {
+      console.error('[WorkspaceSwitcher] Failed to select workspace:', err);
+      setErrorMessage(
+        `Failed to load the selected workspace context: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   };
 
   const handleCreateWorkspace = async () => {
     const name = newWorkspaceName.trim();
-    if (!name || !app) return;
+    if (!name) return;
 
     setIsSubmitting(true);
+    setErrorMessage(null);
     try {
       const manager = new WorkspaceManager(app);
-      const groupId = await manager.createWorkspace(name);
+      const workspace = await manager.createWorkspace(name);
       setIsCreating(false);
       setNewWorkspaceName('');
-      await loadWorkspaces();
+      setWorkspaces((current) => {
+        const filtered = current.filter((entry) => entry.id !== workspace.id);
+        return [...filtered, workspace];
+      });
+      setActiveWorkspace(workspace.id, workspace.generalContextId);
 
-      // Select the newly created workspace
-      const updated = await manager.listWorkspaces();
-      const created = updated.find(w => w.id === groupId);
-      if (created?.generalContextId) {
-        setActiveWorkspace(created.id, created.generalContextId);
+      // Store creator identity so permissions resolve instantly on first load
+      if (workspace.generalContextId) {
+        try {
+          const data = await adminRequest<{ identities: string[] }>(
+            `/contexts/${workspace.generalContextId}/identities-owned`,
+          );
+          const owned = data.identities?.[0];
+          if (owned) {
+            setGroupMemberIdentity(workspace.id, owned);
+          }
+        } catch {
+          // Non-blocking — permissions hook will resolve it later
+        }
+      }
+
+      try {
+        const refreshed = await manager.listWorkspaces(workspace.id);
+        setWorkspaces(refreshed);
+      } catch (refreshError) {
+        console.warn('[WorkspaceSwitcher] Workspace created, but refresh failed:', refreshError);
       }
     } catch (err) {
       console.error('[WorkspaceSwitcher] Failed to create workspace:', err);
+      if (err instanceof AdminApiError) {
+        if (err.kind === 'transport') {
+          setErrorMessage(
+            'Could not reach the Calimero node admin API. Check the node endpoint and admin setup.',
+          );
+        } else if (err.kind === 'auth') {
+          setErrorMessage('The Calimero node rejected this request. Sign in again and retry.');
+        } else if (err.kind === 'validation') {
+          setErrorMessage(`Workspace creation was rejected by the node: ${err.message}`);
+        } else {
+          setErrorMessage(
+            `Workspace creation may be partially complete on the node: ${err.message}`,
+          );
+        }
+      } else {
+        setErrorMessage(
+          `Workspace creation failed unexpectedly: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -113,7 +213,7 @@ export const WorkspaceSwitcher: React.FC = () => {
           ))}
           {workspaces.length > 0 && <DropdownMenuSeparator />}
           <DropdownMenuItem
-            onClick={() => setIsCreating(true)}
+            onClick={() => setTimeout(() => setIsCreating(true), 0)}
             className="flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
@@ -156,6 +256,10 @@ export const WorkspaceSwitcher: React.FC = () => {
             {isSubmitting ? '...' : 'Create'}
           </Button>
         </div>
+      )}
+
+      {errorMessage && (
+        <p className="text-xs text-destructive px-1">{errorMessage}</p>
       )}
     </div>
   );

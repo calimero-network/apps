@@ -19,7 +19,7 @@ interface LocationState {
 }
 
 const welcomeContent = `
-<h1>Welcome to MeroDocs</h1>
+<h1>Welcome to Mero Drive</h1>
 <p>Start writing your document here. Everything you type is automatically encrypted and stored locally on your device.</p>
 <h2>Key Features</h2>
 <ul>

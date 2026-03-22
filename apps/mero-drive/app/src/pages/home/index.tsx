@@ -1,9 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCalimero } from '@calimero-network/calimero-client';
-import { AbiClient, DocumentSummary, FolderTreeItem, FolderResponse, FolderRegistryEntry } from '@/api/AbiClient';
-import { FolderContextManager } from '@/api/FolderContextManager';
+import { AbiClient, FileEntryResponse, FolderTreeItem, FolderResponse } from '@/api/AbiClient';
+import { FolderContextManager, type FolderContextWithVisibility } from '@/api/FolderContextManager';
+import { FileBlobManager } from '@/api/FileBlobManager';
+import { WorkspaceManager } from '@/api/WorkspaceManager';
 import { useWorkspace } from '@/context/WorkspaceContext';
+import { useGroupPermissions } from '@/hooks/useGroupPermissions';
+import {
+  computeAllFolderAccess,
+  type FolderAccessInfo,
+  type FolderAccessContext,
+} from '@/utils/folderAccess';
+import { isSelfCreatedFolderContext, markSelfCreatedFolderContext } from '@/utils/selfCreatedFolderContexts';
+import { hasJoinedContextOnNode, markJoinedContextOnNode } from '@/utils/joinedFolderContexts';
 import { LogoWithText } from '@/components/icons/Logo';
 import { Button } from '@/components/ui/button';
 import { FolderTree } from '@/components/folders/FolderTree';
@@ -11,16 +21,18 @@ import { FolderDialog } from '@/components/folders/FolderDialog';
 import { FolderSettingsPanel } from '@/components/folders/FolderSettingsPanel';
 import { ShareDialog } from '@/components/sharing/ShareDialog';
 import { MembersIndicator } from '@/components/sharing/MembersIndicator';
+import { MyProfileDialog } from '@/components/profile/MyProfileDialog';
+import { AdminPanel } from '@/components/admin/AdminPanel';
 import { WorkspaceSwitcher } from '@/components/workspace/WorkspaceSwitcher';
+import { FileUploadButton } from '@/components/files/FileUploadButton';
 import {
-  Plus,
   Search,
-  FileText,
   Clock,
-  Tag,
-  Archive,
   Trash2,
   MoreHorizontal,
+  X,
+  Download,
+  AlertCircle,
   LogOut,
   Shield,
   WifiOff,
@@ -31,6 +43,12 @@ import {
   FolderPlus,
   FolderInput,
   Share2,
+  Upload,
+  File as FileIcon,
+  HardDrive,
+  User,
+  FileType,
+  Loader2,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -48,24 +66,27 @@ const HomePage: React.FC = () => {
   const navigate = useNavigate();
   const { activeContextId, generalContextId, activeGroupId, setActiveContext } = useWorkspace();
 
-  const [documents, setDocuments] = useState<DocumentSummary[]>([]);
-  const [allDocuments, setAllDocuments] = useState<DocumentSummary[]>([]);
+  const permissions = useGroupPermissions();
+
+  const [files, setFiles] = useState<FileEntryResponse[]>([]);
+  const [allFiles, setAllFiles] = useState<FileEntryResponse[]>([]);
   const [folders, setFolders] = useState<FolderTreeItem[]>([]);
   const [flatFolders, setFlatFolders] = useState<FolderResponse[]>([]);
-  const [topLevelFolders, setTopLevelFolders] = useState<FolderRegistryEntry[]>([]);
-  const [allTags, setAllTags] = useState<string[]>([]);
+  const [topLevelFolders, setTopLevelFolders] = useState<FolderContextWithVisibility[]>([]);
+  const [folderAccessInfos, setFolderAccessInfos] = useState<FolderAccessInfo[]>([]);
+  const [topLevelFolderError, setTopLevelFolderError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTag, setSelectedTag] = useState('');
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
-  const [includeArchived, setIncludeArchived] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'offline'>('synced');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
-    const saved = localStorage.getItem('docs-view-mode');
+    const saved = localStorage.getItem('drive-view-mode');
     return (saved === 'list' || saved === 'grid') ? saved : 'grid';
   });
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => {
-    const saved = localStorage.getItem('docs-expanded-folders');
+    const saved = localStorage.getItem('drive-expanded-folders');
     return saved ? new Set(JSON.parse(saved)) : new Set();
   });
 
@@ -82,19 +103,36 @@ const HomePage: React.FC = () => {
 
   // Folder settings panel state
   const [folderSettingsOpen, setFolderSettingsOpen] = useState(false);
-  const [folderSettingsTarget, setFolderSettingsTarget] = useState<FolderRegistryEntry | null>(null);
+  const [folderSettingsTarget, setFolderSettingsTarget] = useState<FolderContextWithVisibility | null>(null);
 
   // Share dialog state
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  // Profile dialog state
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+  // Admin panel state
+  const [adminPanelOpen, setAdminPanelOpen] = useState(false);
+  const [isFilePreviewOpen, setIsFilePreviewOpen] = useState(false);
+  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
+  const [previewFile, setPreviewFile] = useState<FileEntryResponse | null>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [isPreviewDownloading, setIsPreviewDownloading] = useState(false);
+
+  const [pendingFolderJoin, setPendingFolderJoin] = useState<{
+    contextId: string;
+    name?: string;
+  } | null>(null);
+  const [isCheckingFolderMembership, setIsCheckingFolderMembership] = useState(false);
+  const [pendingJoinInFlight, setPendingJoinInFlight] = useState(false);
 
   // Persist view mode preference
   useEffect(() => {
-    localStorage.setItem('docs-view-mode', viewMode);
+    localStorage.setItem('drive-view-mode', viewMode);
   }, [viewMode]);
 
   // Persist expanded folders
   useEffect(() => {
-    localStorage.setItem('docs-expanded-folders', JSON.stringify([...expandedFolders]));
+    localStorage.setItem('drive-expanded-folders', JSON.stringify([...expandedFolders]));
   }, [expandedFolders]);
 
   // Redirect to login if not authenticated
@@ -104,16 +142,71 @@ const HomePage: React.FC = () => {
     }
   }, [isAuthenticated, navigate]);
 
-  // Load top-level folders when workspace changes
+  // Load top-level folders (with visibility) when workspace changes
   useEffect(() => {
-    if (!app || !generalContextId) return;
+    if (!app || !activeGroupId) return;
     const manager = new FolderContextManager(app);
-    manager.listFolderContexts(generalContextId)
+    setTopLevelFolderError(null);
+    manager.listGroupFolderContextsWithVisibility(activeGroupId, generalContextId ?? undefined)
       .then(setTopLevelFolders)
-      .catch((err) => console.error('[HomePage] Failed to load top-level folders:', err));
-  }, [app, generalContextId]);
+      .catch((err) => {
+        console.error('[HomePage] Failed to load top-level folders:', err);
+        setTopLevelFolderError('Failed to load top-level folders for this workspace.');
+      });
+  }, [app, activeGroupId, generalContextId]);
 
-  // Load documents and folders — re-runs when active context changes
+  // Compute per-folder access state once folders and permissions are available
+  useEffect(() => {
+    if (!app || !activeGroupId || permissions.isLoading || topLevelFolders.length === 0) {
+      setFolderAccessInfos([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const compute = async () => {
+      const restricted = topLevelFolders.filter((f) => f.visibility === 'restricted');
+      const allowlistsByContextId = new Map<string, string[]>();
+
+      if (restricted.length > 0) {
+        const manager = new FolderContextManager(app);
+        await Promise.all(
+          restricted.map(async (folder) => {
+            try {
+              const list = await manager.getContextAllowlist(activeGroupId, folder.context_id);
+              allowlistsByContextId.set(folder.context_id, list);
+            } catch {
+              // Fallback: empty allowlist — the folder stays blocked for non-admins
+            }
+          }),
+        );
+      }
+
+      if (cancelled) return;
+
+      const ctx: FolderAccessContext = {
+        isAdmin: permissions.isAdmin,
+        canJoinOpenContexts: permissions.canJoinOpenContexts,
+        currentMemberIdentity: permissions.currentMemberIdentity,
+        allowlistsByContextId,
+      };
+
+      setFolderAccessInfos(computeAllFolderAccess(topLevelFolders, ctx));
+    };
+
+    compute();
+    return () => { cancelled = true; };
+  }, [
+    app,
+    activeGroupId,
+    topLevelFolders,
+    permissions.isLoading,
+    permissions.isAdmin,
+    permissions.canJoinOpenContexts,
+    permissions.currentMemberIdentity,
+  ]);
+
+  // Load files and folders — re-runs when active context changes
   const loadData = useCallback(async () => {
     if (!app || !activeContextId) return;
 
@@ -130,27 +223,26 @@ const HomePage: React.FC = () => {
       setFolders(folderTree);
       setFlatFolders(folderList);
 
-      // Load documents based on filters
-      let docs: DocumentSummary[];
-      if (searchQuery) {
-        docs = await client.searchDocuments({ query: searchQuery, include_archived: includeArchived });
-      } else if (selectedTag) {
-        docs = await client.getDocumentsByTag({ tag: selectedTag, include_archived: includeArchived });
-      } else if (selectedFolderId !== null) {
-        docs = await client.getDocumentsInFolder({ folder_id: selectedFolderId, include_archived: includeArchived });
+      // Load files based on folder selection
+      // Root (no folder selected): only files with folder_id null — not everything in context
+      let fileList: FileEntryResponse[];
+      if (selectedFolderId !== null) {
+        fileList = await client.listFilesInFolder({ folder_id: selectedFolderId });
       } else {
-        docs = await client.listDocuments({ include_archived: includeArchived });
+        fileList = await client.listFilesInFolder({ folder_id: null });
       }
 
-      setDocuments(docs);
+      // Client-side search filter
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        fileList = fileList.filter(f => f.name.toLowerCase().includes(q));
+      }
 
-      // Also load all documents for folder tree display
-      const allDocs = await client.listDocuments({ include_archived: includeArchived });
-      setAllDocuments(allDocs);
+      setFiles(fileList);
 
-      // Load all tags
-      const tags = await client.getAllTags();
-      setAllTags(tags);
+      // Full list for sidebar tree (documents nested under folder nodes)
+      const all = await client.listFiles();
+      setAllFiles(all);
 
       setSyncStatus('synced');
     } catch (error) {
@@ -159,52 +251,148 @@ const HomePage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [app, activeContextId, searchQuery, selectedTag, selectedFolderId, includeArchived]);
+  }, [app, activeContextId, searchQuery, selectedFolderId]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  const createNewDocument = () => {
-    navigate('/editor', { state: { folderId: selectedFolderId } });
-  };
+  // Auto-dismiss folder access errors after 6 seconds
+  useEffect(() => {
+    if (!topLevelFolderError) return;
+    const timer = setTimeout(() => setTopLevelFolderError(null), 6000);
+    return () => clearTimeout(timer);
+  }, [topLevelFolderError]);
 
-  const openDocument = (id: string) => {
-    navigate(`/editor/${id}`);
-  };
+  useEffect(() => {
+    if (activeContextId) {
+      setUploadError(null);
+    }
+  }, [activeContextId]);
 
-  const handleArchive = async (id: string, archived: boolean) => {
-    if (!app || !activeContextId) return;
+  useEffect(() => {
+    const loadPreviewFile = async () => {
+      if (!isFilePreviewOpen || !selectedFileId || !app || !activeContextId) return;
+      setIsPreviewLoading(true);
+      setPreviewError(null);
+      try {
+        const client = new AbiClient(app, activeContextId);
+        const fileData = await client.getFile({ file_id: selectedFileId });
+        if (!fileData) {
+          setPreviewError('File not found');
+          setPreviewFile(null);
+          return;
+        }
+        setPreviewFile(fileData);
+      } catch (error) {
+        setPreviewError(error instanceof Error ? error.message : 'Failed to load file details');
+        setPreviewFile(null);
+      } finally {
+        setIsPreviewLoading(false);
+      }
+    };
+
+    loadPreviewFile();
+  }, [isFilePreviewOpen, selectedFileId, app, activeContextId]);
+
+  const handleFileUpload = async (file: File) => {
+    if (pendingFolderJoin) {
+      setUploadError('Join the selected folder first.');
+      return;
+    }
+    if (!app || !activeContextId) {
+      console.warn('[HomePage] Upload blocked: app or activeContextId is missing', {
+        hasApp: !!app,
+        activeContextId,
+      });
+      if (!app && isAuthenticated) {
+        setUploadError(
+          'Cannot upload: app client is not ready (missing application id). Try refreshing the page or sign in again.',
+        );
+      } else if (!activeContextId) {
+        setUploadError(
+          'Cannot upload: no active context. Select a workspace above, then try again.',
+        );
+      } else {
+        setUploadError('Cannot upload: session not ready.');
+      }
+      return;
+    }
+    setUploadError(null);
+    setIsUploading(true);
     try {
+      const blobManager = new FileBlobManager();
+      const { blobId, size } = await blobManager.uploadFile(file);
+
       const client = new AbiClient(app, activeContextId);
-      await client.setArchived({ id, archived: !archived });
+      await client.createFile({
+        name: file.name,
+        blob_id: blobId,
+        mime_type: file.type || 'application/octet-stream',
+        size,
+        folder_id: selectedFolderId,
+      });
+
       loadData();
     } catch (error) {
-      console.error('Failed to archive document:', error);
+      console.error('Failed to upload file:', error);
+      setUploadError(
+        error instanceof Error ? error.message : 'Upload failed. Check the console for details.',
+      );
+    } finally {
+      setIsUploading(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const openFile = (fileId: string) => {
+    setSelectedFileId(fileId);
+    setPreviewFile(null);
+    setPreviewError(null);
+    setIsFilePreviewOpen(true);
+  };
+
+  const closeFilePreview = () => {
+    setIsFilePreviewOpen(false);
+    setSelectedFileId(null);
+    setPreviewFile(null);
+    setPreviewError(null);
+  };
+
+  const handlePreviewDownload = async () => {
+    if (!previewFile || !activeContextId) return;
+    setIsPreviewDownloading(true);
+    try {
+      const manager = new FileBlobManager();
+      const blob = await manager.downloadFile(previewFile.blob_id, activeContextId);
+      manager.triggerBrowserDownload(blob, previewFile.name);
+    } catch (error) {
+      setPreviewError(error instanceof Error ? error.message : 'Download failed');
+    } finally {
+      setIsPreviewDownloading(false);
+    }
+  };
+
+  const handleDeleteFile = async (fileId: string) => {
     if (!app || !activeContextId) return;
-    if (window.confirm('Are you sure you want to delete this document?')) {
+    if (window.confirm('Are you sure you want to delete this file?')) {
       try {
         const client = new AbiClient(app, activeContextId);
-        await client.deleteDocument({ id });
+        await client.deleteFile({ file_id: fileId });
         loadData();
       } catch (error) {
-        console.error('Failed to delete document:', error);
+        console.error('Failed to delete file:', error);
       }
     }
   };
 
-  const handleMoveDocument = async (docId: string, folderId: string | null) => {
+  const handleMoveFile = async (fileId: string, folderId: string | null) => {
     if (!app || !activeContextId) return;
     try {
       const client = new AbiClient(app, activeContextId);
-      await client.moveDocument({ doc_id: docId, folder_id: folderId });
+      await client.moveFile({ file_id: fileId, folder_id: folderId });
       loadData();
     } catch (error) {
-      console.error('Failed to move document:', error);
+      console.error('Failed to move file:', error);
     }
   };
 
@@ -230,6 +418,13 @@ const HomePage: React.FC = () => {
   };
 
   const handleRenameFolder = async (folderId: string) => {
+    if (permissions.isLoading) return;
+    if (!permissions.canCreateContext) {
+      setTopLevelFolderError(
+        'You do not have permission to rename folders. Ask an admin to grant you the "create context" capability.',
+      );
+      return;
+    }
     if (!app || !activeContextId) return;
     try {
       const client = new AbiClient(app, activeContextId);
@@ -248,6 +443,13 @@ const HomePage: React.FC = () => {
   };
 
   const handleDeleteFolder = async (folderId: string) => {
+    if (permissions.isLoading) return;
+    if (!permissions.canCreateContext) {
+      setTopLevelFolderError(
+        'You do not have permission to delete folders. Ask an admin to grant you the "create context" capability.',
+      );
+      return;
+    }
     if (!app || !activeContextId) return;
     if (window.confirm('Are you sure you want to delete this folder? Documents will be moved to root.')) {
       try {
@@ -265,6 +467,15 @@ const HomePage: React.FC = () => {
 
   const handleFolderDialogSubmit = async (name: string, color: string | null) => {
     if (!app || !activeContextId) return;
+    if (folderDialogMode === 'rename') {
+      if (permissions.isLoading) return;
+      if (!permissions.canCreateContext) {
+        setTopLevelFolderError(
+          'You do not have permission to rename folders. Ask an admin to grant you the "create context" capability.',
+        );
+        return;
+      }
+    }
     try {
       const client = new AbiClient(app, activeContextId);
       if (folderDialogMode === 'create') {
@@ -301,20 +512,140 @@ const HomePage: React.FC = () => {
   };
 
   // Top-level folder (context-level) handlers
-  const handleTopLevelFolderSelect = (contextId: string) => {
-    setActiveContext(contextId);
-    setSelectedFolderId(null);
-    setSearchQuery('');
-    setSelectedTag('');
+  const enterFolderContext = useCallback(
+    (contextId: string) => {
+      setPendingFolderJoin(null);
+      setActiveContext(contextId);
+      setSelectedFolderId(null);
+      setSearchQuery('');
+    },
+    [setActiveContext],
+  );
+
+  const handleDismissPendingFolderJoin = useCallback(() => {
+    setPendingFolderJoin(null);
+  }, []);
+
+  const handleConfirmPendingFolderJoin = async () => {
+    if (!app || !activeGroupId || !pendingFolderJoin) {
+      return;
+    }
+    setPendingJoinInFlight(true);
+    setTopLevelFolderError(null);
+    try {
+      const manager = new WorkspaceManager(app);
+      await manager.joinContextViaGroup(activeGroupId, pendingFolderJoin.contextId);
+      enterFolderContext(pendingFolderJoin.contextId);
+    } catch (e) {
+      setTopLevelFolderError(
+        `Could not join folder: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    } finally {
+      setPendingJoinInFlight(false);
+    }
+  };
+
+  const handleTopLevelFolderSelect = async (
+    contextId: string,
+    options?: { skipMembershipCheck?: boolean },
+  ) => {
+    setTopLevelFolderError(null);
+
+    const isGeneral = contextId === generalContextId;
+
+    if (!isGeneral) {
+      const access = folderAccessInfos.find((f) => f.context_id === contextId);
+      if (!access) {
+        setTopLevelFolderError(
+          'Folder access information is not available yet. Please wait a moment and try again.',
+        );
+        return;
+      }
+      if (!access.canJoin) {
+        setTopLevelFolderError(
+          access.visibility === 'restricted'
+            ? 'You do not have access to this restricted folder. Only admins, the folder creator, or allowlisted members can open it.'
+            : 'You do not have permission to join open folders. Ask an admin to grant you the "join open contexts" capability.',
+        );
+        return;
+      }
+    }
+
+    if (isGeneral || options?.skipMembershipCheck) {
+      enterFolderContext(contextId);
+      return;
+    }
+
+    if (permissions.isLoading) {
+      setTopLevelFolderError(
+        'Permissions are still loading. Please wait a moment and try again.',
+      );
+      return;
+    }
+
+    if (!app || !activeGroupId) {
+      setTopLevelFolderError('Workspace is not ready.');
+      return;
+    }
+
+    if (hasJoinedContextOnNode(activeGroupId, contextId)) {
+      enterFolderContext(contextId);
+      return;
+    }
+
+    setIsCheckingFolderMembership(true);
+    try {
+      const manager = new WorkspaceManager(app);
+      const joined = await manager.isMemberOfContext(activeGroupId, contextId);
+      if (joined) {
+        markJoinedContextOnNode(activeGroupId, contextId);
+        enterFolderContext(contextId);
+      } else {
+        const folder = topLevelFolders.find((f) => f.context_id === contextId);
+        const autoJoinEligible =
+          permissions.isAdmin ||
+          isSelfCreatedFolderContext(activeGroupId, contextId);
+        if (autoJoinEligible) {
+          try {
+            await manager.joinContextViaGroup(activeGroupId, contextId);
+            enterFolderContext(contextId);
+          } catch (e) {
+            setTopLevelFolderError(
+              `Could not open folder: ${e instanceof Error ? e.message : String(e)}`,
+            );
+          }
+        } else {
+          setPendingFolderJoin({
+            contextId,
+            name: folder?.name,
+          });
+        }
+      }
+    } finally {
+      setIsCheckingFolderMembership(false);
+    }
   };
 
   const handleCreateTopLevelFolder = () => {
+    if (!permissions.canCreateContext) {
+      setTopLevelFolderError('You do not have permission to create new folders. Ask an admin to grant you the "create context" capability.');
+      return;
+    }
     setTopLevelFolderDialogOpen(true);
   };
 
-  const handleTopLevelFolderDialogSubmit = async (name: string, color: string | null) => {
+  const handleTopLevelFolderDialogSubmit = async (
+    name: string,
+    color: string | null,
+    visibility?: 'open' | 'restricted',
+  ) => {
     if (!app || !activeGroupId || !generalContextId) return;
+    if (!permissions.canCreateContext) {
+      setTopLevelFolderError('You do not have permission to create new folders.');
+      return;
+    }
     try {
+      setTopLevelFolderError(null);
       const manager = new FolderContextManager(app);
       const contextId = await manager.createFolderContext(
         activeGroupId,
@@ -322,28 +653,67 @@ const HomePage: React.FC = () => {
         name,
         color ?? undefined,
       );
-      // Refresh the top-level folder list
-      const updated = await manager.listFolderContexts(generalContextId);
+
+      // Apply chosen visibility (user picked in dialog), fall back to workspace
+      // default, then to 'open' if the node doesn't support defaults.
+      const chosenVis = visibility ?? null;
+      try {
+        if (chosenVis) {
+          await manager.setFolderVisibility(activeGroupId, contextId, chosenVis);
+        } else {
+          const wsManager = new WorkspaceManager(app);
+          const defaultVis = await wsManager.getDefaultVisibility(activeGroupId);
+          await manager.setFolderVisibility(activeGroupId, contextId, defaultVis);
+        }
+      } catch {
+        try {
+          await manager.setFolderVisibility(activeGroupId, contextId, chosenVis ?? 'open');
+        } catch {
+          // Node may not support visibility — proceed without setting it
+        }
+      }
+
+      // Refresh the top-level folder list (with visibility)
+      const updated = await manager.listGroupFolderContextsWithVisibility(activeGroupId, generalContextId);
       setTopLevelFolders(updated);
-      // Switch into the new folder context
-      handleTopLevelFolderSelect(contextId);
+      markSelfCreatedFolderContext(activeGroupId, contextId);
+      // Switch into the new folder context (creator — skip membership gate)
+      await handleTopLevelFolderSelect(contextId, { skipMembershipCheck: true });
     } catch (error) {
       console.error('Failed to create top-level folder:', error);
+      setTopLevelFolderError(
+        `Failed to create top-level folder: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   };
 
-  const handleTopLevelFolderSettings = (folder: FolderRegistryEntry) => {
+  const handleTopLevelFolderSettings = (folder: FolderContextWithVisibility) => {
+    if (permissions.isLoading) return;
+    if (!permissions.canCreateContext) {
+      setTopLevelFolderError(
+        'You do not have permission to rename or delete folders. Ask an admin to grant you the "create context" capability.',
+      );
+      return;
+    }
     setFolderSettingsTarget(folder);
     setFolderSettingsOpen(true);
   };
 
   const handleFolderRenamed = (contextId: string, newName: string) => {
+    setTopLevelFolderError(null);
     setTopLevelFolders(prev =>
       prev.map(f => f.context_id === contextId ? { ...f, name: newName } : f)
     );
   };
 
+  const handleTopLevelFolderVisibilityChanged = (contextId: string, mode: 'open' | 'restricted') => {
+    setTopLevelFolders(prev =>
+      prev.map(f => f.context_id === contextId ? { ...f, visibility: mode } : f)
+    );
+  };
+
   const handleFolderDeleted = (contextId: string) => {
+    setTopLevelFolderError(null);
     setTopLevelFolders(prev => prev.filter(f => f.context_id !== contextId));
     // If the user was inside the deleted folder, navigate to General
     if (activeContextId === contextId && generalContextId) {
@@ -382,17 +752,31 @@ const HomePage: React.FC = () => {
     }
   };
 
-  // Strip HTML tags and decode entities for preview text
-  const stripHtml = (html: string): string => {
-    if (!html) return '';
-    const doc = new DOMParser().parseFromString(html, 'text/html');
-    const text = doc.body.textContent || '';
-    return text.replace(/\s+/g, ' ').trim();
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+  };
+
+  const truncateId = (id: string) => {
+    if (id.length <= 16) return id;
+    return `${id.slice(0, 8)}...${id.slice(-6)}`;
+  };
+
+  const getFileIcon = (mimeType: string) => {
+    if (mimeType.startsWith('image/')) return '🖼️';
+    if (mimeType.startsWith('video/')) return '🎬';
+    if (mimeType.startsWith('audio/')) return '🎵';
+    if (mimeType === 'application/pdf') return '📄';
+    if (mimeType.includes('zip') || mimeType.includes('archive')) return '📦';
+    return null;
   };
 
   // Get current folder name for breadcrumb
   const getCurrentFolderName = () => {
-    if (selectedFolderId === null) return 'All Documents';
+    if (selectedFolderId === null) return 'All Files';
     const folder = flatFolders.find(f => f.id === selectedFolderId);
     return folder?.name || 'Unknown Folder';
   };
@@ -449,15 +833,28 @@ const HomePage: React.FC = () => {
           <WorkspaceSwitcher />
 
           <div className="flex gap-2 mt-3">
-            <Button onClick={createNewDocument} className="flex-1 gap-2">
-              <Plus className="w-4 h-4" />
-              New Doc
-            </Button>
+            <FileUploadButton
+              onFileSelected={handleFileUpload}
+              disabled={!activeContextId || isUploading || !!pendingFolderJoin}
+              className="flex-1"
+            >
+              {isUploading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Uploading...
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4" />
+                  Upload File
+                </>
+              )}
+            </FileUploadButton>
             <Button
               variant="outline"
               size="icon"
-              onClick={() => handleCreateFolder(null)}
-              title="New Folder"
+              onClick={handleCreateTopLevelFolder}
+              title="New Root Folder"
             >
               <FolderPlus className="w-4 h-4" />
             </Button>
@@ -465,12 +862,15 @@ const HomePage: React.FC = () => {
               variant="outline"
               size="icon"
               onClick={() => setShareDialogOpen(true)}
-              title="Share Workspace"
-              disabled={!activeContextId}
+              title={permissions.canInviteMembers ? 'Share Workspace' : 'You do not have permission to invite members'}
+              disabled={!activeContextId || !permissions.canInviteMembers}
             >
               <Share2 className="w-4 h-4" />
             </Button>
           </div>
+          {uploadError && (
+            <p className="text-xs text-destructive mt-2">{uploadError}</p>
+          )}
         </div>
 
         {/* Search */}
@@ -479,11 +879,10 @@ const HomePage: React.FC = () => {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <input
               type="text"
-              placeholder="Search documents..."
+              placeholder="Search files..."
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
-                setSelectedTag('');
               }}
               className="w-full pl-9 pr-3 py-2 bg-muted border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
@@ -496,71 +895,61 @@ const HomePage: React.FC = () => {
             <Folder className="w-3.5 h-3.5" />
             Folders
           </div>
+          {isCheckingFolderMembership && (
+            <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1.5">
+              <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0" />
+              Checking folder access…
+            </p>
+          )}
+          {topLevelFolderError && (
+            <div className="flex items-start gap-2 p-2 mb-2 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs">
+              <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+              <span className="flex-1">{topLevelFolderError}</span>
+              <button
+                className="flex-shrink-0 hover:opacity-70"
+                onClick={() => setTopLevelFolderError(null)}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          )}
           <FolderTree
             folders={folders}
-            documents={allDocuments}
+            documents={allFiles}
             selectedFolderId={selectedFolderId}
             onSelectFolder={(folderId) => {
               setSelectedFolderId(folderId);
               setSearchQuery('');
-              setSelectedTag('');
             }}
             onCreateFolder={handleCreateFolder}
             onRenameFolder={handleRenameFolder}
             onDeleteFolder={handleDeleteFolder}
-            onOpenDocument={openDocument}
+            onOpenDocument={openFile}
             expandedFolders={expandedFolders}
             onToggleFolder={handleToggleFolder}
-            topLevelFolders={topLevelFolders}
+            topLevelFolders={folderAccessInfos}
             activeContextId={activeContextId}
             generalContextId={generalContextId}
             onTopLevelFolderSelect={handleTopLevelFolderSelect}
             onCreateTopLevelFolder={handleCreateTopLevelFolder}
             onTopLevelFolderSettings={handleTopLevelFolderSettings}
-            canCreateContext={!!activeGroupId}
+            onTopLevelFolderVisibilityChanged={handleTopLevelFolderVisibilityChanged}
+            canCreateContext={permissions.canCreateContext}
           />
         </div>
 
-        {/* Tags */}
-        {allTags.length > 0 && (
-          <div className="p-3 border-t border-border">
-            <div className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
-              <Tag className="w-3.5 h-3.5" />
-              Tags
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {allTags.map((tag) => (
-                <button
-                  key={tag}
-                  onClick={() => {
-                    setSelectedTag(selectedTag === tag ? '' : tag);
-                    setSearchQuery('');
-                    setSelectedFolderId(null);
-                  }}
-                  className={`px-2 py-1 rounded-full text-xs transition-colors ${
-                    selectedTag === tag
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                  }`}
-                >
-                  {tag}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Footer */}
-        <div className="p-3 border-t border-border space-y-2">
-          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
-            <input
-              type="checkbox"
-              checked={includeArchived}
-              onChange={(e) => setIncludeArchived(e.target.checked)}
-              className="rounded border-border"
-            />
-            Show archived
-          </label>
+        <div className="p-3 border-t border-border space-y-1">
+          <Button variant="ghost" size="sm" onClick={() => setProfileDialogOpen(true)} className="w-full justify-start gap-2">
+            <User className="w-4 h-4" />
+            My Profile
+          </Button>
+          {permissions.isAdmin && (
+            <Button variant="ghost" size="sm" onClick={() => setAdminPanelOpen(true)} className="w-full justify-start gap-2">
+              <Shield className="w-4 h-4" />
+              Workspace Admin
+            </Button>
+          )}
           <Button variant="ghost" size="sm" onClick={handleLogout} className="w-full justify-start gap-2">
             <LogOut className="w-4 h-4" />
             Sign Out
@@ -570,15 +959,47 @@ const HomePage: React.FC = () => {
 
       {/* Main Content */}
       <main className="flex-1 overflow-auto">
+        {pendingFolderJoin && (
+          <div className="border-b border-border bg-muted/50 px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-foreground">
+              <span className="font-medium">
+                Join folder &ldquo;{pendingFolderJoin.name ?? 'This folder'}&rdquo;
+              </span>{' '}
+              to open it on this node.
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDismissPendingFolderJoin}
+                disabled={pendingJoinInFlight}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => void handleConfirmPendingFolderJoin()}
+                disabled={pendingJoinInFlight}
+              >
+                {pendingJoinInFlight ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    Joining…
+                  </>
+                ) : (
+                  'Join this folder'
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
         {/* Header */}
         <header className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b border-border px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
                 {searchQuery ? (
-                  <span>Search results for "{searchQuery}"</span>
-                ) : selectedTag ? (
-                  <span>Tagged with "{selectedTag}"</span>
+                  <span>Search results for &ldquo;{searchQuery}&rdquo;</span>
                 ) : (
                   <div className="flex items-center gap-1">
                     <Folder className="w-4 h-4" />
@@ -587,7 +1008,7 @@ const HomePage: React.FC = () => {
                 )}
               </div>
               <h1 className="text-2xl font-bold">
-                {documents.length} Document{documents.length !== 1 ? 's' : ''}
+                {files.length} File{files.length !== 1 ? 's' : ''}
               </h1>
             </div>
             <div className="flex items-center gap-4">
@@ -619,45 +1040,82 @@ const HomePage: React.FC = () => {
           </div>
         </header>
 
-        {/* Documents */}
+        {/* Files */}
         <div className="p-6">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
             </div>
-          ) : documents.length === 0 ? (
+          ) : !activeContextId ? (
             <div className="text-center py-12">
-              <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-medium mb-2">No documents yet</h3>
-              <p className="text-muted-foreground mb-6">
-                {searchQuery || selectedTag
-                  ? 'No documents match your search criteria'
-                  : 'Create your first document to get started'}
+              <Folder className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-medium mb-2">No workspace selected</h3>
+              <p className="text-muted-foreground">
+                Select a workspace to view files
               </p>
-              {!searchQuery && !selectedTag && (
-                <Button onClick={createNewDocument} className="gap-2">
-                  <Plus className="w-4 h-4" />
-                  Create Document
-                </Button>
+            </div>
+          ) : pendingFolderJoin ? (
+            <div className="text-center py-16 max-w-md mx-auto">
+              <Folder className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-medium mb-2">Join this folder to continue</h3>
+              <p className="text-muted-foreground text-sm">
+                Use &ldquo;Join this folder&rdquo; in the banner above to open{' '}
+                <span className="font-medium text-foreground">
+                  {pendingFolderJoin.name ?? 'this folder'}
+                </span>{' '}
+                on this node. You can upload files after joining.
+              </p>
+            </div>
+          ) : files.length === 0 ? (
+            <div className="text-center py-12">
+              <HardDrive className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-medium mb-2">No files yet</h3>
+              <p className="text-muted-foreground mb-6">
+                {searchQuery
+                  ? 'No files match your search'
+                  : 'Upload your first file to get started'}
+              </p>
+              {!searchQuery && (
+                <FileUploadButton
+                  onFileSelected={handleFileUpload}
+                  disabled={!activeContextId || isUploading || !!pendingFolderJoin}
+                >
+                  {isUploading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4" />
+                      Upload File
+                    </>
+                  )}
+                </FileUploadButton>
               )}
             </div>
           ) : viewMode === 'grid' ? (
             /* Grid View */
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {documents.map((doc) => (
+              {files.map((file) => (
                 <div
-                  key={doc.id}
-                  className={`group p-4 rounded-xl border transition-all cursor-pointer ${
-                    doc.archived
-                      ? 'bg-muted/30 border-border/50 opacity-60'
-                      : 'bg-card border-border hover:border-primary/30 hover:shadow-elevated'
-                  }`}
-                  onClick={() => openDocument(doc.id)}
+                  key={file.id}
+                  className="group p-4 rounded-xl border bg-card border-border hover:border-primary/30 hover:shadow-elevated transition-all cursor-pointer"
+                  onClick={() => openFile(file.id)}
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-2 min-w-0">
-                      <FileText className="w-5 h-5 text-primary flex-shrink-0" />
-                      <h3 className="font-medium truncate">{doc.title}</h3>
+                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                        {getFileIcon(file.mime_type) ? (
+                          <span className="text-lg">{getFileIcon(file.mime_type)}</span>
+                        ) : (
+                          <FileIcon className="w-5 h-5 text-primary" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="font-medium truncate">{file.name}</h3>
+                        <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
+                      </div>
                     </div>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -670,52 +1128,52 @@ const HomePage: React.FC = () => {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        {/* Move to folder submenu */}
                         <DropdownMenuSub>
                           <DropdownMenuSubTrigger>
                             <FolderInput className="w-4 h-4 mr-2" />
                             Move to...
                           </DropdownMenuSubTrigger>
                           <DropdownMenuSubContent>
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleMoveDocument(doc.id, null);
-                              }}
-                            >
-                              <Folder className="w-4 h-4 mr-2" />
-                              Root
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
+                            {file.folder_id !== null && (
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMoveFile(file.id, null);
+                                }}
+                              >
+                                <Folder className="w-4 h-4 mr-2" />
+                                Root
+                              </DropdownMenuItem>
+                            )}
+                            {file.folder_id !== null && flatFolders.length > 0 && (
+                              <DropdownMenuSeparator />
+                            )}
                             {flatFolders.map((folder) => (
                               <DropdownMenuItem
                                 key={folder.id}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleMoveDocument(doc.id, folder.id);
+                                  handleMoveFile(file.id, folder.id);
                                 }}
-                                disabled={doc.folder_id === folder.id}
+                                disabled={file.folder_id === folder.id}
                               >
                                 <Folder className="w-4 h-4 mr-2" />
                                 {folder.name}
                               </DropdownMenuItem>
                             ))}
+                            {file.folder_id === null && flatFolders.length === 0 && (
+                              <DropdownMenuItem disabled>
+                                No other folders
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuSubContent>
                         </DropdownMenuSub>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={(e) => {
-                          e.stopPropagation();
-                          handleArchive(doc.id, doc.archived);
-                        }}>
-                          <Archive className="w-4 h-4 mr-2" />
-                          {doc.archived ? 'Restore' : 'Archive'}
-                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           className="text-destructive"
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleDelete(doc.id);
+                            handleDeleteFile(file.id);
                           }}
                         >
                           <Trash2 className="w-4 h-4 mr-2" />
@@ -725,129 +1183,69 @@ const HomePage: React.FC = () => {
                     </DropdownMenu>
                   </div>
 
-                  <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
-                    {stripHtml(doc.preview) || 'No content'}
-                  </p>
-
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <div className="flex items-center gap-1.5">
                       <Clock className="w-3.5 h-3.5" />
-                      {formatDate(doc.updated_at)}
+                      {formatDate(file.created_at)}
                     </div>
-                    {doc.tags.length > 0 && (
-                      <div className="flex items-center gap-1">
-                        {doc.tags.slice(0, 2).map((tag) => (
-                          <span
-                            key={tag}
-                            className="px-1.5 py-0.5 rounded bg-muted text-xs"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                        {doc.tags.length > 2 && (
-                          <span className="text-xs">+{doc.tags.length - 2}</span>
-                        )}
-                      </div>
-                    )}
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-muted">
+                      {file.mime_type.split('/').pop()}
+                    </span>
                   </div>
-
-                  {doc.archived && (
-                    <div className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Archive className="w-3.5 h-3.5" />
-                      Archived
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
           ) : (
             /* List View */
             <div className="bg-card rounded-xl border border-border overflow-hidden">
-              {/* Table Header */}
               <div className="grid grid-cols-12 gap-4 px-4 py-3 bg-muted/50 border-b border-border text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                <div className="col-span-5">Title</div>
-                <div className="col-span-2">Folder</div>
+                <div className="col-span-5">Name</div>
+                <div className="col-span-2">Size</div>
                 <div className="col-span-2">Modified</div>
-                <div className="col-span-2">Tags</div>
+                <div className="col-span-2">Type</div>
                 <div className="col-span-1"></div>
               </div>
 
-              {/* Table Body */}
               <div className="divide-y divide-border">
-                {documents.map((doc) => (
+                {files.map((file) => (
                   <div
-                    key={doc.id}
-                    className={`group grid grid-cols-12 gap-4 px-4 py-3 items-center cursor-pointer transition-colors ${
-                      doc.archived
-                        ? 'bg-muted/20 opacity-60'
-                        : 'hover:bg-muted/30'
-                    }`}
-                    onClick={() => openDocument(doc.id)}
+                    key={file.id}
+                    className="group grid grid-cols-12 gap-4 px-4 py-3 items-center cursor-pointer transition-colors hover:bg-muted/30"
+                    onClick={() => openFile(file.id)}
                   >
-                    {/* Title & Preview */}
                     <div className="col-span-5 min-w-0">
                       <div className="flex items-center gap-3">
-                        <FileText className={`w-5 h-5 flex-shrink-0 ${doc.archived ? 'text-muted-foreground' : 'text-primary'}`} />
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-medium truncate">{doc.title}</h3>
-                            {doc.archived && (
-                              <span className="flex-shrink-0 px-1.5 py-0.5 rounded bg-muted text-xs text-muted-foreground">
-                                Archived
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-sm text-muted-foreground truncate mt-0.5">
-                            {stripHtml(doc.preview) || 'No content'}
-                          </p>
+                        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                          {getFileIcon(file.mime_type) ? (
+                            <span className="text-sm">{getFileIcon(file.mime_type)}</span>
+                          ) : (
+                            <FileIcon className="w-4 h-4 text-primary" />
+                          )}
                         </div>
+                        <h3 className="font-medium truncate">{file.name}</h3>
                       </div>
                     </div>
 
-                    {/* Folder */}
-                    <div className="col-span-2 min-w-0">
+                    <div className="col-span-2">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Folder className="w-3.5 h-3.5 flex-shrink-0" />
-                        <span className="truncate">
-                          {doc.folder_id
-                            ? flatFolders.find(f => f.id === doc.folder_id)?.name || 'Unknown'
-                            : 'Root'}
-                        </span>
+                        <HardDrive className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span>{formatFileSize(file.size)}</span>
                       </div>
                     </div>
 
-                    {/* Modified Date */}
                     <div className="col-span-2">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
-                        <span>{formatDate(doc.updated_at)}</span>
+                        <span>{formatDate(file.created_at)}</span>
                       </div>
                     </div>
 
-                    {/* Tags */}
                     <div className="col-span-2 min-w-0">
-                      {doc.tags.length > 0 ? (
-                        <div className="flex items-center gap-1 flex-wrap">
-                          {doc.tags.slice(0, 2).map((tag) => (
-                            <span
-                              key={tag}
-                              className="px-1.5 py-0.5 rounded bg-muted text-xs text-muted-foreground"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                          {doc.tags.length > 2 && (
-                            <span className="text-xs text-muted-foreground">
-                              +{doc.tags.length - 2}
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground/50">—</span>
-                      )}
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                        {file.mime_type.split('/').pop()}
+                      </span>
                     </div>
 
-                    {/* Actions */}
                     <div className="col-span-1 flex justify-end">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -860,52 +1258,52 @@ const HomePage: React.FC = () => {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          {/* Move to folder submenu */}
                           <DropdownMenuSub>
                             <DropdownMenuSubTrigger>
                               <FolderInput className="w-4 h-4 mr-2" />
                               Move to...
                             </DropdownMenuSubTrigger>
                             <DropdownMenuSubContent>
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleMoveDocument(doc.id, null);
-                                }}
-                              >
-                                <Folder className="w-4 h-4 mr-2" />
-                                Root
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
+                              {file.folder_id !== null && (
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleMoveFile(file.id, null);
+                                  }}
+                                >
+                                  <Folder className="w-4 h-4 mr-2" />
+                                  Root
+                                </DropdownMenuItem>
+                              )}
+                              {file.folder_id !== null && flatFolders.length > 0 && (
+                                <DropdownMenuSeparator />
+                              )}
                               {flatFolders.map((folder) => (
                                 <DropdownMenuItem
                                   key={folder.id}
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    handleMoveDocument(doc.id, folder.id);
+                                    handleMoveFile(file.id, folder.id);
                                   }}
-                                  disabled={doc.folder_id === folder.id}
+                                  disabled={file.folder_id === folder.id}
                                 >
                                   <Folder className="w-4 h-4 mr-2" />
                                   {folder.name}
                                 </DropdownMenuItem>
                               ))}
+                              {file.folder_id === null && flatFolders.length === 0 && (
+                                <DropdownMenuItem disabled>
+                                  No other folders
+                                </DropdownMenuItem>
+                              )}
                             </DropdownMenuSubContent>
                           </DropdownMenuSub>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={(e) => {
-                            e.stopPropagation();
-                            handleArchive(doc.id, doc.archived);
-                          }}>
-                            <Archive className="w-4 h-4 mr-2" />
-                            {doc.archived ? 'Restore' : 'Archive'}
-                          </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             className="text-destructive"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleDelete(doc.id);
+                              handleDeleteFile(file.id);
                             }}
                           >
                             <Trash2 className="w-4 h-4 mr-2" />
@@ -942,14 +1340,16 @@ const HomePage: React.FC = () => {
         initialName=""
         initialColor={null}
         parentFolderName={null}
+        showVisibility
+        initialVisibility="open"
       />
 
       {/* Share Dialog */}
-      {activeContextId && (
+      {activeGroupId && (
         <ShareDialog
           isOpen={shareDialogOpen}
           onClose={() => setShareDialogOpen(false)}
-          contextId={activeContextId}
+          groupId={activeGroupId}
         />
       )}
 
@@ -960,13 +1360,112 @@ const HomePage: React.FC = () => {
           groupId={activeGroupId}
           generalContextId={generalContextId}
           isOpen={folderSettingsOpen}
+          allowRenameDelete={permissions.canCreateContext}
           onClose={() => {
             setFolderSettingsOpen(false);
             setFolderSettingsTarget(null);
           }}
           onRenamed={handleFolderRenamed}
           onDeleted={handleFolderDeleted}
+          onVisibilityChanged={handleTopLevelFolderVisibilityChanged}
         />
+      )}
+
+      {/* My Profile Dialog */}
+      <MyProfileDialog
+        isOpen={profileDialogOpen}
+        onClose={() => setProfileDialogOpen(false)}
+      />
+
+      {/* Admin Panel */}
+      <AdminPanel
+        isOpen={adminPanelOpen}
+        onClose={() => setAdminPanelOpen(false)}
+      />
+
+      {isFilePreviewOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+          onClick={closeFilePreview}
+        >
+          <div
+            className="w-full max-w-2xl rounded-xl border border-border bg-card shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <h2 className="text-lg font-semibold truncate pr-4">
+                {previewFile?.name ?? 'File details'}
+              </h2>
+              <Button variant="ghost" size="icon" onClick={closeFilePreview}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {isPreviewLoading && (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                </div>
+              )}
+
+              {!isPreviewLoading && (previewError || !previewFile) && (
+                <div className="flex items-center gap-2 rounded-lg bg-destructive/10 text-destructive px-3 py-2">
+                  <AlertCircle className="w-4 h-4" />
+                  <span className="text-sm">{previewError ?? 'File not found'}</span>
+                </div>
+              )}
+
+              {!isPreviewLoading && !previewError && previewFile && (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+                      <HardDrive className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                      <div>
+                        <p className="text-xs text-muted-foreground">Size</p>
+                        <p className="font-medium">{formatFileSize(previewFile.size)}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+                      <FileType className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                      <div>
+                        <p className="text-xs text-muted-foreground">Type</p>
+                        <p className="font-medium">{previewFile.mime_type}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+                      <Clock className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                      <div>
+                        <p className="text-xs text-muted-foreground">Uploaded</p>
+                        <p className="font-medium">{formatDate(previewFile.created_at)}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+                      <User className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                      <div>
+                        <p className="text-xs text-muted-foreground">Uploaded by</p>
+                        <p className="font-medium font-mono text-sm">{truncateId(previewFile.uploaded_by)}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end pt-2">
+                    <Button onClick={handlePreviewDownload} disabled={isPreviewDownloading} className="gap-2">
+                      {isPreviewDownloading ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Download className="w-4 h-4" />
+                      )}
+                      Download
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

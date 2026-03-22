@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useCalimero, apiClient, SignedOpenInvitation } from '@calimero-network/calimero-client';
+import { useCalimero } from '@calimero-network/calimero-client';
+import { adminRequest } from '@/api/AdminApi';
+import { WorkspaceManager } from '@/api/WorkspaceManager';
+import { setGroupMemberIdentity } from '@/constants/config';
+import { parseGroupInvitationPayload, GroupInvitationPayload } from '@/utils/invitation';
 import { Button } from '@/components/ui/button';
 import { LogoWithText } from '@/components/icons/Logo';
 import {
@@ -8,7 +12,7 @@ import {
   Loader2,
   Check,
   AlertCircle,
-  FileText,
+  HardDrive,
   ArrowRight,
   Shield,
 } from 'lucide-react';
@@ -20,45 +24,23 @@ const JoinPage: React.FC = () => {
 
   const [status, setStatus] = useState<'idle' | 'parsing' | 'joining' | 'success' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [invitation, setInvitation] = useState<SignedOpenInvitation | null>(null);
+  const [parsedPayload, setParsedPayload] = useState<GroupInvitationPayload | null>(null);
   const [manualPayload, setManualPayload] = useState('');
 
-  // Parse invitation from URL on mount
   useEffect(() => {
     const inviteParam = searchParams.get('invite');
     if (inviteParam) {
-      parseInvitation(inviteParam);
+      handleParseInvitation(inviteParam);
     }
   }, [searchParams]);
 
-  const parseInvitation = (payload: string) => {
+  const handleParseInvitation = (payload: string) => {
     setStatus('parsing');
     setError(null);
 
     try {
-      // Decode base64 payload
-      const decoded = atob(payload);
-      const parsed = JSON.parse(decoded);
-
-      console.log('[JoinPage] Parsed invitation:', parsed);
-
-      // Validate the invitation structure - handle both snake_case and camelCase
-      const hasInvitation = parsed.invitation;
-      const hasSignature = parsed.inviter_signature || parsed.inviterSignature;
-      
-      if (!hasInvitation || !hasSignature) {
-        throw new Error('Invalid invitation format');
-      }
-
-      // Check for required fields in invitation (handle both cases)
-      const contextId = parsed.invitation.context_id || parsed.invitation.contextId;
-      const inviterIdentity = parsed.invitation.inviter_identity || parsed.invitation.inviterIdentity;
-      
-      if (!contextId || !inviterIdentity) {
-        throw new Error('Invitation missing required fields');
-      }
-
-      setInvitation(parsed as SignedOpenInvitation);
+      const parsed = parseGroupInvitationPayload(payload);
+      setParsedPayload(parsed);
       setStatus('idle');
     } catch (err) {
       console.error('Failed to parse invitation:', err);
@@ -68,20 +50,14 @@ const JoinPage: React.FC = () => {
   };
 
   const handleJoin = async () => {
-    if (!invitation) {
+    if (!parsedPayload) {
       setError('No valid invitation to join');
       return;
     }
 
     if (!isAuthenticated) {
-      // Store invitation and redirect to login
-      sessionStorage.setItem('pendingInvitation', JSON.stringify(invitation));
+      sessionStorage.setItem('pendingInvitation', JSON.stringify(parsedPayload));
       navigate('/?returnTo=/join');
-      return;
-    }
-
-    if (!app) {
-      setError('App not connected. Please try again.');
       return;
     }
 
@@ -89,35 +65,34 @@ const JoinPage: React.FC = () => {
     setError(null);
 
     try {
-      // Get or create the user's identity
-      const identityResponse = await apiClient.node().createNewIdentity();
-      
-      if (identityResponse.error) {
-        throw new Error(identityResponse.error.message || 'Failed to create identity');
+      const joinResult = await adminRequest<{ groupId?: string; memberIdentity?: string }>('/groups/join', {
+        method: 'POST',
+        body: {
+          invitation: parsedPayload.invitation,
+          groupAlias: parsedPayload.groupAlias,
+        },
+      });
+
+      // Auto-join the General context so the new member has immediate access
+      const groupId = joinResult?.groupId;
+      if (groupId && joinResult?.memberIdentity) {
+        setGroupMemberIdentity(groupId, joinResult.memberIdentity);
       }
-
-      const newMemberPublicKey = identityResponse.data?.publicKey;
-      
-      if (!newMemberPublicKey) {
-        throw new Error('Failed to get member public key');
-      }
-
-      // Join the context using the open invitation
-      const joinResponse = await apiClient.node().joinContextByOpenInvitation(
-        invitation,
-        newMemberPublicKey
-      );
-
-      if (joinResponse.error) {
-        throw new Error(joinResponse.error.message || 'Failed to join workspace');
+      if (groupId) {
+        try {
+          const manager = new WorkspaceManager(app ?? null);
+          const generalContextId = await manager.resolveGeneralContextId(groupId);
+          if (generalContextId) {
+            await manager.joinContextViaGroup(groupId, generalContextId);
+          }
+        } catch {
+          // Non-blocking: the user can still navigate to home
+        }
       }
 
       setStatus('success');
-
-      // Clear any stored invitation
       sessionStorage.removeItem('pendingInvitation');
 
-      // Redirect to home after a brief delay
       setTimeout(() => {
         navigate('/home');
       }, 2000);
@@ -130,24 +105,23 @@ const JoinPage: React.FC = () => {
 
   const handleManualJoin = () => {
     if (manualPayload.trim()) {
-      parseInvitation(manualPayload.trim());
+      handleParseInvitation(manualPayload.trim());
     }
   };
 
-  // Check for pending invitation from login redirect
   useEffect(() => {
-    if (isAuthenticated && !invitation) {
+    if (isAuthenticated && !parsedPayload) {
       const pending = sessionStorage.getItem('pendingInvitation');
       if (pending) {
         try {
-          const parsed = JSON.parse(pending) as SignedOpenInvitation;
-          setInvitation(parsed);
+          const parsed = JSON.parse(pending) as GroupInvitationPayload;
+          setParsedPayload(parsed);
         } catch {
           sessionStorage.removeItem('pendingInvitation');
         }
       }
     }
-  }, [isAuthenticated, invitation]);
+  }, [isAuthenticated, parsedPayload]);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -186,11 +160,11 @@ const JoinPage: React.FC = () => {
               </h1>
               <p className="text-sm text-muted-foreground">
                 {status === 'success'
-                  ? 'You now have access to the shared documents.'
+                  ? 'You now have access to the shared workspace.'
                   : status === 'error'
                   ? error || 'Something went wrong'
-                  : invitation
-                  ? 'You\'ve been invited to collaborate on documents.'
+                  : parsedPayload
+                  ? 'You\'ve been invited to a shared workspace.'
                   : 'Enter an invitation to join a shared workspace.'}
               </p>
             </div>
@@ -200,41 +174,24 @@ const JoinPage: React.FC = () => {
               {status === 'success' ? (
                 <div className="text-center space-y-4">
                   <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                    <FileText className="w-4 h-4" />
-                    <span>Redirecting to your documents...</span>
+                    <HardDrive className="w-4 h-4" />
+                    <span>Redirecting to your files...</span>
                   </div>
                   <Button onClick={() => navigate('/home')} className="w-full gap-2">
-                    Go to Documents
+                    Go to Files
                     <ArrowRight className="w-4 h-4" />
                   </Button>
                 </div>
-              ) : invitation ? (
+              ) : parsedPayload ? (
                 <div className="space-y-4">
-                  {/* Invitation Details */}
-                  <div className="p-4 bg-muted/50 rounded-lg space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Context ID</span>
-                      <span className="font-mono text-xs truncate max-w-[200px]">
-                        {(() => {
-                          const ctx = (invitation.invitation as any).context_id || (invitation.invitation as any).contextId;
-                          return Array.isArray(ctx) ? '[bytes]' : ctx;
-                        })()}
-                      </span>
+                  {parsedPayload.groupAlias && (
+                    <div className="p-4 bg-muted/50 rounded-lg">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Workspace</span>
+                        <span className="font-medium">{parsedPayload.groupAlias}</span>
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">From</span>
-                      <span className="font-mono text-xs truncate max-w-[200px]">
-                        {(() => {
-                          const inv = (invitation.invitation as any).inviter_identity || (invitation.invitation as any).inviterIdentity;
-                          if (Array.isArray(inv)) return '[identity]';
-                          if (typeof inv === 'string' && inv.length > 16) {
-                            return `${inv.slice(0, 8)}...${inv.slice(-8)}`;
-                          }
-                          return inv;
-                        })()}
-                      </span>
-                    </div>
-                  </div>
+                  )}
 
                   {error && (
                     <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
@@ -249,7 +206,7 @@ const JoinPage: React.FC = () => {
                       </p>
                       <Button
                         onClick={() => {
-                          sessionStorage.setItem('pendingInvitation', JSON.stringify(invitation));
+                          sessionStorage.setItem('pendingInvitation', JSON.stringify(parsedPayload));
                           navigate('/');
                         }}
                         className="w-full gap-2"

@@ -1,7 +1,20 @@
 import { CalimeroApp } from '@calimero-network/calimero-client';
 import { AbiClient, FolderRegistryEntry } from './AbiClient';
+import {
+  adminRequest,
+  createContextForGroup,
+  DEFAULT_CONTEXT_PROTOCOL,
+  encodeInitializationParams,
+} from './AdminApi';
+import { getApplicationId } from '@/constants/config';
 
 export type { FolderRegistryEntry };
+
+export type ContextVisibility = 'open' | 'restricted';
+
+export interface FolderContextWithVisibility extends FolderRegistryEntry {
+  visibility: ContextVisibility;
+}
 
 export class FolderContextManager {
   constructor(private app: CalimeroApp) {}
@@ -10,23 +23,81 @@ export class FolderContextManager {
     return new AbiClient(this.app, generalContextId).getFolderRegistry();
   }
 
+  async listGroupFolderContexts(
+    groupId: string,
+    generalContextId?: string,
+  ): Promise<FolderRegistryEntry[]> {
+    const groupContexts = await adminRequest<Array<{ contextId: string; alias?: string | null }>>(
+      `/groups/${groupId}/contexts`,
+    );
+
+    let registryByContextId = new Map<string, FolderRegistryEntry>();
+    if (generalContextId) {
+      try {
+        const registryEntries = await this.listFolderContexts(generalContextId);
+        registryByContextId = new Map(
+          registryEntries.map((entry) => [entry.context_id, entry]),
+        );
+      } catch (err) {
+        // Non-blocking fallback: UI can still show group contexts without registry metadata.
+        console.warn('[FolderContextManager] Failed to load folder registry:', err);
+      }
+    }
+
+    return groupContexts
+      .filter((ctx) => ctx.contextId !== generalContextId)
+      .map((ctx) => {
+        const registryEntry = registryByContextId.get(ctx.contextId);
+        if (registryEntry) {
+          return registryEntry;
+        }
+        return {
+          context_id: ctx.contextId,
+          name: ctx.alias ?? 'Unnamed',
+          color: null,
+          created_at: 0,
+        };
+      });
+  }
+
+  /**
+   * Returns the group folder-contexts enriched with per-context visibility.
+   * Visibility is fetched in parallel; failures default to `'open'`.
+   */
+  async listGroupFolderContextsWithVisibility(
+    groupId: string,
+    generalContextId?: string,
+  ): Promise<FolderContextWithVisibility[]> {
+    const folders = await this.listGroupFolderContexts(groupId, generalContextId);
+
+    const enriched = await Promise.all(
+      folders.map(async (folder) => {
+        let visibility: ContextVisibility = 'open';
+        try {
+          visibility = await this.getFolderVisibility(groupId, folder.context_id);
+        } catch {
+          // Non-blocking: default to open when the node doesn't support visibility
+        }
+        return { ...folder, visibility };
+      }),
+    );
+
+    return enriched;
+  }
+
   async createFolderContext(
     groupId: string,
     generalContextId: string,
     name: string,
     color?: string,
   ): Promise<string> {
-    // Create context within the group via admin API
-    const ctxRes = await fetch(`/admin-api/groups/${groupId}/contexts`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
+    const context = await createContextForGroup(groupId, {
+      applicationId: getApplicationId(),
+      protocol: DEFAULT_CONTEXT_PROTOCOL,
+      alias: name,
+      initializationParams: encodeInitializationParams({}),
     });
-    if (!ctxRes.ok) {
-      throw new Error(`Failed to create folder context: ${ctxRes.statusText}`);
-    }
-    const ctxData = await ctxRes.json();
-    const contextId: string = ctxData.id ?? ctxData.contextId ?? ctxData;
+    const contextId = context.contextId;
 
     // Set context name — best-effort, non-blocking
     try {
@@ -73,10 +144,9 @@ export class FolderContextManager {
     await new AbiClient(this.app, generalContextId).unregisterFolder({ context_id: contextId });
 
     // Detach context from group
-    await fetch(`/admin-api/groups/${groupId}/contexts/${contextId}/remove`, {
+    await adminRequest<void>(`/groups/${groupId}/contexts/${contextId}/remove`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
+      body: {},
     });
   }
 
@@ -89,13 +159,66 @@ export class FolderContextManager {
     contextId: string,
     mode: 'open' | 'restricted',
   ): Promise<void> {
-    const response = await fetch(`/admin-api/groups/${groupId}/contexts/${contextId}/visibility`, {
+    await adminRequest<void>(`/groups/${groupId}/contexts/${contextId}/visibility`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode }),
+      body: { mode },
     });
-    if (!response.ok) {
-      throw new Error(`Failed to set folder visibility: ${response.statusText}`);
-    }
+  }
+
+  async getFolderVisibility(
+    groupId: string,
+    contextId: string,
+  ): Promise<'open' | 'restricted'> {
+    const visibility = await adminRequest<{ mode: 'open' | 'restricted' }>(
+      `/groups/${groupId}/contexts/${contextId}/visibility`,
+    );
+    return visibility.mode;
+  }
+
+  /** Returns the list of member identities allowed to access a restricted context. */
+  async getContextAllowlist(
+    groupId: string,
+    contextId: string,
+  ): Promise<string[]> {
+    const data = await adminRequest<string[]>(
+      `/groups/${groupId}/contexts/${contextId}/allowlist`,
+    );
+    return Array.isArray(data) ? data : [];
+  }
+
+  /**
+   * Manages the allowlist for a restricted context by adding and/or removing
+   * identities in a single request.
+   */
+  async manageContextAllowlist(
+    groupId: string,
+    contextId: string,
+    changes: { add?: string[]; remove?: string[] },
+  ): Promise<void> {
+    await adminRequest<void>(
+      `/groups/${groupId}/contexts/${contextId}/allowlist`,
+      {
+        method: 'POST',
+        body: changes,
+      },
+    );
+  }
+
+  /** Adds a single identity to the allowlist of a restricted context. */
+  async addToContextAllowlist(
+    groupId: string,
+    contextId: string,
+    identity: string,
+  ): Promise<void> {
+    await this.manageContextAllowlist(groupId, contextId, { add: [identity] });
+  }
+
+  /** Removes a single identity from the allowlist of a restricted context. */
+  async removeFromContextAllowlist(
+    groupId: string,
+    contextId: string,
+    identity: string,
+  ): Promise<void> {
+    await this.manageContextAllowlist(groupId, contextId, { remove: [identity] });
   }
 }

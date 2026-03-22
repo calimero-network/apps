@@ -19,6 +19,7 @@ import {
 import { ToastProvider } from '@calimero-network/mero-ui';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { WorkspaceProvider } from '@/context/WorkspaceContext';
+import { getApplicationId } from '@/constants/config';
 import '@calimero-network/mero-ui/styles.css';
 import './index.css';
 import App from './App';
@@ -59,6 +60,11 @@ const appIdFromUrl =
 if (appIdFromUrl && !localStorage.getItem(CALIMERO_APP_ID_KEY)) {
   localStorage.setItem(CALIMERO_APP_ID_KEY, appIdFromUrl);
 }
+// CalimeroProvider only builds `app` when `resolvedApplicationId` is set (localStorage or OAuth hash).
+// Admin API can still list workspaces without it — bootstrap so AbiClient/blob flows match WorkspaceManager.
+if (!localStorage.getItem(CALIMERO_APP_ID_KEY)) {
+  localStorage.setItem(CALIMERO_APP_ID_KEY, getApplicationId());
+}
 
 // Disable StrictMode in production to avoid double-rendering which can cause
 // 429 errors from CalimeroProvider's double auth checks.
@@ -68,7 +74,7 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <AppWrapper>
     <BrowserRouter>
       <CalimeroProvider
-        packageName="com.calimero.docs-app8"
+        packageName="com.calimero.mero-drive"
         registryUrl="https://apps.calimero.network"
         mode={AppMode.MultiContext}
       >

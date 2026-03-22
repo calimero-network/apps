@@ -78,7 +78,7 @@ export const LogoWithText: React.FC<LogoProps & { textClassName?: string }> = ({
     <div className={`flex items-center gap-2 ${className}`}>
       <Logo size={size} />
       <span className={`font-semibold text-xl tracking-tight ${textClassName}`}>
-        MeroDocs
+        Mero Drive
       </span>
     </div>
   );
