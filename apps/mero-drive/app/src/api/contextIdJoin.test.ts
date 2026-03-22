@@ -26,4 +26,18 @@ describe('normalizeContextIdForJoin', () => {
     const shortHex = 'deadbeef';
     expect(normalizeContextIdForJoin(shortHex)).toBe(shortHex);
   });
+
+  it('trims whitespace from non-hex context IDs', () => {
+    const b58 = '3jLicRUbTH7D6WFaGW7gkjvxJ6eztPe7Dc5GXv7Dng9M';
+    expect(normalizeContextIdForJoin(`  ${b58}  `)).toBe(b58);
+    expect(normalizeContextIdForJoin(`\n${b58}\t`)).toBe(b58);
+  });
+
+  it('trims whitespace from hex context IDs before conversion', () => {
+    const hex =
+      '0000000000000000000000000000000000000000000000000000000000000001';
+    const out1 = normalizeContextIdForJoin(hex);
+    const out2 = normalizeContextIdForJoin(`  ${hex}  `);
+    expect(out1).toBe(out2);
+  });
 });
