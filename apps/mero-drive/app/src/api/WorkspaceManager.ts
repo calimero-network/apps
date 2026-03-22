@@ -174,10 +174,15 @@ export class WorkspaceManager {
       generalContextId = '';
     }
 
-    const identity = await this.resolveMemberIdentityForGroup(
-      groupId,
-      generalContextId || contextId,
-    );
+    let identity: string | null = null;
+    try {
+      identity = await this.resolveMemberIdentityForGroup(
+        groupId,
+        generalContextId || contextId,
+      );
+    } catch {
+      return false;
+    }
     if (!identity) {
       return false;
     }

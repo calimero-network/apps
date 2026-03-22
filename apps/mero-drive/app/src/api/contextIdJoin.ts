@@ -28,9 +28,8 @@ export function normalizeContextIdForJoin(contextId: string): string {
  */
 export function buildContextIdCandidates(contextId: string): string[] {
   const normalized = contextId.trim();
-  const maybeBase58 = hexToBase58(normalized);
-  if (maybeBase58 && maybeBase58 !== normalized) {
-    return [maybeBase58, normalized];
+  if (HEX_64.test(normalized)) {
+    return [bs58.encode(hexToBytes(normalized)), normalized];
   }
   return [normalized];
 }

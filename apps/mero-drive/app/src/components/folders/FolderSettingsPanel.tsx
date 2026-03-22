@@ -175,6 +175,7 @@ export const FolderSettingsPanel: React.FC<FolderSettingsPanelProps> = ({
 
   const handleVisibilityChange = async (mode: 'open' | 'restricted') => {
     if (!app) return;
+    const previous = visibility;
     setVisibility(mode);
     setIsSavingVisibility(true);
     setError(null);
@@ -185,7 +186,7 @@ export const FolderSettingsPanel: React.FC<FolderSettingsPanelProps> = ({
     } catch (err) {
       console.error('[FolderSettingsPanel] visibility change failed:', err);
       setError('Failed to update visibility.');
-      setVisibility(mode === 'open' ? 'restricted' : 'open');
+      setVisibility(previous);
     } finally {
       setIsSavingVisibility(false);
     }
