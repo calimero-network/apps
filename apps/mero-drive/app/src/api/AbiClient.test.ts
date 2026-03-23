@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { AbiClient } from './AbiClient';
 
 const mockExecute = vi.fn();
 const mockFetchContexts = vi.fn();
@@ -18,8 +19,6 @@ vi.mock('@/constants/config', () => ({
 vi.mock('./contextIdJoin', () => ({
   buildContextIdCandidates: (id: string) => [id],
 }));
-
-import { AbiClient } from './AbiClient';
 
 function makeApp() {
   return {

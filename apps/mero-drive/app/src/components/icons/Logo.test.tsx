@@ -5,9 +5,9 @@ import { LogoWithText } from './Logo';
 
 describe('LogoWithText', () => {
   it('renders the Mero Drive brand name', () => {
-    const html = renderToStaticMarkup(<LogoWithText />);
+    const view = renderToStaticMarkup(<LogoWithText />);
 
-    expect(html).toContain('Mero Drive');
-    expect(html).not.toContain('MeroDocs');
+    expect(view).toContain('Mero Drive');
+    expect(view).not.toContain('MeroDocs');
   });
 });

@@ -11,6 +11,7 @@ import {
 } from './AdminApi';
 import { normalizeContextIdForJoin } from './contextIdJoin';
 import { markJoinedContextOnNode } from '@/utils/joinedFolderContexts';
+import { getGroupMemberIdentity, setGroupMemberIdentity } from '@/constants/config';
 
 function identitiesListIncludes(identities: string[], identity: string): boolean {
   const a = identity.trim();
@@ -19,7 +20,6 @@ function identitiesListIncludes(identities: string[], identity: string): boolean
     return b === a || b.toLowerCase() === a.toLowerCase();
   });
 }
-import { getGroupMemberIdentity, setGroupMemberIdentity } from '@/constants/config';
 
 export interface WorkspaceInfo {
   id: string;

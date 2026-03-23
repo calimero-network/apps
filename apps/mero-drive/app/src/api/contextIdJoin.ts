@@ -34,13 +34,3 @@ export function buildContextIdCandidates(contextId: string): string[] {
   return [normalized];
 }
 
-/**
- * Convert a hex string to base58. Returns null if input is not valid hex.
- */
-function hexToBase58(value: string): string | null {
-  const cleaned = value.startsWith('0x') ? value.slice(2) : value;
-  if (!/^[0-9a-fA-F]+$/.test(cleaned) || cleaned.length % 2 !== 0) {
-    return null;
-  }
-  return bs58.encode(hexToBytes(cleaned));
-}

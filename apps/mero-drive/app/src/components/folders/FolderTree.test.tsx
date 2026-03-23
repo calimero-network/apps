@@ -91,7 +91,7 @@ describe('FolderTree', () => {
 
     it('applies active highlight when General is the active context', () => {
       render(<FolderTree {...baseProps({ activeContextId: 'general-1' })} />);
-      const el = screen.getByText('General').closest('div');
+      const el = screen.getByTestId('folder-context-general');
       expect(el?.className).toMatch(/bg-primary/);
     });
 
@@ -150,7 +150,7 @@ describe('FolderTree', () => {
         canJoin: false,
       });
       render(<FolderTree {...baseProps({ topLevelFolders: [folder] })} />);
-      const row = screen.getByText('Blocked').parentElement;
+      const row = screen.getByTestId('top-level-folder-ctx-f1');
       expect(row?.className).toMatch(/cursor-not-allowed/);
       expect(row?.className).toMatch(/opacity-60/);
     });
@@ -158,7 +158,7 @@ describe('FolderTree', () => {
     it('applies cursor-pointer to joinable folders', () => {
       const folder = makeFolder({ name: 'Open Stuff', visibility: 'open', canJoin: true });
       render(<FolderTree {...baseProps({ topLevelFolders: [folder] })} />);
-      const row = screen.getByText('Open Stuff').parentElement;
+      const row = screen.getByTestId('top-level-folder-ctx-f1');
       expect(row?.className).toMatch(/cursor-pointer/);
     });
   });

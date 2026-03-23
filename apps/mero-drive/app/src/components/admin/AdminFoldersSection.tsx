@@ -6,7 +6,6 @@ import {
 } from '@/api/FolderContextManager';
 import { WorkspaceManager, type MemberInfo } from '@/api/WorkspaceManager';
 import { useWorkspace } from '@/context/WorkspaceContext';
-import { Button } from '@/components/ui/button';
 import {
   Loader2,
   ChevronDown,

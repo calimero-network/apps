@@ -94,8 +94,8 @@ describe('MyProfileDialog', () => {
 
   it('disables Save button when alias has not changed', () => {
     render(<MyProfileDialog isOpen={true} onClose={vi.fn()} />);
-    const saveBtn = screen.getByText('Save');
-    expect((saveBtn.closest('button') as HTMLButtonElement).disabled).toBe(true);
+    const saveBtn = screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement;
+    expect(saveBtn.disabled).toBe(true);
   });
 
   it('enables Save button when alias has changed', async () => {
@@ -104,8 +104,8 @@ describe('MyProfileDialog', () => {
     const input = screen.getByPlaceholderText('Enter a display name...');
     await user.clear(input);
     await user.type(input, 'Bob');
-    const saveBtn = screen.getByText('Save');
-    expect((saveBtn.closest('button') as HTMLButtonElement).disabled).toBe(false);
+    const saveBtn = screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement;
+    expect(saveBtn.disabled).toBe(false);
   });
 
   it('calls setMemberAlias with the correct arguments on save', async () => {

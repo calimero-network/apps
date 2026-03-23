@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { FileBlobManager } from './FileBlobManager';
+import { blobClient } from '@calimero-network/calimero-client';
 
 vi.mock('@calimero-network/calimero-client', () => ({
   blobClient: {
@@ -11,8 +12,6 @@ vi.mock('./AdminApi', () => ({
   getNodeEndpoint: () => 'http://localhost:2428',
   getAdminHeaders: () => ({ 'Content-Type': 'application/json' }),
 }));
-
-import { blobClient } from '@calimero-network/calimero-client';
 
 describe('FileBlobManager', () => {
   let manager: FileBlobManager;

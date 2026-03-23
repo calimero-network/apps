@@ -1,12 +1,4 @@
 import React, { StrictMode } from 'react';
-
-// Unregister any stale service workers left by previous builds or other
-// Calimero apps on this origin so they stop intercepting and caching requests.
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then((regs) => {
-    regs.forEach((r) => r.unregister());
-  });
-}
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import {
@@ -23,6 +15,14 @@ import { getApplicationId } from '@/constants/config';
 import '@calimero-network/mero-ui/styles.css';
 import './index.css';
 import App from './App';
+
+// Unregister any stale service workers left by previous builds or other
+// Calimero apps on this origin so they stop intercepting and caching requests.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then((regs) => {
+    regs.forEach((r) => r.unregister());
+  });
+}
 
 // Pre-process Tauri SSO hash params BEFORE React mounts.
 // CalimeroProvider reads localStorage on init — tokens must be stored

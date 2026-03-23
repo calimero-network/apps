@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
+import { DocumentEditor } from './DocumentEditor';
 
 const mockNavigate = vi.fn();
 const mockGetDocument = vi.fn();
@@ -114,8 +115,6 @@ vi.mock('@tiptap/extension-text-align', () => ({
 vi.mock('@tiptap/extension-highlight', () => ({
   default: { configure: () => ({}) },
 }));
-
-import { DocumentEditor } from './DocumentEditor';
 
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });

@@ -17,7 +17,7 @@ describe('FileUploadButton', () => {
 
   it('renders a file input layered on the button (not display:none)', () => {
     render(<FileUploadButton onFileSelected={onFileSelected} />);
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const input = screen.getByLabelText('Upload file') as HTMLInputElement;
     expect(input).toBeTruthy();
     expect(input.style.display).not.toBe('none');
     expect(input.className).toMatch(/opacity-0/);

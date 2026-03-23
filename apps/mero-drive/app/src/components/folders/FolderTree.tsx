@@ -1,13 +1,9 @@
 import React, { useState, useCallback } from 'react';
 import { useCalimero } from '@calimero-network/calimero-client';
-import {
-  FolderTreeItem,
-} from '@/api/AbiClient';
+import { FolderTreeItem } from '@/api/AbiClient';
 import { FolderContextManager, type FolderContextWithVisibility } from '@/api/FolderContextManager';
 import type { FolderAccessInfo } from '@/utils/folderAccess';
 import { useWorkspace } from '@/context/WorkspaceContext';
-
-type TreeItem = { id: string; folder_id: string | null; name: string };
 import {
   Folder,
   FolderOpen,
@@ -34,6 +30,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+
+type TreeItem = { id: string; folder_id: string | null; name: string };
 
 interface FolderTreeProps {
   folders: FolderTreeItem[];
@@ -300,6 +298,7 @@ const TopLevelFolderEntry: React.FC<TopLevelFolderEntryProps> = ({
 
   return (
     <div
+      data-testid={`top-level-folder-${folder.context_id}`}
       className={`group flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors ${
         canJoin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
       } ${isActive ? 'bg-primary/10 text-primary' : canJoin ? 'hover:bg-muted' : ''}`}
@@ -484,6 +483,7 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
         {generalContextId && (
           <>
             <div
+              data-testid="folder-context-general"
               className={`group flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors cursor-pointer ${
                 isGeneralContext ? 'bg-primary/10 text-primary' : 'hover:bg-muted'
               }`}

@@ -1,6 +1,9 @@
 {
   "scripts": {
     "prepare": "husky",
+    "lint": "pnpm lint:check",
+    "lint:check": "pnpm --dir app lint:check",
+    "lint:fix": "pnpm --dir app lint:fix",
     "logic:build": "bash ./logic/build.sh",
     "logic:clean": "rm -rf ./logic/target ./logic/res",
     "logic:sync": "bash ./scripts/sync-wasm.sh",
