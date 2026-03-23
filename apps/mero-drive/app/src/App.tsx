@@ -12,6 +12,7 @@ import { getNodeUrlFromUrl } from '@/constants/config';
 // Lazy load pages for code splitting
 const HomePage = lazy(() => import('./pages/home'));
 const Authenticate = lazy(() => import('./pages/login/Authenticate'));
+const EditorPage = lazy(() => import('./pages/editor'));
 const FileDetailsPage = lazy(() => import('./pages/file-details'));
 const JoinPage = lazy(() => import('./pages/join'));
 
@@ -90,6 +91,8 @@ export default function App() {
           }
         />
         <Route path="/home" element={protectedRoute(<HomePage />)} />
+        <Route path="/editor" element={protectedRoute(<EditorPage />)} />
+        <Route path="/editor/:documentId" element={protectedRoute(<EditorPage />)} />
         <Route path="/files/:fileId" element={protectedRoute(<FileDetailsPage />)} />
         <Route path="/join" element={<JoinPage />} />
       </Routes>

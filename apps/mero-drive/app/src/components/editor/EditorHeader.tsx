@@ -3,20 +3,14 @@ import { LogoWithText } from '@/components/icons/Logo';
 import { Button } from '@/components/ui/button';
 import { 
   ChevronLeft, 
-  Download, 
   MoreHorizontal,
   FileText,
-  FileDown,
-  Users,
-  Settings,
-  Share2,
   Trash2
 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
@@ -94,61 +88,21 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
 
       {/* Right side */}
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" className="gap-1.5">
-          <Users className="w-4 h-4" />
-          <span className="hidden sm:inline">Share</span>
-        </Button>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="gap-1.5">
-              <Download className="w-4 h-4" />
-              <span className="hidden sm:inline">Export</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem>
-              <FileDown className="w-4 h-4 mr-2" />
-              Export as .docx
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <FileDown className="w-4 h-4 mr-2" />
-              Export as PDF
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <FileText className="w-4 h-4 mr-2" />
-              Export as Markdown
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-9 w-9">
-              <MoreHorizontal className="w-4 h-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem>
-              <Settings className="w-4 h-4 mr-2" />
-              Document Settings
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Share2 className="w-4 h-4 mr-2" />
-              Copy Link
-            </DropdownMenuItem>
-            {onDelete && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-destructive" onClick={onDelete}>
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete Document
-                </DropdownMenuItem>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {onDelete && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-9 w-9">
+                <MoreHorizontal className="w-4 h-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem className="text-destructive" onClick={onDelete}>
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete Document
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
     </header>
   );

@@ -14,6 +14,7 @@ import {
   ChevronRight,
   ChevronDown,
   FileText,
+  FilePlus,
   Plus,
   MoreHorizontal,
   Pencil,
@@ -43,9 +44,9 @@ interface FolderTreeProps {
   onRenameFolder: (folderId: string) => void;
   onDeleteFolder: (folderId: string) => void;
   onOpenDocument: (docId: string) => void;
+  onCreateDocument: (folderId: string | null) => void;
   expandedFolders: Set<string>;
   onToggleFolder: (folderId: string) => void;
-  // Top-level context-level folders (enriched with visibility + access state)
   topLevelFolders: FolderAccessInfo[];
   activeContextId: string | null;
   generalContextId: string | null;
@@ -77,6 +78,7 @@ const FolderTreeNode: React.FC<{
   onRenameFolder: (folderId: string) => void;
   onDeleteFolder: (folderId: string) => void;
   onOpenDocument: (docId: string) => void;
+  onCreateDocument: (folderId: string | null) => void;
   expandedFolders: Set<string>;
   onToggleFolder: (folderId: string) => void;
   depth: number;
@@ -90,6 +92,7 @@ const FolderTreeNode: React.FC<{
   onRenameFolder,
   onDeleteFolder,
   onOpenDocument,
+  onCreateDocument,
   expandedFolders,
   onToggleFolder,
   depth,
@@ -164,6 +167,13 @@ const FolderTreeNode: React.FC<{
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={(e) => {
               e.stopPropagation();
+              onCreateDocument(folder.id);
+            }}>
+              <FilePlus className="w-4 h-4 mr-2" />
+              New Document
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={(e) => {
+              e.stopPropagation();
               onCreateFolder(folder.id);
             }}>
               <FolderPlus className="w-4 h-4 mr-2" />
@@ -210,6 +220,7 @@ const FolderTreeNode: React.FC<{
               onRenameFolder={onRenameFolder}
               onDeleteFolder={onDeleteFolder}
               onOpenDocument={onOpenDocument}
+              onCreateDocument={onCreateDocument}
               expandedFolders={expandedFolders}
               onToggleFolder={onToggleFolder}
               depth={depth + 1}
@@ -235,7 +246,7 @@ const FolderTreeNode: React.FC<{
   );
 };
 
-// ─── Top-level context folder entry ──────────────────────────────────────────
+/** Top-level context folder entry (one per folder-context in the workspace). */
 
 interface TopLevelFolderEntryProps {
   folder: FolderAccessInfo;
@@ -243,6 +254,7 @@ interface TopLevelFolderEntryProps {
   onSelect: (contextId: string) => void;
   onSettings: (folder: FolderContextWithVisibility) => void;
   onCreateRootFolder: () => void;
+  onCreateDocument: () => void;
   onVisibilityChanged?: (contextId: string, mode: 'open' | 'restricted') => void;
   canCreateContext: boolean;
 }
@@ -253,6 +265,7 @@ const TopLevelFolderEntry: React.FC<TopLevelFolderEntryProps> = ({
   onSelect,
   onSettings,
   onCreateRootFolder,
+  onCreateDocument,
   onVisibilityChanged,
   canCreateContext,
 }) => {
@@ -315,13 +328,22 @@ const TopLevelFolderEntry: React.FC<TopLevelFolderEntryProps> = ({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
           {showNewSubfolder && (
-            <DropdownMenuItem onClick={(e) => {
-              e.stopPropagation();
-              onCreateRootFolder();
-            }}>
-              <FolderPlus className="w-4 h-4 mr-2" />
-              New Subfolder
-            </DropdownMenuItem>
+            <>
+              <DropdownMenuItem onClick={(e) => {
+                e.stopPropagation();
+                onCreateDocument();
+              }}>
+                <FilePlus className="w-4 h-4 mr-2" />
+                New Document
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={(e) => {
+                e.stopPropagation();
+                onCreateRootFolder();
+              }}>
+                <FolderPlus className="w-4 h-4 mr-2" />
+                New Subfolder
+              </DropdownMenuItem>
+            </>
           )}
           {showRenameDelete && (
             <DropdownMenuItem onClick={(e) => {
@@ -378,7 +400,7 @@ const TopLevelFolderEntry: React.FC<TopLevelFolderEntryProps> = ({
   );
 };
 
-// ─── Main FolderTree export ───────────────────────────────────────────────────
+/** Main FolderTree sidebar component. */
 
 export const FolderTree: React.FC<FolderTreeProps> = ({
   folders,
@@ -389,6 +411,7 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
   onRenameFolder,
   onDeleteFolder,
   onOpenDocument,
+  onCreateDocument,
   expandedFolders,
   onToggleFolder,
   topLevelFolders,
@@ -425,6 +448,7 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
             onRenameFolder={onRenameFolder}
             onDeleteFolder={onDeleteFolder}
             onOpenDocument={onOpenDocument}
+            onCreateDocument={onCreateDocument}
             expandedFolders={expandedFolders}
             onToggleFolder={onToggleFolder}
             depth={1}
@@ -496,6 +520,7 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
                 onSelect={onTopLevelFolderSelect}
                 onSettings={onTopLevelFolderSettings}
                 onCreateRootFolder={() => onCreateFolder(null)}
+                onCreateDocument={() => onCreateDocument(null)}
                 onVisibilityChanged={onTopLevelFolderVisibilityChanged}
                 canCreateContext={canCreateContext}
               />

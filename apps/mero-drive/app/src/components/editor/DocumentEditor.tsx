@@ -20,12 +20,12 @@ interface LocationState {
 
 const welcomeContent = `
 <h1>Welcome to Mero Drive</h1>
-<p>Start writing your document here. Everything you type is automatically encrypted and stored locally on your device.</p>
-<h2>Key Features</h2>
+<p>Start writing your document here. Your content is saved as HTML snapshots and encrypted end-to-end.</p>
+<h2>Getting Started</h2>
 <ul>
-  <li><strong>Local-First:</strong> All your documents live on your device first</li>
+  <li><strong>Local-First:</strong> Documents live on your device first</li>
   <li><strong>End-to-End Encrypted:</strong> Only you and your collaborators can read your content</li>
-  <li><strong>Peer-to-Peer Sync:</strong> No central server required for synchronization</li>
+  <li><strong>Auto-Save:</strong> Changes are saved automatically as you type</li>
 </ul>
 <p>Try formatting some text using the toolbar above, or use keyboard shortcuts:</p>
 <ul>
@@ -36,12 +36,14 @@ const welcomeContent = `
 <blockquote>
   <p>"Privacy is not about having something to hide. It's about having something to protect."</p>
 </blockquote>
-<p>Start writing your ideas below...</p>
+<p>Start writing below...</p>
 `;
 
 interface DocumentEditorProps {
   documentId?: string;
 }
+
+export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error';
 
 export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentId: propDocId }) => {
   const { documentId: paramDocId } = useParams<{ documentId: string }>();
@@ -57,15 +59,23 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentId: prop
   const [document, setDocument] = useState<DocumentType | null>(null);
   const [isLoading, setIsLoading] = useState(!!documentId);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   
-  // Refs to access latest state in callbacks
   const documentRef = useRef<DocumentType | null>(null);
   const documentNameRef = useRef('Untitled Document');
   const hasUnsavedChangesRef = useRef(false);
-  // Initialize with welcome content so first edits are computed as diffs from it
+  // Tracks the last HTML string that was successfully persisted.  Used for
+  // string-equality skip logic in saveDocument.  Note: TipTap may normalise
+  // whitespace or attribute order between getHTML() calls, so two semantically
+  // identical documents can produce different strings.  This is acceptable for
+  // the snapshot flow — a redundant setContent is cheap compared to the risk of
+  // losing edits.
   const lastSavedContentRef = useRef<string>(welcomeContent);
-  // Guard to prevent duplicate document creation
   const isCreatingDocumentRef = useRef(false);
+  // Allows explicit save paths (handleBack, handleDocumentNameChange) to cancel
+  // a pending debounced autosave so the two don't race.
+  const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Keep refs in sync
   useEffect(() => {
@@ -114,7 +124,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentId: prop
     },
   });
 
-  // Load document if documentId is provided
+  // Load existing document via getDocument (returns HTML from the backend RGA).
+  // The HTML is fed directly into TipTap via editor.commands.setContent.
   useEffect(() => {
     const loadDocument = async () => {
       if (!documentId || !app) return;
@@ -126,7 +137,6 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentId: prop
         if (doc) {
           setDocument(doc);
           setDocumentName(doc.title);
-          // Initialize lastSavedContent to track changes from loaded content
           lastSavedContentRef.current = doc.content;
           if (editor) {
             editor.commands.setContent(doc.content);
@@ -142,10 +152,21 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentId: prop
     loadDocument();
   }, [documentId, app, editor]);
 
-  // Auto-save document on content change using set_content (full replacement)
-  // NOTE: Incremental RGA operations (insert_text, delete_text) were causing documents
-  // to disappear due to CRDT merge issues with the remove()+insert() pattern.
-  // Using set_content as a workaround until the backend pattern is fixed.
+  const cancelPendingAutosave = useCallback(() => {
+    if (autosaveTimeoutRef.current) {
+      clearTimeout(autosaveTimeoutRef.current);
+      autosaveTimeoutRef.current = null;
+    }
+  }, []);
+
+  // Persist the current TipTap HTML snapshot via the active editor flow:
+  //   - Existing doc → AbiClient.setContent (reseeds the backend RGA)
+  //   - New doc      → AbiClient.createDocument (seeds a fresh RGA with HTML body)
+  //
+  // The low-level RGA methods (insertText, deleteText, replaceText) are NOT
+  // called anywhere in this editor.  They require a DOM-to-HTML position
+  // mapping that does not exist yet.  See AbiClient.ts for the full boundary
+  // documentation and prerequisites for a future incremental-sync phase.
   const saveDocument = useCallback(async (forceCreate = false) => {
     if (!app || !editor) return;
     
@@ -156,29 +177,28 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentId: prop
     
     console.log('[saveDocument] Starting save, doc:', currentDoc?.id, 'forceCreate:', forceCreate, 'isCreating:', isCreatingDocumentRef.current);
     
-    // Skip save if content hasn't changed (for existing docs)
-    if (currentDoc && content === lastContent) {
+    if (content === lastContent) {
       console.log('[saveDocument] Content unchanged, skipping');
       setHasUnsavedChanges(false);
       hasUnsavedChangesRef.current = false;
+      if (currentDoc) setSaveStatus('saved');
       return;
     }
+    
+    setSaveStatus('saving');
     
     try {
       const client = new AbiClient(app);
       
       if (currentDoc) {
-        // Use setContent for now - incremental operations were causing issues
         console.log('[saveDocument] Using setContent for doc:', currentDoc.id);
         await client.setContent({
           id: currentDoc.id,
           content,
         });
         console.log('[saveDocument] Content saved successfully');
-        // Update last saved content after successful save
         lastSavedContentRef.current = content;
       } else if ((forceCreate || hasUnsavedChangesRef.current) && !isCreatingDocumentRef.current) {
-        // Create new document with initial content - only if not already creating
         isCreatingDocumentRef.current = true;
         console.log('[saveDocument] Creating new document with title:', currentName);
         try {
@@ -189,14 +209,12 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentId: prop
             folder_id: initialFolderId,
           });
           console.log('[saveDocument] Created document:', newId);
-          // Load the created document
           const newDoc = await client.getDocument({ id: newId });
           if (newDoc) {
             setDocument(newDoc);
             documentRef.current = newDoc;
             lastSavedContentRef.current = content;
           }
-          // Navigate to the new document URL
           navigate(`/editor/${newId}`, { replace: true });
         } finally {
           isCreatingDocumentRef.current = false;
@@ -206,47 +224,50 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentId: prop
       }
       setHasUnsavedChanges(false);
       hasUnsavedChangesRef.current = false;
+      setSaveStatus('saved');
+      setLastSavedAt(new Date());
     } catch (error) {
       console.error('[saveDocument] Failed to save:', error);
+      setSaveStatus('error');
     }
   }, [app, editor, navigate, initialFolderId]);
 
-  // Debounced auto-save
   useEffect(() => {
     if (!editor) return;
-
-    let timeout: ReturnType<typeof setTimeout> | null = null;
 
     const handleUpdate = () => {
       setHasUnsavedChanges(true);
       hasUnsavedChangesRef.current = true;
-      
-      if (timeout) clearTimeout(timeout);
-      timeout = setTimeout(() => {
+      setSaveStatus('unsaved');
+
+      cancelPendingAutosave();
+      autosaveTimeoutRef.current = setTimeout(() => {
+        autosaveTimeoutRef.current = null;
         saveDocument();
-      }, 2000); // Save after 2 seconds of inactivity
+      }, 2000);
     };
 
     editor.on('update', handleUpdate);
-    
+
     return () => {
       editor.off('update', handleUpdate);
-      if (timeout) clearTimeout(timeout);
+      cancelPendingAutosave();
     };
-  }, [editor, saveDocument]);
+  }, [editor, saveDocument, cancelPendingAutosave]);
 
-  // Save on unmount (when navigating away) - only update existing documents
-  // NOTE: We do NOT create new documents on unmount as this causes race conditions
-  // with handleBack and auto-save. Only update existing documents.
+  // On unmount, flush unsaved HTML to the backend via setContent for existing
+  // documents only.  New documents are NOT created on unmount to avoid race
+  // conditions with handleBack and the debounced auto-save.
   useEffect(() => {
     return () => {
-      // Only save to existing documents on unmount
+      if (autosaveTimeoutRef.current) {
+        clearTimeout(autosaveTimeoutRef.current);
+        autosaveTimeoutRef.current = null;
+      }
       if (hasUnsavedChangesRef.current && app && editor && documentRef.current) {
         const client = new AbiClient(app);
         const content = editor.getHTML();
         const currentDoc = documentRef.current;
-        
-        // Fire and forget - update existing document only
         console.log('[unmount] Saving to existing document:', currentDoc.id);
         client.setContent({ id: currentDoc.id, content }).catch(console.error);
       }
@@ -270,19 +291,20 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentId: prop
     setDocumentName(newName);
     documentNameRef.current = newName;
     if (!app || !editor) return;
-    
+
+    cancelPendingAutosave();
+
     try {
       const client = new AbiClient(app);
-      
+
       if (document) {
-        // Update existing document title
         await client.updateDocumentMetadata({
           id: document.id,
           title: newName,
         });
       } else if (!isCreatingDocumentRef.current) {
-        // Create new document when title is changed - only if not already creating
         isCreatingDocumentRef.current = true;
+        setSaveStatus('saving');
         console.log('[handleDocumentNameChange] Creating new document with title:', newName);
         try {
           const content = editor.getHTML();
@@ -293,7 +315,6 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentId: prop
             folder_id: initialFolderId,
           });
           console.log('[handleDocumentNameChange] Created document:', newId);
-          // Load the created document and navigate
           const newDoc = await client.getDocument({ id: newId });
           if (newDoc) {
             setDocument(newDoc);
@@ -302,6 +323,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentId: prop
           }
           setHasUnsavedChanges(false);
           hasUnsavedChangesRef.current = false;
+          setSaveStatus('saved');
+          setLastSavedAt(new Date());
           navigate(`/editor/${newId}`, { replace: true });
         } finally {
           isCreatingDocumentRef.current = false;
@@ -310,7 +333,8 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentId: prop
         console.log('[handleDocumentNameChange] Skipping - document creation already in progress');
       }
     } catch (error) {
-      console.error('Failed to save document:', error);
+      console.error('[handleDocumentNameChange] Failed:', error);
+      setSaveStatus('error');
     }
   };
 
@@ -328,23 +352,23 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentId: prop
     }
   };
 
-  // Handle back navigation - save first, then navigate
   const handleBack = async () => {
+    cancelPendingAutosave();
+
     console.log('[handleBack] hasUnsavedChanges:', hasUnsavedChanges, 'document:', document?.id, 'isCreating:', isCreatingDocumentRef.current);
-    
+
     if (hasUnsavedChanges && app && editor) {
+      setSaveStatus('saving');
       try {
         const client = new AbiClient(app);
         const content = editor.getHTML();
         console.log('[handleBack] Saving content, length:', content.length);
-        
+
         if (document) {
-          // Use setContent for full replacement
           console.log('[handleBack] Using setContent for doc:', document.id);
           await client.setContent({ id: document.id, content });
           console.log('[handleBack] Content saved successfully');
         } else if (!isCreatingDocumentRef.current) {
-          // Create new document only if not already creating
           isCreatingDocumentRef.current = true;
           console.log('[handleBack] Creating new document');
           try {
@@ -360,6 +384,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentId: prop
         hasUnsavedChangesRef.current = false;
       } catch (error) {
         console.error('[handleBack] Failed to save:', error);
+        setSaveStatus('error');
       }
     } else {
       console.log('[handleBack] No unsaved changes, navigating directly');
@@ -397,7 +422,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentId: prop
             </div>
           </div>
 
-          <EditorStatusBar editor={editor} documentName={documentName} />
+          <EditorStatusBar editor={editor} documentName={documentName} saveStatus={saveStatus} lastSavedAt={lastSavedAt} isAppReady={!!app} />
         </div>
       </div>
     </TooltipProvider>

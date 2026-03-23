@@ -67,6 +67,7 @@ function baseProps(overrides: Record<string, any> = {}) {
     onRenameFolder: vi.fn(),
     onDeleteFolder: vi.fn(),
     onOpenDocument: vi.fn(),
+    onCreateDocument: vi.fn(),
     expandedFolders: new Set<string>(),
     onToggleFolder: vi.fn(),
     topLevelFolders: [] as FolderAccessInfo[],

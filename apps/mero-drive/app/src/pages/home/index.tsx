@@ -45,6 +45,7 @@ import {
   Share2,
   Upload,
   File as FileIcon,
+  FilePlus,
   HardDrive,
   User,
   FileType,
@@ -80,7 +81,7 @@ const HomePage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'offline'>('synced');
+  const [dataStatus, setDataStatus] = useState<'ready' | 'loading' | 'offline'>('ready');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
     const saved = localStorage.getItem('drive-view-mode');
     return (saved === 'list' || saved === 'grid') ? saved : 'grid';
@@ -211,7 +212,7 @@ const HomePage: React.FC = () => {
     if (!app || !activeContextId) return;
 
     setIsLoading(true);
-    setSyncStatus('syncing');
+    setDataStatus('loading');
     try {
       const client = new AbiClient(app, activeContextId);
 
@@ -244,10 +245,10 @@ const HomePage: React.FC = () => {
       const all = await client.listFiles();
       setAllFiles(all);
 
-      setSyncStatus('synced');
+      setDataStatus('ready');
     } catch (error) {
       console.error('Failed to load data:', error);
-      setSyncStatus('offline');
+      setDataStatus('offline');
     } finally {
       setIsLoading(false);
     }
@@ -405,6 +406,13 @@ const HomePage: React.FC = () => {
     localStorage.clear();
     sessionStorage.clear();
     window.location.replace('/');
+  };
+
+  // Navigate to the editor before the document exists.  The selected folder is
+  // passed as route state so the editor's first createDocument call includes
+  // the correct folder_id in the JSON-RPC payload.
+  const handleNewDocument = () => {
+    navigate('/editor', { state: { folderId: selectedFolderId } });
   };
 
   // Subfolder handlers (within active context)
@@ -808,19 +816,19 @@ const HomePage: React.FC = () => {
           <div className="flex items-center justify-between mb-3">
             <LogoWithText size={28} />
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              {syncStatus === 'synced' && (
+              {dataStatus === 'ready' && (
                 <>
-                  <div className="sync-indicator synced" />
-                  <span>Synced</span>
+                  <div className="w-2 h-2 rounded-full bg-green-500 opacity-80" />
+                  <span>Ready</span>
                 </>
               )}
-              {syncStatus === 'syncing' && (
+              {dataStatus === 'loading' && (
                 <>
-                  <div className="sync-indicator syncing" />
-                  <span>Syncing</span>
+                  <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                  <span>Loading</span>
                 </>
               )}
-              {syncStatus === 'offline' && (
+              {dataStatus === 'offline' && (
                 <>
                   <WifiOff className="w-3.5 h-3.5" />
                   <span>Offline</span>
@@ -833,23 +841,19 @@ const HomePage: React.FC = () => {
           <WorkspaceSwitcher />
 
           <div className="flex gap-2 mt-3">
+            <Button
+              onClick={handleNewDocument}
+              disabled={!activeContextId || !!pendingFolderJoin}
+              className="flex-1 gap-1.5"
+            >
+              <FilePlus className="w-4 h-4" />
+              New Document
+            </Button>
             <FileUploadButton
               onFileSelected={handleFileUpload}
               disabled={!activeContextId || isUploading || !!pendingFolderJoin}
-              className="flex-1"
-            >
-              {isUploading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Uploading...
-                </>
-              ) : (
-                <>
-                  <Upload className="w-4 h-4" />
-                  Upload File
-                </>
-              )}
-            </FileUploadButton>
+              variant="icon"
+            />
             <Button
               variant="outline"
               size="icon"
@@ -925,6 +929,9 @@ const HomePage: React.FC = () => {
             onRenameFolder={handleRenameFolder}
             onDeleteFolder={handleDeleteFolder}
             onOpenDocument={openFile}
+            onCreateDocument={(folderId) => {
+              navigate('/editor', { state: { folderId } });
+            }}
             expandedFolders={expandedFolders}
             onToggleFolder={handleToggleFolder}
             topLevelFolders={folderAccessInfos}
@@ -1073,25 +1080,35 @@ const HomePage: React.FC = () => {
               <p className="text-muted-foreground mb-6">
                 {searchQuery
                   ? 'No files match your search'
-                  : 'Upload your first file to get started'}
+                  : 'Create a document or upload a file to get started'}
               </p>
               {!searchQuery && (
-                <FileUploadButton
-                  onFileSelected={handleFileUpload}
-                  disabled={!activeContextId || isUploading || !!pendingFolderJoin}
-                >
-                  {isUploading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Uploading...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="w-4 h-4" />
-                      Upload File
-                    </>
-                  )}
-                </FileUploadButton>
+                <div className="flex items-center justify-center gap-3">
+                  <Button
+                    onClick={handleNewDocument}
+                    disabled={!activeContextId || !!pendingFolderJoin}
+                    className="gap-2"
+                  >
+                    <FilePlus className="w-4 h-4" />
+                    New Document
+                  </Button>
+                  <FileUploadButton
+                    onFileSelected={handleFileUpload}
+                    disabled={!activeContextId || isUploading || !!pendingFolderJoin}
+                  >
+                    {isUploading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Uploading...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4" />
+                        Upload File
+                      </>
+                    )}
+                  </FileUploadButton>
+                </div>
               )}
             </div>
           ) : viewMode === 'grid' ? (
