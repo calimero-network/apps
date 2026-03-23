@@ -1,17 +1,24 @@
 //! # Mero Drive Application
 //!
 //! A private document management application built on Calimero.
-//! Uses LwwRegister for content with pure insert() updates (no remove() first).
+//! Uses an RGA-backed document body for collaborative HTML strings.
 //! Supports hierarchical folder organization similar to Notion.
+//! Storage layout v2 replaces the old LWW string body and requires fresh app state.
 
 #![allow(clippy::len_without_is_empty)]
 
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::Serialize;
 use calimero_sdk::{app, env};
-use calimero_storage::collections::{Counter, LwwRegister, Mergeable, UnorderedMap, UnorderedSet};
+use calimero_storage::collections::{
+    Counter, LwwRegister, Mergeable, ReplicatedGrowableArray, UnorderedMap, UnorderedSet,
+};
 
 const IDENTITY_SIZE: usize = 32;
+const DOCUMENT_PREVIEW_LIMIT: usize = 200;
+const STORAGE_LAYOUT_VERSION: u32 = 2;
+const STORAGE_LAYOUT_MIGRATION_STRATEGY: &str =
+    "Document.content now uses an RGA-backed Borsh layout; existing deployments must start with fresh app state.";
 
 fn encode_identity(identity: &[u8; IDENTITY_SIZE]) -> String {
     bs58::encode(identity).into_string()
@@ -115,13 +122,13 @@ impl Mergeable for FolderMeta {
 }
 
 /// Document with all fields as CRDTs.
-/// Content uses LwwRegister<String> for simplicity.
+/// Content uses an RGA so concurrent edits preserve the stored HTML string.
 #[derive(Debug, BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct Document {
     pub id: LwwRegister<String>,
     pub title: LwwRegister<String>,
-    pub content: LwwRegister<String>,
+    pub content: ReplicatedGrowableArray,
     pub author: LwwRegister<String>,
     pub created_at: LwwRegister<u64>,
     pub updated_at: LwwRegister<u64>,
@@ -137,7 +144,7 @@ impl Mergeable for Document {
     ) -> Result<(), calimero_storage::collections::crdt_meta::MergeError> {
         self.id.merge(&other.id);
         self.title.merge(&other.title);
-        self.content.merge(&other.content);
+        self.content.merge(&other.content)?;
         self.author.merge(&other.author);
         self.created_at.merge(&other.created_at);
         self.updated_at.merge(&other.updated_at);
@@ -326,6 +333,238 @@ fn extract_tags(tags: &UnorderedSet<String>) -> Result<Vec<String>, String> {
     Ok(iter.collect())
 }
 
+fn rga_from_html(html: &str) -> Result<ReplicatedGrowableArray, String> {
+    let mut content = ReplicatedGrowableArray::new();
+    content
+        .insert_str(0, html)
+        .map_err(|e| format!("Failed to seed document content: {:?}", e))?;
+    Ok(content)
+}
+
+fn html_from_rga(content: &ReplicatedGrowableArray) -> Result<String, String> {
+    content
+        .get_text()
+        .map_err(|e| format!("Failed to read document content: {:?}", e))
+}
+
+fn decode_html_entities(text: &str) -> String {
+    text.replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+}
+
+fn visible_text_from_html(html: &str) -> String {
+    let mut visible = String::with_capacity(html.len());
+    let mut inside_tag = false;
+
+    for ch in html.chars() {
+        match ch {
+            '<' => {
+                inside_tag = true;
+                visible.push(' ');
+            }
+            '>' => {
+                inside_tag = false;
+                visible.push(' ');
+            }
+            _ if !inside_tag => visible.push(ch),
+            _ => {}
+        }
+    }
+
+    decode_html_entities(&visible)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn preview_from_visible_text(visible_text: &str) -> String {
+    if visible_text.len() > DOCUMENT_PREVIEW_LIMIT {
+        format!("{}...", &visible_text[..DOCUMENT_PREVIEW_LIMIT])
+    } else {
+        visible_text.to_string()
+    }
+}
+
+fn preview_from_html(html: &str) -> String {
+    preview_from_visible_text(&visible_text_from_html(html))
+}
+
+fn visible_text_matches_query(html: &str, query: &str) -> bool {
+    visible_text_from_html(html)
+        .to_lowercase()
+        .contains(&query.to_lowercase())
+}
+
+fn build_tags_set(tags: Vec<String>) -> Result<UnorderedSet<String>, String> {
+    let mut tags_set = UnorderedSet::new();
+    for tag in tags {
+        tags_set
+            .insert(tag)
+            .map_err(|e| format!("Failed to add tag: {:?}", e))?;
+    }
+    Ok(tags_set)
+}
+
+fn create_document_record(
+    doc_id: String,
+    title: String,
+    content: String,
+    tags: Vec<String>,
+    folder_id: Option<String>,
+    author: String,
+    timestamp: u64,
+) -> Result<Document, String> {
+    Ok(Document {
+        id: LwwRegister::new(doc_id),
+        title: LwwRegister::new(title),
+        content: rga_from_html(&content)?,
+        author: LwwRegister::new(author),
+        created_at: LwwRegister::new(timestamp),
+        updated_at: LwwRegister::new(timestamp),
+        tags: build_tags_set(tags)?,
+        archived: LwwRegister::new(false),
+        folder_id: LwwRegister::new(folder_id),
+    })
+}
+
+fn document_response_from_document(doc: &Document) -> Result<DocumentResponse, String> {
+    Ok(DocumentResponse {
+        id: doc.id.get().clone(),
+        title: doc.title.get().clone(),
+        content: html_from_rga(&doc.content)?,
+        author: doc.author.get().clone(),
+        created_at: *doc.created_at.get(),
+        updated_at: *doc.updated_at.get(),
+        tags: extract_tags(&doc.tags)?,
+        archived: *doc.archived.get(),
+        folder_id: doc.folder_id.get().clone(),
+    })
+}
+
+fn document_summary_from_document(doc: &Document) -> Result<DocumentSummary, String> {
+    let content = html_from_rga(&doc.content)?;
+
+    Ok(DocumentSummary {
+        id: doc.id.get().clone(),
+        title: doc.title.get().clone(),
+        author: doc.author.get().clone(),
+        created_at: *doc.created_at.get(),
+        updated_at: *doc.updated_at.get(),
+        tags: extract_tags(&doc.tags)?,
+        archived: *doc.archived.get(),
+        preview: preview_from_html(&content),
+        folder_id: doc.folder_id.get().clone(),
+    })
+}
+
+fn document_content_len(doc: &Document) -> Result<usize, String> {
+    doc.content
+        .len()
+        .map_err(|e| format!("Failed to read document length: {:?}", e))
+}
+
+fn apply_insert_text(
+    document: &mut Document,
+    position: usize,
+    text: &str,
+    timestamp: u64,
+) -> Result<(), String> {
+    if text.is_empty() {
+        return Err("Inserted text cannot be empty".to_string());
+    }
+
+    let content_len = document_content_len(document)?;
+    if position > content_len {
+        return Err("Insert position out of bounds".to_string());
+    }
+
+    document
+        .content
+        .insert_str(position, text)
+        .map_err(|e| format!("Failed to insert text: {:?}", e))?;
+    document.updated_at = LwwRegister::new(timestamp);
+    Ok(())
+}
+
+fn apply_delete_text(
+    document: &mut Document,
+    start: usize,
+    end: usize,
+    timestamp: u64,
+) -> Result<(), String> {
+    if start >= end {
+        return Err("Delete range start must be less than end".to_string());
+    }
+
+    let content_len = document_content_len(document)?;
+    if end > content_len {
+        return Err("Delete range out of bounds".to_string());
+    }
+
+    document
+        .content
+        .delete_range(start, end)
+        .map_err(|e| format!("Failed to delete text: {:?}", e))?;
+    document.updated_at = LwwRegister::new(timestamp);
+    Ok(())
+}
+
+fn apply_replace_text(
+    document: &mut Document,
+    start: usize,
+    end: usize,
+    text: &str,
+    timestamp: u64,
+) -> Result<(), String> {
+    if start > end {
+        return Err("Replace range start must be less than or equal to end".to_string());
+    }
+
+    let content_len = document_content_len(document)?;
+    if end > content_len {
+        return Err("Replace range out of bounds".to_string());
+    }
+
+    if start == end && text.is_empty() {
+        return Err("Replace operation cannot be empty".to_string());
+    }
+
+    if start < end {
+        document
+            .content
+            .delete_range(start, end)
+            .map_err(|e| format!("Failed to delete text: {:?}", e))?;
+    }
+
+    if !text.is_empty() {
+        document
+            .content
+            .insert_str(start, text)
+            .map_err(|e| format!("Failed to insert text: {:?}", e))?;
+    }
+
+    document.updated_at = LwwRegister::new(timestamp);
+    Ok(())
+}
+
+fn replace_document_content_from_snapshot(
+    document: &mut Document,
+    html: &str,
+    timestamp: u64,
+) -> Result<(), String> {
+    document.content = rga_from_html(html)?;
+    document.updated_at = LwwRegister::new(timestamp);
+    Ok(())
+}
+
+fn validate_blob_upload_target(_name: &str, _mime_type: &str) -> Result<(), String> {
+    Ok(())
+}
+
 #[app::logic]
 impl DocsApp {
     #[app::init]
@@ -333,6 +572,11 @@ impl DocsApp {
         let owner_id = env::executor_id();
         let owner = encode_identity(&owner_id);
         app::log!("Initializing Mero Drive app for owner: {}", owner);
+        app::log!(
+            "Docs storage layout v{} active. {}",
+            STORAGE_LAYOUT_VERSION,
+            STORAGE_LAYOUT_MIGRATION_STRATEGY
+        );
 
         DocsApp {
             owner: owner.into(),
@@ -382,25 +626,15 @@ impl DocsApp {
         let author_id = env::executor_id();
         let author = encode_identity(&author_id);
         let timestamp = env::time_now();
-
-        let mut tags_set = UnorderedSet::new();
-        for tag in &tags {
-            tags_set
-                .insert(tag.clone())
-                .map_err(|e| format!("Failed to add tag: {:?}", e))?;
-        }
-
-        let document = Document {
-            id: LwwRegister::new(doc_id.clone()),
-            title: LwwRegister::new(title.clone()),
-            content: LwwRegister::new(content),
-            author: LwwRegister::new(author.clone()),
-            created_at: LwwRegister::new(timestamp),
-            updated_at: LwwRegister::new(timestamp),
-            tags: tags_set,
-            archived: LwwRegister::new(false),
-            folder_id: LwwRegister::new(folder_id),
-        };
+        let document = create_document_record(
+            doc_id.clone(),
+            title.clone(),
+            content,
+            tags,
+            folder_id,
+            author.clone(),
+            timestamp,
+        )?;
 
         self.documents
             .insert(doc_id.clone(), document)
@@ -416,10 +650,44 @@ impl DocsApp {
         Ok(doc_id)
     }
 
-    /// Set content using pure insert() - no remove() first
+    /// Compatibility snapshot API that reseeds the document's RGA from an HTML snapshot.
     pub fn set_content(&mut self, doc_id: String, content: String) -> Result<(), String> {
-        // Get current document to preserve other fields
-        let old_doc = self
+        let mut document = self
+            .documents
+            .get(&doc_id)
+            .map_err(|e| format!("Failed to access document: {:?}", e))?
+            .ok_or_else(|| format!("Document not found: {}", doc_id))?;
+
+        let editor_id = env::executor_id();
+        let editor = encode_identity(&editor_id);
+        let timestamp = env::time_now();
+        replace_document_content_from_snapshot(&mut document, &content, timestamp)?;
+
+        let doc_title = document.title.get().clone();
+
+        self.documents
+            .insert(doc_id.clone(), document)
+            .map_err(|e| format!("Failed to save document: {:?}", e))?;
+
+        app::emit!(DocsEvent::DocumentUpdated {
+            id: doc_id.clone(),
+            title: doc_title,
+            editor,
+        });
+
+        app::log!("HTML content updated for document {}", doc_id);
+        Ok(())
+    }
+
+    /// Low-level RGA edit on stored HTML string positions.
+    /// This can split tags or attributes, so the TipTap flow should prefer `set_content`.
+    pub fn insert_text(
+        &mut self,
+        doc_id: String,
+        position: usize,
+        text: String,
+    ) -> Result<(), String> {
+        let mut document = self
             .documents
             .get(&doc_id)
             .map_err(|e| format!("Failed to access document: {:?}", e))?
@@ -429,33 +697,12 @@ impl DocsApp {
         let editor = encode_identity(&editor_id);
         let timestamp = env::time_now();
 
-        // Create new document with updated content, preserving other fields
-        // Clone the old tags into a new UnorderedSet
-        let mut new_tags = UnorderedSet::new();
-        let old_tags_vec = extract_tags(&old_doc.tags)?;
-        for tag in old_tags_vec {
-            new_tags
-                .insert(tag)
-                .map_err(|e| format!("Failed to copy tag: {:?}", e))?;
-        }
+        apply_insert_text(&mut document, position, &text, timestamp)?;
 
-        let new_doc = Document {
-            id: LwwRegister::new(old_doc.id.get().clone()),
-            title: LwwRegister::new(old_doc.title.get().clone()),
-            content: LwwRegister::new(content),
-            author: LwwRegister::new(old_doc.author.get().clone()),
-            created_at: LwwRegister::new(*old_doc.created_at.get()),
-            updated_at: LwwRegister::new(timestamp),
-            tags: new_tags,
-            archived: LwwRegister::new(*old_doc.archived.get()),
-            folder_id: LwwRegister::new(old_doc.folder_id.get().clone()),
-        };
+        let doc_title = document.title.get().clone();
 
-        let doc_title = new_doc.title.get().clone();
-
-        // Use insert() directly - this overwrites without remove()
         self.documents
-            .insert(doc_id.clone(), new_doc)
+            .insert(doc_id.clone(), document)
             .map_err(|e| format!("Failed to save document: {:?}", e))?;
 
         app::emit!(DocsEvent::DocumentUpdated {
@@ -464,7 +711,75 @@ impl DocsApp {
             editor,
         });
 
-        app::log!("Content updated for document {}", doc_id);
+        app::log!("Inserted text into HTML document {}", doc_id);
+        Ok(())
+    }
+
+    /// Low-level RGA delete on stored HTML string positions.
+    /// This can split tags or attributes, so the TipTap flow should prefer `set_content`.
+    pub fn delete_text(&mut self, doc_id: String, start: usize, end: usize) -> Result<(), String> {
+        let mut document = self
+            .documents
+            .get(&doc_id)
+            .map_err(|e| format!("Failed to access document: {:?}", e))?
+            .ok_or_else(|| format!("Document not found: {}", doc_id))?;
+
+        let editor_id = env::executor_id();
+        let editor = encode_identity(&editor_id);
+        let timestamp = env::time_now();
+
+        apply_delete_text(&mut document, start, end, timestamp)?;
+
+        let doc_title = document.title.get().clone();
+
+        self.documents
+            .insert(doc_id.clone(), document)
+            .map_err(|e| format!("Failed to save document: {:?}", e))?;
+
+        app::emit!(DocsEvent::DocumentUpdated {
+            id: doc_id.clone(),
+            title: doc_title,
+            editor,
+        });
+
+        app::log!("Deleted text from HTML document {}", doc_id);
+        Ok(())
+    }
+
+    /// Low-level RGA replace on stored HTML string positions.
+    /// This can split tags or attributes, so the TipTap flow should prefer `set_content`.
+    pub fn replace_text(
+        &mut self,
+        doc_id: String,
+        start: usize,
+        end: usize,
+        text: String,
+    ) -> Result<(), String> {
+        let mut document = self
+            .documents
+            .get(&doc_id)
+            .map_err(|e| format!("Failed to access document: {:?}", e))?
+            .ok_or_else(|| format!("Document not found: {}", doc_id))?;
+
+        let editor_id = env::executor_id();
+        let editor = encode_identity(&editor_id);
+        let timestamp = env::time_now();
+
+        apply_replace_text(&mut document, start, end, &text, timestamp)?;
+
+        let doc_title = document.title.get().clone();
+
+        self.documents
+            .insert(doc_id.clone(), document)
+            .map_err(|e| format!("Failed to save document: {:?}", e))?;
+
+        app::emit!(DocsEvent::DocumentUpdated {
+            id: doc_id.clone(),
+            title: doc_title,
+            editor,
+        });
+
+        app::log!("Replaced text in HTML document {}", doc_id);
         Ok(())
     }
 
@@ -490,24 +805,26 @@ impl DocsApp {
             .unwrap_or_else(|| old_doc.title.get().clone());
         let new_archived = archived.unwrap_or_else(|| *old_doc.archived.get());
 
-        let mut new_tags = UnorderedSet::new();
-        let old_tags_vec = extract_tags(&old_doc.tags)?;
-        for tag in old_tags_vec {
-            new_tags
-                .insert(tag)
-                .map_err(|e| format!("Failed to copy tag: {:?}", e))?;
-        }
+        let Document {
+            id,
+            content,
+            author,
+            created_at,
+            tags,
+            folder_id,
+            ..
+        } = old_doc;
 
         let new_doc = Document {
-            id: LwwRegister::new(old_doc.id.get().clone()),
+            id,
             title: LwwRegister::new(new_title.clone()),
-            content: LwwRegister::new(old_doc.content.get().clone()),
-            author: LwwRegister::new(old_doc.author.get().clone()),
-            created_at: LwwRegister::new(*old_doc.created_at.get()),
+            content,
+            author,
+            created_at,
             updated_at: LwwRegister::new(timestamp),
-            tags: new_tags,
+            tags,
             archived: LwwRegister::new(new_archived),
-            folder_id: LwwRegister::new(old_doc.folder_id.get().clone()),
+            folder_id,
         };
 
         self.documents
@@ -533,27 +850,32 @@ impl DocsApp {
 
         let timestamp = env::time_now();
 
-        let mut new_tags = UnorderedSet::new();
-        let old_tags_vec = extract_tags(&old_doc.tags)?;
-        for t in old_tags_vec {
-            new_tags
-                .insert(t)
-                .map_err(|e| format!("Failed to copy tag: {:?}", e))?;
-        }
-        new_tags
+        let Document {
+            id,
+            title,
+            content,
+            author,
+            created_at,
+            mut tags,
+            archived,
+            folder_id,
+            ..
+        } = old_doc;
+
+        let _ = tags
             .insert(tag.clone())
             .map_err(|e| format!("Failed to add tag: {:?}", e))?;
 
         let new_doc = Document {
-            id: LwwRegister::new(old_doc.id.get().clone()),
-            title: LwwRegister::new(old_doc.title.get().clone()),
-            content: LwwRegister::new(old_doc.content.get().clone()),
-            author: LwwRegister::new(old_doc.author.get().clone()),
-            created_at: LwwRegister::new(*old_doc.created_at.get()),
+            id,
+            title,
+            content,
+            author,
+            created_at,
             updated_at: LwwRegister::new(timestamp),
-            tags: new_tags,
-            archived: LwwRegister::new(*old_doc.archived.get()),
-            folder_id: LwwRegister::new(old_doc.folder_id.get().clone()),
+            tags,
+            archived,
+            folder_id,
         };
 
         self.documents
@@ -573,15 +895,18 @@ impl DocsApp {
 
         let timestamp = env::time_now();
 
+        let Document {
+            id,
+            title,
+            content,
+            author,
+            created_at,
+            archived,
+            folder_id,
+            ..
+        } = old_doc;
+
         let mut new_tags = UnorderedSet::new();
-        // Keep old tags
-        let old_tags_vec = extract_tags(&old_doc.tags)?;
-        for t in old_tags_vec {
-            new_tags
-                .insert(t)
-                .map_err(|e| format!("Failed to copy tag: {:?}", e))?;
-        }
-        // Add new tags
         for tag in tags {
             if !tag.is_empty() {
                 new_tags
@@ -591,15 +916,15 @@ impl DocsApp {
         }
 
         let new_doc = Document {
-            id: LwwRegister::new(old_doc.id.get().clone()),
-            title: LwwRegister::new(old_doc.title.get().clone()),
-            content: LwwRegister::new(old_doc.content.get().clone()),
-            author: LwwRegister::new(old_doc.author.get().clone()),
-            created_at: LwwRegister::new(*old_doc.created_at.get()),
+            id,
+            title,
+            content,
+            author,
+            created_at,
             updated_at: LwwRegister::new(timestamp),
             tags: new_tags,
-            archived: LwwRegister::new(*old_doc.archived.get()),
-            folder_id: LwwRegister::new(old_doc.folder_id.get().clone()),
+            archived,
+            folder_id,
         };
 
         self.documents
@@ -641,24 +966,27 @@ impl DocsApp {
 
         let timestamp = env::time_now();
 
-        let mut new_tags = UnorderedSet::new();
-        let old_tags_vec = extract_tags(&old_doc.tags)?;
-        for tag in old_tags_vec {
-            new_tags
-                .insert(tag)
-                .map_err(|e| format!("Failed to copy tag: {:?}", e))?;
-        }
+        let Document {
+            id,
+            title,
+            content,
+            author,
+            created_at,
+            tags,
+            folder_id,
+            ..
+        } = old_doc;
 
         let new_doc = Document {
-            id: LwwRegister::new(old_doc.id.get().clone()),
-            title: LwwRegister::new(old_doc.title.get().clone()),
-            content: LwwRegister::new(old_doc.content.get().clone()),
-            author: LwwRegister::new(old_doc.author.get().clone()),
-            created_at: LwwRegister::new(*old_doc.created_at.get()),
+            id,
+            title,
+            content,
+            author,
+            created_at,
             updated_at: LwwRegister::new(timestamp),
-            tags: new_tags,
+            tags,
             archived: LwwRegister::new(archived),
-            folder_id: LwwRegister::new(old_doc.folder_id.get().clone()),
+            folder_id,
         };
 
         self.documents
@@ -684,20 +1012,7 @@ impl DocsApp {
             .get(&doc_id)
             .map_err(|e| format!("Failed to access document: {:?}", e))?
             .ok_or_else(|| format!("Document not found: {}", doc_id))?;
-
-        let tags = extract_tags(&doc.tags)?;
-
-        Ok(DocumentResponse {
-            id: doc.id.get().clone(),
-            title: doc.title.get().clone(),
-            content: doc.content.get().clone(),
-            author: doc.author.get().clone(),
-            created_at: *doc.created_at.get(),
-            updated_at: *doc.updated_at.get(),
-            tags,
-            archived: *doc.archived.get(),
-            folder_id: doc.folder_id.get().clone(),
-        })
+        document_response_from_document(&doc)
     }
 
     pub fn get_content(&self, doc_id: String) -> Result<String, String> {
@@ -706,7 +1021,7 @@ impl DocsApp {
             .get(&doc_id)
             .map_err(|e| format!("Failed to access document: {:?}", e))?
             .ok_or_else(|| format!("Document not found: {}", doc_id))?;
-        Ok(doc.content.get().clone())
+        html_from_rga(&doc.content)
     }
 
     pub fn get_content_length(&self, doc_id: String) -> Result<usize, String> {
@@ -715,7 +1030,7 @@ impl DocsApp {
             .get(&doc_id)
             .map_err(|e| format!("Failed to access document: {:?}", e))?
             .ok_or_else(|| format!("Document not found: {}", doc_id))?;
-        Ok(doc.content.get().len())
+        document_content_len(&doc)
     }
 
     pub fn list_documents(&self, include_archived: bool) -> Result<Vec<DocumentSummary>, String> {
@@ -729,26 +1044,7 @@ impl DocsApp {
         for (_, doc) in entries {
             let archived = *doc.archived.get();
             if include_archived || !archived {
-                let content = doc.content.get();
-                let preview = if content.len() > 200 {
-                    format!("{}...", &content[..200])
-                } else {
-                    content.clone()
-                };
-
-                let tags = extract_tags(&doc.tags)?;
-
-                documents.push(DocumentSummary {
-                    id: doc.id.get().clone(),
-                    title: doc.title.get().clone(),
-                    author: doc.author.get().clone(),
-                    created_at: *doc.created_at.get(),
-                    updated_at: *doc.updated_at.get(),
-                    tags,
-                    archived,
-                    preview,
-                    folder_id: doc.folder_id.get().clone(),
-                });
+                documents.push(document_summary_from_document(&doc)?);
             }
         }
 
@@ -775,32 +1071,16 @@ impl DocsApp {
                 continue;
             }
 
-            let content = doc.content.get();
+            let content = html_from_rga(&doc.content)?;
             let title_match = doc.title.get().to_lowercase().contains(&query_lower);
-            let content_match = content.to_lowercase().contains(&query_lower);
+            let content_match = visible_text_matches_query(&content, &query_lower);
             let tags = extract_tags(&doc.tags)?;
             let tags_match = tags
                 .iter()
                 .any(|tag| tag.to_lowercase().contains(&query_lower));
 
             if title_match || content_match || tags_match {
-                let preview = if content.len() > 200 {
-                    format!("{}...", &content[..200])
-                } else {
-                    content.clone()
-                };
-
-                results.push(DocumentSummary {
-                    id: doc.id.get().clone(),
-                    title: doc.title.get().clone(),
-                    author: doc.author.get().clone(),
-                    created_at: *doc.created_at.get(),
-                    updated_at: *doc.updated_at.get(),
-                    tags,
-                    archived: *doc.archived.get(),
-                    preview,
-                    folder_id: doc.folder_id.get().clone(),
-                });
+                results.push(document_summary_from_document(&doc)?);
             }
         }
 
@@ -831,24 +1111,7 @@ impl DocsApp {
             let has_tag = tags.iter().any(|t| t.to_lowercase() == tag_lower);
 
             if has_tag {
-                let content = doc.content.get();
-                let preview = if content.len() > 200 {
-                    format!("{}...", &content[..200])
-                } else {
-                    content.clone()
-                };
-
-                results.push(DocumentSummary {
-                    id: doc.id.get().clone(),
-                    title: doc.title.get().clone(),
-                    author: doc.author.get().clone(),
-                    created_at: *doc.created_at.get(),
-                    updated_at: *doc.updated_at.get(),
-                    tags,
-                    archived: *doc.archived.get(),
-                    preview,
-                    folder_id: doc.folder_id.get().clone(),
-                });
+                results.push(document_summary_from_document(&doc)?);
             }
         }
 
@@ -1360,26 +1623,7 @@ impl DocsApp {
             };
 
             if matches {
-                let content = doc.content.get();
-                let preview = if content.len() > 200 {
-                    format!("{}...", &content[..200])
-                } else {
-                    content.clone()
-                };
-
-                let tags = extract_tags(&doc.tags)?;
-
-                documents.push(DocumentSummary {
-                    id: doc.id.get().clone(),
-                    title: doc.title.get().clone(),
-                    author: doc.author.get().clone(),
-                    created_at: *doc.created_at.get(),
-                    updated_at: *doc.updated_at.get(),
-                    tags,
-                    archived,
-                    preview,
-                    folder_id: doc.folder_id.get().clone(),
-                });
+                documents.push(document_summary_from_document(&doc)?);
             }
         }
 
@@ -1418,23 +1662,26 @@ impl DocsApp {
         let editor_id = env::executor_id();
         let editor = encode_identity(&editor_id);
 
-        let mut new_tags = UnorderedSet::new();
-        let old_tags_vec = extract_tags(&old_doc.tags)?;
-        for tag in old_tags_vec {
-            new_tags
-                .insert(tag)
-                .map_err(|e| format!("Failed to copy tag: {:?}", e))?;
-        }
+        let Document {
+            id,
+            title,
+            content,
+            author,
+            created_at,
+            tags,
+            archived,
+            ..
+        } = old_doc;
 
         let new_doc = Document {
-            id: LwwRegister::new(old_doc.id.get().clone()),
-            title: LwwRegister::new(old_doc.title.get().clone()),
-            content: LwwRegister::new(old_doc.content.get().clone()),
-            author: LwwRegister::new(old_doc.author.get().clone()),
-            created_at: LwwRegister::new(*old_doc.created_at.get()),
+            id,
+            title,
+            content,
+            author,
+            created_at,
             updated_at: LwwRegister::new(timestamp),
-            tags: new_tags,
-            archived: LwwRegister::new(*old_doc.archived.get()),
+            tags,
+            archived,
             folder_id: LwwRegister::new(folder_id.clone()),
         };
 
@@ -1582,6 +1829,7 @@ impl DocsApp {
         if blob_id.trim().is_empty() {
             return Err("Blob ID cannot be empty".to_string());
         }
+        validate_blob_upload_target(&name, &mime_type)?;
 
         if let Some(ref fid) = folder_id {
             let exists = self
@@ -2010,5 +2258,486 @@ mod tests {
         };
 
         file_a.merge(&file_b).expect("merge should succeed");
+    }
+
+    #[test]
+    fn test_rga_html_helpers_round_trip() {
+        let html = "<h1>Heading</h1><p><strong>Item</strong> body</p>";
+
+        let rga = rga_from_html(html).expect("HTML should seed an RGA");
+
+        assert_eq!(
+            html_from_rga(&rga).expect("RGA should serialize back to HTML"),
+            html
+        );
+    }
+
+    #[test]
+    fn test_document_content_round_trips_through_rga() {
+        let document = Document {
+            id: LwwRegister::new("doc_0".to_string()),
+            title: LwwRegister::new("Doc".to_string()),
+            content: rga_from_html("<p>Hello</p><p>World</p>")
+                .expect("document body should use RGA"),
+            author: LwwRegister::new("author".to_string()),
+            created_at: LwwRegister::new(1),
+            updated_at: LwwRegister::new(1),
+            tags: UnorderedSet::new(),
+            archived: LwwRegister::new(false),
+            folder_id: LwwRegister::new(None),
+        };
+
+        assert_eq!(
+            html_from_rga(&document.content).expect("document content should read as HTML"),
+            "<p>Hello</p><p>World</p>"
+        );
+    }
+
+    #[test]
+    fn test_document_rebuild_preserves_rga_body() {
+        let content =
+            rga_from_html("<p>Alpha</p><p>Beta</p>").expect("document body should use RGA");
+        let original_html = html_from_rga(&content).expect("seeded RGA should serialize to HTML");
+
+        let original = Document {
+            id: LwwRegister::new("doc_1".to_string()),
+            title: LwwRegister::new("Original".to_string()),
+            content,
+            author: LwwRegister::new("author".to_string()),
+            created_at: LwwRegister::new(10),
+            updated_at: LwwRegister::new(10),
+            tags: UnorderedSet::new(),
+            archived: LwwRegister::new(false),
+            folder_id: LwwRegister::new(Some("folder_0".to_string())),
+        };
+
+        let updated = Document {
+            id: original.id,
+            title: LwwRegister::new("Renamed".to_string()),
+            content: original.content,
+            author: original.author,
+            created_at: original.created_at,
+            updated_at: LwwRegister::new(11),
+            tags: original.tags,
+            archived: original.archived,
+            folder_id: original.folder_id,
+        };
+
+        assert_eq!(
+            html_from_rga(&updated.content).expect("rebuilt document should preserve RGA body"),
+            original_html
+        );
+    }
+
+    #[test]
+    fn test_document_response_derives_html_content_from_rga() {
+        let document = Document {
+            id: LwwRegister::new("doc_7".to_string()),
+            title: LwwRegister::new("Rendered".to_string()),
+            content: rga_from_html("<h1>Hello</h1><p>world</p>")
+                .expect("document body should use RGA"),
+            author: LwwRegister::new("author".to_string()),
+            created_at: LwwRegister::new(10),
+            updated_at: LwwRegister::new(20),
+            tags: UnorderedSet::new(),
+            archived: LwwRegister::new(false),
+            folder_id: LwwRegister::new(Some("folder_1".to_string())),
+        };
+
+        let response =
+            document_response_from_document(&document).expect("document response should serialize");
+
+        assert_eq!(response.id, "doc_7");
+        assert_eq!(response.title, "Rendered");
+        assert_eq!(response.content, "<h1>Hello</h1><p>world</p>");
+        assert_eq!(response.folder_id, Some("folder_1".to_string()));
+    }
+
+    #[test]
+    fn test_create_document_record_seeds_html_rga_and_preserves_metadata() {
+        let document = create_document_record(
+            "doc_9".to_string(),
+            "Seeded".to_string(),
+            "<p>alpha</p><p>beta</p>".to_string(),
+            vec!["rust".to_string(), "notes".to_string()],
+            Some("folder_2".to_string()),
+            "author".to_string(),
+            77,
+        )
+        .expect("document should be built from HTML");
+
+        assert_eq!(
+            html_from_rga(&document.content).expect("seeded body should serialize"),
+            "<p>alpha</p><p>beta</p>"
+        );
+        assert_eq!(document.title.get(), "Seeded");
+        assert_eq!(document.author.get(), "author");
+        assert_eq!(*document.created_at.get(), 77);
+        assert_eq!(*document.updated_at.get(), 77);
+        assert_eq!(document.folder_id.get(), &Some("folder_2".to_string()));
+
+        let tags = extract_tags(&document.tags).expect("tags should be readable");
+        assert_eq!(tags.len(), 2);
+        assert!(tags.contains(&"rust".to_string()));
+        assert!(tags.contains(&"notes".to_string()));
+    }
+
+    #[test]
+    fn test_apply_insert_text_updates_html_and_timestamp() {
+        let mut document = create_document_record(
+            "doc_insert".to_string(),
+            "Insert".to_string(),
+            "<p>Hello world</p>".to_string(),
+            Vec::new(),
+            None,
+            "author".to_string(),
+            1,
+        )
+        .expect("document should be built");
+
+        apply_insert_text(&mut document, 9, "brave ", 2).expect("insert should succeed");
+
+        assert_eq!(
+            html_from_rga(&document.content).expect("inserted content should serialize"),
+            "<p>Hello brave world</p>"
+        );
+        assert_eq!(*document.updated_at.get(), 2);
+    }
+
+    #[test]
+    fn test_apply_insert_text_rejects_out_of_bounds_position() {
+        let mut document = create_document_record(
+            "doc_insert_bounds".to_string(),
+            "Insert".to_string(),
+            "Hello".to_string(),
+            Vec::new(),
+            None,
+            "author".to_string(),
+            1,
+        )
+        .expect("document should be built");
+
+        assert_eq!(
+            apply_insert_text(&mut document, 99, "!", 2)
+                .expect_err("out-of-bounds insert should be rejected"),
+            "Insert position out of bounds"
+        );
+    }
+
+    #[test]
+    fn test_apply_delete_text_rejects_invalid_ranges() {
+        let mut document = create_document_record(
+            "doc_delete".to_string(),
+            "Delete".to_string(),
+            "Hello world".to_string(),
+            Vec::new(),
+            None,
+            "author".to_string(),
+            1,
+        )
+        .expect("document should be built");
+
+        assert_eq!(
+            apply_delete_text(&mut document, 8, 3, 2).expect_err("range should be rejected"),
+            "Delete range start must be less than end"
+        );
+        assert_eq!(
+            apply_delete_text(&mut document, 0, 50, 2).expect_err("out-of-bounds delete"),
+            "Delete range out of bounds"
+        );
+    }
+
+    #[test]
+    fn test_apply_delete_text_removes_range_at_end() {
+        let mut document = create_document_record(
+            "doc_delete_end".to_string(),
+            "Delete".to_string(),
+            "Hello world".to_string(),
+            Vec::new(),
+            None,
+            "author".to_string(),
+            1,
+        )
+        .expect("document should be built");
+
+        apply_delete_text(&mut document, 5, 11, 3).expect("delete should succeed");
+
+        assert_eq!(
+            html_from_rga(&document.content).expect("deleted content should serialize"),
+            "Hello"
+        );
+        assert_eq!(*document.updated_at.get(), 3);
+    }
+
+    #[test]
+    fn test_apply_replace_text_updates_html_snapshot() {
+        let mut document = create_document_record(
+            "doc_replace".to_string(),
+            "Replace".to_string(),
+            "<h1>Title</h1><p>Hello world</p>".to_string(),
+            Vec::new(),
+            None,
+            "author".to_string(),
+            1,
+        )
+        .expect("document should be built");
+
+        apply_replace_text(
+            &mut document,
+            14,
+            32,
+            "<p>Updated list</p><ul><li>item</li></ul>",
+            3,
+        )
+        .expect("replace should succeed");
+
+        assert_eq!(
+            html_from_rga(&document.content).expect("replaced content should serialize"),
+            "<h1>Title</h1><p>Updated list</p><ul><li>item</li></ul>"
+        );
+        assert_eq!(*document.updated_at.get(), 3);
+    }
+
+    #[test]
+    fn test_incremental_html_operations_can_split_markup() {
+        let mut document = create_document_record(
+            "doc_html_split".to_string(),
+            "HTML".to_string(),
+            "<p>Hello</p>".to_string(),
+            Vec::new(),
+            None,
+            "author".to_string(),
+            1,
+        )
+        .expect("document should be built");
+
+        apply_insert_text(&mut document, 2, "!", 2)
+            .expect("raw string insert should allow splitting HTML");
+
+        assert_eq!(
+            html_from_rga(&document.content).expect("content should serialize"),
+            "<p!>Hello</p>"
+        );
+    }
+
+    #[test]
+    fn test_apply_replace_text_rejects_invalid_ranges_and_empty_noop() {
+        let mut document = create_document_record(
+            "doc_replace_invalid".to_string(),
+            "Replace".to_string(),
+            "Hello world".to_string(),
+            Vec::new(),
+            None,
+            "author".to_string(),
+            1,
+        )
+        .expect("document should be built");
+
+        assert_eq!(
+            apply_replace_text(&mut document, 8, 3, "!", 2)
+                .expect_err("reversed range should be rejected"),
+            "Replace range start must be less than or equal to end"
+        );
+        assert_eq!(
+            apply_replace_text(&mut document, 0, 50, "!", 2)
+                .expect_err("out-of-bounds replace should be rejected"),
+            "Replace range out of bounds"
+        );
+        assert_eq!(
+            apply_replace_text(&mut document, 4, 4, "", 2)
+                .expect_err("empty no-op replace should be rejected"),
+            "Replace operation cannot be empty"
+        );
+    }
+
+    #[test]
+    fn test_replace_document_content_from_snapshot_reseeds_html_rga() {
+        let mut document = create_document_record(
+            "doc_snapshot".to_string(),
+            "Snapshot".to_string(),
+            "<p>Alpha</p><p>Beta</p>".to_string(),
+            Vec::new(),
+            None,
+            "author".to_string(),
+            1,
+        )
+        .expect("document should be built");
+
+        replace_document_content_from_snapshot(
+            &mut document,
+            "<h1>Heading</h1><p data-note=\"Gamma\">Gamma</p>",
+            4,
+        )
+        .expect("snapshot update should reseed the content");
+
+        assert_eq!(
+            html_from_rga(&document.content).expect("snapshot content should serialize"),
+            "<h1>Heading</h1><p data-note=\"Gamma\">Gamma</p>"
+        );
+        assert_eq!(*document.updated_at.get(), 4);
+    }
+
+    #[test]
+    fn test_replace_document_content_from_snapshot_preserves_non_content_metadata() {
+        let mut document = create_document_record(
+            "doc_snapshot_meta".to_string(),
+            "Snapshot".to_string(),
+            "<p>Alpha</p>".to_string(),
+            vec!["notes".to_string()],
+            Some("folder_9".to_string()),
+            "author".to_string(),
+            1,
+        )
+        .expect("document should be built");
+
+        replace_document_content_from_snapshot(&mut document, "<p>Beta</p>", 4)
+            .expect("snapshot update should reseed the content");
+
+        assert_eq!(
+            html_from_rga(&document.content).expect("snapshot content should serialize"),
+            "<p>Beta</p>"
+        );
+        assert_eq!(document.title.get(), "Snapshot");
+        assert_eq!(document.author.get(), "author");
+        assert_eq!(document.folder_id.get(), &Some("folder_9".to_string()));
+        assert_eq!(extract_tags(&document.tags).expect("tags should be readable"), vec!["notes"]);
+    }
+
+    #[test]
+    fn test_document_merge_preserves_concurrent_rga_edits() {
+        let mut left = create_document_record(
+            "doc_merge".to_string(),
+            "Merge".to_string(),
+            "AB".to_string(),
+            Vec::new(),
+            None,
+            "author".to_string(),
+            1,
+        )
+        .expect("left document should be built");
+        let mut right = create_document_record(
+            "doc_merge".to_string(),
+            "Merge".to_string(),
+            "AB".to_string(),
+            Vec::new(),
+            None,
+            "author".to_string(),
+            1,
+        )
+        .expect("right document should be built");
+
+        apply_insert_text(&mut left, 1, "X", 2).expect("left edit should succeed");
+        apply_insert_text(&mut right, 1, "Y", 2).expect("right edit should succeed");
+
+        left.merge(&right).expect("merge should succeed");
+        let merged = html_from_rga(&left.content).expect("merged content should serialize");
+
+        assert_eq!(merged.len(), 6);
+        assert!(merged.contains('X'));
+        assert!(merged.contains('Y'));
+    }
+
+    #[test]
+    fn test_metadata_only_rebuild_preserves_rga_body() {
+        let original_body = "<h1>Title</h1><ul><li>alpha</li><li>beta</li></ul>";
+        let original = create_document_record(
+            "doc_metadata".to_string(),
+            "Original".to_string(),
+            original_body.to_string(),
+            vec!["tag".to_string()],
+            Some("folder_0".to_string()),
+            "author".to_string(),
+            10,
+        )
+        .expect("document should be built");
+
+        let Document {
+            id,
+            content,
+            author,
+            created_at,
+            tags,
+            folder_id,
+            ..
+        } = original;
+
+        let updated = Document {
+            id,
+            title: LwwRegister::new("Renamed".to_string()),
+            content,
+            author,
+            created_at,
+            updated_at: LwwRegister::new(11),
+            tags,
+            archived: LwwRegister::new(true),
+            folder_id,
+        };
+
+        assert_eq!(
+            html_from_rga(&updated.content).expect("metadata-only rebuild should preserve body"),
+            original_body
+        );
+        assert_eq!(updated.title.get(), "Renamed");
+        assert!(*updated.archived.get());
+    }
+
+    #[test]
+    fn test_visible_text_from_html_strips_tags_attributes_and_normalizes_spacing() {
+        assert_eq!(
+            visible_text_from_html(
+                "<h1 data-note=\"secret\">Heading</h1><p>Hello&nbsp;<strong>world</strong></p>"
+            ),
+            "Heading Hello world"
+        );
+    }
+
+    #[test]
+    fn test_preview_from_html_uses_visible_text_not_raw_tags() {
+        assert_eq!(
+            preview_from_html("<p>Hello <strong>world</strong></p>"),
+            "Hello world"
+        );
+    }
+
+    #[test]
+    fn test_preview_from_html_truncates_visible_text_only() {
+        let long_html = format!("<p>{}</p>", "a".repeat(DOCUMENT_PREVIEW_LIMIT + 10));
+        assert!(
+            preview_from_html(&long_html).ends_with("..."),
+            "preview should be truncated after visible text extraction"
+        );
+        assert!(
+            !preview_from_html(&long_html).contains('<'),
+            "preview should not include raw HTML tags"
+        );
+    }
+
+    #[test]
+    fn test_search_uses_visible_text_not_raw_html_attributes() {
+        let html = "<p data-hidden=\"secret-token\">Visible text only</p>";
+
+        assert!(visible_text_matches_query(html, "visible"));
+        assert!(!visible_text_matches_query(html, "secret-token"));
+    }
+
+    #[test]
+    fn test_markdown_files_are_allowed_on_blob_upload_path() {
+        assert!(
+            validate_blob_upload_target("notes.md", "text/markdown").is_ok(),
+            "markdown files should no longer be forced through a document import API"
+        );
+        assert!(
+            validate_blob_upload_target("photo.png", "image/png").is_ok(),
+            "non-markdown uploads should remain on the blob file path"
+        );
+    }
+
+    #[test]
+    fn test_storage_layout_migration_strategy_requires_fresh_state() {
+        assert_eq!(STORAGE_LAYOUT_VERSION, 2);
+        assert!(
+            STORAGE_LAYOUT_MIGRATION_STRATEGY.contains("fresh app state"),
+            "migration strategy should document the required reset"
+        );
     }
 }
