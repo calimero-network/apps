@@ -2,9 +2,9 @@
   "abi": {
     "hash": null,
     "path": "abi.json",
-    "size": 27993
+    "size": 29362
   },
-  "appVersion": "7.0.0",
+  "appVersion": "8.0.0",
   "links": {
     "frontend": "http://localhost:5173/"
   },
@@ -19,13 +19,13 @@
   "signature": {
     "algorithm": "ed25519",
     "publicKey": "zJxVbfNGrbfwgbtupMfpQX2KzStI6wWA3AVpQmxi5pM",
-    "signature": "ChwKx4EV1igbBDetxryEaSsYZtwcsjIFzUTfL7csypr1jhplLL1hmyrkB44LRIsWw2GH9jbhRyhqlrxA7gNwBw"
+    "signature": "-52nA8RP208TjxbULde719jdPes_Ps2p98tDjd8CDA3dvx_TJnsejmarAzXERRQoUMG91rd0Yfm7cgvB6rc4Cg"
   },
   "signerId": "did:key:z6MktDyUgjyGaEMxMyuZMs2v2L46zvVKNqB5K3KTvFxudtKL",
   "version": "1.0",
   "wasm": {
     "hash": null,
     "path": "app.wasm",
-    "size": 665944
+    "size": 711180
   }
 }
