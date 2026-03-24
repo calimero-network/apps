@@ -11,6 +11,7 @@ import { EditorStatusBar } from './EditorStatusBar';
 import { EditorHeader } from './EditorHeader';
 import { useCalimero } from '@calimero-network/calimero-client';
 import { AbiClient, Document as DocumentType } from '@/api/AbiClient';
+import { useWorkspace } from '@/context/WorkspaceContext';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
@@ -50,6 +51,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentId: prop
   const documentId = propDocId || paramDocId;
   
   const { app } = useCalimero();
+  const { activeContextId } = useWorkspace();
   const navigate = useNavigate();
   const location = useLocation();
   const locationState = location.state as LocationState | null;
@@ -128,11 +130,11 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentId: prop
   // The HTML is fed directly into TipTap via editor.commands.setContent.
   useEffect(() => {
     const loadDocument = async () => {
-      if (!documentId || !app) return;
+      if (!documentId || !app || !activeContextId) return;
       
       setIsLoading(true);
       try {
-        const client = new AbiClient(app);
+        const client = new AbiClient(app, activeContextId);
         const doc = await client.getDocument({ id: documentId });
         if (doc) {
           setDocument(doc);
@@ -150,7 +152,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentId: prop
     };
 
     loadDocument();
-  }, [documentId, app, editor]);
+  }, [documentId, app, activeContextId, editor]);
 
   const cancelPendingAutosave = useCallback(() => {
     if (autosaveTimeoutRef.current) {
@@ -168,7 +170,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentId: prop
   // mapping that does not exist yet.  See AbiClient.ts for the full boundary
   // documentation and prerequisites for a future incremental-sync phase.
   const saveDocument = useCallback(async (forceCreate = false) => {
-    if (!app || !editor) return;
+    if (!app || !activeContextId || !editor) return;
     
     const currentDoc = documentRef.current;
     const currentName = documentNameRef.current;
@@ -188,7 +190,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentId: prop
     setSaveStatus('saving');
     
     try {
-      const client = new AbiClient(app);
+      const client = new AbiClient(app, activeContextId);
       
       if (currentDoc) {
         console.log('[saveDocument] Using setContent for doc:', currentDoc.id);
@@ -230,7 +232,7 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentId: prop
       console.error('[saveDocument] Failed to save:', error);
       setSaveStatus('error');
     }
-  }, [app, editor, navigate, initialFolderId]);
+  }, [app, activeContextId, editor, navigate, initialFolderId]);
 
   useEffect(() => {
     if (!editor) return;
@@ -264,15 +266,15 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentId: prop
         clearTimeout(autosaveTimeoutRef.current);
         autosaveTimeoutRef.current = null;
       }
-      if (hasUnsavedChangesRef.current && app && editor && documentRef.current) {
-        const client = new AbiClient(app);
+      if (hasUnsavedChangesRef.current && app && activeContextId && editor && documentRef.current) {
+        const client = new AbiClient(app, activeContextId);
         const content = editor.getHTML();
         const currentDoc = documentRef.current;
         console.log('[unmount] Saving to existing document:', currentDoc.id);
         client.setContent({ id: currentDoc.id, content }).catch(console.error);
       }
     };
-  }, [app, editor]);
+  }, [app, activeContextId, editor]);
 
   // Warn before browser close/refresh with unsaved changes
   useEffect(() => {
@@ -290,12 +292,12 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentId: prop
   const handleDocumentNameChange = async (newName: string) => {
     setDocumentName(newName);
     documentNameRef.current = newName;
-    if (!app || !editor) return;
+    if (!app || !activeContextId || !editor) return;
 
     cancelPendingAutosave();
 
     try {
-      const client = new AbiClient(app);
+      const client = new AbiClient(app, activeContextId);
 
       if (document) {
         await client.updateDocumentMetadata({
@@ -339,11 +341,11 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentId: prop
   };
 
   const handleDelete = async () => {
-    if (!document || !app) return;
+    if (!document || !app || !activeContextId) return;
     
     if (window.confirm('Are you sure you want to delete this document?')) {
       try {
-        const client = new AbiClient(app);
+        const client = new AbiClient(app, activeContextId);
         await client.deleteDocument({ id: document.id });
         navigate('/home');
       } catch (error) {
@@ -357,10 +359,10 @@ export const DocumentEditor: React.FC<DocumentEditorProps> = ({ documentId: prop
 
     console.log('[handleBack] hasUnsavedChanges:', hasUnsavedChanges, 'document:', document?.id, 'isCreating:', isCreatingDocumentRef.current);
 
-    if (hasUnsavedChanges && app && editor) {
+    if (hasUnsavedChanges && app && activeContextId && editor) {
       setSaveStatus('saving');
       try {
-        const client = new AbiClient(app);
+        const client = new AbiClient(app, activeContextId);
         const content = editor.getHTML();
         console.log('[handleBack] Saving content, length:', content.length);
 

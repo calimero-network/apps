@@ -535,7 +535,7 @@ const HomePage: React.FC = () => {
     try {
       const client = new AbiClient(app, activeContextId);
       if (folderDialogMode === 'create') {
-        await client.createFolder({
+        const newFolderId = await client.createFolder({
           name,
           parent_id: folderDialogParentId,
           color,
@@ -543,6 +543,8 @@ const HomePage: React.FC = () => {
         if (folderDialogParentId) {
           setExpandedFolders(prev => new Set([...prev, folderDialogParentId!]));
         }
+        setSelectedFolderId(newFolderId);
+        setSearchQuery('');
       } else if (folderDialogFolderId) {
         await client.renameFolder({ folder_id: folderDialogFolderId, name });
         if (color !== folderDialogInitialColor) {

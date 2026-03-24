@@ -31,6 +31,7 @@ const mockListFilesInFolder = vi.fn();
 const mockListFiles = vi.fn();
 const mockGetDocumentsInFolder = vi.fn();
 const mockListDocuments = vi.fn();
+const mockCreateFolder = vi.fn();
 
 vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
@@ -52,6 +53,7 @@ vi.mock('@/api/AbiClient', () => ({
     listFiles = mockListFiles;
     getDocumentsInFolder = mockGetDocumentsInFolder;
     listDocuments = mockListDocuments;
+    createFolder = mockCreateFolder;
   },
 }));
 
@@ -124,7 +126,24 @@ vi.mock('@/components/ui/button', () => ({
 }));
 
 vi.mock('@/components/folders/FolderDialog', () => ({
-  FolderDialog: () => null,
+  FolderDialog: ({
+    isOpen,
+    onSubmit,
+    mode,
+  }: {
+    isOpen: boolean;
+    onSubmit: (name: string, color: string | null) => void;
+    mode: 'create' | 'rename';
+  }) =>
+    isOpen ? (
+      <button
+        type="button"
+        data-testid={`folder-dialog-submit-${mode}`}
+        onClick={() => onSubmit('New Folder', null)}
+      >
+        Submit Folder Dialog
+      </button>
+    ) : null,
 }));
 
 vi.mock('@/components/folders/FolderSettingsPanel', () => ({
@@ -262,6 +281,7 @@ describe('HomePage document listing', () => {
         folder_id: 'folder-1',
       },
     ]);
+    mockCreateFolder.mockResolvedValue('folder-2');
   });
 
   it('shows saved documents alongside files and opens the document editor', async () => {
@@ -289,6 +309,28 @@ describe('HomePage document listing', () => {
     render(<HomePage />);
 
     expect(screen.queryByTitle('New Root Folder')).toBeNull();
+  });
+
+  it('creates a new document in the newly created folder', async () => {
+    const user = userEvent.setup();
+
+    render(<HomePage />);
+
+    await user.click(screen.getByTitle('New Subfolder'));
+    await user.click(screen.getByTestId('folder-dialog-submit-create'));
+    await waitFor(() => {
+      expect(mockCreateFolder).toHaveBeenCalledWith({
+        name: 'New Folder',
+        parent_id: null,
+        color: null,
+      });
+    });
+
+    await user.click(screen.getAllByText('New Document')[0]!);
+
+    expect(mockNavigate).toHaveBeenLastCalledWith('/editor', {
+      state: { folderId: 'folder-2' },
+    });
   });
 
   it('ignores stale top-level folder loads when generalContextId becomes available', async () => {

@@ -1,7 +1,13 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { DocumentEditor } from './DocumentEditor';
+
+const workspaceState = {
+  activeContextId: 'general-1',
+  generalContextId: 'general-1',
+};
 
 const mockNavigate = vi.fn();
 const mockGetDocument = vi.fn();
@@ -12,9 +18,20 @@ const mockDeleteDocument = vi.fn();
 const mockInsertText = vi.fn();
 const mockDeleteText = vi.fn();
 const mockReplaceText = vi.fn();
+const mockAbiClient = vi.fn();
 
 vi.mock('@calimero-network/calimero-client', () => ({
   useCalimero: () => ({ app: { id: 'test-app' } }),
+}));
+
+vi.mock('@/context/WorkspaceContext', () => ({
+  useWorkspace: () => ({
+    activeContextId: workspaceState.activeContextId,
+    generalContextId: workspaceState.generalContextId,
+    activeGroupId: 'group-1',
+    setActiveContext: vi.fn(),
+    setActiveWorkspace: vi.fn(),
+  }),
 }));
 
 vi.mock('react-router-dom', () => ({
@@ -24,16 +41,19 @@ vi.mock('react-router-dom', () => ({
 }));
 
 vi.mock('@/api/AbiClient', () => ({
-  AbiClient: vi.fn().mockImplementation(() => ({
-    getDocument: mockGetDocument,
-    setContent: mockSetContent,
-    createDocument: mockCreateDocument,
-    updateDocumentMetadata: mockUpdateDocumentMetadata,
-    deleteDocument: mockDeleteDocument,
-    insertText: mockInsertText,
-    deleteText: mockDeleteText,
-    replaceText: mockReplaceText,
-  })),
+  AbiClient: class {
+    constructor(...args: any[]) {
+      mockAbiClient(...args);
+    }
+    getDocument = mockGetDocument;
+    setContent = mockSetContent;
+    createDocument = mockCreateDocument;
+    updateDocumentMetadata = mockUpdateDocumentMetadata;
+    deleteDocument = mockDeleteDocument;
+    insertText = mockInsertText;
+    deleteText = mockDeleteText;
+    replaceText = mockReplaceText;
+  },
   Document: {},
 }));
 
@@ -118,6 +138,8 @@ vi.mock('@tiptap/extension-highlight', () => ({
 
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
+  workspaceState.activeContextId = 'general-1';
+  workspaceState.generalContextId = 'general-1';
   mockEditorContent = '';
   mockNavigate.mockReset();
   mockGetDocument.mockReset();
@@ -128,6 +150,7 @@ beforeEach(() => {
   mockInsertText.mockReset();
   mockDeleteText.mockReset();
   mockReplaceText.mockReset();
+  mockAbiClient.mockReset();
   mockGetHTML.mockImplementation(() => mockEditorContent);
   mockEditorOn.mockReset();
   mockEditorOff.mockReset();
@@ -195,6 +218,46 @@ describe('DocumentEditor', () => {
       expect(mockInsertText).not.toHaveBeenCalled();
       expect(mockDeleteText).not.toHaveBeenCalled();
       expect(mockReplaceText).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('workspace context routing', () => {
+    it('creates new documents in the active workspace context after switching workspaces', async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      workspaceState.activeContextId = 'general-2';
+      mockCreateDocument.mockResolvedValue('doc-2');
+      mockGetDocument.mockResolvedValue({
+        id: 'doc-2',
+        title: 'Untitled Document',
+        content: '<p>workspace 2</p>',
+        author: 'user-1',
+        created_at: 0,
+        updated_at: 0,
+        tags: [],
+        archived: false,
+        folder_id: null,
+      });
+
+      render(<DocumentEditor />);
+
+      const updateHandler = mockEditorOn.mock.calls.find(
+        (c: any[]) => c[0] === 'update',
+      )?.[1];
+      expect(updateHandler).toBeDefined();
+
+      mockEditorContent = '<p>workspace 2</p>';
+      mockGetHTML.mockReturnValue('<p>workspace 2</p>');
+
+      act(() => updateHandler());
+      await user.click(screen.getByTestId('back-btn'));
+
+      expect(mockAbiClient).toHaveBeenCalledWith({ id: 'test-app' }, 'general-2');
+      expect(mockCreateDocument).toHaveBeenCalledWith({
+        title: 'Untitled Document',
+        content: '<p>workspace 2</p>',
+        tags: [],
+        folder_id: null,
+      });
     });
   });
 
