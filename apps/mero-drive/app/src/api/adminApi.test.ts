@@ -174,7 +174,7 @@ describe('admin api integration', () => {
         },
         body: JSON.stringify({
           applicationId: getApplicationId(),
-          upgradePolicy: 'Automatic',
+          upgradePolicy: 'LazyOnAccess',
         }),
       }),
     );

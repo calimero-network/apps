@@ -61,12 +61,14 @@ function baseProps(overrides: Record<string, any> = {}) {
   return {
     folders: [],
     documents: [],
+    files: [],
     selectedFolderId: null,
     onSelectFolder: vi.fn(),
     onCreateFolder: vi.fn(),
     onRenameFolder: vi.fn(),
     onDeleteFolder: vi.fn(),
     onOpenDocument: vi.fn(),
+    onOpenFile: vi.fn(),
     onCreateDocument: vi.fn(),
     expandedFolders: new Set<string>(),
     onToggleFolder: vi.fn(),
@@ -261,6 +263,35 @@ describe('FolderTree', () => {
       expect(screen.queryByText('Delete')).toBeNull();
       expect(screen.getByText('Parent')).toBeTruthy();
       expect(screen.getByText('Child')).toBeTruthy();
+    });
+  });
+
+  describe('folder contents', () => {
+    it('renders documents and files under an expanded folder with separate open handlers', async () => {
+      const user = userEvent.setup();
+      const props = baseProps({
+        folders: [
+          {
+            id: 'folder-1',
+            name: 'Specs',
+            parent_id: null,
+            color: null,
+            document_count: 1,
+            children: [],
+          },
+        ] satisfies FolderTreeItem[],
+        documents: [{ id: 'doc-1', folder_id: 'folder-1', name: 'Draft Proposal' }],
+        files: [{ id: 'file-1', folder_id: 'folder-1', name: 'Project Brief.pdf' }],
+        expandedFolders: new Set(['folder-1']),
+      });
+
+      render(<FolderTree {...props} />);
+
+      await user.click(screen.getByText('Draft Proposal'));
+      expect(props.onOpenDocument).toHaveBeenCalledWith('doc-1');
+
+      await user.click(screen.getByText('Project Brief.pdf'));
+      expect(props.onOpenFile).toHaveBeenCalledWith('file-1');
     });
   });
 });

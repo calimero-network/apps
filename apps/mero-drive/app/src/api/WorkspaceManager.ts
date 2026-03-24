@@ -203,7 +203,7 @@ export class WorkspaceManager {
       method: 'POST',
       body: {
         applicationId: getApplicationId(),
-        upgradePolicy: 'Automatic',
+        upgradePolicy: 'LazyOnAccess',
       },
     });
     const groupId = createGroup.groupId;

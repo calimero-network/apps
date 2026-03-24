@@ -10,6 +10,7 @@ import {
   ChevronRight,
   ChevronDown,
   FileText,
+  File,
   FilePlus,
   Plus,
   MoreHorizontal,
@@ -36,12 +37,14 @@ type TreeItem = { id: string; folder_id: string | null; name: string };
 interface FolderTreeProps {
   folders: FolderTreeItem[];
   documents: TreeItem[];
+  files: TreeItem[];
   selectedFolderId: string | null;
   onSelectFolder: (folderId: string | null) => void;
   onCreateFolder: (parentId: string | null) => void;
   onRenameFolder: (folderId: string) => void;
   onDeleteFolder: (folderId: string) => void;
   onOpenDocument: (docId: string) => void;
+  onOpenFile: (fileId: string) => void;
   onCreateDocument: (folderId: string | null) => void;
   expandedFolders: Set<string>;
   onToggleFolder: (folderId: string) => void;
@@ -70,12 +73,14 @@ const FOLDER_COLORS: Record<string, string> = {
 const FolderTreeNode: React.FC<{
   folder: FolderTreeItem;
   documents: TreeItem[];
+  files: TreeItem[];
   selectedFolderId: string | null;
   onSelectFolder: (folderId: string | null) => void;
   onCreateFolder: (parentId: string | null) => void;
   onRenameFolder: (folderId: string) => void;
   onDeleteFolder: (folderId: string) => void;
   onOpenDocument: (docId: string) => void;
+  onOpenFile: (fileId: string) => void;
   onCreateDocument: (folderId: string | null) => void;
   expandedFolders: Set<string>;
   onToggleFolder: (folderId: string) => void;
@@ -84,12 +89,14 @@ const FolderTreeNode: React.FC<{
 }> = ({
   folder,
   documents,
+  files,
   selectedFolderId,
   onSelectFolder,
   onCreateFolder,
   onRenameFolder,
   onDeleteFolder,
   onOpenDocument,
+  onOpenFile,
   onCreateDocument,
   expandedFolders,
   onToggleFolder,
@@ -98,11 +105,10 @@ const FolderTreeNode: React.FC<{
 }) => {
   const isExpanded = expandedFolders.has(folder.id);
   const isSelected = selectedFolderId === folder.id;
-  const hasChildren = folder.children.length > 0 || folder.document_count > 0;
-  const colorClass = folder.color ? FOLDER_COLORS[folder.color] || FOLDER_COLORS.default : FOLDER_COLORS.default;
-
-  // Get documents in this folder
   const folderDocs = documents.filter(d => d.folder_id === folder.id);
+  const folderFiles = files.filter(f => f.folder_id === folder.id);
+  const hasChildren = folder.children.length > 0 || folderDocs.length > 0 || folderFiles.length > 0;
+  const colorClass = folder.color ? FOLDER_COLORS[folder.color] || FOLDER_COLORS.default : FOLDER_COLORS.default;
 
   return (
     <div>
@@ -212,12 +218,14 @@ const FolderTreeNode: React.FC<{
               key={child.id}
               folder={child}
               documents={documents}
+              files={files}
               selectedFolderId={selectedFolderId}
               onSelectFolder={onSelectFolder}
               onCreateFolder={onCreateFolder}
               onRenameFolder={onRenameFolder}
               onDeleteFolder={onDeleteFolder}
               onOpenDocument={onOpenDocument}
+              onOpenFile={onOpenFile}
               onCreateDocument={onCreateDocument}
               expandedFolders={expandedFolders}
               onToggleFolder={onToggleFolder}
@@ -236,6 +244,18 @@ const FolderTreeNode: React.FC<{
             >
               <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
               <span className="text-sm truncate">{doc.name}</span>
+            </div>
+          ))}
+
+          {folderFiles.map((file) => (
+            <div
+              key={file.id}
+              className="group flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-muted transition-colors"
+              style={{ paddingLeft: `${(depth + 1) * 12 + 8 + 16}px` }}
+              onClick={() => onOpenFile(file.id)}
+            >
+              <File className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+              <span className="text-sm truncate">{file.name}</span>
             </div>
           ))}
         </div>
@@ -404,12 +424,14 @@ const TopLevelFolderEntry: React.FC<TopLevelFolderEntryProps> = ({
 export const FolderTree: React.FC<FolderTreeProps> = ({
   folders,
   documents,
+  files,
   selectedFolderId,
   onSelectFolder,
   onCreateFolder,
   onRenameFolder,
   onDeleteFolder,
   onOpenDocument,
+  onOpenFile,
   onCreateDocument,
   expandedFolders,
   onToggleFolder,
@@ -441,12 +463,14 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
             key={folder.id}
             folder={folder}
             documents={documents}
+            files={files}
             selectedFolderId={selectedFolderId}
             onSelectFolder={onSelectFolder}
             onCreateFolder={onCreateFolder}
             onRenameFolder={onRenameFolder}
             onDeleteFolder={onDeleteFolder}
             onOpenDocument={onOpenDocument}
+            onOpenFile={onOpenFile}
             onCreateDocument={onCreateDocument}
             expandedFolders={expandedFolders}
             onToggleFolder={onToggleFolder}
