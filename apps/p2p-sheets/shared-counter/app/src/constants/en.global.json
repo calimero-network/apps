@@ -1,0 +1,34 @@
+{
+  "home": {
+    "welcome": "Welcome to Shared Counter!",
+    "demoDescription": "A decentralized shared counter built on Calimero's P2P network. Increment or decrement the counter and see changes propagate in real time across all peers.",
+    "documentation": "Documentation",
+    "github": "GitHub",
+    "website": "Website",
+    "logout": "Logout",
+    "errors": {
+      "incrementFailed": "Failed to increment counter",
+      "decrementFailed": "Failed to decrement counter",
+      "loadFailed": "Failed to load counter value"
+    }
+  },
+  "auth": {
+    "title": "Shared Counter",
+    "back": "Back",
+    "description": {
+      "title": "Welcome to Shared Counter",
+      "subtitle": "A decentralized shared counter on Calimero",
+      "features": [
+        "Real-time counter synchronization across P2P nodes",
+        "Conflict-free increments and decrements via CRDT",
+        "Secure and distributed — no central server",
+        "Minimal UI, maximum clarity"
+      ],
+      "getStarted": "Connect your node to get started"
+    }
+  },
+  "context": {
+    "backToLogin": "Back to Login",
+    "goToHome": "Go to Home"
+  }
+}
