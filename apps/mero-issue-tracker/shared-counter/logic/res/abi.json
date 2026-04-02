@@ -1,0 +1,95 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "AppState": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "items",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
+    "Event_Decremented": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "i64"
+          }
+        }
+      ]
+    },
+    "Event_Incremented": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "i64"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "init",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "increment",
+      "params": [],
+      "returns": {
+        "kind": "i64"
+      }
+    },
+    {
+      "name": "decrement",
+      "params": [],
+      "returns": {
+        "kind": "i64"
+      }
+    },
+    {
+      "name": "get_value",
+      "params": [],
+      "returns": {
+        "kind": "i64"
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "Incremented",
+      "payload": {
+        "$ref": "Event_Incremented"
+      }
+    },
+    {
+      "name": "Decremented",
+      "payload": {
+        "$ref": "Event_Decremented"
+      }
+    }
+  ],
+  "state_root": "AppState"
+}
