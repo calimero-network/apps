@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+frontend/public/app.wasm
+
+# Rust / WASM
+logic/target/
+logic/res/*.wasm
+
+# Playwright
+frontend/playwright-report/
+frontend/test-results/
+frontend/tests/.auth/
+
+# Env
+frontend/.env
+frontend/.env.local
+
+# Editor
+.DS_Store
+.vscode/
+.idea/
+*.swp

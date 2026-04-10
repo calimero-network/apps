@@ -1,0 +1,77 @@
+mode = "standard"
+
+[identity]
+peer_id = "12D3KooWN38YpuB9zk4yHyBpX9brkaukLdKkT8EBACLhWvfGd3BG"
+keypair = "23jhTf2S8BQjv8j8BYt37GLFntvvy1tkhp5wys6JvugL9HBFvy5GnBvkaQ1JKTuarDxFrtPZYV5YrxCxGMyTn9iAsvsiJ"
+
+[swarm]
+listen = [
+    "/ip4/0.0.0.0/tcp/2428",
+    "/ip4/0.0.0.0/udp/2428/quic-v1",
+    "/ip6/::/tcp/2428",
+    "/ip6/::/udp/2428/quic-v1",
+]
+
+[server]
+listen = ["/ip4/0.0.0.0/tcp/2528"]
+auth_mode = "proxy"
+
+[server.admin]
+enabled = true
+
+[server.jsonrpc]
+enabled = true
+
+[server.websocket]
+enabled = true
+ping_interval_secs = 30
+pong_timeout_secs = 10
+
+[server.sse]
+enabled = true
+
+[bootstrap]
+nodes = [
+    "/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh",
+    "/ip4/63.181.86.34/tcp/4001/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh",
+]
+
+[discovery]
+mdns = true
+advertise_address = false
+
+[discovery.rendezvous]
+namespace = "/calimero/devnet/global"
+discovery_rpm = 0.5
+registrations_limit = 3
+
+[discovery.rendezvous.discovery_interval]
+secs = 90
+nanos = 0
+
+[discovery.relay]
+registrations_limit = 3
+
+[discovery.autonat]
+max_candidates = 5
+
+[discovery.autonat.probe_interval]
+secs = 10
+nanos = 0
+
+[specialized_node]
+invite_topic = "mero_specialized_node_invites"
+accept_mock_tee = false
+
+[sync]
+timeout_ms = 30000
+interval_ms = 5000
+frequency_ms = 10000
+
+[datastore]
+path = "data"
+
+[blobstore]
+path = "blobs"
+
+[context.config.signer.self.protocols]

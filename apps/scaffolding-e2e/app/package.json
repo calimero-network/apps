@@ -1,0 +1,32 @@
+{
+  "name": "scaffold-e2e-frontend",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "sync-wasm": "mkdir -p public && cp ../logic/res/e2e_kv_store.wasm public/app.wasm && echo 'Copied to public/app.wasm'",
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "test:auth": "npx tsx tests/save-auth.ts",
+    "test:report": "playwright show-report"
+  },
+  "dependencies": {
+    "@calimero-network/calimero-client": "1.25.0-beta.2",
+    "bootstrap": "^5.3.7",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.6.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@vitejs/plugin-react-swc": "^3.9.0",
+    "typescript": "~5.8.3",
+    "vite": "^6.4.1"
+  }
+}

@@ -1,0 +1,69 @@
+mode = "standard"
+
+[identity]
+peer_id = "12D3KooWAqwsdHmsWDH1yFdfZRwb3FtHtKJQT6JgSAyrRekHP6Lv"
+keypair = "23jhTdNLFEQJWDELe6sXW5B13sY4nutr9f2BwHAgSiewjJhMgRoTAisA8Dtc6Tcdd9H9Parp4LQxF3HqUZjeUz39L1Cqk"
+
+[swarm]
+listen = [ "/ip4/0.0.0.0/tcp/2428", "/ip4/0.0.0.0/udp/2428/quic-v1", "/ip6/::/tcp/2428", "/ip6/::/udp/2428/quic-v1",]
+
+[server]
+listen = [ "/ip4/0.0.0.0/tcp/2528",]
+auth_mode = "proxy"
+
+[bootstrap]
+nodes = []
+
+[discovery]
+mdns = true
+advertise_address = false
+
+[specialized_node]
+invite_topic = "mero_specialized_node_invites"
+accept_mock_tee = false
+
+[sync]
+timeout_ms = 30000
+interval_ms = 500
+frequency_ms = 1000
+
+[datastore]
+path = "data"
+
+[blobstore]
+path = "blobs"
+
+[server.admin]
+enabled = true
+
+[server.jsonrpc]
+enabled = true
+
+[server.websocket]
+enabled = true
+ping_interval_secs = 30
+pong_timeout_secs = 10
+
+[server.sse]
+enabled = true
+
+[discovery.rendezvous]
+namespace = "calimero/merobox-tests/4b0bcbcc"
+discovery_rpm = 0.5
+registrations_limit = 3
+
+[discovery.relay]
+registrations_limit = 3
+
+[discovery.autonat]
+max_candidates = 5
+
+[discovery.rendezvous.discovery_interval]
+secs = 90
+nanos = 0
+
+[discovery.autonat.probe_interval]
+secs = 10
+nanos = 0
+
+[context.config.signer.self.protocols]
