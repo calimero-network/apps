@@ -27,11 +27,9 @@ export default defineConfig({
     },
   ],
 
-  // Expect the dev server to already be running (`pnpm dev` in another terminal).
-  // If you want Playwright to start it automatically, uncomment:
-  // webServer: {
-  //   command: "pnpm dev",
-  //   url: "http://localhost:5173",
-  //   reuseExistingServer: true,
-  // },
+  webServer: {
+    command: "pnpm dev",
+    url: "http://localhost:5173",
+    reuseExistingServer: true,
+  },
 });
