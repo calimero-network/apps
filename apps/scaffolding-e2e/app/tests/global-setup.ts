@@ -1,4 +1,4 @@
-import { chromium, FullConfig, Page } from "@playwright/test";
+import { chromium, FullConfig } from "@playwright/test";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -47,47 +47,6 @@ function isSessionComplete(): boolean {
   }
 }
 
-/**
- * Clicks the first item in a mero-ui Menu within the card identified by `headingText`.
- *
- * DOM path: CardTitle (leaf div) → Stack → CardHeader → Card → CardContent → Stack → Menu → MenuItem[0]
- * The Menu is identified by its background colour (#1A1A1A).
- */
-async function clickFirstMenuItemInCard(page: Page, headingText: string): Promise<void> {
-  const success = await page.evaluate((heading: string) => {
-    const allDivs = Array.from(document.querySelectorAll<HTMLElement>("div"));
-
-    // The CardTitle renders as a leaf <div> — no child divs, just the text node.
-    const titleDiv = allDivs.find(
-      (d) => d.textContent?.trim() === heading && !d.querySelector("div"),
-    );
-    if (!titleDiv) return false;
-
-    // Walk up 3 levels: CardTitle → Stack(div) → CardHeader(div) → Card(div)
-    const card = titleDiv.parentElement?.parentElement?.parentElement;
-    if (!card) return false;
-
-    // Find the Menu div by its background (#1A1A1A; Chrome normalises to rgb(26, 26, 26)).
-    for (const div of Array.from(card.querySelectorAll<HTMLElement>("div"))) {
-      if (div === titleDiv || div.contains(titleDiv) || titleDiv.contains(div)) continue;
-
-      const bg = (div.style.background || div.style.backgroundColor || "").toLowerCase();
-      if (bg.includes("1a1a1a") || bg.includes("26, 26, 26") || bg.includes("26,26,26")) {
-        // Click the first direct div child of Menu — that's the first MenuItem.
-        const firstItem = div.querySelector<HTMLElement>(":scope > div");
-        if (firstItem) {
-          firstItem.click();
-          return true;
-        }
-      }
-    }
-    return false;
-  }, headingText);
-
-  if (!success) {
-    throw new Error(`Could not click first item under "${headingText}"`);
-  }
-}
 
 export default async function globalSetup(_config: FullConfig) {
   if (isSessionComplete()) {
@@ -159,11 +118,11 @@ export default async function globalSetup(_config: FullConfig) {
     }
 
     if (!redirectedAlready) {
-      // 6. Select first available context (optional — only in multi-context flows)
+      // 6. Select first available context (optional — only in single-context flows)
       try {
         await page.getByText("Select a context", { exact: true }).waitFor({ timeout: 15_000 });
         console.log("[global-setup] Selecting first context…");
-        await clickFirstMenuItemInCard(page, "Select a context");
+        await page.locator('[data-testid="context-item"]').first().click();
       } catch {
         // No context selector in this flow
       }
@@ -172,7 +131,7 @@ export default async function globalSetup(_config: FullConfig) {
       try {
         await page.getByText("Select an identity", { exact: true }).waitFor({ timeout: 10_000 });
         console.log("[global-setup] Selecting first identity…");
-        await clickFirstMenuItemInCard(page, "Select an identity");
+        await page.locator('[data-testid="identity-item"]').first().click();
       } catch {
         // No identity selector in this flow
       }

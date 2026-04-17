@@ -1,14 +1,13 @@
 name: Simple Sync Test (No Handlers)
 description: Basic set/get sync test without event handlers
 
-force_pull_image: true
+force_pull_image: false
 
 nodes:
   chain_id: testnet-1
   count: 2
-  image: ghcr.io/calimero-network/merod:0.10.1-rc.20
+  image: ghcr.io/calimero-network/merod:edge
   prefix: e2e-node
-  base_port: 2430
 
 steps:
   - name: Install application on node-1
