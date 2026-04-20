@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { useCalimero, apiClient } from '@calimero-network/calimero-client';
 import { Button } from '@/components/ui/button';
+import { adminRequest } from '@/api/AdminApi';
+import { serializeGroupInvitationPayload } from '@/utils/invitation';
 import {
   Share2,
   Copy,
@@ -14,95 +15,40 @@ import {
 interface ShareDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  contextId: string;
+  groupId: string;
+}
+
+interface GroupInviteResponse {
+  invitation: unknown;
+  groupAlias?: string;
 }
 
 export const ShareDialog: React.FC<ShareDialogProps> = ({
   isOpen,
   onClose,
-  contextId,
+  groupId,
 }) => {
-  const { app } = useCalimero();
   const [invitationPayload, setInvitationPayload] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const generateInvitation = async () => {
-    if (!app) {
-      setError('App not connected');
-      return;
-    }
-
     setIsGenerating(true);
     setError(null);
 
     try {
-      // Get the current user's identity (executor/inviter)
-      const contexts = await app.fetchContexts();
-      console.log('[ShareDialog] Available contexts:', contexts);
-      console.log('[ShareDialog] Looking for contextId:', contextId);
-      
-      const context = contexts.find(c => c.contextId === contextId);
-      
-      if (!context) {
-        throw new Error(`Context not found. Available: ${contexts.map(c => c.contextId).join(', ')}`);
-      }
-
-      const inviterId = context.executorId;
-      console.log('[ShareDialog] Using inviterId:', inviterId);
-      
-      // Generate open invitation valid for ~1 day (86400 blocks assuming 1 block/sec)
-      const validForBlocks = 86400;
-      
-      console.log('[ShareDialog] Calling contextInviteByOpenInvitation with:', {
-        contextId,
-        inviterId,
-        validForBlocks
-      });
-      
-      const response = await apiClient.node().contextInviteByOpenInvitation(
-        contextId,
-        inviterId,
-        validForBlocks
+      const response = await adminRequest<GroupInviteResponse>(
+        `/groups/${groupId}/invite`,
+        { method: 'POST', body: {} },
       );
 
-      console.log('[ShareDialog] Full response:', JSON.stringify(response, null, 2));
+      const payload = serializeGroupInvitationPayload({
+        invitation: response.invitation,
+        groupAlias: response.groupAlias,
+      });
 
-      if (response.error) {
-        console.error('[ShareDialog] API error:', response.error);
-        throw new Error(response.error.message || 'Failed to generate invitation');
-      }
-
-      // Try different response structures
-      let invitationData = null;
-      
-      // Structure 1: response.data contains invitation + inviter_signature (snake_case from API)
-      if (response.data?.invitation && response.data?.inviter_signature) {
-        invitationData = response.data;
-        console.log('[ShareDialog] Found invitation in response.data (snake_case)');
-      }
-      // Structure 2: response.data.data (nested ContextInviteByOpenInvitationResponse)
-      else if (response.data?.data?.invitation) {
-        invitationData = response.data.data;
-        console.log('[ShareDialog] Found invitation in response.data.data');
-      }
-      // Structure 3: camelCase variant
-      else if (response.data?.invitation && response.data?.inviterSignature) {
-        invitationData = response.data;
-        console.log('[ShareDialog] Found invitation in response.data (camelCase)');
-      }
-
-      if (invitationData) {
-        // Serialize the invitation to a shareable string
-        const payload = JSON.stringify(invitationData);
-        console.log('[ShareDialog] Invitation payload:', payload.substring(0, 200) + '...');
-        const base64Payload = btoa(payload);
-        setInvitationPayload(base64Payload);
-      } else {
-        console.error('[ShareDialog] Could not find invitation data in response. Keys:', Object.keys(response.data || {}));
-        throw new Error('No invitation data received. Check console for details.');
-      }
+      setInvitationPayload(payload);
     } catch (err) {
       console.error('[ShareDialog] Failed to generate invitation:', err);
       setError(err instanceof Error ? err.message : 'Failed to generate invitation');
@@ -115,16 +61,13 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({
     if (!invitationPayload) return;
 
     try {
-      // Create a shareable URL with the invitation payload
       const shareUrl = `${window.location.origin}/join?invite=${encodeURIComponent(invitationPayload)}`;
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy:', err);
-      // Fallback: copy just the payload
+    } catch {
       try {
-        await navigator.clipboard.writeText(invitationPayload);
+        await navigator.clipboard.writeText(invitationPayload ?? '');
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       } catch {

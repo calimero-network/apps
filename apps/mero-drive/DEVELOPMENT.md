@@ -1,4 +1,4 @@
-# Private Docs - Development Guide
+# Mero Drive - Development Guide
 
 ## Quick Start
 
@@ -77,6 +77,29 @@ pnpm app:generate-client
 
 ---
 
+## Group Feature Setup
+
+Top-level workspace and folder flows talk to the Calimero node admin API directly. In local development:
+
+- Start a Calimero node with the admin API enabled and note its base URL, for example `http://localhost:2428`
+- Open `mero-drive` with a `node_url` query or hash param so the app stores the node endpoint before any admin calls
+- Sign in through the Calimero auth flow so the app has the access token used for `Authorization: Bearer ...` admin requests
+
+Examples:
+
+```text
+http://localhost:5173/?node_url=http://localhost:2428
+http://localhost:5173/#node_url=http://localhost:2428&access_token=...&refresh_token=...
+```
+
+Important notes:
+
+- Group admin requests are sent to `${node_url}/admin-api/*`, not to the Vite origin
+- Vite does not proxy `/admin-api` in development, so a same-origin request such as `http://localhost:5173/admin-api/groups` will 404
+- Group-scoped context creation uses `POST /admin-api/contexts` with `groupId` in the request body; there is no `POST /admin-api/groups/:groupId/contexts` route on the core server
+
+---
+
 ## App Features
 
 ### Document Management
@@ -111,7 +134,7 @@ pnpm app:generate-client
 ## File Structure
 
 ```
-docs-fj2bytsru5m6bjb0/
+mero-drive/
 ├── logic/                      # Rust smart contract
 │   ├── src/lib.rs             # Contract code
 │   ├── build.sh               # Build script

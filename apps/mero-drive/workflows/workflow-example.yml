@@ -1,5 +1,5 @@
-description: Private Docs Application Workflow
-name: Private Docs Bootstrap
+description: Mero Drive Application Workflow
+name: Mero Drive Bootstrap
 
 # Force pull Docker images even if they exist locally
 force_pull_image: true
@@ -13,7 +13,7 @@ nodes:
 
 steps:
   # Step 1: Install the application on the first node
-  - name: Install Private Docs Application
+  - name: Install Mero Drive Application
     type: install_application
     node: docs-node-1
     path: logic/res/docs_app.wasm
@@ -22,7 +22,7 @@ steps:
       app_id: applicationId
 
   # Step 2: Create a context using the installed application
-  - name: Create Private Docs Context
+  - name: Create Mero Drive Context
     type: create_context
     node: docs-node-1
     application_id: "{{app_id}}"
@@ -69,8 +69,8 @@ steps:
     executor_public_key: "{{member_public_key}}"
     method: create_document
     args:
-      title: "Welcome to Private Docs"
-      content: "This is a sample document created during bootstrapping.\n\nPrivate Docs allows you to create, edit, and organize your documents securely on the Calimero network."
+      title: "Welcome to Mero Drive"
+      content: "This is a sample document created during bootstrapping.\n\nMero Drive allows you to create, edit, and organize your documents securely on the Calimero network."
       tags:
         - welcome
         - sample
@@ -91,7 +91,7 @@ steps:
     method: create_document
     args:
       title: "Getting Started Guide"
-      content: "# Getting Started with Private Docs\n\n1. Create a new document using the 'New Document' button\n2. Add a title and content\n3. Optionally add tags to organize your documents\n4. Use the search feature to find documents\n5. Archive documents you no longer need"
+      content: "# Getting Started with Mero Drive\n\n1. Create a new document using the 'New Document' button\n2. Add a title and content\n3. Optionally add tags to organize your documents\n4. Use the search feature to find documents\n5. Archive documents you no longer need"
       tags:
         - guide
         - tutorial

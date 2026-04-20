@@ -310,19 +310,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "docs_app"
-version = "6.0.0"
-dependencies = [
- "bs58",
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "calimero-wasm-abi",
- "serde_json",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "ed25519"
 version = "2.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -603,6 +590,19 @@ name = "memchr"
 version = "2.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
+
+[[package]]
+name = "mero-drive"
+version = "8.0.0"
+dependencies = [
+ "bs58",
+ "calimero-sdk",
+ "calimero-storage",
+ "calimero-storage-macros",
+ "calimero-wasm-abi",
+ "serde_json",
+ "thiserror 1.0.69",
+]
 
 [[package]]
 name = "multiaddr"

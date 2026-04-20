@@ -1,26 +1,46 @@
-# Private Docs - Calimero Application
+# Mero Drive - Calimero Application
 
-A private document management application built on the Calimero P2P network. Create, edit, and organize your documents securely.
+A private, multi-workspace document management application built on the Calimero P2P network. Create, edit, and organize documents across isolated workspaces — each with its own encrypted CRDT state.
 
 ## Features
 
+- **Multi-workspace**: Create or join workspaces backed by Calimero context groups; switch between them from the sidebar
+- **Top-level Folders as Contexts**: Each top-level folder is an independent Calimero context with its own CRDT document state; folder names are shared via the General context's registry
+- **Restricted Folders**: Mark folders as open or restricted; non-members see a lock icon and cannot enter
+- **Subfolders & Tags**: Hierarchical subfolder tree and tag-based filtering within each context
 - **Create Documents**: Add new documents with title, content, and tags
-- **Edit Documents**: Update existing documents with new content
+- **Edit Documents**: Rich-text editing with real-time CRDT sync
 - **Search**: Find documents by title, content, or tags
-- **Tag-based Organization**: Categorize documents with tags
 - **Archive**: Archive documents you no longer need actively
-- **Real-time Sync**: Documents sync across all nodes in the network
+- **Real-time Sync**: Documents sync across all nodes in the network via CRDT
 
 ## Project Structure
 
-This repository contains two independent parts:
-
-- `logic/` — Rust smart-contract (compiled to WASM)
-- `app/` — React frontend (Vite) that talks to the contract via ABI client
+```
+mero-drive/
+├── logic/          # Rust smart contract (compiled to WASM)
+└── app/
+    └── src/
+        ├── api/
+        │   ├── AbiClient.ts          # WASM method wrappers (context-aware)
+        │   ├── WorkspaceManager.ts   # Workspace CRUD via admin API
+        │   └── FolderContextManager.ts # Folder-context lifecycle
+        ├── context/
+        │   └── WorkspaceContext.tsx  # Active workspace/context React state
+        ├── components/
+        │   ├── workspace/
+        │   │   └── WorkspaceSwitcher.tsx
+        │   └── folders/
+        │       ├── FolderTree.tsx        # Two-tier: contexts + subfolders
+        │       ├── FolderSettingsPanel.tsx
+        │       └── FolderDialog.tsx
+        └── pages/
+            └── home/                 # Main dashboard
+```
 
 ## Prerequisites
 
-- Node.js 18+ and pnpm
+- Node.js 18+ and npm
 - Rust toolchain + wasm target: `rustup target add wasm32-unknown-unknown`
 - Optional: `wasm-opt` for WASM size optimization
 
@@ -29,14 +49,14 @@ This repository contains two independent parts:
 ### 1. Install Dependencies
 
 ```bash
-pnpm install
-cd app && pnpm install && cd ..
+npm install
+cd app && npm install && cd ..
 ```
 
 ### 2. Build the Logic (Rust)
 
 ```bash
-pnpm run logic:build
+npm run logic:build
 ```
 
 This compiles the Rust contract to WASM and generates the ABI.
@@ -44,29 +64,18 @@ This compiles the Rust contract to WASM and generates the ABI.
 ### 3. Bootstrap the Network
 
 ```bash
-pnpm run network:bootstrap
+npm run network:bootstrap
 ```
 
-This starts local Calimero nodes and deploys the application. Save the `applicationId` and `contextId` from the output.
+This starts local Calimero nodes and deploys the application.
 
-### 4. Configure the Frontend
-
-Update `app/src/config.json` with the IDs from the bootstrap:
-
-```json
-{
-  "applicationId": "<your-application-id>",
-  "contextId": "<your-context-id>"
-}
-```
-
-### 5. Start the Development Server
+### 4. Start the Development Server
 
 ```bash
-pnpm run app:dev
+npm run app:dev
 ```
 
-Open your browser and connect to a running node.
+Open your browser and connect to a running node. On first load, create or join a workspace using the switcher in the sidebar.
 
 ## API Reference
 
@@ -86,25 +95,49 @@ Open your browser and connect to a running node.
 | `get_stats()` | Get document statistics |
 | `get_document_count()` | Get total document count |
 
+### Folder Operations
+
+| Method | Description |
+|--------|-------------|
+| `create_folder(name, parent_id?, color?)` | Create a subfolder |
+| `rename_folder(folder_id, name)` | Rename a subfolder |
+| `delete_folder(folder_id, recursive?)` | Delete a subfolder |
+| `get_folder_tree()` | Get full subfolder hierarchy |
+| `move_document(doc_id, folder_id)` | Move document to a folder |
+
+### Context Group Operations (multi-workspace)
+
+| Method | Description |
+|--------|-------------|
+| `set_context_name(name)` | Set the human-readable name for a context |
+| `get_context_name()` | Get the name of the current context |
+| `register_folder(context_id, name, color?)` | Register a folder context in the General registry |
+| `update_folder_name(context_id, name)` | Update a folder's name in the registry |
+| `unregister_folder(context_id)` | Remove a folder from the registry |
+| `get_folder_registry()` | List all registered folder contexts |
+
 ### Events
 
-- `DocumentCreated` - Emitted when a document is created
-- `DocumentUpdated` - Emitted when a document is updated
-- `DocumentDeleted` - Emitted when a document is deleted
-- `DocumentArchived` - Emitted when archive status changes
+- `DocumentCreated` — emitted when a document is created
+- `DocumentUpdated` — emitted when a document is updated
+- `DocumentDeleted` — emitted when a document is deleted
+- `DocumentArchived` — emitted when archive status changes
+- `FolderCreated` / `FolderUpdated` / `FolderDeleted` — subfolder lifecycle
+- `ContextNameSet` — emitted when a context name is set
+- `FolderRegistered` / `FolderNameUpdated` / `FolderUnregistered` — folder registry events
 
 ## Development Workflow
 
 ### Rebuild Logic
 
 ```bash
-pnpm run logic:build
+npm run logic:build
 ```
 
 ### Run Dev Server with Watchers
 
 ```bash
-pnpm run app:dev
+npm run app:dev
 ```
 
 This runs the web app alongside watchers that:
@@ -114,8 +147,8 @@ This runs the web app alongside watchers that:
 ### Clean Build
 
 ```bash
-pnpm run logic:clean
-pnpm run logic:build
+npm run logic:clean
+npm run logic:build
 ```
 
 ## Troubleshooting
@@ -123,7 +156,7 @@ pnpm run logic:build
 ### Missing Dependencies
 
 ```bash
-pnpm add -D concurrently chokidar-cli
+npm install -D concurrently chokidar-cli
 ```
 
 ### WASM Build Fails
@@ -147,7 +180,7 @@ rm -rf app/node_modules/.vite
 Restart the merobox:
 
 ```bash
-pnpm run network:bootstrap
+npm run network:bootstrap
 ```
 
 ## Documentation

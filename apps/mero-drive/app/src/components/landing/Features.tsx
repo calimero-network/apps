@@ -35,12 +35,12 @@ export const Features: React.FC = () => {
     {
       icon: <WifiOff className="w-6 h-6" />,
       title: "Local-First",
-      description: "All operations work offline. Your documents live on your device first, syncing only when you choose."
+      description: "All operations work offline. Your files live on your device first, syncing only when you choose."
     },
     {
       icon: <Shield className="w-6 h-6" />,
       title: "End-to-End Encrypted",
-      description: "Per-document encryption keys ensure only you and your collaborators can read your content. Zero-knowledge architecture."
+      description: "Per-file encryption ensures only you and your collaborators can access your content. Zero-knowledge architecture."
     },
     {
       icon: <Wifi className="w-6 h-6" />,
@@ -49,13 +49,13 @@ export const Features: React.FC = () => {
     },
     {
       icon: <Users className="w-6 h-6" />,
-      title: "Real-Time Collaboration",
-      description: "See others' cursors and changes appear within seconds. Seamless editing even with intermittent connectivity."
+      title: "Workspace Collaboration",
+      description: "Invite collaborators to shared workspaces. Upload, organize, and access files together securely."
     },
     {
       icon: <RefreshCw className="w-6 h-6" />,
       title: "CRDT-Based Merging",
-      description: "Conflict-free replicated data types ensure your document always converges, no matter when peers sync."
+      description: "Conflict-free replicated data types ensure your data always converges, no matter when peers sync."
     },
     {
       icon: <Lock className="w-6 h-6" />,
@@ -65,12 +65,12 @@ export const Features: React.FC = () => {
     {
       icon: <HardDrive className="w-6 h-6" />,
       title: "Full Data Ownership",
-      description: "Export to .docx or .pdf anytime. Your documents are always accessible, always yours."
+      description: "Download your files anytime. Your data is always accessible, always yours."
     },
     {
       icon: <FileText className="w-6 h-6" />,
-      title: "Rich Text Editing",
-      description: "Headings, lists, quotes, code blocks, links, and more. Everything you need for professional documents."
+      title: "Folder Organization",
+      description: "Create folders across workspaces and contexts. Organize files the way that works for you."
     },
   ];
 
@@ -86,8 +86,8 @@ export const Features: React.FC = () => {
             Built for Privacy.<br />Designed for Productivity.
           </h2>
           <p className="text-text-secondary max-w-2xl mx-auto">
-            Every feature in MeroDocs is designed with security-first thinking, 
-            without sacrificing the editing experience you expect.
+            Every feature in Mero Drive is designed with security-first thinking,
+            without sacrificing the experience you expect.
           </p>
         </div>
 

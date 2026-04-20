@@ -1,7 +1,7 @@
 [package]
-name = "docs_app"
-description = "Calimero Private Docs Application v6.1 - Open invitations for collaboration"
-version = "6.1.0"
+name = "mero-drive"
+description = "Calimero Mero Drive Application v7.0 - Context Group Integration"
+version = "8.0.0"
 edition = "2021"
 
 [lib]

@@ -2,9 +2,12 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { LogoWithText } from '@/components/icons/Logo';
 import { Shield, Wifi, WifiOff, Users } from 'lucide-react';
-import { CalimeroConnectButton } from '@calimero-network/calimero-client';
 
-export const Hero: React.FC = () => {
+interface HeroProps {
+  onConnect?: () => void;
+}
+
+export const Hero: React.FC<HeroProps> = ({ onConnect }) => {
   return (
     <section className="relative min-h-screen flex flex-col">
       {/* Navigation */}
@@ -17,7 +20,9 @@ export const Hero: React.FC = () => {
           <Button variant="ghost" size="sm">
             Security
           </Button>
-          <CalimeroConnectButton />
+          <Button size="sm" onClick={onConnect}>
+            Connect
+          </Button>
         </div>
       </nav>
 
@@ -32,20 +37,22 @@ export const Hero: React.FC = () => {
 
           {/* Main Headline */}
           <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-6 animate-slide-up">
-            Your documents.
+            Your files.
             <br />
             <span className="text-gradient">Your control.</span>
           </h1>
 
           {/* Subheadline */}
           <p className="text-lg sm:text-xl text-text-secondary max-w-2xl mx-auto mb-10 animate-slide-up" style={{ animationDelay: '0.1s' }}>
-            A local-first, encrypted document editor that syncs peer-to-peer. 
+            A local-first, encrypted file drive that syncs peer-to-peer.
             No cloud dependencies. Full privacy. Seamless collaboration.
           </p>
 
           {/* CTA Buttons */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16 animate-slide-up" style={{ animationDelay: '0.2s' }}>
-            <CalimeroConnectButton />
+            <Button size="xl" onClick={onConnect}>
+              Get Started
+            </Button>
             <Button variant="hero-outline" size="xl">
               Learn More
             </Button>

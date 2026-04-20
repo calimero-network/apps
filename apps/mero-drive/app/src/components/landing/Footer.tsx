@@ -37,7 +37,7 @@ export const Footer: React.FC = () => {
         </div>
         
         <div className="mt-8 pt-8 border-t border-border/50 text-center text-sm text-text-tertiary">
-          <p>© 2026 MeroDocs. Built for privacy. Powered by Calimero.</p>
+          <p>© 2026 Mero Drive. Built for privacy. Powered by Calimero.</p>
         </div>
       </div>
     </footer>

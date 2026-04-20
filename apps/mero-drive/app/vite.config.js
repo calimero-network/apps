@@ -5,6 +5,11 @@ import { resolve } from 'path';
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: [],
+  },
   base: '/',
   build: {
     outDir: 'dist',
