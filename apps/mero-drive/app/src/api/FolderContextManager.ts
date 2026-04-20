@@ -45,7 +45,7 @@ export class FolderContextManager {
     }
 
     return groupContexts
-      .filter((ctx) => ctx.contextId !== generalContextId)
+      .filter((ctx) => !generalContextId || ctx.contextId !== generalContextId)
       .map((ctx) => {
         const registryEntry = registryByContextId.get(ctx.contextId);
         if (registryEntry) {
@@ -106,12 +106,26 @@ export class FolderContextManager {
       console.warn('[FolderContextManager] setContextName failed (non-blocking):', err);
     }
 
-    // Register in the General context registry
-    await new AbiClient(this.app, generalContextId).registerFolder({
-      context_id: contextId,
-      name,
-      color: color ?? null,
-    });
+    // Register in the General context registry. On failure, detach the
+    // freshly-created context from the group so a retry doesn't accumulate
+    // orphaned contexts that the registry never learns about.
+    try {
+      await new AbiClient(this.app, generalContextId).registerFolder({
+        context_id: contextId,
+        name,
+        color: color ?? null,
+      });
+    } catch (err) {
+      try {
+        await adminRequest<void>(`/groups/${groupId}/contexts/${contextId}/remove`, {
+          method: 'POST',
+          body: {},
+        });
+      } catch (cleanupErr) {
+        console.warn('[FolderContextManager] Failed to detach orphan context after registerFolder error:', cleanupErr);
+      }
+      throw err;
+    }
 
     return contextId;
   }
