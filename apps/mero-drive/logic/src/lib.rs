@@ -556,9 +556,14 @@ fn replace_document_content_from_snapshot(
     html: &str,
     timestamp: u64,
 ) -> Result<(), String> {
-    document.content = rga_from_html(html)?;
-    document.updated_at = LwwRegister::new(timestamp);
-    Ok(())
+    let existing_len = document_content_len(document)?;
+
+    if existing_len == 0 && html.is_empty() {
+        document.updated_at = LwwRegister::new(timestamp);
+        return Ok(());
+    }
+
+    apply_replace_text(document, 0, existing_len, html, timestamp)
 }
 
 fn validate_blob_upload_target(_name: &str, _mime_type: &str) -> Result<(), String> {
@@ -2601,6 +2606,73 @@ mod tests {
         assert_eq!(document.author.get(), "author");
         assert_eq!(document.folder_id.get(), &Some("folder_9".to_string()));
         assert_eq!(extract_tags(&document.tags).expect("tags should be readable"), vec!["notes"]);
+    }
+
+    #[test]
+    fn test_document_merge_preserves_concurrent_snapshot_replacements() {
+        let mut left = create_document_record(
+            "doc_snapshot_merge".to_string(),
+            "Snapshot Merge".to_string(),
+            "<p>Base</p>".to_string(),
+            Vec::new(),
+            None,
+            "author".to_string(),
+            1,
+        )
+        .expect("left document should be built");
+        let mut right = create_document_record(
+            "doc_snapshot_merge".to_string(),
+            "Snapshot Merge".to_string(),
+            "<p>Base</p>".to_string(),
+            Vec::new(),
+            None,
+            "author".to_string(),
+            1,
+        )
+        .expect("right document should be built");
+
+        replace_document_content_from_snapshot(&mut left, "<p>Left</p>", 2)
+            .expect("left snapshot update should succeed");
+        replace_document_content_from_snapshot(&mut right, "<p>Right</p>", 2)
+            .expect("right snapshot update should succeed");
+
+        left.merge(&right).expect("merge should succeed");
+
+        let merged = html_from_rga(&left.content).expect("merged content should serialize");
+        assert!(merged.contains("Left"));
+        assert!(merged.contains("Right"));
+    }
+
+    #[test]
+    fn test_document_merge_accepts_snapshot_replacement_against_previous_value() {
+        let mut original = create_document_record(
+            "doc_snapshot_current".to_string(),
+            "Snapshot Current".to_string(),
+            "<p>Base</p>".to_string(),
+            Vec::new(),
+            None,
+            "author".to_string(),
+            1,
+        )
+        .expect("original document should be built");
+        let mut updated = create_document_record(
+            "doc_snapshot_current".to_string(),
+            "Snapshot Current".to_string(),
+            "<p>Base</p>".to_string(),
+            Vec::new(),
+            None,
+            "author".to_string(),
+            1,
+        )
+        .expect("updated document should be built");
+
+        replace_document_content_from_snapshot(&mut updated, "<p>Changed</p>", 2)
+            .expect("snapshot update should succeed");
+
+        original.merge(&updated).expect("merge should succeed");
+
+        let merged = html_from_rga(&original.content).expect("merged content should serialize");
+        assert!(merged.contains("Changed"));
     }
 
     #[test]

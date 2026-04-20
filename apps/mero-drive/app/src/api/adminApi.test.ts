@@ -192,7 +192,7 @@ describe('admin api integration', () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      'http://localhost:2428/admin-api/groups/group-1/contexts',
+      'http://localhost:2428/admin-api/contexts',
       expect.objectContaining({
         method: 'POST',
         headers: {
@@ -207,6 +207,7 @@ describe('admin api integration', () => {
       applicationId: getApplicationId(),
       protocol: 'near',
       alias: 'General',
+      groupId: 'group-1',
     });
     expect(Array.isArray(createContextBody.initializationParams)).toBe(true);
     expect(mockSetContextName).toHaveBeenCalledWith({ name: 'General' });
@@ -217,7 +218,7 @@ describe('admin api integration', () => {
     });
   });
 
-  it('creates a top-level folder context via the group contexts endpoint before registering it', async () => {
+  it('creates a top-level folder context via the standard contexts endpoint before registering it', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
         data: { contextId: 'folder-1' },
@@ -233,7 +234,7 @@ describe('admin api integration', () => {
     );
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://localhost:2428/admin-api/groups/group-1/contexts',
+      'http://localhost:2428/admin-api/contexts',
       expect.objectContaining({
         method: 'POST',
         headers: {
@@ -248,6 +249,7 @@ describe('admin api integration', () => {
       applicationId: getApplicationId(),
       protocol: 'near',
       alias: 'Specs',
+      groupId: 'group-1',
     });
     expect(Array.isArray(createContextBody.initializationParams)).toBe(true);
     expect(mockSetContextName).toHaveBeenCalledWith({ name: 'Specs' });

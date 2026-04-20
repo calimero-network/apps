@@ -7,7 +7,7 @@ interface WorkspaceState {
   activeContextId: string | null;
   generalContextId: string | null;
   setActiveContext: (contextId: string) => void;
-  setActiveWorkspace: (groupId: string, generalContextId: string) => void;
+  setActiveWorkspace: (groupId: string | null, generalContextId: string | null) => void;
 }
 
 const defaultState: WorkspaceState = {
@@ -68,7 +68,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setActiveContextId(contextId);
   };
 
-  const setActiveWorkspace = (groupId: string, newGeneralContextId: string) => {
+  const setActiveWorkspace = (groupId: string | null, newGeneralContextId: string | null) => {
     setActiveGroupId(groupId);
     setGeneralContextId(newGeneralContextId);
     setActiveContextId(newGeneralContextId);

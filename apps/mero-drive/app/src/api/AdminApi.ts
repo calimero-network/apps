@@ -171,31 +171,18 @@ type CreateGroupContextPayload = {
 };
 
 /**
- * Prefer group-scoped context creation when available.
- * Falls back to legacy /contexts endpoint for older nodes.
+ * POST /admin-api/contexts is the only route that accepts context creation.
+ * The group-scoped route only supports GET (listing); POST there returns 405.
  */
 export async function createContextForGroup(
   groupId: string,
   payload: CreateGroupContextPayload,
 ): Promise<{ contextId: string }> {
-  try {
-    return await adminRequest<{ contextId: string }>(`/groups/${groupId}/contexts`, {
-      method: 'POST',
-      body: payload,
-    });
-  } catch (error) {
-    if (
-      error instanceof AdminApiError &&
-      (error.status === 404 || error.status === 405 || error.status === 501)
-    ) {
-      return adminRequest<{ contextId: string }>('/contexts', {
-        method: 'POST',
-        body: {
-          ...payload,
-          groupId,
-        },
-      });
-    }
-    throw error;
-  }
+  return adminRequest<{ contextId: string }>('/contexts', {
+    method: 'POST',
+    body: {
+      ...payload,
+      groupId,
+    },
+  });
 }

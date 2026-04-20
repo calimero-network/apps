@@ -42,8 +42,20 @@ export const WorkspaceSwitcher: React.FC = () => {
       const list = await manager.listWorkspaces(activeGroupId);
       setWorkspaces(list);
 
-      // Auto-select first workspace if none active (hydration usually sets activeGroupId from storage)
-      if (!activeGroupId && list.length > 0 && list[0].generalContextId) {
+      if (list.length === 0) {
+        if (activeGroupId) {
+          setActiveWorkspace(null, null);
+        }
+        return;
+      }
+
+      const activeWorkspaceExists = activeGroupId
+        ? list.some((workspace) => workspace.id === activeGroupId)
+        : false;
+
+      // Auto-select the first available workspace when there is no active selection
+      // or when persisted state points at a workspace that no longer exists.
+      if ((!activeGroupId || !activeWorkspaceExists) && list[0].generalContextId) {
         const first = list[0];
         try {
           const joined = await manager.isMemberOfContext(first.id, first.generalContextId);
