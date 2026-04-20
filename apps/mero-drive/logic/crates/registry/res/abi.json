@@ -1,0 +1,496 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "ContextId": {
+      "kind": "alias",
+      "target": {
+        "kind": "string"
+      }
+    },
+    "Event_FolderColorChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_FolderContextBound": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "folder_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "context_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_FolderParentChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_FolderRegistered": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_FolderSortOrderChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "parent_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_FolderUnregistered": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_FolderVisibilityChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "FolderDto": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "parent_id",
+          "type": {
+            "$ref": "FolderId"
+          },
+          "nullable": true
+        },
+        {
+          "name": "visibility",
+          "type": {
+            "$ref": "Visibility"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "context_id",
+          "type": {
+            "$ref": "ContextId"
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "FolderId": {
+      "kind": "alias",
+      "target": {
+        "kind": "string"
+      }
+    },
+    "FolderRecord": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "parent_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "visibility",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "$ref": "Visibility"
+            }
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "RegistryState": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "folders",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "FolderRecord"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "folder_contexts",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ContextId"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "sort_order",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "list",
+                "items": {
+                  "kind": "string"
+                }
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
+    "Visibility": {
+      "kind": "variant",
+      "variants": [
+        {
+          "name": "Inherit"
+        },
+        {
+          "name": "Restricted"
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "init",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "register_folder",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "parent_id",
+          "type": {
+            "$ref": "FolderId"
+          },
+          "nullable": true
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "unregister_folder",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "get_folder",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FolderDto"
+      }
+    },
+    {
+      "name": "get_folders",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "FolderDto"
+        }
+      }
+    },
+    {
+      "name": "bind_folder_context",
+      "params": [
+        {
+          "name": "folder_id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "context_id",
+          "type": {
+            "$ref": "ContextId"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "get_folder_context",
+      "params": [
+        {
+          "name": "folder_id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "ContextId"
+      }
+    },
+    {
+      "name": "set_visibility",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "visibility",
+          "type": {
+            "$ref": "Visibility"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "set_color",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "move_folder",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "new_parent",
+          "type": {
+            "$ref": "FolderId"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "reorder",
+      "params": [
+        {
+          "name": "parent_id",
+          "type": {
+            "$ref": "FolderId"
+          },
+          "nullable": true
+        },
+        {
+          "name": "folder_ids",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "FolderId"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "get_sort_order",
+      "params": [
+        {
+          "name": "parent_id",
+          "type": {
+            "$ref": "FolderId"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "FolderId"
+        }
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "FolderRegistered",
+      "payload": {
+        "$ref": "Event_FolderRegistered"
+      }
+    },
+    {
+      "name": "FolderUnregistered",
+      "payload": {
+        "$ref": "Event_FolderUnregistered"
+      }
+    },
+    {
+      "name": "FolderContextBound",
+      "payload": {
+        "$ref": "Event_FolderContextBound"
+      }
+    },
+    {
+      "name": "FolderVisibilityChanged",
+      "payload": {
+        "$ref": "Event_FolderVisibilityChanged"
+      }
+    },
+    {
+      "name": "FolderColorChanged",
+      "payload": {
+        "$ref": "Event_FolderColorChanged"
+      }
+    },
+    {
+      "name": "FolderParentChanged",
+      "payload": {
+        "$ref": "Event_FolderParentChanged"
+      }
+    },
+    {
+      "name": "FolderSortOrderChanged",
+      "payload": {
+        "$ref": "Event_FolderSortOrderChanged"
+      }
+    }
+  ],
+  "state_root": "RegistryState"
+}

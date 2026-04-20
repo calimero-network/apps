@@ -1,22 +1,16 @@
-[package]
-name = "mero-drive"
-description = "Calimero Mero Drive Application v7.0 - Context Group Integration"
-version = "8.0.0"
-edition = "2021"
+[workspace]
+members = ["crates/types", "crates/registry", "crates/docs"]
+resolver = "2"
 
-[lib]
-crate-type = ["cdylib"]
-
-[dependencies]
-thiserror = "1.0.56"
+[workspace.dependencies]
 calimero-sdk = { git = "https://github.com/calimero-network/core", branch = "master" }
 calimero-storage = { git = "https://github.com/calimero-network/core", branch = "master" }
 calimero-storage-macros = { git = "https://github.com/calimero-network/core", branch = "master" }
-bs58 = "0.5"
-
-[build-dependencies]
 calimero-wasm-abi = { git = "https://github.com/calimero-network/core", branch = "master" }
+thiserror = "1.0.56"
+bs58 = "0.5"
 serde_json = "1.0.113"
+mero-drive-types = { path = "crates/types" }
 
 [profile.app-release]
 inherits = "release"

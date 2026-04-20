@@ -35,6 +35,12 @@ yarn-error.log*
 # Local design / plan docs (not part of the repo)
 docs/superpowers/specs/
 
+# Merobox runtime data (docker volumes, extracted bundles, RocksDB files)
+e2e/data/
+
+# Logic build intermediates
+logic/res/bundle-temp/
+
 # Keep logic/res (WASM and ABI) and logic/dist (bundle) - these MUST be committed
 !logic/res/
 !logic/dist/

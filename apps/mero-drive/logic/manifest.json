@@ -1,11 +1,27 @@
 {
-  "package": "com.calimero.mero-drive",
-  "version": "8.0.0",
-  "name": "Mero Drive v8.0",
-  "description": "Calimero Mero Drive Application v8.0 - Context Group Integration",
-  "output": "dist/com.calimero.mero-drive-8.0.0.mpk",
-  "abi": "res/abi.json",
-  "frontend": "https://experiments-git-ai-builder-docs-fj2byts-540cc0-calimero-network.vercel.app/",
-  "github": "https://github.com/calimero-network/experiments",
-  "docs": "https://docs.calimero.network/getting-started/"
+  "version": "1.0",
+  "package": "com.calimero.mero-drive-docs",
+  "appVersion": "9.0.0",
+  "minRuntimeVersion": "0.1.0",
+  "metadata": {
+    "name": "Mero Drive Docs",
+    "description": "Namespace-based document workspace — registry + docs multi-service bundle for Calimero.",
+    "author": "Calimero"
+  },
+  "services": [
+    {
+      "name": "registry",
+      "wasm": { "path": "registry.wasm", "size": 0, "hash": null },
+      "abi": { "path": "registry-abi.json", "size": 0, "hash": null }
+    },
+    {
+      "name": "docs",
+      "wasm": { "path": "docs.wasm", "size": 0, "hash": null },
+      "abi": { "path": "docs-abi.json", "size": 0, "hash": null }
+    }
+  ],
+  "migrations": [],
+  "links": {
+    "frontend": "http://localhost:5173/"
+  }
 }
