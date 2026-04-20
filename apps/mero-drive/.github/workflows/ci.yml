@@ -58,15 +58,19 @@ jobs:
         with:
           version: 9
 
+      # pnpm caching via `cache: pnpm` requires a committed lockfile.
+      # `app/pnpm-lock.yaml` is gitignored in this repo (see .gitignore:
+      # "Lock files (deployment generates its own)"), so we skip the
+      # lockfile-hash cache and don't use `--frozen-lockfile`. Cold dep
+      # installs are ~20-30s on CI; acceptable until lockfile policy
+      # changes.
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: pnpm
-          cache-dependency-path: app/pnpm-lock.yaml
 
       - name: Install dependencies
-        run: pnpm --dir app install --frozen-lockfile
+        run: pnpm --dir app install --no-frozen-lockfile
 
       - name: Lint
         run: pnpm --dir app lint

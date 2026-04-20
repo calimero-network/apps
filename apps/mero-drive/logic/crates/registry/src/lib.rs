@@ -49,17 +49,13 @@ use events::Event;
 
 /// Wrapper around a folder / group id string. Newtype so the generated TS
 /// client surfaces `FolderId` instead of a bare `string`.
-#[derive(
-    Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct FolderId(pub String);
 
 /// Wrapper around a Calimero context id. Same rationale as `FolderId`.
-#[derive(
-    Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct ContextId(pub String);
@@ -194,9 +190,7 @@ impl RegistryState {
         let id_for_event = id.0.clone();
         self.register_folder_inner(id, parent_id, color)
             .map_err(|e| AppError::msg(e.to_string()))?;
-        app::emit!(Event::FolderRegistered {
-            id: &id_for_event
-        });
+        app::emit!(Event::FolderRegistered { id: &id_for_event });
         Ok(())
     }
 
@@ -228,9 +222,7 @@ impl RegistryState {
         let id_for_event = id.0.clone();
         self.unregister_folder_inner(id)
             .map_err(|e| AppError::msg(e.to_string()))?;
-        app::emit!(Event::FolderUnregistered {
-            id: &id_for_event
-        });
+        app::emit!(Event::FolderUnregistered { id: &id_for_event });
         Ok(())
     }
 
@@ -348,11 +340,7 @@ impl RegistryState {
         Ok(())
     }
 
-    pub fn move_folder(
-        &mut self,
-        id: FolderId,
-        new_parent: Option<FolderId>,
-    ) -> app::Result<()> {
+    pub fn move_folder(&mut self, id: FolderId, new_parent: Option<FolderId>) -> app::Result<()> {
         self.move_folder_inner(&id.0, new_parent.map(|p| p.0))
             .map_err(|e| AppError::msg(e.to_string()))?;
         app::emit!(Event::FolderParentChanged { id: &id.0 });
@@ -497,7 +485,9 @@ mod tests {
     fn register_duplicate_fails_with_already_exists() {
         let mut app = RegistryState::init();
         app.register_folder_inner(fid("f1"), None, None).unwrap();
-        let err = app.register_folder_inner(fid("f1"), None, None).unwrap_err();
+        let err = app
+            .register_folder_inner(fid("f1"), None, None)
+            .unwrap_err();
         assert!(matches!(err, DriveError::AlreadyExists(_)));
     }
 
@@ -505,7 +495,8 @@ mod tests {
     fn register_folder_stores_parent_id() {
         let mut app = RegistryState::init();
         app.register_folder_inner(fid("p"), None, None).unwrap();
-        app.register_folder_inner(fid("c"), Some(fid("p")), None).unwrap();
+        app.register_folder_inner(fid("c"), Some(fid("p")), None)
+            .unwrap();
         let child = app.get_folder(fid("c")).unwrap();
         assert_eq!(child.parent_id, Some(fid("p")));
     }
@@ -514,7 +505,8 @@ mod tests {
     fn unregister_removes_folder_and_clears_binding() {
         let mut app = RegistryState::init();
         app.register_folder_inner(fid("f1"), None, None).unwrap();
-        app.bind_folder_context_inner(fid("f1"), cid("ctx-1")).unwrap();
+        app.bind_folder_context_inner(fid("f1"), cid("ctx-1"))
+            .unwrap();
         app.unregister_folder_inner(fid("f1")).unwrap();
         assert_eq!(app.get_folders().unwrap().len(), 0);
         assert_eq!(app.get_folder_context(fid("f1")).unwrap(), None);
@@ -539,7 +531,8 @@ mod tests {
     fn bind_folder_context_stores_binding() {
         let mut app = RegistryState::init();
         app.register_folder_inner(fid("f1"), None, None).unwrap();
-        app.bind_folder_context_inner(fid("f1"), cid("ctx-1")).unwrap();
+        app.bind_folder_context_inner(fid("f1"), cid("ctx-1"))
+            .unwrap();
         assert_eq!(
             app.get_folder_context(fid("f1")).unwrap(),
             Some(cid("ctx-1"))
@@ -563,7 +556,8 @@ mod tests {
     fn bind_folder_context_rejects_reassignment() {
         let mut app = RegistryState::init();
         app.register_folder_inner(fid("f1"), None, None).unwrap();
-        app.bind_folder_context_inner(fid("f1"), cid("ctx-1")).unwrap();
+        app.bind_folder_context_inner(fid("f1"), cid("ctx-1"))
+            .unwrap();
         let err = app
             .bind_folder_context_inner(fid("f1"), cid("ctx-2"))
             .unwrap_err();
@@ -580,7 +574,8 @@ mod tests {
             app.get_folder(fid("f1")).unwrap().visibility,
             Visibility::Inherit
         );
-        app.set_visibility_inner("f1", Visibility::Restricted).unwrap();
+        app.set_visibility_inner("f1", Visibility::Restricted)
+            .unwrap();
         assert_eq!(
             app.get_folder(fid("f1")).unwrap().visibility,
             Visibility::Restricted
@@ -602,7 +597,8 @@ mod tests {
     #[test]
     fn set_color_empty_clears() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("f1"), None, Some("#ff0000".into())).unwrap();
+        app.register_folder_inner(fid("f1"), None, Some("#ff0000".into()))
+            .unwrap();
         app.set_color_inner("f1", "".into()).unwrap();
         assert_eq!(app.get_folder(fid("f1")).unwrap().color, None);
     }
@@ -621,12 +617,10 @@ mod tests {
         let mut app = RegistryState::init();
         app.register_folder_inner(fid("p1"), None, None).unwrap();
         app.register_folder_inner(fid("p2"), None, None).unwrap();
-        app.register_folder_inner(fid("c"), Some(fid("p1")), None).unwrap();
+        app.register_folder_inner(fid("c"), Some(fid("p1")), None)
+            .unwrap();
         app.move_folder_inner("c", Some("p2".into())).unwrap();
-        assert_eq!(
-            app.get_folder(fid("c")).unwrap().parent_id,
-            Some(fid("p2"))
-        );
+        assert_eq!(app.get_folder(fid("c")).unwrap().parent_id, Some(fid("p2")));
         app.move_folder_inner("c", None).unwrap();
         assert_eq!(app.get_folder(fid("c")).unwrap().parent_id, None);
     }
@@ -651,7 +645,8 @@ mod tests {
     fn reorder_rejects_ids_not_in_parent() {
         let mut app = RegistryState::init();
         app.register_folder_inner(fid("a"), None, None).unwrap();
-        app.register_folder_inner(fid("b"), Some(fid("a")), None).unwrap();
+        app.register_folder_inner(fid("b"), Some(fid("a")), None)
+            .unwrap();
         let err = app
             .reorder_inner(None, vec![fid("a"), fid("b")])
             .unwrap_err();
@@ -675,10 +670,7 @@ mod tests {
         app.register_folder_inner(fid("b"), None, None).unwrap();
         app.reorder_inner(None, vec![fid("a"), fid("b")]).unwrap();
         app.reorder_inner(None, vec![fid("b"), fid("a")]).unwrap();
-        assert_eq!(
-            app.get_sort_order(None).unwrap(),
-            vec![fid("b"), fid("a")]
-        );
+        assert_eq!(app.get_sort_order(None).unwrap(), vec![fid("b"), fid("a")]);
     }
 
     #[test]
@@ -696,9 +688,11 @@ mod tests {
     #[test]
     fn full_lifecycle_register_bind_recolor_reorder_unregister() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("a"), None, Some("#f00".into())).unwrap();
+        app.register_folder_inner(fid("a"), None, Some("#f00".into()))
+            .unwrap();
         app.register_folder_inner(fid("b"), None, None).unwrap();
-        app.bind_folder_context_inner(fid("a"), cid("ctx-a")).unwrap();
+        app.bind_folder_context_inner(fid("a"), cid("ctx-a"))
+            .unwrap();
         app.set_color_inner("a", "#0f0".into()).unwrap();
         app.reorder_inner(None, vec![fid("b"), fid("a")]).unwrap();
 

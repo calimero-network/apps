@@ -6,11 +6,26 @@
 
 #[calimero_sdk::app::event]
 pub enum Event<'a> {
-    FolderRegistered { id: &'a str },
-    FolderUnregistered { id: &'a str },
-    FolderContextBound { folder_id: &'a str, context_id: &'a str },
-    FolderVisibilityChanged { id: &'a str },
-    FolderColorChanged { id: &'a str },
-    FolderParentChanged { id: &'a str },
-    FolderSortOrderChanged { parent_id: &'a str },
+    FolderRegistered {
+        id: &'a str,
+    },
+    FolderUnregistered {
+        id: &'a str,
+    },
+    FolderContextBound {
+        folder_id: &'a str,
+        context_id: &'a str,
+    },
+    FolderVisibilityChanged {
+        id: &'a str,
+    },
+    FolderColorChanged {
+        id: &'a str,
+    },
+    FolderParentChanged {
+        id: &'a str,
+    },
+    FolderSortOrderChanged {
+        parent_id: &'a str,
+    },
 }

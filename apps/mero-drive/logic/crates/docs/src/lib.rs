@@ -286,9 +286,7 @@ impl DocsState {
         let id_for_event = id.clone();
         self.add_tag_inner(id, tag)
             .map_err(|e| AppError::msg(e.to_string()))?;
-        app::emit!(Event::DocTagsChanged {
-            id: &id_for_event
-        });
+        app::emit!(Event::DocTagsChanged { id: &id_for_event });
         Ok(())
     }
 
@@ -318,9 +316,7 @@ impl DocsState {
         let id_for_event = id.clone();
         self.remove_tag_inner(id, tag)
             .map_err(|e| AppError::msg(e.to_string()))?;
-        app::emit!(Event::DocTagsChanged {
-            id: &id_for_event
-        });
+        app::emit!(Event::DocTagsChanged { id: &id_for_event });
         Ok(())
     }
 
@@ -352,7 +348,9 @@ mod tests {
     #[test]
     fn create_doc_assigns_id_and_returns_it() {
         let mut app = DocsState::init();
-        let id = app.create_doc_inner("hello".into(), "world".into()).unwrap();
+        let id = app
+            .create_doc_inner("hello".into(), "world".into())
+            .unwrap();
         assert!(id.starts_with("doc-"));
         let d = app.get_doc(id.clone()).unwrap();
         assert_eq!(d.id, id);
@@ -395,7 +393,8 @@ mod tests {
     fn edit_doc_updates_title_and_content() {
         let mut app = DocsState::init();
         let id = app.create_doc_inner("old".into(), "body".into()).unwrap();
-        app.edit_doc_inner(id.clone(), Some("new".into()), Some("newbody".into())).unwrap();
+        app.edit_doc_inner(id.clone(), Some("new".into()), Some("newbody".into()))
+            .unwrap();
         let d = app.get_doc(id).unwrap();
         assert_eq!(d.title, "new");
         assert_eq!(d.content, "newbody");
@@ -405,7 +404,8 @@ mod tests {
     fn edit_doc_partial_keeps_untouched_fields() {
         let mut app = DocsState::init();
         let id = app.create_doc_inner("old".into(), "body".into()).unwrap();
-        app.edit_doc_inner(id.clone(), Some("new".into()), None).unwrap();
+        app.edit_doc_inner(id.clone(), Some("new".into()), None)
+            .unwrap();
         let d = app.get_doc(id).unwrap();
         assert_eq!(d.title, "new");
         assert_eq!(d.content, "body");
@@ -415,7 +415,8 @@ mod tests {
     fn edit_doc_clears_content_when_empty_string() {
         let mut app = DocsState::init();
         let id = app.create_doc_inner("t".into(), "body".into()).unwrap();
-        app.edit_doc_inner(id.clone(), None, Some("".into())).unwrap();
+        app.edit_doc_inner(id.clone(), None, Some("".into()))
+            .unwrap();
         assert_eq!(app.get_doc(id).unwrap().content, "");
     }
 
@@ -509,15 +510,20 @@ mod tests {
     #[test]
     fn remove_tag_unknown_doc_is_not_found() {
         let mut app = DocsState::init();
-        let err = app.remove_tag_inner("ghost".into(), "t".into()).unwrap_err();
+        let err = app
+            .remove_tag_inner("ghost".into(), "t".into())
+            .unwrap_err();
         assert!(matches!(err, DriveError::NotFound(_)));
     }
 
     #[test]
     fn full_lifecycle_create_edit_archive_tag_delete() {
         let mut app = DocsState::init();
-        let id = app.create_doc_inner("draft".into(), "hello".into()).unwrap();
-        app.edit_doc_inner(id.clone(), Some("final".into()), Some("world".into())).unwrap();
+        let id = app
+            .create_doc_inner("draft".into(), "hello".into())
+            .unwrap();
+        app.edit_doc_inner(id.clone(), Some("final".into()), Some("world".into()))
+            .unwrap();
         app.add_tag_inner(id.clone(), "review".into()).unwrap();
         app.add_tag_inner(id.clone(), "urgent".into()).unwrap();
         app.remove_tag_inner(id.clone(), "urgent".into()).unwrap();
@@ -541,7 +547,8 @@ mod tests {
         // Force a small HLC advance so the LWW timestamp on updated_at
         // definitely ticks forward (same-ns collisions would be a flake).
         std::thread::sleep(std::time::Duration::from_millis(2));
-        app.edit_doc_inner(id.clone(), Some("new".into()), None).unwrap();
+        app.edit_doc_inner(id.clone(), Some("new".into()), None)
+            .unwrap();
         let after = app.get_doc(id).unwrap().updated_at;
         assert!(
             after > before,
@@ -568,7 +575,8 @@ mod tests {
         let id = app.create_doc_inner("t".into(), "c".into()).unwrap();
         app.add_tag_inner(id.clone(), "urgent".into()).unwrap();
         app.set_archived_inner(id.clone(), true).unwrap();
-        app.edit_doc_inner(id.clone(), Some("new".into()), None).unwrap();
+        app.edit_doc_inner(id.clone(), Some("new".into()), None)
+            .unwrap();
         let d = app.get_doc(id).unwrap();
         assert_eq!(d.tags, vec!["urgent".to_string()]);
         assert_eq!(d.archived, true);
