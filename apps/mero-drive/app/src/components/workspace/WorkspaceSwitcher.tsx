@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useCalimero } from '@calimero-network/calimero-client';
 import { WorkspaceManager, WorkspaceInfo } from '@/api/WorkspaceManager';
 import { adminRequest, AdminApiError } from '@/api/AdminApi';
@@ -34,50 +34,68 @@ export const WorkspaceSwitcher: React.FC = () => {
     }
   }, [isCreating]);
 
-  const loadWorkspaces = useCallback(async () => {
-    setIsLoading(true);
-    setErrorMessage(null);
-    try {
-      const manager = new WorkspaceManager(app);
-      const list = await manager.listWorkspaces(activeGroupId);
-      setWorkspaces(list);
-
-      if (list.length === 0) {
-        if (activeGroupId) {
-          setActiveWorkspace(null, null);
-        }
-        return;
-      }
-
-      const activeWorkspaceExists = activeGroupId
-        ? list.some((workspace) => workspace.id === activeGroupId)
-        : false;
-
-      // Auto-select the first available workspace when there is no active selection
-      // or when persisted state points at a workspace that no longer exists.
-      if ((!activeGroupId || !activeWorkspaceExists) && list[0].generalContextId) {
-        const first = list[0];
-        try {
-          const joined = await manager.isMemberOfContext(first.id, first.generalContextId);
-          if (!joined) {
-            await manager.joinContextViaGroup(first.id, first.generalContextId);
-          }
-        } catch {
-          // proceed with workspace selection
-        }
-        setActiveWorkspace(first.id, first.generalContextId);
-      }
-    } catch (err) {
-      console.error('[WorkspaceSwitcher] Failed to load workspaces:', err);
-      setErrorMessage('Failed to load workspaces from the current Calimero node.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [activeGroupId, app, setActiveWorkspace]);
+  // Read activeGroupId via a ref so the load effect doesn't re-fire when
+  // auto-select updates it (which would otherwise cause a redundant refetch).
+  const activeGroupIdRef = useRef(activeGroupId);
+  useEffect(() => {
+    activeGroupIdRef.current = activeGroupId;
+  }, [activeGroupId]);
 
   useEffect(() => {
-    loadWorkspaces();
-  }, [loadWorkspaces]);
+    let cancelled = false;
+    const load = async () => {
+      setIsLoading(true);
+      setErrorMessage(null);
+      try {
+        const manager = new WorkspaceManager(app);
+        const currentActiveGroupId = activeGroupIdRef.current;
+        const list = await manager.listWorkspaces(currentActiveGroupId);
+        if (cancelled) return;
+        setWorkspaces(list);
+
+        if (list.length === 0) {
+          if (currentActiveGroupId) {
+            setActiveWorkspace(null, null);
+          }
+          return;
+        }
+
+        const activeWorkspaceExists = currentActiveGroupId
+          ? list.some((workspace) => workspace.id === currentActiveGroupId)
+          : false;
+
+        // Auto-select the first available workspace when there is no active selection
+        // or when persisted state points at a workspace that no longer exists.
+        if ((!currentActiveGroupId || !activeWorkspaceExists) && list[0].generalContextId) {
+          const first = list[0];
+          try {
+            const joined = await manager.isMemberOfContext(first.id, first.generalContextId);
+            if (!joined) {
+              await manager.joinContextViaGroup(first.id, first.generalContextId);
+            }
+          } catch {
+            // proceed with workspace selection
+          }
+          if (!cancelled) {
+            setActiveWorkspace(first.id, first.generalContextId);
+          }
+        }
+      } catch (err) {
+        if (cancelled) return;
+        console.error('[WorkspaceSwitcher] Failed to load workspaces:', err);
+        setErrorMessage('Failed to load workspaces from the current Calimero node.');
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [app, setActiveWorkspace]);
 
   const handleSelectWorkspace = async (workspace: WorkspaceInfo) => {
     setErrorMessage(null);

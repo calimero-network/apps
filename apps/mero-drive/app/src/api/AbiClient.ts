@@ -219,12 +219,16 @@ export class AbiClient {
       throw new Error(`Context not found: ${this.contextId}`);
     }
 
+    // No explicit contextId: use the first available context. Do NOT
+    // spawn a new one — in multi-context mode, silently creating a
+    // context would write the user's data into a stray workspace.
     const contexts = await this.app.fetchContexts();
     if (contexts.length === 0) {
-      this.context = await this.app.createContext();
-    } else {
-      this.context = contexts[0];
+      throw new Error(
+        'AbiClient: no contexts available and no contextId was supplied.',
+      );
     }
+    this.context = contexts[0];
     return this.context;
   }
 
