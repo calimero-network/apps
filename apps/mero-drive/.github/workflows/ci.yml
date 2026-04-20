@@ -1,0 +1,326 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "app/**"
+      - "logic/**"
+      - "e2e/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/ci.yml"
+
+  pull_request:
+    branches: [master]
+    paths:
+      - "app/**"
+      - "logic/**"
+      - "e2e/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/ci.yml"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ============================================================
+  # Job 1: Frontend — Lint, Build, Test
+  # ============================================================
+  # The app/ directory is currently the pre-migration v8 layer (still
+  # uses the hand-written AbiClient / WorkspaceManager / FolderContextManager).
+  # Phase 4 of the namespace migration will rewrite it against the new
+  # generated clients + mero-react hooks. Until that lands, this job
+  # prevents unrelated regressions in the existing app while the
+  # backend migration is in flight.
+  #
+  # `tsc --noEmit` is intentionally NOT run here: the current app has
+  # one pre-existing type mismatch against @calimero-network/calimero-client
+  # (ConnectionType enum drift) that's unrelated to this migration.
+  # Typecheck returns as a required gate once Phase 4 ships the
+  # rewritten app layer.
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm --dir app install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm --dir app lint
+
+      - name: Test
+        if: ${{ !cancelled() }}
+        run: pnpm --dir app test
+
+      - name: Build
+        if: ${{ !cancelled() }}
+        run: pnpm --dir app build
+
+  # ============================================================
+  # Job 2: Logic (Rust) — Format, Clippy, Unit Tests, WASM Build
+  # ============================================================
+  # Covers the two-crate workspace (registry + docs + shared types)
+  # produced by Phases 1–3 of the namespace migration. Runs:
+  #   - `cargo fmt --check`            — formatting
+  #   - `cargo clippy` (host)          — lint the whole workspace
+  #   - `cargo test --workspace`       — 60 unit tests on host
+  #   - `cargo build` (wasm32-…)       — produce the `.wasm` artifacts
+  #     for both services (registry + docs)
+  logic:
+    name: Logic (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            logic/target
+          key: logic-${{ runner.os }}-${{ hashFiles('logic/Cargo.toml', 'logic/crates/*/Cargo.toml') }}
+          restore-keys: logic-${{ runner.os }}-
+
+      - name: Cargo format
+        working-directory: logic
+        run: cargo fmt --check
+
+      - name: Cargo clippy (workspace, host)
+        if: ${{ !cancelled() }}
+        working-directory: logic
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Cargo test (workspace)
+        if: ${{ !cancelled() }}
+        working-directory: logic
+        run: cargo test --workspace
+
+      - name: Build registry WASM
+        if: ${{ !cancelled() }}
+        working-directory: logic/crates/registry
+        run: cargo build --target wasm32-unknown-unknown --profile app-release
+
+      - name: Build docs WASM
+        if: ${{ !cancelled() }}
+        working-directory: logic/crates/docs
+        run: cargo build --target wasm32-unknown-unknown --profile app-release
+
+  # ============================================================
+  # Job 3: Bundle — Build the multi-service .mpk
+  # ============================================================
+  # Produces the signed bundle `com.calimero.mero-drive-docs-9.0.0.mpk`
+  # from the two wasm artifacts. Uploaded as a build artifact so the
+  # e2e job below can consume it without rebuilding, and so PR
+  # reviewers can download and inspect the actual artifact that would
+  # ship.
+  #
+  # Signing: the build-bundle.sh script signs against the sibling
+  # `../../core/scripts/test-signing-key/test-key.json`. In CI there's
+  # no sibling core checkout, so `mero-sign` isn't available — the
+  # script prints a warning and produces an unsigned bundle, which is
+  # fine for dev / e2e usage (`merobox install --dev` accepts unsigned).
+  bundle:
+    name: Bundle (.mpk)
+    runs-on: ubuntu-latest
+    needs: [logic]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            logic/target
+          key: logic-${{ runner.os }}-${{ hashFiles('logic/Cargo.toml', 'logic/crates/*/Cargo.toml') }}
+          restore-keys: logic-${{ runner.os }}-
+
+      - name: Build bundle
+        working-directory: logic
+        run: ./build-bundle.sh
+
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mero-drive-docs-bundle-${{ github.sha }}
+          path: logic/dist/*.mpk
+          retention-days: 7
+          if-no-files-found: error
+
+  # ============================================================
+  # Job 4: E2E — Merobox Multi-Service Workflow
+  # ============================================================
+  # Runs the two-node namespace + registry + docs workflow that
+  # exercises every public method on both services plus 18 negative
+  # paths, and the single-node reconciliation workflow that covers
+  # the three drift scenarios from the design spec.
+  #
+  # merobox + calimero-client-py are both installed from master. At
+  # the time of this PR the namespace unwrap fix landed on both master
+  # branches but isn't tagged on PyPI yet — pulling master keeps CI
+  # aligned with the runtime that `merod:edge` ships.
+  #
+  # The main workflow includes a "warmup probe" (create + sync +
+  # delete + sync) as a workaround for a cold-start sync race on
+  # subgroup-owned contexts, fixed upstream in
+  # calimero-network/core#2170. Once that PR merges + reaches the
+  # `merod:edge` image, the warmup block can be removed.
+  e2e:
+    name: E2E (Merobox)
+    runs-on: ubuntu-latest
+    needs: [bundle]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install merobox + calimero-client-py (from master)
+        run: |
+          pip install "merobox @ git+https://github.com/calimero-network/merobox.git@master"
+          pip install --force-reinstall --no-deps \
+            "calimero-client-py @ git+https://github.com/calimero-network/calimero-client-py.git@master"
+          merobox --version
+
+      - name: Download bundle artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: mero-drive-docs-bundle-${{ github.sha }}
+          path: logic/dist
+
+      - name: Prepare log directory
+        run: mkdir -p docker-logs
+
+      - name: Run main e2e workflow
+        id: run_main
+        run: |
+          cd e2e
+          max_attempts=2
+          attempt=1
+          success=false
+
+          while [ $attempt -le $max_attempts ]; do
+            if [ $attempt -gt 1 ]; then
+              echo "Retry attempt $attempt for main e2e..."
+              merobox stop --all || true
+              merobox nuke --force || true
+              sleep 2
+            fi
+
+            if merobox bootstrap run \
+                "workflow-mero-drive-e2e.yml" \
+                --e2e-mode; then
+              success=true
+              break
+            else
+              echo "Collecting docker logs for attempt $attempt"
+              for container in $(docker ps -a --format "{{.Names}}" 2>/dev/null || true); do
+                if [ -n "$container" ]; then
+                  docker logs "$container" \
+                    > "$GITHUB_WORKSPACE/docker-logs/main-attempt${attempt}-${container}.log" \
+                    2>&1 || true
+                fi
+              done
+              attempt=$((attempt + 1))
+            fi
+          done
+
+          merobox stop --all || true
+          merobox nuke --force || true
+
+          if [ "$success" = false ]; then
+            echo "failed=true" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: Run reconciliation workflow
+        if: ${{ !cancelled() }}
+        id: run_reconciliation
+        run: |
+          cd e2e
+          max_attempts=2
+          attempt=1
+          success=false
+
+          while [ $attempt -le $max_attempts ]; do
+            if [ $attempt -gt 1 ]; then
+              echo "Retry attempt $attempt for reconciliation..."
+              merobox stop --all || true
+              merobox nuke --force || true
+              sleep 2
+            fi
+
+            if merobox bootstrap run \
+                "workflow-mero-drive-reconciliation.yml" \
+                --e2e-mode; then
+              success=true
+              break
+            else
+              for container in $(docker ps -a --format "{{.Names}}" 2>/dev/null || true); do
+                if [ -n "$container" ]; then
+                  docker logs "$container" \
+                    > "$GITHUB_WORKSPACE/docker-logs/reconciliation-attempt${attempt}-${container}.log" \
+                    2>&1 || true
+                fi
+              done
+              attempt=$((attempt + 1))
+            fi
+          done
+
+          merobox stop --all || true
+          merobox nuke --force || true
+
+          if [ "$success" = false ]; then
+            echo "failed=true" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: Upload docker logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-docker-logs-${{ github.sha }}
+          path: docker-logs/
+          retention-days: 7
+          if-no-files-found: ignore
