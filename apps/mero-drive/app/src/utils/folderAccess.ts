@@ -18,6 +18,8 @@ export interface FolderAccessContext {
   canJoinOpenContexts: boolean;
   currentMemberIdentity: string | null;
   allowlistsByContextId: Map<string, string[]>;
+  /** Context IDs the current node created — the creator always has access. */
+  selfCreatedContextIds: Set<string>;
 }
 
 function identitiesMatch(a: string, b: string): boolean {
@@ -28,14 +30,14 @@ export function computeFolderAccess(
   folder: FolderContextWithVisibility,
   ctx: FolderAccessContext,
 ): FolderAccessInfo {
-  const { isAdmin, canJoinOpenContexts, currentMemberIdentity, allowlistsByContextId } = ctx;
+  const { isAdmin, canJoinOpenContexts, currentMemberIdentity, allowlistsByContextId, selfCreatedContextIds } = ctx;
 
   const allowlist = allowlistsByContextId.get(folder.context_id) ?? [];
   const isAllowlisted = currentMemberIdentity
     ? allowlist.some((id) => identitiesMatch(id, currentMemberIdentity))
     : false;
 
-  const isCreator = false;
+  const isCreator = selfCreatedContextIds.has(folder.context_id);
 
   let accessLevel: FolderAccessLevel;
   let canJoin: boolean;

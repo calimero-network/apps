@@ -206,7 +206,8 @@ export class AbiClient {
       // full list so older nodes still work.
       try {
         const contexts = await this.app.fetchContexts();
-        const found = contexts.find((c) => c.contextId === this.contextId);
+        const candidateIds = new Set(buildContextIdCandidates(this.contextId));
+        const found = contexts.find((c) => candidateIds.has(c.contextId));
         if (found) {
           this.context = found;
           return this.context;
@@ -238,7 +239,7 @@ export class AbiClient {
     for (const candidateId of candidateIds) {
       try {
         const result = await adminRequest<{ identities: string[] }>(
-          `/contexts/${candidateId}/identities-owned`,
+          `/contexts/${encodeURIComponent(candidateId)}/identities-owned`,
         );
         const identities = result?.identities;
         if (!identities?.length) continue;

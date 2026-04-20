@@ -4,7 +4,6 @@ import { getApplicationId } from '@/constants/config';
 import {
   adminRequest,
   adminRequestFull,
-  AdminApiError,
   createContextForGroup,
   DEFAULT_CONTEXT_PROTOCOL,
   encodeInitializationParams,
@@ -225,12 +224,10 @@ export class WorkspaceManager {
       try {
         await new AbiClient(this.app, generalContextId).setContextName({ name: 'General' });
       } catch (error) {
-        throw new AdminApiError(
-          error instanceof Error ? error.message : 'Failed to name the General context.',
-          500,
-          'server',
-          error,
-        );
+        // Non-blocking: the group+context already exist and are usable. Throwing
+        // here would leave a caller to retry and create a duplicate workspace.
+        // The context name will be blank until the next successful rename.
+        console.warn('[WorkspaceManager] setContextName failed (non-blocking):', error);
       }
 
       try {
@@ -303,7 +300,8 @@ export class WorkspaceManager {
   }
 
   async setMemberAlias(groupId: string, identity: string, alias: string): Promise<void> {
-    await adminRequest<void>(`/groups/${groupId}/members/${identity}/alias`, {
+    const id = encodeURIComponent(identity);
+    await adminRequest<void>(`/groups/${groupId}/members/${id}/alias`, {
       method: 'PUT',
       body: { alias },
     });
@@ -311,11 +309,6 @@ export class WorkspaceManager {
 
   async getGroupInfo(groupId: string): Promise<GroupInfo> {
     return adminRequest<GroupInfo>(`/groups/${groupId}`);
-  }
-
-  async getDefaultCapabilities(groupId: string): Promise<number> {
-    const { defaultCapabilities } = await this.getGroupInfo(groupId);
-    return defaultCapabilities;
   }
 
   async setDefaultCapabilities(groupId: string, capabilities: number): Promise<void> {

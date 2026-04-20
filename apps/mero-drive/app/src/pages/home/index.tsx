@@ -149,6 +149,14 @@ const HomePage: React.FC = () => {
     }
   }, [isAuthenticated, navigate]);
 
+  // Clear per-context UI state when the workspace changes so filters from
+  // workspace A (selected subfolder, search) don't leak into workspace B.
+  useEffect(() => {
+    setSelectedFolderId(null);
+    setSearchQuery('');
+    setPendingFolderJoin(null);
+  }, [activeGroupId]);
+
   // Load top-level folders (with visibility) when workspace changes
   useEffect(() => {
     if (!app || !activeGroupId) return;
@@ -202,11 +210,18 @@ const HomePage: React.FC = () => {
 
       if (cancelled) return;
 
+      const selfCreatedContextIds = new Set(
+        topLevelFolders
+          .map((f) => f.context_id)
+          .filter((cid) => isSelfCreatedFolderContext(activeGroupId, cid)),
+      );
+
       const ctx: FolderAccessContext = {
         isAdmin: permissions.isAdmin,
         canJoinOpenContexts: permissions.canJoinOpenContexts,
         currentMemberIdentity: permissions.currentMemberIdentity,
         allowlistsByContextId,
+        selfCreatedContextIds,
       };
 
       setFolderAccessInfos(computeAllFolderAccess(topLevelFolders, ctx));
@@ -712,22 +727,27 @@ const HomePage: React.FC = () => {
         color ?? undefined,
       );
 
-      // Apply chosen visibility (user picked in dialog), fall back to workspace
-      // default, then to 'open' if the node doesn't support defaults.
+      // Apply chosen visibility (user picked in dialog). When no choice was
+      // made, try the workspace default, then fall back to 'open' if the
+      // default lookup fails (older nodes may not support it).
       const chosenVis = visibility ?? null;
-      try {
-        if (chosenVis) {
+      if (chosenVis) {
+        try {
           await manager.setFolderVisibility(activeGroupId, contextId, chosenVis);
-        } else {
+        } catch {
+          // Node may not support visibility — proceed without setting it
+        }
+      } else {
+        try {
           const wsManager = new WorkspaceManager(app);
           const defaultVis = await wsManager.getDefaultVisibility(activeGroupId);
           await manager.setFolderVisibility(activeGroupId, contextId, defaultVis);
-        }
-      } catch {
-        try {
-          await manager.setFolderVisibility(activeGroupId, contextId, chosenVis ?? 'open');
         } catch {
-          // Node may not support visibility — proceed without setting it
+          try {
+            await manager.setFolderVisibility(activeGroupId, contextId, 'open');
+          } catch {
+            // Node may not support visibility — proceed without setting it
+          }
         }
       }
 
