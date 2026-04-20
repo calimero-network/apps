@@ -1,9 +1,9 @@
 {
   "package": "com.calimero.mero-drive",
-  "version": "6.1.0",
+  "version": "8.0.0",
   "name": "Mero Drive v6.1",
   "description": "Calimero Mero Drive Application v6.1 - Open invitations for collaboration",
-  "output": "dist/com.calimero.mero-drive-6.1.0.mpk",
+  "output": "dist/com.calimero.mero-drive-8.0.0.mpk",
   "abi": "res/abi.json",
   "frontend": "https://experiments-git-ai-builder-docs-fj2byts-540cc0-calimero-network.vercel.app/",
   "github": "https://github.com/calimero-network/experiments",
