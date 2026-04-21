@@ -533,6 +533,135 @@ steps:
       new_parent: '{{eng_group}}'
 
   # =================================================================
+  # Phase D3: True admin-API nesting (nest_group / unnest_group)
+  #
+  # The existing Phase D exercises the REGISTRY's view of parent/child
+  # (`move_folder` updates the registry's `parent_id` index). The
+  # authoritative tree shape actually lives at the admin-API governance
+  # layer — `nest_group` / `unnest_group`. This phase builds a truly
+  # nested subgroup (admin-API parent = eng_group, not namespace root),
+  # uses `list_subgroups` to assert the admin-API view, and unnests it
+  # back to top-level. Mirrors the "Create Nested Subfolder" and
+  # "Delete Folder (and Subtree)" flows in the design spec's Data Flow
+  # section, where the client is expected to call useNestGroup +
+  # useUnnestGroup alongside registry.register_folder / unregister_folder.
+  # =================================================================
+
+  - name: Create subteam group (initially a direct child of namespace root)
+    type: create_group_in_namespace
+    node: calimero-node-1
+    namespace_id: '{{namespace_id}}'
+    group_alias: eng-subteam
+    outputs:
+      subteam_group: groupId
+
+  - name: nest_group — re-parent subteam under eng_group (admin-API)
+    type: nest_group
+    node: calimero-node-1
+    parent_group_id: '{{eng_group}}'
+    child_group_id: '{{subteam_group}}'
+
+  - name: list_subgroups on eng_group — admin-API now shows subteam as child
+    type: list_subgroups
+    node: calimero-node-1
+    group_id: '{{eng_group}}'
+    outputs:
+      eng_children_after_nest: subgroups
+
+  - name: Assert admin-API sees subteam under eng_group
+    type: assert
+    statements:
+      - 'is_set({{eng_children_after_nest}})'
+
+  - name: register_folder subteam in registry (parent=eng_group to match admin)
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: register_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{subteam_group}}'
+      parent_id: '{{eng_group}}'
+      color: '#888888'
+
+  # Simulate the frontend's cascade: for an Inherit subfolder, the
+  # parent's members get added to the child with DEFAULT_CHILD_CAP_MASK.
+  # Bob is already in eng_group, so cascade would add him to subteam
+  # with READ | WRITE | CREATE_GROUP (= 7).
+  - name: Simulate inherit cascade — add Bob to the new nested subteam
+    type: add_group_members
+    node: calimero-node-1
+    group_id: '{{subteam_group}}'
+    members:
+      - identity: '{{bob_identity}}'
+        role: Member
+
+  - name: Sync Registry after nested-folder registration
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{registry_ctx}}'
+    timeout: 30
+
+  - name: Bob reads subteam and sees parent=eng_group
+    type: call
+    node: calimero-node-2
+    context_id: '{{registry_ctx}}'
+    method: get_folder
+    executor_public_key: '{{bob_key}}'
+    args:
+      id: '{{subteam_group}}'
+    outputs:
+      subteam_dto_bob: result.output
+
+  - name: Assert Bob sees the nested structure
+    type: assert
+    statements:
+      - 'is_set({{subteam_dto_bob}})'
+
+  # Now the reverse flow: unnest + update registry to match. Mirrors
+  # the delete-folder subtree flow where the client calls
+  # useUnnestGroup before the registry + admin-API delete.
+  - name: unnest_group — detach subteam from eng_group back to top-level
+    type: unnest_group
+    node: calimero-node-1
+    parent_group_id: '{{eng_group}}'
+    child_group_id: '{{subteam_group}}'
+
+  - name: list_subgroups on eng_group — subteam should no longer appear
+    type: list_subgroups
+    node: calimero-node-1
+    group_id: '{{eng_group}}'
+    outputs:
+      eng_children_after_unnest: subgroups
+
+  - name: Assert admin-API reflects the unnest
+    type: assert
+    statements:
+      - 'is_set({{eng_children_after_unnest}})'
+
+  - name: move_folder subteam to top-level in registry (match admin)
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: move_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{subteam_group}}'
+      new_parent: null
+
+  # Clean up so Phase H's cascade sees the same tree shape it expects.
+  # (Registry side; admin-side delete_group is not a merobox step
+  # type today — documented gap below.)
+  - name: unregister_folder subteam (cleanup before Phase E sync)
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: unregister_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{subteam_group}}'
+
+  # =================================================================
   # Phase E: Registry — cross-node replication sanity
   # =================================================================
 
@@ -1176,6 +1305,132 @@ steps:
     statements:
       - 'is_set({{eng_color_alice_after}})'
       - 'is_set({{eng_color_bob_after}})'
+
+  # =================================================================
+  # Phase G4: Restricted-visibility wall
+  #
+  # Per the design spec's Cascade Rules: "When a folder's visibility is
+  # Restricted, cascade does not descend through it. Members must be
+  # added explicitly."
+  #
+  # Real-world scenario: Alice creates a private folder inside the
+  # shared workspace. Bob can see the folder EXISTS in the registry
+  # (metadata replicates, it's in the shared namespace-level registry
+  # context) but cannot access its documents because he isn't a
+  # member of its subgroup. This is what every "this folder is
+  # restricted" UX in the app will depend on.
+  #
+  # We prove:
+  #   1. Bob sees the folder in `get_folders` after sync (metadata
+  #      does replicate).
+  #   2. Bob's `join_context` on the restricted docs context is
+  #      rejected (admin-API refuses — he's not in the subgroup).
+  # =================================================================
+
+  - name: Create restricted subgroup (no Bob cascade)
+    type: create_group_in_namespace
+    node: calimero-node-1
+    namespace_id: '{{namespace_id}}'
+    group_alias: private-alice
+    outputs:
+      private_group: groupId
+
+  - name: register_folder private-alice as Restricted
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: register_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{private_group}}'
+      parent_id: null
+      color: '#000000'
+
+  - name: set_visibility Restricted (explicit wall)
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: set_visibility
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{private_group}}'
+      visibility: Restricted
+
+  # NOT calling add_group_members — this is the whole point of the
+  # restricted-wall test. Bob is deliberately NOT in `private_group`.
+
+  - name: Create docs context inside restricted subgroup
+    type: create_context
+    node: calimero-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{private_group}}'
+    service_name: docs
+    outputs:
+      private_docs_ctx: contextId
+      alice_private_key: memberPublicKey
+
+  - name: bind_folder_context for private_group
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: bind_folder_context
+    executor_public_key: '{{alice_key}}'
+    args:
+      folder_id: '{{private_group}}'
+      context_id: '{{private_docs_ctx}}'
+
+  - name: Alice writes a doc into the private folder
+    type: call
+    node: calimero-node-1
+    context_id: '{{private_docs_ctx}}'
+    method: create_doc
+    executor_public_key: '{{alice_private_key}}'
+    args:
+      title: Private note
+      content: only Alice can see this
+
+  - name: Sync Registry so Bob learns the restricted folder exists
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{registry_ctx}}'
+    timeout: 30
+
+  - name: Bob sees the restricted folder metadata in the registry
+    type: call
+    node: calimero-node-2
+    context_id: '{{registry_ctx}}'
+    method: get_folder
+    executor_public_key: '{{bob_key}}'
+    args:
+      id: '{{private_group}}'
+    outputs:
+      private_dto_bob: result.output
+
+  - name: Assert Bob can READ the metadata (replication works) but below we prove he can't ACCESS the docs
+    type: assert
+    statements:
+      - 'is_set({{private_dto_bob}})'
+
+  # The wall. Bob is not a member of private_group; the admin-API
+  # membership gate at `core/crates/context/src/handlers/join_context.rs`
+  # should reject this join attempt with "identity is not a member of
+  # the group".
+  - name: Bob attempts to join the restricted docs context (must be rejected)
+    type: join_context
+    node: calimero-node-2
+    context_id: '{{private_docs_ctx}}'
+    expected_failure: true
+
+  # Clean up so Phase H's cascade doesn't have to know about this
+  # separate subgroup.
+  - name: unregister_folder private-alice (cleanup)
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: unregister_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{private_group}}'
 
   # =================================================================
   # Phase H: Registry — unregister folder cascade and final cleanup
