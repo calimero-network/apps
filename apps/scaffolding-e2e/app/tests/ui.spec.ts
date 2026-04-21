@@ -357,11 +357,13 @@ test.describe("ContextBar", () => {
   test("clicking node URL chip opens inline editor", async ({ page }) => {
     // The node URL chip in the context bar has title="Click to change node URL"
     const nodeChip = page.locator(".context-bar button[title='Click to change node URL']");
+    await expect(nodeChip).toBeVisible({ timeout: 5_000 });
     await nodeChip.click();
     // An input should appear for editing
     await expect(page.locator(".context-bar input")).toBeVisible();
-    // Pressing Escape cancels the edit
-    await page.keyboard.press("Escape");
+    // Pressing Escape cancels the edit — use locator.press() so the key targets
+    // the input directly instead of relying on browser focus state in headless CI
+    await page.locator(".context-bar input").press("Escape");
     await expect(page.locator(".context-bar input")).not.toBeVisible();
   });
 });
@@ -840,43 +842,47 @@ test.describe("Tutorial", () => {
 
   test("clicking ? opens the tutorial overlay with first step", async ({ page }) => {
     await page.locator("button[title='Open tutorial']").click();
-    await expect(page.locator("text=Node URL")).toBeVisible({ timeout: 5_000 });
+    // Close button only exists while the tutorial is active — use it as the open signal
+    await expect(page.locator("button[title='Close tutorial']")).toBeVisible({ timeout: 5_000 });
+    // exact:true → case-sensitive full-content match, avoids "the node URL for Node A" paragraph
+    await expect(page.getByText("Node URL", { exact: true })).toBeVisible();
   });
 
   test("tutorial card shows step counter '1 / 9'", async ({ page }) => {
     await page.locator("button[title='Open tutorial']").click();
-    await expect(page.locator("text=Node URL")).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText(/1\s*\/\s*9/)).toBeVisible();
+    await expect(page.locator("button[title='Close tutorial']")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("1 / 9", { exact: true })).toBeVisible();
   });
 
   test("Next button advances to the next step", async ({ page }) => {
     await page.locator("button[title='Open tutorial']").click();
-    await expect(page.locator("text=Node URL")).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator("button[title='Close tutorial']")).toBeVisible({ timeout: 5_000 });
     await page.locator("button", { hasText: "Next →" }).click();
-    await expect(page.locator("text=Connecting a Second Node")).toBeVisible({ timeout: 3_000 });
-    await expect(page.getByText(/2\s*\/\s*9/)).toBeVisible();
+    // Step 2 title is unique to the tutorial card
+    await expect(page.getByText("Connecting a Second Node", { exact: true })).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByText("2 / 9", { exact: true })).toBeVisible();
   });
 
   test("Prev button goes back to the previous step", async ({ page }) => {
     await page.locator("button[title='Open tutorial']").click();
-    await expect(page.locator("text=Node URL")).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator("button[title='Close tutorial']")).toBeVisible({ timeout: 5_000 });
     await page.locator("button", { hasText: "Next →" }).click();
-    await expect(page.locator("text=Connecting a Second Node")).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByText("Connecting a Second Node", { exact: true })).toBeVisible({ timeout: 3_000 });
     await page.locator("button", { hasText: "← Prev" }).click();
-    await expect(page.locator("text=Node URL")).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByText("Node URL", { exact: true })).toBeVisible({ timeout: 3_000 });
   });
 
   test("first step has no Prev button", async ({ page }) => {
     await page.locator("button[title='Open tutorial']").click();
-    await expect(page.locator("text=Node URL")).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator("button[title='Close tutorial']")).toBeVisible({ timeout: 5_000 });
     await expect(page.locator("button", { hasText: "← Prev" })).not.toBeVisible();
   });
 
   test("close button dismisses the tutorial", async ({ page }) => {
     await page.locator("button[title='Open tutorial']").click();
-    await expect(page.locator("text=Node URL")).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator("button[title='Close tutorial']")).toBeVisible({ timeout: 5_000 });
     await page.locator("button[title='Close tutorial']").click();
-    await expect(page.locator("text=Node URL")).not.toBeVisible({ timeout: 3_000 });
+    await expect(page.locator("button[title='Close tutorial']")).not.toBeVisible({ timeout: 3_000 });
     await expect(page.locator("button[title='Open tutorial']")).toBeVisible();
   });
 });

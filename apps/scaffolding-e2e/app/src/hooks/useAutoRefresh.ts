@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 export function useAutoRefresh(fn: () => Promise<void>, intervalMs: number) {
   const [lastSynced, setLastSynced] = useState<Date | null>(null);
   const [pulse, setPulse] = useState(false);
-  const prevRef = useRef<string>("");
   const fnRef = useRef(fn);
   fnRef.current = fn;
 
@@ -11,8 +10,12 @@ export function useAutoRefresh(fn: () => Promise<void>, intervalMs: number) {
     let cancelled = false;
 
     async function tick() {
-      await fnRef.current();
-      if (!cancelled) setLastSynced(new Date());
+      try {
+        await fnRef.current();
+        if (!cancelled) setLastSynced(new Date());
+      } catch {
+        // ignore polling errors — caller handles its own error state
+      }
     }
 
     tick();

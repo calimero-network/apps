@@ -1,62 +1,9 @@
 import { useState, useCallback, useRef } from "react";
-import {
-  getAppEndpointKey,
-  getAccessToken,
-} from "@calimero-network/calimero-client";
+import { getAppEndpointKey } from "@calimero-network/calimero-client";
 import * as api from "../api/kvStore";
 import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import { SyncBar } from "../components/SyncBar";
-
-function formatBytes(n: number) {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
-}
-
-async function uploadBlobToNode(file: File): Promise<string> {
-  const nodeUrl = getAppEndpointKey();
-  const token = getAccessToken();
-  if (!nodeUrl) throw new Error("Node URL not set");
-
-  const form = new FormData();
-  form.append("file", file);
-
-  const res = await fetch(`${nodeUrl}/admin-api/blobs`, {
-    method: "PUT",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body: form,
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    throw new Error(`Blob upload failed (${res.status}): ${text}`);
-  }
-
-  const body = await res.json() as { data?: { blobId?: string; blob_id?: string } };
-  const blobId = body?.data?.blobId ?? body?.data?.blob_id;
-  if (!blobId) throw new Error(`No blobId in response: ${JSON.stringify(body)}`);
-  return blobId;
-}
-
-async function downloadBlob(blobIdB58: string, filename: string, mimeType: string) {
-  const nodeUrl = getAppEndpointKey();
-  const token = getAccessToken();
-  if (!nodeUrl) throw new Error("Node URL not set");
-
-  const res = await fetch(`${nodeUrl}/admin-api/blobs/${blobIdB58}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-
-  if (!res.ok) throw new Error(`Download failed (${res.status}): ${res.statusText}`);
-
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+import { formatBytes, uploadBlobToNode, downloadBlobFrom } from "../utils/blobUtils";
 
 export function FileShareDemo() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -129,7 +76,9 @@ export function FileShareDemo() {
       const blobRes = await api.getBlobIdB58(file.id);
       const blobId = (blobRes as { result?: { output?: string } })?.result?.output;
       if (!blobId) throw new Error("Could not get blob ID");
-      await downloadBlob(blobId, file.name, file.mime_type);
+      const nodeUrl = getAppEndpointKey();
+      if (!nodeUrl) throw new Error("Node URL not set");
+      await downloadBlobFrom(nodeUrl, blobId, file.name, file.mime_type);
     } catch (err) {
       alert(`Download failed: ${String(err)}`);
     } finally {

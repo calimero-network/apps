@@ -143,7 +143,7 @@ function createApp() {
         "POST",
         path,
         200,
-        `runId=${runId} action=${action} key=${key} node=${nodeUrl} → phase=${status.phase}${status.synced != null ? ` synced=${status.synced}` : ""}`,
+        `runId=${runId} action=${action} key=${key} node=${nodeUrl} → phase=${status.phase}${status.synced !== null ? ` synced=${status.synced}` : ""}`,
       );
       return reply(200, { runId, recorded: action, ...status });
     }
