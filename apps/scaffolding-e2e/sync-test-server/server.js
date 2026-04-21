@@ -44,7 +44,13 @@ function computeStatus(run) {
   if (!write && read) return { phase: "read_only", synced: null };
   const synced = write.key === read.key && write.value === read.value;
   const timingMs = read.timestamp - write.timestamp;
-  return { phase: "complete", synced, timingMs, writtenBy: write.nodeUrl, readBy: read.nodeUrl };
+  return {
+    phase: "complete",
+    synced,
+    timingMs,
+    writtenBy: write.nodeUrl,
+    readBy: read.nodeUrl,
+  };
 }
 
 function log(method, path, status, extra) {
@@ -119,7 +125,9 @@ function createApp() {
       const { runId, action, key, value, nodeUrl } = body;
       if (!runId || !action || !key || nodeUrl === undefined) {
         log("POST", path, 400, "missing fields");
-        return reply(400, { error: "missing required fields: runId, action, key, nodeUrl" });
+        return reply(400, {
+          error: "missing required fields: runId, action, key, nodeUrl",
+        });
       }
       if (action !== "write" && action !== "read") {
         log("POST", path, 400, `invalid action=${action}`);

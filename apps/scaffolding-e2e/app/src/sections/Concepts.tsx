@@ -221,52 +221,6 @@ function ArchDiagram() {
   );
 }
 
-function ArchBox({
-  label,
-  sublabel,
-  color,
-}: {
-  label: string;
-  sublabel: string;
-  color: "brand" | "blue";
-}) {
-  const borderColor =
-    color === "brand" ? "var(--color-brand-600)" : "#3b82f6";
-  const bgColor =
-    color === "brand" ? "rgba(165,255,17,0.08)" : "rgba(59,130,246,0.08)";
-  const textColor =
-    color === "brand" ? "var(--color-brand-600)" : "#60a5fa";
-
-  return (
-    <div
-      style={{
-        border: `1.5px solid ${borderColor}`,
-        borderRadius: 8,
-        padding: "10px 20px",
-        background: bgColor,
-        textAlign: "center",
-        minWidth: 160,
-      }}
-    >
-      <div
-        style={{ fontSize: 13, fontWeight: 700, color: textColor }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: 10,
-          color: "var(--color-text-muted)",
-          marginTop: 2,
-          fontFamily: "Courier New, monospace",
-        }}
-      >
-        {sublabel}
-      </div>
-    </div>
-  );
-}
-
 function ArchVertArrow({ label }: { label: string }) {
   return (
     <div

@@ -124,7 +124,13 @@ describe("POST /report", () => {
 
   test("write then read with matching value → phase=complete synced=true", async () => {
     const run = "r2";
-    await post("/report", { runId: run, action: "write", key: "k", value: "hello", nodeUrl: "a" });
+    await post("/report", {
+      runId: run,
+      action: "write",
+      key: "k",
+      value: "hello",
+      nodeUrl: "a",
+    });
     const { status, data } = await post("/report", {
       runId: run,
       action: "read",
@@ -140,7 +146,13 @@ describe("POST /report", () => {
 
   test("write then read with wrong value → synced=false", async () => {
     const run = "r3";
-    await post("/report", { runId: run, action: "write", key: "k", value: "hello", nodeUrl: "a" });
+    await post("/report", {
+      runId: run,
+      action: "write",
+      key: "k",
+      value: "hello",
+      nodeUrl: "a",
+    });
     const { data } = await post("/report", {
       runId: run,
       action: "read",
@@ -176,7 +188,13 @@ describe("GET /status", () => {
   });
 
   test("includes write field after a write report", async () => {
-    await post("/report", { runId: "s1", action: "write", key: "k", value: "v", nodeUrl: "a" });
+    await post("/report", {
+      runId: "s1",
+      action: "write",
+      key: "k",
+      value: "v",
+      nodeUrl: "a",
+    });
     const { data } = await get("/status");
     assert.equal(data.length, 1);
     assert.equal(data[0].runId, "s1");
@@ -193,7 +211,13 @@ describe("GET /status/:runId", () => {
   });
 
   test("known runId → correct phase", async () => {
-    await post("/report", { runId: "s2", action: "write", key: "k", value: "v", nodeUrl: "a" });
+    await post("/report", {
+      runId: "s2",
+      action: "write",
+      key: "k",
+      value: "v",
+      nodeUrl: "a",
+    });
     const { status, data } = await get("/status/s2");
     assert.equal(status, 200);
     assert.equal(data.runId, "s2");
@@ -205,7 +229,13 @@ describe("GET /status/:runId", () => {
 
 describe("DELETE /runs", () => {
   test("clears all runs", async () => {
-    await post("/report", { runId: "d1", action: "write", key: "k", value: "v", nodeUrl: "a" });
+    await post("/report", {
+      runId: "d1",
+      action: "write",
+      key: "k",
+      value: "v",
+      nodeUrl: "a",
+    });
     await del("/runs");
     const { data } = await get("/status");
     assert.deepEqual(data, []);
@@ -214,8 +244,20 @@ describe("DELETE /runs", () => {
 
 describe("DELETE /runs/:runId", () => {
   test("removes specific run", async () => {
-    await post("/report", { runId: "d2", action: "write", key: "k", value: "v", nodeUrl: "a" });
-    await post("/report", { runId: "d3", action: "write", key: "k", value: "v", nodeUrl: "a" });
+    await post("/report", {
+      runId: "d2",
+      action: "write",
+      key: "k",
+      value: "v",
+      nodeUrl: "a",
+    });
+    await post("/report", {
+      runId: "d3",
+      action: "write",
+      key: "k",
+      value: "v",
+      nodeUrl: "a",
+    });
     await del("/runs/d2");
     const { data } = await get("/status");
     assert.equal(data.length, 1);

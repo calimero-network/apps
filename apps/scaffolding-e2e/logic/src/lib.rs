@@ -1277,18 +1277,9 @@ impl E2eKvStore {
         if self.ws_admin.get().is_empty() {
             return Err(Error::WorkspaceNotInitialized.to_string());
         }
-        let channel_count = self
-            .ws_channels
-            .len()
-            .map_err(|e| format!("{e:?}"))?;
-        let group_count = self
-            .ws_groups
-            .len()
-            .map_err(|e| format!("{e:?}"))?;
-        let member_count = self
-            .ws_member_roles
-            .len()
-            .map_err(|e| format!("{e:?}"))?;
+        let channel_count = self.ws_channels.len().map_err(|e| format!("{e:?}"))?;
+        let group_count = self.ws_groups.len().map_err(|e| format!("{e:?}"))?;
+        let member_count = self.ws_member_roles.len().map_err(|e| format!("{e:?}"))?;
         Ok(WorkspaceInfo {
             name: self.ws_name.get().clone(),
             admin: self.ws_admin.get().clone(),
@@ -1408,7 +1399,9 @@ impl E2eKvStore {
         self.require_admin()?;
         let allowed = ["admin", "member", "read-only"];
         if !allowed.contains(&role.as_str()) {
-            return Err(Error::InvalidInput("role must be admin, member, or read-only").to_string());
+            return Err(
+                Error::InvalidInput("role must be admin, member, or read-only").to_string(),
+            );
         }
         // Insert a new LwwRegister — LWW timestamp ensures the latest wins on merge
         self.ws_member_roles

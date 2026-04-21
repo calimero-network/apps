@@ -828,3 +828,55 @@ test.describe("How It Works", () => {
     await expect(page.locator(".section-title")).toContainText("How Calimero Works");
   });
 });
+
+// ── Tutorial ──────────────────────────────────────────────────────────────────
+
+test.describe("Tutorial", () => {
+  test("? button is visible in the bottom-right corner", async ({ page }) => {
+    const tutorialBtn = page.locator("button[title='Open tutorial']");
+    await expect(tutorialBtn).toBeVisible();
+    await expect(tutorialBtn).toContainText("?");
+  });
+
+  test("clicking ? opens the tutorial overlay with first step", async ({ page }) => {
+    await page.locator("button[title='Open tutorial']").click();
+    await expect(page.locator("text=Node URL")).toBeVisible({ timeout: 5_000 });
+  });
+
+  test("tutorial card shows step counter '1 / 9'", async ({ page }) => {
+    await page.locator("button[title='Open tutorial']").click();
+    await expect(page.locator("text=Node URL")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(/1\s*\/\s*9/)).toBeVisible();
+  });
+
+  test("Next button advances to the next step", async ({ page }) => {
+    await page.locator("button[title='Open tutorial']").click();
+    await expect(page.locator("text=Node URL")).toBeVisible({ timeout: 5_000 });
+    await page.locator("button", { hasText: "Next →" }).click();
+    await expect(page.locator("text=Connecting a Second Node")).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByText(/2\s*\/\s*9/)).toBeVisible();
+  });
+
+  test("Prev button goes back to the previous step", async ({ page }) => {
+    await page.locator("button[title='Open tutorial']").click();
+    await expect(page.locator("text=Node URL")).toBeVisible({ timeout: 5_000 });
+    await page.locator("button", { hasText: "Next →" }).click();
+    await expect(page.locator("text=Connecting a Second Node")).toBeVisible({ timeout: 3_000 });
+    await page.locator("button", { hasText: "← Prev" }).click();
+    await expect(page.locator("text=Node URL")).toBeVisible({ timeout: 3_000 });
+  });
+
+  test("first step has no Prev button", async ({ page }) => {
+    await page.locator("button[title='Open tutorial']").click();
+    await expect(page.locator("text=Node URL")).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator("button", { hasText: "← Prev" })).not.toBeVisible();
+  });
+
+  test("close button dismisses the tutorial", async ({ page }) => {
+    await page.locator("button[title='Open tutorial']").click();
+    await expect(page.locator("text=Node URL")).toBeVisible({ timeout: 5_000 });
+    await page.locator("button[title='Close tutorial']").click();
+    await expect(page.locator("text=Node URL")).not.toBeVisible({ timeout: 3_000 });
+    await expect(page.locator("button[title='Open tutorial']")).toBeVisible();
+  });
+});

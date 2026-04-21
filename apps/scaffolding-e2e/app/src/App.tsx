@@ -71,6 +71,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "frozen", label: "Frozen Storage", icon: "❄", group: "Storage" },
   { id: "private", label: "Private Secrets", icon: "🔒", group: "Storage" },
   { id: "blobs", label: "Blob Storage", icon: "📦", group: "Storage" },
+  { id: "file-share", label: "File Share Demo", icon: "📂", group: "Storage" },
   { id: "members", label: "Context Members", icon: "🛡", group: "Access" },
   { id: "counters", label: "Counters", icon: "🔢", group: "CRDT" },
   { id: "registers", label: "LWW Registers", icon: "📝", group: "CRDT" },

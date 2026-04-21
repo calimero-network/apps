@@ -21,8 +21,8 @@ async function uploadBlobToNode(file: File): Promise<string> {
   const form = new FormData();
   form.append("file", file);
 
-  const res = await fetch(`${nodeUrl}/blobs`, {
-    method: "POST",
+  const res = await fetch(`${nodeUrl}/admin-api/blobs`, {
+    method: "PUT",
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: form,
   });
@@ -43,7 +43,7 @@ async function downloadBlob(blobIdB58: string, filename: string, mimeType: strin
   const token = getAccessToken();
   if (!nodeUrl) throw new Error("Node URL not set");
 
-  const res = await fetch(`${nodeUrl}/blobs/${blobIdB58}`, {
+  const res = await fetch(`${nodeUrl}/admin-api/blobs/${blobIdB58}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
 
