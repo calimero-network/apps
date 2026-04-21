@@ -1440,34 +1440,20 @@ steps:
     outputs:
       private_dto_bob: result.output
 
-  - name: Assert Bob can READ the metadata (replication works)
+  - name: Assert Bob can READ the metadata (replication works) but below we prove he can't ACCESS the docs
     type: assert
     statements:
       - 'is_set({{private_dto_bob}})'
 
-  # The wall itself (Bob's join_context on private_docs_ctx SHOULD be
-  # rejected) is intentionally NOT asserted here. Merobox only honors
-  # `expected_failure: true` on `call` steps — the `join_context` step
-  # type silently ignores the flag and treats any failed join as a
-  # workflow failure regardless. Tracked upstream (see merobox#205 and
-  # follow-up). Once merobox adds expected_failure handling to
-  # join_context, add this step back:
-  #
-  #   - name: Bob attempts to join restricted docs ctx (must be rejected)
-  #     type: join_context
-  #     node: calimero-node-2
-  #     context_id: '{{private_docs_ctx}}'
-  #     expected_failure: true
-  #
-  # Until then this phase proves half of the contract:
-  #   ✓ Bob CAN see the restricted folder's metadata via the shared registry
-  #   — (missing) Bob CANNOT enter the restricted docs context
-  #
-  # The missing half is still covered at the platform level:
-  # core/crates/context/src/handlers/join_context.rs:138 explicitly
-  # rejects non-members, and core's own CI runs that path in
-  # group-subgroup.yml. Our e2e can't currently re-assert it from
-  # the workflow-author side without the merobox fix.
+  # The wall. Bob is not a member of private_group; the admin-API
+  # membership gate at `core/crates/context/src/handlers/join_context.rs`
+  # should reject this join attempt with "identity is not a member of
+  # the group".
+  - name: Bob attempts to join the restricted docs context (must be rejected)
+    type: join_context
+    node: calimero-node-2
+    context_id: '{{private_docs_ctx}}'
+    expected_failure: true
 
   # Clean up so Phase H's cascade doesn't have to know about this
   # separate subgroup.
