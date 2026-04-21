@@ -1,19 +1,8 @@
 import { useState } from "react";
+import { ResultBox } from "../components/ResultBox";
 import * as api from "../api/kvStore";
+import { FieldHelp } from "../components/FieldHelp";
 
-function ResultBox({ result }: { result: unknown }) {
-  if (result === undefined) return null;
-  const isError =
-    result !== null &&
-    typeof result === "object" &&
-    "error" in result &&
-    (result as { error: unknown }).error !== null;
-  return (
-    <pre className={`result-box${isError ? " error" : ""}`}>
-      {JSON.stringify(result, null, 2)}
-    </pre>
-  );
-}
 
 function useCall() {
   const [loading, setLoading] = useState(false);
@@ -58,18 +47,26 @@ export function CrdtMetadata() {
             set_metadata(outer_key, inner_key, value)
           </div>
           <div className="method-inputs">
-            <input
-              className="form-control"
-              placeholder="outer_key"
-              value={outerKey}
-              onChange={(e) => setOuterKey(e.target.value)}
-            />
-            <input
-              className="form-control"
-              placeholder="inner_key"
-              value={innerKey}
-              onChange={(e) => setInnerKey(e.target.value)}
-            />
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input
+                className="form-control"
+                style={{ flex: 1 }}
+                placeholder="outer_key (top-level bucket, e.g. user_id)"
+                value={outerKey}
+                onChange={(e) => setOuterKey(e.target.value)}
+              />
+              <FieldHelp text="The top-level key — think of it as a row identifier, e.g. a user ID or entity name. All inner_keys under the same outer_key form a sub-map." />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input
+                className="form-control"
+                style={{ flex: 1 }}
+                placeholder="inner_key (field name, e.g. email)"
+                value={innerKey}
+                onChange={(e) => setInnerKey(e.target.value)}
+              />
+              <FieldHelp text="The field name within the outer_key bucket, e.g. 'email', 'status'. Each outer_key+inner_key pair stores one LWW-register value." />
+            </div>
             <input
               className="form-control"
               placeholder="value"
@@ -92,18 +89,26 @@ export function CrdtMetadata() {
         <div className="method-card">
           <div className="method-name">get_metadata(outer_key, inner_key)</div>
           <div className="method-inputs">
-            <input
-              className="form-control"
-              placeholder="outer_key"
-              value={getOuter}
-              onChange={(e) => setGetOuter(e.target.value)}
-            />
-            <input
-              className="form-control"
-              placeholder="inner_key"
-              value={getInner}
-              onChange={(e) => setGetInner(e.target.value)}
-            />
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input
+                className="form-control"
+                style={{ flex: 1 }}
+                placeholder="outer_key"
+                value={getOuter}
+                onChange={(e) => setGetOuter(e.target.value)}
+              />
+              <FieldHelp text="Same outer_key you used in set_metadata — the top-level bucket identifier." />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input
+                className="form-control"
+                style={{ flex: 1 }}
+                placeholder="inner_key"
+                value={getInner}
+                onChange={(e) => setGetInner(e.target.value)}
+              />
+              <FieldHelp text="Same inner_key you used in set_metadata — the field name within the outer_key bucket." />
+            </div>
           </div>
           <button
             className="btn-calimero-outline"

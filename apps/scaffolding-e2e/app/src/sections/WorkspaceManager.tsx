@@ -1,4 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { getContextId, getExecutorPublicKey } from "@calimero-network/calimero-client";
+import { useAutoRefresh } from "../hooks/useAutoRefresh";
+import { SyncBar } from "../components/SyncBar";
+import { FieldHelp } from "../components/FieldHelp";
+import {
+  listContexts, listNamespaces, listGroups, getAllContextIdentities,
+  type ContextRecord as AdminContextRecord,
+  type GroupRecord,
+} from "../api/adminApi";
 import {
   wsInit,
   wsGetInfo,
@@ -132,6 +141,34 @@ function Stat({ label, value }: { label: string; value: number }) {
   );
 }
 
+function ClickId({ id, onUse, truncate = 20 }: { id: string; onUse?: (id: string) => void; truncate?: number }) {
+  const [flash, setFlash] = useState<"copied" | "filled" | null>(null);
+
+  function handle() {
+    navigator.clipboard.writeText(id).catch(() => {});
+    if (onUse) onUse(id);
+    setFlash(onUse ? "filled" : "copied");
+    setTimeout(() => setFlash(null), 1200);
+  }
+
+  return (
+    <code
+      title={`${id}\nClick to ${onUse ? "use + copy" : "copy"}`}
+      onClick={handle}
+      style={{
+        fontSize: 10, cursor: "pointer", userSelect: "none",
+        color: flash ? C.brand : undefined,
+        opacity: flash ? 0.8 : 1,
+        transition: "color 0.15s, opacity 0.15s",
+        borderBottom: `1px dashed ${flash ? C.brand : C.border}`,
+        paddingBottom: 1,
+      }}
+    >
+      {flash === "filled" ? "✓ filled" : flash === "copied" ? "✓ copied" : `${id.slice(0, truncate)}…`}
+    </code>
+  );
+}
+
 function DarkTable({
   headers,
   rows,
@@ -195,6 +232,83 @@ function DarkTable({
   );
 }
 
+
+// Dropdown that loads existing node IDs as options, with a "Enter manually" fallback
+function IdPicker({
+  placeholder,
+  value,
+  onChange,
+  options,
+  loading,
+}: {
+  placeholder: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  loading?: boolean;
+}) {
+  const MANUAL = "__manual__";
+  const isManual = options.length === 0 || !options.some((o) => o.value === value) && value !== "";
+  const [mode, setMode] = useState<"select" | "manual">(isManual ? "manual" : "select");
+
+  function handleSelect(v: string) {
+    if (v === MANUAL) { setMode("manual"); onChange(""); }
+    else { onChange(v); }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {options.length > 0 && (
+        <div style={{ display: "flex", gap: 6 }}>
+          <button
+            type="button"
+            onClick={() => setMode("select")}
+            style={{
+              fontSize: 10, padding: "2px 8px", borderRadius: 4, cursor: "pointer", border: "1px solid",
+              background: mode === "select" ? "rgba(165,255,17,0.12)" : "transparent",
+              color: mode === "select" ? C.brand : C.muted,
+              borderColor: mode === "select" ? C.brand : C.border,
+            }}
+          >
+            {loading ? "Loading…" : "From node"}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setMode("manual"); onChange(""); }}
+            style={{
+              fontSize: 10, padding: "2px 8px", borderRadius: 4, cursor: "pointer", border: "1px solid",
+              background: mode === "manual" ? "rgba(165,255,17,0.12)" : "transparent",
+              color: mode === "manual" ? C.brand : C.muted,
+              borderColor: mode === "manual" ? C.brand : C.border,
+            }}
+          >
+            Custom
+          </button>
+        </div>
+      )}
+      {mode === "select" ? (
+        <select
+          className="form-control"
+          value={value}
+          onChange={(e) => handleSelect(e.target.value)}
+        >
+          <option value="">— select —</option>
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+          <option value={MANUAL}>Enter manually…</option>
+        </select>
+      ) : (
+        <input
+          className="form-control"
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )}
+    </div>
+  );
+}
 
 function WsConcept() {
   return (
@@ -304,7 +418,7 @@ function WsOverview({
             </div>
             <div style={{ marginTop: 4 }}>
               <span style={{ color: C.muted }}>admin: </span>
-              <code style={{ fontSize: 11 }}>{info.admin}</code>
+              <ClickId id={info.admin} truncate={32} />
             </div>
             {myRole && (
               <div style={{ marginTop: 6 }}>
@@ -375,13 +489,27 @@ function WsChannels({ onRefresh }: { onRefresh: () => void }) {
   const [removeId, setRemoveId] = useState("");
   const [pingId, setPingId] = useState("");
   const [status, setStatus] = useState("");
+  const [ctxOptions, setCtxOptions] = useState<{ value: string; label: string }[]>([]);
+  const [ctxLoading, setCtxLoading] = useState(false);
 
   async function load() {
     const res = await wsListChannels();
     setChannels(extractOutput<ChannelRecord[]>(res) ?? []);
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    setCtxLoading(true);
+    listContexts()
+      .then((list: AdminContextRecord[]) =>
+        setCtxOptions(list.map((c) => ({
+          value: c.id,
+          label: `${c.id.slice(0, 20)}… (app: ${c.applicationId.slice(0, 8)}…)`,
+        })))
+      )
+      .catch(() => {})
+      .finally(() => setCtxLoading(false));
+  }, []);
 
   async function handleRegister() {
     if (!ctxId.trim() || !chanName.trim()) return;
@@ -429,8 +557,8 @@ function WsChannels({ onRefresh }: { onRefresh: () => void }) {
           rows={channels.map((ch) => [
             <strong>{ch.name}</strong>,
             <span style={{ color: C.muted }}>{ch.topic || "—"}</span>,
-            <code style={{ fontSize: 10 }}>{ch.context_id.slice(0, 20)}…</code>,
-            <code style={{ fontSize: 10 }}>{ch.created_by.slice(0, 12)}…</code>,
+            <ClickId id={ch.context_id} onUse={(id) => { setRemoveId(id); setPingId(id); }} />,
+            <ClickId id={ch.created_by} truncate={12} />,
           ])}
         />
       ) : (
@@ -439,29 +567,36 @@ function WsChannels({ onRefresh }: { onRefresh: () => void }) {
 
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <FieldGroup label="Register a channel">
-          <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 8 }}>
-            <input
-              className="form-control"
-              style={{ flex: "2 1 200px" }}
-              placeholder="Context ID (base58)"
-              value={ctxId}
-              onChange={(e) => setCtxId(e.target.value)}
-            />
-            <input
-              className="form-control"
-              style={{ flex: "1 1 140px" }}
-              placeholder="Name (e.g. #general)"
-              value={chanName}
-              onChange={(e) => setChanName(e.target.value)}
-            />
-            <input
-              className="form-control"
-              style={{ flex: "1 1 160px" }}
-              placeholder="Topic (optional)"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-            />
-            <button className="btn-calimero" onClick={handleRegister}>Register</button>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+              <div style={{ flex: 1 }}>
+                <IdPicker
+                  placeholder="Context ID (base58)"
+                  value={ctxId}
+                  onChange={setCtxId}
+                  options={ctxOptions}
+                  loading={ctxLoading}
+                />
+              </div>
+              <FieldHelp text="A base58-encoded 32-byte identifier for a Calimero context. Create a context with meroctl context create or via the Setup Wizard, then paste its ID here." />
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const }}>
+              <input
+                className="form-control"
+                style={{ flex: "1 1 140px" }}
+                placeholder="Name (e.g. #general)"
+                value={chanName}
+                onChange={(e) => setChanName(e.target.value)}
+              />
+              <input
+                className="form-control"
+                style={{ flex: "1 1 160px" }}
+                placeholder="Topic (optional)"
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+              />
+              <button className="btn-calimero" onClick={handleRegister}>Register</button>
+            </div>
           </div>
         </FieldGroup>
 
@@ -479,12 +614,16 @@ function WsChannels({ onRefresh }: { onRefresh: () => void }) {
 
         <FieldGroup label="Cross-context ping (xcall)">
           <div className="input-row">
-            <input
-              className="form-control"
-              placeholder="Target context ID (base58)"
-              value={pingId}
-              onChange={(e) => setPingId(e.target.value)}
-            />
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
+              <input
+                className="form-control"
+                style={{ flex: 1 }}
+                placeholder="Target context ID (base58)"
+                value={pingId}
+                onChange={(e) => setPingId(e.target.value)}
+              />
+              <FieldHelp text="The context ID of the target context to ping. It must be running the same WASM (which has ws_pong). The xcall is fire-and-forget — it queues on the node and executes on the next proposal cycle." />
+            </div>
             <button className="btn-calimero-outline" onClick={handlePing}>Ping</button>
           </div>
         </FieldGroup>
@@ -503,13 +642,34 @@ function WsGroups({ onRefresh }: { onRefresh: () => void }) {
   const [desc, setDesc] = useState("");
   const [removeId, setRemoveId] = useState("");
   const [status, setStatus] = useState("");
+  const [groupOptions, setGroupOptions] = useState<{ value: string; label: string }[]>([]);
+  const [groupLoading, setGroupLoading] = useState(false);
 
   async function load() {
     const res = await wsListGroups();
     setGroups(extractOutput<WsGroupRecord[]>(res) ?? []);
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    setGroupLoading(true);
+    listNamespaces()
+      .then(async (ns) => {
+        const all: GroupRecord[] = [];
+        await Promise.all(ns.map(async (n) => {
+          try {
+            const gs = await listGroups(n.namespaceId);
+            all.push(...gs);
+          } catch { /* namespace may have no groups */ }
+        }));
+        setGroupOptions(all.map((g) => ({
+          value: g.groupId,
+          label: g.alias ? `${g.alias} (${g.groupId.slice(0, 12)}…)` : `${g.groupId.slice(0, 20)}…`,
+        })));
+      })
+      .catch(() => {})
+      .finally(() => setGroupLoading(false));
+  }, []);
 
   async function handleRegister() {
     if (!groupId.trim() || !groupName.trim()) return;
@@ -549,8 +709,8 @@ function WsGroups({ onRefresh }: { onRefresh: () => void }) {
           rows={groups.map((g) => [
             <strong>{g.name}</strong>,
             <span style={{ color: C.muted }}>{g.description || "—"}</span>,
-            <code style={{ fontSize: 10 }}>{g.group_id.slice(0, 20)}…</code>,
-            <code style={{ fontSize: 10 }}>{g.created_by.slice(0, 12)}…</code>,
+            <ClickId id={g.group_id} onUse={setRemoveId} />,
+            <ClickId id={g.created_by} truncate={12} />,
           ])}
         />
       ) : (
@@ -559,29 +719,36 @@ function WsGroups({ onRefresh }: { onRefresh: () => void }) {
 
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <FieldGroup label="Register a group">
-          <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 8 }}>
-            <input
-              className="form-control"
-              style={{ flex: "2 1 200px" }}
-              placeholder="Group ID (hex)"
-              value={groupId}
-              onChange={(e) => setGroupId(e.target.value)}
-            />
-            <input
-              className="form-control"
-              style={{ flex: "1 1 140px" }}
-              placeholder="Display name"
-              value={groupName}
-              onChange={(e) => setGroupName(e.target.value)}
-            />
-            <input
-              className="form-control"
-              style={{ flex: "1 1 200px" }}
-              placeholder="Description (optional)"
-              value={desc}
-              onChange={(e) => setDesc(e.target.value)}
-            />
-            <button className="btn-calimero" onClick={handleRegister}>Register</button>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+              <div style={{ flex: 1 }}>
+                <IdPicker
+                  placeholder="Group ID (hex)"
+                  value={groupId}
+                  onChange={setGroupId}
+                  options={groupOptions}
+                  loading={groupLoading}
+                />
+              </div>
+              <FieldHelp text="The hex-encoded ID of a Calimero namespace group. Get it by running: meroctl group list --namespace-id <NS_ID>. Or create one via the Setup Wizard." />
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const }}>
+              <input
+                className="form-control"
+                style={{ flex: "1 1 140px" }}
+                placeholder="Display name"
+                value={groupName}
+                onChange={(e) => setGroupName(e.target.value)}
+              />
+              <input
+                className="form-control"
+                style={{ flex: "1 1 200px" }}
+                placeholder="Description (optional)"
+                value={desc}
+                onChange={(e) => setDesc(e.target.value)}
+              />
+              <button className="btn-calimero" onClick={handleRegister}>Register</button>
+            </div>
           </div>
         </FieldGroup>
 
@@ -609,13 +776,29 @@ function WsMembers() {
   const [identity, setIdentity] = useState("");
   const [role, setRole] = useState("member");
   const [status, setStatus] = useState("");
+  const [identityOptions, setIdentityOptions] = useState<{ value: string; label: string }[]>([]);
 
   async function load() {
     const res = await wsListMembers();
     setMembers(extractOutput<MemberRecord[]>(res) ?? []);
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    const ctxId = getContextId();
+    const myKey = getExecutorPublicKey();
+    if (ctxId) {
+      getAllContextIdentities(ctxId)
+        .then((ids) => {
+          const opts = ids.map((id) => ({
+            value: id,
+            label: id === myKey ? `${id.slice(0, 20)}… (me)` : `${id.slice(0, 20)}… (node B)`,
+          }));
+          setIdentityOptions(opts);
+        })
+        .catch(() => {});
+    }
+  }, []);
 
   async function handleSetRole() {
     if (!identity.trim()) return;
@@ -639,12 +822,21 @@ function WsMembers() {
         <strong style={{ color: C.text }}>member</strong>,{" "}
         <strong style={{ color: C.text }}>read-only</strong>.
       </p>
+      <div style={{
+        background: "rgba(165,255,17,0.05)", border: "1px solid rgba(165,255,17,0.2)",
+        borderRadius: 6, padding: "10px 14px", fontSize: 12, color: C.muted, lineHeight: 1.6,
+      }}>
+        <strong style={{ color: C.brand }}>Why is Node B missing?</strong>{" "}
+        Joining a context (SDK level) and having a workspace role (app level) are two separate things.
+        On Node B, open this page and copy the executor identity from the top bar, then paste it here on Node A to assign a role.
+        The dropdown below shows only identities that <em>this node</em> owns.
+      </div>
 
       {members.length > 0 ? (
         <DarkTable
           headers={["Identity", "Role"]}
           rows={members.map((m) => [
-            <code style={{ fontSize: 11 }}>{m.identity}</code>,
+            <ClickId id={m.identity} onUse={setIdentity} truncate={28} />,
             <RoleBadge role={m.role} />,
           ])}
         />
@@ -655,14 +847,19 @@ function WsMembers() {
       )}
 
       <FieldGroup label="Set role for identity">
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+            <div style={{ flex: 1 }}>
+              <IdPicker
+                placeholder="Identity (base58 public key)"
+                value={identity}
+                onChange={setIdentity}
+                options={identityOptions}
+              />
+            </div>
+            <FieldHelp text="The Ed25519 public key of a context member, base58-encoded. Visible in the context bar after login, or run meroctl identity list on the member's node." />
+          </div>
         <div className="input-row">
-          <input
-            className="form-control"
-            style={{ flex: 1 }}
-            placeholder="Identity (base58 public key)"
-            value={identity}
-            onChange={(e) => setIdentity(e.target.value)}
-          />
           <select
             className="form-control"
             style={{ width: 130, flex: "none" }}
@@ -677,6 +874,7 @@ function WsMembers() {
             Set Role
           </button>
         </div>
+        </div>
       </FieldGroup>
 
       {status && <div className="result-box">{status}</div>}
@@ -689,7 +887,7 @@ export function WorkspaceManager() {
   const [info, setInfo] = useState<WorkspaceInfo | null>(null);
   const [myRole, setMyRole] = useState<string | null>(null);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     const res = await wsGetInfo();
     const out = extractOutput<WorkspaceInfo>(res);
     setInfo(out);
@@ -697,9 +895,11 @@ export function WorkspaceManager() {
       const roleRes = await wsMyRole();
       setMyRole(extractOutput<string>(roleRes));
     }
-  }
+  }, []);
 
-  useEffect(() => { refresh(); }, []);
+  const { pulse, sinceLabel } = useAutoRefresh(refresh, 5000);
+
+  useEffect(() => { refresh(); }, [refresh]);
 
   return (
     <div>
@@ -711,6 +911,9 @@ export function WorkspaceManager() {
       </div>
 
       <WsConcept />
+      <div style={{ marginBottom: 4 }}>
+        <SyncBar pulse={pulse} sinceLabel={sinceLabel} onRefresh={refresh} />
+      </div>
       <WsOverview info={info} myRole={myRole} onRefresh={refresh} />
       {!info && <WsInit onDone={refresh} />}
       <WsChannels onRefresh={refresh} />

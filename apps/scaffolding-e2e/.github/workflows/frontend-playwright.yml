@@ -1,0 +1,164 @@
+name: Frontend - Playwright Tests
+
+# Runs mocked Playwright UI tests and TypeScript type check for the frontend.
+# Mocked tests use playwright.mocked.config.ts — no live Calimero node required.
+# WASM is still built so the app can load app.wasm at runtime during tests.
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "frontend/**"
+      - "logic/**"
+      - ".github/workflows/frontend-playwright.yml"
+
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "frontend/**"
+      - "logic/**"
+      - ".github/workflows/frontend-playwright.yml"
+
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── TypeScript type check ──────────────────────────────────────────────────────
+  typecheck:
+    name: TypeScript
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        working-directory: frontend
+        run: pnpm exec tsc -b --noEmit
+
+  # ── Build WASM ─────────────────────────────────────────────────────────────────
+  build-wasm:
+    name: Build WASM
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Install Rust + wasm target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: logic -> logic/target
+
+      - name: Build WASM
+        run: cd logic && ./build.sh
+
+      - name: Upload WASM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-wasm-${{ github.sha }}
+          path: |
+            logic/res/e2e_kv_store.wasm
+            logic/res/abi.json
+          retention-days: 1
+
+  # ── Playwright mocked UI tests ─────────────────────────────────────────────────
+  playwright:
+    name: Playwright (mocked UI)
+    needs: build-wasm
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Download WASM artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-wasm-${{ github.sha }}
+          path: logic/res
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Copy WASM to public
+        working-directory: frontend
+        run: pnpm sync-wasm
+
+      - name: Write .env
+        working-directory: frontend
+        run: |
+          echo "VITE_NODE_URL=http://localhost:2528" >> .env
+          echo "VITE_APPLICATION_PACKAGE=com.calimero.e2e-kv-store" >> .env
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run mocked tests
+        working-directory: frontend
+        run: pnpm test:mocked
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.sha }}
+          path: frontend/playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results-${{ github.sha }}
+          path: frontend/test-results/
+          retention-days: 7
+          if-no-files-found: ignore

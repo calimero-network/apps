@@ -101,11 +101,13 @@ export const games = () =>
   call<Record<string, never>, Record<string, string>>("games", {});
 
 export interface FileRecord {
-  file_id: string;
+  id: string;
   name: string;
   blob_id: string;
   size: number;
   mime_type: string;
+  uploaded_by: string;
+  uploaded_at: number;
 }
 
 export const uploadFile = (

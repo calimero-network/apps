@@ -1,19 +1,8 @@
 import { useState } from "react";
+import { ResultBox } from "../components/ResultBox";
 import * as api from "../api/kvStore";
+import { FieldHelp } from "../components/FieldHelp";
 
-function ResultBox({ result }: { result: unknown }) {
-  if (result === undefined) return null;
-  const isError =
-    result !== null &&
-    typeof result === "object" &&
-    "error" in result &&
-    (result as { error: unknown }).error !== null;
-  return (
-    <pre className={`result-box${isError ? " error" : ""}`}>
-      {JSON.stringify(result, null, 2)}
-    </pre>
-  );
-}
 
 function useCall() {
   const [loading, setLoading] = useState(false);
@@ -153,12 +142,16 @@ export function ContextMembers() {
             Look up the role for a specific identity (base58 public key).
           </p>
           <div className="method-inputs">
-            <input
-              className="form-control"
-              placeholder="identity (base58)"
-              value={getRoleIdentity}
-              onChange={(e) => setGetRoleIdentity(e.target.value)}
-            />
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input
+                className="form-control"
+                style={{ flex: 1 }}
+                placeholder="identity (base58 public key)"
+                value={getRoleIdentity}
+                onChange={(e) => setGetRoleIdentity(e.target.value)}
+              />
+              <FieldHelp text="The Ed25519 public key of a context member, base58-encoded. Visible in the context bar after login (the executor key), or run meroctl identity list on the target node." />
+            </div>
           </div>
           <button
             className="btn-calimero-outline"
@@ -181,12 +174,16 @@ export function ContextMembers() {
             <code>read-only</code>.
           </p>
           <div className="method-inputs">
-            <input
-              className="form-control"
-              placeholder="identity (base58)"
-              value={setRoleIdentity}
-              onChange={(e) => setSetRoleIdentity(e.target.value)}
-            />
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input
+                className="form-control"
+                style={{ flex: 1 }}
+                placeholder="identity (base58 public key)"
+                value={setRoleIdentity}
+                onChange={(e) => setSetRoleIdentity(e.target.value)}
+              />
+              <FieldHelp text="The Ed25519 public key of a context member, base58-encoded. Visible in the context bar after login (the executor key), or run meroctl identity list on the target node." />
+            </div>
             <select
               className="form-control"
               value={setRoleValue}

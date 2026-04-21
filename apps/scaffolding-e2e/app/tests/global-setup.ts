@@ -14,12 +14,12 @@ const PASSWORD = process.env.E2E_PASSWORD ?? "password";
 
 function isTokenExpired(rawValue: string): boolean {
   try {
-    const token = JSON.parse(rawValue) as string;     // stored as JSON string
+    const token = JSON.parse(rawValue) as string;
     const payload = token.split(".")[1];
     const decoded = JSON.parse(Buffer.from(payload, "base64").toString("utf-8")) as { exp?: number };
     return !decoded.exp || decoded.exp * 1000 < Date.now();
   } catch {
-    return true; // can't decode → treat as expired
+    return true;
   }
 }
 
@@ -47,6 +47,101 @@ function isSessionComplete(): boolean {
   }
 }
 
+// If the app is in multi-context mode, auth-frontend returns tokens with no
+// context_id. The app's useEffect then tries to auto-select the first context
+// from the admin API. If no context exists yet (fresh node), context-id is
+// never stored and the wait times out.
+//
+// This function: reads token + node URL from the browser's localStorage, calls
+// the admin API to check for contexts, creates one if the list is empty, then
+// writes context-id + executor-public-key directly into localStorage so the
+// app picks them up on the next React render cycle.
+async function ensureContextExists(
+  page: import("@playwright/test").Page,
+): Promise<void> {
+  const { token, nodeUrl, appId } = await page.evaluate(() => {
+    const rawToken = localStorage.getItem("access-token");
+    const token = rawToken ? JSON.parse(rawToken) as string : null;
+    const rawUrl = localStorage.getItem("app-url");
+    const nodeUrl = rawUrl ? JSON.parse(rawUrl) as string : null;
+    const rawAppId = localStorage.getItem("application-id");
+    const appId = rawAppId ? JSON.parse(rawAppId) as string : null;
+    return { token, nodeUrl, appId };
+  });
+
+  if (!token || !nodeUrl) {
+    throw new Error("[global-setup] No access token or node URL in localStorage after redirect.");
+  }
+
+  const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+  // Fetch existing contexts
+  const ctxRes = await fetch(`${nodeUrl}/admin-api/contexts`, { headers });
+  if (!ctxRes.ok) throw new Error(`[global-setup] GET /admin-api/contexts failed: ${ctxRes.status}`);
+
+  const ctxBody = await ctxRes.json() as {
+    data?: { contexts?: Array<{ id: string; applicationId: string }> };
+  };
+  const contexts = ctxBody?.data?.contexts ?? [];
+
+  // Pick a matching context or the first one available
+  const existing =
+    (appId ? contexts.find((c) => c.applicationId === appId) : null) ?? contexts[0];
+
+  let contextId: string;
+  let memberPublicKey: string | undefined;
+
+  if (existing) {
+    console.log(`[global-setup] Using existing context: ${existing.id}`);
+    contextId = existing.id;
+
+    // Fetch identity for this context
+    const idRes = await fetch(`${nodeUrl}/admin-api/contexts/${contextId}/identities-owned`, { headers });
+    if (idRes.ok) {
+      const idBody = await idRes.json() as { data?: { identities?: string[] } };
+      memberPublicKey = idBody?.data?.identities?.[0];
+    }
+  } else {
+    // No context exists — create one
+    console.log("[global-setup] No context found — creating one via admin API…");
+
+    if (!appId) throw new Error("[global-setup] No application-id in localStorage; cannot create context.");
+
+    const createRes = await fetch(`${nodeUrl}/admin-api/contexts`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        applicationId: appId,
+        protocol: "near",
+        initializationParams: [],
+      }),
+    });
+    if (!createRes.ok) {
+      const text = await createRes.text();
+      throw new Error(`[global-setup] POST /admin-api/contexts failed: ${createRes.status} ${text}`);
+    }
+
+    const createBody = await createRes.json() as {
+      data?: { contextId?: string; memberPublicKey?: string };
+    };
+    contextId = createBody?.data?.contextId ?? "";
+    memberPublicKey = createBody?.data?.memberPublicKey;
+
+    if (!contextId) throw new Error("[global-setup] Context created but no contextId returned.");
+    console.log(`[global-setup] Context created: ${contextId}`);
+  }
+
+  // Write context-id and executor key into localStorage so the app picks them up
+  await page.evaluate(
+    ({ contextId, memberPublicKey }) => {
+      localStorage.setItem("context-id", JSON.stringify(contextId));
+      if (memberPublicKey) {
+        localStorage.setItem("context-identity", JSON.stringify(memberPublicKey));
+      }
+    },
+    { contextId, memberPublicKey },
+  );
+}
 
 export default async function globalSetup(_config: FullConfig) {
   if (isSessionComplete()) {
@@ -72,12 +167,12 @@ export default async function globalSetup(_config: FullConfig) {
       );
     }
 
-    // 2. ConnectScreen — fill node URL (pre-filled from VITE_NODE_URL but set explicitly) and connect
+    // 2. ConnectScreen — fill node URL and connect
     await page.locator("input").waitFor({ timeout: 10_000 });
     await page.locator("input").fill(NODE_URL);
     await page.getByRole("button", { name: "Connect & Login" }).click();
 
-    // 3. Wait for redirect to auth-frontend (URL leaves localhost:5173)
+    // 3. Wait for redirect to auth (URL leaves localhost:5173)
     await page.waitForURL((url) => !url.toString().includes("localhost:5173"), {
       timeout: 15_000,
     });
@@ -91,7 +186,7 @@ export default async function globalSetup(_config: FullConfig) {
     await page.getByRole("button", { name: "Sign In" }).click();
     console.log("[global-setup] Credentials submitted.");
 
-    // 5a. Optional: install the app if it isn't already on the node
+    // 5a. Optional: install the app if not already on the node
     try {
       await page.getByRole("button", { name: "Install & Continue" }).waitFor({ timeout: 8_000 });
       await page.getByRole("button", { name: "Install & Continue" }).click();
@@ -105,10 +200,7 @@ export default async function globalSetup(_config: FullConfig) {
     await page.getByRole("button", { name: "Approve Permissions" }).click();
     console.log("[global-setup] Permissions approved.");
 
-    // 6–8. After "Approve Permissions", auth-frontend either redirects directly back to
-    //      the app (multi-context / single context auto-select) or shows context/identity
-    //      selectors first. Try a short redirect wait first; if it doesn't happen, work
-    //      through the selectors.
+    // 6–8. Auth redirects back to the app, possibly via context/identity selectors
     let redirectedAlready = false;
     try {
       await page.waitForURL((url) => url.toString().includes("localhost:5173"), { timeout: 5_000 });
@@ -118,7 +210,7 @@ export default async function globalSetup(_config: FullConfig) {
     }
 
     if (!redirectedAlready) {
-      // 6. Select first available context (optional — only in single-context flows)
+      // 6. Select first context (single-context flows only)
       try {
         await page.getByText("Select a context", { exact: true }).waitFor({ timeout: 15_000 });
         console.log("[global-setup] Selecting first context…");
@@ -127,7 +219,7 @@ export default async function globalSetup(_config: FullConfig) {
         // No context selector in this flow
       }
 
-      // 7. Select first available identity (optional)
+      // 7. Select first identity
       try {
         await page.getByText("Select an identity", { exact: true }).waitFor({ timeout: 10_000 });
         console.log("[global-setup] Selecting first identity…");
@@ -136,26 +228,51 @@ export default async function globalSetup(_config: FullConfig) {
         // No identity selector in this flow
       }
 
-      // 8. Wait for redirect back to the app
+      // 8. Wait for redirect back
       await page.waitForURL((url) => url.toString().includes("localhost:5173"), {
         timeout: 15_000,
       });
     }
     console.log("[global-setup] Redirected back to app.");
 
-    // 9. Wait for calimero-client to process the hash and store context-id
-    await page.waitForFunction(
-      () => {
-        const raw = localStorage.getItem("context-id");
-        return !!raw && raw.length > 10;
-      },
-      { timeout: 30_000, polling: 500 },
-    );
+    // 9. In multi-context mode the JWT has no context_id. The app's useEffect
+    //    auto-selects the first context, but only if one already exists.
+    //    Wait up to 8s for the app to do it automatically; if it doesn't,
+    //    create the context via the admin API and write the ID into localStorage.
+    const autoSelected = await page
+      .waitForFunction(
+        () => {
+          const raw = localStorage.getItem("context-id");
+          return !!raw && raw.length > 10;
+        },
+        { timeout: 8_000, polling: 500 },
+      )
+      .then(() => true)
+      .catch(() => false);
 
+    if (!autoSelected) {
+      console.log("[global-setup] context-id not set automatically — ensuring context exists…");
+      // Debug: show what's in localStorage so key-name mismatches are visible
+      const lsSnapshot = await page.evaluate(() => {
+        const out: Record<string, string | null> = {};
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i)!;
+          out[k] = localStorage.getItem(k);
+        }
+        return out;
+      });
+      console.log("[global-setup] localStorage snapshot:", JSON.stringify(lsSnapshot, null, 2));
+      await ensureContextExists(page);
+    }
+
+    // 10. Final confirmation context-id is in localStorage
     const ctxId = await page.evaluate(() => localStorage.getItem("context-id"));
-    console.log(`[global-setup] context-id set: ${ctxId}`);
+    if (!ctxId || ctxId.length <= 10) {
+      throw new Error("[global-setup] context-id still missing after ensureContextExists.");
+    }
+    console.log(`[global-setup] context-id set: ${JSON.parse(ctxId)}`);
 
-    // 10. Save session
+    // 11. Save session
     fs.mkdirSync(path.dirname(AUTH_FILE), { recursive: true });
     await ctx.storageState({ path: AUTH_FILE });
     console.log(`[global-setup] Session saved → ${AUTH_FILE}`);

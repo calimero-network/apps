@@ -139,12 +139,11 @@ const TESTS: TestCase[] = [
   },
   {
     id: "kv-set-with-handler",
-    name: "set_with_handler increments execution count",
+    name: "set_with_handler sets key (handler fires on peer nodes)",
     group: "KV Operations",
     fn: async (r) => {
-      const before = out<number>(await api.getHandlerExecutionCount());
       noErr(await api.kvSetWithHandler(`${r}_hwk`, "hwv"));
-      gte(out<number>(await api.getHandlerExecutionCount()), before + 1);
+      eq(out<string | null>(await api.kvGet(`${r}_hwk`)), "hwv");
     },
   },
   {
@@ -242,12 +241,12 @@ const TESTS: TestCase[] = [
 
   {
     id: "handler-clear-with-handler",
-    name: "clear_with_handler increments execution count",
+    name: "clear_with_handler clears store (handler fires on peer nodes)",
     group: "KV Handlers",
-    fn: async () => {
-      const before = out<number>(await api.getHandlerExecutionCount());
+    fn: async (r) => {
+      noErr(await api.kvSet(`${r}_cwh`, "v"));
       noErr(await api.kvClearWithHandler());
-      gte(out<number>(await api.getHandlerExecutionCount()), before + 1);
+      eq(outOrNull<string>(await api.kvGet(`${r}_cwh`)), null);
     },
   },
   {
@@ -642,9 +641,9 @@ const TESTS: TestCase[] = [
     name: "push specific value → get at last index returns it",
     group: "CRDT Metrics",
     fn: async () => {
-      noErr(await api.pushMetric(999));
+      noErr(await api.pushMetric(13));
       const len = out<number>(await api.metricsLen());
-      eq(out<number>(await api.getMetric(len - 1)), 999);
+      eq(out<number>(await api.getMetric(len - 1)), 13);
     },
   },
 

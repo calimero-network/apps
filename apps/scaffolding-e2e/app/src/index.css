@@ -45,6 +45,50 @@ html, body, #root {
   flex-direction: column;
   overflow-y: auto;
   padding: 0;
+  transition: transform 0.22s ease;
+}
+
+/* ── Hamburger (hidden on desktop) ── */
+.hamburger-btn {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  color: var(--color-text-muted);
+  font-size: 17px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+/* ── Mobile ── */
+@media (max-width: 768px) {
+  .hamburger-btn {
+    display: flex;
+    align-items: center;
+  }
+
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100vh;
+    z-index: 200;
+    transform: translateX(-100%);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
+  }
+
+  .sidebar.sidebar-open {
+    transform: translateX(0);
+  }
+
+  .main-content {
+    padding: 16px 14px;
+  }
+
+  .method-grid {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 .sidebar-header {
@@ -55,29 +99,22 @@ html, body, #root {
 .sidebar-logo {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   margin-bottom: 4px;
 }
 
-.sidebar-logo-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background-color: var(--color-brand-600);
-}
-
 .sidebar-logo-text {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
   color: var(--color-text-primary);
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 .sidebar-subtitle {
   font-size: 11px;
   color: var(--color-text-muted);
   margin-top: 2px;
+  padding-left: 31px;
 }
 
 .sidebar-group {
@@ -276,6 +313,22 @@ html, body, #root {
 
 .btn-danger-outline:hover:not(:disabled) {
   background-color: rgba(239, 68, 68, 0.1);
+}
+
+/* ── Spinner ── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
 }
 
 /* ── Result box ── */

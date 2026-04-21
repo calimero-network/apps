@@ -1,19 +1,9 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
+import { ResultBox } from "../components/ResultBox";
 import * as api from "../api/kvStore";
+import { useAutoRefresh } from "../hooks/useAutoRefresh";
+import { SyncBar } from "../components/SyncBar";
 
-function ResultBox({ result }: { result: unknown }) {
-  if (result === undefined) return null;
-  const isError =
-    result !== null &&
-    typeof result === "object" &&
-    "error" in result &&
-    (result as { error: unknown }).error !== null;
-  return (
-    <pre className={`result-box${isError ? " error" : ""}`}>
-      {JSON.stringify(result, null, 2)}
-    </pre>
-  );
-}
 
 function useCall() {
   const [loading, setLoading] = useState(false);
@@ -32,14 +22,29 @@ function useCall() {
 }
 
 export function CrdtCounters() {
-  const [gKey, setGKey] = useState("");
-  const [pnKey, setPnKey] = useState("");
+  const [gKey, setGKey] = useState("hits");
+  const [pnKey, setPnKey] = useState("score");
+  const [liveG, setLiveG] = useState<number | null>(null);
+  const [livePn, setLivePn] = useState<number | null>(null);
 
   const incG = useCall();
-  const getG = useCall();
   const incPn = useCall();
   const decPn = useCall();
-  const getPn = useCall();
+
+  const poll = useCallback(async () => {
+    if (gKey) {
+      const res = await api.getGCounter(gKey);
+      const v = (res as { result?: { output?: number } })?.result?.output;
+      if (v !== undefined) setLiveG(v);
+    }
+    if (pnKey) {
+      const res = await api.getPnCounter(pnKey);
+      const v = (res as { result?: { output?: number } })?.result?.output;
+      if (v !== undefined) setLivePn(v);
+    }
+  }, [gKey, pnKey]);
+
+  const { pulse, sinceLabel } = useAutoRefresh(poll, 3000);
 
   return (
     <div>
@@ -49,7 +54,33 @@ export function CrdtCounters() {
           Conflict-free counters that merge across nodes.{" "}
           <strong>G-Counter</strong>: grow-only (increment only).{" "}
           <strong>PN-Counter</strong>: supports both increment and decrement.
+          Values auto-refresh every 3 s — increment on Node A and watch the count
+          update on Node B.
         </p>
+      </div>
+
+      {/* Live values */}
+      <div className="method-card" style={{ marginBottom: 16 }}>
+        <SyncBar pulse={pulse} sinceLabel={sinceLabel} onRefresh={poll} />
+        <div className="method-name">Live counter values</div>
+        <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginBottom: 4 }}>
+              G-Counter <code style={{ fontSize: 10 }}>{gKey || "(no key)"}</code>
+            </div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: "var(--color-brand-600)" }}>
+              {liveG ?? "—"}
+            </div>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginBottom: 4 }}>
+              PN-Counter <code style={{ fontSize: 10 }}>{pnKey || "(no key)"}</code>
+            </div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: "var(--color-brand-600)" }}>
+              {livePn ?? "—"}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="method-grid">
@@ -60,29 +91,19 @@ export function CrdtCounters() {
           <div className="method-inputs">
             <input
               className="form-control"
-              placeholder="counter key"
+              placeholder="counter key (e.g. hits)"
               value={gKey}
               onChange={(e) => setGKey(e.target.value)}
             />
           </div>
-          <div className="input-row">
-            <button
-              className="btn-calimero"
-              disabled={incG.loading}
-              onClick={() => incG.run(() => api.incrementGCounter(gKey))}
-            >
-              {incG.loading ? "..." : "increment"}
-            </button>
-            <button
-              className="btn-calimero-outline"
-              disabled={getG.loading}
-              onClick={() => getG.run(() => api.getGCounter(gKey))}
-            >
-              {getG.loading ? "..." : "get"}
-            </button>
-          </div>
+          <button
+            className="btn-calimero"
+            disabled={incG.loading}
+            onClick={() => incG.run(async () => { const r = await api.incrementGCounter(gKey); poll(); return r; })}
+          >
+            {incG.loading ? "..." : "increment"}
+          </button>
           <ResultBox result={incG.result} />
-          <ResultBox result={getG.result} />
         </div>
 
         <div className="method-card">
@@ -92,7 +113,7 @@ export function CrdtCounters() {
           <div className="method-inputs">
             <input
               className="form-control"
-              placeholder="counter key"
+              placeholder="counter key (e.g. score)"
               value={pnKey}
               onChange={(e) => setPnKey(e.target.value)}
             />
@@ -101,28 +122,20 @@ export function CrdtCounters() {
             <button
               className="btn-calimero"
               disabled={incPn.loading}
-              onClick={() => incPn.run(() => api.incrementPnCounter(pnKey))}
+              onClick={() => incPn.run(async () => { const r = await api.incrementPnCounter(pnKey); poll(); return r; })}
             >
               {incPn.loading ? "..." : "+ inc"}
             </button>
             <button
               className="btn-danger-outline"
               disabled={decPn.loading}
-              onClick={() => decPn.run(() => api.decrementPnCounter(pnKey))}
+              onClick={() => decPn.run(async () => { const r = await api.decrementPnCounter(pnKey); poll(); return r; })}
             >
               {decPn.loading ? "..." : "− dec"}
-            </button>
-            <button
-              className="btn-calimero-outline"
-              disabled={getPn.loading}
-              onClick={() => getPn.run(() => api.getPnCounter(pnKey))}
-            >
-              {getPn.loading ? "..." : "get"}
             </button>
           </div>
           <ResultBox result={incPn.result} />
           <ResultBox result={decPn.result} />
-          <ResultBox result={getPn.result} />
         </div>
       </div>
     </div>

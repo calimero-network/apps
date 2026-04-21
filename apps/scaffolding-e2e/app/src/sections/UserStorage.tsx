@@ -1,19 +1,8 @@
 import { useState } from "react";
+import { ResultBox } from "../components/ResultBox";
 import * as api from "../api/kvStore";
+import { FieldHelp } from "../components/FieldHelp";
 
-function ResultBox({ result }: { result: unknown }) {
-  if (result === undefined) return null;
-  const isError =
-    result !== null &&
-    typeof result === "object" &&
-    "error" in result &&
-    (result as { error: unknown }).error !== null;
-  return (
-    <pre className={`result-box${isError ? " error" : ""}`}>
-      {JSON.stringify(result, null, 2)}
-    </pre>
-  );
-}
 
 function useCall() {
   const [loading, setLoading] = useState(false);
@@ -101,12 +90,16 @@ export function UserStorage() {
         <div className="method-card">
           <div className="method-name">get_user_simple_for(user_key)</div>
           <div className="method-inputs">
-            <input
-              className="form-control"
-              placeholder="user public key (base58)"
-              value={forUserKey}
-              onChange={(e) => setForUserKey(e.target.value)}
-            />
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input
+                className="form-control"
+                style={{ flex: 1 }}
+                placeholder="user public key (base58)"
+                value={forUserKey}
+                onChange={(e) => setForUserKey(e.target.value)}
+              />
+              <FieldHelp text="The base58-encoded Ed25519 public key of another context member. Get it from ws_list_members, or from their node's context bar (executor key)." />
+            </div>
           </div>
           <button
             className="btn-calimero-outline"
