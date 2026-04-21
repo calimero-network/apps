@@ -2,7 +2,7 @@ name: E2E - Merobox Workflows
 
 # Runs all merobox workflow tests against the e2e-kv-store WASM app.
 # Build: WASM compiled from Rust source, then all workflows run in parallel.
-# Uses ghcr.io/calimero-network/merod:rc28 — no local image build needed.
+# Uses ghcr.io/calimero-network/merod:0.10.1-rc.28 — no local image build needed.
 
 permissions:
   contents: read
@@ -120,11 +120,11 @@ jobs:
           python -m pip install uv
           uv pip install --system \
             "calimero-client-py @ git+https://github.com/calimero-network/calimero-client-py.git@master" \
-            "merobox @ git+https://github.com/calimero-network/merobox.git@rc28"
+            "merobox @ git+https://github.com/calimero-network/merobox.git@master"
           merobox --version
 
-      - name: Pull merod:rc28 image
-        run: docker pull ghcr.io/calimero-network/merod:rc28
+      - name: Pull merod:0.10.1-rc.28 image
+        run: docker pull ghcr.io/calimero-network/merod:0.10.1-rc.28
 
       - name: Run ${{ matrix.workflow }}
         run: |
