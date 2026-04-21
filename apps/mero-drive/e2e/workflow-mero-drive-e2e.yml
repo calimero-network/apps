@@ -555,6 +555,18 @@ steps:
     outputs:
       subteam_group: groupId
 
+  # Core's `nest_group` refuses to nest a group that already has a parent
+  # (see core/crates/context/src/group_store/namespace.rs:104 —
+  # "group already has a parent; unnest it first"). `create_group_in_namespace`
+  # immediately establishes the new group as a child of the namespace, so
+  # to re-parent it under eng_group we must first unnest from the
+  # namespace, then nest under eng.
+  - name: unnest_group subteam from namespace root (preparing to re-parent)
+    type: unnest_group
+    node: calimero-node-1
+    parent_group_id: '{{namespace_id}}'
+    child_group_id: '{{subteam_group}}'
+
   - name: nest_group — re-parent subteam under eng_group (admin-API)
     type: nest_group
     node: calimero-node-1
@@ -649,10 +661,10 @@ steps:
       id: '{{subteam_group}}'
       new_parent: null
 
-  # Clean up so Phase H's cascade sees the same tree shape it expects.
-  # (Registry side; admin-side delete_group is not a merobox step
-  # type today — documented gap below.)
-  - name: unregister_folder subteam (cleanup before Phase E sync)
+  # Clean up both registry and admin-API so Phase H's cascade sees
+  # the same tree shape it expects. Mirrors the spec's delete flow:
+  #   registry.unregister_folder(...) → admin.delete_group(...)
+  - name: unregister_folder subteam (registry cleanup)
     type: call
     node: calimero-node-1
     context_id: '{{registry_ctx}}'
@@ -660,6 +672,11 @@ steps:
     executor_public_key: '{{alice_key}}'
     args:
       id: '{{subteam_group}}'
+
+  - name: delete_group subteam (admin-API cleanup)
+    type: delete_group
+    node: calimero-node-1
+    group_id: '{{subteam_group}}'
 
   # =================================================================
   # Phase E: Registry — cross-node replication sanity
