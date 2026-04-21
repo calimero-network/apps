@@ -61,17 +61,21 @@ impl From<&str> for ContextId {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    BorshSerialize,
+    BorshDeserialize,
+    Serialize,
+    Deserialize,
 )]
 pub enum Visibility {
+    #[default]
     Inherit,
     Restricted,
-}
-
-impl Default for Visibility {
-    fn default() -> Self {
-        Visibility::Inherit
-    }
 }
 
 #[derive(Debug, Error, Serialize)]

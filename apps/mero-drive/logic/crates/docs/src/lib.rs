@@ -356,7 +356,7 @@ mod tests {
         assert_eq!(d.id, id);
         assert_eq!(d.title, "hello");
         assert_eq!(d.content, "world");
-        assert_eq!(d.archived, false);
+        assert!(!d.archived);
         assert_eq!(d.tags, Vec::<String>::new());
     }
 
@@ -436,7 +436,7 @@ mod tests {
         app.set_archived_inner(id.clone(), true).unwrap();
         assert_eq!(app.list_docs(false).unwrap().len(), 0);
         assert_eq!(app.list_docs(true).unwrap().len(), 1);
-        assert_eq!(app.get_doc(id).unwrap().archived, true);
+        assert!(app.get_doc(id).unwrap().archived);
     }
 
     #[test]
@@ -446,7 +446,7 @@ mod tests {
         app.set_archived_inner(id.clone(), true).unwrap();
         app.set_archived_inner(id.clone(), false).unwrap();
         assert_eq!(app.list_docs(false).unwrap().len(), 1);
-        assert_eq!(app.get_doc(id).unwrap().archived, false);
+        assert!(!app.get_doc(id).unwrap().archived);
     }
 
     #[test]
@@ -532,7 +532,7 @@ mod tests {
         assert_eq!(d.title, "final");
         assert_eq!(d.content, "world");
         assert_eq!(d.tags, vec!["review".to_string()]);
-        assert_eq!(d.archived, true);
+        assert!(d.archived);
         app.delete_doc_inner(id.clone()).unwrap();
         assert!(app.get_doc(id).is_err());
     }
@@ -579,7 +579,7 @@ mod tests {
             .unwrap();
         let d = app.get_doc(id).unwrap();
         assert_eq!(d.tags, vec!["urgent".to_string()]);
-        assert_eq!(d.archived, true);
+        assert!(d.archived);
     }
 
     #[test]
@@ -636,7 +636,7 @@ mod tests {
         let mut b = stub_record();
         b.archived = LwwRegister::new(true);
         <DocRecord as Mergeable>::merge(&mut a, &b).unwrap();
-        assert_eq!(*a.archived.get(), true);
+        assert!(*a.archived.get());
     }
 
     #[test]
