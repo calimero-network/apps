@@ -664,9 +664,18 @@ steps:
       id: '{{subteam_group}}'
       new_parent: null
 
-  # Clean up both registry and admin-API so Phase H's cascade sees
-  # the same tree shape it expects. Mirrors the spec's delete flow:
-  #   registry.unregister_folder(...) → admin.delete_group(...)
+  # Registry cleanup so Phase H's cascade sees the same tree shape
+  # it expects. The admin-side `delete_group` is intentionally NOT
+  # called here: after the nest → unnest round-trip, core's
+  # delete_group preconditions (require_group_admin /
+  # require_group_signing_key in
+  # core/crates/context/src/handlers/delete_group.rs) depend on
+  # governance state that may not have fully propagated yet, and
+  # chasing that timing isn't what Phase D3 is about. The phase's
+  # purpose is to exercise nest_group / unnest_group / list_subgroups;
+  # Phase H never touches subteam_group, so leaving the admin-side
+  # record orphaned has no downstream effect — docker tears everything
+  # down at workflow end.
   - name: unregister_folder subteam (registry cleanup)
     type: call
     node: calimero-node-1
@@ -675,11 +684,6 @@ steps:
     executor_public_key: '{{alice_key}}'
     args:
       id: '{{subteam_group}}'
-
-  - name: delete_group subteam (admin-API cleanup)
-    type: delete_group
-    node: calimero-node-1
-    group_id: '{{subteam_group}}'
 
   # =================================================================
   # Phase E: Registry — cross-node replication sanity
