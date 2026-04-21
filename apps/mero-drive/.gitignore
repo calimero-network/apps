@@ -38,9 +38,13 @@ docs/superpowers/specs/
 # Merobox runtime data (docker volumes, extracted bundles, RocksDB files)
 e2e/data/
 
-# Logic build intermediates
-logic/res/bundle-temp/
-
 # Keep logic/res (WASM and ABI) and logic/dist (bundle) - these MUST be committed
 !logic/res/
 !logic/dist/
+
+# Logic build intermediates — placed AFTER the `!logic/res/` negation so
+# future broader un-ignore rules (e.g. `!logic/res/**`) can't accidentally
+# re-include these. Today the explicit `logic/res/bundle-temp/` directory
+# pattern would win even without this ordering, but ordering it last is
+# defensive against future rule additions.
+logic/res/bundle-temp/

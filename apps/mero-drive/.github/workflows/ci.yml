@@ -113,7 +113,12 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             logic/target
-          key: logic-${{ runner.os }}-${{ hashFiles('logic/Cargo.toml', 'logic/crates/*/Cargo.toml') }}
+          # Include Cargo.lock in the hash so cache invalidates when any
+          # git-branch pinned dep (calimero-sdk, calimero-storage,
+          # calimero-storage-macros, calimero-wasm-abi — all pinned to
+          # `branch = "master"`) resolves to a new commit, even if
+          # Cargo.toml is unchanged.
+          key: logic-${{ runner.os }}-${{ hashFiles('logic/Cargo.toml', 'logic/crates/*/Cargo.toml', 'logic/Cargo.lock') }}
           restore-keys: logic-${{ runner.os }}-
 
       - name: Cargo format
@@ -174,7 +179,12 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             logic/target
-          key: logic-${{ runner.os }}-${{ hashFiles('logic/Cargo.toml', 'logic/crates/*/Cargo.toml') }}
+          # Include Cargo.lock in the hash so cache invalidates when any
+          # git-branch pinned dep (calimero-sdk, calimero-storage,
+          # calimero-storage-macros, calimero-wasm-abi — all pinned to
+          # `branch = "master"`) resolves to a new commit, even if
+          # Cargo.toml is unchanged.
+          key: logic-${{ runner.os }}-${{ hashFiles('logic/Cargo.toml', 'logic/crates/*/Cargo.toml', 'logic/Cargo.lock') }}
           restore-keys: logic-${{ runner.os }}-
 
       - name: Build bundle
