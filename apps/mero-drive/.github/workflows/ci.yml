@@ -197,10 +197,11 @@ jobs:
   # paths, and the single-node reconciliation workflow that covers
   # the three drift scenarios from the design spec.
   #
-  # merobox + calimero-client-py are both installed from master. At
-  # the time of this PR the namespace unwrap fix landed on both master
-  # branches but isn't tagged on PyPI yet — pulling master keeps CI
-  # aligned with the runtime that `merod:edge` ships.
+  # merobox is installed from the official apt repo
+  # (https://calimero-network.github.io/merobox) — a signed binary
+  # release that bundles calimero-client-py internally. Faster and
+  # cleaner than the earlier pip-from-master approach, and past the
+  # PyPI release point now that the 0.4.5 Debian package is available.
   #
   # The main workflow includes a "warmup probe" (create + sync +
   # delete + sync) as a workaround for a cold-start sync race on
@@ -215,16 +216,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install merobox + calimero-client-py (from master)
+      - name: Install merobox (apt)
         run: |
-          pip install "merobox @ git+https://github.com/calimero-network/merobox.git@master"
-          pip install --force-reinstall --no-deps \
-            "calimero-client-py @ git+https://github.com/calimero-network/calimero-client-py.git@master"
+          curl -fsSL https://calimero-network.github.io/merobox/gpg.key \
+            | sudo tee /usr/share/keyrings/merobox.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/merobox.gpg] https://calimero-network.github.io/merobox stable main" \
+            | sudo tee /etc/apt/sources.list.d/merobox.list
+          sudo apt-get update
+          sudo apt-get install -y merobox
           merobox --version
 
       - name: Download bundle artifact
