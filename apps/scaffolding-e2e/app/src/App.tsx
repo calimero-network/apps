@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   getContextId,
   getAppEndpointKey,
@@ -433,15 +433,15 @@ export default function App() {
   const { isAuthenticated, logout } = useCalimero();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  function handleLogout() {
+  const handleLogout = useCallback(() => {
     clearContextId();
     setContextIdState(null);
     logout();
-  }
+  }, [logout]);
 
   useEffect(() => {
     setUnauthorizedHandler(handleLogout);
-  }, []);
+  }, [handleLogout]);
   const [active, setActive] = useState<SectionId>(
     () => (localStorage.getItem("calimero-active-tab") as SectionId) ?? "concepts",
   );

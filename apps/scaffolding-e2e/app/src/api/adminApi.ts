@@ -68,6 +68,10 @@ async function adminFetch(path: string, opts?: RequestInit): Promise<unknown> {
     throw new Error(parseAdminError(res.status, text));
   }
 
+  const contentType = res.headers.get("content-type") ?? "";
+  if (res.status === 204 || !contentType.includes("application/json")) {
+    return undefined;
+  }
   return res.json();
 }
 
