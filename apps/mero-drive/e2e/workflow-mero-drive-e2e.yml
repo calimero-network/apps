@@ -533,18 +533,24 @@ steps:
       new_parent: '{{eng_group}}'
 
   # =================================================================
-  # Phase D3: True admin-API nesting (nest_group / unnest_group)
+  # Phase D3: True admin-API nesting via reparent_group
   #
   # The existing Phase D exercises the REGISTRY's view of parent/child
   # (`move_folder` updates the registry's `parent_id` index). The
   # authoritative tree shape actually lives at the admin-API governance
-  # layer — `nest_group` / `unnest_group`. This phase builds a truly
-  # nested subgroup (admin-API parent = eng_group, not namespace root),
-  # uses `list_subgroups` to assert the admin-API view, and unnests it
-  # back to top-level. Mirrors the "Create Nested Subfolder" and
-  # "Delete Folder (and Subtree)" flows in the design spec's Data Flow
-  # section, where the client is expected to call useNestGroup +
-  # useUnnestGroup alongside registry.register_folder / unregister_folder.
+  # layer. This phase builds a truly nested subgroup (admin-API parent
+  # = eng_group, not namespace root), uses `list_subgroups` to assert
+  # the admin-API view, and re-parents it back to top-level. Mirrors
+  # the "Create Nested Subfolder" and "Delete Folder (and Subtree)"
+  # flows in the design spec's Data Flow section; the client calls
+  # reparent_group alongside registry.register_folder /
+  # unregister_folder.
+  #
+  # The earlier `unnest_group` + `nest_group` pair was dropped upstream
+  # (core#2200 — strict group-tree invariant + cascade delete) in
+  # favour of a single atomic `reparent_group` edge-swap. Removing the
+  # transient-orphan state also removed the delete-on-orphaned-group
+  # usability gap that required re-nesting before delete_group.
   # =================================================================
 
   - name: Create subteam group (initially a direct child of namespace root)
@@ -555,23 +561,15 @@ steps:
     outputs:
       subteam_group: groupId
 
-  # Core's `nest_group` refuses to nest a group that already has a parent
-  # (see core/crates/context/src/group_store/namespace.rs:104 —
-  # "group already has a parent; unnest it first"). `create_group_in_namespace`
-  # immediately establishes the new group as a child of the namespace, so
-  # to re-parent it under eng_group we must first unnest from the
-  # namespace, then nest under eng.
-  - name: unnest_group subteam from namespace root (preparing to re-parent)
-    type: unnest_group
+  # `create_group_in_namespace` places the new group as a direct child
+  # of the namespace root. Re-parent it under eng_group in one atomic
+  # step (pre-#2200 this was two steps — unnest + nest — with a
+  # transient orphan state in between).
+  - name: reparent_group — move subteam from namespace root under eng_group
+    type: reparent_group
     node: calimero-node-1
-    parent_group_id: '{{namespace_id}}'
-    child_group_id: '{{subteam_group}}'
-
-  - name: nest_group — re-parent subteam under eng_group (admin-API)
-    type: nest_group
-    node: calimero-node-1
-    parent_group_id: '{{eng_group}}'
-    child_group_id: '{{subteam_group}}'
+    group_id: '{{subteam_group}}'
+    new_parent_id: '{{eng_group}}'
 
   - name: list_subgroups on eng_group — admin-API now shows subteam as child
     type: list_subgroups
@@ -630,25 +628,33 @@ steps:
     statements:
       - 'is_set({{subteam_dto_bob}})'
 
-  # Now the reverse flow: unnest + update registry to match. Mirrors
-  # the delete-folder subtree flow where the client calls
-  # useUnnestGroup before the registry + admin-API delete.
-  - name: unnest_group — detach subteam from eng_group back to top-level
-    type: unnest_group
+  # Reverse flow: reparent subteam from eng_group back to the
+  # namespace root, then update registry to match. Mirrors the
+  # delete-folder subtree flow where the client re-parents before
+  # the registry + admin-API delete.
+  #
+  # Pre-#2200 this was two steps (unnest from eng_group → re-nest
+  # under namespace) with the re-nest required to restore
+  # namespace-identity resolution before delete_group. With strict
+  # group-tree invariant, the group always has a parent — the edge
+  # swap is atomic and delete_group can resolve the namespace chain
+  # unconditionally.
+  - name: reparent_group — move subteam from eng_group back to namespace root
+    type: reparent_group
     node: calimero-node-1
-    parent_group_id: '{{eng_group}}'
-    child_group_id: '{{subteam_group}}'
+    group_id: '{{subteam_group}}'
+    new_parent_id: '{{namespace_id}}'
 
-  # After the unnest, eng_group has no remaining children — the list
-  # is `[]`. merobox's `is_set` macro treats empty collections as
-  # "not set" and would fail the assertion, even though an empty list
-  # IS the correct post-unnest state. The step call succeeding without
-  # `expected_failure: true` is the real assertion here; if the unnest
-  # had failed, `list_subgroups` would still return the pre-unnest
-  # list (subteam still present), and Phase D3's cleanup below would
-  # then fail on the subsequent delete. So the unnest is indirectly
-  # validated. Same pattern used for the empty-registry read in
-  # Phase B.
+  # After the reparent, eng_group has no remaining children — the
+  # list is `[]`. merobox's `is_set` macro treats empty collections
+  # as "not set" and would fail an `is_set` assertion, even though
+  # an empty list IS the correct post-reparent state. The step call
+  # succeeding without `expected_failure: true` is the real
+  # assertion; if the reparent had failed, `list_subgroups` would
+  # still show subteam under eng_group and Phase D3's cleanup below
+  # would then fail on the subsequent delete. So the reparent is
+  # indirectly validated. Same pattern used for the empty-registry
+  # read in Phase B.
   - name: list_subgroups on eng_group — subteam should no longer appear
     type: list_subgroups
     node: calimero-node-1
@@ -663,22 +669,6 @@ steps:
     args:
       id: '{{subteam_group}}'
       new_parent: null
-
-  # Re-nest subteam back under the namespace before delete. Core's
-  # delete_group handler at
-  # crates/context/src/handlers/delete_group.rs:22 calls
-  # node_namespace_identity(group_id), which walks the parent chain to
-  # find the namespace root. An orphaned group (unnested without being
-  # re-nested) has no reachable namespace, so resolution returns None
-  # and delete_group bails with "requester not provided and node has
-  # no configured group identity". Re-nesting under the namespace
-  # restores the parent chain so Alice's namespace identity can be
-  # resolved as the requester. Tracked upstream as a usability gap.
-  - name: Re-nest subteam under namespace (restores namespace-identity resolution)
-    type: nest_group
-    node: calimero-node-1
-    parent_group_id: '{{namespace_id}}'
-    child_group_id: '{{subteam_group}}'
 
   # Registry cleanup so Phase H's cascade sees the same tree shape.
   - name: unregister_folder subteam (registry cleanup)
