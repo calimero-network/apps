@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useFolderPermissions } from '../useFolderPermissions';
 import { CAP } from '../../constants/config';
@@ -10,6 +10,8 @@ vi.mock('../useSelfIdentity', () => ({
 vi.mock('../../api/adminApi', () => ({ adminRequest: vi.fn() }));
 
 describe('useFolderPermissions', () => {
+  beforeEach(() => vi.clearAllMocks());
+
   const render = (caps: number) => {
     (adminRequest as ReturnType<typeof vi.fn>).mockResolvedValue({ capabilities: caps });
     return renderHook(() => useFolderPermissions('ns', 'folder-1'));
@@ -33,6 +35,15 @@ describe('useFolderPermissions', () => {
     await waitFor(() => expect(result.current.canDelete).toBe(true));
     expect(result.current.canRename).toBe(true);
     expect(result.current.canManageGroup).toBe(true);
+  });
+
+  it('exposes error when fetch fails — distinguishes from legitimate zero caps', async () => {
+    const boom = new Error('network down');
+    (adminRequest as ReturnType<typeof vi.fn>).mockRejectedValue(boom);
+    const { result } = renderHook(() => useFolderPermissions('ns', 'folder-x'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBe(boom);
+    expect(result.current.canRead).toBe(false);
   });
 
   it('clears caps synchronously when folderId changes — no stale admin affordances', async () => {

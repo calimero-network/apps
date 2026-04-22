@@ -20,13 +20,17 @@ export interface FolderPermissions {
   canInviteMembers: boolean;
   canManageMembers: boolean;
   loading: boolean;
+  /** Non-null when the underlying caps fetch failed. UI should show
+   *  a retry affordance rather than treating loading:false + all-
+   *  booleans-false as legitimate "no permissions." */
+  error: Error | null;
 }
 
 export function useFolderPermissions(
   namespaceId: string,
   folderId: string,
 ): FolderPermissions {
-  const caps = useMemberCaps(namespaceId, folderId);
+  const { caps, error } = useMemberCaps(namespaceId, folderId);
   const has = (bit: number) => caps !== null && (caps & bit) === bit;
   return {
     canRead: has(CAP.READ),
@@ -38,5 +42,6 @@ export function useFolderPermissions(
     canInviteMembers: has(CAP.INVITE_MEMBERS),
     canManageMembers: has(CAP.MANAGE_MEMBERS),
     loading: caps === null,
+    error,
   };
 }

@@ -8,6 +8,7 @@
 // deriveOrphanState is exported separately so it can be tested
 // without rendering the hook.
 
+import { useMemo } from 'react';
 import { ancestorsOf, FolderLite } from '../utils/ancestry';
 
 export interface OrphanState {
@@ -31,19 +32,31 @@ export function deriveOrphanState(
   return { isOrphan: false, ancestorChain: [] };
 }
 
+export interface FolderAccessState {
+  isMember: boolean;
+  isOrphan: boolean;
+  ancestorChain: string[];
+}
+
+// `useMemo` wrapper earns this function its `use*` name — consumers
+// inside render paths get a stable reference across renders where
+// inputs are unchanged. Pure callers (e.g. tests, one-shot checks)
+// should call `deriveOrphanState` directly.
 export function useFolderAccess(
   registryFolders: FolderLite[],
   adminSubgroupIds: Set<string>,
   folderId: string,
-) {
-  const { isOrphan, ancestorChain } = deriveOrphanState(
-    registryFolders,
-    adminSubgroupIds,
-    folderId,
-  );
-  return {
-    isMember: adminSubgroupIds.has(folderId),
-    isOrphan,
-    ancestorChain,
-  };
+): FolderAccessState {
+  return useMemo(() => {
+    const { isOrphan, ancestorChain } = deriveOrphanState(
+      registryFolders,
+      adminSubgroupIds,
+      folderId,
+    );
+    return {
+      isMember: adminSubgroupIds.has(folderId),
+      isOrphan,
+      ancestorChain,
+    };
+  }, [registryFolders, adminSubgroupIds, folderId]);
 }

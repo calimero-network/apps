@@ -38,6 +38,15 @@ describe('useNamespacePermissions', () => {
     expect(adminRequest).not.toHaveBeenCalled();
   });
 
+  it('exposes error when fetch fails — distinguishes from legitimate zero caps', async () => {
+    const boom = new Error('network down');
+    (adminRequest as ReturnType<typeof vi.fn>).mockRejectedValue(boom);
+    const { result } = renderHook(() => useNamespacePermissions('ns', 'root'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBe(boom);
+    expect(result.current.canManageNamespace).toBe(false);
+  });
+
   it('clears caps synchronously when rootGroupId changes — no stale admin affordances', async () => {
     (adminRequest as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       capabilities: CAP.MANAGE_GROUP,

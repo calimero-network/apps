@@ -7,6 +7,7 @@
 // strips admin bits (MANAGE_GROUP / MANAGE_MEMBERS / INVITE_MEMBERS)
 // so a parent-admin becomes a child-member.
 
+import { useMemo } from 'react';
 import { DEFAULT_CHILD_CAP_MASK } from '../constants/config';
 
 export interface CascadeFolder {
@@ -46,4 +47,19 @@ export function computeCascadeTargets(
   };
   walk(startId);
   return out;
+}
+
+// `useMemo` wrapper earns this module its `use*` name — consumers in
+// Phase 7's useFolderOperations will call this on every cascade and
+// want a stable reference for dependent effects. Pure callers (tests,
+// one-shot cascades) should call `computeCascadeTargets` directly.
+export function useFolderCascade(
+  folders: CascadeFolder[],
+  startId: string,
+  parentCaps: number,
+): CascadeTarget[] {
+  return useMemo(
+    () => computeCascadeTargets(folders, startId, parentCaps),
+    [folders, startId, parentCaps],
+  );
 }

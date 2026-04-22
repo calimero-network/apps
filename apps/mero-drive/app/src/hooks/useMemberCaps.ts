@@ -5,13 +5,17 @@
 // helper folds the duplicate effect into one place so the guard +
 // reset + alive-flag invariants stay in sync.
 //
-// Returns:
-//   - `caps = null`  → loading (initial state, pending fetch, or
-//                      missing prerequisites like a falsy groupId)
-//   - `caps = 0`     → fetch errored (caller treats as "no bits")
-//   - `caps > 0`     → actual bitmask from admin-API
+// Returns `{ caps, error }`:
+//   - `caps = null, error = null` → loading (initial state, pending
+//     fetch, or missing prerequisites like a falsy groupId).
+//   - `caps = 0,    error = null` → resolved with zero bits (member
+//     with no granted capabilities).
+//   - `caps > 0,    error = null` → actual bitmask from admin-API.
+//   - `caps = 0,    error = Error` → fetch failed. Callers can
+//     distinguish this from a legitimate zero bitmask to show a
+//     retry affordance instead of silently rendering as denied.
 //
-// The `setCaps(null)` resets on re-run are load-bearing:
+// The `setState({caps: null, ...})` resets on re-run are load-bearing:
 //   1. First reset (falsy prereq branch) keeps the hook in loading
 //      state during bootstrap before groupId / identity resolve.
 //      Without it, empty-string groupId would fire an adminRequest
@@ -28,31 +32,41 @@ import { useEffect, useState } from 'react';
 import { adminRequest } from '../api/adminApi';
 import { useSelfIdentity } from './useSelfIdentity';
 
+export interface MemberCapsState {
+  caps: number | null;
+  error: Error | null;
+}
+
 export function useMemberCaps(
   namespaceId: string,
   groupId: string,
-): number | null {
+): MemberCapsState {
   const { identity } = useSelfIdentity(namespaceId);
-  const [caps, setCaps] = useState<number | null>(null);
+  const [state, setState] = useState<MemberCapsState>({
+    caps: null,
+    error: null,
+  });
 
   useEffect(() => {
     if (!identity || !groupId) {
-      setCaps(null);
+      setState({ caps: null, error: null });
       return;
     }
-    setCaps(null);
+    setState({ caps: null, error: null });
     let alive = true;
     adminRequest<{ capabilities: number }>(`/groups/${groupId}/members/${identity}`)
       .then((r) => {
-        if (alive) setCaps(r.capabilities);
+        if (alive) setState({ caps: r.capabilities, error: null });
       })
-      .catch(() => {
-        if (alive) setCaps(0);
+      .catch((e: unknown) => {
+        if (!alive) return;
+        const err = e instanceof Error ? e : new Error(String(e));
+        setState({ caps: 0, error: err });
       });
     return () => {
       alive = false;
     };
   }, [groupId, identity]);
 
-  return caps;
+  return state;
 }
