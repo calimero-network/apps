@@ -115,10 +115,16 @@ export const EditorShell: React.FC<EditorShellProps> = ({
 
   // Swap content in when caller hands us an updated `initialContent`
   // after the editor has already mounted (e.g. doc load resolves).
+  // `emitUpdate: false` is load-bearing — Tiptap v3's setContent
+  // emits the `update` event by default, which would fire
+  // onContentChange as if the user had typed. Phase 8's save
+  // orchestrator would then start an autosave cycle immediately
+  // after loading a document, burning a round-trip and flashing a
+  // false "unsaved changes" state.
   useEffect(() => {
     if (!editor || initialContent === undefined) return;
     if (editor.getHTML() === initialContent) return;
-    editor.commands.setContent(initialContent);
+    editor.commands.setContent(initialContent, { emitUpdate: false });
   }, [editor, initialContent]);
 
   useEffect(() => {
