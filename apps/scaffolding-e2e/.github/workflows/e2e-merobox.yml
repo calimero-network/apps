@@ -162,11 +162,14 @@ jobs:
           ) &
           WATCHER_PID=$!
 
+          # Docker containers run as root; sudo needed to remove their files.
+          sudo rm -rf data/ || true
+
           while [ $attempt -le $max_attempts ]; do
             if [ $attempt -gt 1 ]; then
               merobox stop --all || true
               merobox nuke --force || true
-              rm -rf data/
+              sudo rm -rf data/
               sleep 2
             fi
             echo "$attempt" > "$WATCHER_STATE_DIR/attempt"
@@ -186,7 +189,7 @@ jobs:
 
           merobox stop --all || true
           merobox nuke --force || true
-          rm -rf data/
+          sudo rm -rf data/
 
           if [ "$success" = false ]; then
             echo "::error::${{ matrix.workflow }} failed after $max_attempts attempts"
