@@ -8,7 +8,7 @@
 //   /app/*          → placeholder workspace page (logged-in only)
 //   *               → redirect to /
 
-import React, { Suspense, lazy, useEffect } from 'react';
+import React, { Suspense, lazy, useEffect, useRef } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import {
   useCalimero,
@@ -49,19 +49,33 @@ function AuthedRoute({ children }: { children: React.ReactNode }) {
 
 const App: React.FC = () => {
   const { isAuthenticated, logout } = useCalimero();
+  const wasAuthenticatedRef = useRef(false);
 
   // Activity-based 1h idle timeout on top of JWT expiry. Preserved from the
   // v8 App.tsx — a user who's been inactive past SESSION_TIMEOUT_MS gets
   // logged out proactively even if their JWT is still nominally valid.
+  //
+  // The ref tracks auth transitions so we can clear session-scoped caches
+  // on ANY de-auth path, not just our own idle-timeout branch. If
+  // CalimeroProvider invalidates the session (JWT server-side expiry, or a
+  // future manual-logout UI), isAuthenticated flips true→false without
+  // going through isSessionExpired() — and the identity cache, which is
+  // scoped by namespace rather than authenticated user, would leak a
+  // previous user's pubkey to the next user on the same browser.
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated) {
+      if (wasAuthenticatedRef.current) {
+        clearStoredSession();
+        clearSessionActivity();
+        clearIdentityCache();
+      }
+      wasAuthenticatedRef.current = false;
+      return;
+    }
+    wasAuthenticatedRef.current = true;
     if (isSessionExpired()) {
       clearStoredSession();
       clearSessionActivity();
-      // Drop the per-namespace identity cache on logout. The cache is
-      // scoped by namespace, not by authenticated user, so a second
-      // user signing in on the same browser would otherwise inherit
-      // the previous user's pubkey.
       clearIdentityCache();
       logout();
     } else {
