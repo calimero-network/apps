@@ -1,6 +1,6 @@
 [package]
 name = "e2e-kv-store"
-version = "0.10.1-rc.28"
+version = "0.10.1-rc.29"
 authors = ["Calimero Limited <info@calimero.network>"]
 edition = "2021"
 repository = "https://github.com/calimero-network/core"
@@ -11,16 +11,16 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-calimero-sdk             = "0.10.1-rc.28"
-calimero-storage         = "0.10.1-rc.28"
-calimero-storage-macros  = "0.10.1-rc.28"
+calimero-sdk             = "0.10.1-rc.29"
+calimero-storage         = "0.10.1-rc.29"
+calimero-storage-macros  = "0.10.1-rc.29"
 thiserror = "1.0.56"
 sha2      = "0.10.8"
 hex       = "0.4.3"
 bs58      = "0.5.0"
 
 [build-dependencies]
-calimero-wasm-abi = "0.10.1-rc.28"
+calimero-wasm-abi = "0.10.1-rc.29"
 serde_json        = "1.0.113"
 
 [profile.app-release]

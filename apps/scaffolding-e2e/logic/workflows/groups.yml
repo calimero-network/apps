@@ -8,7 +8,7 @@ near_devnet: false
 
 nodes:
   count: 2
-  image: ghcr.io/calimero-network/merod:0.10.1-rc.28
+  image: ghcr.io/calimero-network/merod:0.10.1-rc.29
   prefix: e2e-node
 
 steps:
