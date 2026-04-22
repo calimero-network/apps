@@ -23,7 +23,10 @@ const Authenticate: React.FC<AuthenticateProps> = ({ isAuthenticated, isConfigSe
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/home');
+      // Phase 4 scaffold routes:  / (landing) → /login → /app/* (authed placeholder).
+      // The v8 `/home` route is gone; navigating to it would fall through the
+      // catch-all back to the landing page and leave the user stranded.
+      navigate('/app');
     }
   }, [isAuthenticated, navigate]);
 
