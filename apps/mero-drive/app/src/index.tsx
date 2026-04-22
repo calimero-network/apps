@@ -10,23 +10,21 @@ import {
 } from '@calimero-network/calimero-client';
 import { ToastProvider } from '@calimero-network/mero-ui';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { WorkspaceProvider } from '@/context/WorkspaceContext';
 import { getApplicationId } from '@/constants/config';
 import '@calimero-network/mero-ui/styles.css';
 import './index.css';
 import App from './App';
 
-// Unregister any stale service workers left by previous builds or other
-// Calimero apps on this origin so they stop intercepting and caching requests.
+// Unregister any stale service workers from previous builds / sibling
+// apps on the same origin so they stop intercepting requests.
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then((regs) => {
     regs.forEach((r) => r.unregister());
   });
 }
 
-// Pre-process Tauri SSO hash params BEFORE React mounts.
-// CalimeroProvider reads localStorage on init — tokens must be stored
-// before the first render, not in a useEffect which is always too late.
+// Bootstrap Tauri/SSO hash params BEFORE React mounts — CalimeroProvider
+// reads localStorage at init, a useEffect would always be too late.
 (function bootstrapHashParams() {
   const hash = window.location.hash.slice(1);
   if (!hash) return;
@@ -37,7 +35,6 @@ if ('serviceWorker' in navigator) {
   if (nodeUrl) setAppEndpointKey(nodeUrl.trim());
   if (accessToken) setAccessToken(accessToken);
   if (refreshToken) setRefreshToken(refreshToken);
-  // Strip auth tokens from URL so they don't linger in address bar or history.
   if (accessToken || refreshToken) {
     p.delete('access_token');
     p.delete('refresh_token');
@@ -51,7 +48,7 @@ if ('serviceWorker' in navigator) {
   }
 })();
 
-// Persist app-id from URL into localStorage so CalimeroProvider can find it.
+// Persist app-id from URL into localStorage so CalimeroProvider picks it up.
 const CALIMERO_APP_ID_KEY = 'calimero-application-id';
 const appIdFromUrl =
   new URLSearchParams(window.location.search).get('app-id')?.trim() ||
@@ -60,31 +57,27 @@ const appIdFromUrl =
 if (appIdFromUrl && !localStorage.getItem(CALIMERO_APP_ID_KEY)) {
   localStorage.setItem(CALIMERO_APP_ID_KEY, appIdFromUrl);
 }
-// CalimeroProvider only builds `app` when `resolvedApplicationId` is set (localStorage or OAuth hash).
-// Admin API can still list workspaces without it — bootstrap so AbiClient/blob flows match WorkspaceManager.
 if (!localStorage.getItem(CALIMERO_APP_ID_KEY)) {
   localStorage.setItem(CALIMERO_APP_ID_KEY, getApplicationId());
 }
 
-// Disable StrictMode in production to avoid double-rendering which can cause
-// 429 errors from CalimeroProvider's double auth checks.
+// Disable StrictMode in production to avoid double-rendering which can
+// trigger 429s from CalimeroProvider's duplicate auth checks.
 const AppWrapper = import.meta.env.DEV ? StrictMode : React.Fragment;
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <AppWrapper>
     <BrowserRouter>
       <CalimeroProvider
-        packageName="com.calimero.mero-drive"
+        packageName="com.calimero.mero-drive-docs"
         registryUrl="https://apps.calimero.network"
         mode={AppMode.MultiContext}
       >
-        <WorkspaceProvider>
-          <ToastProvider>
-            <TooltipProvider>
-              <App />
-            </TooltipProvider>
-          </ToastProvider>
-        </WorkspaceProvider>
+        <ToastProvider>
+          <TooltipProvider>
+            <App />
+          </TooltipProvider>
+        </ToastProvider>
       </CalimeroProvider>
     </BrowserRouter>
   </AppWrapper>,

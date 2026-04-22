@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useCalimero } from '@calimero-network/calimero-client';
+import { useCalimero, ConnectionType } from '@calimero-network/calimero-client';
 import { Button } from '@/components/ui/button';
 import { Hero } from '@/components/landing/Hero';
 import { Features } from '@/components/landing/Features';
@@ -52,7 +52,7 @@ const Authenticate: React.FC<AuthenticateProps> = ({ isAuthenticated, isConfigSe
     }
     // Use CalimeroProvider's login — it sends package-name + registry-url to the
     // node so the node can resolve the app itself. No applicationId/Path needed.
-    login({ type: 'custom', url });
+    login({ type: ConnectionType.Custom, url });
   };
 
   // State C: authenticated → redirect (handled by useEffect above)
