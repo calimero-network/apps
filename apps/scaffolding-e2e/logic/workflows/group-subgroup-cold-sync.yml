@@ -33,7 +33,7 @@ near_devnet: false
 
 nodes:
   count: 2
-  image: ghcr.io/calimero-network/merod:0.10.1-rc.29
+  image: ghcr.io/calimero-network/merod:edge
   prefix: e2e-node
 
 steps:
@@ -99,7 +99,7 @@ steps:
       - identity: '{{member_identity_node2}}'
         role: Member
 
-  # Short wait for subgroup membership governance to propagate to node-2.
+  # Wait for subgroup membership governance to propagate to node-2.
   # This is NOT the thing under test — we just need node-2's group_store
   # to accept itself as a member before the join_context membership check.
   - name: Wait for subgroup governance
