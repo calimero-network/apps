@@ -568,7 +568,7 @@ steps:
   - name: reparent_group — move subteam from namespace root under eng_group
     type: reparent_group
     node: calimero-node-1
-    group_id: '{{subteam_group}}'
+    child_group_id: '{{subteam_group}}'
     new_parent_id: '{{eng_group}}'
 
   - name: list_subgroups on eng_group — admin-API now shows subteam as child
@@ -642,7 +642,7 @@ steps:
   - name: reparent_group — move subteam from eng_group back to namespace root
     type: reparent_group
     node: calimero-node-1
-    group_id: '{{subteam_group}}'
+    child_group_id: '{{subteam_group}}'
     new_parent_id: '{{namespace_id}}'
 
   # After the reparent, eng_group has no remaining children — the
