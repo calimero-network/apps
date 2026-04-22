@@ -1,101 +1,98 @@
-import React, { Suspense, lazy, useEffect, useRef } from 'react';
-import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { getAuthConfig, setAppEndpointKey, useCalimero } from '@calimero-network/calimero-client';
+// v9 app-side scaffold. Minimal routing + auth gate — the folder/docs
+// UI will be rebuilt against the new generated clients + mero-react
+// hooks in Phases 5-8 of the namespace-migration plan.
+//
+// For now:
+//   /               → landing page
+//   /login          → Authenticate (node-URL + SSO flow)
+//   /app/*          → placeholder workspace page (logged-in only)
+//   *               → redirect to /
+
+import React, { Suspense, lazy, useEffect } from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import {
+  useCalimero,
+  getAppEndpointKey,
+  getAccessToken,
+} from '@calimero-network/calimero-client';
 import {
   isSessionExpired,
   clearStoredSession,
   clearSessionActivity,
   updateSessionActivity,
 } from '@/utils/session';
-import { getNodeUrlFromUrl } from '@/constants/config';
 
-// Lazy load pages for code splitting
-const HomePage = lazy(() => import('./pages/home'));
+const LandingPage = lazy(() => import('./pages/landing'));
 const Authenticate = lazy(() => import('./pages/login/Authenticate'));
-const EditorPage = lazy(() => import('./pages/editor'));
-const FileDetailsPage = lazy(() => import('./pages/file-details'));
-const JoinPage = lazy(() => import('./pages/join'));
 
-const PageLoader = () => (
-  <div className="flex items-center justify-center h-screen bg-background">
-    <div className="text-center">
-      <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary mx-auto mb-4"></div>
-      <p className="text-muted-foreground">Loading...</p>
+function WorkspacePlaceholder() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background text-foreground">
+      <div className="max-w-md text-center space-y-4 p-8">
+        <h1 className="text-2xl font-semibold">Mero Drive v9</h1>
+        <p className="text-sm text-muted-foreground">
+          You're authenticated against the v9 namespace backend. The
+          folder + document UI is being rebuilt against the new
+          registry / docs services and will land in follow-up PRs.
+        </p>
+      </div>
     </div>
-  </div>
-);
+  );
+}
 
-export default function App() {
+function AuthedRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated } = useCalimero();
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
+const App: React.FC = () => {
   const { isAuthenticated, logout } = useCalimero();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const hasStrippedRef = useRef(false);
 
-  // Compute config state fresh on every render — reads directly from localStorage
-  // so it's always accurate without needing a timer or stale state.
-  const authConfig = getAuthConfig();
-  const isConfigSet = Boolean(authConfig?.appEndpointKey && authConfig?.jwtToken);
-
-  // Strip node_url query param once on mount and redirect to /
+  // Activity-based 1h idle timeout on top of JWT expiry. Preserved from the
+  // v8 App.tsx — a user who's been inactive past SESSION_TIMEOUT_MS gets
+  // logged out proactively even if their JWT is still nominally valid.
   useEffect(() => {
-    if (hasStrippedRef.current) return;
-    hasStrippedRef.current = true;
-
-    const nodeUrl = getNodeUrlFromUrl();
-    if (nodeUrl) {
-      setAppEndpointKey(nodeUrl.trim());
-      const url = new URL(window.location.href);
-      url.searchParams.delete('node_url');
-      url.searchParams.delete('node-url');
-      const hashParams = new URLSearchParams(url.hash.slice(1));
-      hashParams.delete('node_url');
-      hashParams.delete('node-url');
-      const remaining = hashParams.toString();
-      url.hash = remaining ? `#${remaining}` : '';
-      window.history.replaceState({}, '', url.toString());
-      if (location.pathname !== '/') {
-        navigate('/', { replace: true });
-      }
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Check for expired session on every auth change
-  useEffect(() => {
-    if (isAuthenticated) {
-      if (isSessionExpired()) {
-        clearStoredSession();
-        clearSessionActivity();
-        logout();
-      } else {
-        updateSessionActivity();
-      }
+    if (!isAuthenticated) return;
+    if (isSessionExpired()) {
+      clearStoredSession();
+      clearSessionActivity();
+      logout();
+    } else {
+      updateSessionActivity();
     }
   }, [isAuthenticated, logout]);
 
-  // Route helper: keeps showing a spinner on protected routes while tokens exist
-  // but CalimeroProvider hasn't finished its async auth check yet. Only redirects
-  // to / when there are no tokens at all (isConfigSet = false).
-  const protectedRoute = (element: React.ReactNode) => {
-    if (!isConfigSet) return <Navigate to="/" replace />;
-    if (!isAuthenticated) return <PageLoader />;
-    return <>{element}</>;
-  };
+  // `isConfigSet` must mean "the user has supplied node URL AND token."
+  // The Authenticate page's three-state machine (landing CTA / node-URL
+  // form / authed redirect) relies on this exact semantic — widening it
+  // to "CalimeroProvider has resolved an app" makes the node-URL form
+  // unreachable because `app` can resolve at bootstrap before auth
+  // completes.
+  const isConfigSet = Boolean(getAppEndpointKey() && getAccessToken());
 
   return (
-    <Suspense fallback={<PageLoader />}>
+    <Suspense fallback={<div />}>
       <Routes>
+        <Route path="/" element={<LandingPage />} />
         <Route
-          path="/"
+          path="/login"
           element={
             <Authenticate isAuthenticated={isAuthenticated} isConfigSet={isConfigSet} />
           }
         />
-        <Route path="/home" element={protectedRoute(<HomePage />)} />
-        <Route path="/editor" element={protectedRoute(<EditorPage />)} />
-        <Route path="/editor/:documentId" element={protectedRoute(<EditorPage />)} />
-        <Route path="/files/:fileId" element={protectedRoute(<FileDetailsPage />)} />
-        <Route path="/join" element={<JoinPage />} />
+        <Route
+          path="/app/*"
+          element={
+            <AuthedRoute>
+              <WorkspacePlaceholder />
+            </AuthedRoute>
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
   );
-}
+};
+
+export default App;

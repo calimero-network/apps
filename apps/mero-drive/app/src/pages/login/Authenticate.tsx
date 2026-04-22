@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useCalimero } from '@calimero-network/calimero-client';
+import { useCalimero, ConnectionType } from '@calimero-network/calimero-client';
 import { Button } from '@/components/ui/button';
 import { Hero } from '@/components/landing/Hero';
 import { Features } from '@/components/landing/Features';
@@ -23,7 +23,10 @@ const Authenticate: React.FC<AuthenticateProps> = ({ isAuthenticated, isConfigSe
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/home');
+      // Phase 4 scaffold routes:  / (landing) → /login → /app/* (authed placeholder).
+      // The v8 `/home` route is gone; navigating to it would fall through the
+      // catch-all back to the landing page and leave the user stranded.
+      navigate('/app');
     }
   }, [isAuthenticated, navigate]);
 
@@ -52,7 +55,7 @@ const Authenticate: React.FC<AuthenticateProps> = ({ isAuthenticated, isConfigSe
     }
     // Use CalimeroProvider's login — it sends package-name + registry-url to the
     // node so the node can resolve the app itself. No applicationId/Path needed.
-    login({ type: 'custom', url });
+    login({ type: ConnectionType.Custom, url });
   };
 
   // State C: authenticated → redirect (handled by useEffect above)
