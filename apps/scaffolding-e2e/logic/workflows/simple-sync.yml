@@ -2,6 +2,7 @@ name: Simple Sync Test (No Handlers)
 description: Basic set/get sync test without event handlers
 
 force_pull_image: false
+nuke_on_start: true
 
 nodes:
   chain_id: testnet-1

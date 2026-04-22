@@ -2,6 +2,7 @@ name: E2E KV Store - Consolidated Backend Tests
 description: Consolidated E2E backend tests covering KV operations, handlers, user storage, frozen storage, private storage, nested CRDTs, and RGA
 
 force_pull_image: false
+nuke_on_start: true
 near_devnet: false
 
 nodes:

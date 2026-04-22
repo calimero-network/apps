@@ -56,6 +56,11 @@ jobs:
           cd logic
           ./build.sh
 
+      - name: Build multi-service bundle
+        run: |
+          cd logic
+          ./build-multi-service-bundle.sh
+
       - name: Upload WASM artifact
         uses: actions/upload-artifact@v4
         with:
@@ -63,6 +68,7 @@ jobs:
           path: |
             logic/res/e2e_kv_store.wasm
             logic/res/abi.json
+            logic/res/*.mpk
           retention-days: 1
 
   # ── Test: run each workflow in parallel ───────────────────────────────────────
@@ -90,6 +96,12 @@ jobs:
             file: workflows/group-multi-service.yml
           - workflow: group-subgroup
             file: workflows/group-subgroup.yml
+          - workflow: group-subgroup-cold-sync
+            file: workflows/group-subgroup-cold-sync.yml
+          - workflow: group-capabilities
+            file: workflows/group-capabilities.yml
+          - workflow: group-nesting
+            file: workflows/group-nesting.yml
           - workflow: handler-test
             file: workflows/handler-test.yml
           - workflow: simple-sync
@@ -107,20 +119,14 @@ jobs:
           name: e2e-kv-store-wasm
           path: logic/res
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install merobox
-        env:
-          RUST_LOG: warn
+      - name: Install merobox (apt)
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install uv
-          uv pip install --system \
-            "calimero-client-py @ git+https://github.com/calimero-network/calimero-client-py.git@master" \
-            "merobox @ git+https://github.com/calimero-network/merobox.git@master"
+          curl -fsSL https://calimero-network.github.io/merobox/gpg.key \
+            | sudo tee /usr/share/keyrings/merobox.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/merobox.gpg] https://calimero-network.github.io/merobox stable main" \
+            | sudo tee /etc/apt/sources.list.d/merobox.list
+          sudo apt-get update
+          sudo apt-get install -y merobox
           merobox --version
 
       - name: Pull merod:0.10.1-rc.29 image
@@ -134,31 +140,53 @@ jobs:
           attempt=1
           success=false
 
+          # Background watcher: stream docker logs from live containers to disk.
+          # Post-run `docker logs` is unreliable because merobox tears down
+          # containers on exit. The watcher captures logs while containers are
+          # still alive so cleanup can't race against log collection.
+          LOGDIR="$GITHUB_WORKSPACE/docker-logs"
+          WATCHER_STATE_DIR="$(mktemp -d)"
+          echo "1" > "$WATCHER_STATE_DIR/attempt"
+          (
+            while [ ! -f "$WATCHER_STATE_DIR/stop" ]; do
+              cur_attempt=$(cat "$WATCHER_STATE_DIR/attempt" 2>/dev/null || echo 1)
+              for c in $(docker ps --filter "label=calimero.node=true" --format "{{.Names}}" 2>/dev/null | grep -v -- '-init$' || true); do
+                mark="$WATCHER_STATE_DIR/attempt${cur_attempt}-${c}"
+                if [ ! -f "$mark" ]; then
+                  touch "$mark"
+                  docker logs -f "$c" > "$LOGDIR/${{ matrix.workflow }}-attempt${cur_attempt}-${c}.log" 2>&1 &
+                fi
+              done
+              sleep 1
+            done
+          ) &
+          WATCHER_PID=$!
+
           while [ $attempt -le $max_attempts ]; do
             if [ $attempt -gt 1 ]; then
               merobox stop --all || true
               merobox nuke --force || true
+              rm -rf data/
               sleep 2
             fi
+            echo "$attempt" > "$WATCHER_STATE_DIR/attempt"
 
             if merobox bootstrap run "${{ matrix.file }}" --e2e-mode; then
               success=true
               break
-            else
-              echo "Collecting Docker logs for ${{ matrix.workflow }} attempt $attempt"
-              for container in $(docker ps -a --format "{{.Names}}" 2>/dev/null || true); do
-                if [ -n "$container" ]; then
-                  docker logs "$container" \
-                    > "$GITHUB_WORKSPACE/docker-logs/${{ matrix.workflow }}-attempt${attempt}-${container}.log" \
-                    2>&1 || true
-                fi
-              done
-              attempt=$((attempt + 1))
             fi
+            attempt=$((attempt + 1))
           done
+
+          touch "$WATCHER_STATE_DIR/stop"
+          sleep 2
+          kill "$WATCHER_PID" 2>/dev/null || true
+          for pid in $(jobs -p); do kill "$pid" 2>/dev/null || true; done
+          wait 2>/dev/null || true
 
           merobox stop --all || true
           merobox nuke --force || true
+          rm -rf data/
 
           if [ "$success" = false ]; then
             echo "::error::${{ matrix.workflow }} failed after $max_attempts attempts"

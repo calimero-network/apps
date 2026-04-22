@@ -10,6 +10,7 @@ description: >
     4. CRDT sync works correctly within each service's context.
 
 force_pull_image: false
+nuke_on_start: true
 near_devnet: false
 
 nodes:

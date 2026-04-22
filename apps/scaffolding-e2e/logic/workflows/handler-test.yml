@@ -8,6 +8,7 @@ description: >
     3. get_handler_execution_count reflects handler invocations.
 
 force_pull_image: false
+nuke_on_start: true
 near_devnet: false
 
 nodes:

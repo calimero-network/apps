@@ -6,6 +6,7 @@ description: >
   signing key hierarchy fix.
 
 force_pull_image: false
+nuke_on_start: true
 near_devnet: false
 
 nodes:

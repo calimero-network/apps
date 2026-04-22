@@ -5,6 +5,7 @@ description: >
   write — covering the multi-party sync path that the 2-node test misses.
 
 force_pull_image: false
+nuke_on_start: true
 near_devnet: false
 
 nodes:

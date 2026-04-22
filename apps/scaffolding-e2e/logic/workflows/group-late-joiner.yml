@@ -6,6 +6,7 @@ description: >
   well as new writes after joining.
 
 force_pull_image: false
+nuke_on_start: true
 near_devnet: false
 
 nodes:
