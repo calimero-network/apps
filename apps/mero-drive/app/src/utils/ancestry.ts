@@ -57,8 +57,13 @@ export function descendantsOf(folders: FolderLite[], id: string): string[] {
     arr.push(f.id);
     children.set(f.parent_id, arr);
   }
+  // `seen` guards against stack overflow on a cyclic parent_id graph
+  // (same concern as ancestorsOf — both consume admin-API data).
   const out: string[] = [];
+  const seen = new Set<string>();
   const walk = (n: string) => {
+    if (seen.has(n)) return;
+    seen.add(n);
     for (const c of children.get(n) ?? []) walk(c);
     if (n !== id) out.push(n);
   };

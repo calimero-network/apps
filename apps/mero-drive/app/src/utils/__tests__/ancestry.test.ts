@@ -35,4 +35,13 @@ describe('ancestry', () => {
     ];
     expect(ancestorsOf(cyc, 'x')).toEqual([]);
   });
+
+  it('descendantsOf survives cycles without stack overflow', () => {
+    const cyc = [
+      { id: 'a', parent_id: 'b' },
+      { id: 'b', parent_id: 'a' },
+    ];
+    const res = descendantsOf(cyc, 'a');
+    expect(res).toEqual(['b']);
+  });
 });
