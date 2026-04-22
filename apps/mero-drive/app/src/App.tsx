@@ -8,9 +8,19 @@
 //   /app/*          → placeholder workspace page (logged-in only)
 //   *               → redirect to /
 
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useCalimero } from '@calimero-network/calimero-client';
+import {
+  useCalimero,
+  getAppEndpointKey,
+  getAccessToken,
+} from '@calimero-network/calimero-client';
+import {
+  isSessionExpired,
+  clearStoredSession,
+  clearSessionActivity,
+  updateSessionActivity,
+} from '@/utils/session';
 
 const LandingPage = lazy(() => import('./pages/landing'));
 const Authenticate = lazy(() => import('./pages/login/Authenticate'));
@@ -36,15 +46,30 @@ function AuthedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-
-
 const App: React.FC = () => {
-  const { isAuthenticated, app } = useCalimero();
-  // `app` is populated once an application id resolves against the
-  // CalimeroProvider's packageName+registryUrl. We treat that as the
-  // "config is set" signal the Authenticate page uses to decide between
-  // its three states (landing CTA, node-URL form, authenticated redirect).
-  const isConfigSet = Boolean(app);
+  const { isAuthenticated, logout } = useCalimero();
+
+  // Activity-based 1h idle timeout on top of JWT expiry. Preserved from the
+  // v8 App.tsx — a user who's been inactive past SESSION_TIMEOUT_MS gets
+  // logged out proactively even if their JWT is still nominally valid.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    if (isSessionExpired()) {
+      clearStoredSession();
+      clearSessionActivity();
+      logout();
+    } else {
+      updateSessionActivity();
+    }
+  }, [isAuthenticated, logout]);
+
+  // `isConfigSet` must mean "the user has supplied node URL AND token."
+  // The Authenticate page's three-state machine (landing CTA / node-URL
+  // form / authed redirect) relies on this exact semantic — widening it
+  // to "CalimeroProvider has resolved an app" makes the node-URL form
+  // unreachable because `app` can resolve at bootstrap before auth
+  // completes.
+  const isConfigSet = Boolean(getAppEndpointKey() && getAccessToken());
 
   return (
     <Suspense fallback={<div />}>
