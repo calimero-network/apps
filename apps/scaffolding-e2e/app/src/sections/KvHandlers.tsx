@@ -1,19 +1,7 @@
 import { useState } from "react";
+import { ResultBox } from "../components/ResultBox";
 import * as api from "../api/kvStore";
 
-function ResultBox({ result }: { result: unknown }) {
-  if (result === undefined) return null;
-  const isError =
-    result !== null &&
-    typeof result === "object" &&
-    "error" in result &&
-    (result as { error: unknown }).error !== null;
-  return (
-    <pre className={`result-box${isError ? " error" : ""}`}>
-      {JSON.stringify(result, null, 2)}
-    </pre>
-  );
-}
 
 function useCall() {
   const [loading, setLoading] = useState(false);

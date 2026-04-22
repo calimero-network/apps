@@ -672,7 +672,7 @@ impl E2eKvStore {
     pub fn add_frozen(&mut self, value: String) -> app::Result<String> {
         app::log!("Adding frozen value: {:?}", value);
 
-        let hash = self.frozen_items.insert(value.clone().into())?;
+        let hash = self.frozen_items.insert(value.clone())?;
 
         app::emit!(Event::FrozenAdded {
             hash,
@@ -692,8 +692,7 @@ impl E2eKvStore {
         Ok(self
             .frozen_items
             .get(&hash)?
-            .map(|v| v.clone())
-            .ok_or_else(|| Error::FrozenNotFound("Frozen value is not found"))?)
+            .ok_or(Error::FrozenNotFound("Frozen value is not found"))?)
     }
 
     // PRIVATE STORAGE
@@ -1277,18 +1276,9 @@ impl E2eKvStore {
         if self.ws_admin.get().is_empty() {
             return Err(Error::WorkspaceNotInitialized.to_string());
         }
-        let channel_count = self
-            .ws_channels
-            .len()
-            .map_err(|e| format!("{e:?}"))?;
-        let group_count = self
-            .ws_groups
-            .len()
-            .map_err(|e| format!("{e:?}"))?;
-        let member_count = self
-            .ws_member_roles
-            .len()
-            .map_err(|e| format!("{e:?}"))?;
+        let channel_count = self.ws_channels.len().map_err(|e| format!("{e:?}"))?;
+        let group_count = self.ws_groups.len().map_err(|e| format!("{e:?}"))?;
+        let member_count = self.ws_member_roles.len().map_err(|e| format!("{e:?}"))?;
         Ok(WorkspaceInfo {
             name: self.ws_name.get().clone(),
             admin: self.ws_admin.get().clone(),
@@ -1408,7 +1398,9 @@ impl E2eKvStore {
         self.require_admin()?;
         let allowed = ["admin", "member", "read-only"];
         if !allowed.contains(&role.as_str()) {
-            return Err(Error::InvalidInput("role must be admin, member, or read-only").to_string());
+            return Err(
+                Error::InvalidInput("role must be admin, member, or read-only").to_string(),
+            );
         }
         // Insert a new LwwRegister — LWW timestamp ensures the latest wins on merge
         self.ws_member_roles

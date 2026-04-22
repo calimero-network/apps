@@ -1,19 +1,9 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
+import { ResultBox } from "../components/ResultBox";
 import * as api from "../api/kvStore";
+import { useAutoRefresh } from "../hooks/useAutoRefresh";
+import { SyncBar } from "../components/SyncBar";
 
-function ResultBox({ result }: { result: unknown }) {
-  if (result === undefined) return null;
-  const isError =
-    result !== null &&
-    typeof result === "object" &&
-    "error" in result &&
-    (result as { error: unknown }).error !== null;
-  return (
-    <pre className={`result-box${isError ? " error" : ""}`}>
-      {JSON.stringify(result, null, 2)}
-    </pre>
-  );
-}
 
 function useCall() {
   const [loading, setLoading] = useState(false);
@@ -39,15 +29,24 @@ export function RgaDocument() {
   const [appendText, setAppendText] = useState("");
   const [title, setTitle] = useState("");
 
+  const [liveText, setLiveText] = useState<string | null>(null);
+  const [liveTitle, setLiveTitle] = useState<string | null>(null);
+
   const insertCall = useCall();
   const deleteCall = useCall();
   const appendCall = useCall();
   const setTitleCall = useCall();
-  const getTitleCall = useCall();
-  const getTextCall = useCall();
-  const getLenCall = useCall();
-  const isEmptyCall = useCall();
   const clearCall = useCall();
+
+  const poll = useCallback(async () => {
+    const [textRes, titleRes] = await Promise.all([api.rgaGetText(), api.rgaGetTitle()]);
+    const text = (textRes as { result?: { output?: string } })?.result?.output;
+    const t = (titleRes as { result?: { output?: string } })?.result?.output;
+    if (text !== undefined) setLiveText(text);
+    if (t !== undefined) setLiveTitle(t);
+  }, []);
+
+  const { pulse, sinceLabel } = useAutoRefresh(poll, 2000);
 
   return (
     <div>
@@ -55,8 +54,23 @@ export function RgaDocument() {
         <h2 className="section-title">RGA Document</h2>
         <p className="section-desc">
           Replicated Growable Array (RGA) for collaborative text editing.
-          Concurrent insertions/deletions are merged automatically across nodes.
+          Concurrent insertions/deletions merge automatically across nodes. The live
+          preview below updates every 2 s — edit on Node A and watch Node B's view change.
         </p>
+      </div>
+
+      {/* Live document preview */}
+      <div className="method-card" style={{ marginBottom: 16 }}>
+        <SyncBar pulse={pulse} sinceLabel={sinceLabel} onRefresh={poll} />
+        <div className="method-name">Document — live preview</div>
+        {liveTitle !== null && (
+          <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 6 }}>
+            title: <strong style={{ color: "var(--color-text-primary)" }}>{liveTitle || "(empty)"}</strong>
+          </div>
+        )}
+        <pre className="result-box" style={{ margin: 0, minHeight: 60, whiteSpace: "pre-wrap" }}>
+          {liveText === null ? "Loading…" : liveText || "(empty document)"}
+        </pre>
       </div>
 
       <div className="method-grid">
@@ -82,14 +96,42 @@ export function RgaDocument() {
             className="btn-calimero"
             disabled={insertCall.loading}
             onClick={() =>
-              insertCall.run(() =>
-                api.rgaInsertText(parseInt(insertPos, 10), insertText),
-              )
+              insertCall.run(async () => {
+                const r = await api.rgaInsertText(parseInt(insertPos, 10), insertText);
+                poll();
+                return r;
+              })
             }
           >
             {insertCall.loading ? "..." : "Execute"}
           </button>
           <ResultBox result={insertCall.result} />
+        </div>
+
+        <div className="method-card">
+          <div className="method-name">rga_append_text(text)</div>
+          <div className="method-inputs">
+            <input
+              className="form-control"
+              placeholder="text to append"
+              value={appendText}
+              onChange={(e) => setAppendText(e.target.value)}
+            />
+          </div>
+          <button
+            className="btn-calimero"
+            disabled={appendCall.loading}
+            onClick={() =>
+              appendCall.run(async () => {
+                const r = await api.rgaAppendText(appendText);
+                poll();
+                return r;
+              })
+            }
+          >
+            {appendCall.loading ? "..." : "Execute"}
+          </button>
+          <ResultBox result={appendCall.result} />
         </div>
 
         <div className="method-card">
@@ -118,12 +160,11 @@ export function RgaDocument() {
             className="btn-danger-outline"
             disabled={deleteCall.loading}
             onClick={() =>
-              deleteCall.run(() =>
-                api.rgaDeleteText(
-                  parseInt(deleteStart, 10),
-                  parseInt(deleteEnd, 10),
-                ),
-              )
+              deleteCall.run(async () => {
+                const r = await api.rgaDeleteText(parseInt(deleteStart, 10), parseInt(deleteEnd, 10));
+                poll();
+                return r;
+              })
             }
           >
             {deleteCall.loading ? "..." : "Execute"}
@@ -132,31 +173,7 @@ export function RgaDocument() {
         </div>
 
         <div className="method-card">
-          <div className="method-name">rga_append_text(text)</div>
-          <div className="method-inputs">
-            <input
-              className="form-control"
-              placeholder="text to append"
-              value={appendText}
-              onChange={(e) => setAppendText(e.target.value)}
-            />
-          </div>
-          <button
-            className="btn-calimero"
-            disabled={appendCall.loading}
-            onClick={() =>
-              appendCall.run(() => api.rgaAppendText(appendText))
-            }
-          >
-            {appendCall.loading ? "..." : "Execute"}
-          </button>
-          <ResultBox result={appendCall.result} />
-        </div>
-
-        <div className="method-card">
-          <div className="method-name">
-            rga_set_title / rga_get_title
-          </div>
+          <div className="method-name">rga_set_title(new_title)</div>
           <div className="method-inputs">
             <input
               className="form-control"
@@ -165,75 +182,37 @@ export function RgaDocument() {
               onChange={(e) => setTitle(e.target.value)}
             />
           </div>
-          <div className="input-row">
-            <button
-              className="btn-calimero"
-              disabled={setTitleCall.loading}
-              onClick={() =>
-                setTitleCall.run(() => api.rgaSetTitle(title))
-              }
-            >
-              {setTitleCall.loading ? "..." : "set_title"}
-            </button>
-            <button
-              className="btn-calimero-outline"
-              disabled={getTitleCall.loading}
-              onClick={() => getTitleCall.run(() => api.rgaGetTitle())}
-            >
-              {getTitleCall.loading ? "..." : "get_title"}
-            </button>
-          </div>
+          <button
+            className="btn-calimero"
+            disabled={setTitleCall.loading}
+            onClick={() =>
+              setTitleCall.run(async () => {
+                const r = await api.rgaSetTitle(title);
+                poll();
+                return r;
+              })
+            }
+          >
+            {setTitleCall.loading ? "..." : "set_title"}
+          </button>
           <ResultBox result={setTitleCall.result} />
-          <ResultBox result={getTitleCall.result} />
-        </div>
-
-        <div className="method-card">
-          <div className="method-name">
-            rga_get_text / rga_get_length / rga_is_empty
-          </div>
-          <div className="input-row" style={{ marginBottom: 0 }}>
-            <button
-              className="btn-calimero-outline"
-              disabled={getTextCall.loading}
-              onClick={() => getTextCall.run(() => api.rgaGetText())}
-            >
-              {getTextCall.loading ? "..." : "get_text"}
-            </button>
-            <button
-              className="btn-calimero-outline"
-              disabled={getLenCall.loading}
-              onClick={() => getLenCall.run(() => api.rgaGetLength())}
-            >
-              {getLenCall.loading ? "..." : "length"}
-            </button>
-            <button
-              className="btn-calimero-outline"
-              disabled={isEmptyCall.loading}
-              onClick={() => isEmptyCall.run(() => api.rgaIsEmpty())}
-            >
-              {isEmptyCall.loading ? "..." : "is_empty"}
-            </button>
-          </div>
-          <ResultBox result={getTextCall.result} />
-          <ResultBox result={getLenCall.result} />
-          <ResultBox result={isEmptyCall.result} />
         </div>
 
         <div className="method-card">
           <div className="method-name">rga_clear()</div>
-          <p
-            style={{
-              fontSize: 12,
-              color: "var(--color-text-muted)",
-              marginBottom: 10,
-            }}
-          >
+          <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 10 }}>
             Clears all text from the document.
           </p>
           <button
             className="btn-danger-outline"
             disabled={clearCall.loading}
-            onClick={() => clearCall.run(() => api.rgaClear())}
+            onClick={() =>
+              clearCall.run(async () => {
+                const r = await api.rgaClear();
+                poll();
+                return r;
+              })
+            }
           >
             {clearCall.loading ? "..." : "Execute"}
           </button>

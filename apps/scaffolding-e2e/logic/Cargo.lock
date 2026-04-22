@@ -86,9 +86,9 @@ checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 
 [[package]]
 name = "calimero-prelude"
-version = "0.10.1-rc.20"
+version = "0.10.1-rc.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d605f7807d6d9b77266652ffb05660adfcff6abcd4a68d28fba6a1257cd1559"
+checksum = "e3f7085b59f04be5d4900da2d58d9c1b902013547774ccdfb61a7088cc46f194"
 dependencies = [
  "borsh",
  "calimero-primitives",
@@ -98,9 +98,9 @@ dependencies = [
 
 [[package]]
 name = "calimero-primitives"
-version = "0.10.1-rc.20"
+version = "0.10.1-rc.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "498ad440c5f28f05460205fc7d48db919013607b151de52fb43dea2860fdff09"
+checksum = "084ebb804504633dcb7c80afb9d3b1177eb43211ecea311a5406f746c224fdff"
 dependencies = [
  "borsh",
  "bs58",
@@ -117,9 +117,9 @@ dependencies = [
 
 [[package]]
 name = "calimero-sdk"
-version = "0.10.1-rc.20"
+version = "0.10.1-rc.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80af7ad84814c1352a2fa13e04c8c94392affea5806be74d985161be4fddbeb8"
+checksum = "7d232ed45b76556d40b2e0faf680919199eabc6d5d1444d9f2540b8d143b93fd"
 dependencies = [
  "borsh",
  "calimero-prelude",
@@ -134,9 +134,9 @@ dependencies = [
 
 [[package]]
 name = "calimero-sdk-macros"
-version = "0.10.1-rc.20"
+version = "0.10.1-rc.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2810dd6f51df7f47a3e6ecf5247f081fdca0b99558ad6f06e1a3c8b51b0014cb"
+checksum = "862790972791e38e522b3cfd1475885f9a210163925d13e4c13b37c691e17976"
 dependencies = [
  "prettyplease",
  "proc-macro2",
@@ -148,9 +148,9 @@ dependencies = [
 
 [[package]]
 name = "calimero-storage"
-version = "0.10.1-rc.20"
+version = "0.10.1-rc.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5559e3f0dd1f9316f76a95c0ce18c600897026d2804be554d8723a90fc73939"
+checksum = "e83d7e4ea5da7abca736106302ce0682362dcb4fd521e4bcca41e07754e16603"
 dependencies = [
  "borsh",
  "calimero-prelude",
@@ -171,9 +171,9 @@ dependencies = [
 
 [[package]]
 name = "calimero-storage-macros"
-version = "0.10.1-rc.20"
+version = "0.10.1-rc.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0299d286703aac799965d15b3895a2867fb03a89ab927ea7298f7d6e03359e4c"
+checksum = "02fa7c9294bc6812fcb6ffc4c2d122fba5ccdfea03310ef6d93e194c3e1109e7"
 dependencies = [
  "quote",
  "syn",
@@ -181,18 +181,18 @@ dependencies = [
 
 [[package]]
 name = "calimero-sys"
-version = "0.10.1-rc.20"
+version = "0.10.1-rc.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfebc5e45156fee6c0fecb9be74d340970f0b72bec809839f3b640d658b1c3aa"
+checksum = "61ab92a3d5e41b63844413d046206f9b7524445b6973d044ce8b6f78797a3bf2"
 dependencies = [
  "cfg-if",
 ]
 
 [[package]]
 name = "calimero-wasm-abi"
-version = "0.10.1-rc.20"
+version = "0.10.1-rc.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "602717790669000f0cc75f4c2abb22b685a634149fc009d447e63658c9269bbd"
+checksum = "43952e2fba3a9c65f601ddc40042212fe0e0bfc19e2210dd14a13f30e5fc69a9"
 dependencies = [
  "proc-macro2",
  "serde",
@@ -224,15 +224,6 @@ name = "const-str"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f421161cb492475f1661ddc9815a745a1c894592070661180fdec3d4872e9c3"
-
-[[package]]
-name = "core2"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b49ba7ef1ad6107f8824dbe97de947cbaac53c44e7f9756a1fba0d37c1eec505"
-dependencies = [
- "memchr",
-]
 
 [[package]]
 name = "cpufeatures"
@@ -340,7 +331,7 @@ dependencies = [
 
 [[package]]
 name = "e2e-kv-store"
-version = "0.10.1-rc.20"
+version = "0.10.1-rc.29"
 dependencies = [
  "bs58",
  "calimero-sdk",
@@ -440,9 +431,9 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.16.1"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
+checksum = "4f467dd6dccf739c208452f8014c75c18bb8301b050ad1cfb27153803edb0f51"
 
 [[package]]
 name = "hex"
@@ -579,9 +570,9 @@ checksum = "964de6e86d545b246d84badc0fef527924ace5134f30641c203ef52ba83f58d5"
 
 [[package]]
 name = "indexmap"
-version = "2.13.1"
+version = "2.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "45a8a2b9cb3e0b0c1803dbb0758ffac5de2f425b23c28f518faabd9d805342ff"
+checksum = "d466e9454f08e4a911e14806c24e16fba1b4c121d1ea474396f396069cf949d9"
 dependencies = [
  "equivalent",
  "hashbrown",
@@ -595,9 +586,9 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "libc"
-version = "0.2.184"
+version = "0.2.185"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48f5d2a454e16a5ea0f4ced81bd44e4cfc7bd3a507b61887c99fd3538b28e4af"
+checksum = "52ff2c0fe9bc6cb6b14a0592c2ff4fa9ceb83eea9db979b0487cd054946a2b8f"
 
 [[package]]
 name = "libp2p-identity"
@@ -669,12 +660,21 @@ dependencies = [
 
 [[package]]
 name = "multihash"
-version = "0.19.3"
+version = "0.19.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b430e7953c29dd6a09afc29ff0bb69c6e306329ee6794700aee27b76a1aea8d"
+checksum = "89ace881e3f514092ce9efbcb8f413d0ad9763860b828981c2de51ddc666936c"
 dependencies = [
- "core2",
+ "no_std_io2",
  "unsigned-varint",
+]
+
+[[package]]
+name = "no_std_io2"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a3564ce7035b1e4778d8cb6cacebb5d766b5e8fe5a75b9e441e33fb61a872c6"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]
@@ -762,9 +762,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.8.5"
+version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
+checksum = "5ca0ecfa931c29007047d1bc58e623ab12e5590e8c7cc53200d5202b69266d8a"
 dependencies = [
  "libc",
  "rand_chacha",
@@ -1052,9 +1052,9 @@ dependencies = [
 
 [[package]]
 name = "typenum"
-version = "1.19.0"
+version = "1.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "562d481066bde0658276a35467c4af00bdc6ee726305698a55b86e61d7ad82bb"
+checksum = "40ce102ab67701b8526c123c1bab5cbe42d7040ccfd0f64af1a385808d2f43de"
 
 [[package]]
 name = "unicode-ident"
@@ -1101,9 +1101,9 @@ checksum = "ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b"
 
 [[package]]
 name = "winnow"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09dac053f1cd375980747450bfc7250c264eaae0583872e845c0c7cd578872b5"
+checksum = "2ee1708bef14716a11bae175f579062d4554d95be2c6829f518df847b7b3fdd0"
 dependencies = [
  "memchr",
 ]

@@ -1,0 +1,206 @@
+name: E2E - Merobox Workflows
+
+# Runs all merobox workflow tests against the e2e-kv-store WASM app.
+# Build: WASM compiled from Rust source, then all workflows run in parallel.
+# Uses ghcr.io/calimero-network/merod:edge — tracks latest master, no local image build needed.
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "logic/**"
+      - ".github/workflows/e2e-merobox.yml"
+
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "logic/**"
+      - ".github/workflows/e2e-merobox.yml"
+
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ── Build WASM app ────────────────────────────────────────────────────────────
+  build-wasm:
+    name: Build WASM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Install Rust + wasm target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: logic -> logic/target
+
+      - name: Build WASM
+        run: |
+          cd logic
+          ./build.sh
+
+      - name: Build multi-service bundle
+        run: |
+          cd logic
+          ./build-multi-service-bundle.sh
+
+      - name: Upload WASM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-kv-store-wasm
+          path: |
+            logic/res/e2e_kv_store.wasm
+            logic/res/abi.json
+            logic/res/*.mpk
+          retention-days: 1
+
+  # ── Test: run each workflow in parallel ───────────────────────────────────────
+  test:
+    name: Test (${{ matrix.workflow }})
+    needs: build-wasm
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - workflow: e2e
+            file: workflows/e2e.yml
+          - workflow: groups
+            file: workflows/groups.yml
+          - workflow: group-3node
+            file: workflows/group-3node.yml
+          - workflow: group-context-isolation
+            file: workflows/group-context-isolation.yml
+          - workflow: group-late-joiner
+            file: workflows/group-late-joiner.yml
+          - workflow: group-membership
+            file: workflows/group-membership.yml
+          - workflow: group-multi-service
+            file: workflows/group-multi-service.yml
+          - workflow: group-subgroup
+            file: workflows/group-subgroup.yml
+          - workflow: group-subgroup-cold-sync
+            file: workflows/group-subgroup-cold-sync.yml
+          - workflow: group-capabilities
+            file: workflows/group-capabilities.yml
+          - workflow: group-nesting
+            file: workflows/group-nesting.yml
+          - workflow: handler-test
+            file: workflows/handler-test.yml
+          - workflow: simple-sync
+            file: workflows/simple-sync.yml
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Download WASM artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: e2e-kv-store-wasm
+          path: logic/res
+
+      - name: Install merobox (apt)
+        run: |
+          curl -fsSL https://calimero-network.github.io/merobox/gpg.key \
+            | sudo tee /usr/share/keyrings/merobox.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/merobox.gpg] https://calimero-network.github.io/merobox stable main" \
+            | sudo tee /etc/apt/sources.list.d/merobox.list
+          sudo apt-get update
+          sudo apt-get install -y merobox
+          merobox --version
+
+      - name: Pull merod:edge image
+        run: docker pull ghcr.io/calimero-network/merod:edge
+
+      - name: Run ${{ matrix.workflow }}
+        run: |
+          mkdir -p docker-logs
+          cd logic
+          max_attempts=2
+          attempt=1
+          success=false
+
+          # Background watcher: stream docker logs from live containers to disk.
+          # Post-run `docker logs` is unreliable because merobox tears down
+          # containers on exit. The watcher captures logs while containers are
+          # still alive so cleanup can't race against log collection.
+          LOGDIR="$GITHUB_WORKSPACE/docker-logs"
+          WATCHER_STATE_DIR="$(mktemp -d)"
+          echo "1" > "$WATCHER_STATE_DIR/attempt"
+          (
+            while [ ! -f "$WATCHER_STATE_DIR/stop" ]; do
+              cur_attempt=$(cat "$WATCHER_STATE_DIR/attempt" 2>/dev/null || echo 1)
+              for c in $(docker ps --filter "label=calimero.node=true" --format "{{.Names}}" 2>/dev/null | grep -v -- '-init$' || true); do
+                mark="$WATCHER_STATE_DIR/attempt${cur_attempt}-${c}"
+                if [ ! -f "$mark" ]; then
+                  touch "$mark"
+                  docker logs -f "$c" > "$LOGDIR/${{ matrix.workflow }}-attempt${cur_attempt}-${c}.log" 2>&1 &
+                fi
+              done
+              sleep 1
+            done
+          ) &
+          WATCHER_PID=$!
+
+          # Docker containers run as root; sudo needed to remove their files.
+          sudo rm -rf data/ || true
+
+          while [ $attempt -le $max_attempts ]; do
+            if [ $attempt -gt 1 ]; then
+              merobox stop --all || true
+              merobox nuke --force || true
+              sudo rm -rf data/
+              sleep 2
+            fi
+            echo "$attempt" > "$WATCHER_STATE_DIR/attempt"
+
+            if merobox bootstrap run "${{ matrix.file }}" --e2e-mode; then
+              success=true
+              break
+            fi
+            attempt=$((attempt + 1))
+          done
+
+          touch "$WATCHER_STATE_DIR/stop"
+          sleep 2
+          kill "$WATCHER_PID" 2>/dev/null || true
+          for pid in $(jobs -p); do kill "$pid" 2>/dev/null || true; done
+          wait 2>/dev/null || true
+
+          merobox stop --all || true
+          merobox nuke --force || true
+          sudo rm -rf data/
+
+          if [ "$success" = false ]; then
+            echo "::error::${{ matrix.workflow }} failed after $max_attempts attempts"
+            exit 1
+          fi
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.workflow }}-${{ github.sha }}
+          path: docker-logs/${{ matrix.workflow }}*
+          retention-days: 7
+          if-no-files-found: ignore

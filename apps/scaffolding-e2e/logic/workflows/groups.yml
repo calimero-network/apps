@@ -3,14 +3,14 @@ description: >
   Tests group creation, group invitation, join group, join group context,
   multi-context groups, and context invitation within groups.
 
-force_pull_image: true
+force_pull_image: false
+nuke_on_start: true
 near_devnet: false
 
 nodes:
   count: 2
-  image: ghcr.io/calimero-network/merod:0.10.1-rc.20
+  image: ghcr.io/calimero-network/merod:edge
   prefix: e2e-node
-  base_port: 2430
 
 steps:
   # --- SCENARIO 1: Full namespace lifecycle ---

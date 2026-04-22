@@ -11,6 +11,7 @@
     "test": "playwright test",
     "test:headed": "playwright test --headed",
     "test:ui": "playwright test --ui",
+    "test:mocked": "playwright test --config=playwright.mocked.config.ts",
     "test:auth": "npx tsx tests/save-auth.ts",
     "test:report": "playwright show-report"
   },

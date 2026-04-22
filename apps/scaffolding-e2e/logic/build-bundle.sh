@@ -30,6 +30,7 @@ cat > res/bundle-temp/manifest.json <<EOF
   "version": "1.0",
   "package": "com.calimero.e2e-kv-store",
   "appVersion": "1.0.0",
+  "minRuntimeVersion": "0.10.0",
   "wasm": {
     "path": "app.wasm",
     "size": ${WASM_SIZE},

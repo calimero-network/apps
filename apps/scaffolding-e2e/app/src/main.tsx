@@ -19,12 +19,18 @@ import App from "./App.tsx";
 
 // Pre-process Tauri SSO hash params BEFORE React mounts.
 (function bootstrapHashParams() {
+  // ?node=<url> lets two browser tabs point to two different merod nodes without
+  // changing .env. The param is preserved across reloads (we don't strip it).
+  const searchNode = new URLSearchParams(window.location.search).get("node");
+  if (searchNode) setAppEndpointKey(searchNode.trim());
+
   const hash = window.location.hash.slice(1);
   if (hash) {
     const p = new URLSearchParams(hash);
     const nodeUrl = p.get("node_url");
     const accessToken = p.get("access_token");
     const refreshToken = p.get("refresh_token");
+    // Hash node_url takes priority over ?node= query param.
     if (nodeUrl) setAppEndpointKey(nodeUrl.trim());
     if (accessToken) {
       setAccessToken(accessToken);

@@ -5,8 +5,12 @@
  * Prerequisites:
  *   1. merod running:  merod --home ~/.calimero/node1 run
  *   2. App running:    pnpm dev  (in /frontend)
- *   3. Auth saved:     pnpm run test:auth  (one-time)
- *   4. Run tests:      pnpm test
+ *   3. Run tests:      pnpm test
+ *
+ * Auth is handled automatically by global-setup.ts on the first run
+ * and cached in tests/.auth/state.json for subsequent runs.
+ * Credentials are read from E2E_USERNAME / E2E_PASSWORD in .env (default: admin / password).
+ * To force re-authentication: pnpm run test:auth
  */
 
 import { test, expect, Page } from "@playwright/test";
@@ -61,7 +65,10 @@ test.describe("Test Runner", () => {
       for (const el of failedEls) {
         const testId = await el.getAttribute("data-testid");
         const name = await el.locator("span").first().textContent();
-        const error = await el.locator(".result-box, [style*='color: var(--color-error)']").textContent().catch(() => "");
+        // Use div[style*=…] to skip the <span> elements (StatusDot + test name) that
+        // also carry color:var(--color-error) on failure — those would cause a strict-mode
+        // multi-match and textContent() would throw, silently falling back to "".
+        const error = await el.locator("div[style*='color: var(--color-error)']").textContent().catch(() => "");
         failures.push(`  ${testId}: ${name?.trim()} — ${error?.trim()}`);
       }
       throw new Error(`${failedEls.length} test(s) failed:\n${failures.join("\n")}`);

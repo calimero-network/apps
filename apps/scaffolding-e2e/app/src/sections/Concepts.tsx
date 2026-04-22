@@ -1,406 +1,41 @@
+import React from "react";
+
 export function Concepts() {
   return (
-    <div>
+    <div style={{ maxWidth: 900, margin: "0 auto" }}>
       <div className="section-header">
         <h2 className="section-title">How Calimero Works</h2>
         <p className="section-desc">
-          Plain-language explanations of the core concepts behind every feature
-          in this test suite.
+          A comprehensive reference for every concept behind the Calimero
+          peer-to-peer application platform. Read this before touching the other
+          sections.
         </p>
       </div>
 
-      {/* ── Fundamentals ──────────────────────────────── */}
-      <ConceptGroup title="The Fundamentals">
-        <ConceptCard
-          icon="🖥"
-          title="Node"
-          tag="Infrastructure"
-          tagColor="blue"
-          summary="Your own server. Runs your app logic and holds your data."
-        >
-          <p>
-            A <strong>node</strong> is a running instance of{" "}
-            <code>merod</code> (the Calimero daemon). Think of it like your own
-            private server — it stores data, executes app logic, and
-            communicates with peers.
-          </p>
-          <p>
-            There's no central server. Each participant runs their own node.
-            Data is replicated peer-to-peer between nodes that share the same
-            context.
-          </p>
-          <KeyFact>
-            The <code>node_url</code> you see in the top bar is the address of
-            the node this app is connected to.
-          </KeyFact>
-        </ConceptCard>
+      <SectionBlock title="Architecture">
+        <ArchDiagram />
+      </SectionBlock>
 
-        <ConceptCard
-          icon="🚪"
-          title="Context"
-          tag="Core"
-          tagColor="green"
-          summary="A shared workspace. Think of it as a room — all members see the same state."
-        >
-          <p>
-            A <strong>context</strong> is a running instance of an application
-            with its own isolated state. It's identified by a{" "}
-            <code>context_id</code> (a public key).
-          </p>
-          <p>
-            All members of a context automatically receive every state change in
-            real time. When you call <code>set("key", "value")</code> on
-            node-1, node-2 will see that value shortly after — no server
-            required.
-          </p>
-          <KeyFact>
-            Every RPC call you make in this test suite targets a specific
-            context. The context ID is shown in the top bar.
-          </KeyFact>
-        </ConceptCard>
+      <SectionBlock title="Core Concepts Glossary">
+        <GlossaryList />
+      </SectionBlock>
 
-        <ConceptCard
-          icon="👥"
-          title="Namespace / Group"
-          tag="Membership"
-          tagColor="purple"
-          summary="A team. Contains multiple contexts and one shared member list."
-        >
-          <p>
-            A <strong>namespace</strong> (also called a group) is a collection
-            of contexts that share the same membership list. Join the namespace
-            once → you're automatically eligible to join any context inside it.
-          </p>
-          <Hierarchy
-            items={[
-              {
-                label: "Namespace (team)",
-                children: [
-                  "Context A — chat room",
-                  "Context B — shared notes",
-                  "Context C — task list",
-                ],
-              },
-            ]}
-          />
-          <KeyFact>
-            Without a namespace, each context requires its own separate
-            invitation. With a namespace, one invite covers all contexts inside
-            it.
-          </KeyFact>
-        </ConceptCard>
+      <SectionBlock title="Storage Types">
+        <StorageTable />
+      </SectionBlock>
 
-        <ConceptCard
-          icon="🔑"
-          title="Identity / Member"
-          tag="Auth"
-          tagColor="yellow"
-          summary="Who you are. Every participant is a public key."
-        >
-          <p>
-            There are no usernames or passwords. Every participant is identified
-            by an <strong>ed25519 public key</strong> (shown as a base58
-            string). This key signs every action you take.
-          </p>
-          <p>
-            Inside an app, <code>env::executor_id()</code> returns the public
-            key of whoever called the method. This is how{" "}
-            <strong>User Storage</strong> works — each user's data is stored
-            under their own key, unreachable by others.
-          </p>
-          <KeyFact>
-            The <em>executor public key</em> is automatically included in every
-            RPC call the Calimero client makes on your behalf.
-          </KeyFact>
-        </ConceptCard>
-      </ConceptGroup>
+      <SectionBlock title="Two-Node Testing Guide">
+        <TwoNodeGuide />
+      </SectionBlock>
 
-      {/* ── Invitation Flow ──────────────────────────── */}
-      <ConceptGroup title="How to Invite Someone (meroctl)">
-        <div
-          style={{
-            gridColumn: "1 / -1",
-            background: "var(--color-bg-card)",
-            border: "1px solid var(--color-border)",
-            borderRadius: 10,
-            padding: 20,
-          }}
-        >
-          <p
-            style={{
-              fontSize: 13,
-              color: "var(--color-text-muted)",
-              marginBottom: 20,
-            }}
-          >
-            Invitations are managed at the infrastructure level via the{" "}
-            <code>meroctl</code> CLI — not through app code. Here's the exact
-            sequence:
-          </p>
-          <div className="invite-steps">
-            <Step n={1} actor="Alice (owner)">
-              Install the app and create a namespace:
-              <CodeBlock>{`meroctl app install --path e2e_kv_store.wasm
-meroctl namespace create --app-id <APP_ID>`}</CodeBlock>
-              <Aside>
-                This creates a group and gives you a <code>namespace_id</code>.
-              </Aside>
-            </Step>
-
-            <Step n={2} actor="Alice (owner)">
-              Create contexts inside the namespace:
-              <CodeBlock>{`meroctl context create --app-id <APP_ID> --group-id <NAMESPACE_ID>`}</CodeBlock>
-              <Aside>Returns a <code>context_id</code>.</Aside>
-            </Step>
-
-            <Step n={3} actor="Alice (owner)">
-              Generate an invitation token:
-              <CodeBlock>{`meroctl namespace invite --namespace-id <NAMESPACE_ID>`}</CodeBlock>
-              <Aside>
-                Returns a one-time <code>invitation</code> token. Share it
-                out-of-band (message, QR code, etc).
-              </Aside>
-            </Step>
-
-            <Step n={4} actor="Bob (new member)">
-              Join the namespace using the invitation:
-              <CodeBlock>{`meroctl namespace join \\
-  --namespace-id <NAMESPACE_ID> \\
-  --invitation <INVITATION_TOKEN>`}</CodeBlock>
-              <Aside>
-                Bob is now a member. He gets a <code>memberIdentity</code>{" "}
-                (his public key in this namespace).
-              </Aside>
-            </Step>
-
-            <Step n={5} actor="Bob (new member)">
-              Join a specific context (no extra invitation needed):
-              <CodeBlock>{`meroctl context join --context-id <CONTEXT_ID>`}</CodeBlock>
-              <Aside>
-                Because Bob is in the namespace, he can join any context inside
-                it directly. State starts syncing immediately.
-              </Aside>
-            </Step>
-
-            <Step n={6} actor="Both">
-              From this point on, both nodes are peers. Any write on Alice's
-              node syncs to Bob's, and vice versa. The app is live.
-              <Aside>No central server involved at any step.</Aside>
-            </Step>
-          </div>
-        </div>
-      </ConceptGroup>
-
-      {/* ── State Types ──────────────────────────────── */}
-      <ConceptGroup title="State Types — What Gets Replicated?">
-        <StateTypeCard
-          icon="🌐"
-          title="Public State (CRDT)"
-          color="green"
-          replicated
-          examples="KV store, counters, registers, tags, RGA document"
-        >
-          Stored in CRDT collections. Every write is replicated to all context
-          members automatically. Concurrent writes from different nodes are
-          merged without conflicts using mathematical rules (CRDTs).
-        </StateTypeCard>
-
-        <StateTypeCard
-          icon="👤"
-          title="User Storage"
-          color="blue"
-          replicated
-          examples="set_user_simple, set_user_nested"
-        >
-          Still replicated across all nodes, but logically partitioned by
-          identity. Alice can only write to Alice's slot; Bob can only write to
-          Bob's slot. Anyone can <em>read</em> another user's slot if they know
-          the public key.
-        </StateTypeCard>
-
-        <StateTypeCard
-          icon="🧊"
-          title="Frozen Storage"
-          color="cyan"
-          replicated
-          examples="add_frozen, get_frozen"
-        >
-          Content-addressed immutable storage. Once a value is stored, it
-          cannot be changed — only retrieved by its SHA256 hash. Replicated
-          across peers. Perfect for anchoring versioned data.
-        </StateTypeCard>
-
-        <StateTypeCard
-          icon="🔒"
-          title="Private State"
-          color="red"
-          replicated={false}
-          examples="add_secret, my_secrets"
-        >
-          Stored with <code>#[app::private]</code>. Exists only on the local
-          node — never sent to peers. Used for secrets that should stay local
-          (e.g., a game secret before reveal). The public hash can be replicated
-          while the secret stays private.
-        </StateTypeCard>
-      </ConceptGroup>
-
-      {/* ── Permissions ──────────────────────────────── */}
-      <ConceptGroup title="Permissions & Access Control">
-        <div
-          style={{
-            gridColumn: "1 / -1",
-            background: "var(--color-bg-card)",
-            border: "1px solid var(--color-border)",
-            borderRadius: 10,
-            padding: 20,
-          }}
-        >
-          <p style={{ fontSize: 13, color: "var(--color-text-muted)", marginBottom: 16 }}>
-            Calimero uses two layers of access control:
-          </p>
-
-          <div className="method-grid" style={{ gap: 12 }}>
-            <div className="method-card">
-              <div
-                className="method-name"
-                style={{ color: "var(--color-brand-600)" }}
-              >
-                Infrastructure level (meroctl)
-              </div>
-              <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 8 }}>
-                Controls who can <em>join</em> a namespace or context.
-                Enforced by the node daemon before any app code runs.
-              </p>
-              <ul style={{ fontSize: 12, color: "var(--color-text-muted)", paddingLeft: 16 }}>
-                <li>
-                  <strong>Namespace member</strong> — can join any context in
-                  the namespace
-                </li>
-                <li>
-                  <strong>Context member</strong> — can execute app methods in
-                  a specific context
-                </li>
-                <li>Non-members are rejected before reaching the app</li>
-              </ul>
-            </div>
-
-            <div className="method-card">
-              <div
-                className="method-name"
-                style={{ color: "var(--color-brand-600)" }}
-              >
-                Application level (app code)
-              </div>
-              <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 8 }}>
-                Fine-grained logic inside your WASM app. Controls what members
-                can <em>do</em> once they're inside a context.
-              </p>
-              <ul style={{ fontSize: 12, color: "var(--color-text-muted)", paddingLeft: 16 }}>
-                <li>
-                  Use <code>env::executor_id()</code> to know who's calling
-                </li>
-                <li>
-                  Programmatically <code>add_member</code> /{" "}
-                  <code>kick_member</code> via the access-control API
-                </li>
-                <li>
-                  Store per-user data in <code>UserStorage</code> so only the
-                  owner can write
-                </li>
-                <li>
-                  Keep node-local secrets via <code>#[app::private]</code>
-                </li>
-              </ul>
-            </div>
-
-            <div className="method-card">
-              <div
-                className="method-name"
-                style={{ color: "var(--color-brand-600)" }}
-              >
-                Capability: <code>member</code>
-              </div>
-              <p style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
-                When creating a mesh or inviting someone, you assign a
-                capability. Currently <code>member</code> is the primary role —
-                it grants full read/write access to the context. More granular
-                roles (admin, observer) are planned.
-              </p>
-            </div>
-          </div>
-        </div>
-      </ConceptGroup>
-
-      {/* ── Cross-Context Calls ─────────────────────── */}
-      <ConceptGroup title="Cross-Context Calls (XCall)">
-        <div
-          style={{
-            gridColumn: "1 / -1",
-            background: "var(--color-bg-card)",
-            border: "1px solid var(--color-border)",
-            borderRadius: 10,
-            padding: 20,
-          }}
-        >
-          <p style={{ fontSize: 13, color: "var(--color-text-muted)", marginBottom: 12 }}>
-            An app running in Context A can call a method in Context B. This is
-            how you build multi-context workflows — e.g., a task-list app
-            calling a payments app.
-          </p>
-          <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 12 }}>
-            <div
-              style={{
-                background: "rgba(165,255,17,0.1)",
-                border: "1px solid var(--color-brand-700)",
-                borderRadius: 8,
-                padding: "8px 14px",
-                fontSize: 12,
-                color: "var(--color-brand-600)",
-              }}
-            >
-              Context A (caller)
-            </div>
-            <span style={{ color: "var(--color-brand-600)", fontSize: 18 }}>→</span>
-            <div
-              style={{
-                background: "rgba(59,130,246,0.1)",
-                border: "1px solid #3b82f6",
-                borderRadius: 8,
-                padding: "8px 14px",
-                fontSize: 12,
-                color: "#60a5fa",
-              }}
-            >
-              Context B (callee)
-            </div>
-          </div>
-          <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 8 }}>
-            The <strong>access-control</strong> app demonstrates this with:
-          </p>
-          <ul style={{ fontSize: 12, color: "var(--color-text-muted)", paddingLeft: 16 }}>
-            <li>
-              <code>create_context_child(protocol, app_id, alias)</code> —
-              creates a new child context from within the app
-            </li>
-            <li>
-              <code>get_child_id(alias)</code> — resolves the child context ID
-            </li>
-            <li>
-              <code>delete_context_child(context_id)</code> — removes the child
-            </li>
-          </ul>
-          <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginTop: 8 }}>
-            XCall is tested separately in <code>core/apps/xcall-example</code>.
-          </p>
-        </div>
-      </ConceptGroup>
+      <SectionBlock title="ID Format Reference">
+        <IdFormats />
+      </SectionBlock>
     </div>
   );
 }
 
-/* ── Sub-components ──────────────────────────────────────────────── */
-
-function ConceptGroup({
+function SectionBlock({
   title,
   children,
 }: {
@@ -408,74 +43,853 @@ function ConceptGroup({
   children: React.ReactNode;
 }) {
   return (
-    <div style={{ marginBottom: 32 }}>
-      <h3
-        style={{
-          fontSize: 13,
-          fontWeight: 600,
-          color: "var(--color-text-muted)",
-          textTransform: "uppercase",
-          letterSpacing: 1,
-          marginBottom: 12,
-        }}
-      >
-        {title}
-      </h3>
-      <div className="method-grid">{children}</div>
-    </div>
-  );
-}
-
-function ConceptCard({
-  icon,
-  title,
-  tag,
-  tagColor,
-  summary,
-  children,
-}: {
-  icon: string;
-  title: string;
-  tag: string;
-  tagColor: "green" | "blue" | "purple" | "yellow";
-  summary: string;
-  children: React.ReactNode;
-}) {
-  const colors: Record<string, string> = {
-    green: "#16a34a",
-    blue: "#3b82f6",
-    purple: "#8b5cf6",
-    yellow: "#f59e0b",
-  };
-  return (
-    <div className="method-card">
+    <div style={{ marginBottom: 40 }}>
       <div
         style={{
           display: "flex",
           alignItems: "center",
           gap: 10,
-          marginBottom: 10,
-          paddingBottom: 10,
-          borderBottom: "1px solid var(--color-border)",
+          marginBottom: 16,
         }}
       >
-        <span style={{ fontSize: 20 }}>{icon}</span>
-        <div style={{ flex: 1 }}>
+        <div
+          style={{
+            width: 3,
+            height: 18,
+            borderRadius: 2,
+            background: "var(--color-brand-600)",
+            flexShrink: 0,
+          }}
+        />
+        <h3
+          style={{
+            fontSize: 13,
+            fontWeight: 700,
+            color: "var(--color-text-primary)",
+            textTransform: "uppercase",
+            letterSpacing: 1.2,
+            margin: 0,
+          }}
+        >
+          {title}
+        </h3>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function ArchDiagram() {
+  const nodeStyle: React.CSSProperties = {
+    border: "1.5px solid var(--color-brand-600)",
+    borderRadius: 10,
+    background: "rgba(165,255,17,0.05)",
+    padding: "14px 16px 16px",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 10,
+    minWidth: 190,
+  };
+
+  const contextStyle: React.CSSProperties = {
+    border: "1.5px dashed var(--color-brand-600)",
+    borderRadius: 7,
+    background: "rgba(165,255,17,0.08)",
+    padding: "8px 18px",
+    textAlign: "center",
+    width: "100%",
+  };
+
+  const frontendStyle: React.CSSProperties = {
+    border: "1.5px solid #3b82f6",
+    borderRadius: 8,
+    background: "rgba(59,130,246,0.08)",
+    padding: "8px 16px",
+    textAlign: "center",
+    minWidth: 190,
+  };
+
+  return (
+    <div
+      style={{
+        background: "var(--color-bg-card)",
+        border: "1px solid var(--color-border)",
+        borderRadius: 12,
+        padding: "28px 24px 24px",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 0,
+      }}
+    >
+      {/* Row 1: Frontends */}
+      <div style={{ display: "flex", gap: 80, justifyContent: "center" }}>
+        <div style={frontendStyle}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#60a5fa" }}>Frontend A</div>
+          <div style={{ fontSize: 10, color: "var(--color-text-muted)", fontFamily: "monospace", marginTop: 2 }}>
+            ?node=:2528
+          </div>
+        </div>
+        <div style={frontendStyle}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#60a5fa" }}>Frontend B</div>
+          <div style={{ fontSize: 10, color: "var(--color-text-muted)", fontFamily: "monospace", marginTop: 2 }}>
+            ?node=:2529
+          </div>
+        </div>
+      </div>
+
+      {/* Row 2: Arrows down to nodes */}
+      <div style={{ display: "flex", gap: 80, justifyContent: "center", margin: "2px 0" }}>
+        <ArchVertArrow label="JSON-RPC / WS" />
+        <ArchVertArrow label="JSON-RPC / WS" />
+      </div>
+
+      {/* Row 3: Nodes with Context inside */}
+      <div style={{ display: "flex", alignItems: "center", gap: 0, justifyContent: "center" }}>
+        {/* Node A */}
+        <div style={nodeStyle}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--color-brand-600)", letterSpacing: 0.3 }}>
+            NODE A
+          </div>
+          <div style={{ fontSize: 10, color: "var(--color-text-muted)", fontFamily: "monospace", marginTop: -6 }}>
+            merod :2528
+          </div>
+          {/* Context inside Node A */}
+          <div style={contextStyle}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--color-brand-600)" }}>Context</div>
+            <div style={{ fontSize: 10, color: "var(--color-text-muted)", marginTop: 2 }}>WASM runtime + state</div>
+          </div>
+          <div style={{ fontSize: 10, color: "var(--color-text-muted)", display: "flex", gap: 8 }}>
+            <span>blobs</span>
+            <span>·</span>
+            <span>private storage</span>
+          </div>
+        </div>
+
+        {/* CRDT sync arrow between nodes */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "0 18px" }}>
+          <span style={{ fontSize: 10, fontWeight: 600, color: "var(--color-brand-600)", letterSpacing: 0.3 }}>
+            CRDT sync
+          </span>
+          <span style={{ fontSize: 10, color: "var(--color-text-muted)", fontStyle: "italic" }}>gossipsub P2P</span>
+          <span style={{ fontSize: 16, color: "var(--color-brand-600)", letterSpacing: -3 }}>
+            &#8592;&#8212;&#8212;&#8194;&#8212;&#8212;&#8594;
+          </span>
+        </div>
+
+        {/* Node B */}
+        <div style={nodeStyle}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--color-brand-600)", letterSpacing: 0.3 }}>
+            NODE B
+          </div>
+          <div style={{ fontSize: 10, color: "var(--color-text-muted)", fontFamily: "monospace", marginTop: -6 }}>
+            merod :2529
+          </div>
+          {/* Context inside Node B */}
+          <div style={contextStyle}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--color-brand-600)" }}>Context</div>
+            <div style={{ fontSize: 10, color: "var(--color-text-muted)", marginTop: 2 }}>WASM runtime + state</div>
+          </div>
+          <div style={{ fontSize: 10, color: "var(--color-text-muted)", display: "flex", gap: 8 }}>
+            <span>blobs</span>
+            <span>·</span>
+            <span>private storage</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer note */}
+      <div
+        style={{
+          marginTop: 18,
+          padding: "8px 14px",
+          background: "rgba(165,255,17,0.04)",
+          border: "1px solid rgba(165,255,17,0.15)",
+          borderRadius: 6,
+          fontSize: 11,
+          color: "var(--color-text-muted)",
+          maxWidth: 560,
+          textAlign: "center",
+          lineHeight: 1.6,
+        }}
+      >
+        Each node runs its own Context instance locally. CRDT sync merges state
+        between nodes automatically — no central server, no conflict resolution needed.
+      </div>
+    </div>
+  );
+}
+
+function ArchVertArrow({ label }: { label: string }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 0,
+        minWidth: 160,
+        padding: "2px 0",
+      }}
+    >
+      {label && (
+        <span
+          style={{
+            fontSize: 10,
+            color: "var(--color-text-muted)",
+            fontStyle: "italic",
+            marginBottom: 0,
+          }}
+        >
+          {label}
+        </span>
+      )}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          color: "var(--color-brand-600)",
+          lineHeight: 1,
+          fontSize: 14,
+        }}
+      >
+        <span>&#8597;</span>
+      </div>
+    </div>
+  );
+}
+
+const GLOSSARY_ITEMS: {
+  term: string;
+  tag: string;
+  tagColor: string;
+  definition: string;
+}[] = [
+  {
+    term: "Node",
+    tag: "Infrastructure",
+    tagColor: "#3b82f6",
+    definition:
+      "A running merod process. Hosts one or more contexts. Each developer runs their own node locally or on a server. There is no shared infrastructure — every participant owns their node.",
+  },
+  {
+    term: "Context",
+    tag: "Core",
+    tagColor: "var(--color-brand-600)",
+    definition:
+      "A live instance of a WASM application. Has its own replicated CRDT state. Multiple nodes join the same context to share state. Identified by a base58 context ID (32-byte Ed25519 public key).",
+  },
+  {
+    term: "Namespace / Group",
+    tag: "Membership",
+    tagColor: "#8b5cf6",
+    definition:
+      "Organizational layer above contexts. A namespace owns groups; groups own contexts. Joining a namespace grants eligibility to join any context inside it, removing the need for per-context invitations. Used for access control and discovery.",
+  },
+  {
+    term: "Identity / Executor",
+    tag: "Auth",
+    tagColor: "#f59e0b",
+    definition:
+      "An Ed25519 keypair. Each context membership is tied to an identity. Shown as a base58-encoded 32-byte public key. There are no usernames or passwords — your key is your identity. env::executor_id() returns the caller's public key inside app methods.",
+  },
+  {
+    term: "CRDT",
+    tag: "Sync",
+    tagColor: "#06b6d4",
+    definition:
+      "Conflict-free Replicated Data Type. Data structures that merge automatically when two nodes have concurrent writes. No conflicts, no coordination needed, no central authority. The node daemon handles merge logic transparently.",
+  },
+  {
+    term: "xcall",
+    tag: "Cross-Context",
+    tagColor: "#ec4899",
+    definition:
+      "Cross-context call. Lets one context invoke a method on another context, potentially on a different node. Fire-and-forget — the call is queued by the local node and delivered asynchronously. Enables multi-context application workflows.",
+  },
+  {
+    term: "Blob",
+    tag: "Files",
+    tagColor: "#16a34a",
+    definition:
+      "A file stored on the node. Identified by its SHA-256 hash (base58 encoded). Metadata (name, size, MIME type) replicates via CRDT to all peers. The blob bytes themselves stay on the originating node until a peer explicitly fetches them (lazy replication).",
+  },
+  {
+    term: "Private Storage",
+    tag: "Local Only",
+    tagColor: "#ef4444",
+    definition:
+      "Node-local state marked #[app::private]. Never replicated to any peer. Used for secrets in commit-reveal schemes — e.g., store a secret locally, publish only its hash to the shared CRDT state, then reveal the secret later.",
+  },
+];
+
+function GlossaryList() {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {GLOSSARY_ITEMS.map((item) => (
+        <div
+          key={item.term}
+          style={{
+            background: "var(--color-bg-card)",
+            border: "1px solid var(--color-border)",
+            borderRadius: 8,
+            padding: "14px 16px",
+            display: "flex",
+            gap: 14,
+            alignItems: "flex-start",
+          }}
+        >
           <div
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
+              minWidth: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: item.tagColor,
+              marginTop: 5,
+              flexShrink: 0,
             }}
-          >
-            <span
+          />
+          <div style={{ flex: 1 }}>
+            <div
               style={{
-                fontWeight: 600,
-                fontSize: 14,
-                color: "var(--color-text-primary)",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                marginBottom: 4,
+                flexWrap: "wrap",
               }}
             >
-              {title}
+              <span
+                style={{
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: "var(--color-text-primary)",
+                }}
+              >
+                {item.term}
+              </span>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 600,
+                  padding: "1px 7px",
+                  borderRadius: 4,
+                  background: `${item.tagColor}22`,
+                  color: item.tagColor,
+                  border: `1px solid ${item.tagColor}55`,
+                }}
+              >
+                {item.tag}
+              </span>
+            </div>
+            <p
+              style={{
+                fontSize: 12,
+                color: "var(--color-text-muted)",
+                lineHeight: 1.65,
+                margin: 0,
+              }}
+            >
+              {item.definition}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const STORAGE_ROWS: {
+  type: string;
+  scope: string;
+  replicates: string;
+  merge: string;
+  useCase: string;
+}[] = [
+  {
+    type: "KV Store",
+    scope: "Context",
+    replicates: "All nodes",
+    merge: "Last-Write-Wins",
+    useCase: "Shared settings, app state",
+  },
+  {
+    type: "User Storage",
+    scope: "Per-identity",
+    replicates: "All nodes",
+    merge: "LWW per identity",
+    useCase: "Per-user preferences",
+  },
+  {
+    type: "Frozen Storage",
+    scope: "Context",
+    replicates: "All nodes",
+    merge: "Immutable (SHA256 key)",
+    useCase: "Audit logs, signed content",
+  },
+  {
+    type: "Private Storage",
+    scope: "This node only",
+    replicates: "Never",
+    merge: "N/A",
+    useCase: "Secrets, commit-reveal",
+  },
+  {
+    type: "Blob",
+    scope: "Node + metadata",
+    replicates: "Metadata yes, bytes lazy",
+    merge: "Metadata LWW",
+    useCase: "File sharing",
+  },
+  {
+    type: "CRDT Counters",
+    scope: "Context",
+    replicates: "All nodes",
+    merge: "G-counter or PN-counter",
+    useCase: "Event counts, scores",
+  },
+  {
+    type: "RGA Document",
+    scope: "Context",
+    replicates: "All nodes",
+    merge: "Position-aware merge",
+    useCase: "Collaborative text",
+  },
+];
+
+function StorageTable() {
+  const headers = ["Type", "Scope", "Replicates?", "Merge rule", "Use case"];
+
+  return (
+    <div
+      style={{
+        background: "var(--color-bg-card)",
+        border: "1px solid var(--color-border)",
+        borderRadius: 10,
+        overflow: "hidden",
+      }}
+    >
+      <table
+        style={{
+          width: "100%",
+          borderCollapse: "collapse",
+          fontSize: 12,
+        }}
+      >
+        <thead>
+          <tr
+            style={{
+              background: "rgba(165,255,17,0.06)",
+              borderBottom: "1px solid var(--color-border)",
+            }}
+          >
+            {headers.map((h) => (
+              <th
+                key={h}
+                style={{
+                  padding: "10px 14px",
+                  textAlign: "left",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "var(--color-brand-600)",
+                  textTransform: "uppercase",
+                  letterSpacing: 0.8,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {STORAGE_ROWS.map((row, i) => (
+            <tr
+              key={row.type}
+              style={{
+                background:
+                  i % 2 === 0
+                    ? "transparent"
+                    : "rgba(255,255,255,0.02)",
+                borderBottom:
+                  i < STORAGE_ROWS.length - 1
+                    ? "1px solid var(--color-border)"
+                    : "none",
+              }}
+            >
+              <td
+                style={{
+                  padding: "10px 14px",
+                  fontWeight: 600,
+                  color: "var(--color-text-primary)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {row.type}
+              </td>
+              <td
+                style={{
+                  padding: "10px 14px",
+                  color: "var(--color-text-muted)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {row.scope}
+              </td>
+              <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
+                <ReplicatesCell value={row.replicates} />
+              </td>
+              <td
+                style={{
+                  padding: "10px 14px",
+                  color: "var(--color-text-muted)",
+                  fontFamily: "Courier New, monospace",
+                  fontSize: 11,
+                }}
+              >
+                {row.merge}
+              </td>
+              <td
+                style={{
+                  padding: "10px 14px",
+                  color: "var(--color-text-muted)",
+                }}
+              >
+                {row.useCase}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ReplicatesCell({ value }: { value: string }) {
+  const isNever = value === "Never";
+  const isLazy = value.includes("lazy");
+  const color = isNever ? "#ef4444" : isLazy ? "#f59e0b" : "#16a34a";
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 5,
+        color,
+        fontWeight: 600,
+      }}
+    >
+      <span>{isNever ? "✗" : "✓"}</span>
+      <span
+        style={{
+          fontWeight: 400,
+          color: "var(--color-text-muted)",
+          fontSize: 11,
+        }}
+      >
+        {value === "All nodes" ? "All nodes" : value === "Never" ? "" : value}
+      </span>
+    </span>
+  );
+}
+
+const TWO_NODE_STEPS: {
+  n: number;
+  title: string;
+  body: React.ReactNode;
+}[] = [
+  {
+    n: 1,
+    title: "Run the setup script (recommended)",
+    body: (
+      <>
+        <p style={{ margin: "0 0 8px" }}>
+          The easiest way to get two nodes running is the bundled{" "}
+          <code>setup.sh</code> script. It starts both nodes, authenticates
+          them, creates the namespace, installs the app bundle, and wires up
+          the context — no browser required.
+        </p>
+        <CodeBlock>{`./setup.sh`}</CodeBlock>
+        <p style={{ margin: "8px 0 0" }}>
+          Re-run with <code>--clean</code> to wipe state and start fresh.
+          Uses hardcoded credentials (<code>admin</code> /{" "}
+          <code>calimero1234</code>) that can be overridden via{" "}
+          <code>CALIMERO_ADMIN_USER</code> / <code>CALIMERO_ADMIN_PASS</code>.
+          Pass <code>--merobox</code> to use <code>merobox</code> instead of{" "}
+          <code>merod</code> for node startup.
+        </p>
+      </>
+    ),
+  },
+  {
+    n: 2,
+    title: "Or start nodes manually",
+    body: (
+      <>
+        <p style={{ margin: "0 0 8px" }}>
+          If you prefer manual control, run each node in a separate terminal
+          using <code>merod</code>:
+        </p>
+        <CodeBlock>{`merod --home ~/.merod-a --server-port 2428 --swarm-port 2528
+merod --home ~/.merod-b --server-port 2429 --swarm-port 2529`}</CodeBlock>
+        <p style={{ margin: "8px 0 8px" }}>
+          Or use <code>merobox</code> (wraps Docker or runs natively with{" "}
+          <code>--no-docker</code>):
+        </p>
+        <CodeBlock>{`merobox run --no-docker --home ~/.merod-a --server-port 2428 --swarm-port 2528
+merobox run --no-docker --home ~/.merod-b --server-port 2429 --swarm-port 2529`}</CodeBlock>
+        <p style={{ margin: "8px 0 0" }}>
+          Then go through the Setup Wizard in each tab to authenticate,
+          create a namespace, install the bundle, and join the context.
+        </p>
+      </>
+    ),
+  },
+  {
+    n: 3,
+    title: "Open Tab A — connect to Node A",
+    body: (
+      <>
+        <p style={{ margin: "0 0 8px" }}>
+          Open the app in your browser with the node URL for Node A:
+        </p>
+        <CodeBlock>{`http://localhost:5173?node=http://localhost:2428`}</CodeBlock>
+        <p style={{ margin: "8px 0 0" }}>
+          Authenticate and create or select a context. You can also use the{" "}
+          <strong>+ Open Node B tab</strong> button in the top bar to open a
+          pre-filled second tab automatically.
+        </p>
+      </>
+    ),
+  },
+  {
+    n: 4,
+    title: "Open Tab B — connect to Node B",
+    body: (
+      <>
+        <p style={{ margin: "0 0 8px" }}>
+          Open a second tab pointing at Node B:
+        </p>
+        <CodeBlock>{`http://localhost:5173?node=http://localhost:2429`}</CodeBlock>
+        <p style={{ margin: "8px 0 0" }}>Authenticate as a different identity.</p>
+      </>
+    ),
+  },
+  {
+    n: 5,
+    title: "Join the same context (if not already done by setup.sh)",
+    body: (
+      <>
+        <p style={{ margin: "0 0 8px" }}>
+          If you ran <code>setup.sh</code> this is already done — skip ahead.
+          For manual setup:
+        </p>
+        <p style={{ margin: "0 0 8px" }}>
+          On Tab A: go to Setup Wizard → Generate Invitation → copy the
+          payload.
+        </p>
+        <p style={{ margin: "0 0 8px" }}>
+          On Tab B: Setup Wizard → Join Context → paste the payload.
+        </p>
+        <p style={{ margin: 0 }}>
+          Both tabs now share the same context ID and state root.
+        </p>
+      </>
+    ),
+  },
+  {
+    n: 6,
+    title: "Test cross-node sync",
+    body: (
+      <p style={{ margin: 0 }}>
+        Go to KV Operations on Tab A and set a key. Switch to Tab B and
+        click Refresh — the value appears within 1–3 seconds. This is CRDT
+        gossipsub replication in action.
+      </p>
+    ),
+  },
+];
+
+function TwoNodeGuide() {
+  return (
+    <div
+      style={{
+        background: "var(--color-bg-card)",
+        border: "1px solid var(--color-border)",
+        borderRadius: 10,
+        padding: "24px 20px",
+      }}
+    >
+      <p
+        style={{
+          fontSize: 12,
+          color: "var(--color-text-muted)",
+          marginBottom: 24,
+          lineHeight: 1.65,
+        }}
+      >
+        The most important test you can run: two nodes, one context, watching
+        state propagate. The fastest path is <code>./setup.sh</code> which
+        handles everything automatically — or follow the manual steps below.
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+        {TWO_NODE_STEPS.map((step, i) => (
+          <div
+            key={step.n}
+            style={{ display: "flex", gap: 16, position: "relative" }}
+          >
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                flexShrink: 0,
+              }}
+            >
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: "50%",
+                  background: "var(--color-brand-600)",
+                  color: "#000",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  flexShrink: 0,
+                  zIndex: 1,
+                }}
+              >
+                {step.n}
+              </div>
+              {i < TWO_NODE_STEPS.length - 1 && (
+                <div
+                  style={{
+                    width: 1,
+                    flex: 1,
+                    background: "var(--color-border)",
+                    minHeight: 20,
+                  }}
+                />
+              )}
+            </div>
+            <div
+              style={{
+                flex: 1,
+                paddingBottom: i < TWO_NODE_STEPS.length - 1 ? 24 : 0,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "var(--color-text-primary)",
+                  marginBottom: 8,
+                  paddingTop: 5,
+                }}
+              >
+                {step.title}
+              </div>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "var(--color-text-muted)",
+                  lineHeight: 1.65,
+                }}
+              >
+                {step.body}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const ID_FORMATS: {
+  label: string;
+  encoding: string;
+  size: string;
+  description: string;
+}[] = [
+  {
+    label: "Context ID",
+    encoding: "base58",
+    size: "32 bytes",
+    description: "Identifies a context instance. Derived from the context's Ed25519 public key.",
+  },
+  {
+    label: "Identity / Public Key",
+    encoding: "base58",
+    size: "32 bytes",
+    description: "Ed25519 public key identifying a node member. Used as executor ID in method calls.",
+  },
+  {
+    label: "Group ID",
+    encoding: "hex",
+    size: "variable",
+    description: "Identifies a namespace group. Used in invitation and membership management.",
+  },
+  {
+    label: "Blob ID",
+    encoding: "base58",
+    size: "32 bytes",
+    description: "SHA-256 hash of the blob content. Content-addressed — the same file always has the same ID.",
+  },
+];
+
+function IdFormats() {
+  return (
+    <div
+      style={{
+        background: "var(--color-bg-card)",
+        border: "1px solid var(--color-border)",
+        borderRadius: 10,
+        padding: "20px",
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+        gap: 12,
+      }}
+    >
+      {ID_FORMATS.map((f) => (
+        <div
+          key={f.label}
+          style={{
+            border: "1px solid var(--color-border)",
+            borderRadius: 8,
+            padding: "12px 14px",
+            background: "rgba(165,255,17,0.03)",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              color: "var(--color-text-primary)",
+              marginBottom: 6,
+            }}
+          >
+            {f.label}
+          </div>
+          <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                padding: "1px 6px",
+                borderRadius: 4,
+                background: "rgba(165,255,17,0.12)",
+                color: "var(--color-brand-600)",
+                border: "1px solid rgba(165,255,17,0.3)",
+                fontFamily: "Courier New, monospace",
+              }}
+            >
+              {f.encoding}
             </span>
             <span
               style={{
@@ -483,134 +897,27 @@ function ConceptCard({
                 fontWeight: 600,
                 padding: "1px 6px",
                 borderRadius: 4,
-                background: `${colors[tagColor]}22`,
-                color: colors[tagColor],
-                border: `1px solid ${colors[tagColor]}44`,
+                background: "rgba(59,130,246,0.1)",
+                color: "#60a5fa",
+                border: "1px solid rgba(59,130,246,0.3)",
+                fontFamily: "Courier New, monospace",
               }}
             >
-              {tag}
+              {f.size}
             </span>
           </div>
-          <div
-            style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 2 }}
+          <p
+            style={{
+              fontSize: 11,
+              color: "var(--color-text-muted)",
+              lineHeight: 1.55,
+              margin: 0,
+            }}
           >
-            {summary}
-          </div>
-        </div>
-      </div>
-      <div
-        style={{
-          fontSize: 12,
-          color: "var(--color-text-muted)",
-          lineHeight: 1.6,
-        }}
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function KeyFact({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        marginTop: 10,
-        padding: "7px 10px",
-        background: "rgba(165,255,17,0.06)",
-        border: "1px solid rgba(165,255,17,0.2)",
-        borderRadius: 6,
-        fontSize: 11,
-        color: "var(--color-brand-600)",
-        lineHeight: 1.5,
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function Hierarchy({ items }: { items: { label: string; children: string[] }[] }) {
-  return (
-    <div
-      style={{
-        margin: "10px 0",
-        padding: "8px 10px",
-        background: "#0d1117",
-        borderRadius: 6,
-        fontFamily: "Courier New, monospace",
-        fontSize: 11,
-        color: "#8e8e8e",
-      }}
-    >
-      {items.map((item) => (
-        <div key={item.label}>
-          <div style={{ color: "#a5ff11", marginBottom: 2 }}>
-            📁 {item.label}
-          </div>
-          {item.children.map((c) => (
-            <div key={c} style={{ paddingLeft: 16 }}>
-              └── {c}
-            </div>
-          ))}
+            {f.description}
+          </p>
         </div>
       ))}
-    </div>
-  );
-}
-
-function Step({
-  n,
-  actor,
-  children,
-}: {
-  n: number;
-  actor: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        gap: 14,
-        marginBottom: 16,
-      }}
-    >
-      <div
-        style={{
-          width: 26,
-          height: 26,
-          borderRadius: "50%",
-          background: "var(--color-brand-600)",
-          color: "#000",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 12,
-          fontWeight: 700,
-          flexShrink: 0,
-          marginTop: 2,
-        }}
-      >
-        {n}
-      </div>
-      <div style={{ flex: 1 }}>
-        <div
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            color: "var(--color-brand-600)",
-            marginBottom: 4,
-            textTransform: "uppercase",
-            letterSpacing: 0.5,
-          }}
-        >
-          {actor}
-        </div>
-        <div style={{ fontSize: 12, color: "var(--color-text-muted)", lineHeight: 1.6 }}>
-          {children}
-        </div>
-      </div>
     </div>
   );
 }
@@ -622,117 +929,17 @@ function CodeBlock({ children }: { children: string }) {
         background: "#0d1117",
         border: "1px solid var(--color-border)",
         borderRadius: 6,
-        padding: "8px 12px",
+        padding: "9px 13px",
         fontFamily: "Courier New, monospace",
         fontSize: 11,
         color: "#a8d5a2",
-        margin: "6px 0",
+        margin: 0,
         overflowX: "auto",
         whiteSpace: "pre",
+        lineHeight: 1.6,
       }}
     >
       {children}
     </pre>
-  );
-}
-
-function Aside({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        fontSize: 11,
-        color: "var(--color-text-muted)",
-        fontStyle: "italic",
-        marginTop: 4,
-      }}
-    >
-      ↳ {children}
-    </div>
-  );
-}
-
-function StateTypeCard({
-  icon,
-  title,
-  color,
-  replicated,
-  examples,
-  children,
-}: {
-  icon: string;
-  title: string;
-  color: "green" | "blue" | "cyan" | "red";
-  replicated: boolean;
-  examples: string;
-  children: React.ReactNode;
-}) {
-  const colors: Record<string, string> = {
-    green: "#16a34a",
-    blue: "#3b82f6",
-    cyan: "#06b6d4",
-    red: "#ef4444",
-  };
-  return (
-    <div className="method-card">
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          marginBottom: 10,
-          paddingBottom: 10,
-          borderBottom: "1px solid var(--color-border)",
-        }}
-      >
-        <span style={{ fontSize: 18 }}>{icon}</span>
-        <div style={{ flex: 1 }}>
-          <span
-            style={{
-              fontWeight: 600,
-              fontSize: 13,
-              color: colors[color],
-            }}
-          >
-            {title}
-          </span>
-          <span
-            style={{
-              marginLeft: 8,
-              fontSize: 10,
-              padding: "1px 6px",
-              borderRadius: 4,
-              background: replicated ? "#16a34a22" : "#ef444422",
-              color: replicated ? "#16a34a" : "#ef4444",
-              border: `1px solid ${replicated ? "#16a34a44" : "#ef444444"}`,
-              fontWeight: 600,
-            }}
-          >
-            {replicated ? "synced" : "local only"}
-          </span>
-        </div>
-      </div>
-      <p
-        style={{
-          fontSize: 12,
-          color: "var(--color-text-muted)",
-          marginBottom: 8,
-          lineHeight: 1.6,
-        }}
-      >
-        {children}
-      </p>
-      <div
-        style={{
-          fontSize: 11,
-          color: "var(--color-text-muted)",
-          padding: "5px 8px",
-          background: "#0d1117",
-          borderRadius: 4,
-          fontFamily: "Courier New, monospace",
-        }}
-      >
-        {examples}
-      </div>
-    </div>
   );
 }

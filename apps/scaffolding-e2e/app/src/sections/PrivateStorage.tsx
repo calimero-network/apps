@@ -1,19 +1,8 @@
 import { useState } from "react";
+import { ResultBox } from "../components/ResultBox";
 import * as api from "../api/kvStore";
+import { FieldHelp } from "../components/FieldHelp";
 
-function ResultBox({ result }: { result: unknown }) {
-  if (result === undefined) return null;
-  const isError =
-    result !== null &&
-    typeof result === "object" &&
-    "error" in result &&
-    (result as { error: unknown }).error !== null;
-  return (
-    <pre className={`result-box${isError ? " error" : ""}`}>
-      {JSON.stringify(result, null, 2)}
-    </pre>
-  );
-}
 
 function useCall() {
   const [loading, setLoading] = useState(false);
@@ -67,12 +56,16 @@ export function PrivateStorage() {
             verify later.
           </p>
           <div className="method-inputs">
-            <input
-              className="form-control"
-              placeholder="game_id"
-              value={gameId}
-              onChange={(e) => setGameId(e.target.value)}
-            />
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input
+                className="form-control"
+                style={{ flex: 1 }}
+                placeholder="game_id (any string you choose)"
+                value={gameId}
+                onChange={(e) => setGameId(e.target.value)}
+              />
+              <FieldHelp text="An arbitrary string you choose to identify this commit-reveal session, e.g. 'round-1'. Both players (nodes) must use the same game_id to match secrets to guesses." />
+            </div>
             <input
               className="form-control"
               placeholder="secret"
@@ -104,12 +97,16 @@ export function PrivateStorage() {
             Verifies guess against the stored hash. Returns true if correct.
           </p>
           <div className="method-inputs">
-            <input
-              className="form-control"
-              placeholder="game_id"
-              value={guessGameId}
-              onChange={(e) => setGuessGameId(e.target.value)}
-            />
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input
+                className="form-control"
+                style={{ flex: 1 }}
+                placeholder="game_id (must match the secret's game_id)"
+                value={guessGameId}
+                onChange={(e) => setGuessGameId(e.target.value)}
+              />
+              <FieldHelp text="Must be the same game_id used in add_secret. The WASM checks your guess against the hash that was committed under this ID." />
+            </div>
             <input
               className="form-control"
               placeholder="guess"
