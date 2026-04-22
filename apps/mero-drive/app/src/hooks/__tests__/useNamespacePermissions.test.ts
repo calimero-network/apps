@@ -30,6 +30,14 @@ describe('useNamespacePermissions', () => {
     await waitFor(() => expect(result.current.canManageNamespace).toBe(true));
   });
 
+  it('stays loading and skips fetch when rootGroupId is empty', () => {
+    const { result } = renderHook(() => useNamespacePermissions('ns', ''));
+    expect(result.current.loading).toBe(true);
+    expect(result.current.canCreateSubgroup).toBe(false);
+    expect(result.current.canManageNamespace).toBe(false);
+    expect(adminRequest).not.toHaveBeenCalled();
+  });
+
   it('clears caps synchronously when rootGroupId changes — no stale admin affordances', async () => {
     (adminRequest as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       capabilities: CAP.MANAGE_GROUP,

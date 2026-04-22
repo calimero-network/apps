@@ -23,7 +23,13 @@ export function useNamespacePermissions(
   const [caps, setCaps] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!identity) {
+    if (!identity || !rootGroupId) {
+      // Falsy rootGroupId happens during bootstrap before the
+      // namespace's root group has been resolved. Stay in loading
+      // state instead of firing a request to /groups//members/... —
+      // the 404 would bucket into the catch and render "all denied"
+      // with loading:false, briefly flashing permission-gated UI as
+      // disabled before the real fetch lands.
       setCaps(null);
       return;
     }
