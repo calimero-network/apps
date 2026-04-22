@@ -21,6 +21,7 @@ import {
   clearSessionActivity,
   updateSessionActivity,
 } from '@/utils/session';
+import { clearIdentityCache } from '@/hooks/useSelfIdentity';
 
 const LandingPage = lazy(() => import('./pages/landing'));
 const Authenticate = lazy(() => import('./pages/login/Authenticate'));
@@ -57,6 +58,11 @@ const App: React.FC = () => {
     if (isSessionExpired()) {
       clearStoredSession();
       clearSessionActivity();
+      // Drop the per-namespace identity cache on logout. The cache is
+      // scoped by namespace, not by authenticated user, so a second
+      // user signing in on the same browser would otherwise inherit
+      // the previous user's pubkey.
+      clearIdentityCache();
       logout();
     } else {
       updateSessionActivity();

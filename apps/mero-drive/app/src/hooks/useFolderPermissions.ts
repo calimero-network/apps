@@ -32,7 +32,16 @@ export function useFolderPermissions(
   const [caps, setCaps] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!identity || !folderId) return;
+    if (!identity || !folderId) {
+      setCaps(null);
+      return;
+    }
+    // Reset synchronously so a folderId / identity change can't
+    // surface the previous folder's caps with `loading: false`.
+    // Without this, navigating from a folder where the caller is admin
+    // to a read-only folder briefly renders admin affordances
+    // (delete / rename / visibility toggle).
+    setCaps(null);
     let alive = true;
     adminRequest<{ capabilities: number }>(`/groups/${folderId}/members/${identity}`)
       .then((r) => {

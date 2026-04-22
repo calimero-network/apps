@@ -34,4 +34,25 @@ describe('useFolderPermissions', () => {
     expect(result.current.canRename).toBe(true);
     expect(result.current.canManageGroup).toBe(true);
   });
+
+  it('clears caps synchronously when folderId changes — no stale admin affordances', async () => {
+    // First render: caller is admin on folder-1.
+    (adminRequest as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      capabilities: CAP.MANAGE_GROUP,
+    });
+    const { result, rerender } = renderHook(
+      ({ folder }: { folder: string }) => useFolderPermissions('ns', folder),
+      { initialProps: { folder: 'folder-1' } },
+    );
+    await waitFor(() => expect(result.current.canDelete).toBe(true));
+
+    // Second render: next fetch never resolves. canDelete must flip
+    // back to false (loading) rather than linger as true.
+    (adminRequest as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () => new Promise(() => {}),
+    );
+    rerender({ folder: 'folder-2' });
+    expect(result.current.canDelete).toBe(false);
+    expect(result.current.loading).toBe(true);
+  });
 });

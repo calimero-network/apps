@@ -23,7 +23,15 @@ export function useNamespacePermissions(
   const [caps, setCaps] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!identity) return;
+    if (!identity) {
+      setCaps(null);
+      return;
+    }
+    // Reset synchronously so a rootGroupId / identity change can't
+    // surface the previous group's caps with `loading: false`. Without
+    // this, switching from a namespace where the caller is admin to
+    // one where they're a member would briefly show admin affordances.
+    setCaps(null);
     let alive = true;
     adminRequest<{ capabilities: number }>(`/groups/${rootGroupId}/members/${identity}`)
       .then((r) => {

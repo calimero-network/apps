@@ -29,4 +29,22 @@ describe('useNamespacePermissions', () => {
     const { result } = renderHook(() => useNamespacePermissions('ns', 'root'));
     await waitFor(() => expect(result.current.canManageNamespace).toBe(true));
   });
+
+  it('clears caps synchronously when rootGroupId changes — no stale admin affordances', async () => {
+    (adminRequest as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      capabilities: CAP.MANAGE_GROUP,
+    });
+    const { result, rerender } = renderHook(
+      ({ root }: { root: string }) => useNamespacePermissions('ns', root),
+      { initialProps: { root: 'root-1' } },
+    );
+    await waitFor(() => expect(result.current.canManageNamespace).toBe(true));
+
+    (adminRequest as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () => new Promise(() => {}),
+    );
+    rerender({ root: 'root-2' });
+    expect(result.current.canManageNamespace).toBe(false);
+    expect(result.current.loading).toBe(true);
+  });
 });

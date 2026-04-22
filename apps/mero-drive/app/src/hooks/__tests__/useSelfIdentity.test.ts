@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import { useSelfIdentity } from '../useSelfIdentity';
+import { useSelfIdentity, clearIdentityCache } from '../useSelfIdentity';
 import { adminRequest } from '../../api/adminApi';
 
 vi.mock('../../api/adminApi', () => ({
@@ -26,5 +26,34 @@ describe('useSelfIdentity', () => {
     const { result } = renderHook(() => useSelfIdentity('ns-2'));
     await waitFor(() => expect(result.current.identity).toBe('pk-2'));
     expect(adminRequest).not.toHaveBeenCalled();
+  });
+
+  it('resets identity to null when namespaceId changes and new value not yet cached', async () => {
+    // Prime ns-a in cache; ns-b requires a fetch that never resolves.
+    localStorage.setItem('mero-drive:selfId:ns-a', 'pk-a');
+    (adminRequest as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise(() => {}),
+    );
+    const { result, rerender } = renderHook(
+      ({ ns }: { ns: string }) => useSelfIdentity(ns),
+      { initialProps: { ns: 'ns-a' } },
+    );
+    await waitFor(() => expect(result.current.identity).toBe('pk-a'));
+
+    rerender({ ns: 'ns-b' });
+    // After the switch, the old identity must NOT leak into the new
+    // namespace's render with loading:false.
+    expect(result.current.identity).toBeNull();
+    expect(result.current.loading).toBe(true);
+  });
+
+  it('clearIdentityCache removes every mero-drive:selfId:* entry', () => {
+    localStorage.setItem('mero-drive:selfId:ns-1', 'pk-1');
+    localStorage.setItem('mero-drive:selfId:ns-2', 'pk-2');
+    localStorage.setItem('unrelated-key', 'keep-me');
+    clearIdentityCache();
+    expect(localStorage.getItem('mero-drive:selfId:ns-1')).toBeNull();
+    expect(localStorage.getItem('mero-drive:selfId:ns-2')).toBeNull();
+    expect(localStorage.getItem('unrelated-key')).toBe('keep-me');
   });
 });
