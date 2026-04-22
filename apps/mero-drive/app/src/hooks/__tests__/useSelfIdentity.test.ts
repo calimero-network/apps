@@ -47,6 +47,17 @@ describe('useSelfIdentity', () => {
     expect(result.current.loading).toBe(true);
   });
 
+  it('wraps non-Error throws so error.message is safe to read', async () => {
+    // adminRequest throws Error by construction, but promise rejection
+    // is `any`. The catch must normalise so downstream consumers can
+    // access error.message / .stack without crashing.
+    (adminRequest as ReturnType<typeof vi.fn>).mockRejectedValue('string-not-error');
+    const { result } = renderHook(() => useSelfIdentity('ns-err'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBeInstanceOf(Error);
+    expect(result.current.error?.message).toBe('string-not-error');
+  });
+
   it('clearIdentityCache removes every mero-drive:selfId:* entry', () => {
     localStorage.setItem('mero-drive:selfId:ns-1', 'pk-1');
     localStorage.setItem('mero-drive:selfId:ns-2', 'pk-2');

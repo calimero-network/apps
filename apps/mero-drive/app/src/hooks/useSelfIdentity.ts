@@ -66,8 +66,14 @@ export function useSelfIdentity(namespaceId: string | null): SelfIdentityState {
         localStorage.setItem(keyFor(namespaceId), r.identity);
         setState({ identity: r.identity, loading: false, error: null });
       })
-      .catch((e) => {
-        if (alive) setState({ identity: null, loading: false, error: e });
+      .catch((e: unknown) => {
+        if (!alive) return;
+        // Normalise non-Error throws so consumers accessing
+        // `error.message` / `.stack` don't crash. adminRequest
+        // throws Error by construction, but promise rejection is
+        // `any` — keep the type contract honest at the boundary.
+        const err = e instanceof Error ? e : new Error(String(e));
+        setState({ identity: null, loading: false, error: err });
       });
     return () => {
       alive = false;

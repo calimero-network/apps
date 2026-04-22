@@ -41,13 +41,22 @@ export function useMemberCaps(
   namespaceId: string,
   groupId: string,
 ): MemberCapsState {
-  const { identity } = useSelfIdentity(namespaceId);
+  const { identity, error: identityError } = useSelfIdentity(namespaceId);
   const [state, setState] = useState<MemberCapsState>({
     caps: null,
     error: null,
   });
 
   useEffect(() => {
+    // Propagate identity fetch failures. Without this, a failed
+    // /namespaces/:ns/self-identity call leaves `identity` null, which
+    // would fall into the falsy-prereq branch below and render
+    // `loading: true, error: null` forever — the exact silent-stuck
+    // state the error field was added to prevent.
+    if (identityError) {
+      setState({ caps: 0, error: identityError });
+      return;
+    }
     if (!identity || !groupId) {
       setState({ caps: null, error: null });
       return;
@@ -66,7 +75,7 @@ export function useMemberCaps(
     return () => {
       alive = false;
     };
-  }, [groupId, identity]);
+  }, [groupId, identity, identityError]);
 
   return state;
 }

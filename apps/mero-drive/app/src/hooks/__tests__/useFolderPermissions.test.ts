@@ -4,13 +4,21 @@ import { useFolderPermissions } from '../useFolderPermissions';
 import { CAP } from '../../constants/config';
 import { adminRequest } from '../../api/adminApi';
 
+// Mutable mock: default state is "identity resolved", but individual
+// tests can override via `mockIdentity` to simulate loading or error.
+const mockIdentity: { value: { identity: string | null; loading: boolean; error: Error | null } } = {
+  value: { identity: 'me', loading: false, error: null },
+};
 vi.mock('../useSelfIdentity', () => ({
-  useSelfIdentity: () => ({ identity: 'me', loading: false, error: null }),
+  useSelfIdentity: () => mockIdentity.value,
 }));
 vi.mock('../../api/adminApi', () => ({ adminRequest: vi.fn() }));
 
 describe('useFolderPermissions', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIdentity.value = { identity: 'me', loading: false, error: null };
+  });
 
   const render = (caps: number) => {
     (adminRequest as ReturnType<typeof vi.fn>).mockResolvedValue({ capabilities: caps });
@@ -35,6 +43,17 @@ describe('useFolderPermissions', () => {
     await waitFor(() => expect(result.current.canDelete).toBe(true));
     expect(result.current.canRename).toBe(true);
     expect(result.current.canManageGroup).toBe(true);
+  });
+
+  it('surfaces identity fetch error instead of getting stuck in loading', async () => {
+    const identityErr = new Error('identity fetch failed');
+    mockIdentity.value = { identity: null, loading: false, error: identityErr };
+    const { result } = renderHook(() => useFolderPermissions('ns', 'folder-1'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBe(identityErr);
+    expect(result.current.canRead).toBe(false);
+    // And the caps-fetch never fires — we short-circuited on identity err.
+    expect(adminRequest).not.toHaveBeenCalled();
   });
 
   it('exposes error when fetch fails — distinguishes from legitimate zero caps', async () => {
