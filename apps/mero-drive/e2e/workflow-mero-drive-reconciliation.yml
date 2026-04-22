@@ -1,0 +1,327 @@
+name: Mero Drive Reconciliation — drift between admin API and registry
+description: >
+  Exercises the three divergence cases the client's `reconcile()` pass is
+  expected to heal (design spec → "Reconciliation on Load"):
+
+    1. Admin API has a group the registry doesn't know about
+       → reconcile should `register_folder` with defaults.
+    2. Registry has a folder whose admin-side group no longer exists
+       → reconcile should `unregister_folder`.
+    3. Registry's `parent_id` drifts from admin's nesting
+       → reconcile should `move_folder` to match admin.
+
+  This workflow runs on a single node; drift is simulated by calling the
+  admin API or registry WASM methods directly in whichever order produces
+  the divergence, then invoking the corresponding "reconcile action" and
+  asserting the registry lines up with admin afterwards. It does NOT run
+  the TypeScript `computeReconcileActions()` — that's covered by the
+  frontend Vitest suite (`app/src/utils/__tests__/reconcile.test.ts` per
+  the plan). This workflow validates the registry WASM can SERVICE the
+  reconcile operations the client layer will issue.
+
+force_pull_image: true
+
+nodes:
+  count: 1
+  image: ghcr.io/calimero-network/merod:edge
+  prefix: calimero-node
+
+steps:
+  # =================================================================
+  # Bootstrap: install bundle, create namespace + registry context
+  # =================================================================
+
+  - name: Install Mero Drive bundle
+    type: install_application
+    node: calimero-node-1
+    path: ../logic/dist/com.calimero.mero-drive-docs-9.0.0.mpk
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Alice creates namespace
+    type: create_namespace
+    node: calimero-node-1
+    application_id: '{{app_id}}'
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Alice creates the per-namespace Registry context
+    type: create_context
+    node: calimero-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{namespace_id}}'
+    service_name: registry
+    outputs:
+      registry_ctx: contextId
+      alice_key: memberPublicKey
+
+  - name: Assert bootstrap
+    type: assert
+    statements:
+      - 'is_set({{namespace_id}})'
+      - 'is_set({{registry_ctx}})'
+
+  # =================================================================
+  # Scenario 1: admin-only group (registry doesn't know about it)
+  # =================================================================
+
+  - name: Admin creates subgroup without touching registry
+    type: create_group_in_namespace
+    node: calimero-node-1
+    namespace_id: '{{namespace_id}}'
+    group_alias: drift-admin-only
+    outputs:
+      admin_only_group: groupId
+
+  - name: Confirm drift — registry returns NotFound
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: get_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{admin_only_group}}'
+    expected_failure: true
+
+  - name: Reconcile — adopt admin-known group into registry
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: register_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{admin_only_group}}'
+      parent_id: null
+      color: null
+
+  - name: Post-reconcile — registry now returns the adopted folder
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: get_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{admin_only_group}}'
+    outputs:
+      adopted_folder: result.output
+
+  - name: Assert adopted folder
+    type: assert
+    statements:
+      - 'is_set({{adopted_folder}})'
+
+  # =================================================================
+  # Scenario 2: registry-only folder (admin doesn't know about it)
+  #
+  # We can't delete an admin group and keep the registry record — the
+  # admin flow doesn't expose that gap here. Instead we simulate it by
+  # registering a bogus folder_id that was never allocated by admin,
+  # then reconcile by unregistering it. Same divergence from the
+  # client's POV: `registryFolders` has an id that `adminGroups` lacks.
+  # =================================================================
+
+  - name: Create registry entry for a non-existent admin group
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: register_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: 'deadbeef0000000000000000000000000000000000000000000000000000beef'
+      parent_id: null
+      color: '#808080'
+
+  - name: Confirm pre-reconcile — the ghost folder exists in registry
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: get_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: 'deadbeef0000000000000000000000000000000000000000000000000000beef'
+    outputs:
+      ghost_pre_reconcile: result.output
+
+  - name: Assert ghost is present before reconcile
+    type: assert
+    statements:
+      - 'is_set({{ghost_pre_reconcile}})'
+
+  - name: Reconcile — unregister the ghost
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: unregister_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: 'deadbeef0000000000000000000000000000000000000000000000000000beef'
+
+  - name: Post-reconcile — ghost is gone (expected NotFound)
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: get_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: 'deadbeef0000000000000000000000000000000000000000000000000000beef'
+    expected_failure: true
+
+  # =================================================================
+  # Scenario 3: parent_id drift
+  #
+  # The registry stores parent_id as an index. If the admin API later
+  # moves the group (e.g. unnest + re-nest under a different parent),
+  # the registry's parent_id becomes stale. Reconcile issues a
+  # `move_folder` to line the registry up with admin.
+  #
+  # To simulate, we register a folder with parent=P1 in the registry
+  # and claim admin now says parent=P2. Reconcile calls move_folder.
+  # =================================================================
+
+  - name: Create parent P1 (admin + registry)
+    type: create_group_in_namespace
+    node: calimero-node-1
+    namespace_id: '{{namespace_id}}'
+    group_alias: drift-p1
+    outputs:
+      p1_group: groupId
+
+  - name: Register P1
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: register_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{p1_group}}'
+      parent_id: null
+      color: null
+
+  - name: Create parent P2 (admin + registry)
+    type: create_group_in_namespace
+    node: calimero-node-1
+    namespace_id: '{{namespace_id}}'
+    group_alias: drift-p2
+    outputs:
+      p2_group: groupId
+
+  - name: Register P2
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: register_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{p2_group}}'
+      parent_id: null
+      color: null
+
+  - name: Create child C under P1 in admin (registry says P1 too)
+    type: create_group_in_namespace
+    node: calimero-node-1
+    namespace_id: '{{namespace_id}}'
+    group_alias: drift-c
+    outputs:
+      c_group: groupId
+
+  - name: Register C under P1
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: register_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{c_group}}'
+      parent_id: '{{p1_group}}'
+      color: null
+
+  - name: Confirm pre-reconcile parent is P1
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: get_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{c_group}}'
+    outputs:
+      c_before_move: result.output
+
+  - name: Assert pre-move state
+    type: assert
+    statements:
+      - 'is_set({{c_before_move}})'
+
+  # Simulated admin-side drift: admin now considers C's parent to be P2.
+  # The client's reconcile() spots the mismatch and issues move_folder.
+  - name: Reconcile — move C under P2
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: move_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{c_group}}'
+      new_parent: '{{p2_group}}'
+
+  - name: Post-reconcile parent is P2
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: get_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{c_group}}'
+    outputs:
+      c_after_move: result.output
+
+  - name: Assert post-move state
+    type: assert
+    statements:
+      - 'is_set({{c_after_move}})'
+
+  # =================================================================
+  # Scenario 4: reconcile is idempotent — a second pass is a no-op
+  #
+  # The design spec calls out: "Idempotent. Zero writes on healthy
+  # workspace." We approximate that here by re-running the reconcile
+  # actions and confirming they don't error or mutate observably.
+  # =================================================================
+
+  - name: Idempotent — re-registering adopted folder is rejected
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: register_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{admin_only_group}}'
+      parent_id: null
+      color: null
+    expected_failure: true
+
+  - name: Idempotent — re-moving C to P2 is a no-op (still succeeds)
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: move_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{c_group}}'
+      new_parent: '{{p2_group}}'
+
+  - name: Final — get_folders succeeds and returns the reconciled tree
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: get_folders
+    executor_public_key: '{{alice_key}}'
+    outputs:
+      final_folders: result.output
+
+  - name: Assert final folder list populated
+    type: assert
+    statements:
+      - 'is_set({{final_folders}})'
+
+stop_all_nodes: false

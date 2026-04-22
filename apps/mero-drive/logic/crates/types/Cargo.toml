@@ -1,0 +1,9 @@
+[package]
+name = "mero-drive-types"
+version = "9.0.0"
+edition = "2021"
+
+[dependencies]
+thiserror = { workspace = true }
+borsh = { version = "1.3", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }

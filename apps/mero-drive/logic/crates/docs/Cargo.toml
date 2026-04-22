@@ -1,0 +1,17 @@
+[package]
+name = "mero-drive-docs"
+version = "9.0.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+mero-drive-types = { workspace = true }
+calimero-sdk = { workspace = true }
+calimero-storage = { workspace = true }
+calimero-storage-macros = { workspace = true }
+
+[build-dependencies]
+calimero-wasm-abi = { workspace = true }
+serde_json = { workspace = true }

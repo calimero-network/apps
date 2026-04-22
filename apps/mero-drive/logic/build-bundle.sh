@@ -1,54 +1,59 @@
 #!/bin/bash
-set -e
+# Build the two services, gather their artifacts, and package them as a
+# single signed `.mpk` bundle. This mirrors the battleships multi-service
+# pattern: one manifest with a `services` array, each service carrying its
+# own wasm + abi, signed via `mero-sign` from the sibling core checkout.
 
+set -e
 cd "$(dirname $0)"
 
-TARGET="${CARGO_TARGET_DIR:-target}"
+APP_VERSION=$(grep '^version' crates/registry/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+PACKAGE="com.calimero.mero-drive-docs"
 
-# Read version from Cargo.toml
-APP_VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+echo "Building registry service..."
+(cd crates/registry && bash build.sh)
+echo "Building docs service..."
+(cd crates/docs && bash build.sh)
 
-# First build the WASM file
-# Note: wasm-opt validation errors are non-fatal - the WASM file is still created
-./build.sh 2>&1 | grep -v "wasm-validator error" || true
-
-# Create bundle directory
 mkdir -p res/bundle-temp
+rm -f res/bundle-temp/*
 
-# Copy WASM file
-cp res/mero_drive.wasm res/bundle-temp/app.wasm
+cp crates/registry/res/registry.wasm res/bundle-temp/
+cp crates/docs/res/docs.wasm         res/bundle-temp/
+cp crates/registry/res/abi.json      res/bundle-temp/registry-abi.json
+cp crates/docs/res/abi.json          res/bundle-temp/docs-abi.json
 
-# Copy ABI file if it exists
-if [ -f res/abi.json ]; then
-    cp res/abi.json res/bundle-temp/abi.json
-fi
+size() {
+    stat -f%z "$1" 2>/dev/null || stat -c%s "$1"
+}
+REG_WASM_SIZE=$(size crates/registry/res/registry.wasm)
+DOC_WASM_SIZE=$(size crates/docs/res/docs.wasm)
+REG_ABI_SIZE=$(size crates/registry/res/abi.json)
+DOC_ABI_SIZE=$(size crates/docs/res/abi.json)
 
-# Get file sizes for manifest
-WASM_SIZE=$(stat -f%z res/mero_drive.wasm 2>/dev/null || stat -c%s res/mero_drive.wasm 2>/dev/null || echo 0)
-ABI_SIZE=$(stat -f%z res/abi.json 2>/dev/null || stat -c%s res/abi.json 2>/dev/null || echo 0)
-
-# Create manifest.json (metadata.name/description/author used by registry UI)
 cat > res/bundle-temp/manifest.json <<EOF
 {
   "version": "1.0",
-  "package": "com.calimero.mero-drive",
+  "package": "${PACKAGE}",
   "appVersion": "${APP_VERSION}",
   "minRuntimeVersion": "0.1.0",
   "metadata": {
-    "name": "Mero Drive",
-    "description": "Mero Drive v7.0 — multi-workspace document management with context group integration.",
+    "name": "Mero Drive Docs",
+    "description": "Namespace-based document workspace — registry + docs multi-service bundle.",
     "author": "Calimero"
   },
-  "wasm": {
-    "path": "app.wasm",
-    "size": ${WASM_SIZE},
-    "hash": null
-  },
-  "abi": {
-    "path": "abi.json",
-    "size": ${ABI_SIZE},
-    "hash": null
-  },
+  "services": [
+    {
+      "name": "registry",
+      "wasm": { "path": "registry.wasm", "size": ${REG_WASM_SIZE}, "hash": null },
+      "abi":  { "path": "registry-abi.json", "size": ${REG_ABI_SIZE}, "hash": null }
+    },
+    {
+      "name": "docs",
+      "wasm": { "path": "docs.wasm", "size": ${DOC_WASM_SIZE}, "hash": null },
+      "abi":  { "path": "docs-abi.json", "size": ${DOC_ABI_SIZE}, "hash": null }
+    }
+  ],
   "migrations": [],
   "links": {
     "frontend": "http://localhost:5173/"
@@ -56,14 +61,26 @@ cat > res/bundle-temp/manifest.json <<EOF
 }
 EOF
 
-# Sign the manifest via core workspace tool
-cargo run --manifest-path ../../core/Cargo.toml -p mero-sign --quiet -- \
-    sign res/bundle-temp/manifest.json \
-    --key ../../core/scripts/test-signing-key/test-key.json
+# Sign the manifest via the sibling core workspace's mero-sign tool. The
+# path is relative to this repo sitting next to core/ in the parent dir,
+# same layout battleships uses.
+if [ -d "../../core" ]; then
+    cargo run --manifest-path ../../core/Cargo.toml -p mero-sign --quiet -- \
+        sign res/bundle-temp/manifest.json \
+        --key ../../core/scripts/test-signing-key/test-key.json
+else
+    echo "warning: ../../core not found — bundle will be UNSIGNED (dev use only)"
+fi
 
-# Create .mpk bundle (tar.gz archive)
+# Package as .mpk (tar.gz). Bundle into dist/ (committed per project
+# convention — see .gitignore: `!logic/dist/`).
+mkdir -p dist
+BUNDLE="dist/${PACKAGE}-${APP_VERSION}.mpk"
 cd res/bundle-temp
-tar -czf ../mero-drive-${APP_VERSION}.mpk manifest.json app.wasm abi.json 2>/dev/null || \
-tar -czf ../mero-drive-${APP_VERSION}.mpk manifest.json app.wasm 2>/dev/null
+tar -czf "../../${BUNDLE}" \
+    manifest.json \
+    registry.wasm registry-abi.json \
+    docs.wasm     docs-abi.json
+cd ../..
 
-echo "Bundle created: res/mero-drive-${APP_VERSION}.mpk"
+echo "Bundle created: ${BUNDLE}"
