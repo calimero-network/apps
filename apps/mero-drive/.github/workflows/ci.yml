@@ -213,11 +213,11 @@ jobs:
   # cleaner than the earlier pip-from-master approach, and past the
   # PyPI release point now that the 0.4.5 Debian package is available.
   #
-  # The main workflow includes a "warmup probe" (create + sync +
-  # delete + sync) as a workaround for a cold-start sync race on
-  # subgroup-owned contexts, fixed upstream in
-  # calimero-network/core#2170. Once that PR merges + reaches the
-  # `merod:edge` image, the warmup block can be removed.
+  # The earlier cold-start sync race on subgroup-owned contexts (the
+  # "warmup probe" workaround) was fixed upstream in
+  # calimero-network/core#2170 (merged 2026-04-20). The probe has been
+  # removed; the workflow now relies on core's corrected namespace-root
+  # peer-discovery fallback for the cold-start window.
   e2e:
     name: E2E (Merobox)
     runs-on: ubuntu-latest

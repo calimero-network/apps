@@ -774,54 +774,7 @@ steps:
     context_id: '{{eng_docs_ctx}}'
     timeout: 30
 
-  # Warm-up probe: a single write + roundtrip sync exercises the gossipsub
-  # mesh on the docs-context topic BEFORE we bury it under ~20 sequential
-  # writes. Empirically the first post-join sync against this topic is the
-  # one that flakes — gossipsub peer-discovery races with subgroup
-  # membership acceptance. A probe write + sync pair converts the race
-  # into a known-small state convergence, which reliably establishes the
-  # mesh. After this succeeds we can proceed with the real workload.
-  #
-  # Root cause is on the platform side (tracked upstream — see README).
-  # This probe is a workaround that makes the e2e deterministic; remove
-  # it once the upstream fix ships.
-  - name: Warmup probe — Alice creates then deletes a throwaway doc
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: create_doc
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      title: __warmup__
-      content: ''
-    outputs:
-      warmup_doc_id: result.output
-
-  - name: Warmup probe — sync the probe state to Bob
-    type: wait_for_sync
-    nodes: [calimero-node-1, calimero-node-2]
-    context_id: '{{eng_docs_ctx}}'
-    timeout: 30
-
-  - name: Warmup probe — delete the throwaway doc
-    type: call
-    node: calimero-node-1
-    context_id: '{{eng_docs_ctx}}'
-    method: delete_doc
-    executor_public_key: '{{alice_docs_key}}'
-    args:
-      id: '{{warmup_doc_id}}'
-
-  - name: Warmup probe — sync the delete
-    type: wait_for_sync
-    nodes: [calimero-node-1, calimero-node-2]
-    context_id: '{{eng_docs_ctx}}'
-    timeout: 30
-
   # Empty list_docs — no `is_set` because `is_set([])` fails.
-  # (After warmup the probe doc is gone; list is []. Counter is at 1 so
-  # the next create_doc returns doc-2 — the workflow below doesn't care
-  # about exact doc ids, only their stability.)
   - name: list_docs on empty docs context returns []
     type: call
     node: calimero-node-1
