@@ -3,10 +3,8 @@
 // switcher / namespace-level admin panels to gate "create subgroup",
 // "manage namespace", "manage members" affordances.
 
-import { useEffect, useState } from 'react';
-import { adminRequest } from '../api/adminApi';
 import { CAP } from '../constants/config';
-import { useSelfIdentity } from './useSelfIdentity';
+import { useMemberCaps } from './useMemberCaps';
 
 export interface NamespacePermissions {
   canCreateSubgroup: boolean;
@@ -19,38 +17,7 @@ export function useNamespacePermissions(
   namespaceId: string,
   rootGroupId: string,
 ): NamespacePermissions {
-  const { identity } = useSelfIdentity(namespaceId);
-  const [caps, setCaps] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (!identity || !rootGroupId) {
-      // Falsy rootGroupId happens during bootstrap before the
-      // namespace's root group has been resolved. Stay in loading
-      // state instead of firing a request to /groups//members/... —
-      // the 404 would bucket into the catch and render "all denied"
-      // with loading:false, briefly flashing permission-gated UI as
-      // disabled before the real fetch lands.
-      setCaps(null);
-      return;
-    }
-    // Reset synchronously so a rootGroupId / identity change can't
-    // surface the previous group's caps with `loading: false`. Without
-    // this, switching from a namespace where the caller is admin to
-    // one where they're a member would briefly show admin affordances.
-    setCaps(null);
-    let alive = true;
-    adminRequest<{ capabilities: number }>(`/groups/${rootGroupId}/members/${identity}`)
-      .then((r) => {
-        if (alive) setCaps(r.capabilities);
-      })
-      .catch(() => {
-        if (alive) setCaps(0);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [rootGroupId, identity]);
-
+  const caps = useMemberCaps(namespaceId, rootGroupId);
   const has = (bit: number) => caps !== null && (caps & bit) === bit;
   return {
     canCreateSubgroup: has(CAP.CREATE_GROUP),
