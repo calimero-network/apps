@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useSelfIdentity } from '../useSelfIdentity';
+import { adminRequest } from '../../api/adminApi';
 
 vi.mock('../../api/adminApi', () => ({
   adminRequest: vi.fn(),
 }));
-import { adminRequest } from '../../api/adminApi';
 
 describe('useSelfIdentity', () => {
   beforeEach(() => {

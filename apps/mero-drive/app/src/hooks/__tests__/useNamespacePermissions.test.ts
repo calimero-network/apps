@@ -2,12 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useNamespacePermissions } from '../useNamespacePermissions';
 import { CAP } from '../../constants/config';
+import { adminRequest } from '../../api/adminApi';
 
 vi.mock('../useSelfIdentity', () => ({
   useSelfIdentity: () => ({ identity: 'me', loading: false, error: null }),
 }));
 vi.mock('../../api/adminApi', () => ({ adminRequest: vi.fn() }));
-import { adminRequest } from '../../api/adminApi';
 
 describe('useNamespacePermissions', () => {
   beforeEach(() => vi.clearAllMocks());

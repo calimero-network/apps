@@ -2,12 +2,12 @@ import { describe, it, expect, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useFolderPermissions } from '../useFolderPermissions';
 import { CAP } from '../../constants/config';
+import { adminRequest } from '../../api/adminApi';
 
 vi.mock('../useSelfIdentity', () => ({
   useSelfIdentity: () => ({ identity: 'me', loading: false, error: null }),
 }));
 vi.mock('../../api/adminApi', () => ({ adminRequest: vi.fn() }));
-import { adminRequest } from '../../api/adminApi';
 
 describe('useFolderPermissions', () => {
   const render = (caps: number) => {
