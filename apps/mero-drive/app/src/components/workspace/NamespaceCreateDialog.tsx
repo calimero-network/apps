@@ -55,12 +55,21 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
     }
   };
 
+  // Dismissal is gated on !submitting across all three paths
+  // (Cancel / backdrop / Escape). Without this, dismissing mid-
+  // request unmounts the dialog while createNamespace is still in
+  // flight — on failure, setError targets an unmounted component
+  // and the user gets no feedback.
+  const safeClose = () => {
+    if (!submitting) onClose();
+  };
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      onClick={onClose}
+      onClick={safeClose}
     >
       <div
         className="w-80 rounded-lg border border-border bg-card p-5 shadow-xl"
@@ -79,14 +88,14 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
           autoFocus
           onKeyDown={(e) => {
             if (e.key === 'Enter' && canSubmit) onCreate();
-            if (e.key === 'Escape') onClose();
+            if (e.key === 'Escape') safeClose();
           }}
         />
         {error && (
           <p className="mt-2 text-xs text-destructive">{error}</p>
         )}
         <div className="mt-4 flex justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={onClose} disabled={submitting}>
+          <Button variant="ghost" size="sm" onClick={safeClose} disabled={submitting}>
             Cancel
           </Button>
           <Button size="sm" onClick={onCreate} disabled={!canSubmit}>
