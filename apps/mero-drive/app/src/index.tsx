@@ -14,6 +14,7 @@ import {
 } from '@calimero-network/mero-react';
 import { ToastProvider } from '@calimero-network/mero-ui';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { ConfirmProvider } from '@/components/ui/confirm-dialog';
 import { WorkspaceProvider } from '@/context/WorkspaceContext';
 import { RegistryProvider } from '@/context/RegistryContext';
 import { getApplicationId } from '@/constants/config';
@@ -93,7 +94,9 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
             <RegistryProvider>
               <ToastProvider>
                 <TooltipProvider>
-                  <App />
+                  <ConfirmProvider>
+                    <App />
+                  </ConfirmProvider>
                 </TooltipProvider>
               </ToastProvider>
             </RegistryProvider>
