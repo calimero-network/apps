@@ -26,21 +26,11 @@ import { clearWorkspaceState } from '@/context/WorkspaceContext';
 
 const LandingPage = lazy(() => import('./pages/landing'));
 const Authenticate = lazy(() => import('./pages/login/Authenticate'));
-
-function WorkspacePlaceholder() {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-background text-foreground">
-      <div className="max-w-md text-center space-y-4 p-8">
-        <h1 className="text-2xl font-semibold">Mero Drive v9</h1>
-        <p className="text-sm text-muted-foreground">
-          You're authenticated against the v9 namespace backend. The
-          folder + document UI is being rebuilt against the new
-          registry / docs services and will land in follow-up PRs.
-        </p>
-      </div>
-    </div>
-  );
-}
+const WorkspaceLayout = lazy(() =>
+  import('./components/workspace/WorkspaceLayout').then((m) => ({
+    default: m.WorkspaceLayout,
+  })),
+);
 
 function AuthedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useCalimero();
@@ -108,7 +98,7 @@ const App: React.FC = () => {
           path="/app/*"
           element={
             <AuthedRoute>
-              <WorkspacePlaceholder />
+              <WorkspaceLayout />
             </AuthedRoute>
           }
         />
