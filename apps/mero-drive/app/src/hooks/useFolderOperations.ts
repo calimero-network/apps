@@ -183,11 +183,24 @@ export function useFolderOperations(
       // deleted after all of its children.
       const victims = [...descendantsOf(tree, folderId), folderId];
       for (const id of victims) {
+        // Fetch the bound docs context BEFORE unregistering, because
+        // unregister removes the folder-context binding and we lose
+        // the handle. Folders without a bound context (shouldn't
+        // happen after Phase 7's create path but tolerated during
+        // migration) return null and skip the context delete.
+        const boundContextId = await registryClient
+          .getFolderContext({ folder_id: id })
+          .catch(() => null);
         await registryClient.unregisterFolder({ id });
         await deleteGroup(id);
+        if (boundContextId) {
+          await deleteContext(boundContextId).catch((e) =>
+            console.warn('failed to delete bound docs context', boundContextId, e),
+          );
+        }
       }
     },
-    [registryClient, tree, deleteGroup],
+    [registryClient, tree, deleteGroup, deleteContext],
   );
 
   const cascadeTo = useCallback(

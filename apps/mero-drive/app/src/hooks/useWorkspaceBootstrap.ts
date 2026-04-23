@@ -112,11 +112,21 @@ export function useWorkspaceBootstrap(
         // it and set the new per-root alias for future lookups.
         const legacy = contexts.find((c) => c.alias === REGISTRY_CONTEXT_ALIAS);
         if (legacy) {
+          // Log alias-set failures rather than swallowing silently.
+          // A persistent failure here means every reload re-hits this
+          // branch and leaves the alias unset — which could eventually
+          // mask a duplicate-context creation if the legacy entry ever
+          // disappears. Surfacing the warning lets operators notice
+          // repeated failures before they cause data loss.
           await adminRequest(`/alias/create/context`, {
             method: 'POST',
             body: JSON.stringify({ name: aliasName, value: legacy.contextId }),
-          }).catch(() => undefined);
-          await joinContext(legacy.contextId).catch(() => undefined);
+          }).catch((err) =>
+            console.warn('legacy-adopt alias create failed — workspace will re-hit this path on reload', err),
+          );
+          await joinContext(legacy.contextId).catch((err) =>
+            console.warn('legacy-adopt join failed', err),
+          );
           if (alive) {
             setState({ registryContextId: legacy.contextId, loading: false, error: null });
           }

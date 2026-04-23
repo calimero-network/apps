@@ -113,11 +113,18 @@ export function useWorkspaceTree(
   // the flat list of descendants of rootGroupId. The registry's
   // parent_id is what we actually use for the tree shape; admin just
   // gives us membership + alias.
+  //
+  // Use an explicit ternary (not `?? rootGroupId`) so a registered
+  // folder with parent_id:null stays null — `null` is the shared
+  // convention for "top-level" across registerFolder, useReconcile,
+  // and the UI code that will render the tree. Only fall back to
+  // rootGroupId when the registry has no entry at all (admin-seen
+  // but unregistered — reconcile will surface it).
   const admin: AdminSubgroup[] = adminSubgroups.map((s) => {
     const fromReg = regFolders.find((r) => r.id === s.groupId);
     return {
       groupId: s.groupId,
-      parent_id: fromReg?.parent_id ?? rootGroupId,
+      parent_id: fromReg ? fromReg.parent_id : rootGroupId,
       alias: s.alias,
     };
   });
