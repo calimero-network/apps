@@ -186,8 +186,17 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         // which if the user typed more during the in-flight save
         // would silently revert those keystrokes.
         lastSavedContentRef.current = content;
-        setSaveStatus('saved');
         setLastSavedAt(new Date());
+        // If the user typed more while this save was in flight,
+        // workingContentRef has diverged from the content we just
+        // acked — keep saveStatus at 'unsaved' so the indicator
+        // reflects the pending edits rather than briefly flashing
+        // 'saved' until the next debounce fires.
+        if (workingContentRef.current !== content) {
+          setSaveStatus('unsaved');
+        } else {
+          setSaveStatus('saved');
+        }
       } catch (e: unknown) {
         if (unmountedRef.current) return;
         setSaveStatus('error');

@@ -118,10 +118,15 @@ export function useDocs(folderId: string | null): UseDocsState {
   }, [refetch]);
 
   // Refresh on every SSE event from the docs context — covers
-  // remote creates/edits/deletes without polling.
-  useDocEvents(contextId, () => {
+  // remote creates/edits/deletes without polling. Wrapped in
+  // useCallback so useDocEvents' downstream useSubscription
+  // doesn't tear down and re-establish the SSE connection on
+  // every consumer re-render (each saveStatus update in
+  // DocumentEditor would otherwise churn the subscription).
+  const onDocsEvent = useCallback(() => {
     void refetch();
-  });
+  }, [refetch]);
+  useDocEvents(contextId, onDocsEvent);
 
   const create = useCallback(
     async (input: { title: string; content?: string }): Promise<string> => {
