@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useRegistry } from '@/context/RegistryContext';
 import { useWorkspace } from '@/context/WorkspaceContext';
@@ -55,6 +56,7 @@ export function FolderContextMenu({
 
   const [showNewSub, setShowNewSub] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   // Don't render the trigger at all if the caller can't do
   // anything. Keeps the tree visually clean for read-only viewers.
@@ -66,15 +68,18 @@ export function FolderContextMenu({
   if (!anyAction) return null;
 
   const onDelete = async () => {
-    // Minimal confirm for this phase — Phase 8-C replaces with a
-    // dedicated destructive-action dialog component.
-    if (
-      !window.confirm(
-        'Delete this folder and every folder inside it? This cannot be undone.',
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Delete folder?',
+      body: (
+        <>
+          This deletes the folder and every folder inside it, along with
+          their documents. This action can't be undone.
+        </>
+      ),
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await ops.remove(folderId);
     } catch (e: unknown) {

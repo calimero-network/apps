@@ -12,6 +12,8 @@ import React from 'react';
 import { LogoWithText } from '@/components/icons/Logo';
 import { NamespaceSwitcher } from './NamespaceSwitcher';
 import { FolderTree } from '@/components/folders/FolderTree';
+import { FolderBreadcrumb } from '@/components/folders/FolderBreadcrumb';
+import { FolderSharingPanel } from '@/components/folders/FolderSharingPanel';
 import { useWorkspace } from '@/context/WorkspaceContext';
 import { useRegistry } from '@/context/RegistryContext';
 
@@ -49,11 +51,22 @@ export function WorkspaceLayout() {
               body="Pick a folder from the left rail to see its documents."
             />
           ) : (
-            // Phase 8-D slots the DocumentList + DocumentEditor here.
-            <EmptyState
-              title={selectedFolder.alias}
-              body="Document list coming in Phase 8-D."
-            />
+            <div className="mx-auto max-w-5xl space-y-6 p-6">
+              <FolderBreadcrumb folderId={selectedFolder.id} />
+              <div>
+                <h1 className="text-2xl font-semibold text-foreground">
+                  {selectedFolder.alias}
+                </h1>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {selectedFolder.visibility === 'Restricted'
+                    ? 'Restricted — only explicit members can read/write'
+                    : 'Inherits members from the parent folder'}
+                </p>
+              </div>
+              {/* Phase 8-D slots DocumentList / DocumentEditor above
+                  the sharing panel once the editor loop lands. */}
+              <FolderSharingPanel folderId={selectedFolder.id} />
+            </div>
           )}
         </main>
       </div>
