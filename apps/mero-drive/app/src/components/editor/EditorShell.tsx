@@ -59,7 +59,12 @@ export const WELCOME_CONTENT = `
 
 export interface EditorShellProps {
   documentName: string;
-  onDocumentNameChange: (name: string) => void;
+  /** Optional — when undefined the title renders as static text in
+   *  the header, matching the underlying EditorHeader's read-only
+   *  mode. Callers gating rename on permissions should pass
+   *  undefined rather than a no-op so the UI surface accurately
+   *  reflects capability. */
+  onDocumentNameChange?: (name: string) => void;
   onBack?: () => void;
   onDelete?: () => void;
   /** Called with the current HTML on every Tiptap update. Caller
@@ -72,6 +77,14 @@ export interface EditorShellProps {
   lastSavedAt?: Date | null;
   isAppReady?: boolean;
   isLoading?: boolean;
+  /** When true, the editor + header title + toolbar operate in a
+   *  view-only mode. Tiptap becomes non-editable, the header
+   *  renders the title as plain text (no inline-edit affordance),
+   *  and the toolbar buttons all sit disabled. Callers should
+   *  ALSO gate onDelete / onContentChange / onDocumentNameChange
+   *  at the binding level — this flag is for visual + Tiptap-
+   *  level enforcement. */
+  readOnly?: boolean;
 }
 
 export const EditorShell: React.FC<EditorShellProps> = ({
@@ -85,8 +98,10 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   lastSavedAt = null,
   isAppReady = true,
   isLoading = false,
+  readOnly = false,
 }) => {
   const editor = useEditor({
+    editable: !readOnly,
     extensions: [
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
@@ -127,6 +142,20 @@ export const EditorShell: React.FC<EditorShellProps> = ({
     editor.commands.setContent(initialContent, { emitUpdate: false });
   }, [editor, initialContent]);
 
+  // Re-apply editability whenever `readOnly` flips. useEditor's
+  // `editable` option is a one-shot snapshot captured at creation
+  // time — it does NOT react to later prop changes. useFolderPermissions
+  // resolves asynchronously, so `canWrite` (and therefore `readOnly`)
+  // can flip after the editor is already mounted. Without this effect,
+  // a writer whose permissions resolve after mount gets a permanently
+  // read-only editor, and a reader who later loses access keeps a
+  // writable one.
+  useEffect(() => {
+    if (!editor) return;
+    if (editor.isEditable === !readOnly) return;
+    editor.setEditable(!readOnly);
+  }, [editor, readOnly]);
+
   useEffect(() => {
     if (!editor || !onContentChange) return;
     const handler = () => onContentChange(editor.getHTML());
@@ -152,7 +181,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
       <div className="flex flex-col h-screen bg-background">
         <EditorHeader
           documentName={documentName}
-          onDocumentNameChange={onDocumentNameChange}
+          onDocumentNameChange={readOnly ? undefined : onDocumentNameChange}
           onDelete={onDelete}
           onBack={onBack}
         />

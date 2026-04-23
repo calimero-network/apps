@@ -1,19 +1,26 @@
 // Three-pane workspace shell:
-//   - top bar (logo + NamespaceSwitcher + user menu placeholder)
+//   - top bar (logo + NamespaceSwitcher)
 //   - left rail (FolderTree)
-//   - main content (empty for Phase 8A; DocumentList + Editor land
-//     in Phase 8D)
+//   - main content: folder view (breadcrumb + header + doc list +
+//     sharing) when a folder is selected; full-screen DocumentEditor
+//     when a doc is open.
 //
-// Mounted by App.tsx on the /app/* route, replacing the earlier
-// WorkspacePlaceholder. Providers (WorkspaceProvider, RegistryProvider,
-// MeroProvider) are already in place in index.tsx.
+// Mounted by App.tsx on the /app/* route. Providers
+// (WorkspaceProvider, RegistryProvider, MeroProvider) are already in
+// place in index.tsx.
+//
+// Selected-document state is intentionally local: no other consumer
+// reads it, and keeping it out of WorkspaceContext avoids unwiring a
+// folder's active doc on every RegistryProvider re-render.
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { LogoWithText } from '@/components/icons/Logo';
 import { NamespaceSwitcher } from './NamespaceSwitcher';
 import { FolderTree } from '@/components/folders/FolderTree';
 import { FolderBreadcrumb } from '@/components/folders/FolderBreadcrumb';
 import { FolderSharingPanel } from '@/components/folders/FolderSharingPanel';
+import { DocumentList } from '@/components/docs/DocumentList';
+import { DocumentEditor } from '@/components/docs/DocumentEditor';
 import { useWorkspace } from '@/context/WorkspaceContext';
 import { useRegistry } from '@/context/RegistryContext';
 
@@ -21,6 +28,33 @@ export function WorkspaceLayout() {
   const { namespaceId, selectedFolderId } = useWorkspace();
   const { folders } = useRegistry();
   const selectedFolder = folders.find((f) => f.id === selectedFolderId);
+
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+
+  // Clear selectedDocId whenever the active folder changes. Without
+  // this reset, switching folders or having the current folder
+  // disappear (remote delete, permission revoke) could leave a
+  // stale docId in state — and when a new folder lands with that
+  // stale docId still set, the editor guard below would re-satisfy
+  // and open DocumentEditor with a docId that belongs to the
+  // previous folder.
+  useEffect(() => {
+    setSelectedDocId(null);
+  }, [selectedFolderId]);
+
+  // Full-screen editor mode: bypass the workspace chrome entirely.
+  // EditorShell owns its own header/toolbar/status-bar and uses
+  // h-screen, so we let it take the viewport.
+  if (selectedFolder && selectedDocId) {
+    return (
+      <DocumentEditor
+        key={`${selectedFolder.id}:${selectedDocId}`}
+        folderId={selectedFolder.id}
+        docId={selectedDocId}
+        onClose={() => setSelectedDocId(null)}
+      />
+    );
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -63,14 +97,24 @@ export function WorkspaceLayout() {
                     : 'Inherits members from the parent folder'}
                 </p>
               </div>
-              {/* Phase 8-D slots DocumentList / DocumentEditor above
-                  the sharing panel once the editor loop lands.
-                  key={selectedFolder.id} forces a full remount on
-                  folder switch so local state in FolderSharingPanel
-                  (typed identity, invite / remove errors) can't
-                  leak between folders. */}
+
+              {/* Document list + sharing panel share the folder
+                  pane. Clicking a doc swaps to the full-screen
+                  editor via setSelectedDocId.
+                  key={folderId} on both forces a remount on folder
+                  switch so local state (typed alias, pending saves,
+                  invite/remove errors) can't leak between folders. */}
+              <div className="rounded-lg border border-border bg-card">
+                <DocumentList
+                  key={`list:${selectedFolder.id}`}
+                  folderId={selectedFolder.id}
+                  selectedDocId={selectedDocId}
+                  onOpen={setSelectedDocId}
+                />
+              </div>
+
               <FolderSharingPanel
-                key={selectedFolder.id}
+                key={`sharing:${selectedFolder.id}`}
                 folderId={selectedFolder.id}
               />
             </div>
