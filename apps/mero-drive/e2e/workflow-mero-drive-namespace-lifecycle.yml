@@ -190,3 +190,8 @@ steps:
   - name: list_namespaces — empty
     type: list_namespaces
     node: calimero-node-1
+
+# Leave containers up for the CI log-watcher / retry loop. The outer
+# shell in .github/workflows/ci.yml calls `merobox nuke --force` on
+# attempt boundaries; merobox shouldn't stop nodes on workflow success.
+stop_all_nodes: false

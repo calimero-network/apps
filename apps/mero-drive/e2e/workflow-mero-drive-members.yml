@@ -309,3 +309,8 @@ steps:
     type: delete_group
     node: calimero-node-1
     group_id: '{{folder_group}}'
+
+# Leave containers up for the CI log-watcher / retry loop. The outer
+# shell in .github/workflows/ci.yml calls `merobox nuke --force` on
+# attempt boundaries; merobox shouldn't stop nodes on workflow success.
+stop_all_nodes: false

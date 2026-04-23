@@ -364,7 +364,12 @@ steps:
       tag: anything
     expected_failure: true
 
-  - name: Reject remove_tag of a tag not present
+  # remove_tag is intentionally tolerant: the backend `tags.retain(...)`
+  # is a no-op when the tag isn't present (see docs/src/lib.rs:323-335).
+  # Asserting success here documents that contract — the app's
+  # useDocs.removeTag wrapper relies on it so repeated remove taps on an
+  # already-removed tag don't surface an error toast.
+  - name: remove_tag for a tag not present is a success no-op
     type: call
     node: calimero-node-1
     context_id: '{{docs_ctx}}'
@@ -373,7 +378,6 @@ steps:
     args:
       id: '{{doc_a}}'
       tag: 'never-added'
-    expected_failure: true
 
   # =================================================================
   # Phase H: Archive flow
@@ -523,3 +527,8 @@ steps:
     executor_public_key: '{{alice_key}}'
     args:
       id: '{{doc_a}}'
+
+# Leave containers up for the CI log-watcher / retry loop. The outer
+# shell in .github/workflows/ci.yml calls `merobox nuke --force` on
+# attempt boundaries; merobox shouldn't stop nodes on workflow success.
+stop_all_nodes: false
