@@ -26,9 +26,11 @@ interface Props {
 }
 
 // Rough sanity-check on the pubkey format — Calimero identities
-// are base58-encoded Ed25519 pubkeys, in the 40–50 char range.
-// "Don't send obviously-garbage input" guard, not a cryptographic
-// check; the node validates the actual format.
+// are base58-encoded Ed25519 pubkeys, which for a 32-byte key land
+// in the 43–44 char range. {40,50} gives some slack for prefixed
+// or versioned variants while still tightly enough scoped to catch
+// obviously-garbage input (typos, truncated paste, etc). This is
+// a client-side UX guard — the node validates the actual format.
 //
 // The character class below IS the canonical Bitcoin base58
 // alphabet: `123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz`
@@ -40,7 +42,7 @@ interface Props {
 //   a-k    → no l (97..107; l is 108)
 //   m-n    → skips l
 //   p-z    → skips o (o is 111)
-const IDENTITY_LOOKS_VALID = /^[1-9A-HJ-NP-Za-km-z]{32,64}$/;
+const IDENTITY_LOOKS_VALID = /^[1-9A-HJ-NP-Za-km-z]{40,50}$/;
 
 export function FolderSharingPanel({ folderId }: Props) {
   const { namespaceId } = useWorkspace();
