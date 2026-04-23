@@ -14,8 +14,11 @@
 // folder's active doc on every RegistryProvider re-render.
 
 import React, { useEffect, useState } from 'react';
+import { Settings } from 'lucide-react';
 import { LogoWithText } from '@/components/icons/Logo';
+import { Button } from '@/components/ui/button';
 import { NamespaceSwitcher } from './NamespaceSwitcher';
+import { NamespaceSettingsPanel } from './NamespaceSettingsPanel';
 import { FolderTree } from '@/components/folders/FolderTree';
 import { FolderBreadcrumb } from '@/components/folders/FolderBreadcrumb';
 import { FolderSharingPanel } from '@/components/folders/FolderSharingPanel';
@@ -30,6 +33,10 @@ export function WorkspaceLayout() {
   const selectedFolder = folders.find((f) => f.id === selectedFolderId);
 
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  // Toggle between folder/editor view and the full-pane namespace
+  // settings. Closing settings preserves the previously-selected
+  // folder so the user lands back where they were.
+  const [showSettings, setShowSettings] = useState(false);
 
   // Clear selectedDocId whenever the active folder changes. Without
   // this reset, switching folders or having the current folder
@@ -41,6 +48,13 @@ export function WorkspaceLayout() {
   useEffect(() => {
     setSelectedDocId(null);
   }, [selectedFolderId]);
+
+  // Close settings when switching namespaces — the active
+  // namespace is the settings scope, so dangling on a different
+  // namespace's settings after a switch is stale UX.
+  useEffect(() => {
+    setShowSettings(false);
+  }, [namespaceId]);
 
   // Full-screen editor mode: bypass the workspace chrome entirely.
   // EditorShell owns its own header/toolbar/status-bar and uses
@@ -65,6 +79,18 @@ export function WorkspaceLayout() {
           <div className="hidden h-6 w-px bg-border sm:block" />
           <NamespaceSwitcher />
         </div>
+        {namespaceId && (
+          <Button
+            variant={showSettings ? 'default' : 'ghost'}
+            size="sm"
+            className="gap-1.5"
+            aria-pressed={showSettings}
+            onClick={() => setShowSettings((v) => !v)}
+          >
+            <Settings className="h-3.5 w-3.5" />
+            Settings
+          </Button>
+        )}
       </header>
 
       {/* Main grid */}
@@ -74,7 +100,9 @@ export function WorkspaceLayout() {
         </aside>
 
         <main className="flex-1 overflow-y-auto">
-          {!namespaceId ? (
+          {showSettings && namespaceId ? (
+            <NamespaceSettingsPanel key={`settings:${namespaceId}`} />
+          ) : !namespaceId ? (
             <EmptyState
               title="No workspace selected"
               body="Create or pick a workspace from the top bar to see your folders."
