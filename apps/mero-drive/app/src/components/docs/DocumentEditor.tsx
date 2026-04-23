@@ -301,8 +301,18 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         await docsEdit(currentDoc.id, { title });
         if (unmountedRef.current) return;
         setDoc((prev) => (prev ? { ...prev, title } : prev));
-        setSaveStatus('saved');
         setLastSavedAt(new Date());
+        // Mirror persistContent's concurrent-edit check: if the user
+        // typed more content while the rename round-trip was in
+        // flight, workingContentRef has diverged from the last-saved
+        // content, so keep saveStatus at 'unsaved' instead of flipping
+        // to 'saved' and misleading the user for the ~900ms until the
+        // next autosave debounce fires.
+        if (workingContentRef.current !== lastSavedContentRef.current) {
+          setSaveStatus('unsaved');
+        } else {
+          setSaveStatus('saved');
+        }
       } catch (e) {
         if (unmountedRef.current) return;
         setSaveStatus('error');
