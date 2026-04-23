@@ -10,17 +10,12 @@
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { MAX_FOLDER_DEPTH } from '@/constants/config';
+import { MAX_ALIAS_LENGTH, MAX_FOLDER_DEPTH } from '@/constants/config';
 import { depthOf } from '@/utils/ancestry';
+import { COLOR_ALLOWLIST } from '@/utils/validation';
 import { useRegistry } from '@/context/RegistryContext';
 import { useWorkspace } from '@/context/WorkspaceContext';
 import { useFolderOperations } from '@/hooks/useFolderOperations';
-
-// Same hex/rgb/hsl allowlist as FolderTreeItem. If the user types
-// something not matching, it's rejected at submit time with an
-// inline error rather than silently accepted.
-const COLOR_ALLOWLIST = /^(?:#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|rgba?\([\d.,\s%/]+\)|hsla?\([\d.,\s%/]+\))$/;
-const MAX_ALIAS_LENGTH = 128;
 
 interface Props {
   parentFolderId: string | null;

@@ -8,20 +8,13 @@
 import React, { useState } from 'react';
 import { useCreateNamespace } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
-import { getApplicationId } from '@/constants/config';
+import { getApplicationId, MAX_ALIAS_LENGTH } from '@/constants/config';
 import { useWorkspace } from '@/context/WorkspaceContext';
 
 interface Props {
   onClose: () => void;
   onCreated?: () => void | Promise<void>;
 }
-
-// Client-side ceiling on the alias length so users can't silently
-// submit arbitrarily long strings. The node's storage uses alias
-// strings as index keys; there's no hard server-side limit
-// documented, but 128 chars is longer than any reasonable workspace
-// name and short enough to prevent accidental / automated abuse.
-const MAX_ALIAS_LENGTH = 128;
 
 export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
   const [name, setName] = useState('');

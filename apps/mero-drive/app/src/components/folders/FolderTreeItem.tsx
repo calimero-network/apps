@@ -8,38 +8,16 @@
 // from the context menu but the editing surface lives here because
 // the alias text is owned by this row's render.
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { ChevronRight, ChevronDown, Lock, Folder } from 'lucide-react';
 import type { TreeNode } from '@/utils/ancestry';
+import { safeColor } from '@/utils/validation';
+import { MAX_ALIAS_LENGTH } from '@/constants/config';
 import type { MergedFolder } from '@/hooks/useWorkspaceTree';
 import { useRegistry } from '@/context/RegistryContext';
 import { useWorkspace } from '@/context/WorkspaceContext';
 import { useFolderOperations } from '@/hooks/useFolderOperations';
 import { FolderContextMenu } from './FolderContextMenu';
-
-// Allowlist common CSS color formats before injecting into inline
-// style. `folder.color` ultimately originates from registry WASM
-// state that other peers can write, so we defence-in-depth against
-// a malicious or compromised peer injecting arbitrary CSS values
-// (e.g. `url(...)` / `var(...)` / multi-property payloads). React
-// sets the style property via the DOM API which already mitigates
-// XSS, but garbage values would still produce visual corruption.
-// Tightened hex branch to only the valid CSS lengths (3, 4, 6, 8)
-// — the {3,8} range accepts #12345 / #1234567 which aren't valid
-// colors and would render as transparent. Rejecting them at the
-// validator means the Folder fallback icon shows instead of a
-// silent empty chip.
-const COLOR_ALLOWLIST = /^(?:#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|rgba?\([\d.,\s%/]+\)|hsla?\([\d.,\s%/]+\))$/;
-function safeColor(raw: string | null | undefined): string | undefined {
-  if (!raw) return undefined;
-  const trimmed = raw.trim();
-  return COLOR_ALLOWLIST.test(trimmed) ? trimmed : undefined;
-}
-
-// Same cap as NamespaceCreateDialog — keeps renames from silently
-// producing oversized alias strings that create wouldn't have
-// accepted.
-const MAX_ALIAS_LENGTH = 128;
 
 interface Props {
   node: TreeNode;
@@ -62,6 +40,14 @@ export function FolderTreeItem({
   const [expanded, setExpanded] = useState(true);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
+  // Re-entry guard for submitRename. Without this, pressing Enter
+  // starts the async rename, and if the input loses focus before
+  // the await resolves (which it does when setRenaming(false) fires
+  // and unmounts the input), the native blur event fires a second
+  // submitRename with the same state — `folder.alias` hasn't yet
+  // refreshed from the registry, so the same-name guard doesn't
+  // catch it and the rename runs twice.
+  const submitRenameInFlightRef = useRef(false);
 
   const { rootGroupId } = useWorkspace();
   const { folders, registryClient } = useRegistry();
@@ -86,17 +72,21 @@ export function FolderTreeItem({
   }, []);
 
   const submitRename = useCallback(async () => {
+    if (submitRenameInFlightRef.current) return;
     const next = renameValue.trim();
     if (!next || next.length > MAX_ALIAS_LENGTH || next === folder?.alias) {
       cancelRename();
       return;
     }
+    submitRenameInFlightRef.current = true;
     try {
       await ops.rename(node.id, next);
     } catch (e) {
       console.error('rename failed', e);
+    } finally {
+      submitRenameInFlightRef.current = false;
+      setRenaming(false);
     }
-    setRenaming(false);
   }, [renameValue, folder?.alias, ops, node.id, cancelRename]);
 
   return (
