@@ -270,40 +270,21 @@ steps:
     group_id: '{{folder_group}}'
 
   # =================================================================
-  # Phase I: Negative paths
-  # =================================================================
-
-  - name: Reject get_member_capabilities on non-member
-    type: get_member_capabilities
-    node: calimero-node-1
-    group_id: '{{folder_group}}'
-    member_id: '{{bob_identity}}'
-    expected_failure: true
-
-  - name: Reject set_member_capabilities on non-member
-    type: set_member_capabilities
-    node: calimero-node-1
-    group_id: '{{folder_group}}'
-    member_id: '{{bob_identity}}'
-    capabilities: 1
-    expected_failure: true
-
-  - name: Reject remove_group_members on non-member
-    type: remove_group_members
-    node: calimero-node-1
-    group_id: '{{folder_group}}'
-    members:
-      - '{{bob_identity}}'
-    expected_failure: true
-
-  - name: Reject update_member_role on non-member
-    type: update_member_role
-    node: calimero-node-1
-    group_id: '{{folder_group}}'
-    member_id: '{{bob_identity}}'
-    role: Admin
-    expected_failure: true
-
+  # Phase I: Negative paths — BLOCKED ON MEROBOX
+  #
+  # We'd ideally cover: get_member_capabilities, set_member_capabilities,
+  # remove_group_members, update_member_role — all invoked on a
+  # non-member identity and asserted to fail. All four step types live
+  # in merobox/commands/bootstrap/steps/group_management.py, which does
+  # not call `self._is_expected_failure()` — the base-class helper is
+  # available but those step classes don't opt in, so
+  # `expected_failure: true` is silently ignored and any exception
+  # stops the workflow.
+  #
+  # Tracked in calimero-network/merobox#214. When merobox wires
+  # `_is_expected_failure` into group_management.py's step classes,
+  # these negative steps land back here.
+  #
   # =================================================================
   # Phase J: Cleanup
   # =================================================================
