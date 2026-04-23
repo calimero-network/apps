@@ -120,11 +120,14 @@ steps:
   # Admin) all match specific bit combinations — tested below.
   # =================================================================
 
-  # Baseline: fresh Member-role bitmask. The value comes from the
-  # group's default capabilities (set implicitly on add_group_members
-  # with role: Member). Capturing it lets the demote-back-to-Member
-  # step below assert the round-trip actually returns the original
-  # bitmask, catching any role→bitmask drift in the backend.
+  # Baseline: capture Bob's per-member capability bitmask as soon as
+  # he joins with role=Member. core/admin/handlers/groups/
+  # get_member_capabilities.rs returns `response.capabilities`, which
+  # is the EXPLICIT per-member override (a separate field from
+  # `role`). A newly-added member with no override returns 0 — that's
+  # correct, and the effective permissions come from the role. We
+  # capture this baseline so the role-transition steps below can
+  # assert update_member_role doesn't mutate the override.
   - name: get_member_capabilities for Bob (initial role=Member) — capture
     type: get_member_capabilities
     node: calimero-node-1
@@ -133,22 +136,22 @@ steps:
     outputs:
       initial_member_caps: capabilities
 
-  - name: Assert initial Member bitmask is set
-    type: assert
-    statements:
-      - 'is_set({{initial_member_caps}})'
-
   # =================================================================
   # Phase E: update_member_role — string role transitions
   #
-  # Covers the API mero-react exposes via useUpdateMemberRole. The
-  # NamespaceMemberRow uses setCapabilities directly for precise
-  # bitmask control, but role-string updates are the simpler admin-
-  # API entry point. Role→bitmask is a DIFFERENT backend code path
-  # than set_member_capabilities (which writes the mask directly),
-  # so the Admin role mapping needs its own assertion here — a bug
-  # that mapped Admin role to a wrong bitmask would slip through
-  # Phase F's set-then-read coverage.
+  # Covers the API mero-react exposes via useUpdateMemberRole. Role
+  # and the per-member capability override are SEPARATE fields on the
+  # admin-API side: `update_member_role` only touches `role`, and
+  # `get_member_capabilities` returns the untouched per-member
+  # override bitmask — not a role-derived effective mask.
+  #
+  # So the assertion here is the invariant: the override bitmask is
+  # unchanged after promote-then-demote. A backend bug where
+  # update_member_role leaked into the override (or cleared it) would
+  # flip this assertion. The role-to-effective-permission mapping
+  # itself is enforced server-side and would need a separate
+  # "try-privileged-op-as-Bob" test to cover, which belongs in the
+  # permissions e2e rather than here.
   # =================================================================
 
   - name: Alice promotes Bob to Admin
@@ -158,18 +161,18 @@ steps:
     member_id: '{{bob_identity}}'
     role: Admin
 
-  - name: Verify Bob now has Admin caps — capture
+  - name: Capture Bob's override after role promote
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
     member_id: '{{bob_identity}}'
     outputs:
-      admin_role_caps: capabilities
+      promoted_override_caps: capabilities
 
-  - name: Assert Admin role maps to bitmask 63
+  - name: Assert role change didn't touch the per-member override
     type: assert
     statements:
-      - '{{admin_role_caps}} == 63'
+      - '{{promoted_override_caps}} == {{initial_member_caps}}'
 
   - name: Alice demotes Bob back to Member
     type: update_member_role
@@ -178,18 +181,18 @@ steps:
     member_id: '{{bob_identity}}'
     role: Member
 
-  - name: Verify Bob's caps reverted to the Member baseline — capture
+  - name: Capture Bob's override after role demote
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
     member_id: '{{bob_identity}}'
     outputs:
-      demoted_member_caps: capabilities
+      demoted_override_caps: capabilities
 
-  - name: Assert demoted bitmask matches the initial Member bitmask
+  - name: Assert role round-trip left the override bitmask unchanged
     type: assert
     statements:
-      - '{{demoted_member_caps}} == {{initial_member_caps}}'
+      - '{{demoted_override_caps}} == {{initial_member_caps}}'
 
   # =================================================================
   # Phase F: set_member_capabilities — precise bitmask writes
