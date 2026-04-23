@@ -49,15 +49,32 @@ export function useReconcile(
     setState((s) => ({ ...s, running: true }));
     try {
       const regFolders = await registryClient.getFolders();
-      // SubgroupEntry doesn't carry parent_id; registry does.
-      // Both sides of the diff must normalise to the same "top-level"
-      // representation — the registry stores `null` for folders
-      // directly under root (see useFolderOperations.registerFolder),
-      // so the admin side also uses `null` when cross-referencing.
-      // Previously the admin side normalised missing parent_ids to
-      // `rootGroupId` while the registry side kept `null`, generating
-      // a spurious move action for every top-level folder on every
-      // reconcile run.
+      // SubgroupEntry from mero-js's useSubgroups carries only
+      // `{ groupId, alias? }` — no parent_id cross-reference. That
+      // means the admin-side parent_id we feed into
+      // computeReconcileActions must come from the registry itself,
+      // which in turn means the move-detection branch in
+      // computeReconcileActions is *unreachable* from this hook:
+      // both admin.parent_id and regShape.parent_id originate from
+      // the same regFolders fetch, so reg.parent_id !== g.parent_id
+      // is always false. We deliberately DON'T apply actions.move
+      // below to avoid pretending we've detected moves — that branch
+      // is dead with the current mero-js API surface, and the Phase
+      // 5 unit tests for computeReconcileActions still exercise it
+      // against synthetic inputs until we have a hook that returns
+      // parent_id per group.
+      //
+      // Drift-detection scope for this run:
+      //   - register: admin groups missing from the registry   ✓
+      //   - unregister: registry entries missing from admin    ✓
+      //   - move: admin/registry parent_id mismatch            ✗ not observable
+      //
+      // In practice moves happen via useFolderOperations (which
+      // updates both sides in lockstep), so the registry and admin
+      // can only diverge on parent_id via external tooling (CLI,
+      // manual admin-API usage). Reconcile catches the create/delete
+      // cases and relies on the app's own write path to keep
+      // parent_id consistent.
       const regById = new Map(regFolders.map((f) => [f.id, f]));
       const admin: AdminGroup[] = adminSubgroups.map((s) => {
         const fromReg = regById.get(s.groupId);
@@ -89,14 +106,17 @@ export function useReconcile(
       for (const id of actions.unregister) {
         await registryClient.unregisterFolder({ id });
       }
-      for (const m of actions.move) {
-        await registryClient.moveFolder({ id: m.id, new_parent: m.new_parent_id });
-      }
+      // actions.move intentionally not applied — see comment above.
 
       const result: ReconcileResult = {
         registered: actions.register.length,
         unregistered: actions.unregister.length,
-        moved: actions.move.length,
+        // `moved` is always 0 at this layer — see the comment above
+        // the actions.move loop. Kept in the return shape so UI /
+        // telemetry code doesn't need reshaping once we gain a
+        // parent_id-returning admin hook and can re-enable move
+        // detection.
+        moved: 0,
       };
       setState({ running: false, last: result, error: null });
       return result;

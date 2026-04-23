@@ -11,7 +11,7 @@
 // SubgroupEntry type). Registry entries use `{ id, parent_id, … }`
 // (per the generated FolderDto). The merge reconciles the two shapes.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { SubgroupEntry } from '@calimero-network/mero-react';
 import type { RegistryClient } from '../api/registry/RegistryClient';
 
@@ -120,18 +120,24 @@ export function useWorkspaceTree(
   // and the UI code that will render the tree. Only fall back to
   // rootGroupId when the registry has no entry at all (admin-seen
   // but unregistered — reconcile will surface it).
-  const admin: AdminSubgroup[] = adminSubgroups.map((s) => {
-    const fromReg = regFolders.find((r) => r.id === s.groupId);
-    return {
-      groupId: s.groupId,
-      parent_id: fromReg ? fromReg.parent_id : rootGroupId,
-      alias: s.alias,
-    };
-  });
-
-  const { folders } = rootGroupId
-    ? mergeAdminAndRegistry(admin, regFolders, rootGroupId)
-    : { folders: [] };
+  //
+  // Wrap in useMemo and pre-build a Map for O(1) lookups: this runs
+  // in the render path of RegistryProvider (re-renders on every
+  // subgroup or registry change), and large workspaces would
+  // otherwise pay O(n×m) per render from the nested find().
+  const { folders } = useMemo(() => {
+    if (!rootGroupId) return { folders: [] };
+    const regById = new Map(regFolders.map((r) => [r.id, r]));
+    const admin: AdminSubgroup[] = adminSubgroups.map((s) => {
+      const fromReg = regById.get(s.groupId);
+      return {
+        groupId: s.groupId,
+        parent_id: fromReg ? fromReg.parent_id : rootGroupId,
+        alias: s.alias,
+      };
+    });
+    return mergeAdminAndRegistry(admin, regFolders, rootGroupId);
+  }, [adminSubgroups, regFolders, rootGroupId]);
 
   return {
     folders,
