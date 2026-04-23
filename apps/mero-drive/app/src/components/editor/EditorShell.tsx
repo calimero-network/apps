@@ -72,6 +72,14 @@ export interface EditorShellProps {
   lastSavedAt?: Date | null;
   isAppReady?: boolean;
   isLoading?: boolean;
+  /** When true, the editor + header title + toolbar operate in a
+   *  view-only mode. Tiptap becomes non-editable, the header
+   *  renders the title as plain text (no inline-edit affordance),
+   *  and the toolbar buttons all sit disabled. Callers should
+   *  ALSO gate onDelete / onContentChange / onDocumentNameChange
+   *  at the binding level — this flag is for visual + Tiptap-
+   *  level enforcement. */
+  readOnly?: boolean;
 }
 
 export const EditorShell: React.FC<EditorShellProps> = ({
@@ -85,8 +93,10 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   lastSavedAt = null,
   isAppReady = true,
   isLoading = false,
+  readOnly = false,
 }) => {
   const editor = useEditor({
+    editable: !readOnly,
     extensions: [
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
@@ -152,7 +162,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
       <div className="flex flex-col h-screen bg-background">
         <EditorHeader
           documentName={documentName}
-          onDocumentNameChange={onDocumentNameChange}
+          onDocumentNameChange={readOnly ? undefined : onDocumentNameChange}
           onDelete={onDelete}
           onBack={onBack}
         />

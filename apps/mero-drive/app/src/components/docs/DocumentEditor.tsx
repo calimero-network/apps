@@ -2,7 +2,9 @@
 // useDocs.get, binds EditorShell's controlled props to local state
 // + the save state machine, and persists:
 //   - content: debounced autosave (900ms idle) + flush on unmount
-//   - title:   explicit onDocumentNameChange
+//   - title:   explicit onDocumentNameChange; flushes pending
+//     content autosave first so a rename in the autosave window
+//     can't drop the last keystrokes
 //   - delete:  uses useConfirm before calling useDocs.remove
 //
 // EditorShell owns every piece of visual chrome (header with back/
@@ -16,6 +18,23 @@
 //   saving        (editDoc in flight)
 //   saved         (editDoc resolved)
 //   error         (editDoc threw — next edit resets to unsaved)
+//
+// Refs vs state — what goes where:
+//   `lastSavedContentRef`   — the most recent server-acked HTML.
+//     Used for equality checks in onContentChange + the unmount
+//     flush. NOT kept in React state because updating it after
+//     every save would force EditorShell's initialContent effect
+//     to overwrite the editor's current HTML with the just-saved
+//     (stale-relative-to-user-typing) content — silently reverting
+//     any keystrokes between the save firing and resolving.
+//   `workingContentRef`     — mirrors what Tiptap has RIGHT NOW,
+//     updated on every onContentChange. Used so the unmount flush
+//     and beforeunload handler can read the latest HTML without
+//     being captured by a stale closure.
+//   `docRef`                — mirrors `doc` for the same closure-
+//     capture reason (the unmount-flush effect closes over the
+//     render that set up the effect, which is always the
+//     pre-load null render).
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { EditorShell } from '@/components/editor/EditorShell';
@@ -56,9 +75,17 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
   // user's typing feeds `workingContentRef` so autosave + beforeunload
   // flush know what to persist.
   const [documentName, setDocumentName] = useState('');
-  const workingContentRef = useRef<string>('');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+
+  // See the file header's "Refs vs state" note for why these live
+  // in refs instead of state.
+  const workingContentRef = useRef<string>('');
+  const lastSavedContentRef = useRef<string>('');
+  const docRef = useRef<DocDto | null>(null);
+  useEffect(() => {
+    docRef.current = doc;
+  }, [doc]);
 
   const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unmountedRef = useRef(false);
@@ -77,8 +104,18 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
     }
   }, []);
 
-  // Load the doc on mount / docId change.
+  // Load the doc once the docs context resolves. Depending on
+  // `docs.contextId` in addition to `docId` is load-bearing:
+  // useDocs resolves the context asynchronously, so `docs.get` on
+  // first render would throw "docs context not ready" and the
+  // effect would never re-run (since docId wouldn't change).
   useEffect(() => {
+    if (!docs.contextId) {
+      // Stay in loading until the context is resolved. Error from
+      // useDocs (resolveError) is surfaced via the `docs.error`
+      // path, separate from this load's loadError.
+      return;
+    }
     let alive = true;
     setLoading(true);
     setLoadError(null);
@@ -90,6 +127,7 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         setDoc(d);
         setDocumentName(d.title || 'Untitled');
         workingContentRef.current = d.content;
+        lastSavedContentRef.current = d.content;
         setSaveStatus('saved');
         setLastSavedAt(new Date(d.updated_at * 1000));
         setLoading(false);
@@ -104,27 +142,31 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
       alive = false;
     };
     // `docs.get` is a stable useCallback; we intentionally depend
-    // only on docId so the effect doesn't re-run on every docs-
-    // list refetch.
+    // only on docId + contextId so the effect doesn't re-run on
+    // every docs-list refetch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [docId]);
+  }, [docId, docs.contextId]);
 
   const persistContent = useCallback(
     async (content: string) => {
-      if (!doc) return;
-      if (content === doc.content) {
-        // String-equality skip avoids spamming editDoc when Tiptap
-        // re-emits the same HTML on unrelated events (selection
-        // change, focus, etc.).
+      const currentDoc = docRef.current;
+      if (!currentDoc) return;
+      if (content === lastSavedContentRef.current) {
+        // Nothing changed since the last server ack — skip the
+        // round-trip. Tiptap re-emits the same HTML on unrelated
+        // events (selection / focus), this guard prevents spamming.
         return;
       }
       setSaveStatus('saving');
       try {
-        await docs.edit(doc.id, { content });
+        await docs.edit(currentDoc.id, { content });
         if (unmountedRef.current) return;
-        // Optimistically bump the local doc's content so equality
-        // checks on subsequent autosaves can short-circuit.
-        setDoc((prev) => (prev ? { ...prev, content } : prev));
+        // Record the server-acked content WITHOUT triggering
+        // EditorShell's initialContent effect. Updating doc.content
+        // here would make EditorShell call setContent(savedHTML),
+        // which if the user typed more during the in-flight save
+        // would silently revert those keystrokes.
+        lastSavedContentRef.current = content;
         setSaveStatus('saved');
         setLastSavedAt(new Date());
       } catch (e: unknown) {
@@ -133,13 +175,13 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         console.error('autosave failed', e);
       }
     },
-    [doc, docs],
+    [docs],
   );
 
   const onContentChange = useCallback(
     (html: string) => {
       workingContentRef.current = html;
-      if (!doc || html === doc.content) {
+      if (html === lastSavedContentRef.current) {
         setSaveStatus('saved');
         return;
       }
@@ -150,23 +192,25 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         void persistContent(html);
       }, AUTOSAVE_DEBOUNCE_MS);
     },
-    [doc, cancelPendingAutosave, persistContent],
+    [cancelPendingAutosave, persistContent],
   );
 
   // Flush any pending autosave on unmount so closing the editor
-  // mid-typing doesn't lose the last keystrokes.
+  // mid-typing doesn't lose the last keystrokes. Reading via refs
+  // — the cleanup closure is set up on first render when `doc`
+  // was null, so a stale-null capture would bail without flushing.
   useEffect(() => {
     return () => {
       cancelPendingAutosave();
-      if (!doc) return;
+      const currentDoc = docRef.current;
+      if (!currentDoc) return;
       const content = workingContentRef.current;
-      if (content !== doc.content) {
-        // Fire-and-forget: component is already unmounting, can't
-        // report status.
-        docs
-          .edit(doc.id, { content })
-          .catch((e) => console.warn('unmount flush failed', e));
-      }
+      if (content === lastSavedContentRef.current) return;
+      // Fire-and-forget: component is already unmounting, can't
+      // report status.
+      docs
+        .edit(currentDoc.id, { content })
+        .catch((e) => console.warn('unmount flush failed', e));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docId]);
@@ -176,25 +220,34 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
   // before letting the navigation through.
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
-      if (!doc) return;
-      if (workingContentRef.current !== doc.content) {
+      if (workingContentRef.current !== lastSavedContentRef.current) {
         e.preventDefault();
         e.returnValue = '';
       }
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
-  }, [doc]);
+  }, []);
 
   const onDocumentNameChange = useCallback(
     async (next: string) => {
       const title = next.trim().slice(0, MAX_ALIAS_LENGTH) || 'Untitled';
       setDocumentName(title);
-      if (!doc || title === doc.title) return;
-      cancelPendingAutosave();
+      const currentDoc = docRef.current;
+      if (!currentDoc || title === currentDoc.title) return;
+
+      // Flush any pending content autosave BEFORE we issue the
+      // rename — cancelling the debounce would otherwise discard
+      // content edits between the last keystroke and this rename,
+      // since nothing re-triggers the content save afterwards.
+      if (autosaveTimeoutRef.current) {
+        cancelPendingAutosave();
+        await persistContent(workingContentRef.current);
+      }
+
       setSaveStatus('saving');
       try {
-        await docs.edit(doc.id, { title });
+        await docs.edit(currentDoc.id, { title });
         if (unmountedRef.current) return;
         setDoc((prev) => (prev ? { ...prev, title } : prev));
         setSaveStatus('saved');
@@ -205,16 +258,18 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         console.error('rename failed', e);
       }
     },
-    [doc, cancelPendingAutosave, docs],
+    [cancelPendingAutosave, persistContent, docs],
   );
 
   const onDelete = useCallback(async () => {
-    if (!doc) return;
+    const currentDoc = docRef.current;
+    if (!currentDoc) return;
     const ok = await confirm({
       title: 'Delete document?',
       body: (
         <>
-          Delete <code className="text-xs">{doc.title || 'Untitled'}</code>?
+          Delete{' '}
+          <code className="text-xs">{currentDoc.title || 'Untitled'}</code>?
           This can't be undone.
         </>
       ),
@@ -226,13 +281,13 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
     // edit to a just-removed doc.
     cancelPendingAutosave();
     try {
-      await docs.remove(doc.id);
+      await docs.remove(currentDoc.id);
       onClose();
     } catch (e) {
       console.error('delete failed', e);
       setSaveStatus('error');
     }
-  }, [doc, confirm, docs, cancelPendingAutosave, onClose]);
+  }, [confirm, docs, cancelPendingAutosave, onClose]);
 
   if (loadError) {
     return (
@@ -252,10 +307,16 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
   return (
     <EditorShell
       documentName={documentName}
+      // Every mutation handler gates on perms.canWrite so read-only
+      // viewers can't accidentally (or intentionally) rename, edit,
+      // or delete. EditorShell's readOnly flag additionally puts
+      // Tiptap and the header into a display-only mode so the UI
+      // reflects the capability.
       onDocumentNameChange={onDocumentNameChange}
       onBack={onClose}
       onDelete={perms.canWrite ? onDelete : undefined}
       onContentChange={perms.canWrite ? onContentChange : undefined}
+      readOnly={!perms.canWrite}
       initialContent={doc?.content}
       saveStatus={saveStatus}
       lastSavedAt={lastSavedAt}

@@ -19,7 +19,11 @@ import {
 
 interface EditorHeaderProps {
   documentName: string;
-  onDocumentNameChange: (name: string) => void;
+  /** Optional — when undefined the title is rendered as plain
+   *  static text (read-only mode). Callers gating rename on
+   *  permissions should pass `undefined` rather than a no-op
+   *  function so the UI surface accurately reflects capability. */
+  onDocumentNameChange?: (name: string) => void;
   onDelete?: () => void;
   onBack?: () => void;
 }
@@ -34,7 +38,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
   const [editName, setEditName] = useState(documentName);
 
   const handleNameSubmit = () => {
-    if (editName.trim()) {
+    if (editName.trim() && onDocumentNameChange) {
       onDocumentNameChange(editName.trim());
     }
     setIsEditing(false);
@@ -65,27 +69,34 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
 
       {/* Center - Document name */}
       <div className="flex-1 flex justify-center px-4">
-        {isEditing ? (
-          <input
-            type="text"
-            value={editName}
-            onChange={(e) => setEditName(e.target.value)}
-            onBlur={handleNameSubmit}
-            onKeyDown={handleKeyDown}
-            className="bg-transparent border border-primary/50 rounded px-2 py-1 text-center text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 max-w-xs"
-            autoFocus
-          />
+        {onDocumentNameChange ? (
+          isEditing ? (
+            <input
+              type="text"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onBlur={handleNameSubmit}
+              onKeyDown={handleKeyDown}
+              className="bg-transparent border border-primary/50 rounded px-2 py-1 text-center text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 max-w-xs"
+              autoFocus
+            />
+          ) : (
+            <button
+              onClick={() => {
+                setEditName(documentName);
+                setIsEditing(true);
+              }}
+              className="text-sm font-medium hover:text-primary transition-colors flex items-center gap-1.5"
+            >
+              <FileText className="w-4 h-4 text-muted-foreground" />
+              {documentName}
+            </button>
+          )
         ) : (
-          <button
-            onClick={() => {
-              setEditName(documentName);
-              setIsEditing(true);
-            }}
-            className="text-sm font-medium hover:text-primary transition-colors flex items-center gap-1.5"
-          >
+          <span className="text-sm font-medium flex items-center gap-1.5 text-foreground">
             <FileText className="w-4 h-4 text-muted-foreground" />
             {documentName}
-          </button>
+          </span>
         )}
       </div>
 
