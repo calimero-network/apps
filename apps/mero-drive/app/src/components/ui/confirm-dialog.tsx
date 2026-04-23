@@ -4,18 +4,25 @@
 // embedded browsers.
 //
 // Imperative API via useConfirm(): call `confirm({...})` and
-// await a boolean. The dialog renders on a portal managed by the
-// ConfirmProvider that must be mounted near the app root.
+// await a boolean. The dialog renders via ConfirmProvider that
+// must be mounted near the app root.
 //
-// Patterns carried from NamespaceCreateDialog / NewFolderDialog:
-// - safeClose gates dismissal during an in-flight submit
-// - Enter = primary action, Escape = cancel
+// Keyboard behaviour: we intentionally do NOT handle Enter at the
+// dialog level. Enter follows native button semantics — whichever
+// button has focus (Cancel or the primary action) is "clicked" by
+// Enter. On open we auto-focus the primary button so one-tap Enter
+// confirms, but tabbing to Cancel and pressing Enter correctly
+// cancels. A previous iteration caught Enter at the backdrop
+// keydown handler, which bubbled from Cancel-with-focus and
+// confirmed destructive actions by accident — that's been removed.
+// Escape is still handled at the dialog level as a standard cancel.
 
 import React, {
   createContext,
   ReactNode,
   useCallback,
   useContext,
+  useEffect,
   useRef,
   useState,
 } from 'react';
@@ -38,30 +45,44 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [opts, setOpts] = useState<ConfirmOptions | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const resolveRef = useRef<((value: boolean) => void) | null>(null);
+  const confirmButtonRef = useRef<HTMLButtonElement>(null);
 
   const confirm = useCallback<ConfirmFn>((next) => {
     return new Promise<boolean>((resolve) => {
+      // If a dialog is already showing, resolve its promise as
+      // false (treat it as an implicit cancel) before installing
+      // the new one. Without this, calling confirm() twice in
+      // quick succession would overwrite resolveRef and orphan the
+      // first caller's await forever. Rare in practice but
+      // deterministically broken when it happens.
+      if (resolveRef.current) {
+        resolveRef.current(false);
+      }
       resolveRef.current = resolve;
       setOpts(next);
     });
   }, []);
 
-  const close = useCallback(
-    (value: boolean) => {
-      // Ensure we never leak promises if the provider unmounts
-      // mid-dialog: resolve whatever caller is waiting before we
-      // clear state.
-      resolveRef.current?.(value);
-      resolveRef.current = null;
-      setOpts(null);
-      setSubmitting(false);
-    },
-    [],
-  );
+  const close = useCallback((value: boolean) => {
+    // Ensure we never leak promises if the provider unmounts
+    // mid-dialog: resolve whatever caller is waiting before we
+    // clear state.
+    resolveRef.current?.(value);
+    resolveRef.current = null;
+    setOpts(null);
+    setSubmitting(false);
+  }, []);
 
   const safeClose = () => {
     if (!submitting) close(false);
   };
+
+  // Auto-focus the primary button on open so Enter activates it
+  // via native button semantics (no custom keyboard handler
+  // needed).
+  useEffect(() => {
+    if (opts) confirmButtonRef.current?.focus();
+  }, [opts]);
 
   return (
     <ConfirmCtx.Provider value={confirm}>
@@ -74,11 +95,10 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
           onClick={safeClose}
           onKeyDown={(e) => {
+            // Only Escape is handled at the dialog level. Enter is
+            // intentionally NOT caught here — it follows native
+            // button semantics on whichever button has focus.
             if (e.key === 'Escape') safeClose();
-            if (e.key === 'Enter' && !submitting) {
-              setSubmitting(true);
-              close(true);
-            }
           }}
         >
           <div
@@ -104,6 +124,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                 {opts.cancelLabel ?? 'Cancel'}
               </Button>
               <Button
+                ref={confirmButtonRef}
                 variant={opts.destructive ? 'destructive' : 'default'}
                 size="sm"
                 onClick={() => {
