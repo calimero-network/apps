@@ -2,11 +2,20 @@
 // alias with an optional color chip and restricted-visibility lock
 // icon, and recurses into its children. Selection is a controlled
 // prop — parent owns the selectedId state.
+//
+// Also hosts the per-row action trigger (FolderContextMenu, shown
+// on hover) and the inline-rename state — the rename action fires
+// from the context menu but the editing surface lives here because
+// the alias text is owned by this row's render.
 
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import { ChevronRight, ChevronDown, Lock, Folder } from 'lucide-react';
 import type { TreeNode } from '@/utils/ancestry';
 import type { MergedFolder } from '@/hooks/useWorkspaceTree';
+import { useRegistry } from '@/context/RegistryContext';
+import { useWorkspace } from '@/context/WorkspaceContext';
+import { useFolderOperations } from '@/hooks/useFolderOperations';
+import { FolderContextMenu } from './FolderContextMenu';
 
 // Allowlist common CSS color formats before injecting into inline
 // style. `folder.color` ultimately originates from registry WASM
@@ -27,6 +36,11 @@ function safeColor(raw: string | null | undefined): string | undefined {
   return COLOR_ALLOWLIST.test(trimmed) ? trimmed : undefined;
 }
 
+// Same cap as NamespaceCreateDialog — keeps renames from silently
+// producing oversized alias strings that create wouldn't have
+// accepted.
+const MAX_ALIAS_LENGTH = 128;
+
 interface Props {
   node: TreeNode;
   byId: Map<string, MergedFolder>;
@@ -45,18 +59,56 @@ export function FolderTreeItem({
   const folder = byId.get(node.id);
   const isSelected = selectedId === node.id;
   const hasChildren = node.children.length > 0;
-  const [expanded, setExpanded] = React.useState(true);
+  const [expanded, setExpanded] = useState(true);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+
+  const { rootGroupId } = useWorkspace();
+  const { folders, registryClient } = useRegistry();
+  const ops = useFolderOperations(
+    registryClient,
+    rootGroupId,
+    folders.map((f) => ({
+      id: f.id,
+      parent_id: f.parent_id,
+      visibility: f.visibility,
+    })),
+  );
+
+  const startRename = useCallback(() => {
+    setRenameValue(folder?.alias ?? '');
+    setRenaming(true);
+  }, [folder?.alias]);
+
+  const cancelRename = useCallback(() => {
+    setRenaming(false);
+    setRenameValue('');
+  }, []);
+
+  const submitRename = useCallback(async () => {
+    const next = renameValue.trim();
+    if (!next || next.length > MAX_ALIAS_LENGTH || next === folder?.alias) {
+      cancelRename();
+      return;
+    }
+    try {
+      await ops.rename(node.id, next);
+    } catch (e) {
+      console.error('rename failed', e);
+    }
+    setRenaming(false);
+  }, [renameValue, folder?.alias, ops, node.id, cancelRename]);
 
   return (
     <li>
       <div
-        className={`flex items-center gap-1.5 rounded px-2 py-1 text-sm cursor-pointer ${
+        className={`group flex items-center gap-1.5 rounded px-2 py-1 text-sm cursor-pointer ${
           isSelected
             ? 'bg-primary/10 text-primary'
             : 'text-foreground hover:bg-muted'
         }`}
         style={{ paddingLeft: 8 + depth * 14 }}
-        onClick={() => onSelect(node.id)}
+        onClick={() => !renaming && onSelect(node.id)}
       >
         {hasChildren ? (
           <button
@@ -96,13 +148,41 @@ export function FolderTreeItem({
             <Folder className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
           );
         })()}
-        <span className="flex-1 truncate">
-          {folder?.alias ?? node.id.slice(0, 8)}
-        </span>
-        {folder?.visibility === 'Restricted' && (
+        {renaming ? (
+          <input
+            className="flex-1 h-6 min-w-0 rounded border border-input bg-background px-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            value={renameValue}
+            maxLength={MAX_ALIAS_LENGTH}
+            autoFocus
+            onChange={(e) => setRenameValue(e.target.value)}
+            onBlur={submitRename}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                submitRename();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                cancelRename();
+              }
+            }}
+          />
+        ) : (
+          <span className="flex-1 truncate">
+            {folder?.alias ?? node.id.slice(0, 8)}
+          </span>
+        )}
+        {folder?.visibility === 'Restricted' && !renaming && (
           <Lock
             className="h-3 w-3 text-muted-foreground"
             aria-label="Restricted"
+          />
+        )}
+        {folder && !renaming && (
+          <FolderContextMenu
+            folderId={node.id}
+            currentVisibility={folder.visibility}
+            onRename={startRename}
           />
         )}
       </div>

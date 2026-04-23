@@ -9,6 +9,7 @@ import { buildTree } from '@/utils/ancestry';
 import { useRegistry } from '@/context/RegistryContext';
 import { useWorkspace } from '@/context/WorkspaceContext';
 import { FolderTreeItem } from './FolderTreeItem';
+import { NewFolderButton } from './NewFolderButton';
 
 export function FolderTree() {
   const { folders, loading, error } = useRegistry();
@@ -45,26 +46,36 @@ export function FolderTree() {
     );
   }
 
-  if (tree.roots.length === 0) {
-    return (
-      <div className="p-3 text-xs text-muted-foreground">
-        No folders yet. Create one to get started.
-      </div>
-    );
-  }
-
   return (
-    <ul className="space-y-0.5 p-2">
-      {tree.roots.map((n) => (
-        <FolderTreeItem
-          key={n.id}
-          node={n}
-          byId={byId}
-          depth={0}
-          selectedId={selectedFolderId}
-          onSelect={setSelectedFolder}
-        />
-      ))}
-    </ul>
+    <div className="flex h-full flex-col">
+      <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Folders
+        </span>
+        {/* Top-level new-folder CTA. Self-gates: NewFolderButton
+            returns null when the caller lacks canCreateSubgroup on
+            the namespace root. */}
+        <NewFolderButton parentFolderId={null} label="New" />
+      </div>
+
+      {tree.roots.length === 0 ? (
+        <div className="p-3 text-xs text-muted-foreground">
+          No folders yet. Create one to get started.
+        </div>
+      ) : (
+        <ul className="flex-1 space-y-0.5 overflow-y-auto p-2">
+          {tree.roots.map((n) => (
+            <FolderTreeItem
+              key={n.id}
+              node={n}
+              byId={byId}
+              depth={0}
+              selectedId={selectedFolderId}
+              onSelect={setSelectedFolder}
+            />
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
