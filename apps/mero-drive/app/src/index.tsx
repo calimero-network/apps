@@ -8,8 +8,14 @@ import {
   setAccessToken,
   setRefreshToken,
 } from '@calimero-network/calimero-client';
+import {
+  MeroProvider,
+  AppMode as MeroAppMode,
+} from '@calimero-network/mero-react';
 import { ToastProvider } from '@calimero-network/mero-ui';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { WorkspaceProvider } from '@/context/WorkspaceContext';
+import { RegistryProvider } from '@/context/RegistryContext';
 import { getApplicationId } from '@/constants/config';
 import '@calimero-network/mero-ui/styles.css';
 import './index.css';
@@ -73,11 +79,26 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
         registryUrl="https://apps.calimero.network"
         mode={AppMode.MultiContext}
       >
-        <ToastProvider>
-          <TooltipProvider>
-            <App />
-          </TooltipProvider>
-        </ToastProvider>
+        {/* MeroProvider is required for useMero() and every
+            mero-react hook (useCreateContext, useSubgroups, etc.).
+            CalimeroProvider handles auth + app discovery; MeroProvider
+            owns the MeroJs instance the generated RegistryClient /
+            DocsClient need. */}
+        <MeroProvider
+          packageName="com.calimero.mero-drive-docs"
+          registryUrl="https://apps.calimero.network"
+          mode={MeroAppMode.MultiContext}
+        >
+          <WorkspaceProvider>
+            <RegistryProvider>
+              <ToastProvider>
+                <TooltipProvider>
+                  <App />
+                </TooltipProvider>
+              </ToastProvider>
+            </RegistryProvider>
+          </WorkspaceProvider>
+        </MeroProvider>
       </CalimeroProvider>
     </BrowserRouter>
   </AppWrapper>,
