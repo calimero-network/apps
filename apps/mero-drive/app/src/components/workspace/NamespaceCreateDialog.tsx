@@ -16,6 +16,13 @@ interface Props {
   onCreated?: () => void | Promise<void>;
 }
 
+// Client-side ceiling on the alias length so users can't silently
+// submit arbitrarily long strings. The node's storage uses alias
+// strings as index keys; there's no hard server-side limit
+// documented, but 128 chars is longer than any reasonable workspace
+// name and short enough to prevent accidental / automated abuse.
+const MAX_ALIAS_LENGTH = 128;
+
 export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
   const [name, setName] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -23,12 +30,18 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
   const { createNamespace } = useCreateNamespace();
   const { setNamespace } = useWorkspace();
 
-  const canSubmit = !!name.trim() && !submitting;
+  const trimmed = name.trim();
+  const canSubmit =
+    !!trimmed && trimmed.length <= MAX_ALIAS_LENGTH && !submitting;
 
   const onCreate = async () => {
     const alias = name.trim();
     if (!alias) {
       setError('Workspace name required');
+      return;
+    }
+    if (alias.length > MAX_ALIAS_LENGTH) {
+      setError(`Workspace name must be ${MAX_ALIAS_LENGTH} characters or fewer`);
       return;
     }
     setSubmitting(true);
@@ -97,6 +110,7 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
           className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           placeholder="Workspace name"
           value={name}
+          maxLength={MAX_ALIAS_LENGTH}
           onChange={(e) => {
             setName(e.target.value);
             setError(null);

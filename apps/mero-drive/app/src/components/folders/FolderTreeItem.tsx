@@ -15,7 +15,12 @@ import type { MergedFolder } from '@/hooks/useWorkspaceTree';
 // (e.g. `url(...)` / `var(...)` / multi-property payloads). React
 // sets the style property via the DOM API which already mitigates
 // XSS, but garbage values would still produce visual corruption.
-const COLOR_ALLOWLIST = /^(?:#[0-9a-fA-F]{3,8}|rgba?\([\d.,\s%/]+\)|hsla?\([\d.,\s%/]+\))$/;
+// Tightened hex branch to only the valid CSS lengths (3, 4, 6, 8)
+// — the {3,8} range accepts #12345 / #1234567 which aren't valid
+// colors and would render as transparent. Rejecting them at the
+// validator means the Folder fallback icon shows instead of a
+// silent empty chip.
+const COLOR_ALLOWLIST = /^(?:#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|rgba?\([\d.,\s%/]+\)|hsla?\([\d.,\s%/]+\))$/;
 function safeColor(raw: string | null | undefined): string | undefined {
   if (!raw) return undefined;
   const trimmed = raw.trim();
@@ -53,25 +58,32 @@ export function FolderTreeItem({
         style={{ paddingLeft: 8 + depth * 14 }}
         onClick={() => onSelect(node.id)}
       >
-        <button
-          type="button"
-          aria-label={expanded ? 'Collapse' : 'Expand'}
-          className="flex h-4 w-4 items-center justify-center text-muted-foreground hover:text-foreground"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (hasChildren) setExpanded((v) => !v);
-          }}
-        >
-          {hasChildren ? (
-            expanded ? (
+        {hasChildren ? (
+          <button
+            type="button"
+            aria-label={expanded ? 'Collapse' : 'Expand'}
+            className="flex h-4 w-4 items-center justify-center text-muted-foreground hover:text-foreground"
+            onClick={(e) => {
+              // Only stop propagation when the button actually has
+              // a toggle to perform; swallowing clicks on the leaf-
+              // node spacer version of this button would make the
+              // left-edge of a leaf row unclickable for selection.
+              e.stopPropagation();
+              setExpanded((v) => !v);
+            }}
+          >
+            {expanded ? (
               <ChevronDown className="h-3.5 w-3.5" />
             ) : (
               <ChevronRight className="h-3.5 w-3.5" />
-            )
-          ) : (
-            <span className="h-3.5 w-3.5" />
-          )}
-        </button>
+            )}
+          </button>
+        ) : (
+          // Inert spacer for leaf rows. A <span> doesn't intercept
+          // the row-level onClick, so the full row stays clickable
+          // for selection.
+          <span className="inline-block h-4 w-4" aria-hidden />
+        )}
         {(() => {
           const color = safeColor(folder?.color);
           return color ? (
