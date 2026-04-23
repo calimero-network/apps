@@ -64,8 +64,15 @@ export function WorkspaceLayout() {
                 </p>
               </div>
               {/* Phase 8-D slots DocumentList / DocumentEditor above
-                  the sharing panel once the editor loop lands. */}
-              <FolderSharingPanel folderId={selectedFolder.id} />
+                  the sharing panel once the editor loop lands.
+                  key={selectedFolder.id} forces a full remount on
+                  folder switch so local state in FolderSharingPanel
+                  (typed identity, invite / remove errors) can't
+                  leak between folders. */}
+              <FolderSharingPanel
+                key={selectedFolder.id}
+                folderId={selectedFolder.id}
+              />
             </div>
           )}
         </main>

@@ -25,10 +25,21 @@ interface Props {
   folderId: string;
 }
 
-// Rough sanity-check on the pubkey format — Calimero identities are
-// base58-encoded Ed25519 pubkeys, which land in the 40-50 char
-// range. This is a "don't send obviously-garbage input" guard, not
-// a cryptographic check; the node validates the actual format.
+// Rough sanity-check on the pubkey format — Calimero identities
+// are base58-encoded Ed25519 pubkeys, in the 40–50 char range.
+// "Don't send obviously-garbage input" guard, not a cryptographic
+// check; the node validates the actual format.
+//
+// The character class below IS the canonical Bitcoin base58
+// alphabet: `123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz`
+// — no `0 O I l`. Decoded range-by-range:
+//   1-9    → digits (no 0)
+//   A-H    → no I (65..72; I is 73)
+//   J-N    → no I before, no O after (74..78; O is 79)
+//   P-Z    → no O
+//   a-k    → no l (97..107; l is 108)
+//   m-n    → skips l
+//   p-z    → skips o (o is 111)
 const IDENTITY_LOOKS_VALID = /^[1-9A-HJ-NP-Za-km-z]{32,64}$/;
 
 export function FolderSharingPanel({ folderId }: Props) {
@@ -42,6 +53,12 @@ export function FolderSharingPanel({ folderId }: Props) {
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  // Per-row remove error — surfaced inline under the affected row
+  // so the user sees which identity's removal failed and why,
+  // rather than the error being swallowed to the console.
+  const [removeError, setRemoveError] = useState<
+    { identity: string; message: string } | null
+  >(null);
 
   const trimmedIdentity = identity.trim();
   const canInvite =
@@ -86,10 +103,14 @@ export function FolderSharingPanel({ folderId }: Props) {
     });
     if (!ok) return;
     setRemovingId(id);
+    setRemoveError(null);
     try {
       await remove(id);
-    } catch (e) {
-      console.error('remove failed', e);
+    } catch (e: unknown) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      setRemoveError({ identity: id, message: err.message });
+      // Refetch so the UI stays consistent with the node's actual
+      // member list — remove() may have partially applied.
       await refetch();
     } finally {
       setRemovingId(null);
@@ -130,30 +151,39 @@ export function FolderSharingPanel({ folderId }: Props) {
         )}
         {members.map((m) => {
           const label = m.alias ?? `${m.identity.slice(0, 8)}…`;
+          const rowErr =
+            removeError?.identity === m.identity ? removeError.message : null;
           return (
             <li
               key={m.identity}
-              className="flex items-center justify-between gap-3 px-4 py-2 text-sm"
+              className="px-4 py-2 text-sm"
             >
-              <div className="min-w-0 flex-1">
-                <div className="truncate font-medium text-foreground">
-                  {label}
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium text-foreground">
+                    {label}
+                  </div>
+                  <div className="truncate text-xs text-muted-foreground">
+                    {m.role}
+                  </div>
                 </div>
-                <div className="truncate text-xs text-muted-foreground">
-                  {m.role}
-                </div>
+                {perms.canManageMembers && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                    disabled={removingId === m.identity}
+                    aria-label={`Remove ${label}`}
+                    onClick={() => onRemove(m.identity, label)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                )}
               </div>
-              {perms.canManageMembers && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                  disabled={removingId === m.identity}
-                  aria-label={`Remove ${label}`}
-                  onClick={() => onRemove(m.identity, label)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
+              {rowErr && (
+                <p className="mt-1 text-xs text-destructive" role="alert">
+                  Remove failed: {rowErr}
+                </p>
               )}
             </li>
           );

@@ -7,15 +7,14 @@
 // await a boolean. The dialog renders via ConfirmProvider that
 // must be mounted near the app root.
 //
-// Keyboard behaviour: we intentionally do NOT handle Enter at the
-// dialog level. Enter follows native button semantics — whichever
-// button has focus (Cancel or the primary action) is "clicked" by
-// Enter. On open we auto-focus the primary button so one-tap Enter
-// confirms, but tabbing to Cancel and pressing Enter correctly
-// cancels. A previous iteration caught Enter at the backdrop
-// keydown handler, which bubbled from Cancel-with-focus and
-// confirmed destructive actions by accident — that's been removed.
-// Escape is still handled at the dialog level as a standard cancel.
+// Keyboard behaviour:
+// - Escape at the dialog level → cancel.
+// - Enter is NOT handled by the dialog; whichever button has focus
+//   is "clicked" via native button semantics. The primary (confirm)
+//   button autofocuses on open, so the common "open → Enter →
+//   confirm" flow works with one keystroke, but Tab-to-Cancel-then-
+//   Enter correctly cancels.
+// - Tab / Shift-Tab cycle within the dialog (minimal focus trap).
 
 import React, {
   createContext,
@@ -43,8 +42,8 @@ const ConfirmCtx = createContext<ConfirmFn | null>(null);
 
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [opts, setOpts] = useState<ConfirmOptions | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const resolveRef = useRef<((value: boolean) => void) | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
 
   const confirm = useCallback<ConfirmFn>((next) => {
@@ -53,8 +52,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
       // false (treat it as an implicit cancel) before installing
       // the new one. Without this, calling confirm() twice in
       // quick succession would overwrite resolveRef and orphan the
-      // first caller's await forever. Rare in practice but
-      // deterministically broken when it happens.
+      // first caller's await forever.
       if (resolveRef.current) {
         resolveRef.current(false);
       }
@@ -70,19 +68,38 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     resolveRef.current?.(value);
     resolveRef.current = null;
     setOpts(null);
-    setSubmitting(false);
   }, []);
 
-  const safeClose = () => {
-    if (!submitting) close(false);
-  };
-
   // Auto-focus the primary button on open so Enter activates it
-  // via native button semantics (no custom keyboard handler
-  // needed).
+  // via native button semantics. Tab/Shift-Tab then cycles between
+  // Cancel and Confirm.
   useEffect(() => {
     if (opts) confirmButtonRef.current?.focus();
   }, [opts]);
+
+  // Minimal focus trap: Tab at the last focusable wraps to the
+  // first; Shift-Tab at the first wraps to the last. Keeps
+  // keyboard focus from leaking to the page behind the modal.
+  const onPanelKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key !== 'Tab' || !panelRef.current) return;
+      const focusable = panelRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]),[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey && active === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    },
+    [],
+  );
 
   return (
     <ConfirmCtx.Provider value={confirm}>
@@ -93,17 +110,19 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
           aria-modal="true"
           aria-labelledby="confirm-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          onClick={safeClose}
+          onClick={() => close(false)}
           onKeyDown={(e) => {
-            // Only Escape is handled at the dialog level. Enter is
-            // intentionally NOT caught here — it follows native
+            // Only Escape at the dialog level. Enter follows native
             // button semantics on whichever button has focus.
-            if (e.key === 'Escape') safeClose();
+            if (e.key === 'Escape') close(false);
           }}
         >
           <div
-            className="w-96 rounded-lg border border-border bg-card p-5 shadow-xl"
+            ref={panelRef}
+            tabIndex={-1}
+            className="w-96 rounded-lg border border-border bg-card p-5 shadow-xl outline-none"
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={onPanelKeyDown}
           >
             <h2
               id="confirm-title"
@@ -118,8 +137,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={safeClose}
-                disabled={submitting}
+                onClick={() => close(false)}
               >
                 {opts.cancelLabel ?? 'Cancel'}
               </Button>
@@ -127,11 +145,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                 ref={confirmButtonRef}
                 variant={opts.destructive ? 'destructive' : 'default'}
                 size="sm"
-                onClick={() => {
-                  setSubmitting(true);
-                  close(true);
-                }}
-                disabled={submitting}
+                onClick={() => close(true)}
               >
                 {opts.confirmLabel ?? 'Confirm'}
               </Button>
