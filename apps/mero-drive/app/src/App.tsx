@@ -22,6 +22,7 @@ import {
   updateSessionActivity,
 } from '@/utils/session';
 import { clearIdentityCache } from '@/hooks/useSelfIdentity';
+import { clearWorkspaceState } from '@/context/WorkspaceContext';
 
 const LandingPage = lazy(() => import('./pages/landing'));
 const Authenticate = lazy(() => import('./pages/login/Authenticate'));
@@ -68,6 +69,7 @@ const App: React.FC = () => {
         clearStoredSession();
         clearSessionActivity();
         clearIdentityCache();
+        clearWorkspaceState();
       }
       wasAuthenticatedRef.current = false;
       return;
@@ -77,6 +79,7 @@ const App: React.FC = () => {
       clearStoredSession();
       clearSessionActivity();
       clearIdentityCache();
+      clearWorkspaceState();
       logout();
     } else {
       updateSessionActivity();

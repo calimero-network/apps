@@ -24,6 +24,7 @@ import {
   useGroupContexts,
   useCreateContext,
   useJoinContext,
+  useDeleteContext,
 } from '@calimero-network/mero-react';
 import { adminRequest } from '../api/adminApi';
 import {
@@ -53,6 +54,7 @@ export function useWorkspaceBootstrap(
   const { contexts, loading: ctxLoading, error: ctxError } = useGroupContexts(rootGroupId);
   const { createContext } = useCreateContext();
   const { joinContext } = useJoinContext();
+  const { deleteContext } = useDeleteContext();
 
   const [state, setState] = useState<WorkspaceBootstrapResult>({
     registryContextId: null,
@@ -123,7 +125,9 @@ export function useWorkspaceBootstrap(
 
         // Create path — guarded against Strict-Mode double-mount and
         // fast useGroupContexts refetches so two parallel create_context
-        // calls can't leak duplicate Registry contexts.
+        // calls can't leak duplicate Registry contexts in the same
+        // React instance. Cross-tab races are handled below via
+        // post-create alias re-lookup.
         if (inFlightRef.current) return;
         inFlightRef.current = true;
         try {
@@ -137,16 +141,62 @@ export function useWorkspaceBootstrap(
           if (!created?.contextId) {
             throw new Error('createContext returned no contextId');
           }
-          // Set the alias BEFORE surfacing the id so a subsequent
-          // render / reload resolves the same context via lookup
-          // rather than racing into another create path. Alias
-          // failure is logged but non-fatal — worst case we
-          // duplicate on the next reload, which is recoverable via
-          // the legacy branch above.
-          await adminRequest(`/alias/create/context`, {
+          // Optimistic alias set. If this tab wins the race, the
+          // alias resolves to our new contextId. If another tab's
+          // create landed between our lookup and alias-set, this
+          // call fails (alias name already exists) and we fall
+          // through to the re-lookup branch below to adopt the
+          // winner and clean up our leaked context.
+          const aliasCreated = await adminRequest(`/alias/create/context`, {
             method: 'POST',
             body: JSON.stringify({ name: aliasName, value: created.contextId }),
-          }).catch((err) => console.warn('registry alias create failed', err));
+          }).then(() => true).catch((err) => {
+            console.warn('registry alias create failed — will reconcile', err);
+            return false;
+          });
+
+          if (!aliasCreated) {
+            // Someone else won the race (or the alias API errored).
+            // Re-lookup: if the alias now resolves to a different
+            // contextId, adopt it and best-effort delete our own
+            // orphan. If it still doesn't resolve, we have a genuine
+            // error — surface it so the user isn't stuck with a
+            // silently-leaked context on every retry.
+            const reLookup = await adminRequest<{ value: string }>(
+              `/alias/lookup/context/${encodeURIComponent(aliasName)}`,
+              { method: 'POST', body: '{}' },
+            ).catch(() => null);
+
+            if (reLookup?.value && reLookup.value !== created.contextId) {
+              // Another tab won — delete our orphan and adopt theirs.
+              await deleteContext(created.contextId).catch((err) =>
+                console.warn('failed to clean up racing-loss context', err),
+              );
+              await joinContext(reLookup.value).catch(() => undefined);
+              if (alive) {
+                setState({ registryContextId: reLookup.value, loading: false, error: null });
+              }
+              return;
+            }
+
+            // Alias didn't resolve after the failed set-alias call.
+            // Delete our orphaned context so reboots don't accumulate
+            // leaks, then surface the error.
+            await deleteContext(created.contextId).catch((err) =>
+              console.warn('failed to clean up orphaned context', err),
+            );
+            if (alive) {
+              setState({
+                registryContextId: null,
+                loading: false,
+                error: new Error(
+                  'Could not alias Registry context — workspace bootstrap aborted to avoid leaking contexts',
+                ),
+              });
+            }
+            return;
+          }
+
           await joinContext(created.contextId).catch(() => undefined);
           if (alive) {
             setState({ registryContextId: created.contextId, loading: false, error: null });
@@ -173,6 +223,7 @@ export function useWorkspaceBootstrap(
     ctxError,
     createContext,
     joinContext,
+    deleteContext,
   ]);
 
   return state;

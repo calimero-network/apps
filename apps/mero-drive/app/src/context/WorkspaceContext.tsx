@@ -17,6 +17,17 @@ import React, {
 const NS_KEY = 'mero-drive:activeNs';
 const ROOT_KEY = 'mero-drive:activeRoot';
 
+// Plain-function cleanup callable from outside the provider (e.g.
+// App.tsx's logout branch). Mirrors clearIdentityCache in
+// useSelfIdentity: the Context's `clearNamespace` is only
+// accessible via useWorkspace() and so can't be invoked from code
+// paths that don't want to subscribe to the context. Both paths
+// target the same keys.
+export function clearWorkspaceState(): void {
+  localStorage.removeItem(NS_KEY);
+  localStorage.removeItem(ROOT_KEY);
+}
+
 export interface Workspace {
   namespaceId: string | null;
   rootGroupId: string | null;

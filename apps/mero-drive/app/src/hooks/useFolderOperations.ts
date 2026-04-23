@@ -15,6 +15,7 @@ import { useCallback } from 'react';
 import {
   useCreateGroupInNamespace,
   useCreateContext,
+  useDeleteContext,
   useDeleteGroup,
   useSetGroupAlias,
   useAddGroupMembers,
@@ -60,6 +61,7 @@ export function useFolderOperations(
 ): FolderOperations {
   const { createGroupInNamespace } = useCreateGroupInNamespace();
   const { createContext } = useCreateContext();
+  const { deleteContext } = useDeleteContext();
   const { deleteGroup } = useDeleteGroup();
   const { setGroupAlias } = useSetGroupAlias();
   const { addGroupMembers } = useAddGroupMembers();
@@ -69,57 +71,99 @@ export function useFolderOperations(
       if (!registryClient || !rootGroupId) {
         throw new Error('workspace not bootstrapped');
       }
-      const group = await createGroupInNamespace(input.namespaceId, { alias: input.alias });
-      if (!group?.groupId) throw new Error('createGroupInNamespace returned no groupId');
-      const newId = group.groupId;
 
-      // createGroupInNamespace always places the new group as a
-      // direct child of the namespace root. To nest it under a
-      // specific parent, use core's atomic reparent_group endpoint
-      // (core#2200 — strict group-tree invariant). Once mero-react
-      // ships a useReparentGroup hook the adminRequest call below
-      // should be swapped for it; for now the endpoint shape matches
-      // the same {childGroupId, newParentId} body merobox posts.
-      if (input.parentGroupId !== rootGroupId) {
-        await adminRequest(`/groups/reparent`, {
-          method: 'POST',
-          body: JSON.stringify({
-            childGroupId: newId,
-            newParentId: input.parentGroupId,
-          }),
+      // Best-effort compensating actions on partial failure. The
+      // sequence is inherently non-transactional across three
+      // backends (admin groups, contexts, registry WASM), so we track
+      // what we successfully did and reverse it in the catch. The
+      // registry side is reversible via unregisterFolder, the admin
+      // side via deleteGroup, and the context side via deleteContext.
+      // What useReconcile can't easily recover on its own is a leaked
+      // docs context with no registry entry — so rolling back the
+      // context on later failures is the most valuable of the three.
+      let createdGroupId: string | null = null;
+      let createdContextId: string | null = null;
+      let registryEntryCreated = false;
+
+      try {
+        const group = await createGroupInNamespace(input.namespaceId, { alias: input.alias });
+        if (!group?.groupId) throw new Error('createGroupInNamespace returned no groupId');
+        createdGroupId = group.groupId;
+        const newId = group.groupId;
+
+        // createGroupInNamespace always places the new group as a
+        // direct child of the namespace root. To nest it under a
+        // specific parent, use core's atomic reparent_group endpoint
+        // (core#2200 — strict group-tree invariant). Once mero-react
+        // ships a useReparentGroup hook the adminRequest call below
+        // should be swapped for it; for now the endpoint shape mirrors
+        // the {child_group_id, new_parent_id} body merobox posts (the
+        // admin API uses snake_case throughout).
+        if (input.parentGroupId !== rootGroupId) {
+          await adminRequest(`/groups/reparent`, {
+            method: 'POST',
+            body: JSON.stringify({
+              child_group_id: newId,
+              new_parent_id: input.parentGroupId,
+            }),
+          });
+        }
+
+        const ctx = await createContext({
+          applicationId: getApplicationId(),
+          groupId: newId,
+          serviceName: DOCS_SERVICE_ID,
+          initializationParams: [],
         });
+        if (!ctx?.contextId) {
+          throw new Error('createContext returned no contextId');
+        }
+        createdContextId = ctx.contextId;
+
+        await registryClient.registerFolder({
+          id: newId,
+          parent_id: input.parentGroupId === rootGroupId ? null : input.parentGroupId,
+          color: input.color ?? null,
+        });
+        registryEntryCreated = true;
+
+        await registryClient.bindFolderContext({
+          folder_id: newId,
+          context_id: ctx.contextId,
+        });
+
+        if (input.visibility === 'Restricted') {
+          await registryClient.setVisibility({ id: newId, visibility: 'Restricted' });
+        }
+        // NB: the inherit-mode member cascade for existing parent
+        // members is handled by useFolderMembership + cascadeTo when
+        // the UI explicitly invites people, not at creation time.
+
+        return newId;
+      } catch (err) {
+        // Reverse in the opposite order of creation. Each cleanup is
+        // try/catch-wrapped and logged so a single cleanup failure
+        // doesn't mask the original error — the caller still sees
+        // the real cause via the outer rethrow.
+        if (registryEntryCreated && createdGroupId) {
+          await registryClient
+            .unregisterFolder({ id: createdGroupId })
+            .catch((e) => console.warn('rollback: unregisterFolder failed', e));
+        }
+        if (createdContextId) {
+          await deleteContext(createdContextId).catch((e) =>
+            console.warn('rollback: deleteContext failed', e),
+          );
+        }
+        if (createdGroupId) {
+          await deleteGroup(createdGroupId).catch((e) =>
+            console.warn('rollback: deleteGroup failed', e),
+          );
+        }
+        throw err;
       }
-
-      const ctx = await createContext({
-        applicationId: getApplicationId(),
-        groupId: newId,
-        serviceName: DOCS_SERVICE_ID,
-        initializationParams: [],
-      });
-      if (!ctx?.contextId) {
-        throw new Error('createContext returned no contextId');
-      }
-
-      await registryClient.registerFolder({
-        id: newId,
-        parent_id: input.parentGroupId === rootGroupId ? null : input.parentGroupId,
-        color: input.color ?? null,
-      });
-      await registryClient.bindFolderContext({
-        folder_id: newId,
-        context_id: ctx.contextId,
-      });
-
-      if (input.visibility === 'Restricted') {
-        await registryClient.setVisibility({ id: newId, visibility: 'Restricted' });
-      }
-      // NB: the inherit-mode member cascade for existing parent
-      // members is handled by useFolderMembership + cascadeTo when
-      // the UI explicitly invites people, not at creation time.
-
-      return newId;
     },
-    [registryClient, rootGroupId, createGroupInNamespace, createContext],
+    [registryClient, rootGroupId, createGroupInNamespace, createContext, deleteContext, deleteGroup],
   );
 
   const rename = useCallback(
