@@ -33,6 +33,13 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
     }
     setSubmitting(true);
     setError(null);
+
+    // Scope the error-surfacing try/catch tightly to the namespace
+    // creation itself. Post-create bookkeeping (refetch via
+    // onCreated) runs outside this block — if it throws, the user
+    // still gets their namespace created + switched, and we close
+    // the dialog rather than surfacing a misleading "failed" error
+    // that would tempt them to retry and create a duplicate.
     try {
       const res = await createNamespace({
         applicationId: getApplicationId(),
@@ -45,14 +52,24 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
       // namespaceId is also the root groupId at this layer — see
       // NamespaceSwitcher's file header.
       setNamespace(res.namespaceId, res.namespaceId);
-      await onCreated?.();
-      onClose();
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
       setError(err.message);
-    } finally {
       setSubmitting(false);
+      return;
     }
+
+    // Best-effort refetch of the namespaces list. Failure here is
+    // non-fatal — the workspace is created and switched; the list
+    // will refresh on the next natural trigger (component remount,
+    // explicit refetch, etc.).
+    try {
+      await onCreated?.();
+    } catch (e) {
+      console.warn('post-create refetch failed', e);
+    }
+    setSubmitting(false);
+    onClose();
   };
 
   // Dismissal is gated on !submitting across all three paths

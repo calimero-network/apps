@@ -8,6 +8,20 @@ import { ChevronRight, ChevronDown, Lock, Folder } from 'lucide-react';
 import type { TreeNode } from '@/utils/ancestry';
 import type { MergedFolder } from '@/hooks/useWorkspaceTree';
 
+// Allowlist common CSS color formats before injecting into inline
+// style. `folder.color` ultimately originates from registry WASM
+// state that other peers can write, so we defence-in-depth against
+// a malicious or compromised peer injecting arbitrary CSS values
+// (e.g. `url(...)` / `var(...)` / multi-property payloads). React
+// sets the style property via the DOM API which already mitigates
+// XSS, but garbage values would still produce visual corruption.
+const COLOR_ALLOWLIST = /^(?:#[0-9a-fA-F]{3,8}|rgba?\([\d.,\s%/]+\)|hsla?\([\d.,\s%/]+\))$/;
+function safeColor(raw: string | null | undefined): string | undefined {
+  if (!raw) return undefined;
+  const trimmed = raw.trim();
+  return COLOR_ALLOWLIST.test(trimmed) ? trimmed : undefined;
+}
+
 interface Props {
   node: TreeNode;
   byId: Map<string, MergedFolder>;
@@ -58,15 +72,18 @@ export function FolderTreeItem({
             <span className="h-3.5 w-3.5" />
           )}
         </button>
-        {folder?.color ? (
-          <span
-            className="h-2.5 w-2.5 rounded-sm border border-border/50"
-            style={{ backgroundColor: folder.color }}
-            aria-hidden
-          />
-        ) : (
-          <Folder className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-        )}
+        {(() => {
+          const color = safeColor(folder?.color);
+          return color ? (
+            <span
+              className="h-2.5 w-2.5 rounded-sm border border-border/50"
+              style={{ backgroundColor: color }}
+              aria-hidden
+            />
+          ) : (
+            <Folder className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+          );
+        })()}
         <span className="flex-1 truncate">
           {folder?.alias ?? node.id.slice(0, 8)}
         </span>
