@@ -107,6 +107,19 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
   const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unmountedRef = useRef(false);
 
+  // Monotonic save sequence. persistContent stamps each attempt with
+  // a ++saveSeqRef value and only applies its ack if no newer attempt
+  // has already applied (lastAppliedSeqRef). Without this, two
+  // overlapping saves (debounce A fires at 900ms; user types; debounce
+  // B fires at 1800ms; both in-flight) can resolve out of order — if
+  // B's RPC acks first and A's acks second, the older A content would
+  // overwrite lastSavedContentRef, causing false 'unsaved' indicators
+  // and a wasted next-debounce save. Sequence numbers are mutation-
+  // count proxies rather than wall-clock, so clock skew / request
+  // reordering at the transport layer doesn't confuse the guard.
+  const saveSeqRef = useRef(0);
+  const lastAppliedSeqRef = useRef(0);
+
   useEffect(
     () => () => {
       unmountedRef.current = true;
@@ -186,9 +199,18 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         return true;
       }
       setSaveStatus('saving');
+      const mySeq = ++saveSeqRef.current;
       try {
         await docsEdit(currentDoc.id, { content });
         if (unmountedRef.current) return true;
+        // Out-of-order-resolution guard: a newer save has already
+        // acked while this one was in flight, so its content is the
+        // authoritative lastSaved — don't clobber it with our older
+        // content. Returning true is correct: the caller's content
+        // was persisted server-side (edit_doc is idempotent-enough
+        // that the newer save already encompasses ours).
+        if (mySeq <= lastAppliedSeqRef.current) return true;
+        lastAppliedSeqRef.current = mySeq;
         // Record the server-acked content WITHOUT triggering
         // EditorShell's initialContent effect. Updating doc.content
         // here would make EditorShell call setContent(savedHTML),
@@ -209,6 +231,11 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         return true;
       } catch (e: unknown) {
         if (unmountedRef.current) return false;
+        // Same ordering guard on the error path: a newer in-flight
+        // save will resolve the status itself. Surfacing 'error' here
+        // would incorrectly overwrite a healthy in-flight save with
+        // an error state the user can't act on.
+        if (mySeq <= lastAppliedSeqRef.current) return false;
         setSaveStatus('error');
         console.error('autosave failed', e);
         return false;
