@@ -200,18 +200,19 @@ jobs:
           if-no-files-found: error
 
   # ============================================================
-  # Job 4: E2E — Merobox Multi-Service Workflow
+  # Job 4: E2E — Merobox Matrix (one job per workflow file)
   # ============================================================
-  # Runs the two-node namespace + registry + docs workflow that
-  # exercises every public method on both services plus 18 negative
-  # paths, and the single-node reconciliation workflow that covers
-  # the three drift scenarios from the design spec.
+  # Each merobox workflow runs in its own matrix cell so they execute
+  # in parallel instead of sequentially. Mirrors the structure in
+  # calimero-network/core's e2e-rust-apps.yml. Wall-clock time drops
+  # roughly 5x on green CI runs because the main + reconciliation +
+  # three Phase-9 workflows no longer serialize behind each other.
+  # fail-fast: false keeps a single workflow failure from hiding
+  # regressions in the other four.
   #
   # merobox is installed from the official apt repo
   # (https://calimero-network.github.io/merobox) — a signed binary
-  # release that bundles calimero-client-py internally. Faster and
-  # cleaner than the earlier pip-from-master approach, and past the
-  # PyPI release point now that the 0.4.5 Debian package is available.
+  # release that bundles calimero-client-py internally.
   #
   # The earlier cold-start sync race on subgroup-owned contexts (the
   # "warmup probe" workaround) was fixed upstream in
@@ -219,9 +220,33 @@ jobs:
   # removed; the workflow now relies on core's corrected namespace-root
   # peer-discovery fallback for the cold-start window.
   e2e:
-    name: E2E (Merobox)
+    name: E2E (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs: [bundle]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Main multi-service workflow: registry + docs full coverage
+          # across two nodes, cross-node sync assertions.
+          - name: main
+            file: workflow-mero-drive-e2e.yml
+          # Reconciliation: the three drift scenarios from the design
+          # spec, single node.
+          - name: reconciliation
+            file: workflow-mero-drive-reconciliation.yml
+          # Phase 9 — docs lifecycle. Every DocsClient method + tag
+          # flow + archive flow across two nodes.
+          - name: docs-lifecycle
+            file: workflow-mero-drive-docs-lifecycle.yml
+          # Phase 9 — members. Role/capability transitions, add/remove,
+          # defaults.
+          - name: members
+            file: workflow-mero-drive-members.yml
+          # Phase 9 — namespace lifecycle. Rename (set_group_alias),
+          # delete_group, delete_namespace, multi-namespace isolation.
+          - name: namespace-lifecycle
+            file: workflow-mero-drive-namespace-lifecycle.yml
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -245,8 +270,7 @@ jobs:
       - name: Prepare log directory
         run: mkdir -p docker-logs
 
-      - name: Run main e2e workflow
-        id: run_main
+      - name: Run ${{ matrix.name }} workflow
         run: |
           cd e2e
           max_attempts=2
@@ -255,14 +279,14 @@ jobs:
 
           while [ $attempt -le $max_attempts ]; do
             if [ $attempt -gt 1 ]; then
-              echo "Retry attempt $attempt for main e2e..."
+              echo "Retry attempt $attempt for ${{ matrix.name }}..."
               merobox stop --all || true
               merobox nuke --force || true
               sleep 2
             fi
 
             if merobox bootstrap run \
-                "workflow-mero-drive-e2e.yml" \
+                "${{ matrix.file }}" \
                 --e2e-mode; then
               success=true
               break
@@ -271,7 +295,7 @@ jobs:
               for container in $(docker ps -a --format "{{.Names}}" 2>/dev/null || true); do
                 if [ -n "$container" ]; then
                   docker logs "$container" \
-                    > "$GITHUB_WORKSPACE/docker-logs/main-attempt${attempt}-${container}.log" \
+                    > "$GITHUB_WORKSPACE/docker-logs/${{ matrix.name }}-attempt${attempt}-${container}.log" \
                     2>&1 || true
                 fi
               done
@@ -283,49 +307,7 @@ jobs:
           merobox nuke --force || true
 
           if [ "$success" = false ]; then
-            echo "failed=true" >> $GITHUB_OUTPUT
-            exit 1
-          fi
-
-      - name: Run reconciliation workflow
-        if: ${{ !cancelled() }}
-        id: run_reconciliation
-        run: |
-          cd e2e
-          max_attempts=2
-          attempt=1
-          success=false
-
-          while [ $attempt -le $max_attempts ]; do
-            if [ $attempt -gt 1 ]; then
-              echo "Retry attempt $attempt for reconciliation..."
-              merobox stop --all || true
-              merobox nuke --force || true
-              sleep 2
-            fi
-
-            if merobox bootstrap run \
-                "workflow-mero-drive-reconciliation.yml" \
-                --e2e-mode; then
-              success=true
-              break
-            else
-              for container in $(docker ps -a --format "{{.Names}}" 2>/dev/null || true); do
-                if [ -n "$container" ]; then
-                  docker logs "$container" \
-                    > "$GITHUB_WORKSPACE/docker-logs/reconciliation-attempt${attempt}-${container}.log" \
-                    2>&1 || true
-                fi
-              done
-              attempt=$((attempt + 1))
-            fi
-          done
-
-          merobox stop --all || true
-          merobox nuke --force || true
-
-          if [ "$success" = false ]; then
-            echo "failed=true" >> $GITHUB_OUTPUT
+            echo "::error::${{ matrix.name }} workflow failed after $max_attempts attempts"
             exit 1
           fi
 
@@ -333,7 +315,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-docker-logs-${{ github.sha }}
+          name: e2e-docker-logs-${{ matrix.name }}-${{ github.sha }}
           path: docker-logs/
           retention-days: 7
           if-no-files-found: ignore

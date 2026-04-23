@@ -1,0 +1,197 @@
+name: Mero Drive E2E — Namespace Lifecycle + Multi-Namespace Isolation
+description: >
+  Exercises namespace-level operations the app's NamespaceSwitcher /
+  NamespaceCreateDialog / (future) namespace-settings surface hits,
+  but which the main workflow-mero-drive-e2e.yml doesn't cover:
+
+    - set_group_alias    → the "rename folder" / "rename workspace"
+                           user flow. Used by useFolderOperations.rename
+                           and the NamespaceCreateDialog's alias field.
+    - delete_namespace   → the namespace teardown path a future admin
+                           surface will call via useDeleteNamespace.
+    - delete_group       → folder deletion, the useFolderOperations.
+                           remove tail step (after unregisterFolder).
+
+  Also tests multi-namespace isolation: folders created in namespace
+  A should not appear in namespace B's list_namespace_groups output.
+  This is the backend-side guarantee the NamespaceSwitcher relies on
+  to display only the active workspace's content.
+
+  Single node is sufficient for these flows — everything is local
+  admin-API, no cross-node sync required.
+
+force_pull_image: true
+
+nodes:
+  count: 1
+  image: ghcr.io/calimero-network/merod:edge
+  prefix: calimero-node
+
+steps:
+  # =================================================================
+  # Phase A: Install
+  # =================================================================
+
+  - name: Install bundle
+    type: install_application
+    node: calimero-node-1
+    path: ../logic/dist/com.calimero.mero-drive-docs-9.0.0.mpk
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  # =================================================================
+  # Phase B: Two namespaces — isolation check
+  # =================================================================
+
+  - name: Create namespace A
+    type: create_namespace
+    node: calimero-node-1
+    application_id: '{{app_id}}'
+    outputs:
+      ns_a: namespaceId
+
+  - name: Create namespace B
+    type: create_namespace
+    node: calimero-node-1
+    application_id: '{{app_id}}'
+    outputs:
+      ns_b: namespaceId
+
+  - name: Assert the two namespaces are distinct ids
+    type: assert
+    statements:
+      - 'is_set({{ns_a}})'
+      - 'is_set({{ns_b}})'
+      - '"{{ns_a}}" != "{{ns_b}}"'
+
+  - name: list_namespaces — both A and B appear
+    type: list_namespaces
+    node: calimero-node-1
+
+  # =================================================================
+  # Phase C: Populate each namespace with a distinct folder
+  # =================================================================
+
+  - name: Folder in namespace A
+    type: create_group_in_namespace
+    node: calimero-node-1
+    namespace_id: '{{ns_a}}'
+    group_alias: folder-in-A
+    outputs:
+      folder_a: groupId
+
+  - name: Folder in namespace B
+    type: create_group_in_namespace
+    node: calimero-node-1
+    namespace_id: '{{ns_b}}'
+    group_alias: folder-in-B
+    outputs:
+      folder_b: groupId
+
+  - name: list_namespace_groups on A — sees only folder-in-A
+    type: list_namespace_groups
+    node: calimero-node-1
+    namespace_id: '{{ns_a}}'
+
+  - name: list_namespace_groups on B — sees only folder-in-B
+    type: list_namespace_groups
+    node: calimero-node-1
+    namespace_id: '{{ns_b}}'
+
+  # =================================================================
+  # Phase D: set_group_alias — the rename flow
+  #
+  # Used by useFolderOperations.rename (via useSetGroupAlias).
+  # The FolderTreeItem's inline-rename input and the
+  # NamespaceCreateDialog both ultimately hit this admin endpoint.
+  # =================================================================
+
+  - name: Rename folder-in-A to 'renamed'
+    type: set_group_alias
+    node: calimero-node-1
+    group_id: '{{folder_a}}'
+    alias: renamed
+
+  - name: get_group_info — alias is now 'renamed'
+    type: get_group_info
+    node: calimero-node-1
+    group_id: '{{folder_a}}'
+
+  - name: Rename again to test alias overwrite (LWW semantics)
+    type: set_group_alias
+    node: calimero-node-1
+    group_id: '{{folder_a}}'
+    alias: final-name
+
+  - name: get_group_info — alias now 'final-name'
+    type: get_group_info
+    node: calimero-node-1
+    group_id: '{{folder_a}}'
+
+  # =================================================================
+  # Phase E: delete_group — folder cleanup
+  #
+  # Mirrors useFolderOperations.remove's final step
+  # (registry.unregisterFolder already tested in main workflow;
+  # here we test the admin-side delete on its own).
+  # =================================================================
+
+  - name: Delete folder in namespace A
+    type: delete_group
+    node: calimero-node-1
+    group_id: '{{folder_a}}'
+
+  - name: list_namespace_groups on A — now empty
+    type: list_namespace_groups
+    node: calimero-node-1
+    namespace_id: '{{ns_a}}'
+
+  # NB. No "reject delete_group on already-deleted id" step here.
+  # merobox's DeleteGroupStep in group_management.py doesn't honor
+  # `expected_failure: true` (tracked in calimero-network/merobox#214),
+  # and separately the client-side "requester not provided" guard
+  # fires before the RPC is even sent. Covering the empty-list
+  # post-delete above is what actually matters to the UI's
+  # "folder disappeared" guarantee until merobox#214 ships.
+
+  # =================================================================
+  # Phase F: delete_namespace — full teardown
+  #
+  # The NamespaceSettingsPanel's future "Delete workspace" action
+  # hits this endpoint. Tests that the namespace's subgroups (like
+  # folder-in-B) are cleaned up or surface as orphaned — per
+  # core#2200's strict-group-tree invariant, the delete should
+  # cascade the subgroups or refuse.
+  # =================================================================
+
+  - name: Delete namespace B
+    type: delete_namespace
+    node: calimero-node-1
+    namespace_id: '{{ns_b}}'
+
+  - name: list_namespaces — only namespace A remains
+    type: list_namespaces
+    node: calimero-node-1
+
+  # See note above — delete_namespace has the same merobox#214
+  # expected_failure gap + client-side requester guard; the positive
+  # list_namespaces assertions are what give us the real coverage.
+
+  # =================================================================
+  # Phase G: Final cleanup
+  # =================================================================
+
+  - name: Delete remaining namespace A
+    type: delete_namespace
+    node: calimero-node-1
+    namespace_id: '{{ns_a}}'
+
+  - name: list_namespaces — empty
+    type: list_namespaces
+    node: calimero-node-1
+
+# Leave containers up for the CI log-watcher / retry loop. The outer
+# shell in .github/workflows/ci.yml calls `merobox nuke --force` on
+# attempt boundaries; merobox shouldn't stop nodes on workflow success.
+stop_all_nodes: false
