@@ -120,11 +120,23 @@ steps:
   # Admin) all match specific bit combinations — tested below.
   # =================================================================
 
-  - name: get_member_capabilities for Bob (initial role=Member)
+  # Baseline: fresh Member-role bitmask. The value comes from the
+  # group's default capabilities (set implicitly on add_group_members
+  # with role: Member). Capturing it lets the demote-back-to-Member
+  # step below assert the round-trip actually returns the original
+  # bitmask, catching any role→bitmask drift in the backend.
+  - name: get_member_capabilities for Bob (initial role=Member) — capture
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
     member_id: '{{bob_identity}}'
+    outputs:
+      initial_member_caps: capabilities
+
+  - name: Assert initial Member bitmask is set
+    type: assert
+    statements:
+      - 'is_set({{initial_member_caps}})'
 
   # =================================================================
   # Phase E: update_member_role — string role transitions
@@ -132,7 +144,11 @@ steps:
   # Covers the API mero-react exposes via useUpdateMemberRole. The
   # NamespaceMemberRow uses setCapabilities directly for precise
   # bitmask control, but role-string updates are the simpler admin-
-  # API entry point.
+  # API entry point. Role→bitmask is a DIFFERENT backend code path
+  # than set_member_capabilities (which writes the mask directly),
+  # so the Admin role mapping needs its own assertion here — a bug
+  # that mapped Admin role to a wrong bitmask would slip through
+  # Phase F's set-then-read coverage.
   # =================================================================
 
   - name: Alice promotes Bob to Admin
@@ -142,11 +158,18 @@ steps:
     member_id: '{{bob_identity}}'
     role: Admin
 
-  - name: Verify Bob now has Admin caps
+  - name: Verify Bob now has Admin caps — capture
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
     member_id: '{{bob_identity}}'
+    outputs:
+      admin_role_caps: capabilities
+
+  - name: Assert Admin role maps to bitmask 63
+    type: assert
+    statements:
+      - '{{admin_role_caps}} == 63'
 
   - name: Alice demotes Bob back to Member
     type: update_member_role
@@ -154,6 +177,19 @@ steps:
     group_id: '{{folder_group}}'
     member_id: '{{bob_identity}}'
     role: Member
+
+  - name: Verify Bob's caps reverted to the Member baseline — capture
+    type: get_member_capabilities
+    node: calimero-node-1
+    group_id: '{{folder_group}}'
+    member_id: '{{bob_identity}}'
+    outputs:
+      demoted_member_caps: capabilities
+
+  - name: Assert demoted bitmask matches the initial Member bitmask
+    type: assert
+    statements:
+      - '{{demoted_member_caps}} == {{initial_member_caps}}'
 
   # =================================================================
   # Phase F: set_member_capabilities — precise bitmask writes
@@ -264,9 +300,12 @@ steps:
   # Cross-node propagation check: Bob's own node should see the same
   # capability bitmask that Alice just wrote. Validates the namespace
   # gossip layer, not just the admin-API write path.
+  # Match the 8-10s wait the rest of the e2e workflows use for
+  # governance gossip; the 5s we had before was half the norm and
+  # occasionally flaked on slow CI runners before the assertion.
   - name: Wait for cap change to propagate to Bob's node
     type: wait
-    seconds: 5
+    seconds: 10
 
   - name: Bob reads his own caps from node 2 — capture
     type: get_member_capabilities
