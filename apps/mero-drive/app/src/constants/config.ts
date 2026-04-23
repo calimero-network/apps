@@ -58,3 +58,10 @@ export const DEFAULT_CHILD_CAP_MASK = CAP.READ | CAP.WRITE | CAP.CREATE_GROUP;
 // Client-side depth cap for nested folders (UI refuses to create deeper).
 // Backend doesn't enforce — per spec it's an app-layer UX cap.
 export const MAX_FOLDER_DEPTH = 8;
+
+// Client-side cap on workspace / folder alias length. Enforced at
+// both input-level (maxLength attr) and pre-submit. Long enough for
+// any reasonable name, short enough to prevent accidental or
+// automated abuse. Shared between NamespaceCreateDialog,
+// NewFolderDialog, and FolderTreeItem's inline rename.
+export const MAX_ALIAS_LENGTH = 128;
