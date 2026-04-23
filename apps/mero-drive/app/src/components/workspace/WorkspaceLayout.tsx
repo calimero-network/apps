@@ -13,7 +13,7 @@
 // reads it, and keeping it out of WorkspaceContext avoids unwiring a
 // folder's active doc on every RegistryProvider re-render.
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { LogoWithText } from '@/components/icons/Logo';
 import { NamespaceSwitcher } from './NamespaceSwitcher';
 import { FolderTree } from '@/components/folders/FolderTree';
@@ -30,6 +30,17 @@ export function WorkspaceLayout() {
   const selectedFolder = folders.find((f) => f.id === selectedFolderId);
 
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+
+  // Clear selectedDocId whenever the active folder changes. Without
+  // this reset, switching folders or having the current folder
+  // disappear (remote delete, permission revoke) could leave a
+  // stale docId in state — and when a new folder lands with that
+  // stale docId still set, the editor guard below would re-satisfy
+  // and open DocumentEditor with a docId that belongs to the
+  // previous folder.
+  useEffect(() => {
+    setSelectedDocId(null);
+  }, [selectedFolderId]);
 
   // Full-screen editor mode: bypass the workspace chrome entirely.
   // EditorShell owns its own header/toolbar/status-bar and uses
