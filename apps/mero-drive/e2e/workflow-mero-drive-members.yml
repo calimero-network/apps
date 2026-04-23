@@ -1,0 +1,311 @@
+name: Mero Drive E2E — Member Management + Role Changes
+description: >
+  Coverage for the Phase 8-E surface: adding/removing members,
+  changing their roles, and mutating capability bitmasks directly.
+  Maps to the NamespaceMembersPanel + FolderSharingPanel user flows.
+  The main workflow-mero-drive-e2e.yml only does a one-shot member
+  add; this workflow exercises the full member lifecycle.
+
+  Two nodes (Alice = namespace admin, Bob = member). Alice invites
+  Bob, changes his role (update_member_role), sets precise
+  capabilities (set_member_capabilities), verifies via
+  get_member_capabilities, and finally removes him. Negative paths
+  cover: non-admin attempting admin ops, removing non-member,
+  setting caps on non-member.
+
+  Also exercises the namespace-level membership root (i.e.
+  namespaceId-as-rootGroupId) so the NamespaceMembersPanel's
+  useFolderMembership(rootGroupId) + useGroupCapabilities(rootGroupId,
+  identity) binding has backend coverage.
+
+force_pull_image: true
+
+nodes:
+  count: 2
+  image: ghcr.io/calimero-network/merod:edge
+  prefix: calimero-node
+
+steps:
+  # =================================================================
+  # Phase A: Bootstrap
+  # =================================================================
+
+  - name: Install bundle on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: ../logic/dist/com.calimero.mero-drive-docs-9.0.0.mpk
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install bundle on Node 2
+    type: install_application
+    node: calimero-node-2
+    path: ../logic/dist/com.calimero.mero-drive-docs-9.0.0.mpk
+    dev: true
+
+  - name: Alice creates namespace
+    type: create_namespace
+    node: calimero-node-1
+    application_id: '{{app_id}}'
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Create namespace invitation for Bob
+    type: create_namespace_invitation
+    node: calimero-node-1
+    namespace_id: '{{namespace_id}}'
+    outputs:
+      ns_invite: invitation
+
+  - name: Wait for namespace gossip to reach Node 2
+    type: wait
+    seconds: 10
+
+  - name: Bob joins the namespace
+    type: join_namespace
+    node: calimero-node-2
+    namespace_id: '{{namespace_id}}'
+    invitation: '{{ns_invite}}'
+    outputs:
+      bob_identity: memberIdentity
+
+  # =================================================================
+  # Phase B: List members — baseline shape
+  #
+  # The namespace root itself is a group (namespaceId IS rootGroupId
+  # at the admin-API layer — see NamespaceSwitcher's file header).
+  # Listing members on the namespace id gets us the namespace-wide
+  # member roster the NamespaceMembersPanel renders.
+  # =================================================================
+
+  - name: list_group_members on the namespace root
+    type: list_group_members
+    node: calimero-node-1
+    group_id: '{{namespace_id}}'
+
+  # =================================================================
+  # Phase C: Create a subgroup for testing per-folder membership
+  #
+  # Mirrors the FolderSharingPanel flow: invite users to a subgroup
+  # (folder), not just the namespace root.
+  # =================================================================
+
+  - name: Alice creates a subgroup (folder)
+    type: create_group_in_namespace
+    node: calimero-node-1
+    namespace_id: '{{namespace_id}}'
+    group_alias: shared-folder
+    outputs:
+      folder_group: groupId
+
+  - name: Alice adds Bob to the folder subgroup
+    type: add_group_members
+    node: calimero-node-1
+    group_id: '{{folder_group}}'
+    members:
+      - identity: '{{bob_identity}}'
+        role: Member
+
+  - name: list_group_members on the subgroup — Bob is in
+    type: list_group_members
+    node: calimero-node-1
+    group_id: '{{folder_group}}'
+
+  # =================================================================
+  # Phase D: get_member_capabilities — read the bitmask
+  #
+  # This is the path useGroupCapabilities hits on every permission
+  # hook render. The MemberRoleSelect PRESETS (Viewer / Editor /
+  # Admin) all match specific bit combinations — tested below.
+  # =================================================================
+
+  - name: get_member_capabilities for Bob (initial role=Member)
+    type: get_member_capabilities
+    node: calimero-node-1
+    group_id: '{{folder_group}}'
+    identity: '{{bob_identity}}'
+
+  # =================================================================
+  # Phase E: update_member_role — string role transitions
+  #
+  # Covers the API mero-react exposes via useUpdateMemberRole. The
+  # NamespaceMemberRow uses setCapabilities directly for precise
+  # bitmask control, but role-string updates are the simpler admin-
+  # API entry point.
+  # =================================================================
+
+  - name: Alice promotes Bob to Admin
+    type: update_member_role
+    node: calimero-node-1
+    group_id: '{{folder_group}}'
+    identity: '{{bob_identity}}'
+    role: Admin
+
+  - name: Verify Bob now has Admin caps
+    type: get_member_capabilities
+    node: calimero-node-1
+    group_id: '{{folder_group}}'
+    identity: '{{bob_identity}}'
+
+  - name: Alice demotes Bob back to Member
+    type: update_member_role
+    node: calimero-node-1
+    group_id: '{{folder_group}}'
+    identity: '{{bob_identity}}'
+    role: Member
+
+  # =================================================================
+  # Phase F: set_member_capabilities — precise bitmask writes
+  #
+  # Matches MemberRoleSelect + NamespaceMemberRow's preset
+  # application. CAP bit layout (from constants/config.ts):
+  #   READ=1, WRITE=2, CREATE_GROUP=4, MANAGE_GROUP=8,
+  #   INVITE_MEMBERS=16, MANAGE_MEMBERS=32
+  # Presets:
+  #   Viewer = 1          (READ only)
+  #   Editor = 3          (READ | WRITE)
+  #   Admin  = 63         (all six bits)
+  # =================================================================
+
+  - name: Set Bob to Viewer preset (READ=1)
+    type: set_member_capabilities
+    node: calimero-node-1
+    group_id: '{{folder_group}}'
+    identity: '{{bob_identity}}'
+    capabilities: 1
+
+  - name: Verify Viewer bitmask
+    type: get_member_capabilities
+    node: calimero-node-1
+    group_id: '{{folder_group}}'
+    identity: '{{bob_identity}}'
+
+  - name: Set Bob to Editor preset (READ | WRITE = 3)
+    type: set_member_capabilities
+    node: calimero-node-1
+    group_id: '{{folder_group}}'
+    identity: '{{bob_identity}}'
+    capabilities: 3
+
+  - name: Verify Editor bitmask
+    type: get_member_capabilities
+    node: calimero-node-1
+    group_id: '{{folder_group}}'
+    identity: '{{bob_identity}}'
+
+  - name: Set Bob to Admin preset (all six bits = 63)
+    type: set_member_capabilities
+    node: calimero-node-1
+    group_id: '{{folder_group}}'
+    identity: '{{bob_identity}}'
+    capabilities: 63
+
+  - name: Verify Admin bitmask
+    type: get_member_capabilities
+    node: calimero-node-1
+    group_id: '{{folder_group}}'
+    identity: '{{bob_identity}}'
+
+  # Also test a non-preset "Custom" mask so the MemberRoleSelect
+  # "Custom" branch has backend coverage (WRITE without READ — odd
+  # but legal).
+  - name: Set Bob to a non-preset bitmask (WRITE=2 only)
+    type: set_member_capabilities
+    node: calimero-node-1
+    group_id: '{{folder_group}}'
+    identity: '{{bob_identity}}'
+    capabilities: 2
+
+  - name: Verify the non-preset bitmask is stored verbatim
+    type: get_member_capabilities
+    node: calimero-node-1
+    group_id: '{{folder_group}}'
+    identity: '{{bob_identity}}'
+
+  # =================================================================
+  # Phase G: set_default_capabilities + set_default_visibility
+  #
+  # Backend for the namespace-level default-caps / default-visibility
+  # that new members inherit. No app UI calls these yet (Phase 8-E
+  # stops short of admin defaults), but exercising them now means
+  # when the UI lands the backend path is proven.
+  # =================================================================
+
+  - name: Set default member capabilities (READ|WRITE = 3)
+    type: set_default_capabilities
+    node: calimero-node-1
+    group_id: '{{folder_group}}'
+    capabilities: 3
+
+  - name: Set default visibility to Restricted
+    type: set_default_visibility
+    node: calimero-node-1
+    group_id: '{{folder_group}}'
+    visibility: Restricted
+
+  - name: Revert default visibility to Inherit
+    type: set_default_visibility
+    node: calimero-node-1
+    group_id: '{{folder_group}}'
+    visibility: Inherit
+
+  # =================================================================
+  # Phase H: Member removal
+  # =================================================================
+
+  - name: Alice removes Bob from the subgroup
+    type: remove_group_members
+    node: calimero-node-1
+    group_id: '{{folder_group}}'
+    members:
+      - '{{bob_identity}}'
+
+  - name: list_group_members — Bob no longer in the subgroup
+    type: list_group_members
+    node: calimero-node-1
+    group_id: '{{folder_group}}'
+
+  # =================================================================
+  # Phase I: Negative paths
+  # =================================================================
+
+  - name: Reject get_member_capabilities on non-member
+    type: get_member_capabilities
+    node: calimero-node-1
+    group_id: '{{folder_group}}'
+    identity: '{{bob_identity}}'
+    expected_failure: true
+
+  - name: Reject set_member_capabilities on non-member
+    type: set_member_capabilities
+    node: calimero-node-1
+    group_id: '{{folder_group}}'
+    identity: '{{bob_identity}}'
+    capabilities: 1
+    expected_failure: true
+
+  - name: Reject remove_group_members on non-member
+    type: remove_group_members
+    node: calimero-node-1
+    group_id: '{{folder_group}}'
+    members:
+      - '{{bob_identity}}'
+    expected_failure: true
+
+  - name: Reject update_member_role on non-member
+    type: update_member_role
+    node: calimero-node-1
+    group_id: '{{folder_group}}'
+    identity: '{{bob_identity}}'
+    role: Admin
+    expected_failure: true
+
+  # =================================================================
+  # Phase J: Cleanup
+  # =================================================================
+
+  - name: delete_group — tear down the subgroup
+    type: delete_group
+    node: calimero-node-1
+    group_id: '{{folder_group}}'

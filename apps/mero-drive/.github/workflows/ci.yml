@@ -329,6 +329,136 @@ jobs:
             exit 1
           fi
 
+      # Phase 9 adds three more workflows that cover the full user-
+      # facing surface the app exercises. Structure matches the two
+      # above: max_attempts=2 with a nuke-between-retries, full
+      # docker-logs collection on failure, cleanup after.
+      - name: Run docs lifecycle workflow
+        if: ${{ !cancelled() }}
+        id: run_docs_lifecycle
+        run: |
+          cd e2e
+          max_attempts=2
+          attempt=1
+          success=false
+
+          while [ $attempt -le $max_attempts ]; do
+            if [ $attempt -gt 1 ]; then
+              echo "Retry attempt $attempt for docs lifecycle..."
+              merobox stop --all || true
+              merobox nuke --force || true
+              sleep 2
+            fi
+
+            if merobox bootstrap run \
+                "workflow-mero-drive-docs-lifecycle.yml" \
+                --e2e-mode; then
+              success=true
+              break
+            else
+              for container in $(docker ps -a --format "{{.Names}}" 2>/dev/null || true); do
+                if [ -n "$container" ]; then
+                  docker logs "$container" \
+                    > "$GITHUB_WORKSPACE/docker-logs/docs-lifecycle-attempt${attempt}-${container}.log" \
+                    2>&1 || true
+                fi
+              done
+              attempt=$((attempt + 1))
+            fi
+          done
+
+          merobox stop --all || true
+          merobox nuke --force || true
+
+          if [ "$success" = false ]; then
+            echo "failed=true" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: Run members workflow
+        if: ${{ !cancelled() }}
+        id: run_members
+        run: |
+          cd e2e
+          max_attempts=2
+          attempt=1
+          success=false
+
+          while [ $attempt -le $max_attempts ]; do
+            if [ $attempt -gt 1 ]; then
+              echo "Retry attempt $attempt for members..."
+              merobox stop --all || true
+              merobox nuke --force || true
+              sleep 2
+            fi
+
+            if merobox bootstrap run \
+                "workflow-mero-drive-members.yml" \
+                --e2e-mode; then
+              success=true
+              break
+            else
+              for container in $(docker ps -a --format "{{.Names}}" 2>/dev/null || true); do
+                if [ -n "$container" ]; then
+                  docker logs "$container" \
+                    > "$GITHUB_WORKSPACE/docker-logs/members-attempt${attempt}-${container}.log" \
+                    2>&1 || true
+                fi
+              done
+              attempt=$((attempt + 1))
+            fi
+          done
+
+          merobox stop --all || true
+          merobox nuke --force || true
+
+          if [ "$success" = false ]; then
+            echo "failed=true" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: Run namespace lifecycle workflow
+        if: ${{ !cancelled() }}
+        id: run_namespace_lifecycle
+        run: |
+          cd e2e
+          max_attempts=2
+          attempt=1
+          success=false
+
+          while [ $attempt -le $max_attempts ]; do
+            if [ $attempt -gt 1 ]; then
+              echo "Retry attempt $attempt for namespace lifecycle..."
+              merobox stop --all || true
+              merobox nuke --force || true
+              sleep 2
+            fi
+
+            if merobox bootstrap run \
+                "workflow-mero-drive-namespace-lifecycle.yml" \
+                --e2e-mode; then
+              success=true
+              break
+            else
+              for container in $(docker ps -a --format "{{.Names}}" 2>/dev/null || true); do
+                if [ -n "$container" ]; then
+                  docker logs "$container" \
+                    > "$GITHUB_WORKSPACE/docker-logs/namespace-lifecycle-attempt${attempt}-${container}.log" \
+                    2>&1 || true
+                fi
+              done
+              attempt=$((attempt + 1))
+            fi
+          done
+
+          merobox stop --all || true
+          merobox nuke --force || true
+
+          if [ "$success" = false ]; then
+            echo "failed=true" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
       - name: Upload docker logs
         if: always()
         uses: actions/upload-artifact@v4
