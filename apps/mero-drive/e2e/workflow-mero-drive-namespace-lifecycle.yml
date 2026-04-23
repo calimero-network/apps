@@ -147,11 +147,12 @@ steps:
     node: calimero-node-1
     namespace_id: '{{ns_a}}'
 
-  - name: Reject delete_group on already-deleted id
-    type: delete_group
-    node: calimero-node-1
-    group_id: '{{folder_a}}'
-    expected_failure: true
+  # NB. No "reject delete_group on already-deleted id" step here.
+  # merobox's delete_group bails client-side with "requester not
+  # provided" before sending the RPC, so `expected_failure: true`
+  # can't distinguish that client-side guard from a genuine server
+  # rejection. Covering the empty-list post-delete above is what
+  # actually matters to the UI's "folder disappeared" guarantee.
 
   # =================================================================
   # Phase F: delete_namespace — full teardown
@@ -172,11 +173,9 @@ steps:
     type: list_namespaces
     node: calimero-node-1
 
-  - name: Reject delete_namespace on already-deleted id
-    type: delete_namespace
-    node: calimero-node-1
-    namespace_id: '{{ns_b}}'
-    expected_failure: true
+  # See note above — delete_namespace has the same client-side
+  # requester guard; the positive list_namespaces assertions are
+  # what give us the real coverage signal.
 
   # =================================================================
   # Phase G: Final cleanup

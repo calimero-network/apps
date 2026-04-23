@@ -124,7 +124,7 @@ steps:
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    identity: '{{bob_identity}}'
+    member_id: '{{bob_identity}}'
 
   # =================================================================
   # Phase E: update_member_role — string role transitions
@@ -139,20 +139,20 @@ steps:
     type: update_member_role
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    identity: '{{bob_identity}}'
+    member_id: '{{bob_identity}}'
     role: Admin
 
   - name: Verify Bob now has Admin caps
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    identity: '{{bob_identity}}'
+    member_id: '{{bob_identity}}'
 
   - name: Alice demotes Bob back to Member
     type: update_member_role
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    identity: '{{bob_identity}}'
+    member_id: '{{bob_identity}}'
     role: Member
 
   # =================================================================
@@ -172,40 +172,40 @@ steps:
     type: set_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    identity: '{{bob_identity}}'
+    member_id: '{{bob_identity}}'
     capabilities: 1
 
   - name: Verify Viewer bitmask
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    identity: '{{bob_identity}}'
+    member_id: '{{bob_identity}}'
 
   - name: Set Bob to Editor preset (READ | WRITE = 3)
     type: set_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    identity: '{{bob_identity}}'
+    member_id: '{{bob_identity}}'
     capabilities: 3
 
   - name: Verify Editor bitmask
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    identity: '{{bob_identity}}'
+    member_id: '{{bob_identity}}'
 
   - name: Set Bob to Admin preset (all six bits = 63)
     type: set_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    identity: '{{bob_identity}}'
+    member_id: '{{bob_identity}}'
     capabilities: 63
 
   - name: Verify Admin bitmask
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    identity: '{{bob_identity}}'
+    member_id: '{{bob_identity}}'
 
   # Also test a non-preset "Custom" mask so the MemberRoleSelect
   # "Custom" branch has backend coverage (WRITE without READ — odd
@@ -214,14 +214,14 @@ steps:
     type: set_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    identity: '{{bob_identity}}'
+    member_id: '{{bob_identity}}'
     capabilities: 2
 
   - name: Verify the non-preset bitmask is stored verbatim
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    identity: '{{bob_identity}}'
+    member_id: '{{bob_identity}}'
 
   # =================================================================
   # Phase G: set_default_capabilities + set_default_visibility
@@ -244,11 +244,14 @@ steps:
     group_id: '{{folder_group}}'
     visibility: Restricted
 
-  - name: Revert default visibility to Inherit
+  # set_default_visibility only accepts Open / Restricted — there's
+  # no Inherit literal at the admin-API layer. Flip back to Open to
+  # exercise the second branch of the enum.
+  - name: Revert default visibility to Open
     type: set_default_visibility
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    visibility: Inherit
+    visibility: Open
 
   # =================================================================
   # Phase H: Member removal
@@ -274,14 +277,14 @@ steps:
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    identity: '{{bob_identity}}'
+    member_id: '{{bob_identity}}'
     expected_failure: true
 
   - name: Reject set_member_capabilities on non-member
     type: set_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    identity: '{{bob_identity}}'
+    member_id: '{{bob_identity}}'
     capabilities: 1
     expected_failure: true
 
@@ -297,7 +300,7 @@ steps:
     type: update_member_role
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    identity: '{{bob_identity}}'
+    member_id: '{{bob_identity}}'
     role: Admin
     expected_failure: true
 
