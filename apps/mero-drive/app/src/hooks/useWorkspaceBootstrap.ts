@@ -137,7 +137,12 @@ export function useWorkspaceBootstrap(
             serviceName: REGISTRY_SERVICE_ID,
             initializationParams: [],
           });
-          if (!alive) return;
+          // Intentionally no `if (!alive) return` here: the context
+          // exists server-side once createContext resolves, so we must
+          // finish either aliasing it (so a future effect adopts it)
+          // or deleting it on the cleanup path. Bailing early without
+          // either would orphan the context. setState calls below are
+          // already guarded by `alive`.
           if (!created?.contextId) {
             throw new Error('createContext returned no contextId');
           }
@@ -156,19 +161,32 @@ export function useWorkspaceBootstrap(
           });
 
           if (!aliasCreated) {
-            // Someone else won the race (or the alias API errored).
-            // Re-lookup: if the alias now resolves to a different
-            // contextId, adopt it and best-effort delete our own
-            // orphan. If it still doesn't resolve, we have a genuine
-            // error — surface it so the user isn't stuck with a
-            // silently-leaked context on every retry.
+            // alias-create said "failed." Two causes: (a) another
+            // tab's create landed first so the name is taken, or
+            // (b) our POST succeeded server-side but the HTTP
+            // response was lost. Re-lookup disambiguates.
             const reLookup = await adminRequest<{ value: string }>(
               `/alias/lookup/context/${encodeURIComponent(aliasName)}`,
               { method: 'POST', body: '{}' },
             ).catch(() => null);
 
-            if (reLookup?.value && reLookup.value !== created.contextId) {
-              // Another tab won — delete our orphan and adopt theirs.
+            if (reLookup?.value === created.contextId) {
+              // Response-loss case: the alias actually got set to
+              // OUR contextId; we just didn't see the 2xx. Proceed
+              // as if aliasCreated had been true. Do NOT delete the
+              // context — the alias points at it and a delete here
+              // would leave a dangling alias mapping.
+              await joinContext(created.contextId).catch(() => undefined);
+              if (alive) {
+                setState({ registryContextId: created.contextId, loading: false, error: null });
+              }
+              return;
+            }
+
+            if (reLookup?.value) {
+              // Another tab won the race (alias resolves to a
+              // different contextId). Delete our orphan and adopt
+              // theirs.
               await deleteContext(created.contextId).catch((err) =>
                 console.warn('failed to clean up racing-loss context', err),
               );
@@ -179,8 +197,8 @@ export function useWorkspaceBootstrap(
               return;
             }
 
-            // Alias didn't resolve after the failed set-alias call.
-            // Delete our orphaned context so reboots don't accumulate
+            // Alias didn't resolve at all — genuine failure. Delete
+            // our orphaned context so reboots don't accumulate
             // leaks, then surface the error.
             await deleteContext(created.contextId).catch((err) =>
               console.warn('failed to clean up orphaned context', err),
