@@ -107,12 +107,14 @@ steps:
     type: wait
     seconds: 10
 
+  # Only bob_key is consumed downstream (Bob's executor_public_key for
+  # all cross-node reads); Alice's docs_ctx variable is reused verbatim
+  # for both nodes' context_id, so no separate docs_ctx_bob capture.
   - name: Bob joins the docs context
     type: join_context
     node: calimero-node-2
     context_id: '{{docs_ctx}}'
     outputs:
-      docs_ctx_bob: contextId
       bob_key: memberPublicKey
 
   - name: Sync docs context across nodes

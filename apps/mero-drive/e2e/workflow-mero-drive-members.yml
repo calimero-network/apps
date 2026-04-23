@@ -168,6 +168,11 @@ steps:
   #   Admin  = 63         (all six bits)
   # =================================================================
 
+  # Each verify step captures the returned bitmask into a uniquely-
+  # named output variable, and an `assert` step immediately after
+  # compares the value. Without the equal() assertion a backend bug
+  # that silently stored a different bitmask (e.g. rounded WRITE-only
+  # up to READ|WRITE) would pass these tests.
   - name: Set Bob to Viewer preset (READ=1)
     type: set_member_capabilities
     node: calimero-node-1
@@ -175,11 +180,18 @@ steps:
     member_id: '{{bob_identity}}'
     capabilities: 1
 
-  - name: Verify Viewer bitmask
+  - name: Verify Viewer bitmask — capture
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
     member_id: '{{bob_identity}}'
+    outputs:
+      viewer_caps: capabilities
+
+  - name: Assert Viewer bitmask == 1
+    type: assert
+    statements:
+      - 'equal({{viewer_caps}}, 1)'
 
   - name: Set Bob to Editor preset (READ | WRITE = 3)
     type: set_member_capabilities
@@ -188,11 +200,18 @@ steps:
     member_id: '{{bob_identity}}'
     capabilities: 3
 
-  - name: Verify Editor bitmask
+  - name: Verify Editor bitmask — capture
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
     member_id: '{{bob_identity}}'
+    outputs:
+      editor_caps: capabilities
+
+  - name: Assert Editor bitmask == 3
+    type: assert
+    statements:
+      - 'equal({{editor_caps}}, 3)'
 
   - name: Set Bob to Admin preset (all six bits = 63)
     type: set_member_capabilities
@@ -201,15 +220,23 @@ steps:
     member_id: '{{bob_identity}}'
     capabilities: 63
 
-  - name: Verify Admin bitmask
+  - name: Verify Admin bitmask — capture
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
     member_id: '{{bob_identity}}'
+    outputs:
+      admin_caps: capabilities
+
+  - name: Assert Admin bitmask == 63
+    type: assert
+    statements:
+      - 'equal({{admin_caps}}, 63)'
 
   # Also test a non-preset "Custom" mask so the MemberRoleSelect
   # "Custom" branch has backend coverage (WRITE without READ — odd
-  # but legal).
+  # but legal). Store-verbatim is the key guarantee here: the backend
+  # must not coerce unusual bitmasks.
   - name: Set Bob to a non-preset bitmask (WRITE=2 only)
     type: set_member_capabilities
     node: calimero-node-1
@@ -217,11 +244,38 @@ steps:
     member_id: '{{bob_identity}}'
     capabilities: 2
 
-  - name: Verify the non-preset bitmask is stored verbatim
+  - name: Verify the non-preset bitmask — capture
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
     member_id: '{{bob_identity}}'
+    outputs:
+      custom_caps: capabilities
+
+  - name: Assert non-preset bitmask stored verbatim == 2
+    type: assert
+    statements:
+      - 'equal({{custom_caps}}, 2)'
+
+  # Cross-node propagation check: Bob's own node should see the same
+  # capability bitmask that Alice just wrote. Validates the namespace
+  # gossip layer, not just the admin-API write path.
+  - name: Wait for cap change to propagate to Bob's node
+    type: wait
+    seconds: 5
+
+  - name: Bob reads his own caps from node 2 — capture
+    type: get_member_capabilities
+    node: calimero-node-2
+    group_id: '{{folder_group}}'
+    member_id: '{{bob_identity}}'
+    outputs:
+      bob_view_caps: capabilities
+
+  - name: Assert Bob's node agrees with Alice's node (== 2)
+    type: assert
+    statements:
+      - 'equal({{bob_view_caps}}, 2)'
 
   # =================================================================
   # Phase G: set_default_capabilities + set_default_visibility
