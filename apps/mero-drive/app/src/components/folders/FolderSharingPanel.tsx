@@ -110,8 +110,20 @@ export function FolderSharingPanel({ folderId }: Props) {
       const err = e instanceof Error ? e : new Error(String(e));
       setRemoveError({ identity: id, message: err.message });
       // Refetch so the UI stays consistent with the node's actual
-      // member list — remove() may have partially applied.
-      await refetch();
+      // member list — remove() may have partially applied. Wrapped
+      // in its own try/catch because the outer call is
+      // fire-and-forget from the button's onClick; if refetch()
+      // also fails (likely the same network issue that failed
+      // remove), an uncaught throw would surface as an unhandled
+      // promise rejection.
+      try {
+        await refetch();
+      } catch (refetchErr) {
+        console.warn(
+          'refetch after remove failure also failed',
+          refetchErr,
+        );
+      }
     } finally {
       setRemovingId(null);
     }
