@@ -50,19 +50,32 @@ export function useReconcile(
     try {
       const regFolders = await registryClient.getFolders();
       // SubgroupEntry doesn't carry parent_id; registry does.
-      // We cross-reference: if registry has the folder, use its
-      // parent_id; otherwise default to rootGroupId (the "newly seen
-      // by admin, not yet in registry" case — reconcile will
-      // register_folder with parent_id=root).
+      // Both sides of the diff must normalise to the same "top-level"
+      // representation — the registry stores `null` for folders
+      // directly under root (see useFolderOperations.registerFolder),
+      // so the admin side also uses `null` when cross-referencing.
+      // Previously the admin side normalised missing parent_ids to
+      // `rootGroupId` while the registry side kept `null`, generating
+      // a spurious move action for every top-level folder on every
+      // reconcile run.
       const regById = new Map(regFolders.map((f) => [f.id, f]));
-      const admin: AdminGroup[] = adminSubgroups.map((s) => ({
-        id: s.groupId,
-        parent_id: regById.get(s.groupId)?.parent_id ?? rootGroupId,
-        alias: s.alias,
-      }));
+      const admin: AdminGroup[] = adminSubgroups.map((s) => {
+        const fromReg = regById.get(s.groupId);
+        // `fromReg` missing means "admin knows about this group but
+        // the registry doesn't yet" — reconcile will emit a
+        // register_folder action. Default parent_id=null so the new
+        // folder lands at the top level; if the caller wanted a
+        // specific parent they would have called registerFolder
+        // directly via useFolderOperations.create.
+        return {
+          id: s.groupId,
+          parent_id: fromReg ? fromReg.parent_id : null,
+          alias: s.alias,
+        };
+      });
       const regShape = regFolders.map((f) => ({
         id: f.id,
-        parent_id: f.parent_id ?? null,
+        parent_id: f.parent_id,
       }));
       const actions = computeReconcileActions(admin, regShape, rootGroupId);
 

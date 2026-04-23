@@ -14,13 +14,13 @@
 import { useCallback } from 'react';
 import {
   useCreateGroupInNamespace,
-  useNestGroup,
   useCreateContext,
   useDeleteGroup,
   useSetGroupAlias,
   useAddGroupMembers,
 } from '@calimero-network/mero-react';
 import type { RegistryClient } from '../api/registry/RegistryClient';
+import { adminRequest } from '../api/adminApi';
 import {
   getApplicationId,
   DOCS_SERVICE_ID,
@@ -29,6 +29,7 @@ import {
   computeCascadeTargets,
   CascadeFolder,
 } from './useFolderCascade';
+import { descendantsOf } from '../utils/ancestry';
 
 export interface CreateFolderInput {
   namespaceId: string;
@@ -58,7 +59,6 @@ export function useFolderOperations(
   tree: CascadeFolder[],
 ): FolderOperations {
   const { createGroupInNamespace } = useCreateGroupInNamespace();
-  const { nestGroup } = useNestGroup();
   const { createContext } = useCreateContext();
   const { deleteGroup } = useDeleteGroup();
   const { setGroupAlias } = useSetGroupAlias();
@@ -73,8 +73,21 @@ export function useFolderOperations(
       if (!group?.groupId) throw new Error('createGroupInNamespace returned no groupId');
       const newId = group.groupId;
 
+      // createGroupInNamespace always places the new group as a
+      // direct child of the namespace root. To nest it under a
+      // specific parent, use core's atomic reparent_group endpoint
+      // (core#2200 — strict group-tree invariant). Once mero-react
+      // ships a useReparentGroup hook the adminRequest call below
+      // should be swapped for it; for now the endpoint shape matches
+      // the same {childGroupId, newParentId} body merobox posts.
       if (input.parentGroupId !== rootGroupId) {
-        await nestGroup(input.parentGroupId, { childGroupId: newId });
+        await adminRequest(`/groups/reparent`, {
+          method: 'POST',
+          body: JSON.stringify({
+            childGroupId: newId,
+            newParentId: input.parentGroupId,
+          }),
+        });
       }
 
       const ctx = await createContext({
@@ -106,7 +119,7 @@ export function useFolderOperations(
 
       return newId;
     },
-    [registryClient, rootGroupId, createGroupInNamespace, nestGroup, createContext],
+    [registryClient, rootGroupId, createGroupInNamespace, createContext],
   );
 
   const rename = useCallback(
@@ -119,11 +132,12 @@ export function useFolderOperations(
   const remove = useCallback(
     async (folderId: string) => {
       if (!registryClient) throw new Error('registry not ready');
-      // Leaf-first descendant walk: delete deepest first so each
-      // delete sees a childless node. Admin API enforces this by
-      // refusing to delete groups that still have subgroups.
-      const victims = [folderId, ...descendantsOf(tree, folderId)];
-      victims.sort((a, b) => depthIn(tree, b) - depthIn(tree, a));
+      // `descendantsOf` from utils/ancestry already returns leaf-first
+      // (post-order) — deepest first, root last — which is exactly
+      // what the admin API's "no deletes with live subgroups"
+      // invariant needs. Append the folder itself at the end so it's
+      // deleted after all of its children.
+      const victims = [...descendantsOf(tree, folderId), folderId];
       for (const id of victims) {
         await registryClient.unregisterFolder({ id });
         await deleteGroup(id);
@@ -163,40 +177,4 @@ export function useFolderOperations(
   );
 
   return { create, rename, remove, cascadeTo };
-}
-
-function descendantsOf(tree: CascadeFolder[], rootId: string): string[] {
-  const children = new Map<string, string[]>();
-  for (const f of tree) {
-    if (!f.parent_id) continue;
-    const arr = children.get(f.parent_id) ?? [];
-    arr.push(f.id);
-    children.set(f.parent_id, arr);
-  }
-  const out: string[] = [];
-  const seen = new Set<string>();
-  const walk = (id: string) => {
-    if (seen.has(id)) return;
-    seen.add(id);
-    for (const c of children.get(id) ?? []) {
-      out.push(c);
-      walk(c);
-    }
-  };
-  walk(rootId);
-  return out;
-}
-
-function depthIn(tree: CascadeFolder[], id: string): number {
-  const byId = new Map(tree.map((f) => [f.id, f]));
-  let d = 0;
-  let cur = byId.get(id)?.parent_id ?? null;
-  const seen = new Set<string>();
-  while (cur) {
-    if (seen.has(cur)) break;
-    seen.add(cur);
-    d++;
-    cur = byId.get(cur)?.parent_id ?? null;
-  }
-  return d;
 }

@@ -3,12 +3,21 @@
 // registry context id that downstream hooks (useRegistryClient,
 // useWorkspaceTree, useReconcile) need.
 //
-// The Registry context is a single well-known context attached to
-// the namespace root group with alias `REGISTRY_CONTEXT_ALIAS`. If
-// one already exists (looked up via useGroupContexts), we use it; if
-// not, we call useCreateContext with the `registry` service of our
-// multi-service bundle and alias it. Joining is idempotent — the
-// node ignores join requests for contexts it's already on.
+// Identification strategy: the Registry context is identified by a
+// per-rootGroup context alias registered via the admin-API alias
+// system (`POST /admin-api/alias/create/context`). On bootstrap we
+// first lookup the alias; if it resolves, we join and surface. If
+// not, we check for a legacy alias (bare `REGISTRY_CONTEXT_ALIAS` on
+// a group-context entry), adopt it if present, and then as a last
+// resort create a new context + set the alias atomically enough to
+// be durable across reloads.
+//
+// Admin-API alias names are globally unique on a node, so per-root
+// disambiguation has to live in the alias name itself. See
+// `aliasNameFor` below.
+//
+// Joining is idempotent — the node ignores join requests for
+// contexts it's already on.
 
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -16,11 +25,19 @@ import {
   useCreateContext,
   useJoinContext,
 } from '@calimero-network/mero-react';
+import { adminRequest } from '../api/adminApi';
 import {
   getApplicationId,
   REGISTRY_CONTEXT_ALIAS,
   REGISTRY_SERVICE_ID,
 } from '../constants/config';
+
+// Admin-API alias names are globally unique within a node, not
+// scoped by group — so per-rootGroup disambiguation has to live in
+// the name itself. Prefixing with the app identifier avoids
+// collisions across apps sharing the same node.
+const aliasNameFor = (rootGroupId: string) =>
+  `mero-drive:${REGISTRY_CONTEXT_ALIAS}:${rootGroupId}`;
 
 export interface WorkspaceBootstrapResult {
   registryContextId: string | null;
@@ -63,49 +80,85 @@ export function useWorkspaceBootstrap(
       return;
     }
 
-    const existing = contexts.find((c) => c.alias === REGISTRY_CONTEXT_ALIAS);
-    if (existing) {
-      // Found it. Ensure we're joined (idempotent on the node side)
-      // then surface the id. Join failure is non-fatal — if we're
-      // already a member the node returns an error we can ignore.
-      let alive = true;
-      (async () => {
-        await joinContext(existing.contextId).catch(() => undefined);
-        if (alive) {
-          setState({ registryContextId: existing.contextId, loading: false, error: null });
-        }
-      })();
-      return () => {
-        alive = false;
-      };
-    }
+    const aliasName = aliasNameFor(rootGroupId);
 
-    if (inFlightRef.current) return;
-    inFlightRef.current = true;
+    // Lookup strategy: check whether we've already aliased a Registry
+    // context for this rootGroupId. The alias lookup is authoritative
+    // across browsers / page reloads (lives on the node), so two tabs
+    // or a fresh login converge on the same context.
     let alive = true;
     (async () => {
       try {
-        const created = await createContext({
-          applicationId: getApplicationId(),
-          groupId: rootGroupId,
-          serviceName: REGISTRY_SERVICE_ID,
-          initializationParams: [],
-        });
-        if (!alive) return;
-        if (!created?.contextId) {
-          throw new Error('createContext returned no contextId');
+        const lookup = await adminRequest<{ value: string }>(
+          `/alias/lookup/context/${encodeURIComponent(aliasName)}`,
+          { method: 'POST', body: '{}' },
+        ).catch(() => null);
+
+        if (lookup?.value) {
+          // Alias resolved to an existing contextId. Ensure we're
+          // joined (idempotent on the node side) and surface the id.
+          await joinContext(lookup.value).catch(() => undefined);
+          if (alive) {
+            setState({ registryContextId: lookup.value, loading: false, error: null });
+          }
+          return;
         }
-        await joinContext(created.contextId).catch(() => undefined);
-        if (alive) {
-          setState({ registryContextId: created.contextId, loading: false, error: null });
+
+        // Fallback: tolerate contexts created before alias support
+        // landed (or by legacy clients) — if the group has a context
+        // whose alias matches the bare REGISTRY_CONTEXT_ALIAS, adopt
+        // it and set the new per-root alias for future lookups.
+        const legacy = contexts.find((c) => c.alias === REGISTRY_CONTEXT_ALIAS);
+        if (legacy) {
+          await adminRequest(`/alias/create/context`, {
+            method: 'POST',
+            body: JSON.stringify({ name: aliasName, value: legacy.contextId }),
+          }).catch(() => undefined);
+          await joinContext(legacy.contextId).catch(() => undefined);
+          if (alive) {
+            setState({ registryContextId: legacy.contextId, loading: false, error: null });
+          }
+          return;
+        }
+
+        // Create path — guarded against Strict-Mode double-mount and
+        // fast useGroupContexts refetches so two parallel create_context
+        // calls can't leak duplicate Registry contexts.
+        if (inFlightRef.current) return;
+        inFlightRef.current = true;
+        try {
+          const created = await createContext({
+            applicationId: getApplicationId(),
+            groupId: rootGroupId,
+            serviceName: REGISTRY_SERVICE_ID,
+            initializationParams: [],
+          });
+          if (!alive) return;
+          if (!created?.contextId) {
+            throw new Error('createContext returned no contextId');
+          }
+          // Set the alias BEFORE surfacing the id so a subsequent
+          // render / reload resolves the same context via lookup
+          // rather than racing into another create path. Alias
+          // failure is logged but non-fatal — worst case we
+          // duplicate on the next reload, which is recoverable via
+          // the legacy branch above.
+          await adminRequest(`/alias/create/context`, {
+            method: 'POST',
+            body: JSON.stringify({ name: aliasName, value: created.contextId }),
+          }).catch((err) => console.warn('registry alias create failed', err));
+          await joinContext(created.contextId).catch(() => undefined);
+          if (alive) {
+            setState({ registryContextId: created.contextId, loading: false, error: null });
+          }
+        } finally {
+          inFlightRef.current = false;
         }
       } catch (e: unknown) {
         if (alive) {
           const err = e instanceof Error ? e : new Error(String(e));
           setState({ registryContextId: null, loading: false, error: err });
         }
-      } finally {
-        inFlightRef.current = false;
       }
     })();
     return () => {
