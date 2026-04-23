@@ -59,7 +59,12 @@ export const WELCOME_CONTENT = `
 
 export interface EditorShellProps {
   documentName: string;
-  onDocumentNameChange: (name: string) => void;
+  /** Optional — when undefined the title renders as static text in
+   *  the header, matching the underlying EditorHeader's read-only
+   *  mode. Callers gating rename on permissions should pass
+   *  undefined rather than a no-op so the UI surface accurately
+   *  reflects capability. */
+  onDocumentNameChange?: (name: string) => void;
   onBack?: () => void;
   onDelete?: () => void;
   /** Called with the current HTML on every Tiptap update. Caller

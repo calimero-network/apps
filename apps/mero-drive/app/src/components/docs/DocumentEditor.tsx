@@ -62,6 +62,12 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
   const { namespaceId } = useWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const docs = useDocs(folderId);
+  // Destructure the stable useCallback methods into local consts so
+  // the react-hooks/exhaustive-deps rule sees a plain identifier
+  // rather than a member access (which it can't track). Depending on
+  // these individually avoids cascading re-memoization every render
+  // caused by useDocs returning a fresh object literal.
+  const { edit: docsEdit, remove: docsRemove, contextId: docsContextId } = docs;
   const confirm = useConfirm();
 
   // The loaded doc. `null` while fetching; `null + not loading`
@@ -87,6 +93,17 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
     docRef.current = doc;
   }, [doc]);
 
+  // Mirror docs.edit into a ref so the unmount-flush cleanup
+  // always calls the current implementation without the effect
+  // having to list docs.edit as a dep (which would re-fire the
+  // effect on every identity change, firing cleanup flushes
+  // opportunistically when we only want them on real unmount /
+  // docId change).
+  const docsEditRef = useRef(docsEdit);
+  useEffect(() => {
+    docsEditRef.current = docsEdit;
+  }, [docsEdit]);
+
   const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unmountedRef = useRef(false);
 
@@ -109,8 +126,9 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
   // useDocs resolves the context asynchronously, so `docs.get` on
   // first render would throw "docs context not ready" and the
   // effect would never re-run (since docId wouldn't change).
+  const docsGet = docs.get;
   useEffect(() => {
-    if (!docs.contextId) {
+    if (!docsContextId) {
       // Stay in loading until the context is resolved. Error from
       // useDocs (resolveError) is surfaced via the `docs.error`
       // path, separate from this load's loadError.
@@ -120,8 +138,7 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
     setLoading(true);
     setLoadError(null);
     setDoc(null);
-    docs
-      .get(docId)
+    docsGet(docId)
       .then((d) => {
         if (!alive) return;
         setDoc(d);
@@ -141,12 +158,14 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
     return () => {
       alive = false;
     };
-    // `docs.get` is a stable useCallback; we intentionally depend
-    // only on docId + contextId so the effect doesn't re-run on
-    // every docs-list refetch.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [docId, docs.contextId]);
+  }, [docId, docsContextId, docsGet]);
 
+  // Depend on `docs.edit` (the stable useCallback from useDocs),
+  // not the whole `docs` object literal. The object is freshly
+  // constructed every useDocs render, which would cascade through
+  // every callback that depends on it — ultimately forcing
+  // EditorShell's Tiptap `update` handler to teardown + re-bind
+  // on every render of DocumentEditor.
   const persistContent = useCallback(
     async (content: string) => {
       const currentDoc = docRef.current;
@@ -159,7 +178,7 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
       }
       setSaveStatus('saving');
       try {
-        await docs.edit(currentDoc.id, { content });
+        await docsEdit(currentDoc.id, { content });
         if (unmountedRef.current) return;
         // Record the server-acked content WITHOUT triggering
         // EditorShell's initialContent effect. Updating doc.content
@@ -175,7 +194,7 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         console.error('autosave failed', e);
       }
     },
-    [docs],
+    [docsEdit],
   );
 
   const onContentChange = useCallback(
@@ -196,9 +215,16 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
   );
 
   // Flush any pending autosave on unmount so closing the editor
-  // mid-typing doesn't lose the last keystrokes. Reading via refs
-  // — the cleanup closure is set up on first render when `doc`
-  // was null, so a stale-null capture would bail without flushing.
+  // mid-typing doesn't lose the last keystrokes. Reads everything
+  // via refs:
+  //   - docRef.current        → current loaded doc (cleanup closure
+  //     is set up on first render when `doc` was null, so a stale-
+  //     null capture would bail without flushing).
+  //   - docsEditRef.current   → current docs.edit implementation.
+  //     Listing docs.edit directly in the dep array would fire
+  //     the cleanup on every identity change (e.g. context refresh),
+  //     flushing opportunistically when we want the flush only on
+  //     real unmount / docId change.
   useEffect(() => {
     return () => {
       cancelPendingAutosave();
@@ -208,8 +234,8 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
       if (content === lastSavedContentRef.current) return;
       // Fire-and-forget: component is already unmounting, can't
       // report status.
-      docs
-        .edit(currentDoc.id, { content })
+      docsEditRef
+        .current(currentDoc.id, { content })
         .catch((e) => console.warn('unmount flush failed', e));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -247,7 +273,7 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
 
       setSaveStatus('saving');
       try {
-        await docs.edit(currentDoc.id, { title });
+        await docsEdit(currentDoc.id, { title });
         if (unmountedRef.current) return;
         setDoc((prev) => (prev ? { ...prev, title } : prev));
         setSaveStatus('saved');
@@ -258,7 +284,10 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         console.error('rename failed', e);
       }
     },
-    [cancelPendingAutosave, persistContent, docs],
+    // docsEdit is stable (useCallback in useDocs); depending on
+    // the individual method instead of the whole docs object keeps
+    // this callback's identity stable across useDocs re-renders.
+    [cancelPendingAutosave, persistContent, docsEdit],
   );
 
   const onDelete = useCallback(async () => {
@@ -281,13 +310,15 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
     // edit to a just-removed doc.
     cancelPendingAutosave();
     try {
-      await docs.remove(currentDoc.id);
+      await docsRemove(currentDoc.id);
       onClose();
     } catch (e) {
       console.error('delete failed', e);
       setSaveStatus('error');
     }
-  }, [confirm, docs, cancelPendingAutosave, onClose]);
+    // Individual stable methods, not the whole docs object — see
+    // persistContent for why.
+  }, [confirm, docsRemove, cancelPendingAutosave, onClose]);
 
   if (loadError) {
     return (
@@ -309,10 +340,12 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
       documentName={documentName}
       // Every mutation handler gates on perms.canWrite so read-only
       // viewers can't accidentally (or intentionally) rename, edit,
-      // or delete. EditorShell's readOnly flag additionally puts
-      // Tiptap and the header into a display-only mode so the UI
-      // reflects the capability.
-      onDocumentNameChange={onDocumentNameChange}
+      // or delete. Defense-in-depth: EditorShell's readOnly flag
+      // also puts Tiptap and the header into a display-only mode,
+      // but the binding-level gate is the authoritative guard so
+      // a future caller that forgets readOnly still can't fire
+      // mutations on a read-only doc.
+      onDocumentNameChange={perms.canWrite ? onDocumentNameChange : undefined}
       onBack={onClose}
       onDelete={perms.canWrite ? onDelete : undefined}
       onContentChange={perms.canWrite ? onContentChange : undefined}
@@ -320,7 +353,7 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
       initialContent={doc?.content}
       saveStatus={saveStatus}
       lastSavedAt={lastSavedAt}
-      isAppReady={!!namespaceId && !!docs.contextId}
+      isAppReady={!!namespaceId && !!docsContextId}
       isLoading={loading}
     />
   );
