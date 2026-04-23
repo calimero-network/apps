@@ -166,20 +166,29 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
   // every callback that depends on it — ultimately forcing
   // EditorShell's Tiptap `update` handler to teardown + re-bind
   // on every render of DocumentEditor.
+  //
+  // Returns true if the content was successfully persisted (or was
+  // already at the last-saved value and required no round-trip),
+  // false if the save failed. Callers that chain another mutation
+  // off a successful flush (e.g. onDocumentNameChange flushing
+  // content before a rename) must check the return — silently
+  // proceeding after a failed flush would set a stale 'saved'
+  // status and mislead the user into thinking their content edits
+  // made it through.
   const persistContent = useCallback(
-    async (content: string) => {
+    async (content: string): Promise<boolean> => {
       const currentDoc = docRef.current;
-      if (!currentDoc) return;
+      if (!currentDoc) return true;
       if (content === lastSavedContentRef.current) {
         // Nothing changed since the last server ack — skip the
         // round-trip. Tiptap re-emits the same HTML on unrelated
         // events (selection / focus), this guard prevents spamming.
-        return;
+        return true;
       }
       setSaveStatus('saving');
       try {
         await docsEdit(currentDoc.id, { content });
-        if (unmountedRef.current) return;
+        if (unmountedRef.current) return true;
         // Record the server-acked content WITHOUT triggering
         // EditorShell's initialContent effect. Updating doc.content
         // here would make EditorShell call setContent(savedHTML),
@@ -197,10 +206,12 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         } else {
           setSaveStatus('saved');
         }
+        return true;
       } catch (e: unknown) {
-        if (unmountedRef.current) return;
+        if (unmountedRef.current) return false;
         setSaveStatus('error');
         console.error('autosave failed', e);
+        return false;
       }
     },
     [docsEdit],
@@ -275,9 +286,14 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
       // rename — cancelling the debounce would otherwise discard
       // content edits between the last keystroke and this rename,
       // since nothing re-triggers the content save afterwards.
+      // If the flush fails, bail without issuing the rename:
+      // proceeding would flip saveStatus to 'saved' after the
+      // rename lands, misleading the user into thinking their
+      // content edits were persisted when they weren't.
       if (autosaveTimeoutRef.current) {
         cancelPendingAutosave();
-        await persistContent(workingContentRef.current);
+        const flushed = await persistContent(workingContentRef.current);
+        if (!flushed) return;
       }
 
       setSaveStatus('saving');
