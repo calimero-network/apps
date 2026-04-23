@@ -188,10 +188,14 @@ steps:
     outputs:
       viewer_caps: capabilities
 
+  # NB. Use the `A == B` operator form, not `equal(A, B)` — the
+  # operator path in merobox's assert DSL coerces to float for numeric
+  # comparison, whereas `equal()` does strict Python `==` and fails
+  # when the captured value is int but the literal is parsed as str.
   - name: Assert Viewer bitmask == 1
     type: assert
     statements:
-      - 'equal({{viewer_caps}}, 1)'
+      - '{{viewer_caps}} == 1'
 
   - name: Set Bob to Editor preset (READ | WRITE = 3)
     type: set_member_capabilities
@@ -211,7 +215,7 @@ steps:
   - name: Assert Editor bitmask == 3
     type: assert
     statements:
-      - 'equal({{editor_caps}}, 3)'
+      - '{{editor_caps}} == 3'
 
   - name: Set Bob to Admin preset (all six bits = 63)
     type: set_member_capabilities
@@ -231,7 +235,7 @@ steps:
   - name: Assert Admin bitmask == 63
     type: assert
     statements:
-      - 'equal({{admin_caps}}, 63)'
+      - '{{admin_caps}} == 63'
 
   # Also test a non-preset "Custom" mask so the MemberRoleSelect
   # "Custom" branch has backend coverage (WRITE without READ — odd
@@ -255,7 +259,7 @@ steps:
   - name: Assert non-preset bitmask stored verbatim == 2
     type: assert
     statements:
-      - 'equal({{custom_caps}}, 2)'
+      - '{{custom_caps}} == 2'
 
   # Cross-node propagation check: Bob's own node should see the same
   # capability bitmask that Alice just wrote. Validates the namespace
@@ -275,7 +279,7 @@ steps:
   - name: Assert Bob's node agrees with Alice's node (== 2)
     type: assert
     statements:
-      - 'equal({{bob_view_caps}}, 2)'
+      - '{{bob_view_caps}} == 2'
 
   # =================================================================
   # Phase G: set_default_capabilities + set_default_visibility
