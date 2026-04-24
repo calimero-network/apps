@@ -23,8 +23,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
-import { useRegistry } from '@/context/RegistryContext';
-import { useWorkspace } from '@/context/WorkspaceContext';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderOperations } from '@/hooks/useFolderOperations';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { FolderVisibilityToggle } from './FolderVisibilityToggle';
@@ -41,8 +40,8 @@ export function FolderContextMenu({
   currentVisibility,
   onRename,
 }: Props) {
-  const { namespaceId, rootGroupId } = useWorkspace();
-  const { folders, registryClient } = useRegistry();
+  const { namespaceId, rootGroupId } = useDriveWorkspace();
+  const { folders, registryClient } = useDriveWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const ops = useFolderOperations(
     registryClient,

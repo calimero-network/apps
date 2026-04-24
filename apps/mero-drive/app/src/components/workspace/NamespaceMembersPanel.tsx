@@ -10,13 +10,13 @@
 // view, tracked separately).
 
 import React, { useState } from 'react';
-import { useWorkspace } from '@/context/WorkspaceContext';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderMembership } from '@/hooks/useFolderMembership';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { NamespaceMemberRow } from '@/components/admin/NamespaceMemberRow';
 
 export function NamespaceMembersPanel() {
-  const { namespaceId, rootGroupId } = useWorkspace();
+  const { namespaceId, rootGroupId } = useDriveWorkspace();
   const perms = useNamespacePermissions(namespaceId ?? '', rootGroupId ?? '');
   const membership = useFolderMembership(rootGroupId);
   const [removeError, setRemoveError] = useState<string | null>(null);

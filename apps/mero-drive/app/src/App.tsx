@@ -24,8 +24,6 @@ import { AppMode, MeroProvider } from '@calimero-network/mero-react';
 import { ToastProvider } from '@calimero-network/mero-ui';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ConfirmProvider } from '@/components/ui/confirm-dialog';
-import { WorkspaceProvider } from '@/context/WorkspaceContext';
-import { RegistryProvider } from '@/context/RegistryContext';
 
 import LandingPage from './pages/landing';
 import Authenticate from './pages/login/Authenticate';
@@ -41,27 +39,20 @@ export default function App() {
       packageName={packageName}
       registryUrl={registryUrl}
     >
-      {/* Phase 3 collapses WorkspaceProvider + RegistryProvider into
-          useDriveWorkspace. Kept here transitionally so every Phase-2
-          commit is functional and reviewable. */}
-      <WorkspaceProvider>
-        <RegistryProvider>
-          <ToastProvider>
-            <TooltipProvider>
-              <ConfirmProvider>
-                <BrowserRouter>
-                  <Routes>
-                    <Route path="/" element={<LandingPage />} />
-                    <Route path="/login" element={<Authenticate />} />
-                    <Route path="/app/*" element={<WorkspacePage />} />
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                  </Routes>
-                </BrowserRouter>
-              </ConfirmProvider>
-            </TooltipProvider>
-          </ToastProvider>
-        </RegistryProvider>
-      </WorkspaceProvider>
+      <ToastProvider>
+        <TooltipProvider>
+          <ConfirmProvider>
+            <BrowserRouter>
+              <Routes>
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/login" element={<Authenticate />} />
+                <Route path="/app/*" element={<WorkspacePage />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </BrowserRouter>
+          </ConfirmProvider>
+        </TooltipProvider>
+      </ToastProvider>
     </MeroProvider>
   );
 }

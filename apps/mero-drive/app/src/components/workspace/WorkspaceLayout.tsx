@@ -25,12 +25,11 @@ import { FolderBreadcrumb } from '@/components/folders/FolderBreadcrumb';
 import { FolderSharingPanel } from '@/components/folders/FolderSharingPanel';
 import { DocumentList } from '@/components/docs/DocumentList';
 import { DocumentEditor } from '@/components/docs/DocumentEditor';
-import { useWorkspace } from '@/context/WorkspaceContext';
-import { useRegistry } from '@/context/RegistryContext';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 
 export function WorkspaceLayout() {
-  const { namespaceId, selectedFolderId } = useWorkspace();
-  const { folders } = useRegistry();
+  const { namespaceId, selectedFolderId } = useDriveWorkspace();
+  const { folders } = useDriveWorkspace();
   const { nodeUrl, isOnline, logout } = useMero();
   const selectedFolder = folders.find((f) => f.id === selectedFolderId);
 

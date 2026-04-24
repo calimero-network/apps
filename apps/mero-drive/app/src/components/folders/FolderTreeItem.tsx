@@ -14,8 +14,7 @@ import type { TreeNode } from '@/utils/ancestry';
 import { safeColor } from '@/utils/validation';
 import { MAX_ALIAS_LENGTH } from '@/constants/config';
 import type { MergedFolder } from '@/hooks/useWorkspaceTree';
-import { useRegistry } from '@/context/RegistryContext';
-import { useWorkspace } from '@/context/WorkspaceContext';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderOperations } from '@/hooks/useFolderOperations';
 import { FolderContextMenu } from './FolderContextMenu';
 
@@ -49,8 +48,8 @@ export function FolderTreeItem({
   // catch it and the rename runs twice.
   const submitRenameInFlightRef = useRef(false);
 
-  const { rootGroupId } = useWorkspace();
-  const { folders, registryClient } = useRegistry();
+  const { rootGroupId } = useDriveWorkspace();
+  const { folders, registryClient } = useDriveWorkspace();
   const ops = useFolderOperations(
     registryClient,
     rootGroupId,

@@ -17,7 +17,7 @@ import React, { useState } from 'react';
 import { Trash2, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
-import { useWorkspace } from '@/context/WorkspaceContext';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useFolderMembership } from '@/hooks/useFolderMembership';
 
@@ -45,7 +45,7 @@ interface Props {
 const IDENTITY_LOOKS_VALID = /^[1-9A-HJ-NP-Za-km-z]{40,50}$/;
 
 export function FolderSharingPanel({ folderId }: Props) {
-  const { namespaceId } = useWorkspace();
+  const { namespaceId } = useDriveWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const { members, loading, error, add, remove, refetch } =
     useFolderMembership(folderId);

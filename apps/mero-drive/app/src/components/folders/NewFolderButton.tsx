@@ -15,7 +15,7 @@
 import React, { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useWorkspace } from '@/context/WorkspaceContext';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { NewFolderDialog } from './NewFolderDialog';
@@ -33,7 +33,7 @@ export function NewFolderButton({
   size = 'sm',
   variant = 'outline',
 }: Props) {
-  const { namespaceId, rootGroupId } = useWorkspace();
+  const { namespaceId, rootGroupId } = useDriveWorkspace();
   const nsPerms = useNamespacePermissions(namespaceId ?? '', rootGroupId ?? '');
   const folderPerms = useFolderPermissions(
     namespaceId ?? '',

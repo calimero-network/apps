@@ -10,8 +10,7 @@
 import React, { useState } from 'react';
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { Eye, EyeOff } from 'lucide-react';
-import { useRegistry } from '@/context/RegistryContext';
-import { useWorkspace } from '@/context/WorkspaceContext';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 
 interface Props {
@@ -21,8 +20,8 @@ interface Props {
 }
 
 export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
-  const { namespaceId } = useWorkspace();
-  const { registryClient } = useRegistry();
+  const { namespaceId } = useDriveWorkspace();
+  const { registryClient } = useDriveWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const [busy, setBusy] = useState(false);
 

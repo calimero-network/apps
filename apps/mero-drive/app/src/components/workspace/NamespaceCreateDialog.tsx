@@ -1,28 +1,13 @@
-// New-workspace modal. Calls mero.admin.createNamespace directly
-// with the current applicationId and a user-supplied alias, then
-// auto-switches the active workspace to the newly created namespace.
-// CreateNamespaceRequest requires `upgradePolicy`. Valid values are
-// defined by core's `UpgradePolicy` enum:
-// `Automatic | LazyOnAccess | Coordinated { deadline }`
-// (core/crates/primitives/src/context.rs). We default to `Automatic`
-// which upgrades all contexts immediately when the group target
-// changes — matches what the battleships app uses and what the node
-// actually accepts. An earlier `'latest'` value deserialized to none
-// of these variants and silently 4xx'd, which combined with the
-// error-swallowing in the next paragraph made the failure mystifying.
-//
-// We bypass mero-react's useCreateNamespace hook because its
-// useAsyncMutation helper swallows the real server error into a
-// `null` return + internal state (setState queued async, stale by
-// the time our await resolves). Calling the admin API directly lets
-// us catch the actual HTTP body / network error and surface it to
-// the user verbatim.
+// New-workspace modal. Delegates the full create flow to
+// useDriveWorkspace().createWorkspace — one call creates the
+// namespace AND the Registry context atomically (see the hook's
+// file header for the convention). Errors surface as a visible
+// message; no silent no-ops.
 
 import React, { useState } from 'react';
-import { useMero } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
-import { ENV_APPLICATION_ID, MAX_ALIAS_LENGTH } from '@/constants/config';
-import { useWorkspace } from '@/context/WorkspaceContext';
+import { MAX_ALIAS_LENGTH } from '@/constants/config';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 
 interface Props {
   onClose: () => void;
@@ -31,10 +16,12 @@ interface Props {
 
 export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
   const [name, setName] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const { mero } = useMero();
-  const { setNamespace } = useWorkspace();
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const {
+    createWorkspace,
+    createWorkspaceLoading: submitting,
+    createWorkspaceError,
+  } = useDriveWorkspace();
 
   const trimmed = name.trim();
   const canSubmit =
@@ -43,68 +30,43 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
   const onCreate = async () => {
     const alias = name.trim();
     if (!alias) {
-      setError('Workspace name required');
+      setSubmitError('Workspace name required');
       return;
     }
     if (alias.length > MAX_ALIAS_LENGTH) {
-      setError(`Workspace name must be ${MAX_ALIAS_LENGTH} characters or fewer`);
+      setSubmitError(`Workspace name must be ${MAX_ALIAS_LENGTH} characters or fewer`);
       return;
     }
-    setSubmitting(true);
-    setError(null);
+    setSubmitError(null);
 
-    // Scope the error-surfacing try/catch tightly to the namespace
-    // creation itself. Post-create bookkeeping (refetch via
-    // onCreated) runs outside this block — if it throws, the user
-    // still gets their namespace created + switched, and we close
-    // the dialog rather than surfacing a misleading "failed" error
-    // that would tempt them to retry and create a duplicate.
-    if (!mero) {
-      setError('Calimero client not ready — try reloading the page.');
-      setSubmitting(false);
+    const nsId = await createWorkspace(alias);
+    if (!nsId) {
+      // createWorkspace sets createWorkspaceError internally; surface
+      // its message. If absent, fall back to a generic line.
+      setSubmitError(createWorkspaceError?.message ?? 'Workspace creation failed');
       return;
     }
 
-    try {
-      const res = await mero.admin.createNamespace({
-        applicationId: ENV_APPLICATION_ID,
-        upgradePolicy: 'Automatic',
-        alias,
-      });
-      if (!res?.namespaceId) {
-        throw new Error('createNamespace returned no namespaceId');
-      }
-      // namespaceId is also the root groupId at this layer — see
-      // NamespaceSwitcher's file header.
-      setNamespace(res.namespaceId, res.namespaceId);
-    } catch (e: unknown) {
-      const err = e instanceof Error ? e : new Error(String(e));
-      setError(err.message);
-      setSubmitting(false);
-      return;
-    }
-
-    // Best-effort refetch of the namespaces list. Failure here is
-    // non-fatal — the workspace is created and switched; the list
-    // will refresh on the next natural trigger (component remount,
-    // explicit refetch, etc.).
+    // Best-effort refetch on the caller side. Failure here is non-
+    // fatal — the workspace is created and selected.
     try {
       await onCreated?.();
     } catch (e) {
       console.warn('post-create refetch failed', e);
     }
-    setSubmitting(false);
     onClose();
   };
 
   // Dismissal is gated on !submitting across all three paths
   // (Cancel / backdrop / Escape). Without this, dismissing mid-
-  // request unmounts the dialog while createNamespace is still in
-  // flight — on failure, setError targets an unmounted component
-  // and the user gets no feedback.
+  // request unmounts the dialog while createWorkspace is still in
+  // flight — on failure, setSubmitError targets an unmounted
+  // component and the user gets no feedback.
   const safeClose = () => {
     if (!submitting) onClose();
   };
+
+  const displayError = submitError ?? createWorkspaceError?.message ?? null;
 
   return (
     <div
@@ -125,7 +87,7 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
           maxLength={MAX_ALIAS_LENGTH}
           onChange={(e) => {
             setName(e.target.value);
-            setError(null);
+            setSubmitError(null);
           }}
           disabled={submitting}
           autoFocus
@@ -134,8 +96,8 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
             if (e.key === 'Escape') safeClose();
           }}
         />
-        {error && (
-          <p className="mt-2 text-xs text-destructive">{error}</p>
+        {displayError && (
+          <p className="mt-2 text-xs text-destructive break-words">{displayError}</p>
         )}
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="ghost" size="sm" onClick={safeClose} disabled={submitting}>

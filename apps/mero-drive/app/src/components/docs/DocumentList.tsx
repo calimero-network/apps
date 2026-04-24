@@ -10,7 +10,7 @@
 import React, { useState } from 'react';
 import { FileText, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useWorkspace } from '@/context/WorkspaceContext';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useDocs } from '@/hooks/useDocs';
 
@@ -21,7 +21,7 @@ interface Props {
 }
 
 export function DocumentList({ folderId, selectedDocId, onOpen }: Props) {
-  const { namespaceId } = useWorkspace();
+  const { namespaceId } = useDriveWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const docs = useDocs(folderId);
   const [creating, setCreating] = useState(false);

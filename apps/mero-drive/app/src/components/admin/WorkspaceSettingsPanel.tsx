@@ -15,14 +15,13 @@ import React from 'react';
 import { RefreshCw } from 'lucide-react';
 import { useSubgroups } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
-import { useWorkspace } from '@/context/WorkspaceContext';
-import { useRegistry } from '@/context/RegistryContext';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { useReconcile } from '@/hooks/useReconcile';
 
 export function WorkspaceSettingsPanel() {
-  const { namespaceId, rootGroupId } = useWorkspace();
-  const { registryClient } = useRegistry();
+  const { namespaceId, rootGroupId } = useDriveWorkspace();
+  const { registryClient } = useDriveWorkspace();
   const perms = useNamespacePermissions(namespaceId ?? '', rootGroupId ?? '');
   const { subgroups } = useSubgroups(rootGroupId);
   const { run, running, last, error } = useReconcile(

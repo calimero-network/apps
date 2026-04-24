@@ -9,16 +9,15 @@
 import React from 'react';
 import { ChevronRight } from 'lucide-react';
 import { ancestorsOf } from '@/utils/ancestry';
-import { useRegistry } from '@/context/RegistryContext';
-import { useWorkspace } from '@/context/WorkspaceContext';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 
 interface Props {
   folderId: string;
 }
 
 export function FolderBreadcrumb({ folderId }: Props) {
-  const { folders } = useRegistry();
-  const { setSelectedFolder } = useWorkspace();
+  const { folders } = useDriveWorkspace();
+  const { setSelectedFolder } = useDriveWorkspace();
 
   const byId = React.useMemo(
     () => new Map(folders.map((f) => [f.id, f])),

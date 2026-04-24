@@ -13,8 +13,7 @@ import { Button } from '@/components/ui/button';
 import { MAX_ALIAS_LENGTH, MAX_FOLDER_DEPTH } from '@/constants/config';
 import { depthOf } from '@/utils/ancestry';
 import { COLOR_ALLOWLIST } from '@/utils/validation';
-import { useRegistry } from '@/context/RegistryContext';
-import { useWorkspace } from '@/context/WorkspaceContext';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderOperations } from '@/hooks/useFolderOperations';
 
 interface Props {
@@ -23,8 +22,8 @@ interface Props {
 }
 
 export function NewFolderDialog({ parentFolderId, onClose }: Props) {
-  const { namespaceId, rootGroupId } = useWorkspace();
-  const { folders, registryClient } = useRegistry();
+  const { namespaceId, rootGroupId } = useDriveWorkspace();
+  const { folders, registryClient } = useDriveWorkspace();
   const ops = useFolderOperations(
     registryClient,
     rootGroupId,

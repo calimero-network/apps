@@ -17,8 +17,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DocDto } from '../api/docs/DocsClient';
-import { useRegistry } from '../context/RegistryContext';
-import { useWorkspace } from '../context/WorkspaceContext';
+import { useDriveWorkspace } from '../hooks/useDriveWorkspace';
 import { useSelfIdentity } from './useSelfIdentity';
 import { useDocsClient } from './useDocsClient';
 import { useDocEvents } from './useDocEvents';
@@ -41,9 +40,9 @@ export interface UseDocsState {
 }
 
 export function useDocs(folderId: string | null): UseDocsState {
-  const { namespaceId } = useWorkspace();
+  const { namespaceId } = useDriveWorkspace();
   const { identity } = useSelfIdentity(namespaceId);
-  const { registryClient } = useRegistry();
+  const { registryClient } = useDriveWorkspace();
 
   const [contextId, setContextId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<Error | null>(null);

@@ -41,7 +41,7 @@ import { EditorShell } from '@/components/editor/EditorShell';
 import type { SaveStatus } from '@/components/editor/types';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { MAX_ALIAS_LENGTH } from '@/constants/config';
-import { useWorkspace } from '@/context/WorkspaceContext';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useDocs } from '@/hooks/useDocs';
 import type { DocDto } from '@/api/docs/DocsClient';
@@ -59,7 +59,7 @@ interface Props {
 const AUTOSAVE_DEBOUNCE_MS = 900;
 
 export function DocumentEditor({ folderId, docId, onClose }: Props) {
-  const { namespaceId } = useWorkspace();
+  const { namespaceId } = useDriveWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const docs = useDocs(folderId);
   // Destructure the stable useCallback methods into local consts so

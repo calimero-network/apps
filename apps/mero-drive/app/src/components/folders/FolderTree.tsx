@@ -6,8 +6,7 @@
 
 import React, { useMemo } from 'react';
 import { buildTree } from '@/utils/ancestry';
-import { useRegistry } from '@/context/RegistryContext';
-import { useWorkspace } from '@/context/WorkspaceContext';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { FolderTreeItem } from './FolderTreeItem';
 import { NewFolderButton } from './NewFolderButton';
 
@@ -22,8 +21,8 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 export function FolderTree() {
-  const { folders, loading, stage, error } = useRegistry();
-  const { selectedFolderId, setSelectedFolder, namespaceId } = useWorkspace();
+  const { folders, loading, stage, error } = useDriveWorkspace();
+  const { selectedFolderId, setSelectedFolder, namespaceId } = useDriveWorkspace();
 
   const tree = useMemo(
     () => buildTree(folders.map((f) => ({ id: f.id, parent_id: f.parent_id }))),

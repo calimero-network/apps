@@ -1,33 +1,36 @@
-// Top-bar namespace picker. Renders the list of namespaces for
-// this application and lets the user select the active workspace.
-// Selection flows into WorkspaceContext, which every downstream
-// hook subscribes to.
+// Top-bar namespace picker. Renders the list of namespaces for this
+// application (from useDriveWorkspace — which reads
+// `useNamespacesForApplication` internally) and lets the user switch
+// the active workspace.
 //
-// Namespace and root-group are the same id under the current admin
-// API (namespaceId is used as the parent groupId for
-// createGroupInNamespace, reparent_group, useSubgroups, etc.), so
-// we pass namespaceId for both slots of setNamespace.
+// namespaceId doubles as the root groupId under the current admin
+// API (it's the parent groupId for createGroupInNamespace,
+// useSubgroups, etc.) — useDriveWorkspace exposes both fields but
+// derives `rootGroupId` from `selectedNamespaceId` directly.
 
 import React, { useState } from 'react';
-import { useNamespacesForApplication } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
-import { ENV_APPLICATION_ID } from '@/constants/config';
-import { useWorkspace } from '@/context/WorkspaceContext';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { NamespaceCreateDialog } from './NamespaceCreateDialog';
 
 export function NamespaceSwitcher() {
-  const appId = ENV_APPLICATION_ID;
-  const { namespaces, loading, error, refetch } = useNamespacesForApplication(appId);
-  const { namespaceId, setNamespace } = useWorkspace();
+  const {
+    namespaces,
+    selectedNamespaceId,
+    selectNamespace,
+    loading,
+    error,
+    refetch,
+  } = useDriveWorkspace();
   const [showCreate, setShowCreate] = useState(false);
 
-  if (loading) {
+  if (loading && namespaces.length === 0) {
     return (
       <div className="px-3 py-1.5 text-sm text-muted-foreground">Loading workspaces…</div>
     );
   }
 
-  if (error) {
+  if (error && namespaces.length === 0) {
     return (
       <div className="px-3 py-1.5 text-sm text-destructive" title={error.message}>
         Failed to load workspaces
@@ -39,13 +42,11 @@ export function NamespaceSwitcher() {
     <div className="flex items-center gap-2">
       <select
         className="h-9 px-2 rounded-md border border-input bg-background text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        value={namespaceId ?? ''}
+        value={selectedNamespaceId ?? ''}
         onChange={(e) => {
           const id = e.target.value;
           if (!id) return;
-          // namespaceId doubles as the root groupId for admin-API
-          // calls — see file header.
-          setNamespace(id, id);
+          selectNamespace(id);
         }}
       >
         <option value="" disabled>

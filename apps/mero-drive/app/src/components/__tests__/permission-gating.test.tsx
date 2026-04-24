@@ -50,24 +50,31 @@ vi.mock('@/hooks/useReconcile', () => ({
     error: null,
   }),
 }));
-vi.mock('@/context/WorkspaceContext', () => ({
-  useWorkspace: () => ({
+// Single useDriveWorkspace mock replaces the old WorkspaceContext +
+// RegistryContext mocks. Fields match useDriveWorkspace's return
+// shape; each test overrides only what it cares about.
+vi.mock('@/hooks/useDriveWorkspace', () => ({
+  useDriveWorkspace: () => ({
+    applicationId: 'app',
+    selfIdentity: 'pk',
+    namespaces: [],
+    selectedNamespaceId: 'ns',
     namespaceId: 'ns',
-    rootGroupId: 'root',
+    rootGroupId: 'ns',
+    selectNamespace: vi.fn(),
+    clearNamespace: vi.fn(),
+    createWorkspace: vi.fn().mockResolvedValue('ns-new'),
+    createWorkspaceLoading: false,
+    createWorkspaceError: null,
+    registryContextId: 'ctx',
+    registryClient: {},
+    folders: [],
     selectedFolderId: 'f1',
     setSelectedFolder: vi.fn(),
-    setNamespace: vi.fn(),
-    clearNamespace: vi.fn(),
-  }),
-  WorkspaceProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-}));
-vi.mock('@/context/RegistryContext', () => ({
-  useRegistry: () => ({
-    folders: [],
-    registryClient: {},
     loading: false,
+    stage: 'ready',
     error: null,
-    registryContextId: 'ctx',
+    refetch: vi.fn(),
   }),
 }));
 vi.mock('@calimero-network/mero-react', () => ({
