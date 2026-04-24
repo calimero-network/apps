@@ -57,6 +57,7 @@ export function useSelfIdentity(namespaceId: string | null): SelfIdentityState {
     if (!mero) {
       // Wait for MeroProvider to finish init — next render will
       // have `mero` populated and this effect will re-fire.
+      console.debug('[useSelfIdentity] waiting for mero', { namespaceId });
       setState({ identity: null, loading: true, error: null });
       return;
     }
@@ -67,6 +68,7 @@ export function useSelfIdentity(namespaceId: string | null): SelfIdentityState {
     // member during the gap.
     setState({ identity: null, loading: true, error: null });
     let alive = true;
+    console.debug('[useSelfIdentity] fetching identity', { namespaceId });
     // core exposes this at GET /admin-api/namespaces/:id/identity
     // (NOT `/self-identity` — that older path returns 404). mero-js's
     // getNamespaceIdentity wraps it and returns { namespaceId,
@@ -75,12 +77,14 @@ export function useSelfIdentity(namespaceId: string | null): SelfIdentityState {
       .getNamespaceIdentity(namespaceId)
       .then((r) => {
         if (!alive) return;
+        console.debug('[useSelfIdentity] resolved', { namespaceId, publicKey: r.publicKey });
         localStorage.setItem(keyFor(namespaceId), r.publicKey);
         setState({ identity: r.publicKey, loading: false, error: null });
       })
       .catch((e: unknown) => {
         if (!alive) return;
         const err = e instanceof Error ? e : new Error(String(e));
+        console.error('[useSelfIdentity] failed', { namespaceId, error: err });
         setState({ identity: null, loading: false, error: err });
       });
     return () => {
