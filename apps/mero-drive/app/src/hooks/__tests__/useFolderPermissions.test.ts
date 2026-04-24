@@ -12,6 +12,12 @@ const capsMock: { value: { capabilities: number | null; loading: boolean; error:
 };
 vi.mock('@calimero-network/mero-react', () => ({
   useGroupCapabilities: () => capsMock.value,
+  useGroupMembers: () => ({
+    members: [],
+    selfIdentity: 'me',
+    loading: false,
+    error: null,
+  }),
 }));
 
 const identityMock: { value: string | null } = { value: 'me' };

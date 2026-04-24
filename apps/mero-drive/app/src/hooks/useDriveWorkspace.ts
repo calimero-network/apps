@@ -154,6 +154,57 @@ export function useDriveWorkspace(): DriveWorkspaceState {
   } = useGroupContexts(selectedNsId ?? undefined);
   const registryContextId = contexts.length > 0 ? contexts[0].contextId : null;
 
+  // Lazy-create fallback: if this namespace has no contexts at all
+  // (e.g. created before the atomic createWorkspace change, or
+  // createContext failed silently during create), seed the Registry
+  // context here on first observation of the empty state. Without
+  // this, `useGroupContexts(ns)` never returns anything and the UI
+  // hangs on "Bootstrapping workspace…" forever.
+  //
+  // Guarded by a ref so Strict-Mode double-mount / re-renders don't
+  // fire parallel create calls. The ref is keyed by namespaceId so a
+  // subsequent (different) orphan namespace also gets its one shot.
+  const lazyCreateRef = useRef<{ nsId: string; inFlight: boolean } | null>(null);
+  useEffect(() => {
+    if (!mero || !applicationId || !selectedNsId) return;
+    if (contextsLoading) return;
+    if (registryContextId) return;
+    if (
+      lazyCreateRef.current?.nsId === selectedNsId &&
+      lazyCreateRef.current.inFlight
+    ) {
+      return;
+    }
+    lazyCreateRef.current = { nsId: selectedNsId, inFlight: true };
+    (async () => {
+      try {
+        await mero.admin.createContext({
+          applicationId,
+          groupId: selectedNsId,
+          serviceName: REGISTRY_SERVICE_ID,
+          initializationParams: [],
+        });
+        await refetchContexts();
+      } catch (err) {
+        // Non-fatal — surface via regError so the UI can show a
+        // diagnostic instead of a perpetual spinner. Users can
+        // retry by switching namespace or reloading.
+        setRegError(err instanceof Error ? err : new Error(String(err)));
+      } finally {
+        if (lazyCreateRef.current?.nsId === selectedNsId) {
+          lazyCreateRef.current = { nsId: selectedNsId, inFlight: false };
+        }
+      }
+    })();
+  }, [
+    mero,
+    applicationId,
+    selectedNsId,
+    contextsLoading,
+    registryContextId,
+    refetchContexts,
+  ]);
+
   // --- Registry client (memoized) ---
   const registryClient = useMemo<RegistryClient | null>(() => {
     if (!mero || !registryContextId || !selfIdentity) return null;
