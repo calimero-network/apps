@@ -11,7 +11,7 @@
 // previous user's pubkey.
 
 import { useEffect, useState } from 'react';
-import { adminRequest } from '../api/adminApi';
+import { useMero } from '@calimero-network/mero-react';
 
 export interface SelfIdentityState {
   identity: string | null;
@@ -37,6 +37,7 @@ export function clearIdentityCache(): void {
 }
 
 export function useSelfIdentity(namespaceId: string | null): SelfIdentityState {
+  const { mero } = useMero();
   const [state, setState] = useState<SelfIdentityState>({
     identity: null,
     loading: !!namespaceId,
@@ -53,6 +54,12 @@ export function useSelfIdentity(namespaceId: string | null): SelfIdentityState {
       setState({ identity: cached, loading: false, error: null });
       return;
     }
+    if (!mero) {
+      // Wait for MeroProvider to finish init — next render will
+      // have `mero` populated and this effect will re-fire.
+      setState({ identity: null, loading: true, error: null });
+      return;
+    }
     // Reset synchronously before the fetch. Without this, switching
     // namespaces would briefly surface the previous namespace's
     // identity with `loading: false`, and downstream permission hooks
@@ -60,25 +67,26 @@ export function useSelfIdentity(namespaceId: string | null): SelfIdentityState {
     // member during the gap.
     setState({ identity: null, loading: true, error: null });
     let alive = true;
-    adminRequest<{ identity: string }>(`/namespaces/${namespaceId}/self-identity`)
+    // core exposes this at GET /admin-api/namespaces/:id/identity
+    // (NOT `/self-identity` — that older path returns 404). mero-js's
+    // getNamespaceIdentity wraps it and returns { namespaceId,
+    // publicKey }; we use publicKey as the per-namespace identity.
+    mero.admin
+      .getNamespaceIdentity(namespaceId)
       .then((r) => {
         if (!alive) return;
-        localStorage.setItem(keyFor(namespaceId), r.identity);
-        setState({ identity: r.identity, loading: false, error: null });
+        localStorage.setItem(keyFor(namespaceId), r.publicKey);
+        setState({ identity: r.publicKey, loading: false, error: null });
       })
       .catch((e: unknown) => {
         if (!alive) return;
-        // Normalise non-Error throws so consumers accessing
-        // `error.message` / `.stack` don't crash. adminRequest
-        // throws Error by construction, but promise rejection is
-        // `any` — keep the type contract honest at the boundary.
         const err = e instanceof Error ? e : new Error(String(e));
         setState({ identity: null, loading: false, error: err });
       });
     return () => {
       alive = false;
     };
-  }, [namespaceId]);
+  }, [namespaceId, mero]);
 
   return state;
 }

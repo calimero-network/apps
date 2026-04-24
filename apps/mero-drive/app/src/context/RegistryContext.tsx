@@ -31,10 +31,17 @@ export function RegistryProvider({ children }: { children: ReactNode }) {
     useWorkspaceBootstrap(namespaceId, rootGroupId, identity);
   const registryClient = useRegistryClient(registryContextId, identity);
   const { subgroups, loading: subLoading, error: subError } = useSubgroups(rootGroupId);
+  // `subgroups` defaults to an empty array in mero-react's hook
+  // initializer but can momentarily be undefined right after a
+  // namespace flip (setState on a still-unmounted internal ref),
+  // and useWorkspaceTree's memoized `.map(...)` throws if it's not
+  // iterable. Default here so the tree renders empty instead of
+  // crashing during the create-namespace → first-render window.
+  const safeSubgroups = subgroups ?? [];
   const { folders, loading: treeLoading, error: treeError } = useWorkspaceTree(
     rootGroupId,
     registryClient,
-    subgroups,
+    safeSubgroups,
     subLoading,
   );
 
