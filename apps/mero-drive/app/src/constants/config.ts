@@ -26,8 +26,8 @@ export function getApplicationId(): string {
   );
 }
 
-// Service ids inside the multi-service bundle. Must match
-// `logic/manifest.json`'s `services[].name`.
+// Service ids inside the multi-service bundle. Must match the
+// `services[].name` fields written by `logic/build-bundle.sh`.
 export const REGISTRY_SERVICE_ID = 'registry';
 export const DOCS_SERVICE_ID = 'docs';
 
