@@ -26,6 +26,11 @@ export interface RegistryFolderShape {
   parent_id: string | null;
   visibility: 'Inherit' | 'Restricted';
   color: string | null;
+  /** Registry-side alias. Set by useFolderOperations.create /
+   *  rename; readable by every namespace member regardless of
+   *  subgroup membership. Null / undefined for legacy folders
+   *  created before the registry contract gained the alias field. */
+  alias?: string | null;
 }
 
 export interface MergedFolder {
@@ -36,22 +41,37 @@ export interface MergedFolder {
   color: string | null;
 }
 
+// The registry WASM is the authoritative source of "which folders
+// exist" (it owns the tree shape + color + visibility + context
+// binding). Admin-side subgroups contribute only `alias` (the
+// human-readable name). Iterate the registry list so that folders
+// show up even when mero-js's listSubgroups is broken (it expects a
+// `{data}` wrapper but core returns `{subgroups}` — the folder body
+// resolves to undefined and admin comes back empty). Alias falls
+// back to a shortened id so the folder still renders and is
+// clickable with `admin` empty.
 export function mergeAdminAndRegistry(
   admin: AdminSubgroup[],
   registry: RegistryFolderShape[],
   rootId: string,
 ): { folders: MergedFolder[] } {
-  const regById = new Map(registry.map((r) => [r.id, r]));
-  const folders: MergedFolder[] = admin
-    .filter((g) => g.groupId !== rootId)
-    .map((g) => {
-      const r = regById.get(g.groupId);
+  const adminById = new Map(admin.map((a) => [a.groupId, a]));
+  const folders: MergedFolder[] = registry
+    .filter((r) => r.id !== rootId)
+    .map((r) => {
+      const a = adminById.get(r.id);
+      // Preference order: registry alias (visible to all namespace
+      // members) → admin alias (only visible to subgroup members) →
+      // truncated id stub (fallback for folders older than the
+      // registry alias field).
+      const alias =
+        r.alias ?? a?.alias ?? `folder-${r.id.slice(0, 8)}`;
       return {
-        id: g.groupId,
-        parent_id: g.parent_id,
-        alias: g.alias ?? g.groupId,
-        visibility: r?.visibility ?? 'Inherit',
-        color: r?.color ?? null,
+        id: r.id,
+        parent_id: r.parent_id,
+        alias,
+        visibility: r.visibility,
+        color: r.color,
       };
     });
   return { folders };

@@ -24,10 +24,12 @@ import { AppMode, MeroProvider } from '@calimero-network/mero-react';
 import { ToastProvider } from '@calimero-network/mero-ui';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ConfirmProvider } from '@/components/ui/confirm-dialog';
+import { DriveWorkspaceProvider } from '@/hooks/useDriveWorkspace';
 
 import LandingPage from './pages/landing';
 import Authenticate from './pages/login/Authenticate';
 import WorkspacePage from './pages/workspace';
+import JoinPage from './pages/join';
 
 export default function App() {
   const packageName = import.meta.env.VITE_PACKAGE_NAME?.trim() || undefined;
@@ -42,11 +44,24 @@ export default function App() {
       <ToastProvider>
         <TooltipProvider>
           <ConfirmProvider>
-            <BrowserRouter>
+            <BrowserRouter
+              future={{
+                v7_startTransition: true,
+                v7_relativeSplatPath: true,
+              }}
+            >
               <Routes>
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/login" element={<Authenticate />} />
-                <Route path="/app/*" element={<WorkspacePage />} />
+                <Route path="/join" element={<JoinPage />} />
+                <Route
+                  path="/app/*"
+                  element={
+                    <DriveWorkspaceProvider>
+                      <WorkspacePage />
+                    </DriveWorkspaceProvider>
+                  }
+                />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </BrowserRouter>

@@ -1,17 +1,17 @@
-// Folder membership read + mutation. Wraps mero-react's
-// useGroupMembers / useAddGroupMembers / useRemoveGroupMembers so
-// the UI can list members and invite/kick without touching the
-// admin-API directly.
+// Group membership read + mutation. Used by both the namespace-level
+// members panel (folderId = rootGroupId) and per-folder sharing UIs.
 //
-// Note: mero-react's GroupMember shape carries `role: string` rather
-// than `capabilities: number`. Capability bits are read separately
-// via useGroupCapabilities (per-member) in permission-aware UI.
-// This hook intentionally stays at the role/identity layer — the
-// permission hooks in Phase 6 own the cap-bit surface.
+// Why we DON'T use mero-react's useGroupMembers here:
+//   `mero.admin.listGroupMembers` is wire-shaped `{members, selfIdentity}`
+//   but mero-js's typed client reads `.data` — returning `{data: undefined}`
+//   that mero-react propagates as an empty list. Every namespace shows
+//   "No members yet" even when the server response has entries. Same
+//   workaround as useMemberCaps: call the admin client directly and
+//   cast through unknown to read the true wire shape.
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  useGroupMembers,
+  useMero,
   useAddGroupMembers,
   useRemoveGroupMembers,
   type GroupMember,
@@ -29,9 +29,53 @@ export interface FolderMembershipState {
 }
 
 export function useFolderMembership(folderId: string | null): FolderMembershipState {
-  const { members, loading, error, refetch } = useGroupMembers(folderId);
+  const { mero } = useMero();
   const { addGroupMembers } = useAddGroupMembers();
   const { removeGroupMembers } = useRemoveGroupMembers();
+
+  const [members, setMembers] = useState<GroupMember[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const aliveRef = useRef(true);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
+
+  const refetch = useCallback(async () => {
+    if (!mero || !folderId) {
+      setMembers([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      // Cast through unknown because DTS promises `{ data }` but the
+      // real wire body is `{ members, selfIdentity }`. Drop the cast
+      // when mero-js ships the fix.
+      const raw = (await mero.admin.listGroupMembers(
+        folderId,
+      )) as unknown as {
+        members?: GroupMember[];
+      };
+      if (!aliveRef.current) return;
+      setMembers(raw.members ?? []);
+    } catch (e: unknown) {
+      if (!aliveRef.current) return;
+      setError(e instanceof Error ? e : new Error(String(e)));
+    } finally {
+      if (aliveRef.current) setLoading(false);
+    }
+  }, [mero, folderId]);
+
+  useEffect(() => {
+    void refetch();
+  }, [refetch]);
 
   const add = useCallback(
     async (identity: string, role: string = 'member') => {

@@ -39,6 +39,37 @@ export interface UseDocsState {
   remove: (id: string) => Promise<void>;
 }
 
+// Module-level fan-out so every useDocs instance for the same
+// contextId re-reads the list when ANY instance mutates a doc.
+// Without this, DocumentEditor saves update its own state but the
+// sidebar's DocumentList stays stale until the page reloads — the
+// SSE path via useDocEvents is supposed to cover this but isn't
+// firing reliably in dev. A module-level pub/sub is a safe
+// complement: on mutation, both the SSE event (when it works) and
+// the explicit notification trigger a refetch — refetch itself is
+// guarded by inFlightRef so duplicate triggers collapse to one fetch.
+const docsRefetchersByContext = new Map<string, Set<() => void>>();
+function subscribeDocsRefetch(contextId: string, fn: () => void): () => void {
+  let bucket = docsRefetchersByContext.get(contextId);
+  if (!bucket) {
+    bucket = new Set();
+    docsRefetchersByContext.set(contextId, bucket);
+  }
+  bucket.add(fn);
+  return () => {
+    bucket?.delete(fn);
+    if (bucket && bucket.size === 0) {
+      docsRefetchersByContext.delete(contextId);
+    }
+  };
+}
+function notifyDocsRefetch(contextId: string | null) {
+  if (!contextId) return;
+  const bucket = docsRefetchersByContext.get(contextId);
+  if (!bucket) return;
+  for (const fn of bucket) fn();
+}
+
 export function useDocs(folderId: string | null): UseDocsState {
   const { namespaceId } = useDriveWorkspace();
   const { identity } = useSelfIdentity(namespaceId);
@@ -127,6 +158,17 @@ export function useDocs(folderId: string | null): UseDocsState {
   }, [refetch]);
   useDocEvents(contextId, onDocsEvent);
 
+  // Cross-instance refresh — when any other useDocs instance for the
+  // same docs context mutates, re-read our list too. See the
+  // docsRefetchersByContext comment above.
+  useEffect(() => {
+    if (!contextId) return;
+    const unsubscribe = subscribeDocsRefetch(contextId, () => {
+      void refetch();
+    });
+    return unsubscribe;
+  }, [contextId, refetch]);
+
   const create = useCallback(
     async (input: { title: string; content?: string }): Promise<string> => {
       if (!docsClient) throw new Error('docs context not ready');
@@ -135,9 +177,10 @@ export function useDocs(folderId: string | null): UseDocsState {
         content: input.content ?? '',
       });
       await refetch();
+      notifyDocsRefetch(contextId);
       return id;
     },
-    [docsClient, refetch],
+    [docsClient, refetch, contextId],
   );
 
   const edit = useCallback(
@@ -151,12 +194,19 @@ export function useDocs(folderId: string | null): UseDocsState {
         title: patch.title ?? null,
         content: patch.content ?? null,
       });
-      // Intentionally no refetch — the caller (DocumentEditor)
-      // manages its own per-doc state and would refetch via
-      // useDocEvents anyway. Autosaves would otherwise flicker the
-      // list on every keystroke.
+      // Only notify siblings when something the list renders actually
+      // changed. The sidebar shows title + timestamp but NOT content —
+      // so content autosaves (by far the most frequent edits) don't
+      // need to fan out. Notifying on every keystroke would trigger a
+      // list_docs refetch per autosave, compounding with other
+      // in-flight requests and starving edit_doc enough to make it
+      // look stuck on "Saving…".
+      const titleChanged = patch.title !== undefined && patch.title !== null;
+      if (titleChanged) {
+        notifyDocsRefetch(contextId);
+      }
     },
-    [docsClient],
+    [docsClient, contextId],
   );
 
   const get = useCallback(
@@ -172,8 +222,9 @@ export function useDocs(folderId: string | null): UseDocsState {
       if (!docsClient) throw new Error('docs context not ready');
       await docsClient.deleteDoc({ id });
       await refetch();
+      notifyDocsRefetch(contextId);
     },
-    [docsClient, refetch],
+    [docsClient, refetch, contextId],
   );
 
   return {

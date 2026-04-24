@@ -8,36 +8,67 @@
 //   - `capabilities` (u32 bitmask): per-member delegation for
 //     non-admin members.
 //
-// mero-react's useGroupCapabilities returns only the capability
-// override. For an Admin-role member that is typically 0, so a
-// pure-caps gate hides every affordance from the namespace creator.
-// We need the role too and OR it in: Admin → caps=63 (all bits).
+// Why we DON'T use mero-react's useGroupCapabilities / useGroupMembers:
+//   1. `listGroupMembers` is wire-shaped `{members, selfIdentity}` but
+//      mero-js's typed client expects `{data}` — so the typed path
+//      returns an empty array. We bypass it by casting through unknown.
+//   2. Right after `create_group_in_namespace`, the creator's
+//      membership row is published as a governance op but materialised
+//      asynchronously. For a short window (~0-2s) both
+//      `listGroupMembers` shows no matching identity and
+//      `getMemberCapabilities` returns 500 "identity is not a member".
+//      mero-react's hooks fire once on mount and don't retry — we'd
+//      stay stuck on that transient 500 until the next rerender. So
+//      we own the fetch here and retry on propagation-lag errors.
 //
-// Why we DON'T use mero-react's useGroupMembers to read the role:
-// mero-react 1.1.0 / mero-js 1.4.1 reads `response.data` from
-// `listGroupMembers`, but core actually serializes the list under
-// `response.members`. So useGroupMembers always reports members=[]
-// even when the real HTTP body has entries. This is the third
-// upstream bug in that stack we've worked around (after unwrap() and
-// useAsyncMutation error-swallow). We call `mero.admin.listGroupMembers`
-// directly and read the raw shape instead.
+// Retry schedule: 4 attempts at 0 / 500ms / 1500ms / 3500ms — about
+// 5.5s end-to-end. Empirically the governance op lands in <1s; the
+// long tail exists so hot-reloads / slow nodes also settle cleanly.
 //
 // State convention:
-//   - `caps = null, error = null` → loading.
+//   - `caps = null, error = null` → loading (including retries).
 //   - `caps = 0,    error = null` → non-admin with no override bits.
 //   - `caps > 0,    error = null` → actual bitmask (or 63 for Admins).
-//   - `caps = 0,    error = Error` → fetch failed; callers show a
-//     retry affordance rather than silently rendering "all denied".
+//   - `caps = 0,    error = Error` → retries exhausted; caller shows
+//     an error affordance rather than silently rendering "all denied".
 
 import { useEffect, useState } from 'react';
-import { useGroupCapabilities, useMero } from '@calimero-network/mero-react';
+import { useMero } from '@calimero-network/mero-react';
 import { useDriveWorkspace } from './useDriveWorkspace';
 
 const ALL_CAPS_BITMASK = 0b111111; // READ|WRITE|CREATE_GROUP|MANAGE_GROUP|INVITE_MEMBERS|MANAGE_MEMBERS
 
+const RETRY_DELAYS_MS = [0, 500, 1500, 3500];
+
 export interface MemberCapsState {
   caps: number | null;
   error: Error | null;
+}
+
+function isPropagationLagError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.includes('not a member');
+}
+
+function sleep(ms: number, signal: { aborted: boolean }): Promise<void> {
+  return new Promise((resolve) => {
+    if (ms === 0) {
+      resolve();
+      return;
+    }
+    const t = setTimeout(() => resolve(), ms);
+    // Poll the abort signal cheaply — if the hook unmounts mid-sleep
+    // we want to resolve immediately so the async loop can bail.
+    const poll = setInterval(() => {
+      if (signal.aborted) {
+        clearTimeout(t);
+        clearInterval(poll);
+        resolve();
+      }
+    }, 50);
+    // Clean up the poller when the timeout fires naturally.
+    setTimeout(() => clearInterval(poll), ms);
+  });
 }
 
 // `namespaceId` is retained in the signature (unused at this layer)
@@ -52,65 +83,76 @@ export function useMemberCaps(
   const { selfIdentity } = useDriveWorkspace();
   const memberId = selfIdentity ?? '';
 
-  const {
-    capabilities,
-    loading: capsLoading,
-    error: capsError,
-  } = useGroupCapabilities(groupId || undefined, memberId || undefined);
-
-  // Parallel direct-HTTP read of the members list to check our role.
-  // Not going through useGroupMembers because of the mero-react
-  // `response.data` bug documented in the file header.
-  const [role, setRole] = useState<string | null>(null);
-  const [rolesLoading, setRolesLoading] = useState<boolean>(false);
-  const [rolesError, setRolesError] = useState<Error | null>(null);
+  const [state, setState] = useState<MemberCapsState>({
+    caps: null,
+    error: null,
+  });
 
   useEffect(() => {
     if (!mero || !groupId || !memberId) {
-      setRole(null);
-      setRolesLoading(false);
-      setRolesError(null);
+      setState({ caps: null, error: null });
       return;
     }
-    let alive = true;
-    setRolesLoading(true);
-    setRolesError(null);
-    mero.admin
-      .listGroupMembers(groupId)
-      .then((raw) => {
-        if (!alive) return;
-        // Cast through unknown because the DTS promises
-        // `{ data, selfIdentity }` but the wire shape is
-        // `{ members, selfIdentity }`. When mero-js ships the fix
-        // we can drop the cast.
-        const real = raw as unknown as {
-          members?: Array<{ identity: string; role?: string }>;
-        };
-        const me = (real.members ?? []).find((m) => m.identity === memberId);
-        setRole(me?.role ?? null);
-        setRolesLoading(false);
-      })
-      .catch((err: unknown) => {
-        if (!alive) return;
-        setRolesError(err instanceof Error ? err : new Error(String(err)));
-        setRolesLoading(false);
-      });
+    const signal = { aborted: false };
+    setState({ caps: null, error: null });
+
+    (async () => {
+      let lastErr: unknown = null;
+      for (let attempt = 0; attempt < RETRY_DELAYS_MS.length; attempt++) {
+        if (signal.aborted) return;
+        if (attempt > 0) await sleep(RETRY_DELAYS_MS[attempt], signal);
+        if (signal.aborted) return;
+        try {
+          // 1) Read members list to discover our role. Cast through
+          //    unknown because the DTS promises `{ data }` but the
+          //    wire body is `{ members, selfIdentity }`.
+          const raw = (await mero.admin.listGroupMembers(
+            groupId,
+          )) as unknown as {
+            members?: Array<{ identity: string; role?: string }>;
+          };
+          if (signal.aborted) return;
+          const me = (raw.members ?? []).find(
+            (m) => m.identity === memberId,
+          );
+          if (!me) {
+            lastErr = new Error('identity is not a member of group');
+            continue; // propagation lag — retry
+          }
+
+          // 2) Admin short-circuit — mirrors the server's
+          //    `is_group_admin_or_has_capability` logic.
+          if (me.role === 'Admin') {
+            if (!signal.aborted) {
+              setState({ caps: ALL_CAPS_BITMASK, error: null });
+            }
+            return;
+          }
+
+          // 3) Non-admin: read the capability bitmask override.
+          const result = await mero.admin.getMemberCapabilities(
+            groupId,
+            memberId,
+          );
+          if (signal.aborted) return;
+          setState({ caps: result.capabilities ?? 0, error: null });
+          return;
+        } catch (err) {
+          lastErr = err;
+          if (!isPropagationLagError(err)) break;
+          // else fall through to next attempt
+        }
+      }
+      if (signal.aborted) return;
+      const finalErr =
+        lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+      setState({ caps: 0, error: finalErr });
+    })();
+
     return () => {
-      alive = false;
+      signal.aborted = true;
     };
   }, [mero, groupId, memberId]);
 
-  const error = capsError ?? rolesError;
-  if (error) return { caps: 0, error };
-  if (capsLoading || rolesLoading || !groupId || !memberId) {
-    return { caps: null, error: null };
-  }
-
-  // Admin short-circuit — mirrors the server's
-  // `is_group_admin_or_has_capability` logic.
-  if (role === 'Admin') {
-    return { caps: ALL_CAPS_BITMASK, error: null };
-  }
-
-  return { caps: capabilities ?? 0, error: null };
+  return state;
 }

@@ -7,6 +7,17 @@
         "kind": "string"
       }
     },
+    "Event_FolderAliasChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "Event_FolderColorChanged": {
       "kind": "record",
       "fields": [
@@ -125,6 +136,13 @@
             "$ref": "ContextId"
           },
           "nullable": true
+        },
+        {
+          "name": "alias",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
         }
       ]
     },
@@ -161,6 +179,17 @@
         },
         {
           "name": "color",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "alias",
           "type": {
             "kind": "record",
             "fields": [],
@@ -262,6 +291,13 @@
         },
         {
           "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "alias",
           "type": {
             "kind": "string"
           },
@@ -385,6 +421,26 @@
       }
     },
     {
+      "name": "set_folder_alias",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "alias",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
       "name": "move_folder",
       "params": [
         {
@@ -477,6 +533,12 @@
       "name": "FolderColorChanged",
       "payload": {
         "$ref": "Event_FolderColorChanged"
+      }
+    },
+    {
+      "name": "FolderAliasChanged",
+      "payload": {
+        "$ref": "Event_FolderAliasChanged"
       }
     },
     {

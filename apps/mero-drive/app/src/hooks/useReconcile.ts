@@ -75,8 +75,14 @@ export function useReconcile(
       // manual admin-API usage). Reconcile catches the create/delete
       // cases and relies on the app's own write path to keep
       // parent_id consistent.
+      // mero-react's useSubgroups can return `undefined` when the
+      // upstream listSubgroups call hits the `{data}` unwrap bug —
+      // without this null-guard, reconcile throws "cannot read
+      // properties of undefined (reading 'map')" before it gets a
+      // chance to compute any diff.
+      const safeAdmin = adminSubgroups ?? [];
       const regById = new Map(regFolders.map((f) => [f.id, f]));
-      const admin: AdminGroup[] = adminSubgroups.map((s) => {
+      const admin: AdminGroup[] = safeAdmin.map((s) => {
         const fromReg = regById.get(s.groupId);
         // `fromReg` missing means "admin knows about this group but
         // the registry doesn't yet" — reconcile will emit a
@@ -101,6 +107,11 @@ export function useReconcile(
           id: r.id,
           parent_id: r.parent_id,
           color: null,
+          // Reconcile doesn't know the admin-side alias here; leave
+          // null so the client falls back to admin-API / id stub.
+          // A follow-up pass could read aliases from the admin list
+          // we already have in `admin` and seed them in.
+          alias: null,
         });
       }
       for (const id of actions.unregister) {

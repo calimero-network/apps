@@ -14,12 +14,14 @@
 // cap-editing for Phase 8-E's MemberRoleSelect.
 
 import React, { useState } from 'react';
-import { Trash2, UserPlus } from 'lucide-react';
+import { Trash2, UserPlus, Link2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useFolderMembership } from '@/hooks/useFolderMembership';
+import { useCreateFolderInvite } from '@/hooks/useNamespaceInvitation';
+import { InviteDialog } from '@/components/workspace/InviteDialog';
 
 interface Props {
   folderId: string;
@@ -45,11 +47,15 @@ interface Props {
 const IDENTITY_LOOKS_VALID = /^[1-9A-HJ-NP-Za-km-z]{40,50}$/;
 
 export function FolderSharingPanel({ folderId }: Props) {
-  const { namespaceId } = useDriveWorkspace();
+  const { namespaceId, folders } = useDriveWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const { members, loading, error, add, remove, refetch } =
     useFolderMembership(folderId);
+  const { create: createFolderInvite } = useCreateFolderInvite();
   const confirm = useConfirm();
+  const [inviteLinkOpen, setInviteLinkOpen] = useState(false);
+  const folderAlias =
+    folders.find((f) => f.id === folderId)?.alias ?? `${folderId.slice(0, 8)}…`;
 
   const [identity, setIdentity] = useState('');
   const [inviting, setInviting] = useState(false);
@@ -205,38 +211,72 @@ export function FolderSharingPanel({ folderId }: Props) {
       </ul>
 
       {perms.canInviteMembers && (
-        <div className="border-t border-border/60 px-4 py-3">
-          <label className="mb-1 block text-xs font-medium text-muted-foreground">
-            Invite by identity
-          </label>
-          <div className="flex gap-2">
-            <input
-              className="flex h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-              placeholder="identity pubkey"
-              value={identity}
-              onChange={(e) => {
-                setIdentity(e.target.value);
-                setInviteError(null);
-              }}
-              disabled={inviting}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && canInvite) onInvite();
-              }}
-            />
+        <div className="space-y-3 border-t border-border/60 px-4 py-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">
+              Invite by identity
+            </label>
+            <div className="flex gap-2">
+              <input
+                className="flex h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                placeholder="identity pubkey"
+                value={identity}
+                onChange={(e) => {
+                  setIdentity(e.target.value);
+                  setInviteError(null);
+                }}
+                disabled={inviting}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && canInvite) onInvite();
+                }}
+              />
+              <Button
+                size="sm"
+                onClick={onInvite}
+                disabled={!canInvite}
+                className="gap-1"
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                {inviting ? 'Adding…' : 'Add'}
+              </Button>
+            </div>
+            {inviteError && (
+              <p className="mt-2 text-xs text-destructive">{inviteError}</p>
+            )}
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">
+              Or share a link
+            </label>
             <Button
               size="sm"
-              onClick={onInvite}
-              disabled={!canInvite}
+              variant="outline"
+              onClick={() => setInviteLinkOpen(true)}
               className="gap-1"
             >
-              <UserPlus className="h-3.5 w-3.5" />
-              {inviting ? 'Adding…' : 'Add'}
+              <Link2 className="h-3.5 w-3.5" />
+              Invite to this folder only
             </Button>
           </div>
-          {inviteError && (
-            <p className="mt-2 text-xs text-destructive">{inviteError}</p>
-          )}
         </div>
+      )}
+
+      {inviteLinkOpen && (
+        <InviteDialog
+          title="Invite to folder"
+          description={
+            <>
+              Share this link to add someone to{' '}
+              <span className="font-medium text-foreground">{folderAlias}</span>
+              {' '}only — they won't gain access to other folders or the
+              workspace root.
+            </>
+          }
+          footnote="Scope: this folder only. Anyone with this link and a Calimero identity can join."
+          onCreate={() => createFolderInvite(folderId)}
+          onClose={() => setInviteLinkOpen(false)}
+        />
       )}
     </section>
   );

@@ -22,6 +22,9 @@ pub enum Event<'a> {
     FolderColorChanged {
         id: &'a str,
     },
+    FolderAliasChanged {
+        id: &'a str,
+    },
     FolderParentChanged {
         id: &'a str,
     },

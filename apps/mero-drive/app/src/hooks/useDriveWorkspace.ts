@@ -34,7 +34,17 @@
 //   status:
 //     loading, stage, error, refetch
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   useMero,
   useNamespacesForApplication,
@@ -54,6 +64,16 @@ import {
 import { ENV_APPLICATION_ID, REGISTRY_SERVICE_ID } from '@/constants/config';
 
 const ACTIVE_NS_KEY = 'mero-drive:activeNs';
+// SessionStorage-only so it doesn't persist across tabs or reloads
+// once sync settles. Set by JoinPage on successful joinNamespace /
+// joinGroup; the first time the namespace reaches a ready state in
+// useDriveWorkspace, the flag is cleared and we stop gating.
+const JUST_JOINED_KEY = 'mero-drive:justJoined';
+// How long to keep showing "Syncing workspace…" before surfacing a
+// "taking longer than expected" hint. The governance op + registry
+// state typically land in <1s on a healthy mesh; the upper bound
+// exists so a flaky peer doesn't leave the UI pinned forever.
+const JUST_JOINED_WATCHDOG_MS = 30_000;
 
 export type DriveLoadingStage =
   | 'idle'
@@ -62,7 +82,35 @@ export type DriveLoadingStage =
   | 'resolving-registry-context'
   | 'loading-subgroups'
   | 'loading-folders'
+  | 'syncing-from-peers'
   | 'ready';
+
+/** Session-scoped set of namespace ids awaiting post-join sync.
+ *  Exposed so JoinPage can stamp an id at accept time. */
+export function markNamespaceJustJoined(namespaceId: string): void {
+  if (typeof sessionStorage === 'undefined') return;
+  const raw = sessionStorage.getItem(JUST_JOINED_KEY);
+  const set = new Set<string>(raw ? (JSON.parse(raw) as string[]) : []);
+  set.add(namespaceId);
+  sessionStorage.setItem(JUST_JOINED_KEY, JSON.stringify([...set]));
+}
+
+function readJustJoinedSet(): Set<string> {
+  if (typeof sessionStorage === 'undefined') return new Set();
+  try {
+    const raw = sessionStorage.getItem(JUST_JOINED_KEY);
+    return new Set<string>(raw ? (JSON.parse(raw) as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function clearNamespaceJustJoined(namespaceId: string): void {
+  if (typeof sessionStorage === 'undefined') return;
+  const set = readJustJoinedSet();
+  if (!set.delete(namespaceId)) return;
+  sessionStorage.setItem(JUST_JOINED_KEY, JSON.stringify([...set]));
+}
 
 export interface DriveWorkspaceState {
   // identity
@@ -101,7 +149,13 @@ export interface DriveWorkspaceState {
   refetch: () => Promise<void>;
 }
 
-export function useDriveWorkspace(): DriveWorkspaceState {
+// Internal implementation. A single instance of this runs at the
+// Provider level, and every consumer reads the same state via
+// useDriveWorkspace (see bottom of file). Multiple consumers calling
+// the hook directly would each get independent `regFolders` /
+// `selectedFolderId` state — so a refetch in one component's copy
+// never reaches another's, and selection clicks never propagate.
+function useDriveWorkspaceInternal(): DriveWorkspaceState {
   const {
     mero,
     applicationId: authApplicationId,
@@ -215,6 +269,7 @@ export function useDriveWorkspace(): DriveWorkspaceState {
   const {
     subgroups,
     loading: subLoading,
+    refetch: refetchSubgroups,
   } = useSubgroups(selectedNsId ?? undefined);
 
   // --- Registry-side folder metadata ---
@@ -222,54 +277,112 @@ export function useDriveWorkspace(): DriveWorkspaceState {
   const [regLoading, setRegLoading] = useState(false);
   const [regError, setRegError] = useState<Error | null>(null);
 
-  useEffect(() => {
+  // Extracted so `refetch()` can re-run it after mutations. Without
+  // this, creating / renaming / deleting a folder mutates the registry
+  // WASM but the local cache stays stale and the UI doesn't reflect
+  // the change until the page is reloaded.
+  const loadRegFolders = useCallback(async () => {
     if (!registryClient) {
       setRegFolders([]);
       setRegLoading(false);
       return;
     }
-    let alive = true;
     setRegLoading(true);
     setRegError(null);
-    registryClient
-      .getFolders()
-      .then((fs) => {
-        if (!alive) return;
-        setRegFolders(
-          fs.map((f) => ({
-            id: f.id,
-            parent_id: f.parent_id ?? null,
-            visibility: f.visibility as 'Inherit' | 'Restricted',
-            color: f.color ?? null,
-          })),
-        );
-        setRegLoading(false);
-      })
-      .catch((e: unknown) => {
-        if (!alive) return;
-        setRegError(e instanceof Error ? e : new Error(String(e)));
-        setRegLoading(false);
-      });
+    try {
+      const fs = await registryClient.getFolders();
+      setRegFolders(
+        fs.map((f) => ({
+          id: f.id,
+          parent_id: f.parent_id ?? null,
+          visibility: f.visibility as 'Inherit' | 'Restricted',
+          color: f.color ?? null,
+          alias: f.alias ?? null,
+        })),
+      );
+    } catch (e: unknown) {
+      setRegError(e instanceof Error ? e : new Error(String(e)));
+    } finally {
+      setRegLoading(false);
+    }
+  }, [registryClient]);
+
+  useEffect(() => {
+    let alive = true;
+    void loadRegFolders().catch(() => {
+      // errors are already captured into regError by loadRegFolders;
+      // the alive guard is for the setState inside loadRegFolders,
+      // but since we can't cancel the in-flight promise, we just
+      // ignore stale rejections here.
+      void alive;
+    });
     return () => {
       alive = false;
     };
-  }, [registryClient]);
+  }, [loadRegFolders]);
+
+  // --- Alias lookup (per-folder getGroupInfo) ---
+  //
+  // `listSubgroups` is broken upstream (mero-js unwraps `.data` from a
+  // response whose actual wire shape is `{subgroups: [...]}`) so we
+  // can't read folder aliases from the subgroup list. `getGroupInfo`
+  // IS correctly shaped (`{data: {..., alias}}`) — unwrap works. We
+  // fan out one getGroupInfo per folder and cache by id.
+  //
+  // `aliasRevision` bumps on refetch() so rename flows re-fetch even
+  // though the folder id set hasn't changed.
+  const [aliases, setAliases] = useState<Map<string, string>>(new Map());
+  const [aliasRevision, setAliasRevision] = useState(0);
+  useEffect(() => {
+    if (!mero) return;
+    const ids = regFolders.map((f) => f.id);
+    if (ids.length === 0) {
+      setAliases(new Map());
+      return;
+    }
+    let alive = true;
+    Promise.all(
+      ids.map((id) =>
+        mero.admin
+          .getGroupInfo(id)
+          .then((info) => [id, info?.alias ?? null] as const)
+          .catch(() => [id, null] as const),
+      ),
+    ).then((entries) => {
+      if (!alive) return;
+      const next = new Map<string, string>();
+      for (const [id, alias] of entries) {
+        if (alias) next.set(id, alias);
+      }
+      setAliases(next);
+    });
+    return () => {
+      alive = false;
+    };
+    // aliasRevision is intentional — bumping it forces this effect to
+    // re-run after a rename even if regFolders is referentially stable.
+  }, [mero, regFolders, aliasRevision]);
 
   // --- Merge admin subgroups with registry metadata ---
+  // Registry is the source of truth for existence + tree shape;
+  // aliases come from the per-folder getGroupInfo cache above. The
+  // `subgroups` list (from mero-react) is unreliable upstream but
+  // included as a secondary alias source when it happens to work.
   const folders = useMemo<MergedFolder[]>(() => {
     if (!rootGroupId) return [];
-    const regById = new Map(regFolders.map((r) => [r.id, r]));
-    const safe = subgroups ?? [];
-    const admin: AdminSubgroup[] = safe.map((s) => {
-      const fromReg = regById.get(s.groupId);
+    const admin: AdminSubgroup[] = regFolders.map((f) => {
+      const aliasFromCache = aliases.get(f.id);
+      const aliasFromSubgroups = (subgroups ?? []).find(
+        (s) => s.groupId === f.id,
+      )?.alias;
       return {
-        groupId: s.groupId,
-        parent_id: fromReg ? fromReg.parent_id : rootGroupId,
-        alias: s.alias,
+        groupId: f.id,
+        parent_id: f.parent_id,
+        alias: aliasFromCache ?? aliasFromSubgroups,
       };
     });
     return mergeAdminAndRegistry(admin, regFolders, rootGroupId).folders;
-  }, [rootGroupId, subgroups, regFolders]);
+  }, [rootGroupId, subgroups, regFolders, aliases]);
 
   // --- Selected folder (UI-only, not persisted) ---
   const [selectedFolderId, setSelectedFolderState] = useState<string | null>(null);
@@ -340,9 +453,80 @@ export function useDriveWorkspace(): DriveWorkspaceState {
   }, [setSelectedNsId]);
 
   const refetch = useCallback(async () => {
-    await refetchNamespaces();
-    await refetchContexts();
-  }, [refetchNamespaces, refetchContexts]);
+    await Promise.all([
+      refetchNamespaces(),
+      refetchContexts(),
+      refetchSubgroups(),
+      loadRegFolders(),
+    ]);
+    // Force the per-folder getGroupInfo effect to re-run so a rename
+    // surfaces in the tree even though the folder id set is unchanged.
+    setAliasRevision((r) => r + 1);
+  }, [refetchNamespaces, refetchContexts, refetchSubgroups, loadRegFolders]);
+
+  // --- Post-join sync gate ---
+  // If the active namespace was freshly joined in this session,
+  // suppress the "uninitialised"-looking empty state and hold on a
+  // `syncing-from-peers` stage until the Registry context resolves
+  // AND we've read at least one folder list (even if empty). Without
+  // this, a just-joined namespace shows raw empty state + the user
+  // can't tell whether it's genuinely empty or still syncing.
+  const [justJoinedTick, setJustJoinedTick] = useState(0);
+  const justJoinedAt = useRef<Map<string, number>>(new Map());
+  const [regFoldersLoadedForNs, setRegFoldersLoadedForNs] = useState<
+    string | null
+  >(null);
+  // Track when the current namespace's regFolders load finishes
+  // cleanly — that's the signal the sync gate should lift.
+  useEffect(() => {
+    if (!selectedNsId) return;
+    if (regLoading) return;
+    if (regError) return;
+    setRegFoldersLoadedForNs(selectedNsId);
+  }, [selectedNsId, regLoading, regError]);
+
+  const isJustJoined = useMemo(() => {
+    if (!selectedNsId) return false;
+    const set = readJustJoinedSet();
+    if (!set.has(selectedNsId)) return false;
+    // Record first-seen time for watchdog purposes.
+    if (!justJoinedAt.current.has(selectedNsId)) {
+      justJoinedAt.current.set(selectedNsId, Date.now());
+    }
+    return true;
+    // justJoinedTick is a bump-to-re-evaluate lever — used below when
+    // the watchdog fires to flip us out of the gate.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedNsId, justJoinedTick]);
+
+  // Watchdog: expire the just-joined flag after JUST_JOINED_WATCHDOG_MS
+  // so a stuck sync doesn't pin the UI on "Syncing…" forever.
+  useEffect(() => {
+    if (!selectedNsId || !isJustJoined) return;
+    const firstSeen = justJoinedAt.current.get(selectedNsId) ?? Date.now();
+    const remaining = JUST_JOINED_WATCHDOG_MS - (Date.now() - firstSeen);
+    if (remaining <= 0) {
+      clearNamespaceJustJoined(selectedNsId);
+      setJustJoinedTick((t) => t + 1);
+      return;
+    }
+    const t = setTimeout(() => {
+      clearNamespaceJustJoined(selectedNsId);
+      setJustJoinedTick((t) => t + 1);
+    }, remaining);
+    return () => clearTimeout(t);
+  }, [selectedNsId, isJustJoined]);
+
+  // Clear the flag once sync has landed — registry resolved AND we
+  // successfully read the folder list for this namespace.
+  useEffect(() => {
+    if (!selectedNsId) return;
+    if (!isJustJoined) return;
+    if (!registryContextId) return;
+    if (regFoldersLoadedForNs !== selectedNsId) return;
+    clearNamespaceJustJoined(selectedNsId);
+    setJustJoinedTick((t) => t + 1);
+  }, [selectedNsId, isJustJoined, registryContextId, regFoldersLoadedForNs]);
 
   // --- Stage derivation for loading-indicator UX ---
   let stage: DriveLoadingStage = 'ready';
@@ -351,9 +535,11 @@ export function useDriveWorkspace(): DriveWorkspaceState {
   else if (nsLoading) stage = 'resolving-namespaces';
   else if (!selectedNsId) stage = 'idle';
   else if (contextsLoading || !registryContextId || membersLoading || !selfIdentity)
-    stage = 'resolving-registry-context';
+    stage = isJustJoined ? 'syncing-from-peers' : 'resolving-registry-context';
   else if (subLoading) stage = 'loading-subgroups';
   else if (regLoading) stage = 'loading-folders';
+  else if (isJustJoined && regFoldersLoadedForNs !== selectedNsId)
+    stage = 'syncing-from-peers';
 
   const loading = stage !== 'ready' && stage !== 'idle';
   const error = nsError ?? regError ?? null;
@@ -385,4 +571,27 @@ export function useDriveWorkspace(): DriveWorkspaceState {
     error,
     refetch,
   };
+}
+
+// --- Context / Provider / public hook ---
+
+const DriveWorkspaceContext = createContext<DriveWorkspaceState | null>(null);
+
+export function DriveWorkspaceProvider({ children }: { children: ReactNode }) {
+  const value = useDriveWorkspaceInternal();
+  return createElement(
+    DriveWorkspaceContext.Provider,
+    { value },
+    children,
+  );
+}
+
+export function useDriveWorkspace(): DriveWorkspaceState {
+  const ctx = useContext(DriveWorkspaceContext);
+  if (!ctx) {
+    throw new Error(
+      'useDriveWorkspace must be used inside <DriveWorkspaceProvider>',
+    );
+  }
+  return ctx;
 }

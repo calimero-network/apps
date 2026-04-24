@@ -93,6 +93,23 @@ vi.mock('@calimero-network/mero-react', () => ({
     error: null,
     refetch: vi.fn(),
   }),
+  // Stable reference — used by invite/membership hooks. Returns
+  // stubbed admin methods; tests don't exercise real creation flows.
+  useMero: () => ({
+    mero: {
+      admin: {
+        createNamespaceInvitation: vi.fn(),
+        createGroupInvitation: vi.fn(),
+        joinNamespace: vi.fn(),
+        joinGroup: vi.fn(),
+        listGroupMembers: vi.fn().mockResolvedValue({ members: [] }),
+        getMemberCapabilities: vi.fn().mockResolvedValue({ capabilities: 0 }),
+      },
+    },
+    nodeUrl: 'http://localhost:2528',
+  }),
+  useAddGroupMembers: () => ({ addGroupMembers: vi.fn(), loading: false, error: null }),
+  useRemoveGroupMembers: () => ({ removeGroupMembers: vi.fn(), loading: false, error: null }),
 }));
 vi.mock('@/components/ui/confirm-dialog', async () => {
   const actual = await vi.importActual<typeof import('@/components/ui/confirm-dialog')>(

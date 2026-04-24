@@ -19,14 +19,11 @@ import {
   useDeleteGroup,
   useSetGroupAlias,
   useAddGroupMembers,
-  useNestGroup,
-  useUnnestGroup,
+  useMero,
 } from '@calimero-network/mero-react';
 import type { RegistryClient } from '../api/registry/RegistryClient';
-import {
-  ENV_APPLICATION_ID,
-  DOCS_SERVICE_ID,
-} from '../constants/config';
+import { DOCS_SERVICE_ID } from '../constants/config';
+import { reparentGroup } from '../api/reparentGroup';
 import {
   computeCascadeTargets,
   CascadeFolder,
@@ -59,6 +56,12 @@ export function useFolderOperations(
   registryClient: RegistryClient | null,
   rootGroupId: string | null,
   tree: CascadeFolder[],
+  applicationId: string | null,
+  // Called after a successful create/rename/remove to refresh the
+  // workspace's cached subgroup list and registry folders. Without
+  // this, mutations succeed server-side but the UI stays stale until
+  // the user navigates away and back. Pass `useDriveWorkspace().refetch`.
+  refetch: () => Promise<void>,
 ): FolderOperations {
   const { createGroupInNamespace } = useCreateGroupInNamespace();
   const { createContext } = useCreateContext();
@@ -66,13 +69,20 @@ export function useFolderOperations(
   const { deleteGroup } = useDeleteGroup();
   const { setGroupAlias } = useSetGroupAlias();
   const { addGroupMembers } = useAddGroupMembers();
-  const { nestGroup } = useNestGroup();
-  const { unnestGroup } = useUnnestGroup();
+  const { nodeUrl } = useMero();
 
   const create = useCallback(
     async (input: CreateFolderInput): Promise<string> => {
       if (!registryClient || !rootGroupId) {
         throw new Error('workspace not bootstrapped');
+      }
+      // Empty applicationId makes admin-api reject the context
+      // creation with a base58-decode error. Guard here so the user
+      // gets a meaningful message instead of a raw 400.
+      if (!applicationId) {
+        throw new Error(
+          'Application ID not resolved — reconnect or set VITE_APPLICATION_ID',
+        );
       }
 
       // Best-effort compensating actions on partial failure. The
@@ -94,21 +104,29 @@ export function useFolderOperations(
         createdGroupId = group.groupId;
         const newId = group.groupId;
 
-        // createGroupInNamespace always places the new group as a
-        // direct child of the namespace root. To nest it under a
-        // specific parent, unnest from the root and re-nest under the
-        // desired parent via mero-react's hooks. Two sequential calls
-        // instead of one atomic reparent (core#2200 has that endpoint
-        // but mero-react hasn't surfaced it); if unnest succeeds and
-        // nest fails the new group is orphaned under nothing, which
-        // useReconcile can clean up on the next pass.
+        // SDK bug workaround: mero-js's CreateGroupInNamespaceRequest
+        // has `{alias}`, but core's handler deserialises the body as
+        // `{groupAlias}` (camelCase-renamed from `group_alias`). The
+        // field names don't match, so the server sees no alias and
+        // the folder is created with alias=null. Work around it by
+        // explicitly calling setGroupAlias (whose body IS `{alias}`
+        // on both sides — that endpoint is correctly paired).
+        await setGroupAlias(newId, { alias: input.alias });
+
+        // createGroupInNamespace places the new group as a direct
+        // child of the namespace root. To nest it under a specific
+        // parent, call /admin-api/groups/:childId/reparent — one
+        // atomic edge swap, no orphan window. We go through a raw
+        // fetch because mero-js's nestGroup/unnestGroup still point
+        // at core's removed /nest and /unnest routes (they 404). See
+        // src/api/reparentGroup.ts.
         if (input.parentGroupId !== rootGroupId) {
-          await unnestGroup(rootGroupId, { childGroupId: newId });
-          await nestGroup(input.parentGroupId, { childGroupId: newId });
+          if (!nodeUrl) throw new Error('Node URL not resolved');
+          await reparentGroup(nodeUrl, newId, input.parentGroupId);
         }
 
         const ctx = await createContext({
-          applicationId: ENV_APPLICATION_ID,
+          applicationId,
           groupId: newId,
           serviceName: DOCS_SERVICE_ID,
           initializationParams: [],
@@ -122,6 +140,12 @@ export function useFolderOperations(
           id: newId,
           parent_id: input.parentGroupId === rootGroupId ? null : input.parentGroupId,
           color: input.color ?? null,
+          // Mirror the admin-API alias into the registry so namespace
+          // members who aren't subgroup members can still see the name.
+          // Without this, invitees see `folder-<id8>` stubs because
+          // getGroupInfo 500s for non-members. See registry contract
+          // FolderDto.alias for the mechanism.
+          alias: input.alias,
         });
         registryEntryCreated = true;
 
@@ -137,6 +161,7 @@ export function useFolderOperations(
         // members is handled by useFolderMembership + cascadeTo when
         // the UI explicitly invites people, not at creation time.
 
+        await refetch();
         return newId;
       } catch (err) {
         // Reverse in the opposite order of creation. Each cleanup is
@@ -164,20 +189,35 @@ export function useFolderOperations(
     [
       registryClient,
       rootGroupId,
+      applicationId,
+      refetch,
+      nodeUrl,
       createGroupInNamespace,
+      setGroupAlias,
       createContext,
       deleteContext,
       deleteGroup,
-      nestGroup,
-      unnestGroup,
     ],
   );
 
   const rename = useCallback(
     async (folderId: string, alias: string) => {
       await setGroupAlias(folderId, { alias });
+      // Mirror into the registry so non-member namespace peers see
+      // the new name too. Best-effort: if the registry client isn't
+      // ready or the call fails, admin-API side is still updated and
+      // the caller just sees the name lag for non-members until next
+      // rename or a registry-side reconcile.
+      if (registryClient) {
+        try {
+          await registryClient.setFolderAlias({ id: folderId, alias });
+        } catch (e) {
+          console.warn('registry setFolderAlias failed', e);
+        }
+      }
+      await refetch();
     },
-    [setGroupAlias],
+    [setGroupAlias, registryClient, refetch],
   );
 
   const remove = useCallback(
@@ -206,8 +246,9 @@ export function useFolderOperations(
           );
         }
       }
+      await refetch();
     },
-    [registryClient, tree, deleteGroup, deleteContext],
+    [registryClient, tree, deleteGroup, deleteContext, refetch],
   );
 
   const cascadeTo = useCallback(

@@ -40,8 +40,14 @@ export function FolderContextMenu({
   currentVisibility,
   onRename,
 }: Props) {
-  const { namespaceId, rootGroupId } = useDriveWorkspace();
-  const { folders, registryClient } = useDriveWorkspace();
+  const {
+    namespaceId,
+    rootGroupId,
+    folders,
+    registryClient,
+    applicationId,
+    refetch,
+  } = useDriveWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const ops = useFolderOperations(
     registryClient,
@@ -51,6 +57,8 @@ export function FolderContextMenu({
       parent_id: f.parent_id,
       visibility: f.visibility,
     })),
+    applicationId,
+    refetch,
   );
 
   const [showNewSub, setShowNewSub] = useState(false);

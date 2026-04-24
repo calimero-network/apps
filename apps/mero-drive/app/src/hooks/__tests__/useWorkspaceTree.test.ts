@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { mergeAdminAndRegistry } from '../useWorkspaceTree';
 
 describe('mergeAdminAndRegistry', () => {
-  // Admin-API subgroup entries use `groupId` (per SubgroupEntry in
-  // @calimero-network/mero-js); registry folders use `id` (per the
-  // generated FolderDto). The merge bridges those two shapes.
+  // Registry is the source of truth for existence + tree shape; admin
+  // side contributes only `alias`. The merge iterates registry and
+  // enriches each entry with the alias from admin when present.
   const admin = [
     { groupId: 'a', parent_id: 'r', alias: 'A' },
     { groupId: 'b', parent_id: 'a', alias: 'B' },
@@ -14,7 +14,7 @@ describe('mergeAdminAndRegistry', () => {
     { id: 'b', parent_id: 'a', visibility: 'Restricted' as const, color: null },
   ];
 
-  it('merges registry metadata onto admin groups', () => {
+  it('merges admin aliases onto registry folders', () => {
     const tree = mergeAdminAndRegistry(admin, registry, 'r');
     expect(tree.folders.find((f) => f.id === 'a')?.color).toBe('#f00');
     expect(tree.folders.find((f) => f.id === 'b')?.visibility).toBe('Restricted');
@@ -22,15 +22,23 @@ describe('mergeAdminAndRegistry', () => {
   });
 
   it('excludes the root group from the folder list', () => {
-    const rootAndBelow = [{ groupId: 'r', parent_id: null, alias: 'root' }, ...admin];
-    const tree = mergeAdminAndRegistry(rootAndBelow, registry, 'r');
+    const registryWithRoot = [
+      { id: 'r', parent_id: null, visibility: 'Inherit' as const, color: null },
+      ...registry,
+    ];
+    const tree = mergeAdminAndRegistry(admin, registryWithRoot, 'r');
     expect(tree.folders.find((f) => f.id === 'r')).toBeUndefined();
   });
 
-  it('defaults visibility to Inherit and color to null when registry is missing the row', () => {
-    const tree = mergeAdminAndRegistry(admin, [], 'r');
+  it('still renders folders when admin is empty — falls back to a stub alias', () => {
+    // This protects against the upstream listSubgroups bug (mero-js
+    // unwraps `.data` from a `{subgroups}` response — folder list
+    // comes back empty). Registry is authoritative, so folders must
+    // still appear.
+    const tree = mergeAdminAndRegistry([], registry, 'r');
     const a = tree.folders.find((f) => f.id === 'a');
     expect(a?.visibility).toBe('Inherit');
-    expect(a?.color).toBeNull();
+    expect(a?.color).toBe('#f00');
+    expect(a?.alias).toMatch(/^folder-/);
   });
 });

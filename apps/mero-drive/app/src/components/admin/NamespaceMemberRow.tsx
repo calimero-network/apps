@@ -19,14 +19,33 @@ interface Props {
   groupId: string;
   identity: string;
   label: string;
+  /** Server-reported role: Admin / Member / ReadOnly. Undefined if
+   *  the caller didn't resolve it. */
+  role?: string;
   canManage: boolean;
   onRemove: (identity: string, label: string) => Promise<void>;
+}
+
+// Role → Tailwind badge classes. Admin is emphasised; the others
+// stay low-contrast so the list reads as a roster, not a traffic
+// light.
+function roleBadgeClasses(role: string | undefined): string {
+  switch (role) {
+    case 'Admin':
+      return 'bg-primary/10 text-primary border-primary/30';
+    case 'ReadOnly':
+      return 'bg-muted text-muted-foreground border-border';
+    case 'Member':
+    default:
+      return 'bg-accent text-accent-foreground border-border';
+  }
 }
 
 export function NamespaceMemberRow({
   groupId,
   identity,
   label,
+  role,
   canManage,
   onRemove,
 }: Props) {
@@ -74,18 +93,43 @@ export function NamespaceMemberRow({
     <li className="px-4 py-2 text-sm">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="truncate font-medium text-foreground">{label}</div>
+          <div className="flex items-center gap-2">
+            <span className="truncate font-medium text-foreground">
+              {label}
+            </span>
+            {role && (
+              <span
+                className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${roleBadgeClasses(
+                  role,
+                )}`}
+              >
+                {role}
+              </span>
+            )}
+          </div>
           <div className="truncate text-xs text-muted-foreground">
             <code>{identity.slice(0, 12)}…</code>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <MemberRoleSelect
-            value={caps.capabilities}
-            onChange={onRoleChange}
-            disabled={!canManage || updating || caps.loading}
-            ariaLabel={`Role for ${label}`}
-          />
+          {role === 'Admin' ? (
+            // Admins bypass the cap bitmask entirely on the server
+            // (is_group_admin_or_has_capability short-circuits role
+            // === Admin to "all caps allowed"), so exposing a
+            // cap-preset picker here would suggest a choice that
+            // wouldn't actually take effect. The role badge to the
+            // left already communicates the privilege level.
+            <span className="text-xs text-muted-foreground">
+              All permissions
+            </span>
+          ) : (
+            <MemberRoleSelect
+              value={caps.capabilities}
+              onChange={onRoleChange}
+              disabled={!canManage || updating || caps.loading}
+              ariaLabel={`Role for ${label}`}
+            />
+          )}
           {canManage && (
             <Button
               variant="ghost"

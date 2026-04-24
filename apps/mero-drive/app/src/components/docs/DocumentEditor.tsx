@@ -119,6 +119,12 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
   // reordering at the transport layer doesn't confuse the guard.
   const saveSeqRef = useRef(0);
   const lastAppliedSeqRef = useRef(0);
+  // True while persistContent is awaiting the RPC. Used by
+  // onContentChange to avoid regressing 'saving' → 'unsaved' on
+  // Tiptap's spurious update events (cursor moves, internal
+  // normalisation): transitioning out of 'saving' is the save's own
+  // job, not an update event's.
+  const savingInFlightRef = useRef(false);
 
   useEffect(
     () => () => {
@@ -159,7 +165,12 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         workingContentRef.current = d.content;
         lastSavedContentRef.current = d.content;
         setSaveStatus('saved');
-        setLastSavedAt(new Date(d.updated_at * 1000));
+        // The docs WASM stores timestamps as nanoseconds-since-epoch
+        // (see `list_docs` response: updated_at ≈ 1.77e18). JS Date
+        // expects milliseconds, so divide by 1e6. Multiplying by 1000
+        // was the original bug — it pushed the value past the safe
+        // Date range and rendered as "Invalid Date".
+        setLastSavedAt(new Date(d.updated_at / 1_000_000));
         setLoading(false);
       })
       .catch((e: unknown) => {
@@ -199,9 +210,13 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         return true;
       }
       setSaveStatus('saving');
+      savingInFlightRef.current = true;
       const mySeq = ++saveSeqRef.current;
+      const t0 = performance.now();
+      console.debug('[autosave] start', { mySeq });
       try {
         await docsEdit(currentDoc.id, { content });
+        console.debug('[autosave] ack', { mySeq, ms: Math.round(performance.now() - t0) });
         if (unmountedRef.current) return true;
         // Out-of-order-resolution guard: a newer save has already
         // acked while this one was in flight, so its content is the
@@ -218,16 +233,16 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         // would silently revert those keystrokes.
         lastSavedContentRef.current = content;
         setLastSavedAt(new Date());
-        // If the user typed more while this save was in flight,
-        // workingContentRef has diverged from the content we just
-        // acked — keep saveStatus at 'unsaved' so the indicator
-        // reflects the pending edits rather than briefly flashing
-        // 'saved' until the next debounce fires.
-        if (workingContentRef.current !== content) {
-          setSaveStatus('unsaved');
-        } else {
-          setSaveStatus('saved');
-        }
+        // The save succeeded — surface that. If the user has typed
+        // more during the RPC, the next Tiptap `update` event will
+        // flip us back to 'unsaved' and the debounce will schedule
+        // another save. Don't try to infer "still dirty" from an HTML
+        // equality check against workingContentRef — Tiptap emits
+        // update events with minor whitespace / trailing-empty-<p>
+        // differences, so the check was perpetually true and kept
+        // the status stuck showing 'unsaved' / 'saving' even though
+        // the last edit had been persisted.
+        setSaveStatus('saved');
         return true;
       } catch (e: unknown) {
         if (unmountedRef.current) return false;
@@ -239,6 +254,13 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         setSaveStatus('error');
         console.error('autosave failed', e);
         return false;
+      } finally {
+        // Only drop the in-flight flag if THIS save was the latest
+        // attempt — if a newer save is still pending, leave the flag
+        // set so onContentChange keeps deferring to it.
+        if (mySeq === saveSeqRef.current) {
+          savingInFlightRef.current = false;
+        }
       }
     },
     [docsEdit],
@@ -248,10 +270,16 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
     (html: string) => {
       workingContentRef.current = html;
       if (html === lastSavedContentRef.current) {
-        setSaveStatus('saved');
+        // Only drop to 'saved' if we're not mid-save — the save's own
+        // resolver is the authoritative transition out of 'saving'.
+        if (!savingInFlightRef.current) setSaveStatus('saved');
         return;
       }
-      setSaveStatus('unsaved');
+      // Don't regress an in-flight 'saving' to 'unsaved' on Tiptap's
+      // spurious update events (cursor moves, internal re-emits).
+      // The save's own resolver will transition to the right end
+      // state when it completes.
+      if (!savingInFlightRef.current) setSaveStatus('unsaved');
       cancelPendingAutosave();
       autosaveTimeoutRef.current = setTimeout(() => {
         autosaveTimeoutRef.current = null;
@@ -329,17 +357,12 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         if (unmountedRef.current) return;
         setDoc((prev) => (prev ? { ...prev, title } : prev));
         setLastSavedAt(new Date());
-        // Mirror persistContent's concurrent-edit check: if the user
-        // typed more content while the rename round-trip was in
-        // flight, workingContentRef has diverged from the last-saved
-        // content, so keep saveStatus at 'unsaved' instead of flipping
-        // to 'saved' and misleading the user for the ~900ms until the
-        // next autosave debounce fires.
-        if (workingContentRef.current !== lastSavedContentRef.current) {
-          setSaveStatus('unsaved');
-        } else {
-          setSaveStatus('saved');
-        }
+        // The rename succeeded — surface 'saved'. If there are pending
+        // content edits (user typed during the rename), Tiptap's next
+        // update event will flip us to 'unsaved' and re-trigger the
+        // content autosave. See persistContent for why we don't try
+        // to infer dirtiness here via HTML equality.
+        setSaveStatus('saved');
       } catch (e) {
         if (unmountedRef.current) return;
         setSaveStatus('error');

@@ -10,6 +10,7 @@ export interface NamespacePermissions {
   canCreateSubgroup: boolean;
   canManageNamespace: boolean;
   canManageNamespaceMembers: boolean;
+  canInviteMembers: boolean;
   loading: boolean;
   /** Non-null when the underlying caps fetch failed. UI should show
    *  a retry affordance rather than treating loading:false + all-
@@ -27,6 +28,7 @@ export function useNamespacePermissions(
     canCreateSubgroup: has(CAP.CREATE_GROUP),
     canManageNamespace: has(CAP.MANAGE_GROUP),
     canManageNamespaceMembers: has(CAP.MANAGE_MEMBERS),
+    canInviteMembers: has(CAP.INVITE_MEMBERS),
     loading: caps === null,
     error,
   };

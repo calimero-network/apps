@@ -48,8 +48,8 @@ export function FolderTreeItem({
   // catch it and the rename runs twice.
   const submitRenameInFlightRef = useRef(false);
 
-  const { rootGroupId } = useDriveWorkspace();
-  const { folders, registryClient } = useDriveWorkspace();
+  const { rootGroupId, folders, registryClient, applicationId, refetch } =
+    useDriveWorkspace();
   const ops = useFolderOperations(
     registryClient,
     rootGroupId,
@@ -58,6 +58,8 @@ export function FolderTreeItem({
       parent_id: f.parent_id,
       visibility: f.visibility,
     })),
+    applicationId,
+    refetch,
   );
 
   const startRename = useCallback(() => {

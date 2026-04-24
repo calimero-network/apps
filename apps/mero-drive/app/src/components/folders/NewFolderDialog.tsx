@@ -12,9 +12,19 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { MAX_ALIAS_LENGTH, MAX_FOLDER_DEPTH } from '@/constants/config';
 import { depthOf } from '@/utils/ancestry';
-import { COLOR_ALLOWLIST } from '@/utils/validation';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderOperations } from '@/hooks/useFolderOperations';
+
+// Curated preset palette. Tailwind 500-tints — readable against both
+// light and dark surfaces. Keeping this short on purpose: the UX goal
+// is "pick a color in one click", not "express yourself".
+const COLOR_PRESETS: Array<{ value: string; label: string }> = [
+  { value: '#3b82f6', label: 'Blue' },
+  { value: '#10b981', label: 'Green' },
+  { value: '#f59e0b', label: 'Amber' },
+  { value: '#ef4444', label: 'Red' },
+  { value: '#8b5cf6', label: 'Purple' },
+];
 
 interface Props {
   parentFolderId: string | null;
@@ -22,8 +32,14 @@ interface Props {
 }
 
 export function NewFolderDialog({ parentFolderId, onClose }: Props) {
-  const { namespaceId, rootGroupId } = useDriveWorkspace();
-  const { folders, registryClient } = useDriveWorkspace();
+  const {
+    namespaceId,
+    rootGroupId,
+    folders,
+    registryClient,
+    applicationId,
+    refetch,
+  } = useDriveWorkspace();
   const ops = useFolderOperations(
     registryClient,
     rootGroupId,
@@ -32,6 +48,8 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
       parent_id: f.parent_id,
       visibility: f.visibility,
     })),
+    applicationId,
+    refetch,
   );
 
   const [name, setName] = useState('');
@@ -50,7 +68,6 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
   const atDepthCap = newDepth >= MAX_FOLDER_DEPTH;
 
   const trimmed = name.trim();
-  const trimmedColor = color.trim();
   const canSubmit =
     !!trimmed &&
     trimmed.length <= MAX_ALIAS_LENGTH &&
@@ -75,10 +92,6 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
       setError(`Folder name must be ${MAX_ALIAS_LENGTH} characters or fewer`);
       return;
     }
-    if (trimmedColor && !COLOR_ALLOWLIST.test(trimmedColor)) {
-      setError('Color must be hex (#rgb / #rgba / #rrggbb / #rrggbbaa) or rgb()/hsl()');
-      return;
-    }
     setSubmitting(true);
     setError(null);
     try {
@@ -86,7 +99,7 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
         namespaceId,
         parentGroupId: parentFolderId ?? rootGroupId,
         alias,
-        color: trimmedColor || null,
+        color: color || null,
         visibility,
       });
     } catch (e: unknown) {
@@ -139,35 +152,85 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
                 }}
               />
             </label>
-            <label className="block text-sm">
+            <div className="block text-sm">
               <span className="mb-1 block text-muted-foreground">
                 Color (optional)
               </span>
-              <input
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                placeholder="#3b82f6"
-                value={color}
-                onChange={(e) => {
-                  setColor(e.target.value);
-                  setError(null);
-                }}
-                disabled={submitting}
-              />
-            </label>
-            <label className="block text-sm">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  aria-label="No color"
+                  aria-pressed={color === ''}
+                  onClick={() => {
+                    setColor('');
+                    setError(null);
+                  }}
+                  disabled={submitting}
+                  className={`flex h-7 w-7 items-center justify-center rounded-full border border-input text-muted-foreground transition hover:border-ring disabled:cursor-not-allowed disabled:opacity-50 ${
+                    color === '' ? 'ring-2 ring-ring ring-offset-2 ring-offset-card' : ''
+                  }`}
+                >
+                  <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true">
+                    <line x1="4" y1="16" x2="16" y2="4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                </button>
+                {COLOR_PRESETS.map((c) => (
+                  <button
+                    type="button"
+                    key={c.value}
+                    aria-label={c.label}
+                    aria-pressed={color === c.value}
+                    onClick={() => {
+                      setColor(c.value);
+                      setError(null);
+                    }}
+                    disabled={submitting}
+                    className={`h-7 w-7 rounded-full border border-border/50 transition hover:scale-110 disabled:cursor-not-allowed disabled:opacity-50 ${
+                      color === c.value ? 'ring-2 ring-ring ring-offset-2 ring-offset-card' : ''
+                    }`}
+                    style={{ backgroundColor: c.value }}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="block text-sm">
               <span className="mb-1 block text-muted-foreground">Visibility</span>
-              <select
-                className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                value={visibility}
-                onChange={(e) =>
-                  setVisibility(e.target.value as 'Inherit' | 'Restricted')
-                }
-                disabled={submitting}
-              >
-                <option value="Inherit">Inherit parent members</option>
-                <option value="Restricted">Restricted (pick members later)</option>
-              </select>
-            </label>
+              <div className="grid grid-cols-2 gap-2">
+                {(
+                  [
+                    {
+                      value: 'Inherit' as const,
+                      title: 'Open',
+                      desc: 'Inherits parent members',
+                    },
+                    {
+                      value: 'Restricted' as const,
+                      title: 'Restricted',
+                      desc: 'Pick members later',
+                    },
+                  ]
+                ).map((opt) => {
+                  const selected = visibility === opt.value;
+                  return (
+                    <button
+                      type="button"
+                      key={opt.value}
+                      aria-pressed={selected}
+                      onClick={() => setVisibility(opt.value)}
+                      disabled={submitting}
+                      className={`rounded-md border px-3 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                        selected
+                          ? 'border-ring bg-accent'
+                          : 'border-input hover:border-ring/60'
+                      }`}
+                    >
+                      <div className="text-sm font-medium">{opt.title}</div>
+                      <div className="text-xs text-muted-foreground">{opt.desc}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             {error && <p className="text-xs text-destructive">{error}</p>}
           </div>
         )}
