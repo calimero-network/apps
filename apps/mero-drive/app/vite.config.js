@@ -35,7 +35,8 @@ export default defineConfig({
           ],
           // Calimero SDK
           'vendor-calimero': [
-            '@calimero-network/calimero-client',
+            '@calimero-network/mero-react',
+            '@calimero-network/mero-ui',
           ],
           // UI components
           'vendor-ui': [

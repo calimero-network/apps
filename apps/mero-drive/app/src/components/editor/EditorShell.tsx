@@ -12,7 +12,7 @@
 //   - prose-invert + editor-area spacing (`px-8 py-6 md:px-16 lg:px-24`)
 //
 // What left:
-//   - AbiClient / WorkspaceManager / useCalimero / useWorkspace imports
+//   - AbiClient / WorkspaceManager / useWorkspace data-layer imports
 //   - saveDocument / handleBack / handleDelete data-layer logic
 //   - useParams / useNavigate (route-shape is a caller concern)
 //   - isLoading / document state driven by fetches

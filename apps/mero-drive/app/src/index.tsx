@@ -2,15 +2,11 @@ import React, { StrictMode } from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import {
-  AppMode,
-  CalimeroProvider,
-  setAppEndpointKey,
-  setAccessToken,
-  setRefreshToken,
-} from '@calimero-network/calimero-client';
-import {
   MeroProvider,
-  AppMode as MeroAppMode,
+  AppMode,
+  setApplicationId as setMeroApplicationId,
+  setNodeUrl as setMeroNodeUrl,
+  localStorageTokenStorage,
 } from '@calimero-network/mero-react';
 import { ToastProvider } from '@calimero-network/mero-ui';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -30,8 +26,11 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// Bootstrap Tauri/SSO hash params BEFORE React mounts — CalimeroProvider
-// reads localStorage at init, a useEffect would always be too late.
+// Bootstrap SSO callback params BEFORE React mounts — MeroProvider reads
+// localStorage at init, a useEffect would always be too late. Mirrors
+// the battleships pattern but fills mero-react's own storage keys
+// directly (this app is mero-react-only, no calimero-client bridge
+// required).
 (function bootstrapHashParams() {
   const hash = window.location.hash.slice(1);
   if (!hash) return;
@@ -39,9 +38,17 @@ if ('serviceWorker' in navigator) {
   const nodeUrl = p.get('node_url');
   const accessToken = p.get('access_token');
   const refreshToken = p.get('refresh_token');
-  if (nodeUrl) setAppEndpointKey(nodeUrl.trim());
-  if (accessToken) setAccessToken(accessToken);
-  if (refreshToken) setRefreshToken(refreshToken);
+  const expiresIn = p.get('expires_in');
+  if (nodeUrl) setMeroNodeUrl(nodeUrl.trim());
+  if (accessToken && refreshToken) {
+    void localStorageTokenStorage.set({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      expires_at: expiresIn
+        ? Date.now() + parseInt(expiresIn, 10) * 1000
+        : Date.now() + 60 * 60 * 1000,
+    });
+  }
   if (accessToken || refreshToken) {
     p.delete('access_token');
     p.delete('refresh_token');
@@ -55,54 +62,43 @@ if ('serviceWorker' in navigator) {
   }
 })();
 
-// Persist app-id from URL into localStorage so CalimeroProvider picks it up.
-const CALIMERO_APP_ID_KEY = 'calimero-application-id';
-const appIdFromUrl =
-  new URLSearchParams(window.location.search).get('app-id')?.trim() ||
-  new URLSearchParams(window.location.hash.slice(1)).get('app-id')?.trim() ||
-  '';
-if (appIdFromUrl && !localStorage.getItem(CALIMERO_APP_ID_KEY)) {
-  localStorage.setItem(CALIMERO_APP_ID_KEY, appIdFromUrl);
-}
-if (!localStorage.getItem(CALIMERO_APP_ID_KEY)) {
-  localStorage.setItem(CALIMERO_APP_ID_KEY, getApplicationId());
-}
+// Seed the default application id into mero-react's store so the
+// login modal / connectToNode flow can resolve the app by id rather
+// than by package-name registry lookup (faster + works offline). URL
+// param `?app-id=<id>` overrides.
+(function bootstrapAppId() {
+  const appIdFromUrl =
+    new URLSearchParams(window.location.search).get('app-id')?.trim() ||
+    new URLSearchParams(window.location.hash.slice(1)).get('app-id')?.trim() ||
+    '';
+  const effective = appIdFromUrl || getApplicationId();
+  if (effective) setMeroApplicationId(effective);
+})();
 
-// Disable StrictMode in production to avoid double-rendering which can
-// trigger 429s from CalimeroProvider's duplicate auth checks.
+// Disable StrictMode in production to avoid double-rendering which
+// can trigger duplicate auth init races in MeroProvider.
 const AppWrapper = import.meta.env.DEV ? StrictMode : React.Fragment;
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <AppWrapper>
     <BrowserRouter>
-      <CalimeroProvider
+      <MeroProvider
+        mode={AppMode.MultiContext}
         packageName="com.calimero.mero-drive-docs"
         registryUrl="https://apps.calimero.network"
-        mode={AppMode.MultiContext}
       >
-        {/* MeroProvider is required for useMero() and every
-            mero-react hook (useCreateContext, useSubgroups, etc.).
-            CalimeroProvider handles auth + app discovery; MeroProvider
-            owns the MeroJs instance the generated RegistryClient /
-            DocsClient need. */}
-        <MeroProvider
-          packageName="com.calimero.mero-drive-docs"
-          registryUrl="https://apps.calimero.network"
-          mode={MeroAppMode.MultiContext}
-        >
-          <WorkspaceProvider>
-            <RegistryProvider>
-              <ToastProvider>
-                <TooltipProvider>
-                  <ConfirmProvider>
-                    <App />
-                  </ConfirmProvider>
-                </TooltipProvider>
-              </ToastProvider>
-            </RegistryProvider>
-          </WorkspaceProvider>
-        </MeroProvider>
-      </CalimeroProvider>
+        <WorkspaceProvider>
+          <RegistryProvider>
+            <ToastProvider>
+              <TooltipProvider>
+                <ConfirmProvider>
+                  <App />
+                </ConfirmProvider>
+              </TooltipProvider>
+            </ToastProvider>
+          </RegistryProvider>
+        </WorkspaceProvider>
+      </MeroProvider>
     </BrowserRouter>
   </AppWrapper>,
 );

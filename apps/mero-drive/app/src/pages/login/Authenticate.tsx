@@ -1,6 +1,14 @@
+// Auth entry point. Three states in order:
+//   A. Landing (Hero + Features + CTA) with a "Connect" button
+//   B. Node-URL form (user types their node URL)
+//   C. Authenticated — redirect to /app
+//
+// Uses mero-react's `connectToNode` — the library handles the OAuth
+// callback, token storage, and re-render. No calimero-client.
+
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useCalimero, ConnectionType } from '@calimero-network/calimero-client';
+import { useMero } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
 import { Hero } from '@/components/landing/Hero';
 import { Features } from '@/components/landing/Features';
@@ -8,14 +16,9 @@ import { EditorPreview } from '@/components/landing/EditorPreview';
 import { CTA } from '@/components/landing/CTA';
 import { Footer } from '@/components/landing/Footer';
 
-interface AuthenticateProps {
-  isAuthenticated: boolean;
-  isConfigSet: boolean;
-}
-
-const Authenticate: React.FC<AuthenticateProps> = ({ isAuthenticated, isConfigSet }) => {
+const Authenticate: React.FC = () => {
   const navigate = useNavigate();
-  const { login } = useCalimero();
+  const { isAuthenticated, connectToNode, nodeUrl: currentNodeUrl } = useMero();
   const [showWebFlow, setShowWebFlow] = useState(false);
   const [nodeUrl, setNodeUrl] = useState('');
   const [connectError, setConnectError] = useState('');
@@ -23,12 +26,19 @@ const Authenticate: React.FC<AuthenticateProps> = ({ isAuthenticated, isConfigSe
 
   useEffect(() => {
     if (isAuthenticated) {
-      // Phase 4 scaffold routes:  / (landing) → /login → /app/* (authed placeholder).
-      // The v8 `/home` route is gone; navigating to it would fall through the
-      // catch-all back to the landing page and leave the user stranded.
       navigate('/app');
     }
   }, [isAuthenticated, navigate]);
+
+  // If mero has a nodeUrl stored but isn't authenticated (user
+  // disconnected / token expired), skip straight to the URL form
+  // pre-filled so they don't retype it.
+  useEffect(() => {
+    if (!isAuthenticated && currentNodeUrl && !nodeUrl) {
+      setNodeUrl(currentNodeUrl);
+      setShowWebFlow(true);
+    }
+  }, [currentNodeUrl, isAuthenticated, nodeUrl]);
 
   const handleConnect = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,18 +60,18 @@ const Authenticate: React.FC<AuthenticateProps> = ({ isAuthenticated, isConfigSe
       if (!res.ok) throw new Error();
     } catch {
       setConnecting(false);
-      setConnectError('Node not reachable. Make sure it\'s running and the URL is correct.');
+      setConnectError("Node not reachable. Make sure it's running and the URL is correct.");
       return;
     }
-    // Use CalimeroProvider's login — it sends package-name + registry-url to the
-    // node so the node can resolve the app itself. No applicationId/Path needed.
-    login({ type: ConnectionType.Custom, url });
+    // Hands off to mero-react: it navigates to the node's /auth/login,
+    // handles the OAuth dance, stores tokens in its own localStorage
+    // keys, and redirects back — isAuthenticated flips true and the
+    // effect above routes us to /app.
+    connectToNode(url);
   };
 
-  // State C: authenticated → redirect (handled by useEffect above)
-
   // State B: node URL form
-  if (!isAuthenticated && !isConfigSet && showWebFlow) {
+  if (!isAuthenticated && showWebFlow) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="w-full max-w-md p-8 rounded-2xl border border-border/50 bg-card shadow-lg">
