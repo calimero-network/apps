@@ -125,6 +125,13 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
   // normalisation): transitioning out of 'saving' is the save's own
   // job, not an update event's.
   const savingInFlightRef = useRef(false);
+  // Flipped to true by onContentChange while a save is in-flight.
+  // persistContent checks this after ack to decide whether to
+  // schedule a follow-up save. Using a flag avoids comparing HTML
+  // strings — Tiptap's getHTML() can return subtly different output
+  // for the same document state (trailing <p></p>, attribute order),
+  // which caused infinite save loops via string !== checks.
+  const dirtyDuringSaveRef = useRef(false);
 
   useEffect(
     () => () => {
@@ -211,6 +218,7 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
       }
       setSaveStatus('saving');
       savingInFlightRef.current = true;
+      dirtyDuringSaveRef.current = false;
       const mySeq = ++saveSeqRef.current;
       try {
         await docsEdit(currentDoc.id, { content });
@@ -230,16 +238,32 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         // would silently revert those keystrokes.
         lastSavedContentRef.current = content;
         setLastSavedAt(new Date());
-        // The save succeeded — surface that. If the user has typed
-        // more during the RPC, the next Tiptap `update` event will
-        // flip us back to 'unsaved' and the debounce will schedule
-        // another save. Don't try to infer "still dirty" from an HTML
-        // equality check against workingContentRef — Tiptap emits
-        // update events with minor whitespace / trailing-empty-<p>
-        // differences, so the check was perpetually true and kept
-        // the status stuck showing 'unsaved' / 'saving' even though
-        // the last edit had been persisted.
-        setSaveStatus('saved');
+        // Check if the user typed more while the RPC was in flight.
+        // onContentChange doesn't schedule autosaves during in-flight
+        // saves (to prevent cascading overlaps), so we handle the
+        // "dirty after ack" case here. Using the flag instead of
+        // comparing HTML strings avoids infinite save loops caused
+        // by Tiptap emitting slightly different HTML for the same
+        // document state (trailing empty paragraphs, normalisation).
+        if (dirtyDuringSaveRef.current) {
+          dirtyDuringSaveRef.current = false;
+          setSaveStatus('unsaved');
+          cancelPendingAutosave();
+          const latest = workingContentRef.current;
+          autosaveTimeoutRef.current = setTimeout(() => {
+            autosaveTimeoutRef.current = null;
+            void persistContent(latest);
+          }, AUTOSAVE_DEBOUNCE_MS);
+        } else {
+          // Also sync lastSavedContentRef with whatever Tiptap
+          // currently has. Tiptap may have normalised the HTML
+          // (trailing <p></p>, attribute reordering) so its
+          // getHTML() won't match the exact string we saved. Without
+          // this sync, the next onContentChange sees a "difference"
+          // and starts a redundant save cycle.
+          lastSavedContentRef.current = workingContentRef.current;
+          setSaveStatus('saved');
+        }
         return true;
       } catch (e: unknown) {
         if (unmountedRef.current) return false;
@@ -260,7 +284,7 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         }
       }
     },
-    [docsEdit],
+    [docsEdit, cancelPendingAutosave],
   );
 
   const onContentChange = useCallback(
@@ -272,11 +296,16 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         if (!savingInFlightRef.current) setSaveStatus('saved');
         return;
       }
-      // Don't regress an in-flight 'saving' to 'unsaved' on Tiptap's
-      // spurious update events (cursor moves, internal re-emits).
-      // The save's own resolver will transition to the right end
-      // state when it completes.
-      if (!savingInFlightRef.current) setSaveStatus('unsaved');
+      // While a save is in-flight, just record the new content and
+      // flag it dirty — don't schedule another autosave. Scheduling
+      // during in-flight saves caused cascading overlaps that kept
+      // savingInFlightRef stuck on true. persistContent checks the
+      // dirty flag after ack and schedules a follow-up if needed.
+      if (savingInFlightRef.current) {
+        dirtyDuringSaveRef.current = true;
+        return;
+      }
+      setSaveStatus('unsaved');
       cancelPendingAutosave();
       autosaveTimeoutRef.current = setTimeout(() => {
         autosaveTimeoutRef.current = null;
