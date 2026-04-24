@@ -5,8 +5,6 @@ import {
   MeroProvider,
   AppMode,
   setApplicationId as setMeroApplicationId,
-  setNodeUrl as setMeroNodeUrl,
-  localStorageTokenStorage,
 } from '@calimero-network/mero-react';
 import { ToastProvider } from '@calimero-network/mero-ui';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -26,46 +24,17 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// Bootstrap SSO callback params BEFORE React mounts — MeroProvider reads
-// localStorage at init, a useEffect would always be too late. Mirrors
-// the battleships pattern but fills mero-react's own storage keys
-// directly (this app is mero-react-only, no calimero-client bridge
-// required).
-(function bootstrapHashParams() {
-  const hash = window.location.hash.slice(1);
-  if (!hash) return;
-  const p = new URLSearchParams(hash);
-  const nodeUrl = p.get('node_url');
-  const accessToken = p.get('access_token');
-  const refreshToken = p.get('refresh_token');
-  const expiresIn = p.get('expires_in');
-  if (nodeUrl) setMeroNodeUrl(nodeUrl.trim());
-  if (accessToken && refreshToken) {
-    void localStorageTokenStorage.set({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-      expires_at: expiresIn
-        ? Date.now() + parseInt(expiresIn, 10) * 1000
-        : Date.now() + 60 * 60 * 1000,
-    });
-  }
-  if (accessToken || refreshToken) {
-    p.delete('access_token');
-    p.delete('refresh_token');
-    p.delete('expires_in');
-    const remaining = p.toString();
-    window.history.replaceState(
-      null,
-      '',
-      remaining ? `#${remaining}` : window.location.pathname + window.location.search,
-    );
-  }
-})();
-
 // Seed the default application id into mero-react's store so the
 // login modal / connectToNode flow can resolve the app by id rather
 // than by package-name registry lookup (faster + works offline). URL
 // param `?app-id=<id>` overrides.
+//
+// We do NOT touch the OAuth callback hash here — MeroProvider reads
+// `window.location.href` in its own useRef init and calls
+// `parseAuthCallback` to extract the tokens. Clearing the hash before
+// React mounts (as an earlier version of this file did) silently
+// swallows the callback: MeroProvider then sees no tokens and stays
+// unauthenticated despite a successful OAuth round-trip.
 (function bootstrapAppId() {
   const appIdFromUrl =
     new URLSearchParams(window.location.search).get('app-id')?.trim() ||
