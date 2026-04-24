@@ -104,15 +104,18 @@ export function useMemberCaps(
         if (signal.aborted) return;
         try {
           // 1) Read members list to discover our role. Cast through
-          //    unknown because the DTS promises `{ data }` but the
-          //    wire body is `{ members, selfIdentity }`.
+          //    unknown because the DTS and wire shape disagree:
+          //    some backend versions return `{ members, selfIdentity }`,
+          //    others return `{ data: [...], selfIdentity }`.
           const raw = (await mero.admin.listGroupMembers(
             groupId,
           )) as unknown as {
             members?: Array<{ identity: string; role?: string }>;
+            data?: Array<{ identity: string; role?: string }>;
           };
           if (signal.aborted) return;
-          const me = (raw.members ?? []).find(
+          const membersList = raw.members ?? raw.data ?? [];
+          const me = membersList.find(
             (m) => m.identity === memberId,
           );
           if (!me) {

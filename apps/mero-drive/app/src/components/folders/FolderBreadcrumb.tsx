@@ -18,8 +18,7 @@ interface Props {
 }
 
 export function FolderBreadcrumb({ folderId }: Props) {
-  const { folders } = useDriveWorkspace();
-  const { setSelectedFolder } = useDriveWorkspace();
+  const { folders, setSelectedFolder } = useDriveWorkspace();
 
   const byId = React.useMemo(
     () => new Map(folders.map((f) => [f.id, f])),
@@ -59,7 +58,6 @@ export function FolderBreadcrumb({ folderId }: Props) {
           </React.Fragment>
         );
       })}
-      <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden />
     </nav>
   );
 }

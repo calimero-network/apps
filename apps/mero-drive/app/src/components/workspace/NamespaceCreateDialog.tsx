@@ -41,9 +41,12 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
 
     const nsId = await createWorkspace(alias);
     if (!nsId) {
-      // createWorkspace sets createWorkspaceError internally; surface
-      // its message. If absent, fall back to a generic line.
-      setSubmitError(createWorkspaceError?.message ?? 'Workspace creation failed');
+      // createWorkspace sets createWorkspaceError internally via
+      // setCreateError — a React state update that only lands on the
+      // next render. Reading createWorkspaceError here would return
+      // the stale (pre-render) value, so we don't try. Instead,
+      // displayError (below) picks up createWorkspaceError?.message
+      // once the re-render fires.
       return;
     }
 

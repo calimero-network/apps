@@ -212,11 +212,8 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
       setSaveStatus('saving');
       savingInFlightRef.current = true;
       const mySeq = ++saveSeqRef.current;
-      const t0 = performance.now();
-      console.debug('[autosave] start', { mySeq });
       try {
         await docsEdit(currentDoc.id, { content });
-        console.debug('[autosave] ack', { mySeq, ms: Math.round(performance.now() - t0) });
         if (unmountedRef.current) return true;
         // Out-of-order-resolution guard: a newer save has already
         // acked while this one was in flight, so its content is the

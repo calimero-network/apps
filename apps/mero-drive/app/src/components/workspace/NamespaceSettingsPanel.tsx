@@ -6,15 +6,12 @@
 // loading states, so this composition is intentionally thin.
 
 import React from 'react';
-import { useNamespacesForApplication } from '@calimero-network/mero-react';
-import { ENV_APPLICATION_ID } from '@/constants/config';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { NamespaceMembersPanel } from './NamespaceMembersPanel';
 import { WorkspaceSettingsPanel } from '@/components/admin/WorkspaceSettingsPanel';
 
 export function NamespaceSettingsPanel() {
-  const { namespaceId } = useDriveWorkspace();
-  const { namespaces } = useNamespacesForApplication(ENV_APPLICATION_ID);
+  const { namespaceId, namespaces } = useDriveWorkspace();
   const ns = namespaces.find((n) => n.namespaceId === namespaceId);
 
   return (

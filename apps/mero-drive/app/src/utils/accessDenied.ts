@@ -38,8 +38,11 @@ export function isAccessDeniedError(err: unknown): boolean {
     lower.includes('not a member') ||
     lower.includes('forbidden') ||
     lower.includes('permission denied') ||
-    // JSON-RPC FunctionCallError bubbles up WASM `missing_permission`
-    // style panics — treat those the same.
-    lower.includes('functioncallerror')
+    // JSON-RPC FunctionCallError with a permission-related message.
+    // Checking for functioncallerror alone would match unrelated WASM
+    // panics (business logic errors, serialisation failures) and mask
+    // them behind a misleading "Restricted folder" card.
+    (lower.includes('functioncallerror') &&
+      (lower.includes('permission') || lower.includes('not a member')))
   );
 }

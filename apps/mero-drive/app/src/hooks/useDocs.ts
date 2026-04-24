@@ -71,9 +71,8 @@ function notifyDocsRefetch(contextId: string | null) {
 }
 
 export function useDocs(folderId: string | null): UseDocsState {
-  const { namespaceId } = useDriveWorkspace();
+  const { namespaceId, registryClient } = useDriveWorkspace();
   const { identity } = useSelfIdentity(namespaceId);
-  const { registryClient } = useDriveWorkspace();
 
   const [contextId, setContextId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<Error | null>(null);

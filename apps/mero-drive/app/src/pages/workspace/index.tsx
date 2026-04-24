@@ -4,15 +4,28 @@
 // `!isLoading && !isAuthenticated` so a transient false during
 // MeroProvider init doesn't bounce the user back to /login.
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useMero } from '@calimero-network/mero-react';
 import { WorkspaceLayout } from '@/components/workspace/WorkspaceLayout';
+
+const ACTIVE_NS_KEY = 'mero-drive:activeNs';
 
 export default function WorkspacePage() {
   const { isAuthenticated, isLoading } = useMero();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Clear app-specific localStorage on logout so the next user on
+  // the same browser doesn't inherit the previous user's namespace
+  // selection. Mirrors battleships' lobby-state reset on disconnect.
+  const wasAuthenticatedRef = useRef(isAuthenticated);
+  useEffect(() => {
+    if (wasAuthenticatedRef.current && !isAuthenticated && !isLoading) {
+      localStorage.removeItem(ACTIVE_NS_KEY);
+    }
+    wasAuthenticatedRef.current = isAuthenticated;
+  }, [isAuthenticated, isLoading]);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
