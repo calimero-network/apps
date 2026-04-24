@@ -1,12 +1,19 @@
-// New-workspace modal. Calls useCreateNamespace with the current
-// applicationId and a user-supplied alias, then auto-switches the
-// active workspace to the newly created namespace. CreateNamespaceRequest
-// requires `upgradePolicy`; we default to "latest" which keeps apps
-// on the newest published bundle — matches the default used by the
-// e2e workflow's create_namespace step.
+// New-workspace modal. Calls mero.admin.createNamespace directly
+// with the current applicationId and a user-supplied alias, then
+// auto-switches the active workspace to the newly created namespace.
+// CreateNamespaceRequest requires `upgradePolicy`; we default to
+// "latest" which keeps apps on the newest published bundle — matches
+// the default used by the e2e workflow's create_namespace step.
+//
+// We bypass mero-react's useCreateNamespace hook because its
+// useAsyncMutation helper swallows the real server error into a
+// `null` return + internal state (setState queued async, stale by
+// the time our await resolves). Calling the admin API directly lets
+// us catch the actual HTTP body / network error and surface it to
+// the user verbatim.
 
 import React, { useState } from 'react';
-import { useCreateNamespace } from '@calimero-network/mero-react';
+import { useMero } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
 import { getApplicationId, MAX_ALIAS_LENGTH } from '@/constants/config';
 import { useWorkspace } from '@/context/WorkspaceContext';
@@ -20,7 +27,7 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
   const [name, setName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { createNamespace } = useCreateNamespace();
+  const { mero } = useMero();
   const { setNamespace } = useWorkspace();
 
   const trimmed = name.trim();
@@ -46,9 +53,24 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
     // still gets their namespace created + switched, and we close
     // the dialog rather than surfacing a misleading "failed" error
     // that would tempt them to retry and create a duplicate.
+    const appId = getApplicationId();
+    if (appId === 'REPLACE_WITH_REAL_APP_ID') {
+      setError(
+        'Application ID not configured. Pass ?app-id=<id> in the URL or set VITE_APPLICATION_ID in your .env.',
+      );
+      setSubmitting(false);
+      return;
+    }
+
+    if (!mero) {
+      setError('Calimero client not ready — try reloading the page.');
+      setSubmitting(false);
+      return;
+    }
+
     try {
-      const res = await createNamespace({
-        applicationId: getApplicationId(),
+      const res = await mero.admin.createNamespace({
+        applicationId: appId,
         upgradePolicy: 'latest',
         alias,
       });
