@@ -23,7 +23,7 @@ import {
 import type { RegistryClient } from '../api/registry/RegistryClient';
 import { adminRequest } from '../api/adminApi';
 import {
-  getApplicationId,
+  ENV_APPLICATION_ID,
   DOCS_SERVICE_ID,
 } from '../constants/config';
 import {
@@ -110,7 +110,7 @@ export function useFolderOperations(
         }
 
         const ctx = await createContext({
-          applicationId: getApplicationId(),
+          applicationId: ENV_APPLICATION_ID,
           groupId: newId,
           serviceName: DOCS_SERVICE_ID,
           initializationParams: [],

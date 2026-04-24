@@ -7,14 +7,14 @@
 
 import React from 'react';
 import { useNamespacesForApplication } from '@calimero-network/mero-react';
-import { getApplicationId } from '@/constants/config';
+import { ENV_APPLICATION_ID } from '@/constants/config';
 import { useWorkspace } from '@/context/WorkspaceContext';
 import { NamespaceMembersPanel } from './NamespaceMembersPanel';
 import { WorkspaceSettingsPanel } from '@/components/admin/WorkspaceSettingsPanel';
 
 export function NamespaceSettingsPanel() {
   const { namespaceId } = useWorkspace();
-  const { namespaces } = useNamespacesForApplication(getApplicationId());
+  const { namespaces } = useNamespacesForApplication(ENV_APPLICATION_ID);
   const ns = namespaces.find((n) => n.namespaceId === namespaceId);
 
   return (

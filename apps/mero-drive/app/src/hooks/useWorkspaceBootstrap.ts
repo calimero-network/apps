@@ -28,7 +28,7 @@ import {
 } from '@calimero-network/mero-react';
 import { adminRequest } from '../api/adminApi';
 import {
-  getApplicationId,
+  ENV_APPLICATION_ID,
   REGISTRY_CONTEXT_ALIAS,
   REGISTRY_SERVICE_ID,
 } from '../constants/config';
@@ -142,7 +142,7 @@ export function useWorkspaceBootstrap(
         inFlightRef.current = true;
         try {
           const created = await createContext({
-            applicationId: getApplicationId(),
+            applicationId: ENV_APPLICATION_ID,
             groupId: rootGroupId,
             serviceName: REGISTRY_SERVICE_ID,
             initializationParams: [],

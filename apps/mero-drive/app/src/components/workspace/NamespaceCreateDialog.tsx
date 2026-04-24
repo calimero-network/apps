@@ -21,7 +21,7 @@
 import React, { useState } from 'react';
 import { useMero } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
-import { getApplicationId, MAX_ALIAS_LENGTH } from '@/constants/config';
+import { ENV_APPLICATION_ID, MAX_ALIAS_LENGTH } from '@/constants/config';
 import { useWorkspace } from '@/context/WorkspaceContext';
 
 interface Props {
@@ -67,7 +67,7 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
 
     try {
       const res = await mero.admin.createNamespace({
-        applicationId: getApplicationId(),
+        applicationId: ENV_APPLICATION_ID,
         upgradePolicy: 'Automatic',
         alias,
       });

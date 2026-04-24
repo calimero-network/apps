@@ -11,12 +11,12 @@
 import React, { useState } from 'react';
 import { useNamespacesForApplication } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
-import { getApplicationId } from '@/constants/config';
+import { ENV_APPLICATION_ID } from '@/constants/config';
 import { useWorkspace } from '@/context/WorkspaceContext';
 import { NamespaceCreateDialog } from './NamespaceCreateDialog';
 
 export function NamespaceSwitcher() {
-  const appId = getApplicationId();
+  const appId = ENV_APPLICATION_ID;
   const { namespaces, loading, error, refetch } = useNamespacesForApplication(appId);
   const { namespaceId, setNamespace } = useWorkspace();
   const [showCreate, setShowCreate] = useState(false);
