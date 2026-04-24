@@ -1,8 +1,11 @@
 // Memoized RegistryClient factory. The generated class takes
-// `(mero, contextId, executorPublicKey)` — we recreate only when one
-// of those inputs changes. Callers obtain the per-namespace pubkey
-// from useSelfIdentity (or useNamespaceIdentity from mero-react),
-// and the context id from useWorkspaceBootstrap.
+// `(mero, contextId, executorPublicKey)` — we recreate only when
+// one of those inputs changes. Callers obtain the per-namespace
+// pubkey + Registry context id from useDriveWorkspace.
+//
+// NB. useDriveWorkspace already memoizes its own RegistryClient
+// instance; direct callers of this hook are legacy and will be
+// folded into the main hook in a future pass.
 
 import { useMemo } from 'react';
 import { useMero } from '@calimero-network/mero-react';

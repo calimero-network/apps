@@ -5,13 +5,13 @@
 //     sharing) when a folder is selected; full-screen DocumentEditor
 //     when a doc is open.
 //
-// Mounted by App.tsx on the /app/* route. Providers
-// (WorkspaceProvider, RegistryProvider, MeroProvider) are already in
-// place in index.tsx.
+// Mounted by App.tsx on the /app/* route (via WorkspacePage's
+// auth-guarded shell). MeroProvider is the only app-level provider;
+// workspace + registry state comes from the useDriveWorkspace hook.
 //
 // Selected-document state is intentionally local: no other consumer
-// reads it, and keeping it out of WorkspaceContext avoids unwiring a
-// folder's active doc on every RegistryProvider re-render.
+// reads it, and keeping it out of useDriveWorkspace avoids unwiring
+// a folder's active doc on every workspace re-render.
 
 import React, { useEffect, useState } from 'react';
 import { Settings, LogOut, Circle } from 'lucide-react';
