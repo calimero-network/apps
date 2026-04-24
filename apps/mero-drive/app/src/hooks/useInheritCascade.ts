@@ -50,14 +50,15 @@ export function useInheritCascade(): UseInheritCascadeState {
     if (!mero || !rootGroupId) return null;
     setState((s) => ({ ...s, running: true, error: null }));
     try {
-      // 1) Namespace members. Cast through unknown — see useMemberCaps
-      //    for the listGroupMembers wire-shape bug.
+      // 1) Namespace members. Cast through unknown — wire shape uses
+      //    `data` or `members` depending on backend version.
       const nsRaw = (await mero.admin.listGroupMembers(
         rootGroupId,
       )) as unknown as {
         members?: Array<{ identity: string; role?: string }>;
+        data?: Array<{ identity: string; role?: string }>;
       };
-      const namespaceMembers = nsRaw.members ?? [];
+      const namespaceMembers = nsRaw.members ?? nsRaw.data ?? [];
 
       // 2) Inherit-mode folders from the merged registry/admin tree.
       const inheritFolders = folders.filter(
@@ -77,8 +78,9 @@ export function useInheritCascade(): UseInheritCascadeState {
             folder.id,
           )) as unknown as {
             members?: Array<{ identity: string }>;
+            data?: Array<{ identity: string }>;
           };
-          existing = new Set((fRaw.members ?? []).map((m) => m.identity));
+          existing = new Set((fRaw.members ?? fRaw.data ?? []).map((m) => m.identity));
         } catch {
           // If we can't read the folder's members we can't diff.
           // Skip and surface via failures count rather than aborting.

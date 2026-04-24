@@ -55,16 +55,17 @@ export function useFolderMembership(folderId: string | null): FolderMembershipSt
     setLoading(true);
     setError(null);
     try {
-      // Cast through unknown because DTS promises `{ data }` but the
-      // real wire body is `{ members, selfIdentity }`. Drop the cast
-      // when mero-js ships the fix.
+      // Cast through unknown because DTS and wire shape disagree:
+      // some backend versions return `{ members, selfIdentity }`,
+      // others return `{ data: [...], selfIdentity }`.
       const raw = (await mero.admin.listGroupMembers(
         folderId,
       )) as unknown as {
         members?: GroupMember[];
+        data?: GroupMember[];
       };
       if (!aliveRef.current) return;
-      setMembers(raw.members ?? []);
+      setMembers(raw.members ?? raw.data ?? []);
     } catch (e: unknown) {
       if (!aliveRef.current) return;
       setError(e instanceof Error ? e : new Error(String(e)));
