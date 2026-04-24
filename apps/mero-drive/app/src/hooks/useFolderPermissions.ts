@@ -3,9 +3,10 @@
 // NewFolderButton, FolderVisibilityToggle, and the sharing panel to
 // gate per-folder affordances.
 //
-// Keep the bit checks in sync with `utils/policyTable.ts::REQUIRED` —
-// policyTable.can() is the action-oriented API, this hook is the
-// permissions-oriented API. Same underlying bits.
+// Bit checks reference the `CAP` constants in `constants/config.ts` —
+// same bit layout the backend enforces via
+// `is_group_admin_or_has_capability` (core/context/group_store/
+// membership.rs:172).
 
 import { CAP } from '../constants/config';
 import { useMemberCaps } from './useMemberCaps';

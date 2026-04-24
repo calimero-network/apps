@@ -11,8 +11,18 @@ import { useWorkspace } from '@/context/WorkspaceContext';
 import { FolderTreeItem } from './FolderTreeItem';
 import { NewFolderButton } from './NewFolderButton';
 
+// Stage → user-readable label. Anything past 'idle' is a spinner-state
+// message. Keeps the UI honest about WHICH step is slow instead of a
+// generic "Loading…" that hides identity/bootstrap errors.
+const STAGE_LABELS: Record<string, string> = {
+  'resolving-identity': 'Resolving identity…',
+  'bootstrapping-registry': 'Bootstrapping workspace…',
+  'loading-subgroups': 'Loading subgroups…',
+  'loading-folders': 'Loading folders…',
+};
+
 export function FolderTree() {
-  const { folders, loading, error } = useRegistry();
+  const { folders, loading, stage, error } = useRegistry();
   const { selectedFolderId, setSelectedFolder, namespaceId } = useWorkspace();
 
   const tree = useMemo(
@@ -31,17 +41,20 @@ export function FolderTree() {
 
   if (loading) {
     return (
-      <div className="p-3 text-xs text-muted-foreground">Loading folders…</div>
+      <div className="p-3 text-xs text-muted-foreground">
+        {STAGE_LABELS[stage] ?? 'Loading…'}
+      </div>
     );
   }
 
   if (error) {
     return (
       <div
-        className="p-3 text-xs text-destructive"
+        className="p-3 text-xs text-destructive break-words"
         title={error.message}
       >
-        Failed to load folders
+        <div className="font-medium mb-1">Failed to load folders</div>
+        <div className="font-mono opacity-80">{error.message}</div>
       </div>
     );
   }

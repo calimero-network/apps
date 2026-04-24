@@ -60,18 +60,26 @@ export function useSelfIdentity(namespaceId: string | null): SelfIdentityState {
     // member during the gap.
     setState({ identity: null, loading: true, error: null });
     let alive = true;
-    adminRequest<{ identity: string }>(`/namespaces/${namespaceId}/self-identity`)
+    // core exposes this at GET /admin-api/namespaces/:id/identity.
+    // We call it directly rather than via
+    // `mero.admin.getNamespaceIdentity` because mero-js 1.4.1's
+    // `unwrap()` helper assumes responses are wrapped in
+    // `{ data: ... }`, but core's ApiResponse serializes the payload
+    // at the top level — so the typed client resolves to `undefined`
+    // and throws "Cannot read properties of undefined (reading
+    // 'publicKey')". Calling fetch directly via adminRequest skips
+    // the broken unwrap. core returns camelCase fields (serde
+    // `rename_all = "camelCase"` on NamespaceIdentityApiResponse).
+    adminRequest<{ namespaceId: string; publicKey: string }>(
+      `/namespaces/${namespaceId}/identity`,
+    )
       .then((r) => {
         if (!alive) return;
-        localStorage.setItem(keyFor(namespaceId), r.identity);
-        setState({ identity: r.identity, loading: false, error: null });
+        localStorage.setItem(keyFor(namespaceId), r.publicKey);
+        setState({ identity: r.publicKey, loading: false, error: null });
       })
       .catch((e: unknown) => {
         if (!alive) return;
-        // Normalise non-Error throws so consumers accessing
-        // `error.message` / `.stack` don't crash. adminRequest
-        // throws Error by construction, but promise rejection is
-        // `any` — keep the type contract honest at the boundary.
         const err = e instanceof Error ? e : new Error(String(e));
         setState({ identity: null, loading: false, error: err });
       });

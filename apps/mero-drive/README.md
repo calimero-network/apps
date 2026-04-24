@@ -36,8 +36,7 @@ pnpm install
 pnpm --dir app install
 
 # 2. Build the WASM bundle (.mpk)
-pnpm run logic:build
-pnpm run logic:bundle           # produces logic/dist/com.calimero.mero-drive-docs-9.0.0.mpk
+pnpm run logic:build            # builds both crates + packages logic/dist/com.calimero.mero-drive-docs-9.0.0.mpk
 
 # 3. Bootstrap a local node + install the bundle
 pnpm run network:bootstrap
@@ -146,9 +145,8 @@ UI helpers:
 
 ```bash
 # Logic
-pnpm run logic:build                          # cargo build + ABI emit
-pnpm run logic:bundle                         # .mpk build (signed if test key available)
-pnpm run logic:clean                          # rm target + res
+pnpm run logic:build                          # build both crates + package the .mpk bundle
+pnpm run logic:clean                          # rm target + per-crate res/ + dist/
 
 # App
 pnpm run app:dev                              # Vite + WASM watcher
@@ -185,7 +183,7 @@ rm -rf app/node_modules/.vite
 
 **Local node + bundle out of sync**
 ```bash
-pnpm run logic:build && pnpm run logic:bundle && pnpm run network:bootstrap
+pnpm run logic:build && pnpm run network:bootstrap
 ```
 
 ## Links

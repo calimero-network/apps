@@ -14,7 +14,8 @@
 // folder's active doc on every RegistryProvider re-render.
 
 import React, { useEffect, useState } from 'react';
-import { Settings } from 'lucide-react';
+import { Settings, LogOut, Circle } from 'lucide-react';
+import { useMero } from '@calimero-network/mero-react';
 import { LogoWithText } from '@/components/icons/Logo';
 import { Button } from '@/components/ui/button';
 import { NamespaceSwitcher } from './NamespaceSwitcher';
@@ -30,7 +31,12 @@ import { useRegistry } from '@/context/RegistryContext';
 export function WorkspaceLayout() {
   const { namespaceId, selectedFolderId } = useWorkspace();
   const { folders } = useRegistry();
+  const { nodeUrl, isOnline, logout } = useMero();
   const selectedFolder = folders.find((f) => f.id === selectedFolderId);
+
+  // Friendly display of the node URL — stripped of protocol for
+  // compactness, full URL kept in the title attribute for copy-paste.
+  const displayNode = (nodeUrl ?? '').replace(/^https?:\/\//, '') || 'disconnected';
 
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   // Toggle between folder/editor view and the full-pane namespace
@@ -79,18 +85,47 @@ export function WorkspaceLayout() {
           <div className="hidden h-6 w-px bg-border sm:block" />
           <NamespaceSwitcher />
         </div>
-        {namespaceId && (
+        <div className="flex items-center gap-2">
+          {/* Connection indicator — shows the node URL and online
+              state. Hidden on narrow viewports; title carries the
+              full URL for copy-paste. */}
+          {nodeUrl && (
+            <div
+              className="hidden md:flex items-center gap-1.5 text-xs text-muted-foreground px-2"
+              title={nodeUrl}
+              aria-label={`Connected to ${nodeUrl}${isOnline ? '' : ' (offline)'}`}
+            >
+              <Circle
+                className={`h-2 w-2 ${
+                  isOnline ? 'fill-green-500 text-green-500' : 'fill-destructive text-destructive'
+                }`}
+              />
+              <span className="max-w-[16ch] truncate">{displayNode}</span>
+            </div>
+          )}
+          {namespaceId && (
+            <Button
+              variant={showSettings ? 'default' : 'ghost'}
+              size="sm"
+              className="gap-1.5"
+              aria-pressed={showSettings}
+              onClick={() => setShowSettings((v) => !v)}
+            >
+              <Settings className="h-3.5 w-3.5" />
+              Settings
+            </Button>
+          )}
           <Button
-            variant={showSettings ? 'default' : 'ghost'}
+            variant="ghost"
             size="sm"
             className="gap-1.5"
-            aria-pressed={showSettings}
-            onClick={() => setShowSettings((v) => !v)}
+            onClick={logout}
+            aria-label="Log out"
           >
-            <Settings className="h-3.5 w-3.5" />
-            Settings
+            <LogOut className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Log out</span>
           </Button>
-        )}
+        </div>
       </header>
 
       {/* Main grid */}

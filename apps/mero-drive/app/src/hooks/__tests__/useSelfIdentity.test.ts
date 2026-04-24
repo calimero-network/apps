@@ -14,10 +14,13 @@ describe('useSelfIdentity', () => {
   });
 
   it('calls admin API for first lookup and caches in localStorage', async () => {
-    (adminRequest as ReturnType<typeof vi.fn>).mockResolvedValue({ identity: 'pk-1' });
+    (adminRequest as ReturnType<typeof vi.fn>).mockResolvedValue({
+      namespaceId: 'ns-1',
+      publicKey: 'pk-1',
+    });
     const { result } = renderHook(() => useSelfIdentity('ns-1'));
     await waitFor(() => expect(result.current.identity).toBe('pk-1'));
-    expect(adminRequest).toHaveBeenCalledWith('/namespaces/ns-1/self-identity');
+    expect(adminRequest).toHaveBeenCalledWith('/namespaces/ns-1/identity');
     expect(localStorage.getItem('mero-drive:selfId:ns-1')).toBe('pk-1');
   });
 
@@ -48,9 +51,6 @@ describe('useSelfIdentity', () => {
   });
 
   it('wraps non-Error throws so error.message is safe to read', async () => {
-    // adminRequest throws Error by construction, but promise rejection
-    // is `any`. The catch must normalise so downstream consumers can
-    // access error.message / .stack without crashing.
     (adminRequest as ReturnType<typeof vi.fn>).mockRejectedValue('string-not-error');
     const { result } = renderHook(() => useSelfIdentity('ns-err'));
     await waitFor(() => expect(result.current.loading).toBe(false));

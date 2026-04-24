@@ -1,32 +1,32 @@
-// Minimal admin-API client. Replaces the deleted `AdminApi.ts` +
-// `AbiClient.ts` layer.
+// Minimal admin-API client for admin endpoints that don't have a
+// mero-react hook (one-shot reads, reconciliation, identity resolution).
 //
-// The namespace-based v9 app talks to admin-API primarily through
-// mero-react hooks (`useNamespacesForApplication`, `useNestGroup`,
-// `useAddGroupMember`, etc.). This file only exports thin fetch
-// helpers for paths where there's no suitable hook yet (one-shot
-// reads, reconciliation, identity resolution).
+// Reads node URL + access token from mero-react's own localStorage
+// keys (`mero:node_url`, `mero:access_token`) since we're
+// mero-react-only now (calimero-client removed in the Phase-10
+// follow-up). MeroProvider writes to these keys on connect and
+// refresh; adminRequest reads them on every call.
 
-import { getAppEndpointKey, getAccessToken } from '@calimero-network/calimero-client';
+import { getNodeUrl, localStorageTokenStorage } from '@calimero-network/mero-react';
 
-function buildHeaders(extra?: HeadersInit): HeadersInit {
-  const token = getAccessToken();
+async function buildHeaders(extra?: HeadersInit): Promise<HeadersInit> {
+  const token = await localStorageTokenStorage.get();
   return {
     'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(token?.access_token ? { Authorization: `Bearer ${token.access_token}` } : {}),
     ...(extra ?? {}),
   };
 }
 
 /** Execute an admin-API call and return the parsed JSON body. */
 export async function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const base = getAppEndpointKey();
+  const base = getNodeUrl();
   if (!base) {
-    throw new Error('admin-api: node endpoint not set');
+    throw new Error('admin-api: node URL not set (connect to a node first)');
   }
   const res = await fetch(`${base}/admin-api${path}`, {
     ...init,
-    headers: buildHeaders(init?.headers),
+    headers: await buildHeaders(init?.headers),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
@@ -34,4 +34,3 @@ export async function adminRequest<T>(path: string, init?: RequestInit): Promise
   }
   return res.json() as Promise<T>;
 }
-

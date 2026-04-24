@@ -1,11 +1,10 @@
 // v9 namespace-based mero-drive config.
 //
 // The real APP_ID is allocated by the Calimero registry when the
-// `com.calimero.mero-drive-docs-9.0.0.mpk` bundle is published. Until
-// then we read it from a URL param (`app-id`) or the env var
-// VITE_APPLICATION_ID, falling back to a placeholder that the app will
-// refuse to operate against (so nobody accidentally talks to the wrong
-// app id in dev).
+// `com.calimero.mero-drive-docs-9.0.0.mpk` bundle is published. URL
+// param `app-id` or env VITE_APPLICATION_ID override the built-in
+// default — useful when testing against a locally-rebuilt bundle
+// that the node assigned a different id to.
 
 const getUrlParam = (name: string): string => {
   if (typeof window === 'undefined') return '';
@@ -15,19 +14,23 @@ const getUrlParam = (name: string): string => {
   return fromHash;
 };
 
-/** Application ID: URL param `app-id` > env VITE_APPLICATION_ID > placeholder. */
+// Default app id of the published v9 bundle. Override per-session
+// via `?app-id=<id>` URL param or `VITE_APPLICATION_ID` env var when
+// testing locally-rebuilt bundles (node allocates a fresh id on each
+// `merobox install`).
+const DEFAULT_APPLICATION_ID = 'GfksPg4kLyLEkN5cRKvZ69rMRgD4gaM8VLxJAWQitDCq';
+
+/** Application ID: URL param `app-id` > env VITE_APPLICATION_ID > DEFAULT_APPLICATION_ID. */
 export function getApplicationId(): string {
   return (
     getUrlParam('app-id') ||
     (import.meta.env.VITE_APPLICATION_ID as string | undefined)?.trim() ||
-    // Placeholder until the v9 bundle ships to the registry. Pass
-    // `?app-id=<real>` or set VITE_APPLICATION_ID to override locally.
-    'REPLACE_WITH_REAL_APP_ID'
+    DEFAULT_APPLICATION_ID
   );
 }
 
-// Service ids inside the multi-service bundle. Must match
-// `logic/manifest.json`'s `services[].name`.
+// Service ids inside the multi-service bundle. Must match the
+// `services[].name` fields written by `logic/build-bundle.sh`.
 export const REGISTRY_SERVICE_ID = 'registry';
 export const DOCS_SERVICE_ID = 'docs';
 
