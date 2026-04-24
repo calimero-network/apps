@@ -19,9 +19,10 @@ import {
   useDeleteGroup,
   useSetGroupAlias,
   useAddGroupMembers,
+  useNestGroup,
+  useUnnestGroup,
 } from '@calimero-network/mero-react';
 import type { RegistryClient } from '../api/registry/RegistryClient';
-import { adminRequest } from '../api/adminApi';
 import {
   ENV_APPLICATION_ID,
   DOCS_SERVICE_ID,
@@ -65,6 +66,8 @@ export function useFolderOperations(
   const { deleteGroup } = useDeleteGroup();
   const { setGroupAlias } = useSetGroupAlias();
   const { addGroupMembers } = useAddGroupMembers();
+  const { nestGroup } = useNestGroup();
+  const { unnestGroup } = useUnnestGroup();
 
   const create = useCallback(
     async (input: CreateFolderInput): Promise<string> => {
@@ -93,20 +96,15 @@ export function useFolderOperations(
 
         // createGroupInNamespace always places the new group as a
         // direct child of the namespace root. To nest it under a
-        // specific parent, use core's atomic reparent_group endpoint
-        // (core#2200 — strict group-tree invariant). Once mero-react
-        // ships a useReparentGroup hook the adminRequest call below
-        // should be swapped for it; for now the endpoint shape mirrors
-        // the {child_group_id, new_parent_id} body merobox posts (the
-        // admin API uses snake_case throughout).
+        // specific parent, unnest from the root and re-nest under the
+        // desired parent via mero-react's hooks. Two sequential calls
+        // instead of one atomic reparent (core#2200 has that endpoint
+        // but mero-react hasn't surfaced it); if unnest succeeds and
+        // nest fails the new group is orphaned under nothing, which
+        // useReconcile can clean up on the next pass.
         if (input.parentGroupId !== rootGroupId) {
-          await adminRequest(`/groups/reparent`, {
-            method: 'POST',
-            body: JSON.stringify({
-              child_group_id: newId,
-              new_parent_id: input.parentGroupId,
-            }),
-          });
+          await unnestGroup(rootGroupId, { childGroupId: newId });
+          await nestGroup(input.parentGroupId, { childGroupId: newId });
         }
 
         const ctx = await createContext({
@@ -163,7 +161,16 @@ export function useFolderOperations(
         throw err;
       }
     },
-    [registryClient, rootGroupId, createGroupInNamespace, createContext, deleteContext, deleteGroup],
+    [
+      registryClient,
+      rootGroupId,
+      createGroupInNamespace,
+      createContext,
+      deleteContext,
+      deleteGroup,
+      nestGroup,
+      unnestGroup,
+    ],
   );
 
   const rename = useCallback(

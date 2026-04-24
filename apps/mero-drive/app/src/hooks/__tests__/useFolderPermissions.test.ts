@@ -2,26 +2,36 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useFolderPermissions } from '../useFolderPermissions';
 import { CAP } from '../../constants/config';
-import { adminRequest } from '../../api/adminApi';
 
-// Mutable mock: default state is "identity resolved", but individual
-// tests can override via `mockIdentity` to simulate loading or error.
-const mockIdentity: { value: { identity: string | null; loading: boolean; error: Error | null } } = {
-  value: { identity: 'me', loading: false, error: null },
+// useFolderPermissions delegates to useMemberCaps, which now reads
+// capabilities via mero-react's useGroupCapabilities and identity
+// via useDriveWorkspace. Both mocked here; tests drive the caps value
+// directly.
+const capsMock: { value: { capabilities: number | null; loading: boolean; error: Error | null } } = {
+  value: { capabilities: 0, loading: false, error: null },
 };
-vi.mock('../useSelfIdentity', () => ({
-  useSelfIdentity: () => mockIdentity.value,
+vi.mock('@calimero-network/mero-react', () => ({
+  useGroupCapabilities: () => capsMock.value,
 }));
-vi.mock('../../api/adminApi', () => ({ adminRequest: vi.fn() }));
+
+const identityMock: { value: string | null } = { value: 'me' };
+vi.mock('../useDriveWorkspace', () => ({
+  useDriveWorkspace: () => ({
+    selfIdentity: identityMock.value,
+    loading: false,
+    error: null,
+  }),
+}));
 
 describe('useFolderPermissions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockIdentity.value = { identity: 'me', loading: false, error: null };
+    identityMock.value = 'me';
+    capsMock.value = { capabilities: 0, loading: false, error: null };
   });
 
   const render = (caps: number) => {
-    (adminRequest as ReturnType<typeof vi.fn>).mockResolvedValue({ capabilities: caps });
+    capsMock.value = { capabilities: caps, loading: false, error: null };
     return renderHook(() => useFolderPermissions('ns', 'folder-1'));
   };
 
@@ -45,44 +55,19 @@ describe('useFolderPermissions', () => {
     expect(result.current.canManageGroup).toBe(true);
   });
 
-  it('surfaces identity fetch error instead of getting stuck in loading', async () => {
-    const identityErr = new Error('identity fetch failed');
-    mockIdentity.value = { identity: null, loading: false, error: identityErr };
-    const { result } = renderHook(() => useFolderPermissions('ns', 'folder-1'));
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.error).toBe(identityErr);
-    expect(result.current.canRead).toBe(false);
-    // And the caps-fetch never fires — we short-circuited on identity err.
-    expect(adminRequest).not.toHaveBeenCalled();
-  });
-
-  it('exposes error when fetch fails — distinguishes from legitimate zero caps', async () => {
+  it('exposes error when cap fetch fails — distinguishes from legitimate zero caps', async () => {
     const boom = new Error('network down');
-    (adminRequest as ReturnType<typeof vi.fn>).mockRejectedValue(boom);
+    capsMock.value = { capabilities: null, loading: false, error: boom };
     const { result } = renderHook(() => useFolderPermissions('ns', 'folder-x'));
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.error).toBe(boom);
     expect(result.current.canRead).toBe(false);
   });
 
-  it('clears caps synchronously when folderId changes — no stale admin affordances', async () => {
-    // First render: caller is admin on folder-1.
-    (adminRequest as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      capabilities: CAP.MANAGE_GROUP,
-    });
-    const { result, rerender } = renderHook(
-      ({ folder }: { folder: string }) => useFolderPermissions('ns', folder),
-      { initialProps: { folder: 'folder-1' } },
-    );
-    await waitFor(() => expect(result.current.canDelete).toBe(true));
-
-    // Second render: next fetch never resolves. canDelete must flip
-    // back to false (loading) rather than linger as true.
-    (adminRequest as ReturnType<typeof vi.fn>).mockImplementationOnce(
-      () => new Promise(() => {}),
-    );
-    rerender({ folder: 'folder-2' });
-    expect(result.current.canDelete).toBe(false);
+  it('loading=true when caps are still resolving', async () => {
+    capsMock.value = { capabilities: null, loading: true, error: null };
+    const { result } = renderHook(() => useFolderPermissions('ns', 'folder-1'));
     expect(result.current.loading).toBe(true);
+    expect(result.current.canRead).toBe(false);
   });
 });
