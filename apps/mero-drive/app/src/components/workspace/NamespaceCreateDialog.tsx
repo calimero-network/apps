@@ -59,15 +59,6 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
     // still gets their namespace created + switched, and we close
     // the dialog rather than surfacing a misleading "failed" error
     // that would tempt them to retry and create a duplicate.
-    const appId = getApplicationId();
-    if (appId === 'REPLACE_WITH_REAL_APP_ID') {
-      setError(
-        'Application ID not configured. Pass ?app-id=<id> in the URL or set VITE_APPLICATION_ID in your .env.',
-      );
-      setSubmitting(false);
-      return;
-    }
-
     if (!mero) {
       setError('Calimero client not ready — try reloading the page.');
       setSubmitting(false);
@@ -76,7 +67,7 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
 
     try {
       const res = await mero.admin.createNamespace({
-        applicationId: appId,
+        applicationId: getApplicationId(),
         upgradePolicy: 'Automatic',
         alias,
       });
