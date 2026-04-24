@@ -1,28 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useSelfIdentity, clearIdentityCache } from '../useSelfIdentity';
+import { adminRequest } from '../../api/adminApi';
 
-// Mock mero-react's useMero to expose a stub mero.admin with a
-// controllable getNamespaceIdentity. The `mero` object is defined
-// ONCE at module scope — returning a fresh object from useMero on
-// every render would re-fire the hook's effect (identity dep on
-// `mero`) and loop forever.
-const getNamespaceIdentity = vi.fn();
-const meroStub = { admin: { getNamespaceIdentity } };
-const meroContextValue = {
-  mero: meroStub,
-  isAuthenticated: true,
-  isOnline: true,
-  nodeUrl: 'http://localhost:2528',
-  applicationId: null,
-  contextId: null,
-  contextIdentity: null,
-  connectToNode: () => {},
-  logout: () => {},
-  isLoading: false,
-};
-vi.mock('@calimero-network/mero-react', () => ({
-  useMero: () => meroContextValue,
+vi.mock('../../api/adminApi', () => ({
+  adminRequest: vi.fn(),
 }));
 
 describe('useSelfIdentity', () => {
@@ -32,13 +14,13 @@ describe('useSelfIdentity', () => {
   });
 
   it('calls admin API for first lookup and caches in localStorage', async () => {
-    getNamespaceIdentity.mockResolvedValue({
+    (adminRequest as ReturnType<typeof vi.fn>).mockResolvedValue({
       namespaceId: 'ns-1',
       publicKey: 'pk-1',
     });
     const { result } = renderHook(() => useSelfIdentity('ns-1'));
     await waitFor(() => expect(result.current.identity).toBe('pk-1'));
-    expect(getNamespaceIdentity).toHaveBeenCalledWith('ns-1');
+    expect(adminRequest).toHaveBeenCalledWith('/namespaces/ns-1/identity');
     expect(localStorage.getItem('mero-drive:selfId:ns-1')).toBe('pk-1');
   });
 
@@ -46,13 +28,15 @@ describe('useSelfIdentity', () => {
     localStorage.setItem('mero-drive:selfId:ns-2', 'pk-2');
     const { result } = renderHook(() => useSelfIdentity('ns-2'));
     await waitFor(() => expect(result.current.identity).toBe('pk-2'));
-    expect(getNamespaceIdentity).not.toHaveBeenCalled();
+    expect(adminRequest).not.toHaveBeenCalled();
   });
 
   it('resets identity to null when namespaceId changes and new value not yet cached', async () => {
     // Prime ns-a in cache; ns-b requires a fetch that never resolves.
     localStorage.setItem('mero-drive:selfId:ns-a', 'pk-a');
-    getNamespaceIdentity.mockImplementation(() => new Promise(() => {}));
+    (adminRequest as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise(() => {}),
+    );
     const { result, rerender } = renderHook(
       ({ ns }: { ns: string }) => useSelfIdentity(ns),
       { initialProps: { ns: 'ns-a' } },
@@ -67,10 +51,7 @@ describe('useSelfIdentity', () => {
   });
 
   it('wraps non-Error throws so error.message is safe to read', async () => {
-    // mero.admin.getNamespaceIdentity rejects with `any`; the catch
-    // must normalise to Error so downstream consumers can read
-    // error.message / .stack without crashing.
-    getNamespaceIdentity.mockRejectedValue('string-not-error');
+    (adminRequest as ReturnType<typeof vi.fn>).mockRejectedValue('string-not-error');
     const { result } = renderHook(() => useSelfIdentity('ns-err'));
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.error).toBeInstanceOf(Error);

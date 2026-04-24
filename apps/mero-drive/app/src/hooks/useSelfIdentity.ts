@@ -11,7 +11,7 @@
 // previous user's pubkey.
 
 import { useEffect, useState } from 'react';
-import { useMero } from '@calimero-network/mero-react';
+import { adminRequest } from '../api/adminApi';
 
 export interface SelfIdentityState {
   identity: string | null;
@@ -37,7 +37,6 @@ export function clearIdentityCache(): void {
 }
 
 export function useSelfIdentity(namespaceId: string | null): SelfIdentityState {
-  const { mero } = useMero();
   const [state, setState] = useState<SelfIdentityState>({
     identity: null,
     loading: !!namespaceId,
@@ -54,13 +53,6 @@ export function useSelfIdentity(namespaceId: string | null): SelfIdentityState {
       setState({ identity: cached, loading: false, error: null });
       return;
     }
-    if (!mero) {
-      // Wait for MeroProvider to finish init — next render will
-      // have `mero` populated and this effect will re-fire.
-      console.debug('[useSelfIdentity] waiting for mero', { namespaceId });
-      setState({ identity: null, loading: true, error: null });
-      return;
-    }
     // Reset synchronously before the fetch. Without this, switching
     // namespaces would briefly surface the previous namespace's
     // identity with `loading: false`, and downstream permission hooks
@@ -68,29 +60,33 @@ export function useSelfIdentity(namespaceId: string | null): SelfIdentityState {
     // member during the gap.
     setState({ identity: null, loading: true, error: null });
     let alive = true;
-    console.debug('[useSelfIdentity] fetching identity', { namespaceId });
-    // core exposes this at GET /admin-api/namespaces/:id/identity
-    // (NOT `/self-identity` — that older path returns 404). mero-js's
-    // getNamespaceIdentity wraps it and returns { namespaceId,
-    // publicKey }; we use publicKey as the per-namespace identity.
-    mero.admin
-      .getNamespaceIdentity(namespaceId)
+    // core exposes this at GET /admin-api/namespaces/:id/identity.
+    // We call it directly rather than via
+    // `mero.admin.getNamespaceIdentity` because mero-js 1.4.1's
+    // `unwrap()` helper assumes responses are wrapped in
+    // `{ data: ... }`, but core's ApiResponse serializes the payload
+    // at the top level — so the typed client resolves to `undefined`
+    // and throws "Cannot read properties of undefined (reading
+    // 'publicKey')". Calling fetch directly via adminRequest skips
+    // the broken unwrap. core returns camelCase fields (serde
+    // `rename_all = "camelCase"` on NamespaceIdentityApiResponse).
+    adminRequest<{ namespaceId: string; publicKey: string }>(
+      `/namespaces/${namespaceId}/identity`,
+    )
       .then((r) => {
         if (!alive) return;
-        console.debug('[useSelfIdentity] resolved', { namespaceId, publicKey: r.publicKey });
         localStorage.setItem(keyFor(namespaceId), r.publicKey);
         setState({ identity: r.publicKey, loading: false, error: null });
       })
       .catch((e: unknown) => {
         if (!alive) return;
         const err = e instanceof Error ? e : new Error(String(e));
-        console.error('[useSelfIdentity] failed', { namespaceId, error: err });
         setState({ identity: null, loading: false, error: err });
       });
     return () => {
       alive = false;
     };
-  }, [namespaceId, mero]);
+  }, [namespaceId]);
 
   return state;
 }
