@@ -35,24 +35,3 @@ export async function adminRequest<T>(path: string, init?: RequestInit): Promise
   return res.json() as Promise<T>;
 }
 
-/** Same as `adminRequest` but exposes the HTTP status for callers
- *  that need to distinguish 2xx cases (e.g. 200 vs 201). */
-export async function adminRequestFull<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<{ data: T; status: number }> {
-  const base = getAppEndpointKey();
-  if (!base) {
-    throw new Error('admin-api: node endpoint not set');
-  }
-  const res = await fetch(`${base}/admin-api${path}`, {
-    ...init,
-    headers: buildHeaders(init?.headers),
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`admin ${res.status}: ${body || res.statusText}`);
-  }
-  const data = (await res.json()) as T;
-  return { data, status: res.status };
-}

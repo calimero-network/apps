@@ -5,7 +5,7 @@
 //! one taking an arbitrary opaque string).
 //!
 //! `Visibility` is the registry's per-folder inheritance flag:
-//! - `Inherit`  — cascade parent members down (with `DEFAULT_CHILD_CAP_MASK`)
+//! - `Inherit`  — cascade parent members down from the parent folder
 //! - `Restricted` — subtree is opaque; cascades stop at the boundary
 //!
 //! `DriveError` is the *internal* error type used inside each service's
@@ -16,15 +16,6 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-
-/// READ | WRITE | CREATE_GROUP — what a new child folder inherits at most
-/// from its parent when visibility is `Inherit`. Admin-role bits (MANAGE_*)
-/// are stripped intentionally so that a parent-admin becomes a child-member,
-/// not a child-admin.
-pub const DEFAULT_CHILD_CAP_MASK: u32 = 1 | 2 | 4;
-
-/// Client-side cap on nesting depth. Registry does not enforce — the UI does.
-pub const MAX_FOLDER_DEPTH: u8 = 8;
 
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
@@ -100,12 +91,6 @@ mod tests {
     #[test]
     fn visibility_default_is_inherit() {
         assert_eq!(Visibility::default(), Visibility::Inherit);
-    }
-
-    #[test]
-    fn default_child_mask_bits() {
-        // 1 (READ) | 2 (WRITE) | 4 (CREATE_GROUP)
-        assert_eq!(DEFAULT_CHILD_CAP_MASK, 7);
     }
 
     #[test]

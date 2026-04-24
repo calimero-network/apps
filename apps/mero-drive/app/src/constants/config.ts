@@ -15,11 +15,6 @@ const getUrlParam = (name: string): string => {
   return fromHash;
 };
 
-/** Node URL: URL param `node_url` or `node-url`. Used for connect flow. */
-export function getNodeUrlFromUrl(): string {
-  return getUrlParam('node_url') || getUrlParam('node-url') || '';
-}
-
 /** Application ID: URL param `app-id` > env VITE_APPLICATION_ID > placeholder. */
 export function getApplicationId(): string {
   return (
