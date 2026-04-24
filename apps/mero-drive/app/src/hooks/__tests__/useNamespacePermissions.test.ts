@@ -8,14 +8,10 @@ import { CAP } from '../../constants/config';
 const capsMock: { value: { capabilities: number | null; loading: boolean; error: Error | null } } = {
   value: { capabilities: 0, loading: false, error: null },
 };
+const listMembersMock = vi.fn().mockResolvedValue({ members: [] });
 vi.mock('@calimero-network/mero-react', () => ({
   useGroupCapabilities: () => capsMock.value,
-  useGroupMembers: () => ({
-    members: [],
-    selfIdentity: 'me',
-    loading: false,
-    error: null,
-  }),
+  useMero: () => ({ mero: { admin: { listGroupMembers: listMembersMock } } }),
 }));
 
 vi.mock('../useDriveWorkspace', () => ({

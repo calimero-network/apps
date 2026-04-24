@@ -1,26 +1,26 @@
 // Resolve the caller's EFFECTIVE capability bitmask for a given
 // group. Effective = role-OR-override.
 //
-// The backend uses two orthogonal fields to decide authorization
+// Background — the server uses two orthogonal fields for authz
 // (core/context/group_store/membership.rs:172):
-//   - `role` (enum Admin / Member / ReadOnly): Admins bypass every
-//     capability check.
+//   - `role` (Admin | Member | ReadOnly): Admins bypass every cap
+//     check.
 //   - `capabilities` (u32 bitmask): per-member delegation for
 //     non-admin members.
 //
-// `mero.admin.getMemberCapabilities` (and mero-react's
-// useGroupCapabilities) returns ONLY the capability override. For an
-// Admin-role member the override is typically 0 because Admins don't
-// need delegated bits. If we gated UI affordances purely on that
-// override, the namespace creator (who is always Admin) would see
-// zero affordances — no "New folder", no "Rename", etc. — despite
-// having full server-side authority.
+// mero-react's useGroupCapabilities returns only the capability
+// override. For an Admin-role member that is typically 0, so a
+// pure-caps gate hides every affordance from the namespace creator.
+// We need the role too and OR it in: Admin → caps=63 (all bits).
 //
-// Fix: fold role into the bitmask client-side. If `role === 'Admin'`
-// we report caps = 63 (all six bits set) so every permission hook
-// renders the full set of affordances. This matches the server's
-// short-circuit logic exactly: role=Admin → "yes" regardless of cap
-// bit.
+// Why we DON'T use mero-react's useGroupMembers to read the role:
+// mero-react 1.1.0 / mero-js 1.4.1 reads `response.data` from
+// `listGroupMembers`, but core actually serializes the list under
+// `response.members`. So useGroupMembers always reports members=[]
+// even when the real HTTP body has entries. This is the third
+// upstream bug in that stack we've worked around (after unwrap() and
+// useAsyncMutation error-swallow). We call `mero.admin.listGroupMembers`
+// directly and read the raw shape instead.
 //
 // State convention:
 //   - `caps = null, error = null` → loading.
@@ -29,10 +29,8 @@
 //   - `caps = 0,    error = Error` → fetch failed; callers show a
 //     retry affordance rather than silently rendering "all denied".
 
-import {
-  useGroupCapabilities,
-  useGroupMembers,
-} from '@calimero-network/mero-react';
+import { useEffect, useState } from 'react';
+import { useGroupCapabilities, useMero } from '@calimero-network/mero-react';
 import { useDriveWorkspace } from './useDriveWorkspace';
 
 const ALL_CAPS_BITMASK = 0b111111; // READ|WRITE|CREATE_GROUP|MANAGE_GROUP|INVITE_MEMBERS|MANAGE_MEMBERS
@@ -50,30 +48,67 @@ export function useMemberCaps(
   _namespaceId: string,
   groupId: string,
 ): MemberCapsState {
+  const { mero } = useMero();
   const { selfIdentity } = useDriveWorkspace();
   const memberId = selfIdentity ?? '';
 
-  // Fetch both the role (via group members) and the capability
-  // override. Either can be the authoritative source depending on
-  // the member's tier.
-  const { members, loading: membersLoading } = useGroupMembers(
-    groupId || undefined,
-  );
   const {
     capabilities,
     loading: capsLoading,
-    error,
+    error: capsError,
   } = useGroupCapabilities(groupId || undefined, memberId || undefined);
 
+  // Parallel direct-HTTP read of the members list to check our role.
+  // Not going through useGroupMembers because of the mero-react
+  // `response.data` bug documented in the file header.
+  const [role, setRole] = useState<string | null>(null);
+  const [rolesLoading, setRolesLoading] = useState<boolean>(false);
+  const [rolesError, setRolesError] = useState<Error | null>(null);
+
+  useEffect(() => {
+    if (!mero || !groupId || !memberId) {
+      setRole(null);
+      setRolesLoading(false);
+      setRolesError(null);
+      return;
+    }
+    let alive = true;
+    setRolesLoading(true);
+    setRolesError(null);
+    mero.admin
+      .listGroupMembers(groupId)
+      .then((raw) => {
+        if (!alive) return;
+        // Cast through unknown because the DTS promises
+        // `{ data, selfIdentity }` but the wire shape is
+        // `{ members, selfIdentity }`. When mero-js ships the fix
+        // we can drop the cast.
+        const real = raw as unknown as {
+          members?: Array<{ identity: string; role?: string }>;
+        };
+        const me = (real.members ?? []).find((m) => m.identity === memberId);
+        setRole(me?.role ?? null);
+        setRolesLoading(false);
+      })
+      .catch((err: unknown) => {
+        if (!alive) return;
+        setRolesError(err instanceof Error ? err : new Error(String(err)));
+        setRolesLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [mero, groupId, memberId]);
+
+  const error = capsError ?? rolesError;
   if (error) return { caps: 0, error };
-  if (capsLoading || membersLoading || !groupId || !memberId) {
+  if (capsLoading || rolesLoading || !groupId || !memberId) {
     return { caps: null, error: null };
   }
 
-  // If the caller is Admin on this group, grant every bit. Matches
-  // the server-side is_group_admin_or_has_capability short-circuit.
-  const me = members.find((m) => m.identity === memberId);
-  if (me?.role === 'Admin') {
+  // Admin short-circuit — mirrors the server's
+  // `is_group_admin_or_has_capability` logic.
+  if (role === 'Admin') {
     return { caps: ALL_CAPS_BITMASK, error: null };
   }
 
