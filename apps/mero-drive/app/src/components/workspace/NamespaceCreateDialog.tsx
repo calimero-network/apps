@@ -1,9 +1,15 @@
 // New-workspace modal. Calls mero.admin.createNamespace directly
 // with the current applicationId and a user-supplied alias, then
 // auto-switches the active workspace to the newly created namespace.
-// CreateNamespaceRequest requires `upgradePolicy`; we default to
-// "latest" which keeps apps on the newest published bundle — matches
-// the default used by the e2e workflow's create_namespace step.
+// CreateNamespaceRequest requires `upgradePolicy`. Valid values are
+// defined by core's `UpgradePolicy` enum:
+// `Automatic | LazyOnAccess | Coordinated { deadline }`
+// (core/crates/primitives/src/context.rs). We default to `Automatic`
+// which upgrades all contexts immediately when the group target
+// changes — matches what the battleships app uses and what the node
+// actually accepts. An earlier `'latest'` value deserialized to none
+// of these variants and silently 4xx'd, which combined with the
+// error-swallowing in the next paragraph made the failure mystifying.
 //
 // We bypass mero-react's useCreateNamespace hook because its
 // useAsyncMutation helper swallows the real server error into a
@@ -71,7 +77,7 @@ export function NamespaceCreateDialog({ onClose, onCreated }: Props) {
     try {
       const res = await mero.admin.createNamespace({
         applicationId: appId,
-        upgradePolicy: 'latest',
+        upgradePolicy: 'Automatic',
         alias,
       });
       if (!res?.namespaceId) {
