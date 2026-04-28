@@ -180,7 +180,9 @@ export function WorkspaceLayout() {
                 <p className="mt-1 text-xs text-muted-foreground">
                   {selectedFolder.visibility === 'Restricted'
                     ? 'Restricted — only explicit members can read/write'
-                    : 'Inherits members from the parent folder'}
+                    : selectedFolder.visibility === 'Open'
+                      ? 'Open — namespace members can join and read/write'
+                      : 'Loading visibility…'}
                 </p>
               </div>
 

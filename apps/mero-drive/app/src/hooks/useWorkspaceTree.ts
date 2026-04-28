@@ -1,6 +1,7 @@
 // Workspace folder tree — merges admin-API subgroup entries (source
-// of truth for tree shape + aliases) with registry FolderDto entries
-// (source of truth for visibility + color + context binding).
+// of truth for tree shape, aliases, and subgroup_visibility per core
+// PR #2261) with registry FolderDto entries (source of truth for
+// color + context binding + parent_id index).
 //
 // `mergeAdminAndRegistry` is exported separately so the pure merge
 // logic can be tested without rendering the hook. The hook wrapper
@@ -24,7 +25,6 @@ export interface AdminSubgroup {
 export interface RegistryFolderShape {
   id: string;
   parent_id: string | null;
-  visibility: 'Inherit' | 'Restricted';
   color: string | null;
   /** Registry-side alias. Set by useFolderOperations.create /
    *  rename; readable by every namespace member regardless of
@@ -37,23 +37,28 @@ export interface MergedFolder {
   id: string;
   parent_id: string | null;
   alias: string;
-  visibility: 'Inherit' | 'Restricted';
+  /** Sourced from core's GroupInfo.subgroupVisibility per PR #2261.
+   *  `undefined` while the per-folder fetch is still in flight. */
+  visibility: 'Open' | 'Restricted' | undefined;
   color: string | null;
 }
 
 // The registry WASM is the authoritative source of "which folders
-// exist" (it owns the tree shape + color + visibility + context
-// binding). Admin-side subgroups contribute only `alias` (the
-// human-readable name). Iterate the registry list so that folders
-// show up even when mero-js's listSubgroups is broken (it expects a
-// `{data}` wrapper but core returns `{subgroups}` — the folder body
-// resolves to undefined and admin comes back empty). Alias falls
-// back to a shortened id so the folder still renders and is
-// clickable with `admin` empty.
+// exist" (it owns the tree shape + color + context binding). Admin-
+// side subgroups contribute `alias` (human-readable name) and
+// `subgroup_visibility` (Open vs Restricted, per core PR #2261).
+// Iterate the registry list so that folders show up even when
+// mero-js's listSubgroups is broken (it expects a `{data}` wrapper
+// but core returns `{subgroups}` — the folder body resolves to
+// undefined and admin comes back empty). Alias falls back to a
+// shortened id so the folder still renders and is clickable with
+// `admin` empty. Visibility falls back to undefined while the
+// per-folder getGroupInfo fetch is in flight.
 export function mergeAdminAndRegistry(
   admin: AdminSubgroup[],
   registry: RegistryFolderShape[],
   rootId: string,
+  visibilityById?: Map<string, 'Open' | 'Restricted'>,
 ): { folders: MergedFolder[] } {
   const adminById = new Map(admin.map((a) => [a.groupId, a]));
   const folders: MergedFolder[] = registry
@@ -70,7 +75,7 @@ export function mergeAdminAndRegistry(
         id: r.id,
         parent_id: r.parent_id,
         alias,
-        visibility: r.visibility,
+        visibility: visibilityById?.get(r.id),
         color: r.color,
       };
     });
@@ -112,7 +117,6 @@ export function useWorkspaceTree(
           fs.map((f) => ({
             id: f.id,
             parent_id: f.parent_id ?? null,
-            visibility: f.visibility as 'Inherit' | 'Restricted',
             color: f.color ?? null,
           })),
         );

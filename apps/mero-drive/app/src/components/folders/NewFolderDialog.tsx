@@ -46,7 +46,6 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
     folders.map((f) => ({
       id: f.id,
       parent_id: f.parent_id,
-      visibility: f.visibility,
     })),
     applicationId,
     refetch,
@@ -54,7 +53,10 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
 
   const [name, setName] = useState('');
   const [color, setColor] = useState('');
-  const [visibility, setVisibility] = useState<'Inherit' | 'Restricted'>('Inherit');
+  // Default to Open: namespace members inherit access via core's
+  // parent-walk (PR #2261). Switch to Restricted for explicit-invite
+  // folders.
+  const [visibility, setVisibility] = useState<'Open' | 'Restricted'>('Open');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -199,14 +201,14 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
                 {(
                   [
                     {
-                      value: 'Inherit' as const,
+                      value: 'Open' as const,
                       title: 'Open',
-                      desc: 'Inherits parent members',
+                      desc: 'Namespace members can join',
                     },
                     {
                       value: 'Restricted' as const,
                       title: 'Restricted',
-                      desc: 'Pick members later',
+                      desc: 'Invite members manually',
                     },
                   ]
                 ).map((opt) => {

@@ -31,7 +31,9 @@ import { NewFolderDialog } from './NewFolderDialog';
 
 interface Props {
   folderId: string;
-  currentVisibility: 'Inherit' | 'Restricted';
+  /** Current subgroup visibility from core's GroupInfo. `undefined`
+   *  while the per-folder fetch is still in flight. */
+  currentVisibility: 'Open' | 'Restricted' | undefined;
   onRename: () => void;
 }
 
@@ -55,7 +57,6 @@ export function FolderContextMenu({
     folders.map((f) => ({
       id: f.id,
       parent_id: f.parent_id,
-      visibility: f.visibility,
     })),
     applicationId,
     refetch,

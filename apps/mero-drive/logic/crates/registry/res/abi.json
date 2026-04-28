@@ -90,17 +90,6 @@
         }
       ]
     },
-    "Event_FolderVisibilityChanged": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
     "FolderDto": {
       "kind": "record",
       "fields": [
@@ -116,12 +105,6 @@
             "$ref": "FolderId"
           },
           "nullable": true
-        },
-        {
-          "name": "visibility",
-          "type": {
-            "$ref": "Visibility"
-          }
         },
         {
           "name": "color",
@@ -163,17 +146,6 @@
             "crdt_type": "lww_register",
             "inner_type": {
               "kind": "string"
-            }
-          }
-        },
-        {
-          "name": "visibility",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "$ref": "Visibility"
             }
           }
         },
@@ -250,17 +222,6 @@
             },
             "crdt_type": "unordered_map"
           }
-        }
-      ]
-    },
-    "Visibility": {
-      "kind": "variant",
-      "variants": [
-        {
-          "name": "Inherit"
-        },
-        {
-          "name": "Restricted"
         }
       ]
     }
@@ -378,26 +339,6 @@
       ],
       "returns": {
         "$ref": "ContextId"
-      }
-    },
-    {
-      "name": "set_visibility",
-      "params": [
-        {
-          "name": "id",
-          "type": {
-            "$ref": "FolderId"
-          }
-        },
-        {
-          "name": "visibility",
-          "type": {
-            "$ref": "Visibility"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
       }
     },
     {
@@ -521,12 +462,6 @@
       "name": "FolderContextBound",
       "payload": {
         "$ref": "Event_FolderContextBound"
-      }
-    },
-    {
-      "name": "FolderVisibilityChanged",
-      "payload": {
-        "$ref": "Event_FolderVisibilityChanged"
       }
     },
     {

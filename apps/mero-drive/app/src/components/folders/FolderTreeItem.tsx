@@ -56,7 +56,6 @@ export function FolderTreeItem({
     folders.map((f) => ({
       id: f.id,
       parent_id: f.parent_id,
-      visibility: f.visibility,
     })),
     applicationId,
     refetch,

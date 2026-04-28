@@ -110,6 +110,11 @@ vi.mock('@calimero-network/mero-react', () => ({
   }),
   useAddGroupMembers: () => ({ addGroupMembers: vi.fn(), loading: false, error: null }),
   useRemoveGroupMembers: () => ({ removeGroupMembers: vi.fn(), loading: false, error: null }),
+  useSetSubgroupVisibility: () => ({
+    setSubgroupVisibility: vi.fn(),
+    loading: false,
+    error: null,
+  }),
 }));
 vi.mock('@/components/ui/confirm-dialog', async () => {
   const actual = await vi.importActual<typeof import('@/components/ui/confirm-dialog')>(
@@ -152,7 +157,7 @@ describe('permission-gating', () => {
     render(
       <FolderContextMenu
         folderId="f1"
-        currentVisibility="Inherit"
+        currentVisibility="Open"
         onRename={() => undefined}
       />,
     );
@@ -167,7 +172,7 @@ describe('permission-gating', () => {
     render(
       <FolderContextMenu
         folderId="f1"
-        currentVisibility="Inherit"
+        currentVisibility="Open"
         onRename={() => undefined}
       />,
     );
@@ -191,9 +196,9 @@ describe('permission-gating', () => {
 
   it('FolderVisibilityToggle renders nothing without canManageGroup', () => {
     (useFolderPermissions as ReturnType<typeof vi.fn>).mockReturnValue(noFolderPerms);
-    render(<FolderVisibilityToggle folderId="f1" current="Inherit" />);
+    render(<FolderVisibilityToggle folderId="f1" current="Open" />);
     expect(screen.queryByText(/Make restricted/i)).toBeNull();
-    expect(screen.queryByText(/Make inherited/i)).toBeNull();
+    expect(screen.queryByText(/Make open/i)).toBeNull();
   });
 
   it('NewFolderButton renders nothing for root without canCreateSubgroup', () => {

@@ -7,6 +7,12 @@
 // same bit layout the backend enforces via
 // `is_group_admin_or_has_capability` (core/context/group_store/
 // membership.rs:172).
+//
+// As of core PR #2261, Open subgroups inherit membership from the
+// parent namespace via the server's parent-walk, so a namespace
+// member with `CAN_JOIN_OPEN_SUBGROUPS` (default-on) gets real caps
+// from the admin API directly — no app-layer fallback needed. The
+// previous "not a member → grant READ if Inherit" hack is gone.
 
 import { CAP } from '../constants/config';
 import { useMemberCaps } from './useMemberCaps';

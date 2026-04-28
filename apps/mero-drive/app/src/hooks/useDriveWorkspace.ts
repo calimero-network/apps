@@ -295,7 +295,6 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         fs.map((f) => ({
           id: f.id,
           parent_id: f.parent_id ?? null,
-          visibility: f.visibility as 'Inherit' | 'Restricted',
           color: f.color ?? null,
           alias: f.alias ?? null,
         })),
@@ -331,13 +330,21 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   //
   // `aliasRevision` bumps on refetch() so rename flows re-fetch even
   // though the folder id set hasn't changed.
+  // Per-folder getGroupInfo also supplies subgroup_visibility (Open
+  // / Restricted, per core PR #2261), since the registry no longer
+  // stores it. Both the alias and visibility maps are populated from
+  // the same fetch to keep it cheap.
   const [aliases, setAliases] = useState<Map<string, string>>(new Map());
+  const [visibilities, setVisibilities] = useState<
+    Map<string, 'Open' | 'Restricted'>
+  >(new Map());
   const [aliasRevision, setAliasRevision] = useState(0);
   useEffect(() => {
     if (!mero) return;
     const ids = regFolders.map((f) => f.id);
     if (ids.length === 0) {
       setAliases(new Map());
+      setVisibilities(new Map());
       return;
     }
     let alive = true;
@@ -345,16 +352,26 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       ids.map((id) =>
         mero.admin
           .getGroupInfo(id)
-          .then((info) => [id, info?.alias ?? null] as const)
-          .catch(() => [id, null] as const),
+          .then(
+            (info) =>
+              [
+                id,
+                info?.alias ?? null,
+                info?.subgroupVisibility ?? null,
+              ] as const,
+          )
+          .catch(() => [id, null, null] as const),
       ),
     ).then((entries) => {
       if (!alive) return;
-      const next = new Map<string, string>();
-      for (const [id, alias] of entries) {
-        if (alias) next.set(id, alias);
+      const nextAliases = new Map<string, string>();
+      const nextVis = new Map<string, 'Open' | 'Restricted'>();
+      for (const [id, alias, vis] of entries) {
+        if (alias) nextAliases.set(id, alias);
+        if (vis === 'Open' || vis === 'Restricted') nextVis.set(id, vis);
       }
-      setAliases(next);
+      setAliases(nextAliases);
+      setVisibilities(nextVis);
     });
     return () => {
       alive = false;
@@ -381,8 +398,9 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         alias: aliasFromCache ?? aliasFromSubgroups,
       };
     });
-    return mergeAdminAndRegistry(admin, regFolders, rootGroupId).folders;
-  }, [rootGroupId, subgroups, regFolders, aliases]);
+    return mergeAdminAndRegistry(admin, regFolders, rootGroupId, visibilities)
+      .folders;
+  }, [rootGroupId, subgroups, regFolders, aliases, visibilities]);
 
   // --- Selected folder (UI-only, not persisted) ---
   const [selectedFolderId, setSelectedFolderState] = useState<string | null>(null);

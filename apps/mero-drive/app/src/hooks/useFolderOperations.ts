@@ -1,12 +1,12 @@
-// Folder CRUD with app-layer cascade. Creates a subgroup under a
-// parent, attaches a fresh docs context, registers the folder in the
-// namespace registry, and optionally cascades the parent's non-admin
-// capabilities to the new subgroup (for inherit-mode creation).
+// Folder CRUD. Creates a subgroup under a parent, attaches a fresh
+// docs context, registers the folder in the namespace registry, and
+// sets `subgroup_visibility` on the new subgroup (Open by default —
+// namespace members inherit membership via core's parent-walk per
+// PR #2261; Restricted for explicit-invite-only folders).
 //
-// The cascade is app-layer because the backend has no built-in
-// "subgroup inherits parent's membership" — it's our policy choice
-// per the design spec, and the deliberately-stripped cap mask
-// (DEFAULT_CHILD_CAP_MASK) turns parent-admins into child-members.
+// The previous app-layer membership cascade is gone: core handles
+// inheritance natively now, so we don't need to enumerate namespace
+// members and add them to each new folder.
 //
 // All mutations go through mero-react hooks so the underlying admin
 // client is the same MeroJs instance everything else uses.
@@ -18,16 +18,12 @@ import {
   useDeleteContext,
   useDeleteGroup,
   useSetGroupAlias,
-  useAddGroupMembers,
+  useSetSubgroupVisibility,
   useMero,
 } from '@calimero-network/mero-react';
 import type { RegistryClient } from '../api/registry/RegistryClient';
 import { DOCS_SERVICE_ID } from '../constants/config';
 import { reparentGroup } from '../api/reparentGroup';
-import {
-  computeCascadeTargets,
-  CascadeFolder,
-} from './useFolderCascade';
 import { descendantsOf } from '../utils/ancestry';
 
 export interface CreateFolderInput {
@@ -35,7 +31,14 @@ export interface CreateFolderInput {
   parentGroupId: string;
   alias: string;
   color?: string | null;
-  visibility: 'Inherit' | 'Restricted';
+  /** 'Open' = namespace members inherit access (the default).
+   *  'Restricted' = explicit invite required (per-subgroup wall). */
+  visibility: 'Open' | 'Restricted';
+}
+
+export interface FolderTreeNode {
+  id: string;
+  parent_id: string | null;
 }
 
 export interface FolderOperations {
@@ -43,19 +46,12 @@ export interface FolderOperations {
   create: (input: CreateFolderInput) => Promise<string>;
   rename: (folderId: string, alias: string) => Promise<void>;
   remove: (folderId: string) => Promise<void>;
-  /** App-layer cascade: add an identity to every inherit-mode
-   *  descendant of `parentFolderId` with the given cap mask. */
-  cascadeTo: (
-    parentFolderId: string,
-    identity: string,
-    capabilities: number,
-  ) => Promise<void>;
 }
 
 export function useFolderOperations(
   registryClient: RegistryClient | null,
   rootGroupId: string | null,
-  tree: CascadeFolder[],
+  tree: FolderTreeNode[],
   applicationId: string | null,
   // Called after a successful create/rename/remove to refresh the
   // workspace's cached subgroup list and registry folders. Without
@@ -68,7 +64,7 @@ export function useFolderOperations(
   const { deleteContext } = useDeleteContext();
   const { deleteGroup } = useDeleteGroup();
   const { setGroupAlias } = useSetGroupAlias();
-  const { addGroupMembers } = useAddGroupMembers();
+  const { setSubgroupVisibility } = useSetSubgroupVisibility();
   const { nodeUrl } = useMero();
 
   const create = useCallback(
@@ -115,14 +111,13 @@ export function useFolderOperations(
 
         // createGroupInNamespace places the new group as a direct
         // child of the namespace root. To nest it under a specific
-        // parent, call /admin-api/groups/:childId/reparent — one
-        // atomic edge swap, no orphan window. We go through a raw
-        // fetch because mero-js's nestGroup/unnestGroup still point
-        // at core's removed /nest and /unnest routes (they 404). See
-        // src/api/reparentGroup.ts.
+        // parent, reparent it. Tries atomic /reparent first (latest
+        // core), falls back to unnest+nest (older core). Pass
+        // rootGroupId as the current parent so the fallback knows
+        // where to unnest from.
         if (input.parentGroupId !== rootGroupId) {
           if (!nodeUrl) throw new Error('Node URL not resolved');
-          await reparentGroup(nodeUrl, newId, input.parentGroupId);
+          await reparentGroup(nodeUrl, newId, input.parentGroupId, rootGroupId);
         }
 
         const ctx = await createContext({
@@ -154,12 +149,15 @@ export function useFolderOperations(
           context_id: ctx.contextId,
         });
 
-        if (input.visibility === 'Restricted') {
-          await registryClient.setVisibility({ id: newId, visibility: 'Restricted' });
-        }
-        // NB: the inherit-mode member cascade for existing parent
-        // members is handled by useFolderMembership + cascadeTo when
-        // the UI explicitly invites people, not at creation time.
+        // Set subgroup visibility on the new folder. Core's
+        // parent-walk inheritance kicks in for Open folders — every
+        // namespace member with CAN_JOIN_OPEN_SUBGROUPS (default-on)
+        // is recognised as a member without an explicit add. The
+        // create handler in core already sets a default; we re-assert
+        // here to make the intent explicit and to support Restricted.
+        await setSubgroupVisibility(newId, {
+          subgroupVisibility: input.visibility,
+        });
 
         await refetch();
         return newId;
@@ -194,6 +192,7 @@ export function useFolderOperations(
       nodeUrl,
       createGroupInNamespace,
       setGroupAlias,
+      setSubgroupVisibility,
       createContext,
       deleteContext,
       deleteGroup,
@@ -251,35 +250,5 @@ export function useFolderOperations(
     [registryClient, tree, deleteGroup, deleteContext, refetch],
   );
 
-  const cascadeTo = useCallback(
-    async (parentFolderId: string, identity: string, capabilities: number) => {
-      const targets = computeCascadeTargets(tree, parentFolderId, capabilities);
-      const failures: string[] = [];
-      for (const t of targets) {
-        try {
-          // Default role "member" — exact caps are controlled by the
-          // bitmask via useGroupCapabilities.setCapabilities once the
-          // member row exists. addGroupMembers creates the row; cap
-          // assignment is a follow-up via UI-level permission edits.
-          await addGroupMembers(t.folderId, {
-            members: [{ identity, role: 'member' }],
-          });
-        } catch (e) {
-          failures.push(t.folderId);
-          console.warn('cascade member-add failed for', t.folderId, e);
-        }
-      }
-      if (failures.length) {
-        console.warn(`cascade: ${failures.length}/${targets.length} folders failed`);
-      }
-      // Deliberately discard `capabilities` arg at this layer — we
-      // parked caps assignment for a follow-up (see above). Still
-      // accepting it in the signature so callers can pass the mask
-      // they want, ready for when we wire cap-setting through.
-      void capabilities;
-    },
-    [tree, addGroupMembers],
-  );
-
-  return { create, rename, remove, cascadeTo };
+  return { create, rename, remove };
 }

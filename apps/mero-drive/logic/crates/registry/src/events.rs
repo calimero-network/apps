@@ -16,9 +16,6 @@ pub enum Event<'a> {
         folder_id: &'a str,
         context_id: &'a str,
     },
-    FolderVisibilityChanged {
-        id: &'a str,
-    },
     FolderColorChanged {
         id: &'a str,
     },

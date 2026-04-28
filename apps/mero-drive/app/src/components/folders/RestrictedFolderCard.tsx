@@ -10,7 +10,11 @@ import { Button } from '@/components/ui/button';
 
 interface Props {
   folderAlias: string;
-  visibility: 'Inherit' | 'Restricted';
+  /** Current subgroup visibility from core's GroupInfo. `undefined`
+   *  while the per-folder fetch is still in flight — we still show
+   *  the card (the caller already decided they're locked out) but
+   *  with the ambiguous-state copy. */
+  visibility: 'Open' | 'Restricted' | undefined;
   selfIdentity: string | null;
 }
 
@@ -60,9 +64,9 @@ export function RestrictedFolderCard({
                 <span className="font-medium text-foreground">
                   {folderAlias}
                 </span>{' '}
-                inherits access from its parent, but your membership
-                hasn't been propagated yet. Ask the workspace admin to
-                add you to this folder.
+                is reachable, but your access hasn't propagated yet.
+                Ask the workspace admin to add you, or wait a moment
+                and reload.
               </>
             )}
           </p>

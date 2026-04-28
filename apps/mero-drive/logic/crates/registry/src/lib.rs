@@ -4,7 +4,7 @@
 //! ## What lives here (and why)
 //!
 //! Admin API is authoritative for group shape, membership, and aliases.
-//! Anything admin-API doesn't have a concept for — color, visibility flag,
+//! Anything admin-API doesn't have a concept for — color,
 //! folder→context binding, sort order under a parent — lives in this
 //! registry. The namespace holds one Registry context whose state is this
 //! struct, replicated across every member of the root group.
@@ -26,10 +26,17 @@
 //! The `calimero-wasm-abi` emitter only parses `lib.rs` + `events.rs` when
 //! generating the client SDK, so every type used in a public method
 //! signature must be declared here — we cannot reach into a shared
-//! `mero-drive-types` crate for them. `FolderId`, `ContextId`, and
-//! `Visibility` are therefore re-declared locally. `DriveError` stays
-//! internal-only (converted to `AppError` at the boundary), so it can still
-//! live in the shared types crate and be imported.
+//! `mero-drive-types` crate for them. `FolderId` and `ContextId` are
+//! therefore re-declared locally. `DriveError` stays internal-only
+//! (converted to `AppError` at the boundary), so it can still live in
+//! the shared types crate and be imported.
+//!
+//! ## Subgroup visibility
+//!
+//! Open-vs-Restricted is **not** stored here anymore. Calimero core owns
+//! it (`GroupInfo.subgroup_visibility`, `setSubgroupVisibility`) and uses
+//! it to drive parent-walk membership inheritance. The frontend reads it
+//! via the admin API and writes it via `mero.admin.setSubgroupVisibility`.
 
 use calimero_sdk::app;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
@@ -60,17 +67,6 @@ pub struct FolderId(pub String);
 #[serde(crate = "calimero_sdk::serde")]
 pub struct ContextId(pub String);
 
-/// Whether a folder cascades parent membership or walls it off.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub enum Visibility {
-    Inherit,
-    Restricted,
-}
-
 // ---------------------------------------------------------------------------
 // Stored model
 // ---------------------------------------------------------------------------
@@ -90,22 +86,19 @@ pub struct FolderRecord {
     /// Parent folder id, or None for top-level folders. Stored as an
     /// LWW index; admin-API remains the source of truth for the tree.
     pub parent_id: LwwRegister<Option<String>>,
-    /// `Inherit` cascades parent members into child; `Restricted` is a wall.
-    pub visibility: LwwRegister<Visibility>,
     /// `#rrggbb` color, or empty string for "no color".
     pub color: LwwRegister<String>,
     /// Display name. Mirrored from admin-API's group alias so namespace
-    /// members who aren't subgroup members (i.e. invitees who haven't
-    /// been cascaded) can still see folder names. Empty string means
-    /// "no registry-side alias — fall back to the admin-API alias or
-    /// a truncated id stub on the client".
+    /// members who can't read the subgroup yet (Restricted folder before
+    /// invite) can still see folder names. Empty string means "no
+    /// registry-side alias — fall back to the admin-API alias or a
+    /// truncated id stub on the client".
     pub alias: LwwRegister<String>,
 }
 
 impl Mergeable for FolderRecord {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         <LwwRegister<Option<String>> as Mergeable>::merge(&mut self.parent_id, &other.parent_id)?;
-        <LwwRegister<Visibility> as Mergeable>::merge(&mut self.visibility, &other.visibility)?;
         <LwwRegister<String> as Mergeable>::merge(&mut self.color, &other.color)?;
         <LwwRegister<String> as Mergeable>::merge(&mut self.alias, &other.alias)?;
         Ok(())
@@ -120,7 +113,6 @@ impl FolderRecord {
     ) -> Self {
         FolderRecord {
             parent_id: LwwRegister::new(parent_id),
-            visibility: LwwRegister::new(Visibility::Inherit),
             color: LwwRegister::new(color.unwrap_or_default()),
             alias: LwwRegister::new(alias.unwrap_or_default()),
         }
@@ -134,7 +126,6 @@ impl FolderRecord {
 pub struct FolderDto {
     pub id: FolderId,
     pub parent_id: Option<FolderId>,
-    pub visibility: Visibility,
     /// `None` when color is unset / empty.
     pub color: Option<String>,
     /// `None` when no Docs context has been bound to this folder yet.
@@ -161,7 +152,6 @@ fn project(id: &str, rec: &FolderRecord, ctx: Option<&ContextId>) -> FolderDto {
     FolderDto {
         id: FolderId(id.to_string()),
         parent_id: rec.parent_id.get().clone().map(FolderId),
-        visibility: *rec.visibility.get(),
         color,
         context_id: ctx.cloned(),
         alias,
@@ -347,14 +337,7 @@ impl RegistryState {
         Ok(frozen.map(|f| f.0))
     }
 
-    // ---- visibility / color / move --------------------------------------
-
-    pub fn set_visibility(&mut self, id: FolderId, visibility: Visibility) -> app::Result<()> {
-        self.set_visibility_inner(&id.0, visibility)
-            .map_err(|e| AppError::msg(e.to_string()))?;
-        app::emit!(Event::FolderVisibilityChanged { id: &id.0 });
-        Ok(())
-    }
+    // ---- color / move ---------------------------------------------------
 
     pub fn set_color(&mut self, id: FolderId, color: String) -> app::Result<()> {
         // Treat empty color as "clear" — matches how `get_folder` projects
@@ -382,14 +365,6 @@ impl RegistryState {
             .map_err(|e| AppError::msg(e.to_string()))?;
         app::emit!(Event::FolderParentChanged { id: &id.0 });
         Ok(())
-    }
-
-    pub(crate) fn set_visibility_inner(
-        &mut self,
-        id: &str,
-        visibility: Visibility,
-    ) -> Result<(), DriveError> {
-        self.mutate_folder(id, |rec| rec.visibility.set(visibility))
     }
 
     pub(crate) fn set_color_inner(&mut self, id: &str, color: String) -> Result<(), DriveError> {
@@ -514,7 +489,6 @@ mod tests {
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].id, fid("f1"));
         assert_eq!(all[0].parent_id, None);
-        assert_eq!(all[0].visibility, Visibility::Inherit);
         assert_eq!(all[0].color.as_deref(), Some("#123456"));
         assert_eq!(all[0].context_id, None);
         assert_eq!(all[0].alias, None);
@@ -653,23 +627,7 @@ mod tests {
         assert!(matches!(err, DriveError::Conflict(_)));
     }
 
-    // ---- visibility / color / move ----
-
-    #[test]
-    fn visibility_defaults_to_inherit_and_is_settable() {
-        let mut app = RegistryState::init();
-        app.register_folder_inner(fid("f1"), None, None, None).unwrap();
-        assert_eq!(
-            app.get_folder(fid("f1")).unwrap().visibility,
-            Visibility::Inherit
-        );
-        app.set_visibility_inner("f1", Visibility::Restricted)
-            .unwrap();
-        assert_eq!(
-            app.get_folder(fid("f1")).unwrap().visibility,
-            Visibility::Restricted
-        );
-    }
+    // ---- color / move ----
 
     #[test]
     fn set_color_is_last_write_wins() {
@@ -690,15 +648,6 @@ mod tests {
             .unwrap();
         app.set_color_inner("f1", "".into()).unwrap();
         assert_eq!(app.get_folder(fid("f1")).unwrap().color, None);
-    }
-
-    #[test]
-    fn set_visibility_unknown_folder_errors() {
-        let mut app = RegistryState::init();
-        let err = app
-            .set_visibility_inner("ghost", Visibility::Restricted)
-            .unwrap_err();
-        assert!(matches!(err, DriveError::NotFound(_)));
     }
 
     #[test]
@@ -796,11 +745,11 @@ mod tests {
     }
 
     #[test]
-    fn folder_record_default_visibility_is_inherit() {
+    fn folder_record_default_fields_are_empty() {
         let rec = FolderRecord::new(None, None, None);
-        assert_eq!(*rec.visibility.get(), Visibility::Inherit);
         assert_eq!(rec.color.get(), "");
         assert_eq!(rec.parent_id.get(), &None);
+        assert_eq!(rec.alias.get(), "");
     }
 
     // ---- struct-level merge (pin down the manual Mergeable impl) ----
@@ -828,7 +777,6 @@ mod tests {
     fn folder_record_merge_lww_picks_later_color() {
         let mut a = FolderRecord {
             parent_id: zero_lww(None),
-            visibility: zero_lww(Visibility::Inherit),
             color: zero_lww("#ff0000".into()),
             alias: zero_lww(String::new()),
         };
@@ -848,24 +796,9 @@ mod tests {
     }
 
     #[test]
-    fn folder_record_merge_visibility_lww() {
-        let mut a = FolderRecord {
-            parent_id: zero_lww(None),
-            visibility: zero_lww(Visibility::Inherit),
-            color: zero_lww(String::new()),
-            alias: zero_lww(String::new()),
-        };
-        let mut b = FolderRecord::new(None, None, None);
-        b.visibility.set(Visibility::Restricted);
-        <FolderRecord as Mergeable>::merge(&mut a, &b).unwrap();
-        assert_eq!(*a.visibility.get(), Visibility::Restricted);
-    }
-
-    #[test]
     fn folder_record_merge_parent_id_lww() {
         let mut a = FolderRecord {
             parent_id: zero_lww(None),
-            visibility: zero_lww(Visibility::Inherit),
             color: zero_lww(String::new()),
             alias: zero_lww(String::new()),
         };

@@ -24,11 +24,17 @@ vi.mock('@calimero-network/mero-react', () => ({
 }));
 
 const identityMock: { value: string | null } = { value: 'me' };
+// useFolderPermissions no longer reads workspace state — capabilities
+// come straight from useMemberCaps now that core PR #2261 handles
+// open-subgroup membership inheritance server-side. The mock stays so
+// any transitive consumer that imports useDriveWorkspace gets a stub.
 vi.mock('../useDriveWorkspace', () => ({
   useDriveWorkspace: () => ({
     selfIdentity: identityMock.value,
     loading: false,
     error: null,
+    folders: [],
+    rootGroupId: 'ns-root',
   }),
 }));
 
@@ -83,5 +89,23 @@ describe('useFolderPermissions', () => {
     const { result } = renderHook(() => useFolderPermissions('ns', 'folder-x'));
     await waitFor(() => expect(result.current.error).toBe(boom));
     expect(result.current.canRead).toBe(false);
+  });
+
+  it('Open subgroup: inherited namespace member gets the real cap mask from core', async () => {
+    // Per core PR #2261, listGroupMembers + getMemberCapabilities now
+    // resolve via the parent-walk for Open subgroups. The hook just
+    // forwards what core returns; no app-layer fallback.
+    listMembersMock.mockResolvedValue({
+      members: [{ identity: 'me', role: 'Member' }],
+    });
+    getMemberCapsMock.mockResolvedValue({
+      capabilities: CAP.READ | CAP.WRITE,
+    });
+    const { result } = renderHook(() =>
+      useFolderPermissions('ns', 'folder-1'),
+    );
+    await waitFor(() => expect(result.current.canWrite).toBe(true));
+    expect(result.current.canRead).toBe(true);
+    expect(result.current.error).toBeNull();
   });
 });
