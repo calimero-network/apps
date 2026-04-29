@@ -28,4 +28,7 @@ pub enum Event<'a> {
     FolderSortOrderChanged {
         parent_id: &'a str,
     },
+    FolderVisibilityChanged {
+        id: &'a str,
+    },
 }

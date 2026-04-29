@@ -67,6 +67,22 @@ pub struct FolderId(pub String);
 #[serde(crate = "calimero_sdk::serde")]
 pub struct ContextId(pub String);
 
+/// Per-folder cascade flag. `Inherit` = namespace-member cascade descends
+/// through this folder (Open subgroup); `Restricted` = explicit-invite wall,
+/// cascade stops here. Mirrors the admin-API subgroup_visibility concept but
+/// is stored in the registry so clients can read it without a per-folder
+/// admin-API call.
+#[derive(
+    Debug, Clone, Default, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
+)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub enum Visibility {
+    #[default]
+    Inherit,
+    Restricted,
+}
+
 // ---------------------------------------------------------------------------
 // Stored model
 // ---------------------------------------------------------------------------
@@ -94,6 +110,9 @@ pub struct FolderRecord {
     /// registry-side alias — fall back to the admin-API alias or a
     /// truncated id stub on the client".
     pub alias: LwwRegister<String>,
+    /// Inherit = namespace-member cascade descends through this folder.
+    /// Restricted = explicit-invite wall; cascade stops here.
+    pub visibility: LwwRegister<Visibility>,
 }
 
 impl Mergeable for FolderRecord {
@@ -101,6 +120,7 @@ impl Mergeable for FolderRecord {
         <LwwRegister<Option<String>> as Mergeable>::merge(&mut self.parent_id, &other.parent_id)?;
         <LwwRegister<String> as Mergeable>::merge(&mut self.color, &other.color)?;
         <LwwRegister<String> as Mergeable>::merge(&mut self.alias, &other.alias)?;
+        <LwwRegister<Visibility> as Mergeable>::merge(&mut self.visibility, &other.visibility)?;
         Ok(())
     }
 }
@@ -115,6 +135,7 @@ impl FolderRecord {
             parent_id: LwwRegister::new(parent_id),
             color: LwwRegister::new(color.unwrap_or_default()),
             alias: LwwRegister::new(alias.unwrap_or_default()),
+            visibility: LwwRegister::new(Visibility::default()),
         }
     }
 }
@@ -134,6 +155,7 @@ pub struct FolderDto {
     /// or folders created before the alias field existed). Clients
     /// fall back to the admin-API alias or a truncated id stub.
     pub alias: Option<String>,
+    pub visibility: Visibility,
 }
 
 fn project(id: &str, rec: &FolderRecord, ctx: Option<&ContextId>) -> FolderDto {
@@ -155,6 +177,7 @@ fn project(id: &str, rec: &FolderRecord, ctx: Option<&ContextId>) -> FolderDto {
         color,
         context_id: ctx.cloned(),
         alias,
+        visibility: rec.visibility.get().clone(),
     }
 }
 
@@ -360,6 +383,13 @@ impl RegistryState {
         Ok(())
     }
 
+    pub fn set_visibility(&mut self, id: FolderId, visibility: Visibility) -> app::Result<()> {
+        self.set_visibility_inner(&id.0, visibility)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        app::emit!(Event::FolderVisibilityChanged { id: &id.0 });
+        Ok(())
+    }
+
     pub fn move_folder(&mut self, id: FolderId, new_parent: Option<FolderId>) -> app::Result<()> {
         self.move_folder_inner(&id.0, new_parent.map(|p| p.0))
             .map_err(|e| AppError::msg(e.to_string()))?;
@@ -377,6 +407,14 @@ impl RegistryState {
         alias: String,
     ) -> Result<(), DriveError> {
         self.mutate_folder(id, |rec| rec.alias.set(alias))
+    }
+
+    pub(crate) fn set_visibility_inner(
+        &mut self,
+        id: &str,
+        visibility: Visibility,
+    ) -> Result<(), DriveError> {
+        self.mutate_folder(id, |rec| rec.visibility.set(visibility))
     }
 
     pub(crate) fn move_folder_inner(
@@ -798,6 +836,7 @@ mod tests {
             parent_id: zero_lww(None),
             color: zero_lww("#ff0000".into()),
             alias: zero_lww(String::new()),
+            visibility: zero_lww(Visibility::default()),
         };
         let b = FolderRecord::new(None, Some("#00ff00".into()), None);
         <FolderRecord as Mergeable>::merge(&mut a, &b).unwrap();
@@ -820,6 +859,7 @@ mod tests {
             parent_id: zero_lww(None),
             color: zero_lww(String::new()),
             alias: zero_lww(String::new()),
+            visibility: zero_lww(Visibility::default()),
         };
         let mut b = FolderRecord::new(None, None, None);
         b.parent_id.set(Some("new-parent".into()));
