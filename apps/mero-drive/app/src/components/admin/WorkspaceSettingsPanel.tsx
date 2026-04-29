@@ -20,8 +20,7 @@ import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { useReconcile } from '@/hooks/useReconcile';
 
 export function WorkspaceSettingsPanel() {
-  const { namespaceId, rootGroupId } = useDriveWorkspace();
-  const { registryClient } = useDriveWorkspace();
+  const { namespaceId, rootGroupId, registryClient } = useDriveWorkspace();
   const perms = useNamespacePermissions(namespaceId ?? '', rootGroupId ?? '');
   const { subgroups } = useSubgroups(rootGroupId);
   const { run, running, last, error } = useReconcile(
