@@ -506,13 +506,16 @@ mod tests {
     #[test]
     fn set_folder_alias_updates_on_read() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("f1"), None, None, None).unwrap();
-        app.set_folder_alias_inner("f1", "First pass".into()).unwrap();
+        app.register_folder_inner(fid("f1"), None, None, None)
+            .unwrap();
+        app.set_folder_alias_inner("f1", "First pass".into())
+            .unwrap();
         assert_eq!(
             app.get_folder(fid("f1")).unwrap().alias.as_deref(),
             Some("First pass"),
         );
-        app.set_folder_alias_inner("f1", "Second pass".into()).unwrap();
+        app.set_folder_alias_inner("f1", "Second pass".into())
+            .unwrap();
         assert_eq!(
             app.get_folder(fid("f1")).unwrap().alias.as_deref(),
             Some("Second pass"),
@@ -531,23 +534,24 @@ mod tests {
     #[test]
     fn set_folder_alias_unknown_folder_errors() {
         let mut app = RegistryState::init();
-        let err = app
-            .set_folder_alias_inner("ghost", "x".into())
-            .unwrap_err();
+        let err = app.set_folder_alias_inner("ghost", "x".into()).unwrap_err();
         assert!(matches!(err, DriveError::NotFound(_)));
     }
 
     #[test]
     fn register_folder_rejects_empty_id() {
         let mut app = RegistryState::init();
-        let err = app.register_folder_inner(fid(""), None, None, None).unwrap_err();
+        let err = app
+            .register_folder_inner(fid(""), None, None, None)
+            .unwrap_err();
         assert!(matches!(err, DriveError::Invalid(_)));
     }
 
     #[test]
     fn register_duplicate_fails_with_already_exists() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("f1"), None, None, None).unwrap();
+        app.register_folder_inner(fid("f1"), None, None, None)
+            .unwrap();
         let err = app
             .register_folder_inner(fid("f1"), None, None, None)
             .unwrap_err();
@@ -557,7 +561,8 @@ mod tests {
     #[test]
     fn register_folder_stores_parent_id() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("p"), None, None, None).unwrap();
+        app.register_folder_inner(fid("p"), None, None, None)
+            .unwrap();
         app.register_folder_inner(fid("c"), Some(fid("p")), None, None)
             .unwrap();
         let child = app.get_folder(fid("c")).unwrap();
@@ -567,7 +572,8 @@ mod tests {
     #[test]
     fn unregister_removes_folder_and_clears_binding() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("f1"), None, None, None).unwrap();
+        app.register_folder_inner(fid("f1"), None, None, None)
+            .unwrap();
         app.bind_folder_context_inner(fid("f1"), cid("ctx-1"))
             .unwrap();
         app.unregister_folder_inner(fid("f1")).unwrap();
@@ -593,7 +599,8 @@ mod tests {
     #[test]
     fn bind_folder_context_stores_binding() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("f1"), None, None, None).unwrap();
+        app.register_folder_inner(fid("f1"), None, None, None)
+            .unwrap();
         app.bind_folder_context_inner(fid("f1"), cid("ctx-1"))
             .unwrap();
         assert_eq!(
@@ -618,7 +625,8 @@ mod tests {
     #[test]
     fn bind_folder_context_rejects_reassignment() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("f1"), None, None, None).unwrap();
+        app.register_folder_inner(fid("f1"), None, None, None)
+            .unwrap();
         app.bind_folder_context_inner(fid("f1"), cid("ctx-1"))
             .unwrap();
         let err = app
@@ -632,7 +640,8 @@ mod tests {
     #[test]
     fn set_color_is_last_write_wins() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("f1"), None, None, None).unwrap();
+        app.register_folder_inner(fid("f1"), None, None, None)
+            .unwrap();
         app.set_color_inner("f1", "#ff0000".into()).unwrap();
         app.set_color_inner("f1", "#00ff00".into()).unwrap();
         assert_eq!(
@@ -653,8 +662,10 @@ mod tests {
     #[test]
     fn move_folder_updates_parent_id() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("p1"), None, None, None).unwrap();
-        app.register_folder_inner(fid("p2"), None, None, None).unwrap();
+        app.register_folder_inner(fid("p1"), None, None, None)
+            .unwrap();
+        app.register_folder_inner(fid("p2"), None, None, None)
+            .unwrap();
         app.register_folder_inner(fid("c"), Some(fid("p1")), None, None)
             .unwrap();
         app.move_folder_inner("c", Some("p2".into())).unwrap();
@@ -668,9 +679,12 @@ mod tests {
     #[test]
     fn reorder_stores_and_reads_back() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("a"), None, None, None).unwrap();
-        app.register_folder_inner(fid("b"), None, None, None).unwrap();
-        app.register_folder_inner(fid("c"), None, None, None).unwrap();
+        app.register_folder_inner(fid("a"), None, None, None)
+            .unwrap();
+        app.register_folder_inner(fid("b"), None, None, None)
+            .unwrap();
+        app.register_folder_inner(fid("c"), None, None, None)
+            .unwrap();
         app.reorder_inner(None, vec![fid("b"), fid("c"), fid("a")])
             .unwrap();
         assert_eq!(
@@ -682,7 +696,8 @@ mod tests {
     #[test]
     fn reorder_rejects_ids_not_in_parent() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("a"), None, None, None).unwrap();
+        app.register_folder_inner(fid("a"), None, None, None)
+            .unwrap();
         app.register_folder_inner(fid("b"), Some(fid("a")), None, None)
             .unwrap();
         let err = app
@@ -694,7 +709,8 @@ mod tests {
     #[test]
     fn reorder_rejects_unknown_id() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("a"), None, None, None).unwrap();
+        app.register_folder_inner(fid("a"), None, None, None)
+            .unwrap();
         let err = app
             .reorder_inner(None, vec![fid("a"), fid("ghost")])
             .unwrap_err();
@@ -704,8 +720,10 @@ mod tests {
     #[test]
     fn reorder_is_lww_overwrite() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("a"), None, None, None).unwrap();
-        app.register_folder_inner(fid("b"), None, None, None).unwrap();
+        app.register_folder_inner(fid("a"), None, None, None)
+            .unwrap();
+        app.register_folder_inner(fid("b"), None, None, None)
+            .unwrap();
         app.reorder_inner(None, vec![fid("a"), fid("b")]).unwrap();
         app.reorder_inner(None, vec![fid("b"), fid("a")]).unwrap();
         assert_eq!(app.get_sort_order(None).unwrap(), vec![fid("b"), fid("a")]);
@@ -728,7 +746,8 @@ mod tests {
         let mut app = RegistryState::init();
         app.register_folder_inner(fid("a"), None, Some("#f00".into()), None)
             .unwrap();
-        app.register_folder_inner(fid("b"), None, None, None).unwrap();
+        app.register_folder_inner(fid("b"), None, None, None)
+            .unwrap();
         app.bind_folder_context_inner(fid("a"), cid("ctx-a"))
             .unwrap();
         app.set_color_inner("a", "#0f0".into()).unwrap();
@@ -824,7 +843,8 @@ mod tests {
     #[test]
     fn tombstone_persists_after_unregister() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("f"), None, None, None).unwrap();
+        app.register_folder_inner(fid("f"), None, None, None)
+            .unwrap();
         app.unregister_folder_inner(fid("f")).unwrap();
         // The inner insert path doesn't error, but the record is not revived:
         // `get_folder` still reports NotFound.
