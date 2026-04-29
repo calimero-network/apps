@@ -18,7 +18,7 @@ import {
   useDeleteContext,
   useDeleteGroup,
   useSetGroupAlias,
-  useSetDefaultVisibility,
+  useSetSubgroupVisibility,
   useMero,
 } from '@calimero-network/mero-react';
 import type { RegistryClient } from '../api/registry/RegistryClient';
@@ -64,7 +64,7 @@ export function useFolderOperations(
   const { deleteContext } = useDeleteContext();
   const { deleteGroup } = useDeleteGroup();
   const { setGroupAlias } = useSetGroupAlias();
-  const { setDefaultVisibility } = useSetDefaultVisibility();
+  const { setSubgroupVisibility } = useSetSubgroupVisibility();
   const { nodeUrl } = useMero();
 
   const create = useCallback(
@@ -117,7 +117,7 @@ export function useFolderOperations(
         // where to unnest from.
         if (input.parentGroupId !== rootGroupId) {
           if (!nodeUrl) throw new Error('Node URL not resolved');
-          await reparentGroup(nodeUrl, newId, input.parentGroupId);
+          await reparentGroup(nodeUrl, newId, input.parentGroupId, rootGroupId);
         }
 
         const ctx = await createContext({
@@ -155,8 +155,8 @@ export function useFolderOperations(
         // is recognised as a member without an explicit add. The
         // create handler in core already sets a default; we re-assert
         // here to make the intent explicit and to support Restricted.
-        await setDefaultVisibility(newId, {
-          defaultVisibility: input.visibility,
+        await setSubgroupVisibility(newId, {
+          subgroupVisibility: input.visibility,
         });
 
         await refetch();
@@ -192,7 +192,7 @@ export function useFolderOperations(
       nodeUrl,
       createGroupInNamespace,
       setGroupAlias,
-      setDefaultVisibility,
+      setSubgroupVisibility,
       createContext,
       deleteContext,
       deleteGroup,

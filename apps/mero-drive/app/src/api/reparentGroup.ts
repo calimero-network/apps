@@ -32,6 +32,7 @@ export async function reparentGroup(
   nodeUrl: string,
   childGroupId: string,
   newParentId: string,
+  _currentParentId?: string,
 ): Promise<void> {
   const token = readAccessToken();
   if (!token) {
