@@ -110,8 +110,8 @@ vi.mock('@calimero-network/mero-react', () => ({
   }),
   useAddGroupMembers: () => ({ addGroupMembers: vi.fn(), loading: false, error: null }),
   useRemoveGroupMembers: () => ({ removeGroupMembers: vi.fn(), loading: false, error: null }),
-  useSetDefaultVisibility: () => ({
-    setDefaultVisibility: vi.fn(),
+  useSetSubgroupVisibility: () => ({
+    setSubgroupVisibility: vi.fn(),
     loading: false,
     error: null,
   }),
