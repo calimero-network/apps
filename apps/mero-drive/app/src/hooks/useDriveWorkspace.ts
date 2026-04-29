@@ -357,7 +357,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
               [
                 id,
                 info?.alias ?? null,
-                info?.subgroupVisibility ?? null,
+                info?.defaultVisibility ?? null,
               ] as const,
           )
           .catch(() => [id, null, null] as const),

@@ -9,7 +9,7 @@
 // registry.setVisibility — the registry no longer carries this field.
 
 import React, { useState } from 'react';
-import { useSetSubgroupVisibility } from '@calimero-network/mero-react';
+import { useSetDefaultVisibility } from '@calimero-network/mero-react';
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { Eye, EyeOff } from 'lucide-react';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
@@ -28,7 +28,7 @@ interface Props {
 export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
   const { namespaceId, refetch } = useDriveWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
-  const { setSubgroupVisibility } = useSetSubgroupVisibility();
+  const { setDefaultVisibility } = useSetDefaultVisibility();
   const [busy, setBusy] = useState(false);
 
   if (!perms.canManageGroup || !current) return null;
@@ -38,7 +38,7 @@ export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
   const onToggle = async () => {
     setBusy(true);
     try {
-      await setSubgroupVisibility(folderId, { subgroupVisibility: next });
+      await setDefaultVisibility(folderId, { defaultVisibility: next });
       await refetch();
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
