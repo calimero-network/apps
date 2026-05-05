@@ -86,9 +86,8 @@ checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 
 [[package]]
 name = "calimero-prelude"
-version = "0.10.1-rc.29"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3f7085b59f04be5d4900da2d58d9c1b902013547774ccdfb61a7088cc46f194"
+version = "0.0.0"
+source = "git+https://github.com/calimero-network/core?branch=master#1a418f46ad1bd2eba3df5c54f0318a64bf263823"
 dependencies = [
  "borsh",
  "calimero-primitives",
@@ -98,9 +97,8 @@ dependencies = [
 
 [[package]]
 name = "calimero-primitives"
-version = "0.10.1-rc.29"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "084ebb804504633dcb7c80afb9d3b1177eb43211ecea311a5406f746c224fdff"
+version = "0.0.0"
+source = "git+https://github.com/calimero-network/core?branch=master#1a418f46ad1bd2eba3df5c54f0318a64bf263823"
 dependencies = [
  "borsh",
  "bs58",
@@ -117,9 +115,8 @@ dependencies = [
 
 [[package]]
 name = "calimero-sdk"
-version = "0.10.1-rc.29"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d232ed45b76556d40b2e0faf680919199eabc6d5d1444d9f2540b8d143b93fd"
+version = "0.0.0"
+source = "git+https://github.com/calimero-network/core?branch=master#1a418f46ad1bd2eba3df5c54f0318a64bf263823"
 dependencies = [
  "borsh",
  "calimero-prelude",
@@ -134,9 +131,8 @@ dependencies = [
 
 [[package]]
 name = "calimero-sdk-macros"
-version = "0.10.1-rc.29"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "862790972791e38e522b3cfd1475885f9a210163925d13e4c13b37c691e17976"
+version = "0.0.0"
+source = "git+https://github.com/calimero-network/core?branch=master#1a418f46ad1bd2eba3df5c54f0318a64bf263823"
 dependencies = [
  "prettyplease",
  "proc-macro2",
@@ -148,9 +144,8 @@ dependencies = [
 
 [[package]]
 name = "calimero-storage"
-version = "0.10.1-rc.29"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e83d7e4ea5da7abca736106302ce0682362dcb4fd521e4bcca41e07754e16603"
+version = "0.0.0"
+source = "git+https://github.com/calimero-network/core?branch=master#1a418f46ad1bd2eba3df5c54f0318a64bf263823"
 dependencies = [
  "borsh",
  "calimero-prelude",
@@ -171,9 +166,8 @@ dependencies = [
 
 [[package]]
 name = "calimero-storage-macros"
-version = "0.10.1-rc.29"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02fa7c9294bc6812fcb6ffc4c2d122fba5ccdfea03310ef6d93e194c3e1109e7"
+version = "0.0.0"
+source = "git+https://github.com/calimero-network/core?branch=master#1a418f46ad1bd2eba3df5c54f0318a64bf263823"
 dependencies = [
  "quote",
  "syn",
@@ -181,18 +175,16 @@ dependencies = [
 
 [[package]]
 name = "calimero-sys"
-version = "0.10.1-rc.29"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61ab92a3d5e41b63844413d046206f9b7524445b6973d044ce8b6f78797a3bf2"
+version = "0.0.0"
+source = "git+https://github.com/calimero-network/core?branch=master#1a418f46ad1bd2eba3df5c54f0318a64bf263823"
 dependencies = [
  "cfg-if",
 ]
 
 [[package]]
 name = "calimero-wasm-abi"
-version = "0.10.1-rc.29"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43952e2fba3a9c65f601ddc40042212fe0e0bfc19e2210dd14a13f30e5fc69a9"
+version = "0.0.0"
+source = "git+https://github.com/calimero-network/core?branch=master#1a418f46ad1bd2eba3df5c54f0318a64bf263823"
 dependencies = [
  "proc-macro2",
  "serde",
@@ -327,21 +319,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "e2e-kv-store"
-version = "0.10.1-rc.29"
-dependencies = [
- "bs58",
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "calimero-wasm-abi",
- "hex",
- "serde_json",
- "sha2",
- "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -797,6 +774,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92"
 dependencies = [
  "semver",
+]
+
+[[package]]
+name = "scaffolding-e2e"
+version = "0.10.1-rc.32"
+dependencies = [
+ "bs58",
+ "calimero-sdk",
+ "calimero-storage",
+ "calimero-storage-macros",
+ "calimero-wasm-abi",
+ "hex",
+ "serde_json",
+ "sha2",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

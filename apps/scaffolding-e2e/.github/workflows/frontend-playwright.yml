@@ -89,7 +89,7 @@ jobs:
         with:
           name: frontend-wasm-${{ github.sha }}
           path: |
-            logic/res/e2e_kv_store.wasm
+            logic/res/scaffolding_e2e.wasm
             logic/res/abi.json
           retention-days: 1
 
@@ -135,7 +135,7 @@ jobs:
         working-directory: frontend
         run: |
           echo "VITE_NODE_URL=http://localhost:2528" >> .env
-          echo "VITE_APPLICATION_PACKAGE=com.calimero.e2e-kv-store" >> .env
+          echo "VITE_APPLICATION_PACKAGE=com.calimero.scaffolding-e2e" >> .env
 
       - name: Install Playwright browsers
         working-directory: frontend

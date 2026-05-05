@@ -57,7 +57,7 @@ cd logic
 cd ..
 ```
 
-Output: `logic/res/e2e-kv-store-1.0.0.mpk`
+Output: `logic/res/scaffolding-e2e-1.0.0.mpk`
 
 First build takes a few minutes (Rust + WASM). Subsequent builds are fast.
 
@@ -66,7 +66,7 @@ First build takes a few minutes (Rust + WASM). Subsequent builds are fast.
 ## 4. Install the app on the node
 
 ```bash
-meroctl --node node1 app install --path logic/res/e2e-kv-store-1.0.0.mpk
+meroctl --node node1 app install --path logic/res/scaffolding-e2e-1.0.0.mpk
 ```
 
 The output includes an `applicationId`. Copy it — you need it in the next steps.
@@ -150,7 +150,7 @@ meroctl node add node2 ~/.calimero/node2
 Install the same app on node2:
 
 ```bash
-meroctl --node node2 app install --path logic/res/e2e-kv-store-1.0.0.mpk
+meroctl --node node2 app install --path logic/res/scaffolding-e2e-1.0.0.mpk
 ```
 
 Invite node2 to the namespace from node1:

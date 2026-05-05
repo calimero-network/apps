@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "sync-wasm": "mkdir -p public && cp ../logic/res/e2e_kv_store.wasm public/app.wasm && echo 'Copied to public/app.wasm'",
+    "sync-wasm": "mkdir -p public && cp ../logic/res/scaffolding_e2e.wasm public/app.wasm && echo 'Copied to public/app.wasm'",
     "test": "playwright test",
     "test:headed": "playwright test --headed",
     "test:ui": "playwright test --ui",

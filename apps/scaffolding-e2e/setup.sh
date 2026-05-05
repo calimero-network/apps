@@ -25,7 +25,7 @@ NODE_A_P2P_PORT="${CALIMERO_P2P_PORT_A:-2628}"
 NODE_B_P2P_PORT="${CALIMERO_P2P_PORT_B:-2629}"
 ADMIN_USER="${CALIMERO_ADMIN_USER:-admin}"
 ADMIN_PASS="${CALIMERO_ADMIN_PASS:-calimero1234}"  # min 8 chars
-LOGIC_MPK="logic/res/e2e-kv-store-1.0.0.mpk"
+LOGIC_MPK="logic/res/scaffolding-e2e-1.0.0.mpk"
 ENV_FILE="frontend/.env"
 ENV_EXAMPLE="frontend/.env.example"
 

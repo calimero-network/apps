@@ -79,51 +79,6 @@ impl Mergeable for FileRecord {
     }
 }
 
-// WORKSPACE MANAGER TYPES
-
-/// A named channel — tracks a context as a logical channel/room in the workspace.
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Default)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct ChannelRecord {
-    pub context_id: String,
-    pub name: String,
-    pub topic: String,
-    pub created_by: String,
-}
-
-/// A sub-group within the workspace.
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Default)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct WsGroupRecord {
-    pub group_id: String,
-    pub name: String,
-    pub description: String,
-    pub created_by: String,
-}
-
-/// Workspace summary returned by ws_get_info.
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct WorkspaceInfo {
-    pub name: String,
-    pub admin: String,
-    pub channel_count: usize,
-    pub group_count: usize,
-    pub member_count: usize,
-}
-
-/// Member identity + app-level role.
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct MemberRecord {
-    pub identity: String,
-    pub role: String,
-}
-
 // PRIVATE STATE (Node-local, NOT synchronized)
 
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
@@ -200,18 +155,6 @@ pub struct E2eKvStore {
     rga_edit_count: Counter,
     /// Document metadata (title, owner)
     rga_metadata: UnorderedMap<String, LwwRegister<String>>,
-
-    // --- Workspace Manager ---
-    /// Workspace display name
-    ws_name: LwwRegister<String>,
-    /// Admin public key (base58). Set once by ws_init.
-    ws_admin: LwwRegister<String>,
-    /// Channel registry: context_id (base58) → ChannelRecord
-    ws_channels: UnorderedMap<String, LwwRegister<ChannelRecord>>,
-    /// Sub-group registry: group_id (hex) → WsGroupRecord
-    ws_groups: UnorderedMap<String, LwwRegister<WsGroupRecord>>,
-    /// App-level member roles: identity (base58) → "admin" | "member" | "read-only"
-    ws_member_roles: UnorderedMap<String, LwwRegister<String>>,
 }
 
 // EVENTS
@@ -318,36 +261,6 @@ pub enum Event<'a> {
         new_title: String,
         editor: String,
     },
-
-    // Workspace Manager Events
-    WsInitialized {
-        name: &'a str,
-        admin: &'a str,
-    },
-    WsChannelRegistered {
-        context_id: &'a str,
-        name: &'a str,
-    },
-    WsChannelUnregistered {
-        context_id: &'a str,
-    },
-    WsGroupRegistered {
-        group_id: &'a str,
-        name: &'a str,
-    },
-    WsGroupUnregistered {
-        group_id: &'a str,
-    },
-    WsMemberRoleSet {
-        identity: &'a str,
-        role: &'a str,
-    },
-    WsPingSent {
-        to_context: &'a str,
-    },
-    WsPongReceived {
-        from_context: &'a str,
-    },
 }
 
 // ERRORS
@@ -364,16 +277,6 @@ pub enum Error<'a> {
     FrozenNotFound(&'a str),
     #[error("no public hash set yet")]
     NoHash,
-    #[error("not workspace admin")]
-    NotAdmin,
-    #[error("workspace not initialized")]
-    WorkspaceNotInitialized,
-    #[error("channel not found: {0}")]
-    ChannelNotFound(&'a str),
-    #[error("group not found: {0}")]
-    GroupNotFound(&'a str),
-    #[error("invalid input: {0}")]
-    InvalidInput(&'a str),
 }
 
 // HELPER FUNCTIONS
@@ -454,12 +357,6 @@ impl E2eKvStore {
             rga_document: ReplicatedGrowableArray::new(),
             rga_edit_count: GCounter::new(),
             rga_metadata: UnorderedMap::new(),
-            // Workspace Manager
-            ws_name: LwwRegister::new(String::new()),
-            ws_admin: LwwRegister::new(String::new()),
-            ws_channels: UnorderedMap::new(),
-            ws_groups: UnorderedMap::new(),
-            ws_member_roles: UnorderedMap::new(),
         }
     }
 
@@ -672,7 +569,7 @@ impl E2eKvStore {
     pub fn add_frozen(&mut self, value: String) -> app::Result<String> {
         app::log!("Adding frozen value: {:?}", value);
 
-        let hash = self.frozen_items.insert(value.clone())?;
+        let hash = self.frozen_items.insert(value.clone().into())?;
 
         app::emit!(Event::FrozenAdded {
             hash,
@@ -692,7 +589,8 @@ impl E2eKvStore {
         Ok(self
             .frozen_items
             .get(&hash)?
-            .ok_or(Error::FrozenNotFound("Frozen value is not found"))?)
+            .map(|v| v.clone())
+            .ok_or_else(|| Error::FrozenNotFound("Frozen value is not found"))?)
     }
 
     // PRIVATE STORAGE
@@ -1237,257 +1135,6 @@ impl E2eKvStore {
         let length = self.rga_get_length()?;
         if length > 0 {
             self.rga_delete_text(0, length)?;
-        }
-        Ok(())
-    }
-
-    // WORKSPACE MANAGER
-    //
-    // This context acts as the "namespace" root — one admin, multiple channels
-    // (each channel is another context), and sub-groups. Members are tracked
-    // at the app level with roles: "admin" | "member" | "read-only".
-
-    /// Initialize the workspace. Can only be called once (admin must be empty).
-    /// Caller becomes the admin.
-    pub fn ws_init(&mut self, name: String) -> Result<(), String> {
-        if !self.ws_admin.get().is_empty() {
-            return Err("Workspace already initialized".into());
-        }
-        if name.is_empty() {
-            return Err(Error::InvalidInput("name cannot be empty").to_string());
-        }
-        let admin = encode_identity(&env::executor_id());
-        self.ws_name.set(name.clone());
-        self.ws_admin.set(admin.clone());
-        // Give admin the "admin" role in the member-role map too
-        self.ws_member_roles
-            .insert(admin.clone(), LwwRegister::new("admin".to_owned()))
-            .map_err(|e| format!("{e:?}"))?;
-        app::emit!(Event::WsInitialized {
-            name: &name,
-            admin: &admin,
-        });
-        app::log!("Workspace '{}' initialized by {}", name, admin);
-        Ok(())
-    }
-
-    /// Return high-level workspace summary.
-    pub fn ws_get_info(&self) -> Result<WorkspaceInfo, String> {
-        if self.ws_admin.get().is_empty() {
-            return Err(Error::WorkspaceNotInitialized.to_string());
-        }
-        let channel_count = self.ws_channels.len().map_err(|e| format!("{e:?}"))?;
-        let group_count = self.ws_groups.len().map_err(|e| format!("{e:?}"))?;
-        let member_count = self.ws_member_roles.len().map_err(|e| format!("{e:?}"))?;
-        Ok(WorkspaceInfo {
-            name: self.ws_name.get().clone(),
-            admin: self.ws_admin.get().clone(),
-            channel_count,
-            group_count,
-            member_count,
-        })
-    }
-
-    /// Register a context as a named channel.
-    pub fn ws_register_channel(
-        &mut self,
-        context_id: String,
-        name: String,
-        topic: String,
-    ) -> Result<(), String> {
-        self.require_admin()?;
-        if context_id.is_empty() || name.is_empty() {
-            return Err(Error::InvalidInput("context_id and name are required").to_string());
-        }
-        let record = ChannelRecord {
-            context_id: context_id.clone(),
-            name: name.clone(),
-            topic,
-            created_by: encode_identity(&env::executor_id()),
-        };
-        self.ws_channels
-            .insert(context_id.clone(), LwwRegister::new(record))
-            .map_err(|e| format!("{e:?}"))?;
-        app::emit!(Event::WsChannelRegistered {
-            context_id: &context_id,
-            name: &name,
-        });
-        app::log!("Channel '{}' registered (context {})", name, context_id);
-        Ok(())
-    }
-
-    /// Remove a channel from the registry.
-    pub fn ws_unregister_channel(&mut self, context_id: String) -> Result<(), String> {
-        self.require_admin()?;
-        self.ws_channels
-            .remove(&context_id)
-            .map_err(|e| format!("{e:?}"))?;
-        app::emit!(Event::WsChannelUnregistered {
-            context_id: &context_id,
-        });
-        app::log!("Channel {} unregistered", context_id);
-        Ok(())
-    }
-
-    /// List all registered channels.
-    pub fn ws_list_channels(&self) -> Result<Vec<ChannelRecord>, String> {
-        let mut channels = Vec::new();
-        if let Ok(entries) = self.ws_channels.entries() {
-            for (_, reg) in entries {
-                channels.push(reg.get().clone());
-            }
-        }
-        Ok(channels)
-    }
-
-    /// Register a sub-group (a Calimero group ID) under this workspace.
-    pub fn ws_register_group(
-        &mut self,
-        group_id: String,
-        name: String,
-        description: String,
-    ) -> Result<(), String> {
-        self.require_admin()?;
-        if group_id.is_empty() || name.is_empty() {
-            return Err(Error::InvalidInput("group_id and name are required").to_string());
-        }
-        let record = WsGroupRecord {
-            group_id: group_id.clone(),
-            name: name.clone(),
-            description,
-            created_by: encode_identity(&env::executor_id()),
-        };
-        self.ws_groups
-            .insert(group_id.clone(), LwwRegister::new(record))
-            .map_err(|e| format!("{e:?}"))?;
-        app::emit!(Event::WsGroupRegistered {
-            group_id: &group_id,
-            name: &name,
-        });
-        app::log!("Group '{}' registered ({})", name, group_id);
-        Ok(())
-    }
-
-    /// Remove a group from the registry.
-    pub fn ws_unregister_group(&mut self, group_id: String) -> Result<(), String> {
-        self.require_admin()?;
-        self.ws_groups
-            .remove(&group_id)
-            .map_err(|e| format!("{e:?}"))?;
-        app::emit!(Event::WsGroupUnregistered {
-            group_id: &group_id,
-        });
-        app::log!("Group {} unregistered", group_id);
-        Ok(())
-    }
-
-    /// List all registered groups.
-    pub fn ws_list_groups(&self) -> Result<Vec<WsGroupRecord>, String> {
-        let mut groups = Vec::new();
-        if let Ok(entries) = self.ws_groups.entries() {
-            for (_, reg) in entries {
-                groups.push(reg.get().clone());
-            }
-        }
-        Ok(groups)
-    }
-
-    /// Set app-level role for a member identity.
-    /// Admin can set any role; members can only be set by admin.
-    pub fn ws_set_member_role(&mut self, identity: String, role: String) -> Result<(), String> {
-        self.require_admin()?;
-        let allowed = ["admin", "member", "read-only"];
-        if !allowed.contains(&role.as_str()) {
-            return Err(
-                Error::InvalidInput("role must be admin, member, or read-only").to_string(),
-            );
-        }
-        // Insert a new LwwRegister — LWW timestamp ensures the latest wins on merge
-        self.ws_member_roles
-            .insert(identity.clone(), LwwRegister::new(role.clone()))
-            .map_err(|e| format!("{e:?}"))?;
-        app::emit!(Event::WsMemberRoleSet {
-            identity: &identity,
-            role: &role,
-        });
-        Ok(())
-    }
-
-    /// Get role for a given identity.
-    pub fn ws_get_member_role(&self, identity: String) -> Result<String, String> {
-        self.ws_member_roles
-            .get(&identity)
-            .map_err(|e| format!("{e:?}"))?
-            .map(|reg| reg.get().clone())
-            .ok_or_else(|| format!("No role set for {identity}"))
-    }
-
-    /// Get your own role.
-    pub fn ws_my_role(&self) -> Result<String, String> {
-        let me = encode_identity(&env::executor_id());
-        self.ws_get_member_role(me)
-    }
-
-    /// List all members with roles.
-    pub fn ws_list_members(&self) -> Result<Vec<MemberRecord>, String> {
-        let mut members = Vec::new();
-        if let Ok(entries) = self.ws_member_roles.entries() {
-            for (identity, reg) in entries {
-                members.push(MemberRecord {
-                    identity,
-                    role: reg.get().clone(),
-                });
-            }
-        }
-        Ok(members)
-    }
-
-    /// Send a cross-context ping to a channel context.
-    /// Fire-and-forget — the target context must implement ws_pong.
-    pub fn ws_ping_channel(&mut self, target_context_id_b58: String) -> Result<(), String> {
-        if self.ws_admin.get().is_empty() {
-            return Err(Error::WorkspaceNotInitialized.to_string());
-        }
-        // Decode base58 → 32-byte context ID
-        let bytes = bs58::decode(&target_context_id_b58)
-            .into_vec()
-            .map_err(|e| format!("Invalid context ID: {e}"))?;
-        if bytes.len() != 32 {
-            return Err("Context ID must be 32 bytes".into());
-        }
-        let mut ctx_id = [0u8; 32];
-        ctx_id.copy_from_slice(&bytes);
-        // xcall params: empty JSON object
-        env::xcall(&ctx_id, "ws_pong", b"{}");
-        app::emit!(Event::WsPingSent {
-            to_context: &target_context_id_b58,
-        });
-        app::log!("Ping sent to context {}", target_context_id_b58);
-        Ok(())
-    }
-
-    /// Called by another context's xcall — records the pong.
-    pub fn ws_pong(&mut self) -> Result<(), String> {
-        let from = encode_identity(&env::context_id());
-        app::emit!(Event::WsPongReceived {
-            from_context: &from,
-        });
-        app::log!("Pong received from context {}", from);
-        Ok(())
-    }
-}
-
-// WORKSPACE ADMIN HELPER (private)
-
-impl E2eKvStore {
-    fn require_admin(&self) -> Result<(), String> {
-        let me = encode_identity(&env::executor_id());
-        let admin = self.ws_admin.get();
-        if admin.is_empty() {
-            return Err(Error::WorkspaceNotInitialized.to_string());
-        }
-        if &me != admin {
-            return Err(Error::NotAdmin.to_string());
         }
         Ok(())
     }
