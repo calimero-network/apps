@@ -158,6 +158,13 @@ steps:
       - identity: '{{member_identity_node2}}'
         role: Member
 
+  # Wait for subgroup membership governance to propagate to node-2 before
+  # node-2 attempts join_context — without this, the local membership check
+  # rejects with "identity is not a member of the group".
+  - name: Wait for subgroup governance to propagate
+    type: wait
+    seconds: 5
+
   - name: Create context in subgroup
     type: create_context
     node: e2e-node-1
