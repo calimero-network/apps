@@ -170,6 +170,45 @@ Open two browser tabs. In each, connect to a different node (`localhost:2528` vs
 
 ---
 
+## Storage types
+
+The app demonstrates every storage primitive in the Calimero SDK. Two of them are worth explaining because their access rules are enforced at the CRDT merge layer, not just in application logic:
+
+### AuthoredMap
+
+A shared key→value map where **ownership is per-entry**. Any context member can insert a new key — the inserting node becomes the entry's owner. Only the owning node can update or remove that entry. Reads (`get`, `entries`) are open to all.
+
+This is implemented with `AuthoredMap<String, LwwRegister<String>>` from `calimero_storage::collections`. Ownership is stored in `StorageType::User { owner }` metadata and enforced at merge time.
+
+Frontend: **Storage → Authored Map**
+
+Methods exposed:
+- `authored_insert(key, value)` — insert a new entry (caller becomes owner)
+- `authored_update(key, value)` — update an entry (owner only)
+- `authored_remove(key)` — remove an entry (owner only)
+- `authored_get(key)` — read a single entry
+- `authored_entries()` — read all entries as a map
+- `authored_get_owner(key)` — returns the base58 public key of the owner
+- `authored_len()` — entry count
+
+### SharedStorage
+
+A **single-value** store with an explicit writer set. Only nodes whose Ed25519 public key is in the writer set can call `shared_set`. The writer set is managed via `rotate_writers` (exposed as `shared_add_writer` in this app). Any context member can read.
+
+The writer set is a `BTreeSet<PublicKey>`. The context creator (node1) is the initial writer. Use `shared_add_writer` with a base58 public key to authorize additional nodes before they attempt to write.
+
+Frontend: **Storage → Shared Storage**
+
+Methods exposed:
+- `shared_set(value)` — set the shared value (writers only)
+- `shared_get()` — read the current value
+- `shared_get_writers()` — list authorized writer keys (base58)
+- `shared_add_writer(writer_bs58)` — add a writer by base58 public key
+- `shared_is_writer(key_bs58)` — check if a key is authorized
+- `shared_is_frozen()` — whether the storage was locked at construction
+
+---
+
 ## Troubleshooting
 
 **`merod` / `meroctl` not found** — run `./install-calimero.sh` and restart your terminal.

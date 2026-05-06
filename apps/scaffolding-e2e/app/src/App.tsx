@@ -25,6 +25,8 @@ import { CrdtMetrics } from "./sections/CrdtMetrics";
 import { CrdtTags } from "./sections/CrdtTags";
 import { RgaDocument } from "./sections/RgaDocument";
 import { WorkspaceManager } from "./sections/WorkspaceManager";
+import { AuthoredMap } from "./sections/AuthoredMap";
+import { SharedStorage } from "./sections/SharedStorage";
 import { SetupWizard } from "./sections/SetupWizard";
 import { TestRunner } from "./sections/TestRunner";
 import { SyncTest } from "./sections/SyncTest";
@@ -44,6 +46,8 @@ type SectionId =
   | "private"
   | "blobs"
   | "file-share"
+  | "authored-map"
+  | "shared-storage"
   | "members"
   | "counters"
   | "registers"
@@ -72,6 +76,8 @@ const NAV_ITEMS: NavItem[] = [
   { id: "private", label: "Private Secrets", icon: "🔒", group: "Storage" },
   { id: "blobs", label: "Blob Storage", icon: "📦", group: "Storage" },
   { id: "file-share", label: "File Share Demo", icon: "📂", group: "Storage" },
+  { id: "authored-map", label: "Authored Map", icon: "✍", group: "Storage" },
+  { id: "shared-storage", label: "Shared Storage", icon: "🔗", group: "Storage" },
   { id: "members", label: "Context Members", icon: "🛡", group: "Access" },
   { id: "counters", label: "Counters", icon: "🔢", group: "CRDT" },
   { id: "registers", label: "LWW Registers", icon: "📝", group: "CRDT" },
@@ -97,6 +103,8 @@ function renderSection(id: SectionId) {
     case "private": return <PrivateStorage />;
     case "blobs": return <BlobStorage />;
     case "file-share": return <FileShareDemo />;
+    case "authored-map": return <AuthoredMap />;
+    case "shared-storage": return <SharedStorage />;
     case "members": return <ContextMembers />;
     case "counters": return <CrdtCounters />;
     case "registers": return <CrdtRegisters />;
