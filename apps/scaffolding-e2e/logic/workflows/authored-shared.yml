@@ -1,0 +1,393 @@
+name: Authored Map + Shared Storage E2E
+description: Multi-node sync tests for AuthoredMap (per-entry ownership) and SharedStorage (rotatable writer set)
+
+force_pull_image: false
+nuke_on_start: true
+
+nodes:
+  chain_id: testnet-1
+  count: 3
+  image: ghcr.io/calimero-network/merod:0.10.1-rc.32
+  prefix: e2e-node
+
+steps:
+  - name: Install application on node-1
+    type: install_application
+    node: e2e-node-1
+    path: res/scaffolding_e2e.wasm
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Create mesh with node-2 and node-3
+    type: create_mesh
+    context_node: e2e-node-1
+    application_id: "{{app_id}}"
+    path: res/scaffolding_e2e.wasm
+    nodes:
+      - e2e-node-2
+      - e2e-node-3
+    capability: member
+    outputs:
+      context_id: contextId
+      node1_key: memberPublicKey
+
+  - name: Verify mesh keys are populated
+    type: assert
+    statements:
+      - "is_set({{node1_key}})"
+      - "is_set({{public_key_e2e-node-2}})"
+      - "is_set({{public_key_e2e-node-3}})"
+
+  # ─── AuthoredMap: insert from node-1, others can read but cannot mutate ────
+
+  - name: node-1 inserts authored entry
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: authored_insert
+    args:
+      key: "alice_key"
+      value: "owned_by_node1"
+
+  - name: Wait for sync after authored_insert
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+      - e2e-node-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads authored entry
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: authored_get
+    args:
+      key: "alice_key"
+    outputs:
+      n2_authored_get: result
+
+  - name: Assert node-2 sees authored value
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_authored_get}}, {"output": "owned_by_node1"})'
+
+  - name: node-3 reads owner of authored entry
+    type: call
+    node: e2e-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-3}}"
+    method: authored_get_owner
+    args:
+      key: "alice_key"
+    outputs:
+      n3_owner: result
+
+  - name: Assert authored owner is node-1
+    type: json_assert
+    statements:
+      - 'json_equal({{n3_owner}}, {"output": "{{node1_key}}"})'
+
+  # node-1 (owner) updates the entry — should succeed
+  - name: node-1 updates its own authored entry
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: authored_update
+    args:
+      key: "alice_key"
+      value: "updated_by_owner"
+
+  - name: Wait for sync after authored_update
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+      - e2e-node-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 sees updated authored value
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: authored_get
+    args:
+      key: "alice_key"
+    outputs:
+      n2_after_update: result
+
+  - name: Assert authored update propagated
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_after_update}}, {"output": "updated_by_owner"})'
+
+  # node-2 inserts its own authored entry — different owner
+  - name: node-2 inserts its own authored entry
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: authored_insert
+    args:
+      key: "bob_key"
+      value: "owned_by_node2"
+
+  - name: Wait for sync after second authored_insert
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+      - e2e-node-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 reads node-2's authored entry
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: authored_get
+    args:
+      key: "bob_key"
+    outputs:
+      n1_bob_value: result
+
+  - name: Assert cross-owner read works
+    type: json_assert
+    statements:
+      - 'json_equal({{n1_bob_value}}, {"output": "owned_by_node2"})'
+
+  - name: node-3 enumerates authored_entries
+    type: call
+    node: e2e-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-3}}"
+    method: authored_len
+    args: {}
+    outputs:
+      n3_authored_len: result
+
+  - name: Assert authored_len reflects both keys (>= 2)
+    type: json_assert
+    statements:
+      - 'json_equal({{n3_authored_len}}, {"output": 2})'
+
+  # owner removes its entry; verify gone everywhere
+  - name: node-1 removes its authored entry
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: authored_remove
+    args:
+      key: "alice_key"
+
+  - name: Wait for sync after authored_remove
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+      - e2e-node-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads removed authored entry → null
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: authored_get
+    args:
+      key: "alice_key"
+    outputs:
+      n2_after_remove: result
+
+  - name: Assert removed entry is gone
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_after_remove}}, {"output": null})'
+
+  # ─── SharedStorage: writer set + rotatable writes ────────────────────────
+
+  - name: node-1 (initial writer) sets shared value
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: shared_set
+    args:
+      value: "v1_from_node1"
+
+  - name: Wait for sync after shared_set
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+      - e2e-node-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads shared value
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: shared_get
+    args: {}
+    outputs:
+      n2_shared_get: result
+
+  - name: Assert shared value synced to node-2
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_shared_get}}, {"output": "v1_from_node1"})'
+
+  - name: node-3 reads shared value
+    type: call
+    node: e2e-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-3}}"
+    method: shared_get
+    args: {}
+    outputs:
+      n3_shared_get: result
+
+  - name: Assert shared value synced to node-3
+    type: json_assert
+    statements:
+      - 'json_equal({{n3_shared_get}}, {"output": "v1_from_node1"})'
+
+  - name: node-2 checks shared_is_writer for itself (should be false)
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: shared_is_writer
+    args:
+      key_bs58: "{{public_key_e2e-node-2}}"
+    outputs:
+      n2_is_writer_pre: result
+
+  - name: Assert node-2 not yet a writer
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_is_writer_pre}}, {"output": false})'
+
+  # node-1 grants writer to node-2
+  - name: node-1 adds node-2 as shared writer
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: shared_add_writer
+    args:
+      writer_bs58: "{{public_key_e2e-node-2}}"
+
+  - name: Wait for sync after shared_add_writer
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+      - e2e-node-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 checks shared_is_writer for itself (should now be true)
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: shared_is_writer
+    args:
+      key_bs58: "{{public_key_e2e-node-2}}"
+    outputs:
+      n2_is_writer_post: result
+
+  - name: Assert node-2 is now a writer
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_is_writer_post}}, {"output": true})'
+
+  # node-2 (newly authorized) writes shared value
+  - name: node-2 writes shared value
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: shared_set
+    args:
+      value: "v2_from_node2"
+
+  - name: Wait for sync after second shared_set
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+      - e2e-node-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-3 reads new shared value
+    type: call
+    node: e2e-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-3}}"
+    method: shared_get
+    args: {}
+    outputs:
+      n3_shared_get_v2: result
+
+  - name: Assert second shared write propagated
+    type: json_assert
+    statements:
+      - 'json_equal({{n3_shared_get_v2}}, {"output": "v2_from_node2"})'
+
+  - name: node-3 reads shared writer set
+    type: call
+    node: e2e-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-3}}"
+    method: shared_get_writers
+    args: {}
+    outputs:
+      n3_writers: result
+
+  - name: Assert is_frozen is false
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: shared_is_frozen
+    args: {}
+    outputs:
+      is_frozen: result
+
+  - name: Assert shared_is_frozen returns false
+    type: json_assert
+    statements:
+      - 'json_equal({{is_frozen}}, {"output": false})'
+
+stop_all_nodes: false
+restart: false
+wait_timeout: 120

@@ -87,6 +87,21 @@ const RPC_RESULTS: Record<string, unknown> = {
   add_tag: null,
   has_tag: true,
   get_tag_count: 3,
+  // Authored Map
+  authored_insert: null,
+  authored_update: null,
+  authored_remove: "removed-val",
+  authored_get: "authored-val",
+  authored_entries: { ak1: "av1", ak2: "av2" },
+  authored_get_owner: FAKE_IDENTITY,
+  authored_len: 2,
+  // Shared Storage
+  shared_set: null,
+  shared_get: "shared-value",
+  shared_get_writers: [FAKE_IDENTITY],
+  shared_add_writer: null,
+  shared_is_writer: true,
+  shared_is_frozen: false,
   // RGA document
   rga_insert_text: null,
   rga_delete_text: null,
@@ -765,6 +780,120 @@ test.describe("RGA Document", () => {
     await navigateTo(page, "RGA Document");
     await expect(page.locator(".section-title")).toContainText("RGA Document");
     await expect(page.locator(".method-card button").first()).toBeVisible();
+  });
+});
+
+test.describe("CRDT Metadata (Nested Maps)", () => {
+  test("section renders with set_metadata and get_metadata cards", async ({ page }) => {
+    await navigateTo(page, "Nested Maps");
+    await expect(
+      page.locator(".method-name", { hasText: "set_metadata" }).first(),
+    ).toBeVisible();
+    await expect(
+      page.locator(".method-name", { hasText: "get_metadata" }).first(),
+    ).toBeVisible();
+    await expect(page.locator(".method-card button").first()).toBeVisible();
+  });
+});
+
+test.describe("CRDT Metrics (Vector)", () => {
+  test("section renders with push_metric and get_metric cards", async ({ page }) => {
+    await navigateTo(page, "Metrics Vector");
+    await expect(
+      page.locator(".method-name", { hasText: "push_metric" }).first(),
+    ).toBeVisible();
+    await expect(page.locator(".method-card button").first()).toBeVisible();
+  });
+});
+
+test.describe("Authored Map", () => {
+  test("section renders with authored_insert/update/remove cards", async ({ page }) => {
+    await navigateTo(page, "Authored Map");
+    await expect(page.locator(".section-title")).toContainText("Authored Map");
+    await expect(
+      page.locator(".method-name", { hasText: "authored_insert" }).first(),
+    ).toBeVisible();
+    await expect(
+      page.locator(".method-name", { hasText: "authored_update" }).first(),
+    ).toBeVisible();
+    await expect(
+      page.locator(".method-name", { hasText: "authored_remove" }).first(),
+    ).toBeVisible();
+  });
+
+  test("authored_insert card has key and value inputs", async ({ page }) => {
+    await navigateTo(page, "Authored Map");
+    const insertCard = page
+      .locator(".method-card", { hasText: "authored_insert(key, value)" })
+      .first();
+    await expect(insertCard.locator("input[placeholder='key']")).toBeVisible();
+    await expect(insertCard.locator("input[placeholder='value']")).toBeVisible();
+    await expect(insertCard.locator("button", { hasText: "Execute" })).toBeVisible();
+  });
+
+  test("authored_get_owner card has FieldHelp tooltip", async ({ page }) => {
+    await navigateTo(page, "Authored Map");
+    const ownerCard = page
+      .locator(".method-card", { hasText: "authored_get_owner(key)" })
+      .first();
+    await expect(ownerCard.locator("input[placeholder='key']")).toBeVisible();
+  });
+
+  test("authored_len executes and shows result on click", async ({ page }) => {
+    await navigateTo(page, "Authored Map");
+    const lenCard = page.locator(".method-card", { hasText: "authored_len()" }).first();
+    await lenCard.locator("button").click();
+    await expect(lenCard.locator(".result-box")).toBeVisible({ timeout: 5_000 });
+  });
+});
+
+test.describe("Shared Storage", () => {
+  test("section renders with shared_set/get cards", async ({ page }) => {
+    await navigateTo(page, "Shared Storage");
+    await expect(page.locator(".section-title")).toContainText("Shared Storage");
+    await expect(
+      page.locator(".method-name", { hasText: "shared_set" }).first(),
+    ).toBeVisible();
+    await expect(
+      page.locator(".method-name", { hasText: "shared_get" }).first(),
+    ).toBeVisible();
+  });
+
+  test("shared_set card has a value input and Execute button", async ({ page }) => {
+    await navigateTo(page, "Shared Storage");
+    const setCard = page
+      .locator(".method-card", { hasText: "shared_set(value)" })
+      .first();
+    await expect(setCard.locator("input[placeholder='value']")).toBeVisible();
+    await expect(setCard.locator("button", { hasText: "Execute" })).toBeVisible();
+  });
+
+  test("shared_add_writer card has key input with FieldHelp", async ({ page }) => {
+    await navigateTo(page, "Shared Storage");
+    const writerCard = page
+      .locator(".method-card", { hasText: "shared_add_writer(writer_bs58)" })
+      .first();
+    await expect(
+      writerCard.locator("input[placeholder='base58 public key']"),
+    ).toBeVisible();
+  });
+
+  test("shared_get_writers executes and shows result on click", async ({ page }) => {
+    await navigateTo(page, "Shared Storage");
+    const writersCard = page
+      .locator(".method-card", { hasText: "shared_get_writers()" })
+      .first();
+    await writersCard.locator("button").click();
+    await expect(writersCard.locator(".result-box")).toBeVisible({ timeout: 5_000 });
+  });
+
+  test("shared_is_frozen executes and returns mocked value", async ({ page }) => {
+    await navigateTo(page, "Shared Storage");
+    const frozenCard = page
+      .locator(".method-card", { hasText: "shared_is_frozen()" })
+      .first();
+    await frozenCard.locator("button").click();
+    await expect(frozenCard.locator(".result-box")).toBeVisible({ timeout: 5_000 });
   });
 });
 

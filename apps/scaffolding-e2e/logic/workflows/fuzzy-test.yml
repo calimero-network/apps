@@ -1,5 +1,5 @@
-name: "E2E KV Store Fuzzy Load Test"
-description: "Long-running fuzzy load test for the scaffolding-e2e scaffolding application"
+name: "Scaffolding E2E Fuzzy Load Test"
+description: "Long-running fuzzy load test for the comprehensive scaffolding-e2e application"
 
 # Test configuration
 no_docker: false
@@ -14,7 +14,7 @@ nodes:
   use_image_entrypoint: false
 
 steps:
-  - name: Install E2E KV Store on Node 1
+  - name: Install Scaffolding E2E on Node 1
     type: install_application
     node: fuzzy-e2e-node-1
     path: res/scaffolding_e2e.wasm
@@ -22,7 +22,7 @@ steps:
     outputs:
       e2e_app_id: applicationId
 
-  - name: Create Mesh for E2E KV Store
+  - name: Create Mesh for Scaffolding E2E
     type: create_mesh
     context_node: fuzzy-e2e-node-1
     application_id: "{{e2e_app_id}}"
@@ -202,7 +202,7 @@ steps:
   #
   # Default duration is 15 minutes. Override via the workflow_dispatch
   # `duration_override` input in the fuzzy-benchmark.yml CI workflow.
-  - name: E2E KV Store Fuzzy Load Test
+  - name: Scaffolding E2E Fuzzy Load Test
     type: fuzzy_test
     duration_minutes: 15
     context_id: "{{e2e_context_id}}"
@@ -306,7 +306,7 @@ steps:
             statements:
               - "is_set({{g_counter_result}})"
 
-      # PN-Counter operations — 5% of traffic
+      # PN-Counter operations — 4% of traffic
       - name: "pn_counter_ops"
         weight: 4
         steps:
@@ -356,7 +356,7 @@ steps:
             statements:
               - "is_set({{reg_get_result}})"
 
-      # User storage set-and-read (same node) — 8% of traffic
+      # User storage set-and-read (same node) — 6% of traffic
       # User storage is executor-bound — read must happen on the same node as write
       - name: "user_storage_ops"
         weight: 6
@@ -384,7 +384,7 @@ steps:
             statements:
               - "is_set({{user_get_result}})"
 
-      # Nested metadata map writes — 7% of traffic
+      # Nested metadata map writes — 4% of traffic
       # Exercises field-level merge of nested UnorderedMap under load
       - name: "metadata_ops"
         weight: 4
@@ -404,7 +404,7 @@ steps:
             statements:
               - "is_set({{meta_result}})"
 
-      # Tag set operations — 5% of traffic
+      # Tag set operations — 4% of traffic
       - name: "tag_ops"
         weight: 4
         steps:
@@ -471,7 +471,7 @@ steps:
               - statement: "contains({{sync_result}}, {{fuzzy_value}})"
                 message: "Cross-node value should propagate within 2s"
 
-      # KV entries scan — 5% of traffic
+      # KV entries scan — 4% of traffic
       # Benchmarks full-scan read overhead under high concurrent write load
       - name: "kv_entries_scan"
         weight: 4
@@ -517,7 +517,7 @@ steps:
             statements:
               - "is_set({{vec_val}})"
 
-      # FrozenStorage write + read — 5% of traffic
+      # FrozenStorage write + read — 4% of traffic
       # Content-addressed immutable storage: same value always yields same hash
       - name: "frozen_ops"
         weight: 4

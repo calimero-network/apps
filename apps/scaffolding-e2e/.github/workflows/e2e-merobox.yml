@@ -106,6 +106,8 @@ jobs:
             file: workflows/handler-test.yml
           - workflow: simple-sync
             file: workflows/simple-sync.yml
+          - workflow: authored-shared
+            file: workflows/authored-shared.yml
 
     steps:
       - name: Checkout code
