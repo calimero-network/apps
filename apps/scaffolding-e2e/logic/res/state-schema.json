@@ -259,6 +259,35 @@
             },
             "crdt_type": "unordered_map"
           }
+        },
+        {
+          "name": "authored_items",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "shared_data",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
         }
       ]
     },

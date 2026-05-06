@@ -259,6 +259,86 @@
             },
             "crdt_type": "unordered_map"
           }
+        },
+        {
+          "name": "authored_items",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "shared_data",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "Event_AuthoredInserted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "owner",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_AuthoredRemoved": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_AuthoredUpdated": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
         }
       ]
     },
@@ -490,6 +570,34 @@
       "fields": [
         {
           "name": "game_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_SharedSet": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_SharedWriterAdded": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "writer",
           "type": {
             "kind": "string"
           }
@@ -1553,6 +1661,174 @@
       "returns": {
         "kind": "unit"
       }
+    },
+    {
+      "name": "authored_insert",
+      "params": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "authored_update",
+      "params": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "authored_remove",
+      "params": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "authored_get",
+      "params": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "authored_entries",
+      "params": [],
+      "returns": {
+        "kind": "map",
+        "key": {
+          "kind": "string"
+        },
+        "value": {
+          "kind": "string"
+        }
+      }
+    },
+    {
+      "name": "authored_get_owner",
+      "params": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "authored_len",
+      "params": [],
+      "returns": {
+        "kind": "u32"
+      }
+    },
+    {
+      "name": "shared_set",
+      "params": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "shared_get",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "shared_get_writers",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      }
+    },
+    {
+      "name": "shared_add_writer",
+      "params": [
+        {
+          "name": "writer_bs58",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "shared_is_writer",
+      "params": [
+        {
+          "name": "key_bs58",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "bool"
+      }
+    },
+    {
+      "name": "shared_is_frozen",
+      "params": [],
+      "returns": {
+        "kind": "bool"
+      }
     }
   ],
   "events": [
@@ -1677,6 +1953,36 @@
       "name": "TitleChanged",
       "payload": {
         "$ref": "Event_TitleChanged"
+      }
+    },
+    {
+      "name": "AuthoredInserted",
+      "payload": {
+        "$ref": "Event_AuthoredInserted"
+      }
+    },
+    {
+      "name": "AuthoredUpdated",
+      "payload": {
+        "$ref": "Event_AuthoredUpdated"
+      }
+    },
+    {
+      "name": "AuthoredRemoved",
+      "payload": {
+        "$ref": "Event_AuthoredRemoved"
+      }
+    },
+    {
+      "name": "SharedSet",
+      "payload": {
+        "$ref": "Event_SharedSet"
+      }
+    },
+    {
+      "name": "SharedWriterAdded",
+      "payload": {
+        "$ref": "Event_SharedWriterAdded"
       }
     }
   ],
