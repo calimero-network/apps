@@ -7,7 +7,7 @@ nuke_on_start: true
 nodes:
   chain_id: testnet-1
   count: 3
-  image: ghcr.io/calimero-network/merod:0.10.1-rc.32
+  image: ghcr.io/calimero-network/merod:0.10.1-rc.34
   prefix: e2e-node
 
 steps:
@@ -387,6 +387,168 @@ steps:
     type: json_assert
     statements:
       - 'json_equal({{is_frozen}}, {"output": false})'
+
+  # ─── AuthoredVector: push from node-1 and node-2, owner-only update/remove ──
+
+  - name: node-1 pushes first authored vector entry
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: authored_vec_push
+    args:
+      value: "slot0_from_node1"
+    outputs:
+      slot0_index: result.output
+
+  - name: Assert slot0 index is 0
+    type: json_assert
+    statements:
+      - 'json_equal({{slot0_index}}, 0)'
+
+  - name: node-2 pushes second authored vector entry
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: authored_vec_push
+    args:
+      value: "slot1_from_node2"
+    outputs:
+      slot1_index: result.output
+
+  - name: Assert slot1 index is 1
+    type: json_assert
+    statements:
+      - 'json_equal({{slot1_index}}, 1)'
+
+  - name: Wait for authored vector sync
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+      - e2e-node-3
+    timeout: 30
+    check_interval: 2
+
+  - name: node-3 reads slot0 pushed by node-1
+    type: call
+    node: e2e-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-3}}"
+    method: authored_vec_get
+    args:
+      index: 0
+    outputs:
+      n3_slot0: result
+
+  - name: Assert node-3 sees slot0 value
+    type: json_assert
+    statements:
+      - 'json_equal({{n3_slot0}}, {"output": "slot0_from_node1"})'
+
+  - name: node-3 reads owner of slot0
+    type: call
+    node: e2e-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-3}}"
+    method: authored_vec_get_owner
+    args:
+      index: 0
+    outputs:
+      slot0_owner: result
+
+  - name: Assert slot0 owner is node-1
+    type: json_assert
+    statements:
+      - 'json_equal({{slot0_owner}}, {"output": "{{node1_key}}"})'
+
+  - name: node-1 updates its own slot0
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: authored_vec_update
+    args:
+      index: 0
+      value: "slot0_updated_by_node1"
+
+  - name: Wait for update sync
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+      - e2e-node-3
+    timeout: 30
+    check_interval: 2
+
+  - name: node-2 sees updated slot0
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: authored_vec_get
+    args:
+      index: 0
+    outputs:
+      n2_slot0_updated: result
+
+  - name: Assert slot0 update propagated to node-2
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_slot0_updated}}, {"output": "slot0_updated_by_node1"})'
+
+  - name: node-2 tombstones its own slot1
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: authored_vec_remove
+    args:
+      index: 1
+
+  - name: Wait for tombstone sync
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+      - e2e-node-3
+    timeout: 30
+    check_interval: 2
+
+  - name: node-1 reads slot1 after tombstone
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: authored_vec_get
+    args:
+      index: 1
+    outputs:
+      n1_slot1_after_tombstone: result
+
+  - name: Assert slot1 is tombstoned (empty string)
+    type: json_assert
+    statements:
+      - 'json_equal({{n1_slot1_after_tombstone}}, {"output": ""})'
+
+  - name: node-3 checks vector length is 2
+    type: call
+    node: e2e-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-3}}"
+    method: authored_vec_len
+    args: {}
+    outputs:
+      vec_len: result
+
+  - name: Assert authored vector length is 2
+    type: json_assert
+    statements:
+      - 'json_equal({{vec_len}}, {"output": 2})'
 
 stop_all_nodes: false
 restart: false

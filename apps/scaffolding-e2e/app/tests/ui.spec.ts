@@ -95,6 +95,14 @@ const RPC_RESULTS: Record<string, unknown> = {
   authored_entries: { ak1: "av1", ak2: "av2" },
   authored_get_owner: FAKE_IDENTITY,
   authored_len: 2,
+  // Authored Vector
+  authored_vec_push: 0,
+  authored_vec_get: "vec-slot-value",
+  authored_vec_update: null,
+  authored_vec_remove: null,
+  authored_vec_get_owner: FAKE_IDENTITY,
+  authored_vec_entries: ["slot-0", "slot-1", ""],
+  authored_vec_len: 3,
   // Shared Storage
   shared_set: null,
   shared_get: "shared-value",
@@ -894,6 +902,68 @@ test.describe("Shared Storage", () => {
       .first();
     await frozenCard.locator("button").click();
     await expect(frozenCard.locator(".result-box")).toBeVisible({ timeout: 5_000 });
+  });
+});
+
+test.describe("Authored Vector", () => {
+  test("section renders with push/get/update/remove cards", async ({ page }) => {
+    await navigateTo(page, "Authored Vector");
+    await expect(page.locator(".section-title")).toContainText("Authored Vector");
+    await expect(
+      page.locator(".method-name", { hasText: "authored_vec_push" }).first(),
+    ).toBeVisible();
+    await expect(
+      page.locator(".method-name", { hasText: "authored_vec_get" }).first(),
+    ).toBeVisible();
+    await expect(
+      page.locator(".method-name", { hasText: "authored_vec_update" }).first(),
+    ).toBeVisible();
+    await expect(
+      page.locator(".method-name", { hasText: "authored_vec_remove" }).first(),
+    ).toBeVisible();
+  });
+
+  test("authored_vec_push card has value input and Execute button", async ({ page }) => {
+    await navigateTo(page, "Authored Vector");
+    const pushCard = page
+      .locator(".method-card", { hasText: "authored_vec_push(value)" })
+      .first();
+    await expect(pushCard.locator("input[placeholder='value']")).toBeVisible();
+    await expect(pushCard.locator("button", { hasText: "Execute" })).toBeVisible();
+  });
+
+  test("authored_vec_push executes and shows returned index", async ({ page }) => {
+    await navigateTo(page, "Authored Vector");
+    const pushCard = page
+      .locator(".method-card", { hasText: "authored_vec_push(value)" })
+      .first();
+    await pushCard.locator("input[placeholder='value']").fill("test-slot");
+    await pushCard.locator("button", { hasText: "Execute" }).click();
+    await expect(pushCard.locator(".result-box")).toBeVisible({ timeout: 5_000 });
+  });
+
+  test("authored_vec_get_owner card has FieldHelp tooltip", async ({ page }) => {
+    await navigateTo(page, "Authored Vector");
+    const ownerCard = page
+      .locator(".method-card", { hasText: "authored_vec_get_owner(index)" })
+      .first();
+    await expect(ownerCard.locator("input[placeholder='index']")).toBeVisible();
+  });
+
+  test("authored_vec_entries executes and shows result on click", async ({ page }) => {
+    await navigateTo(page, "Authored Vector");
+    const entriesCard = page
+      .locator(".method-card", { hasText: "authored_vec_entries()" })
+      .first();
+    await entriesCard.locator("button").click();
+    await expect(entriesCard.locator(".result-box")).toBeVisible({ timeout: 5_000 });
+  });
+
+  test("authored_vec_len executes and shows result on click", async ({ page }) => {
+    await navigateTo(page, "Authored Vector");
+    const lenCard = page.locator(".method-card", { hasText: "authored_vec_len()" }).first();
+    await lenCard.locator("button").click();
+    await expect(lenCard.locator(".result-box")).toBeVisible({ timeout: 5_000 });
   });
 });
 

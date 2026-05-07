@@ -310,6 +310,28 @@ export const authoredGetOwner = (key: string) =>
 export const authoredLen = () =>
   call<Record<string, never>, number>("authored_len", {});
 
+// AuthoredVector
+export const authoredVecPush = (value: string) =>
+  call<{ value: string }, number>("authored_vec_push", { value });
+
+export const authoredVecGet = (index: number) =>
+  call<{ index: number }, string | null>("authored_vec_get", { index });
+
+export const authoredVecUpdate = (index: number, value: string) =>
+  call<{ index: number; value: string }, void>("authored_vec_update", { index, value });
+
+export const authoredVecRemove = (index: number) =>
+  call<{ index: number }, void>("authored_vec_remove", { index });
+
+export const authoredVecGetOwner = (index: number) =>
+  call<{ index: number }, string | null>("authored_vec_get_owner", { index });
+
+export const authoredVecEntries = () =>
+  call<Record<string, never>, string[]>("authored_vec_entries", {});
+
+export const authoredVecLen = () =>
+  call<Record<string, never>, number>("authored_vec_len", {});
+
 // SharedStorage
 export const sharedSet = (value: string) =>
   call<{ value: string }, void>("shared_set", { value });
