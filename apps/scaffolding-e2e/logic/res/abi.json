@@ -279,6 +279,21 @@
           }
         },
         {
+          "name": "authored_vec",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            },
+            "crdt_type": "authored_vector"
+          }
+        },
+        {
           "name": "shared_data",
           "type": {
             "kind": "record",
@@ -332,6 +347,57 @@
           "name": "key",
           "type": {
             "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_AuthoredVecPushed": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "index",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "owner",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_AuthoredVecRemoved": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "index",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "Event_AuthoredVecUpdated": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "index",
+          "type": {
+            "kind": "u32"
           }
         },
         {
@@ -1829,6 +1895,99 @@
       "returns": {
         "kind": "bool"
       }
+    },
+    {
+      "name": "authored_vec_push",
+      "params": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "u32"
+      }
+    },
+    {
+      "name": "authored_vec_get",
+      "params": [
+        {
+          "name": "index",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "authored_vec_update",
+      "params": [
+        {
+          "name": "index",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "authored_vec_remove",
+      "params": [
+        {
+          "name": "index",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "authored_vec_get_owner",
+      "params": [
+        {
+          "name": "index",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "authored_vec_entries",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      }
+    },
+    {
+      "name": "authored_vec_len",
+      "params": [],
+      "returns": {
+        "kind": "u32"
+      }
     }
   ],
   "events": [
@@ -1971,6 +2130,24 @@
       "name": "AuthoredRemoved",
       "payload": {
         "$ref": "Event_AuthoredRemoved"
+      }
+    },
+    {
+      "name": "AuthoredVecPushed",
+      "payload": {
+        "$ref": "Event_AuthoredVecPushed"
+      }
+    },
+    {
+      "name": "AuthoredVecUpdated",
+      "payload": {
+        "$ref": "Event_AuthoredVecUpdated"
+      }
+    },
+    {
+      "name": "AuthoredVecRemoved",
+      "payload": {
+        "$ref": "Event_AuthoredVecRemoved"
       }
     },
     {

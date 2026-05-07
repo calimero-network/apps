@@ -1,6 +1,6 @@
 [package]
 name = "scaffolding-e2e"
-version = "0.10.1-rc.32"
+version = "0.10.1-rc.34"
 authors = ["Calimero Limited <info@calimero.network>"]
 edition = "2021"
 repository = "https://github.com/calimero-network/core"

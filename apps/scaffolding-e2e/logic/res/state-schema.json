@@ -279,6 +279,21 @@
           }
         },
         {
+          "name": "authored_vec",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            },
+            "crdt_type": "authored_vector"
+          }
+        },
+        {
           "name": "shared_data",
           "type": {
             "kind": "record",

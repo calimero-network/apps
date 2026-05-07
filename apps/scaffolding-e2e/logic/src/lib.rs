@@ -165,7 +165,7 @@ pub struct E2eKvStore {
 
     // --- Authored Vector ---
     /// Append-only vector with per-slot ownership; only the pusher can update/tombstone their slot
-    authored_vec: AuthoredVector<String>,
+    authored_vec: AuthoredVector<LwwRegister<String>>,
 
     // --- Shared Storage ---
     /// Group-writable single value; writers rotate at runtime
@@ -412,7 +412,7 @@ impl E2eKvStore {
             // Authored Map
             authored_items: AuthoredMap::new(),
             // Authored Vector
-            authored_vec: AuthoredVector::new(),
+            authored_vec: AuthoredVector::<LwwRegister<String>>::new(),
             // Shared Storage — init caller becomes the sole initial writer
             shared_data: SharedStorage::new(
                 std::iter::once(env::executor_id().into()).collect(),
@@ -1331,7 +1331,7 @@ impl E2eKvStore {
     pub fn authored_vec_push(&mut self, value: String) -> Result<usize, String> {
         let index = self
             .authored_vec
-            .push(value.clone())
+            .push(LwwRegister::new(value.clone()))
             .map_err(|e| format!("authored_vec_push failed: {:?}", e))?;
         let owner = bs58::encode(env::executor_id()).into_string();
         app::emit!(Event::AuthoredVecPushed {
@@ -1343,14 +1343,16 @@ impl E2eKvStore {
     }
 
     pub fn authored_vec_get(&self, index: usize) -> Result<Option<String>, String> {
-        self.authored_vec
+        Ok(self
+            .authored_vec
             .get(index)
-            .map_err(|e| format!("authored_vec_get failed: {:?}", e))
+            .map_err(|e| format!("authored_vec_get failed: {:?}", e))?
+            .map(|r| r.get().clone()))
     }
 
     pub fn authored_vec_update(&mut self, index: usize, value: String) -> Result<(), String> {
         self.authored_vec
-            .update(index, value.clone())
+            .update(index, LwwRegister::new(value.clone()))
             .map_err(|e| format!("authored_vec_update failed: {:?}", e))?;
         app::emit!(Event::AuthoredVecUpdated { index, value });
         Ok(())
@@ -1373,10 +1375,12 @@ impl E2eKvStore {
     }
 
     pub fn authored_vec_entries(&self) -> Result<Vec<String>, String> {
-        self.authored_vec
+        Ok(self
+            .authored_vec
             .iter()
-            .map_err(|e| format!("authored_vec_entries failed: {:?}", e))
-            .map(|iter| iter.collect())
+            .map_err(|e| format!("authored_vec_entries failed: {:?}", e))?
+            .map(|r| r.get().clone())
+            .collect())
     }
 
     pub fn authored_vec_len(&self) -> Result<usize, String> {
