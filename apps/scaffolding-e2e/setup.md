@@ -71,7 +71,7 @@ cd logic
 cd ..
 ```
 
-This produces `logic/res/e2e-kv-store-1.0.0.mpk`.
+This produces `logic/res/scaffolding-e2e-1.0.0.mpk`.
 
 > First run takes a few minutes (Rust + WASM compilation). Subsequent builds are fast.
 
@@ -81,7 +81,7 @@ This produces `logic/res/e2e-kv-store-1.0.0.mpk`.
 
 ```bash
 APP_ID=$(meroctl --node node1 --output-format json app install \
-  --path logic/res/e2e-kv-store-1.0.0.mpk \
+  --path logic/res/scaffolding-e2e-1.0.0.mpk \
   | jq -r '.applicationId')
 
 echo "APP_ID=$APP_ID"
@@ -144,7 +144,7 @@ npm run sync-wasm
 **Mode 2 — Package name (installed via `.mpk` with a known package name):**
 ```env
 VITE_NODE_URL=http://localhost:2528
-VITE_APPLICATION_PACKAGE=com.calimero.e2e-kv-store
+VITE_APPLICATION_PACKAGE=com.calimero.scaffolding-e2e
 ```
 No extra step needed.
 
@@ -196,7 +196,7 @@ meroctl node use node1
 cd logic && ./build-bundle.sh && cd ..
 
 APP_ID=$(meroctl --node node1 --output-format json app install \
-  --path logic/res/e2e-kv-store-1.0.0.mpk | jq -r '.applicationId')
+  --path logic/res/scaffolding-e2e-1.0.0.mpk | jq -r '.applicationId')
 
 NS_ID=$(meroctl --node node1 --output-format json namespace create \
   --application-id $APP_ID | jq -r '.namespaceId')
@@ -217,7 +217,7 @@ cp .env.example .env
 #   Edit .env: set VITE_APP_ID=<APP_ID from above>
 #   Then: npm run sync-wasm
 # Option B — use package name:
-#   Edit .env: set VITE_APPLICATION_PACKAGE=com.calimero.e2e-kv-store
+#   Edit .env: set VITE_APPLICATION_PACKAGE=com.calimero.scaffolding-e2e
 npm install && npm run dev
 ```
 
@@ -233,7 +233,7 @@ merod --home ~/.calimero/node2 init --server-host 127.0.0.1 --server-port 2529 -
 meroctl node add node2 ~/.calimero/node2
 
 # Install same app on node2
-meroctl --node node2 app install --path logic/res/e2e-kv-store-1.0.0.mpk
+meroctl --node node2 app install --path logic/res/scaffolding-e2e-1.0.0.mpk
 
 # node1 generates an invitation for the namespace
 INVITE=$(meroctl --node node1 --output-format json namespace invite $NS_ID)

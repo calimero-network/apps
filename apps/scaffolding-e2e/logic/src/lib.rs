@@ -12,6 +12,8 @@
 //! - **Context Admin**: Member management
 //! - **Nested CRDTs**: Complex nested CRDT compositions
 //! - **RGA Document**: ReplicatedGrowableArray for text editing
+//! - **Authored Map**: Shared keyspace with per-entry ownership; any member inserts, only owner mutates
+//! - **Shared Storage**: Group-writable single value with rotatable writer set
 //!
 //! Each feature area is organized into its own method group with clear prefixes.
 
@@ -23,8 +25,9 @@ use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::Serialize;
 use calimero_sdk::{app, env, PublicKey};
 use calimero_storage::collections::{
-    Counter, FrozenStorage, GCounter, LwwRegister, Mergeable, PNCounter, ReplicatedGrowableArray,
-    UnorderedMap, UnorderedSet, UserStorage, Vector,
+    AuthoredMap, AuthoredVector, Counter, FrozenStorage, GCounter, LwwRegister, Mergeable,
+    PNCounter, ReplicatedGrowableArray, SharedStorage, UnorderedMap, UnorderedSet, UserStorage,
+    Vector,
 };
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -77,51 +80,6 @@ impl Mergeable for FileRecord {
         }
         Ok(())
     }
-}
-
-// WORKSPACE MANAGER TYPES
-
-/// A named channel — tracks a context as a logical channel/room in the workspace.
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Default)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct ChannelRecord {
-    pub context_id: String,
-    pub name: String,
-    pub topic: String,
-    pub created_by: String,
-}
-
-/// A sub-group within the workspace.
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Default)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct WsGroupRecord {
-    pub group_id: String,
-    pub name: String,
-    pub description: String,
-    pub created_by: String,
-}
-
-/// Workspace summary returned by ws_get_info.
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct WorkspaceInfo {
-    pub name: String,
-    pub admin: String,
-    pub channel_count: usize,
-    pub group_count: usize,
-    pub member_count: usize,
-}
-
-/// Member identity + app-level role.
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct MemberRecord {
-    pub identity: String,
-    pub role: String,
 }
 
 // PRIVATE STATE (Node-local, NOT synchronized)
@@ -201,17 +159,17 @@ pub struct E2eKvStore {
     /// Document metadata (title, owner)
     rga_metadata: UnorderedMap<String, LwwRegister<String>>,
 
-    // --- Workspace Manager ---
-    /// Workspace display name
-    ws_name: LwwRegister<String>,
-    /// Admin public key (base58). Set once by ws_init.
-    ws_admin: LwwRegister<String>,
-    /// Channel registry: context_id (base58) → ChannelRecord
-    ws_channels: UnorderedMap<String, LwwRegister<ChannelRecord>>,
-    /// Sub-group registry: group_id (hex) → WsGroupRecord
-    ws_groups: UnorderedMap<String, LwwRegister<WsGroupRecord>>,
-    /// App-level member roles: identity (base58) → "admin" | "member" | "read-only"
-    ws_member_roles: UnorderedMap<String, LwwRegister<String>>,
+    // --- Authored Map ---
+    /// Shared keyspace map with per-entry ownership
+    authored_items: AuthoredMap<String, LwwRegister<String>>,
+
+    // --- Authored Vector ---
+    /// Append-only vector with per-slot ownership; only the pusher can update/tombstone their slot
+    authored_vec: AuthoredVector<LwwRegister<String>>,
+
+    // --- Shared Storage ---
+    /// Group-writable single value; writers rotate at runtime
+    shared_data: SharedStorage<LwwRegister<String>>,
 }
 
 // EVENTS
@@ -319,34 +277,41 @@ pub enum Event<'a> {
         editor: String,
     },
 
-    // Workspace Manager Events
-    WsInitialized {
-        name: &'a str,
-        admin: &'a str,
+    // Authored Map Events
+    AuthoredInserted {
+        key: String,
+        value: String,
+        owner: String,
     },
-    WsChannelRegistered {
-        context_id: &'a str,
-        name: &'a str,
+    AuthoredUpdated {
+        key: String,
+        value: String,
     },
-    WsChannelUnregistered {
-        context_id: &'a str,
+    AuthoredRemoved {
+        key: String,
     },
-    WsGroupRegistered {
-        group_id: &'a str,
-        name: &'a str,
+
+    // Authored Vector Events
+    AuthoredVecPushed {
+        index: usize,
+        value: String,
+        owner: String,
     },
-    WsGroupUnregistered {
-        group_id: &'a str,
+    AuthoredVecUpdated {
+        index: usize,
+        value: String,
     },
-    WsMemberRoleSet {
-        identity: &'a str,
-        role: &'a str,
+    AuthoredVecRemoved {
+        index: usize,
     },
-    WsPingSent {
-        to_context: &'a str,
+
+    // Shared Storage Events
+    SharedSet {
+        value: String,
+        by: String,
     },
-    WsPongReceived {
-        from_context: &'a str,
+    SharedWriterAdded {
+        writer: String,
     },
 }
 
@@ -364,16 +329,6 @@ pub enum Error<'a> {
     FrozenNotFound(&'a str),
     #[error("no public hash set yet")]
     NoHash,
-    #[error("not workspace admin")]
-    NotAdmin,
-    #[error("workspace not initialized")]
-    WorkspaceNotInitialized,
-    #[error("channel not found: {0}")]
-    ChannelNotFound(&'a str),
-    #[error("group not found: {0}")]
-    GroupNotFound(&'a str),
-    #[error("invalid input: {0}")]
-    InvalidInput(&'a str),
 }
 
 // HELPER FUNCTIONS
@@ -454,12 +409,15 @@ impl E2eKvStore {
             rga_document: ReplicatedGrowableArray::new(),
             rga_edit_count: GCounter::new(),
             rga_metadata: UnorderedMap::new(),
-            // Workspace Manager
-            ws_name: LwwRegister::new(String::new()),
-            ws_admin: LwwRegister::new(String::new()),
-            ws_channels: UnorderedMap::new(),
-            ws_groups: UnorderedMap::new(),
-            ws_member_roles: UnorderedMap::new(),
+            // Authored Map
+            authored_items: AuthoredMap::new(),
+            // Authored Vector
+            authored_vec: AuthoredVector::<LwwRegister<String>>::new(),
+            // Shared Storage — init caller becomes the sole initial writer
+            shared_data: SharedStorage::new(
+                std::iter::once(env::executor_id().into()).collect(),
+                false,
+            ),
         }
     }
 
@@ -1241,254 +1199,193 @@ impl E2eKvStore {
         Ok(())
     }
 
-    // WORKSPACE MANAGER
-    //
-    // This context acts as the "namespace" root — one admin, multiple channels
-    // (each channel is another context), and sub-groups. Members are tracked
-    // at the app level with roles: "admin" | "member" | "read-only".
+    // AUTHORED MAP
 
-    /// Initialize the workspace. Can only be called once (admin must be empty).
-    /// Caller becomes the admin.
-    pub fn ws_init(&mut self, name: String) -> Result<(), String> {
-        if !self.ws_admin.get().is_empty() {
-            return Err("Workspace already initialized".into());
-        }
-        if name.is_empty() {
-            return Err(Error::InvalidInput("name cannot be empty").to_string());
-        }
-        let admin = encode_identity(&env::executor_id());
-        self.ws_name.set(name.clone());
-        self.ws_admin.set(admin.clone());
-        // Give admin the "admin" role in the member-role map too
-        self.ws_member_roles
-            .insert(admin.clone(), LwwRegister::new("admin".to_owned()))
-            .map_err(|e| format!("{e:?}"))?;
-        app::emit!(Event::WsInitialized {
-            name: &name,
-            admin: &admin,
-        });
-        app::log!("Workspace '{}' initialized by {}", name, admin);
-        Ok(())
-    }
-
-    /// Return high-level workspace summary.
-    pub fn ws_get_info(&self) -> Result<WorkspaceInfo, String> {
-        if self.ws_admin.get().is_empty() {
-            return Err(Error::WorkspaceNotInitialized.to_string());
-        }
-        let channel_count = self.ws_channels.len().map_err(|e| format!("{e:?}"))?;
-        let group_count = self.ws_groups.len().map_err(|e| format!("{e:?}"))?;
-        let member_count = self.ws_member_roles.len().map_err(|e| format!("{e:?}"))?;
-        Ok(WorkspaceInfo {
-            name: self.ws_name.get().clone(),
-            admin: self.ws_admin.get().clone(),
-            channel_count,
-            group_count,
-            member_count,
-        })
-    }
-
-    /// Register a context as a named channel.
-    pub fn ws_register_channel(
-        &mut self,
-        context_id: String,
-        name: String,
-        topic: String,
-    ) -> Result<(), String> {
-        self.require_admin()?;
-        if context_id.is_empty() || name.is_empty() {
-            return Err(Error::InvalidInput("context_id and name are required").to_string());
-        }
-        let record = ChannelRecord {
-            context_id: context_id.clone(),
-            name: name.clone(),
-            topic,
-            created_by: encode_identity(&env::executor_id()),
-        };
-        self.ws_channels
-            .insert(context_id.clone(), LwwRegister::new(record))
-            .map_err(|e| format!("{e:?}"))?;
-        app::emit!(Event::WsChannelRegistered {
-            context_id: &context_id,
-            name: &name,
-        });
-        app::log!("Channel '{}' registered (context {})", name, context_id);
-        Ok(())
-    }
-
-    /// Remove a channel from the registry.
-    pub fn ws_unregister_channel(&mut self, context_id: String) -> Result<(), String> {
-        self.require_admin()?;
-        self.ws_channels
-            .remove(&context_id)
-            .map_err(|e| format!("{e:?}"))?;
-        app::emit!(Event::WsChannelUnregistered {
-            context_id: &context_id,
-        });
-        app::log!("Channel {} unregistered", context_id);
-        Ok(())
-    }
-
-    /// List all registered channels.
-    pub fn ws_list_channels(&self) -> Result<Vec<ChannelRecord>, String> {
-        let mut channels = Vec::new();
-        if let Ok(entries) = self.ws_channels.entries() {
-            for (_, reg) in entries {
-                channels.push(reg.get().clone());
-            }
-        }
-        Ok(channels)
-    }
-
-    /// Register a sub-group (a Calimero group ID) under this workspace.
-    pub fn ws_register_group(
-        &mut self,
-        group_id: String,
-        name: String,
-        description: String,
-    ) -> Result<(), String> {
-        self.require_admin()?;
-        if group_id.is_empty() || name.is_empty() {
-            return Err(Error::InvalidInput("group_id and name are required").to_string());
-        }
-        let record = WsGroupRecord {
-            group_id: group_id.clone(),
-            name: name.clone(),
-            description,
-            created_by: encode_identity(&env::executor_id()),
-        };
-        self.ws_groups
-            .insert(group_id.clone(), LwwRegister::new(record))
-            .map_err(|e| format!("{e:?}"))?;
-        app::emit!(Event::WsGroupRegistered {
-            group_id: &group_id,
-            name: &name,
-        });
-        app::log!("Group '{}' registered ({})", name, group_id);
-        Ok(())
-    }
-
-    /// Remove a group from the registry.
-    pub fn ws_unregister_group(&mut self, group_id: String) -> Result<(), String> {
-        self.require_admin()?;
-        self.ws_groups
-            .remove(&group_id)
-            .map_err(|e| format!("{e:?}"))?;
-        app::emit!(Event::WsGroupUnregistered {
-            group_id: &group_id,
-        });
-        app::log!("Group {} unregistered", group_id);
-        Ok(())
-    }
-
-    /// List all registered groups.
-    pub fn ws_list_groups(&self) -> Result<Vec<WsGroupRecord>, String> {
-        let mut groups = Vec::new();
-        if let Ok(entries) = self.ws_groups.entries() {
-            for (_, reg) in entries {
-                groups.push(reg.get().clone());
-            }
-        }
-        Ok(groups)
-    }
-
-    /// Set app-level role for a member identity.
-    /// Admin can set any role; members can only be set by admin.
-    pub fn ws_set_member_role(&mut self, identity: String, role: String) -> Result<(), String> {
-        self.require_admin()?;
-        let allowed = ["admin", "member", "read-only"];
-        if !allowed.contains(&role.as_str()) {
-            return Err(
-                Error::InvalidInput("role must be admin, member, or read-only").to_string(),
-            );
-        }
-        // Insert a new LwwRegister — LWW timestamp ensures the latest wins on merge
-        self.ws_member_roles
-            .insert(identity.clone(), LwwRegister::new(role.clone()))
-            .map_err(|e| format!("{e:?}"))?;
-        app::emit!(Event::WsMemberRoleSet {
-            identity: &identity,
-            role: &role,
+    pub fn authored_insert(&mut self, key: String, value: String) -> Result<(), String> {
+        let owner = bs58::encode(env::executor_id()).into_string();
+        self.authored_items
+            .insert(key.clone(), value.clone().into())
+            .map_err(|e| format!("authored_insert failed: {:?}", e))?;
+        app::emit!(Event::AuthoredInserted {
+            key: key.clone(),
+            value: value.clone(),
+            owner: owner.clone(),
         });
         Ok(())
     }
 
-    /// Get role for a given identity.
-    pub fn ws_get_member_role(&self, identity: String) -> Result<String, String> {
-        self.ws_member_roles
-            .get(&identity)
-            .map_err(|e| format!("{e:?}"))?
-            .map(|reg| reg.get().clone())
-            .ok_or_else(|| format!("No role set for {identity}"))
-    }
-
-    /// Get your own role.
-    pub fn ws_my_role(&self) -> Result<String, String> {
-        let me = encode_identity(&env::executor_id());
-        self.ws_get_member_role(me)
-    }
-
-    /// List all members with roles.
-    pub fn ws_list_members(&self) -> Result<Vec<MemberRecord>, String> {
-        let mut members = Vec::new();
-        if let Ok(entries) = self.ws_member_roles.entries() {
-            for (identity, reg) in entries {
-                members.push(MemberRecord {
-                    identity,
-                    role: reg.get().clone(),
-                });
-            }
-        }
-        Ok(members)
-    }
-
-    /// Send a cross-context ping to a channel context.
-    /// Fire-and-forget — the target context must implement ws_pong.
-    pub fn ws_ping_channel(&mut self, target_context_id_b58: String) -> Result<(), String> {
-        if self.ws_admin.get().is_empty() {
-            return Err(Error::WorkspaceNotInitialized.to_string());
-        }
-        // Decode base58 → 32-byte context ID
-        let bytes = bs58::decode(&target_context_id_b58)
-            .into_vec()
-            .map_err(|e| format!("Invalid context ID: {e}"))?;
-        if bytes.len() != 32 {
-            return Err("Context ID must be 32 bytes".into());
-        }
-        let mut ctx_id = [0u8; 32];
-        ctx_id.copy_from_slice(&bytes);
-        // xcall params: empty JSON object
-        env::xcall(&ctx_id, "ws_pong", b"{}");
-        app::emit!(Event::WsPingSent {
-            to_context: &target_context_id_b58,
+    pub fn authored_update(&mut self, key: String, value: String) -> Result<(), String> {
+        self.authored_items
+            .update(&key, value.clone().into())
+            .map_err(|e| format!("authored_update failed: {:?}", e))?;
+        app::emit!(Event::AuthoredUpdated {
+            key: key.clone(),
+            value: value.clone(),
         });
-        app::log!("Ping sent to context {}", target_context_id_b58);
         Ok(())
     }
 
-    /// Called by another context's xcall — records the pong.
-    pub fn ws_pong(&mut self) -> Result<(), String> {
-        let from = encode_identity(&env::context_id());
-        app::emit!(Event::WsPongReceived {
-            from_context: &from,
+    pub fn authored_remove(&mut self, key: String) -> Result<Option<String>, String> {
+        let result = self
+            .authored_items
+            .remove(&key)
+            .map_err(|e| format!("authored_remove failed: {:?}", e))?
+            .map(|v| v.get().clone());
+        if result.is_some() {
+            app::emit!(Event::AuthoredRemoved { key: key.clone() });
+        }
+        Ok(result)
+    }
+
+    pub fn authored_get(&self, key: String) -> Result<Option<String>, String> {
+        Ok(self
+            .authored_items
+            .get(&key)
+            .map_err(|e| format!("authored_get failed: {:?}", e))?
+            .map(|v| v.get().clone()))
+    }
+
+    pub fn authored_entries(&self) -> Result<BTreeMap<String, String>, String> {
+        Ok(self
+            .authored_items
+            .entries()
+            .map_err(|e| format!("authored_entries failed: {:?}", e))?
+            .map(|(k, v)| (k, v.get().clone()))
+            .collect())
+    }
+
+    pub fn authored_get_owner(&self, key: String) -> Result<Option<String>, String> {
+        Ok(self
+            .authored_items
+            .owner_of(&key)
+            .map_err(|e| format!("authored_get_owner failed: {:?}", e))?
+            .map(|pk| pk.to_string()))
+    }
+
+    pub fn authored_len(&self) -> Result<usize, String> {
+        self.authored_items
+            .len()
+            .map_err(|e| format!("authored_len failed: {:?}", e))
+    }
+
+    // SHARED STORAGE
+
+    pub fn shared_set(&mut self, value: String) -> Result<(), String> {
+        let by = bs58::encode(env::executor_id()).into_string();
+        self.shared_data
+            .insert(LwwRegister::new(value.clone()))
+            .map_err(|e| format!("shared_set failed: {:?}", e))?;
+        app::emit!(Event::SharedSet {
+            value: value.clone(),
+            by: by.clone(),
         });
-        app::log!("Pong received from context {}", from);
         Ok(())
     }
-}
 
-// WORKSPACE ADMIN HELPER (private)
+    pub fn shared_get(&self) -> Result<String, String> {
+        Ok(self
+            .shared_data
+            .get()
+            .map_err(|e| format!("shared_get failed: {:?}", e))?
+            .get()
+            .clone())
+    }
 
-impl E2eKvStore {
-    fn require_admin(&self) -> Result<(), String> {
-        let me = encode_identity(&env::executor_id());
-        let admin = self.ws_admin.get();
-        if admin.is_empty() {
-            return Err(Error::WorkspaceNotInitialized.to_string());
-        }
-        if &me != admin {
-            return Err(Error::NotAdmin.to_string());
-        }
+    pub fn shared_get_writers(&self) -> Result<Vec<String>, String> {
+        Ok(self
+            .shared_data
+            .writers()
+            .iter()
+            .map(|pk| pk.to_string())
+            .collect())
+    }
+
+    pub fn shared_add_writer(&mut self, writer_bs58: String) -> Result<(), String> {
+        let new_writer: PublicKey = writer_bs58
+            .parse()
+            .map_err(|e| format!("Invalid public key '{}': {:?}", writer_bs58, e))?;
+        let mut new_writers = self.shared_data.writers().clone();
+        new_writers.insert(new_writer);
+        self.shared_data
+            .rotate_writers(new_writers)
+            .map_err(|e| format!("shared_add_writer failed: {:?}", e))?;
+        app::emit!(Event::SharedWriterAdded {
+            writer: writer_bs58.clone(),
+        });
         Ok(())
+    }
+
+    pub fn shared_is_writer(&self, key_bs58: String) -> Result<bool, String> {
+        let pk: PublicKey = key_bs58
+            .parse()
+            .map_err(|e| format!("Invalid public key '{}': {:?}", key_bs58, e))?;
+        Ok(self.shared_data.writers().contains(&pk))
+    }
+
+    pub fn shared_is_frozen(&self) -> Result<bool, String> {
+        Ok(self.shared_data.is_frozen())
+    }
+
+    // AUTHORED VECTOR
+
+    pub fn authored_vec_push(&mut self, value: String) -> Result<usize, String> {
+        let index = self
+            .authored_vec
+            .push(LwwRegister::new(value.clone()))
+            .map_err(|e| format!("authored_vec_push failed: {:?}", e))?;
+        let owner = bs58::encode(env::executor_id()).into_string();
+        app::emit!(Event::AuthoredVecPushed {
+            index,
+            value,
+            owner,
+        });
+        Ok(index)
+    }
+
+    pub fn authored_vec_get(&self, index: usize) -> Result<Option<String>, String> {
+        Ok(self
+            .authored_vec
+            .get(index)
+            .map_err(|e| format!("authored_vec_get failed: {:?}", e))?
+            .map(|r| r.get().clone()))
+    }
+
+    pub fn authored_vec_update(&mut self, index: usize, value: String) -> Result<(), String> {
+        self.authored_vec
+            .update(index, LwwRegister::new(value.clone()))
+            .map_err(|e| format!("authored_vec_update failed: {:?}", e))?;
+        app::emit!(Event::AuthoredVecUpdated { index, value });
+        Ok(())
+    }
+
+    pub fn authored_vec_remove(&mut self, index: usize) -> Result<(), String> {
+        self.authored_vec
+            .tombstone(index)
+            .map_err(|e| format!("authored_vec_remove failed: {:?}", e))?;
+        app::emit!(Event::AuthoredVecRemoved { index });
+        Ok(())
+    }
+
+    pub fn authored_vec_get_owner(&self, index: usize) -> Result<Option<String>, String> {
+        Ok(self
+            .authored_vec
+            .owner_of(index)
+            .map_err(|e| format!("authored_vec_get_owner failed: {:?}", e))?
+            .map(|pk| pk.to_string()))
+    }
+
+    pub fn authored_vec_entries(&self) -> Result<Vec<String>, String> {
+        Ok(self
+            .authored_vec
+            .iter()
+            .map_err(|e| format!("authored_vec_entries failed: {:?}", e))?
+            .map(|r| r.get().clone())
+            .collect())
+    }
+
+    pub fn authored_vec_len(&self) -> Result<usize, String> {
+        self.authored_vec
+            .len()
+            .map_err(|e| format!("authored_vec_len failed: {:?}", e))
     }
 }

@@ -1,35 +1,6 @@
 {
   "schema_version": "wasm-abi/1",
   "types": {
-    "ChannelRecord": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "context_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "topic",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "created_by",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
     "E2eKvStore": {
       "kind": "record",
       "fields": [
@@ -290,65 +261,7 @@
           }
         },
         {
-          "name": "ws_name",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "string"
-            }
-          }
-        },
-        {
-          "name": "ws_admin",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "string"
-            }
-          }
-        },
-        {
-          "name": "ws_channels",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "$ref": "ChannelRecord"
-              }
-            },
-            "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "ws_groups",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "$ref": "WsGroupRecord"
-              }
-            },
-            "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "ws_member_roles",
+          "name": "authored_items",
           "type": {
             "kind": "map",
             "key": {
@@ -362,7 +275,33 @@
                 "kind": "string"
               }
             },
-            "crdt_type": "unordered_map"
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "authored_vec",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            },
+            "crdt_type": "authored_vector"
+          }
+        },
+        {
+          "name": "shared_data",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
           }
         }
       ]
@@ -434,35 +373,6 @@
               }
             },
             "crdt_type": "unordered_map"
-          }
-        }
-      ]
-    },
-    "WsGroupRecord": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "group_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "description",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "created_by",
-          "type": {
-            "kind": "string"
           }
         }
       ]

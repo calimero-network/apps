@@ -14,7 +14,7 @@ near_devnet: false
 
 nodes:
   count: 2
-  image: ghcr.io/calimero-network/merod:edge
+  image: ghcr.io/calimero-network/merod:0.10.1-rc.35
   prefix: e2e-node
 
 steps:
@@ -23,7 +23,7 @@ steps:
   - name: Install application on node-1
     type: install_application
     node: e2e-node-1
-    path: res/e2e_kv_store.wasm
+    path: res/scaffolding_e2e.wasm
     dev: true
     outputs:
       app_id: applicationId
@@ -157,6 +157,13 @@ steps:
     members:
       - identity: '{{member_identity_node2}}'
         role: Member
+
+  # Wait for subgroup membership governance to propagate to node-2 before
+  # node-2 attempts join_context — without this, the local membership check
+  # rejects with "identity is not a member of the group".
+  - name: Wait for subgroup governance to propagate
+    type: wait
+    seconds: 5
 
   - name: Create context in subgroup
     type: create_context

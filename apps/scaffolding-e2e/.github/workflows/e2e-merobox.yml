@@ -1,8 +1,8 @@
 name: E2E - Merobox Workflows
 
-# Runs all merobox workflow tests against the e2e-kv-store WASM app.
+# Runs all merobox workflow tests against the scaffolding-e2e WASM app.
 # Build: WASM compiled from Rust source, then all workflows run in parallel.
-# Uses ghcr.io/calimero-network/merod:edge — tracks latest master, no local image build needed.
+# Uses ghcr.io/calimero-network/merod:0.10.1-rc.35 — pinned RC for reproducibility.
 
 permissions:
   contents: read
@@ -64,9 +64,9 @@ jobs:
       - name: Upload WASM artifact
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-kv-store-wasm
+          name: scaffolding-e2e-wasm
           path: |
-            logic/res/e2e_kv_store.wasm
+            logic/res/scaffolding_e2e.wasm
             logic/res/abi.json
             logic/res/*.mpk
           retention-days: 1
@@ -106,6 +106,8 @@ jobs:
             file: workflows/handler-test.yml
           - workflow: simple-sync
             file: workflows/simple-sync.yml
+          - workflow: authored-shared
+            file: workflows/authored-shared.yml
 
     steps:
       - name: Checkout code
@@ -116,7 +118,7 @@ jobs:
       - name: Download WASM artifact
         uses: actions/download-artifact@v4
         with:
-          name: e2e-kv-store-wasm
+          name: scaffolding-e2e-wasm
           path: logic/res
 
       - name: Install merobox (apt)
@@ -129,8 +131,8 @@ jobs:
           sudo apt-get install -y merobox
           merobox --version
 
-      - name: Pull merod:edge image
-        run: docker pull ghcr.io/calimero-network/merod:edge
+      - name: Pull merod image
+        run: docker pull ghcr.io/calimero-network/merod:0.10.1-rc.35
 
       - name: Run ${{ matrix.workflow }}
         run: |

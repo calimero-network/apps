@@ -33,7 +33,7 @@ This app consolidates the following backend features previously tested across mu
 ./build.sh
 ```
 
-Output: `res/e2e_kv_store.wasm`
+Output: `res/scaffolding_e2e.wasm`
 
 ### Build bundle (.mpk)
 
@@ -41,7 +41,7 @@ Output: `res/e2e_kv_store.wasm`
 ./build-bundle.sh
 ```
 
-Output: `res/e2e-kv-store-1.0.0.mpk`
+Output: `res/scaffolding-e2e-1.0.0.mpk`
 
 ## State Structure
 

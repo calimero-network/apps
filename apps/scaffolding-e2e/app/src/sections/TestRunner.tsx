@@ -924,6 +924,139 @@ const TESTS: TestCase[] = [
       gte(members.length, 1);
     },
   },
+
+  {
+    id: "amap-insert-get",
+    name: "authored_insert + authored_get round-trip",
+    group: "Authored Map",
+    fn: async (r) => {
+      noErr(await api.authoredInsert(`am_${r}`, `amv_${r}`));
+      eq(out<string | null>(await api.authoredGet(`am_${r}`)), `amv_${r}`);
+    },
+  },
+  {
+    id: "amap-update",
+    name: "authored_update changes the value (owner-only)",
+    group: "Authored Map",
+    fn: async (r) => {
+      noErr(await api.authoredInsert(`amu_${r}`, "first"));
+      noErr(await api.authoredUpdate(`amu_${r}`, "second"));
+      eq(out<string | null>(await api.authoredGet(`amu_${r}`)), "second");
+    },
+  },
+  {
+    id: "amap-remove",
+    name: "authored_remove deletes the entry",
+    group: "Authored Map",
+    fn: async (r) => {
+      noErr(await api.authoredInsert(`amr_${r}`, "todel"));
+      noErr(await api.authoredRemove(`amr_${r}`));
+      eq(outOrNull<string>(await api.authoredGet(`amr_${r}`)), null);
+    },
+  },
+  {
+    id: "amap-get-missing",
+    name: "authored_get on unknown key → null",
+    group: "Authored Map",
+    fn: async (r) => {
+      eq(outOrNull<string>(await api.authoredGet(`am_no_such_${r}`)), null);
+    },
+  },
+  {
+    id: "amap-entries",
+    name: "authored_entries contains inserted key",
+    group: "Authored Map",
+    fn: async (r) => {
+      noErr(await api.authoredInsert(`ame_${r}`, "v"));
+      const map = out<Record<string, string>>(await api.authoredEntries());
+      if (!(`ame_${r}` in map)) throw new Error("inserted key missing from entries");
+    },
+  },
+  {
+    id: "amap-len",
+    name: "authored_len increases after insert",
+    group: "Authored Map",
+    fn: async (r) => {
+      const before = out<number>(await api.authoredLen());
+      noErr(await api.authoredInsert(`aml_${r}`, "v"));
+      gte(out<number>(await api.authoredLen()), before + 1);
+    },
+  },
+  {
+    id: "amap-get-owner",
+    name: "authored_get_owner returns non-empty owner key",
+    group: "Authored Map",
+    fn: async (r) => {
+      noErr(await api.authoredInsert(`amo_${r}`, "v"));
+      const owner = out<string | null>(await api.authoredGetOwner(`amo_${r}`));
+      notEmpty(owner ?? "", "owner key should be a non-empty base58 string");
+    },
+  },
+  {
+    id: "amap-duplicate-insert",
+    name: "duplicate authored_insert on same key → error",
+    group: "Authored Map",
+    fn: async (r) => {
+      noErr(await api.authoredInsert(`amd_${r}`, "first"));
+      expectErr(await api.authoredInsert(`amd_${r}`, "second"));
+    },
+  },
+
+  {
+    id: "shared-set-get",
+    name: "shared_set + shared_get round-trip",
+    group: "Shared Storage",
+    fn: async (r) => {
+      noErr(await api.sharedSet(`sv_${r}`));
+      eq(out<string>(await api.sharedGet()), `sv_${r}`);
+    },
+  },
+  {
+    id: "shared-overwrite",
+    name: "shared_set twice → shared_get returns latest",
+    group: "Shared Storage",
+    fn: async (r) => {
+      noErr(await api.sharedSet(`first_${r}`));
+      noErr(await api.sharedSet(`second_${r}`));
+      eq(out<string>(await api.sharedGet()), `second_${r}`);
+    },
+  },
+  {
+    id: "shared-writers-array",
+    name: "shared_get_writers returns a non-empty array",
+    group: "Shared Storage",
+    fn: async () => {
+      const writers = out<string[]>(await api.sharedGetWriters());
+      isArray(writers);
+      gte(writers.length, 1);
+    },
+  },
+  {
+    id: "shared-is-writer-self",
+    name: "shared_is_writer for our own executor key → true (after a successful set)",
+    group: "Shared Storage",
+    fn: async (r) => {
+      const me = getExecutorPublicKey() ?? "";
+      noErr(await api.sharedSet(`iw_${r}`));
+      eq(out<boolean>(await api.sharedIsWriter(me)), true);
+    },
+  },
+  {
+    id: "shared-is-writer-unknown",
+    name: "shared_is_writer for unknown key → false",
+    group: "Shared Storage",
+    fn: async () => {
+      eq(out<boolean>(await api.sharedIsWriter("11111111111111111111111111111111")), false);
+    },
+  },
+  {
+    id: "shared-is-frozen",
+    name: "shared_is_frozen returns boolean (false at runtime)",
+    group: "Shared Storage",
+    fn: async () => {
+      eq(out<boolean>(await api.sharedIsFrozen()), false);
+    },
+  },
 ];
 
 export const TOTAL_TESTS = TESTS.length;
@@ -942,6 +1075,8 @@ const GROUP_ORDER = [
   "CRDT Metrics",
   "CRDT Tags",
   "RGA Document",
+  "Authored Map",
+  "Shared Storage",
   "Workspace",
 ];
 

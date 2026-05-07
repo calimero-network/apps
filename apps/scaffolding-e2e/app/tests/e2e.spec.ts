@@ -15,7 +15,7 @@
 
 import { test, expect, Page } from "@playwright/test";
 
-const TOTAL_TESTS = 81; // keep in sync with TestRunner.tsx TESTS array length
+const TOTAL_TESTS = 95; // keep in sync with TestRunner.tsx TESTS array length
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -94,6 +94,8 @@ const GROUPS = [
   "CRDT Metrics",
   "CRDT Tags",
   "RGA Document",
+  "Authored Map",
+  "Shared Storage",
   "Workspace",
 ];
 

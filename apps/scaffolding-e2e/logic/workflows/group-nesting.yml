@@ -1,9 +1,15 @@
 name: E2E KV Store - Group Nesting
 description: >
-  Tests subgroup nesting operations:
-    1. Create subgroup via create_group_in_namespace, verify in listing
-    2. Unnest the group, verify it disappears from subgroup list
-    3. Re-nest via explicit nest_group, verify it reappears
+  Tests subgroup tree-shape operations using the strict-tree
+  reparent_group primitive. The old nest_group / unnest_group steps were
+  removed because orphan state was reachable through them; reparent_group
+  is the single atomic edge swap that replaces both.
+
+    1. Create child group via create_group_in_namespace, verify in listing
+    2. Create a sibling group, then reparent the child under it ("unnest"
+       from namespace), verify the child is no longer a namespace child
+    3. Reparent the child back under the namespace ("re-nest"), verify it
+       reappears in the namespace's subgroup list
     4. Verify namespace root context is unaffected through all transitions
 
 force_pull_image: false
@@ -12,7 +18,7 @@ near_devnet: false
 
 nodes:
   count: 2
-  image: ghcr.io/calimero-network/merod:edge
+  image: ghcr.io/calimero-network/merod:0.10.1-rc.35
   prefix: e2e-node
 
 steps:
@@ -21,7 +27,7 @@ steps:
   - name: Install application on node-1
     type: install_application
     node: e2e-node-1
-    path: res/e2e_kv_store.wasm
+    path: res/scaffolding_e2e.wasm
     dev: true
     outputs:
       app_id: applicationId
@@ -131,33 +137,46 @@ steps:
     statements:
       - "is_set({{subs_after_create}})"
 
-  # --- SCENARIO 2: Unnest the child group, verify removal ---
+  # --- SCENARIO 2: Unnest by reparenting child under a sibling group ---
 
-  - name: Unnest child from parent
-    type: unnest_group
+  - name: Create sibling group under namespace
+    type: create_group_in_namespace
     node: e2e-node-1
-    parent_group_id: '{{parent_id}}'
-    child_group_id: '{{child_id}}'
+    namespace_id: '{{parent_id}}'
+    group_alias: sibling
+    outputs:
+      sibling_id: groupId
 
-  - name: List subgroups after unnest
+  - name: Assert sibling created
+    type: assert
+    statements:
+      - "is_set({{sibling_id}})"
+
+  - name: Reparent child under sibling (unnest from namespace)
+    type: reparent_group
+    node: e2e-node-1
+    child_group_id: '{{child_id}}'
+    new_parent_id: '{{sibling_id}}'
+
+  - name: List subgroups of sibling after reparent
     type: list_subgroups
     node: e2e-node-1
-    group_id: '{{parent_id}}'
+    group_id: '{{sibling_id}}'
     outputs:
-      subs_after_unnest: subgroups
+      subs_under_sibling: subgroups
 
-  - name: Assert subgroup list is empty after unnest
-    type: json_assert
+  - name: Assert child is now under sibling
+    type: assert
     statements:
-      - 'json_equal({{subs_after_unnest}}, [])'
+      - "is_set({{subs_under_sibling}})"
 
-  # --- SCENARIO 3: Re-nest via explicit nest_group, verify it reappears ---
+  # --- SCENARIO 3: Re-nest by reparenting child back under namespace ---
 
-  - name: Re-nest child under parent via nest_group
-    type: nest_group
+  - name: Reparent child back under namespace
+    type: reparent_group
     node: e2e-node-1
-    parent_group_id: '{{parent_id}}'
     child_group_id: '{{child_id}}'
+    new_parent_id: '{{parent_id}}'
 
   - name: List subgroups after re-nest
     type: list_subgroups
@@ -166,7 +185,7 @@ steps:
     outputs:
       subs_after_renest: subgroups
 
-  - name: Assert child reappears in subgroup list
+  - name: Assert child reappears as namespace subgroup
     type: assert
     statements:
       - "is_set({{subs_after_renest}})"

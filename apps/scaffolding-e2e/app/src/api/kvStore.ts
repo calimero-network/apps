@@ -287,3 +287,66 @@ export const wsPingChannel = (target_context_id_b58: string) =>
   call<{ target_context_id_b58: string }, void>("ws_ping_channel", {
     target_context_id_b58,
   });
+
+// AuthoredMap
+export const authoredInsert = (key: string, value: string) =>
+  call<{ key: string; value: string }, void>("authored_insert", { key, value });
+
+export const authoredUpdate = (key: string, value: string) =>
+  call<{ key: string; value: string }, void>("authored_update", { key, value });
+
+export const authoredRemove = (key: string) =>
+  call<{ key: string }, string | null>("authored_remove", { key });
+
+export const authoredGet = (key: string) =>
+  call<{ key: string }, string | null>("authored_get", { key });
+
+export const authoredEntries = () =>
+  call<Record<string, never>, Record<string, string>>("authored_entries", {});
+
+export const authoredGetOwner = (key: string) =>
+  call<{ key: string }, string | null>("authored_get_owner", { key });
+
+export const authoredLen = () =>
+  call<Record<string, never>, number>("authored_len", {});
+
+// AuthoredVector
+export const authoredVecPush = (value: string) =>
+  call<{ value: string }, number>("authored_vec_push", { value });
+
+export const authoredVecGet = (index: number) =>
+  call<{ index: number }, string | null>("authored_vec_get", { index });
+
+export const authoredVecUpdate = (index: number, value: string) =>
+  call<{ index: number; value: string }, void>("authored_vec_update", { index, value });
+
+export const authoredVecRemove = (index: number) =>
+  call<{ index: number }, void>("authored_vec_remove", { index });
+
+export const authoredVecGetOwner = (index: number) =>
+  call<{ index: number }, string | null>("authored_vec_get_owner", { index });
+
+export const authoredVecEntries = () =>
+  call<Record<string, never>, string[]>("authored_vec_entries", {});
+
+export const authoredVecLen = () =>
+  call<Record<string, never>, number>("authored_vec_len", {});
+
+// SharedStorage
+export const sharedSet = (value: string) =>
+  call<{ value: string }, void>("shared_set", { value });
+
+export const sharedGet = () =>
+  call<Record<string, never>, string>("shared_get", {});
+
+export const sharedGetWriters = () =>
+  call<Record<string, never>, string[]>("shared_get_writers", {});
+
+export const sharedAddWriter = (writer_bs58: string) =>
+  call<{ writer_bs58: string }, void>("shared_add_writer", { writer_bs58 });
+
+export const sharedIsWriter = (key_bs58: string) =>
+  call<{ key_bs58: string }, boolean>("shared_is_writer", { key_bs58 });
+
+export const sharedIsFrozen = () =>
+  call<Record<string, never>, boolean>("shared_is_frozen", {});
