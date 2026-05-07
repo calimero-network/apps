@@ -2,7 +2,7 @@ name: E2E - Merobox Workflows
 
 # Runs all merobox workflow tests against the scaffolding-e2e WASM app.
 # Build: WASM compiled from Rust source, then all workflows run in parallel.
-# Uses ghcr.io/calimero-network/merod:edge — tracks latest master, no local image build needed.
+# Uses ghcr.io/calimero-network/merod:0.10.1-rc.35 — pinned RC for reproducibility.
 
 permissions:
   contents: read
