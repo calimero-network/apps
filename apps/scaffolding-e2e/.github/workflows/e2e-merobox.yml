@@ -132,7 +132,7 @@ jobs:
           merobox --version
 
       - name: Pull merod image
-        run: docker pull ghcr.io/calimero-network/merod:edge
+        run: docker pull ghcr.io/calimero-network/merod:0.10.1-rc.35
 
       - name: Run ${{ matrix.workflow }}
         run: |

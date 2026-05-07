@@ -778,7 +778,7 @@ dependencies = [
 
 [[package]]
 name = "scaffolding-e2e"
-version = "0.10.1-rc.34"
+version = "0.10.1-rc.35"
 dependencies = [
  "bs58",
  "calimero-sdk",

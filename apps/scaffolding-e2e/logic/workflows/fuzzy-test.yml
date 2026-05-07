@@ -9,7 +9,7 @@ nuke_on_end: false
 nodes:
   chain_id: calimero-testnet
   count: 4
-  image: ghcr.io/calimero-network/merod:edge
+  image: ghcr.io/calimero-network/merod:0.10.1-rc.35
   prefix: fuzzy-e2e-node
   use_image_entrypoint: false
 
