@@ -317,6 +317,7 @@ test.describe("Sidebar navigation", () => {
     { item: "Private Secrets", heading: "Private Storage" },
     { item: "Blob Storage", heading: "Blob Storage" },
     { item: "Authored Map", heading: "Authored Map" },
+    { item: "Authored Vector", heading: "Authored Vector" },
     { item: "Shared Storage", heading: "Shared Storage" },
     { item: "Context Members", heading: "Context Members" },
     { item: "Counters", heading: "CRDT Counters" },
