@@ -30,10 +30,5 @@
     "typescript": "~5.8.3",
     "vite": "^6.4.1"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@swc/core",
-      "esbuild"
-    ]
-  }
+  "packageManager": "pnpm@11.0.8"
 }
