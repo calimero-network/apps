@@ -70,22 +70,17 @@ export function parseInviteUrl(
   const id = params.get('id') ?? params.get('ns'); // `ns` for back-compat
   const raw = params.get('invite');
 
-  // Back-compat: early links had no `kind` — treat as namespace if
-  // the id arrived via `ns=`.
-  const kind: InviteKind =
-    rawKind === 'group'
-      ? 'group'
-      : rawKind === 'namespace' || (rawKind === null && params.get('ns'))
-        ? 'namespace'
-        : rawKind === null
-          ? 'namespace'
-          : (() => {
-              return null as never;
-            })();
-
+  // Validate kind first so the type narrowing below is sound — older
+  // versions of this code chained ternaries with an unreachable IIFE
+  // returning `null as never`, which type-checked but would have leaked
+  // a runtime null if the validation guard was ever moved or removed.
   if (rawKind !== null && rawKind !== 'namespace' && rawKind !== 'group') {
     return { error: `Unknown invite kind: ${rawKind}` };
   }
+  // Back-compat: early links had no `kind` — treat as namespace
+  // (the only invite shape that existed before the param was added).
+  const kind: InviteKind = rawKind === 'group' ? 'group' : 'namespace';
+
   if (!id) return { error: 'Missing target id in invite link.' };
   if (!raw) return { error: 'Missing invitation payload in invite link.' };
 

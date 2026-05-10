@@ -37,13 +37,14 @@ export function useFolderMembership(folderId: string | null): FolderMembershipSt
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const aliveRef = useRef(true);
-  useEffect(() => {
-    aliveRef.current = true;
-    return () => {
-      aliveRef.current = false;
-    };
-  }, []);
+  // Per-call sequence counter: each refetch bumps `fetchSeqRef` and
+  // captures its own seq. When a response arrives, we drop it if a
+  // newer fetch has been issued in the meantime. This guards against
+  // BOTH unmount (the cleanup bumps the counter via the effect below)
+  // AND folderId changes mid-flight — an earlier `aliveRef`-only
+  // pattern only handled unmount, so a stale folder's response could
+  // still overwrite the new folder's members.
+  const fetchSeqRef = useRef(0);
 
   const refetch = useCallback(async () => {
     if (!mero || !folderId) {
@@ -52,6 +53,7 @@ export function useFolderMembership(folderId: string | null): FolderMembershipSt
       setError(null);
       return;
     }
+    const seq = ++fetchSeqRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -64,19 +66,30 @@ export function useFolderMembership(folderId: string | null): FolderMembershipSt
         members?: GroupMember[];
         data?: GroupMember[];
       };
-      if (!aliveRef.current) return;
+      if (seq !== fetchSeqRef.current) return;
       setMembers(raw.members ?? raw.data ?? []);
     } catch (e: unknown) {
-      if (!aliveRef.current) return;
+      if (seq !== fetchSeqRef.current) return;
       setError(e instanceof Error ? e : new Error(String(e)));
     } finally {
-      if (aliveRef.current) setLoading(false);
+      if (seq === fetchSeqRef.current) setLoading(false);
     }
   }, [mero, folderId]);
 
   useEffect(() => {
     void refetch();
   }, [refetch]);
+
+  // Bump the sequence on unmount so any still-in-flight response
+  // becomes a no-op (its captured seq won't match anymore). React 18+
+  // would silently drop the setState anyway, but this also short-
+  // circuits the `setLoading(false)` in the finally block.
+  useEffect(
+    () => () => {
+      fetchSeqRef.current++;
+    },
+    [],
+  );
 
   const add = useCallback(
     async (identity: string, role: string = 'member') => {
