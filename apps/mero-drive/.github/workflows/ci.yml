@@ -287,6 +287,49 @@ jobs:
           attempt=1
           success=false
 
+          # In-flight log watcher. Replaces the prior post-hoc
+          # `docker logs` collection, which only captured the `-init`
+          # containers — `merobox bootstrap run` tears down the
+          # runtime merod containers as part of its exit path, so
+          # by the time the shell regained control all that was
+          # left were the init names. (Tracked upstream in
+          # merobox#207 / core#2179.)
+          #
+          # The watcher polls `docker ps` once a second and starts
+          # `docker logs -f <c>` to a per-container file as soon as
+          # each runtime container appears. Since the follower runs
+          # while the container is alive, the log file survives the
+          # post-run cleanup. Pattern lifted verbatim from
+          # battleships' CI.
+          #
+          # The attempt number lives in $ATTEMPT_FILE so a single
+          # watcher process keeps running across the retry loop while
+          # still namespacing mark files and log paths per attempt.
+          # Without this, attempt 2's containers (same names as
+          # attempt 1 after `merobox nuke --force` recreates them)
+          # would be skipped because the attempt-1 mark files survive
+          # the container wipe, and the attempt-1 log file would be
+          # clobbered.
+          LOGDIR="$GITHUB_WORKSPACE/docker-logs"
+          WATCHER_STATE_DIR="$(mktemp -d)"
+          ATTEMPT_FILE="$WATCHER_STATE_DIR/.attempt"
+          echo 1 > "$ATTEMPT_FILE"
+          (
+              while [ ! -f "$WATCHER_STATE_DIR/stop" ]; do
+                  cur=$(cat "$ATTEMPT_FILE" 2>/dev/null || echo 1)
+                  for c in $(docker ps --filter "label=calimero.node=true" --format "{{.Names}}" 2>/dev/null | grep -v -- '-init$' || true); do
+                      mark="$WATCHER_STATE_DIR/${c}-attempt${cur}"
+                      if [ ! -f "$mark" ]; then
+                          touch "$mark"
+                          echo "[log-watcher] following $c (attempt $cur)"
+                          docker logs -f "$c" > "$LOGDIR/${{ matrix.name }}-attempt${cur}-${c}.log" 2>&1 &
+                      fi
+                  done
+                  sleep 1
+              done
+          ) &
+          WATCHER_PID=$!
+
           while [ $attempt -le $max_attempts ]; do
             if [ $attempt -gt 1 ]; then
               echo "Retry attempt $attempt for ${{ matrix.name }}..."
@@ -294,6 +337,7 @@ jobs:
               merobox nuke --force || true
               sleep 2
             fi
+            echo $attempt > "$ATTEMPT_FILE"
 
             if merobox bootstrap run \
                 "${{ matrix.file }}" \
@@ -301,17 +345,17 @@ jobs:
               success=true
               break
             else
-              echo "Collecting docker logs for attempt $attempt"
-              for container in $(docker ps -a --format "{{.Names}}" 2>/dev/null || true); do
-                if [ -n "$container" ]; then
-                  docker logs "$container" \
-                    > "$GITHUB_WORKSPACE/docker-logs/${{ matrix.name }}-attempt${attempt}-${container}.log" \
-                    2>&1 || true
-                fi
-              done
               attempt=$((attempt + 1))
             fi
           done
+
+          # Signal the watcher to stop and give `docker logs -f`
+          # followers a moment to flush their final output.
+          touch "$WATCHER_STATE_DIR/stop"
+          sleep 2
+          kill "$WATCHER_PID" 2>/dev/null || true
+          for pid in $(jobs -p); do kill "$pid" 2>/dev/null || true; done
+          wait 2>/dev/null || true
 
           merobox stop --all || true
           merobox nuke --force || true
