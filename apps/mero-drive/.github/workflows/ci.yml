@@ -113,12 +113,14 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             logic/target
-          # Include Cargo.lock in the hash so cache invalidates when any
-          # git-branch pinned dep (calimero-sdk, calimero-storage,
-          # calimero-storage-macros, calimero-wasm-abi — all pinned to
-          # `branch = "master"`) resolves to a new commit, even if
-          # Cargo.toml is unchanged.
-          key: logic-${{ runner.os }}-${{ hashFiles('logic/Cargo.toml', 'logic/crates/*/Cargo.toml', 'logic/Cargo.lock') }}
+          # Cargo.lock is gitignored so each fresh checkout re-resolves the
+          # `branch = "master"` git deps (calimero-sdk / calimero-storage /
+          # calimero-storage-macros / calimero-wasm-abi) to current HEAD.
+          # That's intentional: PR e2e runs always exercise the up-to-date
+          # runtime ABI. Cache key only hashes Cargo.toml — `restore-keys`
+          # still hits when only deps moved, and cargo's own resolution
+          # validates whether the cached ~/.cargo/git snapshots are usable.
+          key: logic-${{ runner.os }}-${{ hashFiles('logic/Cargo.toml', 'logic/crates/*/Cargo.toml') }}
           restore-keys: logic-${{ runner.os }}-
 
       - name: Cargo format
@@ -146,13 +148,23 @@ jobs:
         run: cargo build --target wasm32-unknown-unknown --profile app-release
 
   # ============================================================
-  # Job 3: Bundle — Build the multi-service .mpk
+  # Job 3: Bundle — Build the multi-service .mpk against current core master
   # ============================================================
-  # Produces the signed bundle `com.calimero.mero-drive-docs-9.0.0.mpk`
-  # from the two wasm artifacts. Uploaded as a build artifact so the
-  # e2e job below can consume it without rebuilding, and so PR
-  # reviewers can download and inspect the actual artifact that would
-  # ship.
+  # Produces the bundle `com.calimero.mero-drive-docs-9.0.0.mpk` from the
+  # two wasm artifacts. Uploaded as a build artifact so the e2e job below
+  # can consume it without rebuilding, and so PR reviewers can download
+  # and inspect the actual artifact that would ship.
+  #
+  # `Cargo.lock` is gitignored, so each fresh checkout resolves the
+  # `branch = "master"` git deps for calimero-sdk / calimero-storage /
+  # calimero-storage-macros / calimero-wasm-abi to whatever is currently
+  # at master HEAD. That is exactly what we want: every PR's e2e run is
+  # exercised against the up-to-date runtime ABI. Mirrors battleships'
+  # CI policy (their `bundle` job comment).
+  #
+  # The committed `logic/dist/*.mpk` is for local dev convenience — CI
+  # does not consume it. The artifact uploaded here is what the e2e
+  # matrix downloads and installs on the merod nodes.
   #
   # Signing: the build-bundle.sh script signs against the sibling
   # `../../core/scripts/test-signing-key/test-key.json`. In CI there's
@@ -179,12 +191,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             logic/target
-          # Include Cargo.lock in the hash so cache invalidates when any
-          # git-branch pinned dep (calimero-sdk, calimero-storage,
-          # calimero-storage-macros, calimero-wasm-abi — all pinned to
-          # `branch = "master"`) resolves to a new commit, even if
-          # Cargo.toml is unchanged.
-          key: logic-${{ runner.os }}-${{ hashFiles('logic/Cargo.toml', 'logic/crates/*/Cargo.toml', 'logic/Cargo.lock') }}
+          # Cargo.lock is gitignored — see the matching block in the `logic`
+          # job above. Same key shape so both jobs share cached registry +
+          # git snapshots.
+          key: logic-${{ runner.os }}-${{ hashFiles('logic/Cargo.toml', 'logic/crates/*/Cargo.toml') }}
           restore-keys: logic-${{ runner.os }}-
 
       - name: Build bundle
