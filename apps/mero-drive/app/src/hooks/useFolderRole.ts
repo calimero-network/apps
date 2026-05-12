@@ -17,11 +17,21 @@ import { useDriveWorkspace } from './useDriveWorkspace';
 import type { Role, FolderRoleEntry } from '../api/registry/RegistryClient';
 
 export interface FolderRoleState {
-  /** The caller's role on this folder. `null` = loading / unknown.
-   *  An absent-on-server role resolves to `'Editor'` (the WASM default). */
+  /** The caller's role on this folder. `null` = not-yet-resolved
+   *  (either still fetching, or there's no Registry context to fetch
+   *  from). Disambiguate with `loading` + `registryAvailable`. An
+   *  absent-on-server role resolves to `'Editor'` (the WASM default). */
   role: Role | null;
+  /** True ONLY while a fetch is in flight. False when there's no
+   *  Registry context (nothing to fetch) — so consumers don't get
+   *  pinned in a "checking permissions" state forever in a workspace
+   *  that has no Registry context yet. */
   loading: boolean;
   error: Error | null;
+  /** Whether a Registry context exists to read roles from. When false,
+   *  `role` is `null` and never resolves — callers should fall back to
+   *  folder membership for edit rights. */
+  registryAvailable: boolean;
   /** Set a member's role (defaults to the current identity). Refetches
    *  on success. */
   setRole: (role: Role, member?: string) => Promise<void>;
@@ -37,8 +47,12 @@ export function useFolderRole(folderId: string | null): FolderRoleState {
   const [error, setError] = useState<Error | null>(null);
   const [tick, setTick] = useState(0);
 
+  // `folderId` may be empty-string from `useFolderPermissions` when no
+  // folder is selected — treat that as "no folder", not "loading".
+  const canFetch = !!registryClient && !!folderId && !!selfIdentity;
+
   useEffect(() => {
-    if (!registryClient || !folderId || !selfIdentity) {
+    if (!canFetch) {
       setRoleState(null);
       setError(null);
       return;
@@ -46,8 +60,8 @@ export function useFolderRole(folderId: string | null): FolderRoleState {
     let cancelled = false;
     setRoleState(null);
     setError(null);
-    registryClient
-      .getFolderRole({ folder_id: folderId, member: selfIdentity })
+    registryClient!
+      .getFolderRole({ folder_id: folderId!, member: selfIdentity! })
       .then((r) => {
         if (!cancelled) setRoleState((r as Role) ?? 'Editor');
       })
@@ -59,7 +73,9 @@ export function useFolderRole(folderId: string | null): FolderRoleState {
     return () => {
       cancelled = true;
     };
-  }, [registryClient, folderId, selfIdentity, tick]);
+    // canFetch derives from registryClient/folderId/selfIdentity; tick
+    // forces a refetch after a write.
+  }, [canFetch, registryClient, folderId, selfIdentity, tick]);
 
   const setRole = useCallback(
     async (r: Role, member?: string) => {
@@ -89,8 +105,13 @@ export function useFolderRole(folderId: string | null): FolderRoleState {
 
   return {
     role,
-    loading: role === null && error === null,
+    // Loading == "a fetch can happen and hasn't resolved yet". When
+    // there's no Registry context (`!canFetch`), `loading` is false
+    // (`registryAvailable` is false too) so the doc editor falls back
+    // to folder membership rather than being pinned read-only forever.
+    loading: canFetch && role === null && error === null,
     error,
+    registryAvailable: !!registryClient,
     setRole,
     clearRole,
     refetch: () => setTick((t) => t + 1),

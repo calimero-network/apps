@@ -4,13 +4,22 @@ import { useFolderPermissions } from '../useFolderPermissions';
 import { CAPABILITIES } from '../../constants/config';
 import type { Role } from '../../api/registry/RegistryClient';
 
-// The registry-Role layer (useFolderRole / useRegistryAdmin) is mocked
-// so each test can pin a role / owner-or-manager flag independently of
-// the (no-op without a registryClient) real hooks. useMemberCaps stays
-// real — it's what drives the cap-derived booleans.
-const folderRoleState: { role: Role | null; loading: boolean } = {
+// The registry-Role layer (useFolderRole) is mocked so each test can
+// pin a role / loading / error / registry-availability independently of
+// the (no-op without a registryClient) real hook. The owner-or-manager
+// flag now lives on useDriveWorkspace().registryAdmin (hoisted) — pinned
+// via the useDriveWorkspace mock below. useMemberCaps stays real — it's
+// what drives the cap-derived booleans.
+const folderRoleState: {
+  role: Role | null;
+  loading: boolean;
+  error: Error | null;
+  registryAvailable: boolean;
+} = {
   role: 'Editor',
   loading: false,
+  error: null,
+  registryAvailable: true,
 };
 const registryAdminState: { isOwnerOrManager: boolean } = {
   isOwnerOrManager: false,
@@ -19,23 +28,10 @@ vi.mock('../useFolderRole', () => ({
   useFolderRole: () => ({
     role: folderRoleState.role,
     loading: folderRoleState.loading,
-    error: null,
+    error: folderRoleState.error,
+    registryAvailable: folderRoleState.registryAvailable,
     setRole: vi.fn(),
     clearRole: vi.fn(),
-    refetch: vi.fn(),
-  }),
-}));
-vi.mock('../useRegistryAdmin', () => ({
-  useRegistryAdmin: () => ({
-    owner: null,
-    managers: [],
-    isOwnerOrManager: registryAdminState.isOwnerOrManager,
-    isOwner: false,
-    loading: false,
-    error: null,
-    addManager: vi.fn(),
-    removeManager: vi.fn(),
-    claimOwner: vi.fn(),
     refetch: vi.fn(),
   }),
 }));
@@ -73,6 +69,18 @@ vi.mock('../useDriveWorkspace', () => ({
     error: null,
     folders: [],
     rootGroupId: 'ns-root',
+    registryAdmin: {
+      owner: null,
+      managers: [] as string[],
+      isOwnerOrManager: registryAdminState.isOwnerOrManager,
+      isOwner: false,
+      loading: false,
+      error: null,
+      addManager: vi.fn(),
+      removeManager: vi.fn(),
+      claimOwner: vi.fn(),
+      refetch: vi.fn(),
+    },
   }),
 }));
 
@@ -88,6 +96,8 @@ describe('useFolderPermissions', () => {
     getMemberCapsMock.mockResolvedValue({ capabilities: 0 });
     folderRoleState.role = 'Editor';
     folderRoleState.loading = false;
+    folderRoleState.error = null;
+    folderRoleState.registryAvailable = true;
     registryAdminState.isOwnerOrManager = false;
   });
 
@@ -206,6 +216,56 @@ describe('useFolderPermissions', () => {
     });
     const { result } = renderHook(() => useFolderPermissions('ns', 'folder-1'));
     await waitFor(() => expect(result.current.canEditDocs).toBe(true));
+  });
+
+  it('role still loading (registry exists) → canEditDocs false for a member', async () => {
+    // Conservative default: until the registry Role *definitively*
+    // resolves, a folder member is read-only — autosave must not
+    // persist a would-be Viewer's edits during the resolve window.
+    folderRoleState.role = null;
+    folderRoleState.loading = true;
+    folderRoleState.registryAvailable = true;
+    const { result } = renderWithCaps(C.CAN_JOIN_OPEN_SUBGROUPS);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.isMember).toBe(true);
+    expect(result.current.roleLoading).toBe(true);
+    expect(result.current.canEditDocs).toBe(false);
+  });
+
+  it('role-fetch error (registry exists) → canEditDocs false for a member', async () => {
+    folderRoleState.role = null;
+    folderRoleState.loading = false;
+    folderRoleState.error = new Error('getFolderRole failed');
+    folderRoleState.registryAvailable = true;
+    const { result } = renderWithCaps(C.CAN_JOIN_OPEN_SUBGROUPS);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.isMember).toBe(true);
+    expect(result.current.roleError).not.toBeNull();
+    expect(result.current.canEditDocs).toBe(false);
+  });
+
+  it('no Registry context at all → canEditDocs falls back to membership', async () => {
+    // registryAvailable false ⇒ there's no Role to wait on; role stays
+    // null forever, roleLoading stays false. A folder member can edit.
+    folderRoleState.role = null;
+    folderRoleState.loading = false;
+    folderRoleState.error = null;
+    folderRoleState.registryAvailable = false;
+    const { result } = renderWithCaps(C.CAN_JOIN_OPEN_SUBGROUPS);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.isMember).toBe(true);
+    expect(result.current.canEditDocs).toBe(true);
+  });
+
+  it('no Registry context + non-member → canEditDocs false', async () => {
+    folderRoleState.registryAvailable = false;
+    folderRoleState.role = null;
+    const boom = new Error('caps service unavailable');
+    getMemberCapsMock.mockRejectedValue(boom);
+    const { result } = renderHook(() => useFolderPermissions('ns', 'folder-z'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.isMember).toBe(false);
+    expect(result.current.canEditDocs).toBe(false);
   });
 
   it('isOwnerOrManager → canManagePermissions true (and canManageGroup)', async () => {
