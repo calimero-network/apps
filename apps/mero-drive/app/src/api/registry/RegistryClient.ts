@@ -86,7 +86,7 @@ export interface RegistryState {
   folder_contexts: Record<string, ContextId>;
   sort_order: Record<string, string[]>;
   owner: string;
-  managers: Record<string, void>;
+  managers: Record<string, boolean>;
   folder_roles: Record<string, Role>;
 }
 
