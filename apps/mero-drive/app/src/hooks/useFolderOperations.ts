@@ -134,12 +134,12 @@ export function useFolderOperations(
           id: newId,
           parent_id: input.parentGroupId === rootGroupId ? null : input.parentGroupId,
           color: input.color ?? null,
-          // Mirror the admin-API alias into the registry so namespace
-          // members who aren't subgroup members can still see the name.
-          // Without this, invitees see `folder-<id8>` stubs because
-          // getGroupInfo 500s for non-members. See registry contract
-          // FolderDto.alias for the mechanism.
-          alias: input.alias,
+          // No alias mirror — folder names come from core group
+          // metadata's `name` (list rows carry it as of #2338), so
+          // even non-members of the subgroup see the real name from
+          // the admin API. The registry's `alias` field is kept
+          // readable for back-compat but is no longer written.
+          alias: null,
         });
         registryEntryCreated = true;
 
@@ -200,22 +200,13 @@ export function useFolderOperations(
 
   const rename = useCallback(
     async (folderId: string, alias: string) => {
+      // Folder names live in core group metadata (`metadata.name`) and
+      // are visible to every namespace member on the list rows as of
+      // #2338 — no registry alias mirror needed anymore.
       await setGroupMetadata(folderId, { name: alias });
-      // Mirror into the registry so non-member namespace peers see
-      // the new name too. Best-effort: if the registry client isn't
-      // ready or the call fails, admin-API side is still updated and
-      // the caller just sees the name lag for non-members until next
-      // rename or a registry-side reconcile.
-      if (registryClient) {
-        try {
-          await registryClient.setFolderAlias({ id: folderId, alias });
-        } catch (e) {
-          console.warn('registry setFolderAlias failed', e);
-        }
-      }
       await refetch();
     },
-    [setGroupMetadata, registryClient, refetch],
+    [setGroupMetadata, refetch],
   );
 
   const remove = useCallback(

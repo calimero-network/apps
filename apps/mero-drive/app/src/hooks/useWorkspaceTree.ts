@@ -27,10 +27,10 @@ export interface RegistryFolderShape {
   id: string;
   parent_id: string | null;
   color: string | null;
-  /** Registry-side alias. Set by useFolderOperations.create /
-   *  rename; readable by every namespace member regardless of
-   *  subgroup membership. Null / undefined for legacy folders
-   *  created before the registry contract gained the alias field. */
+  /** Legacy registry-side alias mirror. No longer written (folder
+   *  names come from core group metadata's `name` since #2338) but
+   *  still read as a back-compat fallback for folders created before
+   *  the mirror was retired. Null / undefined otherwise. */
   alias?: string | null;
 }
 
@@ -51,10 +51,11 @@ export interface MergedFolder {
 // Iterate the registry list so that folders show up even when
 // mero-js's listSubgroups is broken (it expects a `{data}` wrapper
 // but core returns `{subgroups}` — the folder body resolves to
-// undefined and admin comes back empty). Alias falls back to a
-// shortened id so the folder still renders and is clickable with
-// `admin` empty. Visibility falls back to undefined while the
-// per-folder getGroupInfo fetch is in flight.
+// undefined and admin comes back empty). The display name falls back
+// to the legacy registry `alias` mirror and finally a shortened id
+// so the folder still renders and is clickable with `admin` empty.
+// Visibility falls back to undefined while the per-folder
+// getGroupInfo fetch is in flight.
 export function mergeAdminAndRegistry(
   admin: AdminSubgroup[],
   registry: RegistryFolderShape[],
@@ -66,12 +67,13 @@ export function mergeAdminAndRegistry(
     .filter((r) => r.id !== rootId)
     .map((r) => {
       const a = adminById.get(r.id);
-      // Preference order: registry alias (visible to all namespace
-      // members) → admin name (only visible to subgroup members) →
-      // truncated id stub (fallback for folders older than the
-      // registry alias field).
+      // Preference order: admin-API `name` (authoritative — core
+      // group metadata, visible to all namespace members on list rows
+      // since #2338) → legacy registry `alias` mirror (back-compat for
+      // folders created before the mirror was retired) → truncated id
+      // stub (last-resort fallback).
       const alias =
-        r.alias ?? a?.name ?? `folder-${r.id.slice(0, 8)}`;
+        a?.name ?? r.alias ?? `folder-${r.id.slice(0, 8)}`;
       return {
         id: r.id,
         parent_id: r.parent_id,

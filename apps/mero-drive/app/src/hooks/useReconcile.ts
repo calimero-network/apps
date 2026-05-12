@@ -107,10 +107,9 @@ export function useReconcile(
           id: r.id,
           parent_id: r.parent_id,
           color: null,
-          // Reconcile doesn't know the admin-side alias here; leave
-          // null so the client falls back to admin-API / id stub.
-          // A follow-up pass could read aliases from the admin list
-          // we already have in `admin` and seed them in.
+          // The registry alias mirror is retired (#2338) — folder
+          // names come from core group metadata. Pass null and let
+          // the display layer read the admin-API `name`.
           alias: null,
         });
       }
