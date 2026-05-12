@@ -1,27 +1,40 @@
-// Members list + invite/remove for a single folder. Permission-gated
-// by useFolderPermissions:
-//   - canInviteMembers  → show the invite form
-//   - canManageMembers  → show the remove button per member
-// Read-only viewers (neither cap) still see the members list, so
-// they know who's in the folder — just can't modify it. If you
-// want to hide the whole panel for read-only viewers, the caller
-// should conditionally render.
+// Members + sharing controls for a single folder. Two layouts,
+// branched on the folder's subgroup visibility (core PR #2261):
 //
-// useFolderMembership's add() takes (identity, role). Per the
-// Phase 7 README-ish notes in useFolderMembership, capability
-// bitmasks flow through a separate useGroupCapabilities call; this
-// panel currently adds with the default role "member" and leaves
-// cap-editing for Phase 8-E's MemberRoleSelect.
+//   Restricted — explicit membership: add-by-identity / invite-link /
+//     remove, plus (for owner/managers) a per-member folder-role
+//     dropdown (FolderRoleSelect — Viewer / Editor / Manager).
+//
+//   Open — inherits membership from the workspace root: there's no
+//     add/remove (anyone in the workspace is already in), so we show
+//     "open to all workspace members" copy instead, but STILL list the
+//     inherited members each with the folder-role dropdown so an admin
+//     can pin someone to Viewer (downgrade their doc access) or
+//     Manager (promote them) on this folder.
+//
+// Permission-gating (useFolderPermissions):
+//   - canInviteMembers      → show the invite form (Restricted only)
+//   - canManageMembers      → show the per-member remove button
+//   - canManagePermissions  → show the folder-role dropdowns (the
+//                             registry owner / managers, or a core
+//                             group-admin)
+// Read-only viewers still see the members list.
+//
+// TODO: "Advanced" per-row expander (individual core-cap checkboxes +
+// the Role radio) — a follow-up; today only the preset dropdown ships.
 
-import React, { useState } from 'react';
-import { Trash2, UserPlus, Link2 } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { UserPlus, Link2, Globe } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useFolderMembership } from '@/hooks/useFolderMembership';
+import { useFolderRoles } from '@/hooks/useFolderRole';
 import { useCreateFolderInvite } from '@/hooks/useNamespaceInvitation';
 import { InviteDialog } from '@/components/workspace/InviteDialog';
+import { FolderMemberRoleRow } from '@/components/admin/FolderMemberRoleRow';
+import type { Role } from '@/api/registry/RegistryClient';
 
 interface Props {
   folderId: string;
@@ -51,11 +64,25 @@ export function FolderSharingPanel({ folderId }: Props) {
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const { members, loading, error, add, remove, refetch } =
     useFolderMembership(folderId);
+  const { entries: roleEntries, refetch: refetchRoles } =
+    useFolderRoles(folderId);
   const { create: createFolderInvite } = useCreateFolderInvite();
   const confirm = useConfirm();
   const [inviteLinkOpen, setInviteLinkOpen] = useState(false);
-  const folderAlias =
-    folders.find((f) => f.id === folderId)?.alias ?? `${folderId.slice(0, 8)}…`;
+
+  const folder = folders.find((f) => f.id === folderId);
+  const folderAlias = folder?.alias ?? `${folderId.slice(0, 8)}…`;
+  // Only an explicit 'Open' visibility takes the open layout; anything
+  // else (Restricted, or not-yet-resolved) keeps the explicit-members
+  // layout, which is the safe default.
+  const isOpenFolder = folder?.visibility === 'Open';
+
+  // member identity → registry Role (default 'Editor' when absent).
+  const roleByMember = useMemo(() => {
+    const m = new Map<string, Role>();
+    for (const e of roleEntries) m.set(e.member, e.role);
+    return m;
+  }, [roleEntries]);
 
   const [identity, setIdentity] = useState('');
   const [inviting, setInviting] = useState(false);
@@ -154,6 +181,18 @@ export function FolderSharingPanel({ folderId }: Props) {
         )}
       </header>
 
+      {isOpenFolder && (
+        <p className="flex items-start gap-2 border-b border-border/60 px-4 py-2.5 text-xs text-muted-foreground">
+          <Globe className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span>
+            Open to all workspace members — anyone in the workspace can join
+            and edit this folder. Use the role dropdowns below to pin a
+            specific person to <strong>Viewer</strong> (read-only) or{' '}
+            <strong>Manager</strong>.
+          </span>
+        </p>
+      )}
+
       {error && (
         <p
           className="border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-xs text-destructive"
@@ -173,11 +212,39 @@ export function FolderSharingPanel({ folderId }: Props) {
           const label = m.name ?? `${m.identity.slice(0, 8)}…`;
           const rowErr =
             removeError?.identity === m.identity ? removeError.message : null;
+          if (perms.canManagePermissions) {
+            return (
+              <React.Fragment key={m.identity}>
+                <FolderMemberRoleRow
+                  folderId={folderId}
+                  identity={m.identity}
+                  label={label}
+                  coreRole={m.role}
+                  registryRole={roleByMember.get(m.identity) ?? 'Editor'}
+                  canManage
+                  onAfterRoleChange={refetchRoles}
+                  // No per-member remove on Open folders — membership is
+                  // inherited; removing here wouldn't stick.
+                  onRemove={
+                    !isOpenFolder && perms.canManageMembers
+                      ? onRemove
+                      : undefined
+                  }
+                  removing={removingId === m.identity}
+                />
+                {rowErr && (
+                  <li className="px-4 pb-1 text-xs text-destructive" role="alert">
+                    Remove failed: {rowErr}
+                  </li>
+                )}
+              </React.Fragment>
+            );
+          }
+          // Read-only view (no canManagePermissions): name + the
+          // member's core role label, optional remove if they can
+          // manage members on a Restricted folder.
           return (
-            <li
-              key={m.identity}
-              className="px-4 py-2 text-sm"
-            >
+            <li key={m.identity} className="px-4 py-2 text-sm">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium text-foreground">
@@ -187,7 +254,7 @@ export function FolderSharingPanel({ folderId }: Props) {
                     {m.role}
                   </div>
                 </div>
-                {perms.canManageMembers && (
+                {!isOpenFolder && perms.canManageMembers && (
                   <Button
                     variant="ghost"
                     size="icon"
@@ -196,7 +263,7 @@ export function FolderSharingPanel({ folderId }: Props) {
                     aria-label={`Remove ${label}`}
                     onClick={() => onRemove(m.identity, label)}
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <span aria-hidden>×</span>
                   </Button>
                 )}
               </div>
@@ -210,7 +277,7 @@ export function FolderSharingPanel({ folderId }: Props) {
         })}
       </ul>
 
-      {perms.canInviteMembers && (
+      {!isOpenFolder && perms.canInviteMembers && (
         <div className="space-y-3 border-t border-border/60 px-4 py-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-muted-foreground">
