@@ -301,13 +301,14 @@ describe('permission-gating', () => {
     expect(screen.queryByText('Reconcile registry')).toBeNull();
   });
 
-  it('WorkspaceSettingsPanel renders the reconcile action when canManageNamespace', () => {
+  it('WorkspaceSettingsPanel renders the reconcile + owner/managers sections when canManageNamespace', () => {
     (useNamespacePermissions as ReturnType<typeof vi.fn>).mockReturnValue({
       ...noNsPerms,
       canManageNamespace: true,
     });
     render(<WorkspaceSettingsPanel />);
     expect(screen.getByText('Reconcile registry')).toBeTruthy();
+    expect(screen.getByText(/Registry owner/i)).toBeTruthy();
   });
 
   it('MemberDefaultsPanel renders nothing without canManageNamespace', () => {
