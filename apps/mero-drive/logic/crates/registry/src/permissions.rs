@@ -242,4 +242,248 @@ impl RegistryState {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use crate::{RegistryState, Role};
+    use mero_drive_types::DriveError;
+
+    fn key(byte: u8) -> String {
+        bs58::encode([byte; 32]).into_string()
+    }
+    fn fid(s: &str) -> crate::FolderId {
+        crate::FolderId(s.to_string())
+    }
+
+    // Convenience: a state with a folder "f1" registered and `owner` claimed.
+    fn with_owner_and_folder(owner: &str) -> RegistryState {
+        let mut app = RegistryState::init();
+        app.register_folder_inner(fid("f1"), None, None, None).unwrap();
+        app.claim_owner_inner(owner).unwrap();
+        app
+    }
+
+    // ---- claim_owner ----
+    #[test]
+    fn claim_owner_sets_owner_when_unclaimed() {
+        let mut app = RegistryState::init();
+        assert_eq!(app.owner_b58(), "");
+        app.claim_owner_inner(&key(1)).unwrap();
+        assert_eq!(app.owner_b58(), key(1));
+    }
+    #[test]
+    fn claim_owner_is_idempotent_for_owner() {
+        let mut app = RegistryState::init();
+        app.claim_owner_inner(&key(1)).unwrap();
+        app.claim_owner_inner(&key(1)).unwrap(); // no error
+        assert_eq!(app.owner_b58(), key(1));
+    }
+    #[test]
+    fn claim_owner_rejects_second_claimer() {
+        let mut app = RegistryState::init();
+        app.claim_owner_inner(&key(1)).unwrap();
+        let err = app.claim_owner_inner(&key(2)).unwrap_err();
+        assert!(matches!(err, DriveError::Forbidden(_)));
+        assert_eq!(app.owner_b58(), key(1));
+    }
+
+    // ---- is_admin / require_admin ----
+    #[test]
+    fn is_admin_false_before_owner_claimed() {
+        let app = RegistryState::init();
+        assert!(!app.is_admin(&key(1)).unwrap());
+    }
+    #[test]
+    fn owner_is_admin_managers_are_admin_others_are_not() {
+        let mut app = RegistryState::init();
+        app.claim_owner_inner(&key(1)).unwrap();
+        app.add_manager_inner(&key(1), &key(2)).unwrap();
+        assert!(app.is_admin(&key(1)).unwrap());
+        assert!(app.is_admin(&key(2)).unwrap());
+        assert!(!app.is_admin(&key(3)).unwrap());
+        assert!(app.require_admin(&key(3)).is_err());
+    }
+
+    // ---- managers ----
+    #[test]
+    fn add_manager_requires_owner() {
+        let mut app = RegistryState::init();
+        app.claim_owner_inner(&key(1)).unwrap();
+        // a non-owner (even though there are no managers yet) cannot add
+        let err = app.add_manager_inner(&key(2), &key(3)).unwrap_err();
+        assert!(matches!(err, DriveError::Forbidden(_)));
+    }
+    #[test]
+    fn add_manager_rejects_owner_as_member_and_bad_key() {
+        let mut app = RegistryState::init();
+        app.claim_owner_inner(&key(1)).unwrap();
+        assert!(matches!(
+            app.add_manager_inner(&key(1), &key(1)).unwrap_err(),
+            DriveError::Invalid(_)
+        ));
+        assert!(matches!(
+            app.add_manager_inner(&key(1), "not-base58!!").unwrap_err(),
+            DriveError::Invalid(_)
+        ));
+        assert!(matches!(
+            app.add_manager_inner(&key(1), &bs58::encode([0u8; 16]).into_string())
+                .unwrap_err(),
+            DriveError::Invalid(_)
+        ));
+    }
+    #[test]
+    fn add_then_remove_manager_roundtrips_and_is_listed() {
+        let mut app = RegistryState::init();
+        app.claim_owner_inner(&key(1)).unwrap();
+        app.add_manager_inner(&key(1), &key(2)).unwrap();
+        app.add_manager_inner(&key(1), &key(2)).unwrap(); // re-add: ok
+        assert_eq!(app.list_managers_inner().unwrap(), vec![key(2)]);
+        app.remove_manager_inner(&key(1), &key(2)).unwrap();
+        assert!(app.list_managers_inner().unwrap().is_empty());
+        assert!(!app.is_admin(&key(2)).unwrap());
+    }
+    #[test]
+    fn remove_unknown_manager_is_not_found() {
+        let mut app = RegistryState::init();
+        app.claim_owner_inner(&key(1)).unwrap();
+        assert!(matches!(
+            app.remove_manager_inner(&key(1), &key(9)).unwrap_err(),
+            DriveError::NotFound(_)
+        ));
+    }
+
+    // ---- folder roles ----
+    #[test]
+    fn get_folder_role_defaults_to_editor() {
+        let app = with_owner_and_folder(&key(1));
+        assert_eq!(
+            app.get_folder_role_inner("f1", &key(7)).unwrap(),
+            Role::Editor
+        );
+        // even for an unknown folder:
+        assert_eq!(
+            app.get_folder_role_inner("ghost", &key(7)).unwrap(),
+            Role::Editor
+        );
+    }
+    #[test]
+    fn set_folder_role_then_get_returns_it() {
+        let mut app = with_owner_and_folder(&key(1));
+        app.set_folder_role_inner(&key(1), "f1", &key(7), Role::Viewer)
+            .unwrap();
+        assert_eq!(
+            app.get_folder_role_inner("f1", &key(7)).unwrap(),
+            Role::Viewer
+        );
+        app.set_folder_role_inner(&key(1), "f1", &key(7), Role::Manager)
+            .unwrap(); // LWW overwrite
+        assert_eq!(
+            app.get_folder_role_inner("f1", &key(7)).unwrap(),
+            Role::Manager
+        );
+    }
+    #[test]
+    fn set_folder_role_requires_admin() {
+        let mut app = with_owner_and_folder(&key(1));
+        assert!(matches!(
+            app.set_folder_role_inner(&key(2), "f1", &key(7), Role::Viewer)
+                .unwrap_err(),
+            DriveError::Forbidden(_)
+        ));
+        // a manager can:
+        app.add_manager_inner(&key(1), &key(2)).unwrap();
+        app.set_folder_role_inner(&key(2), "f1", &key(7), Role::Viewer)
+            .unwrap();
+    }
+    #[test]
+    fn set_folder_role_unknown_folder_is_not_found() {
+        let mut app = with_owner_and_folder(&key(1));
+        assert!(matches!(
+            app.set_folder_role_inner(&key(1), "ghost", &key(7), Role::Viewer)
+                .unwrap_err(),
+            DriveError::NotFound(_)
+        ));
+    }
+    #[test]
+    fn set_folder_role_rejects_bad_member_key() {
+        let mut app = with_owner_and_folder(&key(1));
+        assert!(matches!(
+            app.set_folder_role_inner(&key(1), "f1", "bad!!", Role::Viewer)
+                .unwrap_err(),
+            DriveError::Invalid(_)
+        ));
+    }
+    #[test]
+    fn clear_folder_role_removes_row_and_falls_back_to_editor() {
+        let mut app = with_owner_and_folder(&key(1));
+        app.set_folder_role_inner(&key(1), "f1", &key(7), Role::Viewer)
+            .unwrap();
+        app.clear_folder_role_inner(&key(1), "f1", &key(7)).unwrap();
+        assert_eq!(
+            app.get_folder_role_inner("f1", &key(7)).unwrap(),
+            Role::Editor
+        );
+    }
+    #[test]
+    fn clear_folder_role_no_row_is_not_found() {
+        let mut app = with_owner_and_folder(&key(1));
+        assert!(matches!(
+            app.clear_folder_role_inner(&key(1), "f1", &key(7)).unwrap_err(),
+            DriveError::NotFound(_)
+        ));
+    }
+    #[test]
+    fn clear_folder_role_requires_admin() {
+        let mut app = with_owner_and_folder(&key(1));
+        app.set_folder_role_inner(&key(1), "f1", &key(7), Role::Viewer)
+            .unwrap();
+        assert!(matches!(
+            app.clear_folder_role_inner(&key(2), "f1", &key(7)).unwrap_err(),
+            DriveError::Forbidden(_)
+        ));
+    }
+    #[test]
+    fn list_folder_roles_only_returns_rows_for_that_folder() {
+        let mut app = RegistryState::init();
+        app.register_folder_inner(fid("f1"), None, None, None).unwrap();
+        app.register_folder_inner(fid("f2"), None, None, None).unwrap();
+        app.claim_owner_inner(&key(1)).unwrap();
+        app.set_folder_role_inner(&key(1), "f1", &key(2), Role::Viewer)
+            .unwrap();
+        app.set_folder_role_inner(&key(1), "f1", &key(3), Role::Manager)
+            .unwrap();
+        app.set_folder_role_inner(&key(1), "f2", &key(2), Role::Viewer)
+            .unwrap();
+        let mut rows = app.list_folder_roles_inner("f1").unwrap();
+        rows.sort_by(|a, b| a.member.cmp(&b.member));
+        assert_eq!(rows.len(), 2);
+        assert!(rows
+            .iter()
+            .any(|r| r.member == key(2) && r.role == Role::Viewer));
+        assert!(rows
+            .iter()
+            .any(|r| r.member == key(3) && r.role == Role::Manager));
+        assert_eq!(app.list_folder_roles_inner("f2").unwrap().len(), 1);
+    }
+    #[test]
+    fn unregister_folder_purges_its_roles() {
+        let mut app = with_owner_and_folder(&key(1));
+        app.set_folder_role_inner(&key(1), "f1", &key(2), Role::Viewer)
+            .unwrap();
+        app.unregister_folder_inner(fid("f1")).unwrap();
+        assert!(app.list_folder_roles_inner("f1").unwrap().is_empty());
+        // and a fresh, distinct folder id has no inherited rows:
+        app.register_folder_inner(fid("f2"), None, None, None).unwrap();
+        assert_eq!(
+            app.get_folder_role_inner("f2", &key(2)).unwrap(),
+            Role::Editor
+        );
+    }
+    #[test]
+    fn role_key_uses_unit_separator_and_is_unambiguous() {
+        // "a" + member vs "a\u{1f}..." prefix must not collide with "a\u{1f}b" + member
+        let k1 = super::role_key("a", &key(1));
+        let k2 = super::role_key("a\u{1f}b", &key(1));
+        assert_ne!(k1, k2);
+        assert!(k1.starts_with(&super::role_key_prefix("a")));
+        assert!(!k1.starts_with(&super::role_key_prefix("a\u{1f}b")));
+    }
+}
