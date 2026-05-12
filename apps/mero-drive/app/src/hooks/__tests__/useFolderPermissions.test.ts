@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useFolderPermissions } from '../useFolderPermissions';
-import { CAP } from '../../constants/config';
+import { CAPABILITIES } from '../../constants/config';
 
-// useFolderPermissions delegates to useMemberCaps, which now fetches
-// both role and capabilities directly via mero.admin (no dependency
-// on mero-react's useGroupCapabilities). Tests drive the mero.admin
-// mocks directly.
+// useFolderPermissions delegates to useMemberCaps, which fetches both
+// role and capabilities directly via mero.admin (no dependency on
+// mero-react's useGroupCapabilities). Tests drive the mero.admin mocks
+// directly. Bit checks use core's `MemberCapabilities` layout
+// (re-exported as CAPABILITIES from constants/config).
 const listMembersMock = vi.fn();
 const getMemberCapsMock = vi.fn();
 // Stable mero ref — useMemberCaps's effect deps include `mero`, so a
@@ -38,6 +39,8 @@ vi.mock('../useDriveWorkspace', () => ({
   }),
 }));
 
+const C = CAPABILITIES;
+
 describe('useFolderPermissions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -53,24 +56,35 @@ describe('useFolderPermissions', () => {
     return renderHook(() => useFolderPermissions('ns', 'folder-1'));
   };
 
-  it('READ permits canRead only', async () => {
-    const { result } = renderWithCaps(CAP.READ);
+  it('CAN_CREATE_SUBGROUP permits canCreateSubfolder only', async () => {
+    const { result } = renderWithCaps(C.CAN_CREATE_SUBGROUP);
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.canRead).toBe(true);
-    expect(result.current.canWrite).toBe(false);
-  });
-
-  it('WRITE permits write, not delete', async () => {
-    const { result } = renderWithCaps(CAP.READ | CAP.WRITE);
-    await waitFor(() => expect(result.current.canWrite).toBe(true));
+    expect(result.current.isMember).toBe(true);
+    expect(result.current.canCreateSubfolder).toBe(true);
+    expect(result.current.canRename).toBe(false);
+    expect(result.current.canManageVisibility).toBe(false);
     expect(result.current.canDelete).toBe(false);
+    expect(result.current.canInviteMembers).toBe(false);
+    expect(result.current.canManageMembers).toBe(false);
+    // canCreateSubfolder is not "admin-ish" so the aggregate stays false.
+    expect(result.current.canManageGroup).toBe(false);
   });
 
-  it('MANAGE_GROUP permits delete + rename + visibility', async () => {
-    const { result } = renderWithCaps(CAP.MANAGE_GROUP);
-    await waitFor(() => expect(result.current.canDelete).toBe(true));
-    expect(result.current.canRename).toBe(true);
+  it('CAN_MANAGE_METADATA permits canRename + canManageGroup, not delete', async () => {
+    const { result } = renderWithCaps(C.CAN_MANAGE_METADATA);
+    await waitFor(() => expect(result.current.canRename).toBe(true));
     expect(result.current.canManageGroup).toBe(true);
+    expect(result.current.canDelete).toBe(false);
+    expect(result.current.canManageVisibility).toBe(false);
+  });
+
+  it('MANAGE_MEMBERS|CAN_INVITE_MEMBERS permits both + canManageGroup', async () => {
+    const { result } = renderWithCaps(C.MANAGE_MEMBERS | C.CAN_INVITE_MEMBERS);
+    await waitFor(() => expect(result.current.canManageMembers).toBe(true));
+    expect(result.current.canInviteMembers).toBe(true);
+    expect(result.current.canManageGroup).toBe(true);
+    expect(result.current.canRename).toBe(false);
+    expect(result.current.canDelete).toBe(false);
   });
 
   it('Admin role short-circuits to all caps (no getMemberCapabilities call)', async () => {
@@ -79,8 +93,23 @@ describe('useFolderPermissions', () => {
     });
     const { result } = renderHook(() => useFolderPermissions('ns', 'folder-1'));
     await waitFor(() => expect(result.current.canDelete).toBe(true));
+    expect(result.current.isMember).toBe(true);
+    expect(result.current.canRename).toBe(true);
+    expect(result.current.canManageVisibility).toBe(true);
+    expect(result.current.canInviteMembers).toBe(true);
+    expect(result.current.canManageMembers).toBe(true);
+    expect(result.current.canCreateSubfolder).toBe(true);
     expect(result.current.canManageGroup).toBe(true);
     expect(getMemberCapsMock).not.toHaveBeenCalled();
+  });
+
+  it('null caps → loading true, isMember false', async () => {
+    // Drop the identity so the hook short-circuits to its loading state
+    // (caps stay null) — exercises the loading/isMember boundary.
+    identityMock.value = null;
+    const { result } = renderHook(() => useFolderPermissions('ns', 'folder-1'));
+    expect(result.current.loading).toBe(true);
+    expect(result.current.isMember).toBe(false);
   });
 
   it('surfaces non-propagation errors without retrying forever', async () => {
@@ -88,24 +117,26 @@ describe('useFolderPermissions', () => {
     listMembersMock.mockRejectedValue(boom);
     const { result } = renderHook(() => useFolderPermissions('ns', 'folder-x'));
     await waitFor(() => expect(result.current.error).toBe(boom));
-    expect(result.current.canRead).toBe(false);
+    expect(result.current.canManageGroup).toBe(false);
   });
 
   it('Open subgroup: inherited namespace member gets the real cap mask from core', async () => {
     // Per core PR #2261, listGroupMembers + getMemberCapabilities now
     // resolve via the parent-walk for Open subgroups. The hook just
-    // forwards what core returns; no app-layer fallback.
+    // forwards what core returns; no app-layer fallback. A namespace
+    // member with the default-on join bit who's been granted real
+    // folder caps (here CAN_CREATE_SUBGROUP) sees those caps.
     listMembersMock.mockResolvedValue({
       members: [{ identity: 'me', role: 'Member' }],
     });
     getMemberCapsMock.mockResolvedValue({
-      capabilities: CAP.READ | CAP.WRITE,
+      capabilities: C.CAN_JOIN_OPEN_SUBGROUPS | C.CAN_CREATE_SUBGROUP,
     });
     const { result } = renderHook(() =>
       useFolderPermissions('ns', 'folder-1'),
     );
-    await waitFor(() => expect(result.current.canWrite).toBe(true));
-    expect(result.current.canRead).toBe(true);
+    await waitFor(() => expect(result.current.canCreateSubfolder).toBe(true));
+    expect(result.current.isMember).toBe(true);
     expect(result.current.error).toBeNull();
   });
 });

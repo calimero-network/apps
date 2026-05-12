@@ -127,22 +127,27 @@ vi.mock('@/components/ui/confirm-dialog', async () => {
 });
 
 const noFolderPerms = {
-  canRead: false,
-  canWrite: false,
+  isMember: false,
   canCreateSubfolder: false,
   canRename: false,
+  canManageVisibility: false,
   canDelete: false,
-  canManageGroup: false,
   canInviteMembers: false,
   canManageMembers: false,
+  canManageGroup: false,
   loading: false,
   error: null,
 };
 
 const noNsPerms = {
-  canCreateSubgroup: false,
+  canCreateFolder: false,
+  canJoinOpenFolders: false,
+  canCreateContext: false,
+  canManageVisibility: false,
+  canManageMetadata: false,
+  canInviteMembers: false,
+  canManageMembers: false,
   canManageNamespace: false,
-  canManageNamespaceMembers: false,
   loading: false,
   error: null,
 };
@@ -194,24 +199,24 @@ describe('permission-gating', () => {
     expect(screen.getByPlaceholderText('identity pubkey')).toBeTruthy();
   });
 
-  it('FolderVisibilityToggle renders nothing without canManageGroup', () => {
+  it('FolderVisibilityToggle renders nothing without canManageVisibility', () => {
     (useFolderPermissions as ReturnType<typeof vi.fn>).mockReturnValue(noFolderPerms);
     render(<FolderVisibilityToggle folderId="f1" current="Open" />);
     expect(screen.queryByText(/Make restricted/i)).toBeNull();
     expect(screen.queryByText(/Make open/i)).toBeNull();
   });
 
-  it('NewFolderButton renders nothing for root without canCreateSubgroup', () => {
+  it('NewFolderButton renders nothing for root without canCreateFolder', () => {
     (useNamespacePermissions as ReturnType<typeof vi.fn>).mockReturnValue(noNsPerms);
     (useFolderPermissions as ReturnType<typeof vi.fn>).mockReturnValue(noFolderPerms);
     render(<NewFolderButton parentFolderId={null} />);
     expect(screen.queryByRole('button', { name: /New folder/i })).toBeNull();
   });
 
-  it('NewFolderButton renders when the caller has canCreateSubgroup', () => {
+  it('NewFolderButton renders when the caller has canCreateFolder', () => {
     (useNamespacePermissions as ReturnType<typeof vi.fn>).mockReturnValue({
       ...noNsPerms,
-      canCreateSubgroup: true,
+      canCreateFolder: true,
     });
     (useFolderPermissions as ReturnType<typeof vi.fn>).mockReturnValue(noFolderPerms);
     render(<NewFolderButton parentFolderId={null} />);
