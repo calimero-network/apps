@@ -257,13 +257,15 @@ jobs:
           # delete_group, delete_namespace, multi-namespace isolation.
           - name: namespace-lifecycle
             file: workflow-mero-drive-namespace-lifecycle.yml
-          # Open/Restricted folders + registry permissions — 2-node collab
-          # scenario (default member caps, Open-folder inheritance with NO
-          # add_group_members, per-folder Role round-trip, Restricted
-          # denial→grant→access). Two negative-cap steps are stubbed inline
-          # pending a merobox release with #214/#236 + the #2338 metadata steps.
-          - name: open-restricted-collab
-            file: workflow-mero-drive-open-restricted-collab.yml
+          # NOTE: e2e/workflow-mero-drive-open-restricted-collab.yml (open/
+          # restricted folders + registry permissions) is tracked but NOT in
+          # the matrix yet — same as workflow-mero-drive-open-subgroup.yml. It
+          # runs clean through the new permission paths (verified via
+          # workflow_dispatch) but, like the `main` cell, it flakes on
+          # `wait_for_sync` over subgroup-owned docs contexts (the core
+          # SyncSessionActor wedge tracked in core#2199/#2238). Wire it in once
+          # that's resolved and a merobox release ships #214/#236 + #2338's
+          # metadata steps (for the two negative-cap steps stubbed inline).
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
