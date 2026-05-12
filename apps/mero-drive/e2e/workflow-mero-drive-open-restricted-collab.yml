@@ -313,7 +313,9 @@ steps:
   - name: Assert Bob's Shared-folder role == Editor
     type: assert
     statements:
-      - "equal('{{bob_open_role}}', 'Editor')"
+      # merobox auto-quotes string variables during {{...}} substitution, so
+      # `{{bob_open_role}}` already expands to `'Editor'` — don't wrap it again.
+      - "equal({{bob_open_role}}, 'Editor')"
 
   # =================================================================
   # Phase F: Cross-node edit/verify rounds on the shared doc.
@@ -784,7 +786,7 @@ steps:
   - name: Assert Bob's Private-folder role == Viewer
     type: assert
     statements:
-      - "equal('{{bob_priv_role}}', 'Viewer')"
+      - "equal({{bob_priv_role}}, 'Viewer')"
 
   - name: Alice lists the Private folder's explicit role rows
     type: call
