@@ -23,7 +23,11 @@ import { CAPABILITIES, hasCap } from '../constants/config';
 import { useMemberCaps } from './useMemberCaps';
 
 export interface FolderPermissions {
-  /** Member of the folder subgroup at all (caps fetch succeeded). */
+  /** Member of the folder subgroup at all — true only when the caps
+   *  fetch *succeeded* (`caps !== null && error === null`). A genuine
+   *  member with the empty bitmask still has `caps === 0, error === null`
+   *  so they count; a failed fetch (`caps === 0, error !== null`) does
+   *  NOT, so consumers don't render write affordances on error. */
   isMember: boolean;
   /** Create a *sub*folder — note core only allows subgroups directly
    *  under the namespace root, so this is effectively a namespace-scope
@@ -57,13 +61,18 @@ export function useFolderPermissions(
   const canManageMembers = has(CAPABILITIES.MANAGE_MEMBERS);
   const canCreateSubfolder = has(CAPABILITIES.CAN_CREATE_SUBGROUP);
   return {
-    isMember: caps !== null,
+    isMember: caps !== null && error === null,
     canCreateSubfolder,
     canRename,
     canManageVisibility,
     canDelete,
     canInviteMembers,
     canManageMembers,
+    // Aggregate "folder-admin-ish" power — the union of the per-cap
+    // grants. Used to reveal the sharing-panel admin section / context-
+    // menu admin items. (Mirrors `canManageGroup` in namespace perms;
+    // deliberately excludes `canCreateSubfolder`, which is a namespace-
+    // scope grant, not a folder-admin signal.)
     canManageGroup:
       canRename ||
       canManageVisibility ||

@@ -120,6 +120,22 @@ describe('useFolderPermissions', () => {
     expect(result.current.canManageGroup).toBe(false);
   });
 
+  it('caps-fetch error → isMember false (NOT writable on error)', async () => {
+    // useMemberCaps reports `caps = 0, error = Error` when retries are
+    // exhausted. `isMember` must be false here — otherwise consumers
+    // that gate on `perms.isMember` (e.g. the doc editor's
+    // `canEditDocs`) would become writable on a transient fetch
+    // failure, a regression from the old `canWrite` (false on error
+    // since caps=0 has no bits set).
+    const boom = new Error('caps service unavailable');
+    getMemberCapsMock.mockRejectedValue(boom);
+    const { result } = renderHook(() => useFolderPermissions('ns', 'folder-y'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBe(boom);
+    expect(result.current.isMember).toBe(false);
+    expect(result.current.canManageGroup).toBe(false);
+  });
+
   it('Open subgroup: inherited namespace member gets the real cap mask from core', async () => {
     // Per core PR #2261, listGroupMembers + getMemberCapabilities now
     // resolve via the parent-walk for Open subgroups. The hook just
