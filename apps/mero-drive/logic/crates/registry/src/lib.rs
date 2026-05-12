@@ -47,6 +47,7 @@ use calimero_storage::collections::{FrozenValue, LwwRegister, Mergeable, Unorder
 use mero_drive_types::DriveError;
 
 pub mod events;
+pub mod permissions;
 use events::Event;
 
 // ---------------------------------------------------------------------------
@@ -81,6 +82,33 @@ pub enum Visibility {
     #[default]
     Inherit,
     Restricted,
+}
+
+/// Per-folder collaborator role. **Re-declared here** — it also lives in
+/// `mero_drive_types::Role` — because the `calimero-wasm-abi` emitter only
+/// parses this crate's `lib.rs` + `events.rs` (same reason `FolderId` /
+/// `Visibility` are duplicated). Keep the two definitions in sync.
+#[derive(
+    Debug, Default, Clone, Copy, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
+)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub enum Role {
+    Viewer,
+    #[default]
+    Editor,
+    Manager,
+}
+
+/// One explicit per-member role row for a folder (what `list_folder_roles`
+/// returns). Members not present have the implicit `Editor` role.
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct FolderRoleEntry {
+    /// base58-encoded member public key.
+    pub member: String,
+    pub role: Role,
 }
 
 // ---------------------------------------------------------------------------
@@ -202,6 +230,15 @@ pub struct RegistryState {
     folder_contexts: UnorderedMap<String, FrozenValue<ContextId>>,
     /// parent_id-or-empty → LWW list of child folder ids in display order
     sort_order: UnorderedMap<String, LwwRegister<Vec<String>>>,
+    /// base58 public key of the registry owner (the namespace creator).
+    /// Empty until `claim_owner` is called once; never reassigned after that.
+    owner: LwwRegister<String>,
+    /// base58 public keys granted manager rights over the whole registry
+    /// (may set/clear any folder role). The owner is implicitly a manager
+    /// and is NOT stored here. Set-as-map: value is an inert `FrozenValue`.
+    managers: UnorderedMap<String, FrozenValue<()>>,
+    /// `role_key(folder_id, member_b58)` → role. Absent ⇒ `Role::Editor`.
+    folder_roles: UnorderedMap<String, LwwRegister<Role>>,
 }
 
 #[app::logic]
@@ -212,6 +249,9 @@ impl RegistryState {
             folders: UnorderedMap::new_with_field_name("registry:folders"),
             folder_contexts: UnorderedMap::new_with_field_name("registry:folder_contexts"),
             sort_order: UnorderedMap::new_with_field_name("registry:sort_order"),
+            owner: LwwRegister::new(String::new()),
+            managers: UnorderedMap::new_with_field_name("registry:managers"),
+            folder_roles: UnorderedMap::new_with_field_name("registry:folder_roles"),
         }
     }
 
