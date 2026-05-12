@@ -244,8 +244,10 @@ pub struct RegistryState {
     owner: LwwRegister<String>,
     /// base58 public keys granted manager rights over the whole registry
     /// (may set/clear any folder role). The owner is implicitly a manager
-    /// and is NOT stored here. Set-as-map: value is an inert `FrozenValue`.
-    managers: UnorderedMap<String, FrozenValue<()>>,
+    /// and is NOT stored here. Value `true` = is a manager, `false` =
+    /// removed (kept around so the key is never CRDT-tombstoned — a
+    /// `remove` would silently swallow a later re-add of the same key).
+    managers: UnorderedMap<String, LwwRegister<bool>>,
     /// `role_key(folder_id, member_b58)` → role. Absent ⇒ `Role::Editor`.
     folder_roles: UnorderedMap<String, LwwRegister<Role>>,
 }
@@ -323,8 +325,11 @@ impl RegistryState {
         }
         // Removing the folder also clears any context binding.
         let _ = self.folder_contexts.remove(&id.0);
-        // Drop any per-member role rows for this folder (CRDT-tombstoned —
-        // documented alongside the FolderId tombstone semantics).
+        // Drop any per-member role rows for this folder. These ARE
+        // CRDT-tombstoned (unlike the live clear_folder_role path), which is
+        // correct here: an unregistered folder id is itself tombstoned in
+        // `folders` and can never be re-registered, so its role rows should
+        // stay gone too.
         self.purge_folder_roles(&id.0)?;
         Ok(())
     }

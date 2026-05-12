@@ -3,7 +3,7 @@
 //! that call these live in `lib.rs` (ABI-emitter constraint); the gating,
 //! key encoding, and `_inner` mutators live here.
 
-use calimero_storage::collections::{FrozenValue, LwwRegister};
+use calimero_storage::collections::LwwRegister;
 use mero_drive_types::DriveError;
 
 use crate::{FolderRoleEntry, RegistryState, Role};
@@ -51,9 +51,11 @@ impl RegistryState {
         if owner == caller {
             return Ok(true);
         }
-        self.managers
-            .contains(&caller.to_string())
-            .map_err(|e| DriveError::Invalid(format!("managers.contains: {e}")))
+        let reg = self
+            .managers
+            .get(&caller.to_string())
+            .map_err(|e| DriveError::Invalid(format!("managers.get: {e}")))?;
+        Ok(matches!(reg.as_ref().map(|r| *r.get()), Some(true)))
     }
 
     pub(crate) fn require_admin(&self, caller: &str) -> Result<(), DriveError> {
@@ -86,8 +88,9 @@ impl RegistryState {
         }
     }
 
-    /// Owner-only. Validates `member` as base58. Re-adding an existing
-    /// manager is a no-op success.
+    /// Owner-only. Validates `member` as base58. Re-adding / re-granting an
+    /// existing or previously-removed manager succeeds (a fresh `LwwRegister`
+    /// with the current HLC always wins — the key is never tombstoned).
     pub(crate) fn add_manager_inner(
         &mut self,
         caller: &str,
@@ -104,12 +107,14 @@ impl RegistryState {
             return Err(DriveError::Invalid("owner is implicitly a manager".into()));
         }
         self.managers
-            .insert(member, FrozenValue::from(()))
+            .insert(member, LwwRegister::new(true))
             .map_err(|e| DriveError::Invalid(format!("managers.insert: {e}")))?;
         Ok(())
     }
 
-    /// Owner-only. `NotFound` if `member` is not currently a manager.
+    /// Owner-only. `NotFound` if `member` is not currently a manager. Does
+    /// not `remove` the key — it sets the value to `false` so a later
+    /// `add_manager` of the same key isn't swallowed by a tombstone.
     pub(crate) fn remove_manager_inner(
         &mut self,
         caller: &str,
@@ -122,14 +127,20 @@ impl RegistryState {
             ));
         }
         let member = validate_member_key(member)?;
-        let removed = self
+        let reg = self
             .managers
-            .remove(&member)
-            .map_err(|e| DriveError::Invalid(format!("managers.remove: {e}")))?;
-        if removed.is_none() {
-            return Err(DriveError::NotFound(member));
+            .get(&member)
+            .map_err(|e| DriveError::Invalid(format!("managers.get: {e}")))?;
+        match reg {
+            Some(mut reg) if *reg.get() => {
+                reg.set(false);
+                self.managers
+                    .insert(member, reg)
+                    .map_err(|e| DriveError::Invalid(format!("managers.insert: {e}")))?;
+                Ok(())
+            }
+            _ => Err(DriveError::NotFound(member)),
         }
-        Ok(())
     }
 
     pub(crate) fn list_managers_inner(&self) -> Result<Vec<String>, DriveError> {
@@ -137,7 +148,10 @@ impl RegistryState {
             .managers
             .entries()
             .map_err(|e| DriveError::Invalid(format!("managers.entries: {e}")))?;
-        Ok(entries.map(|(k, _)| k).collect())
+        Ok(entries
+            .filter(|(_, reg)| *reg.get())
+            .map(|(k, _)| k)
+            .collect())
     }
 
     /// Admin-gated (owner or manager). Folder must exist. Validates `member`.
@@ -163,8 +177,11 @@ impl RegistryState {
         Ok(())
     }
 
-    /// Admin-gated. Removes the explicit row (member falls back to `Editor`).
-    /// `NotFound` if there was no row.
+    /// Admin-gated. Resets the member to the implicit `Editor` role;
+    /// idempotent (clearing an already-default/absent member is a harmless
+    /// no-op success). Does not `remove` the row — it overwrites it with
+    /// `Editor` so the key is never tombstoned (a later `set_folder_role`
+    /// of the same folder+member would otherwise be swallowed).
     pub(crate) fn clear_folder_role_inner(
         &mut self,
         caller: &str,
@@ -173,13 +190,9 @@ impl RegistryState {
     ) -> Result<(), DriveError> {
         self.require_admin(caller)?;
         let member = validate_member_key(member)?;
-        let removed = self
-            .folder_roles
-            .remove(&role_key(folder_id, &member))
-            .map_err(|e| DriveError::Invalid(format!("folder_roles.remove: {e}")))?;
-        if removed.is_none() {
-            return Err(DriveError::NotFound(format!("{folder_id}/{member}")));
-        }
+        self.folder_roles
+            .insert(role_key(folder_id, &member), LwwRegister::new(Role::Editor))
+            .map_err(|e| DriveError::Invalid(format!("folder_roles.insert: {e}")))?;
         Ok(())
     }
 
@@ -220,7 +233,9 @@ impl RegistryState {
     }
 
     /// Drop every per-member role row for a folder (called from
-    /// `unregister_folder_inner`).
+    /// `unregister_folder_inner`). Uses `remove` deliberately — the folder id
+    /// is tombstoned in `folders` and can never be re-registered, so
+    /// tombstoning its role rows too is correct and consistent.
     pub(crate) fn purge_folder_roles(&mut self, folder_id: &str) -> Result<(), DriveError> {
         let prefix = role_key_prefix(folder_id);
         let stale: Vec<String> = self
@@ -340,11 +355,33 @@ mod tests {
         assert!(!app.is_admin(&key(2)).unwrap());
     }
     #[test]
+    fn re_add_removed_manager_works() {
+        // Regression: remove then re-add of the same key must not be
+        // swallowed by a CRDT tombstone (the bug Fix 1a addresses).
+        let mut app = RegistryState::init();
+        app.claim_owner_inner(&key(1)).unwrap();
+        app.add_manager_inner(&key(1), &key(2)).unwrap();
+        app.remove_manager_inner(&key(1), &key(2)).unwrap();
+        assert!(!app.is_admin(&key(2)).unwrap());
+        assert!(app.list_managers_inner().unwrap().is_empty());
+        app.add_manager_inner(&key(1), &key(2)).unwrap();
+        assert!(app.is_admin(&key(2)).unwrap());
+        assert_eq!(app.list_managers_inner().unwrap(), vec![key(2)]);
+    }
+    #[test]
     fn remove_unknown_manager_is_not_found() {
         let mut app = RegistryState::init();
         app.claim_owner_inner(&key(1)).unwrap();
         assert!(matches!(
             app.remove_manager_inner(&key(1), &key(9)).unwrap_err(),
+            DriveError::NotFound(_)
+        ));
+        // After add + remove, the value is `false` — a second remove of the
+        // same key is also NotFound (not a no-op success).
+        app.add_manager_inner(&key(1), &key(2)).unwrap();
+        app.remove_manager_inner(&key(1), &key(2)).unwrap();
+        assert!(matches!(
+            app.remove_manager_inner(&key(1), &key(2)).unwrap_err(),
             DriveError::NotFound(_)
         ));
     }
@@ -422,13 +459,35 @@ mod tests {
         );
     }
     #[test]
-    fn clear_folder_role_no_row_is_not_found() {
+    fn clear_folder_role_is_idempotent_and_sets_editor() {
         let mut app = with_owner_and_folder(&key(1));
-        assert!(matches!(
-            app.clear_folder_role_inner(&key(1), "f1", &key(7))
-                .unwrap_err(),
-            DriveError::NotFound(_)
-        ));
+        // Clearing a never-set member is a no-op success.
+        app.clear_folder_role_inner(&key(1), "f1", &key(7)).unwrap();
+        assert_eq!(
+            app.get_folder_role_inner("f1", &key(7)).unwrap(),
+            Role::Editor
+        );
+        // ...and calling it again is still Ok.
+        app.clear_folder_role_inner(&key(1), "f1", &key(7)).unwrap();
+        assert_eq!(
+            app.get_folder_role_inner("f1", &key(7)).unwrap(),
+            Role::Editor
+        );
+    }
+    #[test]
+    fn set_folder_role_after_clear_works() {
+        // Regression: set → clear → set must not be swallowed by a tombstone
+        // (the bug Fix 1b addresses).
+        let mut app = with_owner_and_folder(&key(1));
+        app.set_folder_role_inner(&key(1), "f1", &key(7), Role::Viewer)
+            .unwrap();
+        app.clear_folder_role_inner(&key(1), "f1", &key(7)).unwrap();
+        app.set_folder_role_inner(&key(1), "f1", &key(7), Role::Manager)
+            .unwrap();
+        assert_eq!(
+            app.get_folder_role_inner("f1", &key(7)).unwrap(),
+            Role::Manager
+        );
     }
     #[test]
     fn clear_folder_role_requires_admin() {
