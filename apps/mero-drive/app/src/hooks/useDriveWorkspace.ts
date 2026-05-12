@@ -324,9 +324,10 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   //
   // `listSubgroups` is broken upstream (mero-js unwraps `.data` from a
   // response whose actual wire shape is `{subgroups: [...]}`) so we
-  // can't read folder aliases from the subgroup list. `getGroupInfo`
-  // IS correctly shaped (`{data: {..., alias}}`) — unwrap works. We
-  // fan out one getGroupInfo per folder and cache by id.
+  // can't read folder names from the subgroup list. `getGroupInfo`
+  // IS correctly shaped (`{data: {..., metadata}}`) — unwrap works,
+  // and the human-readable name lives at `metadata.name` per core
+  // #2338. We fan out one getGroupInfo per folder and cache by id.
   //
   // `aliasRevision` bumps on refetch() so rename flows re-fetch even
   // though the folder id set hasn't changed.
@@ -356,7 +357,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
             (info) =>
               [
                 id,
-                info?.alias ?? null,
+                info?.metadata?.name ?? null,
                 info?.subgroupVisibility ?? null,
               ] as const,
           )
@@ -389,13 +390,13 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     if (!rootGroupId) return [];
     const admin: AdminSubgroup[] = regFolders.map((f) => {
       const aliasFromCache = aliases.get(f.id);
-      const aliasFromSubgroups = (subgroups ?? []).find(
+      const nameFromSubgroups = (subgroups ?? []).find(
         (s) => s.groupId === f.id,
-      )?.alias;
+      )?.name;
       return {
         groupId: f.id,
         parent_id: f.parent_id,
-        alias: aliasFromCache ?? aliasFromSubgroups,
+        name: aliasFromCache ?? nameFromSubgroups,
       };
     });
     return mergeAdminAndRegistry(admin, regFolders, rootGroupId, visibilities)
@@ -428,7 +429,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         const ns = await mero.admin.createNamespace({
           applicationId,
           upgradePolicy: 'Automatic',
-          alias,
+          name: alias,
         });
         if (!ns?.namespaceId) {
           throw new Error('createNamespace returned no namespaceId');

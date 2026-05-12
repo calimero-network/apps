@@ -11,14 +11,16 @@
 // imported by `useDriveWorkspace`, the merge unit tests, and the
 // FolderTreeItem UI component.
 //
-// Admin subgroup entries use `{ groupId, alias? }` (per mero-js's
-// SubgroupEntry type). Registry entries use `{ id, parent_id, … }`
-// (per the generated FolderDto). The merge reconciles the two shapes.
+// Admin subgroup entries use `{ groupId, name? }` (per mero-js's
+// SubgroupEntry type — `alias` was renamed to `name` in core #2338).
+// Registry entries use `{ id, parent_id, … }` (per the generated
+// FolderDto, which still carries `alias`). The merge reconciles the
+// two shapes.
 
 export interface AdminSubgroup {
   groupId: string;
   parent_id: string | null;
-  alias?: string;
+  name?: string;
 }
 
 export interface RegistryFolderShape {
@@ -44,7 +46,7 @@ export interface MergedFolder {
 
 // The registry WASM is the authoritative source of "which folders
 // exist" (it owns the tree shape + color + context binding). Admin-
-// side subgroups contribute `alias` (human-readable name) and
+// side subgroups contribute `name` (human-readable name) and
 // `subgroup_visibility` (Open vs Restricted, per core PR #2261).
 // Iterate the registry list so that folders show up even when
 // mero-js's listSubgroups is broken (it expects a `{data}` wrapper
@@ -65,11 +67,11 @@ export function mergeAdminAndRegistry(
     .map((r) => {
       const a = adminById.get(r.id);
       // Preference order: registry alias (visible to all namespace
-      // members) → admin alias (only visible to subgroup members) →
+      // members) → admin name (only visible to subgroup members) →
       // truncated id stub (fallback for folders older than the
       // registry alias field).
       const alias =
-        r.alias ?? a?.alias ?? `folder-${r.id.slice(0, 8)}`;
+        r.alias ?? a?.name ?? `folder-${r.id.slice(0, 8)}`;
       return {
         id: r.id,
         parent_id: r.parent_id,

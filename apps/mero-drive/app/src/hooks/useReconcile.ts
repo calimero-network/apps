@@ -93,7 +93,7 @@ export function useReconcile(
         return {
           id: s.groupId,
           parent_id: fromReg ? fromReg.parent_id : null,
-          alias: s.alias,
+          alias: s.name,
         };
       });
       const regShape = regFolders.map((f) => ({
