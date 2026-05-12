@@ -170,7 +170,7 @@ export function FolderSharingPanel({ folderId }: Props) {
           </li>
         )}
         {members.map((m) => {
-          const label = m.alias ?? `${m.identity.slice(0, 8)}…`;
+          const label = m.name ?? `${m.identity.slice(0, 8)}…`;
           const rowErr =
             removeError?.identity === m.identity ? removeError.message : null;
           return (

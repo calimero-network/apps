@@ -3,13 +3,13 @@ import { mergeAdminAndRegistry } from '../useWorkspaceTree';
 
 describe('mergeAdminAndRegistry', () => {
   // Registry is the source of truth for existence + tree shape; admin
-  // side contributes `alias`, and the optional visibilityById map
-  // (sourced from core's GroupInfo per PR #2261) contributes the
-  // subgroup_visibility. The merge iterates registry and enriches
-  // each entry from both side channels.
+  // side contributes `name` (was `alias` pre-#2338), and the optional
+  // visibilityById map (sourced from core's GroupInfo per PR #2261)
+  // contributes the subgroup_visibility. The merge iterates registry
+  // and enriches each entry from both side channels.
   const admin = [
-    { groupId: 'a', parent_id: 'r', alias: 'A' },
-    { groupId: 'b', parent_id: 'a', alias: 'B' },
+    { groupId: 'a', parent_id: 'r', name: 'A' },
+    { groupId: 'b', parent_id: 'a', name: 'B' },
   ];
   const registry = [
     { id: 'a', parent_id: 'r', color: '#f00' },

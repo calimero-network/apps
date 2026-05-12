@@ -54,7 +54,7 @@ export function NamespaceSwitcher() {
         </option>
         {namespaces.map((n) => (
           <option key={n.namespaceId} value={n.namespaceId}>
-            {n.alias ?? n.namespaceId.slice(0, 8)}
+            {n.name ?? n.namespaceId.slice(0, 8)}
           </option>
         ))}
       </select>

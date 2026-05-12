@@ -31,7 +31,7 @@ export function NamespaceMembersPanel() {
     (n) => n.namespaceId === namespaceId,
   );
   const aliasLabel =
-    currentNamespace?.alias ??
+    currentNamespace?.name ??
     (namespaceId ? `${namespaceId.slice(0, 8)}…` : 'this workspace');
 
   // Read-only viewers see the panel but can't mutate. We don't
@@ -119,7 +119,7 @@ export function NamespaceMembersPanel() {
             key={m.identity}
             groupId={rootGroupId}
             identity={m.identity}
-            label={m.alias ?? `${m.identity.slice(0, 8)}…`}
+            label={m.name ?? `${m.identity.slice(0, 8)}…`}
             role={m.role}
             canManage={perms.canManageNamespaceMembers}
             onRemove={onRemove}
