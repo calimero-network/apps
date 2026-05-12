@@ -314,6 +314,9 @@ impl RegistryState {
         }
         // Removing the folder also clears any context binding.
         let _ = self.folder_contexts.remove(&id.0);
+        // Drop any per-member role rows for this folder (CRDT-tombstoned —
+        // documented alongside the FolderId tombstone semantics).
+        self.purge_folder_roles(&id.0)?;
         Ok(())
     }
 
@@ -538,6 +541,91 @@ impl RegistryState {
             Some(r) => r.get().iter().cloned().map(FolderId).collect(),
             None => Vec::new(),
         })
+    }
+
+    // ---- permissions: owner / managers ----------------------------------
+
+    pub fn claim_owner(&mut self) -> app::Result<()> {
+        let caller = permissions::caller_b58().map_err(|e| AppError::msg(e.to_string()))?;
+        self.claim_owner_inner(&caller)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        app::emit!(Event::OwnerClaimed { owner: &caller });
+        Ok(())
+    }
+
+    pub fn get_owner(&self) -> app::Result<Option<String>> {
+        let o = self.owner_b58();
+        Ok(if o.is_empty() { None } else { Some(o) })
+    }
+
+    pub fn add_manager(&mut self, member: String) -> app::Result<()> {
+        let caller = permissions::caller_b58().map_err(|e| AppError::msg(e.to_string()))?;
+        let member_for_event = member.clone();
+        self.add_manager_inner(&caller, &member)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        app::emit!(Event::ManagerAdded {
+            member: &member_for_event
+        });
+        Ok(())
+    }
+
+    pub fn remove_manager(&mut self, member: String) -> app::Result<()> {
+        let caller = permissions::caller_b58().map_err(|e| AppError::msg(e.to_string()))?;
+        let member_for_event = member.clone();
+        self.remove_manager_inner(&caller, &member)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        app::emit!(Event::ManagerRemoved {
+            member: &member_for_event
+        });
+        Ok(())
+    }
+
+    pub fn list_managers(&self) -> app::Result<Vec<String>> {
+        self.list_managers_inner()
+            .map_err(|e| AppError::msg(e.to_string()))
+    }
+
+    // ---- permissions: per-folder roles ----------------------------------
+
+    pub fn set_folder_role(
+        &mut self,
+        folder_id: FolderId,
+        member: String,
+        role: Role,
+    ) -> app::Result<()> {
+        let caller = permissions::caller_b58().map_err(|e| AppError::msg(e.to_string()))?;
+        let fid = folder_id.0.clone();
+        let member_for_event = member.clone();
+        self.set_folder_role_inner(&caller, &folder_id.0, &member, role)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        app::emit!(Event::FolderRoleChanged {
+            folder_id: &fid,
+            member: &member_for_event,
+        });
+        Ok(())
+    }
+
+    pub fn clear_folder_role(&mut self, folder_id: FolderId, member: String) -> app::Result<()> {
+        let caller = permissions::caller_b58().map_err(|e| AppError::msg(e.to_string()))?;
+        let fid = folder_id.0.clone();
+        let member_for_event = member.clone();
+        self.clear_folder_role_inner(&caller, &folder_id.0, &member)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        app::emit!(Event::FolderRoleChanged {
+            folder_id: &fid,
+            member: &member_for_event,
+        });
+        Ok(())
+    }
+
+    pub fn get_folder_role(&self, folder_id: FolderId, member: String) -> app::Result<Role> {
+        self.get_folder_role_inner(&folder_id.0, &member)
+            .map_err(|e| AppError::msg(e.to_string()))
+    }
+
+    pub fn list_folder_roles(&self, folder_id: FolderId) -> app::Result<Vec<FolderRoleEntry>> {
+        self.list_folder_roles_inner(&folder_id.0)
+            .map_err(|e| AppError::msg(e.to_string()))
     }
 }
 

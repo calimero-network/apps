@@ -31,4 +31,18 @@ pub enum Event<'a> {
     FolderVisibilityChanged {
         id: &'a str,
     },
+    OwnerClaimed {
+        owner: &'a str,
+    },
+    ManagerAdded {
+        member: &'a str,
+    },
+    ManagerRemoved {
+        member: &'a str,
+    },
+    /// A folder's per-member role was set or cleared (UI re-fetches the row).
+    FolderRoleChanged {
+        folder_id: &'a str,
+        member: &'a str,
+    },
 }
