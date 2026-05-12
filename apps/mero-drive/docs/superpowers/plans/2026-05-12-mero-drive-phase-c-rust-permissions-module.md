@@ -19,7 +19,7 @@
 - `LwwRegister<T>`: `new(v)`, `get() -> &T`, `set(v)`. Used as a map *value* already (`sort_order: UnorderedMap<String, LwwRegister<Vec<String>>>`), so `UnorderedMap<String, LwwRegister<Role>>` is a proven shape.
 - `FrozenValue<T>` newtype with no-op merge: build with `FrozenValue::from(value)`, read field `.0`. `FrozenValue<()>` is fine for a set-as-map value.
 - `UnorderedMap::remove` **tombstones** — re-inserting a removed key does not revive it. In production every folder gets a fresh random group id, so this never bites; the existing `tombstone_persists_after_unregister` test documents it. Same applies to `managers` / `folder_roles`.
-- Run all Rust commands from the `logic/` directory of the worktree `/Users/beast/Developer/Calimero/mero-drive--open-restricted`. `cargo test` (host target) and `cargo clippy --all-targets -- -D warnings` must be green; `bash build-bundle.sh` (needs sibling `../../core` for signing; warns + produces unsigned bundle otherwise — that's OK) must succeed and refresh `logic/dist/com.calimero.mero-drive-docs-9.0.0.mpk` + the two `res/abi.json` files.
+- Run all Rust commands from the `logic/` directory of the worktree `/Users/beast/Developer/Calimero/mero-drive--open-restricted`. `cargo test` (host target) and `cargo clippy --all-targets -- -D warnings` must be green; `bash build-bundle.sh` (needs sibling `../../core` for signing; warns + produces unsigned bundle otherwise — that's OK) must succeed and refresh `logic/dist/com.calimero.mero-drive-docs-9.1.0.mpk` + the two `res/abi.json` files.
 - **Out of scope for this phase:** removing the existing `set_folder_alias` / `set_visibility` / `FolderRecord.alias` / `FolderRecord.visibility` (vestigial after Phase A but harmless and ABI-stable — a separate cleanup). Do **not** add gating to `register_folder` (any namespace member may register a folder; core gates the subgroup creation). Frontend, merobox, and the `useFolderRole` hook are later phases.
 
 ## Key encoding & helpers (used by several tasks)
@@ -707,10 +707,10 @@ Adjust visibility (`super::role_key` etc.) so the tests compile — `role_key`/`
 
 **Files (build outputs):**
 - `logic/crates/registry/res/abi.json`, `logic/crates/docs/res/abi.json`
-- `logic/dist/com.calimero.mero-drive-docs-9.0.0.mpk`
+- `logic/dist/com.calimero.mero-drive-docs-9.1.0.mpk`
 - (codegen) `app/src/api/registry/*` — regenerate from the new ABI
 
-- [ ] **Step 1:** `cd logic && bash build-bundle.sh`. Expect: "Bundle created: dist/com.calimero.mero-drive-docs-9.0.0.mpk" (with sibling `../../core` present it signs; if not, it warns "bundle will be UNSIGNED" — acceptable). Confirm `git status` shows `logic/crates/registry/res/abi.json` and `logic/dist/...mpk` changed.
+- [ ] **Step 1:** `cd logic && bash build-bundle.sh`. Expect: "Bundle created: dist/com.calimero.mero-drive-docs-9.1.0.mpk" (with sibling `../../core` present it signs; if not, it warns "bundle will be UNSIGNED" — acceptable). Confirm `git status` shows `logic/crates/registry/res/abi.json` and `logic/dist/...mpk` changed.
 
 - [ ] **Step 2:** Regenerate the TS client from the new registry ABI: from the repo root, `pnpm --dir app run codegen` (it runs `calimero-abi-codegen` for both `registry` and `docs`). Confirm `app/src/api/registry/` now contains `claimOwner`/`getOwner`/`addManager`/`removeManager`/`listManagers`/`setFolderRole`/`clearFolderRole`/`getFolderRole`/`listFolderRoles` and the `Role` / `FolderRoleEntry` types.
 

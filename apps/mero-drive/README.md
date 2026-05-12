@@ -36,7 +36,7 @@ pnpm install
 pnpm --dir app install
 
 # 2. Build the WASM bundle (.mpk)
-pnpm run logic:build            # builds both crates + packages logic/dist/com.calimero.mero-drive-docs-9.0.0.mpk
+pnpm run logic:build            # builds both crates + packages logic/dist/com.calimero.mero-drive-docs-9.1.0.mpk
 
 # 3. Bootstrap a local node + install the bundle
 pnpm run network:bootstrap
