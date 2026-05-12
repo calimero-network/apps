@@ -34,7 +34,7 @@ steps:
   - name: Install Mero Drive bundle
     type: install_application
     node: calimero-node-1
-    path: ../logic/dist/com.calimero.mero-drive-docs-9.0.0.mpk
+    path: ../logic/dist/com.calimero.mero-drive-docs-9.1.0.mpk
     dev: true
     outputs:
       app_id: applicationId

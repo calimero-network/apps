@@ -47,6 +47,7 @@ use calimero_storage::collections::{FrozenValue, LwwRegister, Mergeable, Unorder
 use mero_drive_types::DriveError;
 
 pub mod events;
+pub mod permissions;
 use events::Event;
 
 // ---------------------------------------------------------------------------
@@ -81,6 +82,42 @@ pub enum Visibility {
     #[default]
     Inherit,
     Restricted,
+}
+
+/// Per-folder collaborator role. **Re-declared here** — it also lives in
+/// `mero_drive_types::Role` — because the `calimero-wasm-abi` emitter only
+/// parses this crate's `lib.rs` + `events.rs` (same reason `FolderId` /
+/// `Visibility` are duplicated). Keep the two definitions in sync.
+#[derive(
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    BorshSerialize,
+    BorshDeserialize,
+    Serialize,
+    Deserialize,
+)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub enum Role {
+    Viewer,
+    #[default]
+    Editor,
+    Manager,
+}
+
+/// One explicit per-member role row for a folder (what `list_folder_roles`
+/// returns). Members not present have the implicit `Editor` role.
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct FolderRoleEntry {
+    /// base58-encoded member public key.
+    pub member: String,
+    pub role: Role,
 }
 
 // ---------------------------------------------------------------------------
@@ -202,6 +239,17 @@ pub struct RegistryState {
     folder_contexts: UnorderedMap<String, FrozenValue<ContextId>>,
     /// parent_id-or-empty → LWW list of child folder ids in display order
     sort_order: UnorderedMap<String, LwwRegister<Vec<String>>>,
+    /// base58 public key of the registry owner (the namespace creator).
+    /// Empty until `claim_owner` is called once; never reassigned after that.
+    owner: LwwRegister<String>,
+    /// base58 public keys granted manager rights over the whole registry
+    /// (may set/clear any folder role). The owner is implicitly a manager
+    /// and is NOT stored here. Value `true` = is a manager, `false` =
+    /// removed (kept around so the key is never CRDT-tombstoned — a
+    /// `remove` would silently swallow a later re-add of the same key).
+    managers: UnorderedMap<String, LwwRegister<bool>>,
+    /// `role_key(folder_id, member_b58)` → role. Absent ⇒ `Role::Editor`.
+    folder_roles: UnorderedMap<String, LwwRegister<Role>>,
 }
 
 #[app::logic]
@@ -212,6 +260,9 @@ impl RegistryState {
             folders: UnorderedMap::new_with_field_name("registry:folders"),
             folder_contexts: UnorderedMap::new_with_field_name("registry:folder_contexts"),
             sort_order: UnorderedMap::new_with_field_name("registry:sort_order"),
+            owner: LwwRegister::new(String::new()),
+            managers: UnorderedMap::new_with_field_name("registry:managers"),
+            folder_roles: UnorderedMap::new_with_field_name("registry:folder_roles"),
         }
     }
 
@@ -274,6 +325,12 @@ impl RegistryState {
         }
         // Removing the folder also clears any context binding.
         let _ = self.folder_contexts.remove(&id.0);
+        // Drop any per-member role rows for this folder. These ARE
+        // CRDT-tombstoned (unlike the live clear_folder_role path), which is
+        // correct here: an unregistered folder id is itself tombstoned in
+        // `folders` and can never be re-registered, so its role rows should
+        // stay gone too.
+        self.purge_folder_roles(&id.0)?;
         Ok(())
     }
 
@@ -498,6 +555,94 @@ impl RegistryState {
             Some(r) => r.get().iter().cloned().map(FolderId).collect(),
             None => Vec::new(),
         })
+    }
+
+    // ---- permissions: owner / managers ----------------------------------
+
+    pub fn claim_owner(&mut self) -> app::Result<()> {
+        let caller = permissions::caller_b58().map_err(|e| AppError::msg(e.to_string()))?;
+        self.claim_owner_inner(&caller)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        app::emit!(Event::OwnerClaimed { owner: &caller });
+        Ok(())
+    }
+
+    /// The base58 public key of the registry owner, or an empty string if
+    /// `claim_owner` has not been called yet. (Empty-string-means-unclaimed
+    /// keeps the generated TS type honest — `Promise<string>`, not a lying
+    /// non-nullable Option.)
+    pub fn get_owner(&self) -> app::Result<String> {
+        Ok(self.owner_b58())
+    }
+
+    pub fn add_manager(&mut self, member: String) -> app::Result<()> {
+        let caller = permissions::caller_b58().map_err(|e| AppError::msg(e.to_string()))?;
+        let member_for_event = member.clone();
+        self.add_manager_inner(&caller, &member)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        app::emit!(Event::ManagerAdded {
+            member: &member_for_event
+        });
+        Ok(())
+    }
+
+    pub fn remove_manager(&mut self, member: String) -> app::Result<()> {
+        let caller = permissions::caller_b58().map_err(|e| AppError::msg(e.to_string()))?;
+        let member_for_event = member.clone();
+        self.remove_manager_inner(&caller, &member)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        app::emit!(Event::ManagerRemoved {
+            member: &member_for_event
+        });
+        Ok(())
+    }
+
+    pub fn list_managers(&self) -> app::Result<Vec<String>> {
+        self.list_managers_inner()
+            .map_err(|e| AppError::msg(e.to_string()))
+    }
+
+    // ---- permissions: per-folder roles ----------------------------------
+
+    pub fn set_folder_role(
+        &mut self,
+        folder_id: FolderId,
+        member: String,
+        role: Role,
+    ) -> app::Result<()> {
+        let caller = permissions::caller_b58().map_err(|e| AppError::msg(e.to_string()))?;
+        let fid = folder_id.0.clone();
+        let member_for_event = member.clone();
+        self.set_folder_role_inner(&caller, &folder_id.0, &member, role)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        app::emit!(Event::FolderRoleChanged {
+            folder_id: &fid,
+            member: &member_for_event,
+        });
+        Ok(())
+    }
+
+    pub fn clear_folder_role(&mut self, folder_id: FolderId, member: String) -> app::Result<()> {
+        let caller = permissions::caller_b58().map_err(|e| AppError::msg(e.to_string()))?;
+        let fid = folder_id.0.clone();
+        let member_for_event = member.clone();
+        self.clear_folder_role_inner(&caller, &folder_id.0, &member)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        app::emit!(Event::FolderRoleChanged {
+            folder_id: &fid,
+            member: &member_for_event,
+        });
+        Ok(())
+    }
+
+    pub fn get_folder_role(&self, folder_id: FolderId, member: String) -> app::Result<Role> {
+        self.get_folder_role_inner(&folder_id.0, &member)
+            .map_err(|e| AppError::msg(e.to_string()))
+    }
+
+    pub fn list_folder_roles(&self, folder_id: FolderId) -> app::Result<Vec<FolderRoleEntry>> {
+        self.list_folder_roles_inner(&folder_id.0)
+            .map_err(|e| AppError::msg(e.to_string()))
     }
 }
 

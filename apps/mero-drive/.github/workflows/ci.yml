@@ -150,7 +150,7 @@ jobs:
   # ============================================================
   # Job 3: Bundle — Build the multi-service .mpk against current core master
   # ============================================================
-  # Produces the bundle `com.calimero.mero-drive-docs-9.0.0.mpk` from the
+  # Produces the bundle `com.calimero.mero-drive-docs-9.1.0.mpk` from the
   # two wasm artifacts. Uploaded as a build artifact so the e2e job below
   # can consume it without rebuilding, and so PR reviewers can download
   # and inspect the actual artifact that would ship.
@@ -257,6 +257,15 @@ jobs:
           # delete_group, delete_namespace, multi-namespace isolation.
           - name: namespace-lifecycle
             file: workflow-mero-drive-namespace-lifecycle.yml
+          # NOTE: e2e/workflow-mero-drive-open-restricted-collab.yml (open/
+          # restricted folders + registry permissions) is tracked but NOT in
+          # the matrix yet — same as workflow-mero-drive-open-subgroup.yml. It
+          # runs clean through the new permission paths (verified via
+          # workflow_dispatch) but, like the `main` cell, it flakes on
+          # `wait_for_sync` over subgroup-owned docs contexts (the core
+          # SyncSessionActor wedge tracked in core#2199/#2238). Wire it in once
+          # that's resolved and a merobox release ships #214/#236 + #2338's
+          # metadata steps (for the two negative-cap steps stubbed inline).
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

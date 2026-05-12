@@ -1,6 +1,6 @@
 [package]
 name = "mero-drive-registry"
-version = "9.0.0"
+version = "9.1.0"
 edition = "2021"
 
 [lib]
@@ -11,6 +11,7 @@ mero-drive-types = { workspace = true }
 calimero-sdk = { workspace = true }
 calimero-storage = { workspace = true }
 calimero-storage-macros = { workspace = true }
+bs58 = { workspace = true }
 
 [build-dependencies]
 calimero-wasm-abi = { workspace = true }
