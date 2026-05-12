@@ -61,10 +61,12 @@ const AUTOSAVE_DEBOUNCE_MS = 900;
 export function DocumentEditor({ folderId, docId, onClose }: Props) {
   const { namespaceId } = useDriveWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
-  // TODO(phase-c-part-3): gate on useFolderRole — doc-edit ability is
-  // the registry `Role`, not a cap bit. Until then, any folder member
-  // can edit (folder membership ⇒ read; editing is loosened to match).
-  const canEditDocs = perms.isMember;
+  // Doc-edit ability is the registry `Role` (Editor/Manager — not
+  // Viewer), gated through useFolderPermissions.canEditDocs. A core
+  // group-admin always qualifies; a caps-fetch failure leaves
+  // `isMember` (and hence this) false, so the editor opens read-only
+  // rather than writable on error.
+  const canEditDocs = perms.canEditDocs;
   const docs = useDocs(folderId);
   // Destructure the stable useCallback methods into local consts so
   // the react-hooks/exhaustive-deps rule sees a plain identifier
@@ -460,7 +462,6 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
       // but the binding-level gate is the authoritative guard so
       // a future caller that forgets readOnly still can't fire
       // mutations on a read-only doc.
-      // TODO(phase-c-part-3): gate on useFolderRole
       onDocumentNameChange={canEditDocs ? onDocumentNameChange : undefined}
       onBack={onClose}
       onDelete={canEditDocs ? onDelete : undefined}

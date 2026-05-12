@@ -23,10 +23,10 @@ interface Props {
 export function DocumentList({ folderId, selectedDocId, onOpen }: Props) {
   const { namespaceId } = useDriveWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
-  // TODO(phase-c-part-3): gate on useFolderRole — creating/editing docs
-  // is the registry `Role`, not a cap bit. Until then any folder member
-  // can create docs.
-  const canEditDocs = perms.isMember;
+  // Creating / editing docs is the registry `Role` (Editor/Manager,
+  // not Viewer), via useFolderPermissions.canEditDocs. Group-admins
+  // always qualify; a caps-fetch error keeps this false.
+  const canEditDocs = perms.canEditDocs;
   const docs = useDocs(folderId);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);

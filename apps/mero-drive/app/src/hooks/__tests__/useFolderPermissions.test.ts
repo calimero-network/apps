@@ -2,6 +2,43 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useFolderPermissions } from '../useFolderPermissions';
 import { CAPABILITIES } from '../../constants/config';
+import type { Role } from '../../api/registry/RegistryClient';
+
+// The registry-Role layer (useFolderRole / useRegistryAdmin) is mocked
+// so each test can pin a role / owner-or-manager flag independently of
+// the (no-op without a registryClient) real hooks. useMemberCaps stays
+// real — it's what drives the cap-derived booleans.
+const folderRoleState: { role: Role | null; loading: boolean } = {
+  role: 'Editor',
+  loading: false,
+};
+const registryAdminState: { isOwnerOrManager: boolean } = {
+  isOwnerOrManager: false,
+};
+vi.mock('../useFolderRole', () => ({
+  useFolderRole: () => ({
+    role: folderRoleState.role,
+    loading: folderRoleState.loading,
+    error: null,
+    setRole: vi.fn(),
+    clearRole: vi.fn(),
+    refetch: vi.fn(),
+  }),
+}));
+vi.mock('../useRegistryAdmin', () => ({
+  useRegistryAdmin: () => ({
+    owner: null,
+    managers: [],
+    isOwnerOrManager: registryAdminState.isOwnerOrManager,
+    isOwner: false,
+    loading: false,
+    error: null,
+    addManager: vi.fn(),
+    removeManager: vi.fn(),
+    claimOwner: vi.fn(),
+    refetch: vi.fn(),
+  }),
+}));
 
 // useFolderPermissions delegates to useMemberCaps, which fetches both
 // role and capabilities directly via mero.admin (no dependency on
@@ -49,6 +86,9 @@ describe('useFolderPermissions', () => {
       members: [{ identity: 'me', role: 'Member' }],
     });
     getMemberCapsMock.mockResolvedValue({ capabilities: 0 });
+    folderRoleState.role = 'Editor';
+    folderRoleState.loading = false;
+    registryAdminState.isOwnerOrManager = false;
   });
 
   const renderWithCaps = (caps: number) => {
@@ -133,7 +173,61 @@ describe('useFolderPermissions', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.error).toBe(boom);
     expect(result.current.isMember).toBe(false);
+    expect(result.current.canEditDocs).toBe(false);
     expect(result.current.canManageGroup).toBe(false);
+  });
+
+  it("role 'Viewer' → canEditDocs false even for a folder member", async () => {
+    folderRoleState.role = 'Viewer';
+    const { result } = renderWithCaps(C.CAN_JOIN_OPEN_SUBGROUPS);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.isMember).toBe(true);
+    expect(result.current.canEditDocs).toBe(false);
+  });
+
+  it("role 'Editor' → canEditDocs true for a folder member", async () => {
+    folderRoleState.role = 'Editor';
+    const { result } = renderWithCaps(C.CAN_JOIN_OPEN_SUBGROUPS);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.canEditDocs).toBe(true);
+  });
+
+  it("role 'Manager' → canEditDocs true for a folder member", async () => {
+    folderRoleState.role = 'Manager';
+    const { result } = renderWithCaps(C.CAN_JOIN_OPEN_SUBGROUPS);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.canEditDocs).toBe(true);
+  });
+
+  it("isAdmin → canEditDocs true regardless of role ('Viewer')", async () => {
+    folderRoleState.role = 'Viewer';
+    listMembersMock.mockResolvedValue({
+      members: [{ identity: 'me', role: 'Admin' }],
+    });
+    const { result } = renderHook(() => useFolderPermissions('ns', 'folder-1'));
+    await waitFor(() => expect(result.current.canEditDocs).toBe(true));
+  });
+
+  it('isOwnerOrManager → canManagePermissions true (and canManageGroup)', async () => {
+    registryAdminState.isOwnerOrManager = true;
+    const { result } = renderWithCaps(0);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.canManagePermissions).toBe(true);
+    expect(result.current.canManageGroup).toBe(true);
+  });
+
+  it("canDelete: CAN_DELETE_SUBGROUP + role 'Manager' → true", async () => {
+    folderRoleState.role = 'Manager';
+    const { result } = renderWithCaps(C.CAN_DELETE_SUBGROUP);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.canDelete).toBe(true);
+  });
+
+  it("canDelete: CAN_DELETE_SUBGROUP + role 'Editor' → false", async () => {
+    folderRoleState.role = 'Editor';
+    const { result } = renderWithCaps(C.CAN_DELETE_SUBGROUP);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.canDelete).toBe(false);
   });
 
   it('Open subgroup: inherited namespace member gets the real cap mask from core', async () => {
