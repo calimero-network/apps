@@ -6,6 +6,8 @@
 // that can't call useMero() reads the raw `VITE_APPLICATION_ID` env
 // var as a fallback. No URL-param override (use .env.local instead).
 
+import { CAPABILITIES } from '@calimero-network/mero-js';
+
 /** Env-configured app id. Fallback for non-component contexts. */
 export const ENV_APPLICATION_ID: string =
   (import.meta.env.VITE_APPLICATION_ID as string | undefined)?.trim() || '';
@@ -30,6 +32,19 @@ export {
   withoutCap,
 } from '@calimero-network/mero-js';
 export type { CapabilityName, CapabilityBit } from '@calimero-network/mero-js';
+
+/** Default capability bitmask granted to members who join a workspace
+ *  (namespace) by invite — the "Editor" preset: join open folders +
+ *  create folders + create document contexts. Set via
+ *  `mero.admin.setDefaultCapabilities(namespaceId, DEFAULT_NEW_MEMBER_CAPS)`
+ *  at workspace-creation time (see `useDriveWorkspace.createWorkspace`),
+ *  and re-used as the "Editor" preset by `MemberRoleSelect`. Equals 37
+ *  (`CAN_CREATE_CONTEXT | CAN_JOIN_OPEN_SUBGROUPS | CAN_CREATE_SUBGROUP`).
+ *  See design spec §5.2 / §5.3. */
+export const DEFAULT_NEW_MEMBER_CAPS: number =
+  CAPABILITIES.CAN_JOIN_OPEN_SUBGROUPS |
+  CAPABILITIES.CAN_CREATE_SUBGROUP |
+  CAPABILITIES.CAN_CREATE_CONTEXT;
 
 // Client-side depth cap for nested folders (UI refuses to create deeper).
 // Backend doesn't enforce — per spec it's an app-layer UX cap.

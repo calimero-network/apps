@@ -19,11 +19,13 @@
 // can switch away from it but can't deliberately set it.
 
 import React from 'react';
-import { CAPABILITIES } from '@/constants/config';
+import { CAPABILITIES, DEFAULT_NEW_MEMBER_CAPS } from '@/constants/config';
 
 const C = CAPABILITIES;
-const EDITOR_MASK =
-  C.CAN_JOIN_OPEN_SUBGROUPS | C.CAN_CREATE_SUBGROUP | C.CAN_CREATE_CONTEXT; // 4|32|1 = 37
+// The "Editor" preset == the namespace's default new-member caps
+// (kept in one place: constants/config.ts). = CAN_JOIN_OPEN_SUBGROUPS
+// | CAN_CREATE_SUBGROUP | CAN_CREATE_CONTEXT (37).
+const EDITOR_MASK = DEFAULT_NEW_MEMBER_CAPS;
 
 export const ROLE_PRESETS: { label: string; mask: number }[] = [
   { label: 'Viewer', mask: C.CAN_JOIN_OPEN_SUBGROUPS },

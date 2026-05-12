@@ -61,7 +61,11 @@ import {
   type MergedFolder,
   type RegistryFolderShape,
 } from './useWorkspaceTree';
-import { ENV_APPLICATION_ID, REGISTRY_SERVICE_ID } from '@/constants/config';
+import {
+  DEFAULT_NEW_MEMBER_CAPS,
+  ENV_APPLICATION_ID,
+  REGISTRY_SERVICE_ID,
+} from '@/constants/config';
 
 const ACTIVE_NS_KEY = 'mero-drive:activeNs';
 // SessionStorage-only so it doesn't persist across tabs or reloads
@@ -232,12 +236,28 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     lazyCreateRef.current = { nsId: selectedNsId, inFlight: true };
     (async () => {
       try {
-        await mero.admin.createContext({
+        const reg = await mero.admin.createContext({
           applicationId,
           groupId: selectedNsId,
           serviceName: REGISTRY_SERVICE_ID,
           initializationParams: [],
         });
+        // Best-effort: claim the registry owner slot for this identity.
+        // The permissions WASM is fail-closed (set_folder_role etc.
+        // require owner/manager) until someone claims it; on an older
+        // namespace seeded before this code ran, the first viewer to
+        // open it heals the ownership. `claim_owner` is a no-op for the
+        // existing owner and only errors if a *different* key already
+        // owns it — harmless either way, so swallow failures here.
+        if (reg?.contextId && reg?.memberPublicKey) {
+          await new RegistryClient(
+            mero,
+            reg.contextId,
+            reg.memberPublicKey,
+          )
+            .claimOwner()
+            .catch(() => {});
+        }
         await refetchContexts();
       } catch (err) {
         // Non-fatal — surface via regError so the UI can show a
@@ -434,15 +454,36 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         if (!ns?.namespaceId) {
           throw new Error('createNamespace returned no namespaceId');
         }
-        // Step 2 — seed the Registry context inside the namespace's
+        // Step 2 — set the default capabilities every future member of
+        // this namespace inherits on join: the "Editor" set (join open
+        // folders + create folders + create document contexts). Per
+        // design spec §5.2. Existing members are unaffected; an admin
+        // can change this later via the Member-defaults panel.
+        await mero.admin.setDefaultCapabilities(ns.namespaceId, {
+          defaultCapabilities: DEFAULT_NEW_MEMBER_CAPS,
+        });
+        // Step 3 — seed the Registry context inside the namespace's
         // root group. This is the convention the rest of the hook
         // relies on: contexts[0] === Registry context.
-        await mero.admin.createContext({
+        const reg = await mero.admin.createContext({
           applicationId,
           groupId: ns.namespaceId,
           serviceName: REGISTRY_SERVICE_ID,
           initializationParams: [],
         });
+        // Step 4 — claim the registry's owner slot for the creator.
+        // The permissions layer is fail-closed (set_folder_role,
+        // add_manager etc. all require owner/manager) until this runs,
+        // so a freshly-created workspace would be unmanageable without
+        // it. `createContext` returns `{ contextId, memberPublicKey }`
+        // (see mero-js admin-types `CreateContextResponseData`).
+        if (reg?.contextId && reg?.memberPublicKey) {
+          await new RegistryClient(
+            mero,
+            reg.contextId,
+            reg.memberPublicKey,
+          ).claimOwner();
+        }
         await refetchNamespaces();
         userCleared.current = false;
         setSelectedNsId(ns.namespaceId);
