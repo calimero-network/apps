@@ -13,7 +13,7 @@
 // (`DEFAULT_NEW_MEMBER_CAPS`, = 37) is the default and the
 // reset target.
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { RotateCcw } from 'lucide-react';
 import {
   useDefaultCapabilities,
@@ -93,14 +93,32 @@ export function MemberDefaultsPanel() {
   const [draft, setDraft] = useState<number | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Seed `draft` from the loaded value once. After that the user owns
-  // it (don't clobber edits if `defaultCapabilities` re-fires with the
-  // same value).
+  // Has the fetch completed at least once? `useDefaultCapabilities`
+  // starts `{ defaultCapabilities: null, loading: false }` and only
+  // flips `loading` true on the *next* render — so we can't seed off
+  // `loading === false` on the first pass, or we'd stamp the
+  // `DEFAULT_NEW_MEMBER_CAPS` fallback (37, "Editor") into `draft`
+  // before the real value (e.g. 4 = Viewer) arrives, leave the
+  // checklist showing the wrong bits, and let an admin Save-widen the
+  // namespace default by accident. Track the true→false transition;
+  // also treat a non-null value or a load error as "completed".
+  const loadedOnceRef = useRef(false);
+  const prevLoadingRef = useRef(loading);
+  if (prevLoadingRef.current && !loading) loadedOnceRef.current = true;
+  prevLoadingRef.current = loading;
+  if (defaultCapabilities !== null || error) loadedOnceRef.current = true;
+  const loadedOnce = loadedOnceRef.current;
+
+  // Seed `draft` from the loaded value once the fetch has actually
+  // resolved. After that the user owns it (don't clobber edits if
+  // `defaultCapabilities` re-fires with the same value). If the
+  // completed fetch genuinely returned `null` (no default ever set),
+  // *then* fall back to the "Editor" preset.
   useEffect(() => {
-    if (loading) return;
+    if (!loadedOnce) return;
     if (draft !== null) return;
     setDraft(current ?? DEFAULT_NEW_MEMBER_CAPS);
-  }, [loading, draft, current]);
+  }, [loadedOnce, draft, current]);
 
   const effectiveCurrent = current ?? DEFAULT_NEW_MEMBER_CAPS;
   const dirty = useMemo(
@@ -172,7 +190,7 @@ export function MemberDefaultsPanel() {
               type="checkbox"
               className="mt-0.5 h-4 w-4 rounded border-input"
               checked={hasCap(shown, row.bit)}
-              disabled={loading || saving}
+              disabled={loading || saving || !loadedOnce}
               onChange={() => toggle(row.bit)}
             />
             <span className="min-w-0">
@@ -195,7 +213,9 @@ export function MemberDefaultsPanel() {
         <button
           type="button"
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
-          disabled={loading || saving || draft === DEFAULT_NEW_MEMBER_CAPS}
+          disabled={
+            loading || saving || !loadedOnce || draft === DEFAULT_NEW_MEMBER_CAPS
+          }
           onClick={() => setDraft(DEFAULT_NEW_MEMBER_CAPS)}
         >
           <RotateCcw className="h-3 w-3" />
@@ -203,7 +223,7 @@ export function MemberDefaultsPanel() {
         </button>
         <Button
           size="sm"
-          disabled={loading || saving || !dirty}
+          disabled={loading || saving || !loadedOnce || !dirty}
           onClick={() => {
             void onSave();
           }}
