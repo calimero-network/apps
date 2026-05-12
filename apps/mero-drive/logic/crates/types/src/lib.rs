@@ -81,7 +81,16 @@ pub enum Visibility {
 /// finer-grained grants on top of this in the `docs` service; this enum is
 /// the coarse folder-level baseline.
 #[derive(
-    Debug, Default, Clone, Copy, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    BorshSerialize,
+    BorshDeserialize,
+    Serialize,
+    Deserialize,
 )]
 pub enum Role {
     Viewer,

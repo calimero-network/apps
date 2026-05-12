@@ -89,7 +89,16 @@ pub enum Visibility {
 /// parses this crate's `lib.rs` + `events.rs` (same reason `FolderId` /
 /// `Visibility` are duplicated). Keep the two definitions in sync.
 #[derive(
-    Debug, Default, Clone, Copy, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    BorshSerialize,
+    BorshDeserialize,
+    Serialize,
+    Deserialize,
 )]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]

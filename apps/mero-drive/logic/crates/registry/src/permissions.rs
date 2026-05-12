@@ -101,9 +101,7 @@ impl RegistryState {
         }
         let member = validate_member_key(member)?;
         if member == owner {
-            return Err(DriveError::Invalid(
-                "owner is implicitly a manager".into(),
-            ));
+            return Err(DriveError::Invalid("owner is implicitly a manager".into()));
         }
         self.managers
             .insert(member, FrozenValue::from(()))
@@ -256,7 +254,8 @@ mod tests {
     // Convenience: a state with a folder "f1" registered and `owner` claimed.
     fn with_owner_and_folder(owner: &str) -> RegistryState {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("f1"), None, None, None).unwrap();
+        app.register_folder_inner(fid("f1"), None, None, None)
+            .unwrap();
         app.claim_owner_inner(owner).unwrap();
         app
     }
@@ -426,7 +425,8 @@ mod tests {
     fn clear_folder_role_no_row_is_not_found() {
         let mut app = with_owner_and_folder(&key(1));
         assert!(matches!(
-            app.clear_folder_role_inner(&key(1), "f1", &key(7)).unwrap_err(),
+            app.clear_folder_role_inner(&key(1), "f1", &key(7))
+                .unwrap_err(),
             DriveError::NotFound(_)
         ));
     }
@@ -436,15 +436,18 @@ mod tests {
         app.set_folder_role_inner(&key(1), "f1", &key(7), Role::Viewer)
             .unwrap();
         assert!(matches!(
-            app.clear_folder_role_inner(&key(2), "f1", &key(7)).unwrap_err(),
+            app.clear_folder_role_inner(&key(2), "f1", &key(7))
+                .unwrap_err(),
             DriveError::Forbidden(_)
         ));
     }
     #[test]
     fn list_folder_roles_only_returns_rows_for_that_folder() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("f1"), None, None, None).unwrap();
-        app.register_folder_inner(fid("f2"), None, None, None).unwrap();
+        app.register_folder_inner(fid("f1"), None, None, None)
+            .unwrap();
+        app.register_folder_inner(fid("f2"), None, None, None)
+            .unwrap();
         app.claim_owner_inner(&key(1)).unwrap();
         app.set_folder_role_inner(&key(1), "f1", &key(2), Role::Viewer)
             .unwrap();
@@ -471,7 +474,8 @@ mod tests {
         app.unregister_folder_inner(fid("f1")).unwrap();
         assert!(app.list_folder_roles_inner("f1").unwrap().is_empty());
         // and a fresh, distinct folder id has no inherited rows:
-        app.register_folder_inner(fid("f2"), None, None, None).unwrap();
+        app.register_folder_inner(fid("f2"), None, None, None)
+            .unwrap();
         assert_eq!(
             app.get_folder_role_inner("f2", &key(2)).unwrap(),
             Role::Editor
