@@ -18,21 +18,18 @@ export const DOCS_SERVICE_ID = 'docs';
 // Alias used to find (or create) the Registry context inside a namespace.
 export const REGISTRY_CONTEXT_ALIAS = 'Registry';
 
-// Capability bitmask bits, mirroring core's `calimero-context-config` crate.
-// See design spec → Permissions Model → Capability → Action Policy Table.
-export const CAP = {
-  READ: 1,
-  WRITE: 2,
-  CREATE_GROUP: 4,
-  MANAGE_GROUP: 8,
-  INVITE_MEMBERS: 16,
-  MANAGE_MEMBERS: 32,
-} as const;
-
-// What an inherit-mode child folder receives from its parent on cascade.
-// READ | WRITE | CREATE_GROUP = 7. Admin-role bits are deliberately stripped
-// so a parent-admin becomes a child-member (per spec).
-export const DEFAULT_CHILD_CAP_MASK = CAP.READ | CAP.WRITE | CAP.CREATE_GROUP;
+// Member-capability bitmask bits — re-exported verbatim from
+// @calimero-network/mero-js's CAPABILITIES (core's `MemberCapabilities`,
+// crates/context/config). This is the ONLY capability vocabulary in the
+// app; the per-(folder,member) "viewer vs editor on docs" concept is the
+// registry `Role`, not a cap bit. See design spec §5.1.
+export {
+  CAPABILITIES,
+  hasCap,
+  withCap,
+  withoutCap,
+} from '@calimero-network/mero-js';
+export type { CapabilityName, CapabilityBit } from '@calimero-network/mero-js';
 
 // Client-side depth cap for nested folders (UI refuses to create deeper).
 // Backend doesn't enforce — per spec it's an app-layer UX cap.

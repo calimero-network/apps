@@ -2,8 +2,8 @@
 //
 // Two modes:
 //   - parentFolderId=null → top-level folder; gated by
-//     useNamespacePermissions.canCreateSubgroup on the namespace
-//     root group (i.e. the user can create subgroups off the root).
+//     useNamespacePermissions.canCreateFolder on the namespace
+//     root group (core's CAN_CREATE_SUBGROUP — root-only).
 //   - parentFolderId=<id> → nested under a specific parent; gated
 //     by useFolderPermissions.canCreateSubfolder on that folder.
 //
@@ -44,7 +44,7 @@ export function NewFolderButton({
   // Root-level create → namespace caps; nested → per-folder caps.
   const allowed = parentFolderId
     ? folderPerms.canCreateSubfolder
-    : nsPerms.canCreateSubgroup;
+    : nsPerms.canCreateFolder;
 
   if (!namespaceId || !rootGroupId) return null;
   if (!allowed) return null;

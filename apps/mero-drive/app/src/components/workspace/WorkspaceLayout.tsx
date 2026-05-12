@@ -203,11 +203,12 @@ export function WorkspaceLayout() {
                   visibility={selectedFolder.visibility}
                   selfIdentity={selfIdentity}
                 />
-              ) : !selectedFolderPerms.canRead &&
+              ) : !selectedFolderPerms.isMember &&
                 !selectedFolderPerms.error ? (
-                // We resolved caps but they don't include READ — the
-                // member row exists but with zero read bit. Same UX
-                // as access-denied from the user's perspective.
+                // Caps fetch came back but we're not a member of this
+                // folder subgroup — folder membership alone implies
+                // read, so no membership means no access. Same UX as
+                // access-denied from the user's perspective.
                 <RestrictedFolderCard
                   folderAlias={selectedFolder.alias}
                   visibility={selectedFolder.visibility}

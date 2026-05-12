@@ -71,7 +71,7 @@ export function FolderContextMenu({
   const anyAction =
     perms.canRename ||
     perms.canCreateSubfolder ||
-    perms.canManageGroup ||
+    perms.canManageVisibility ||
     perms.canDelete;
   if (!anyAction) return null;
 

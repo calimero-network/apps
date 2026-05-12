@@ -145,7 +145,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   // Re-apply editability whenever `readOnly` flips. useEditor's
   // `editable` option is a one-shot snapshot captured at creation
   // time — it does NOT react to later prop changes. useFolderPermissions
-  // resolves asynchronously, so `canWrite` (and therefore `readOnly`)
+  // resolves asynchronously, so `canEditDocs` (and therefore `readOnly`)
   // can flip after the editor is already mounted. Without this effect,
   // a writer whose permissions resolve after mount gets a permanently
   // read-only editor, and a reader who later loses access keeps a

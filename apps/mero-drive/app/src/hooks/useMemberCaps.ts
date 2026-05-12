@@ -28,7 +28,9 @@
 // State convention:
 //   - `caps = null, error = null` → loading (including retries).
 //   - `caps = 0,    error = null` → non-admin with no override bits.
-//   - `caps > 0,    error = null` → actual bitmask (or 63 for Admins).
+//   - `caps > 0,    error = null` → actual bitmask (or 0xffffffff for
+//     Admins — `isAdmin` is the authoritative signal, the all-bits mask
+//     just keeps `hasCap(...)` true for everything).
 //   - `caps = 0,    error = Error` → retries exhausted; caller shows
 //     an error affordance rather than silently rendering "all denied".
 
@@ -36,12 +38,19 @@ import { useEffect, useState } from 'react';
 import { useMero } from '@calimero-network/mero-react';
 import { useDriveWorkspace } from './useDriveWorkspace';
 
-const ALL_CAPS_BITMASK = 0b111111; // READ|WRITE|CREATE_GROUP|MANAGE_GROUP|INVITE_MEMBERS|MANAGE_MEMBERS
+// A u32 with every bit set — what we report as `caps` for a group-admin
+// so consumers' `isAdmin || hasCap(caps, bit)` checks all pass even if
+// they happen to ignore `isAdmin`. `>>> 0` normalises to unsigned.
+const ADMIN_CAPS_BITMASK = 0xffffffff >>> 0;
 
 const RETRY_DELAYS_MS = [0, 500, 1500, 3500];
 
 export interface MemberCapsState {
   caps: number | null;
+  /** True when the caller is a core group-admin on this group — bypasses
+   *  the capability bitmask entirely (mirrors the server's
+   *  `is_group_admin_or_has_capability`). */
+  isAdmin: boolean;
   error: Error | null;
 }
 
@@ -85,16 +94,17 @@ export function useMemberCaps(
 
   const [state, setState] = useState<MemberCapsState>({
     caps: null,
+    isAdmin: false,
     error: null,
   });
 
   useEffect(() => {
     if (!mero || !groupId || !memberId) {
-      setState({ caps: null, error: null });
+      setState({ caps: null, isAdmin: false, error: null });
       return;
     }
     const signal = { aborted: false };
-    setState({ caps: null, error: null });
+    setState({ caps: null, isAdmin: false, error: null });
 
     (async () => {
       let lastErr: unknown = null;
@@ -127,7 +137,11 @@ export function useMemberCaps(
           //    `is_group_admin_or_has_capability` logic.
           if (me.role === 'Admin') {
             if (!signal.aborted) {
-              setState({ caps: ALL_CAPS_BITMASK, error: null });
+              setState({
+                caps: ADMIN_CAPS_BITMASK,
+                isAdmin: true,
+                error: null,
+              });
             }
             return;
           }
@@ -138,7 +152,11 @@ export function useMemberCaps(
             memberId,
           );
           if (signal.aborted) return;
-          setState({ caps: result.capabilities ?? 0, error: null });
+          setState({
+            caps: result.capabilities ?? 0,
+            isAdmin: false,
+            error: null,
+          });
           return;
         } catch (err) {
           lastErr = err;
@@ -149,7 +167,7 @@ export function useMemberCaps(
       if (signal.aborted) return;
       const finalErr =
         lastErr instanceof Error ? lastErr : new Error(String(lastErr));
-      setState({ caps: 0, error: finalErr });
+      setState({ caps: 0, isAdmin: false, error: finalErr });
     })();
 
     return () => {

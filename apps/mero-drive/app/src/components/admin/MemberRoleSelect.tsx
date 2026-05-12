@@ -1,37 +1,42 @@
 // Preset role → capability-bitmask dropdown. Members picked via
-// this control get one of three standardised bitmasks; bespoke
-// per-bit combinations are labelled "Custom" and read-only via
-// this UI (admins needing finer control can wire a bit-by-bit
-// matrix in a future surface).
+// this control get one of three standardised *namespace-level*
+// bitmasks; bespoke per-bit combinations are labelled "Custom"
+// and read-only via this UI (admins needing finer control can
+// wire a bit-by-bit matrix in a future surface).
 //
-// Presets:
-//   Viewer  → READ                                   (bit 0)
-//   Editor  → READ | WRITE                           (bits 0-1)
-//   Admin   → READ | WRITE | CREATE_GROUP |
-//             MANAGE_GROUP | INVITE_MEMBERS |
-//             MANAGE_MEMBERS                         (bits 0-5)
+// Presets (core's `MemberCapabilities` bits — see design spec §5.3):
+//   Viewer   → CAN_JOIN_OPEN_SUBGROUPS
+//   Editor   → + CAN_CREATE_SUBGROUP | CAN_CREATE_CONTEXT
+//   Manager  → + CAN_INVITE_MEMBERS | MANAGE_MEMBERS |
+//              CAN_MANAGE_VISIBILITY | CAN_DELETE_SUBGROUP |
+//              CAN_MANAGE_METADATA
 //
-// The "Custom" option represents any bitmask not matching a
-// preset; the dropdown displays it when a member has an atypical
-// combination (e.g. WRITE without READ, MANAGE_MEMBERS without
-// INVITE_MEMBERS). Selecting Custom from the dropdown is a no-op
-// — users can switch away from it but can't deliberately set it.
+// "Admin" here means the core group-admin *role* (bypasses the
+// bitmask entirely) — that's handled by the caller, not this
+// dropdown. The "Custom" option represents any bitmask not
+// matching a preset; the dropdown displays it when a member has
+// an atypical combination. Selecting Custom is a no-op — users
+// can switch away from it but can't deliberately set it.
 
 import React from 'react';
-import { CAP } from '@/constants/config';
+import { CAPABILITIES } from '@/constants/config';
+
+const C = CAPABILITIES;
+const EDITOR_MASK =
+  C.CAN_JOIN_OPEN_SUBGROUPS | C.CAN_CREATE_SUBGROUP | C.CAN_CREATE_CONTEXT; // 4|32|1 = 37
 
 export const ROLE_PRESETS: { label: string; mask: number }[] = [
-  { label: 'Viewer', mask: CAP.READ },
-  { label: 'Editor', mask: CAP.READ | CAP.WRITE },
+  { label: 'Viewer', mask: C.CAN_JOIN_OPEN_SUBGROUPS },
+  { label: 'Editor', mask: EDITOR_MASK },
   {
-    label: 'Admin',
+    label: 'Manager',
     mask:
-      CAP.READ |
-      CAP.WRITE |
-      CAP.CREATE_GROUP |
-      CAP.MANAGE_GROUP |
-      CAP.INVITE_MEMBERS |
-      CAP.MANAGE_MEMBERS,
+      EDITOR_MASK |
+      C.CAN_INVITE_MEMBERS |
+      C.MANAGE_MEMBERS |
+      C.CAN_MANAGE_VISIBILITY |
+      C.CAN_DELETE_SUBGROUP |
+      C.CAN_MANAGE_METADATA,
   },
 ];
 

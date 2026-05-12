@@ -73,7 +73,7 @@ export function FolderTree() {
           Folders
         </span>
         {/* Top-level new-folder CTA. Self-gates: NewFolderButton
-            returns null when the caller lacks canCreateSubgroup on
+            returns null when the caller lacks canCreateFolder on
             the namespace root. */}
         <NewFolderButton parentFolderId={null} label="New" />
       </div>
