@@ -603,12 +603,28 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         // folders + create folders + create document contexts). Per
         // design spec §5.2. Existing members are unaffected; an admin
         // can change this later via the Member-defaults panel.
-        await mero.admin.setDefaultCapabilities(ns.namespaceId, {
-          defaultCapabilities: DEFAULT_NEW_MEMBER_CAPS,
-        });
+        //
+        // Best-effort: a failure here must NOT abort the create — the
+        // namespace already exists, and leaving it unselected +
+        // unconfigured is worse than just shipping it with core's
+        // built-in default; the admin can re-set defaults via the
+        // Member-defaults panel.
+        try {
+          await mero.admin.setDefaultCapabilities(ns.namespaceId, {
+            defaultCapabilities: DEFAULT_NEW_MEMBER_CAPS,
+          });
+        } catch (e) {
+          console.warn(
+            '[useDriveWorkspace] setDefaultCapabilities failed during ' +
+              'createWorkspace; namespace created without member defaults. ' +
+              'Re-set via the Member-defaults panel.',
+            e,
+          );
+        }
         // Step 3 — seed the Registry context inside the namespace's
         // root group. This is the convention the rest of the hook
-        // relies on: contexts[0] === Registry context.
+        // relies on: contexts[0] === Registry context. Hard failure —
+        // without a Registry context the workspace is unusable.
         const reg = await mero.admin.createContext({
           applicationId,
           groupId: ns.namespaceId,
@@ -621,12 +637,26 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         // so a freshly-created workspace would be unmanageable without
         // it. `createContext` returns `{ contextId, memberPublicKey }`
         // (see mero-js admin-types `CreateContextResponseData`).
+        //
+        // Best-effort: if this fails the registry is left unclaimed —
+        // the admin can re-run claim via the WorkspaceSettingsPanel
+        // "Claim ownership" button. We DON'T abort the create here;
+        // see Fix D in the code-review notes.
         if (reg?.contextId && reg?.memberPublicKey) {
-          await new RegistryClient(
-            mero,
-            reg.contextId,
-            reg.memberPublicKey,
-          ).claimOwner();
+          try {
+            await new RegistryClient(
+              mero,
+              reg.contextId,
+              reg.memberPublicKey,
+            ).claimOwner();
+          } catch (e) {
+            console.warn(
+              '[useDriveWorkspace] claimOwner failed during ' +
+                'createWorkspace; registry left unclaimed. Re-run via ' +
+                'the workspace settings "Claim ownership" button.',
+              e,
+            );
+          }
         }
         await refetchNamespaces();
         userCleared.current = false;
