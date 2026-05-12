@@ -261,29 +261,53 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       return;
     }
     lazyCreateRef.current = { nsId: selectedNsId, inFlight: true };
+    const healingNsId = selectedNsId;
     (async () => {
       try {
         const reg = await mero.admin.createContext({
           applicationId,
-          groupId: selectedNsId,
+          groupId: healingNsId,
           serviceName: REGISTRY_SERVICE_ID,
           initializationParams: [],
         });
-        // Best-effort: claim the registry owner slot for this identity.
-        // The permissions WASM is fail-closed (set_folder_role etc.
-        // require owner/manager) until someone claims it; on an older
-        // namespace seeded before this code ran, the first viewer to
-        // open it heals the ownership. `claim_owner` is a no-op for the
-        // existing owner and only errors if a *different* key already
-        // owns it — harmless either way, so swallow failures here.
+        // Best-effort: claim the registry owner slot — but ONLY if the
+        // caller is a core namespace-admin. `claim_owner` in the WASM
+        // is first-come-first-served with NO authz gate (see
+        // logic/crates/registry/src/permissions.rs::claim_owner_inner —
+        // it sets the owner when unclaimed regardless of caller), so a
+        // non-admin member opening a legacy/half-set-up workspace would
+        // otherwise seize the registry. We mirror useMemberCaps's admin
+        // check inline (we can't call useMemberCaps here — it consumes
+        // this very hook's context, which isn't established yet).
         if (reg?.contextId && reg?.memberPublicKey) {
-          await new RegistryClient(
-            mero,
-            reg.contextId,
-            reg.memberPublicKey,
-          )
-            .claimOwner()
-            .catch(() => {});
+          let callerIsNsAdmin = false;
+          try {
+            const raw = (await mero.admin.listGroupMembers(
+              healingNsId,
+            )) as unknown as {
+              members?: Array<{ identity: string; role?: string }>;
+              data?: Array<{ identity: string; role?: string }>;
+            };
+            const membersList = raw.members ?? raw.data ?? [];
+            const me = membersList.find(
+              (m) => m.identity === reg.memberPublicKey,
+            );
+            callerIsNsAdmin = me?.role === 'Admin';
+          } catch {
+            // If we can't tell, err on the side of NOT claiming —
+            // a real admin can claim later via the WorkspaceSettingsPanel
+            // "Claim ownership" button.
+            callerIsNsAdmin = false;
+          }
+          if (callerIsNsAdmin) {
+            await new RegistryClient(
+              mero,
+              reg.contextId,
+              reg.memberPublicKey,
+            )
+              .claimOwner()
+              .catch(() => {});
+          }
         }
         await refetchContexts();
       } catch (err) {
