@@ -17,6 +17,7 @@ import { FolderSharingPanel } from '@/components/folders/FolderSharingPanel';
 import { FolderVisibilityToggle } from '@/components/folders/FolderVisibilityToggle';
 import { NewFolderButton } from '@/components/folders/NewFolderButton';
 import { WorkspaceSettingsPanel } from '@/components/admin/WorkspaceSettingsPanel';
+import { MemberDefaultsPanel } from '@/components/admin/MemberDefaultsPanel';
 
 vi.mock('@/hooks/useFolderPermissions', () => ({
   useFolderPermissions: vi.fn(),
@@ -112,6 +113,17 @@ vi.mock('@calimero-network/mero-react', () => ({
   useRemoveGroupMembers: () => ({ removeGroupMembers: vi.fn(), loading: false, error: null }),
   useSetSubgroupVisibility: () => ({
     setSubgroupVisibility: vi.fn(),
+    loading: false,
+    error: null,
+  }),
+  useDefaultCapabilities: () => ({
+    defaultCapabilities: 37,
+    loading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  useSetDefaultCapabilities: () => ({
+    setDefaultCapabilities: vi.fn(),
     loading: false,
     error: null,
   }),
@@ -236,5 +248,24 @@ describe('permission-gating', () => {
     });
     render(<WorkspaceSettingsPanel />);
     expect(screen.getByText('Reconcile registry')).toBeTruthy();
+  });
+
+  it('MemberDefaultsPanel renders nothing without canManageNamespace', () => {
+    (useNamespacePermissions as ReturnType<typeof vi.fn>).mockReturnValue(
+      noNsPerms,
+    );
+    render(<MemberDefaultsPanel />);
+    expect(screen.queryByText('Member defaults')).toBeNull();
+  });
+
+  it('MemberDefaultsPanel renders the cap checklist when canManageNamespace', () => {
+    (useNamespacePermissions as ReturnType<typeof vi.fn>).mockReturnValue({
+      ...noNsPerms,
+      canManageNamespace: true,
+    });
+    render(<MemberDefaultsPanel />);
+    expect(screen.getByText('Member defaults')).toBeTruthy();
+    expect(screen.getByText('Join open folders')).toBeTruthy();
+    expect(screen.getByText('Manage members')).toBeTruthy();
   });
 });
