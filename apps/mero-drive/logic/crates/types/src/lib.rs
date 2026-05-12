@@ -69,6 +69,27 @@ pub enum Visibility {
     Restricted,
 }
 
+/// Per-folder collaborator role — the *application* permission for what a
+/// member may do inside a folder, distinct from core's namespace-level
+/// `MemberCapabilities` bitmask (core gates *joining* a subgroup; this gates
+/// what you do once you are in it).
+///
+/// A member with no explicit role row is treated as `Editor`. `Viewer` is
+/// read-only; `Manager` may additionally set other members' folder roles.
+///
+/// Phase-2 (per-document ACLs, share links, approval workflows) will layer
+/// finer-grained grants on top of this in the `docs` service; this enum is
+/// the coarse folder-level baseline.
+#[derive(
+    Debug, Default, Clone, Copy, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
+)]
+pub enum Role {
+    Viewer,
+    #[default]
+    Editor,
+    Manager,
+}
+
 #[derive(Debug, Error, Serialize)]
 #[serde(tag = "kind", content = "data")]
 pub enum DriveError {
@@ -122,5 +143,19 @@ mod tests {
         let a: FolderId = "abc".into();
         let b: FolderId = String::from("abc").into();
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn role_default_is_editor() {
+        assert_eq!(Role::default(), Role::Editor);
+    }
+
+    #[test]
+    fn role_borsh_roundtrip() {
+        for r in [Role::Viewer, Role::Editor, Role::Manager] {
+            let bytes = borsh::to_vec(&r).unwrap();
+            let back: Role = borsh::from_slice(&bytes).unwrap();
+            assert_eq!(r, back);
+        }
     }
 }
