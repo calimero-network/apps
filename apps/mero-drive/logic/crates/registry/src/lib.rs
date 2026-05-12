@@ -567,9 +567,12 @@ impl RegistryState {
         Ok(())
     }
 
-    pub fn get_owner(&self) -> app::Result<Option<String>> {
-        let o = self.owner_b58();
-        Ok(if o.is_empty() { None } else { Some(o) })
+    /// The base58 public key of the registry owner, or an empty string if
+    /// `claim_owner` has not been called yet. (Empty-string-means-unclaimed
+    /// keeps the generated TS type honest — `Promise<string>`, not a lying
+    /// non-nullable Option.)
+    pub fn get_owner(&self) -> app::Result<String> {
+        Ok(self.owner_b58())
     }
 
     pub fn add_manager(&mut self, member: String) -> app::Result<()> {
