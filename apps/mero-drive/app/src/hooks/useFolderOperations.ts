@@ -17,7 +17,7 @@ import {
   useCreateContext,
   useDeleteContext,
   useDeleteGroup,
-  useSetGroupAlias,
+  useSetGroupMetadata,
   useSetSubgroupVisibility,
   useMero,
 } from '@calimero-network/mero-react';
@@ -63,7 +63,7 @@ export function useFolderOperations(
   const { createContext } = useCreateContext();
   const { deleteContext } = useDeleteContext();
   const { deleteGroup } = useDeleteGroup();
-  const { setGroupAlias } = useSetGroupAlias();
+  const { setGroupMetadata } = useSetGroupMetadata();
   const { setSubgroupVisibility } = useSetSubgroupVisibility();
   const { nodeUrl } = useMero();
 
@@ -95,19 +95,18 @@ export function useFolderOperations(
       let registryEntryCreated = false;
 
       try {
-        const group = await createGroupInNamespace(input.namespaceId, { alias: input.alias });
+        const group = await createGroupInNamespace(input.namespaceId, { name: input.alias });
         if (!group?.groupId) throw new Error('createGroupInNamespace returned no groupId');
         createdGroupId = group.groupId;
         const newId = group.groupId;
 
-        // SDK bug workaround: mero-js's CreateGroupInNamespaceRequest
-        // has `{alias}`, but core's handler deserialises the body as
-        // `{groupAlias}` (camelCase-renamed from `group_alias`). The
-        // field names don't match, so the server sees no alias and
-        // the folder is created with alias=null. Work around it by
-        // explicitly calling setGroupAlias (whose body IS `{alias}`
-        // on both sides — that endpoint is correctly paired).
-        await setGroupAlias(newId, { alias: input.alias });
+        // `createGroupInNamespace` stamps the group's metadata record
+        // from the `name` we passed above. We re-assert it here as a
+        // belt-and-suspenders guard — `setGroupMetadata` is idempotent
+        // (passing only `name` leaves any `data` map untouched), so a
+        // redundant call is harmless and shields us from a core build
+        // where create didn't populate the record.
+        await setGroupMetadata(newId, { name: input.alias });
 
         // createGroupInNamespace places the new group as a direct
         // child of the namespace root. To nest it under a specific
@@ -191,7 +190,7 @@ export function useFolderOperations(
       refetch,
       nodeUrl,
       createGroupInNamespace,
-      setGroupAlias,
+      setGroupMetadata,
       setSubgroupVisibility,
       createContext,
       deleteContext,
@@ -201,7 +200,7 @@ export function useFolderOperations(
 
   const rename = useCallback(
     async (folderId: string, alias: string) => {
-      await setGroupAlias(folderId, { alias });
+      await setGroupMetadata(folderId, { name: alias });
       // Mirror into the registry so non-member namespace peers see
       // the new name too. Best-effort: if the registry client isn't
       // ready or the call fails, admin-API side is still updated and
@@ -216,7 +215,7 @@ export function useFolderOperations(
       }
       await refetch();
     },
-    [setGroupAlias, registryClient, refetch],
+    [setGroupMetadata, registryClient, refetch],
   );
 
   const remove = useCallback(
