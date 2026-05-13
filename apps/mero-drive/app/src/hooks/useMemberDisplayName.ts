@@ -37,6 +37,12 @@ export interface MemberDisplayName {
    *  the TS surface needs to land that as `string | null` first. Until
    *  then, "clear my display name" is a deferred surface. */
   setName: (name: string) => Promise<void>;
+  /** Re-read this (namespace, member)'s metadata from the server.
+   *  Consumers that mutate the metadata via a *different* surface
+   *  (e.g. `useAdminRenameMember` renaming someone else, then re-
+   *  rendering the row that displays the new name) call this to
+   *  refresh the cached value without remounting. */
+  refetch: () => Promise<void>;
 }
 
 export function useMemberDisplayName(
@@ -82,5 +88,5 @@ export function useMemberDisplayName(
     [namespaceId, memberId, selfIdentity, setMemberMetadata, refetch],
   );
 
-  return { name, loading, error, setName };
+  return { name, loading, error, setName, refetch };
 }
