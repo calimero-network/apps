@@ -1,9 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import {
-  useMemberDisplayName,
-  __resetDisplayNameCache,
-} from '../useMemberDisplayName';
+import { useMemberDisplayName } from '../useMemberDisplayName';
 
 // Mock mero-react hooks. memberMetadataMock is invoked each render with
 // the same args the hook receives so we can both pin the returned state
@@ -26,7 +23,6 @@ describe('useMemberDisplayName', () => {
   beforeEach(() => {
     memberMetadataMock.mockReset();
     setMemberMetadataFn.mockReset();
-    __resetDisplayNameCache();
   });
 
   it('returns name from MetadataRecord.name', async () => {
@@ -116,4 +112,29 @@ describe('useMemberDisplayName', () => {
     );
     expect(result.current.loading).toBe(true);
   });
+
+  it('setName always targets selfIdentity — does not accept a member arg', async () => {
+    // Even though the hook is bound to 'someone-else', a write must
+    // target 'self-pubkey'. The hook intentionally exposes no API for
+    // renaming other members (defense-in-depth; the server gates that
+    // on CAN_MANAGE_METADATA anyway).
+    memberMetadataMock.mockReturnValue({
+      metadata: null,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    setMemberMetadataFn.mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useMemberDisplayName('ns1', 'someone-else'),
+    );
+    await act(async () => {
+      await result.current.setName('Bob');
+    });
+    expect(setMemberMetadataFn).toHaveBeenCalledWith('ns1', 'self-pubkey', {
+      name: 'Bob',
+      data: {},
+    });
+  });
+
 });

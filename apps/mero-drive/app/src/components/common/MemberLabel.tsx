@@ -38,21 +38,15 @@ export function MemberLabel({
   isSelf,
 }: Props) {
   const { name } = useMemberDisplayName(namespaceId, memberId);
-  if (name) {
-    return (
-      <span className={className} title={memberId}>
-        {name}
-        {isSelf && (
-          <span className="ml-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-            (you)
-          </span>
-        )}
-      </span>
-    );
-  }
+  const body = name ?? (fallback ? fallback(memberId) : defaultTruncate(memberId));
   return (
     <span className={className} title={memberId}>
-      {fallback ? fallback(memberId) : defaultTruncate(memberId)}
+      {body}
+      {isSelf && (
+        <span className="ml-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+          (you)
+        </span>
+      )}
     </span>
   );
 }
