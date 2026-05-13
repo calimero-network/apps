@@ -12,11 +12,10 @@ describe('looksLikeMemberIdentity', () => {
     expect(looksLikeMemberIdentity('a'.repeat(43))).toBe(true);
   });
 
-  it('rejects a string containing `o` (excluded from base58)', () => {
-    // 42 valid chars + a single `o` → must NOT pass; base58 omits
-    // `0`, `O`, `I`, `l`, and `o` (lowercase o looks like 0). The
-    // ranges in the class must skip `o` (m-n + p-z, NOT m-z).
-    expect(looksLikeMemberIdentity('a'.repeat(42) + 'o')).toBe(false);
+  it('accepts a string containing lowercase `o` (IS valid in base58)', () => {
+    // base58 excludes only `0 O I l` — lowercase `o` IS in the alphabet.
+    // The previous "fix" wrongly excluded `o`; reverted.
+    expect(looksLikeMemberIdentity('a'.repeat(42) + 'o')).toBe(true);
   });
 
   it('rejects a string containing `l` (excluded from base58)', () => {
@@ -41,7 +40,7 @@ describe('looksLikeMemberIdentity', () => {
 
   it('exports a pattern that matches looksLikeMemberIdentity', () => {
     expect(MEMBER_IDENTITY_PATTERN.test('a'.repeat(43))).toBe(true);
-    expect(MEMBER_IDENTITY_PATTERN.test('a'.repeat(42) + 'o')).toBe(false);
+    expect(MEMBER_IDENTITY_PATTERN.test('a'.repeat(42) + 'l')).toBe(false);
   });
 });
 

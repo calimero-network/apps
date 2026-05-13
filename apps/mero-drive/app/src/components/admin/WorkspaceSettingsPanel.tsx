@@ -78,6 +78,10 @@ export function WorkspaceSettingsPanel() {
       setAdminError('Already a manager');
       return;
     }
+    if (reg.owner && m === reg.owner) {
+      setAdminError('The owner is implicitly a manager');
+      return;
+    }
     setAdminError(null);
     setBusy(true);
     try {
