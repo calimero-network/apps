@@ -126,7 +126,7 @@ steps:
     type: create_group_in_namespace
     node: calimero-node-1
     namespace_id: '{{namespace_id}}'
-    group_alias: eng
+    group_name: eng
     outputs:
       eng_group: groupId
 
@@ -361,7 +361,7 @@ steps:
     type: create_group_in_namespace
     node: calimero-node-1
     namespace_id: '{{namespace_id}}'
-    group_alias: eng-backend
+    group_name: eng-backend
     outputs:
       backend_group: groupId
 
@@ -380,7 +380,7 @@ steps:
     type: create_group_in_namespace
     node: calimero-node-1
     namespace_id: '{{namespace_id}}'
-    group_alias: eng-frontend
+    group_name: eng-frontend
     outputs:
       frontend_group: groupId
 
@@ -477,7 +477,7 @@ steps:
     type: create_group_in_namespace
     node: calimero-node-1
     namespace_id: '{{namespace_id}}'
-    group_alias: design
+    group_name: design
     outputs:
       design_group: groupId
 
@@ -557,7 +557,7 @@ steps:
     type: create_group_in_namespace
     node: calimero-node-1
     namespace_id: '{{namespace_id}}'
-    group_alias: eng-subteam
+    group_name: eng-subteam
     outputs:
       subteam_group: groupId
 
@@ -1308,7 +1308,7 @@ steps:
     type: create_group_in_namespace
     node: calimero-node-1
     namespace_id: '{{namespace_id}}'
-    group_alias: private-alice
+    group_name: private-alice
     outputs:
       private_group: groupId
 

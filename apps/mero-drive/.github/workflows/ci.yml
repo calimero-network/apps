@@ -253,10 +253,16 @@ jobs:
           # defaults.
           - name: members
             file: workflow-mero-drive-members.yml
-          # Phase 9 — namespace lifecycle. Rename (set_group_alias),
+          # Phase 9 — namespace lifecycle. Rename (set_group_metadata),
           # delete_group, delete_namespace, multi-namespace isolation.
           - name: namespace-lifecycle
             file: workflow-mero-drive-namespace-lifecycle.yml
+          # Metadata records (#2338) — namespace / folder / member name
+          # round-trips across two nodes, plus the CAN_MANAGE_METADATA
+          # negative-cap path now that merobox v0.6.12 honors
+          # expected_failure on group_management steps.
+          - name: metadata-records
+            file: workflow-mero-drive-metadata-records.yml
           # NOTE: e2e/workflow-mero-drive-open-restricted-collab.yml (open/
           # restricted folders + registry permissions) is tracked but NOT in
           # the matrix yet — same as workflow-mero-drive-open-subgroup.yml. It

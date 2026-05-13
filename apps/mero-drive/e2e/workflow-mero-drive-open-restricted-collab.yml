@@ -130,7 +130,7 @@ steps:
     type: create_group_in_namespace
     node: calimero-node-1
     namespace_id: '{{namespace_id}}'
-    group_alias: shared
+    group_name: shared
     outputs:
       open_folder: groupId
 
@@ -437,7 +437,7 @@ steps:
     type: create_group_in_namespace
     node: calimero-node-2
     namespace_id: '{{namespace_id}}'
-    group_alias: bobs
+    group_name: bobs
     outputs:
       bob_folder: groupId
 
@@ -571,7 +571,7 @@ steps:
     type: create_group_in_namespace
     node: calimero-node-1
     namespace_id: '{{namespace_id}}'
-    group_alias: private
+    group_name: private
     outputs:
       priv_folder: groupId
 
