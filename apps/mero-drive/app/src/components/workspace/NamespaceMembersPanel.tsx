@@ -20,7 +20,8 @@ import { InviteDialog } from './InviteDialog';
 import { useCreateNamespaceInvite } from '@/hooks/useNamespaceInvitation';
 
 export function NamespaceMembersPanel() {
-  const { namespaceId, rootGroupId, namespaces } = useDriveWorkspace();
+  const { namespaceId, rootGroupId, namespaces, selfIdentity } =
+    useDriveWorkspace();
   const perms = useNamespacePermissions(namespaceId ?? '', rootGroupId ?? '');
   const membership = useFolderMembership(rootGroupId);
   const { create: createInvite } = useCreateNamespaceInvite();
@@ -121,6 +122,7 @@ export function NamespaceMembersPanel() {
             identity={m.identity}
             label={m.name ?? `${m.identity.slice(0, 8)}…`}
             role={m.role}
+            isSelf={!!selfIdentity && m.identity === selfIdentity}
             canManage={perms.canManageMembers}
             onRemove={onRemove}
           />

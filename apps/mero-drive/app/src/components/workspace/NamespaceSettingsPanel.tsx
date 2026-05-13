@@ -9,6 +9,7 @@ import React from 'react';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { NamespaceMembersPanel } from './NamespaceMembersPanel';
 import { MemberDefaultsPanel } from '@/components/admin/MemberDefaultsPanel';
+import { MyDisplayNamePanel } from '@/components/admin/MyDisplayNamePanel';
 import { WorkspaceSettingsPanel } from '@/components/admin/WorkspaceSettingsPanel';
 
 export function NamespaceSettingsPanel() {
@@ -34,6 +35,7 @@ export function NamespaceSettingsPanel() {
         </p>
       </div>
 
+      <MyDisplayNamePanel />
       <MemberDefaultsPanel />
       <NamespaceMembersPanel />
       <WorkspaceSettingsPanel />
