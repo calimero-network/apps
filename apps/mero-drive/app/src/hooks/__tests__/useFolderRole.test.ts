@@ -98,6 +98,77 @@ describe('useFolderRole', () => {
     await waitFor(() => expect(result.current.error).toBe(boom));
     expect(result.current.loading).toBe(false);
   });
+
+  it('refetch() does NOT flip role back to null while the new fetch is pending', async () => {
+    // First resolution: Editor.
+    getFolderRoleMock.mockResolvedValue('Editor');
+    const { result } = renderHook(() => useFolderRole('f1'));
+    await waitFor(() => expect(result.current.role).toBe('Editor'));
+
+    // Set up the next fetch to be slow (pending) — we want to observe
+    // the in-flight state directly. Then trigger a refetch.
+    let resolveNext: (v: 'Viewer') => void = () => {};
+    getFolderRoleMock.mockImplementation(
+      () =>
+        new Promise<'Viewer'>((r) => {
+          resolveNext = r;
+        }),
+    );
+    act(() => {
+      result.current.refetch();
+    });
+
+    // While the new fetch is in flight, the *previous* role value
+    // remains visible — this is the flicker-prevention contract.
+    // `loading` is true; `role` is not null.
+    await waitFor(() => expect(result.current.loading).toBe(true));
+    expect(result.current.role).toBe('Editor');
+
+    // Resolve the second fetch → role flips to Viewer, loading clears.
+    await act(async () => {
+      resolveNext('Viewer');
+    });
+    await waitFor(() => expect(result.current.role).toBe('Viewer'));
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('changing folderId DOES clear role to null while the new fetch is pending', async () => {
+    getFolderRoleMock.mockResolvedValue('Editor');
+    const { result, rerender } = renderHook(({ id }) => useFolderRole(id), {
+      initialProps: { id: 'f1' },
+    });
+    await waitFor(() => expect(result.current.role).toBe('Editor'));
+
+    let resolveNext: (v: 'Manager') => void = () => {};
+    getFolderRoleMock.mockImplementation(
+      () =>
+        new Promise<'Manager'>((r) => {
+          resolveNext = r;
+        }),
+    );
+    rerender({ id: 'f2' });
+    // Genuinely different folder → role must be null, not the stale
+    // 'Editor' from f1. Loading is true.
+    await waitFor(() => expect(result.current.loading).toBe(true));
+    expect(result.current.role).toBeNull();
+    await act(async () => {
+      resolveNext('Manager');
+    });
+    await waitFor(() => expect(result.current.role).toBe('Manager'));
+  });
+
+  it('returns stable refetch / setRole / clearRole references across renders', async () => {
+    getFolderRoleMock.mockResolvedValue('Editor');
+    const { result, rerender } = renderHook(() => useFolderRole('f1'));
+    await waitFor(() => expect(result.current.role).toBe('Editor'));
+    const firstRefetch = result.current.refetch;
+    const firstSetRole = result.current.setRole;
+    const firstClearRole = result.current.clearRole;
+    rerender();
+    expect(result.current.refetch).toBe(firstRefetch);
+    expect(result.current.setRole).toBe(firstSetRole);
+    expect(result.current.clearRole).toBe(firstClearRole);
+  });
 });
 
 describe('useFolderRoles', () => {

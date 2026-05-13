@@ -11,8 +11,18 @@
 // / `listFolderRoles({ folder_id })`. Writes go through
 // `setFolderRole` / `clearFolderRole`. A `tick` counter forces a
 // refetch after a write (and via `refetch()` for external callers).
+//
+// Flicker-prevention: a re-fetch (tick bump or a registryClient re-
+// memo — useDriveWorkspace rebuilds the client on selfIdentity /
+// registryContextId churn) MUST NOT collapse `role` back to `null` in
+// the meantime; that briefly flips `canEditDocs` to false in the doc
+// editor and bounces the read-only banner. We only clear `role` when
+// the *folder id* actually changes — a genuinely different folder
+// legitimately warrants `null` while loading. For same-folder re-
+// fetches, the previous resolved value stays visible until the new
+// one lands.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useDriveWorkspace } from './useDriveWorkspace';
 import type { Role, FolderRoleEntry } from '../api/registry/RegistryClient';
 
@@ -45,7 +55,17 @@ export function useFolderRole(folderId: string | null): FolderRoleState {
   const { registryClient, selfIdentity } = useDriveWorkspace();
   const [role, setRoleState] = useState<Role | null>(null);
   const [error, setError] = useState<Error | null>(null);
+  const [fetching, setFetching] = useState(false);
   const [tick, setTick] = useState(0);
+
+  // Last folder id we kicked a fetch off for. When `folderId` changes
+  // (genuinely different folder), we DO want to clear the previous
+  // role to null while loading — a stale Editor/Viewer from a sibling
+  // folder would be a lie. For same-folder re-fetches (registryClient
+  // re-memo, tick bump), we keep the prior value visible until the new
+  // one resolves. Without this guard, every churn of useDriveWorkspace
+  // bounces canEditDocs through false → true on the next render.
+  const lastFolderIdRef = useRef<string | null>(null);
 
   // `folderId` may be empty-string from `useFolderPermissions` when no
   // folder is selected — treat that as "no folder", not "loading".
@@ -53,22 +73,39 @@ export function useFolderRole(folderId: string | null): FolderRoleState {
 
   useEffect(() => {
     if (!canFetch) {
+      // No registry / no folder selected → nothing to fetch. Wipe the
+      // role so we don't show a stale value from a previous folder.
+      lastFolderIdRef.current = null;
       setRoleState(null);
       setError(null);
+      setFetching(false);
       return;
     }
-    let cancelled = false;
-    setRoleState(null);
+    const folderChanged = lastFolderIdRef.current !== folderId;
+    if (folderChanged) {
+      // Different folder → clear prior role; loading from null is the
+      // honest state until the new role resolves.
+      setRoleState(null);
+    }
+    // Always clear the error before a fresh attempt — keeps a previous
+    // failure from haunting a subsequent successful refetch.
     setError(null);
+    setFetching(true);
+    lastFolderIdRef.current = folderId;
+    let cancelled = false;
     registryClient!
       .getFolderRole({ folder_id: folderId!, member: selfIdentity! })
       .then((r) => {
-        if (!cancelled) setRoleState((r as Role) ?? 'Editor');
+        if (cancelled) return;
+        setRoleState((r as Role) ?? 'Editor');
       })
       .catch((e) => {
-        if (!cancelled) {
-          setError(e instanceof Error ? e : new Error(String(e)));
-        }
+        if (cancelled) return;
+        setError(e instanceof Error ? e : new Error(String(e)));
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setFetching(false);
       });
     return () => {
       cancelled = true;
@@ -103,18 +140,20 @@ export function useFolderRole(folderId: string | null): FolderRoleState {
     [registryClient, folderId, selfIdentity],
   );
 
+  const refetch = useCallback(() => setTick((t) => t + 1), []);
+
   return {
     role,
-    // Loading == "a fetch can happen and hasn't resolved yet". When
-    // there's no Registry context (`!canFetch`), `loading` is false
-    // (`registryAvailable` is false too) so the doc editor falls back
-    // to folder membership rather than being pinned read-only forever.
-    loading: canFetch && role === null && error === null,
+    // Loading == "a fetch is in flight". When there's no Registry
+    // context (`!canFetch`), `loading` is false (`registryAvailable`
+    // is false too) so the doc editor falls back to folder membership
+    // rather than being pinned read-only forever.
+    loading: canFetch && fetching,
     error,
     registryAvailable: !!registryClient,
     setRole,
     clearRole,
-    refetch: () => setTick((t) => t + 1),
+    refetch,
   };
 }
 
@@ -134,13 +173,22 @@ export function useFolderRoles(folderId: string | null): FolderRolesState {
   const [error, setError] = useState<Error | null>(null);
   const [tick, setTick] = useState(0);
 
+  // Same flicker-prevention as useFolderRole: keep the previous
+  // entries visible across registryClient re-memos / tick refetches;
+  // only clear when the folderId genuinely changes.
+  const lastFolderIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!registryClient || !folderId) {
+      lastFolderIdRef.current = null;
       setEntries([]);
       setLoading(false);
       setError(null);
       return;
     }
+    const folderChanged = lastFolderIdRef.current !== folderId;
+    if (folderChanged) setEntries([]);
+    lastFolderIdRef.current = folderId;
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -162,5 +210,7 @@ export function useFolderRoles(folderId: string | null): FolderRolesState {
     };
   }, [registryClient, folderId, tick]);
 
-  return { entries, loading, error, refetch: () => setTick((t) => t + 1) };
+  const refetch = useCallback(() => setTick((t) => t + 1), []);
+
+  return { entries, loading, error, refetch };
 }
