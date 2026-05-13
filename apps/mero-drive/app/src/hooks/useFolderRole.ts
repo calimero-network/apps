@@ -72,7 +72,13 @@ export function useFolderRole(folderId: string | null): FolderRoleState {
   const canFetch = !!registryClient && !!folderId && !!selfIdentity;
 
   useEffect(() => {
-    if (!canFetch) {
+    // Local non-null bindings — `canFetch` already implies these are
+    // non-null, but the redundant guard keeps TypeScript honest without
+    // non-null assertions (`!`) inside the effect body.
+    const client = registryClient;
+    const folder = folderId;
+    const member = selfIdentity;
+    if (!client || !folder || !member) {
       // No registry / no folder selected → nothing to fetch. Wipe the
       // role so we don't show a stale value from a previous folder.
       lastFolderIdRef.current = null;
@@ -81,7 +87,7 @@ export function useFolderRole(folderId: string | null): FolderRoleState {
       setFetching(false);
       return;
     }
-    const folderChanged = lastFolderIdRef.current !== folderId;
+    const folderChanged = lastFolderIdRef.current !== folder;
     if (folderChanged) {
       // Different folder → clear prior role; loading from null is the
       // honest state until the new role resolves.
@@ -91,10 +97,10 @@ export function useFolderRole(folderId: string | null): FolderRoleState {
     // failure from haunting a subsequent successful refetch.
     setError(null);
     setFetching(true);
-    lastFolderIdRef.current = folderId;
+    lastFolderIdRef.current = folder;
     let cancelled = false;
-    registryClient!
-      .getFolderRole({ folder_id: folderId!, member: selfIdentity! })
+    client
+      .getFolderRole({ folder_id: folder, member })
       .then((r) => {
         if (cancelled) return;
         setRoleState((r as Role) ?? 'Editor');

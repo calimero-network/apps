@@ -106,9 +106,19 @@ export function FolderMemberRoleRow({
           ) : (
             <FolderRoleSelect
               role={registryRole}
-              folderCaps={caps.capabilities ?? (caps.loading ? null : 0)}
+              folderCaps={
+                caps.capabilities ??
+                // While loading OR on a caps-fetch error, pass `null` so
+                // FolderRoleSelect renders its "Loading…" state instead
+                // of misleading the user with a `0` that would match the
+                // Viewer/Editor preset (both have `folderCaps: 0`).
+                // Passing `0` on error also lets a "change" click write
+                // `setCapabilities(0)` — a no-op that silently swallows
+                // the underlying error.
+                (caps.loading || caps.error ? null : 0)
+              }
               onChange={onPreset}
-              disabled={!canManage || updating || caps.loading}
+              disabled={!canManage || updating || caps.loading || !!caps.error}
               ariaLabel={`Folder role for ${label}`}
             />
           )}

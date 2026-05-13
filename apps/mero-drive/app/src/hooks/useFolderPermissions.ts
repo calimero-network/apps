@@ -124,7 +124,17 @@ export function useFolderPermissions(
 
   // Per spec §5.5: a core admin can always delete; otherwise the
   // member needs BOTH the delete cap and the registry Manager role.
-  const canDelete = isAdmin || (hasDeleteCap && role === 'Manager');
+  //
+  // No-Registry-context fallback: when there's no registry to read
+  // roles from (`!registryAvailable`), the Manager gate has nothing to
+  // resolve and `role` would be `null` forever. In that case fall back
+  // to the cap-only check — same approach as `canEditDocs` below for
+  // its registry-unavailable branch. Without this, a non-admin holding
+  // `CAN_DELETE_SUBGROUP` could never delete folders in a workspace
+  // without a Registry context.
+  const canDelete =
+    isAdmin ||
+    (hasDeleteCap && (registryAvailable ? role === 'Manager' : true));
 
   // Doc editing — CONSERVATIVE. Core only gates doc-context writes on
   // folder membership, so this app-layer check is the ONLY thing

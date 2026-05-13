@@ -305,6 +305,29 @@ describe('useFolderPermissions', () => {
     expect(result.current.canDelete).toBe(false);
   });
 
+  it('canDelete: CAN_DELETE_SUBGROUP + no Registry context → true (fall back to cap-only)', async () => {
+    // Mirrors the canEditDocs no-registry fallback: when there's no
+    // Registry context to read roles from, the Manager-role gate has
+    // nothing to resolve and would otherwise stay false forever. Fall
+    // back to the cap-only check so a non-admin with CAN_DELETE_SUBGROUP
+    // can still delete folders in a workspace without a registry.
+    folderRoleState.registryAvailable = false;
+    folderRoleState.role = null;
+    const { result } = renderWithCaps(C.CAN_DELETE_SUBGROUP);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.canDelete).toBe(true);
+  });
+
+  it('canDelete: no CAN_DELETE_SUBGROUP + no Registry context → false (cap is still required)', async () => {
+    // The fallback only relaxes the role gate, NOT the cap gate. A
+    // member without the delete cap must still be denied.
+    folderRoleState.registryAvailable = false;
+    folderRoleState.role = null;
+    const { result } = renderWithCaps(0);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.canDelete).toBe(false);
+  });
+
   it('Open subgroup: inherited namespace member gets the real cap mask from core', async () => {
     // Per core PR #2261, listGroupMembers + getMemberCapabilities now
     // resolve via the parent-walk for Open subgroups. The hook just
