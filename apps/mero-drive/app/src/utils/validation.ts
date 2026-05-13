@@ -36,7 +36,7 @@ export function safeColor(raw: string | null | undefined): string | undefined {
 //   a-k    → no l (97..107; l is 108)
 //   m-n    → skips l
 //   p-z    → skips o (o is 111)
-export const MEMBER_IDENTITY_PATTERN = /^[1-9A-HJ-NP-Za-km-z]{40,50}$/;
+export const MEMBER_IDENTITY_PATTERN = /^[1-9A-HJ-NP-Za-km-np-z]{40,50}$/;
 
 export function looksLikeMemberIdentity(raw: string): boolean {
   return MEMBER_IDENTITY_PATTERN.test(raw);
