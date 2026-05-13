@@ -26,6 +26,18 @@ import {
 vi.mock('@/hooks/useFolderPermissions', () => ({
   useFolderPermissions: vi.fn(),
 }));
+// Force MemberLabel into its fallback (truncated-pubkey) path so any
+// existing assertion that looks for the truncate text still matches.
+// The display-name feature is exercised by useMemberDisplayName.test.ts
+// + MemberLabel.test.tsx directly.
+vi.mock('@/hooks/useMemberDisplayName', () => ({
+  useMemberDisplayName: () => ({
+    name: null,
+    loading: false,
+    error: null,
+    setName: vi.fn(),
+  }),
+}));
 vi.mock('@/hooks/useNamespacePermissions', () => ({
   useNamespacePermissions: vi.fn(),
 }));

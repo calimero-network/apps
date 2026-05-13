@@ -34,6 +34,7 @@ import { useFolderRoles } from '@/hooks/useFolderRole';
 import { useCreateFolderInvite } from '@/hooks/useNamespaceInvitation';
 import { InviteDialog } from '@/components/workspace/InviteDialog';
 import { FolderMemberRoleRow } from '@/components/admin/FolderMemberRoleRow';
+import { MemberLabel } from '@/components/common/MemberLabel';
 import type { Role } from '@/api/registry/RegistryClient';
 import { looksLikeMemberIdentity } from '@/utils/validation';
 
@@ -45,7 +46,7 @@ interface Props {
 // (base58 alphabet, length window, client-only UX check).
 
 export function FolderSharingPanel({ folderId }: Props) {
-  const { namespaceId, folders } = useDriveWorkspace();
+  const { namespaceId, folders, selfIdentity } = useDriveWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const { members, loading, error, add, remove, refetch } =
     useFolderMembership(folderId);
@@ -117,7 +118,18 @@ export function FolderSharingPanel({ folderId }: Props) {
   const onRemove = async (id: string, label: string) => {
     const ok = await confirm({
       title: 'Remove member?',
-      body: <>Remove <code className="text-xs">{label}</code> from this folder?</>,
+      body: (
+        <>
+          Remove{' '}
+          <MemberLabel
+            namespaceId={namespaceId}
+            memberId={id}
+            fallback={() => label}
+            className="font-medium"
+          />
+          {' '}from this folder?
+        </>
+      ),
       confirmLabel: 'Remove',
       destructive: true,
     });
@@ -197,6 +209,7 @@ export function FolderSharingPanel({ folderId }: Props) {
           const label = m.name ?? `${m.identity.slice(0, 8)}…`;
           const rowErr =
             removeError?.identity === m.identity ? removeError.message : null;
+          const isSelfRow = !!selfIdentity && m.identity === selfIdentity;
           if (perms.canManagePermissions) {
             return (
               <React.Fragment key={m.identity}>
@@ -206,6 +219,7 @@ export function FolderSharingPanel({ folderId }: Props) {
                   label={label}
                   coreRole={m.role}
                   registryRole={roleByMember.get(m.identity) ?? 'Editor'}
+                  isSelf={isSelfRow}
                   canManage
                   onAfterRoleChange={refetchRoles}
                   // No per-member remove on Open folders — membership is
@@ -233,7 +247,12 @@ export function FolderSharingPanel({ folderId }: Props) {
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium text-foreground">
-                    {label}
+                    <MemberLabel
+                      namespaceId={namespaceId}
+                      memberId={m.identity}
+                      isSelf={isSelfRow}
+                      fallback={() => label}
+                    />
                   </div>
                   <div className="truncate text-xs text-muted-foreground">
                     {m.role}

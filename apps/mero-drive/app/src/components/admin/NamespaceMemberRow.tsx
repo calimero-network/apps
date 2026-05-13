@@ -13,15 +13,23 @@ import { Trash2 } from 'lucide-react';
 import { useGroupCapabilities } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
+import { MemberLabel } from '@/components/common/MemberLabel';
 import { MemberRoleSelect } from './MemberRoleSelect';
 
 interface Props {
   groupId: string;
   identity: string;
+  /** Pre-resolved label (e.g. server-reported `m.name`, or a
+   *  truncated pubkey). Used as the MemberLabel fallback so a member
+   *  with no display name still gets the parent panel's chosen text;
+   *  also reused for the "Remove member?" confirm dialog. */
   label: string;
   /** Server-reported role: Admin / Member / ReadOnly. Undefined if
    *  the caller didn't resolve it. */
   role?: string;
+  /** True when this row is the caller's own identity — surfaces a
+   *  "(you)" badge after the display name. */
+  isSelf?: boolean;
   canManage: boolean;
   onRemove: (identity: string, label: string) => Promise<void>;
 }
@@ -46,6 +54,7 @@ export function NamespaceMemberRow({
   identity,
   label,
   role,
+  isSelf,
   canManage,
   onRemove,
 }: Props) {
@@ -94,9 +103,13 @@ export function NamespaceMemberRow({
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="truncate font-medium text-foreground">
-              {label}
-            </span>
+            <MemberLabel
+              namespaceId={groupId}
+              memberId={identity}
+              isSelf={isSelf}
+              fallback={() => label}
+              className="truncate font-medium text-foreground"
+            />
             {role && (
               <span
                 className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${roleBadgeClasses(

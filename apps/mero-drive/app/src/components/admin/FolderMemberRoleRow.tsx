@@ -20,6 +20,7 @@ import { Trash2 } from 'lucide-react';
 import { useGroupCapabilities } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import { MemberLabel } from '@/components/common/MemberLabel';
 import {
   FolderRoleSelect,
   type FolderRolePreset,
@@ -29,11 +30,17 @@ import type { Role } from '@/api/registry/RegistryClient';
 interface Props {
   folderId: string;
   identity: string;
+  /** Pre-resolved label (server-reported `m.name` or a truncated
+   *  pubkey). Used as the MemberLabel fallback for callers that
+   *  haven't set a display name, and reused in remove dialogs. */
   label: string;
   /** Server-reported core role: Admin / Member / ReadOnly. */
   coreRole?: string;
   /** Registry folder Role for this member (default 'Editor' if absent). */
   registryRole: Role;
+  /** True when this row is the caller's own identity — surfaces a
+   *  "(you)" badge after the display name. */
+  isSelf?: boolean;
   canManage: boolean;
   /** Called after the preset's registry role + folder caps are both
    *  written, so the parent can refetch the role list. */
@@ -49,12 +56,13 @@ export function FolderMemberRoleRow({
   label,
   coreRole,
   registryRole,
+  isSelf,
   canManage,
   onAfterRoleChange,
   onRemove,
   removing,
 }: Props) {
-  const { registryClient } = useDriveWorkspace();
+  const { registryClient, namespaceId } = useDriveWorkspace();
   const caps = useGroupCapabilities(folderId, identity);
   const [updating, setUpdating] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
@@ -93,7 +101,14 @@ export function FolderMemberRoleRow({
     <li className="px-4 py-2 text-sm">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="truncate font-medium text-foreground">{label}</div>
+          <div className="truncate font-medium text-foreground">
+            <MemberLabel
+              namespaceId={namespaceId}
+              memberId={identity}
+              isSelf={isSelf}
+              fallback={() => label}
+            />
+          </div>
           <div className="truncate text-xs text-muted-foreground">
             <code>{identity.slice(0, 12)}…</code>
           </div>

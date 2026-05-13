@@ -29,10 +29,14 @@ import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { useRegistryAdmin } from '@/hooks/useRegistryAdmin';
 import { useReconcile } from '@/hooks/useReconcile';
+import { MemberLabel } from '@/components/common/MemberLabel';
 import { looksLikeMemberIdentity } from '@/utils/validation';
 
 export function WorkspaceSettingsPanel() {
   const { namespaceId, rootGroupId, registryClient } = useDriveWorkspace();
+  // Display-name routing in this panel uses the namespace id (not the
+  // registry context id) — display names are per-namespace, the same
+  // scope as core's MemberMetadata.
   const perms = useNamespacePermissions(namespaceId ?? '', rootGroupId ?? '');
   const { subgroups } = useSubgroups(rootGroupId);
   const { run, running, last, error } = useReconcile(
@@ -99,9 +103,14 @@ export function WorkspaceSettingsPanel() {
       title: 'Remove manager?',
       body: (
         <>
-          Remove <code className="text-xs">{m.slice(0, 12)}…</code> from the
-          registry managers? They'll keep any folder access they have
-          through namespace membership, but lose the ability to change
+          Remove{' '}
+          <MemberLabel
+            namespaceId={namespaceId}
+            memberId={m}
+            className="font-medium"
+          />
+          {' '}from the registry managers? They'll keep any folder access they
+          have through namespace membership, but lose the ability to change
           folder roles.
         </>
       ),
@@ -178,9 +187,13 @@ export function WorkspaceSettingsPanel() {
             <div className="flex items-center gap-2 text-sm">
               <Crown className="h-3.5 w-3.5 text-amber-500" aria-hidden />
               <span className="text-muted-foreground">Owner:</span>
-              <code className="text-xs text-foreground">
-                {reg.owner?.slice(0, 16)}…
-              </code>
+              {reg.owner && (
+                <MemberLabel
+                  namespaceId={namespaceId}
+                  memberId={reg.owner}
+                  className="text-xs text-foreground"
+                />
+              )}
               {reg.isOwner && (
                 <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">
                   You
@@ -204,9 +217,11 @@ export function WorkspaceSettingsPanel() {
                       key={m}
                       className="flex items-center justify-between gap-3 rounded border border-border/60 px-2 py-1"
                     >
-                      <code className="truncate text-xs text-foreground">
-                        {m.slice(0, 16)}…
-                      </code>
+                      <MemberLabel
+                        namespaceId={namespaceId}
+                        memberId={m}
+                        className="truncate text-xs text-foreground"
+                      />
                       {canEditManagers && (
                         <Button
                           variant="ghost"
