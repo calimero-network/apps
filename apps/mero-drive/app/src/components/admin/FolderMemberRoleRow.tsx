@@ -73,6 +73,13 @@ export function FolderMemberRoleRow({
         role: preset.role,
       });
       await caps.setCapabilities(preset.folderCaps);
+      // `useGroupCapabilities.setCapabilities` resolves with the new
+      // bitmask but mero-react does NOT necessarily update the hook's
+      // own `capabilities` state until the next read — and the
+      // FolderRoleSelect's "current preset" derives from that value.
+      // Explicitly refetching keeps the dropdown label honest after
+      // the write lands.
+      await caps.refetch();
       onAfterRoleChange?.();
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
