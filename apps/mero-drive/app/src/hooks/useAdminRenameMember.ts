@@ -39,6 +39,16 @@ export function useAdminRenameMember(
 
   const renameTo = useCallback(
     async (next: string) => {
+      // Authorization first — never let a missing arg / out-of-window
+      // state mask a permission failure with a friendlier error.
+      if (!canRename) {
+        throw new Error('no permission to rename other members');
+      }
+      if (selfIdentity && memberId === selfIdentity) {
+        throw new Error(
+          'renameTo refuses self — use useMemberDisplayName.setName for self edits',
+        );
+      }
       const trimmed = next.trim();
       if (!trimmed) throw new Error('display name cannot be empty');
       if (trimmed.length > MAX_DISPLAY_NAME_LEN) {
@@ -48,14 +58,6 @@ export function useAdminRenameMember(
       }
       if (!namespaceId) throw new Error('namespaceId required');
       if (!memberId) throw new Error('memberId required');
-      if (selfIdentity && memberId === selfIdentity) {
-        throw new Error(
-          'renameTo refuses self — use useMemberDisplayName.setName for self edits',
-        );
-      }
-      if (!canRename) {
-        throw new Error('no permission to rename other members');
-      }
       await setMemberMetadata(namespaceId, memberId, {
         name: trimmed,
         data: {},
