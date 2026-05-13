@@ -161,14 +161,18 @@ export function useFolderPermissions(
     // grants. Used to reveal the sharing-panel admin section / context-
     // menu admin items. (Mirrors `canManageGroup` in namespace perms;
     // deliberately excludes `canCreateSubfolder`, which is a namespace-
-    // scope grant, not a folder-admin signal.)
+    // scope grant, not a folder-admin signal.) Pure capability-bit
+    // aggregate — `canManagePermissions` (registry owner/manager) is
+    // an orthogonal concept gated separately by the sharing panel, so
+    // it is NOT folded in here: a registry-only manager with zero
+    // folder caps would otherwise see an admin context-menu trigger
+    // (the ⋯ button) with an empty body underneath.
     canManageGroup:
       canRename ||
       canManageVisibility ||
       hasDeleteCap ||
       canInviteMembers ||
-      canManageMembers ||
-      canManagePermissions,
+      canManageMembers,
     loading: caps === null,
     error,
   };

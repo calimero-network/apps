@@ -268,9 +268,24 @@ describe('useFolderPermissions', () => {
     expect(result.current.canEditDocs).toBe(false);
   });
 
-  it('isOwnerOrManager → canManagePermissions true (and canManageGroup)', async () => {
+  it('isOwnerOrManager → canManagePermissions true; canManageGroup still cap-driven', async () => {
+    // Registry owner/manager is an orthogonal authorization plane to
+    // the folder capability bits. `canManagePermissions` is the
+    // sharing-panel admin gate; `canManageGroup` is the "any folder-
+    // admin power" aggregate over folder caps. A registry-only manager
+    // with zero folder caps gets `canManagePermissions=true` but NOT
+    // `canManageGroup` — otherwise the FolderContextMenu would show
+    // its ⋯ trigger with no enabled items underneath.
     registryAdminState.isOwnerOrManager = true;
     const { result } = renderWithCaps(0);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.canManagePermissions).toBe(true);
+    expect(result.current.canManageGroup).toBe(false);
+  });
+
+  it('isOwnerOrManager + any folder cap → canManageGroup true (driven by the cap)', async () => {
+    registryAdminState.isOwnerOrManager = true;
+    const { result } = renderWithCaps(C.CAN_MANAGE_METADATA);
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.canManagePermissions).toBe(true);
     expect(result.current.canManageGroup).toBe(true);

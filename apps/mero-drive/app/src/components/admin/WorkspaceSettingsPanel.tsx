@@ -71,7 +71,7 @@ export function WorkspaceSettingsPanel() {
       return;
     }
     if (!looksLikeMemberIdentity(m)) {
-      setAdminError('Identity doesn’t look like a valid pubkey');
+      setAdminError("Identity doesn't look like a valid pubkey");
       return;
     }
     if (reg.managers.includes(m)) {
