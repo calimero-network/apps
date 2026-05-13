@@ -95,7 +95,7 @@ steps:
     type: create_group_in_namespace
     node: calimero-node-1
     namespace_id: '{{namespace_id}}'
-    group_alias: shared-folder
+    group_name: shared-folder
     outputs:
       folder_group: groupId
 
