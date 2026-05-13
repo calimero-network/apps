@@ -16,6 +16,12 @@ import {
 } from '@calimero-network/mero-react';
 import { useDriveWorkspace } from './useDriveWorkspace';
 
+/** Display names are stored in core's `MetadataRecord.name` which has no
+ *  server-side max length, so we set our own to match the typical
+ *  username affordance. The HTML input also enforces this with
+ *  `maxLength={64}`; this is the programmatic backstop. */
+export const MAX_DISPLAY_NAME_LEN = 64;
+
 export interface MemberDisplayName {
   /** Display name or null when none is set. */
   name: string | null;
@@ -50,15 +56,30 @@ export function useMemberDisplayName(
     async (next: string) => {
       const trimmed = next.trim();
       if (!trimmed) throw new Error('display name cannot be empty');
+      if (trimmed.length > MAX_DISPLAY_NAME_LEN) {
+        throw new Error(
+          `display name must be ${MAX_DISPLAY_NAME_LEN} characters or fewer`,
+        );
+      }
       if (!namespaceId) throw new Error('namespaceId required');
       if (!selfIdentity) throw new Error('self identity not resolved');
+      // setName is a *self*-only operation by contract. Callers must bind
+      // the hook to selfIdentity if they want to write. Avoids the
+      // refetch-vs-write mismatch where the hook is bound to memberId=X
+      // but we write to selfIdentity — refetch() would refresh X's
+      // metadata, leaving the caller's own state stale until next mount.
+      if (memberId && memberId !== selfIdentity) {
+        throw new Error(
+          'setName is self-only — bind useMemberDisplayName to selfIdentity to write',
+        );
+      }
       await setMemberMetadata(namespaceId, selfIdentity, {
         name: trimmed,
         data: {},
       });
       await refetch();
     },
-    [namespaceId, selfIdentity, setMemberMetadata, refetch],
+    [namespaceId, memberId, selfIdentity, setMemberMetadata, refetch],
   );
 
   return { name, loading, error, setName };

@@ -113,11 +113,10 @@ describe('useMemberDisplayName', () => {
     expect(result.current.loading).toBe(true);
   });
 
-  it('setName always targets selfIdentity — does not accept a member arg', async () => {
-    // Even though the hook is bound to 'someone-else', a write must
-    // target 'self-pubkey'. The hook intentionally exposes no API for
-    // renaming other members (defense-in-depth; the server gates that
-    // on CAN_MANAGE_METADATA anyway).
+  it('setName refuses when hook is bound to a non-self memberId', async () => {
+    // setName is self-only: when the hook is bound to someone else's
+    // identity, calling setName must throw rather than silently refetch
+    // the wrong member after writing to self.
     memberMetadataMock.mockReturnValue({
       metadata: null,
       loading: false,
@@ -128,13 +127,21 @@ describe('useMemberDisplayName', () => {
     const { result } = renderHook(() =>
       useMemberDisplayName('ns1', 'someone-else'),
     );
-    await act(async () => {
-      await result.current.setName('Bob');
-    });
-    expect(setMemberMetadataFn).toHaveBeenCalledWith('ns1', 'self-pubkey', {
-      name: 'Bob',
-      data: {},
-    });
+    await expect(result.current.setName('Bob')).rejects.toThrow(/self-only/);
+    expect(setMemberMetadataFn).not.toHaveBeenCalled();
   });
 
+  it('setName rejects names longer than the max length', async () => {
+    memberMetadataMock.mockReturnValue({
+      metadata: null,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    const { result } = renderHook(() =>
+      useMemberDisplayName('ns1', 'self-pubkey'),
+    );
+    await expect(result.current.setName('x'.repeat(65))).rejects.toThrow(/64/);
+    expect(setMemberMetadataFn).not.toHaveBeenCalled();
+  });
 });
