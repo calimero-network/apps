@@ -1,5 +1,6 @@
 // Toggle a folder's subgroup visibility between Open and Restricted.
-// Gated by canManageGroup — only folder admins see the option.
+// Gated by canManageVisibility (core's CAN_MANAGE_VISIBILITY bit) —
+// only folder admins see the option.
 //
 // As of core PR #2261, visibility is owned by Calimero core, not the
 // app-layer registry. Open subgroups inherit membership from the
@@ -31,7 +32,7 @@ export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
   const { setSubgroupVisibility } = useSetSubgroupVisibility();
   const [busy, setBusy] = useState(false);
 
-  if (!perms.canManageGroup || !current) return null;
+  if (!perms.canManageVisibility || !current) return null;
 
   const next: 'Open' | 'Restricted' = current === 'Open' ? 'Restricted' : 'Open';
 

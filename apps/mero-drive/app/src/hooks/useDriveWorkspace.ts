@@ -28,7 +28,7 @@
 //   creation:
 //     createWorkspace, createWorkspaceLoading, createWorkspaceError
 //   registry:
-//     registryContextId, registryClient, folders
+//     registryContextId, registryClient, folders, registryAdmin
 //   selected folder (UI-only):
 //     selectedFolderId, setSelectedFolder
 //   status:
@@ -61,7 +61,11 @@ import {
   type MergedFolder,
   type RegistryFolderShape,
 } from './useWorkspaceTree';
-import { ENV_APPLICATION_ID, REGISTRY_SERVICE_ID } from '@/constants/config';
+import {
+  DEFAULT_NEW_MEMBER_CAPS,
+  ENV_APPLICATION_ID,
+  REGISTRY_SERVICE_ID,
+} from '@/constants/config';
 
 const ACTIVE_NS_KEY = 'mero-drive:activeNs';
 // SessionStorage-only so it doesn't persist across tabs or reloads
@@ -74,6 +78,30 @@ const JUST_JOINED_KEY = 'mero-drive:justJoined';
 // state typically land in <1s on a healthy mesh; the upper bound
 // exists so a flaky peer doesn't leave the UI pinned forever.
 const JUST_JOINED_WATCHDOG_MS = 30_000;
+
+/** Registry-level ownership + managers, hoisted onto the workspace
+ *  state so it's fetched ONCE for the whole folder tree (was N×getOwner
+ *  + N×listManagers when every FolderContextMenu row called
+ *  `useRegistryAdmin` directly). `useRegistryAdmin()` now just reads
+ *  this slice from context. */
+export interface RegistryAdminSlice {
+  /** Registry owner identity, or `null` when unclaimed. */
+  owner: string | null;
+  managers: string[];
+  /** Current identity is owner OR manager — gates writing folder roles /
+   *  the sharing-panel admin section (`canManagePermissions`). */
+  isOwnerOrManager: boolean;
+  /** Current identity is the owner — managers can't add/remove managers. */
+  isOwner: boolean;
+  loading: boolean;
+  error: Error | null;
+  addManager: (member: string) => Promise<void>;
+  removeManager: (member: string) => Promise<void>;
+  /** Claim the owner slot for the current identity (no-op if already
+   *  owned by this identity; errors if a different key owns it). */
+  claimOwner: () => Promise<void>;
+  refetch: () => void;
+}
 
 export type DriveLoadingStage =
   | 'idle'
@@ -137,6 +165,9 @@ export interface DriveWorkspaceState {
   registryContextId: string | null;
   registryClient: RegistryClient | null;
   folders: MergedFolder[];
+  /** Registry owner/managers — fetched once here, read by
+   *  `useRegistryAdmin()` and `useFolderPermissions`. */
+  registryAdmin: RegistryAdminSlice;
 
   // selected folder (UI-only; not persisted)
   selectedFolderId: string | null;
@@ -230,14 +261,54 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       return;
     }
     lazyCreateRef.current = { nsId: selectedNsId, inFlight: true };
+    const healingNsId = selectedNsId;
     (async () => {
       try {
-        await mero.admin.createContext({
+        const reg = await mero.admin.createContext({
           applicationId,
-          groupId: selectedNsId,
+          groupId: healingNsId,
           serviceName: REGISTRY_SERVICE_ID,
           initializationParams: [],
         });
+        // Best-effort: claim the registry owner slot — but ONLY if the
+        // caller is a core namespace-admin. `claim_owner` in the WASM
+        // is first-come-first-served with NO authz gate (see
+        // logic/crates/registry/src/permissions.rs::claim_owner_inner —
+        // it sets the owner when unclaimed regardless of caller), so a
+        // non-admin member opening a legacy/half-set-up workspace would
+        // otherwise seize the registry. We mirror useMemberCaps's admin
+        // check inline (we can't call useMemberCaps here — it consumes
+        // this very hook's context, which isn't established yet).
+        if (reg?.contextId && reg?.memberPublicKey) {
+          let callerIsNsAdmin = false;
+          try {
+            const raw = (await mero.admin.listGroupMembers(
+              healingNsId,
+            )) as unknown as {
+              members?: Array<{ identity: string; role?: string }>;
+              data?: Array<{ identity: string; role?: string }>;
+            };
+            const membersList = raw.members ?? raw.data ?? [];
+            const me = membersList.find(
+              (m) => m.identity === reg.memberPublicKey,
+            );
+            callerIsNsAdmin = me?.role === 'Admin';
+          } catch {
+            // If we can't tell, err on the side of NOT claiming —
+            // a real admin can claim later via the WorkspaceSettingsPanel
+            // "Claim ownership" button.
+            callerIsNsAdmin = false;
+          }
+          if (callerIsNsAdmin) {
+            await new RegistryClient(
+              mero,
+              reg.contextId,
+              reg.memberPublicKey,
+            )
+              .claimOwner()
+              .catch(() => {});
+          }
+        }
         await refetchContexts();
       } catch (err) {
         // Non-fatal — surface via regError so the UI can show a
@@ -264,6 +335,99 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     if (!mero || !registryContextId || !selfIdentity) return null;
     return new RegistryClient(mero, registryContextId, selfIdentity);
   }, [mero, registryContextId, selfIdentity]);
+
+  // --- Registry owner/managers (fetched ONCE here) ---
+  // Was previously fetched per FolderContextMenu row via
+  // `useRegistryAdmin()` → N×getOwner + N×listManagers for an N-folder
+  // tree (all identical). Hoisted: fetch once, every consumer reads
+  // `registryAdmin` off this state. `useRegistryAdmin()` still exists
+  // (used by WorkspaceSettingsPanel) but now just returns this slice.
+  const [regOwner, setRegOwner] = useState<string | null>(null);
+  const [regManagers, setRegManagers] = useState<string[]>([]);
+  const [regAdminLoading, setRegAdminLoading] = useState(false);
+  const [regAdminError, setRegAdminError] = useState<Error | null>(null);
+  const [regAdminTick, setRegAdminTick] = useState(0);
+
+  useEffect(() => {
+    if (!registryClient) {
+      setRegOwner(null);
+      setRegManagers([]);
+      setRegAdminLoading(false);
+      setRegAdminError(null);
+      return;
+    }
+    let cancelled = false;
+    setRegAdminLoading(true);
+    setRegAdminError(null);
+    Promise.all([registryClient.getOwner(), registryClient.listManagers()])
+      .then(([o, m]) => {
+        if (cancelled) return;
+        setRegOwner(o && o.length > 0 ? o : null);
+        setRegManagers(m ?? []);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setRegAdminError(e instanceof Error ? e : new Error(String(e)));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setRegAdminLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [registryClient, regAdminTick]);
+
+  const refetchRegAdmin = useCallback(() => setRegAdminTick((t) => t + 1), []);
+  const addManager = useCallback(
+    async (member: string) => {
+      if (!registryClient || !member) return;
+      await registryClient.addManager({ member });
+      setRegAdminTick((t) => t + 1);
+    },
+    [registryClient],
+  );
+  const removeManager = useCallback(
+    async (member: string) => {
+      if (!registryClient || !member) return;
+      await registryClient.removeManager({ member });
+      setRegAdminTick((t) => t + 1);
+    },
+    [registryClient],
+  );
+  const claimRegistryOwner = useCallback(async () => {
+    if (!registryClient) return;
+    await registryClient.claimOwner();
+    setRegAdminTick((t) => t + 1);
+  }, [registryClient]);
+
+  const registryAdmin = useMemo<RegistryAdminSlice>(() => {
+    const isOwner = !!regOwner && regOwner === selfIdentity;
+    const isOwnerOrManager =
+      isOwner || (!!selfIdentity && regManagers.includes(selfIdentity));
+    return {
+      owner: regOwner,
+      managers: regManagers,
+      isOwnerOrManager,
+      isOwner,
+      loading: regAdminLoading,
+      error: regAdminError,
+      addManager,
+      removeManager,
+      claimOwner: claimRegistryOwner,
+      refetch: refetchRegAdmin,
+    };
+  }, [
+    regOwner,
+    regManagers,
+    selfIdentity,
+    regAdminLoading,
+    regAdminError,
+    addManager,
+    removeManager,
+    claimRegistryOwner,
+    refetchRegAdmin,
+  ]);
 
   // --- Subgroups (admin-side folder tree) ---
   const {
@@ -434,15 +598,66 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         if (!ns?.namespaceId) {
           throw new Error('createNamespace returned no namespaceId');
         }
-        // Step 2 — seed the Registry context inside the namespace's
+        // Step 2 — set the default capabilities every future member of
+        // this namespace inherits on join: the "Editor" set (join open
+        // folders + create folders + create document contexts). Per
+        // design spec §5.2. Existing members are unaffected; an admin
+        // can change this later via the Member-defaults panel.
+        //
+        // Best-effort: a failure here must NOT abort the create — the
+        // namespace already exists, and leaving it unselected +
+        // unconfigured is worse than just shipping it with core's
+        // built-in default; the admin can re-set defaults via the
+        // Member-defaults panel.
+        try {
+          await mero.admin.setDefaultCapabilities(ns.namespaceId, {
+            defaultCapabilities: DEFAULT_NEW_MEMBER_CAPS,
+          });
+        } catch (e) {
+          console.warn(
+            '[useDriveWorkspace] setDefaultCapabilities failed during ' +
+              'createWorkspace; namespace created without member defaults. ' +
+              'Re-set via the Member-defaults panel.',
+            e,
+          );
+        }
+        // Step 3 — seed the Registry context inside the namespace's
         // root group. This is the convention the rest of the hook
-        // relies on: contexts[0] === Registry context.
-        await mero.admin.createContext({
+        // relies on: contexts[0] === Registry context. Hard failure —
+        // without a Registry context the workspace is unusable.
+        const reg = await mero.admin.createContext({
           applicationId,
           groupId: ns.namespaceId,
           serviceName: REGISTRY_SERVICE_ID,
           initializationParams: [],
         });
+        // Step 4 — claim the registry's owner slot for the creator.
+        // The permissions layer is fail-closed (set_folder_role,
+        // add_manager etc. all require owner/manager) until this runs,
+        // so a freshly-created workspace would be unmanageable without
+        // it. `createContext` returns `{ contextId, memberPublicKey }`
+        // (see mero-js admin-types `CreateContextResponseData`).
+        //
+        // Best-effort: if this fails the registry is left unclaimed —
+        // the admin can re-run claim via the WorkspaceSettingsPanel
+        // "Claim ownership" button. We DON'T abort the create here;
+        // see Fix D in the code-review notes.
+        if (reg?.contextId && reg?.memberPublicKey) {
+          try {
+            await new RegistryClient(
+              mero,
+              reg.contextId,
+              reg.memberPublicKey,
+            ).claimOwner();
+          } catch (e) {
+            console.warn(
+              '[useDriveWorkspace] claimOwner failed during ' +
+                'createWorkspace; registry left unclaimed. Re-run via ' +
+                'the workspace settings "Claim ownership" button.',
+              e,
+            );
+          }
+        }
         await refetchNamespaces();
         userCleared.current = false;
         setSelectedNsId(ns.namespaceId);
@@ -478,10 +693,17 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       refetchSubgroups(),
       loadRegFolders(),
     ]);
+    refetchRegAdmin();
     // Force the per-folder getGroupInfo effect to re-run so a rename
     // surfaces in the tree even though the folder id set is unchanged.
     setAliasRevision((r) => r + 1);
-  }, [refetchNamespaces, refetchContexts, refetchSubgroups, loadRegFolders]);
+  }, [
+    refetchNamespaces,
+    refetchContexts,
+    refetchSubgroups,
+    loadRegFolders,
+    refetchRegAdmin,
+  ]);
 
   // --- Post-join sync gate ---
   // If the active namespace was freshly joined in this session,
@@ -581,6 +803,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     registryContextId,
     registryClient,
     folders,
+    registryAdmin,
 
     selectedFolderId,
     setSelectedFolder,

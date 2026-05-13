@@ -121,7 +121,7 @@ export function NamespaceMembersPanel() {
             identity={m.identity}
             label={m.name ?? `${m.identity.slice(0, 8)}…`}
             role={m.role}
-            canManage={perms.canManageNamespaceMembers}
+            canManage={perms.canManageMembers}
             onRemove={onRemove}
           />
         ))}

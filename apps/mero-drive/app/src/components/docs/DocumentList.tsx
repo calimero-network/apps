@@ -23,6 +23,10 @@ interface Props {
 export function DocumentList({ folderId, selectedDocId, onOpen }: Props) {
   const { namespaceId } = useDriveWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
+  // Creating / editing docs is the registry `Role` (Editor/Manager,
+  // not Viewer), via useFolderPermissions.canEditDocs. Group-admins
+  // always qualify; a caps-fetch error keeps this false.
+  const canEditDocs = perms.canEditDocs;
   const docs = useDocs(folderId);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -47,7 +51,7 @@ export function DocumentList({ folderId, selectedDocId, onOpen }: Props) {
         <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Documents
         </span>
-        {perms.canWrite && docs.contextId && (
+        {canEditDocs && docs.contextId && (
           <Button
             variant="outline"
             size="sm"
@@ -88,7 +92,7 @@ export function DocumentList({ folderId, selectedDocId, onOpen }: Props) {
 
       {docs.contextId && !docs.loading && docs.list.length === 0 && (
         <div className="p-3 text-xs text-muted-foreground">
-          {perms.canWrite
+          {canEditDocs
             ? 'No documents yet. Click New to create one.'
             : 'No documents yet.'}
         </div>

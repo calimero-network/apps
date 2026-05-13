@@ -17,6 +17,11 @@ import { FolderSharingPanel } from '@/components/folders/FolderSharingPanel';
 import { FolderVisibilityToggle } from '@/components/folders/FolderVisibilityToggle';
 import { NewFolderButton } from '@/components/folders/NewFolderButton';
 import { WorkspaceSettingsPanel } from '@/components/admin/WorkspaceSettingsPanel';
+import { MemberDefaultsPanel } from '@/components/admin/MemberDefaultsPanel';
+import {
+  FolderRoleSelect,
+  FOLDER_ROLE_PRESETS,
+} from '@/components/admin/FolderRoleSelect';
 
 vi.mock('@/hooks/useFolderPermissions', () => ({
   useFolderPermissions: vi.fn(),
@@ -40,6 +45,37 @@ vi.mock('@/hooks/useFolderMembership', () => ({
     refetch: vi.fn(),
     loading: false,
     error: null,
+  }),
+}));
+vi.mock('@/hooks/useFolderRole', () => ({
+  useFolderRole: () => ({
+    role: 'Editor',
+    loading: false,
+    error: null,
+    registryAvailable: true,
+    setRole: vi.fn(),
+    clearRole: vi.fn(),
+    refetch: vi.fn(),
+  }),
+  useFolderRoles: () => ({
+    entries: [],
+    loading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+}));
+vi.mock('@/hooks/useRegistryAdmin', () => ({
+  useRegistryAdmin: () => ({
+    owner: 'pk',
+    managers: [],
+    isOwnerOrManager: true,
+    isOwner: true,
+    loading: false,
+    error: null,
+    addManager: vi.fn(),
+    removeManager: vi.fn(),
+    claimOwner: vi.fn(),
+    refetch: vi.fn(),
   }),
 }));
 vi.mock('@/hooks/useReconcile', () => ({
@@ -69,6 +105,18 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     registryContextId: 'ctx',
     registryClient: {},
     folders: [],
+    registryAdmin: {
+      owner: 'pk',
+      managers: [],
+      isOwnerOrManager: true,
+      isOwner: true,
+      loading: false,
+      error: null,
+      addManager: vi.fn(),
+      removeManager: vi.fn(),
+      claimOwner: vi.fn(),
+      refetch: vi.fn(),
+    },
     selectedFolderId: 'f1',
     setSelectedFolder: vi.fn(),
     loading: false,
@@ -115,6 +163,17 @@ vi.mock('@calimero-network/mero-react', () => ({
     loading: false,
     error: null,
   }),
+  useDefaultCapabilities: () => ({
+    defaultCapabilities: 37,
+    loading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  useSetDefaultCapabilities: () => ({
+    setDefaultCapabilities: vi.fn(),
+    loading: false,
+    error: null,
+  }),
 }));
 vi.mock('@/components/ui/confirm-dialog', async () => {
   const actual = await vi.importActual<typeof import('@/components/ui/confirm-dialog')>(
@@ -127,22 +186,32 @@ vi.mock('@/components/ui/confirm-dialog', async () => {
 });
 
 const noFolderPerms = {
-  canRead: false,
-  canWrite: false,
+  isMember: false,
   canCreateSubfolder: false,
   canRename: false,
+  canManageVisibility: false,
   canDelete: false,
-  canManageGroup: false,
   canInviteMembers: false,
   canManageMembers: false,
+  canEditDocs: false,
+  canManagePermissions: false,
+  role: null,
+  roleLoading: false,
+  roleError: null,
+  canManageGroup: false,
   loading: false,
   error: null,
 };
 
 const noNsPerms = {
-  canCreateSubgroup: false,
+  canCreateFolder: false,
+  canJoinOpenFolders: false,
+  canCreateContext: false,
+  canManageVisibility: false,
+  canManageMetadata: false,
+  canInviteMembers: false,
+  canManageMembers: false,
   canManageNamespace: false,
-  canManageNamespaceMembers: false,
   loading: false,
   error: null,
 };
@@ -194,24 +263,46 @@ describe('permission-gating', () => {
     expect(screen.getByPlaceholderText('identity pubkey')).toBeTruthy();
   });
 
-  it('FolderVisibilityToggle renders nothing without canManageGroup', () => {
+  it('FolderRoleSelect lists the Viewer / Editor / Manager presets', () => {
+    render(
+      <FolderRoleSelect role="Editor" folderCaps={0} onChange={() => undefined} />,
+    );
+    for (const p of FOLDER_ROLE_PRESETS) {
+      expect(
+        screen.getByRole('option', { name: p.label }),
+      ).toBeTruthy();
+    }
+  });
+
+  it("FolderRoleSelect shows 'Custom' for an off-preset (role, caps) pair", () => {
+    render(
+      <FolderRoleSelect
+        role="Editor"
+        folderCaps={0xff}
+        onChange={() => undefined}
+      />,
+    );
+    expect(screen.getByRole('option', { name: 'Custom' })).toBeTruthy();
+  });
+
+  it('FolderVisibilityToggle renders nothing without canManageVisibility', () => {
     (useFolderPermissions as ReturnType<typeof vi.fn>).mockReturnValue(noFolderPerms);
     render(<FolderVisibilityToggle folderId="f1" current="Open" />);
     expect(screen.queryByText(/Make restricted/i)).toBeNull();
     expect(screen.queryByText(/Make open/i)).toBeNull();
   });
 
-  it('NewFolderButton renders nothing for root without canCreateSubgroup', () => {
+  it('NewFolderButton renders nothing for root without canCreateFolder', () => {
     (useNamespacePermissions as ReturnType<typeof vi.fn>).mockReturnValue(noNsPerms);
     (useFolderPermissions as ReturnType<typeof vi.fn>).mockReturnValue(noFolderPerms);
     render(<NewFolderButton parentFolderId={null} />);
     expect(screen.queryByRole('button', { name: /New folder/i })).toBeNull();
   });
 
-  it('NewFolderButton renders when the caller has canCreateSubgroup', () => {
+  it('NewFolderButton renders when the caller has canCreateFolder', () => {
     (useNamespacePermissions as ReturnType<typeof vi.fn>).mockReturnValue({
       ...noNsPerms,
-      canCreateSubgroup: true,
+      canCreateFolder: true,
     });
     (useFolderPermissions as ReturnType<typeof vi.fn>).mockReturnValue(noFolderPerms);
     render(<NewFolderButton parentFolderId={null} />);
@@ -224,12 +315,32 @@ describe('permission-gating', () => {
     expect(screen.queryByText('Reconcile registry')).toBeNull();
   });
 
-  it('WorkspaceSettingsPanel renders the reconcile action when canManageNamespace', () => {
+  it('WorkspaceSettingsPanel renders the reconcile + owner/managers sections when canManageNamespace', () => {
     (useNamespacePermissions as ReturnType<typeof vi.fn>).mockReturnValue({
       ...noNsPerms,
       canManageNamespace: true,
     });
     render(<WorkspaceSettingsPanel />);
     expect(screen.getByText('Reconcile registry')).toBeTruthy();
+    expect(screen.getByText(/Registry owner/i)).toBeTruthy();
+  });
+
+  it('MemberDefaultsPanel renders nothing without canManageNamespace', () => {
+    (useNamespacePermissions as ReturnType<typeof vi.fn>).mockReturnValue(
+      noNsPerms,
+    );
+    render(<MemberDefaultsPanel />);
+    expect(screen.queryByText('Member defaults')).toBeNull();
+  });
+
+  it('MemberDefaultsPanel renders the cap checklist when canManageNamespace', () => {
+    (useNamespacePermissions as ReturnType<typeof vi.fn>).mockReturnValue({
+      ...noNsPerms,
+      canManageNamespace: true,
+    });
+    render(<MemberDefaultsPanel />);
+    expect(screen.getByText('Member defaults')).toBeTruthy();
+    expect(screen.getByText('Join open folders')).toBeTruthy();
+    expect(screen.getByText('Manage members')).toBeTruthy();
   });
 });

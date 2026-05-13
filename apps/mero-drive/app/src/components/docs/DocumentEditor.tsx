@@ -61,6 +61,12 @@ const AUTOSAVE_DEBOUNCE_MS = 900;
 export function DocumentEditor({ folderId, docId, onClose }: Props) {
   const { namespaceId } = useDriveWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
+  // Doc-edit ability is the registry `Role` (Editor/Manager — not
+  // Viewer), gated through useFolderPermissions.canEditDocs. A core
+  // group-admin always qualifies; a caps-fetch failure leaves
+  // `isMember` (and hence this) false, so the editor opens read-only
+  // rather than writable on error.
+  const canEditDocs = perms.canEditDocs;
   const docs = useDocs(folderId);
   // Destructure the stable useCallback methods into local consts so
   // the react-hooks/exhaustive-deps rule sees a plain identifier
@@ -449,18 +455,18 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
   return (
     <EditorShell
       documentName={documentName}
-      // Every mutation handler gates on perms.canWrite so read-only
+      // Every mutation handler gates on canEditDocs so read-only
       // viewers can't accidentally (or intentionally) rename, edit,
       // or delete. Defense-in-depth: EditorShell's readOnly flag
       // also puts Tiptap and the header into a display-only mode,
       // but the binding-level gate is the authoritative guard so
       // a future caller that forgets readOnly still can't fire
       // mutations on a read-only doc.
-      onDocumentNameChange={perms.canWrite ? onDocumentNameChange : undefined}
+      onDocumentNameChange={canEditDocs ? onDocumentNameChange : undefined}
       onBack={onClose}
-      onDelete={perms.canWrite ? onDelete : undefined}
-      onContentChange={perms.canWrite ? onContentChange : undefined}
-      readOnly={!perms.canWrite}
+      onDelete={canEditDocs ? onDelete : undefined}
+      onContentChange={canEditDocs ? onContentChange : undefined}
+      readOnly={!canEditDocs}
       initialContent={doc?.content}
       saveStatus={saveStatus}
       lastSavedAt={lastSavedAt}

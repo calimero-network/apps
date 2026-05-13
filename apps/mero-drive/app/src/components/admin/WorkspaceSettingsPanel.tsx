@@ -1,23 +1,35 @@
-// Namespace-admin settings surface. Currently exposes the
-// Reconcile action — an idempotent diff+apply that brings the
-// registry in line with admin-side groups.
+// Namespace-admin settings surface. Two sections:
 //
-// Reconcile is safe to run at any time (Phase 7's
-// computeReconcileActions is a minimal-action diff), but it's
-// intentionally admin-only so non-admin users can't accidentally
-// mass-register / mass-unregister if the tree shape momentarily
-// disagrees with the registry mid-sync.
+//   1. Registry owner & managers — the fail-closed authorization roots
+//      for the per-folder Role API (set_folder_role / add_manager all
+//      require owner-or-manager). The owner can add/remove managers;
+//      managers (and non-owner admins) see the list read-only. If the
+//      registry is unclaimed (a namespace seeded before `claim_owner`
+//      was wired in), any namespace-admin can "Claim ownership".
 //
-// Panel returns null for non-admins — keeps the settings surface
-// from advertising actions the caller can't take.
+//   2. Reconcile registry — an idempotent diff+apply that brings the
+//      folder registry in line with admin-side groups. Safe to run at
+//      any time; acts only on drifted entries.
+//
+// Both are admin-only — the panel returns null for non-admins so the
+// settings surface doesn't advertise actions the caller can't take.
+//
+// TODO: extend Reconcile's summary to also report registry-permission
+// drift (owner/managers vs core namespace-admins out of sync) + an
+// "Add core admins as managers" action. Today it only reports folder
+// register/unregister/move drift. (Per the plan: shipped Step 1 only;
+// the reconcile-permission-drift extension is a follow-up.)
 
-import React from 'react';
-import { RefreshCw } from 'lucide-react';
+import React, { useState } from 'react';
+import { RefreshCw, Crown, ShieldCheck, UserPlus } from 'lucide-react';
 import { useSubgroups } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
+import { useRegistryAdmin } from '@/hooks/useRegistryAdmin';
 import { useReconcile } from '@/hooks/useReconcile';
+import { looksLikeMemberIdentity } from '@/utils/validation';
 
 export function WorkspaceSettingsPanel() {
   const { namespaceId, rootGroupId, registryClient } = useDriveWorkspace();
@@ -28,8 +40,85 @@ export function WorkspaceSettingsPanel() {
     registryClient,
     subgroups,
   );
+  const reg = useRegistryAdmin();
+  const confirm = useConfirm();
+
+  const [managerInput, setManagerInput] = useState('');
+  const [adminError, setAdminError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   if (!perms.canManageNamespace) return null;
+
+  const unclaimed = reg.owner === null;
+  const canEditManagers = reg.isOwner;
+
+  const onClaim = async () => {
+    setAdminError(null);
+    setBusy(true);
+    try {
+      await reg.claimOwner();
+    } catch (e: unknown) {
+      setAdminError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onAddManager = async () => {
+    const m = managerInput.trim();
+    if (!m) {
+      setAdminError('Identity required');
+      return;
+    }
+    if (!looksLikeMemberIdentity(m)) {
+      setAdminError("Identity doesn't look like a valid pubkey");
+      return;
+    }
+    if (reg.managers.includes(m)) {
+      setAdminError('Already a manager');
+      return;
+    }
+    if (reg.owner && m === reg.owner) {
+      setAdminError('The owner is implicitly a manager');
+      return;
+    }
+    setAdminError(null);
+    setBusy(true);
+    try {
+      await reg.addManager(m);
+      setManagerInput('');
+    } catch (e: unknown) {
+      setAdminError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onRemoveManager = async (m: string) => {
+    const ok = await confirm({
+      title: 'Remove manager?',
+      body: (
+        <>
+          Remove <code className="text-xs">{m.slice(0, 12)}…</code> from the
+          registry managers? They'll keep any folder access they have
+          through namespace membership, but lose the ability to change
+          folder roles.
+        </>
+      ),
+      confirmLabel: 'Remove',
+      destructive: true,
+    });
+    if (!ok) return;
+    setAdminError(null);
+    setBusy(true);
+    try {
+      await reg.removeManager(m);
+    } catch (e: unknown) {
+      setAdminError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <section
@@ -49,6 +138,135 @@ export function WorkspaceSettingsPanel() {
         </p>
       </header>
 
+      {/* --- Registry owner & managers --- */}
+      <div
+        className="space-y-2 border-b border-border/60 px-4 py-3"
+        data-testid="registry-owner-managers"
+      >
+        <div className="text-sm font-medium text-foreground">
+          Registry owner &amp; managers
+        </div>
+        <p className="text-xs text-muted-foreground">
+          The owner (and managers they appoint) can change per-folder
+          roles. Only the owner can change the manager list.
+        </p>
+
+        {reg.error && (
+          <p className="text-xs text-destructive" role="alert">
+            Couldn't load registry roles: {reg.error.message}
+          </p>
+        )}
+
+        {unclaimed ? (
+          <div className="flex items-center justify-between gap-3 rounded-md border border-dashed border-border bg-muted/30 px-3 py-2">
+            <span className="text-xs text-muted-foreground">
+              This workspace's registry has no owner yet.
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy || reg.loading || !registryClient}
+              onClick={() => {
+                void onClaim();
+              }}
+            >
+              {busy ? 'Claiming…' : 'Claim ownership'}
+            </Button>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center gap-2 text-sm">
+              <Crown className="h-3.5 w-3.5 text-amber-500" aria-hidden />
+              <span className="text-muted-foreground">Owner:</span>
+              <code className="text-xs text-foreground">
+                {reg.owner?.slice(0, 16)}…
+              </code>
+              {reg.isOwner && (
+                <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">
+                  You
+                </span>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+                Managers
+              </div>
+              {reg.managers.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No managers — only the owner can change folder roles.
+                </p>
+              ) : (
+                <ul className="space-y-1">
+                  {reg.managers.map((m) => (
+                    <li
+                      key={m}
+                      className="flex items-center justify-between gap-3 rounded border border-border/60 px-2 py-1"
+                    >
+                      <code className="truncate text-xs text-foreground">
+                        {m.slice(0, 16)}…
+                      </code>
+                      {canEditManagers && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                          disabled={busy}
+                          aria-label={`Remove manager ${m.slice(0, 8)}`}
+                          onClick={() => {
+                            void onRemoveManager(m);
+                          }}
+                        >
+                          <span aria-hidden>×</span>
+                        </Button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {canEditManagers ? (
+              <div className="flex gap-2 pt-1">
+                <input
+                  className="flex h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                  placeholder="manager identity pubkey"
+                  value={managerInput}
+                  onChange={(e) => {
+                    setManagerInput(e.target.value);
+                    setAdminError(null);
+                  }}
+                  disabled={busy}
+                />
+                <Button
+                  size="sm"
+                  className="gap-1"
+                  disabled={busy || !managerInput.trim()}
+                  onClick={() => {
+                    void onAddManager();
+                  }}
+                >
+                  <UserPlus className="h-3.5 w-3.5" />
+                  Add manager
+                </Button>
+              </div>
+            ) : (
+              <p className="pt-1 text-xs text-muted-foreground">
+                Only the workspace owner can change managers.
+              </p>
+            )}
+          </>
+        )}
+
+        {adminError && (
+          <p className="text-xs text-destructive" role="alert">
+            {adminError}
+          </p>
+        )}
+      </div>
+
+      {/* --- Reconcile registry --- */}
       <div className="flex items-start justify-between gap-3 px-4 py-3">
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium text-foreground">
@@ -88,7 +306,6 @@ export function WorkspaceSettingsPanel() {
           {running ? 'Running…' : 'Reconcile'}
         </Button>
       </div>
-
     </section>
   );
 }

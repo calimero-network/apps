@@ -15,7 +15,7 @@ description: >
 
   Also exercises the namespace-level membership root (i.e.
   namespaceId-as-rootGroupId) so the NamespaceMembersPanel's
-  useFolderMembership(rootGroupId) + useGroupCapabilities(rootGroupId,
+  useFolderMembership(rootGroupId) + useMemberCaps(rootGroupId,
   identity) binding has backend coverage.
 
 force_pull_image: true
@@ -115,9 +115,9 @@ steps:
   # =================================================================
   # Phase D: get_member_capabilities — read the bitmask
   #
-  # This is the path useGroupCapabilities hits on every permission
-  # hook render. The MemberRoleSelect PRESETS (Viewer / Editor /
-  # Admin) all match specific bit combinations — tested below.
+  # This is the path useMemberCaps hits on every permission hook
+  # render. The MemberRoleSelect PRESETS (Viewer / Editor / Manager)
+  # all match specific bit combinations — tested below.
   # =================================================================
 
   # Baseline: capture Bob's per-member capability bitmask as soon as
@@ -198,26 +198,32 @@ steps:
   # Phase F: set_member_capabilities — precise bitmask writes
   #
   # Matches MemberRoleSelect + NamespaceMemberRow's preset
-  # application. CAP bit layout (from constants/config.ts):
-  #   READ=1, WRITE=2, CREATE_GROUP=4, MANAGE_GROUP=8,
-  #   INVITE_MEMBERS=16, MANAGE_MEMBERS=32
-  # Presets:
-  #   Viewer = 1          (READ only)
-  #   Editor = 3          (READ | WRITE)
-  #   Admin  = 63         (all six bits)
+  # application. Capability bit layout — core's `MemberCapabilities`,
+  # re-exported as CAPABILITIES from constants/config.ts:
+  #   CAN_CREATE_CONTEXT=1, CAN_INVITE_MEMBERS=2,
+  #   CAN_JOIN_OPEN_SUBGROUPS=4, MANAGE_MEMBERS=8,
+  #   MANAGE_APPLICATION=16, CAN_CREATE_SUBGROUP=32,
+  #   CAN_DELETE_SUBGROUP=64, CAN_MANAGE_VISIBILITY=128,
+  #   CAN_MANAGE_METADATA=256
+  # Namespace-level presets (design spec §5.3):
+  #   Viewer  = 4    (CAN_JOIN_OPEN_SUBGROUPS)
+  #   Editor  = 37   (CAN_JOIN_OPEN_SUBGROUPS|CAN_CREATE_SUBGROUP|CAN_CREATE_CONTEXT)
+  #   Manager = 495  (Editor + CAN_INVITE_MEMBERS|MANAGE_MEMBERS|
+  #                   CAN_MANAGE_VISIBILITY|CAN_DELETE_SUBGROUP|CAN_MANAGE_METADATA)
+  # ("Admin" = the core group-admin *role*, which bypasses the
+  # bitmask entirely — covered by the update_member_role steps above.)
   # =================================================================
 
   # Each verify step captures the returned bitmask into a uniquely-
   # named output variable, and an `assert` step immediately after
   # compares the value. Without the equal() assertion a backend bug
-  # that silently stored a different bitmask (e.g. rounded WRITE-only
-  # up to READ|WRITE) would pass these tests.
-  - name: Set Bob to Viewer preset (READ=1)
+  # that silently stored a different bitmask would pass these tests.
+  - name: Set Bob to Viewer preset (CAN_JOIN_OPEN_SUBGROUPS = 4)
     type: set_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
     member_id: '{{bob_identity}}'
-    capabilities: 1
+    capabilities: 4
 
   - name: Verify Viewer bitmask — capture
     type: get_member_capabilities
@@ -231,17 +237,17 @@ steps:
   # operator path in merobox's assert DSL coerces to float for numeric
   # comparison, whereas `equal()` does strict Python `==` and fails
   # when the captured value is int but the literal is parsed as str.
-  - name: Assert Viewer bitmask == 1
+  - name: Assert Viewer bitmask == 4
     type: assert
     statements:
-      - '{{viewer_caps}} == 1'
+      - '{{viewer_caps}} == 4'
 
-  - name: Set Bob to Editor preset (READ | WRITE = 3)
+  - name: Set Bob to Editor preset (CAN_JOIN_OPEN_SUBGROUPS|CAN_CREATE_SUBGROUP|CAN_CREATE_CONTEXT = 37)
     type: set_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
     member_id: '{{bob_identity}}'
-    capabilities: 3
+    capabilities: 37
 
   - name: Verify Editor bitmask — capture
     type: get_member_capabilities
@@ -251,41 +257,41 @@ steps:
     outputs:
       editor_caps: capabilities
 
-  - name: Assert Editor bitmask == 3
+  - name: Assert Editor bitmask == 37
     type: assert
     statements:
-      - '{{editor_caps}} == 3'
+      - '{{editor_caps}} == 37'
 
-  - name: Set Bob to Admin preset (all six bits = 63)
+  - name: Set Bob to Manager preset (Editor + CAN_INVITE_MEMBERS|MANAGE_MEMBERS|CAN_MANAGE_VISIBILITY|CAN_DELETE_SUBGROUP|CAN_MANAGE_METADATA = 495)
     type: set_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
     member_id: '{{bob_identity}}'
-    capabilities: 63
+    capabilities: 495
 
-  - name: Verify Admin bitmask — capture
+  - name: Verify Manager bitmask — capture
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
     member_id: '{{bob_identity}}'
     outputs:
-      admin_caps: capabilities
+      manager_caps: capabilities
 
-  - name: Assert Admin bitmask == 63
+  - name: Assert Manager bitmask == 495
     type: assert
     statements:
-      - '{{admin_caps}} == 63'
+      - '{{manager_caps}} == 495'
 
   # Also test a non-preset "Custom" mask so the MemberRoleSelect
-  # "Custom" branch has backend coverage (WRITE without READ — odd
-  # but legal). Store-verbatim is the key guarantee here: the backend
-  # must not coerce unusual bitmasks.
-  - name: Set Bob to a non-preset bitmask (WRITE=2 only)
+  # "Custom" branch has backend coverage (CAN_MANAGE_METADATA alone —
+  # not a preset). Store-verbatim is the key guarantee here: the
+  # backend must not coerce unusual bitmasks.
+  - name: Set Bob to a non-preset bitmask (CAN_MANAGE_METADATA = 256 only)
     type: set_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
     member_id: '{{bob_identity}}'
-    capabilities: 2
+    capabilities: 256
 
   - name: Verify the non-preset bitmask — capture
     type: get_member_capabilities
@@ -295,10 +301,10 @@ steps:
     outputs:
       custom_caps: capabilities
 
-  - name: Assert non-preset bitmask stored verbatim == 2
+  - name: Assert non-preset bitmask stored verbatim == 256
     type: assert
     statements:
-      - '{{custom_caps}} == 2'
+      - '{{custom_caps}} == 256'
 
   # Cross-node propagation check: Bob's own node should see the same
   # capability bitmask that Alice just wrote. Validates the namespace
@@ -318,10 +324,10 @@ steps:
     outputs:
       bob_view_caps: capabilities
 
-  - name: Assert Bob's node agrees with Alice's node (== 2)
+  - name: Assert Bob's node agrees with Alice's node (== 256)
     type: assert
     statements:
-      - '{{bob_view_caps}} == 2'
+      - '{{bob_view_caps}} == 256'
 
   # =================================================================
   # Phase G: set_default_capabilities + set_default_visibility
@@ -332,11 +338,11 @@ steps:
   # when the UI lands the backend path is proven.
   # =================================================================
 
-  - name: Set default member capabilities (READ|WRITE = 3)
+  - name: Set default member capabilities (Editor preset = 37)
     type: set_default_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    capabilities: 3
+    capabilities: 37
 
   - name: Set default visibility to Restricted
     type: set_default_visibility
