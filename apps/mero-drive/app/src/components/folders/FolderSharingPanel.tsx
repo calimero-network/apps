@@ -35,29 +35,14 @@ import { useCreateFolderInvite } from '@/hooks/useNamespaceInvitation';
 import { InviteDialog } from '@/components/workspace/InviteDialog';
 import { FolderMemberRoleRow } from '@/components/admin/FolderMemberRoleRow';
 import type { Role } from '@/api/registry/RegistryClient';
+import { looksLikeMemberIdentity } from '@/utils/validation';
 
 interface Props {
   folderId: string;
 }
 
-// Rough sanity-check on the pubkey format — Calimero identities
-// are base58-encoded Ed25519 pubkeys, which for a 32-byte key land
-// in the 43–44 char range. {40,50} gives some slack for prefixed
-// or versioned variants while still tightly enough scoped to catch
-// obviously-garbage input (typos, truncated paste, etc). This is
-// a client-side UX guard — the node validates the actual format.
-//
-// The character class below IS the canonical Bitcoin base58
-// alphabet: `123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz`
-// — no `0 O I l`. Decoded range-by-range:
-//   1-9    → digits (no 0)
-//   A-H    → no I (65..72; I is 73)
-//   J-N    → no I before, no O after (74..78; O is 79)
-//   P-Z    → no O
-//   a-k    → no l (97..107; l is 108)
-//   m-n    → skips l
-//   p-z    → skips o (o is 111)
-const IDENTITY_LOOKS_VALID = /^[1-9A-HJ-NP-Za-km-z]{40,50}$/;
+// Identity-format guard lives in utils/validation; see notes there
+// (base58 alphabet, length window, client-only UX check).
 
 export function FolderSharingPanel({ folderId }: Props) {
   const { namespaceId, folders } = useDriveWorkspace();
@@ -99,7 +84,7 @@ export function FolderSharingPanel({ folderId }: Props) {
   const canInvite =
     perms.canInviteMembers &&
     !!trimmedIdentity &&
-    IDENTITY_LOOKS_VALID.test(trimmedIdentity) &&
+    looksLikeMemberIdentity(trimmedIdentity) &&
     !members.some((m) => m.identity === trimmedIdentity) &&
     !inviting;
 
@@ -108,7 +93,7 @@ export function FolderSharingPanel({ folderId }: Props) {
       setInviteError('Identity required');
       return;
     }
-    if (!IDENTITY_LOOKS_VALID.test(trimmedIdentity)) {
+    if (!looksLikeMemberIdentity(trimmedIdentity)) {
       setInviteError('Identity doesn’t look like a valid pubkey');
       return;
     }

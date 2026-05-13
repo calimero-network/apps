@@ -18,3 +18,26 @@ export function safeColor(raw: string | null | undefined): string | undefined {
   const trimmed = raw.trim();
   return COLOR_ALLOWLIST.test(trimmed) ? trimmed : undefined;
 }
+
+// Rough sanity-check on the pubkey format — Calimero identities
+// are base58-encoded Ed25519 pubkeys, which for a 32-byte key land
+// in the 43-44 char range. {40,50} gives some slack for prefixed or
+// versioned variants while still tightly enough scoped to catch
+// obviously-garbage input (typos, truncated paste, etc). This is a
+// client-side UX guard — the node validates the actual format.
+//
+// The character class IS the canonical Bitcoin base58 alphabet:
+// `123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz`
+// — no `0 O I l`. Decoded range-by-range:
+//   1-9    → digits (no 0)
+//   A-H    → no I (65..72; I is 73)
+//   J-N    → no I before, no O after (74..78; O is 79)
+//   P-Z    → no O
+//   a-k    → no l (97..107; l is 108)
+//   m-n    → skips l
+//   p-z    → skips o (o is 111)
+export const MEMBER_IDENTITY_PATTERN = /^[1-9A-HJ-NP-Za-km-z]{40,50}$/;
+
+export function looksLikeMemberIdentity(raw: string): boolean {
+  return MEMBER_IDENTITY_PATTERN.test(raw);
+}

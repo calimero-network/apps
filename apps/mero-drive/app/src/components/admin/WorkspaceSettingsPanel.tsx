@@ -29,8 +29,7 @@ import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { useRegistryAdmin } from '@/hooks/useRegistryAdmin';
 import { useReconcile } from '@/hooks/useReconcile';
-
-const IDENTITY_LOOKS_VALID = /^[1-9A-HJ-NP-Za-km-z]{40,50}$/;
+import { looksLikeMemberIdentity } from '@/utils/validation';
 
 export function WorkspaceSettingsPanel() {
   const { namespaceId, rootGroupId, registryClient } = useDriveWorkspace();
@@ -71,7 +70,7 @@ export function WorkspaceSettingsPanel() {
       setAdminError('Identity required');
       return;
     }
-    if (!IDENTITY_LOOKS_VALID.test(m)) {
+    if (!looksLikeMemberIdentity(m)) {
       setAdminError('Identity doesn’t look like a valid pubkey');
       return;
     }
