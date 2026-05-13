@@ -8,8 +8,7 @@ import React, { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useMero } from '@calimero-network/mero-react';
 import { WorkspaceLayout } from '@/components/workspace/WorkspaceLayout';
-
-const ACTIVE_NS_KEY = 'mero-drive:activeNs';
+import { ACTIVE_NS_KEY } from '@/hooks/useDriveWorkspace';
 
 export default function WorkspacePage() {
   const { isAuthenticated, isLoading } = useMero();

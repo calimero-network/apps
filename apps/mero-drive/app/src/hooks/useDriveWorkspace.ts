@@ -67,7 +67,10 @@ import {
   REGISTRY_SERVICE_ID,
 } from '@/constants/config';
 
-const ACTIVE_NS_KEY = 'mero-drive:activeNs';
+/** Persisted-namespace localStorage key. Exported so other call sites
+ *  (e.g. WorkspacePage's logout cleanup) can clear the same key without
+ *  hardcoding the string and drifting from this hook's reader. */
+export const ACTIVE_NS_KEY = 'mero-drive:activeNs';
 // SessionStorage-only so it doesn't persist across tabs or reloads
 // once sync settles. Set by JoinPage on successful joinNamespace /
 // joinGroup; the first time the namespace reaches a ready state in
