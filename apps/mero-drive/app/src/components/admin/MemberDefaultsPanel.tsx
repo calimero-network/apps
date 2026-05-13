@@ -100,14 +100,27 @@ export function MemberDefaultsPanel() {
   // `DEFAULT_NEW_MEMBER_CAPS` fallback (37, "Editor") into `draft`
   // before the real value (e.g. 4 = Viewer) arrives, leave the
   // checklist showing the wrong bits, and let an admin Save-widen the
-  // namespace default by accident. Track the true→false transition;
-  // also treat a non-null value or a load error as "completed".
-  const loadedOnceRef = useRef(false);
+  // namespace default by accident.
+  //
+  // Two completion signals: (a) a true→false `loading` transition
+  // (the fetch went out and came back); or (b) `loading` stayed false
+  // the whole time AND we got a definitive value/error (the cached /
+  // synchronous path, where the hook resolved without ever flipping
+  // `loading` to true). Both are captured below. The `useEffect` is
+  // keyed on every input that could flip the answer, so it's safe for
+  // strict-mode double-mount and we don't mutate refs in render.
+  const [loadedOnce, setLoadedOnce] = useState(false);
   const prevLoadingRef = useRef(loading);
-  if (prevLoadingRef.current && !loading) loadedOnceRef.current = true;
-  prevLoadingRef.current = loading;
-  if (defaultCapabilities !== null || error) loadedOnceRef.current = true;
-  const loadedOnce = loadedOnceRef.current;
+  useEffect(() => {
+    // Transition: was loading, now not → fetch resolved.
+    if (prevLoadingRef.current && !loading) setLoadedOnce(true);
+    // Definitive value or definitive error → resolved (covers the
+    // cached/synchronous case where `loading` was never true).
+    if (!loading && (defaultCapabilities !== null || error !== null)) {
+      setLoadedOnce(true);
+    }
+    prevLoadingRef.current = loading;
+  }, [loading, defaultCapabilities, error]);
 
   // Seed `draft` from the loaded value once the fetch has actually
   // resolved. After that the user owns it (don't clobber edits if
