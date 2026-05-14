@@ -24,7 +24,7 @@
 //   ariaLabel
 //   disabled
 
-import React, { useId, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useGroupMembers } from '@calimero-network/mero-react';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { MemberLabel } from './MemberLabel';
@@ -60,6 +60,10 @@ export function MemberPicker({
   const { members } = useGroupMembers(groupId);
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
+  // Active option index for keyboard navigation (Arrow keys) + the
+  // listbox's aria-selected signal. -1 means "no active option" —
+  // when the user is typing without having arrowed down yet.
+  const [activeIndex, setActiveIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   // Stable id so the combobox can point at the listbox via
   // aria-controls (a11y requirement on role="combobox").
@@ -87,8 +91,15 @@ export function MemberPicker({
     onSelect(identity);
     setQuery('');
     setOpen(false);
+    setActiveIndex(-1);
     inputRef.current?.blur();
   };
+
+  // Reset active highlight whenever the filtered list changes shape
+  // — otherwise an out-of-range index can persist after typing.
+  useEffect(() => {
+    if (activeIndex >= matches.length) setActiveIndex(matches.length - 1);
+  }, [matches.length, activeIndex]);
 
   // Wrapper ref used by onBlur to distinguish focus moving WITHIN the
   // picker (input → dropdown row) from focus actually leaving (Tab to
@@ -125,17 +136,39 @@ export function MemberPicker({
         onChange={(e) => {
           setQuery(e.target.value);
           setOpen(true);
+          setActiveIndex(-1);
         }}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && query.trim()) {
-            // Free-form commit — the parent decides whether to accept
-            // (it'll validate base58 format etc).
+          if (e.key === 'ArrowDown') {
             e.preventDefault();
-            pick(query.trim());
+            setOpen(true);
+            setActiveIndex((i) =>
+              matches.length === 0 ? -1 : Math.min(i + 1, matches.length - 1),
+            );
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setActiveIndex((i) => Math.max(i - 1, -1));
+          } else if (e.key === 'Enter') {
+            // Prefer the highlighted match; fall back to free-form
+            // commit so the user can paste a raw pubkey and press
+            // Enter without arrowing into the suggestions.
+            if (activeIndex >= 0 && activeIndex < matches.length) {
+              e.preventDefault();
+              pick(matches[activeIndex].identity);
+            } else if (query.trim()) {
+              e.preventDefault();
+              pick(query.trim());
+            }
           } else if (e.key === 'Escape') {
             setOpen(false);
+            setActiveIndex(-1);
           }
         }}
+        aria-activedescendant={
+          activeIndex >= 0 && matches[activeIndex]
+            ? `${listboxId}-opt-${matches[activeIndex].identity}`
+            : undefined
+        }
         className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
       />
       {open && matches.length > 0 && (
@@ -144,8 +177,13 @@ export function MemberPicker({
           role="listbox"
           className="absolute z-50 mt-1 max-h-64 w-full overflow-auto rounded-md border border-border bg-popover py-1 shadow-md"
         >
-          {matches.map((m) => (
-            <li key={m.identity} role="option" aria-selected={false}>
+          {matches.map((m, idx) => (
+            <li
+              key={m.identity}
+              role="option"
+              id={`${listboxId}-opt-${m.identity}`}
+              aria-selected={idx === activeIndex}
+            >
               <button
                 type="button"
                 onMouseDown={(e) => {
@@ -155,7 +193,10 @@ export function MemberPicker({
                   e.preventDefault();
                   pick(m.identity);
                 }}
-                className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-muted"
+                onMouseEnter={() => setActiveIndex(idx)}
+                className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm ${
+                  idx === activeIndex ? 'bg-muted' : 'hover:bg-muted'
+                }`}
               >
                 <MemberLabel
                   namespaceId={namespaceId}
