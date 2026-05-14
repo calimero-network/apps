@@ -11,7 +11,10 @@ import { useDriveWorkspace } from './useDriveWorkspace';
 import { useMemberCaps } from './useMemberCaps';
 import { MAX_DISPLAY_NAME_LEN } from './useMemberDisplayName';
 
-export { MAX_DISPLAY_NAME_LEN } from './useMemberDisplayName';
+// Re-export so callers can validate input lengths without a second
+// import path. Bound from the import above (one `from`-clause for
+// the module reference).
+export { MAX_DISPLAY_NAME_LEN };
 
 export interface AdminRenameMember {
   /** True iff the caller is allowed to rename `memberId` (admin role or

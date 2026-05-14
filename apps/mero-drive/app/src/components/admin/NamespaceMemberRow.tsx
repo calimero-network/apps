@@ -20,7 +20,6 @@ import { useGroupCapabilities } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { MemberLabel } from '@/components/common/MemberLabel';
-import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import {
   useAdminRenameMember,
   MAX_DISPLAY_NAME_LEN,
@@ -76,14 +75,15 @@ export function NamespaceMemberRow({
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
 
-  // Admin-rename plumbing. `namespaceId` from useDriveWorkspace —
-  // useAdminRenameMember needs it to look up the caller's caps on the
-  // namespace root. Self rows skip the affordance entirely (the user
-  // edits their own name via MyDisplayNamePanel above the list).
-  const { namespaceId } = useDriveWorkspace();
-  const { canRename, renameTo } = useAdminRenameMember(namespaceId, identity);
+  // Admin-rename plumbing. In mero-drive a namespace's id IS its root
+  // group id, and `groupId` is exactly that root for the namespace
+  // members panel — so reuse it directly instead of re-deriving via
+  // useDriveWorkspace (avoids a redundant context subscription and
+  // keeps the row's data flow purely prop-driven so it stays
+  // testable in isolation).
+  const { canRename, renameTo } = useAdminRenameMember(groupId, identity);
   const { name: currentName, refetch: refetchName } = useMemberDisplayName(
-    namespaceId,
+    groupId,
     identity,
   );
   const [renaming, setRenaming] = useState(false);

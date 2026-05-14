@@ -49,13 +49,15 @@ export function MemberPicker({
   disabled,
   className,
 }: Props) {
-  // In mero-drive a namespace's id IS its root group id (see
-  // useDriveWorkspace: `const rootGroupId = selectedNsId`), so the
-  // member list and the metadata lookups happen against the same
-  // group. Reading rootGroupId here keeps the hook call symmetric
-  // with how the rest of the app reads namespace membership.
+  // Honor the `namespaceId` prop as the member-list source. In
+  // mero-drive a namespace's id IS its root group id (see
+  // useDriveWorkspace: `const rootGroupId = selectedNsId`), so
+  // passing namespaceId here resolves to the same group the rest of
+  // the app uses for namespace membership. Fall back to the
+  // currently-selected workspace when the prop is unset.
   const { rootGroupId } = useDriveWorkspace();
-  const { members } = useGroupMembers(rootGroupId);
+  const groupId = namespaceId ?? rootGroupId;
+  const { members } = useGroupMembers(groupId);
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -88,8 +90,14 @@ export function MemberPicker({
     inputRef.current?.blur();
   };
 
+  // Wrapper ref used by onBlur to distinguish focus moving WITHIN the
+  // picker (input → dropdown row) from focus actually leaving (Tab to
+  // the next form field). Without it we'd close the dropdown the
+  // instant the user reaches for a suggestion with the keyboard.
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
   return (
-    <div className={`relative ${className ?? ''}`}>
+    <div ref={wrapperRef} className={`relative ${className ?? ''}`}>
       <input
         ref={inputRef}
         type="text"
@@ -101,13 +109,18 @@ export function MemberPicker({
         placeholder={placeholder}
         disabled={disabled}
         onFocus={() => setOpen(true)}
-        onBlur={() => {
-          // A row's onMouseDown calls preventDefault() before this blur
-          // ever runs, so the row's pick() fires while the input keeps
-          // focus. The setTimeout is just a safety belt for the rare
-          // path where focus leaves via Tab / programmatic blur with
-          // the dropdown still open.
-          setTimeout(() => setOpen(false), 100);
+        onBlur={(e) => {
+          // Close only when focus genuinely leaves the picker (Tab to
+          // the next field, click outside). When the user
+          // mouse-selects a row, browsers report the row button as
+          // `relatedTarget`; since the row lives inside wrapperRef,
+          // we keep the dropdown open long enough for the row's
+          // onMouseDown to commit the pick(). Replaces an earlier
+          // 100ms setTimeout, which could race keyboard navigation
+          // on slow machines.
+          const next = e.relatedTarget as Node | null;
+          if (next && wrapperRef.current?.contains(next)) return;
+          setOpen(false);
         }}
         onChange={(e) => {
           setQuery(e.target.value);
