@@ -39,7 +39,15 @@ export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
   const onToggle = async () => {
     setBusy(true);
     try {
-      await setSubgroupVisibility(folderId, { subgroupVisibility: next });
+      // Core expects lowercase `"open"` / `"restricted"`; see
+      // `crates/server/src/admin/handlers/groups/set_subgroup_visibility.rs:31`
+      // — capitalized values return 400 Bad Request. The frontend's
+      // GroupInfo round-trip uses capitalized values for display, so
+      // lowercase only at the wire boundary (same pattern as
+      // useFolderOperations.create).
+      await setSubgroupVisibility(folderId, {
+        subgroupVisibility: next.toLowerCase(),
+      });
       await refetch();
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));

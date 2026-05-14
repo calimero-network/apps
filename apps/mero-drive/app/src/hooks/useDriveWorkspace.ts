@@ -64,6 +64,7 @@ import {
 import {
   DEFAULT_NEW_MEMBER_CAPS,
   ENV_APPLICATION_ID,
+  MAX_ALIAS_LENGTH,
   REGISTRY_SERVICE_ID,
 } from '@/constants/config';
 
@@ -257,6 +258,12 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     if (!mero || !applicationId || !selectedNsId) return;
     if (contextsLoading) return;
     if (registryContextId) return;
+    // The admin-membership check below needs the caller's verified
+    // namespace identity. Wait for it. Without this guard, `selfIdentity`
+    // could be `null` and the check would silently fall through to
+    // "not admin" (callerIsNsAdmin = false), leaving a legitimate
+    // admin's registry unclaimed.
+    if (!selfIdentity) return;
     if (
       lazyCreateRef.current?.nsId === selectedNsId &&
       lazyCreateRef.current.inFlight
@@ -265,6 +272,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     }
     lazyCreateRef.current = { nsId: selectedNsId, inFlight: true };
     const healingNsId = selectedNsId;
+    const callerIdentity = selfIdentity;
     (async () => {
       try {
         const reg = await mero.admin.createContext({
@@ -282,6 +290,14 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         // otherwise seize the registry. We mirror useMemberCaps's admin
         // check inline (we can't call useMemberCaps here — it consumes
         // this very hook's context, which isn't established yet).
+        //
+        // Identity sourcing: use `callerIdentity` (a copy of
+        // `selfIdentity` from useGroupMembers) for the membership
+        // probe rather than the new context's `reg.memberPublicKey`.
+        // The two agree in the common single-identity case, but
+        // namespaces with multiple owned identities can have
+        // `createContext` mint or pick a different one than the
+        // identity that ranks as Admin in the namespace.
         if (reg?.contextId && reg?.memberPublicKey) {
           let callerIsNsAdmin = false;
           try {
@@ -293,7 +309,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
             };
             const membersList = raw.members ?? raw.data ?? [];
             const me = membersList.find(
-              (m) => m.identity === reg.memberPublicKey,
+              (m) => m.identity === callerIdentity,
             );
             callerIsNsAdmin = me?.role === 'Admin';
           } catch {
@@ -330,6 +346,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     selectedNsId,
     contextsLoading,
     registryContextId,
+    selfIdentity,
     refetchContexts,
   ]);
 
@@ -589,6 +606,24 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   const createWorkspace = useCallback(
     async (alias: string): Promise<string | null> => {
       if (!mero || !applicationId) return null;
+      // Defensive validation: NamespaceCreateDialog already trims +
+      // length-checks before calling, but `createWorkspace` is a
+      // public hook API and other callers (programmatic, tests)
+      // would otherwise hit a generic admin-api error here. Keep the
+      // contract local to this function.
+      const trimmed = alias.trim();
+      if (!trimmed) {
+        const err = new Error('Workspace name is required');
+        setCreateError(err);
+        throw err;
+      }
+      if (trimmed.length > MAX_ALIAS_LENGTH) {
+        const err = new Error(
+          `Workspace name must be ${MAX_ALIAS_LENGTH} characters or fewer`,
+        );
+        setCreateError(err);
+        throw err;
+      }
       setCreateLoading(true);
       setCreateError(null);
       try {
@@ -596,7 +631,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         const ns = await mero.admin.createNamespace({
           applicationId,
           upgradePolicy: 'Automatic',
-          name: alias,
+          name: trimmed,
         });
         if (!ns?.namespaceId) {
           throw new Error('createNamespace returned no namespaceId');

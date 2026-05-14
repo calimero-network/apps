@@ -145,6 +145,15 @@ jobs:
           fi
 
       - name: Bootstrap auth and write env file
+        # ADMIN_USER / ADMIN_PASS are the public, well-known merod
+        # default test credentials baked into the
+        # ghcr.io/calimero-network/merod:edge image's local auth
+        # provider. They authenticate ONLY against the throwaway
+        # docker stack merobox boots inside this job (containers are
+        # destroyed at job end); they do not match any production or
+        # cloud system. Same values used by battleships' integration
+        # CI and every merobox e2e workflow in this repo. Do NOT
+        # promote to secrets — it would imply they're sensitive.
         env:
           NODE_1_URL: http://node1.127.0.0.1.nip.io
           ADMIN_USER: admin

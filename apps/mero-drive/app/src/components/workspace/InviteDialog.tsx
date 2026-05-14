@@ -34,6 +34,10 @@ export function InviteDialog({
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Distinct from `copied`: the clipboard write failed but we selected
+  // the input as a fallback. Surfaces a banner so the user knows to
+  // hit Cmd/Ctrl+C themselves.
+  const [copyFallback, setCopyFallback] = useState(false);
 
   const onGenerate = async () => {
     setCreating(true);
@@ -53,12 +57,16 @@ export function InviteDialog({
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
+      setCopyFallback(false);
       setTimeout(() => setCopied(false), 1500);
     } catch {
       // Clipboard API can fail on http:// or with no user gesture.
-      // Fall back to selecting the link so users can Cmd+C manually.
+      // Fall back to selecting the link so users can Cmd+C manually
+      // — and surface the failure so they know to actually do it.
       const el = document.getElementById('invite-url-text');
       if (el instanceof HTMLInputElement) el.select();
+      setCopyFallback(true);
+      setTimeout(() => setCopyFallback(false), 5000);
     }
   };
 
@@ -122,6 +130,16 @@ export function InviteDialog({
             </div>
             {footnote && (
               <p className="text-xs text-muted-foreground">{footnote}</p>
+            )}
+            {copyFallback && (
+              <p
+                className="text-xs text-amber-600 dark:text-amber-400"
+                role="status"
+              >
+                Couldn't copy automatically — the link is selected
+                above; press <kbd className="rounded border px-1">⌘/Ctrl</kbd>
+                + <kbd className="rounded border px-1">C</kbd> to copy.
+              </p>
             )}
           </div>
         )}

@@ -38,8 +38,18 @@ export interface ParsedInvite {
   invitation: SignedGroupOpenInvitation;
 }
 
+// UTF-8-safe base64url codec. Earlier versions used
+// `btoa(unescape(encodeURIComponent(s)))`, which relies on the
+// deprecated `unescape` and throws `InvalidCharacterError` from
+// `btoa` if the JSON payload contains non-Latin1 characters (e.g.
+// emoji or non-ASCII text in invitation metadata). We route bytes
+// through `TextEncoder`/`TextDecoder` so the codec is UTF-8 across
+// the full code-point range.
 function base64urlEncode(s: string): string {
-  return btoa(unescape(encodeURIComponent(s)))
+  const bytes = new TextEncoder().encode(s);
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary)
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=+$/, '');
@@ -48,7 +58,10 @@ function base64urlEncode(s: string): string {
 function base64urlDecode(s: string): string {
   const padded = s.replace(/-/g, '+').replace(/_/g, '/') +
     '='.repeat((4 - (s.length % 4)) % 4);
-  return decodeURIComponent(escape(atob(padded)));
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
 }
 
 export function buildInviteUrl(

@@ -3,26 +3,34 @@
 // core replaced the old `/admin-api/groups/:id/nest` + `/unnest` pair
 // with a single atomic `/admin-api/groups/:childId/reparent` endpoint
 // (see crates/server/src/admin/handlers/groups/reparent_group.rs).
-// mero-js 1.4.x still ships `nestGroup`/`unnestGroup` pointing at the
+// mero-js 2.x still ships `nestGroup`/`unnestGroup` pointing at the
 // removed paths, so every subfolder reparent 404s. Work around by
 // calling /reparent directly.
 //
-// Auth: tokens are persisted by mero-js's LocalStorageTokenStore under
-// the `mero-tokens` key. Reading that directly is brittle (tied to
-// mero-js's internal storage format) but mero-js doesn't expose the
-// valid token any other way. Drop this helper when mero-js either
-// surfaces reparent as a first-class admin client method or exposes
-// the authenticated httpClient on the public surface.
+// Auth: read the token via mero-js's public `LocalStorageTokenStore`
+// rather than parsing the storage key by hand. If mero-js ever
+// changes the on-disk format the public class moves with it; we
+// don't have to chase the change. We also check `expires_at` so an
+// expired token isn't sent — the server would reject it anyway, but
+// failing fast gives the caller a useful error.
+//
+// Drop this helper when mero-js surfaces reparent as a first-class
+// admin client method.
 
-const TOKEN_STORAGE_KEY = 'mero-tokens';
+import { LocalStorageTokenStore } from '@calimero-network/mero-js';
 
 function readAccessToken(): string | null {
   try {
-    if (typeof localStorage === 'undefined') return null;
-    const raw = localStorage.getItem(TOKEN_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { access_token?: string };
-    return parsed?.access_token ?? null;
+    const tokens = new LocalStorageTokenStore().getTokens();
+    if (!tokens?.access_token) return null;
+    if (
+      typeof tokens.expires_at === 'number' &&
+      tokens.expires_at > 0 &&
+      tokens.expires_at < Date.now()
+    ) {
+      return null;
+    }
+    return tokens.access_token;
   } catch {
     return null;
   }
