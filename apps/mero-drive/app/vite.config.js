@@ -9,6 +9,13 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: [],
+    // Vitest's default `include` picks up every `*.spec.ts` in the
+    // tree — which would scoop our Playwright specs under `e2e/`
+    // into the unit-test runner and fail them immediately on
+    // `@playwright/test` import. Playwright owns its own runner; we
+    // only want vitest to see `src/` here.
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    exclude: ['e2e/**', 'node_modules/**', 'build/**', 'dist/**'],
   },
   base: '/',
   build: {
