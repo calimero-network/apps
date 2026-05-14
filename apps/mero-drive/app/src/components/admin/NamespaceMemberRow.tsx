@@ -7,13 +7,24 @@
 // its caller for "should this row be interactive." The only UI
 // visible to read-only viewers is the row itself with disabled
 // select + no remove button.
+//
+// Inline-rename affordance: a pencil icon to the right of the
+// <MemberLabel> opens a small input + ✓ / ✗ buttons, gated on the
+// caller having CAN_MANAGE_METADATA (or being a core admin) AND the
+// row not being the caller's own (self-edits go through the
+// MyDisplayNamePanel above). Mirrors the FolderTreeItem rename UX.
 
-import React, { useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import React, { useCallback, useRef, useState } from 'react';
+import { Pencil, Check, X, Trash2 } from 'lucide-react';
 import { useGroupCapabilities } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { MemberLabel } from '@/components/common/MemberLabel';
+import {
+  useAdminRenameMember,
+  MAX_DISPLAY_NAME_LEN,
+} from '@/hooks/useAdminRenameMember';
+import { useMemberDisplayName } from '@/hooks/useMemberDisplayName';
 import { MemberRoleSelect } from './MemberRoleSelect';
 
 interface Props {
@@ -64,6 +75,65 @@ export function NamespaceMemberRow({
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
 
+  // Admin-rename plumbing. In mero-drive a namespace's id IS its root
+  // group id, and `groupId` is exactly that root for the namespace
+  // members panel — so reuse it directly instead of re-deriving via
+  // useDriveWorkspace (avoids a redundant context subscription and
+  // keeps the row's data flow purely prop-driven so it stays
+  // testable in isolation).
+  const { canRename, renameTo } = useAdminRenameMember(groupId, identity);
+  const { name: currentName, refetch: refetchName } = useMemberDisplayName(
+    groupId,
+    identity,
+  );
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameSaving, setRenameSaving] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
+  // Re-entry guard for submitRename so a stray blur after Enter does
+  // not fire setMemberMetadata twice.
+  const submitInFlightRef = useRef(false);
+
+  const startRename = useCallback(() => {
+    setRenameValue(currentName ?? '');
+    setRenameError(null);
+    setRenaming(true);
+  }, [currentName]);
+
+  const cancelRename = useCallback(() => {
+    setRenaming(false);
+    setRenameValue('');
+    setRenameError(null);
+  }, []);
+
+  const submitRename = useCallback(async () => {
+    if (submitInFlightRef.current) return;
+    const next = renameValue.trim();
+    if (!next) {
+      cancelRename();
+      return;
+    }
+    if (next === currentName) {
+      cancelRename();
+      return;
+    }
+    submitInFlightRef.current = true;
+    setRenameSaving(true);
+    setRenameError(null);
+    try {
+      await renameTo(next);
+      await refetchName();
+      setRenaming(false);
+      setRenameValue('');
+    } catch (e: unknown) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      setRenameError(err.message);
+    } finally {
+      submitInFlightRef.current = false;
+      setRenameSaving(false);
+    }
+  }, [renameValue, currentName, renameTo, refetchName, cancelRename]);
+
   const onRoleChange = async (nextMask: number) => {
     setUpdating(true);
     setUpdateError(null);
@@ -98,26 +168,84 @@ export function NamespaceMemberRow({
     }
   };
 
+  // Pencil shows only for non-self rows when the caller is admin /
+  // has CAN_MANAGE_METADATA. The hook short-circuits these branches
+  // (server enforces the same authz; this is just the UI gate).
+  const showRenameAffordance = canRename && !isSelf;
+
   return (
     <li className="px-4 py-2 text-sm">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <MemberLabel
-              namespaceId={groupId}
-              memberId={identity}
-              isSelf={isSelf}
-              fallback={() => label}
-              className="truncate font-medium text-foreground"
-            />
-            {role && (
-              <span
-                className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${roleBadgeClasses(
-                  role,
-                )}`}
-              >
-                {role}
-              </span>
+            {renaming ? (
+              <>
+                <input
+                  className="h-6 min-w-0 flex-1 rounded border border-input bg-background px-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  value={renameValue}
+                  maxLength={MAX_DISPLAY_NAME_LEN}
+                  autoFocus
+                  disabled={renameSaving}
+                  aria-label={`Rename ${label}`}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      submitRename();
+                    } else if (e.key === 'Escape') {
+                      e.preventDefault();
+                      cancelRename();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                  disabled={renameSaving}
+                  aria-label="Save"
+                  onClick={submitRename}
+                >
+                  <Check className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                  disabled={renameSaving}
+                  aria-label="Cancel"
+                  onClick={cancelRename}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </>
+            ) : (
+              <>
+                <MemberLabel
+                  namespaceId={groupId}
+                  memberId={identity}
+                  isSelf={isSelf}
+                  fallback={() => label}
+                  className="truncate font-medium text-foreground"
+                />
+                {showRenameAffordance && (
+                  <button
+                    type="button"
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                    aria-label={`Rename ${label}`}
+                    onClick={startRename}
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                )}
+                {role && (
+                  <span
+                    className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${roleBadgeClasses(
+                      role,
+                    )}`}
+                  >
+                    {role}
+                  </span>
+                )}
+              </>
             )}
           </div>
           <div className="truncate text-xs text-muted-foreground">
@@ -157,6 +285,11 @@ export function NamespaceMemberRow({
           )}
         </div>
       </div>
+      {renameError && (
+        <p className="mt-1 text-xs text-destructive" role="alert">
+          Rename failed: {renameError}
+        </p>
+      )}
       {updateError && (
         <p className="mt-1 text-xs text-destructive" role="alert">
           Role update failed: {updateError}

@@ -35,6 +35,7 @@ import { useCreateFolderInvite } from '@/hooks/useNamespaceInvitation';
 import { InviteDialog } from '@/components/workspace/InviteDialog';
 import { FolderMemberRoleRow } from '@/components/admin/FolderMemberRoleRow';
 import { MemberLabel } from '@/components/common/MemberLabel';
+import { MemberPicker } from '@/components/common/MemberPicker';
 import type { Role } from '@/api/registry/RegistryClient';
 import { looksLikeMemberIdentity } from '@/utils/validation';
 
@@ -287,20 +288,33 @@ export function FolderSharingPanel({ folderId }: Props) {
             <label className="mb-1 block text-xs font-medium text-muted-foreground">
               Invite by identity
             </label>
-            <div className="flex gap-2">
-              <input
-                className="flex h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                placeholder="identity pubkey"
-                value={identity}
-                onChange={(e) => {
-                  setIdentity(e.target.value);
-                  setInviteError(null);
-                }}
-                disabled={inviting}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && canInvite) onInvite();
-                }}
-              />
+            <div className="flex items-start gap-2">
+              <div className="flex-1">
+                {/* Autocompletes against workspace members; existing
+                    folder members are filtered out. Raw-paste of an
+                    unknown pubkey still works via Enter — looksLike-
+                    MemberIdentity validation runs unchanged in
+                    onInvite below. */}
+                <MemberPicker
+                  namespaceId={namespaceId}
+                  exclude={members.map((m) => m.identity)}
+                  placeholder="identity pubkey"
+                  ariaLabel="identity pubkey"
+                  disabled={inviting}
+                  onSelect={(id) => {
+                    setIdentity(id);
+                    setInviteError(null);
+                  }}
+                />
+                {identity && (
+                  <p className="mt-1 truncate text-[11px] text-muted-foreground">
+                    Selected:{' '}
+                    <code className="text-foreground">
+                      {identity.slice(0, 16)}…
+                    </code>
+                  </p>
+                )}
+              </div>
               <Button
                 size="sm"
                 onClick={onInvite}

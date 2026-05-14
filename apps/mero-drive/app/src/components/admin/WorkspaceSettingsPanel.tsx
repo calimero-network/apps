@@ -30,6 +30,7 @@ import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { useRegistryAdmin } from '@/hooks/useRegistryAdmin';
 import { useReconcile } from '@/hooks/useReconcile';
 import { MemberLabel } from '@/components/common/MemberLabel';
+import { MemberPicker } from '@/components/common/MemberPicker';
 import { looksLikeMemberIdentity } from '@/utils/validation';
 
 export function WorkspaceSettingsPanel() {
@@ -243,28 +244,49 @@ export function WorkspaceSettingsPanel() {
             </div>
 
             {canEditManagers ? (
-              <div className="flex gap-2 pt-1">
-                <input
-                  className="flex h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-                  placeholder="manager identity pubkey"
-                  value={managerInput}
-                  onChange={(e) => {
-                    setManagerInput(e.target.value);
-                    setAdminError(null);
-                  }}
-                  disabled={busy}
-                />
-                <Button
-                  size="sm"
-                  className="gap-1"
-                  disabled={busy || !managerInput.trim()}
-                  onClick={() => {
-                    void onAddManager();
-                  }}
-                >
-                  <UserPlus className="h-3.5 w-3.5" />
-                  Add manager
-                </Button>
+              <div className="space-y-2 pt-1">
+                <div className="flex items-start gap-2">
+                  <div className="flex-1">
+                    {/* MemberPicker autocompletes against the namespace's
+                        existing members; excludes the current owner and
+                        anyone already a manager so they can't be re-added.
+                        Free-form Enter still commits a raw pubkey paste —
+                        the existing looksLikeMemberIdentity check in
+                        onAddManager runs unchanged. */}
+                    <MemberPicker
+                      namespaceId={namespaceId}
+                      exclude={[reg.owner, ...reg.managers].filter(
+                        (s): s is string => !!s,
+                      )}
+                      placeholder="Search members or paste a pubkey…"
+                      ariaLabel="manager identity"
+                      disabled={busy}
+                      onSelect={(identity) => {
+                        setManagerInput(identity);
+                        setAdminError(null);
+                      }}
+                    />
+                    {managerInput && (
+                      <p className="mt-1 truncate text-[11px] text-muted-foreground">
+                        Selected:{' '}
+                        <code className="text-foreground">
+                          {managerInput.slice(0, 16)}…
+                        </code>
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    className="gap-1"
+                    disabled={busy || !managerInput.trim()}
+                    onClick={() => {
+                      void onAddManager();
+                    }}
+                  >
+                    <UserPlus className="h-3.5 w-3.5" />
+                    Add manager
+                  </Button>
+                </div>
               </div>
             ) : (
               <p className="pt-1 text-xs text-muted-foreground">

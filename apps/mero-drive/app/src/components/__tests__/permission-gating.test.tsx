@@ -146,6 +146,16 @@ vi.mock('@calimero-network/mero-react', () => ({
     refetch: vi.fn(),
     setCapabilities: vi.fn(),
   }),
+  // MemberPicker (adopted by WorkspaceSettingsPanel + FolderSharingPanel)
+  // calls useGroupMembers for its candidate list. Empty list keeps the
+  // dropdown closed so existing assertions are unaffected.
+  useGroupMembers: () => ({
+    members: [],
+    selfIdentity: 'pk',
+    loading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
   useCreateNamespace: () => ({ createNamespace: vi.fn(), loading: false, error: null }),
   useNamespacesForApplication: () => ({
     namespaces: [],
