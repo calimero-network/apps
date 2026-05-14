@@ -95,29 +95,43 @@ export function useFolderOperations(
       let registryEntryCreated = false;
 
       try {
-        const group = await createGroupInNamespace(input.namespaceId, { name: input.alias });
+        // Step ordering is load-bearing for Open subgroups. Core
+        // encrypts every GroupOp with the key chain implied by
+        // current subgroup_visibility at publish time: an Open
+        // subgroup whose chain reaches the namespace root encrypts
+        // with the namespace key (visible to all namespace members);
+        // anything else encrypts with the subgroup key (visible only
+        // to direct subgroup members). The create-time `name` stamp
+        // and any subsequent `setGroupMetadata` BEFORE
+        // `setSubgroupVisibility(Open)` therefore land subgroup-key-
+        // encrypted — namespace-only members can't decrypt them, and
+        // see the folder as unnamed.
+        //
+        // Order below: create with no name → reparent → flip
+        // visibility → set name. For Restricted subgroups the
+        // visibility flip is a no-op (Restricted is the default),
+        // and the name write still encrypts with the subgroup key —
+        // which is fine because only subgroup members ever read it.
+        const group = await createGroupInNamespace(input.namespaceId, {});
         if (!group?.groupId) throw new Error('createGroupInNamespace returned no groupId');
         createdGroupId = group.groupId;
         const newId = group.groupId;
 
-        // `createGroupInNamespace` stamps the group's metadata record
-        // from the `name` we passed above. We re-assert it here as a
-        // belt-and-suspenders guard — `setGroupMetadata` is idempotent
-        // (passing only `name` leaves any `data` map untouched), so a
-        // redundant call is harmless and shields us from a core build
-        // where create didn't populate the record.
-        await setGroupMetadata(newId, { name: input.alias });
-
-        // createGroupInNamespace places the new group as a direct
-        // child of the namespace root. To nest it under a specific
-        // parent, reparent it. Tries atomic /reparent first (latest
-        // core), falls back to unnest+nest (older core). Pass
-        // rootGroupId as the current parent so the fallback knows
-        // where to unnest from.
         if (input.parentGroupId !== rootGroupId) {
           if (!nodeUrl) throw new Error('Node URL not resolved');
           await reparentGroup(nodeUrl, newId, input.parentGroupId, rootGroupId);
         }
+
+        // Core expects lowercase `"open"` / `"restricted"`; see
+        // `crates/server/src/admin/handlers/groups/set_subgroup_visibility.rs:31`
+        // — capitalized values return 400 Bad Request.
+        await setSubgroupVisibility(newId, {
+          subgroupVisibility: input.visibility.toLowerCase(),
+        });
+
+        // Now the name op encrypts on the namespace key chain for
+        // Open subgroups; on the subgroup key for Restricted.
+        await setGroupMetadata(newId, { name: input.alias });
 
         const ctx = await createContext({
           applicationId,
@@ -134,11 +148,10 @@ export function useFolderOperations(
           id: newId,
           parent_id: input.parentGroupId === rootGroupId ? null : input.parentGroupId,
           color: input.color ?? null,
-          // No alias mirror — folder names come from core group
-          // metadata's `name` (list rows carry it as of #2338), so
-          // even non-members of the subgroup see the real name from
-          // the admin API. The registry's `alias` field is kept
-          // readable for back-compat but is no longer written.
+          // Folder names come from core group metadata's `name` (list
+          // rows carry it as of #2338); the registry's `alias` field
+          // is kept readable for back-compat but is no longer
+          // written.
           alias: null,
         });
         registryEntryCreated = true;
@@ -146,16 +159,6 @@ export function useFolderOperations(
         await registryClient.bindFolderContext({
           folder_id: newId,
           context_id: ctx.contextId,
-        });
-
-        // Set subgroup visibility on the new folder. Core's
-        // parent-walk inheritance kicks in for Open folders — every
-        // namespace member with CAN_JOIN_OPEN_SUBGROUPS (default-on)
-        // is recognised as a member without an explicit add. The
-        // create handler in core already sets a default; we re-assert
-        // here to make the intent explicit and to support Restricted.
-        await setSubgroupVisibility(newId, {
-          subgroupVisibility: input.visibility,
         });
 
         await refetch();
