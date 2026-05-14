@@ -198,21 +198,27 @@ jobs:
           version: 9
 
       - name: Setup Node.js
+        # No pnpm cache: app/pnpm-lock.yaml is intentionally
+        # gitignored (see repo .gitignore — every CI run re-resolves
+        # `branch = "master"` git deps to current HEAD). Without the
+        # lockfile present, setup-node@v4 with `cache: pnpm` fails
+        # hard with "Some specified paths were not resolved".
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: pnpm
-          cache-dependency-path: app/pnpm-lock.yaml
 
       - name: Install frontend dependencies
         working-directory: app
-        run: pnpm install --frozen-lockfile
+        # See setup-node comment above re: gitignored lockfile.
+        run: pnpm install --no-frozen-lockfile
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('app/pnpm-lock.yaml') }}
+          # Lockfile is gitignored; key off package.json so the cache
+          # busts whenever Playwright is bumped or any dep changes.
+          key: playwright-${{ runner.os }}-${{ hashFiles('app/package.json') }}
           restore-keys: playwright-${{ runner.os }}-
 
       - name: Install Playwright Chromium
@@ -426,21 +432,27 @@ jobs:
           version: 9
 
       - name: Setup Node.js
+        # No pnpm cache: app/pnpm-lock.yaml is intentionally
+        # gitignored (see repo .gitignore — every CI run re-resolves
+        # `branch = "master"` git deps to current HEAD). Without the
+        # lockfile present, setup-node@v4 with `cache: pnpm` fails
+        # hard with "Some specified paths were not resolved".
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: pnpm
-          cache-dependency-path: app/pnpm-lock.yaml
 
       - name: Install frontend dependencies
         working-directory: app
-        run: pnpm install --frozen-lockfile
+        # See setup-node comment above re: gitignored lockfile.
+        run: pnpm install --no-frozen-lockfile
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('app/pnpm-lock.yaml') }}
+          # Lockfile is gitignored; key off package.json so the cache
+          # busts whenever Playwright is bumped or any dep changes.
+          key: playwright-${{ runner.os }}-${{ hashFiles('app/package.json') }}
           restore-keys: playwright-${{ runner.os }}-
 
       - name: Install Playwright Chromium
