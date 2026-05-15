@@ -191,7 +191,7 @@ export function NamespaceMemberRow({
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
-                      submitRename();
+                      void submitRename();
                     } else if (e.key === 'Escape') {
                       e.preventDefault();
                       cancelRename();
@@ -203,7 +203,9 @@ export function NamespaceMemberRow({
                   className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
                   disabled={renameSaving}
                   aria-label="Save"
-                  onClick={submitRename}
+                  onClick={() => {
+                    void submitRename();
+                  }}
                 >
                   <Check className="h-3.5 w-3.5" />
                 </button>
