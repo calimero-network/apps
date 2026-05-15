@@ -31,8 +31,14 @@ import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { isAccessDeniedError } from '@/utils/accessDenied';
 
 export function WorkspaceLayout() {
-  const { namespaceId, selectedFolderId, folders, selfIdentity, stage } =
-    useDriveWorkspace();
+  const {
+    namespaceId,
+    selectedFolderId,
+    folders,
+    selfIdentity,
+    stage,
+    refetch,
+  } = useDriveWorkspace();
   const { nodeUrl, isOnline, logout } = useMero();
   const selectedFolder = folders.find((f) => f.id === selectedFolderId);
   // Per-folder permission probe. caps=null while fetching; caps=0
@@ -199,9 +205,11 @@ export function WorkspaceLayout() {
               ) : selectedFolderPerms.error &&
                 isAccessDeniedError(selectedFolderPerms.error) ? (
                 <RestrictedFolderCard
+                  folderId={selectedFolder.id}
                   folderAlias={selectedFolder.alias}
                   visibility={selectedFolder.visibility}
                   selfIdentity={selfIdentity}
+                  refetch={refetch}
                 />
               ) : !selectedFolderPerms.isMember &&
                 !selectedFolderPerms.error ? (
@@ -210,9 +218,11 @@ export function WorkspaceLayout() {
                 // read, so no membership means no access. Same UX as
                 // access-denied from the user's perspective.
                 <RestrictedFolderCard
+                  folderId={selectedFolder.id}
                   folderAlias={selectedFolder.alias}
                   visibility={selectedFolder.visibility}
                   selfIdentity={selfIdentity}
+                  refetch={refetch}
                 />
               ) : (
                 <>

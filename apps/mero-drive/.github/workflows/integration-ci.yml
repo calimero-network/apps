@@ -78,7 +78,10 @@ jobs:
       - name: Install merobox
         run: |
           python3 -m pip install --user --upgrade pip
-          python3 -m pip install --user "merobox==0.6.12"
+          # >=0.6.14 ships JoinSubgroupInheritanceStep (mero-drive
+          # workflows now use `join_subgroup_inheritance` against
+          # core#2360's endpoint, via calimero-client-py >= 0.6.12).
+          python3 -m pip install --user "merobox==0.6.14"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/merobox" --version
 
@@ -310,7 +313,10 @@ jobs:
       - name: Install merobox
         run: |
           python3 -m pip install --user --upgrade pip
-          python3 -m pip install --user "merobox==0.6.12"
+          # >=0.6.14 ships JoinSubgroupInheritanceStep (mero-drive
+          # workflows now use `join_subgroup_inheritance` against
+          # core#2360's endpoint, via calimero-client-py >= 0.6.12).
+          python3 -m pip install --user "merobox==0.6.14"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/merobox" --version
 

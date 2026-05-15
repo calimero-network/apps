@@ -181,11 +181,27 @@ steps:
 
   # =================================================================
   # Phase D: Open-subgroup inheritance proof — Bob joins the Docs
-  # context with no explicit folder membership. This is the shipped
-  # behaviour change; pre-#2261 this would fail at the membership-gate.
+  # context with no explicit folder membership. Pre-#2360 the
+  # mechanism was implicit via `join_context` (#2261 + #2351 chain);
+  # post-#2360 we drive it explicitly via the new
+  # `join_subgroup_inheritance` endpoint, then `join_context` is a
+  # cheap follow-up because the subgroup key is already local.
   # =================================================================
 
-  - name: Bob joins the Reports Docs context via inheritance
+  - name: Bob materialises Reports-folder membership via inheritance
+    type: join_subgroup_inheritance
+    node: calimero-node-2
+    group_id: '{{reports_group}}'
+    outputs:
+      bob_reports_key: memberPublicKey
+      bob_was_inherited: wasInherited
+
+  - name: Assert was_inherited is true (Bob is a namespace-only member)
+    type: json_assert
+    statements:
+      - 'json_equal({{bob_was_inherited}}, true)'
+
+  - name: Bob joins the Reports Docs context (key already local)
     type: join_context
     node: calimero-node-2
     context_id: '{{reports_docs_ctx}}'
@@ -197,6 +213,7 @@ steps:
     type: assert
     statements:
       - 'is_set({{bob_docs_key}})'
+      - 'is_set({{bob_reports_key}})'
 
   - name: Sync Reports Docs context across nodes
     type: wait_for_sync

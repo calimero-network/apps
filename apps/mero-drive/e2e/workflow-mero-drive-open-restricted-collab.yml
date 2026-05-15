@@ -259,9 +259,36 @@ steps:
   # =================================================================
   # Phase E: Bob inherits the Open folder's Docs context — NO
   # add_group_members. Reads Alice's doc; default folder role is Editor.
+  #
+  # Two-step join, mirroring core's scaffolding-e2e
+  # group-join-via-inheritance acceptance test:
+  #   1. `join_subgroup_inheritance` on the FOLDER subgroup id —
+  #      materialises inherited membership + receives the subgroup
+  #      key via the OpenSubgroupJoinRequest direct-stream protocol.
+  #      Replaces the pre-#2360 workaround of enumerating
+  #      listGroupContexts + joining a child.
+  #   2. `join_context` on the docs context — cheap now that the
+  #      group key is already local; just produces the per-context
+  #      executor key.
   # =================================================================
 
-  - name: Bob joins the Shared Docs context via inheritance
+  - name: Bob materialises Open-folder membership via inheritance
+    # Requires merobox >= 0.6.14 (ships the JoinSubgroupInheritanceStep
+    # backed by calimero-client-py >= 0.6.12) and merod built from
+    # core master >= 22e8cda4 (PR #2360 merged).
+    type: join_subgroup_inheritance
+    node: calimero-node-2
+    group_id: '{{open_folder}}'
+    outputs:
+      bob_folder_key: memberPublicKey
+      bob_was_inherited: wasInherited
+
+  - name: Assert was_inherited is true (Bob is a namespace-only member)
+    type: json_assert
+    statements:
+      - 'json_equal({{bob_was_inherited}}, true)'
+
+  - name: Bob joins the Shared Docs context (key already local)
     type: join_context
     node: calimero-node-2
     context_id: '{{open_docs_ctx}}'
@@ -273,6 +300,7 @@ steps:
     type: assert
     statements:
       - 'is_set({{bob_docs_key}})'
+      - 'is_set({{bob_folder_key}})'
 
   - name: Sync the Shared Docs context across nodes
     type: wait_for_sync
