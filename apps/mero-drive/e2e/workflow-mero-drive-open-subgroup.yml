@@ -201,6 +201,57 @@ steps:
     statements:
       - 'json_equal({{bob_was_inherited}}, true)'
 
+  # ===================================================================
+  # Documents the open-subgroup MEMBERSHIP-LIST gap that breaks
+  # mero-drive's Playwright `clickJoin` two-node tests.
+  #
+  # `join_subgroup_inheritance` (#2360) does NOT write a GroupMember
+  # row for the joiner — by core's design, inherited membership is a
+  # separate concept. `execute_member_joined_open`
+  # (`group_store/namespace_governance.rs:1194`) is explicit:
+  # "We don't mutate state here." Consequently, after Bob's
+  # join-via-inheritance returns 200, `GET /admin-api/groups/<id>/members`
+  # on Bob's node still returns ONLY the explicit members (Alice).
+  #
+  # Confirmed wire shape on Bob's node (sha 86970319f0d3 from the
+  # 25932145102 Playwright trace artifact):
+  #
+  #   { "members": [{ "identity": "<alice>", "role": "Admin" }],
+  #     "selfIdentity": "<bob>" }
+  #
+  # Downstream impact: mero-drive's `useMemberCaps` keys "is the
+  # caller a member?" off this same `list_group_members` call (it
+  # cannot use the inherited-eligibility check from
+  # `check_group_membership_path` because that's not exposed via the
+  # admin API). It reports `isMember=false` for Bob — `RestrictedFolderCard`
+  # stays mounted forever after a successful join, so every Playwright
+  # two-node test that clicks "Join folder" then expects the document
+  # list times out.
+  #
+  # Workarounds that are NOT applicable here:
+  # - Polling the endpoint won't help; the row is never written.
+  # - Using `executor_public_key` directly on the docs context works
+  #   (the context layer recognises inheritance — that's why this
+  #   workflow's `call` steps below succeed) but the admin-api
+  #   `list_group_members` does not.
+  #
+  # The `list_group_members` step below is informational — it logs
+  # success and exports the response so a manual run of this workflow
+  # can dump the actual shape. The proof of the gap lives in the app:
+  # `app/e2e/two-node/doc-collab.spec.ts > clickJoin → expectDocVisible`
+  # times out with the RestrictedFolderCard still mounted. When core
+  # closes the gap (either by materializing an inherited-member row in
+  # `execute_member_joined_open`, or by adding an
+  # `include_inherited=true` projection to the list endpoint), update
+  # `useMemberCaps` to use that signal and re-enable the Playwright
+  # tests by removing `test.skip` markers.
+  - name: List Reports-folder members on Bob's node (post-inheritance-join)
+    type: list_group_members
+    node: calimero-node-2
+    group_id: '{{reports_group}}'
+    # Exports `members_calimero-node-2` into workflow_results — Bob's
+    # identity is in the `selfIdentity` field but NOT in `members[]`.
+
   - name: Bob joins the Reports Docs context (key already local)
     type: join_context
     node: calimero-node-2
