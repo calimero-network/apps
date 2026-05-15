@@ -47,6 +47,11 @@ interface Props {
    *  membership and swaps to the real folder UI. Bind to
    *  `useDriveWorkspace().refetch`. */
   refetch?: () => void | Promise<void>;
+  /** Per-folder permissions refetch — the workspace-wide `refetch`
+   *  above doesn't touch `useMemberCaps` (its deps don't change on
+   *  join), so a successful join wouldn't otherwise lift the cached
+   *  "not a member" state. Bind to `useFolderPermissions(...).refetch`. */
+  refetchPerms?: () => void;
 }
 
 export function RestrictedFolderCard({
@@ -55,6 +60,7 @@ export function RestrictedFolderCard({
   visibility,
   selfIdentity,
   refetch,
+  refetchPerms,
 }: Props) {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,8 +89,13 @@ export function RestrictedFolderCard({
     setError(null);
     try {
       await joinSubgroupInheritance(folderId);
-      // Success: refetch workspace state so useFolderPermissions
-      // re-evaluates and the parent swaps to the real folder view.
+      // Success: refetch workspace state AND the per-folder
+      // permissions probe. The workspace refetch (folder list,
+      // subgroups, etc.) does not touch useMemberCaps — its deps
+      // `[mero, groupId, memberId]` are stable across the join, so
+      // without `refetchPerms` the parent re-renders with the same
+      // stale "not a member" error and the card never unmounts.
+      refetchPerms?.();
       await refetch?.();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);

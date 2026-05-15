@@ -34,7 +34,7 @@
 //   - `caps = 0,    error = Error` → retries exhausted; caller shows
 //     an error affordance rather than silently rendering "all denied".
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useMero } from '@calimero-network/mero-react';
 import { useDriveWorkspace } from './useDriveWorkspace';
 
@@ -52,6 +52,13 @@ export interface MemberCapsState {
    *  `is_group_admin_or_has_capability`). */
   isAdmin: boolean;
   error: Error | null;
+  /** Force the underlying fetch (members + capabilities) to re-run.
+   *  Needed after an external membership-changing op (e.g. the
+   *  RestrictedFolderCard's join-via-inheritance click) — the
+   *  effect's deps `[mero, groupId, memberId]` don't change, so a
+   *  successful join wouldn't otherwise lift a previously-cached
+   *  "identity is not a member" error. */
+  refetch: () => void;
 }
 
 function isPropagationLagError(err: unknown): boolean {
@@ -92,11 +99,13 @@ export function useMemberCaps(
   const { selfIdentity } = useDriveWorkspace();
   const memberId = selfIdentity ?? '';
 
-  const [state, setState] = useState<MemberCapsState>({
+  const [state, setState] = useState<Omit<MemberCapsState, 'refetch'>>({
     caps: null,
     isAdmin: false,
     error: null,
   });
+  const [tick, setTick] = useState(0);
+  const refetch = useCallback(() => setTick((t) => t + 1), []);
 
   useEffect(() => {
     if (!mero || !groupId || !memberId) {
@@ -173,7 +182,7 @@ export function useMemberCaps(
     return () => {
       signal.aborted = true;
     };
-  }, [mero, groupId, memberId]);
+  }, [mero, groupId, memberId, tick]);
 
-  return state;
+  return { ...state, refetch };
 }

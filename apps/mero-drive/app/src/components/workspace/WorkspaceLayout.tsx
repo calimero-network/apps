@@ -210,6 +210,7 @@ export function WorkspaceLayout() {
                   visibility={selectedFolder.visibility}
                   selfIdentity={selfIdentity}
                   refetch={refetch}
+                  refetchPerms={selectedFolderPerms.refetch}
                 />
               ) : !selectedFolderPerms.isMember &&
                 !selectedFolderPerms.error ? (
@@ -223,6 +224,7 @@ export function WorkspaceLayout() {
                   visibility={selectedFolder.visibility}
                   selfIdentity={selfIdentity}
                   refetch={refetch}
+                  refetchPerms={selectedFolderPerms.refetch}
                 />
               ) : (
                 <>

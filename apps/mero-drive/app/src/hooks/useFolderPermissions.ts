@@ -97,13 +97,22 @@ export interface FolderPermissions {
    *  a retry affordance rather than treating loading:false + all-
    *  booleans-false as legitimate "no permissions." */
   error: Error | null;
+  /** Re-run the membership probe. Use after an action that may have
+   *  changed the caller's membership server-side (e.g. the join-via-
+   *  inheritance call on the Open-folder card) — useMemberCaps's deps
+   *  don't change on those flows, so the cached "not a member" stays
+   *  unless something forces a re-fetch. */
+  refetch: () => void;
 }
 
 export function useFolderPermissions(
   namespaceId: string,
   folderId: string,
 ): FolderPermissions {
-  const { caps, isAdmin, error } = useMemberCaps(namespaceId, folderId);
+  const { caps, isAdmin, error, refetch: refetchCaps } = useMemberCaps(
+    namespaceId,
+    folderId,
+  );
   const {
     role,
     loading: roleLoading,
@@ -185,5 +194,6 @@ export function useFolderPermissions(
       canManageMembers,
     loading: caps === null,
     error,
+    refetch: refetchCaps,
   };
 }
