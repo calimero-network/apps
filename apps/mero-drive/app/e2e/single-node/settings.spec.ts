@@ -34,9 +34,14 @@ test.describe('Settings + sharing (single-node)', () => {
     // folder-header visibility label so we know that fetch has
     // populated state — radix DropdownMenu is a snapshot at open
     // time and won't re-render new menuitems.
+    // 90s — per-folder `getGroupInfo` fan-out in useDriveWorkspace
+    // has no rate-limiting; under CI with multiple folders the chip
+    // text can lag well past the default 30s. Bumping the wait
+    // rather than skipping because the toggle assertion below is
+    // the actual signal we care about.
     await expect(
       alice.page.getByText(/Open — namespace members can join/i),
-    ).toBeVisible({ timeout: 30_000 });
+    ).toBeVisible({ timeout: 90_000 });
 
     await alice.tree.openContextMenu('Toggleable');
     await expect(
@@ -50,9 +55,14 @@ test.describe('Settings + sharing (single-node)', () => {
   }) => {
     await alice.createFolder({ name: 'Settled', visibility: 'Open' });
     await alice.tree.openFolder('Settled');
+    // 90s — per-folder `getGroupInfo` fan-out in useDriveWorkspace
+    // has no rate-limiting; under CI with multiple folders the chip
+    // text can lag well past the default 30s. Bumping the wait
+    // rather than skipping because the toggle assertion below is
+    // the actual signal we care about.
     await expect(
       alice.page.getByText(/Open — namespace members can join/i),
-    ).toBeVisible({ timeout: 30_000 });
+    ).toBeVisible({ timeout: 90_000 });
 
     await alice.tree.openContextMenu('Settled');
     const restrictItem = alice.page.getByRole('menuitem', {

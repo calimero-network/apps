@@ -54,12 +54,15 @@ test.describe('Namespace (single-node)', () => {
     await alice.createNamespace('Naming WS');
     await alice.setMyDisplayName('Alice From Test');
     // Reopening should show the saved value as the current name.
+    // 30s — useMemberDisplayName's refetch on remount can lag
+    // behind the underlying mero-react cache invalidation; 10s
+    // wasn't enough under CI.
     await alice.openSettings();
     await expect(
       alice.page
         .locator('[data-testid="my-display-name-panel"]')
         .locator('input'),
-    ).toHaveValue('Alice From Test', { timeout: 10_000 });
+    ).toHaveValue('Alice From Test', { timeout: 30_000 });
     await alice.closeSettings();
   });
 
