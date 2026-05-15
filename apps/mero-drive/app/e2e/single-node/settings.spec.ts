@@ -29,23 +29,31 @@ test.describe('Settings + sharing (single-node)', () => {
   }) => {
     await alice.createFolder({ name: 'Toggleable', visibility: 'Open' });
     await alice.tree.openFolder('Toggleable');
+    // FolderVisibilityToggle returns null until `current` is
+    // resolved (per-folder getGroupInfo fetch). Wait for the
+    // folder-header visibility label so we know that fetch has
+    // populated state — radix DropdownMenu is a snapshot at open
+    // time and won't re-render new menuitems.
+    await expect(
+      alice.page.getByText(/Open — namespace members can join/i),
+    ).toBeVisible({ timeout: 30_000 });
+
     await alice.tree.openContextMenu('Toggleable');
     await expect(
       alice.page.getByRole('menuitem', { name: /Make restricted/i }),
     ).toBeVisible({ timeout: 10_000 });
-    // Close the menu.
     await alice.page.keyboard.press('Escape');
   });
 
-  test('Visibility toggle dropdown hidden while visibility undefined', async ({
+  test('Visibility toggle dropdown shows exactly one option per state', async ({
     alice,
   }) => {
-    // On creation the folder is bootstrapped with explicit
-    // visibility, so the "undefined" branch is hard to reproduce
-    // on the same node; rely on the fact that the toggle should
-    // never appear with text matching both options simultaneously.
     await alice.createFolder({ name: 'Settled', visibility: 'Open' });
     await alice.tree.openFolder('Settled');
+    await expect(
+      alice.page.getByText(/Open — namespace members can join/i),
+    ).toBeVisible({ timeout: 30_000 });
+
     await alice.tree.openContextMenu('Settled');
     const restrictItem = alice.page.getByRole('menuitem', {
       name: /Make restricted/i,
@@ -55,10 +63,12 @@ test.describe('Settings + sharing (single-node)', () => {
     });
     const restrictCount = await restrictItem.count();
     const openCount = await openItem.count();
-    // Exactly one of the two should be present — never zero, never
-    // both. Zero means visibility is undefined (a bug for an
-    // already-created folder); both means duplicate menu render.
+    // Exactly one of the two should be present — never zero (would
+    // imply the toggle didn't render at all), never both
+    // (duplicate render). For an Open folder we expect
+    // "Make restricted" specifically.
     expect(restrictCount + openCount).toBe(1);
+    expect(restrictCount).toBe(1);
     await alice.page.keyboard.press('Escape');
   });
 });

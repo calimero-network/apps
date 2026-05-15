@@ -155,8 +155,12 @@ export class WorkspaceDriver {
   async renameFolder(currentName: string, newName: string): Promise<void> {
     await this.tree.openContextMenu(currentName);
     await this.page.getByRole('menuitem', { name: /Rename/i }).click();
-    // Inline rename input is the only visible text input in the row.
-    const input = this.page.locator('input[type="text"]:visible').first();
+    // FolderTreeItem renders the inline rename input as a plain
+    // <input> with no explicit `type` attribute (defaults to text
+    // per the HTML spec, but `input[type="text"]` CSS selector
+    // requires the literal attribute). The autoFocus + the fact it
+    // appears inside an <aside> li are stable signals.
+    const input = this.page.locator('aside li input:focus').first();
     await input.fill(newName);
     await input.press('Enter');
     await this.tree.expectFolderVisible(newName);
@@ -249,10 +253,20 @@ export class FolderTreeDriver {
     // row; clicking it opens the radix DropdownMenu. (Right-click is
     // NOT bound — the row uses the dropdown trigger pattern, not a
     // native context menu.)
-    await this.folderRow(name)
+    //
+    // FolderVisibilityToggle gates its menuitem on `current !==
+    // undefined`, and `current` is loaded asynchronously by the
+    // parent's per-folder getGroupInfo fetch. If we open the menu
+    // before that resolves the menuitem just isn't rendered (the
+    // menu is a snapshot at open time). So wait for the trigger
+    // button to be ready AND give the menu a brief settle window
+    // — `openFolder` having been called should already have queued
+    // the visibility fetch, this is the courtesy poll.
+    const trigger = this.folderRow(name)
       .first()
-      .getByRole('button', { name: /Folder actions/i })
-      .click();
+      .getByRole('button', { name: /Folder actions/i });
+    await expect(trigger).toBeVisible({ timeout: 30_000 });
+    await trigger.click();
   }
 }
 
@@ -410,7 +424,12 @@ export class EditorDriver {
   }
 
   async deleteDocument(): Promise<void> {
-    await this.page.getByRole('button', { name: /^More|menu/i }).click();
+    // EditorHeader renders a 3-dot trigger with an explicit
+    // aria-label="Document actions"; that's the only consumer of
+    // the dropdown so the literal match is safe.
+    await this.page
+      .getByRole('button', { name: /Document actions/i })
+      .click();
     await this.page
       .getByRole('menuitem', { name: /Delete Document/i })
       .click();
@@ -429,17 +448,14 @@ export class SettingsDriver {
     await expect(panel).toBeVisible({ timeout: 10_000 });
     const input = panel.locator('input[type="text"]');
     await input.fill(name);
-    const saveBtn = panel.getByRole('button', { name: /^Save$/ });
-    await saveBtn.click();
-    // "Save" button is disabled when there's nothing to save
-    // (!dirty || saving || loading). After a successful save the
-    // refetched server name equals draft → dirty becomes false →
-    // button disabled. Waiting on this is the only stable
-    // post-save signal: the "Saving…" text-swap is sometimes
-    // shorter than Playwright's polling window.
-    await expect(saveBtn).toBeDisabled({ timeout: 15_000 });
-    // Cross-check: input now reflects the saved value.
-    await expect(input).toHaveValue(name, { timeout: 5_000 });
+    await panel.getByRole('button', { name: /^Save$/ }).click();
+    // Post-save signal: the panel's `useEffect(() => setDraft(name))`
+    // mirrors the refetched server name back into the input, so the
+    // input value equalling our `name` is the true end-state. The
+    // earlier `toBeDisabled` approach was racy — under mero-react's
+    // refetch cycle the button briefly stays enabled even after the
+    // network round-trip completes.
+    await expect(input).toHaveValue(name, { timeout: 15_000 });
   }
 
   // Open the namespace InviteDialog (path: Settings → MembersPanel →
