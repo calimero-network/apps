@@ -22,20 +22,30 @@ import { test, expect } from '../fixtures/two-user';
 
 test.describe('Open folder inheritance (two-node)', () => {
   // Minimal smoke test for the join-via-inheritance chain. Proves
-  // ONLY the basic happy path: node-1 creates an Open subgroup +
-  // invites to the namespace; node-2 accepts, sees the folder,
-  // clicks Join, and lands in the folder view (i.e. has access).
-  // No doc create, no editor mount, no cross-node read/write —
-  // those are covered by the next test and by doc-collab.spec.ts.
-  // First in file so it runs first; a failure here means everything
-  // downstream is moot.
-  test('SMOKE: node-2 joins Open subgroup via inheritance + lands in folder view', async ({
+  // the basic happy path:
+  //
+  //   node-1 creates Open subgroup + doc → invites to namespace
+  //   node-2 accepts, sees the folder, clicks Join (one
+  //     join_subgroup_inheritance call materialises subgroup
+  //     membership + delivers the subgroup key)
+  //   node-2 sees Alice's doc in the DocumentList
+  //
+  // No editor mount, no bidirectional write-back, no concurrency —
+  // those are covered by the next test in this file and by
+  // doc-collab.spec.ts. First in file so it runs first; a failure
+  // here means everything downstream is moot.
+  test('SMOKE: node-2 joins Open subgroup via inheritance + reads doc', async ({
     alice,
     bob,
   }) => {
     await alice.goToWorkspace();
     await alice.createNamespace('Smoke WS');
     await alice.createFolder({ name: 'OpenSpace', visibility: 'Open' });
+    // Create the doc BEFORE inviting so when Bob lands in the
+    // folder view he can see it immediately — keeps the smoke
+    // strictly forward-only (no cross-node write).
+    await alice.tree.openFolder('OpenSpace');
+    await alice.createDoc('Smoke Doc');
 
     await alice.openSettings();
     const inviteUrl = await alice.settings.copyNamespaceInvite();
@@ -57,15 +67,10 @@ test.describe('Open folder inheritance (two-node)', () => {
     await bob.restrictedCard.clickJoin();
 
     // Final assertion: RestrictedFolderCard has unmounted in favour
-    // of the real folder view. The DocumentList header ("Documents")
-    // is the simplest signal that useFolderPermissions resolved Bob
-    // as a member.
-    await expect(
-      bob.page.getByRole('heading', { name: /^OpenSpace$/ }),
-    ).toBeVisible({ timeout: 30_000 });
-    await expect(
-      bob.page.getByText(/^Documents$/),
-    ).toBeVisible({ timeout: 30_000 });
+    // of the real folder view, AND Bob can see Alice's doc in the
+    // list (proves the docs-context CRDT replicated through the
+    // newly-materialised subgroup membership).
+    await bob.docs.expectDocVisible('Smoke Doc', { timeout: 60_000 });
   });
 
   test("Bob inherits Alice's Open folder created before he joined", async ({
