@@ -216,10 +216,28 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   // Auto-select a namespace when the list lands and we don't have a
   // valid selection. Fall back to [0] if the persisted id isn't in
   // the list (deleted remotely, user cleared storage, etc.).
+  //
+  // Edge case (load-bearing for the post-/join flow): if the user just
+  // joined a namespace via JoinPage, the just-joined set in
+  // sessionStorage has its id. Server-side memberships outlive
+  // browser-context lifetimes (Playwright fresh contexts inherit a
+  // node that already knows the user from prior tests), so on first
+  // render `namespaces` already contains a half-dozen unrelated ids
+  // and the persisted activeNs might still be valid from a previous
+  // session. Prefer a just-joined id over both, so the user lands on
+  // the namespace they just accepted instead of an arbitrary survivor.
   const userCleared = useRef(false);
   useEffect(() => {
     if (namespaces.length === 0) return;
     if (userCleared.current) return;
+    const justJoined = readJustJoinedSet();
+    if (justJoined.size > 0) {
+      const target = namespaces.find((n) => justJoined.has(n.namespaceId));
+      if (target && target.namespaceId !== selectedNsId) {
+        setSelectedNsId(target.namespaceId);
+        return;
+      }
+    }
     if (selectedNsId && namespaces.some((n) => n.namespaceId === selectedNsId)) {
       return;
     }
