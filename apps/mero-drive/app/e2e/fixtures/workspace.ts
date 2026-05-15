@@ -448,13 +448,22 @@ export class SettingsDriver {
     await expect(panel).toBeVisible({ timeout: 10_000 });
     const input = panel.locator('input[type="text"]');
     await input.fill(name);
-    await panel.getByRole('button', { name: /^Save$/ }).click();
-    // Post-save signal: the panel's `useEffect(() => setDraft(name))`
-    // mirrors the refetched server name back into the input, so the
-    // input value equalling our `name` is the true end-state. The
-    // earlier `toBeDisabled` approach was racy — under mero-react's
-    // refetch cycle the button briefly stays enabled even after the
-    // network round-trip completes.
+    const saveBtn = panel.getByRole('button', { name: /^Save$/ });
+    // Wait for the actual PUT round-trip to complete before
+    // returning, otherwise a follow-up closeSettings() can unmount
+    // the panel mid-write and the next mount races mero-react's
+    // cache. Wait both for the network response AND for the dirty
+    // flag to clear (Save disables when refetched name === draft).
+    const savePromise = this.page.waitForResponse(
+      (r) =>
+        r.request().method() === 'PUT' &&
+        /\/members\/[^/]+\/metadata$/.test(r.url()) &&
+        r.status() < 400,
+      { timeout: 15_000 },
+    );
+    await saveBtn.click();
+    await savePromise;
+    await expect(saveBtn).toBeDisabled({ timeout: 15_000 });
     await expect(input).toHaveValue(name, { timeout: 15_000 });
   }
 
