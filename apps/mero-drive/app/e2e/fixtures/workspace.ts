@@ -259,8 +259,11 @@ export class RestrictedCardDriver {
     await this.page
       .getByRole('button', { name: /^(Join folder|Try joining)$/ })
       .click();
-    // Wait for the card to unmount — the upstream folder UI takes
-    // over once joinContext + materialization complete.
+    // Wait for the card to unmount — useFolderPermissions
+    // re-evaluates after RestrictedFolderCard's
+    // `useJoinSubgroupInheritance` call (core PR #2360 — one HTTP
+    // round-trip that materialises subgroup membership + receives
+    // the subgroup key), then the parent swaps to the real folder UI.
     await expect(
       this.page.getByRole('heading', {
         name: /Join this open folder|Workspace is still syncing|This folder is restricted/i,
