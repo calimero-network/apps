@@ -122,16 +122,23 @@ export class WorkspaceDriver {
 
   async createFolder(opts: CreateFolderOptions): Promise<void> {
     if (opts.parent) {
-      throw new Error('Nested folder creation not yet implemented in driver');
+      // Nested: open parent's "Folder actions" menu and click
+      // "New subfolder". Dialog shape is identical to the
+      // tree-level create.
+      await this.tree.openContextMenu(opts.parent);
+      await this.page
+        .getByRole('menuitem', { name: /New subfolder/i })
+        .click();
+    } else {
+      // Scope the "New" button to the FolderTree's <aside>. There
+      // are multiple "New" buttons in the workspace shell (folder
+      // tree, doc list); the role+name locator would otherwise
+      // match the first DOM occurrence non-deterministically.
+      await this.page
+        .locator('aside')
+        .getByRole('button', { name: /^New$/ })
+        .click();
     }
-    // Scope the "New" button to the FolderTree's <aside>. There are
-    // multiple "New" buttons in the workspace shell (folder tree,
-    // doc list); the role+name locator would otherwise match the
-    // first DOM occurrence non-deterministically.
-    await this.page
-      .locator('aside')
-      .getByRole('button', { name: /^New$/ })
-      .click();
     const dialog = this.page.getByRole('dialog');
     await dialog.getByPlaceholder(/Folder name/i).fill(opts.name);
     // NewFolderDialog renders visibility as a pair of toggle
