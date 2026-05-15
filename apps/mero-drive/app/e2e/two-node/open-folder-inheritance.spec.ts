@@ -21,6 +21,53 @@
 import { test, expect } from '../fixtures/two-user';
 
 test.describe('Open folder inheritance (two-node)', () => {
+  // Minimal smoke test for the join-via-inheritance chain. Proves
+  // ONLY the basic happy path: node-1 creates an Open subgroup +
+  // invites to the namespace; node-2 accepts, sees the folder,
+  // clicks Join, and lands in the folder view (i.e. has access).
+  // No doc create, no editor mount, no cross-node read/write —
+  // those are covered by the next test and by doc-collab.spec.ts.
+  // First in file so it runs first; a failure here means everything
+  // downstream is moot.
+  test('SMOKE: node-2 joins Open subgroup via inheritance + lands in folder view', async ({
+    alice,
+    bob,
+  }) => {
+    await alice.goToWorkspace();
+    await alice.createNamespace('Smoke WS');
+    await alice.createFolder({ name: 'OpenSpace', visibility: 'Open' });
+
+    await alice.openSettings();
+    const inviteUrl = await alice.settings.copyNamespaceInvite();
+    await alice.closeSettings();
+
+    // node-2: accept invite → namespace member.
+    await bob.joinNamespace(inviteUrl);
+
+    // node-2 sees the Open folder (namespace-scope metadata reached
+    // Bob's node via the gossip layer; depends on the publisher-
+    // ordering fix in useFolderOperations.create).
+    await bob.tree.expectFolderVisible('OpenSpace', { timeout: 60_000 });
+
+    // node-2 opens the folder → sees Join CTA (Open chain
+    // recognised) → one click → join_subgroup_inheritance (#2360)
+    // materialises membership + delivers the subgroup key.
+    await bob.tree.openFolder('OpenSpace');
+    await bob.restrictedCard.expectJoinCTA();
+    await bob.restrictedCard.clickJoin();
+
+    // Final assertion: RestrictedFolderCard has unmounted in favour
+    // of the real folder view. The DocumentList header ("Documents")
+    // is the simplest signal that useFolderPermissions resolved Bob
+    // as a member.
+    await expect(
+      bob.page.getByRole('heading', { name: /^OpenSpace$/ }),
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(
+      bob.page.getByText(/^Documents$/),
+    ).toBeVisible({ timeout: 30_000 });
+  });
+
   test("Bob inherits Alice's Open folder created before he joined", async ({
     alice,
     bob,
