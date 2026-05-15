@@ -265,7 +265,12 @@ jobs:
           retention-days: 7
 
       - name: Upload Playwright traces
-        if: failure()
+        # `if: always()` (not just `failure()`) so a job-level
+        # cancellation (e.g. the 35min timeout-minutes kill at end
+        # of the two-node project) still uploads traces. Without
+        # this we lose the trace artifact for the tests that ran
+        # before the cancellation, making post-mortem impossible.
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-traces-fast-${{ env.SHA }}
@@ -502,7 +507,12 @@ jobs:
           retention-days: 7
 
       - name: Upload Playwright traces
-        if: failure()
+        # `if: always()` (not just `failure()`) so a job-level
+        # cancellation (e.g. the 35min timeout-minutes kill at end
+        # of the two-node project) still uploads traces. Without
+        # this we lose the trace artifact for the tests that ran
+        # before the cancellation, making post-mortem impossible.
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-traces-two-node-${{ env.SHA }}
