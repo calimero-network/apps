@@ -76,12 +76,14 @@ export class WorkspaceDriver {
 
   // Selects a namespace from the top-bar select. Use the namespace
   // name (matched as the visible option label) — switching by id is
-  // brittle since ids are minted at runtime.
+  // brittle since ids are minted at runtime. `selectOption({ label })`
+  // wants a literal string; regex is rejected with "expected string,
+  // got object".
   async switchNamespace(name: string): Promise<void> {
     await this.page
       .locator('select')
       .first()
-      .selectOption({ label: new RegExp(name, 'i') });
+      .selectOption({ label: name });
   }
 
   // Opens the namespace settings pane.
@@ -105,24 +107,23 @@ export class WorkspaceDriver {
 
   async createFolder(opts: CreateFolderOptions): Promise<void> {
     if (opts.parent) {
-      // Open the parent folder's context menu and click "New
-      // subfolder". Without a parent we use the tree-level "New"
-      // button.
       throw new Error('Nested folder creation not yet implemented in driver');
     }
-    await this.page.getByRole('button', { name: /^New$/ }).click();
+    // Scope the "New" button to the FolderTree's <aside>. There are
+    // multiple "New" buttons in the workspace shell (folder tree,
+    // doc list); the role+name locator would otherwise match the
+    // first DOM occurrence non-deterministically.
+    await this.page
+      .locator('aside')
+      .getByRole('button', { name: /^New$/ })
+      .click();
     const dialog = this.page.getByRole('dialog');
     await dialog.getByPlaceholder(/Folder name/i).fill(opts.name);
-    // Visibility radio/toggle within the dialog. Implementation
-    // detail of NewFolderDialog — assume a labelled control. If this
-    // fails, NewFolderDialog probably doesn't expose visibility at
-    // creation time and we need to set it post-create via
-    // `toggleVisibility`.
-    const visibilityRadio = dialog.getByRole('radio', {
-      name: new RegExp(`^${opts.visibility}$`, 'i'),
-    });
-    if (await visibilityRadio.count()) {
-      await visibilityRadio.click();
+    // NewFolderDialog renders visibility as a pair of toggle
+    // BUTTONS, not radios. "Open" is pressed by default; only
+    // click when the caller asked for Restricted.
+    if (opts.visibility === 'Restricted') {
+      await dialog.getByRole('button', { name: /^Restricted/i }).click();
     }
     await dialog.getByRole('button', { name: /^Create$/ }).click();
     await expect(dialog).toBeHidden({ timeout: 15_000 });
@@ -160,14 +161,21 @@ export class WorkspaceDriver {
   // ─── docs ──────────────────────────────────────────────────────
 
   async createDoc(title: string): Promise<void> {
-    await this.page.getByRole('button', { name: /^New$/ }).click();
-    const dialog = this.page.getByRole('dialog');
-    // NewDocDialog has a title input; placeholder may be 'Document
-    // title' or similar. Use first visible textbox in dialog.
-    const titleInput = dialog.locator('input[type="text"]').first();
-    await titleInput.fill(title);
-    await dialog.getByRole('button', { name: /^Create$/ }).click();
-    await expect(dialog).toBeHidden({ timeout: 15_000 });
+    // DocumentList's "New" button creates a doc named "Untitled" and
+    // opens the editor immediately — there's no create-dialog with a
+    // title input. To get a named doc we click New, wait for the
+    // editor to mount, rename via the EditorHeader's editable title,
+    // close the editor, and assert the row.
+    //
+    // Scope New to <main> so we don't match the FolderTree's "New"
+    // (aside) button.
+    await this.page
+      .locator('main')
+      .getByRole('button', { name: /^New$/ })
+      .click();
+    await this.editor.expectMounted();
+    await this.editor.renameTitle(title);
+    await this.editor.close();
     await this.docs.expectDocVisible(title);
   }
 
@@ -215,8 +223,14 @@ export class FolderTreeDriver {
   }
 
   async openContextMenu(name: string): Promise<void> {
-    // Right-click on the row opens the FolderContextMenu.
-    await this.folderRow(name).first().click({ button: 'right' });
+    // FolderTreeItem renders a 3-dot "Folder actions" button on the
+    // row; clicking it opens the radix DropdownMenu. (Right-click is
+    // NOT bound — the row uses the dropdown trigger pattern, not a
+    // native context menu.)
+    await this.folderRow(name)
+      .first()
+      .getByRole('button', { name: /Folder actions/i })
+      .click();
   }
 }
 
@@ -354,6 +368,22 @@ export class EditorDriver {
     await this.page.getByRole('button', { name: /^Documents$/ }).click();
   }
 
+  // EditorHeader renders the doc name as a <button>; clicking flips
+  // it into an inline <input type="text"> (with autoFocus). Enter
+  // commits the rename via the onKeyDown handler.
+  async renameTitle(next: string): Promise<void> {
+    // A fresh doc is named "Untitled" (DocumentList.onCreate calls
+    // `docs.create({ title: 'Untitled' })`). Match the title button
+    // by exact name — the only other header button with letters is
+    // the "Documents" (plural) back button, which doesn't collide.
+    await this.page
+      .getByRole('button', { name: 'Untitled', exact: true })
+      .click();
+    const input = this.page.locator('input[type="text"]:focus');
+    await input.fill(next);
+    await input.press('Enter');
+  }
+
   async deleteDocument(): Promise<void> {
     await this.page.getByRole('button', { name: /^More|menu/i }).click();
     await this.page
@@ -374,10 +404,17 @@ export class SettingsDriver {
     await expect(panel).toBeVisible({ timeout: 10_000 });
     const input = panel.locator('input[type="text"]');
     await input.fill(name);
-    await panel.getByRole('button', { name: /^Save$/ }).click();
-    await expect(panel.getByRole('button', { name: /^Saving/i })).toBeHidden({
-      timeout: 15_000,
-    });
+    const saveBtn = panel.getByRole('button', { name: /^Save$/ });
+    await saveBtn.click();
+    // "Save" button is disabled when there's nothing to save
+    // (!dirty || saving || loading). After a successful save the
+    // refetched server name equals draft → dirty becomes false →
+    // button disabled. Waiting on this is the only stable
+    // post-save signal: the "Saving…" text-swap is sometimes
+    // shorter than Playwright's polling window.
+    await expect(saveBtn).toBeDisabled({ timeout: 15_000 });
+    // Cross-check: input now reflects the saved value.
+    await expect(input).toHaveValue(name, { timeout: 5_000 });
   }
 }
 

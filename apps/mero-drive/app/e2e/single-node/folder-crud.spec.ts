@@ -13,13 +13,18 @@ test.describe('Folder CRUD (single-node)', () => {
     await alice.tree.expectFolderVisible('Open A');
   });
 
-  test('create Restricted folder appears with lock icon', async ({ alice }) => {
+  test('create Restricted folder is visible to its creator', async ({
+    alice,
+  }) => {
+    // Note: mero-drive doesn't render a row-level visibility indicator
+    // (no lock icon on the FolderTree row). Restricted is a *state*
+    // surfaced when a non-member opens the folder via
+    // RestrictedFolderCard, not a per-row glyph. So this test just
+    // asserts the creator can create + see a Restricted folder; the
+    // distinction-by-state is covered in the two-node
+    // restricted-folder-invite spec.
     await alice.createFolder({ name: 'Restricted A', visibility: 'Restricted' });
     await alice.tree.expectFolderVisible('Restricted A');
-    const row = alice.tree.folderRow('Restricted A').first();
-    await expect(row.locator('[aria-label="Restricted"]')).toBeVisible({
-      timeout: 10_000,
-    });
   });
 
   test('rename folder updates tree', async ({ alice }) => {
