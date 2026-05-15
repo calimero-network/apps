@@ -553,7 +553,16 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       const nextVis = new Map<string, 'Open' | 'Restricted'>();
       for (const [id, alias, vis] of entries) {
         if (alias) nextAliases.set(id, alias);
-        if (vis === 'Open' || vis === 'Restricted') nextVis.set(id, vis);
+        // Server returns lowercase ("open" / "restricted") per core
+        // PR #2261; accept both casings so the toggle's optimistic
+        // uppercase write also lands cleanly.
+        const norm =
+          vis === 'Open' || vis === 'open'
+            ? 'Open'
+            : vis === 'Restricted' || vis === 'restricted'
+              ? 'Restricted'
+              : null;
+        if (norm) nextVis.set(id, norm);
       }
       setAliases(nextAliases);
       setVisibilities(nextVis);

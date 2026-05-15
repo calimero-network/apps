@@ -124,10 +124,12 @@ jobs:
           MEROBOX_PID=$!
           echo "merobox PID=$MEROBOX_PID, log=$MEROBOX_LOG"
 
+          SETUP_OK=0
           for i in $(seq 1 300); do
             if grep -q "Workflow completed successfully" "$MEROBOX_LOG" 2>/dev/null; then
               echo "merobox setup workflow completed; SIGKILLing to skip atexit cleanup"
               kill -9 "$MEROBOX_PID" 2>/dev/null || true
+              SETUP_OK=1
               break
             fi
             if ! kill -0 "$MEROBOX_PID" 2>/dev/null; then
@@ -137,6 +139,12 @@ jobs:
             fi
             sleep 1
           done
+          if [ "$SETUP_OK" -ne 1 ]; then
+            echo "merobox setup did not emit completion line within 300s - killing and failing"
+            kill -9 "$MEROBOX_PID" 2>/dev/null || true
+            tail -100 "$MEROBOX_LOG" || true
+            exit 1
+          fi
           wait "$MEROBOX_PID" 2>/dev/null || true
 
           echo "--- docker ps after setup ---"
@@ -359,10 +367,12 @@ jobs:
           MEROBOX_PID=$!
           echo "merobox PID=$MEROBOX_PID, log=$MEROBOX_LOG"
 
+          SETUP_OK=0
           for i in $(seq 1 300); do
             if grep -q "Workflow completed successfully" "$MEROBOX_LOG" 2>/dev/null; then
               echo "merobox setup workflow completed; SIGKILLing to skip atexit cleanup"
               kill -9 "$MEROBOX_PID" 2>/dev/null || true
+              SETUP_OK=1
               break
             fi
             if ! kill -0 "$MEROBOX_PID" 2>/dev/null; then
@@ -372,6 +382,12 @@ jobs:
             fi
             sleep 1
           done
+          if [ "$SETUP_OK" -ne 1 ]; then
+            echo "merobox setup did not emit completion line within 300s - killing and failing"
+            kill -9 "$MEROBOX_PID" 2>/dev/null || true
+            tail -100 "$MEROBOX_LOG" || true
+            exit 1
+          fi
           wait "$MEROBOX_PID" 2>/dev/null || true
 
           echo "--- docker ps after setup ---"

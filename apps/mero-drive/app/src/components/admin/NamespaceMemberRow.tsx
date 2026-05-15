@@ -90,8 +90,9 @@ export function NamespaceMemberRow({
   const [renameValue, setRenameValue] = useState('');
   const [renameSaving, setRenameSaving] = useState(false);
   const [renameError, setRenameError] = useState<string | null>(null);
-  // Re-entry guard for submitRename so a stray blur after Enter does
-  // not fire setMemberMetadata twice.
+  // Re-entry guard for submitRename — Enter and the Save button
+  // both call it, and Enter held / rapid double-click could
+  // otherwise fire setMemberMetadata twice.
   const submitInFlightRef = useRef(false);
 
   const startRename = useCallback(() => {

@@ -19,6 +19,7 @@ const STAGE_LABELS: Record<string, string> = {
   'resolving-registry-context': 'Bootstrapping workspace…',
   'loading-subgroups': 'Loading subgroups…',
   'loading-folders': 'Loading folders…',
+  'syncing-from-peers': 'Syncing workspace from peers…',
 };
 
 export function FolderTree() {
