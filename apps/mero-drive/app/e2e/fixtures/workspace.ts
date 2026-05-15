@@ -86,6 +86,21 @@ export class WorkspaceDriver {
       .selectOption({ label: name });
   }
 
+  // Navigate to the invite URL, click "Accept & join", land on /app.
+  // The invite URL is /join?kind=...&id=...&invite=...; with auth
+  // tokens already injected by the fixture, the page renders the
+  // accept CTA directly (no ConnectButton detour).
+  async joinNamespace(inviteUrl: string): Promise<void> {
+    // Extract the relative path so we hit the local Vite dev server,
+    // not the (different-origin) URL Alice's tab generated.
+    const parsed = new URL(inviteUrl, 'http://placeholder');
+    await this.page.goto(`${parsed.pathname}${parsed.search}`);
+    await this.page
+      .getByRole('button', { name: /Accept & join/i })
+      .click();
+    await expect(this.page).toHaveURL(/\/app/, { timeout: 30_000 });
+  }
+
   // Opens the namespace settings pane.
   async openSettings(): Promise<void> {
     await this.page.getByRole('button', { name: /Settings/i }).click();
@@ -418,6 +433,28 @@ export class SettingsDriver {
     await expect(saveBtn).toBeDisabled({ timeout: 15_000 });
     // Cross-check: input now reflects the saved value.
     await expect(input).toHaveValue(name, { timeout: 5_000 });
+  }
+
+  // Open the namespace InviteDialog (path: Settings → MembersPanel →
+  // "Invite" button → "Generate invite link" → read input), return
+  // the produced /join URL. Caller responsible for opening Settings
+  // first.
+  async copyNamespaceInvite(): Promise<string> {
+    await this.page.getByRole('button', { name: /^Invite$/ }).click();
+    const dialog = this.page.getByRole('dialog', {
+      name: /Invite to workspace/i,
+    });
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+    await dialog
+      .getByRole('button', { name: /Generate invite link/i })
+      .click();
+    const urlInput = dialog.locator('#invite-url-text');
+    await expect(urlInput).toBeVisible({ timeout: 30_000 });
+    const url = (await urlInput.inputValue()).trim();
+    if (!url) throw new Error('copyNamespaceInvite: dialog produced empty URL');
+    await dialog.getByRole('button', { name: /^Close$/ }).click();
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
+    return url;
   }
 }
 

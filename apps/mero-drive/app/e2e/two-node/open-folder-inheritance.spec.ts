@@ -1,65 +1,99 @@
-// Marquee two-node test: Open-subgroup inheritance materialization.
+// Marquee two-node test: Open-subgroup inheritance materialisation.
 //
-// The single most-broken regression-prone path in mero-drive — this
-// is what core PRs #2261, #2338, #2344, and #2351 collectively make
-// work end-to-end. Failure here means: Bob's node joins the
-// namespace, never gets the visibility op, can't materialize
-// membership via inheritance, can't read Alice's docs, can't write
-// his own.
+// The single most-broken regression-prone path in mero-drive. The
+// chain that has to work for this test to pass:
+//
+//   - Alice creates namespace + Open folder + doc (ordering fix:
+//     setSubgroupVisibility before setGroupMetadata, useFolderOperations).
+//   - Alice generates a namespace invite; Bob accepts via /join.
+//   - core gossips the namespace governance op to Bob's node
+//     (#2261 inheritance walk recognises Bob as eligible).
+//   - Bob clicks "Join folder" → useJoinSubgroupInheritance(folderId)
+//     (core #2360) → core publishes MemberJoinedOpen on Bob's behalf,
+//     fetches the subgroup key via OpenSubgroupJoinRequest, returns 200.
+//   - useFolderPermissions re-evaluates after refetch; RestrictedFolderCard
+//     unmounts in favour of the DocumentList.
+//   - Bob reads Alice's doc; writes his own; Alice reads back (#2351
+//     KeyDelivery + the underlying gossip/sync stack).
 //
 // Tests 27-29 from the design catalog.
 
 import { test, expect } from '../fixtures/two-user';
 
 test.describe('Open folder inheritance (two-node)', () => {
-  test('Bob inherits Alice\'s Open folder created before he joined', async ({
+  test("Bob inherits Alice's Open folder created before he joined", async ({
     alice,
     bob,
   }) => {
+    // Alice — namespace, folder, doc, invite link.
     await alice.goToWorkspace();
     await alice.createNamespace('Phoenix Pre');
-    await alice.createFolder({
-      name: 'Specs',
-      visibility: 'Open',
-    });
+    await alice.createFolder({ name: 'Specs', visibility: 'Open' });
     await alice.tree.openFolder('Specs');
     await alice.createDoc('Alpha');
+    await alice.openSettings();
+    const inviteUrl = await alice.settings.copyNamespaceInvite();
+    await alice.closeSettings();
 
-    // Bob joins via invitation. Implementation detail: invite
-    // delivery is out-of-band — we read Alice's invite from her
-    // settings panel and hand the URL to Bob.
-    const inviteUrl = await alice.settings
-      // TODO(driver): once SettingsDriver exposes copyNamespaceInvite,
-      // replace this placeholder. For now the test is expected to
-      // skip on real env until that helper lands.
-      .copyNamespaceInvite?.();
-    test.skip(
-      !inviteUrl,
-      'Driver does not yet expose namespace-invite copy; ' +
-        'implement SettingsDriver.copyNamespaceInvite once the ' +
-        'InviteDialog locator is stable.',
-    );
-
-    await bob.page.goto(inviteUrl!);
-    await bob.page.getByRole('button', { name: /Accept & join/i }).click();
-    await expect(bob.page).toHaveURL(/\/app/, { timeout: 30_000 });
-
-    // Bob sees the folder in his tree (eventually — name comes from
-    // namespace-scope metadata propagation; today this depends on
-    // core #2358 for Open subgroups).
+    // Bob — accept invite, see the folder, click Join, read Alice's
+    // doc, write his own.
+    await bob.joinNamespace(inviteUrl);
     await bob.tree.expectFolderVisible('Specs', { timeout: 60_000 });
 
-    // Bob clicks the folder → restricted card → Join CTA.
     await bob.tree.openFolder('Specs');
     await bob.restrictedCard.expectJoinCTA();
     await bob.restrictedCard.clickJoin();
 
-    // Inheritance materialization done; Bob sees Alice's doc.
     await bob.docs.expectDocVisible('Alpha');
 
-    // Bob writes his own; Alice sees it.
     await bob.createDoc('Beta');
     await alice.docs.expectDocVisible('Beta', { timeout: 60_000 });
+  });
+
+  test('Join folder hits /join-via-inheritance (wire-shape guard)', async ({
+    alice,
+    bob,
+  }) => {
+    // Regression guard against silently reverting to the pre-#2360
+    // `listGroupContexts` + `joinContext` workaround. Intercepts
+    // Bob's admin-API traffic during the Join CTA click and asserts:
+    //   - POST /admin-api/groups/:id/join-via-inheritance fires
+    //   - GET  /admin-api/groups/:id/contexts does NOT
+    //
+    // Same plumbing as the main test up to the click; we just install
+    // the route interceptors on Bob's page first.
+    await alice.goToWorkspace();
+    await alice.createNamespace('Phoenix Wire');
+    await alice.createFolder({ name: 'Wire', visibility: 'Open' });
+    await alice.openSettings();
+    const inviteUrl = await alice.settings.copyNamespaceInvite();
+    await alice.closeSettings();
+
+    await bob.joinNamespace(inviteUrl);
+    await bob.tree.expectFolderVisible('Wire', { timeout: 60_000 });
+
+    let calledJoinInheritance = false;
+    let calledListContexts = false;
+    await bob.page.route(
+      '**/admin-api/groups/*/join-via-inheritance',
+      async (route) => {
+        calledJoinInheritance = true;
+        await route.continue();
+      },
+    );
+    await bob.page.route('**/admin-api/groups/*/contexts', async (route) => {
+      // The endpoint shape is GET (list) — distinguish from POSTs to
+      // unrelated /groups/:id/* paths by checking method.
+      if (route.request().method() === 'GET') calledListContexts = true;
+      await route.continue();
+    });
+
+    await bob.tree.openFolder('Wire');
+    await bob.restrictedCard.expectJoinCTA();
+    await bob.restrictedCard.clickJoin();
+
+    expect(calledJoinInheritance).toBe(true);
+    expect(calledListContexts).toBe(false);
   });
 
   test.skip(
@@ -67,7 +101,10 @@ test.describe('Open folder inheritance (two-node)', () => {
     async ({ alice, bob }) => {
       // Same flow as above but: invite Bob first, then create the
       // folder. Asserts Bob's tree refreshes via subscription rather
-      // than poll. Skipped until namespace-invite driver lands.
+      // than poll. Pending a stable subscription-vs-poll signal in
+      // the workspace state.
+      void alice;
+      void bob;
     },
   );
 
@@ -77,7 +114,10 @@ test.describe('Open folder inheritance (two-node)', () => {
       // Race: open the card view before the visibility op has
       // reached Bob's node. Card should show "Workspace is still
       // syncing" → "Try joining"; once the op arrives the heading
-      // swaps to "Join this open folder" / "Join folder".
+      // swaps to "Join this open folder" / "Join folder". Needs a
+      // way to gate gossip propagation per-test.
+      void alice;
+      void bob;
     },
   );
 });
