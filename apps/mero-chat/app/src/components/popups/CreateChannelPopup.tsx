@@ -1,96 +1,139 @@
-import { styled } from "styled-components";
-import Loader from "../loader/Loader";
-import { useState } from "react";
+import { styled, keyframes } from "styled-components";
+
+import { useEffect, useRef, useState } from "react";
 import BaseModal from "../common/popups/BaseModal";
-import { Button, Input, Radio, RadioGroup } from "@calimero-network/mero-ui";
+import { Button, Input } from "@calimero-network/mero-ui";
+import {
+  getChannelVisibilityOptionLabel,
+  type ChannelVisibilityOption,
+} from "../../utils/channelVisibility";
 
-const Text = styled.div`
+// ─── Animations ────────────────────────────────────────────────────────────────
+
+const spin = keyframes`to { transform: rotate(360deg); }`;
+
+// ─── Layout ────────────────────────────────────────────────────────────────────
+
+const Header = styled.div`
   display: flex;
-  column-gap: 0.5rem;
+  justify-content: space-between;
   align-items: center;
-  color: #fff;
-  font-family: Helvetica Neue;
-  font-size: 16px;
-  font-style: normal;
-  font-weight: 500;
-  line-height: 120%
-  margin-bottom: 0.75rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.875rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
 `;
 
-const customStyle = {
-  border: "1px solid #dc3545",
-  outline: "none",
-};
+const TitleGroup = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+`;
 
-const CloseButton = styled.div`
+const TitleIcon = styled.div`
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: rgba(165, 255, 17, 0.1);
+  border: 1px solid rgba(165, 255, 17, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+`;
+
+const Title = styled.h2`
   color: #fff;
-  :hover {
-    color: #5765f2;
-  }
-  position: absolute;
-  right: 1rem;
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: 0.01em;
+`;
+
+const CloseButton = styled.button`
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.3);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-`;
-
-const ErrorWrapper = styled.div`
-  color: #dc3545;
-  /* Body/Small */
-  font-family: Helvetica Neue;
-  font-size: 12px;
-  font-style: normal;
-  font-weight: 400;
-  line-height: 150%; /* 18px */
-  margin-top: 6px;
-`;
-
-const EmptyMessageContainer = styled.div`
-  height: 27px;
-`;
-
-const IconSvg = styled.svg`
-  position: absolute;
-  top: 50%;
-  right: 13px;
-`;
-
-const ExclamationIcon = () => (
-  <IconSvg
-    width="18"
-    height="18"
-    viewBox="0 0 18 18"
-    fill="#dc3545"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path
-      fillRule="evenodd"
-      clipRule="evenodd"
-      d="M8.99951 2.74918C5.54773 2.74918 2.74951 5.5474 2.74951 8.99918C2.74951 12.451 5.54773 15.2492 8.99951 15.2492C12.4513 15.2492 15.2495 12.451 15.2495 8.99918C15.2495 5.5474 12.4513 2.74918 8.99951 2.74918ZM1.74951 8.99918C1.74951 4.99511 4.99545 1.74918 8.99951 1.74918C13.0036 1.74918 16.2495 4.99511 16.2495 8.99918C16.2495 13.0032 13.0036 16.2492 8.99951 16.2492C4.99545 16.2492 1.74951 13.0032 1.74951 8.99918ZM8.334 5.058C8.42856 4.95669 8.56093 4.89918 8.69951 4.89918H9.29951C9.4381 4.89918 9.57046 4.95669 9.66503 5.058C9.75959 5.15931 9.80786 5.29532 9.79833 5.43358L9.49833 9.78358C9.48025 10.0457 9.2623 10.2492 8.99951 10.2492C8.73672 10.2492 8.51878 10.0457 8.5007 9.78358L8.2007 5.43358C8.19116 5.29532 8.23944 5.15931 8.334 5.058ZM9.89951 12.2992C9.89951 12.7962 9.49657 13.1992 8.99951 13.1992C8.50246 13.1992 8.09951 12.7962 8.09951 12.2992C8.09951 11.8021 8.50246 11.3992 8.99951 11.3992C9.49657 11.3992 9.89951 11.8021 9.89951 12.2992Z"
-      fill="#DC3545"
-    />
-  </IconSvg>
-);
-
-const Container = styled.div`
-  position: relative;
-  background-color: #1d1d21;
-  padding: 0.5rem;
   border-radius: 6px;
-  width: 100%;
-  height: 100%;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  padding: 0;
+
+  &:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.08);
+  }
 `;
 
-const FormLabel = styled.label`
-  font-size: 12px;
-  font-weight: 500;
-  color: #fff;
-  margin-bottom: 0.25rem;
-  display: block;
+// ─── Form ──────────────────────────────────────────────────────────────────────
+
+const Field = styled.div`
+  margin-bottom: 1.1rem;
+`;
+
+const Label = styled.div`
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.35);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.5rem;
 `;
 
 const InputWrapper = styled.div`
   position: relative;
-  margin-top: 0.5rem;
 `;
+
+const FieldError = styled.p`
+  color: #ff6b6b;
+  font-size: 0.72rem;
+  margin: 0.3rem 0 0;
+`;
+
+const OptionRow = styled.div`
+  display: flex;
+  gap: 0.5rem;
+`;
+
+const OptionButton = styled.button<{ $active: boolean }>`
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid ${({ $active }) =>
+    $active ? "rgba(165, 255, 17, 0.4)" : "rgba(255, 255, 255, 0.07)"};
+  background: ${({ $active }) =>
+    $active ? "rgba(165, 255, 17, 0.08)" : "rgba(255, 255, 255, 0.03)"};
+  color: ${({ $active }) =>
+    $active ? "#a5ff11" : "rgba(255, 255, 255, 0.45)"};
+  transition: all 0.15s ease;
+
+  &:hover {
+    border-color: ${({ $active }) =>
+      $active ? "rgba(165, 255, 17, 0.55)" : "rgba(255, 255, 255, 0.14)"};
+    background: ${({ $active }) =>
+      $active ? "rgba(165, 255, 17, 0.12)" : "rgba(255, 255, 255, 0.05)"};
+    color: ${({ $active }) => ($active ? "#a5ff11" : "rgba(255, 255, 255, 0.65)")};
+  }
+`;
+
+const BtnSpinner = styled.div`
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(165, 255, 17, 0.3);
+  border-top-color: #a5ff11;
+  border-radius: 50%;
+  animation: ${spin} 0.7s linear infinite;
+`;
+
+// ─── Types ─────────────────────────────────────────────────────────────────────
 
 interface CreateChannelPopupProps {
   title: string;
@@ -107,7 +150,10 @@ interface CreateChannelPopupProps {
   setInputValue: (value: string) => void;
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
+  defaultVisibility: ChannelVisibilityOption;
 }
+
+// ─── Component ─────────────────────────────────────────────────────────────────
 
 export default function CreateChannelPopup({
   title,
@@ -120,105 +166,107 @@ export default function CreateChannelPopup({
   channelNameValidator,
   inputValue,
   setInputValue,
+  defaultVisibility,
 }: CreateChannelPopupProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [validInput, setValidInput] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [visibility, setVisibility] = useState("public");
-  const [readOnly, setReadOnly] = useState("no");
+  const [visibility, setVisibility] = useState<ChannelVisibilityOption>(defaultVisibility);
+  // Synchronous re-entrancy guard — closes the React-batching race where
+  // two onClicks fire before the first setIsProcessing(true) commits.
+  const inFlightRef = useRef(false);
+
+  useEffect(() => {
+    if (isOpen) setVisibility(defaultVisibility);
+  }, [defaultVisibility, isOpen]);
 
   const runProcess = async () => {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     setIsProcessing(true);
-    await createChannel(
-      inputValue,
-      visibility === "public",
-      readOnly === "yes",
-    );
-    setInputValue("");
-    setIsProcessing(false);
-    setIsOpen(false);
+    try {
+      await createChannel(inputValue, visibility === "public", false);
+      setInputValue("");
+      setIsOpen(false);
+    } finally {
+      setIsProcessing(false);
+      inFlightRef.current = false;
+    }
   };
 
-  const handleClosePopup = () => {
-    if (isProcessing) return;
-    setIsOpen(false);
+  const handleClose = () => {
+    if (!isProcessing) setIsOpen(false);
   };
 
   const handleOpenChange = (newOpen: boolean) => {
-    // Only allow closing via the X button, not by clicking outside
-    if (!newOpen) {
-      return; // Prevent closing
-    }
-    setIsOpen(newOpen);
+    if (newOpen) setIsOpen(newOpen);
   };
 
   const isInvalid = !!(inputValue && !validInput && errorMessage);
+  const canSubmit = inputValue.trim().length > 0 && !isInvalid;
 
   const popupContent = (
-    <Container style={{ pointerEvents: "auto" }}>
-      <CloseButton onClick={handleClosePopup}>
-        <i className="bi bi-x-lg"></i>
-      </CloseButton>
-      <Text>{title}</Text>
-      <InputWrapper>
-        <Input
-          onChange={(e) => {
-            setInputValue(e.target.value);
-            if (channelNameValidator) {
-              const { isValid, error } = channelNameValidator(e.target.value);
-              setValidInput(isValid);
-              setErrorMessage(error ? error : "");
-            }
-          }}
-          value={inputValue}
-          placeholder={placeholder}
-          disabled={isProcessing}
-          style={isInvalid ? customStyle : {}}
-        />
-        {isInvalid && <ExclamationIcon />}
-      </InputWrapper>
-      {isInvalid ? (
-        <ErrorWrapper>{errorMessage}</ErrorWrapper>
-      ) : (
-        <EmptyMessageContainer />
-      )}
-      <div style={{ marginBottom: "0.5rem" }}>
-        <FormLabel>Visibility:</FormLabel>
-        <div className="d-flex">
-          <RadioGroup
-            value={visibility}
-            onChange={setVisibility}
-            name="visibility"
-            style={{ display: "flex", flexDirection: "row", gap: "0.5rem" }}
-          >
-            <Radio label="Public" value="public" />
-            <Radio label="Private" value="private" />
-          </RadioGroup>
-        </div>
-      </div>
+    <div style={{ pointerEvents: "auto" }}>
+      <Header>
+        <TitleGroup>
+          <TitleIcon>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a5ff11" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+          </TitleIcon>
+          <Title>{title}</Title>
+        </TitleGroup>
+        <CloseButton onClick={handleClose} aria-label="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </CloseButton>
+      </Header>
 
-      <div style={{ marginBottom: "0.5rem" }}>
-        <FormLabel>Read-only:</FormLabel>
-        <div className="d-flex">
-          <RadioGroup
-            value={readOnly}
-            onChange={setReadOnly}
-            name="readOnly"
-            style={{ display: "flex", flexDirection: "row", gap: "0.5rem" }}
-          >
-            <Radio label="Yes" value="yes" />
-            <Radio label="No" value="no" />
-          </RadioGroup>
-        </div>
-      </div>
+      <Field>
+        <Label>Channel name</Label>
+        <InputWrapper>
+          <Input
+            value={inputValue}
+            placeholder={placeholder}
+            disabled={isProcessing}
+            onChange={(e) => {
+              setInputValue(e.target.value);
+              if (channelNameValidator) {
+                const { isValid, error } = channelNameValidator(e.target.value);
+                setValidInput(isValid);
+                setErrorMessage(error || "");
+              }
+            }}
+            style={isInvalid ? { border: "1px solid #ff6b6b", outline: "none" } : {}}
+          />
+        </InputWrapper>
+        {isInvalid && <FieldError>{errorMessage}</FieldError>}
+      </Field>
+
+      <Field>
+        <Label>Visibility</Label>
+        <OptionRow>
+          <OptionButton $active={visibility === "public"} onClick={() => setVisibility("public")}>
+            {getChannelVisibilityOptionLabel("public")}
+          </OptionButton>
+          <OptionButton $active={visibility === "private"} onClick={() => setVisibility("private")}>
+            {getChannelVisibilityOptionLabel("private")}
+          </OptionButton>
+        </OptionRow>
+      </Field>
+
       <Button
-        onClick={runProcess}
-        disabled={inputValue.length > 0 ? isInvalid : true}
-        style={{ width: "100%" }}
+        type="button"
+        variant="primary"
+        style={{ width: "100%", marginTop: "0.5rem", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}
+        onClick={() => void runProcess()}
+        disabled={!canSubmit || isProcessing}
       >
-        {isProcessing ? <Loader size={16} /> : buttonText}
+        {isProcessing ? <BtnSpinner /> : buttonText}
       </Button>
-    </Container>
+    </div>
   );
 
   return (

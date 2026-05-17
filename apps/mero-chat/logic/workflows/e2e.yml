@@ -1,0 +1,624 @@
+name: Curb E2E — 3-Node Comprehensive Test
+description: >
+  End-to-end test with 3 nodes covering all v2 logic API functions:
+  namespace creation, private and open invitation flows, Channel context,
+  DM context, profiles, 3-way messaging and cross-node sync, message search,
+  reactions, and context isolation between Channel and DM.
+
+force_pull_image: true
+
+# TODO BEFORE MERGE: change image tag back to :edge (or latest stable release)
+# — rc.38 is pinned here to match the local dev binary. All workflow files
+# (dm.yml, governance.yml, integration-setup.yml, non-admin-creates.yml,
+# e2e-v2.yml) need the same change, plus logic/Cargo.toml calimero-sdk deps.
+nodes:
+  chain_id: testnet-1
+  count: 3
+  image: ghcr.io/calimero-network/merod:0.10.1-rc.38
+  prefix: calimero-node
+
+steps:
+  # ── Bootstrap ─────────────────────────────────────────────────────────────
+  - name: Install Application on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: "../logic/res/curb.wasm"
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install Application on Node 2
+    type: install_application
+    node: calimero-node-2
+    path: "../logic/res/curb.wasm"
+    dev: true
+
+  - name: Install Application on Node 3
+    type: install_application
+    node: calimero-node-3
+    path: "../logic/res/curb.wasm"
+    dev: true
+
+  - name: Create Namespace
+    type: create_group
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Assert Namespace Created
+    type: assert
+    statements:
+      - "is_set({{namespace_id}})"
+
+  - name: Create General Channel Context
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    params: '{"name": "General", "context_type": "Channel", "description": "Main channel", "created_at": 1751953000, "creator_username": ""}'
+    outputs:
+      channel_id: contextId
+      alice_key: memberPublicKey
+
+  - name: Assert Channel Created
+    type: assert
+    statements:
+      - "is_set({{channel_id}})"
+
+  - name: Create Identity on Node 2
+    type: create_identity
+    node: calimero-node-2
+    outputs:
+      bob_key: publicKey
+
+  - name: Create Identity on Node 3
+    type: create_identity
+    node: calimero-node-3
+    outputs:
+      carol_key: publicKey
+
+  - name: Wait for Identity Setup
+    type: wait
+    seconds: 5
+
+  # ── Namespace Invitations ─────────────────────────────────────────────────
+  - name: Invite Node 2 (Private)
+    type: create_group_invitation
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    outputs:
+      invite_bob: invitation
+
+  - name: Assert Private Invitation Created
+    type: assert
+    statements:
+      - "is_set({{invite_bob}})"
+      - "{{invite_bob}} != ''"
+
+  - name: Create Open Invitation for Node 3
+    type: create_group_invitation
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    outputs:
+      invite_carol: invitation
+
+  - name: Assert Open Invitation Created
+    type: assert
+    statements:
+      - "is_set({{invite_carol}})"
+      - "{{invite_carol}} != ''"
+
+  - name: Node 2 Joins Namespace (Private Invite)
+    type: join_group
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+    invitation: "{{invite_bob}}"
+
+  - name: Node 3 Joins Namespace (Open Invite)
+    type: join_group
+    node: calimero-node-3
+    group_id: "{{namespace_id}}"
+    invitation: "{{invite_carol}}"
+
+  - name: Node 2 Joins General Channel
+    type: join_context
+    node: calimero-node-2
+    context_id: "{{channel_id}}"
+
+  - name: Node 3 Joins General Channel
+    type: join_context
+    node: calimero-node-3
+    context_id: "{{channel_id}}"
+
+  - name: Wait for 3-Node Channel Sync
+    type: wait_for_sync
+    context_id: "{{channel_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+      - calimero-node-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # ── Context Info ──────────────────────────────────────────────────────────
+  - name: Get Channel Info
+    type: call
+    node: calimero-node-1
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{alice_key}}"
+    method: get_info
+    outputs:
+      channel_info: result
+
+  - name: Assert Channel Info Fields
+    type: assert
+    statements:
+      - "contains({{channel_info}}, 'General')"
+      - "contains({{channel_info}}, 'Channel')"
+      - "contains({{channel_info}}, 'Main channel')"
+
+  - name: Update Channel Info
+    type: call
+    node: calimero-node-1
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{alice_key}}"
+    method: update_info
+    args:
+      name: "General (updated)"
+      description: "Updated main channel"
+    outputs:
+      update_info_result: result
+
+  - name: Assert update_info Response
+    type: assert
+    statements:
+      - "contains({{update_info_result}}, 'Info updated')"
+
+  - name: Verify Updated Info from Node 2
+    type: call
+    node: calimero-node-2
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{bob_key}}"
+    method: get_info
+    outputs:
+      updated_info: result
+
+  - name: Assert Updated Name Visible on Node 2
+    type: assert
+    statements:
+      - "contains({{updated_info}}, 'General (updated)')"
+
+  # ── Profiles ──────────────────────────────────────────────────────────────
+  - name: Set Profile - Alice (Node 1)
+    type: call
+    node: calimero-node-1
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{alice_key}}"
+    method: set_profile
+    args:
+      username: Alice
+      avatar: null
+    outputs:
+      alice_profile_result: result
+
+  - name: Assert Alice Profile Set
+    type: assert
+    statements:
+      - "contains({{alice_profile_result}}, 'Profile set')"
+
+  - name: Set Profile - Bob (Node 2)
+    type: call
+    node: calimero-node-2
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{bob_key}}"
+    method: set_profile
+    args:
+      username: Bob
+      avatar: null
+
+  - name: Set Profile - Carol (Node 3)
+    type: call
+    node: calimero-node-3
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{carol_key}}"
+    method: set_profile
+    args:
+      username: Carol
+      avatar: null
+
+  - name: Wait for Profile Sync
+    type: wait_for_sync
+    context_id: "{{channel_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+      - calimero-node-3
+    timeout: 30
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Get Profiles from Node 1
+    type: call
+    node: calimero-node-1
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{alice_key}}"
+    method: get_profiles
+    outputs:
+      profiles_node1: result
+
+  - name: Assert All 3 Profiles Visible from Node 1
+    type: assert
+    statements:
+      - "contains({{profiles_node1}}, 'Alice')"
+      - "contains({{profiles_node1}}, 'Bob')"
+      - "contains({{profiles_node1}}, 'Carol')"
+
+  - name: Get Profiles from Node 3
+    type: call
+    node: calimero-node-3
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{carol_key}}"
+    method: get_profiles
+    outputs:
+      profiles_node3: result
+
+  - name: Assert All 3 Profiles Visible from Node 3
+    type: assert
+    statements:
+      - "contains({{profiles_node3}}, 'Alice')"
+      - "contains({{profiles_node3}}, 'Bob')"
+      - "contains({{profiles_node3}}, 'Carol')"
+
+  # ── 3-Node Messaging in General Channel ───────────────────────────────────
+  - name: Alice Sends Message
+    type: call
+    node: calimero-node-1
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{alice_key}}"
+    method: send_message
+    args:
+      message: "Hello everyone from Alice!"
+      mentions: []
+      mentions_usernames: []
+      parent_message: null
+      timestamp: 1751953010
+      sender_username: Alice
+      files: null
+      images: null
+    outputs:
+      alice_msg: result
+
+  - name: Assert Alice Message Sent
+    type: assert
+    statements:
+      - "contains({{alice_msg}}, 'Hello everyone from Alice!')"
+
+  - name: Bob Sends Message
+    type: call
+    node: calimero-node-2
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{bob_key}}"
+    method: send_message
+    args:
+      message: "Hey Alice! Bob here."
+      mentions: []
+      mentions_usernames: []
+      parent_message: null
+      timestamp: 1751953011
+      sender_username: Bob
+      files: null
+      images: null
+
+  - name: Carol Sends Searchable Message
+    type: call
+    node: calimero-node-3
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{carol_key}}"
+    method: send_message
+    args:
+      message: "carol-unique-keyword joining the chat!"
+      mentions: []
+      mentions_usernames: []
+      parent_message: null
+      timestamp: 1751953012
+      sender_username: Carol
+      files: null
+      images: null
+
+  - name: Wait for 3-Node Message Sync
+    type: wait_for_sync
+    context_id: "{{channel_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+      - calimero-node-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # ── Cross-Node Message Verification ───────────────────────────────────────
+  - name: Get Messages from Node 1
+    type: call
+    node: calimero-node-1
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{alice_key}}"
+    method: get_messages
+    args:
+      parent_message: null
+      limit: 10
+      offset: 0
+      search_term: null
+    outputs:
+      msgs_node1: result
+
+  - name: Assert All 3 Messages on Node 1
+    type: assert
+    statements:
+      - "contains({{msgs_node1}}, 'total_count')"
+      - "contains({{msgs_node1}}, 'Hello everyone from Alice!')"
+      - "contains({{msgs_node1}}, 'Hey Alice! Bob here.')"
+      - "contains({{msgs_node1}}, 'carol-unique-keyword joining the chat!')"
+
+  - name: Get Messages from Node 2
+    type: call
+    node: calimero-node-2
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{bob_key}}"
+    method: get_messages
+    args:
+      parent_message: null
+      limit: 10
+      offset: 0
+      search_term: null
+    outputs:
+      msgs_node2: result
+
+  - name: Assert All 3 Messages on Node 2
+    type: assert
+    statements:
+      - "contains({{msgs_node2}}, 'Hello everyone from Alice!')"
+      - "contains({{msgs_node2}}, 'Hey Alice! Bob here.')"
+      - "contains({{msgs_node2}}, 'carol-unique-keyword joining the chat!')"
+
+  - name: Get Messages from Node 3
+    type: call
+    node: calimero-node-3
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{carol_key}}"
+    method: get_messages
+    args:
+      parent_message: null
+      limit: 10
+      offset: 0
+      search_term: null
+    outputs:
+      msgs_node3: result
+
+  - name: Assert All 3 Messages on Node 3
+    type: assert
+    statements:
+      - "contains({{msgs_node3}}, 'Hello everyone from Alice!')"
+      - "contains({{msgs_node3}}, 'Hey Alice! Bob here.')"
+      - "contains({{msgs_node3}}, 'carol-unique-keyword joining the chat!')"
+
+  # ── Message Search ────────────────────────────────────────────────────────
+  - name: Search Messages for Carol's Keyword
+    type: call
+    node: calimero-node-1
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{alice_key}}"
+    method: get_messages
+    args:
+      parent_message: null
+      limit: 10
+      offset: 0
+      search_term: "carol-unique-keyword"
+    outputs:
+      search_result: result
+
+  - name: Assert Search Returns Only Carol's Message
+    type: assert
+    statements:
+      - "contains({{search_result}}, 'carol-unique-keyword joining the chat!')"
+
+  # ── Reactions ─────────────────────────────────────────────────────────────
+  - name: Bob Reacts to a Message
+    type: call
+    node: calimero-node-2
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{bob_key}}"
+    method: update_reaction
+    args:
+      message_id: "placeholder_id_for_reaction_test"
+      emoji: "👍"
+      user: "Bob"
+      add: true
+    outputs:
+      reaction_add: result
+
+  - name: Assert Reaction Added
+    type: assert
+    statements:
+      - "contains({{reaction_add}}, 'added')"
+
+  - name: Bob Removes Reaction
+    type: call
+    node: calimero-node-2
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{bob_key}}"
+    method: update_reaction
+    args:
+      message_id: "placeholder_id_for_reaction_test"
+      emoji: "👍"
+      user: "Bob"
+      add: false
+    outputs:
+      reaction_remove: result
+
+  - name: Assert Reaction Removed
+    type: assert
+    statements:
+      - "contains({{reaction_remove}}, 'removed')"
+
+  # ── DM Context (Nodes 1 & 2 only) ─────────────────────────────────────────
+  - name: Create DM Context (Alice-Bob)
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    params: '{"name": "Alice-Bob DM", "context_type": "Dm", "description": "", "created_at": 1751953100, "creator_username": ""}'
+    outputs:
+      dm_id: contextId
+
+  - name: Assert DM Context Created
+    type: assert
+    statements:
+      - "is_set({{dm_id}})"
+
+  - name: Invite Bob to DM Context
+    type: invite_identity
+    node: calimero-node-1
+    namespace_id: "{{namespace_id}}"
+    context_id: "{{dm_id}}"
+    capability: member
+    grantee_id: "{{bob_key}}"
+    granter_id: "{{alice_key}}"
+    outputs:
+      bob_dm_invite: invitation
+
+  - name: Node 2 Joins DM Context
+    type: join_context
+    node: calimero-node-2
+    context_id: "{{dm_id}}"
+    invitee_id: "{{bob_key}}"
+    invitation: "{{bob_dm_invite}}"
+
+  - name: Wait for DM Context Sync
+    type: wait_for_sync
+    context_id: "{{dm_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Get DM Context Info
+    type: call
+    node: calimero-node-1
+    context_id: "{{dm_id}}"
+    executor_public_key: "{{alice_key}}"
+    method: get_info
+    outputs:
+      dm_info: result
+
+  - name: Assert DM Context Type
+    type: assert
+    statements:
+      - "contains({{dm_info}}, 'Dm')"
+      - "contains({{dm_info}}, 'Alice-Bob DM')"
+
+  - name: Alice Sends DM
+    type: call
+    node: calimero-node-1
+    context_id: "{{dm_id}}"
+    executor_public_key: "{{alice_key}}"
+    method: send_message
+    args:
+      message: "Hey Bob, this is a private DM!"
+      mentions: []
+      mentions_usernames: []
+      parent_message: null
+      timestamp: 1751953110
+      sender_username: Alice
+      files: null
+      images: null
+
+  - name: Bob Replies in DM
+    type: call
+    node: calimero-node-2
+    context_id: "{{dm_id}}"
+    executor_public_key: "{{bob_key}}"
+    method: send_message
+    args:
+      message: "Got it Alice, talking privately."
+      mentions: []
+      mentions_usernames: []
+      parent_message: null
+      timestamp: 1751953111
+      sender_username: Bob
+      files: null
+      images: null
+
+  - name: Wait for DM Message Sync
+    type: wait_for_sync
+    context_id: "{{dm_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+    timeout: 30
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Get DM Messages from Node 1
+    type: call
+    node: calimero-node-1
+    context_id: "{{dm_id}}"
+    executor_public_key: "{{alice_key}}"
+    method: get_messages
+    args:
+      parent_message: null
+      limit: 10
+      offset: 0
+      search_term: null
+    outputs:
+      dm_msgs_node1: result
+
+  - name: Get DM Messages from Node 2
+    type: call
+    node: calimero-node-2
+    context_id: "{{dm_id}}"
+    executor_public_key: "{{bob_key}}"
+    method: get_messages
+    args:
+      parent_message: null
+      limit: 10
+      offset: 0
+      search_term: null
+    outputs:
+      dm_msgs_node2: result
+
+  - name: Assert DM Messages Synced on Both Nodes
+    type: assert
+    statements:
+      - "contains({{dm_msgs_node1}}, 'private DM')"
+      - "contains({{dm_msgs_node1}}, 'talking privately')"
+      - "contains({{dm_msgs_node2}}, 'private DM')"
+      - "contains({{dm_msgs_node2}}, 'talking privately')"
+
+  # ── Context Isolation ─────────────────────────────────────────────────────
+  - name: Verify General Channel Messages Unaffected by DM
+    type: call
+    node: calimero-node-1
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{alice_key}}"
+    method: get_messages
+    args:
+      parent_message: null
+      limit: 10
+      offset: 0
+      search_term: null
+    outputs:
+      final_channel_msgs: result
+
+  - name: Assert Channel Still Has Original Messages and Not DM Content
+    type: assert
+    statements:
+      - "contains({{final_channel_msgs}}, 'Hello everyone from Alice!')"
+      - "contains({{final_channel_msgs}}, 'carol-unique-keyword joining the chat!')"
+
+stop_all_nodes: true
+restart: false
+wait_timeout: 120

@@ -17,14 +17,17 @@ import {
 import type { ChannelInfo } from "../api/clientApi";
 import {
   getContextId as getGlobalContextId,
-  getExecutorPublicKey,
-} from "@calimero-network/calimero-client";
-import { getDmContextId } from "../utils/session";
+  getContextIdentity as getExecutorPublicKey,
+} from "@calimero-network/mero-react";
 import EmojiSelectorPopup from "../emojiSelector/EmojiSelectorPopup";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import { scrollbarStyles } from "../styles/scrollbar";
-import { StorageHelper } from "../utils/storage";
 import { log } from "../utils/logger";
+import { useMyChannelRole } from "../hooks/useMyChannelRole";
+import {
+  getMessengerDisplayName,
+  setMessengerDisplayName,
+} from "../utils/messengerName";
 
 interface ChatDisplaySplitProps {
   readMessage: (message: CurbMessage) => void;
@@ -205,7 +208,7 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
     // Update accountId whenever activeChat changes (DM vs Channel have different IDs)
     const isDM = activeChat?.type === "direct_message";
     const currentAccountId = isDM
-      ? activeChat?.account || getExecutorPublicKey() || ""
+      ? activeChat?.contextIdentity || getExecutorPublicKey() || ""
       : getExecutorPublicKey() || "";
     setAccountId(currentAccountId);
 
@@ -216,7 +219,8 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
       const executorId = getExecutorPublicKey() ?? "";
 
       // Check if we already have the username in storage
-      const cachedUsername = StorageHelper.getItem("chat-username");
+      const cachedUsername =
+        getMessengerDisplayName();
       if (cachedUsername) {
         const normalizedClass = cachedUsername
           .replace(/\s+/g, "")
@@ -233,6 +237,7 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
         userId: executorId ?? "",
       });
       if (response.data) {
+        setMessengerDisplayName(response.data);
         const normalizedClass = response.data
           .replace(/\s+/g, "")
           .toLowerCase()
@@ -298,11 +303,15 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
     if (activeChat.contextId && activeChat.contextId.length > 0) {
       return activeChat.contextId;
     }
-    if (activeChat.type === "direct_message") {
-      return getDmContextId() ?? "";
-    }
     return getGlobalContextId() ?? "";
-  }, [activeChat.contextId, activeChat.type]);
+  }, [activeChat.contextId]);
+
+  // App-level moderation role for THIS channel. `Banned` users are blocked
+  // from posting via the MessageInput banner below; the rest of the chat
+  // still renders so they can read. Admins and Mods can delete anyone's messages.
+  const myChannelRole = useMyChannelRole(resolvedContextId, accountId);
+  const isBanned = myChannelRole === "Banned";
+  const canDeleteAny = myChannelRole === "Admin" || myChannelRole === "Mod";
 
   const renderMessage = (message: CurbMessage, prevMessage?: CurbMessage) => {
     const params: MessageRendererProps = {
@@ -318,13 +327,14 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
       editable: (message: CurbMessage) =>
         message.sender ===
         (activeChat.type === "direct_message"
-          ? activeChat.account
+          ? activeChat.contextIdentity || getExecutorPublicKey()
           : getExecutorPublicKey()),
       deleteable: (message: CurbMessage) =>
+        canDeleteAny ||
         message.sender ===
-        (activeChat.type === "direct_message"
-          ? activeChat.account
-          : getExecutorPublicKey()),
+          (activeChat.type === "direct_message"
+            ? activeChat.contextIdentity || getExecutorPublicKey()
+            : getExecutorPublicKey()),
       onEditModeRequested: (message: CurbMessage) =>
         onEditModeRequested(message, isThread),
       onEditModeCancelled: (message: CurbMessage) =>
@@ -381,7 +391,7 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
           selectedChat={
             activeChat.type === "channel"
               ? activeChat.name
-              : activeChat.username || ""
+              : activeChat.username || activeChat.name
           }
           contextId={resolvedContextId}
           sendMessage={sendMessage}
@@ -392,6 +402,7 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
           isReadOnly={isReadOnly}
           isOwner={isOwner}
           isModerator={isModerator}
+          isBanned={isBanned}
         />
       </Wrapper>
       {isEmojiSelectorVisible && (

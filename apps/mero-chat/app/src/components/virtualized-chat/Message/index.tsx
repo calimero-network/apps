@@ -6,7 +6,7 @@ import { MessageActions } from "..";
 import type { AccountData, CurbMessage, CurbFile } from "../types/curbTypes";
 import { ElementPosition } from "../types/curbTypes";
 import { formatTimeAgo } from "../utils";
-import { blobClient } from "@calimero-network/calimero-client";
+import { downloadBlob } from "../../../api/meroJsClient";
 
 import { POPUP_POSITION_SWITCH_HEIGHT } from "./AutocompleteList";
 import { Avatar } from "./Avatar";
@@ -384,16 +384,6 @@ const Message = (props: MessageProps) => {
     props.setOpenMobileReactions(props.message.id);
   });
 
-  if (
-    (props.message.files.length === 0 &&
-      props.message.images.length === 0 &&
-      !props.message.text &&
-      props.message.editedOn) ||
-    props.message.deleted
-  ) {
-    return <DeletedMessage />;
-  }
-
   // Memoize message status icon to prevent recreating on every render
   const statusIcon = useMemo(() => {
     return props.message.id.includes("temp-") ? (
@@ -464,7 +454,7 @@ const Message = (props: MessageProps) => {
       }
 
       try {
-        const blob = await blobClient.downloadBlob(
+        const blob = await downloadBlob(
           attachment.ipfs_cid,
           props.contextId,
         );
@@ -514,6 +504,16 @@ const Message = (props: MessageProps) => {
       }
     }
   }, []);
+
+  if (
+    (props.message.files.length === 0 &&
+      props.message.images.length === 0 &&
+      !props.message.text &&
+      props.message.editedOn) ||
+    props.message.deleted
+  ) {
+    return <DeletedMessage />;
+  }
 
   return (
     <>

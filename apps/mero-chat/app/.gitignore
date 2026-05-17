@@ -12,6 +12,18 @@ dist
 dist-ssr
 *.local
 
+# Playwright auth state and integration env (contain tokens — never commit)
+e2e/.auth/
+.env.integration
+
+# dev-only overlay produced by scripts/dev-invite.sh — populated per-run, never commit.
+public/dev-overlay.json
+
+# Playwright output
+e2e-report/
+playwright-report/
+test-results/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

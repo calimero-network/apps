@@ -15,14 +15,22 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "test": "vitest run",
     "preview": "vite preview",
     "prettier": "prettier --check 'src/**/*.{js,jsx,ts,tsx,json}'",
-    "prettier:write": "prettier --write 'src/**/*.{js,jsx,ts,tsx,json}'"
+    "prettier:write": "prettier --write 'src/**/*.{js,jsx,ts,tsx,json}'",
+    "e2e": "playwright test --project=mocked",
+    "e2e:ui": "playwright test --ui --project=mocked",
+    "e2e:ui:all": "../scripts/setup-nodes.sh --restart && playwright test --ui",
+    "e2e:live": "../scripts/setup-nodes.sh --restart && playwright test --project=mocked --project=live; ../scripts/setup-nodes.sh --stop",
+    "e2e:nodes": "../scripts/setup-nodes.sh --restart && playwright test --project=rpc --project=rpc-admin --project=integration; ../scripts/setup-nodes.sh --stop",
+    "e2e:all": "../scripts/setup-nodes.sh --restart && playwright test; ../scripts/setup-nodes.sh --stop",
+    "test:sse": "vitest run src/hooks/useSseSubscription.test.ts && playwright test --project=sse"
   },
   "dependencies": {
     "@braintree/sanitize-url": "^7.1.1",
-    "@calimero-network/calimero-client": "1.25.0-beta.2",
-    "@calimero-network/mero-icons": "^0.0.6",
+    "@calimero-network/mero-js": "^2.2.0",
+    "@calimero-network/mero-react": "2.4.0",
     "@calimero-network/mero-ui": "1.4.0",
     "@radix-ui/react-accordion": "^1.2.11",
     "@radix-ui/react-dialog": "^1.1.14",
@@ -56,6 +64,9 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.25.0",
+    "@playwright/test": "^1.52.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@types/react-router-dom": "^5.3.3",
@@ -65,10 +76,12 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.19",
     "globals": "^16.0.0",
+    "jsdom": "^28.1.0",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.30.1",
     "vite": "^6.4.1",
     "vite-plugin-pwa": "^1.1.0",
+    "vitest": "^4.0.18",
     "workbox-window": "^7.3.0"
   },
   "optionalDependencies": {

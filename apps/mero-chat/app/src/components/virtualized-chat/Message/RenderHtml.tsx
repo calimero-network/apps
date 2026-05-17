@@ -1,4 +1,3 @@
-// eslint-disable-next-line
 import React, { memo, useMemo } from "react";
 import { sanitizeHtml } from "../utils";
 

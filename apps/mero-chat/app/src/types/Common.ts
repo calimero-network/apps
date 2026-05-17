@@ -16,45 +16,41 @@ import { MessageStatus } from "../components/virtualized-chat";
  */
 export type ChatType = "channel" | "direct_message";
 
-/**
- * Enum defining the different states of DM setup process
- */
-export enum DMSetupState {
-  CREATOR_WAITING_FOR_INVITEE_TO_CREATE_IDENTITY = "CREATOR_WAITING_FOR_INVITEE_TO_CREATE_IDENTITY",
-  INVITEE_CONTEXT_CREATE_IDENTITY = "INVITEE_CONTEXT_CREATE_IDENTITY",
-  INVITEE_WAITING_INVITATION = "INVITEE_WAITING_INVITATION",
-  CREATOR_CONTEXT_INVITATION_POPUP = "CREATOR_CONTEXT_INVITATION_POPUP",
-  INVITEE_CONTEXT_ACCEPT_POPUP = "INVITEE_CONTEXT_ACCEPT_POPUP",
-  SYNC_WAITING = "SYNC_WAITING",
-  ACTIVE = "ACTIVE",
-}
-
-/**
- * Initial version of the chat object, currently only supports channels and p2p DMs.
- * @typedef {object} Chat
- * @property {string} type - Can be 'channel' or 'direct_message'.
- * @property {string} [name] - Name of the channel.
- * @property {string} [account] - Account for direct message.
- * @property {boolean} [readOnly] - Whether the chat is read-only.
- */
 export type ActiveChat = {
   type: ChatType;
   contextId?: string;
   id: string;
   name: string;
   readOnly?: boolean;
-  account?: string;
   username?: string;
   canJoin?: boolean;
-  invitationPayload?: string;
-  otherIdentityNew?: string;
-  creator?: string;
   isSynced?: boolean;
-  isFinal?: boolean;
   channelType?: string;
-  ownIdentity?: string;
-  ownUsername?: string;
+  requiresProfileSetup?: boolean;
+  /** Identity (public key) for this context, stored after joining via group API */
+  contextIdentity?: string;
 };
+
+/** Metadata returned by the per-context `get_info()` RPC.
+ * Field names match the Rust serde serialization (snake_case, PascalCase enum). */
+export interface ContextInfo {
+  name: string;
+  context_type: "Channel" | "Dm";
+  description?: string;
+  created_at?: number;
+  creator?: string;
+}
+
+
+/** A group context enriched with metadata from `get_info()` */
+export interface GroupContextChannel {
+  contextId: string;
+  alias?: string;
+  info: ContextInfo | null;
+  visibility?: "open" | "restricted";
+  contextIdentity?: string;
+  isJoined?: boolean;
+}
 
 export interface User {
   id: string;

@@ -1,0 +1,188 @@
+name: Integration Test Setup
+description: >
+  Sets up a two-node environment for Playwright integration tests.
+  Creates a Channel context, sets up two identities (Alice and Bob),
+  sends seed messages, then leaves nodes running so Playwright can
+  test the frontend against them.
+  Run via:  scripts/setup-nodes.sh  (which calls this workflow and
+  then bootstraps JWT auth for Playwright).
+
+# Nodes stay alive after this workflow so the Playwright test runner
+# can connect to them.
+stop_all_nodes: false
+restart: false
+wait_timeout: 120
+
+nodes:
+  chain_id: testnet-1
+  count: 2
+  image: ghcr.io/calimero-network/merod:0.10.1-rc.38
+  prefix: calimero-node
+
+steps:
+  # ── App & Context setup ───────────────────────────────────────────────────
+  - name: Install Application
+    type: install_application
+    node: calimero-node-1
+    path: "../logic/res/curb.wasm"
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install Application on Node 2
+    type: install_application
+    node: calimero-node-2
+    path: "../logic/res/curb.wasm"
+    dev: true
+
+  - name: Create Namespace
+    type: create_group
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Create Integration Channel Context
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    params: '{"name": "Integration Test", "context_type": "Channel", "description": "Playwright e2e context", "created_at": 1751952997, "creator_username": ""}'
+    outputs:
+      context_id: contextId
+      member_public_key: memberPublicKey
+
+  - name: Create Identity on Node 2
+    type: create_identity
+    node: calimero-node-2
+    outputs:
+      public_key_2: publicKey
+
+  - name: Wait for Identity Setup
+    type: wait
+    seconds: 5
+
+  # ── Membership ────────────────────────────────────────────────────────────
+  - name: Invite Node 2 (Private)
+    type: create_group_invitation
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    outputs:
+      invitation_2: invitation
+
+  - name: Join Context from Node 2
+    type: join_group
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+    invitation: "{{invitation_2}}"
+
+  - name: Node 2 joins channel context
+    type: join_context
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+
+  - name: Wait for Sync
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # ── Profiles ──────────────────────────────────────────────────────────────
+  - name: Set Profile - Node 1 (Alice)
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: set_profile
+    args:
+      username: Alice
+      avatar: null
+
+  - name: Set Profile - Node 2 (Bob)
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: set_profile
+    args:
+      username: Bob
+      avatar: null
+
+  - name: Wait for Profile Sync
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+    timeout: 30
+    check_interval: 2
+    trigger_sync: true
+
+  # ── Seed messages ─────────────────────────────────────────────────────────
+  - name: Seed Message - Alice
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: send_message
+    args:
+      message: "Hello from Alice — integration test seed"
+      mentions: []
+      mentions_usernames: []
+      parent_message: null
+      timestamp: 1751953010
+      sender_username: Alice
+      files: null
+      images: null
+
+  - name: Seed Message - Bob
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: send_message
+    args:
+      message: "Hello from Bob — integration test seed"
+      mentions: []
+      mentions_usernames: []
+      parent_message: null
+      timestamp: 1751953011
+      sender_username: Bob
+      files: null
+      images: null
+
+  - name: Wait for Message Sync
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+    timeout: 30
+    check_interval: 2
+    trigger_sync: true
+
+  # ── Verification ──────────────────────────────────────────────────────────
+  - name: Verify Integration Context
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_messages
+    args:
+      parent_message: null
+      limit: 10
+      offset: 0
+      search_term: null
+    outputs:
+      seed_messages: result
+
+  - name: Assert Seed Messages Present
+    type: assert
+    statements:
+      - "contains({{seed_messages}}, 'Alice')"
+      - "contains({{seed_messages}}, 'Bob')"
+      - "contains({{seed_messages}}, 'total_count')"

@@ -52,7 +52,7 @@ export default function UsersButtonGroup(props: UsersButtonGroupProps) {
         setIsHovered(false);
       }}
     >
-      {Object.entries(props.channelUserList)
+      {Array.from(props.channelUserList.entries())
         .slice(0, 3)
         .map(([publicKey, userName]) => (
           <div key={publicKey}>
@@ -61,9 +61,9 @@ export default function UsersButtonGroup(props: UsersButtonGroupProps) {
             </ProfileIconContainerGroup>
           </div>
         ))}
-      {Object.keys(props.channelUserList).length > 3 && (
+      {props.channelUserList.size > 3 && (
         <ProfileIconContainerGroup $counter={true} $isHovered={isHovered}>
-          {Object.keys(props.channelUserList).length}
+          {props.channelUserList.size}
         </ProfileIconContainerGroup>
       )}
     </AvatarContainer>

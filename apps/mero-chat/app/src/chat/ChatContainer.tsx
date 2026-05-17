@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
 import type { FormEvent } from "react";
 import { styled } from "styled-components";
-import { StorageHelper } from "../utils/storage";
 import { log } from "../utils/logger";
 import type {
   ActiveChat,
@@ -13,26 +12,19 @@ import type {
   SendMessagePayload,
   UpdatedMessages,
 } from "../types/Common";
-import { DMSetupState, MessageStatus } from "../types/Common";
+import { MessageStatus } from "../types/Common";
 import JoinChannel from "./JoinChannel";
 import ChatDisplaySplit from "./ChatDisplaySplit";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import {
-  apiClient,
   getContextId,
-  getExecutorPublicKey,
-  type ResponseData,
-} from "@calimero-network/calimero-client";
-import type { ChannelInfo, DMChatInfo, UserId } from "../api/clientApi";
-import HandleDMSetup from "./HandleDMSetup";
-import HandleInvitation from "./HandleInvitation";
-import JoinContext from "./JoinContext";
-import InvitationPending from "./InvitationPending";
-import { getDMSetupState } from "../utils/dmSetupState";
-import SyncWaiting from "./SyncWaiting";
+  getContextIdentity as getExecutorPublicKey,
+} from "@calimero-network/mero-react";
+import type { ResponseData } from "../api/types";
+import type { ChannelInfo, UserId } from "../api/clientApi";
 import { extractAndAddMentions } from "../utils/mentions";
-import { getDmContextId } from "../utils/session";
 import ChatSearchOverlay from "./ChatSearchOverlay";
+import { getMessengerDisplayName } from "../utils/messengerName";
 
 interface ChatContainerProps {
   activeChat: ActiveChat;
@@ -50,7 +42,6 @@ interface ChatContainerProps {
   openThread: CurbMessage | undefined;
   setOpenThread: (thread: CurbMessage | undefined) => void;
   currentOpenThreadRef: React.RefObject<CurbMessage | undefined>;
-  onDMSelected: (dm?: DMChatInfo, sc?: ActiveChat) => void;
   membersList: Map<string, string>;
   addOptimisticMessage?: (message: CurbMessage) => void;
   addOptimisticThreadMessage?: (message: CurbMessage) => void;
@@ -117,7 +108,6 @@ function ChatContainer({
   openThread,
   setOpenThread,
   currentOpenThreadRef,
-  onDMSelected,
   membersList,
   addOptimisticMessage,
   addOptimisticThreadMessage,
@@ -191,24 +181,10 @@ function ChatContainer({
     membersListRef.current = membersList;
   }, [membersList]);
 
-  const computeReaction = useCallback(
-    (message: CurbMessage, reaction: string, username: string) => {
-      const accounts = message.reactions?.[reaction] ?? [];
-      let update;
-      if (accounts.includes(username)) {
-        update = accounts.filter((a: string) => a !== username);
-      } else {
-        update = [...accounts, username];
-      }
-      return { reactions: { ...message.reactions, [reaction]: update } };
-    },
-    []
-  );
-
   const handleReaction = useCallback(
     async (message: CurbMessage, reaction: string, isThread: boolean) => {
       const isDM = activeChatRef.current?.type === "direct_message";
-      const username = StorageHelper.getItem("chat-username") || "";
+      const username = getMessengerDisplayName();
       const accounts = message.reactions?.[reaction] ?? [];
       const isAdding = !(
         Array.isArray(accounts) && accounts.includes(username)
@@ -221,11 +197,18 @@ function ChatContainer({
           userId: username,
           add: isAdding,
           is_dm: isDM,
-          dm_identity: activeChatRef.current?.account,
+          dm_identity: activeChatRef.current?.contextIdentity,
         });
-        if (response.data) {
-          const updateFunction = (message: CurbMessage) =>
-            computeReaction(message, reaction, username);
+        if (response.data || !response.error) {
+          // Use isAdding (captured at call time) so the update is idempotent
+          // regardless of whether a WebSocket update arrived first.
+          const updateFunction = (msg: CurbMessage) => {
+            const msgAccounts = msg.reactions?.[reaction] ?? [];
+            const updatedAccounts = isAdding
+              ? (msgAccounts.includes(username) ? msgAccounts : [...msgAccounts, username])
+              : msgAccounts.filter((a: string) => a !== username);
+            return { reactions: { ...msg.reactions, [reaction]: updatedAccounts } };
+          };
           if (isThread) {
             setUpdatedThreadMessages([
               { id: message.id, descriptor: { updateFunction } },
@@ -240,7 +223,7 @@ function ChatContainer({
         log.error("ChatContainer", "Error updating reaction", error);
       }
     },
-    [computeReaction]
+    []
   );
 
   const getIconFromCache = useCallback(
@@ -297,7 +280,7 @@ function ChatContainer({
 
     if (optimisticFunction) {
       const sender = isDM
-        ? activeChatRef.current?.account || getExecutorPublicKey() || ""
+        ? activeChatRef.current?.contextIdentity || getExecutorPublicKey() || ""
         : getExecutorPublicKey() || "";
 
       const optimisticMessage: CurbMessage = {
@@ -307,7 +290,7 @@ function ChatContainer({
         key: tempId,
         timestamp: Date.now(),
         sender,
-        senderUsername: StorageHelper.getItem("chat-username") || undefined,
+        senderUsername: getMessengerDisplayName() || undefined,
         reactions: {},
         editedOn: undefined,
         mentions,
@@ -338,7 +321,7 @@ function ChatContainer({
       usernames,
       timestamp: Math.floor(Date.now() / 1000),
       is_dm: isDM,
-      dm_identity: activeChatRef.current?.account,
+      dm_identity: activeChatRef.current?.contextIdentity,
       parent_message: parentMessageId,
       files:
         payload.files && payload.files.length > 0
@@ -388,9 +371,9 @@ function ChatContainer({
         key: realMessageId,
         timestamp: Math.floor(Date.now() / 1000) * 1000,
         sender: isDM
-          ? activeChatRef.current?.account || getExecutorPublicKey() || ""
+          ? activeChatRef.current?.contextIdentity || getExecutorPublicKey() || ""
           : getExecutorPublicKey() || "",
-        senderUsername: StorageHelper.getItem("chat-username") || undefined,
+        senderUsername: getMessengerDisplayName() || undefined,
         reactions: {},
         editedOn: undefined,
         mentions,
@@ -418,17 +401,6 @@ function ChatContainer({
       }
 
       optimisticFunction(updatedMessage);
-    }
-
-    if (isDM) {
-      const fetchContextResponse = await apiClient
-        .node()
-        .getContext(activeChatRef.current?.contextId || "");
-      await new ClientApiDataSource().updateDmHash({
-        sender_id: getExecutorPublicKey() || "",
-        other_user_id: activeChatRef.current?.name || "",
-        new_hash: (fetchContextResponse.data?.rootHash as string) || "",
-      });
     }
 
     if (isThread && currentOpenThreadRef.current) {
@@ -470,7 +442,7 @@ function ChatContainer({
         group: { name: activeChatRef.current?.name ?? "" },
         messageId: message.id,
         is_dm: isDM,
-        dm_identity: activeChatRef.current?.account,
+        dm_identity: activeChatRef.current?.contextIdentity,
         parent_id: parentMessageId, // Add parent message ID for thread messages
       });
       
@@ -523,7 +495,7 @@ function ChatContainer({
         newMessage: message.text,
         timestamp: editedOn,
         is_dm: isDM,
-        dm_identity: activeChatRef.current?.account,
+        dm_identity: activeChatRef.current?.contextIdentity,
         parent_id: parentMessageId, // Add parent message ID for thread messages
       });
       
@@ -601,8 +573,6 @@ function ChatContainer({
     }
   }, [openThread]);
 
-  const dmSetupState = getDMSetupState(activeChat);
-
   const handleSearchSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -631,121 +601,8 @@ function ChatContainer({
     if (activeChat.contextId && activeChat.contextId.length > 0) {
       return activeChat.contextId;
     }
-    if (activeChat.type === "direct_message") {
-      return getDmContextId() ?? "";
-    }
     return getContextId() ?? "";
-  }, [activeChat.contextId, activeChat.type]);
-
-  const renderDMContent = () => {
-    switch (dmSetupState) {
-      case DMSetupState.CREATOR_WAITING_FOR_INVITEE_TO_CREATE_IDENTITY:
-      case DMSetupState.INVITEE_CONTEXT_CREATE_IDENTITY:
-        return (
-          <HandleDMSetup activeChat={activeChat} onDMSelected={onDMSelected} />
-        );
-      case DMSetupState.CREATOR_CONTEXT_INVITATION_POPUP:
-        return (
-          <HandleInvitation
-            activeChat={activeChat}
-            onDMSelected={onDMSelected}
-          />
-        );
-      case DMSetupState.INVITEE_WAITING_INVITATION:
-        return <InvitationPending activeChat={activeChat} />;
-      case DMSetupState.INVITEE_CONTEXT_ACCEPT_POPUP:
-        return (
-          <JoinContext
-            activeChat={activeChat}
-            invitationPayload={activeChat.invitationPayload!}
-            onDMSelected={onDMSelected}
-          />
-        );
-      case DMSetupState.SYNC_WAITING:
-        return (
-          <SyncWaiting activeChat={activeChat} onDMSelected={onDMSelected} />
-        );
-
-      case DMSetupState.ACTIVE:
-        return (
-          <>
-            <ChatDisplaySplit
-              readMessage={() => {}}
-              handleReaction={handleReaction}
-              openThread={openThread}
-              setOpenThread={selectThread}
-              closeThread={closeThread}
-              activeChat={activeChat}
-              updatedMessages={updatedMessages}
-              resetImage={() => {}}
-              sendMessage={(payload) => sendMessage(payload, false)}
-              getIconFromCache={getIconFromCache}
-              isThread={false}
-              isReadOnly={activeChat.readOnly ?? false}
-              toggleEmojiSelector={toggleEmojiSelector}
-              channelMeta={channelMeta}
-              //channelUserList={channelUserList}
-              openMobileReactions={openMobileReactions}
-              setOpenMobileReactions={setOpenMobileReactions}
-              onMessageDeletion={handleDeleteMessage}
-              onEditModeRequested={handleEditMode}
-              onEditModeCancelled={handleEditMode}
-              onMessageUpdated={handleEditedMessage}
-              loadInitialChatMessages={loadInitialChatMessages}
-              incomingMessages={incomingMessages}
-              loadPrevMessages={loadPrevMessages}
-              currentOpenThreadRef={currentOpenThreadRef}
-              isEmojiSelectorVisible={isEmojiSelectorVisible}
-              setIsEmojiSelectorVisible={setIsEmojiSelectorVisible}
-              messageWithEmojiSelector={messageWithEmojiSelector}
-            />
-            {openThread && (
-              <ThreadWrapper>
-                <ChatDisplaySplit
-                  readMessage={() => {}}
-                  handleReaction={handleReaction}
-                  openThread={openThread}
-                  setOpenThread={selectThread}
-                  closeThread={closeThread}
-                  activeChat={activeChat}
-                  updatedMessages={_updatedThreadMessages}
-                  resetImage={() => {}}
-                  sendMessage={(payload) => sendMessage(payload, true)}
-                  getIconFromCache={getIconFromCache}
-                  isThread={true}
-                  isReadOnly={activeChat.readOnly ?? false}
-                  toggleEmojiSelector={toggleEmojiSelector}
-                  channelMeta={channelMeta}
-                  openMobileReactions={openMobileReactions}
-                  setOpenMobileReactions={setOpenMobileReactions}
-                  onMessageDeletion={handleDeleteMessage}
-                  onEditModeRequested={handleEditMode}
-                  onEditModeCancelled={handleEditMode}
-                  onMessageUpdated={handleEditedMessage}
-                  loadInitialChatMessages={threadLoadInitialChatMessages}
-                  incomingMessages={(() => {
-                    log.debug(
-                      "ChatContainer",
-                      `Passing incomingThreadMessages to DM thread component:`,
-                      incomingThreadMessages
-                    );
-                    return incomingThreadMessages;
-                  })()}
-                  loadPrevMessages={(id: string) => loadPrevThreadMessages(id)}
-                  currentOpenThreadRef={currentOpenThreadRef}
-                  isEmojiSelectorVisible={isEmojiSelectorVisible}
-                  setIsEmojiSelectorVisible={setIsEmojiSelectorVisible}
-                  messageWithEmojiSelector={messageWithEmojiSelector}
-                />
-              </ThreadWrapper>
-            )}
-          </>
-        );
-
-      default:
-        return null;
-    }
-  };
+  }, [activeChat.contextId]);
 
   const trimmedSearchInput = searchInputValue.trim();
   const hasSearchResults = searchResults.length > 0;
@@ -784,19 +641,46 @@ function ChatContainer({
           searchContextId={searchContextId}
         />
       )}
-      {activeChat.type === "direct_message" ? (
-        renderDMContent()
+      {activeChat.canJoin && activeChat.type === "channel" ? (
+        <JoinChannel
+          channelMeta={channelMeta}
+          activeChat={activeChat}
+          setIsOpenSearchChannel={setIsOpenSearchChannel}
+          onJoinedChat={onJoinedChat}
+        />
       ) : (
         <>
-          {activeChat.canJoin ? (
-            <JoinChannel
-              channelMeta={channelMeta}
-              activeChat={activeChat}
-              setIsOpenSearchChannel={setIsOpenSearchChannel}
-              onJoinedChat={onJoinedChat}
-            />
-          ) : (
-            <>
+          <ChatDisplaySplit
+            readMessage={() => {}}
+            handleReaction={handleReaction}
+            openThread={openThread}
+            setOpenThread={selectThread}
+            closeThread={closeThread}
+            activeChat={activeChat}
+            updatedMessages={updatedMessages}
+            resetImage={() => {}}
+            sendMessage={(payload) => sendMessage(payload, false)}
+            getIconFromCache={getIconFromCache}
+            isThread={false}
+            isReadOnly={activeChat.readOnly ?? false}
+            toggleEmojiSelector={toggleEmojiSelector}
+            channelMeta={channelMeta}
+            openMobileReactions={openMobileReactions}
+            setOpenMobileReactions={setOpenMobileReactions}
+            onMessageDeletion={handleDeleteMessage}
+            onEditModeRequested={handleEditMode}
+            onEditModeCancelled={handleEditMode}
+            onMessageUpdated={handleEditedMessage}
+            loadInitialChatMessages={loadInitialChatMessages}
+            incomingMessages={incomingMessages}
+            loadPrevMessages={loadPrevMessages}
+            currentOpenThreadRef={currentOpenThreadRef}
+            isEmojiSelectorVisible={isEmojiSelectorVisible}
+            setIsEmojiSelectorVisible={setIsEmojiSelectorVisible}
+            messageWithEmojiSelector={messageWithEmojiSelector}
+          />
+          {openThread && (
+            <ThreadWrapper>
               <ChatDisplaySplit
                 readMessage={() => {}}
                 handleReaction={handleReaction}
@@ -804,11 +688,11 @@ function ChatContainer({
                 setOpenThread={selectThread}
                 closeThread={closeThread}
                 activeChat={activeChat}
-                updatedMessages={updatedMessages}
+                updatedMessages={_updatedThreadMessages}
                 resetImage={() => {}}
-                sendMessage={(payload) => sendMessage(payload, false)}
+                sendMessage={(payload) => sendMessage(payload, true)}
                 getIconFromCache={getIconFromCache}
-                isThread={false}
+                isThread={true}
                 isReadOnly={activeChat.readOnly ?? false}
                 toggleEmojiSelector={toggleEmojiSelector}
                 channelMeta={channelMeta}
@@ -818,56 +702,17 @@ function ChatContainer({
                 onEditModeRequested={handleEditMode}
                 onEditModeCancelled={handleEditMode}
                 onMessageUpdated={handleEditedMessage}
-                loadInitialChatMessages={loadInitialChatMessages}
-                incomingMessages={incomingMessages}
-                loadPrevMessages={loadPrevMessages}
+                loadInitialChatMessages={threadLoadInitialChatMessages}
+                incomingMessages={incomingThreadMessages}
+                loadPrevMessages={(id: string) =>
+                  loadPrevThreadMessages(id)
+                }
                 currentOpenThreadRef={currentOpenThreadRef}
                 isEmojiSelectorVisible={isEmojiSelectorVisible}
                 setIsEmojiSelectorVisible={setIsEmojiSelectorVisible}
                 messageWithEmojiSelector={messageWithEmojiSelector}
               />
-              {openThread && (
-                <ThreadWrapper>
-                  <ChatDisplaySplit
-                    readMessage={() => {}}
-                    handleReaction={handleReaction}
-                    openThread={openThread}
-                    setOpenThread={selectThread}
-                    closeThread={closeThread}
-                    activeChat={activeChat}
-                    updatedMessages={_updatedThreadMessages}
-                    resetImage={() => {}}
-                    sendMessage={(payload) => sendMessage(payload, true)}
-                    getIconFromCache={getIconFromCache}
-                    isThread={true}
-                    isReadOnly={activeChat.readOnly ?? false}
-                    toggleEmojiSelector={toggleEmojiSelector}
-                    channelMeta={channelMeta}
-                    openMobileReactions={openMobileReactions}
-                    setOpenMobileReactions={setOpenMobileReactions}
-                    onMessageDeletion={handleDeleteMessage}
-                    onEditModeRequested={handleEditMode}
-                    onEditModeCancelled={handleEditMode}
-                    onMessageUpdated={handleEditedMessage}
-                    loadInitialChatMessages={() => {
-                      log.debug(
-                        "ChatContainer",
-                        `Thread loadInitialChatMessages called with openThread.id: ${openThread.id}`
-                      );
-                      return loadInitialThreadMessages(openThread.id);
-                    }}
-                    incomingMessages={incomingThreadMessages}
-                    loadPrevMessages={(id: string) =>
-                      loadPrevThreadMessages(id)
-                    }
-                    currentOpenThreadRef={currentOpenThreadRef}
-                    isEmojiSelectorVisible={isEmojiSelectorVisible}
-                    setIsEmojiSelectorVisible={setIsEmojiSelectorVisible}
-                    messageWithEmojiSelector={messageWithEmojiSelector}
-                  />
-                </ThreadWrapper>
-              )}
-            </>
+            </ThreadWrapper>
           )}
         </>
       )}
@@ -881,6 +726,10 @@ export default memo(ChatContainer, (prevProps, nextProps) => {
   return (
     prevProps.activeChat.id === nextProps.activeChat.id &&
     prevProps.activeChat.contextId === nextProps.activeChat.contextId &&
+    prevProps.activeChat.contextIdentity === nextProps.activeChat.contextIdentity &&
+    prevProps.activeChat.canJoin === nextProps.activeChat.canJoin &&
+    prevProps.activeChat.requiresProfileSetup ===
+      nextProps.activeChat.requiresProfileSetup &&
     prevProps.incomingMessages === nextProps.incomingMessages &&
     prevProps.incomingThreadMessages === nextProps.incomingThreadMessages &&
     prevProps.openThread?.id === nextProps.openThread?.id &&

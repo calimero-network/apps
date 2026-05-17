@@ -234,7 +234,7 @@ export function WebSocketStatus({ isSubscribed, contextId, subscriptionCount = 0
         title="Click for details"
       >
         <StatusDot $status={status} />
-        <StatusText>WS: {statusText}</StatusText>
+        <StatusText>SSE: {statusText}</StatusText>
       </StatusContainer>
 
       <TooltipContainer $show={showTooltip}>

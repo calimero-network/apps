@@ -1,109 +1,144 @@
-import { useEffect, useRef, useState, memo } from "react";
+import { useEffect, useMemo, useRef, useState, memo } from "react";
 import BaseModal from "../common/popups/BaseModal";
 import Loader from "../loader/Loader";
 import { styled } from "styled-components";
-import type { UserId } from "../../api/clientApi";
 import { usePersistentState } from "../../hooks/usePersistentState";
 import { Button, Input } from "@calimero-network/mero-ui";
+
+// ─── Animations ────────────────────────────────────────────────────────────────
+
+
+
+// ─── Layout ────────────────────────────────────────────────────────────────────
+
+const Header = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.875rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+`;
+
+const TitleGroup = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+`;
+
+const TitleIcon = styled.div`
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: rgba(165, 255, 17, 0.1);
+  border: 1px solid rgba(165, 255, 17, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+`;
+
+const Title = styled.h2`
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: 0.01em;
+`;
+
+const CloseButton = styled.button`
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.3);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  padding: 0;
+
+  &:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.08);
+  }
+`;
+
+// ─── Form ──────────────────────────────────────────────────────────────────────
+
+const Field = styled.div`
+  margin-bottom: 1.1rem;
+`;
+
+const Label = styled.div`
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.35);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.5rem;
+`;
+
+const InputWrapper = styled.div`
+  position: relative;
+`;
+
+const FieldError = styled.p`
+  color: #ff6b6b;
+  font-size: 0.72rem;
+  margin: 0.3rem 0 0;
+`;
+
+// ─── Suggestions ───────────────────────────────────────────────────────────────
 
 const SuggestionsDropdown = styled.div`
   max-height: 200px;
   overflow-y: auto;
-  border-radius: 4px;
-  background-color: #0e0e10;
+  border-radius: 10px;
+  background: #18181b;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   position: absolute;
-  top: 100%;
+  top: calc(100% + 4px);
   width: 100%;
   z-index: 100;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+
+  &::-webkit-scrollbar { width: 4px; }
+  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
 `;
 
 const SuggestionItem = styled.div`
-  padding: 8px 16px;
-  color: #fff;
+  padding: 0.6rem 0.875rem;
   cursor: pointer;
-  &:hover {
-    background-color: #1f1f21;
-  }
-`;
-
-const Text = styled.div`
+  transition: background 0.12s ease;
   display: flex;
-  column-gap: 0.5rem;
-  align-items: center;
+  flex-direction: column;
+  gap: 2px;
+
+  &:first-child { border-radius: 9px 9px 0 0; }
+  &:last-child  { border-radius: 0 0 9px 9px; }
+  &:only-child  { border-radius: 9px; }
+
+  &:hover { background: rgba(255, 255, 255, 0.05); }
+`;
+
+const SuggestionName = styled.div`
+  font-size: 0.82rem;
+  font-weight: 600;
   color: #fff;
-  font-family: Helvetica Neue;
-  font-size: 16px;
-  font-style: normal;
-  font-weight: 500;
-  line-height: 120%
-  margin-bottom: 0.75rem;
 `;
 
-const customStyle = {
-  border: "1px solid #dc3545",
-  outline: "none",
-};
 
-const CloseButton = styled.div`
-  color: #fff;
-  :hover {
-    color: #5765f2;
-  }
-  position: absolute;
-  right: 1rem;
-  cursor: pointer;
-`;
+// ─── Types ─────────────────────────────────────────────────────────────────────
 
-const ErrorWrapper = styled.div`
-  color: #dc3545;
-  /* Body/Small */
-  font-family: Helvetica Neue;
-  font-size: 12px;
-  font-style: normal;
-  font-weight: 400;
-  line-height: 150%; /* 18px */
-  margin-top: 6px;
-`;
-
-const EmptyMessageContainer = styled.div`
-  height: 27px;
-`;
-
-// const IconSvg = styled.svg`
-//   position: absolute;
-//   top: 50%;
-//   right: 13px;
-// `;
-
-// const CreationError = styled.div`
-//   color: #dc3545;
-//   font-size: 14px;
-//   font-weight: 400;
-//   line-height: 150%;
-//   padding-top: 4px;
-// `;
-
-// const ExclamationIcon = () => (
-//   <IconSvg
-//     width="18"
-//     height="18"
-//     viewBox="0 0 18 18"
-//     fill="#dc3545"
-//     xmlns="http://www.w3.org/2000/svg"
-//   >
-//     <path
-//       fillRule="evenodd"
-//       clipRule="evenodd"
-//       d="M8.99951 2.74918C5.54773 2.74918 2.74951 5.5474 2.74951 8.99918C2.74951 12.451 5.54773 15.2492 8.99951 15.2492C12.4513 15.2492 15.2495 12.451 15.2495 8.99918C15.2495 5.5474 12.4513 2.74918 8.99951 2.74918ZM1.74951 8.99918C1.74951 4.99511 4.99545 1.74918 8.99951 1.74918C13.0036 1.74918 16.2495 4.99511 16.2495 8.99918C16.2495 13.0032 13.0036 16.2492 8.99951 16.2492C4.99545 16.2492 1.74951 13.0032 1.74951 8.99918ZM8.334 5.058C8.42856 4.95669 8.56093 4.89918 8.69951 4.89918H9.29951C9.4381 4.89918 9.57046 4.95669 9.66503 5.058C9.75959 5.15931 9.80786 5.29532 9.79833 5.43358L9.49833 9.78358C9.48025 10.0457 9.2623 10.2492 8.99951 10.2492C8.73672 10.2492 8.51878 10.0457 8.5007 9.78358L8.2007 5.43358C8.19116 5.29532 8.23944 5.15931 8.334 5.058ZM9.89951 12.2992C9.89951 12.7962 9.49657 13.1992 8.99951 13.1992C8.50246 13.1992 8.09951 12.7962 8.09951 12.2992C8.09951 11.8021 8.50246 11.3992 8.99951 11.3992C9.49657 11.3992 9.89951 11.8021 9.89951 12.2992Z"
-//       fill="#DC3545"
-//     />
-//   </IconSvg>
-// );
-
-const InputWrapper = styled.div`
-  position: relative;
-  margin-top: 0.5rem;
-`;
+interface MemberSuggestion {
+  identity: string;
+  label: string;
+}
 
 export interface CreateContextResult {
   data: string;
@@ -118,7 +153,10 @@ interface StartDMPopupProps {
   validator: (value: string) => { isValid: boolean; error: string };
   functionLoader: (value: string) => Promise<CreateContextResult>;
   chatMembers: Map<string, string>;
+  onOpen?: () => Promise<void> | void;
 }
+
+// ─── Component ─────────────────────────────────────────────────────────────────
 
 const StartDMPopup = memo(function StartDMPopup({
   title,
@@ -128,137 +166,150 @@ const StartDMPopup = memo(function StartDMPopup({
   validator,
   functionLoader,
   chatMembers,
+  onOpen,
 }: StartDMPopupProps) {
   const [isOpen, setIsOpen] = usePersistentState("startDMPopupOpen", false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [inputValue, setInputValue] = usePersistentState(
-    "startDMInputValue",
-    "",
-  );
+  // Synchronous re-entrancy guard. `isProcessing` state lags by a render
+  // tick, so a fast double-click can fire two onClicks before the first
+  // setIsProcessing(true) commits. A ref reflects writes immediately and
+  // closes the race.
+  const inFlightRef = useRef(false);
+  const [inputValue, setInputValue] = usePersistentState("startDMInputValue", "");
+  const [selectedIdentity, setSelectedIdentity] = useState("");
   const [validInput, setValidInput] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [suggestions, setSuggestions] = useState<UserId[]>([]);
+  const [suggestions, setSuggestions] = useState<MemberSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
   const inputRef = useRef("");
-
   const isInvalid = inputValue && !validInput && errorMessage;
 
+  useEffect(() => { inputRef.current = inputValue; }, [inputValue]);
+
+  const memberOptions = useMemo(
+    () => Array.from(chatMembers.entries()).map(([identity, label]) => ({ identity, label })),
+    [chatMembers],
+  );
+
   useEffect(() => {
-    inputRef.current = inputValue;
-  }, [inputValue]);
+    if (!isOpen) { setShowSuggestions(false); return; }
+    if (!inputValue.trim()) {
+      setSuggestions(memberOptions);
+      setShowSuggestions(memberOptions.length > 0);
+    }
+  }, [inputValue, isOpen, memberOptions]);
+
+  const updateValidation = (value: string) => {
+    if (validator) {
+      const { isValid, error } = validator(value.trim());
+      setValidInput(isValid);
+      setErrorMessage(error || "");
+    }
+  };
+
+  const filterSuggestions = (value: string) => {
+    const q = value.trim().toLowerCase();
+    if (!q) return memberOptions;
+    return memberOptions.filter(
+      ({ identity, label }) =>
+        identity.toLowerCase().includes(q) || label.toLowerCase().includes(q),
+    );
+  };
 
   const runProcess = async () => {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     setIsProcessing(true);
     setErrorMessage("");
-    // inputValue is the username -> identity here
-
-    const identity = Object.keys(chatMembers).find(
-      // @ts-expect-error - chatMembers is a Map<string, string>
-      (key) => chatMembers[key] === inputValue,
-    );
-    if (!identity) {
-      setErrorMessage("User not found");
+    const identity = selectedIdentity || inputValue.trim();
+    try {
+      const result = await functionLoader(identity);
+      if (result.data) {
+        setInputValue("");
+        setSelectedIdentity("");
+        setIsOpen(false);
+      } else {
+        setErrorMessage(result.error);
+      }
+    } finally {
       setIsProcessing(false);
-      return;
-    }
-    const result = await functionLoader(identity);
-    if (result.data) {
-      setIsProcessing(false);
-      setInputValue(""); // Clear input on success
-      setIsOpen(false);
-    } else {
-      setErrorMessage(result.error);
-      setIsProcessing(false);
+      inFlightRef.current = false;
     }
   };
 
-  const onOpenChange = (isOpen: boolean) => {
-    if (isProcessing && !isOpen) {
-      return;
-    }
-    // Only allow closing via the X button, not by clicking outside
-    if (!isOpen) {
-      return; // Prevent closing
-    }
-    setIsOpen(isOpen);
-  };
+  const handleClose = () => { if (!isProcessing) setIsOpen(false); };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setInputValue(value);
+    setSelectedIdentity("");
     setErrorMessage("");
-    if (value.length > 0) {
-      const s = Object.values(chatMembers).filter((member) =>
-        member.toLowerCase().startsWith(value.toLowerCase()),
-      );
-      setSuggestions(s);
-      setShowSuggestions(s.length > 0);
-    } else {
-      setShowSuggestions(false);
-      setSuggestions([]);
-    }
-
-    if (validator) {
-      const { isValid, error } = validator(value);
-      setValidInput(isValid);
-      setErrorMessage(error ? error : "");
-    }
+    const filtered = filterSuggestions(value);
+    setSuggestions(filtered);
+    setShowSuggestions(filtered.length > 0);
+    updateValidation(value);
   };
 
-  const handleClosePopup = () => {
-    if (isProcessing) return;
-    setIsOpen(false);
-  };
-
-  const handleSuggestionClick = (suggestion: string) => {
-    if (validator) {
-      const { isValid, error } = validator(suggestion);
-      setValidInput(isValid);
-      setErrorMessage(error ? error : "");
-    }
-    setInputValue(suggestion);
+  const handleSuggestionClick = (s: MemberSuggestion) => {
+    setSelectedIdentity(s.identity);
+    updateValidation(s.identity);
+    // Only ever show the human-readable label in the visible input. The
+    // identity hash stays internal (selectedIdentity), used as the actual
+    // target for the DM. If the member has no label yet, leave the input
+    // empty rather than dumping the public key into the UI.
+    setInputValue(s.label || "");
     setShowSuggestions(false);
     setSuggestions([]);
   };
 
   const popupContent = (
     <div style={{ pointerEvents: "auto" }}>
-      <CloseButton onClick={handleClosePopup}>
-        <i className="bi bi-x-lg"></i>
-      </CloseButton>
-      <Text>{title}</Text>
-      <InputWrapper>
-        <Input
-          onChange={handleInputChange}
-          value={inputValue}
-          placeholder={placeholder}
-          style={isInvalid ? customStyle : {}}
-        />
-        {/* {errorMessage && <CreationError>{errorMessage}</CreationError>} */}
-        {/* {isInvalid && <ExclamationIcon />} */}
-        {showSuggestions && suggestions && suggestions.length > 0 && (
-          <SuggestionsDropdown>
-            {suggestions.map((suggestion, index) => (
-              <SuggestionItem
-                key={index}
-                onClick={() => handleSuggestionClick(suggestion)}
-              >
-                {suggestion}
-              </SuggestionItem>
-            ))}
-          </SuggestionsDropdown>
-        )}
-      </InputWrapper>
-      {isInvalid ? (
-        <ErrorWrapper>{errorMessage}</ErrorWrapper>
-      ) : (
-        <EmptyMessageContainer />
-      )}
+      <Header>
+        <TitleGroup>
+          <TitleIcon>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a5ff11" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+            </svg>
+          </TitleIcon>
+          <Title>{title}</Title>
+        </TitleGroup>
+        <CloseButton onClick={handleClose} aria-label="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </CloseButton>
+      </Header>
+
+      <Field>
+        <Label>Member</Label>
+        <InputWrapper>
+          <Input
+            value={inputValue}
+            placeholder={placeholder}
+            onChange={handleInputChange}
+            style={isInvalid ? { border: "1px solid #ff6b6b", outline: "none" } : {}}
+          />
+          {showSuggestions && suggestions.length > 0 && (
+            <SuggestionsDropdown>
+              {suggestions.map((s) => (
+                <SuggestionItem key={s.identity} onClick={() => handleSuggestionClick(s)}>
+                  <SuggestionName>{s.label}</SuggestionName>
+                </SuggestionItem>
+              ))}
+            </SuggestionsDropdown>
+          )}
+        </InputWrapper>
+        {isInvalid && <FieldError>{errorMessage}</FieldError>}
+      </Field>
+
       <Button
-        onClick={runProcess}
-        disabled={inputValue ? !!isInvalid : true}
-        style={{ width: "100%" }}
+        type="button"
+        variant="primary"
+        style={{ width: "100%", marginTop: "0.25rem", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}
+        onClick={() => void runProcess()}
+        disabled={isProcessing || (inputValue ? !!isInvalid : true)}
       >
         {isProcessing ? <Loader size={16} /> : buttonText}
       </Button>
@@ -270,7 +321,12 @@ const StartDMPopup = memo(function StartDMPopup({
       toggle={toggle}
       content={popupContent}
       open={isOpen}
-      onOpenChange={onOpenChange}
+      onOpenChange={(open) => {
+        if (!isProcessing && open) {
+          setIsOpen(open);
+          if (onOpen) void onOpen();
+        }
+      }}
       isChild={true}
     />
   );

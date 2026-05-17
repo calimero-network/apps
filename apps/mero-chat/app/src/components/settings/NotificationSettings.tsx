@@ -113,9 +113,9 @@ const NotificationSettings: React.FC = () => {
   const handleTestSound = () => {
     // Initialize audio context on user interaction
     if (typeof window !== "undefined" && window.AudioContext) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const audioContext = new (window.AudioContext ||
-        (window as any).webkitAudioContext)();
+      const AudioContextClass = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      const audioContext = AudioContextClass ? new AudioContextClass() : null;
+      if (!audioContext) return;
       if (audioContext.state === "suspended") {
         audioContext.resume();
       }

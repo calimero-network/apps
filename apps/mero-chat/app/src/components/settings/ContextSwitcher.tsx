@@ -3,11 +3,13 @@ import styled from "styled-components";
 import {
   getContextId,
   setContextId,
-  setExecutorPublicKey,
-  apiClient,
-  type ResponseData,
-} from "@calimero-network/calimero-client";
-import type { FetchContextIdentitiesResponse } from "@calimero-network/calimero-client/lib/api/nodeApi";
+  setContextIdentity as setExecutorPublicKey,
+} from "@calimero-network/mero-react";
+import type { ResponseData } from "../../api/types";
+import {
+  nodeApi as apiClientNode,
+  type LegacyFetchContextIdentitiesResponse as FetchContextIdentitiesResponse,
+} from "../../api/meroJsClient";
 import { ContextApiDataSource } from "../../api/dataSource/nodeApiDataSource";
 import type { ContextInfo } from "../../api/nodeApi";
 import { getContextIdFromUrl } from "../../constants/config";
@@ -211,7 +213,7 @@ export default function ContextSwitcher() {
     try {
       // First, fetch the identity for the new context
       const contextIdentityResponse: ResponseData<FetchContextIdentitiesResponse> =
-        await apiClient.node().fetchContextIdentities(selectedContextId);
+        await apiClientNode.fetchContextIdentities(selectedContextId);
 
       const identities = contextIdentityResponse.data?.data?.identities;
       if (!identities || identities.length === 0) {

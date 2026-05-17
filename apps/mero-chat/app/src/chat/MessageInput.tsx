@@ -14,15 +14,12 @@ import UploadComponent, {
 } from "./UploadComponent";
 import MessageFileField from "./MessageFileField";
 import MessageImageField from "./MessageImageField";
-import {
-  blobClient,
-  getContextId,
-  type ResponseData,
-} from "@calimero-network/calimero-client";
+import { getContextId } from "@calimero-network/mero-react";
+import type { ResponseData } from "../api/types";
+import { getMeroJs } from "../api/meroJsClient";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import { extractUsernames } from "../utils/mentions";
 import { RichTextEditor } from "@calimero-network/mero-ui";
-import { getDmContextId } from "../utils/session";
 import { useToast } from "../contexts/ToastContext";
 
 export const EditorWrapper = styled.div`
@@ -321,22 +318,25 @@ const Placeholder = styled.div<{
   }
 `;
 
-const ReadOnlyField = styled.div`
-  background-color: #111111;
+const ReadOnlyField = styled.div<{ $banned?: boolean }>`
+  background-color: ${(p) => (p.$banned ? "rgba(255, 59, 59, 0.07)" : "#111111")};
+  border: 1px solid
+    ${(p) => (p.$banned ? "rgba(255, 59, 59, 0.25)" : "transparent")};
   height: 2rem;
   border-radius: 4px;
-  padding: 4px 8px 4px 8px;
+  padding: 4px 10px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   font-family: Helvetica Neue;
   font-size: 16px;
   font-style: normal;
-  font-weight: 400;
+  font-weight: ${(p) => (p.$banned ? 600 : 400)};
   line-height: 150%;
-  color: #797978;
+  color: ${(p) => (p.$banned ? "#ff6b6b" : "#797978")};
   flex: 1;
   @media (max-width: 1024px) {
     font-size: 14px;
-    display: flex;
-    align-items: center;
   }
 `;
 
@@ -374,6 +374,9 @@ interface MessageInputProps {
   isReadOnly: boolean;
   isOwner: boolean;
   isModerator: boolean;
+  /// App-level (WASM) `Role::Banned`. Overrides isReadOnly / owner / mod —
+  /// banned users can't write even if they'd otherwise have permission.
+  isBanned?: boolean;
 }
 
 export default function MessageInput({
@@ -386,6 +389,7 @@ export default function MessageInput({
   isReadOnly,
   isOwner,
   isModerator,
+  isBanned,
 }: MessageInputProps) {
   const [canWriteMessage, setCanWriteMessage] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
@@ -426,10 +430,7 @@ export default function MessageInput({
     }
 
     try {
-      const response = await blobClient.deleteBlob(blobId);
-      if (response?.error) {
-        console.error("MessageInput", "Failed to delete blob", response.error);
-      }
+      await getMeroJs().admin.deleteBlob(blobId);
     } catch (error) {
       console.error("MessageInput", "Failed to delete blob", error);
     }
@@ -496,7 +497,7 @@ export default function MessageInput({
     if (contextId && contextId.length > 0) {
       return contextId;
     }
-    return getContextId() ?? getDmContextId() ?? "";
+    return getContextId() ?? "";
   }, [contextId]);
 
   const handleMessageChange = useCallback(
@@ -520,13 +521,21 @@ export default function MessageInput({
     });
   }, []);
 
+  const clearUploadedFile = useCallback(() => {
+    setUploadedFile(null);
+  }, [setUploadedFile]);
+
+  const clearUploadedImage = useCallback(() => {
+    setUploadedImage(null);
+  }, [setUploadedImage]);
+
   useEffect(() => {
     setMessage(null);
     setEmojiSelectorOpen(false);
     setShowUpload(false);
     clearUploadedFile();
     clearUploadedImage();
-  }, [selectedChat]);
+  }, [selectedChat, clearUploadedFile, clearUploadedImage]);
 
   const removeUploadedFile = useCallback(() => {
     if (uploadedFile?.file.blobId) {
@@ -534,7 +543,7 @@ export default function MessageInput({
     }
     setUploadedFile(null);
     setShowUpload(false);
-  }, [deleteBlobById, setShowUpload, uploadedFile]);
+  }, [deleteBlobById, setShowUpload, setUploadedFile, uploadedFile]);
 
   const removeUploadedImage = useCallback(() => {
     if (uploadedImage?.file.blobId) {
@@ -543,15 +552,7 @@ export default function MessageInput({
     setUploadedImage(null);
     setShowUpload(false);
     resetImage();
-  }, [deleteBlobById, resetImage, setShowUpload, uploadedImage]);
-
-  const clearUploadedFile = useCallback(() => {
-    setUploadedFile(null);
-  }, [setUploadedFile]);
-
-  const clearUploadedImage = useCallback(() => {
-    setUploadedImage(null);
-  }, [setUploadedImage]);
+  }, [deleteBlobById, resetImage, setShowUpload, setUploadedImage, uploadedImage]);
 
   useEffect(() => {
     return () => {
@@ -645,6 +646,12 @@ export default function MessageInput({
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Failed to send message";
+        // "no mesh peers for namespace" means the message was stored locally but
+        // P2P sync found no connected peers — expected with a single node.
+        // Don't surface this as an error to the user.
+        if (/mesh|no.*peer|peer.*sync/i.test(message)) {
+          return;
+        }
         addToast({
           title: "Message error",
           message,
@@ -686,6 +693,13 @@ export default function MessageInput({
   }, [setShowUpload, setEmojiSelectorOpen]);
 
   useEffect(() => {
+    // Banned overrides everything else: even an owner who's been banned
+    // (edge case but possible while we still allow self-ban in WASM) is
+    // blocked from posting.
+    if (isBanned) {
+      setCanWriteMessage(false);
+      return;
+    }
     setCanWriteMessage(false);
     if (isReadOnly) {
       if (isModerator || isOwner) {
@@ -696,7 +710,7 @@ export default function MessageInput({
     } else {
       setCanWriteMessage(true);
     }
-  }, [isReadOnly, isModerator, isOwner]);
+  }, [isReadOnly, isModerator, isOwner, isBanned]);
 
   // Memoize custom style to avoid recalculation on every render
   const customStyle = useMemo(() => {
@@ -843,8 +857,10 @@ export default function MessageInput({
       )}
       {!canWriteMessage && (
         <Container style={customStyle}>
-          <ReadOnlyField>
-            You don&apos;t have permissions to write in this channel
+          <ReadOnlyField $banned={isBanned}>
+            {isBanned
+              ? "You are banned from this channel."
+              : "You don’t have permissions to write in this channel"}
           </ReadOnlyField>
         </Container>
       )}

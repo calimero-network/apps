@@ -1,4 +1,4 @@
-import type { ApiResponse } from "@calimero-network/calimero-client";
+import type { ApiResponse } from "./types";
 import type { HashMap } from "../types/Common";
 
 export enum ChannelType {
@@ -59,6 +59,14 @@ export interface GetMessagesProps {
   search_term?: string;
 }
 
+export interface SearchAllMessagesProps {
+  search_term: string;
+  limit?: number;
+  offset?: number;
+  contextId?: string;
+  executorPublicKey?: string;
+}
+
 export interface Message {
   id: string;
   sender: string;
@@ -73,6 +81,7 @@ export interface Message {
   group?: string;
   files?: AttachmentResponse[];
   images?: AttachmentResponse[];
+  parent_message_id?: string;
 }
 
 export interface MessageWithReactions extends Message {
@@ -210,10 +219,15 @@ export interface ReadMessageProps {
   timestamp: number;
 }
 
-export interface UpdateDmHashProps {
-  sender_id: UserId;
-  other_user_id: UserId;
-  new_hash: string;
+export interface MarkAsReadProps {
+  contextId: string;
+  executorPublicKey: string;
+  timestamp: number;
+}
+
+export interface GetUnreadProps {
+  contextId: string;
+  executorPublicKey: string;
 }
 
 export interface ReadDmProps {
@@ -260,12 +274,48 @@ export enum ClientMethod {
   GET_USERNAME = "get_username",
   GET_CHAT_USERNAMES = "get_chat_usernames",
   READ_MESSAGE = "mark_messages_as_read",
-  UPDATE_DM_HASH = "update_dm_hashes",
   READ_DM = "mark_dm_as_read",
   GET_DM_UNREAD_COUNT = "get_dm_unread_count",
   GET_TOTAL_DM_UNREAD_COUNT = "get_total_dm_unread_count",
-  GET_DM_IDENTITY_BY_CONTEXT = "get_dm_identity_by_context",
   MARK_ALL_DMS_AS_READ = "mark_all_dms_as_read",
+  // Moderation (in-WASM roles + ban gate). See curb/logic/src/lib.rs.
+  SET_MEMBER_ROLE = "set_member_role",
+  GET_MEMBER_ROLE = "get_member_role",
+  LIST_ROLES = "list_roles",
+  // Per-context read receipts (WASM-backed, cross-device).
+  MARK_AS_READ = "mark_as_read",
+  GET_UNREAD_COUNT = "get_unread_count",
+  GET_UNREAD_MENTIONS = "get_unread_mentions",
+  SEARCH_ALL_MESSAGES = "search_all_messages",
+}
+
+/// Per-context moderation role. Mirrors the Rust `Role` enum.
+export type Role = "User" | "Mod" | "Admin" | "Banned";
+
+export interface SetMemberRoleProps {
+  contextId: string;
+  /// The actor's identity for this context (must be Admin or Mod).
+  executorPublicKey: string;
+  /// The member whose role is being changed.
+  target: string;
+  role: Role;
+}
+
+export interface GetMemberRoleProps {
+  contextId: string;
+  executorPublicKey: string;
+  identity: string;
+}
+
+export interface ListRolesProps {
+  contextId: string;
+  executorPublicKey: string;
+}
+
+/// Returned by `list_roles` — only members with a non-default role appear.
+export interface MemberRoleEntry {
+  identity: string;
+  role: Role;
 }
 
 export interface ClientApi {
@@ -282,6 +332,7 @@ export interface ClientApi {
   joinChannel(props: JoinChannelProps): ApiResponse<string>;
   leaveChannel(props: LeaveChannelProps): ApiResponse<string>;
   getMessages(props: GetMessagesProps): ApiResponse<FullMessageResponse>;
+  searchAllMessages(props: SearchAllMessagesProps): ApiResponse<FullMessageResponse>;
   sendMessage(props: SendMessageProps): ApiResponse<Message>;
   getDms(): ApiResponse<DMChatInfo[]>;
   getChatMembers(props: GetChatMembersProps): ApiResponse<Map<string, string>>;
@@ -296,8 +347,12 @@ export interface ClientApi {
   acceptInvitation(props: AcceptInvitationProps): ApiResponse<string>;
   deleteDM(props: DeleteDMProps): ApiResponse<string>;
   readMessage(props: ReadMessageProps): ApiResponse<string>;
-  updateDmHash(props: UpdateDmHashProps): ApiResponse<string>;
   readDm(props: ReadDmProps): ApiResponse<string>;
+  markAsRead(props: MarkAsReadProps): ApiResponse<string>;
+  getUnreadCount(props: GetUnreadProps): ApiResponse<number>;
+  getUnreadMentions(props: GetUnreadProps): ApiResponse<number>;
   getUsername(props: GetUsernameProps): ApiResponse<string>;
-  getDmIdentityByContext(props: { context_id: string }): ApiResponse<string>;
+  setMemberRole(props: SetMemberRoleProps): ApiResponse<string>;
+  getMemberRole(props: GetMemberRoleProps): ApiResponse<Role>;
+  listRoles(props: ListRolesProps): ApiResponse<MemberRoleEntry[]>;
 }

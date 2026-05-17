@@ -1,0 +1,222 @@
+name: Curb — DM (closed subgroup) end-to-end
+description: >
+  2E from the explainer plan. Tests a private DM-style flow:
+    - Admin creates a CLOSED subgroup (visibility=restricted).
+    - Admin explicitly adds Node-2 as a member of the DM subgroup
+      via `add_group_members`.
+    - Admin creates a context INSIDE the DM subgroup. Node-2 joins.
+    - Both exchange messages. Cross-asserts via `get_messages`.
+
+  ⚠️ BLOCKED on rc.35. Same family of propagation bug as
+  non-admin-creates.yml: when admin creates a subgroup + adds
+  node-2 + creates a context inside it, node-2's local store
+  never learns about the new context (even with explicit
+  `sync_group` on the namespace). `join_context` on node-2 fails
+  with an opaque error. Open-visibility subgroups (governance.yml
+  2F) work fine on rc.35 because parent-walk inheritance lets
+  node-2 reach the context without needing the closed-subgroup
+  membership op to propagate.
+
+  Lives in `workflows-extra` until merod ships the matching
+  governance-propagation fix.
+
+force_pull_image: true
+
+nodes:
+  chain_id: testnet-1
+  count: 2
+  image: ghcr.io/calimero-network/merod:0.10.1-rc.38
+  prefix: calimero-node
+
+steps:
+  # ── Bootstrap ───────────────────────────────────────────────────────────
+  - name: Install application on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: "../logic/res/curb.wasm"
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install application on Node 2
+    type: install_application
+    node: calimero-node-2
+    path: "../logic/res/curb.wasm"
+    dev: true
+
+  - name: Create namespace
+    type: create_namespace
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Set default member capabilities
+    type: set_default_capabilities
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    capabilities: 15
+
+  - name: Generate identity for Node 2
+    type: create_identity
+    node: calimero-node-2
+    outputs:
+      bob_identity: publicKey
+
+  - name: Wait for identity propagation
+    type: wait
+    seconds: 3
+
+  - name: Node 1 creates invitation for Node 2
+    type: create_namespace_invitation
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    outputs:
+      invite_bob: invitation
+
+  - name: Node 2 joins namespace
+    type: join_namespace
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+    invitation: "{{invite_bob}}"
+
+  - name: Settle after namespace join
+    type: wait
+    seconds: 5
+
+  # ── DM subgroup (closed) + explicit add ─────────────────────────────────
+  - name: Admin creates closed DM subgroup
+    type: create_group_in_namespace
+    node: calimero-node-1
+    namespace_id: "{{namespace_id}}"
+    group_alias: "alice-bob-dm"
+    outputs:
+      dm_subgroup_id: groupId
+
+  # The default is restricted — but be explicit for the test.
+  - name: Mark DM subgroup as Restricted
+    type: set_subgroup_visibility
+    node: calimero-node-1
+    group_id: "{{dm_subgroup_id}}"
+    visibility: restricted
+
+  - name: Admin adds Bob to the DM subgroup
+    type: add_group_members
+    node: calimero-node-1
+    group_id: "{{dm_subgroup_id}}"
+    members:
+      - identity: "{{bob_identity}}"
+        role: Member
+
+  - name: Settle after DM subgroup setup
+    type: wait
+    seconds: 5
+
+  - name: Admin creates DM context inside the subgroup
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{dm_subgroup_id}}"
+    params: '{"name": "dm", "context_type": "Dm", "description": "alice-bob direct messages", "created_at": 1751955000, "creator_username": ""}'
+    outputs:
+      dm_ctx_id: contextId
+      alice_dm_key: memberPublicKey
+
+  # Force node-2 to pull the latest namespace governance state so it
+  # learns about the new DM subgroup membership + context.
+  - name: Force Node 2 to sync namespace state
+    type: sync_group
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+
+  - name: Settle after sync
+    type: wait
+    seconds: 5
+
+  - name: Bob joins the DM context
+    type: join_context
+    node: calimero-node-2
+    context_id: "{{dm_ctx_id}}"
+    outputs:
+      bob_dm_key: memberPublicKey
+
+  - name: Wait for DM context sync
+    type: wait_for_sync
+    context_id: "{{dm_ctx_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+
+  # ── Bidirectional messaging in the DM ──────────────────────────────────
+  - name: Alice DMs Bob
+    type: call
+    node: calimero-node-1
+    context_id: "{{dm_ctx_id}}"
+    method: send_message
+    args:
+      message: "hey bob, this is private"
+      mentions: []
+      mentions_usernames: []
+      parent_message: null
+      timestamp: 1751955010
+      sender_username: Alice
+      files: null
+      images: null
+    executor_public_key: "{{alice_dm_key}}"
+
+  - name: Bob replies in DM
+    type: call
+    node: calimero-node-2
+    context_id: "{{dm_ctx_id}}"
+    method: send_message
+    args:
+      message: "got it alice"
+      mentions: []
+      mentions_usernames: []
+      parent_message: null
+      timestamp: 1751955011
+      sender_username: Bob
+      files: null
+      images: null
+    executor_public_key: "{{bob_dm_key}}"
+
+  - name: Wait for DM message sync
+    type: wait_for_sync
+    context_id: "{{dm_ctx_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+
+  - name: Node 1 reads DM messages
+    type: call
+    node: calimero-node-1
+    context_id: "{{dm_ctx_id}}"
+    method: get_messages
+    args:
+      start_position: 0
+      limit: 50
+      thread_parent_id: null
+    executor_public_key: "{{alice_dm_key}}"
+    outputs:
+      dm_msgs_n1: result
+
+  - name: Node 2 reads DM messages
+    type: call
+    node: calimero-node-2
+    context_id: "{{dm_ctx_id}}"
+    method: get_messages
+    args:
+      start_position: 0
+      limit: 50
+      thread_parent_id: null
+    executor_public_key: "{{bob_dm_key}}"
+    outputs:
+      dm_msgs_n2: result
+
+  - name: 2E — Assert closed-subgroup DM CRDT sync (bidirectional)
+    type: assert
+    statements:
+      - 'contains({{dm_msgs_n1}}, "hey bob, this is private")'
+      - 'contains({{dm_msgs_n1}}, "got it alice")'
+      - 'contains({{dm_msgs_n2}}, "hey bob, this is private")'
+      - 'contains({{dm_msgs_n2}}, "got it alice")'

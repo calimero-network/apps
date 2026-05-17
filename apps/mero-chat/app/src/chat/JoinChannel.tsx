@@ -3,7 +3,16 @@ import type { ActiveChat } from "../types/Common";
 import Loader from "../components/loader/Loader";
 import { styled } from "styled-components";
 import type { ChannelInfo } from "../api/clientApi";
-import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
+import { GroupApiDataSource } from "../api/dataSource/groupApiDataSource";
+import {
+  getGroupId,
+  getGroupMemberIdentity,
+  setContextMemberIdentity,
+} from "../constants/config";
+import {
+  getIdentityDisplayName,
+  getMessengerDisplayName,
+} from "../utils/messengerName";
 import { timestampToDate } from "../utils/time";
 import { Button } from "@calimero-network/mero-ui";
 
@@ -98,9 +107,30 @@ export default function JoinChannel({
   const [loading, setLoading] = useState(false);
   const joinChannel = useCallback(async () => {
     setLoading(true);
-    await new ClientApiDataSource().joinChannel({
-      channel: { name: activeChat.name },
-    });
+    const groupId = getGroupId();
+    if (groupId && activeChat.contextId) {
+      const groupApi = new GroupApiDataSource();
+      const joinRes = await groupApi.joinGroupContext(groupId, {
+        contextId: activeChat.contextId,
+      });
+      const memberKey = joinRes.data?.memberPublicKey;
+      if (memberKey) {
+        setContextMemberIdentity(activeChat.contextId, memberKey);
+        // Seed server-side member alias in the NAMESPACE so listMembers
+        // returns our name. Must use namespace groupId + namespace identity,
+        // not the context ID — setMemberAlias targets the governance DAG.
+        const namespaceIdentity = getGroupMemberIdentity(groupId);
+        const seedAlias =
+          (namespaceIdentity ? getIdentityDisplayName(namespaceIdentity) : "") ||
+          getMessengerDisplayName() ||
+          "";
+        if (seedAlias && namespaceIdentity) {
+          groupApi
+            .setMemberMetadata(groupId, namespaceIdentity, { name: seedAlias })
+            .catch(() => {/* non-fatal — alias is best-effort */});
+        }
+      }
+    }
     setLoading(false);
     onJoinedChat();
   }, [activeChat, onJoinedChat]);

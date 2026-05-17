@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
-import type { ResponseData } from "@calimero-network/calimero-client";
+import type { ResponseData } from "../api/types";
 import { log } from "../utils/logger";
 
 /**

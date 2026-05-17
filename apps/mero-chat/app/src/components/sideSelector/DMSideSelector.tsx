@@ -2,9 +2,9 @@ import { memo } from "react";
 import { styled } from "styled-components";
 import DMHeader from "./DMHeader";
 import UserList from "./UserList";
-import type { DMChatInfo } from "../../api/clientApi";
+import type { DMContextInfo } from "../../hooks/useDMs";
 import type { CreateContextResult } from "../popups/StartDMPopup";
-import type { ActiveChat } from "../../types/Common";
+import type { ContextUnread } from "../../hooks/useUnreadCounts";
 
 const DMContainer = styled.div`
   background-color: #0e0e10;
@@ -15,38 +15,42 @@ const DMContainer = styled.div`
 `;
 
 interface DMSideSelectorProps {
-  chatMembers: Map<string, string>;
+  dmMembers: Map<string, string>;
   createDM: (value: string) => Promise<CreateContextResult>;
-  onDMSelected: (dm?: DMChatInfo, sc?: ActiveChat, refetch?: boolean) => void;
+  onDMSelected: (dm: DMContextInfo) => void;
   selectedDM: string;
-  privateDMs: DMChatInfo[];
+  privateDMs: DMContextInfo[];
   isCollapsed?: boolean;
-  selectChannel: (channel: ActiveChat) => void;
+  onFetchDmMembers?: () => Promise<void>;
+  unreadCounts?: Map<string, ContextUnread>;
 }
 
 function DMSideSelector({
-  chatMembers,
+  dmMembers,
   createDM,
   onDMSelected,
   selectedDM,
   privateDMs,
   isCollapsed,
-  selectChannel,
+  onFetchDmMembers,
+  unreadCounts,
 }: DMSideSelectorProps) {
   return (
     <DMContainer>
       <DMHeader
         key="dm-header"
         createDM={createDM}
-        chatMembers={chatMembers}
+        availableMembers={dmMembers}
+        privateDMs={privateDMs}
         isCollapsed={isCollapsed}
+        onFetchMembers={onFetchDmMembers}
       />
       <UserList
         selectedDM={selectedDM}
         onDMSelected={onDMSelected}
         privateDMs={privateDMs}
         isCollapsed={isCollapsed}
-        selectChannel={selectChannel}
+        unreadCounts={unreadCounts}
       />
     </DMContainer>
   );

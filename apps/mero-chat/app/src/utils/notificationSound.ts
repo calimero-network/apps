@@ -23,9 +23,8 @@ class NotificationSoundManager {
   private initializeAudioContext() {
     if (typeof window !== "undefined" && !this.audioContext) {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        this.audioContext = new (window.AudioContext ||
-          (window as any).webkitAudioContext)();
+        const AudioContextClass = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (AudioContextClass) this.audioContext = new AudioContextClass();
       } catch (error) {
         console.warn("Web Audio API not supported:", error);
       }

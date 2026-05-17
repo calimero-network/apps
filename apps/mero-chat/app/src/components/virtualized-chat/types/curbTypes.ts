@@ -40,6 +40,7 @@ export interface CurbMessage {
   deleted?: boolean;
   status: MessageStatus;
   group?: string; // Channel name where the message was sent
+  parentMessageId?: string; // Set for thread replies; identifies the parent channel message
 }
 export interface AccountData {
   id: string;

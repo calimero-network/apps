@@ -1,0 +1,220 @@
+# Full-stack integration CI: builds curb.wasm, starts real merod nodes via
+# merobox, installs the app onto the nodes, seeds test data, then runs the
+# Playwright "integration" project against the live stack.
+
+name: Integration Tests (Full Stack)
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "logic/**"
+      - "app/**"
+      - "workflows/**"
+      - "scripts/**"
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "logic/**"
+      - "app/**"
+      - "workflows/**"
+      - "scripts/**"
+
+concurrency:
+  group: integration-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    name: Full-Stack Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Build curb WASM ───────────────────────────────────────────────────────
+
+      - name: Checkout calimero/core (Cargo path deps)
+        run: git clone --depth 1 https://github.com/calimero-network/core.git "${GITHUB_WORKSPACE}/../core"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.89.0"
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo registry + build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            logic/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('logic/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Build curb WASM
+        run: |
+          cd logic
+          cargo build --target wasm32-unknown-unknown --profile app-release
+          mkdir -p res
+          cp target/wasm32-unknown-unknown/app-release/curb.wasm res/
+
+      # ── Install merobox ───────────────────────────────────────────────────────
+
+      - name: Install merobox
+        run: pip install merobox==0.6.14 && merobox --version
+
+      # ── Start nodes + install curb app + create context + seed messages ───────
+      # integration-setup.yml sets stop_all_nodes: false so nodes stay running.
+
+      - name: Run integration-setup workflow (merobox)
+        working-directory: workflows
+        run: |
+          merobox stop --all 2>/dev/null || true
+          merobox nuke --force 2>/dev/null || true
+          merobox bootstrap run integration-setup.yml
+
+      # ── Bootstrap JWT auth + discover IDs + write app/.env.integration ────────
+
+      - name: Bootstrap auth and write env file
+        run: |
+          set -euo pipefail
+          NODE_1_URL="http://localhost:2428"
+          NODE_2_URL="http://localhost:2429"
+          ADMIN_USER="${E2E_ADMIN_USER:-admin}"
+          ADMIN_PASS="${E2E_ADMIN_PASS:-calimero1234}"
+
+          echo "Running containers:"
+          docker ps -a 2>/dev/null || true
+          echo "Waiting for both nodes to be healthy…"
+          for i in $(seq 1 90); do
+            if curl -sf "${NODE_1_URL}/admin-api/health" >/dev/null 2>&1 && \
+               curl -sf "${NODE_2_URL}/admin-api/health" >/dev/null 2>&1; then
+              echo "Both nodes healthy (attempt ${i})"
+              break
+            fi
+            if [ "$i" -eq 90 ]; then
+              echo "Nodes not healthy after 180 s — dumping logs"
+              docker ps -a 2>/dev/null || true
+              docker logs calimero-node-1 2>/dev/null | tail -30 || true
+              docker logs calimero-node-2 2>/dev/null | tail -30 || true
+              exit 1
+            fi
+            sleep 2
+          done
+
+          AUTH_PAYLOAD="{
+            \"auth_method\":  \"user_password\",
+            \"public_key\":   \"${ADMIN_USER}\",
+            \"client_name\":  \"integration-ci\",
+            \"timestamp\":    0,
+            \"permissions\":  [],
+            \"provider_data\": {\"username\": \"${ADMIN_USER}\", \"password\": \"${ADMIN_PASS}\"}
+          }"
+
+          AUTH_1=$(curl -sf -X POST "${NODE_1_URL}/auth/token" \
+            -H "Content-Type: application/json" -d "${AUTH_PAYLOAD}")
+          ACCESS_TOKEN_1=$(echo "$AUTH_1" | jq -r '.data.access_token // empty')
+          REFRESH_TOKEN_1=$(echo "$AUTH_1" | jq -r '.data.refresh_token // empty')
+          [ -n "$ACCESS_TOKEN_1" ] || { echo "Auth failed for node 1: $AUTH_1"; exit 1; }
+
+          AUTH_2=$(curl -sf -X POST "${NODE_2_URL}/auth/token" \
+            -H "Content-Type: application/json" -d "${AUTH_PAYLOAD}")
+          ACCESS_TOKEN_2=$(echo "$AUTH_2" | jq -r '.data.access_token // empty')
+          REFRESH_TOKEN_2=$(echo "$AUTH_2" | jq -r '.data.refresh_token // empty')
+          [ -n "$ACCESS_TOKEN_2" ] || { echo "Auth failed for node 2: $AUTH_2"; exit 1; }
+
+          GROUPS=$(curl -sf "${NODE_1_URL}/admin-api/groups" \
+            -H "Authorization: Bearer ${ACCESS_TOKEN_1}" 2>/dev/null) || GROUPS="{}"
+          GROUP_ID=$(echo "$GROUPS" | jq -r '
+            (.data // .) |
+            if type == "array" then .[0].groupId
+            elif type == "object" then (.groups[0].groupId // .items[0].groupId)
+            else empty end' 2>/dev/null || echo "")
+
+          CTXS=$(curl -sf "${NODE_1_URL}/admin-api/contexts" \
+            -H "Authorization: Bearer ${ACCESS_TOKEN_1}" 2>/dev/null) || CTXS="{}"
+          CONTEXT_ID=$(echo "$CTXS" | jq -r '
+            (.data // .) |
+            if type == "array" then .[0].id // .[0].contextId
+            elif type == "object" then (.contexts[0].id // .contexts[0].contextId // .items[0].id)
+            else empty end' 2>/dev/null || echo "")
+
+          MEMBER_KEY=""
+          if [ -n "$CONTEXT_ID" ]; then
+            IDENTS=$(curl -sf \
+              "${NODE_1_URL}/admin-api/contexts/${CONTEXT_ID}/identities-owned" \
+              -H "Authorization: Bearer ${ACCESS_TOKEN_1}" 2>/dev/null) || IDENTS="{}"
+            MEMBER_KEY=$(echo "$IDENTS" | jq -r '
+              (.data // .) |
+              if type == "array" then .[0]
+              elif type == "object" then (.identities[0] // .items[0])
+              else empty end' 2>/dev/null || echo "")
+          fi
+
+          echo "GROUP_ID:   ${GROUP_ID:-<not found>}"
+          echo "CONTEXT_ID: ${CONTEXT_ID:-<not found>}"
+
+          cat > app/.env.integration << ENVEOF
+          E2E_NODE_URL=${NODE_1_URL}
+          E2E_NODE_URL_2=${NODE_2_URL}
+          E2E_ACCESS_TOKEN=${ACCESS_TOKEN_1}
+          E2E_REFRESH_TOKEN=${REFRESH_TOKEN_1}
+          E2E_ACCESS_TOKEN_2=${ACCESS_TOKEN_2}
+          E2E_REFRESH_TOKEN_2=${REFRESH_TOKEN_2}
+          E2E_GROUP_ID=${GROUP_ID:-}
+          E2E_CONTEXT_ID=${CONTEXT_ID:-}
+          E2E_MEMBER_KEY=${MEMBER_KEY:-}
+          ENVEOF
+          echo "app/.env.integration written"
+
+      # ── Frontend setup ────────────────────────────────────────────────────────
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        working-directory: app
+        run: pnpm exec playwright install chromium --with-deps
+
+      # ── Run integration Playwright tests ──────────────────────────────────────
+
+      - name: Run integration tests
+        working-directory: app
+        run: pnpm exec playwright test --project=integration
+        env:
+          CI: "true"
+          # Tells global-setup.ts to skip browser auth — integration tests
+          # inject tokens directly via injectRealTokens() per test.
+          INTEGRATION_MODE: "true"
+
+      # ── Cleanup ───────────────────────────────────────────────────────────────
+
+      - name: Stop nodes
+        if: always()
+        run: |
+          merobox stop --all 2>/dev/null || true
+          merobox nuke --force 2>/dev/null || true
+
+      # ── Artifacts ─────────────────────────────────────────────────────────────
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-playwright-report
+          path: app/e2e-report/
+          retention-days: 7

@@ -1,26 +1,35 @@
-import React, { useState } from "react";
+import React, { memo, useCallback, useMemo, useState } from "react";
 import styled from "styled-components";
-import type { ActiveChat, ChannelMeta } from "../../types/Common";
+import type { ActiveChat, GroupContextChannel } from "../../types/Common";
+import type { SubgroupEntry } from "../../api/groupApi";
 import ChannelHeader from "./ChannelHeader";
 import ChannelList from "./ChannelList";
 import { CurbLogo } from "../navbar/CurbNavbar";
 import DMSideSelector from "./DMSideSelector";
-import type { DMChatInfo } from "../../api/clientApi";
+import type { DMContextInfo } from "../../hooks/useDMs";
 import type { CreateContextResult } from "../popups/StartDMPopup";
 import { scrollbarStyles } from "../../styles/scrollbar";
+import type { ContextUnread } from "../../hooks/useUnreadCounts";
 
 interface SideSelectorProps {
-  channels: ChannelMeta[];
-  activeChat: ActiveChat;
+  channels: GroupContextChannel[];
+  subgroups: SubgroupEntry[];
+  channelsBySubgroup: Map<string, GroupContextChannel[]>;
+  activeChat: ActiveChat | null;
   onChatSelected: (chat: ActiveChat) => void;
-  onDMSelected: (dm?: DMChatInfo, sc?: ActiveChat, refetch?: boolean) => void;
+  onDMSelected: (dm: DMContextInfo) => void;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
-  setIsOpenSearchChannel: (open: boolean) => void;
+  setIsOpenSearchChannel: () => void;
   isOpenSearchChannel: boolean;
   chatMembers: Map<string, string>;
+  dmMembers: Map<string, string>;
   createDM: (value: string) => Promise<CreateContextResult>;
-  privateDMs: DMChatInfo[];
+  privateDMs: DMContextInfo[];
+  onChannelCreated?: () => void;
+  onChannelSelected?: (chat: ActiveChat) => void;
+  onFetchDmMembers?: () => Promise<void>;
+  unreadCounts?: Map<string, ContextUnread>;
 }
 
 const HorizontalSeparatorLine = styled.div<{ $isMobile: boolean }>`
@@ -196,58 +205,134 @@ const SectionLabel = styled.div`
   }
 `;
 
+interface SideMenuContentProps {
+  isOpenSearchChannel: boolean;
+  setIsOpenSearchChannel: () => void;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
+  channels: GroupContextChannel[];
+  subgroups: SubgroupEntry[];
+  channelsBySubgroup: Map<string, GroupContextChannel[]>;
+  existingChannelNames: string[];
+  activeChat: ActiveChat | null;
+  onChatSelected: (chat: ActiveChat) => void;
+  dmMembers: Map<string, string>;
+  onDMSelected: (dm: DMContextInfo) => void;
+  createDM: (value: string) => Promise<CreateContextResult>;
+  privateDMs: DMContextInfo[];
+  onChannelCreated?: () => void;
+  onChannelSelected?: (chat: ActiveChat) => void;
+  onFetchDmMembers?: () => Promise<void>;
+  unreadCounts?: Map<string, ContextUnread>;
+}
+
+const SideMenuContent = memo(function SideMenuContent({
+  isOpenSearchChannel,
+  setIsOpenSearchChannel,
+  isCollapsed,
+  onToggleCollapse,
+  channels,
+  subgroups: _subgroups,
+  channelsBySubgroup: _channelsBySubgroup,
+  existingChannelNames,
+  activeChat,
+  onChatSelected,
+  dmMembers,
+  onDMSelected,
+  createDM,
+  privateDMs,
+  onChannelCreated,
+  onChannelSelected,
+  onFetchDmMembers,
+  unreadCounts,
+}: SideMenuContentProps) {
+  const selectedChannelId = activeChat?.type === "channel" ? activeChat.id : "";
+
+  const joinedChannels = React.useMemo(
+    () =>
+      channels.filter(
+        (ch) => (ch.isJoined ?? false) && (!ch.info || ch.info.context_type === "Channel"),
+      ),
+    [channels],
+  );
+
+  const channelSections = (
+    <>
+      <ChannelHeader
+        title="Channels"
+        isCollapsed={isCollapsed}
+        onChannelCreated={onChannelCreated}
+        onChannelSelected={onChannelSelected}
+        existingChannelNames={existingChannelNames}
+      />
+      <ChannelList
+        channels={joinedChannels}
+        selectChannel={onChatSelected}
+        selectedChannelId={selectedChannelId}
+        isCollapsed={isCollapsed}
+        unreadCounts={unreadCounts}
+      />
+    </>
+  );
+
+  return (
+    <>
+      <SearchChannels
+        isOpenSearchChannel={isOpenSearchChannel}
+        setIsOpenSearchChannel={setIsOpenSearchChannel}
+        isCollapsed={isCollapsed}
+        onToggleCollapse={onToggleCollapse}
+      />
+      <HorizontalSeparatorLine $isMobile={false} />
+      {isCollapsed && <SectionLabel>CH</SectionLabel>}
+      {channelSections}
+      <HorizontalSeparatorLine $isMobile={true} />
+      {isCollapsed && <SectionLabel>DM</SectionLabel>}
+      <DMSideSelector
+        dmMembers={dmMembers}
+        onDMSelected={onDMSelected}
+        selectedDM={
+          activeChat?.type === "direct_message"
+            ? activeChat.contextId || activeChat.id
+            : ""
+        }
+        createDM={createDM}
+        privateDMs={privateDMs}
+        isCollapsed={isCollapsed}
+        onFetchDmMembers={onFetchDmMembers}
+        unreadCounts={unreadCounts}
+      />
+    </>
+  );
+});
+
 const SideSelector: React.FC<SideSelectorProps> = (props) => {
   const channels = props.channels;
   const isSidebarOpen = props.isSidebarOpen;
-  const setIsOpenSearchChannel = props.setIsOpenSearchChannel;
-  const isOpenSearchChannel = props.isOpenSearchChannel;
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  const SideMenuContent = () => {
-    return (
-      <>
-        <SearchChannels
-          isOpenSearchChannel={isOpenSearchChannel}
-          setIsOpenSearchChannel={() =>
-            setIsOpenSearchChannel(!isOpenSearchChannel)
-          }
-          isCollapsed={isCollapsed}
-          onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
-        />
-        <HorizontalSeparatorLine $isMobile={false} />
-        {isCollapsed && <SectionLabel>CH</SectionLabel>}
-        <ChannelHeader
-          key="channels-header"
-          title="Channels"
-          isCollapsed={isCollapsed}
-        />
-        <ChannelList
-          channels={channels}
-          selectChannel={props.onChatSelected}
-          selectedChannelId={
-            props.activeChat.type === "channel"
-              ? props.activeChat.name
-              : props.activeChat.id
-          }
-          isCollapsed={isCollapsed}
-        />
-        <HorizontalSeparatorLine $isMobile={true} />
-        {isCollapsed && <SectionLabel>DM</SectionLabel>}
-        <DMSideSelector
-          chatMembers={props.chatMembers}
-          onDMSelected={props.onDMSelected}
-          selectChannel={props.onChatSelected}
-          selectedDM={
-            props.activeChat.type === "direct_message"
-              ? props.activeChat.id
-              : ""
-          }
-          createDM={props.createDM}
-          privateDMs={props.privateDMs}
-          isCollapsed={isCollapsed}
-        />
-      </>
-    );
+  const toggleCollapse = useCallback(() => setIsCollapsed((prev) => !prev), []);
+  const existingChannelNames = useMemo(() => channels.map((c) => c.alias ?? ""), [channels]);
+
+  const sharedContentProps: SideMenuContentProps = {
+    isOpenSearchChannel: props.isOpenSearchChannel,
+    setIsOpenSearchChannel: props.setIsOpenSearchChannel,
+    isCollapsed,
+    onToggleCollapse: toggleCollapse,
+    channels,
+    subgroups: props.subgroups,
+    channelsBySubgroup: props.channelsBySubgroup,
+    existingChannelNames,
+    activeChat: props.activeChat,
+    onChatSelected: props.onChatSelected,
+    dmMembers: props.dmMembers,
+    onDMSelected: props.onDMSelected,
+    createDM: props.createDM,
+    privateDMs: props.privateDMs,
+    onChannelCreated: props.onChannelCreated,
+    onChannelSelected: props.onChannelSelected,
+    onFetchDmMembers: props.onFetchDmMembers,
+    unreadCounts: props.unreadCounts,
   };
 
   return (
@@ -257,11 +342,11 @@ const SideSelector: React.FC<SideSelectorProps> = (props) => {
           <MobileHeaderWrapper>
             <CurbLogo isMobile={true} />
           </MobileHeaderWrapper>
-          <SideMenuContent />
+          <SideMenuContent {...sharedContentProps} />
         </SideMenuMobile>
       )}
       <SideMenu $isCollapsed={isCollapsed}>
-        <SideMenuContent />
+        <SideMenuContent {...sharedContentProps} />
       </SideMenu>
     </>
   );

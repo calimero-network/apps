@@ -6,7 +6,6 @@ import {
   type NotificationType,
 } from "../utils/notificationSound";
 import { StorageHelper } from "../utils/storage";
-import { log } from "../utils/logger";
 
 interface UseNotificationSoundOptions {
   enabled?: boolean;

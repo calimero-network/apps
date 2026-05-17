@@ -4,6 +4,7 @@ import styled from "styled-components";
 import type { AccountId, CurbString, HashMap, Vec } from "../types/curbTypes";
 
 import MessageReactionsList from "./MessageReactionsList";
+import { getMessengerDisplayName } from "../../../utils/messengerName";
 
 const ReactionsWrapper = styled.div`
   display: flex;
@@ -171,7 +172,7 @@ const ReactionEmojiComponentButton = ({
 }: EmojiComponentButtonProps) => {
   const [showWhoReacted, setShowWhoReacted] = useState(false);
   const [isRightSide, setIsRightSide] = useState(false);
-  const currentUsername = localStorage.getItem("chat-username") || "";
+  const currentUsername = getMessengerDisplayName();
   const containerRef = useRef<HTMLDivElement>(null);
 
   const handleMouseEnter = () => {

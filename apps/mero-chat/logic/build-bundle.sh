@@ -29,11 +29,11 @@ cat > res/bundle-temp/manifest.json <<EOF
 {
   "version": "1.0",
   "package": "com.calimero.curb",
-  "appVersion": "0.1.0",
+  "appVersion": "2.0.0",
   "minRuntimeVersion": "0.1.0",
   "metadata": {
     "name": "Mero Chat",
-    "description": "Mero Chat is a P2P chat application built on top of the Calimero Network.",
+    "description": "Mero Chat v2 — group-based context management. Each context is one channel or DM.",
     "author": "Calimero"
   },
   "wasm": {
@@ -53,12 +53,14 @@ cat > res/bundle-temp/manifest.json <<EOF
 }
 EOF
 
-# Sign the manifest
-mero-sign sign --key key.json res/bundle-temp/manifest.json
+# Sign the manifest via core workspace tool
+cargo run --manifest-path ../../core/Cargo.toml -p mero-sign --quiet -- \
+    sign res/bundle-temp/manifest.json \
+    --key ../../core/scripts/test-signing-key/test-key.json
 
 # Create .mpk bundle (tar.gz archive)
 cd res/bundle-temp
-tar -czf ../curb-1.0.0.mpk manifest.json app.wasm abi.json 2>/dev/null || \
-tar -czf ../curb-1.0.0.mpk manifest.json app.wasm 2>/dev/null
+tar -czf ../curb-2.0.0.mpk manifest.json app.wasm abi.json 2>/dev/null || \
+tar -czf ../curb-2.0.0.mpk manifest.json app.wasm 2>/dev/null
 
-echo "Bundle created: res/curb-1.0.0.mpk"
+echo "Bundle created: res/curb-2.0.0.mpk"

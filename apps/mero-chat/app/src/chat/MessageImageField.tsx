@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { styled } from "styled-components";
 import type { FileObject } from "../types/Common";
-import { blobClient } from "@calimero-network/calimero-client";
+import { downloadBlob } from "../api/meroJsClient";
 import { PhotoProvider, PhotoView } from "react-photo-view";
 
 const ImageWrapper = styled.div<{ $size: number }>`
@@ -118,8 +118,7 @@ export default function MessageImageField({
       setIsLoading(true);
       setHasError(false);
 
-      blobClient
-        .downloadBlob(file.blobId, contextId)
+      downloadBlob(file.blobId, contextId)
         .then((blob) => {
           if (!blob) {
             setHasError(true);
@@ -155,7 +154,7 @@ export default function MessageImageField({
     }
 
     try {
-      const blob = await blobClient.downloadBlob(file.blobId, contextId);
+      const blob = await downloadBlob(file.blobId, contextId);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;

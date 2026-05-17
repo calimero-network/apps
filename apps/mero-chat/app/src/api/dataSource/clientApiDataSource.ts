@@ -1,10 +1,11 @@
 import {
-  type ApiResponse,
-  getAppEndpointKey,
   getContextId,
-  getExecutorPublicKey,
-  rpcClient,
-} from "@calimero-network/calimero-client";
+  getContextIdentity as getExecutorPublicKey,
+
+} from "@calimero-network/mero-react";
+import type { ExecuteParams } from "@calimero-network/mero-js";
+import type { ApiResponse } from "../types";
+import { rpcExec } from "../meroJsClient";
 import {
   type AcceptInvitationProps,
   type ChannelInfo,
@@ -29,39 +30,58 @@ import {
   type JoinChannelProps,
   type JoinChatProps,
   type LeaveChannelProps,
+  type MarkAsReadProps,
+  type GetUnreadProps,
   type Message,
   type ReadDmProps,
   type ReadMessageProps,
   type SendMessageProps,
-  type UpdateDmHashProps,
+  type SetMemberRoleProps,
+  type GetMemberRoleProps,
+  type ListRolesProps,
+  type MemberRoleEntry,
+  type Role,
   type UpdateInvitationPayloadProps,
   type UpdateNewIdentityProps,
   type UpdateReactionProps,
   type UserId,
+  type SearchAllMessagesProps,
 } from "../clientApi";
-import { getDmContextId } from "../../utils/session";
+import { getMessengerDisplayName } from "../../utils/messengerName";
 
+// Backward-compat shim: dataSource code calls
+//   getJsonRpcClient().execute<any, T>(params, config)
+// which now routes through mero-js via our rpcExec wrapper. The wrapper
+// rebuilds the legacy `{ result: { output }, error: { code, error: { cause: { info: { message } } } } }`
+// envelope so callsites don't need touching.
 export function getJsonRpcClient() {
-  const appEndpointKey = getAppEndpointKey();
-  if (!appEndpointKey) {
-    throw new Error(
-      "Application endpoint key is missing. Please check your configuration.",
-    );
-  }
-  return rpcClient;
+  return {
+    execute: <_Args, T>(params: ExecuteParams, _config?: unknown) =>
+      rpcExec<T>(params, _config),
+  };
 }
 
 export class ClientApiDataSource implements ClientApi {
   async joinChat(props: JoinChatProps): ApiResponse<string> {
     try {
+      if (!props.username?.trim()) {
+        return {
+          data: null,
+          error: {
+            code: 400,
+            message: "Username is required",
+          },
+        };
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await getJsonRpcClient().execute<any, string>(
         {
-          contextId: (props.isDM ? getDmContextId() : props.contextId || getContextId()) || "",
-          method: ClientMethod.JOIN_CHAT,
+          contextId: props.contextId || getContextId() || "",
+          method: "set_profile",
           argsJson: {
-            username: props.username,
-            is_dm: props.isDM || false,
+            username: props.username.trim(),
+            avatar: null,
           },
           executorPublicKey:
             (props.isDM ? props.executor : (props.executorPublicKey || getExecutorPublicKey())) || "",
@@ -264,110 +284,58 @@ export class ClientApiDataSource implements ClientApi {
     }
   }
 
-  async getChannelInfo(props: GetChannelInfoProps): ApiResponse<ChannelInfo> {
+  async getChannelInfo(_props: GetChannelInfoProps): ApiResponse<ChannelInfo> {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await getJsonRpcClient().execute<any, ChannelInfo>(
+      const response = await getJsonRpcClient().execute<any, {
+        name: string; context_type: string; description: string;
+        created_at: number; creator: string;
+      }>(
         {
           contextId: getContextId() || "",
-          method: ClientMethod.GET_CHANNEL_INFO,
-          argsJson: {
-            channel: props.channel,
-          },
+          method: "get_info",
+          argsJson: {},
           executorPublicKey: getExecutorPublicKey() || "",
         },
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-          timeout: 10000,
-        },
+        { headers: { "Content-Type": "application/json" }, timeout: 10000 },
       );
       if (response?.error) {
-        return {
-          data: null,
-          error: {
-            code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
-          },
-        };
+        return { data: null, error: { code: response.error.code, message: "get_info failed" } };
       }
+      const out = response?.result.output;
       return {
-        data: response?.result.output as ChannelInfo,
+        data: {
+          channel_type: out?.context_type ?? "",
+          created_at: out?.created_at ?? 0,
+          created_by: out?.creator ?? "",
+          created_by_username: "",
+          links_allowed: true,
+          read_only: false,
+          unread_count: 0,
+          unread_mentions: 0,
+        },
         error: null,
       };
-    } catch (error) {
-      console.error("getChannelInfo failed:", error);
-      let errorMessage = "An unexpected error occurred during getChannelInfo";
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      } else if (typeof error === "string") {
-        errorMessage = error;
-      }
-      return {
-        error: {
-          code: 500,
-          message: errorMessage,
-        },
-      };
+    } catch {
+      return { data: null, error: { code: 500, message: "get_info failed" } };
     }
   }
 
   async getChannelMembers(
-    props: GetChannelMembersProps,
+    _props: GetChannelMembersProps,
   ): ApiResponse<Map<string, string>> {
     try {
-      const response = await getJsonRpcClient().execute<
-       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        any,
-        Map<string, string>
-      >(
-        {
-          contextId: getContextId() || "",
-          method: ClientMethod.GET_CHANNEL_MEMBERS,
-          argsJson: {
-            channel: props.channel,
-          },
-          executorPublicKey: getExecutorPublicKey() || "",
-        },
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-          timeout: 10000,
-        },
-      );
-      if (response?.error) {
-        return {
-          data: null,
-          error: {
-            code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
-          },
-        };
+      const contextId = getContextId() || "";
+      const executorPublicKey = getExecutorPublicKey() || "";
+      if (!contextId || !executorPublicKey) return { data: new Map(), error: null };
+      const profilesRes = await this.getProfiles(contextId, executorPublicKey);
+      const memberMap = new Map<string, string>();
+      for (const p of profilesRes.data ?? []) {
+        if (p.identity && p.username) memberMap.set(p.identity, p.username);
       }
-
-      return {
-        data: response?.result.output as Map<string, string>,
-        error: null,
-      };
-    } catch (error) {
-      console.error("getChannelMembers failed:", error);
-      let errorMessage =
-        "An unexpected error occurred during getChannelMembers";
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      } else if (typeof error === "string") {
-        errorMessage = error;
-      }
-      return {
-        error: {
-          code: 500,
-          message: errorMessage,
-        },
-      };
+      return { data: memberMap, error: null };
+    } catch {
+      return { data: new Map(), error: null };
     }
   }
 
@@ -423,56 +391,11 @@ export class ClientApiDataSource implements ClientApi {
   }
 
   async getNonMemberUsers(
-    props: GetNonMemberUsersProps,
+    _props: GetNonMemberUsersProps,
   ): ApiResponse<UserId[]> {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await getJsonRpcClient().execute<any, UserId[]>(
-        {
-          contextId: getContextId() || "",
-          method: ClientMethod.GET_INVITE_USERS,
-          argsJson: {
-            channel: props.channel,
-          },
-          executorPublicKey: getExecutorPublicKey() || "",
-        },
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-          timeout: 10000,
-        },
-      );
-      if (response?.error) {
-        return {
-          data: null,
-          error: {
-            code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
-          },
-        };
-      }
-      return {
-        data: response?.result.output as UserId[],
-        error: null,
-      };
-    } catch (error) {
-      console.error("getNonMemberUsers failed:", error);
-      let errorMessage =
-        "An unexpected error occurred during getNonMemberUsers";
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      } else if (typeof error === "string") {
-        errorMessage = error;
-      }
-      return {
-        error: {
-          code: 500,
-          message: errorMessage,
-        },
-      };
-    }
+    // get_non_member_users does not exist in the WASM contract.
+    // Return empty — the invite flow degrades gracefully.
+    return { data: [], error: null };
   }
 
   async joinChannel(props: JoinChannelProps): ApiResponse<string> {
@@ -577,7 +500,7 @@ export class ClientApiDataSource implements ClientApi {
 
   async getMessages(props: GetMessagesProps): ApiResponse<FullMessageResponse> {
     try {
-      const useContext = props.refetch_context_id ? props.refetch_context_id : (props.is_dm ? getDmContextId() : getContextId()) || "";
+      const useContext = props.refetch_context_id ? props.refetch_context_id : getContextId() || "";
       const useIdentity = props.refetch_identity ? props.refetch_identity : (props.is_dm ? props.dm_identity : getExecutorPublicKey()) || "";
       const response = await getJsonRpcClient().execute<
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -637,6 +560,57 @@ export class ClientApiDataSource implements ClientApi {
     }
   }
 
+  async searchAllMessages(props: SearchAllMessagesProps): ApiResponse<FullMessageResponse> {
+    try {
+      const contextId = props.contextId ?? getContextId() ?? "";
+      const executorPublicKey = props.executorPublicKey ?? getExecutorPublicKey() ?? "";
+      const response = await getJsonRpcClient().execute<
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        any,
+        FullMessageResponse
+      >(
+        {
+          contextId,
+          method: ClientMethod.SEARCH_ALL_MESSAGES,
+          argsJson: {
+            search_term: props.search_term,
+            ...(props.limit !== undefined ? { limit: props.limit } : {}),
+            ...(props.offset !== undefined ? { offset: props.offset } : {}),
+          },
+          executorPublicKey,
+        },
+        {
+          headers: { "Content-Type": "application/json" },
+          timeout: 10000,
+        },
+      );
+      if (response?.error) {
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        };
+      }
+      return {
+        data: response?.result.output as FullMessageResponse,
+        error: null,
+      };
+    } catch (error) {
+      let errorMessage = "An unexpected error occurred during searchAllMessages";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return {
+        error: { code: 500, message: errorMessage },
+      };
+    }
+  }
+
   async sendMessage(props: SendMessageProps): ApiResponse<Message> {
     try {
       if (!props.message) {
@@ -653,7 +627,7 @@ export class ClientApiDataSource implements ClientApi {
         Message
       >(
         {
-          contextId: (props.is_dm ? getDmContextId() : getContextId()) || "",
+          contextId: getContextId() || "",
           method: ClientMethod.SEND_MESSAGE,
           argsJson: {
             group: props.group,
@@ -662,7 +636,7 @@ export class ClientApiDataSource implements ClientApi {
             mentions_usernames: props.usernames,
             parent_message: props.parent_message,
             timestamp: props.timestamp,
-            sender_username: "",
+            sender_username: getMessengerDisplayName(),
             ...(props.files && props.files.length > 0
               ? { files: props.files }
               : {}),
@@ -713,60 +687,6 @@ export class ClientApiDataSource implements ClientApi {
     }
   }
 
-  async getDmIdentityByContext(props: { context_id: string }): ApiResponse<string> {
-    try {
-      const response = await getJsonRpcClient().execute<
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        any,
-        string
-      >(
-        {
-          contextId: getContextId() || "",
-          method: ClientMethod.GET_DM_IDENTITY_BY_CONTEXT,
-          argsJson: {
-            context_id: props.context_id,
-          },
-          executorPublicKey: getExecutorPublicKey() || "",
-        },
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-          timeout: 10000,
-        },
-      );
-
-      if (response?.error) {
-        return {
-          data: null,
-          error: {
-            code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
-          },
-        };
-      }
-
-      return {
-        data: response?.result.output as string,
-        error: null,
-      };
-    } catch (error) {
-      console.error("getDmIdentityByContext failed:", error);
-      let errorMessage = "An unexpected error occurred during getDmIdentityByContext";
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      } else if (typeof error === "string") {
-        errorMessage = error;
-      }
-      return {
-        error: {
-          code: 500,
-          message: errorMessage,
-        },
-      };
-    }
-  }
 
   async getDms(): ApiResponse<DMChatInfo[]> {
     try {
@@ -820,53 +740,17 @@ export class ClientApiDataSource implements ClientApi {
     props: GetChatMembersProps,
   ): ApiResponse<Map<string, string>> {
     try {
-      const response = await getJsonRpcClient().execute<
-       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        any,
-        Map<string, string>
-      >(
-        {
-          contextId: (props.isDM ? getDmContextId() : getContextId()) || "",
-          method: ClientMethod.GET_CHAT_USERNAMES,
-          argsJson: {},
-          executorPublicKey:
-            (props.isDM ? props.executor : getExecutorPublicKey()) || "",
-        },
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-          timeout: 10000,
-        },
-      );
-      if (response?.error) {
-        return {
-          data: null,
-          error: {
-            code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
-          },
-        };
+      const contextId = getContextId() || "";
+      const executorPublicKey = (props.isDM ? props.executor : getExecutorPublicKey()) || "";
+      if (!contextId || !executorPublicKey) return { data: new Map(), error: null };
+      const profilesRes = await this.getProfiles(contextId, executorPublicKey);
+      const memberMap = new Map<string, string>();
+      for (const p of profilesRes.data ?? []) {
+        if (p.identity && p.username) memberMap.set(p.identity, p.username);
       }
-      return {
-        data: response?.result.output as Map<string, string>,
-        error: null,
-      };
-    } catch (error) {
-      console.error("getChatMembers failed:", error);
-      let errorMessage = "An unexpected error occurred during getChatMembers";
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      } else if (typeof error === "string") {
-        errorMessage = error;
-      }
-      return {
-        error: {
-          code: 500,
-          message: errorMessage,
-        },
-      };
+      return { data: memberMap, error: null };
+    } catch {
+      return { data: new Map(), error: null };
     }
   }
 
@@ -931,7 +815,7 @@ export class ClientApiDataSource implements ClientApi {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await getJsonRpcClient().execute<any, string>(
         {
-          contextId: (props.is_dm ? getDmContextId() : getContextId()) || "",
+          contextId: getContextId() || "",
           method: ClientMethod.UPDATE_REACTION,
           argsJson: {
             message_id: props.messageId,
@@ -985,7 +869,7 @@ export class ClientApiDataSource implements ClientApi {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await getJsonRpcClient().execute<any, string>(
         {
-          contextId: (props.is_dm ? getDmContextId() : getContextId()) || "",
+          contextId: getContextId() || "",
           method: ClientMethod.DELETE_MESSAGE,
           argsJson: {
             group: props.is_dm ? { name: "private_dm" } : props.group,
@@ -1038,7 +922,7 @@ export class ClientApiDataSource implements ClientApi {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await getJsonRpcClient().execute<any, Message>(
         {
-          contextId: (props.is_dm ? getDmContextId() : getContextId()) || "",
+          contextId: getContextId() || "",
           method: ClientMethod.EDIT_MESSAGE,
           argsJson: {
             group: props.is_dm ? { name: "private_dm" } : props.group,
@@ -1345,57 +1229,6 @@ export class ClientApiDataSource implements ClientApi {
     }
   }
 
-  async updateDmHash(props: UpdateDmHashProps): ApiResponse<string> {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await getJsonRpcClient().execute<any, string>(
-        {
-          contextId: getContextId() || "",
-          method: ClientMethod.UPDATE_DM_HASH,
-          argsJson: {
-            sender_id: props.sender_id,
-            other_user_id: props.other_user_id,
-            new_hash: props.new_hash,
-          },
-          executorPublicKey: getExecutorPublicKey() || "",
-        },
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-          timeout: 10000,
-        },
-      );
-      if (response?.error) {
-        return {
-          data: null,
-          error: {
-            code: response?.error.code,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            message: (response?.error.error.cause.info as any).message,
-          },
-        };
-      }
-      return {
-        data: response?.result.output as string,
-        error: null,
-      };
-    } catch (error) {
-      console.error("updateDmHash failed:", error);
-      let errorMessage = "An unexpected error occurred during updateDmHash";
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      } else if (typeof error === "string") {
-        errorMessage = error;
-      }
-      return {
-        error: {
-          code: 500,
-          message: errorMessage,
-        },
-      };
-    }
-  }
 
   async readDm(props: ReadDmProps): ApiResponse<string> {
     try {
@@ -1449,14 +1282,14 @@ export class ClientApiDataSource implements ClientApi {
 
   async getUsername(props: GetUsernameProps): ApiResponse<string> {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await getJsonRpcClient().execute<any, string>(
+      const response = await getJsonRpcClient().execute<
+        Record<string, never>,
+        { identity: string; username: string; avatar?: string }[]
+      >(
         {
           contextId: props.contextId || getContextId() || "",
-          method: ClientMethod.GET_USERNAME,
-          argsJson: {
-            user_id: props.userId,
-          },
+          method: "get_profiles",
+          argsJson: {},
           executorPublicKey: props.executorPublicKey || getExecutorPublicKey() || "",
         },
         {
@@ -1476,8 +1309,23 @@ export class ClientApiDataSource implements ClientApi {
           },
         };
       }
+
+      const profiles = Array.isArray(response?.result?.output)
+        ? response.result.output
+        : [];
+      const match = profiles.find((profile) => profile.identity === props.userId);
+      if (!match) {
+        return {
+          data: null,
+          error: {
+            code: 404,
+            message: "Username not found for this identity",
+          },
+        };
+      }
+
       return {
-        data: response?.result.output as string,
+        data: match.username,
         error: null,
       };
     } catch (error) {
@@ -1489,11 +1337,293 @@ export class ClientApiDataSource implements ClientApi {
         errorMessage = error;
       }
       return {
+        data: null,
         error: {
           code: 500,
           message: errorMessage,
         },
       };
+    }
+  }
+
+  /**
+   * Call `get_info()` on a specific context to retrieve its metadata.
+   * Used by the group-based channel list to get name/type/description per context.
+   */
+  async getContextInfo(
+    contextId: string,
+    executorPublicKey: string,
+  ): ApiResponse<import("../../types/Common").ContextInfo> {
+    try {
+      const response = await getJsonRpcClient().execute<
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        any,
+        import("../../types/Common").ContextInfo
+      >(
+        {
+          contextId,
+          method: "get_info",
+          argsJson: {},
+          executorPublicKey,
+        },
+        {
+          headers: { "Content-Type": "application/json" },
+          timeout: 10000,
+        },
+      );
+
+      if (response?.error) {
+        return {
+          data: null,
+          error: {
+            code: response.error.code,
+            message:
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (response.error.error?.cause?.info as any)?.message ??
+              "get_info RPC failed",
+          },
+        };
+      }
+
+      return {
+        data: response?.result.output as import("../../types/Common").ContextInfo,
+        error: null,
+      };
+    } catch (error) {
+      console.error("getContextInfo failed:", error);
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "An unexpected error occurred during getContextInfo";
+      return {
+        data: null,
+        error: { code: 500, message: errorMessage },
+      };
+    }
+  }
+
+  async getProfiles(
+    contextId: string,
+    executorPublicKey: string,
+  ): ApiResponse<{ identity: string; username: string; avatar?: string }[]> {
+    try {
+      const response = await getJsonRpcClient().execute<
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        any,
+        { identity: string; username: string; avatar?: string }[]
+      >(
+        {
+          contextId,
+          method: "get_profiles",
+          argsJson: {},
+          executorPublicKey,
+        },
+        {
+          headers: { "Content-Type": "application/json" },
+          timeout: 10000,
+        },
+      );
+
+      if (response?.error) {
+        return {
+          data: null,
+          error: {
+            code: response.error.code,
+            message:
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (response.error.error?.cause?.info as any)?.message ??
+              "get_profiles RPC failed",
+          },
+        };
+      }
+
+      return {
+        data: response?.result.output as { identity: string; username: string; avatar?: string }[],
+        error: null,
+      };
+    } catch (error) {
+      console.error("getProfiles failed:", error);
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "An unexpected error occurred during getProfiles";
+      return {
+        data: null,
+        error: { code: 500, message: errorMessage },
+      };
+    }
+  }
+
+  // ── Moderation: in-WASM role + ban gate ───────────────────────────────────
+
+  async setMemberRole(props: SetMemberRoleProps): ApiResponse<string> {
+    try {
+      const response = await getJsonRpcClient().execute<
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        any,
+        string
+      >(
+        {
+          contextId: props.contextId,
+          method: ClientMethod.SET_MEMBER_ROLE,
+          argsJson: { target: props.target, role: props.role },
+          executorPublicKey: props.executorPublicKey,
+        },
+        { headers: { "Content-Type": "application/json" }, timeout: 10000 },
+      );
+      if (response?.error) {
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        };
+      }
+      return { data: response?.result.output as string, error: null };
+    } catch (error) {
+      console.error("setMemberRole failed:", error);
+      const message =
+        error instanceof Error ? error.message : "setMemberRole failed";
+      return { data: null, error: { code: 500, message } };
+    }
+  }
+
+  async getMemberRole(props: GetMemberRoleProps): ApiResponse<Role> {
+    try {
+      const response = await getJsonRpcClient().execute<
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        any,
+        Role
+      >(
+        {
+          contextId: props.contextId,
+          method: ClientMethod.GET_MEMBER_ROLE,
+          argsJson: { identity: props.identity },
+          executorPublicKey: props.executorPublicKey,
+        },
+        { headers: { "Content-Type": "application/json" }, timeout: 10000 },
+      );
+      if (response?.error) {
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        };
+      }
+      return { data: response?.result.output as Role, error: null };
+    } catch (error) {
+      console.error("getMemberRole failed:", error);
+      const message =
+        error instanceof Error ? error.message : "getMemberRole failed";
+      return { data: null, error: { code: 500, message } };
+    }
+  }
+
+  async listRoles(props: ListRolesProps): ApiResponse<MemberRoleEntry[]> {
+    try {
+      const response = await getJsonRpcClient().execute<
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        any,
+        // WASM returns Vec<(UserId, Role)> serialised as a tuple-array.
+        Array<[string, Role]>
+      >(
+        {
+          contextId: props.contextId,
+          method: ClientMethod.LIST_ROLES,
+          argsJson: {},
+          executorPublicKey: props.executorPublicKey,
+        },
+        { headers: { "Content-Type": "application/json" }, timeout: 10000 },
+      );
+      if (response?.error) {
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        };
+      }
+      const tuples = (response?.result.output as Array<[string, Role]>) ?? [];
+      const data: MemberRoleEntry[] = tuples.map(([identity, role]) => ({
+        identity,
+        role,
+      }));
+      return { data, error: null };
+    } catch (error) {
+      console.error("listRoles failed:", error);
+      const message =
+        error instanceof Error ? error.message : "listRoles failed";
+      return { data: null, error: { code: 500, message } };
+    }
+  }
+
+  async markAsRead(props: MarkAsReadProps): ApiResponse<string> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, string>(
+        {
+          contextId: props.contextId,
+          method: ClientMethod.MARK_AS_READ,
+          argsJson: { timestamp: props.timestamp },
+          executorPublicKey: props.executorPublicKey,
+        },
+        { headers: { "Content-Type": "application/json" }, timeout: 5000 },
+      );
+      if (response?.error) {
+        return { data: null, error: { code: response.error.code, message: "mark_as_read failed" } };
+      }
+      return { data: response?.result.output as string, error: null };
+    } catch {
+      return { data: null, error: { code: 500, message: "mark_as_read failed" } };
+    }
+  }
+
+  async getUnreadCount(props: GetUnreadProps): ApiResponse<number> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, number>(
+        {
+          contextId: props.contextId,
+          method: ClientMethod.GET_UNREAD_COUNT,
+          argsJson: {},
+          executorPublicKey: props.executorPublicKey,
+        },
+        { headers: { "Content-Type": "application/json" }, timeout: 5000 },
+      );
+      if (response?.error) {
+        return { data: 0, error: null };
+      }
+      return { data: (response?.result.output as number) ?? 0, error: null };
+    } catch {
+      return { data: 0, error: null };
+    }
+  }
+
+  async getUnreadMentions(props: GetUnreadProps): ApiResponse<number> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, number>(
+        {
+          contextId: props.contextId,
+          method: ClientMethod.GET_UNREAD_MENTIONS,
+          argsJson: {},
+          executorPublicKey: props.executorPublicKey,
+        },
+        { headers: { "Content-Type": "application/json" }, timeout: 5000 },
+      );
+      if (response?.error) {
+        return { data: 0, error: null };
+      }
+      return { data: (response?.result.output as number) ?? 0, error: null };
+    } catch {
+      return { data: 0, error: null };
     }
   }
 }

@@ -191,14 +191,14 @@ const VirtualizedChat = <T extends Message>({
 
   return (
     <VirtuosoWrapper style={{ position: "relative", ...style }}>
-      {isLoadingInitial && <OverlayDiv type="loading" />}
+      {isLoadingInitial && messages.length === 0 && <OverlayDiv type="loading" />}
       {!isLoadingInitial && messages?.length === 0 && <NoMessages />}
       {hasNewMessages && NewMessageIndicator}
       <ScrollToBottomButton
         show={!isAtBottom && messages.length > 0}
         onClick={scrollToBottom}
       />
-      {!isLoadingInitial && messages.length > 0 && (
+      {messages.length > 0 && (
         <Virtuoso
           key={chatId}
           style={VIRTUOSO_CONFIGS.style}

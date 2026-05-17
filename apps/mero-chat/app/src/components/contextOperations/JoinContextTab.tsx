@@ -1,11 +1,12 @@
 import React, { useState } from "react";
 import { styled } from "styled-components";
-import { apiClient, type ResponseData } from "@calimero-network/calimero-client";
-import type {
-  JoinContextResponse,
-  NodeIdentity,
-  SignedOpenInvitation,
-} from "@calimero-network/calimero-client/lib/api/nodeApi";
+import type { ResponseData } from "../../api/types";
+import {
+  nodeApi as apiClientNode,
+  type LegacyJoinContextResponse as JoinContextResponse,
+  type LegacyNodeIdentity as NodeIdentity,
+  type LegacySignedOpenInvitation as SignedOpenInvitation,
+} from "../../api/meroJsClient";
 import { Button, Input } from "@calimero-network/mero-ui";
 
 const TabContent = styled.div`
@@ -61,8 +62,7 @@ export default function JoinContextTab() {
 
     let executorPublicKey = "";
 
-    const response: ResponseData<NodeIdentity> = await apiClient
-      .node()
+    const response: ResponseData<NodeIdentity> = await apiClientNode
       .createNewIdentity();
 
     if (response.error) {
@@ -87,8 +87,7 @@ export default function JoinContextTab() {
     }
 
     try {
-      const response: ResponseData<JoinContextResponse> = await apiClient
-        .node()
+      const response: ResponseData<JoinContextResponse> = await apiClientNode
         .joinContextByOpenInvitation(
           JSON.parse(invitationPayload.trim()) as SignedOpenInvitation,
           executorPublicKey

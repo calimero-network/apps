@@ -2,7 +2,7 @@ import React from "react";
 import { styled } from "styled-components";
 import type { ChatFile, FileObject } from "../types/Common";
 import { useState } from "react";
-import { blobClient } from "@calimero-network/calimero-client";
+import { uploadBlobDirect } from "../api/dataSource/groupApiDataSource";
 
 const UploadComponentWrapper = styled.div``;
 
@@ -92,7 +92,7 @@ export default function UploadComponent({
   text,
   onError,
   onUploaded,
-  expectedHash = "",
+  expectedHash: _expectedHash = "",
   onReplace,
 }: UploadComponentProps) {
   const [uploading, setUploading] = useState(false);
@@ -109,7 +109,7 @@ export default function UploadComponent({
         await onReplace(currentFile ?? null);
       }
 
-      const res = await blobClient.uploadBlob(file, () => undefined, expectedHash);
+      const res = await uploadBlobDirect(file);
 
       if (res.error || !res.data?.blobId) {
         throw new Error(res.error?.message || "Failed to upload attachment");

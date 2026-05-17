@@ -17,8 +17,8 @@ interface UseNewMessageIndicatorReturn {
 }
 
 export function useNewMessageIndicator<T extends Message>({
-  isAtBottom,
-  shouldTriggerNewItemIndicator,
+  isAtBottom: _isAtBottom,
+  shouldTriggerNewItemIndicator: _shouldTriggerNewItemIndicator,
 }: UseNewMessageIndicatorProps<T>): UseNewMessageIndicatorReturn {
   const [hasNewMessages, setHasNewMessages] = useState<boolean>(false);
 

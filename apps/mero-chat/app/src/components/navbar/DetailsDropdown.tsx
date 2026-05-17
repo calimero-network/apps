@@ -3,6 +3,7 @@ import type { ActiveChat } from "../../types/Common";
 import ChannelDetailsPopup from "../popups/ChannelDetailsPopup";
 import { useState } from "react";
 import type { UserId } from "../../api/clientApi";
+import { isRestrictedChannelType } from "../../utils/channelVisibility";
 
 const DropdownSelector = styled.div`
   display: flex;
@@ -82,8 +83,10 @@ interface DetailsDropdownProps {
   channelUserList: Map<string, string>;
   nonInvitedUserList: UserId[];
   reFetchChannelMembers: () => void;
-  setActiveChat: (chat: ActiveChat) => void;
+  setActiveChat: (chat: ActiveChat | null) => void;
   fetchChannels: () => void;
+  onChannelLeft?: (contextId: string) => void;
+  getSubgroupForContext?: (contextId: string) => string | undefined;
 }
 
 const IconContainer = styled.div`
@@ -118,12 +121,14 @@ export default function DetailsDropdown({
   reFetchChannelMembers,
   setActiveChat,
   fetchChannels,
+  onChannelLeft,
+  getSubgroupForContext,
 }: DetailsDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   if (activeChat.type === "channel") {
     // Use the actual channelType from the activeChat
-    const isPrivateChannel = activeChat.channelType === "Private";
+    const isPrivateChannel = isRestrictedChannelType(activeChat.channelType);
 
     const toggle = (
       <DropdownSelector>
@@ -171,6 +176,8 @@ export default function DetailsDropdown({
         reFetchChannelMembers={reFetchChannelMembers}
         setActiveChat={setActiveChat}
         fetchChannels={fetchChannels}
+        onChannelLeft={onChannelLeft}
+        getSubgroupForContext={getSubgroupForContext}
       />
     );
   }
@@ -179,7 +186,7 @@ export default function DetailsDropdown({
   }
   const title =
     activeChat.type === "direct_message"
-      ? activeChat.username || ""
+      ? activeChat.name
       : activeChat.name;
 
   return (

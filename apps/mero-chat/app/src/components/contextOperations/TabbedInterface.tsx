@@ -19,7 +19,7 @@ export default function TabbedInterface({
   tabs,
   isAuthenticated,
   isConfigSet,
-  onInvitationSaved,
+  onInvitationSaved: _onInvitationSaved,
 }: TabbedInterfaceProps) {
   const [activeTab, setActiveTab] = useState(tabs[0].id);
 
@@ -50,7 +50,6 @@ export default function TabbedInterface({
         <ChatTab
           isAuthenticated={isAuthenticated || false}
           isConfigSet={isConfigSet || false}
-          onInvitationSaved={onInvitationSaved}
         />
       </TabPanel>
     </>

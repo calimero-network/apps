@@ -5,7 +5,7 @@ import Avatar from "../components/virtualized-chat/Message/Avatar";
 import RenderHtml from "../components/virtualized-chat/Message/RenderHtml";
 import MessageImageField from "./MessageImageField";
 import MessageFileField from "./MessageFileField";
-import { blobClient } from "@calimero-network/calimero-client";
+import { downloadBlob } from "../api/meroJsClient";
 import { MessageText } from "../components/virtualized-chat/Message";
 
 const Wrapper = styled.div`
@@ -79,6 +79,20 @@ const Timestamp = styled.div`
 const EmptyBody = styled.div`
   font-size: 13px;
   color: #777583;
+`;
+
+const ThreadBadge = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(87, 101, 242, 0.15);
+  color: #a8b7ff;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  width: fit-content;
 `;
 
 const Attachments = styled.div`
@@ -155,7 +169,7 @@ export default function SearchResultMessage({
       if (!contextId) return;
 
       try {
-        const blob = await blobClient.downloadBlob(
+        const blob = await downloadBlob(
           attachment.ipfs_cid,
           contextId
         );
@@ -176,6 +190,9 @@ export default function SearchResultMessage({
 
   return (
     <Wrapper>
+      {message.parentMessageId && (
+        <ThreadBadge>↩ Thread reply</ThreadBadge>
+      )}
       <Header>
         <AvatarWrapper>
           <Avatar

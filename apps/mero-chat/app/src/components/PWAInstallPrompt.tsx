@@ -33,7 +33,7 @@ const PWAInstallPrompt = memo(function PWAInstallPrompt() {
       return false;
     };
 
-    const installed = checkIfInstalled();
+    const _installed = checkIfInstalled();
 
     // Listen for the beforeinstallprompt event
     const handleBeforeInstallPrompt = (e: Event) => {

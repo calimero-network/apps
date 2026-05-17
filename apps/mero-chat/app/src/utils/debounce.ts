@@ -5,13 +5,13 @@
  *
  * Returns a debounced function with a cancel method to clear pending invocations
  */
-export function debounce<T extends (...args: any[]) => any>(
-  func: T,
+export function debounce<TArgs extends unknown[]>(
+  func: (...args: TArgs) => unknown,
   wait: number,
-): ((...args: Parameters<T>) => void) & { cancel: () => void } {
+): ((...args: TArgs) => void) & { cancel: () => void } {
   let timeout: ReturnType<typeof setTimeout> | undefined;
 
-  const debouncedFn = (...args: Parameters<T>) => {
+  const debouncedFn = (...args: TArgs) => {
     if (timeout !== undefined) {
       clearTimeout(timeout);
     }

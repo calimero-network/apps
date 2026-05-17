@@ -7,26 +7,41 @@ interface TabSwitchProps {
   userCount: number;
 }
 
-const Popup = styled.div`
+const TabBar = styled.div`
   display: flex;
-  align-items: center;
-  font-family: Helvetica Neue;
-  font-size: 14px;
-  font-style: normal;
-  font-weight: 400;
-  line-height: 150%;
-  padding-top: 0.75rem;
-  border-bottom: solid 1px #282933;
-  margin-bottom: 0.75rem;
+  align-items: flex-end;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  margin-bottom: 1rem;
+  gap: 0.25rem;
 `;
 
-const SwitchOption = styled.div<{ selected?: boolean; leftPadding?: boolean }>`
-  display: flex;
-  column-gap: 0.5rem;
-  padding-right: 1rem;
-  ${({ leftPadding }) => leftPadding && "padding-left: 1rem;"}
+const SwitchOption = styled.button<{ $selected?: boolean }>`
+  background: none;
+  border: none;
+  padding: 0.5rem 0.75rem;
   cursor: pointer;
-  ${({ selected }) => (selected ? "color: #8AA200" : "color: #fff;")}
+  font-size: 0.8rem;
+  font-weight: ${({ $selected }) => ($selected ? "600" : "400")};
+  color: ${({ $selected }) => ($selected ? "#a5ff11" : "rgba(255,255,255,0.45)")};
+  position: relative;
+  transition: color 0.15s ease;
+  white-space: nowrap;
+
+  &::after {
+    content: "";
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    border-radius: 1px 1px 0 0;
+    background: ${({ $selected }) => ($selected ? "#a5ff11" : "transparent")};
+    transition: background 0.15s ease;
+  }
+
+  &:hover {
+    color: ${({ $selected }) => ($selected ? "#a5ff11" : "rgba(255,255,255,0.7)")};
+  }
 `;
 
 const TabSwitch: React.FC<TabSwitchProps> = (props) => {
@@ -34,30 +49,20 @@ const TabSwitch: React.FC<TabSwitchProps> = (props) => {
   const setSelectedTabIndex = props.setSelectedTabIndex;
   const userCount = props.userCount ?? 0;
 
-  const items = [
-    {
-      name: "About",
-      icon: "bi bi-info-circle-fill",
-    },
-    {
-      name: `Members (${userCount})`,
-      icon: "bi bi-people-fill",
-    },
-  ];
+  const items = ["About", `Members (${userCount})`];
 
   return (
-    <Popup>
-      {items.map((item, index) => (
+    <TabBar>
+      {items.map((name, index) => (
         <SwitchOption
           key={index}
-          selected={selectedTabIndex === index}
+          $selected={selectedTabIndex === index}
           onClick={() => setSelectedTabIndex(index)}
         >
-          <i className={item.icon}></i>
-          <p>{item.name}</p>
+          {name}
         </SwitchOption>
       ))}
-    </Popup>
+    </TabBar>
   );
 };
 

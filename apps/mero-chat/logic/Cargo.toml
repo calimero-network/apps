@@ -1,24 +1,29 @@
+# TODO BEFORE MERGE: revert calimero-sdk/storage/wasm-abi to "edge" (or the
+# published stable tag) instead of the pinned rc below. The rc pin is here so
+# local builds match the dev merod binary (0.10.1-rc.38). On main these should
+# track the latest published release so CI doesn't break on the next rc bump.
+
 [package]
 name = "curb"
 description = "Calimero chat"
-version = "0.0.1"
+version = "2.0.0"
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 base64 = "0.22.1"
 borsh = "0.10.3"
 borsh-derive = "0.10.3"
 bs58 = "0.5.1"
-calimero-sdk = { git = "https://github.com/calimero-network/core", branch = "master" }
-calimero-storage = { git = "https://github.com/calimero-network/core", branch = "master" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core", branch = "master" }
+calimero-sdk = "0.10.1-rc.38"
+calimero-storage = "0.10.1-rc.38"
+calimero-storage-macros = "0.10.1-rc.38"
 thiserror = "1.0.56"
 
 [build-dependencies]
-calimero-wasm-abi = { git = "https://github.com/calimero-network/core", branch = "master" }
+calimero-wasm-abi = "0.10.1-rc.38"
 serde_json = "1.0.113"
 
 [profile.app-release]

@@ -1,4 +1,4 @@
-import type { ApiResponse } from "@calimero-network/calimero-client";
+import type { ApiResponse } from "../api/types";
 
 /**
  * API Error type

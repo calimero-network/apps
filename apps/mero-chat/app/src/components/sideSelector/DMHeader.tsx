@@ -1,6 +1,9 @@
 import { styled } from "styled-components";
 import StartDMPopup, { type CreateContextResult } from "../popups/StartDMPopup";
 import { useCallback, memo } from "react";
+import { getGroupId } from "../../constants/config";
+import { useCurrentGroupPermissions } from "../../hooks/useCurrentGroupPermissions";
+import type { DMContextInfo } from "../../hooks/useDMs";
 
 const Container = styled.div<{ $isCollapsed?: boolean }>`
   display: flex;
@@ -44,52 +47,74 @@ const PlusButton = styled.div`
 
 interface DMHeaderProps {
   createDM: (value: string) => Promise<CreateContextResult>;
-  chatMembers: Map<string, string>;
+  availableMembers: Map<string, string>;
+  privateDMs: DMContextInfo[];
   isCollapsed?: boolean;
+  onFetchMembers?: () => Promise<void>;
 }
 
 const DMHeader = memo(function DMHeader({
   createDM,
-  chatMembers,
+  availableMembers,
+  privateDMs,
   isCollapsed,
+  onFetchMembers,
 }: DMHeaderProps) {
+  const permissions = useCurrentGroupPermissions(getGroupId());
+  // Show while loading / before identity resolves; once resolved, allow
+  // admins or members holding CAN_CREATE_SUBGROUP. A DM is a restricted
+  // root-level subgroup + context (see createDmContextInGroup), same
+  // primitive as channel creation.
+  const resolved = !permissions.loading && permissions.memberIdentity !== "";
+  const canShowCreate =
+    !resolved || permissions.isAdmin || permissions.canCreateSubgroup;
+
   const isValidIdentityId = useCallback(
     (value: string) => {
-      const userEntries =
-        chatMembers instanceof Map
-          ? Array.from(chatMembers.entries())
-          : Object.entries(chatMembers);
-      const usernames = userEntries.map(([_, username]) =>
-        (username as string).toLowerCase(),
-      );
-      const isMember = usernames.includes(value.toLowerCase());
+      const identity = value.trim();
+      const isMember = availableMembers.has(identity);
 
       if (!isMember) {
-        return { isValid: false, error: "User not member of this chat" };
+        return {
+          isValid: false,
+          error: "Cannot create DM: the user is not in the workspace",
+        };
+      }
+      // Block (and disable Next via StartDMPopup's disabled-on-invalid wiring)
+      // when a DM with this identity already exists, instead of letting the
+      // user submit and surface the same error post-hoc from createDM.
+      if (privateDMs.some((dm) => dm.otherIdentity === identity)) {
+        return {
+          isValid: false,
+          error: "A DM with this user already exists",
+        };
       }
       return { isValid: true, error: "" };
     },
-    [chatMembers],
+    [availableMembers, privateDMs],
   );
 
   return (
     <Container $isCollapsed={isCollapsed}>
       {!isCollapsed && <TextBold>{"Direct Messages"}</TextBold>}
-      <StartDMPopup
-        title="Create a new private DM context"
-        placeholder="invite user by entering their name"
-        buttonText="Next"
-        toggle={
-          <PlusButton>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth="2.5" strokeLinecap="round">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-          </PlusButton>
-        }
-        chatMembers={chatMembers}
-        validator={isValidIdentityId}
-        functionLoader={createDM}
-      />
+      {canShowCreate && (
+        <StartDMPopup
+          title="Create a new private DM context"
+          placeholder="Search by member identity"
+          buttonText="Next"
+          toggle={
+            <PlusButton>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth="2.5" strokeLinecap="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </PlusButton>
+          }
+          chatMembers={availableMembers}
+          validator={isValidIdentityId}
+          functionLoader={createDM}
+          onOpen={onFetchMembers}
+        />
+      )}
     </Container>
   );
 });

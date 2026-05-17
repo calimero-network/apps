@@ -1,8 +1,10 @@
 import React, { useState } from "react";
 import { styled } from "styled-components";
-import { apiClient } from "@calimero-network/calimero-client";
-import type { ResponseData } from "@calimero-network/calimero-client";
-import type { NodeIdentity } from "@calimero-network/calimero-client/lib/api/nodeApi";
+import type { ResponseData } from "../../api/types";
+import {
+  nodeApi as apiClientNode,
+  type LegacyNodeIdentity as NodeIdentity,
+} from "../../api/meroJsClient";
 import { Button, Input } from "@calimero-network/mero-ui";
 
 const TabContent = styled.div`
@@ -93,8 +95,7 @@ export default function CreateIdentityTab() {
     setMessage(null);
 
     try {
-      const response: ResponseData<NodeIdentity> = await apiClient
-        .node()
+      const response: ResponseData<NodeIdentity> = await apiClientNode
         .createNewIdentity();
 
       if (response.error) {

@@ -1,17 +1,9 @@
-import { useCalimero } from "@calimero-network/calimero-client";
-import { styled } from "styled-components";
-import TabbedInterface from "../../components/contextOperations/TabbedInterface";
-import { Button } from "@calimero-network/mero-ui";
-import {
-  clearDmContextId,
-  clearStoredSession,
-  clearSessionActivity,
-  getAllDmContextIds,
-} from "../../utils/session";
-import { useState, useEffect, useCallback } from "react";
-import { getInvitationFromStorage } from "../../utils/invitation";
-import InvitationHandlerPopup from "../../components/popups/InvitationHandlerPopup";
+import React from "react";
+import { useMero, ConnectButton } from "@calimero-network/mero-react";
+import { clearStoredSession, clearSessionActivity, clearNamespaceReady } from "../../utils/session";
+import { useNavigate } from "react-router-dom";
 import LandingPage from "./LandingPage";
+import NamespaceEntryPopup from "../../components/popups/NamespaceEntryPopup";
 
 declare global {
   interface Window {
@@ -19,186 +11,84 @@ declare global {
   }
 }
 
-export const Wrapper = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100vh;
-  background: #0e0e10;
-  font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  position: relative;
-  overflow: hidden;
-
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    pointer-events: none;
-  }
-`;
-
-export const Card = styled.div`
-  background: transparent;
-  backdrop-filter: blur(20px);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 1rem;
-  border-radius: 20px;
-  box-shadow:
-    0 25px 50px rgba(0, 0, 0, 0.5),
-    0 0 0 1px rgba(255, 255, 255, 0.05),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  width: 90%;
-  max-width: 450px;
-  position: relative;
-  z-index: 1;
-
-  @media (max-width: 768px) {
-    padding: 1.5rem;
-    width: 95%;
-    max-width: 400px;
-  }
-`;
-
-export const Title = styled.h1`
-  text-align: center;
-  color: #ffffff;
-  margin-bottom: 1rem;
-  font-size: 1.6rem;
-  font-weight: 600;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-  white-space: nowrap;
-
-  @media (max-width: 768px) {
-    font-size: 1.4rem;
-    margin-bottom: 0.75rem;
-  }
-`;
-
-export const ConnectWrapper = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
-  text-align: center;
-`;
-
-export const Subtitle = styled.h2`
-  text-align: center;
-  color: #b8b8d1;
-  margin-bottom: 1rem;
-  font-size: 0.9rem;
-  font-weight: 400;
-  line-height: 1.6;
-  opacity: 0.9;
-`;
-
-export const LogoutWrapper = styled.div`
-  display: flex;
-  justify-content: center;
-  margin-top: 1rem;
-`;
-
 interface LoginProps {
   isAuthenticated: boolean;
   isConfigSet: boolean;
 }
 
+// Keys that survive a fresh Connect — node URL, display name, per-identity
+// name cache, app id, and workspace alias cache. Everything else (tokens,
+// group selection, sessions, invitations, etc.) is wiped so the auth flow
+// starts from a clean slate.
+const CONNECT_PRESERVE_EXACT = new Set([
+  "mero:node_url",
+  "chat-username",
+  "calimero-application-id",
+  "calimero_group_aliases",
+]);
+// No prefix-based preservation: per-identity username rows were retired
+// in favor of the single global `chat-username` (preserved exactly above).
+const CONNECT_PRESERVE_PREFIX: string[] = [];
+
+function clearStorageForConnect(): void {
+  try {
+    const keep: Record<string, string> = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      const matchesPrefix = CONNECT_PRESERVE_PREFIX.some((p) => key.startsWith(p));
+      if (CONNECT_PRESERVE_EXACT.has(key) || matchesPrefix) {
+        const val = localStorage.getItem(key);
+        if (val !== null) keep[key] = val;
+      }
+    }
+    localStorage.clear();
+    sessionStorage.clear();
+    for (const [k, v] of Object.entries(keep)) localStorage.setItem(k, v);
+  } catch { /* ignore — storage may be unavailable */ }
+}
+
 export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
-  const { logout } = useCalimero();
-  const [hasInvitation, setHasInvitation] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [loggedOut, setLoggedOut] = useState(false);
-
-  const tabs = [{ id: "chat", label: "Chat" }];
-
-  const refreshInvitation = useCallback(() => {
-    setHasInvitation(!!getInvitationFromStorage());
-  }, []);
-
-  useEffect(() => {
-    refreshInvitation();
-  }, [refreshInvitation]);
+  const { logout } = useMero();
+  const navigate = useNavigate();
 
   const handleLogout = async () => {
+    const nodeUrl = localStorage.getItem("mero:node_url");
     clearStoredSession();
-    clearDmContextId();
     clearSessionActivity();
+    clearNamespaceReady();
+    sessionStorage.clear();
     logout();
-    // Preserve the persistent DM context IDs across the clear so the
-    // context dropdown can still filter them on next login.
-    const dmContextIds = getAllDmContextIds();
-    localStorage.clear();
-    if (dmContextIds.length > 0) {
-      localStorage.setItem("allDmContextIds", JSON.stringify(dmContextIds));
+    if (nodeUrl) localStorage.setItem("mero:node_url", nodeUrl);
+    if (window.__TAURI_INVOKE__) {
+      try { await window.__TAURI_INVOKE__("close_current_window"); } catch { /* ignore */ }
     }
-    setLoggedOut(true);
-    // Close the Tauri window via IPC (same mechanism as proxy_script.js)
-    try {
-      if (window.__TAURI_INVOKE__) {
-        await window.__TAURI_INVOKE__("close_current_window");
-      } else {
-        window.close();
-      }
-    } catch {
-      // Window close failed — the loggedOut message is already shown
-    }
+    navigate("/login");
   };
 
-  const handleInvitationSuccess = () => {
-    // Close popup and force TabbedInterface to refetch by changing key
-    setHasInvitation(false);
-    setRefreshKey((prev) => prev + 1);
-  };
-
-  const handleInvitationError = () => {
-    // Close popup on error/cancel
-    setHasInvitation(false);
-  };
-
-  if (loggedOut) {
-    return <LandingPage />;
-  }
-
-  // Nothing configured — no node URL, not authenticated. Show landing page.
+  // Not connected yet — show landing with ConnectButton.
+  // Wrap in a pointerDownCapture handler so stale localStorage is purged
+  // (whitelist preserved) before the SDK button kicks off the auth flow.
   if (!isAuthenticated && !isConfigSet) {
-    return <LandingPage />;
+    return (
+      <LandingPage
+        connectButton={
+          <div onPointerDownCapture={clearStorageForConnect}>
+            <ConnectButton />
+          </div>
+        }
+      />
+    );
   }
 
+  // Connected — show namespace entry popup over the landing background
   return (
-    <Wrapper>
-      {/* Show invitation popup on top of everything when user has authenticated */}
-      {hasInvitation && isAuthenticated && (
-        <InvitationHandlerPopup
-          onSuccess={handleInvitationSuccess}
-          onError={handleInvitationError}
-        />
-      )}
-      <Card>
-        <Title>Welcome to Calimero Chat</Title>
-        <TabbedInterface
-          key={refreshKey}
-          tabs={tabs}
-          isAuthenticated={isAuthenticated}
-          isConfigSet={isConfigSet}
-          onInvitationSaved={refreshInvitation}
-        />
-        {(isAuthenticated || isConfigSet) && (
-          <LogoutWrapper>
-            <Button onClick={handleLogout} variant="secondary">
-              Logout
-            </Button>
-          </LogoutWrapper>
-        )}
-      </Card>
-    </Wrapper>
+    <LandingPage>
+      <NamespaceEntryPopup
+        isAuthenticated={isAuthenticated}
+        isConfigSet={isConfigSet}
+        onLogout={() => void handleLogout()}
+      />
+    </LandingPage>
   );
 }

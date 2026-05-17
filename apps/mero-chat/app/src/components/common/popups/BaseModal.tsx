@@ -1,5 +1,5 @@
 import React from "react";
-import styled from "styled-components";
+import styled, { css, keyframes } from "styled-components";
 import * as Dialog from "@radix-ui/react-dialog";
 
 interface BaseModalProps {
@@ -10,7 +10,6 @@ interface BaseModalProps {
   isChild?: boolean;
 }
 
-// Visually hidden component for accessibility
 const VisuallyHidden = styled.span`
   position: absolute;
   width: 1px;
@@ -23,109 +22,80 @@ const VisuallyHidden = styled.span`
   border: 0;
 `;
 
-const OverlayContainer = styled.div`
+const fadeIn = keyframes`
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+`;
+
+const Overlay = styled.div`
   position: fixed;
   inset: 0;
   z-index: 20;
   display: flex;
   justify-content: center;
   align-items: center;
-  background-color: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(10px);
 `;
 
-const OverlayContainerChild = styled.div`
-  position: fixed;
-  inset: 0;
+const OverlayChild = styled(Overlay)`
   z-index: 1001;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background-color: rgba(0, 0, 0, 0.5);
 `;
 
-const PopupContainer = styled.div`
+const sharedContainer = css`
   position: relative;
-  background-color: #1d1d21;
-  padding: 1rem;
-  border-radius: 8px;
-  width: 540px;
+  background: #111113;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 1.75rem;
+  border-radius: 16px;
+  width: 480px;
   max-width: calc(100vw - 2rem);
   height: fit-content;
   max-height: calc(100vh - 2rem);
   overflow-y: auto;
   box-sizing: border-box;
+  box-shadow: 0 32px 64px rgba(0, 0, 0, 0.7);
+  animation: ${fadeIn} 0.2s ease both;
   outline: none;
-  &:focus {
-    outline: none;
-  }
-  &:focus-visible {
-    outline: none;
-  }
+  &:focus, &:focus-visible { outline: none; }
 `;
 
-const PopupContainerChild = styled.div`
-  position: relative;
-  background-color: #1d1d21;
-  padding: 1rem;
-  border-radius: 8px;
-  width: 540px;
-  max-width: calc(100vw - 2rem);
-  height: fit-content;
-  max-height: calc(100vh - 2rem);
-  overflow-y: auto;
-  box-sizing: border-box;
-  outline: none;
-  &:focus {
-    outline: none;
-  }
-  &:focus-visible {
-    outline: none;
-  }
-`;
+const PopupContainer = styled.div`${sharedContainer}`;
+const PopupContainerChild = styled.div`${sharedContainer}`;
 
-const BaseModal: React.FC<BaseModalProps> = (props) => {
-  const content = props.content;
-  const open = props.open;
-  const onOpenChange = props.onOpenChange;
-  const toggle = props.toggle;
-  const isChild = props.isChild;
-
-  return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Trigger asChild>{toggle}</Dialog.Trigger>
-      <Dialog.Overlay asChild>
-        {isChild ? (
-          <OverlayContainerChild>
-            <Dialog.Content asChild>
-              <PopupContainerChild>
-                <Dialog.Title asChild>
-                  <VisuallyHidden>Dialog</VisuallyHidden>
-                </Dialog.Title>
-                <Dialog.Description asChild>
-                  <VisuallyHidden>Dialog content</VisuallyHidden>
-                </Dialog.Description>
-                {content}
-              </PopupContainerChild>
-            </Dialog.Content>
-          </OverlayContainerChild>
-        ) : (
-          <OverlayContainer>
-            <Dialog.Content asChild>
-              <PopupContainer>
-                <Dialog.Title asChild>
-                  <VisuallyHidden>Dialog</VisuallyHidden>
-                </Dialog.Title>
-                <Dialog.Description asChild>
-                  <VisuallyHidden>Dialog content</VisuallyHidden>
-                </Dialog.Description>
-                {content}
-              </PopupContainer>
-            </Dialog.Content>
-          </OverlayContainer>
-        )}
-      </Dialog.Overlay>
-    </Dialog.Root>
-  );
-};
+const BaseModal: React.FC<BaseModalProps> = ({
+  content,
+  open,
+  onOpenChange,
+  toggle,
+  isChild,
+}) => (
+  <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Trigger asChild>{toggle}</Dialog.Trigger>
+    <Dialog.Overlay asChild>
+      {isChild ? (
+        <OverlayChild>
+          <Dialog.Content asChild>
+            <PopupContainerChild>
+              <Dialog.Title asChild><VisuallyHidden>Dialog</VisuallyHidden></Dialog.Title>
+              <Dialog.Description asChild><VisuallyHidden>Dialog content</VisuallyHidden></Dialog.Description>
+              {content}
+            </PopupContainerChild>
+          </Dialog.Content>
+        </OverlayChild>
+      ) : (
+        <Overlay>
+          <Dialog.Content asChild>
+            <PopupContainer>
+              <Dialog.Title asChild><VisuallyHidden>Dialog</VisuallyHidden></Dialog.Title>
+              <Dialog.Description asChild><VisuallyHidden>Dialog content</VisuallyHidden></Dialog.Description>
+              {content}
+            </PopupContainer>
+          </Dialog.Content>
+        </Overlay>
+      )}
+    </Dialog.Overlay>
+  </Dialog.Root>
+);
 
 export default BaseModal;

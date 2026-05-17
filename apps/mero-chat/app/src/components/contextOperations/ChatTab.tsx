@@ -1,29 +1,22 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, type ChangeEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { styled } from "styled-components";
-import {
-  setAppEndpointKey,
-  setContextId,
-  setExecutorPublicKey,
-  getAppEndpointKey,
-  getContextId,
-  getExecutorPublicKey,
-  apiClient,
-} from "@calimero-network/calimero-client";
-import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
-import { ContextApiDataSource } from "../../api/dataSource/nodeApiDataSource";
-import { extractErrorMessage } from "../../utils/errorParser";
-import { defaultActiveChat } from "../../mock/mock";
-import { getAllDmContextIds, getStoredSession, updateSessionChat } from "../../utils/session";
-import type { ResponseData } from "@calimero-network/calimero-client";
-import type { FetchContextIdentitiesResponse } from "@calimero-network/calimero-client/lib/api/nodeApi";
-import type { ActiveChat } from "../../types/Common";
-import type { ContextInfo } from "../../api/nodeApi";
+import { getNodeUrl } from "@calimero-network/mero-react";
 import { Button, Input } from "@calimero-network/mero-ui";
-import { StorageHelper } from "../../utils/storage";
+import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
+import type { GroupMember, GroupSummary } from "../../api/groupApi";
+import { clearStoredSession } from "../../utils/session";
 import {
-  saveInvitationToStorage,
-  parseInvitationInput,
-} from "../../utils/invitation";
+  getGroupMemberIdentity,
+  getGroupId,
+  getStoredGroupAlias,
+  setGroupId,
+  setGroupMemberIdentity,
+} from "../../constants/config";
+import {
+  getMessengerDisplayName,
+  setMessengerDisplayName,
+} from "../../utils/messengerName";
 
 const TabContent = styled.div`
   display: flex;
@@ -32,7 +25,6 @@ const TabContent = styled.div`
   align-items: center;
   width: 100%;
 `;
-
 
 const Form = styled.form`
   display: flex;
@@ -113,472 +105,260 @@ const Message = styled.div<{ type?: "success" | "error" | "info" }>`
           : "#b8b8d1"};
 `;
 
+const NewUsernameBanner = styled.div`
+  font-size: 0.68rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 6px;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.22);
+  color: rgba(147, 197, 253, 0.85);
+  line-height: 1.45;
+`;
+
 interface ChatTabProps {
   isAuthenticated: boolean;
   isConfigSet: boolean;
-  onInvitationSaved?: () => void;
+  _onInvitationSaved?: () => void;
+}
+
+function getWorkspaceLabel(group: GroupSummary): string {
+  return group.alias?.trim() || `${group.groupId.substring(0, 12)}...`;
+}
+
+function getMemberAlias(members: GroupMember[], memberIdentity: string): string {
+  return (
+    members.find((member) => member.identity === memberIdentity)?.alias?.trim() || ""
+  );
 }
 
 export default function ChatTab({
   isAuthenticated,
   isConfigSet,
-  onInvitationSaved,
 }: ChatTabProps) {
-  const [, setNodeUrl] = useState("");
-  const [availableContexts, setAvailableContexts] = useState<ContextInfo[]>([]);
-  const [selectedContextId, setSelectedContextId] = useState("");
-  const [contextIdentities, setContextIdentities] = useState<string[]>([]);
-  const [selectedIdentityId, setSelectedIdentityId] = useState("");
-  const [username, setUsername] = useState("");
-  const [fetchingContexts, setFetchingContexts] = useState(false);
-  const [fetchingIdentities, setFetchingIdentities] = useState(false);
-  const [checkingUsername, setCheckingUsername] = useState(false);
+  const navigate = useNavigate();
+  const [availableGroups, setAvailableGroups] = useState<GroupSummary[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState(getGroupId());
+  const [messengerName, setMessengerName] = useState(getMessengerDisplayName());
+  const [fetchingGroups, setFetchingGroups] = useState(false);
+  const [openingWorkspace, setOpeningWorkspace] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [isDisabled, setIsDisabled] = useState(false);
-  const lastCheckedIdentityRef = useRef<string | null>(null);
-  const [invitationInput, setInvitationInput] = useState("");
-  const [invitationError, setInvitationError] = useState("");
-  const [submittingInvitation, setSubmittingInvitation] = useState(false);
-  const [completeJoinUsername, setCompleteJoinUsername] = useState("");
-  const [completeJoinLoading, setCompleteJoinLoading] = useState(false);
-  const [completeJoinError, setCompleteJoinError] = useState("");
-  const [completeJoinSuccess, setCompleteJoinSuccess] = useState("");
+  const [hasExistingAlias, setHasExistingAlias] = useState(true);
+  const hasNamespaces = availableGroups.length > 0;
+  const isNewUsername = !hasExistingAlias && messengerName.trim().length > 0;
 
-  // Fetch contexts from node API when authenticated (no hardcoded contextId)
-  const fetchContexts = useCallback(async () => {
-    const url = getAppEndpointKey();
-    if (!url) return;
-    setFetchingContexts(true);
+  const resolveWorkspaceMember = useCallback(async (groupId: string) => {
+    const identityResponse = await new GroupApiDataSource().resolveCurrentMemberIdentity(
+      groupId,
+      getGroupMemberIdentity(groupId),
+    );
+
+    if (identityResponse.error || !identityResponse.data) {
+      throw new Error(
+        identityResponse.error?.message || "Failed to resolve namespace identity",
+      );
+    }
+
+    return {
+      memberIdentity: identityResponse.data.memberIdentity,
+      memberAlias: getMemberAlias(
+        identityResponse.data.members ?? [],
+        identityResponse.data.memberIdentity,
+      ),
+    };
+  }, []);
+
+  const fetchGroups = useCallback(async () => {
+    if (!getNodeUrl()) return;
+
+    setFetchingGroups(true);
     setError("");
+
     try {
-      const nodeApi = new ContextApiDataSource();
-      const response = await nodeApi.listContexts();
+      const response = await new GroupApiDataSource().listGroups();
       if (response.data && response.data.length > 0) {
-        const dmContextIds = new Set(getAllDmContextIds());
-        const nonDmContexts = response.data.filter(
-          (ctx) => !dmContextIds.has(ctx.contextId)
-        );
-        const contextsToShow = nonDmContexts.length > 0 ? nonDmContexts : response.data;
-        setAvailableContexts(contextsToShow);
-        if (contextsToShow.length === 1) {
-          setSelectedContextId(contextsToShow[0].contextId);
-        }
+        const groups = response.data.map((group) => ({
+          ...group,
+          alias: group.alias?.trim() || getStoredGroupAlias(group.groupId) || undefined,
+        }));
+        setAvailableGroups(groups);
+        const storedGroupId = getGroupId();
+        const preferred =
+          groups.find((g) => g.groupId === storedGroupId) ?? groups[0];
+        setSelectedGroupId(preferred.groupId);
       } else if (response.error) {
-        setError(response.error.message || "Failed to fetch contexts");
-        setAvailableContexts([]);
+        setAvailableGroups([]);
+        setSelectedGroupId("");
+        setError(response.error.message || "Failed to load namespaces");
       } else {
-        setError("No contexts found on this node. Join or create a context first.");
-        setAvailableContexts([]);
-        setIsDisabled(true);
+        setAvailableGroups([]);
+        setSelectedGroupId("");
       }
-    } catch (_err) {
-      setError("Failed to fetch contexts from node");
-      setAvailableContexts([]);
+    } catch {
+      setAvailableGroups([]);
+      setSelectedGroupId("");
+      setError("Could not reach node — is it running?");
     } finally {
-      setFetchingContexts(false);
+      setFetchingGroups(false);
     }
   }, []);
 
   useEffect(() => {
-    if (isAuthenticated && !isConfigSet) {
-      setNodeUrl(getAppEndpointKey() || "");
-      fetchContexts();
+    if ((isAuthenticated || isConfigSet) && getNodeUrl()) {
+      fetchGroups();
     }
-  }, [isAuthenticated, isConfigSet, fetchContexts]);
+  }, [fetchGroups, isAuthenticated, isConfigSet]);
 
-  // When context is selected, fetch identities for that context
   useEffect(() => {
-    if (!selectedContextId) {
-      setContextIdentities([]);
-      setSelectedIdentityId("");
-      return;
-    }
-    let cancelled = false;
-    setFetchingIdentities(true);
-    setError("");
-    apiClient
-      .node()
-      .fetchContextIdentities(selectedContextId)
-      .then((res: ResponseData<FetchContextIdentitiesResponse>) => {
-        if (cancelled) return;
-        if (res.error) {
-          setError(res.error.message || "Failed to fetch identities");
-          if (res.error.message === "Context not found") {
-            setIsDisabled(true);
-            setError("You are not a member of this context. Join the context first.");
-          }
-          setContextIdentities([]);
-          return;
-        }
-        const identities = res.data?.data?.identities;
-        if (identities && identities.length > 0) {
-          setContextIdentities(identities);
-          if (identities.length === 1) {
-            setSelectedIdentityId(identities[0]);
-          }
-        } else {
-          setContextIdentities([]);
-          setError("No identities found for this context.");
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setError("Failed to fetch identities");
-        setContextIdentities([]);
-      })
-      .finally(() => {
-        if (!cancelled) setFetchingIdentities(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedContextId]);
+    if (!selectedGroupId) return;
 
-  // When context + identity are selected, check username: if exists -> login & redirect; else show username step
-  const onIdentitySelected = useCallback(
-    async (identityId: string) => {
-      if (!selectedContextId || !identityId) return;
-      setContextId(selectedContextId);
-      setExecutorPublicKey(identityId);
-      setCheckingUsername(true);
-      setError("");
+    let cancelled = false;
+
+    void (async () => {
       try {
-        const usernameResponse = await new ClientApiDataSource().getUsername({
-          userId: identityId,
-          executorPublicKey: identityId,
-          contextId: selectedContextId,
-        });
-        if (usernameResponse.data) {
-          setUsername(usernameResponse.data);
-          StorageHelper.setItem("chat-username", usernameResponse.data);
-          const storedSession: ActiveChat | null = getStoredSession();
-          const chatToUse = storedSession || defaultActiveChat;
-          updateSessionChat(chatToUse);
-          setSuccess("Already joined the chat!");
-          setTimeout(() => {
-            window.location.href = "/" + (window.location.search || "");
-          }, 1000);
-        }
+        const { memberIdentity, memberAlias } = await resolveWorkspaceMember(selectedGroupId);
+        if (cancelled) return;
+        setGroupMemberIdentity(selectedGroupId, memberIdentity);
+        setMessengerName(memberAlias || getMessengerDisplayName());
+        setHasExistingAlias(!!memberAlias);
       } catch {
-        setError("Failed to check username");
+        if (!cancelled) {
+          setMessengerName(getMessengerDisplayName());
+          setHasExistingAlias(false);
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [resolveWorkspaceMember, selectedGroupId]);
+
+  // Auto-enter when there is exactly one namespace and a name is already stored.
+  useEffect(() => {
+    if (
+      availableGroups.length === 1 &&
+      !fetchingGroups &&
+      messengerName.trim() &&
+      selectedGroupId &&
+      !openingWorkspace
+    ) {
+      void openWorkspace(selectedGroupId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableGroups, fetchingGroups]);
+
+  const openWorkspace = useCallback(
+    async (groupId: string) => {
+      const trimmedName = messengerName.trim();
+      if (!groupId || !trimmedName) return;
+
+      setOpeningWorkspace(true);
+      setError("");
+
+      try {
+        const groupApi = new GroupApiDataSource();
+        const { memberIdentity } = await resolveWorkspaceMember(groupId);
+
+        try {
+          const aliasResponse = await groupApi.setMemberMetadata(groupId, memberIdentity, {
+            name: trimmedName,
+          });
+          if (aliasResponse.error) {
+            console.warn("setMemberMetadata failed (non-fatal):", aliasResponse.error.message);
+          }
+        } catch {
+          console.warn("setMemberMetadata threw (non-fatal)");
+        }
+
+        setGroupId(groupId);
+        setMessengerDisplayName(trimmedName);
+        setGroupMemberIdentity(groupId, memberIdentity);
+        clearStoredSession();
+        navigate("/");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to enter namespace");
       } finally {
-        setCheckingUsername(false);
+        setOpeningWorkspace(false);
       }
     },
-    [selectedContextId],
+    [messengerName, navigate, resolveWorkspaceMember],
   );
 
-  useEffect(() => {
-    const key = `${selectedContextId}:${selectedIdentityId}`;
-    if (
-      !selectedIdentityId ||
-      !selectedContextId ||
-      lastCheckedIdentityRef.current === key
-    ) {
-      return;
-    }
-    lastCheckedIdentityRef.current = key;
-    onIdentitySelected(selectedIdentityId);
-  }, [selectedIdentityId, selectedContextId, onIdentitySelected]);
-
-  const handleContextChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const id = e.target.value;
-    setSelectedContextId(id);
-    setSelectedIdentityId("");
-    setContextIdentities([]);
+  const handleNamespaceChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    setSelectedGroupId(event.target.value);
     setError("");
   };
 
-  const handleIdentityChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedIdentityId(e.target.value);
-    setError("");
-  };
-
-  const handleUseInvitation = (e: React.FormEvent) => {
-    e.preventDefault();
-    setInvitationError("");
-    setSubmittingInvitation(true);
-    const payload = parseInvitationInput(invitationInput);
-    if (!payload) {
-      setInvitationError("Invalid invitation. Paste a full invite URL or the encoded invitation.");
-      setSubmittingInvitation(false);
-      return;
-    }
-    saveInvitationToStorage(payload);
-    setInvitationInput("");
-    setSubmittingInvitation(false);
-    onInvitationSaved?.();
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedContextId || !selectedIdentityId || !username.trim()) return;
-    setIsLoading(true);
-    setError("");
-    setSuccess("");
-
-    try {
-      const url = getAppEndpointKey();
-      if (url) setAppEndpointKey(url.trim());
-      setContextId(selectedContextId);
-      setExecutorPublicKey(selectedIdentityId);
-      StorageHelper.setItem("chat-username", username.trim());
-      const response: ResponseData<string> =
-        await new ClientApiDataSource().joinChat({
-          isDM: false,
-          username: username.trim(),
-          contextId: selectedContextId,
-          executorPublicKey: selectedIdentityId,
-        });
-      if (response.error) {
-        const errorMessage = extractErrorMessage(response.error);
-        if (errorMessage.includes("Already a member")) {
-          setSuccess("Already connected to chat!");
-          const storedSession: ActiveChat | null = getStoredSession();
-          const chatToUse = storedSession || defaultActiveChat;
-          updateSessionChat(chatToUse);
-        } else {
-          setError(errorMessage);
-          return;
-        }
-      } else {
-        setSuccess("Successfully joined chat!");
-        const storedSession: ActiveChat | null = getStoredSession();
-        const chatToUse = storedSession || defaultActiveChat;
-        updateSessionChat(chatToUse);
-      }
-
-      setTimeout(() => {
-        window.location.href = "/" + (window.location.search || "");
-      }, 1000);
-    } catch (_err) {
-      setError("Failed to save login information");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  if (!getAppEndpointKey()) {
-    return null;
-  }
-
-  // Config set but no chat username yet — show join form. Only hide when they have chat-username (nothing else).
-  const hasChatUsername = !!StorageHelper.getItem("chat-username");
-  if (isConfigSet && !hasChatUsername) {
-    return (
-      <TabContent>
-        <Form
-          onSubmit={async (e) => {
-            e.preventDefault();
-            if (!completeJoinUsername.trim()) return;
-            const ctxId = getContextId();
-            const execKey = getExecutorPublicKey();
-            if (!ctxId || !execKey) {
-              setCompleteJoinError("Context or identity missing. Please log out and select context and identity again.");
-              return;
-            }
-            setCompleteJoinLoading(true);
-            setCompleteJoinError("");
-            setCompleteJoinSuccess("");
-            try {
-              StorageHelper.setItem("chat-username", completeJoinUsername.trim());
-              const response = await new ClientApiDataSource().joinChat({
-                isDM: false,
-                username: completeJoinUsername.trim(),
-                contextId: ctxId,
-                executorPublicKey: execKey,
-              });
-              if (response.error) {
-                const msg = extractErrorMessage(response.error);
-                if (msg.includes("Already a member")) {
-                  setCompleteJoinSuccess("Already connected! Taking you to chat...");
-                  const storedSession = getStoredSession();
-                  const chatToUse = storedSession || defaultActiveChat;
-                  updateSessionChat(chatToUse);
-                } else {
-                  setCompleteJoinError(msg);
-                  setCompleteJoinLoading(false);
-                  return;
-                }
-              } else {
-                setCompleteJoinSuccess("Joined! Taking you to chat...");
-                const storedSession = getStoredSession();
-                const chatToUse = storedSession || defaultActiveChat;
-                updateSessionChat(chatToUse);
-              }
-              setTimeout(() => {
-                window.location.href = "/" + (window.location.search || "");
-              }, 1000);
-            } catch {
-              setCompleteJoinError("Failed to join chat");
-            } finally {
-              setCompleteJoinLoading(false);
-            }
-          }}
-        >
-          <InputGroup>
-            <Label>Context and identity are set</Label>
-            <Note>Enter your username to join the chat (this may help set up the connection).</Note>
-          </InputGroup>
-          <InputGroup>
-            <Label>Username</Label>
-            <Input
-              type="text"
-              placeholder="e.g. John"
-              value={completeJoinUsername}
-              onChange={(e) => setCompleteJoinUsername(e.target.value)}
-              disabled={completeJoinLoading}
-            />
-          </InputGroup>
-          <Button
-            type="submit"
-            disabled={completeJoinLoading || !completeJoinUsername.trim()}
-          >
-            {completeJoinLoading ? "Joining..." : "Join chat"}
-          </Button>
-          {completeJoinError && <Message type="error">{completeJoinError}</Message>}
-          {completeJoinSuccess && <Message type="success">{completeJoinSuccess}</Message>}
-        </Form>
-      </TabContent>
-    );
-  }
-
-  const needUsernameStep = true
+  if (!getNodeUrl()) return null;
 
   return (
     <TabContent>
-      <Form onSubmit={handleSubmit}>
-        <InputGroup>
-          <Label>Context</Label>
-          <Select
-            id="contextSelect"
-            value={selectedContextId}
-            onChange={handleContextChange}
-            disabled={fetchingContexts || availableContexts.length === 0}
-          >
-            <option value="">
-              {fetchingContexts
-                ? "Loading contexts..."
-                : availableContexts.length === 0
-                  ? "No contexts available"
-                  : "Select a context..."}
-            </option>
-            {availableContexts.map((ctx) => (
-              <option key={ctx.contextId} value={ctx.contextId}>
-                {ctx.contextId.substring(0, 12)}...
-              </option>
-            ))}
-          </Select>
-          <Note>
-            {availableContexts.length > 0
-              ? `${availableContexts.length} context${availableContexts.length !== 1 ? "s" : ""} available`
-              : "Connect to a node to see contexts"}
-          </Note>
-        </InputGroup>
-
-        {!fetchingContexts && availableContexts.length === 0 && (
-          <div style={{ marginTop: "0.75rem" }}>
-            <InputGroup>
-              <Label>No contexts yet — join with an invitation</Label>
-              <Note>
-                Paste an invitation link (web or desktop) or the encoded payload.
-              </Note>
-              <Input
-                id="invitationInput"
-                type="text"
-                placeholder="https://...?invitation=... or calimero://curb/join?invitation=... or paste encoded"
-                value={invitationInput}
-                onChange={(e) => {
-                  setInvitationInput(e.target.value);
-                  setInvitationError("");
-                }}
-                disabled={submittingInvitation}
-              />
-              <Button
-                type="button"
-                variant="primary"
-                style={{ width: "100%", marginTop: "0.5rem" }}
-                onClick={handleUseInvitation}
-                disabled={submittingInvitation || !invitationInput.trim()}
-              >
-                {submittingInvitation ? "Using invitation..." : "Use invitation"}
-              </Button>
-              {invitationError && (
-                <Message type="error" style={{ marginTop: "0.5rem" }}>
-                  {invitationError}
-                </Message>
-              )}
-            </InputGroup>
-          </div>
-        )}
-
-        {selectedContextId && (
+      <Form onSubmit={(event) => event.preventDefault()}>
+        {hasNamespaces && (
           <InputGroup>
-            <Label>Identity</Label>
+            <Label>Namespace</Label>
             <Select
-              id="identitySelect"
-              value={selectedIdentityId}
-              onChange={handleIdentityChange}
-              disabled={fetchingIdentities || contextIdentities.length === 0}
+              id="namespaceSelect"
+              value={selectedGroupId}
+              onChange={handleNamespaceChange}
+              disabled={fetchingGroups || openingWorkspace}
             >
-              <option value="">
-                {fetchingIdentities
-                  ? "Loading identities..."
-                  : contextIdentities.length === 0
-                    ? "No identities"
-                    : "Select your identity..."}
-              </option>
-              {contextIdentities.map((id) => (
-                <option key={id} value={id}>
-                  {id.substring(0, 12)}...
+              {availableGroups.length > 1 && (
+                <option value="">Select a namespace…</option>
+              )}
+              {availableGroups.map((group) => (
+                <option key={group.groupId} value={group.groupId}>
+                  {getWorkspaceLabel(group)}
                 </option>
               ))}
             </Select>
           </InputGroup>
         )}
 
-        {(checkingUsername || needUsernameStep) && (
-          <>
-            {checkingUsername && (
-              <Message type="info">Checking if you already joined...</Message>
-            )}
-            {needUsernameStep && (
-              <>
-                <InputGroup>
-                  <Label>Username</Label>
-                  <Note>
-                    Choose a unique name to identify you in the chat (can only be
-                    set once).
-                  </Note>
-                  <Input
-                    id="username"
-                    type="text"
-                    placeholder="e.g. John"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    disabled={isLoading}
-                  />
-                </InputGroup>
-                <Button
-                  type="submit"
-                  disabled={
-                    isLoading ||
-                    isDisabled ||
-                    !username.trim() ||
-                    !selectedContextId ||
-                    !selectedIdentityId
-                  }
-                >
-                  {isLoading ? "Joining..." : "Join chat"}
-                </Button>
-              </>
-            )}
-          </>
+        {!hasNamespaces && !fetchingGroups && (
+          <Note style={{ textAlign: "center", marginBottom: "0.5rem" }}>
+            No namespaces found on this node. Create one to get started.
+          </Note>
+        )}
+
+        {fetchingGroups && (
+          <Note style={{ textAlign: "center" }}>Loading…</Note>
+        )}
+
+        {hasNamespaces && (
+          <InputGroup>
+            <Label>Your name</Label>
+            <Input
+              id="messengerNameInput"
+              type="text"
+              placeholder="Enter your name"
+              value={messengerName}
+              onChange={(event) => {
+                setMessengerName(event.target.value);
+                setError("");
+              }}
+              disabled={openingWorkspace}
+            />
+          </InputGroup>
+        )}
+
+        {isNewUsername && (
+          <NewUsernameBanner>
+            "{messengerName.trim()}" is a new name for this workspace — once you join, it will be locked to your identity.
+          </NewUsernameBanner>
+        )}
+
+        {hasNamespaces && (
+          <Button
+            type="button"
+            variant="primary"
+            style={{ width: "100%", marginTop: "0.5rem" }}
+            onClick={() => { void openWorkspace(selectedGroupId); }}
+            disabled={!selectedGroupId || !messengerName.trim() || fetchingGroups || openingWorkspace}
+          >
+            {openingWorkspace ? "Entering…" : "Enter"}
+          </Button>
         )}
 
         {error && <Message type="error">{error}</Message>}
-        {success && <Message type="success">{success}</Message>}
       </Form>
     </TabContent>
   );

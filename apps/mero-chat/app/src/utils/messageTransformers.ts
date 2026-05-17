@@ -40,6 +40,7 @@ export function transformMessageToUI(
     status: MessageStatus.sent,
     deleted: message.deleted,
     group: message.group,
+    parentMessageId: message.parent_message_id,
   };
 }
 

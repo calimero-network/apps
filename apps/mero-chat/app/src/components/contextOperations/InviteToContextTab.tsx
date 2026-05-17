@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { styled, keyframes } from "styled-components";
 import {
-  apiClient,
   getContextId,
-  getExecutorPublicKey,
-} from "@calimero-network/calimero-client";
-import type { ResponseData } from "@calimero-network/calimero-client";
-import type { ContextInviteByOpenInvitationResponse } from "@calimero-network/calimero-client/lib/api/nodeApi";
+  getContextIdentity as getExecutorPublicKey,
+} from "@calimero-network/mero-react";
+import type { ResponseData } from "../../api/types";
+import {
+  nodeApi as apiClientNode,
+  type LegacyContextInviteByOpenInvitationResponse as ContextInviteByOpenInvitationResponse,
+} from "../../api/meroJsClient";
 import {
   generateInvitationUrl,
   generateInvitationDeepLink,
@@ -276,7 +278,7 @@ export default function InviteToContextTab() {
     setError(null);
     try {
       const response: ResponseData<ContextInviteByOpenInvitationResponse> =
-        await apiClient.node().contextInviteByOpenInvitation(
+        await apiClientNode.contextInviteByOpenInvitation(
           configData.contextId,
           configData.executorPublicKey,
           86400,

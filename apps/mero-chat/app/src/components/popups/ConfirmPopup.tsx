@@ -1,33 +1,55 @@
 import { useState } from "react";
 import { styled } from "styled-components";
 import BaseModal from "../common/popups/BaseModal";
-import { Button } from "@calimero-network/mero-ui";
 
 const Container = styled.div`
   position: relative;
-  background-color: #1d1d21;
-  padding: 0.75rem 0.75rem 0.75rem 0.75rem;
-  border-radius: 6px;
-  width: 100%;
-  height: 100%;
+  padding: 0.125rem 0;
+  min-width: 280px;
+`;
+
+const Header = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
 `;
 
 const Title = styled.div`
   color: #fff;
-  font-family: Helvetica Neue;
-  font-size: 16px;
-  font-style: normal;
+  font-size: 14px;
   font-weight: 600;
-  line-height: 120%;
-  margin-bottom: 0.5rem;
+  letter-spacing: 0.01em;
+`;
+
+const CloseButton = styled.button`
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.3);
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  padding: 0;
+
+  &:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.08);
+  }
 `;
 
 const Message = styled.div`
-  color: #c9c9cf;
-  font-family: Helvetica Neue;
-  font-size: 14px;
-  line-height: 140%;
-  margin-bottom: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  margin-bottom: 1.25rem;
 `;
 
 const Actions = styled.div`
@@ -36,14 +58,33 @@ const Actions = styled.div`
   justify-content: flex-end;
 `;
 
-const CloseButton = styled.div`
-  color: #fff;
-  :hover {
-    color: #5765f2;
-  }
-  position: absolute;
-  right: 1rem;
+const ActionButton = styled.button<{ $danger?: boolean }>`
+  padding: 0.45rem 1rem;
+  border-radius: 7px;
+  font-size: 0.8rem;
+  font-weight: 600;
   cursor: pointer;
+  transition: all 0.15s ease;
+
+  ${({ $danger }) =>
+    $danger
+      ? `
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #f87171;
+    &:hover { background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.5); }
+  `
+      : `
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.7);
+    &:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+  `}
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
 `;
 
 interface ConfirmPopupProps {
@@ -73,14 +114,18 @@ export default function ConfirmPopup({
 }: ConfirmPopupProps) {
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const handleClose = () => {
+  const handleClose = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
     if (isProcessing) return;
     setIsOpen(false);
     onCancel?.();
   };
 
   const handleOpenChange = (open: boolean) => {
-    if (!open) return;
+    if (!open) {
+      handleClose();
+      return;
+    }
     setIsOpen(open);
   };
 
@@ -95,22 +140,23 @@ export default function ConfirmPopup({
   };
 
   const content = (
-    <Container style={{ pointerEvents: "auto" }}>
-      <CloseButton onClick={handleClose}>
-        <i className="bi bi-x-lg"></i>
-      </CloseButton>
-      <Title>{title}</Title>
+    <Container>
+      <Header>
+        <Title>{title}</Title>
+        <CloseButton onClick={(e) => handleClose(e)} aria-label="Close">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </CloseButton>
+      </Header>
       <Message>{message}</Message>
       <Actions>
-        <Button
-          onClick={runConfirm}
-          style={{ backgroundColor: "#ef4444", border: "1px solid #b91c1c", color: "#0E0E10" }}
-        >
-          {isProcessing ? "..." : confirmLabel}
-        </Button>
-        <Button onClick={handleClose} style={{ backgroundColor: "#2a2a2e", color: "#fff" }}>
+        <ActionButton onClick={(e) => handleClose(e)} disabled={isProcessing}>
           {cancelLabel}
-        </Button>
+        </ActionButton>
+        <ActionButton $danger onClick={() => void runConfirm()} disabled={isProcessing}>
+          {isProcessing ? "..." : confirmLabel}
+        </ActionButton>
       </Actions>
     </Container>
   );

@@ -35,39 +35,6 @@ export const clearStoredSession = (): void => {
   log.debug("Session", "Session cleared from storage");
 };
 
-export const setDmContextId = (contextId: string): void => {
-  StorageHelper.setItem("dmContextId", contextId);
-};
-
-export const getDmContextId = (): string | null => {
-  return StorageHelper.getItem("dmContextId");
-};
-
-export const clearDmContextId = (): void => {
-  StorageHelper.removeItem("dmContextId");
-};
-
-// Persistent set of all known DM context IDs — survives logout so the
-// context selector can filter them out on next login.
-const ALL_DM_CONTEXT_IDS_KEY = "allDmContextIds";
-
-export const addDmContextId = (contextId: string): void => {
-  if (!contextId) return;
-  const existing = getAllDmContextIds();
-  if (!existing.includes(contextId)) {
-    localStorage.setItem(ALL_DM_CONTEXT_IDS_KEY, JSON.stringify([...existing, contextId]));
-  }
-};
-
-export const getAllDmContextIds = (): string[] => {
-  try {
-    const raw = localStorage.getItem(ALL_DM_CONTEXT_IDS_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-};
-
 export const updateSessionActivity = (): void => {
   StorageHelper.setItem(SESSION_TIMEOUT_KEY, Date.now().toString());
 };
@@ -93,3 +60,21 @@ export const isSessionExpired = (): boolean => {
 export const clearSessionActivity = (): void => {
   StorageHelper.removeItem(SESSION_TIMEOUT_KEY);
 };
+
+// ── Namespace-ready gate ──────────────────────────────────────────────────────
+// Set in sessionStorage (not localStorage) so it always requires going through
+// namespace selection after a fresh login or tab re-open.
+
+const NS_READY_KEY = "curb_ns_ready";
+
+export function setNamespaceReady(): void {
+  sessionStorage.setItem(NS_READY_KEY, "1");
+}
+
+export function isNamespaceReady(): boolean {
+  return sessionStorage.getItem(NS_READY_KEY) === "1";
+}
+
+export function clearNamespaceReady(): void {
+  sessionStorage.removeItem(NS_READY_KEY);
+}

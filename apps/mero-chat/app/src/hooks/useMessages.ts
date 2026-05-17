@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
-import type { ResponseData } from "@calimero-network/calimero-client";
+import type { ResponseData } from "../api/types";
 import type { FullMessageResponse } from "../api/clientApi";
 import type {
   ActiveChat,
@@ -54,7 +54,7 @@ export function useMessages() {
           limit: MESSAGE_PAGE_SIZE,
           offset: 0,
           is_dm: isDM,
-          dm_identity: activeChat.account,
+          dm_identity: activeChat.contextIdentity,
         });
 
       if (response.data) {
@@ -105,7 +105,7 @@ export function useMessages() {
           limit: MESSAGE_PAGE_SIZE,
           offset,
           is_dm: isDM,
-          dm_identity: activeChat.account,
+          dm_identity: activeChat.contextIdentity,
         });
 
       if (response.data) {
@@ -144,22 +144,11 @@ export function useMessages() {
       activeChat: ActiveChat | null,
       isDM: boolean,
       group: string,
-      contextId: string,
+      _contextId: string,
     ): Promise<CurbMessage[]> => {
       if (!activeChat) return [];
 
       // Removed throttling to allow real-time message updates
-
-      // If it's a DM, fetch the DM identity for this context
-      let refetchIdentity: string | undefined = undefined;
-      if (isDM && contextId) {
-        const identityResponse = await new ClientApiDataSource().getDmIdentityByContext({
-          context_id: contextId,
-        });
-        if (identityResponse.data) {
-          refetchIdentity = identityResponse.data;
-        }
-      }
 
       const response: ResponseData<FullMessageResponse> =
         await new ClientApiDataSource().getMessages({
@@ -169,7 +158,7 @@ export function useMessages() {
           limit: RECENT_MESSAGES_CHECK_SIZE,
           offset: 0,
           is_dm: isDM,
-          dm_identity: refetchIdentity || activeChat.account,
+          dm_identity: activeChat.contextIdentity,
           parent_message: undefined, // Only get main chat messages, not thread messages
         });
 
@@ -233,7 +222,6 @@ export function useMessages() {
         };
       }
 
-      const isDM = activeChat.type === "direct_message";
       const effectiveOffset = shouldReset
         ? 0
         : offsetOverride ?? searchOffset;
@@ -243,13 +231,10 @@ export function useMessages() {
 
       try {
         const response: ResponseData<FullMessageResponse> =
-          await new ClientApiDataSource().getMessages({
-            group: { name: (isDM ? "private_dm" : activeChat.name) || "" },
+          await new ClientApiDataSource().searchAllMessages({
+            search_term: normalizedQuery,
             limit: MESSAGE_PAGE_SIZE,
             offset: effectiveOffset,
-            is_dm: isDM,
-            dm_identity: activeChat.account,
-            search_term: normalizedQuery,
           });
 
         if (response.data) {

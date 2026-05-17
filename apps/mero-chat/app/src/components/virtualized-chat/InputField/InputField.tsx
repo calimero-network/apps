@@ -64,7 +64,7 @@ const InputField = (props: InputFieldProps): React.JSX.Element => {
           selection.index,
           processedData,
         );
-      } catch (error) {
+      } catch (_error) {
         const plainText = clipboardData.getData("text/plain");
         currentQuill.insertText(selection.index, plainText);
       }

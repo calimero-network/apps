@@ -1,99 +1,60 @@
-import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
-import { getAuthConfig, setAppEndpointKey, useCalimero } from "@calimero-network/calimero-client";
-import { useEffect, useState, lazy, Suspense, useRef } from "react";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { useMero } from "@calimero-network/mero-react";
+import { useEffect, lazy, Suspense } from "react";
 import { LoadingSpinner } from "./components/LoadingSpinner";
 import {
   isSessionExpired,
-  clearStoredSession,
-  clearDmContextId,
-  clearSessionActivity,
   updateSessionActivity,
+  isNamespaceReady,
 } from "./utils/session";
 import { ToastProvider, useToast } from "./contexts/ToastContext";
 import { ToastManager } from "./components/common/ToastManager";
 import { extractInvitationFromUrl, saveInvitationToStorage } from "./utils/invitation";
-import { StorageHelper } from "./utils/storage";
-import { getNodeUrlFromUrl } from "./constants/config";
 
-// Lazy load pages for better performance
 const Login = lazy(() => import("./pages/Login"));
 const Home = lazy(() => import("./pages/Home"));
-const IdleTimeoutWrapper = lazy(
-  () => import("./components/IdleTimeoutWrapper"),
-);
-// Toast display component
+const IdleTimeoutWrapper = lazy(() => import("./components/IdleTimeoutWrapper"));
+
 function ToastDisplay() {
   const { toasts, removeToast } = useToast();
   return <ToastManager toasts={toasts} onRemoveToast={removeToast} />;
 }
 
 function App() {
-  const { isAuthenticated, logout } = useCalimero();
-  const navigate = useNavigate();
+  const { isAuthenticated, isLoading, logout } = useMero();
   const location = useLocation();
-  const [isConfigSet, setIsConfigSet] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const hasInitializedRef = useRef(false);
 
+  // Clean up invitation URL parameter and save to storage
   useEffect(() => {
-    // Only check config once to avoid repeated auth checks
-    if (hasInitializedRef.current) return;
+    const invitation = extractInvitationFromUrl();
+    if (invitation) {
+      saveInvitationToStorage(invitation);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("invitation");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [location.pathname]);
 
-    const timer = setTimeout(() => {
-      // If node_url query param is present, set it and redirect to auth (login) page
-      const nodeUrlFromQuery = getNodeUrlFromUrl();
-      if (nodeUrlFromQuery) {
-        setAppEndpointKey(nodeUrlFromQuery.trim());
-        const url = new URL(window.location.href);
-        url.searchParams.delete("node_url");
-        url.searchParams.delete("node-url");
-        window.history.replaceState({}, "", url.toString());
-        if (location.pathname !== "/login") {
-          navigate("/login", { replace: true });
-        }
-      }
-
-      // Check for invitation in URL and save to localStorage
-      const invitation = extractInvitationFromUrl();
-      if (invitation) {
-        saveInvitationToStorage(invitation);
-        // Clean URL by removing invitation parameter
-        const url = new URL(window.location.href);
-        url.searchParams.delete("invitation");
-        window.history.replaceState({}, "", url.toString());
-      }
-
-      // Get authConfig inside effect to avoid unnecessary re-renders
-      const authConfig = getAuthConfig();
-      const hasRequiredConfig =
-        authConfig?.appEndpointKey &&
-        authConfig?.contextId &&
-        authConfig?.executorPublicKey &&
-        authConfig?.jwtToken;
-
-      setIsConfigSet(Boolean(hasRequiredConfig));
-      setIsLoading(false);
-      hasInitializedRef.current = true;
-    }, 100);
-
-    return () => clearTimeout(timer);
-  }, []); // Empty deps - only run once on mount
-
-  // Check for expired session on app initialization and initialize session activity
+  // Session expiry check and activity tracking
   useEffect(() => {
     if (isAuthenticated) {
       if (isSessionExpired()) {
-        // Session has expired, clear everything and logout
-        clearStoredSession();
-        clearDmContextId();
-        clearSessionActivity();
+        sessionStorage.clear();
         logout();
       } else {
-        // User is authenticated and session is valid, initialize session activity
         updateSessionActivity();
       }
     }
   }, [isAuthenticated, logout]);
+
+  // canEnterApp requires both a valid auth session AND explicit namespace selection
+  // in this browser session (sessionStorage flag). This prevents the app from
+  // jumping straight to Home after a fresh login using stale localStorage values.
+  const canEnterApp = isAuthenticated && isNamespaceReady();
+
+  if (isLoading) {
+    return <LoadingSpinner />;
+  }
 
   return (
     <ToastProvider>
@@ -102,12 +63,12 @@ function App() {
           <Route
             path="/login"
             element={
-              isAuthenticated && isConfigSet && StorageHelper.getItem("chat-username") ? (
+              canEnterApp ? (
                 <Navigate to="/" replace />
               ) : (
                 <Login
                   isAuthenticated={isAuthenticated}
-                  isConfigSet={isConfigSet}
+                  isConfigSet={isAuthenticated}
                 />
               )
             }
@@ -115,11 +76,9 @@ function App() {
           <Route
             path="/"
             element={
-              isLoading ? (
-                <LoadingSpinner />
-              ) : isAuthenticated && isConfigSet && StorageHelper.getItem("chat-username") ? (
+              canEnterApp ? (
                 <IdleTimeoutWrapper>
-                  <Home isConfigSet={isConfigSet} />
+                  <Home isConfigSet={isAuthenticated} />
                 </IdleTimeoutWrapper>
               ) : (
                 <Navigate to="/login" replace />

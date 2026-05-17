@@ -146,11 +146,31 @@ export function useAppNotifications(currentChatId?: string) {
     [notify, playSoundForMessage],
   );
 
+  /**
+   * Notify for a new thread reply in a background channel
+   */
+  const notifyThread = useCallback(
+    (messageId: string, channelName: string, sender: string, text: string) => {
+      const truncatedText =
+        text.length > 100 ? `${text.substring(0, 100)}...` : text;
+
+      notify({
+        title: `New reply from ${sender} in #${channelName}`,
+        message: truncatedText,
+        type: "message",
+      });
+
+      playSoundForMessage(messageId, "message", false);
+    },
+    [notify, playSoundForMessage],
+  );
+
   return {
     notify,
     notifyMessage,
     notifyDM,
     notifyChannel,
+    notifyThread,
     playSoundForMessage,
     playSound,
   };

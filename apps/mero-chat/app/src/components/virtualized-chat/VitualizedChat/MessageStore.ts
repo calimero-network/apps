@@ -139,7 +139,7 @@ class MessageStore<
 
         if (matchingTempMsg) {
           // Update temp message in place
-          const { id, ...realDataWithoutId } = realMsg;
+          const { id: _id, ...realDataWithoutId } = realMsg;
           this._updateWithoutVersion(
             matchingTempMsg.id,
             realDataWithoutId as Partial<T>,
@@ -213,8 +213,8 @@ class MessageStore<
   computeKey(item: InternalMessage<T>): string {
     // Use timestamp and nonce as additional uniqueness factors
     // Following Virtuoso best practice for stable, unique keys
-    const itemAny = item as any;
-    const nonce = itemAny.nonce || "";
+    const itemAny = item as unknown as Record<string, unknown>;
+    const nonce = (itemAny.nonce as string) || "";
     return `${item.id}_${nonce}_${item.version ?? 0}`;
   }
 
