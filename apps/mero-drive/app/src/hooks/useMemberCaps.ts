@@ -122,10 +122,10 @@ export function useMemberCaps(
         if (attempt > 0) await sleep(RETRY_DELAYS_MS[attempt], signal);
         if (signal.aborted) return;
         try {
-          // 1) Read members list to discover our role. Cast through
-          //    unknown because the DTS and wire shape disagree:
-          //    some backend versions return `{ members, selfIdentity }`,
-          //    others return `{ data: [...], selfIdentity }`.
+          // 1) Read the members list — used ONLY to detect the Admin
+          //    short-circuit. Cast through unknown because the DTS and
+          //    wire shape disagree: some backend versions return
+          //    `{ members, selfIdentity }`, others `{ data, selfIdentity }`.
           const raw = (await mero.admin.listGroupMembers(
             groupId,
           )) as unknown as {
@@ -137,14 +137,14 @@ export function useMemberCaps(
           const me = membersList.find(
             (m) => m.identity === memberId,
           );
-          if (!me) {
-            lastErr = new Error('identity is not a member of group');
-            continue; // propagation lag — retry
-          }
 
           // 2) Admin short-circuit — mirrors the server's
-          //    `is_group_admin_or_has_capability` logic.
-          if (me.role === 'Admin') {
+          //    `is_group_admin_or_has_capability` logic. Only DIRECT
+          //    members carry a role on the list; an inherited Open-
+          //    subgroup member has no row at all (and is never an
+          //    admin), so a list miss is NOT "not a member" — it just
+          //    means fall through to the capability probe below.
+          if (me?.role === 'Admin') {
             if (!signal.aborted) {
               setState({
                 caps: ADMIN_CAPS_BITMASK,
@@ -155,7 +155,15 @@ export function useMemberCaps(
             return;
           }
 
-          // 3) Non-admin: read the capability bitmask override.
+          // 3) Resolve the capability bitmask. This — NOT the members-
+          //    list lookup — is the authoritative membership gate. An
+          //    inherited Open-subgroup member is absent from
+          //    `listGroupMembers` by core design (no materialised
+          //    GroupMember row — see `execute_member_joined_open` in
+          //    namespace_governance.rs), but `getMemberCapabilities`
+          //    resolves them via the parent-walk (core #2261/#2379)
+          //    and returns 0. A genuine non-member instead throws
+          //    "identity is not a member" → propagation-lag retry.
           const result = await mero.admin.getMemberCapabilities(
             groupId,
             memberId,
