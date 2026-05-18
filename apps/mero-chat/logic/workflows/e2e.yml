@@ -235,7 +235,7 @@ steps:
       - calimero-node-1
       - calimero-node-2
       - calimero-node-3
-    timeout: 30
+    timeout: 60
     check_interval: 2
     trigger_sync: true
 

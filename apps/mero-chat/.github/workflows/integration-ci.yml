@@ -35,9 +35,6 @@ jobs:
 
       # ── Build curb WASM ───────────────────────────────────────────────────────
 
-      - name: Checkout calimero/core (Cargo path deps)
-        run: git clone --depth 1 https://github.com/calimero-network/core.git "${GITHUB_WORKSPACE}/../core"
-
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
@@ -81,10 +78,8 @@ jobs:
       - name: Bootstrap auth and write env file
         run: |
           set -euo pipefail
-          NODE_1_URL="http://localhost:2428"
-          NODE_2_URL="http://localhost:2429"
-          ADMIN_USER="${E2E_ADMIN_USER:-admin}"
-          ADMIN_PASS="${E2E_ADMIN_PASS:-calimero1234}"
+          NODE_1_URL="http://localhost:2528"
+          NODE_2_URL="http://localhost:2529"
 
           echo "Running containers:"
           docker ps -a 2>/dev/null || true
@@ -105,29 +100,22 @@ jobs:
             sleep 2
           done
 
-          AUTH_PAYLOAD="{
-            \"auth_method\":  \"user_password\",
-            \"public_key\":   \"${ADMIN_USER}\",
-            \"client_name\":  \"integration-ci\",
-            \"timestamp\":    0,
-            \"permissions\":  [],
-            \"provider_data\": {\"username\": \"${ADMIN_USER}\", \"password\": \"${ADMIN_PASS}\"}
-          }"
-
-          AUTH_1=$(curl -sf -X POST "${NODE_1_URL}/auth/token" \
-            -H "Content-Type: application/json" -d "${AUTH_PAYLOAD}")
-          ACCESS_TOKEN_1=$(echo "$AUTH_1" | jq -r '.data.access_token // empty')
-          REFRESH_TOKEN_1=$(echo "$AUTH_1" | jq -r '.data.refresh_token // empty')
-          [ -n "$ACCESS_TOKEN_1" ] || { echo "Auth failed for node 1: $AUTH_1"; exit 1; }
-
-          AUTH_2=$(curl -sf -X POST "${NODE_2_URL}/auth/token" \
-            -H "Content-Type: application/json" -d "${AUTH_PAYLOAD}")
-          ACCESS_TOKEN_2=$(echo "$AUTH_2" | jq -r '.data.access_token // empty')
-          REFRESH_TOKEN_2=$(echo "$AUTH_2" | jq -r '.data.refresh_token // empty')
-          [ -n "$ACCESS_TOKEN_2" ] || { echo "Auth failed for node 2: $AUTH_2"; exit 1; }
+          # merobox starts containers without --auth-mode embedded, so
+          # /auth/token is unavailable and the admin API is open (no auth
+          # required). Generate a placeholder JWT so integrationEnvAvailable()
+          # returns true; the node ignores Bearer tokens in open-auth mode.
+          _hdr=$(printf '{"alg":"HS256","typ":"JWT"}' \
+            | base64 | tr -d '=' | tr '/+' '_-' | tr -d '\n')
+          _pay=$(printf '{"sub":"ci","iss":"calimero-auth","aud":"calimero-auth","exp":9999999999,"iat":0,"jti":"ci","permissions":["admin"],"node_url":""}' \
+            | base64 | tr -d '=' | tr '/+' '_-' | tr -d '\n')
+          PLACEHOLDER_JWT="${_hdr}.${_pay}.ci-placeholder"
+          ACCESS_TOKEN_1="$PLACEHOLDER_JWT"
+          REFRESH_TOKEN_1="$PLACEHOLDER_JWT"
+          ACCESS_TOKEN_2="$PLACEHOLDER_JWT"
+          REFRESH_TOKEN_2="$PLACEHOLDER_JWT"
 
           GROUPS=$(curl -sf "${NODE_1_URL}/admin-api/groups" \
-            -H "Authorization: Bearer ${ACCESS_TOKEN_1}" 2>/dev/null) || GROUPS="{}"
+            2>/dev/null) || GROUPS="{}"
           GROUP_ID=$(echo "$GROUPS" | jq -r '
             (.data // .) |
             if type == "array" then .[0].groupId
@@ -135,7 +123,7 @@ jobs:
             else empty end' 2>/dev/null || echo "")
 
           CTXS=$(curl -sf "${NODE_1_URL}/admin-api/contexts" \
-            -H "Authorization: Bearer ${ACCESS_TOKEN_1}" 2>/dev/null) || CTXS="{}"
+            2>/dev/null) || CTXS="{}"
           CONTEXT_ID=$(echo "$CTXS" | jq -r '
             (.data // .) |
             if type == "array" then .[0].id // .[0].contextId
@@ -146,7 +134,7 @@ jobs:
           if [ -n "$CONTEXT_ID" ]; then
             IDENTS=$(curl -sf \
               "${NODE_1_URL}/admin-api/contexts/${CONTEXT_ID}/identities-owned" \
-              -H "Authorization: Bearer ${ACCESS_TOKEN_1}" 2>/dev/null) || IDENTS="{}"
+              2>/dev/null) || IDENTS="{}"
             MEMBER_KEY=$(echo "$IDENTS" | jq -r '
               (.data // .) |
               if type == "array" then .[0]

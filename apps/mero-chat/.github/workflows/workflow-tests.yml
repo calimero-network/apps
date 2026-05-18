@@ -34,9 +34,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Checkout calimero/core (Cargo path deps)
-        run: git clone --depth 1 https://github.com/calimero-network/core.git "${GITHUB_WORKSPACE}/../core"
-
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
