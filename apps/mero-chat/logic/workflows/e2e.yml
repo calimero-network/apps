@@ -8,13 +8,13 @@ description: >
 force_pull_image: true
 
 # TODO BEFORE MERGE: change image tag back to :edge (or latest stable release)
-# — rc.38 is pinned here to match the local dev binary. All workflow files
+# — rc.39 is pinned here to match the local dev binary. All workflow files
 # (dm.yml, governance.yml, integration-setup.yml, non-admin-creates.yml,
 # e2e-v2.yml) need the same change, plus logic/Cargo.toml calimero-sdk deps.
 nodes:
   chain_id: testnet-1
   count: 3
-  image: ghcr.io/calimero-network/merod:0.10.1-rc.38
+  image: ghcr.io/calimero-network/merod:0.10.1-rc.39
   prefix: calimero-node
 
 steps:

@@ -1,6 +1,6 @@
 # TODO BEFORE MERGE: revert calimero-sdk/storage/wasm-abi to "edge" (or the
 # published stable tag) instead of the pinned rc below. The rc pin is here so
-# local builds match the dev merod binary (0.10.1-rc.38). On main these should
+# local builds match the dev merod binary (0.10.1-rc.39). On main these should
 # track the latest published release so CI doesn't break on the next rc bump.
 
 [package]
@@ -17,13 +17,13 @@ base64 = "0.22.1"
 borsh = "0.10.3"
 borsh-derive = "0.10.3"
 bs58 = "0.5.1"
-calimero-sdk = "0.10.1-rc.38"
-calimero-storage = "0.10.1-rc.38"
-calimero-storage-macros = "0.10.1-rc.38"
+calimero-sdk = "0.10.1-rc.39"
+calimero-storage = "0.10.1-rc.39"
+calimero-storage-macros = "0.10.1-rc.39"
 thiserror = "1.0.56"
 
 [build-dependencies]
-calimero-wasm-abi = "0.10.1-rc.38"
+calimero-wasm-abi = "0.10.1-rc.39"
 serde_json = "1.0.113"
 
 [patch.crates-io]
