@@ -31,20 +31,22 @@ import {
   saveInvitationToStorage,
   clearInvitationFromStorage,
   parseGroupInvitationPayload,
+  parseInvitationInput,
 } from "../../utils/invitation";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Step =
   | "loading"
-  | "select"         // multiple namespaces, user picks
-  | "checking"       // resolving identity for selected namespace
-  | "enter-name"     // namespace ok, need username
-  | "joining"        // submitting username
-  | "invite-join"    // processing an invitation (join + sync + join contexts)
-  | "no-workspace"   // no namespaces: offer create or paste invitation code
-  | "create"         // show create workspace form
-  | "creating"       // creating namespace
+  | "select"           // multiple namespaces, user picks
+  | "checking"         // resolving identity for selected namespace
+  | "enter-name"       // namespace ok, need username
+  | "joining"          // submitting username
+  | "invite-join"      // processing an invitation (join + sync + join contexts)
+  | "no-workspace"     // no namespaces: offer create or paste invitation code
+  | "join-invitation"  // manual invitation paste
+  | "create"           // show create workspace form
+  | "creating"         // creating namespace
   | "error";
 
 // ─── Styled components ────────────────────────────────────────────────────────
@@ -173,6 +175,29 @@ const Err = styled.div`
   padding: 0.65rem 0.85rem;
   font-size: 0.8rem;
   margin-bottom: 1rem;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  max-height: 120px;
+  overflow-y: auto;
+`;
+
+const Textarea = styled.textarea`
+  width: 100%;
+  min-height: 96px;
+  padding: 0.7rem 0.9rem;
+  background-color: rgba(165, 255, 17, 0.04);
+  border: 1px solid rgba(165, 255, 17, 0.22);
+  border-radius: 10px;
+  color: #fff;
+  font-size: 0.75rem;
+  font-family: monospace;
+  resize: vertical;
+  box-sizing: border-box;
+  line-height: 1.5;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  &::placeholder { color: rgba(255, 255, 255, 0.22); }
+  &:hover { border-color: rgba(165, 255, 17, 0.45); background-color: rgba(165, 255, 17, 0.07); }
+  &:focus { outline: none; border-color: rgba(165, 255, 17, 0.6); box-shadow: 0 0 0 3px rgba(165, 255, 17, 0.12); }
 `;
 
 const Info = styled.div`
@@ -294,6 +319,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
   const [nameInput, setNameInput] = useState(getMessengerDisplayName());
   const [nsNameInput, setNsNameInput] = useState("");
   const [inviteStatus, setInviteStatus] = useState("");
+  const [joinInviteInput, setJoinInviteInput] = useState("");
   const [error, setError] = useState("");
 
   // Final step: commit selection, persist the chosen handle as the
@@ -615,6 +641,19 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
     }
   }, [nsNameInput, namespaces, enterChat]);
 
+  const handleJoinFromCode = useCallback(async () => {
+    const raw = joinInviteInput.trim();
+    if (!raw) return;
+    setError("");
+    const payload = parseInvitationInput(raw);
+    if (!payload) {
+      setError("Could not parse invitation. Paste the full link or the raw encoded code.");
+      return;
+    }
+    saveInvitationToStorage(payload);
+    await processInvitation(payload);
+  }, [joinInviteInput, processInvitation]);
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   const isDuplicateNsName =
@@ -679,6 +718,9 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
             </Button>
             <CreateLink onClick={() => { setError(""); setNsNameInput(""); setStep("create"); }}>
               + Create new workspace
+            </CreateLink>
+            <CreateLink onClick={() => { setError(""); setJoinInviteInput(""); setStep("join-invitation"); }}>
+              Join existing workspace
             </CreateLink>
             <Divider />
             <LogoutBtn onClick={onLogout}>Disconnect node</LogoutBtn>
@@ -747,8 +789,48 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
             >
               Create workspace
             </Button>
+            <CreateLink onClick={() => { setError(""); setJoinInviteInput(""); setStep("join-invitation"); }}>
+              Join existing workspace
+            </CreateLink>
             <Divider />
             <LogoutBtn onClick={onLogout}>Disconnect node</LogoutBtn>
+          </>
+        )}
+
+        {/* Join via invitation code */}
+        {step === "join-invitation" && (
+          <>
+            <Header>
+              <Title>Join workspace</Title>
+              <Sub>Paste an invitation link or code to join an existing workspace.</Sub>
+            </Header>
+            {error && <Err>{error}</Err>}
+            <Field>
+              <Label>Invitation</Label>
+              <Textarea
+                placeholder={"calimero://curb/join?invitation=… or paste the raw encoded code"}
+                value={joinInviteInput}
+                onChange={(e) => { setJoinInviteInput(e.target.value); setError(""); }}
+                autoFocus
+              />
+            </Field>
+            <Button
+              type="button"
+              variant="primary"
+              style={{ width: "100%" }}
+              onClick={() => void handleJoinFromCode()}
+              disabled={!joinInviteInput.trim()}
+            >
+              Join
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              style={{ width: "100%", marginTop: "0.5rem" }}
+              onClick={() => { setError(""); setJoinInviteInput(""); setStep(namespaces.length > 0 ? "select" : "no-workspace"); }}
+            >
+              ← Back to workspace selection
+            </Button>
           </>
         )}
 
