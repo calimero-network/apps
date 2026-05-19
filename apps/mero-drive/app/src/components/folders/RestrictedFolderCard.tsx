@@ -1,12 +1,15 @@
 // Card shown in the folder pane when the caller can't read the
 // selected folder. Three branches off `visibility`:
 //
-//   Open      → "Join folder" CTA. Calls
-//               `useJoinSubgroupInheritance` (core PR #2360 /
-//               POST /admin-api/groups/:id/join-via-inheritance):
-//               core materialises inherited subgroup membership +
-//               delivers the subgroup key in one call, then we
-//               `refetch()` so useFolderPermissions re-evaluates
+//   Open      → "Join folder" CTA. TWO core calls, in order:
+//               (1) `joinSubgroupInheritance` (#2360 /
+//                   POST /admin-api/groups/:id/join-via-inheritance)
+//                   — materialises inherited subgroup membership +
+//                   delivers the subgroup key;
+//               (2) `joinContext` on the folder's docs context —
+//                   writes this node's owned ContextIdentity so
+//                   `execute` (list_docs, create_doc, …) works.
+//               Then `refetch()` so useFolderPermissions re-evaluates
 //               and the card unmounts in favour of the real folder
 //               view.
 //
@@ -18,10 +21,14 @@
 //                action as Open (the call succeeds the moment
 //                inheritance becomes resolvable on this node).
 //
-// Pre-#2360 the workaround was to enumerate `listGroupContexts` and
-// `joinContext` each, which (a) required discovering a child context
-// id, (b) raced gossip propagation of that registration. The single
-// endpoint replaces the dance.
+// #2360's `join-via-inheritance` replaced the pre-#2360
+// `listGroupContexts` enumeration for SUBGROUP membership — but the
+// per-docs-context `joinContext` is STILL required: core's
+// `join_subgroup_inheritance` handler is subgroup-scoped (subgroup
+// key + namespace `MemberJoinedOpen` op only) and never provisions a
+// `ContextIdentity` for child contexts. `join_context` is the handler
+// that does (it accepts inherited Open-subgroup membership), and it
+// internally subscribes + syncs the joined context.
 
 import React, { useState } from 'react';
 import {
@@ -32,8 +39,12 @@ import {
   LogIn,
   RotateCw,
 } from 'lucide-react';
-import { useJoinSubgroupInheritance } from '@calimero-network/mero-react';
+import {
+  useJoinSubgroupInheritance,
+  useJoinContext,
+} from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 
 interface Props {
   /** Folder subgroup id — the join target. */
@@ -64,8 +75,14 @@ export function RestrictedFolderCard({
 }: Props) {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { joinSubgroupInheritance, loading: joining } =
-    useJoinSubgroupInheritance();
+  // `joining` is local state spanning the WHOLE join flow (subgroup
+  // join → resolve docs context → context join), not just one hook's
+  // `loading` — the button must stay disabled until every step
+  // settles.
+  const [joining, setJoining] = useState(false);
+  const { joinSubgroupInheritance } = useJoinSubgroupInheritance();
+  const { joinContext } = useJoinContext();
+  const { registryClient } = useDriveWorkspace();
 
   const isRestricted = visibility === 'Restricted';
   const isSyncing = visibility === undefined;
@@ -87,8 +104,29 @@ export function RestrictedFolderCard({
 
   const onJoin = async () => {
     setError(null);
+    setJoining(true);
     try {
+      // 1) Materialise inherited subgroup membership (#2360):
+      //    delivers the subgroup key + publishes `MemberJoinedOpen`
+      //    on the namespace DAG.
       await joinSubgroupInheritance(folderId);
+
+      // 2) Join the folder's docs CONTEXT. join-via-inheritance does
+      //    NOT cascade into child contexts — without this step the
+      //    node holds no owned `ContextIdentity` for the docs
+      //    context, and every `execute` (list_docs, create_doc, …)
+      //    fails with "No owned identity found for this context".
+      //    `joinContext` writes that identity AND awaits core's
+      //    internal context subscribe + sync, so once it resolves the
+      //    docs context is queryable on this node.
+      if (!registryClient) {
+        throw new Error('Workspace registry not ready — try again.');
+      }
+      const docsContextId = await registryClient.getFolderContext({
+        folder_id: folderId,
+      });
+      await joinContext(docsContextId);
+
       // Success: refetch workspace state AND the per-folder
       // permissions probe. The workspace refetch (folder list,
       // subgroups, etc.) does not touch useMemberCaps — its deps
@@ -112,6 +150,8 @@ export function RestrictedFolderCard({
             : "Your node can't reach this folder yet — either sync is still in progress or the workspace owner needs to add you. Try again, or ask the admin."
           : msg,
       );
+    } finally {
+      setJoining(false);
     }
   };
 

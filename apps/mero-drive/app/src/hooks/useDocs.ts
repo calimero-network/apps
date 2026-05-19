@@ -16,6 +16,7 @@
 //   const byId = useMemo(() => new Map(docs.list.map(d => [d.id, d])), [docs.list]);
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useJoinContext } from '@calimero-network/mero-react';
 import type { DocDto } from '../api/docs/DocsClient';
 import { useDriveWorkspace } from '../hooks/useDriveWorkspace';
 import { useSelfIdentity } from './useSelfIdentity';
@@ -70,9 +71,40 @@ function notifyDocsRefetch(contextId: string | null) {
   for (const fn of bucket) fn();
 }
 
+// core's `execute` (jsonrpc/execute.rs) rejects with this when the
+// node holds no owned `ContextIdentity` for the target context.
+//
+// IMPORTANT — error shape: mero-js throws the JSON-RPC error as
+// `new E(code, message, data, type)`. For a FunctionCallError there
+// is no `error.message` on the wire, so `message` becomes the error
+// TYPE ("FunctionCallError") and the human string ("No owned
+// identity…") lands in `.data`. A predicate that only scans
+// `.message` silently misses it — so scan `data`/`type` too.
+function isMissingOwnedIdentityError(err: unknown): boolean {
+  if (err == null) return false;
+  const parts: string[] = [];
+  if (err instanceof Error && err.message) parts.push(err.message);
+  if (typeof err === 'object' && err !== null) {
+    const o = err as Record<string, unknown>;
+    for (const key of ['data', 'type', 'bodyText']) {
+      if (typeof o[key] === 'string') parts.push(o[key] as string);
+    }
+  }
+  if (parts.length === 0) parts.push(String(err));
+  return /no owned identity/i.test(parts.join(' | '));
+}
+
 export function useDocs(folderId: string | null): UseDocsState {
   const { namespaceId, registryClient } = useDriveWorkspace();
   const { identity } = useSelfIdentity(namespaceId);
+  const { joinContext } = useJoinContext();
+  // Ref-captured so it isn't a `refetch` dependency — useJoinContext's
+  // returned fn isn't guaranteed stable, and `refetch` feeds an effect.
+  const joinContextRef = useRef(joinContext);
+  joinContextRef.current = joinContext;
+  // Caps the docs-context self-heal at one attempt per context (see
+  // `refetch`) so a persistently-failing join can't loop.
+  const healedContextRef = useRef<string | null>(null);
 
   const [contextId, setContextId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<Error | null>(null);
@@ -126,7 +158,42 @@ export function useDocs(folderId: string | null): UseDocsState {
     inFlightRef.current = true;
     setListError(null);
     try {
-      const result = await docsClient.listDocs({ include_archived: false });
+      let result: DocDto[];
+      try {
+        result = await docsClient.listDocs({ include_archived: false });
+      } catch (e) {
+        // Self-heal. A node can be a folder-SUBGROUP member without an
+        // owned identity in the docs CONTEXT: core's join-via-
+        // inheritance is subgroup-scoped and never provisions a
+        // child-context `ContextIdentity` (see RestrictedFolderCard +
+        // core `join_context.rs`). RestrictedFolderCard joins the
+        // context proactively, but that card only renders for non-
+        // members — a node that became a subgroup member by any other
+        // path (or before that card existed) has no way to trigger the
+        // context join. So when `list_docs` reports the missing
+        // identity, join the docs context once and retry. core's
+        // join_context persists the identity, so this heal runs at
+        // most once per context per node, ever.
+        if (
+          contextId &&
+          healedContextRef.current !== contextId &&
+          isMissingOwnedIdentityError(e)
+        ) {
+          healedContextRef.current = contextId;
+          // One-time recovery breadcrumb. If `joinContext` throws it
+          // propagates to the outer catch and surfaces as `error`,
+          // same as any other list failure.
+          console.warn(
+            '[useDocs] docs context has no owned identity — ' +
+              'self-healing via joinContext',
+            contextId,
+          );
+          await joinContextRef.current(contextId);
+          result = await docsClient.listDocs({ include_archived: false });
+        } else {
+          throw e;
+        }
+      }
       // Sort most-recent first so the list's default cursor lands
       // on what the user likely wants to read.
       result.sort((a, b) => b.updated_at - a.updated_at);
@@ -139,7 +206,7 @@ export function useDocs(folderId: string | null): UseDocsState {
     } finally {
       inFlightRef.current = false;
     }
-  }, [docsClient]);
+  }, [docsClient, contextId]);
 
   useEffect(() => {
     setListLoading(true);
