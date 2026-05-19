@@ -1,97 +1,73 @@
-// v9 app-side scaffold. Minimal routing + auth gate.
+// Root of the app. Mirrors battleships' App.tsx shape exactly: a
+// single MeroProvider at the top, then the UI-level providers, then
+// the router. No session-timeout logic here — the per-page guard in
+// pages/workspace/index.tsx handles the "not authenticated" branch,
+// and Phase 3's useDriveWorkspace owns any cache invalidation on
+// namespace switch / logout.
 //
-// Auth comes exclusively from @calimero-network/mero-react — no
-// calimero-client layer (removed in Phase-10 follow-up; see PR notes).
-// Mirrors the battleships pattern: one MeroProvider, useMero for
-// auth state + logout, ConnectButton for the connect/logout UI.
+// Env vars consumed:
+//   VITE_PACKAGE_NAME    — passed to MeroProvider so the OAuth flow
+//                          can resolve the application id from the
+//                          public registry
+//   VITE_REGISTRY_URL    — optional registry override (self-hosted)
 //
 // Routes:
-//   /               → landing page
-//   /login          → Authenticate (node-URL + SSO flow)
-//   /app/*          → WorkspaceLayout (logged-in only)
-//   *               → redirect to /
+//   /          → landing page (public)
+//   /login     → Authenticate (ConnectButton entry)
+//   /app/*     → WorkspacePage (auth-guarded shell, mounts
+//                 WorkspaceLayout)
+//   *          → redirect to /
 
-import React, { Suspense, lazy, useEffect, useRef } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { useMero } from '@calimero-network/mero-react';
-import {
-  isSessionExpired,
-  clearStoredSession,
-  clearSessionActivity,
-  updateSessionActivity,
-} from '@/utils/session';
-import { clearIdentityCache } from '@/hooks/useSelfIdentity';
-import { clearWorkspaceState } from '@/context/WorkspaceContext';
+import React from 'react';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { AppMode, MeroProvider } from '@calimero-network/mero-react';
+import { ToastProvider } from '@calimero-network/mero-ui';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { ConfirmProvider } from '@/components/ui/confirm-dialog';
+import { DriveWorkspaceProvider } from '@/hooks/useDriveWorkspace';
 
-const LandingPage = lazy(() => import('./pages/landing'));
-const Authenticate = lazy(() => import('./pages/login/Authenticate'));
-const WorkspaceLayout = lazy(() =>
-  import('./components/workspace/WorkspaceLayout').then((m) => ({
-    default: m.WorkspaceLayout,
-  })),
-);
+import LandingPage from './pages/landing';
+import Authenticate from './pages/login/Authenticate';
+import WorkspacePage from './pages/workspace';
+import JoinPage from './pages/join';
 
-function AuthedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useMero();
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
-  return <>{children}</>;
-}
-
-const App: React.FC = () => {
-  const { isAuthenticated, logout } = useMero();
-  const wasAuthenticatedRef = useRef(false);
-
-  // Activity-based 1h idle timeout on top of JWT expiry. A user who's
-  // been inactive past SESSION_TIMEOUT_MS gets logged out proactively
-  // even if their JWT is still nominally valid.
-  //
-  // The ref tracks auth transitions so we can clear session-scoped
-  // caches on ANY de-auth path, not just our own idle-timeout branch.
-  // If MeroProvider invalidates the session (JWT server-side expiry,
-  // user hitting the logout button), isAuthenticated flips true→false
-  // without going through isSessionExpired() — and the identity cache
-  // (scoped by namespace, not by user) would otherwise leak a
-  // previous user's pubkey to the next user on the same browser.
-  useEffect(() => {
-    if (!isAuthenticated) {
-      if (wasAuthenticatedRef.current) {
-        clearStoredSession();
-        clearSessionActivity();
-        clearIdentityCache();
-        clearWorkspaceState();
-      }
-      wasAuthenticatedRef.current = false;
-      return;
-    }
-    wasAuthenticatedRef.current = true;
-    if (isSessionExpired()) {
-      clearStoredSession();
-      clearSessionActivity();
-      clearIdentityCache();
-      clearWorkspaceState();
-      logout();
-    } else {
-      updateSessionActivity();
-    }
-  }, [isAuthenticated, logout]);
+export default function App() {
+  const packageName = import.meta.env.VITE_PACKAGE_NAME?.trim() || undefined;
+  const registryUrl = import.meta.env.VITE_REGISTRY_URL?.trim() || undefined;
 
   return (
-    <Suspense fallback={<div />}>
-      <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/login" element={<Authenticate />} />
-        <Route
-          path="/app/*"
-          element={
-            <AuthedRoute>
-              <WorkspaceLayout />
-            </AuthedRoute>
-          }
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Suspense>
+    <MeroProvider
+      mode={AppMode.MultiContext}
+      packageName={packageName}
+      registryUrl={registryUrl}
+    >
+      <ToastProvider>
+        <TooltipProvider>
+          <ConfirmProvider>
+            <BrowserRouter
+              future={{
+                v7_startTransition: true,
+                v7_relativeSplatPath: true,
+              }}
+            >
+              <Routes>
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/login" element={<Authenticate />} />
+                <Route path="/join" element={<JoinPage />} />
+                <Route
+                  path="/app/*"
+                  element={
+                    <DriveWorkspaceProvider>
+                      <WorkspacePage />
+                    </DriveWorkspaceProvider>
+                  }
+                />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </BrowserRouter>
+          </ConfirmProvider>
+        </TooltipProvider>
+      </ToastProvider>
+    </MeroProvider>
   );
-};
-
-export default App;
+}

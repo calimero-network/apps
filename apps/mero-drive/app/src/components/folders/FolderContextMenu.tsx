@@ -23,8 +23,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
-import { useRegistry } from '@/context/RegistryContext';
-import { useWorkspace } from '@/context/WorkspaceContext';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderOperations } from '@/hooks/useFolderOperations';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { FolderVisibilityToggle } from './FolderVisibilityToggle';
@@ -32,7 +31,9 @@ import { NewFolderDialog } from './NewFolderDialog';
 
 interface Props {
   folderId: string;
-  currentVisibility: 'Inherit' | 'Restricted';
+  /** Current subgroup visibility from core's GroupInfo. `undefined`
+   *  while the per-folder fetch is still in flight. */
+  currentVisibility: 'Open' | 'Restricted' | undefined;
   onRename: () => void;
 }
 
@@ -41,8 +42,14 @@ export function FolderContextMenu({
   currentVisibility,
   onRename,
 }: Props) {
-  const { namespaceId, rootGroupId } = useWorkspace();
-  const { folders, registryClient } = useRegistry();
+  const {
+    namespaceId,
+    rootGroupId,
+    folders,
+    registryClient,
+    applicationId,
+    refetch,
+  } = useDriveWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const ops = useFolderOperations(
     registryClient,
@@ -50,8 +57,9 @@ export function FolderContextMenu({
     folders.map((f) => ({
       id: f.id,
       parent_id: f.parent_id,
-      visibility: f.visibility,
     })),
+    applicationId,
+    refetch,
   );
 
   const [showNewSub, setShowNewSub] = useState(false);
@@ -63,7 +71,7 @@ export function FolderContextMenu({
   const anyAction =
     perms.canRename ||
     perms.canCreateSubfolder ||
-    perms.canManageGroup ||
+    perms.canManageVisibility ||
     perms.canDelete;
   if (!anyAction) return null;
 

@@ -113,12 +113,14 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             logic/target
-          # Include Cargo.lock in the hash so cache invalidates when any
-          # git-branch pinned dep (calimero-sdk, calimero-storage,
-          # calimero-storage-macros, calimero-wasm-abi — all pinned to
-          # `branch = "master"`) resolves to a new commit, even if
-          # Cargo.toml is unchanged.
-          key: logic-${{ runner.os }}-${{ hashFiles('logic/Cargo.toml', 'logic/crates/*/Cargo.toml', 'logic/Cargo.lock') }}
+          # Cargo.lock is gitignored so each fresh checkout re-resolves the
+          # `branch = "master"` git deps (calimero-sdk / calimero-storage /
+          # calimero-storage-macros / calimero-wasm-abi) to current HEAD.
+          # That's intentional: PR e2e runs always exercise the up-to-date
+          # runtime ABI. Cache key only hashes Cargo.toml — `restore-keys`
+          # still hits when only deps moved, and cargo's own resolution
+          # validates whether the cached ~/.cargo/git snapshots are usable.
+          key: logic-${{ runner.os }}-${{ hashFiles('logic/Cargo.toml', 'logic/crates/*/Cargo.toml') }}
           restore-keys: logic-${{ runner.os }}-
 
       - name: Cargo format
@@ -146,13 +148,23 @@ jobs:
         run: cargo build --target wasm32-unknown-unknown --profile app-release
 
   # ============================================================
-  # Job 3: Bundle — Build the multi-service .mpk
+  # Job 3: Bundle — Build the multi-service .mpk against current core master
   # ============================================================
-  # Produces the signed bundle `com.calimero.mero-drive-docs-9.0.0.mpk`
-  # from the two wasm artifacts. Uploaded as a build artifact so the
-  # e2e job below can consume it without rebuilding, and so PR
-  # reviewers can download and inspect the actual artifact that would
-  # ship.
+  # Produces the bundle `com.calimero.mero-drive-docs-9.1.0.mpk` from the
+  # two wasm artifacts. Uploaded as a build artifact so the e2e job below
+  # can consume it without rebuilding, and so PR reviewers can download
+  # and inspect the actual artifact that would ship.
+  #
+  # `Cargo.lock` is gitignored, so each fresh checkout resolves the
+  # `branch = "master"` git deps for calimero-sdk / calimero-storage /
+  # calimero-storage-macros / calimero-wasm-abi to whatever is currently
+  # at master HEAD. That is exactly what we want: every PR's e2e run is
+  # exercised against the up-to-date runtime ABI. Mirrors battleships'
+  # CI policy (their `bundle` job comment).
+  #
+  # The committed `logic/dist/*.mpk` is for local dev convenience — CI
+  # does not consume it. The artifact uploaded here is what the e2e
+  # matrix downloads and installs on the merod nodes.
   #
   # Signing: the build-bundle.sh script signs against the sibling
   # `../../core/scripts/test-signing-key/test-key.json`. In CI there's
@@ -179,12 +191,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             logic/target
-          # Include Cargo.lock in the hash so cache invalidates when any
-          # git-branch pinned dep (calimero-sdk, calimero-storage,
-          # calimero-storage-macros, calimero-wasm-abi — all pinned to
-          # `branch = "master"`) resolves to a new commit, even if
-          # Cargo.toml is unchanged.
-          key: logic-${{ runner.os }}-${{ hashFiles('logic/Cargo.toml', 'logic/crates/*/Cargo.toml', 'logic/Cargo.lock') }}
+          # Cargo.lock is gitignored — see the matching block in the `logic`
+          # job above. Same key shape so both jobs share cached registry +
+          # git snapshots.
+          key: logic-${{ runner.os }}-${{ hashFiles('logic/Cargo.toml', 'logic/crates/*/Cargo.toml') }}
           restore-keys: logic-${{ runner.os }}-
 
       - name: Build bundle
@@ -243,10 +253,25 @@ jobs:
           # defaults.
           - name: members
             file: workflow-mero-drive-members.yml
-          # Phase 9 — namespace lifecycle. Rename (set_group_alias),
+          # Phase 9 — namespace lifecycle. Rename (set_group_metadata),
           # delete_group, delete_namespace, multi-namespace isolation.
           - name: namespace-lifecycle
             file: workflow-mero-drive-namespace-lifecycle.yml
+          # Metadata records (#2338) — namespace / folder / member name
+          # round-trips across two nodes, plus the CAN_MANAGE_METADATA
+          # negative-cap path now that merobox v0.6.12 honors
+          # expected_failure on group_management steps.
+          - name: metadata-records
+            file: workflow-mero-drive-metadata-records.yml
+          # NOTE: e2e/workflow-mero-drive-open-restricted-collab.yml (open/
+          # restricted folders + registry permissions) is tracked but NOT in
+          # the matrix yet — same as workflow-mero-drive-open-subgroup.yml. It
+          # runs clean through the new permission paths (verified via
+          # workflow_dispatch) but, like the `main` cell, it flakes on
+          # `wait_for_sync` over subgroup-owned docs contexts (the core
+          # SyncSessionActor wedge tracked in core#2199/#2238). Wire it in once
+          # that's resolved and a merobox release ships #214/#236 + #2338's
+          # metadata steps (for the two negative-cap steps stubbed inline).
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -277,6 +302,49 @@ jobs:
           attempt=1
           success=false
 
+          # In-flight log watcher. Replaces the prior post-hoc
+          # `docker logs` collection, which only captured the `-init`
+          # containers — `merobox bootstrap run` tears down the
+          # runtime merod containers as part of its exit path, so
+          # by the time the shell regained control all that was
+          # left were the init names. (Tracked upstream in
+          # merobox#207 / core#2179.)
+          #
+          # The watcher polls `docker ps` once a second and starts
+          # `docker logs -f <c>` to a per-container file as soon as
+          # each runtime container appears. Since the follower runs
+          # while the container is alive, the log file survives the
+          # post-run cleanup. Pattern lifted verbatim from
+          # battleships' CI.
+          #
+          # The attempt number lives in $ATTEMPT_FILE so a single
+          # watcher process keeps running across the retry loop while
+          # still namespacing mark files and log paths per attempt.
+          # Without this, attempt 2's containers (same names as
+          # attempt 1 after `merobox nuke --force` recreates them)
+          # would be skipped because the attempt-1 mark files survive
+          # the container wipe, and the attempt-1 log file would be
+          # clobbered.
+          LOGDIR="$GITHUB_WORKSPACE/docker-logs"
+          WATCHER_STATE_DIR="$(mktemp -d)"
+          ATTEMPT_FILE="$WATCHER_STATE_DIR/.attempt"
+          echo 1 > "$ATTEMPT_FILE"
+          (
+              while [ ! -f "$WATCHER_STATE_DIR/stop" ]; do
+                  cur=$(cat "$ATTEMPT_FILE" 2>/dev/null || echo 1)
+                  for c in $(docker ps --filter "label=calimero.node=true" --format "{{.Names}}" 2>/dev/null | grep -v -- '-init$' || true); do
+                      mark="$WATCHER_STATE_DIR/${c}-attempt${cur}"
+                      if [ ! -f "$mark" ]; then
+                          touch "$mark"
+                          echo "[log-watcher] following $c (attempt $cur)"
+                          docker logs -f "$c" > "$LOGDIR/${{ matrix.name }}-attempt${cur}-${c}.log" 2>&1 &
+                      fi
+                  done
+                  sleep 1
+              done
+          ) &
+          WATCHER_PID=$!
+
           while [ $attempt -le $max_attempts ]; do
             if [ $attempt -gt 1 ]; then
               echo "Retry attempt $attempt for ${{ matrix.name }}..."
@@ -284,6 +352,7 @@ jobs:
               merobox nuke --force || true
               sleep 2
             fi
+            echo $attempt > "$ATTEMPT_FILE"
 
             if merobox bootstrap run \
                 "${{ matrix.file }}" \
@@ -291,17 +360,17 @@ jobs:
               success=true
               break
             else
-              echo "Collecting docker logs for attempt $attempt"
-              for container in $(docker ps -a --format "{{.Names}}" 2>/dev/null || true); do
-                if [ -n "$container" ]; then
-                  docker logs "$container" \
-                    > "$GITHUB_WORKSPACE/docker-logs/${{ matrix.name }}-attempt${attempt}-${container}.log" \
-                    2>&1 || true
-                fi
-              done
               attempt=$((attempt + 1))
             fi
           done
+
+          # Signal the watcher to stop and give `docker logs -f`
+          # followers a moment to flush their final output.
+          touch "$WATCHER_STATE_DIR/stop"
+          sleep 2
+          kill "$WATCHER_PID" 2>/dev/null || true
+          for pid in $(jobs -p); do kill "$pid" 2>/dev/null || true; done
+          wait 2>/dev/null || true
 
           merobox stop --all || true
           merobox nuke --force || true

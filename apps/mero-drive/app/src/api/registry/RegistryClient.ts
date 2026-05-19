@@ -8,6 +8,10 @@ import {
 
 export type ContextId = string;
 
+export interface Event_FolderAliasChanged {
+  id: string;
+}
+
 export interface Event_FolderColorChanged {
   id: string;
 }
@@ -25,6 +29,11 @@ export interface Event_FolderRegistered {
   id: string;
 }
 
+export interface Event_FolderRoleChanged {
+  folder_id: string;
+  member: string;
+}
+
 export interface Event_FolderSortOrderChanged {
   parent_id: string;
 }
@@ -37,29 +46,58 @@ export interface Event_FolderVisibilityChanged {
   id: string;
 }
 
+export interface Event_ManagerAdded {
+  member: string;
+}
+
+export interface Event_ManagerRemoved {
+  member: string;
+}
+
+export interface Event_OwnerClaimed {
+  owner: string;
+}
+
 export interface FolderDto {
   id: FolderId;
   parent_id: FolderId | null;
-  visibility: Visibility;
   color: string | null;
   context_id: ContextId | null;
+  alias: string | null;
+  visibility: Visibility;
 }
 
 export type FolderId = string;
 
 export interface FolderRecord {
   parent_id: string;
-  visibility: Visibility;
   color: string;
+  alias: string;
+  visibility: Visibility;
+}
+
+export interface FolderRoleEntry {
+  member: string;
+  role: Role;
 }
 
 export interface RegistryState {
   folders: Record<string, FolderRecord>;
   folder_contexts: Record<string, ContextId>;
   sort_order: Record<string, string[]>;
+  owner: string;
+  managers: Record<string, boolean>;
+  folder_roles: Record<string, Role>;
 }
 
+export type Role = 'Viewer' | 'Editor' | 'Manager';
+
 export type Visibility = 'Inherit' | 'Restricted';
+
+
+
+
+
 
 
 
@@ -72,10 +110,15 @@ export type AbiEvent =
   | { name: "FolderRegistered"; payload: Event_FolderRegistered }
   | { name: "FolderUnregistered"; payload: Event_FolderUnregistered }
   | { name: "FolderContextBound"; payload: Event_FolderContextBound }
-  | { name: "FolderVisibilityChanged"; payload: Event_FolderVisibilityChanged }
   | { name: "FolderColorChanged"; payload: Event_FolderColorChanged }
+  | { name: "FolderAliasChanged"; payload: Event_FolderAliasChanged }
   | { name: "FolderParentChanged"; payload: Event_FolderParentChanged }
   | { name: "FolderSortOrderChanged"; payload: Event_FolderSortOrderChanged }
+  | { name: "FolderVisibilityChanged"; payload: Event_FolderVisibilityChanged }
+  | { name: "OwnerClaimed"; payload: Event_OwnerClaimed }
+  | { name: "ManagerAdded"; payload: Event_ManagerAdded }
+  | { name: "ManagerRemoved"; payload: Event_ManagerRemoved }
+  | { name: "FolderRoleChanged"; payload: Event_FolderRoleChanged }
 ;
 
 
@@ -101,7 +144,7 @@ export class RegistryClient {
   /**
    * register_folder
    */
-  public async registerFolder(params: { id: FolderId; parent_id: FolderId | null; color: string | null }): Promise<void> {
+  public async registerFolder(params: { id: FolderId; parent_id: FolderId | null; color: string | null; alias: string | null }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'register_folder', argsJson: params, executorPublicKey: this._executorPublicKey });
     return response as void;
   }
@@ -147,18 +190,26 @@ export class RegistryClient {
   }
 
   /**
-   * set_visibility
-   */
-  public async setVisibility(params: { id: FolderId; visibility: Visibility }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_visibility', argsJson: params, executorPublicKey: this._executorPublicKey });
-    return response as void;
-  }
-
-  /**
    * set_color
    */
   public async setColor(params: { id: FolderId; color: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_color', argsJson: params, executorPublicKey: this._executorPublicKey });
+    return response as void;
+  }
+
+  /**
+   * set_folder_alias
+   */
+  public async setFolderAlias(params: { id: FolderId; alias: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_folder_alias', argsJson: params, executorPublicKey: this._executorPublicKey });
+    return response as void;
+  }
+
+  /**
+   * set_visibility
+   */
+  public async setVisibility(params: { id: FolderId; visibility: Visibility }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_visibility', argsJson: params, executorPublicKey: this._executorPublicKey });
     return response as void;
   }
 
@@ -184,6 +235,78 @@ export class RegistryClient {
   public async getSortOrder(params: { parent_id: FolderId | null }): Promise<FolderId[]> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_sort_order', argsJson: params, executorPublicKey: this._executorPublicKey });
     return response as FolderId[];
+  }
+
+  /**
+   * claim_owner
+   */
+  public async claimOwner(): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'claim_owner', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    return response as void;
+  }
+
+  /**
+   * get_owner
+   */
+  public async getOwner(): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_owner', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    return response as string;
+  }
+
+  /**
+   * add_manager
+   */
+  public async addManager(params: { member: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add_manager', argsJson: params, executorPublicKey: this._executorPublicKey });
+    return response as void;
+  }
+
+  /**
+   * remove_manager
+   */
+  public async removeManager(params: { member: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'remove_manager', argsJson: params, executorPublicKey: this._executorPublicKey });
+    return response as void;
+  }
+
+  /**
+   * list_managers
+   */
+  public async listManagers(): Promise<string[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_managers', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    return response as string[];
+  }
+
+  /**
+   * set_folder_role
+   */
+  public async setFolderRole(params: { folder_id: FolderId; member: string; role: Role }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_folder_role', argsJson: params, executorPublicKey: this._executorPublicKey });
+    return response as void;
+  }
+
+  /**
+   * clear_folder_role
+   */
+  public async clearFolderRole(params: { folder_id: FolderId; member: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'clear_folder_role', argsJson: params, executorPublicKey: this._executorPublicKey });
+    return response as void;
+  }
+
+  /**
+   * get_folder_role
+   */
+  public async getFolderRole(params: { folder_id: FolderId; member: string }): Promise<Role> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_folder_role', argsJson: params, executorPublicKey: this._executorPublicKey });
+    return response as Role;
+  }
+
+  /**
+   * list_folder_roles
+   */
+  public async listFolderRoles(params: { folder_id: FolderId }): Promise<FolderRoleEntry[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_folder_roles', argsJson: params, executorPublicKey: this._executorPublicKey });
+    return response as FolderRoleEntry[];
   }
 
 }

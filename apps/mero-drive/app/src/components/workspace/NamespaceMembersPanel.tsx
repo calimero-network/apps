@@ -10,16 +10,30 @@
 // view, tracked separately).
 
 import React, { useState } from 'react';
-import { useWorkspace } from '@/context/WorkspaceContext';
+import { UserPlus } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderMembership } from '@/hooks/useFolderMembership';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { NamespaceMemberRow } from '@/components/admin/NamespaceMemberRow';
+import { InviteDialog } from './InviteDialog';
+import { useCreateNamespaceInvite } from '@/hooks/useNamespaceInvitation';
 
 export function NamespaceMembersPanel() {
-  const { namespaceId, rootGroupId } = useWorkspace();
+  const { namespaceId, rootGroupId, namespaces, selfIdentity } =
+    useDriveWorkspace();
   const perms = useNamespacePermissions(namespaceId ?? '', rootGroupId ?? '');
   const membership = useFolderMembership(rootGroupId);
+  const { create: createInvite } = useCreateNamespaceInvite();
   const [removeError, setRemoveError] = useState<string | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
+
+  const currentNamespace = namespaces.find(
+    (n) => n.namespaceId === namespaceId,
+  );
+  const aliasLabel =
+    currentNamespace?.name ??
+    (namespaceId ? `${namespaceId.slice(0, 8)}…` : 'this workspace');
 
   // Read-only viewers see the panel but can't mutate. We don't
   // hide the whole panel because knowing who's in the workspace
@@ -60,9 +74,21 @@ export function NamespaceMembersPanel() {
             People with access to this workspace.
           </p>
         </div>
-        {membership.loading && (
-          <span className="text-xs text-muted-foreground">Loading…</span>
-        )}
+        <div className="flex items-center gap-3">
+          {membership.loading && (
+            <span className="text-xs text-muted-foreground">Loading…</span>
+          )}
+          {perms.canInviteMembers && namespaceId && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setInviteOpen(true)}
+            >
+              <UserPlus className="mr-1.5 h-3.5 w-3.5" />
+              Invite
+            </Button>
+          )}
+        </div>
       </header>
 
       {membership.error && (
@@ -94,12 +120,31 @@ export function NamespaceMembersPanel() {
             key={m.identity}
             groupId={rootGroupId}
             identity={m.identity}
-            label={m.alias ?? `${m.identity.slice(0, 8)}…`}
-            canManage={perms.canManageNamespaceMembers}
+            label={m.name ?? `${m.identity.slice(0, 8)}…`}
+            role={m.role}
+            isSelf={!!selfIdentity && m.identity === selfIdentity}
+            canManage={perms.canManageMembers}
             onRemove={onRemove}
           />
         ))}
       </ul>
+
+      {inviteOpen && namespaceId && (
+        <InviteDialog
+          title="Invite to workspace"
+          description={
+            <>
+              Share this link with people you want to give access to{' '}
+              <span className="font-medium text-foreground">{aliasLabel}</span>
+              . They'll be added to the workspace root and will see every
+              folder that inherits from it.
+            </>
+          }
+          footnote="Anyone with this link and a Calimero identity can join the workspace."
+          onCreate={() => createInvite(namespaceId)}
+          onClose={() => setInviteOpen(false)}
+        />
+      )}
     </section>
   );
 }

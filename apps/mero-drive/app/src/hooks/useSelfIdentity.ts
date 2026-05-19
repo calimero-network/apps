@@ -1,17 +1,22 @@
-// Per-namespace self-identity cache. The node issues a distinct
-// public key per namespace membership, and every permission hook
-// needs it as the subject in admin-API member lookups. Identity is
-// stable for the session, so we cache in localStorage keyed by
-// namespace id — invalidation is per-namespace, so switching
-// namespaces doesn't blow away the whole cache.
+// Transitional shim over useDriveWorkspace().selfIdentity.
 //
-// Session boundary: the cache is NOT scoped by authenticated user.
-// Callers must invoke `clearIdentityCache()` on logout — otherwise a
-// second user signing in on the same browser would inherit the
-// previous user's pubkey.
+// The previous implementation owned its own localStorage cache + a
+// direct GET /admin-api/namespaces/:id/identity call (to work around
+// a mero-js unwrap bug). Phase 3 moved identity resolution into
+// useDriveWorkspace, which reads it from mero-react's
+// `useGroupMembers(ns).selfIdentity` — the canonical primitive.
+//
+// This file stays only so `useMemberCaps` / `useDocs` / tests don't
+// need to be rewritten in the same commit. Phase 5 can inline the
+// identity read at each caller and delete this file.
+//
+// The `namespaceId` argument is ignored — useDriveWorkspace already
+// tracks the active namespace. If a caller ever needs identity for a
+// DIFFERENT namespace than the currently-selected one, they'd need
+// the real per-namespace call. No current caller does (all ask for
+// the active workspace's identity).
 
-import { useEffect, useState } from 'react';
-import { adminRequest } from '../api/adminApi';
+import { useDriveWorkspace } from './useDriveWorkspace';
 
 export interface SelfIdentityState {
   identity: string | null;
@@ -19,74 +24,20 @@ export interface SelfIdentityState {
   error: Error | null;
 }
 
-const KEY_PREFIX = 'mero-drive:selfId:';
-const keyFor = (ns: string) => `${KEY_PREFIX}${ns}`;
-
-// Clear every per-namespace identity entry. Call on logout so a
-// second user signing in on the same browser doesn't inherit the
-// previous user's pubkey from cache — the cache is scoped by
-// namespace, not by authenticated user, so session-bounded clearing
-// has to happen explicitly.
-export function clearIdentityCache(): void {
-  const toRemove: string[] = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (k && k.startsWith(KEY_PREFIX)) toRemove.push(k);
-  }
-  for (const k of toRemove) localStorage.removeItem(k);
+/** Deprecated. Prefer `useDriveWorkspace().selfIdentity`. */
+export function useSelfIdentity(_namespaceId: string | null): SelfIdentityState {
+  const ws = useDriveWorkspace();
+  return {
+    identity: ws.selfIdentity,
+    loading: ws.loading && !ws.selfIdentity,
+    error: ws.error,
+  };
 }
 
-export function useSelfIdentity(namespaceId: string | null): SelfIdentityState {
-  const [state, setState] = useState<SelfIdentityState>({
-    identity: null,
-    loading: !!namespaceId,
-    error: null,
-  });
-
-  useEffect(() => {
-    if (!namespaceId) {
-      setState({ identity: null, loading: false, error: null });
-      return;
-    }
-    const cached = localStorage.getItem(keyFor(namespaceId));
-    if (cached) {
-      setState({ identity: cached, loading: false, error: null });
-      return;
-    }
-    // Reset synchronously before the fetch. Without this, switching
-    // namespaces would briefly surface the previous namespace's
-    // identity with `loading: false`, and downstream permission hooks
-    // (which use identity as the member key) would query the wrong
-    // member during the gap.
-    setState({ identity: null, loading: true, error: null });
-    let alive = true;
-    // core exposes this at GET /admin-api/namespaces/:id/identity.
-    // We call it directly rather than via
-    // `mero.admin.getNamespaceIdentity` because mero-js 1.4.1's
-    // `unwrap()` helper assumes responses are wrapped in
-    // `{ data: ... }`, but core's ApiResponse serializes the payload
-    // at the top level — so the typed client resolves to `undefined`
-    // and throws "Cannot read properties of undefined (reading
-    // 'publicKey')". Calling fetch directly via adminRequest skips
-    // the broken unwrap. core returns camelCase fields (serde
-    // `rename_all = "camelCase"` on NamespaceIdentityApiResponse).
-    adminRequest<{ namespaceId: string; publicKey: string }>(
-      `/namespaces/${namespaceId}/identity`,
-    )
-      .then((r) => {
-        if (!alive) return;
-        localStorage.setItem(keyFor(namespaceId), r.publicKey);
-        setState({ identity: r.publicKey, loading: false, error: null });
-      })
-      .catch((e: unknown) => {
-        if (!alive) return;
-        const err = e instanceof Error ? e : new Error(String(e));
-        setState({ identity: null, loading: false, error: err });
-      });
-    return () => {
-      alive = false;
-    };
-  }, [namespaceId]);
-
-  return state;
+/** No-op. Identity cache is owned by useGroupMembers in mero-react now. */
+export function clearIdentityCache(): void {
+  // Intentionally empty. The old per-namespace localStorage cache
+  // (`mero-drive:selfId:*`) was removed in Phase 3. Kept as an
+  // export so App.tsx's logout branch (if it still references it)
+  // doesn't explode before Phase 5 cleans up.
 }

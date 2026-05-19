@@ -4,7 +4,7 @@
 //! ## What lives here (and why)
 //!
 //! Admin API is authoritative for group shape, membership, and aliases.
-//! Anything admin-API doesn't have a concept for — color, visibility flag,
+//! Anything admin-API doesn't have a concept for — color,
 //! folder→context binding, sort order under a parent — lives in this
 //! registry. The namespace holds one Registry context whose state is this
 //! struct, replicated across every member of the root group.
@@ -26,10 +26,17 @@
 //! The `calimero-wasm-abi` emitter only parses `lib.rs` + `events.rs` when
 //! generating the client SDK, so every type used in a public method
 //! signature must be declared here — we cannot reach into a shared
-//! `mero-drive-types` crate for them. `FolderId`, `ContextId`, and
-//! `Visibility` are therefore re-declared locally. `DriveError` stays
-//! internal-only (converted to `AppError` at the boundary), so it can still
-//! live in the shared types crate and be imported.
+//! `mero-drive-types` crate for them. `FolderId` and `ContextId` are
+//! therefore re-declared locally. `DriveError` stays internal-only
+//! (converted to `AppError` at the boundary), so it can still live in
+//! the shared types crate and be imported.
+//!
+//! ## Subgroup visibility
+//!
+//! Open-vs-Restricted is **not** stored here anymore. Calimero core owns
+//! it (`GroupInfo.subgroup_visibility`, `setSubgroupVisibility`) and uses
+//! it to drive parent-walk membership inheritance. The frontend reads it
+//! via the admin API and writes it via `mero.admin.setSubgroupVisibility`.
 
 use calimero_sdk::app;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
@@ -40,6 +47,7 @@ use calimero_storage::collections::{FrozenValue, LwwRegister, Mergeable, Unorder
 use mero_drive_types::DriveError;
 
 pub mod events;
+pub mod permissions;
 use events::Event;
 
 // ---------------------------------------------------------------------------
@@ -60,15 +68,56 @@ pub struct FolderId(pub String);
 #[serde(crate = "calimero_sdk::serde")]
 pub struct ContextId(pub String);
 
-/// Whether a folder cascades parent membership or walls it off.
+/// Per-folder cascade flag. `Inherit` = namespace-member cascade descends
+/// through this folder (Open subgroup); `Restricted` = explicit-invite wall,
+/// cascade stops here. Mirrors the admin-API subgroup_visibility concept but
+/// is stored in the registry so clients can read it without a per-folder
+/// admin-API call.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
+    Debug, Clone, Default, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
 )]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub enum Visibility {
+    #[default]
     Inherit,
     Restricted,
+}
+
+/// Per-folder collaborator role. **Re-declared here** — it also lives in
+/// `mero_drive_types::Role` — because the `calimero-wasm-abi` emitter only
+/// parses this crate's `lib.rs` + `events.rs` (same reason `FolderId` /
+/// `Visibility` are duplicated). Keep the two definitions in sync.
+#[derive(
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    BorshSerialize,
+    BorshDeserialize,
+    Serialize,
+    Deserialize,
+)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub enum Role {
+    Viewer,
+    #[default]
+    Editor,
+    Manager,
+}
+
+/// One explicit per-member role row for a folder (what `list_folder_roles`
+/// returns). Members not present have the implicit `Editor` role.
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct FolderRoleEntry {
+    /// base58-encoded member public key.
+    pub member: String,
+    pub role: Role,
 }
 
 // ---------------------------------------------------------------------------
@@ -90,27 +139,40 @@ pub struct FolderRecord {
     /// Parent folder id, or None for top-level folders. Stored as an
     /// LWW index; admin-API remains the source of truth for the tree.
     pub parent_id: LwwRegister<Option<String>>,
-    /// `Inherit` cascades parent members into child; `Restricted` is a wall.
-    pub visibility: LwwRegister<Visibility>,
     /// `#rrggbb` color, or empty string for "no color".
     pub color: LwwRegister<String>,
+    /// Display name. Mirrored from admin-API's group alias so namespace
+    /// members who can't read the subgroup yet (Restricted folder before
+    /// invite) can still see folder names. Empty string means "no
+    /// registry-side alias — fall back to the admin-API alias or a
+    /// truncated id stub on the client".
+    pub alias: LwwRegister<String>,
+    /// Inherit = namespace-member cascade descends through this folder.
+    /// Restricted = explicit-invite wall; cascade stops here.
+    pub visibility: LwwRegister<Visibility>,
 }
 
 impl Mergeable for FolderRecord {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         <LwwRegister<Option<String>> as Mergeable>::merge(&mut self.parent_id, &other.parent_id)?;
-        <LwwRegister<Visibility> as Mergeable>::merge(&mut self.visibility, &other.visibility)?;
         <LwwRegister<String> as Mergeable>::merge(&mut self.color, &other.color)?;
+        <LwwRegister<String> as Mergeable>::merge(&mut self.alias, &other.alias)?;
+        <LwwRegister<Visibility> as Mergeable>::merge(&mut self.visibility, &other.visibility)?;
         Ok(())
     }
 }
 
 impl FolderRecord {
-    pub(crate) fn new(parent_id: Option<String>, color: Option<String>) -> Self {
+    pub(crate) fn new(
+        parent_id: Option<String>,
+        color: Option<String>,
+        alias: Option<String>,
+    ) -> Self {
         FolderRecord {
             parent_id: LwwRegister::new(parent_id),
-            visibility: LwwRegister::new(Visibility::Inherit),
             color: LwwRegister::new(color.unwrap_or_default()),
+            alias: LwwRegister::new(alias.unwrap_or_default()),
+            visibility: LwwRegister::new(Visibility::default()),
         }
     }
 }
@@ -122,11 +184,15 @@ impl FolderRecord {
 pub struct FolderDto {
     pub id: FolderId,
     pub parent_id: Option<FolderId>,
-    pub visibility: Visibility,
     /// `None` when color is unset / empty.
     pub color: Option<String>,
     /// `None` when no Docs context has been bound to this folder yet.
     pub context_id: Option<ContextId>,
+    /// `None` when no registry-side alias is stored (older folders,
+    /// or folders created before the alias field existed). Clients
+    /// fall back to the admin-API alias or a truncated id stub.
+    pub alias: Option<String>,
+    pub visibility: Visibility,
 }
 
 fn project(id: &str, rec: &FolderRecord, ctx: Option<&ContextId>) -> FolderDto {
@@ -136,12 +202,19 @@ fn project(id: &str, rec: &FolderRecord, ctx: Option<&ContextId>) -> FolderDto {
     } else {
         Some(color_raw.clone())
     };
+    let alias_raw = rec.alias.get();
+    let alias = if alias_raw.is_empty() {
+        None
+    } else {
+        Some(alias_raw.clone())
+    };
     FolderDto {
         id: FolderId(id.to_string()),
         parent_id: rec.parent_id.get().clone().map(FolderId),
-        visibility: *rec.visibility.get(),
         color,
         context_id: ctx.cloned(),
+        alias,
+        visibility: rec.visibility.get().clone(),
     }
 }
 
@@ -166,6 +239,17 @@ pub struct RegistryState {
     folder_contexts: UnorderedMap<String, FrozenValue<ContextId>>,
     /// parent_id-or-empty → LWW list of child folder ids in display order
     sort_order: UnorderedMap<String, LwwRegister<Vec<String>>>,
+    /// base58 public key of the registry owner (the namespace creator).
+    /// Empty until `claim_owner` is called once; never reassigned after that.
+    owner: LwwRegister<String>,
+    /// base58 public keys granted manager rights over the whole registry
+    /// (may set/clear any folder role). The owner is implicitly a manager
+    /// and is NOT stored here. Value `true` = is a manager, `false` =
+    /// removed (kept around so the key is never CRDT-tombstoned — a
+    /// `remove` would silently swallow a later re-add of the same key).
+    managers: UnorderedMap<String, LwwRegister<bool>>,
+    /// `role_key(folder_id, member_b58)` → role. Absent ⇒ `Role::Editor`.
+    folder_roles: UnorderedMap<String, LwwRegister<Role>>,
 }
 
 #[app::logic]
@@ -176,6 +260,9 @@ impl RegistryState {
             folders: UnorderedMap::new_with_field_name("registry:folders"),
             folder_contexts: UnorderedMap::new_with_field_name("registry:folder_contexts"),
             sort_order: UnorderedMap::new_with_field_name("registry:sort_order"),
+            owner: LwwRegister::new(String::new()),
+            managers: UnorderedMap::new_with_field_name("registry:managers"),
+            folder_roles: UnorderedMap::new_with_field_name("registry:folder_roles"),
         }
     }
 
@@ -186,9 +273,10 @@ impl RegistryState {
         id: FolderId,
         parent_id: Option<FolderId>,
         color: Option<String>,
+        alias: Option<String>,
     ) -> app::Result<()> {
         let id_for_event = id.0.clone();
-        self.register_folder_inner(id, parent_id, color)
+        self.register_folder_inner(id, parent_id, color, alias)
             .map_err(|e| AppError::msg(e.to_string()))?;
         app::emit!(Event::FolderRegistered { id: &id_for_event });
         Ok(())
@@ -199,6 +287,7 @@ impl RegistryState {
         id: FolderId,
         parent_id: Option<FolderId>,
         color: Option<String>,
+        alias: Option<String>,
     ) -> Result<(), DriveError> {
         if id.0.is_empty() {
             return Err(DriveError::Invalid("empty folder id".into()));
@@ -211,7 +300,7 @@ impl RegistryState {
             return Err(DriveError::AlreadyExists(id.0));
         }
         let parent_str = parent_id.map(|p| p.0);
-        let rec = FolderRecord::new(parent_str, color);
+        let rec = FolderRecord::new(parent_str, color, alias);
         self.folders
             .insert(id.0, rec)
             .map_err(|e| DriveError::Invalid(format!("folders.insert: {e}")))?;
@@ -236,6 +325,12 @@ impl RegistryState {
         }
         // Removing the folder also clears any context binding.
         let _ = self.folder_contexts.remove(&id.0);
+        // Drop any per-member role rows for this folder. These ARE
+        // CRDT-tombstoned (unlike the live clear_folder_role path), which is
+        // correct here: an unregistered folder id is itself tombstoned in
+        // `folders` and can never be re-registered, so its role rows should
+        // stay gone too.
+        self.purge_folder_roles(&id.0)?;
         Ok(())
     }
 
@@ -322,14 +417,7 @@ impl RegistryState {
         Ok(frozen.map(|f| f.0))
     }
 
-    // ---- visibility / color / move --------------------------------------
-
-    pub fn set_visibility(&mut self, id: FolderId, visibility: Visibility) -> app::Result<()> {
-        self.set_visibility_inner(&id.0, visibility)
-            .map_err(|e| AppError::msg(e.to_string()))?;
-        app::emit!(Event::FolderVisibilityChanged { id: &id.0 });
-        Ok(())
-    }
+    // ---- color / move ---------------------------------------------------
 
     pub fn set_color(&mut self, id: FolderId, color: String) -> app::Result<()> {
         // Treat empty color as "clear" — matches how `get_folder` projects
@@ -340,11 +428,42 @@ impl RegistryState {
         Ok(())
     }
 
+    /// Update the registry-side alias for a folder. Callers should mirror
+    /// admin-API's `setGroupAlias` with a call here so namespace members
+    /// who aren't subgroup members can still see the new name. Empty
+    /// string clears the registry alias and falls back to whatever the
+    /// client surfaces (admin API alias if visible, otherwise id stub).
+    pub fn set_folder_alias(&mut self, id: FolderId, alias: String) -> app::Result<()> {
+        self.set_folder_alias_inner(&id.0, alias)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        app::emit!(Event::FolderAliasChanged { id: &id.0 });
+        Ok(())
+    }
+
+    pub fn set_visibility(&mut self, id: FolderId, visibility: Visibility) -> app::Result<()> {
+        self.set_visibility_inner(&id.0, visibility)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        app::emit!(Event::FolderVisibilityChanged { id: &id.0 });
+        Ok(())
+    }
+
     pub fn move_folder(&mut self, id: FolderId, new_parent: Option<FolderId>) -> app::Result<()> {
         self.move_folder_inner(&id.0, new_parent.map(|p| p.0))
             .map_err(|e| AppError::msg(e.to_string()))?;
         app::emit!(Event::FolderParentChanged { id: &id.0 });
         Ok(())
+    }
+
+    pub(crate) fn set_color_inner(&mut self, id: &str, color: String) -> Result<(), DriveError> {
+        self.mutate_folder(id, |rec| rec.color.set(color))
+    }
+
+    pub(crate) fn set_folder_alias_inner(
+        &mut self,
+        id: &str,
+        alias: String,
+    ) -> Result<(), DriveError> {
+        self.mutate_folder(id, |rec| rec.alias.set(alias))
     }
 
     pub(crate) fn set_visibility_inner(
@@ -353,10 +472,6 @@ impl RegistryState {
         visibility: Visibility,
     ) -> Result<(), DriveError> {
         self.mutate_folder(id, |rec| rec.visibility.set(visibility))
-    }
-
-    pub(crate) fn set_color_inner(&mut self, id: &str, color: String) -> Result<(), DriveError> {
-        self.mutate_folder(id, |rec| rec.color.set(color))
     }
 
     pub(crate) fn move_folder_inner(
@@ -441,6 +556,94 @@ impl RegistryState {
             None => Vec::new(),
         })
     }
+
+    // ---- permissions: owner / managers ----------------------------------
+
+    pub fn claim_owner(&mut self) -> app::Result<()> {
+        let caller = permissions::caller_b58().map_err(|e| AppError::msg(e.to_string()))?;
+        self.claim_owner_inner(&caller)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        app::emit!(Event::OwnerClaimed { owner: &caller });
+        Ok(())
+    }
+
+    /// The base58 public key of the registry owner, or an empty string if
+    /// `claim_owner` has not been called yet. (Empty-string-means-unclaimed
+    /// keeps the generated TS type honest — `Promise<string>`, not a lying
+    /// non-nullable Option.)
+    pub fn get_owner(&self) -> app::Result<String> {
+        Ok(self.owner_b58())
+    }
+
+    pub fn add_manager(&mut self, member: String) -> app::Result<()> {
+        let caller = permissions::caller_b58().map_err(|e| AppError::msg(e.to_string()))?;
+        let member_for_event = member.clone();
+        self.add_manager_inner(&caller, &member)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        app::emit!(Event::ManagerAdded {
+            member: &member_for_event
+        });
+        Ok(())
+    }
+
+    pub fn remove_manager(&mut self, member: String) -> app::Result<()> {
+        let caller = permissions::caller_b58().map_err(|e| AppError::msg(e.to_string()))?;
+        let member_for_event = member.clone();
+        self.remove_manager_inner(&caller, &member)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        app::emit!(Event::ManagerRemoved {
+            member: &member_for_event
+        });
+        Ok(())
+    }
+
+    pub fn list_managers(&self) -> app::Result<Vec<String>> {
+        self.list_managers_inner()
+            .map_err(|e| AppError::msg(e.to_string()))
+    }
+
+    // ---- permissions: per-folder roles ----------------------------------
+
+    pub fn set_folder_role(
+        &mut self,
+        folder_id: FolderId,
+        member: String,
+        role: Role,
+    ) -> app::Result<()> {
+        let caller = permissions::caller_b58().map_err(|e| AppError::msg(e.to_string()))?;
+        let fid = folder_id.0.clone();
+        let member_for_event = member.clone();
+        self.set_folder_role_inner(&caller, &folder_id.0, &member, role)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        app::emit!(Event::FolderRoleChanged {
+            folder_id: &fid,
+            member: &member_for_event,
+        });
+        Ok(())
+    }
+
+    pub fn clear_folder_role(&mut self, folder_id: FolderId, member: String) -> app::Result<()> {
+        let caller = permissions::caller_b58().map_err(|e| AppError::msg(e.to_string()))?;
+        let fid = folder_id.0.clone();
+        let member_for_event = member.clone();
+        self.clear_folder_role_inner(&caller, &folder_id.0, &member)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        app::emit!(Event::FolderRoleChanged {
+            folder_id: &fid,
+            member: &member_for_event,
+        });
+        Ok(())
+    }
+
+    pub fn get_folder_role(&self, folder_id: FolderId, member: String) -> app::Result<Role> {
+        self.get_folder_role_inner(&folder_id.0, &member)
+            .map_err(|e| AppError::msg(e.to_string()))
+    }
+
+    pub fn list_folder_roles(&self, folder_id: FolderId) -> app::Result<Vec<FolderRoleEntry>> {
+        self.list_folder_roles_inner(&folder_id.0)
+            .map_err(|e| AppError::msg(e.to_string()))
+    }
 }
 
 // Inline tests drive the `_inner` helpers so `app::emit!` (which panics in
@@ -463,30 +666,77 @@ mod tests {
     #[test]
     fn register_folder_appears_in_get_folders() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("f1"), None, Some("#123456".into()))
+        app.register_folder_inner(fid("f1"), None, Some("#123456".into()), None)
             .unwrap();
         let all = app.get_folders().unwrap();
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].id, fid("f1"));
         assert_eq!(all[0].parent_id, None);
-        assert_eq!(all[0].visibility, Visibility::Inherit);
         assert_eq!(all[0].color.as_deref(), Some("#123456"));
         assert_eq!(all[0].context_id, None);
+        assert_eq!(all[0].alias, None);
+    }
+
+    #[test]
+    fn register_folder_stores_alias() {
+        let mut app = RegistryState::init();
+        app.register_folder_inner(fid("f1"), None, None, Some("Projects".into()))
+            .unwrap();
+        let f = app.get_folder(fid("f1")).unwrap();
+        assert_eq!(f.alias.as_deref(), Some("Projects"));
+    }
+
+    #[test]
+    fn set_folder_alias_updates_on_read() {
+        let mut app = RegistryState::init();
+        app.register_folder_inner(fid("f1"), None, None, None)
+            .unwrap();
+        app.set_folder_alias_inner("f1", "First pass".into())
+            .unwrap();
+        assert_eq!(
+            app.get_folder(fid("f1")).unwrap().alias.as_deref(),
+            Some("First pass"),
+        );
+        app.set_folder_alias_inner("f1", "Second pass".into())
+            .unwrap();
+        assert_eq!(
+            app.get_folder(fid("f1")).unwrap().alias.as_deref(),
+            Some("Second pass"),
+        );
+    }
+
+    #[test]
+    fn set_folder_alias_empty_clears() {
+        let mut app = RegistryState::init();
+        app.register_folder_inner(fid("f1"), None, None, Some("Start".into()))
+            .unwrap();
+        app.set_folder_alias_inner("f1", "".into()).unwrap();
+        assert_eq!(app.get_folder(fid("f1")).unwrap().alias, None);
+    }
+
+    #[test]
+    fn set_folder_alias_unknown_folder_errors() {
+        let mut app = RegistryState::init();
+        let err = app.set_folder_alias_inner("ghost", "x".into()).unwrap_err();
+        assert!(matches!(err, DriveError::NotFound(_)));
     }
 
     #[test]
     fn register_folder_rejects_empty_id() {
         let mut app = RegistryState::init();
-        let err = app.register_folder_inner(fid(""), None, None).unwrap_err();
+        let err = app
+            .register_folder_inner(fid(""), None, None, None)
+            .unwrap_err();
         assert!(matches!(err, DriveError::Invalid(_)));
     }
 
     #[test]
     fn register_duplicate_fails_with_already_exists() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("f1"), None, None).unwrap();
+        app.register_folder_inner(fid("f1"), None, None, None)
+            .unwrap();
         let err = app
-            .register_folder_inner(fid("f1"), None, None)
+            .register_folder_inner(fid("f1"), None, None, None)
             .unwrap_err();
         assert!(matches!(err, DriveError::AlreadyExists(_)));
     }
@@ -494,8 +744,9 @@ mod tests {
     #[test]
     fn register_folder_stores_parent_id() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("p"), None, None).unwrap();
-        app.register_folder_inner(fid("c"), Some(fid("p")), None)
+        app.register_folder_inner(fid("p"), None, None, None)
+            .unwrap();
+        app.register_folder_inner(fid("c"), Some(fid("p")), None, None)
             .unwrap();
         let child = app.get_folder(fid("c")).unwrap();
         assert_eq!(child.parent_id, Some(fid("p")));
@@ -504,7 +755,8 @@ mod tests {
     #[test]
     fn unregister_removes_folder_and_clears_binding() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("f1"), None, None).unwrap();
+        app.register_folder_inner(fid("f1"), None, None, None)
+            .unwrap();
         app.bind_folder_context_inner(fid("f1"), cid("ctx-1"))
             .unwrap();
         app.unregister_folder_inner(fid("f1")).unwrap();
@@ -530,7 +782,8 @@ mod tests {
     #[test]
     fn bind_folder_context_stores_binding() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("f1"), None, None).unwrap();
+        app.register_folder_inner(fid("f1"), None, None, None)
+            .unwrap();
         app.bind_folder_context_inner(fid("f1"), cid("ctx-1"))
             .unwrap();
         assert_eq!(
@@ -555,7 +808,8 @@ mod tests {
     #[test]
     fn bind_folder_context_rejects_reassignment() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("f1"), None, None).unwrap();
+        app.register_folder_inner(fid("f1"), None, None, None)
+            .unwrap();
         app.bind_folder_context_inner(fid("f1"), cid("ctx-1"))
             .unwrap();
         let err = app
@@ -564,28 +818,13 @@ mod tests {
         assert!(matches!(err, DriveError::Conflict(_)));
     }
 
-    // ---- visibility / color / move ----
-
-    #[test]
-    fn visibility_defaults_to_inherit_and_is_settable() {
-        let mut app = RegistryState::init();
-        app.register_folder_inner(fid("f1"), None, None).unwrap();
-        assert_eq!(
-            app.get_folder(fid("f1")).unwrap().visibility,
-            Visibility::Inherit
-        );
-        app.set_visibility_inner("f1", Visibility::Restricted)
-            .unwrap();
-        assert_eq!(
-            app.get_folder(fid("f1")).unwrap().visibility,
-            Visibility::Restricted
-        );
-    }
+    // ---- color / move ----
 
     #[test]
     fn set_color_is_last_write_wins() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("f1"), None, None).unwrap();
+        app.register_folder_inner(fid("f1"), None, None, None)
+            .unwrap();
         app.set_color_inner("f1", "#ff0000".into()).unwrap();
         app.set_color_inner("f1", "#00ff00".into()).unwrap();
         assert_eq!(
@@ -597,27 +836,20 @@ mod tests {
     #[test]
     fn set_color_empty_clears() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("f1"), None, Some("#ff0000".into()))
+        app.register_folder_inner(fid("f1"), None, Some("#ff0000".into()), None)
             .unwrap();
         app.set_color_inner("f1", "".into()).unwrap();
         assert_eq!(app.get_folder(fid("f1")).unwrap().color, None);
     }
 
     #[test]
-    fn set_visibility_unknown_folder_errors() {
-        let mut app = RegistryState::init();
-        let err = app
-            .set_visibility_inner("ghost", Visibility::Restricted)
-            .unwrap_err();
-        assert!(matches!(err, DriveError::NotFound(_)));
-    }
-
-    #[test]
     fn move_folder_updates_parent_id() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("p1"), None, None).unwrap();
-        app.register_folder_inner(fid("p2"), None, None).unwrap();
-        app.register_folder_inner(fid("c"), Some(fid("p1")), None)
+        app.register_folder_inner(fid("p1"), None, None, None)
+            .unwrap();
+        app.register_folder_inner(fid("p2"), None, None, None)
+            .unwrap();
+        app.register_folder_inner(fid("c"), Some(fid("p1")), None, None)
             .unwrap();
         app.move_folder_inner("c", Some("p2".into())).unwrap();
         assert_eq!(app.get_folder(fid("c")).unwrap().parent_id, Some(fid("p2")));
@@ -630,9 +862,12 @@ mod tests {
     #[test]
     fn reorder_stores_and_reads_back() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("a"), None, None).unwrap();
-        app.register_folder_inner(fid("b"), None, None).unwrap();
-        app.register_folder_inner(fid("c"), None, None).unwrap();
+        app.register_folder_inner(fid("a"), None, None, None)
+            .unwrap();
+        app.register_folder_inner(fid("b"), None, None, None)
+            .unwrap();
+        app.register_folder_inner(fid("c"), None, None, None)
+            .unwrap();
         app.reorder_inner(None, vec![fid("b"), fid("c"), fid("a")])
             .unwrap();
         assert_eq!(
@@ -644,8 +879,9 @@ mod tests {
     #[test]
     fn reorder_rejects_ids_not_in_parent() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("a"), None, None).unwrap();
-        app.register_folder_inner(fid("b"), Some(fid("a")), None)
+        app.register_folder_inner(fid("a"), None, None, None)
+            .unwrap();
+        app.register_folder_inner(fid("b"), Some(fid("a")), None, None)
             .unwrap();
         let err = app
             .reorder_inner(None, vec![fid("a"), fid("b")])
@@ -656,7 +892,8 @@ mod tests {
     #[test]
     fn reorder_rejects_unknown_id() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("a"), None, None).unwrap();
+        app.register_folder_inner(fid("a"), None, None, None)
+            .unwrap();
         let err = app
             .reorder_inner(None, vec![fid("a"), fid("ghost")])
             .unwrap_err();
@@ -666,8 +903,10 @@ mod tests {
     #[test]
     fn reorder_is_lww_overwrite() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("a"), None, None).unwrap();
-        app.register_folder_inner(fid("b"), None, None).unwrap();
+        app.register_folder_inner(fid("a"), None, None, None)
+            .unwrap();
+        app.register_folder_inner(fid("b"), None, None, None)
+            .unwrap();
         app.reorder_inner(None, vec![fid("a"), fid("b")]).unwrap();
         app.reorder_inner(None, vec![fid("b"), fid("a")]).unwrap();
         assert_eq!(app.get_sort_order(None).unwrap(), vec![fid("b"), fid("a")]);
@@ -688,9 +927,10 @@ mod tests {
     #[test]
     fn full_lifecycle_register_bind_recolor_reorder_unregister() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("a"), None, Some("#f00".into()))
+        app.register_folder_inner(fid("a"), None, Some("#f00".into()), None)
             .unwrap();
-        app.register_folder_inner(fid("b"), None, None).unwrap();
+        app.register_folder_inner(fid("b"), None, None, None)
+            .unwrap();
         app.bind_folder_context_inner(fid("a"), cid("ctx-a"))
             .unwrap();
         app.set_color_inner("a", "#0f0".into()).unwrap();
@@ -707,11 +947,11 @@ mod tests {
     }
 
     #[test]
-    fn folder_record_default_visibility_is_inherit() {
-        let rec = FolderRecord::new(None, None);
-        assert_eq!(*rec.visibility.get(), Visibility::Inherit);
+    fn folder_record_default_fields_are_empty() {
+        let rec = FolderRecord::new(None, None, None);
         assert_eq!(rec.color.get(), "");
         assert_eq!(rec.parent_id.get(), &None);
+        assert_eq!(rec.alias.get(), "");
     }
 
     // ---- struct-level merge (pin down the manual Mergeable impl) ----
@@ -739,18 +979,19 @@ mod tests {
     fn folder_record_merge_lww_picks_later_color() {
         let mut a = FolderRecord {
             parent_id: zero_lww(None),
-            visibility: zero_lww(Visibility::Inherit),
             color: zero_lww("#ff0000".into()),
+            alias: zero_lww(String::new()),
+            visibility: zero_lww(Visibility::default()),
         };
-        let b = FolderRecord::new(None, Some("#00ff00".into()));
+        let b = FolderRecord::new(None, Some("#00ff00".into()), None);
         <FolderRecord as Mergeable>::merge(&mut a, &b).unwrap();
         assert_eq!(a.color.get(), "#00ff00");
     }
 
     #[test]
     fn folder_record_merge_is_idempotent() {
-        let mut a = FolderRecord::new(Some("p1".into()), Some("#aaa".into()));
-        let b = FolderRecord::new(Some("p1".into()), Some("#aaa".into()));
+        let mut a = FolderRecord::new(Some("p1".into()), Some("#aaa".into()), None);
+        let b = FolderRecord::new(Some("p1".into()), Some("#aaa".into()), None);
         <FolderRecord as Mergeable>::merge(&mut a, &b).unwrap();
         <FolderRecord as Mergeable>::merge(&mut a, &b).unwrap();
         assert_eq!(a.parent_id.get(), &Some("p1".to_string()));
@@ -758,26 +999,14 @@ mod tests {
     }
 
     #[test]
-    fn folder_record_merge_visibility_lww() {
-        let mut a = FolderRecord {
-            parent_id: zero_lww(None),
-            visibility: zero_lww(Visibility::Inherit),
-            color: zero_lww(String::new()),
-        };
-        let mut b = FolderRecord::new(None, None);
-        b.visibility.set(Visibility::Restricted);
-        <FolderRecord as Mergeable>::merge(&mut a, &b).unwrap();
-        assert_eq!(*a.visibility.get(), Visibility::Restricted);
-    }
-
-    #[test]
     fn folder_record_merge_parent_id_lww() {
         let mut a = FolderRecord {
             parent_id: zero_lww(None),
-            visibility: zero_lww(Visibility::Inherit),
             color: zero_lww(String::new()),
+            alias: zero_lww(String::new()),
+            visibility: zero_lww(Visibility::default()),
         };
-        let mut b = FolderRecord::new(None, None);
+        let mut b = FolderRecord::new(None, None, None);
         b.parent_id.set(Some("new-parent".into()));
         <FolderRecord as Mergeable>::merge(&mut a, &b).unwrap();
         assert_eq!(a.parent_id.get(), &Some("new-parent".to_string()));
@@ -799,11 +1028,12 @@ mod tests {
     #[test]
     fn tombstone_persists_after_unregister() {
         let mut app = RegistryState::init();
-        app.register_folder_inner(fid("f"), None, None).unwrap();
+        app.register_folder_inner(fid("f"), None, None, None)
+            .unwrap();
         app.unregister_folder_inner(fid("f")).unwrap();
         // The inner insert path doesn't error, but the record is not revived:
         // `get_folder` still reports NotFound.
-        let _ = app.register_folder_inner(fid("f"), None, None);
+        let _ = app.register_folder_inner(fid("f"), None, None, None);
         assert!(
             app.get_folder(fid("f")).is_err(),
             "re-registering a tombstoned FolderId must NOT revive the entry",

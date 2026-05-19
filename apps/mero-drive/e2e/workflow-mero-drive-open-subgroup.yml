@@ -1,0 +1,434 @@
+name: Mero Drive E2E — Open subgroup inheritance (core PR #2261)
+description: >
+  Validates the new flow unlocked by calimero-network/core#2261:
+  namespace members can self-join (and read/write) Open subgroups
+  without the legacy app-layer add_group_members cascade. Restricted
+  subgroups remain walls until an explicit invite.
+
+  Two nodes: Alice (node-1) creates a namespace, an Open folder with a
+  Docs context + a doc; Bob (node-2) joins ONLY the namespace and
+  should still be able to join the Docs context, read the doc, and
+  write to it (changes sync back to Alice). Then Alice creates a
+  Restricted folder; Bob's join_context attempt must fail until Alice
+  explicitly add_group_members him; after that, the same join works.
+
+  Sequential per merobox semantics — wait_for_sync hands writes off
+  between writers/readers. wait blocks before joins are sized for
+  governance gossip + group-store accept on slow docker networking.
+
+force_pull_image: true
+
+nodes:
+  count: 2
+  image: ghcr.io/calimero-network/merod:edge
+  prefix: calimero-node
+
+steps:
+  # =================================================================
+  # Phase A: Bootstrap — install bundle on both nodes, Alice creates
+  # the namespace and the per-namespace Registry context.
+  # =================================================================
+
+  - name: Install Mero Drive bundle on Alice
+    type: install_application
+    node: calimero-node-1
+    path: ../logic/dist/com.calimero.mero-drive-docs-9.1.0.mpk
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install Mero Drive bundle on Bob
+    type: install_application
+    node: calimero-node-2
+    path: ../logic/dist/com.calimero.mero-drive-docs-9.1.0.mpk
+    dev: true
+
+  - name: Alice creates namespace
+    type: create_namespace
+    node: calimero-node-1
+    application_id: '{{app_id}}'
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Alice creates the per-namespace Registry context
+    type: create_context
+    node: calimero-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{namespace_id}}'
+    service_name: registry
+    outputs:
+      registry_ctx: contextId
+      alice_key: memberPublicKey
+
+  - name: Assert Alice's bootstrap shape
+    type: assert
+    statements:
+      - 'is_set({{namespace_id}})'
+      - 'is_set({{registry_ctx}})'
+      - 'is_set({{alice_key}})'
+
+  # =================================================================
+  # Phase B: Alice creates an Open folder, registers it, creates the
+  # Docs context, writes a doc — all BEFORE Bob joins. The doc must
+  # be readable by Bob purely via core's parent-walk inheritance once
+  # he joins the namespace.
+  # =================================================================
+
+  - name: Alice creates folder subgroup (Reports)
+    type: create_group_in_namespace
+    node: calimero-node-1
+    namespace_id: '{{namespace_id}}'
+    group_name: reports
+    outputs:
+      reports_group: groupId
+
+  - name: Mark Reports as Open (PR #2261 — namespace members inherit access)
+    type: set_subgroup_visibility
+    node: calimero-node-1
+    group_id: '{{reports_group}}'
+    visibility: Open
+
+  - name: register_folder Reports in registry
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: register_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{reports_group}}'
+      parent_id: null
+      color: '#00aa66'
+      alias: Reports
+
+  - name: Alice creates the Docs context bound to Reports
+    type: create_context
+    node: calimero-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{reports_group}}'
+    service_name: docs
+    outputs:
+      reports_docs_ctx: contextId
+      alice_docs_key: memberPublicKey
+
+  - name: bind_folder_context — Reports → Docs context
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: bind_folder_context
+    executor_public_key: '{{alice_key}}'
+    args:
+      folder_id: '{{reports_group}}'
+      context_id: '{{reports_docs_ctx}}'
+
+  - name: Alice creates the first doc inside Reports
+    type: call
+    node: calimero-node-1
+    context_id: '{{reports_docs_ctx}}'
+    method: create_doc
+    executor_public_key: '{{alice_docs_key}}'
+    args:
+      title: Q3 plan
+      content: 'Open-subgroup inheritance smoke test — Alice wrote this.'
+    outputs:
+      doc_id: result.output
+
+  - name: Assert doc id was returned
+    type: assert
+    statements:
+      - 'is_set({{doc_id}})'
+
+  # =================================================================
+  # Phase C: Bob joins ONLY the namespace. No add_group_members on
+  # Reports — that's the entire point of PR #2261. He should still be
+  # able to join the Reports Docs context via inherited membership.
+  # =================================================================
+
+  - name: Alice mints a namespace invitation for Bob
+    type: create_namespace_invitation
+    node: calimero-node-1
+    namespace_id: '{{namespace_id}}'
+    outputs:
+      ns_invite: invitation
+
+  - name: Wait for namespace governance to gossip to Bob's node
+    type: wait
+    seconds: 10
+    message: Namespace governance DAG needs to propagate before Bob can join
+
+  - name: Bob joins ONLY the namespace (no folder add_group_members)
+    type: join_namespace
+    node: calimero-node-2
+    namespace_id: '{{namespace_id}}'
+    invitation: '{{ns_invite}}'
+    outputs:
+      bob_identity: memberIdentity
+
+  - name: Assert Bob's namespace identity is set
+    type: assert
+    statements:
+      - 'is_set({{bob_identity}})'
+
+  # Membership-inheritance handshake: SubgroupVisibilitySet on Reports
+  # was encrypted with the namespace key (PR #2261 crypto realignment),
+  # so Bob's node decrypts it as a namespace member. The sync stream
+  # auth gate also needs to see Bob as inheritance-eligible before it
+  # accepts his DagHeadsRequest. 10s covers governance + key + auth
+  # alignment on slow docker networking.
+  - name: Wait for Open-subgroup inheritance to propagate to Bob
+    type: wait
+    seconds: 10
+    message: Reports' Open visibility + parent-walk auth need to land on Bob's node
+
+  # =================================================================
+  # Phase D: Open-subgroup inheritance proof — Bob joins the Docs
+  # context with no explicit folder membership. Pre-#2360 the
+  # mechanism was implicit via `join_context` (#2261 + #2351 chain);
+  # post-#2360 we drive it explicitly via the new
+  # `join_subgroup_inheritance` endpoint, then `join_context` is a
+  # cheap follow-up because the subgroup key is already local.
+  # =================================================================
+
+  - name: Bob materialises Reports-folder membership via inheritance
+    type: join_subgroup_inheritance
+    node: calimero-node-2
+    group_id: '{{reports_group}}'
+    outputs:
+      bob_reports_key: memberPublicKey
+      bob_was_inherited: wasInherited
+
+  - name: Assert was_inherited is true (Bob is a namespace-only member)
+    type: json_assert
+    statements:
+      - 'json_equal({{bob_was_inherited}}, true)'
+
+  # ===================================================================
+  # Documents the open-subgroup MEMBERSHIP-LIST gap that breaks
+  # mero-drive's Playwright `clickJoin` two-node tests.
+  #
+  # `join_subgroup_inheritance` (#2360) does NOT write a GroupMember
+  # row for the joiner — by core's design, inherited membership is a
+  # separate concept. `execute_member_joined_open`
+  # (`group_store/namespace_governance.rs:1194`) is explicit:
+  # "We don't mutate state here." Consequently, after Bob's
+  # join-via-inheritance returns 200, `GET /admin-api/groups/<id>/members`
+  # on Bob's node still returns ONLY the explicit members (Alice).
+  #
+  # Confirmed wire shape on Bob's node (sha 86970319f0d3 from the
+  # 25932145102 Playwright trace artifact):
+  #
+  #   { "members": [{ "identity": "<alice>", "role": "Admin" }],
+  #     "selfIdentity": "<bob>" }
+  #
+  # Downstream impact: mero-drive's `useMemberCaps` keys "is the
+  # caller a member?" off this same `list_group_members` call (it
+  # cannot use the inherited-eligibility check from
+  # `check_group_membership_path` because that's not exposed via the
+  # admin API). It reports `isMember=false` for Bob — `RestrictedFolderCard`
+  # stays mounted forever after a successful join, so every Playwright
+  # two-node test that clicks "Join folder" then expects the document
+  # list times out.
+  #
+  # Workarounds that are NOT applicable here:
+  # - Polling the endpoint won't help; the row is never written.
+  # - Using `executor_public_key` directly on the docs context works
+  #   (the context layer recognises inheritance — that's why this
+  #   workflow's `call` steps below succeed) but the admin-api
+  #   `list_group_members` does not.
+  #
+  # The `list_group_members` step below is informational — it logs
+  # success and exports the response so a manual run of this workflow
+  # can dump the actual shape. The proof of the gap lives in the app:
+  # `app/e2e/two-node/doc-collab.spec.ts > clickJoin → expectDocVisible`
+  # times out with the RestrictedFolderCard still mounted. When core
+  # closes the gap (either by materializing an inherited-member row in
+  # `execute_member_joined_open`, or by adding an
+  # `include_inherited=true` projection to the list endpoint), update
+  # `useMemberCaps` to use that signal and re-enable the Playwright
+  # tests by removing `test.skip` markers.
+  - name: List Reports-folder members on Bob's node (post-inheritance-join)
+    type: list_group_members
+    node: calimero-node-2
+    group_id: '{{reports_group}}'
+    # Exports `members_calimero-node-2` into workflow_results — Bob's
+    # identity is in the `selfIdentity` field but NOT in `members[]`.
+
+  - name: Bob joins the Reports Docs context (key already local)
+    type: join_context
+    node: calimero-node-2
+    context_id: '{{reports_docs_ctx}}'
+    outputs:
+      reports_docs_ctx_bob: contextId
+      bob_docs_key: memberPublicKey
+
+  - name: Assert Bob's Docs context join landed
+    type: assert
+    statements:
+      - 'is_set({{bob_docs_key}})'
+      - 'is_set({{bob_reports_key}})'
+
+  - name: Sync Reports Docs context across nodes
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{reports_docs_ctx}}'
+    timeout: 30
+
+  - name: Bob reads Alice's doc via inherited access
+    type: call
+    node: calimero-node-2
+    context_id: '{{reports_docs_ctx}}'
+    method: get_doc
+    executor_public_key: '{{bob_docs_key}}'
+    args:
+      id: '{{doc_id}}'
+
+  # =================================================================
+  # Phase E: Edit/sync round-trip — Bob writes; Alice reads the edit.
+  # Closes the loop: inheritance grants WRITE, not just READ.
+  # =================================================================
+
+  - name: Bob edits the doc
+    type: call
+    node: calimero-node-2
+    context_id: '{{reports_docs_ctx}}'
+    method: edit_doc
+    executor_public_key: '{{bob_docs_key}}'
+    args:
+      id: '{{doc_id}}'
+      title: 'Q3 plan (edited by Bob)'
+      content: "Bob's edit — proves Open-subgroup inheritance grants WRITE, not just READ."
+
+  - name: Sync Bob's edit back to Alice
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{reports_docs_ctx}}'
+    timeout: 30
+
+  - name: Alice sees Bob's edit
+    type: call
+    node: calimero-node-1
+    context_id: '{{reports_docs_ctx}}'
+    method: get_doc
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{doc_id}}'
+
+  # =================================================================
+  # Phase F: Restricted-folder negative — same shape as Phase B, but
+  # the new folder is Restricted. Bob must NOT be able to join its
+  # Docs context until Alice explicitly add_group_members him.
+  # =================================================================
+
+  - name: Alice creates folder subgroup (Private)
+    type: create_group_in_namespace
+    node: calimero-node-1
+    namespace_id: '{{namespace_id}}'
+    group_name: private
+    outputs:
+      private_group: groupId
+
+  - name: Mark Private as Restricted (no inheritance)
+    type: set_subgroup_visibility
+    node: calimero-node-1
+    group_id: '{{private_group}}'
+    visibility: Restricted
+
+  - name: register_folder Private in registry
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: register_folder
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{private_group}}'
+      parent_id: null
+      color: '#aa0000'
+      alias: Private
+
+  - name: Alice creates a Docs context inside Private
+    type: create_context
+    node: calimero-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{private_group}}'
+    service_name: docs
+    outputs:
+      private_docs_ctx: contextId
+      alice_private_key: memberPublicKey
+
+  - name: bind_folder_context — Private → Docs context
+    type: call
+    node: calimero-node-1
+    context_id: '{{registry_ctx}}'
+    method: bind_folder_context
+    executor_public_key: '{{alice_key}}'
+    args:
+      folder_id: '{{private_group}}'
+      context_id: '{{private_docs_ctx}}'
+
+  - name: Alice writes a private doc
+    type: call
+    node: calimero-node-1
+    context_id: '{{private_docs_ctx}}'
+    method: create_doc
+    executor_public_key: '{{alice_private_key}}'
+    args:
+      title: Confidential
+      content: Restricted folder — Bob should not see this until invited.
+    outputs:
+      private_doc_id: result.output
+
+  - name: Wait for Restricted folder governance to gossip
+    type: wait
+    seconds: 10
+    message: Restricted subgroup metadata needs to reach Bob's node before the negative join attempt
+
+  - name: Bob tries to join Private — must fail (Restricted wall)
+    type: join_context
+    node: calimero-node-2
+    context_id: '{{private_docs_ctx}}'
+    expected_failure: true
+
+  # =================================================================
+  # Phase G: Explicit invite path — Alice adds Bob to Private; the
+  # same join_context must now succeed and Bob can read the doc.
+  # =================================================================
+
+  - name: Alice explicitly adds Bob to Private
+    type: add_group_members
+    node: calimero-node-1
+    group_id: '{{private_group}}'
+    members:
+      - identity: '{{bob_identity}}'
+        role: Member
+
+  - name: Wait for Private membership to propagate to Bob
+    type: wait
+    seconds: 10
+    message: Private subgroup membership row needs to land on Bob's node before retry
+
+  - name: Bob joins Private Docs context (now permitted)
+    type: join_context
+    node: calimero-node-2
+    context_id: '{{private_docs_ctx}}'
+    outputs:
+      private_docs_ctx_bob: contextId
+      bob_private_key: memberPublicKey
+
+  - name: Assert Bob's Private join produced an executor key
+    type: assert
+    statements:
+      - 'is_set({{bob_private_key}})'
+
+  - name: Sync Private Docs context across nodes
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{private_docs_ctx}}'
+    timeout: 30
+
+  - name: Bob reads Alice's private doc after explicit invite
+    type: call
+    node: calimero-node-2
+    context_id: '{{private_docs_ctx}}'
+    method: get_doc
+    executor_public_key: '{{bob_private_key}}'
+    args:
+      id: '{{private_doc_id}}'

@@ -7,6 +7,17 @@
         "kind": "string"
       }
     },
+    "Event_FolderAliasChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "Event_FolderColorChanged": {
       "kind": "record",
       "fields": [
@@ -57,6 +68,23 @@
         }
       ]
     },
+    "Event_FolderRoleChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "folder_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "Event_FolderSortOrderChanged": {
       "kind": "record",
       "fields": [
@@ -90,6 +118,39 @@
         }
       ]
     },
+    "Event_ManagerAdded": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ManagerRemoved": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_OwnerClaimed": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "owner",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "FolderDto": {
       "kind": "record",
       "fields": [
@@ -107,12 +168,6 @@
           "nullable": true
         },
         {
-          "name": "visibility",
-          "type": {
-            "$ref": "Visibility"
-          }
-        },
-        {
           "name": "color",
           "type": {
             "kind": "string"
@@ -125,6 +180,19 @@
             "$ref": "ContextId"
           },
           "nullable": true
+        },
+        {
+          "name": "alias",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "visibility",
+          "type": {
+            "$ref": "Visibility"
+          }
         }
       ]
     },
@@ -149,6 +217,28 @@
           }
         },
         {
+          "name": "color",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "alias",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
           "name": "visibility",
           "type": {
             "kind": "record",
@@ -158,16 +248,22 @@
               "$ref": "Visibility"
             }
           }
+        }
+      ]
+    },
+    "FolderRoleEntry": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
         },
         {
-          "name": "color",
+          "name": "role",
           "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "string"
-            }
+            "$ref": "Role"
           }
         }
       ]
@@ -221,6 +317,67 @@
             },
             "crdt_type": "unordered_map"
           }
+        },
+        {
+          "name": "owner",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "managers",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "bool"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "folder_roles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "$ref": "Role"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
+    "Role": {
+      "kind": "variant",
+      "variants": [
+        {
+          "name": "Viewer"
+        },
+        {
+          "name": "Editor"
+        },
+        {
+          "name": "Manager"
         }
       ]
     },
@@ -262,6 +419,13 @@
         },
         {
           "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "alias",
           "type": {
             "kind": "string"
           },
@@ -345,26 +509,6 @@
       }
     },
     {
-      "name": "set_visibility",
-      "params": [
-        {
-          "name": "id",
-          "type": {
-            "$ref": "FolderId"
-          }
-        },
-        {
-          "name": "visibility",
-          "type": {
-            "$ref": "Visibility"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      }
-    },
-    {
       "name": "set_color",
       "params": [
         {
@@ -377,6 +521,46 @@
           "name": "color",
           "type": {
             "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "set_folder_alias",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "alias",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "set_visibility",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "visibility",
+          "type": {
+            "$ref": "Visibility"
           }
         }
       ],
@@ -446,6 +630,141 @@
           "$ref": "FolderId"
         }
       }
+    },
+    {
+      "name": "claim_owner",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "get_owner",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "add_manager",
+      "params": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "remove_manager",
+      "params": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "list_managers",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      }
+    },
+    {
+      "name": "set_folder_role",
+      "params": [
+        {
+          "name": "folder_id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "role",
+          "type": {
+            "$ref": "Role"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "clear_folder_role",
+      "params": [
+        {
+          "name": "folder_id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "get_folder_role",
+      "params": [
+        {
+          "name": "folder_id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "Role"
+      }
+    },
+    {
+      "name": "list_folder_roles",
+      "params": [
+        {
+          "name": "folder_id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "FolderRoleEntry"
+        }
+      }
     }
   ],
   "events": [
@@ -468,15 +787,15 @@
       }
     },
     {
-      "name": "FolderVisibilityChanged",
-      "payload": {
-        "$ref": "Event_FolderVisibilityChanged"
-      }
-    },
-    {
       "name": "FolderColorChanged",
       "payload": {
         "$ref": "Event_FolderColorChanged"
+      }
+    },
+    {
+      "name": "FolderAliasChanged",
+      "payload": {
+        "$ref": "Event_FolderAliasChanged"
       }
     },
     {
@@ -489,6 +808,36 @@
       "name": "FolderSortOrderChanged",
       "payload": {
         "$ref": "Event_FolderSortOrderChanged"
+      }
+    },
+    {
+      "name": "FolderVisibilityChanged",
+      "payload": {
+        "$ref": "Event_FolderVisibilityChanged"
+      }
+    },
+    {
+      "name": "OwnerClaimed",
+      "payload": {
+        "$ref": "Event_OwnerClaimed"
+      }
+    },
+    {
+      "name": "ManagerAdded",
+      "payload": {
+        "$ref": "Event_ManagerAdded"
+      }
+    },
+    {
+      "name": "ManagerRemoved",
+      "payload": {
+        "$ref": "Event_ManagerRemoved"
+      }
+    },
+    {
+      "name": "FolderRoleChanged",
+      "payload": {
+        "$ref": "Event_FolderRoleChanged"
       }
     }
   ],

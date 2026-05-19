@@ -6,15 +6,14 @@
 // loading states, so this composition is intentionally thin.
 
 import React from 'react';
-import { useNamespacesForApplication } from '@calimero-network/mero-react';
-import { getApplicationId } from '@/constants/config';
-import { useWorkspace } from '@/context/WorkspaceContext';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { NamespaceMembersPanel } from './NamespaceMembersPanel';
+import { MemberDefaultsPanel } from '@/components/admin/MemberDefaultsPanel';
+import { MyDisplayNamePanel } from '@/components/admin/MyDisplayNamePanel';
 import { WorkspaceSettingsPanel } from '@/components/admin/WorkspaceSettingsPanel';
 
 export function NamespaceSettingsPanel() {
-  const { namespaceId } = useWorkspace();
-  const { namespaces } = useNamespacesForApplication(getApplicationId());
+  const { namespaceId, namespaces } = useDriveWorkspace();
   const ns = namespaces.find((n) => n.namespaceId === namespaceId);
 
   return (
@@ -24,7 +23,7 @@ export function NamespaceSettingsPanel() {
           Workspace settings
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {ns?.alias ?? namespaceId?.slice(0, 12) ?? 'Unknown workspace'}
+          {ns?.name ?? namespaceId?.slice(0, 12) ?? 'Unknown workspace'}
           {ns && (
             <>
               {' '}
@@ -36,6 +35,8 @@ export function NamespaceSettingsPanel() {
         </p>
       </div>
 
+      <MyDisplayNamePanel />
+      <MemberDefaultsPanel />
       <NamespaceMembersPanel />
       <WorkspaceSettingsPanel />
     </div>

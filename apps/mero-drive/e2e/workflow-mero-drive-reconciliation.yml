@@ -34,7 +34,7 @@ steps:
   - name: Install Mero Drive bundle
     type: install_application
     node: calimero-node-1
-    path: ../logic/dist/com.calimero.mero-drive-docs-9.0.0.mpk
+    path: ../logic/dist/com.calimero.mero-drive-docs-9.1.0.mpk
     dev: true
     outputs:
       app_id: applicationId
@@ -70,7 +70,7 @@ steps:
     type: create_group_in_namespace
     node: calimero-node-1
     namespace_id: '{{namespace_id}}'
-    group_alias: drift-admin-only
+    group_name: drift-admin-only
     outputs:
       admin_only_group: groupId
 
@@ -183,7 +183,7 @@ steps:
     type: create_group_in_namespace
     node: calimero-node-1
     namespace_id: '{{namespace_id}}'
-    group_alias: drift-p1
+    group_name: drift-p1
     outputs:
       p1_group: groupId
 
@@ -202,7 +202,7 @@ steps:
     type: create_group_in_namespace
     node: calimero-node-1
     namespace_id: '{{namespace_id}}'
-    group_alias: drift-p2
+    group_name: drift-p2
     outputs:
       p2_group: groupId
 
@@ -221,7 +221,7 @@ steps:
     type: create_group_in_namespace
     node: calimero-node-1
     namespace_id: '{{namespace_id}}'
-    group_alias: drift-c
+    group_name: drift-c
     outputs:
       c_group: groupId
 

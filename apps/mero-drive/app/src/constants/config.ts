@@ -1,33 +1,16 @@
 // v9 namespace-based mero-drive config.
 //
-// The real APP_ID is allocated by the Calimero registry when the
-// `com.calimero.mero-drive-docs-9.0.0.mpk` bundle is published. URL
-// param `app-id` or env VITE_APPLICATION_ID override the built-in
-// default — useful when testing against a locally-rebuilt bundle
-// that the node assigned a different id to.
+// Primary source of the applicationId is `useMero().applicationId` —
+// MeroProvider resolves it at login-time from (VITE_PACKAGE_NAME +
+// VITE_REGISTRY_URL) and exposes it via useMero. Non-component code
+// that can't call useMero() reads the raw `VITE_APPLICATION_ID` env
+// var as a fallback. No URL-param override (use .env.local instead).
 
-const getUrlParam = (name: string): string => {
-  if (typeof window === 'undefined') return '';
-  const fromSearch = new URLSearchParams(window.location.search).get(name)?.trim() || '';
-  if (fromSearch) return fromSearch;
-  const fromHash = new URLSearchParams(window.location.hash.slice(1)).get(name)?.trim() || '';
-  return fromHash;
-};
+import { CAPABILITIES } from '@calimero-network/mero-js';
 
-// Default app id of the published v9 bundle. Override per-session
-// via `?app-id=<id>` URL param or `VITE_APPLICATION_ID` env var when
-// testing locally-rebuilt bundles (node allocates a fresh id on each
-// `merobox install`).
-const DEFAULT_APPLICATION_ID = 'GfksPg4kLyLEkN5cRKvZ69rMRgD4gaM8VLxJAWQitDCq';
-
-/** Application ID: URL param `app-id` > env VITE_APPLICATION_ID > DEFAULT_APPLICATION_ID. */
-export function getApplicationId(): string {
-  return (
-    getUrlParam('app-id') ||
-    (import.meta.env.VITE_APPLICATION_ID as string | undefined)?.trim() ||
-    DEFAULT_APPLICATION_ID
-  );
-}
+/** Env-configured app id. Fallback for non-component contexts. */
+export const ENV_APPLICATION_ID: string =
+  (import.meta.env.VITE_APPLICATION_ID as string | undefined)?.trim() || '';
 
 // Service ids inside the multi-service bundle. Must match the
 // `services[].name` fields written by `logic/build-bundle.sh`.
@@ -37,21 +20,31 @@ export const DOCS_SERVICE_ID = 'docs';
 // Alias used to find (or create) the Registry context inside a namespace.
 export const REGISTRY_CONTEXT_ALIAS = 'Registry';
 
-// Capability bitmask bits, mirroring core's `calimero-context-config` crate.
-// See design spec → Permissions Model → Capability → Action Policy Table.
-export const CAP = {
-  READ: 1,
-  WRITE: 2,
-  CREATE_GROUP: 4,
-  MANAGE_GROUP: 8,
-  INVITE_MEMBERS: 16,
-  MANAGE_MEMBERS: 32,
-} as const;
+// Member-capability bitmask bits — re-exported verbatim from
+// @calimero-network/mero-js's CAPABILITIES (core's `MemberCapabilities`,
+// crates/context/config). This is the ONLY capability vocabulary in the
+// app; the per-(folder,member) "viewer vs editor on docs" concept is the
+// registry `Role`, not a cap bit. See design spec §5.1.
+export {
+  CAPABILITIES,
+  hasCap,
+  withCap,
+  withoutCap,
+} from '@calimero-network/mero-js';
+export type { CapabilityName, CapabilityBit } from '@calimero-network/mero-js';
 
-// What an inherit-mode child folder receives from its parent on cascade.
-// READ | WRITE | CREATE_GROUP = 7. Admin-role bits are deliberately stripped
-// so a parent-admin becomes a child-member (per spec).
-export const DEFAULT_CHILD_CAP_MASK = CAP.READ | CAP.WRITE | CAP.CREATE_GROUP;
+/** Default capability bitmask granted to members who join a workspace
+ *  (namespace) by invite — the "Editor" preset: join open folders +
+ *  create folders + create document contexts. Set via
+ *  `mero.admin.setDefaultCapabilities(namespaceId, DEFAULT_NEW_MEMBER_CAPS)`
+ *  at workspace-creation time (see `useDriveWorkspace.createWorkspace`),
+ *  and re-used as the "Editor" preset by `MemberRoleSelect`. Equals 37
+ *  (`CAN_CREATE_CONTEXT | CAN_JOIN_OPEN_SUBGROUPS | CAN_CREATE_SUBGROUP`).
+ *  See design spec §5.2 / §5.3. */
+export const DEFAULT_NEW_MEMBER_CAPS: number =
+  CAPABILITIES.CAN_JOIN_OPEN_SUBGROUPS |
+  CAPABILITIES.CAN_CREATE_SUBGROUP |
+  CAPABILITIES.CAN_CREATE_CONTEXT;
 
 // Client-side depth cap for nested folders (UI refuses to create deeper).
 // Backend doesn't enforce — per spec it's an app-layer UX cap.

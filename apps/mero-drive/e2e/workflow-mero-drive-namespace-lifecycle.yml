@@ -4,9 +4,10 @@ description: >
   NamespaceCreateDialog / (future) namespace-settings surface hits,
   but which the main workflow-mero-drive-e2e.yml doesn't cover:
 
-    - set_group_alias    → the "rename folder" / "rename workspace"
+    - set_group_metadata → the "rename folder" / "rename workspace"
                            user flow. Used by useFolderOperations.rename
-                           and the NamespaceCreateDialog's alias field.
+                           and the NamespaceCreateDialog's name field
+                           (replaces the removed set_group_alias step).
     - delete_namespace   → the namespace teardown path a future admin
                            surface will call via useDeleteNamespace.
     - delete_group       → folder deletion, the useFolderOperations.
@@ -35,7 +36,7 @@ steps:
   - name: Install bundle
     type: install_application
     node: calimero-node-1
-    path: ../logic/dist/com.calimero.mero-drive-docs-9.0.0.mpk
+    path: ../logic/dist/com.calimero.mero-drive-docs-9.1.0.mpk
     dev: true
     outputs:
       app_id: applicationId
@@ -77,7 +78,7 @@ steps:
     type: create_group_in_namespace
     node: calimero-node-1
     namespace_id: '{{ns_a}}'
-    group_alias: folder-in-A
+    group_name: folder-in-A
     outputs:
       folder_a: groupId
 
@@ -85,7 +86,7 @@ steps:
     type: create_group_in_namespace
     node: calimero-node-1
     namespace_id: '{{ns_b}}'
-    group_alias: folder-in-B
+    group_name: folder-in-B
     outputs:
       folder_b: groupId
 
@@ -100,34 +101,49 @@ steps:
     namespace_id: '{{ns_b}}'
 
   # =================================================================
-  # Phase D: set_group_alias — the rename flow
+  # Phase D: set_group_metadata — the rename flow
   #
-  # Used by useFolderOperations.rename (via useSetGroupAlias).
+  # Used by useFolderOperations.rename (via useSetGroupMetadata, the
+  # successor to the removed useSetGroupAlias hook).
   # The FolderTreeItem's inline-rename input and the
   # NamespaceCreateDialog both ultimately hit this admin endpoint.
   # =================================================================
 
   - name: Rename folder-in-A to 'renamed'
-    type: set_group_alias
+    type: set_group_metadata
     node: calimero-node-1
     group_id: '{{folder_a}}'
-    alias: renamed
+    record_name: renamed
 
-  - name: get_group_info — alias is now 'renamed'
-    type: get_group_info
+  - name: get_group_metadata — name is now 'renamed'
+    type: get_group_metadata
     node: calimero-node-1
     group_id: '{{folder_a}}'
+    outputs:
+      folder_a_name1: name
 
-  - name: Rename again to test alias overwrite (LWW semantics)
-    type: set_group_alias
-    node: calimero-node-1
-    group_id: '{{folder_a}}'
-    alias: final-name
+  - name: Assert folder-in-A renamed to 'renamed'
+    type: assert
+    statements:
+      - "equal({{folder_a_name1}}, 'renamed')"
 
-  - name: get_group_info — alias now 'final-name'
-    type: get_group_info
+  - name: Rename again to test metadata-name overwrite (LWW semantics)
+    type: set_group_metadata
     node: calimero-node-1
     group_id: '{{folder_a}}'
+    record_name: final-name
+
+  - name: get_group_metadata — name now 'final-name'
+    type: get_group_metadata
+    node: calimero-node-1
+    group_id: '{{folder_a}}'
+    outputs:
+      folder_a_name2: name
+
+  - name: Assert folder-in-A renamed to 'final-name'
+    type: assert
+    statements:
+      - "equal({{folder_a_name2}}, 'final-name')"
 
   # =================================================================
   # Phase E: delete_group — folder cleanup

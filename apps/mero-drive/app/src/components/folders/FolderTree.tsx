@@ -1,29 +1,37 @@
 // Left-rail folder tree. Consumes the merged folder list from
-// RegistryContext (assembled by useWorkspaceTree from admin
-// subgroups + registry metadata) and renders it as a nested list
-// via FolderTreeItem. Selection is owned by WorkspaceContext so
-// the right-pane DocumentList (Phase 8-D) reads the same value.
+// useDriveWorkspace (assembled internally from admin subgroups +
+// registry metadata) and renders it as a nested list via
+// FolderTreeItem. Selection is also owned by useDriveWorkspace so
+// the right-pane DocumentList reads the same value.
 
 import React, { useMemo } from 'react';
 import { buildTree } from '@/utils/ancestry';
-import { useRegistry } from '@/context/RegistryContext';
-import { useWorkspace } from '@/context/WorkspaceContext';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { FolderTreeItem } from './FolderTreeItem';
 import { NewFolderButton } from './NewFolderButton';
 
-// Stage → user-readable label. Anything past 'idle' is a spinner-state
-// message. Keeps the UI honest about WHICH step is slow instead of a
-// generic "Loading…" that hides identity/bootstrap errors.
+// Map useDriveWorkspace's DriveLoadingStage values to user-facing
+// labels. Keys that don't appear here fall through to a generic
+// "Loading…" — the stage enum is defined in hooks/useDriveWorkspace.ts.
 const STAGE_LABELS: Record<string, string> = {
-  'resolving-identity': 'Resolving identity…',
-  'bootstrapping-registry': 'Bootstrapping workspace…',
+  'awaiting-auth': 'Waiting for sign-in…',
+  'resolving-namespaces': 'Loading workspaces…',
+  'resolving-registry-context': 'Bootstrapping workspace…',
   'loading-subgroups': 'Loading subgroups…',
   'loading-folders': 'Loading folders…',
+  'syncing-from-peers': 'Syncing workspace from peers…',
 };
 
 export function FolderTree() {
-  const { folders, loading, stage, error } = useRegistry();
-  const { selectedFolderId, setSelectedFolder, namespaceId } = useWorkspace();
+  const {
+    folders,
+    loading,
+    stage,
+    error,
+    selectedFolderId,
+    setSelectedFolder,
+    namespaceId,
+  } = useDriveWorkspace();
 
   const tree = useMemo(
     () => buildTree(folders.map((f) => ({ id: f.id, parent_id: f.parent_id }))),
@@ -66,7 +74,7 @@ export function FolderTree() {
           Folders
         </span>
         {/* Top-level new-folder CTA. Self-gates: NewFolderButton
-            returns null when the caller lacks canCreateSubgroup on
+            returns null when the caller lacks canCreateFolder on
             the namespace root. */}
         <NewFolderButton parentFolderId={null} label="New" />
       </div>

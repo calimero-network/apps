@@ -2,8 +2,8 @@
 //
 // Two modes:
 //   - parentFolderId=null → top-level folder; gated by
-//     useNamespacePermissions.canCreateSubgroup on the namespace
-//     root group (i.e. the user can create subgroups off the root).
+//     useNamespacePermissions.canCreateFolder on the namespace
+//     root group (core's CAN_CREATE_SUBGROUP — root-only).
 //   - parentFolderId=<id> → nested under a specific parent; gated
 //     by useFolderPermissions.canCreateSubfolder on that folder.
 //
@@ -15,7 +15,7 @@
 import React, { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useWorkspace } from '@/context/WorkspaceContext';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { NewFolderDialog } from './NewFolderDialog';
@@ -33,7 +33,7 @@ export function NewFolderButton({
   size = 'sm',
   variant = 'outline',
 }: Props) {
-  const { namespaceId, rootGroupId } = useWorkspace();
+  const { namespaceId, rootGroupId } = useDriveWorkspace();
   const nsPerms = useNamespacePermissions(namespaceId ?? '', rootGroupId ?? '');
   const folderPerms = useFolderPermissions(
     namespaceId ?? '',
@@ -44,7 +44,7 @@ export function NewFolderButton({
   // Root-level create → namespace caps; nested → per-folder caps.
   const allowed = parentFolderId
     ? folderPerms.canCreateSubfolder
-    : nsPerms.canCreateSubgroup;
+    : nsPerms.canCreateFolder;
 
   if (!namespaceId || !rootGroupId) return null;
   if (!allowed) return null;

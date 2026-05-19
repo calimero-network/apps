@@ -1,8 +1,15 @@
 node_modules/
+build/
 dist/
 .env
 .env.local
+.env.integration
 pnpm-lock.yaml
 *.log
 .DS_Store
 .vite
+
+# Playwright artifacts
+playwright-report/
+test-results/
+playwright/.cache/

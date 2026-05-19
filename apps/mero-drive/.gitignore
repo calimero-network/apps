@@ -12,6 +12,12 @@ logic/target/
 # Lock files (deployment generates its own)
 pnpm-lock.yaml
 app/pnpm-lock.yaml
+# Untracked so every fresh checkout (CI + new clones) re-resolves the
+# `branch = "master"` git deps (calimero-sdk / calimero-storage /
+# calimero-storage-macros / calimero-wasm-abi) to current HEAD. Same
+# pattern as battleships — keeps the e2e job exercising the up-to-date
+# runtime ABI on every PR.
+logic/Cargo.lock
 
 # OS files
 .DS_Store

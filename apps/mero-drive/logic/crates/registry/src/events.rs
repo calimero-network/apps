@@ -16,10 +16,10 @@ pub enum Event<'a> {
         folder_id: &'a str,
         context_id: &'a str,
     },
-    FolderVisibilityChanged {
+    FolderColorChanged {
         id: &'a str,
     },
-    FolderColorChanged {
+    FolderAliasChanged {
         id: &'a str,
     },
     FolderParentChanged {
@@ -27,5 +27,22 @@ pub enum Event<'a> {
     },
     FolderSortOrderChanged {
         parent_id: &'a str,
+    },
+    FolderVisibilityChanged {
+        id: &'a str,
+    },
+    OwnerClaimed {
+        owner: &'a str,
+    },
+    ManagerAdded {
+        member: &'a str,
+    },
+    ManagerRemoved {
+        member: &'a str,
+    },
+    /// A folder's per-member role was set or cleared (UI re-fetches the row).
+    FolderRoleChanged {
+        folder_id: &'a str,
+        member: &'a str,
     },
 }

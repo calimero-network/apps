@@ -5,13 +5,13 @@
 //     sharing) when a folder is selected; full-screen DocumentEditor
 //     when a doc is open.
 //
-// Mounted by App.tsx on the /app/* route. Providers
-// (WorkspaceProvider, RegistryProvider, MeroProvider) are already in
-// place in index.tsx.
+// Mounted by App.tsx on the /app/* route (via WorkspacePage's
+// auth-guarded shell). MeroProvider is the only app-level provider;
+// workspace + registry state comes from the useDriveWorkspace hook.
 //
 // Selected-document state is intentionally local: no other consumer
-// reads it, and keeping it out of WorkspaceContext avoids unwiring a
-// folder's active doc on every RegistryProvider re-render.
+// reads it, and keeping it out of useDriveWorkspace avoids unwiring
+// a folder's active doc on every workspace re-render.
 
 import React, { useEffect, useState } from 'react';
 import { Settings, LogOut, Circle } from 'lucide-react';
@@ -23,16 +23,31 @@ import { NamespaceSettingsPanel } from './NamespaceSettingsPanel';
 import { FolderTree } from '@/components/folders/FolderTree';
 import { FolderBreadcrumb } from '@/components/folders/FolderBreadcrumb';
 import { FolderSharingPanel } from '@/components/folders/FolderSharingPanel';
+import { RestrictedFolderCard } from '@/components/folders/RestrictedFolderCard';
 import { DocumentList } from '@/components/docs/DocumentList';
 import { DocumentEditor } from '@/components/docs/DocumentEditor';
-import { useWorkspace } from '@/context/WorkspaceContext';
-import { useRegistry } from '@/context/RegistryContext';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import { useFolderPermissions } from '@/hooks/useFolderPermissions';
+import { isAccessDeniedError } from '@/utils/accessDenied';
 
 export function WorkspaceLayout() {
-  const { namespaceId, selectedFolderId } = useWorkspace();
-  const { folders } = useRegistry();
+  const {
+    namespaceId,
+    selectedFolderId,
+    folders,
+    selfIdentity,
+    stage,
+    refetch,
+  } = useDriveWorkspace();
   const { nodeUrl, isOnline, logout } = useMero();
   const selectedFolder = folders.find((f) => f.id === selectedFolderId);
+  // Per-folder permission probe. caps=null while fetching; caps=0
+  // means "not a member" (or genuinely no caps). See RestrictedFolderCard
+  // branch below for how we distinguish from "still loading".
+  const selectedFolderPerms = useFolderPermissions(
+    namespaceId ?? '',
+    selectedFolder?.id ?? '',
+  );
 
   // Friendly display of the node URL — stripped of protocol for
   // compactness, full URL kept in the title attribute for copy-paste.
@@ -61,6 +76,15 @@ export function WorkspaceLayout() {
   useEffect(() => {
     setShowSettings(false);
   }, [namespaceId]);
+
+  // Close settings when the user picks a folder from the sidebar.
+  // The settings pane sits in the same <main> slot as the folder
+  // view, so without this the folder click only updates
+  // selectedFolderId — the user stays staring at settings and has
+  // to either un-toggle the Settings button or reload the page.
+  useEffect(() => {
+    if (selectedFolderId) setShowSettings(false);
+  }, [selectedFolderId]);
 
   // Full-screen editor mode: bypass the workspace chrome entirely.
   // EditorShell owns its own header/toolbar/status-bar and uses
@@ -142,6 +166,11 @@ export function WorkspaceLayout() {
               title="No workspace selected"
               body="Create or pick a workspace from the top bar to see your folders."
             />
+          ) : stage === 'syncing-from-peers' ? (
+            <EmptyState
+              title="Syncing workspace from peers…"
+              body="You've just joined this workspace. Waiting for the registry and folder state to propagate from other nodes. This usually takes a second."
+            />
           ) : !selectedFolder ? (
             <EmptyState
               title="Select a folder"
@@ -157,29 +186,69 @@ export function WorkspaceLayout() {
                 <p className="mt-1 text-xs text-muted-foreground">
                   {selectedFolder.visibility === 'Restricted'
                     ? 'Restricted — only explicit members can read/write'
-                    : 'Inherits members from the parent folder'}
+                    : selectedFolder.visibility === 'Open'
+                      ? 'Open — namespace members can join and read/write'
+                      : 'Loading visibility…'}
                 </p>
               </div>
 
-              {/* Document list + sharing panel share the folder
-                  pane. Clicking a doc swaps to the full-screen
-                  editor via setSelectedDocId.
-                  key={folderId} on both forces a remount on folder
-                  switch so local state (typed alias, pending saves,
-                  invite/remove errors) can't leak between folders. */}
-              <div className="rounded-lg border border-border bg-card">
-                <DocumentList
-                  key={`list:${selectedFolder.id}`}
+              {/* Access gating: the server rejects admin-api calls on
+                  subgroups the caller isn't a member of, so docs /
+                  members fetches would otherwise surface as noisy red
+                  "Failed to load" errors. Intercept the access-denied
+                  signal and swap the whole content area for a single
+                  friendly card with a copy-your-identity affordance. */}
+              {selectedFolderPerms.loading ? (
+                <div className="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground">
+                  Checking access…
+                </div>
+              ) : selectedFolderPerms.error &&
+                isAccessDeniedError(selectedFolderPerms.error) ? (
+                <RestrictedFolderCard
                   folderId={selectedFolder.id}
-                  selectedDocId={selectedDocId}
-                  onOpen={setSelectedDocId}
+                  folderAlias={selectedFolder.alias}
+                  visibility={selectedFolder.visibility}
+                  selfIdentity={selfIdentity}
+                  refetch={refetch}
+                  refetchPerms={selectedFolderPerms.refetch}
                 />
-              </div>
+              ) : !selectedFolderPerms.isMember &&
+                !selectedFolderPerms.error ? (
+                // Caps fetch came back but we're not a member of this
+                // folder subgroup — folder membership alone implies
+                // read, so no membership means no access. Same UX as
+                // access-denied from the user's perspective.
+                <RestrictedFolderCard
+                  folderId={selectedFolder.id}
+                  folderAlias={selectedFolder.alias}
+                  visibility={selectedFolder.visibility}
+                  selfIdentity={selfIdentity}
+                  refetch={refetch}
+                  refetchPerms={selectedFolderPerms.refetch}
+                />
+              ) : (
+                <>
+                  {/* Document list + sharing panel share the folder
+                      pane. Clicking a doc swaps to the full-screen
+                      editor via setSelectedDocId.
+                      key={folderId} on both forces a remount on folder
+                      switch so local state (typed alias, pending saves,
+                      invite/remove errors) can't leak between folders. */}
+                  <div className="rounded-lg border border-border bg-card">
+                    <DocumentList
+                      key={`list:${selectedFolder.id}`}
+                      folderId={selectedFolder.id}
+                      selectedDocId={selectedDocId}
+                      onOpen={setSelectedDocId}
+                    />
+                  </div>
 
-              <FolderSharingPanel
-                key={`sharing:${selectedFolder.id}`}
-                folderId={selectedFolder.id}
-              />
+                  <FolderSharingPanel
+                    key={`sharing:${selectedFolder.id}`}
+                    folderId={selectedFolder.id}
+                  />
+                </>
+              )}
             </div>
           )}
         </main>

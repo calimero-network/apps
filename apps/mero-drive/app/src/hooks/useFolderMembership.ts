@@ -1,17 +1,17 @@
-// Folder membership read + mutation. Wraps mero-react's
-// useGroupMembers / useAddGroupMembers / useRemoveGroupMembers so
-// the UI can list members and invite/kick without touching the
-// admin-API directly.
+// Group membership read + mutation. Used by both the namespace-level
+// members panel (folderId = rootGroupId) and per-folder sharing UIs.
 //
-// Note: mero-react's GroupMember shape carries `role: string` rather
-// than `capabilities: number`. Capability bits are read separately
-// via useGroupCapabilities (per-member) in permission-aware UI.
-// This hook intentionally stays at the role/identity layer — the
-// permission hooks in Phase 6 own the cap-bit surface.
+// Why we DON'T use mero-react's useGroupMembers here:
+//   `mero.admin.listGroupMembers` is wire-shaped `{members, selfIdentity}`
+//   but mero-js's typed client reads `.data` — returning `{data: undefined}`
+//   that mero-react propagates as an empty list. Every namespace shows
+//   "No members yet" even when the server response has entries. Same
+//   workaround as useMemberCaps: call the admin client directly and
+//   cast through unknown to read the true wire shape.
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  useGroupMembers,
+  useMero,
   useAddGroupMembers,
   useRemoveGroupMembers,
   type GroupMember,
@@ -29,9 +29,67 @@ export interface FolderMembershipState {
 }
 
 export function useFolderMembership(folderId: string | null): FolderMembershipState {
-  const { members, loading, error, refetch } = useGroupMembers(folderId);
+  const { mero } = useMero();
   const { addGroupMembers } = useAddGroupMembers();
   const { removeGroupMembers } = useRemoveGroupMembers();
+
+  const [members, setMembers] = useState<GroupMember[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  // Per-call sequence counter: each refetch bumps `fetchSeqRef` and
+  // captures its own seq. When a response arrives, we drop it if a
+  // newer fetch has been issued in the meantime. This guards against
+  // BOTH unmount (the cleanup bumps the counter via the effect below)
+  // AND folderId changes mid-flight — an earlier `aliveRef`-only
+  // pattern only handled unmount, so a stale folder's response could
+  // still overwrite the new folder's members.
+  const fetchSeqRef = useRef(0);
+
+  const refetch = useCallback(async () => {
+    if (!mero || !folderId) {
+      setMembers([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+    const seq = ++fetchSeqRef.current;
+    setLoading(true);
+    setError(null);
+    try {
+      // Cast through unknown because DTS and wire shape disagree:
+      // some backend versions return `{ members, selfIdentity }`,
+      // others return `{ data: [...], selfIdentity }`.
+      const raw = (await mero.admin.listGroupMembers(
+        folderId,
+      )) as unknown as {
+        members?: GroupMember[];
+        data?: GroupMember[];
+      };
+      if (seq !== fetchSeqRef.current) return;
+      setMembers(raw.members ?? raw.data ?? []);
+    } catch (e: unknown) {
+      if (seq !== fetchSeqRef.current) return;
+      setError(e instanceof Error ? e : new Error(String(e)));
+    } finally {
+      if (seq === fetchSeqRef.current) setLoading(false);
+    }
+  }, [mero, folderId]);
+
+  useEffect(() => {
+    void refetch();
+  }, [refetch]);
+
+  // Bump the sequence on unmount so any still-in-flight response
+  // becomes a no-op (its captured seq won't match anymore). React 18+
+  // would silently drop the setState anyway, but this also short-
+  // circuits the `setLoading(false)` in the finally block.
+  useEffect(
+    () => () => {
+      fetchSeqRef.current++;
+    },
+    [],
+  );
 
   const add = useCallback(
     async (identity: string, role: string = 'member') => {

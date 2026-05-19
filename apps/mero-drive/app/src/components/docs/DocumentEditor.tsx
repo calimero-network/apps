@@ -41,7 +41,7 @@ import { EditorShell } from '@/components/editor/EditorShell';
 import type { SaveStatus } from '@/components/editor/types';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { MAX_ALIAS_LENGTH } from '@/constants/config';
-import { useWorkspace } from '@/context/WorkspaceContext';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useDocs } from '@/hooks/useDocs';
 import type { DocDto } from '@/api/docs/DocsClient';
@@ -59,8 +59,14 @@ interface Props {
 const AUTOSAVE_DEBOUNCE_MS = 900;
 
 export function DocumentEditor({ folderId, docId, onClose }: Props) {
-  const { namespaceId } = useWorkspace();
+  const { namespaceId } = useDriveWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
+  // Doc-edit ability is the registry `Role` (Editor/Manager — not
+  // Viewer), gated through useFolderPermissions.canEditDocs. A core
+  // group-admin always qualifies; a caps-fetch failure leaves
+  // `isMember` (and hence this) false, so the editor opens read-only
+  // rather than writable on error.
+  const canEditDocs = perms.canEditDocs;
   const docs = useDocs(folderId);
   // Destructure the stable useCallback methods into local consts so
   // the react-hooks/exhaustive-deps rule sees a plain identifier
@@ -119,6 +125,19 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
   // reordering at the transport layer doesn't confuse the guard.
   const saveSeqRef = useRef(0);
   const lastAppliedSeqRef = useRef(0);
+  // True while persistContent is awaiting the RPC. Used by
+  // onContentChange to avoid regressing 'saving' → 'unsaved' on
+  // Tiptap's spurious update events (cursor moves, internal
+  // normalisation): transitioning out of 'saving' is the save's own
+  // job, not an update event's.
+  const savingInFlightRef = useRef(false);
+  // Flipped to true by onContentChange while a save is in-flight.
+  // persistContent checks this after ack to decide whether to
+  // schedule a follow-up save. Using a flag avoids comparing HTML
+  // strings — Tiptap's getHTML() can return subtly different output
+  // for the same document state (trailing <p></p>, attribute order),
+  // which caused infinite save loops via string !== checks.
+  const dirtyDuringSaveRef = useRef(false);
 
   useEffect(
     () => () => {
@@ -159,7 +178,12 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         workingContentRef.current = d.content;
         lastSavedContentRef.current = d.content;
         setSaveStatus('saved');
-        setLastSavedAt(new Date(d.updated_at * 1000));
+        // The docs WASM stores timestamps as nanoseconds-since-epoch
+        // (see `list_docs` response: updated_at ≈ 1.77e18). JS Date
+        // expects milliseconds, so divide by 1e6. Multiplying by 1000
+        // was the original bug — it pushed the value past the safe
+        // Date range and rendered as "Invalid Date".
+        setLastSavedAt(new Date(d.updated_at / 1_000_000));
         setLoading(false);
       })
       .catch((e: unknown) => {
@@ -199,6 +223,8 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         return true;
       }
       setSaveStatus('saving');
+      savingInFlightRef.current = true;
+      dirtyDuringSaveRef.current = false;
       const mySeq = ++saveSeqRef.current;
       try {
         await docsEdit(currentDoc.id, { content });
@@ -218,14 +244,30 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         // would silently revert those keystrokes.
         lastSavedContentRef.current = content;
         setLastSavedAt(new Date());
-        // If the user typed more while this save was in flight,
-        // workingContentRef has diverged from the content we just
-        // acked — keep saveStatus at 'unsaved' so the indicator
-        // reflects the pending edits rather than briefly flashing
-        // 'saved' until the next debounce fires.
-        if (workingContentRef.current !== content) {
+        // Check if the user typed more while the RPC was in flight.
+        // onContentChange doesn't schedule autosaves during in-flight
+        // saves (to prevent cascading overlaps), so we handle the
+        // "dirty after ack" case here. Using the flag instead of
+        // comparing HTML strings avoids infinite save loops caused
+        // by Tiptap emitting slightly different HTML for the same
+        // document state (trailing empty paragraphs, normalisation).
+        if (dirtyDuringSaveRef.current) {
+          dirtyDuringSaveRef.current = false;
           setSaveStatus('unsaved');
+          cancelPendingAutosave();
+          const latest = workingContentRef.current;
+          autosaveTimeoutRef.current = setTimeout(() => {
+            autosaveTimeoutRef.current = null;
+            void persistContent(latest);
+          }, AUTOSAVE_DEBOUNCE_MS);
         } else {
+          // Also sync lastSavedContentRef with whatever Tiptap
+          // currently has. Tiptap may have normalised the HTML
+          // (trailing <p></p>, attribute reordering) so its
+          // getHTML() won't match the exact string we saved. Without
+          // this sync, the next onContentChange sees a "difference"
+          // and starts a redundant save cycle.
+          lastSavedContentRef.current = workingContentRef.current;
           setSaveStatus('saved');
         }
         return true;
@@ -239,16 +281,34 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         setSaveStatus('error');
         console.error('autosave failed', e);
         return false;
+      } finally {
+        // Only drop the in-flight flag if THIS save was the latest
+        // attempt — if a newer save is still pending, leave the flag
+        // set so onContentChange keeps deferring to it.
+        if (mySeq === saveSeqRef.current) {
+          savingInFlightRef.current = false;
+        }
       }
     },
-    [docsEdit],
+    [docsEdit, cancelPendingAutosave],
   );
 
   const onContentChange = useCallback(
     (html: string) => {
       workingContentRef.current = html;
       if (html === lastSavedContentRef.current) {
-        setSaveStatus('saved');
+        // Only drop to 'saved' if we're not mid-save — the save's own
+        // resolver is the authoritative transition out of 'saving'.
+        if (!savingInFlightRef.current) setSaveStatus('saved');
+        return;
+      }
+      // While a save is in-flight, just record the new content and
+      // flag it dirty — don't schedule another autosave. Scheduling
+      // during in-flight saves caused cascading overlaps that kept
+      // savingInFlightRef stuck on true. persistContent checks the
+      // dirty flag after ack and schedules a follow-up if needed.
+      if (savingInFlightRef.current) {
+        dirtyDuringSaveRef.current = true;
         return;
       }
       setSaveStatus('unsaved');
@@ -329,17 +389,12 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         if (unmountedRef.current) return;
         setDoc((prev) => (prev ? { ...prev, title } : prev));
         setLastSavedAt(new Date());
-        // Mirror persistContent's concurrent-edit check: if the user
-        // typed more content while the rename round-trip was in
-        // flight, workingContentRef has diverged from the last-saved
-        // content, so keep saveStatus at 'unsaved' instead of flipping
-        // to 'saved' and misleading the user for the ~900ms until the
-        // next autosave debounce fires.
-        if (workingContentRef.current !== lastSavedContentRef.current) {
-          setSaveStatus('unsaved');
-        } else {
-          setSaveStatus('saved');
-        }
+        // The rename succeeded — surface 'saved'. If there are pending
+        // content edits (user typed during the rename), Tiptap's next
+        // update event will flip us to 'unsaved' and re-trigger the
+        // content autosave. See persistContent for why we don't try
+        // to infer dirtiness here via HTML equality.
+        setSaveStatus('saved');
       } catch (e) {
         if (unmountedRef.current) return;
         setSaveStatus('error');
@@ -400,18 +455,18 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
   return (
     <EditorShell
       documentName={documentName}
-      // Every mutation handler gates on perms.canWrite so read-only
+      // Every mutation handler gates on canEditDocs so read-only
       // viewers can't accidentally (or intentionally) rename, edit,
       // or delete. Defense-in-depth: EditorShell's readOnly flag
       // also puts Tiptap and the header into a display-only mode,
       // but the binding-level gate is the authoritative guard so
       // a future caller that forgets readOnly still can't fire
       // mutations on a read-only doc.
-      onDocumentNameChange={perms.canWrite ? onDocumentNameChange : undefined}
+      onDocumentNameChange={canEditDocs ? onDocumentNameChange : undefined}
       onBack={onClose}
-      onDelete={perms.canWrite ? onDelete : undefined}
-      onContentChange={perms.canWrite ? onContentChange : undefined}
-      readOnly={!perms.canWrite}
+      onDelete={canEditDocs ? onDelete : undefined}
+      onContentChange={canEditDocs ? onContentChange : undefined}
+      readOnly={!canEditDocs}
       initialContent={doc?.content}
       saveStatus={saveStatus}
       lastSavedAt={lastSavedAt}
