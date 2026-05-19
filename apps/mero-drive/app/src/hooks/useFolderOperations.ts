@@ -231,12 +231,18 @@ export function useFolderOperations(
           .getFolderContext({ folder_id: id })
           .catch(() => null);
         await registryClient.unregisterFolder({ id });
-        await deleteGroup(id);
+        // Delete the docs context BEFORE the group that contains it.
+        // The context is the resource living inside the group; if the
+        // group is removed first, core may cascade-delete (or refuse
+        // to resolve) the context, leaving `deleteContext` to fail or
+        // no-op. This also matches the create-path rollback order
+        // (context before group).
         if (boundContextId) {
           await deleteContext(boundContextId).catch((e) =>
             console.warn('failed to delete bound docs context', boundContextId, e),
           );
         }
+        await deleteGroup(id);
       }
       await refetch();
     },

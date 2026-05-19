@@ -133,6 +133,20 @@ export function MemberDefaultsPanel() {
     setDraft(current ?? DEFAULT_NEW_MEMBER_CAPS);
   }, [loadedOnce, draft, current]);
 
+  // Namespace switched while the panel stayed mounted — drop the
+  // previous namespace's draft + load state. Without this, the seed
+  // effect's `if (draft !== null) return` guard permanently pins the
+  // old namespace's bitmask: `dirty` then reads true against the new
+  // namespace's real defaults, and "Save defaults" would write the
+  // old mask onto the new namespace. Resetting forces a re-seed from
+  // the new namespace's server value. (No-op on first mount — these
+  // are already the initial values.)
+  useEffect(() => {
+    setDraft(null);
+    setLoadedOnce(false);
+    setSaveError(null);
+  }, [namespaceId]);
+
   const effectiveCurrent = current ?? DEFAULT_NEW_MEMBER_CAPS;
   const dirty = useMemo(
     () => draft !== null && draft !== effectiveCurrent,

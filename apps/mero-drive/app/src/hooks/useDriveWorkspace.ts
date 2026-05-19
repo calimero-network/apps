@@ -645,18 +645,24 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       // public hook API and other callers (programmatic, tests)
       // would otherwise hit a generic admin-api error here. Keep the
       // contract local to this function.
+      // Validation failures return `null` (not throw) to honor the
+      // documented `Promise<string | null>` contract — null = failure,
+      // with the reason exposed via `createWorkspaceError`. The sole
+      // caller (`NamespaceCreateDialog`) awaits without a try/catch and
+      // branches on the null; a throw here would surface as an
+      // unhandled rejection instead.
       const trimmed = alias.trim();
       if (!trimmed) {
-        const err = new Error('Workspace name is required');
-        setCreateError(err);
-        throw err;
+        setCreateError(new Error('Workspace name is required'));
+        return null;
       }
       if (trimmed.length > MAX_ALIAS_LENGTH) {
-        const err = new Error(
-          `Workspace name must be ${MAX_ALIAS_LENGTH} characters or fewer`,
+        setCreateError(
+          new Error(
+            `Workspace name must be ${MAX_ALIAS_LENGTH} characters or fewer`,
+          ),
         );
-        setCreateError(err);
-        throw err;
+        return null;
       }
       setCreateLoading(true);
       setCreateError(null);
