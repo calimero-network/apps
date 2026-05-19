@@ -56,7 +56,9 @@ function ensureMpkBuilt(): void {
     return;
   }
   console.log('mpk missing — building bundle…');
-  run('pnpm', ['build:mpk'], { cwd: REPO_ROOT });
+  // Root package.json exposes the bundle build as `logic:build`
+  // (→ logic/build-bundle.sh). There is no `build:mpk` script.
+  run('pnpm', ['logic:build'], { cwd: REPO_ROOT });
 }
 
 async function bootMerobox(): Promise<void> {
