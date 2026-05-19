@@ -36,6 +36,10 @@ export interface ParsedInvite {
   kind: InviteKind;
   targetId: string;
   invitation: SignedGroupOpenInvitation;
+  /** Namespace display name carried on the invite URL (`&name=`).
+   *  Present for namespace invites minted after this field was added;
+   *  the join flow persists it via `rememberNamespaceName`. */
+  namespaceName?: string;
 }
 
 // UTF-8-safe base64url codec. Earlier versions used
@@ -69,9 +73,17 @@ export function buildInviteUrl(
   kind: InviteKind,
   targetId: string,
   invitation: SignedGroupOpenInvitation,
+  // Namespace display name — resolved by core's
+  // `createNamespaceInvitation` as `groupName`. Carried on the URL so
+  // the joiner can show the real name immediately:
+  // `listNamespacesForApplication` won't surface it until the joined
+  // node has synced the namespace's root-group metadata.
+  name?: string,
 ): string {
   const payload = base64urlEncode(JSON.stringify(invitation));
-  return `${origin}/join?kind=${kind}&id=${targetId}&invite=${payload}`;
+  let url = `${origin}/join?kind=${kind}&id=${targetId}&invite=${payload}`;
+  if (name) url += `&name=${encodeURIComponent(name)}`;
+  return url;
 }
 
 /** Parse an invite URL. Returns null-shape error if the params are
@@ -97,11 +109,17 @@ export function parseInviteUrl(
   if (!id) return { error: 'Missing target id in invite link.' };
   if (!raw) return { error: 'Missing invitation payload in invite link.' };
 
+  const name = params.get('name');
   try {
     const invitation = JSON.parse(
       base64urlDecode(raw),
     ) as SignedGroupOpenInvitation;
-    return { kind, targetId: id, invitation };
+    return {
+      kind,
+      targetId: id,
+      invitation,
+      namespaceName: name ?? undefined,
+    };
   } catch {
     return {
       error:
@@ -131,6 +149,10 @@ export function useCreateNamespaceInvite() {
         'namespace',
         namespaceId,
         single.invitation,
+        // core resolves the namespace's metadata name here; carrying it
+        // on the URL lets the joiner display it without waiting for a
+        // metadata sync that may never converge on a small cluster.
+        single.groupName,
       );
       return {
         kind: 'namespace',

@@ -55,6 +55,7 @@ import {
 } from '@calimero-network/mero-react';
 import { RegistryClient } from '../api/registry/RegistryClient';
 import { useLocalStorage } from './useLocalStorage';
+import { useNamespaceDisplayNames } from './useNamespaceDisplayNames';
 import {
   mergeAdminAndRegistry,
   type AdminSubgroup,
@@ -202,11 +203,17 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
 
   // --- Namespace list + persisted selection ---
   const {
-    namespaces,
+    namespaces: rawNamespaces,
     loading: nsLoading,
     error: nsError,
     refetch: refetchNamespaces,
   } = useNamespacesForApplication(applicationId ?? undefined);
+
+  // `listNamespacesForApplication` omits a namespace's `name` until the
+  // node has synced its root-group metadata — which lags a join by a
+  // few seconds. Backfill it by polling `getGroupMetadata`, so the
+  // workspace switcher shows the real name instead of the raw id.
+  const namespaces = useNamespaceDisplayNames(rawNamespaces);
 
   const [selectedNsId, setSelectedNsId] = useLocalStorage<string | null>(
     ACTIVE_NS_KEY,
