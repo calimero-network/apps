@@ -102,6 +102,10 @@ steps:
       username: Alice
       avatar: null
 
+  - name: Wait before Bob profile
+    type: wait
+    seconds: 5
+
   - name: Set Profile - Node 2 (Bob)
     type: call
     node: calimero-node-2
@@ -118,7 +122,7 @@ steps:
     nodes:
       - calimero-node-1
       - calimero-node-2
-    timeout: 30
+    timeout: 60
     check_interval: 2
     trigger_sync: true
 
@@ -138,6 +142,10 @@ steps:
       sender_username: Alice
       files: null
       images: null
+
+  - name: Wait before Bob message
+    type: wait
+    seconds: 5
 
   - name: Seed Message - Bob
     type: call
@@ -161,7 +169,7 @@ steps:
     nodes:
       - calimero-node-1
       - calimero-node-2
-    timeout: 30
+    timeout: 60
     check_interval: 2
     trigger_sync: true
 

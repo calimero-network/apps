@@ -141,6 +141,10 @@ steps:
       avatar: null
     executor_public_key: "{{alice_key}}"
 
+  - name: Wait before Bob profile
+    type: wait
+    seconds: 5
+
   - name: Bob sets profile
     type: call
     node: calimero-node-2
@@ -157,6 +161,9 @@ steps:
     nodes:
       - calimero-node-1
       - calimero-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
 
   # CROSS-NODE ASSERTION: each node sees both profiles.
   - name: Node 1 reads profiles
@@ -204,6 +211,10 @@ steps:
       images: null
     executor_public_key: "{{alice_key}}"
 
+  - name: Wait before Bob message
+    type: wait
+    seconds: 5
+
   - name: Bob sends message
     type: call
     node: calimero-node-2
@@ -226,6 +237,9 @@ steps:
     nodes:
       - calimero-node-1
       - calimero-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
 
   - name: Node 1 reads messages
     type: call

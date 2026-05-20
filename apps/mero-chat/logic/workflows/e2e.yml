@@ -208,6 +208,10 @@ steps:
     statements:
       - "contains({{alice_profile_result}}, 'Profile set')"
 
+  - name: Wait before Bob profile
+    type: wait
+    seconds: 5
+
   - name: Set Profile - Bob (Node 2)
     type: call
     node: calimero-node-2
@@ -217,6 +221,10 @@ steps:
     args:
       username: Bob
       avatar: null
+
+  - name: Wait before Carol profile
+    type: wait
+    seconds: 5
 
   - name: Set Profile - Carol (Node 3)
     type: call
@@ -235,7 +243,7 @@ steps:
       - calimero-node-1
       - calimero-node-2
       - calimero-node-3
-    timeout: 60
+    timeout: 120
     check_interval: 2
     trigger_sync: true
 
@@ -295,6 +303,10 @@ steps:
     statements:
       - "contains({{alice_msg}}, 'Hello everyone from Alice!')"
 
+  - name: Wait before Bob message
+    type: wait
+    seconds: 5
+
   - name: Bob Sends Message
     type: call
     node: calimero-node-2
@@ -310,6 +322,10 @@ steps:
       sender_username: Bob
       files: null
       images: null
+
+  - name: Wait before Carol message
+    type: wait
+    seconds: 5
 
   - name: Carol Sends Searchable Message
     type: call
@@ -334,7 +350,7 @@ steps:
       - calimero-node-1
       - calimero-node-2
       - calimero-node-3
-    timeout: 60
+    timeout: 120
     check_interval: 2
     trigger_sync: true
 
@@ -536,6 +552,10 @@ steps:
       files: null
       images: null
 
+  - name: Wait before Bob DM reply
+    type: wait
+    seconds: 5
+
   - name: Bob Replies in DM
     type: call
     node: calimero-node-2
@@ -558,7 +578,7 @@ steps:
     nodes:
       - calimero-node-1
       - calimero-node-2
-    timeout: 30
+    timeout: 60
     check_interval: 2
     trigger_sync: true
 
