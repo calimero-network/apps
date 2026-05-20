@@ -3,6 +3,7 @@
   "version": "9.1.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.32.1",
   "dependencies": {
     "@calimero-network/mero-icons": "^0.0.4",
     "@calimero-network/mero-js": "^2.2.0",
