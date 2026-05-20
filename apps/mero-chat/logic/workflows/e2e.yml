@@ -7,10 +7,6 @@ description: >
 
 force_pull_image: true
 
-# TODO BEFORE MERGE: change image tag back to :edge (or latest stable release)
-# — rc.39 is pinned here to match the local dev binary. All workflow files
-# (dm.yml, governance.yml, integration-setup.yml, non-admin-creates.yml,
-# e2e-v2.yml) need the same change, plus logic/Cargo.toml calimero-sdk deps.
 nodes:
   chain_id: testnet-1
   count: 3
@@ -208,9 +204,16 @@ steps:
     statements:
       - "contains({{alice_profile_result}}, 'Profile set')"
 
-  - name: Wait before Bob profile
-    type: wait
-    seconds: 5
+  - name: Sync Alice profile before Bob writes
+    type: wait_for_sync
+    context_id: "{{channel_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+      - calimero-node-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
 
   - name: Set Profile - Bob (Node 2)
     type: call
@@ -222,9 +225,16 @@ steps:
       username: Bob
       avatar: null
 
-  - name: Wait before Carol profile
-    type: wait
-    seconds: 5
+  - name: Sync Bob profile before Carol writes
+    type: wait_for_sync
+    context_id: "{{channel_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+      - calimero-node-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
 
   - name: Set Profile - Carol (Node 3)
     type: call
@@ -243,7 +253,7 @@ steps:
       - calimero-node-1
       - calimero-node-2
       - calimero-node-3
-    timeout: 120
+    timeout: 60
     check_interval: 2
     trigger_sync: true
 
@@ -303,9 +313,16 @@ steps:
     statements:
       - "contains({{alice_msg}}, 'Hello everyone from Alice!')"
 
-  - name: Wait before Bob message
-    type: wait
-    seconds: 5
+  - name: Sync Alice message before Bob writes
+    type: wait_for_sync
+    context_id: "{{channel_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+      - calimero-node-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
 
   - name: Bob Sends Message
     type: call
@@ -323,9 +340,16 @@ steps:
       files: null
       images: null
 
-  - name: Wait before Carol message
-    type: wait
-    seconds: 5
+  - name: Sync Bob message before Carol writes
+    type: wait_for_sync
+    context_id: "{{channel_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+      - calimero-node-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
 
   - name: Carol Sends Searchable Message
     type: call
@@ -350,7 +374,7 @@ steps:
       - calimero-node-1
       - calimero-node-2
       - calimero-node-3
-    timeout: 120
+    timeout: 60
     check_interval: 2
     trigger_sync: true
 
@@ -552,9 +576,15 @@ steps:
       files: null
       images: null
 
-  - name: Wait before Bob DM reply
-    type: wait
-    seconds: 5
+  - name: Sync Alice DM before Bob replies
+    type: wait_for_sync
+    context_id: "{{dm_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
 
   - name: Bob Replies in DM
     type: call

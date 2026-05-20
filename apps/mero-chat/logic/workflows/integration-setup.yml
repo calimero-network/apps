@@ -102,9 +102,18 @@ steps:
       username: Alice
       avatar: null
 
-  - name: Wait before Bob profile
-    type: wait
-    seconds: 5
+  # Sync Alice's profile to node-2 before Bob writes, so writes are linear
+  # (no concurrent-write fork). Without this, node-1 and node-2 diverge and
+  # wait_for_sync below can never converge the two branches within the timeout.
+  - name: Sync Alice profile to Node 2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
 
   - name: Set Profile - Node 2 (Bob)
     type: call
@@ -143,9 +152,17 @@ steps:
       files: null
       images: null
 
-  - name: Wait before Bob message
-    type: wait
-    seconds: 5
+  # Sync Alice's message to node-2 before Bob writes — same fork-prevention
+  # pattern as the profile steps above.
+  - name: Sync Alice message to Node 2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
 
   - name: Seed Message - Bob
     type: call

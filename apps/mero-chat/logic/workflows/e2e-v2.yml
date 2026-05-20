@@ -141,9 +141,15 @@ steps:
       avatar: null
     executor_public_key: "{{alice_key}}"
 
-  - name: Wait before Bob profile
-    type: wait
-    seconds: 5
+  - name: Sync Alice profile before Bob writes
+    type: wait_for_sync
+    context_id: "{{channel_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
 
   - name: Bob sets profile
     type: call
@@ -211,9 +217,15 @@ steps:
       images: null
     executor_public_key: "{{alice_key}}"
 
-  - name: Wait before Bob message
-    type: wait
-    seconds: 5
+  - name: Sync Alice message before Bob writes
+    type: wait_for_sync
+    context_id: "{{channel_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
 
   - name: Bob sends message
     type: call
