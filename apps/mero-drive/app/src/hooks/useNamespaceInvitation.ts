@@ -86,6 +86,40 @@ export function buildInviteUrl(
   return url;
 }
 
+/** Pull invite params out of free-form user input. Accepts a full URL
+ *  from any host (so links copied from older/staging deployments still
+ *  work), a bare query string with or without the leading `?`, and
+ *  tolerates surrounding whitespace. Returns `null` when no usable
+ *  `invite=` param is present — the caller should treat that as
+ *  "input doesn't contain an invite" and prompt the user. The returned
+ *  `URLSearchParams` is suitable for direct hand-off to
+ *  `parseInviteUrl`. */
+export function extractInviteParams(input: string): URLSearchParams | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  // Path 1: full URL — works for any host, any path. The dialog's
+  // primary input. We intentionally don't restrict the host so links
+  // copied from the localhost dev server or a previous Vercel preview
+  // domain still parse.
+  try {
+    const url = new URL(trimmed);
+    if (url.searchParams.has('invite')) return url.searchParams;
+  } catch {
+    /* not a URL — fall through to bare-query handling */
+  }
+
+  // Path 2: bare query string. Covers users who copied only the
+  // `?kind=…&id=…&invite=…` tail of a link.
+  const queryOnly = trimmed.startsWith('?') ? trimmed.slice(1) : trimmed;
+  if (queryOnly.includes('invite=')) {
+    const params = new URLSearchParams(queryOnly);
+    if (params.has('invite')) return params;
+  }
+
+  return null;
+}
+
 /** Parse an invite URL. Returns null-shape error if the params are
  *  missing or the payload can't be decoded. */
 export function parseInviteUrl(

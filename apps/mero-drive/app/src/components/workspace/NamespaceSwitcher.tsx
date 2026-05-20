@@ -12,6 +12,7 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { NamespaceCreateDialog } from './NamespaceCreateDialog';
+import { NamespaceJoinDialog } from './NamespaceJoinDialog';
 
 export function NamespaceSwitcher() {
   const {
@@ -23,6 +24,7 @@ export function NamespaceSwitcher() {
     refetch,
   } = useDriveWorkspace();
   const [showCreate, setShowCreate] = useState(false);
+  const [showJoin, setShowJoin] = useState(false);
 
   if (loading && namespaces.length === 0) {
     return (
@@ -61,10 +63,21 @@ export function NamespaceSwitcher() {
       <Button variant="outline" size="sm" onClick={() => setShowCreate(true)}>
         New workspace
       </Button>
+      <Button variant="outline" size="sm" onClick={() => setShowJoin(true)}>
+        Join workspace
+      </Button>
       {showCreate && (
         <NamespaceCreateDialog
           onClose={() => setShowCreate(false)}
           onCreated={async () => {
+            await refetch();
+          }}
+        />
+      )}
+      {showJoin && (
+        <NamespaceJoinDialog
+          onClose={() => setShowJoin(false)}
+          onJoined={async () => {
             await refetch();
           }}
         />

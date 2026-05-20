@@ -13,61 +13,22 @@
 //      joinNamespace / joinGroup based on kind.
 //   4. Success → /app (the namespace list / folder tree refetches
 //      will surface the new membership on the next render).
+//
+// The accept-card body is shared with the in-app paste-link dialog
+// (NamespaceJoinDialog) via JoinInviteCard — this page is the thin
+// route wrapper around it.
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ConnectButton, useMero } from '@calimero-network/mero-react';
-import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/icons/Logo';
-import {
-  parseInviteUrl,
-  useJoinNamespaceByInvite,
-  useJoinFolderByInvite,
-} from '@/hooks/useNamespaceInvitation';
-import { markNamespaceJustJoined } from '@/hooks/useDriveWorkspace';
-import { rememberNamespaceName } from '@/hooks/namespaceNames';
+import { JoinInviteCard } from '@/components/workspace/JoinInviteCard';
+import { parseInviteUrl } from '@/hooks/useNamespaceInvitation';
 
 export default function JoinPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const { isAuthenticated, isLoading } = useMero();
-  const { join: joinNs } = useJoinNamespaceByInvite();
-  const { join: joinGroup } = useJoinFolderByInvite();
 
   const parsed = useMemo(() => parseInviteUrl(params), [params]);
-  const [joining, setJoining] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const onJoin = async () => {
-    if ('error' in parsed) return;
-    setJoining(true);
-    setError(null);
-    try {
-      if (parsed.kind === 'namespace') {
-        await joinNs(parsed.targetId, parsed.invitation);
-        // Persist the invite-carried namespace name so the workspace
-        // switcher shows it immediately. `listNamespacesForApplication`
-        // won't surface it until the joined node has synced the
-        // namespace's root-group metadata — which can lag indefinitely.
-        if (parsed.namespaceName) {
-          rememberNamespaceName(parsed.targetId, parsed.namespaceName);
-        }
-        // Flag the fresh namespace so useDriveWorkspace shows a
-        // "Syncing from peers…" state while the governance op +
-        // registry state propagate, rather than a raw empty view.
-        markNamespaceJustJoined(parsed.targetId);
-      } else {
-        await joinGroup(parsed.invitation);
-        // For folder joins the namespace is already in place; no
-        // sync gate needed — the folder's docs context will sync
-        // in the background the usual way.
-      }
-      navigate('/app', { replace: true });
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-      setJoining(false);
-    }
-  };
 
   const scopeLabel =
     'error' in parsed
@@ -87,77 +48,33 @@ export default function JoinPage() {
         </div>
 
         {'error' in parsed ? (
-          <div
-            role="alert"
-            className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive"
-          >
-            {parsed.error}
-          </div>
-        ) : (
           <>
-            <p className="mb-6 text-sm text-muted-foreground">
-              You've been invited to join {scopeLabel}{' '}
-              {parsed.namespaceName ? (
-                <span className="font-medium text-foreground">
-                  {parsed.namespaceName}
-                </span>
-              ) : (
-                <code className="rounded bg-muted px-1.5 py-0.5 text-xs text-foreground">
-                  {parsed.targetId.slice(0, 12)}…
-                </code>
-              )}
-              {parsed.kind === 'group' ? (
-                <>
-                  . You'll only gain access to this folder — not the
-                  workspace root or other folders.
-                </>
-              ) : (
-                <>. You'll be added to the workspace root group.</>
-              )}
-            </p>
-
-            {isLoading ? (
-              <div className="text-sm text-muted-foreground">
-                Checking your session…
-              </div>
-            ) : !isAuthenticated ? (
-              <div className="space-y-3">
-                <p className="text-sm">
-                  Sign in with your Calimero identity to accept the
-                  invitation.
-                </p>
-                <ConnectButton />
-              </div>
-            ) : (
-              <Button
-                className="w-full"
-                disabled={joining}
-                onClick={onJoin}
+            <div
+              role="alert"
+              className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive"
+            >
+              {parsed.error}
+            </div>
+            <div className="mt-6 text-center text-xs text-muted-foreground">
+              <button
+                type="button"
+                className="underline hover:text-foreground"
+                onClick={() => navigate('/')}
               >
-                {joining ? 'Joining…' : 'Accept & join'}
-              </Button>
-            )}
-
-            {error && (
-              <div
-                role="alert"
-                className="mt-4 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive"
-              >
-                {error}
-              </div>
-            )}
+                Not now, take me home
+              </button>
+            </div>
           </>
+        ) : (
+          <JoinInviteCard
+            parsed={parsed}
+            onJoined={() => navigate('/app', { replace: true })}
+            secondaryAction={{
+              label: 'Not now, take me home',
+              onClick: () => navigate('/'),
+            }}
+          />
         )}
-
-        <div className="mt-6 text-center text-xs text-muted-foreground">
-          <button
-            type="button"
-            className="underline hover:text-foreground"
-            onClick={() => navigate('/')}
-          >
-            Not now, take me home
-          </button>
-        </div>
       </div>
     </main>
   );
