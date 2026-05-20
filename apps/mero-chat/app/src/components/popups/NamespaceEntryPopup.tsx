@@ -915,9 +915,9 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
                 type="button"
                 variant="secondary"
                 style={{ flex: 1 }}
-                onClick={onLogout}
+                onClick={() => { setError(""); setStep(namespaces.length > 0 ? "select" : "no-workspace"); }}
               >
-                Disconnect
+                ← Back
               </Button>
             </Row>
           </>
