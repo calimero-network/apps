@@ -1,6 +1,6 @@
 {
   "name": "mero-drive",
-  "version": "9.1.0",
+  "version": "9.1.1",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.32.1",
