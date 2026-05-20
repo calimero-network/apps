@@ -1,4 +1,5 @@
 import bs58 from "bs58";
+import { deflateSync, inflateSync } from "fflate";
 import type { SignedGroupOpenInvitation } from "../api/groupApi";
 
 /**
@@ -102,9 +103,11 @@ export function parseGroupInvitationPayload(
 
 const BASE58_ALPHABET = /^[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$/;
 
-/** Base58 encode a JSON payload string. Compact and copy-friendly (no +/= chars). */
+/** Compress + base58 encode a JSON payload string. Shorter URLs than plain base58. */
 export function encodeInvitationPayload(payload: string): string {
-  return bs58.encode(new TextEncoder().encode(payload));
+  const bytes = new TextEncoder().encode(payload);
+  const compressed = deflateSync(bytes, { level: 9 });
+  return bs58.encode(compressed);
 }
 
 /**
@@ -116,10 +119,16 @@ export function decodeInvitationPayload(encoded: string): string | null {
   if (!encoded || typeof encoded !== "string") return null;
   const trimmed = encoded.trim();
 
-  // Try base58
+  // Try base58 (new: compressed; old: raw UTF-8)
   if (BASE58_ALPHABET.test(trimmed)) {
     try {
-      return new TextDecoder().decode(bs58.decode(trimmed));
+      const bytes = bs58.decode(trimmed);
+      try {
+        return new TextDecoder().decode(inflateSync(bytes));
+      } catch {
+        // Not compressed — old invitation format
+        return new TextDecoder().decode(bytes);
+      }
     } catch {
       // fall through
     }
