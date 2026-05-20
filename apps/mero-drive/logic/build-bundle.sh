@@ -56,7 +56,7 @@ cat > res/bundle-temp/manifest.json <<EOF
   ],
   "migrations": [],
   "links": {
-    "frontend": "https://mero-drive-ey3c.vercel.app/"
+    "frontend": "https://mero-drive.vercel.app/"
   }
 }
 EOF
