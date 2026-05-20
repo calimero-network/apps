@@ -72,23 +72,24 @@ export function useGroupContexts() {
             }
           })
         );
-        // Auto-join is scoped to subgroups where we are a DIRECT member
-        // (admin added us via `add_group_members`, or we created/joined
-        // explicitly). `listMembers(subgroupId)` is the canonical signal:
-        // inherited members via `CAN_JOIN_OPEN_SUBGROUPS` on the
-        // namespace root are NOT in that list, so they correctly skip
-        // auto-join — Open-subgroup discovery stays opt-in (the user
-        // clicks "Join" in the sidebar).
+        // Auto-join gate — two cases trigger it:
         //
-        // The trigger we DO want to keep firing: admin adds a member to
-        // a Restricted subgroup. `add_group_members` publishes
-        // MemberAdded + KeyDelivery, but never materialises the local
-        // `ContextIdentity` row on the added member's node (auto_follow
-        // only fires on ContextRegistered / AutoFollowSet — see
-        // [[project-curb-governance-quirks]]). Without this call, the
-        // member never sees the context, can't decrypt, and the
-        // "admin added me to a private channel" flow looks broken.
-        if (isDirectMember) {
+        // 1. isDirectMember=true: `listMembers(subgroupId)` confirmed us.
+        //    Covers admin adding us via `add_group_members` once the
+        //    MemberAdded governance op has propagated to this node.
+        //
+        // 2. visibility !== "open": for Restricted (or not-yet-known)
+        //    subgroups we also attempt auto-join and let the server decide.
+        //    On cross-network setups the MemberAdded gossipsub op is often
+        //    missed (0 acks, 90 s heartbeat delay), so `listMembers` returns
+        //    us as a non-member even though the node has already received the
+        //    op. Calling joinGroupContext here is safe: the server rejects
+        //    joins we are not entitled to (returns an error we already
+        //    swallow), and succeeds as soon as the node's governance state
+        //    catches up — no extra frontend polling round-trip needed.
+        //    Open subgroups are explicitly excluded: discovery there stays
+        //    opt-in (user clicks "Join" in the sidebar).
+        if (isDirectMember || visibility !== "open") {
           await Promise.all(
             ids.filter((id) => !idMap[id]).map(async (ctxId) => {
               try {
