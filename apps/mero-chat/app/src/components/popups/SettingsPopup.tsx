@@ -1,8 +1,8 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { styled, keyframes } from "styled-components";
 import { useNavigate } from "react-router-dom";
 import BaseModal from "../common/popups/BaseModal";
-import { useMero, getContextIdentity as getExecutorPublicKey } from "@calimero-network/mero-react";
+import { useMero, getContextIdentity as getExecutorPublicKey, getContextId } from "@calimero-network/mero-react";
 import {
   clearStoredSession,
   clearSessionActivity,
@@ -15,13 +15,21 @@ import {
 } from "../../constants/config";
 import { clearMessengerDisplayName, getMessengerDisplayName } from "../../utils/messengerName";
 import { useCurrentGroupPermissions } from "../../hooks/useCurrentGroupPermissions";
-import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
+import { GroupApiDataSource, uploadBlobDirect } from "../../api/dataSource/groupApiDataSource";
+import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
+import { downloadBlob, getMeroJs } from "../../api/meroJsClient";
 import { useToast } from "../../contexts/ToastContext";
+import { invalidateAvatarCache } from "../../hooks/useAvatarUrl";
 // ─── Animations ────────────────────────────────────────────────────────────────
 
 const fadeIn = keyframes`
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
+`;
+
+const spin = keyframes`
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 `;
 
 // ─── Layout ────────────────────────────────────────────────────────────────────
@@ -133,6 +141,22 @@ const WorkspaceName = styled.span`
   text-overflow: ellipsis;
 `;
 
+const WorkspaceIdRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+`;
+
+const WorkspaceIdText = styled.span`
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.6);
+  font-family: monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+`;
+
 const RoleBadge = styled.span<{ $admin: boolean; $mod?: boolean }>`
   flex-shrink: 0;
   font-size: 0.7rem;
@@ -161,11 +185,14 @@ const ProfileCard = styled.div`
   gap: 0.875rem;
 `;
 
-const ProfileAvatar = styled.div`
+const ProfileAvatar = styled.div<{ $hasImage: boolean }>`
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: linear-gradient(135deg, rgba(87, 101, 242, 0.5) 0%, rgba(165, 255, 17, 0.2) 100%);
+  background: ${({ $hasImage }) =>
+    $hasImage
+      ? "transparent"
+      : "linear-gradient(135deg, rgba(87, 101, 242, 0.5) 0%, rgba(165, 255, 17, 0.2) 100%)"};
   border: 1px solid rgba(255, 255, 255, 0.1);
   display: flex;
   align-items: center;
@@ -175,6 +202,29 @@ const ProfileAvatar = styled.div`
   color: #fff;
   flex-shrink: 0;
   text-transform: uppercase;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+
+  &:hover > .avatar-overlay {
+    opacity: 1;
+  }
+`;
+
+const AvatarOverlay = styled.div`
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  border-radius: 50%;
+`;
+
+const SpinnerSvg = styled.svg`
+  animation: ${spin} 0.8s linear infinite;
 `;
 
 const ProfileInfo = styled.div`
@@ -309,19 +359,13 @@ const LogoutSection = styled.div`
   border-top: 1px solid rgba(255, 255, 255, 0.07);
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
 `;
 
 const SessionActions = styled.div`
   display: flex;
   align-items: center;
   gap: 0.625rem;
-`;
-
-const LogoutLabel = styled.span`
-  font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.3);
-  font-weight: 500;
 `;
 
 const SessionButton = styled.button`
@@ -379,11 +423,16 @@ export default function SettingsPopup({
   const navigate = useNavigate();
   const { addToast } = useToast();
   const groupId = getGroupId();
-  const namespaceName = getStoredGroupAlias(groupId) || groupId.slice(0, 12) + "…";
+  const alias = getStoredGroupAlias(groupId);
   const { isAdmin, isModerator } = useCurrentGroupPermissions(groupId);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedWorkspace, setCopiedWorkspace] = useState(false);
+  const [avatarObjectUrl, setAvatarObjectUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const avatarObjectUrlRef = useRef<string | null>(null);
 
   const username = getMessengerDisplayName() || "";
   const identity = getExecutorPublicKey() || "";
@@ -391,6 +440,47 @@ export default function SettingsPopup({
     ? `${identity.slice(0, 8)}…${identity.slice(-6)}`
     : identity;
   const avatarInitial = username ? username[0] : identity[0] || "?";
+
+  // Load current avatar from the active context on open.
+  useEffect(() => {
+    if (!isOpen || !identity) return;
+    const contextId = getContextId();
+    if (!contextId) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await new ClientApiDataSource().getProfiles(contextId, identity);
+        const myProfile = res.data?.find((p) => p.identity === identity);
+        if (!myProfile?.avatar || cancelled) return;
+        const blob = await downloadBlob(myProfile.avatar, contextId);
+        if (cancelled) return;
+        const url = URL.createObjectURL(blob);
+        avatarObjectUrlRef.current = url;
+        setAvatarObjectUrl(url);
+      } catch {
+        // no avatar
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      // Revoke the URL created in this run to prevent leaks on repeated opens.
+      if (avatarObjectUrlRef.current) {
+        URL.revokeObjectURL(avatarObjectUrlRef.current);
+        avatarObjectUrlRef.current = null;
+      }
+    };
+  }, [isOpen, identity]);
+
+  // Revoke object URL on unmount.
+  useEffect(() => {
+    return () => {
+      if (avatarObjectUrlRef.current) {
+        URL.revokeObjectURL(avatarObjectUrlRef.current);
+      }
+    };
+  }, []);
 
   const handleCopyIdentity = useCallback(async () => {
     if (!identity) return;
@@ -402,6 +492,82 @@ export default function SettingsPopup({
       /* clipboard unavailable */
     }
   }, [identity]);
+
+  const handleCopyWorkspaceId = useCallback(async () => {
+    if (!groupId) return;
+    try {
+      await navigator.clipboard.writeText(groupId);
+      setCopiedWorkspace(true);
+      setTimeout(() => setCopiedWorkspace(false), 1500);
+    } catch {
+      /* clipboard unavailable */
+    }
+  }, [groupId]);
+
+  const handleAvatarChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      // Reset input so the same file can trigger onChange again later.
+      e.target.value = "";
+
+      setUploading(true);
+      try {
+        const uploadRes = await uploadBlobDirect(file);
+        if (!uploadRes.data?.blobId) {
+          addToast({ title: "Avatar", message: "Upload failed", type: "channel", duration: 3000 });
+          return;
+        }
+        const blobId = uploadRes.data.blobId;
+
+        // Show the new image immediately.
+        const newUrl = URL.createObjectURL(file);
+        if (avatarObjectUrlRef.current) URL.revokeObjectURL(avatarObjectUrlRef.current);
+        avatarObjectUrlRef.current = newUrl;
+        setAvatarObjectUrl(newUrl);
+
+        // Always update the currently-active context first (fallback when
+        // listGroupContexts is stale or returns empty — e.g. after make stop).
+        const currentContextId = getContextId();
+        const currentIdentity = getExecutorPublicKey();
+        const clientDs = new ClientApiDataSource();
+        if (currentContextId && currentIdentity) {
+          try {
+            await clientDs.updateProfile(currentContextId, currentIdentity, username, blobId);
+          } catch {
+            // best-effort
+          }
+        }
+
+        // Best-effort: propagate to every other context in the group.
+        const contextsRes = await new GroupApiDataSource().listGroupContexts(groupId);
+        for (const ctx of contextsRes.data ?? []) {
+          if (ctx.contextId === currentContextId) continue; // already done above
+          try {
+            const owned = await getMeroJs().admin.getContextIdentitiesOwned(ctx.contextId);
+            const executorKey = owned.identities?.[0];
+            if (!executorKey) continue;
+            const profilesRes = await clientDs.getProfiles(ctx.contextId, executorKey);
+            const myProfile = profilesRes.data?.find((p) => p.identity === executorKey);
+            await clientDs.updateProfile(
+              ctx.contextId,
+              executorKey,
+              myProfile?.username || username,
+              blobId,
+            );
+          } catch {
+            // best-effort per context
+          }
+        }
+
+        invalidateAvatarCache();
+        addToast({ title: "Avatar updated", message: "Your profile picture has been saved.", type: "channel", duration: 3000 });
+      } finally {
+        setUploading(false);
+      }
+    },
+    [addToast, groupId, username],
+  );
 
   // ── Session handlers ────────────────────────────────────────────────────────
 
@@ -474,7 +640,40 @@ export default function SettingsPopup({
 
       {/* Profile */}
       <ProfileCard>
-        <ProfileAvatar>{avatarInitial}</ProfileAvatar>
+        <ProfileAvatar
+          $hasImage={!!avatarObjectUrl}
+          onClick={() => !uploading && avatarInputRef.current?.click()}
+          title="Change profile picture"
+        >
+          {avatarObjectUrl ? (
+            <img
+              src={avatarObjectUrl}
+              alt="avatar"
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
+          ) : (
+            avatarInitial
+          )}
+          <AvatarOverlay className="avatar-overlay">
+            {uploading ? (
+              <SpinnerSvg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+              </SpinnerSvg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                <circle cx="12" cy="13" r="4" />
+              </svg>
+            )}
+          </AvatarOverlay>
+          <input
+            ref={avatarInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={handleAvatarChange}
+          />
+        </ProfileAvatar>
         <ProfileInfo>
           <ProfileLabel>Profile</ProfileLabel>
           {username && <ProfileUsername>{username}</ProfileUsername>}
@@ -502,7 +701,25 @@ export default function SettingsPopup({
       <WorkspaceCard>
         <WorkspaceInfo>
           <WorkspaceLabel>Workspace</WorkspaceLabel>
-          <WorkspaceName>{namespaceName}</WorkspaceName>
+          {alias ? (
+            <WorkspaceName>{alias}</WorkspaceName>
+          ) : (
+            <WorkspaceIdRow>
+              <WorkspaceIdText title={groupId}>{groupId}</WorkspaceIdText>
+              <CopyButton onClick={handleCopyWorkspaceId} aria-label="Copy workspace ID">
+                {copiedWorkspace ? (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#a5ff11" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                ) : (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  </svg>
+                )}
+              </CopyButton>
+            </WorkspaceIdRow>
+          )}
         </WorkspaceInfo>
         <RoleBadge $admin={isAdmin} $mod={isModerator}>{isAdmin ? "Admin" : isModerator ? "Moderator" : "Member"}</RoleBadge>
       </WorkspaceCard>
@@ -538,7 +755,6 @@ export default function SettingsPopup({
       )}
 
       <LogoutSection>
-        <LogoutLabel>Session</LogoutLabel>
         <SessionActions>
           <ChangeWorkspaceButton onClick={handleChangeWorkspace}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">

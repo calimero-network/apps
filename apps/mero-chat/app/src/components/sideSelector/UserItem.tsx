@@ -1,7 +1,7 @@
 import { useCallback, memo, useState } from "react";
 import { styled } from "styled-components";
-import { Avatar } from "@calimero-network/mero-ui";
 import type { DMContextInfo } from "../../hooks/useDMs";
+import { IdentityAvatar } from "../IdentityAvatar";
 import ConfirmPopup from "../popups/ConfirmPopup";
 import { getDmDisplayName } from "../../utils/dmContext";
 import type { ContextUnread } from "../../hooks/useUnreadCounts";
@@ -121,11 +121,11 @@ function UserItem({
       $hasUnread={showBadge}
     >
       {isCollapsed ? (
-        <Avatar size="xs" name={displayName} />
+        <IdentityAvatar size="xs" identity={dm.otherIdentity} contextId={dm.contextId} name={displayName} />
       ) : (
         <>
           <UserInfoContainer>
-            <Avatar size="xs" name={displayName} />
+            <IdentityAvatar size="xs" identity={dm.otherIdentity} contextId={dm.contextId} name={displayName} />
             <NameContainer>{displayName}</NameContainer>
           </UserInfoContainer>
           <ActionsContainer>

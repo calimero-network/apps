@@ -6,6 +6,10 @@ vi.mock("@calimero-network/mero-ui", () => ({
   Avatar: ({ name }: { name: string }) => <div>{name}</div>,
 }));
 
+vi.mock("../IdentityAvatar", () => ({
+  IdentityAvatar: ({ name }: { name: string }) => <div>{name}</div>,
+}));
+
 vi.mock("../popups/ConfirmPopup", () => ({
   default: ({ toggle }: { toggle: React.ReactNode }) => <>{toggle}</>,
 }));

@@ -1626,4 +1626,119 @@ export class ClientApiDataSource implements ClientApi {
       return { data: 0, error: null };
     }
   }
+
+  async saveDraft(
+    contextId: string,
+    executorPublicKey: string,
+    channel: string,
+    text: string,
+  ): ApiResponse<void> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, void>(
+        {
+          contextId,
+          method: ClientMethod.SAVE_DRAFT,
+          argsJson: { channel, text },
+          executorPublicKey,
+        },
+        { headers: { "Content-Type": "application/json" }, timeout: 5000 },
+      );
+      if (response?.error) {
+        return {
+          data: null,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          error: { code: response.error.code, message: (response.error.error?.cause?.info as any)?.message ?? "saveDraft failed" },
+        };
+      }
+      return { data: undefined, error: null };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "saveDraft failed";
+      return { data: null, error: { code: 500, message } };
+    }
+  }
+
+  async getDraft(
+    contextId: string,
+    executorPublicKey: string,
+    channel: string,
+  ): ApiResponse<string> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, string>(
+        {
+          contextId,
+          method: ClientMethod.GET_DRAFT,
+          argsJson: { channel },
+          executorPublicKey,
+        },
+        { headers: { "Content-Type": "application/json" }, timeout: 5000 },
+      );
+      if (response?.error) {
+        return { data: "", error: null };
+      }
+      return { data: (response?.result.output as string) ?? "", error: null };
+    } catch {
+      return { data: "", error: null };
+    }
+  }
+
+  async deleteDraft(
+    contextId: string,
+    executorPublicKey: string,
+    channel: string,
+  ): ApiResponse<void> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, void>(
+        {
+          contextId,
+          method: ClientMethod.DELETE_DRAFT,
+          argsJson: { channel },
+          executorPublicKey,
+        },
+        { headers: { "Content-Type": "application/json" }, timeout: 5000 },
+      );
+      if (response?.error) {
+        return { data: null, error: { code: response.error.code, message: "deleteDraft failed" } };
+      }
+      return { data: undefined, error: null };
+    } catch {
+      return { data: null, error: { code: 500, message: "deleteDraft failed" } };
+    }
+  }
+
+  async updateProfile(
+    contextId: string,
+    executorPublicKey: string,
+    username: string,
+    avatar: string | null,
+  ): ApiResponse<string> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await getJsonRpcClient().execute<any, string>(
+        {
+          contextId,
+          method: "set_profile",
+          argsJson: { username, avatar },
+          executorPublicKey,
+        },
+        { headers: { "Content-Type": "application/json" }, timeout: 10000 },
+      );
+      if (response?.error) {
+        return {
+          data: null,
+          error: {
+            code: response.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response.error.error?.cause?.info as any)?.message ?? "updateProfile failed",
+          },
+        };
+      }
+      return { data: response?.result.output as string, error: null };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "updateProfile failed";
+      return { data: null, error: { code: 500, message } };
+    }
+  }
 }

@@ -287,6 +287,10 @@ export enum ClientMethod {
   GET_UNREAD_COUNT = "get_unread_count",
   GET_UNREAD_MENTIONS = "get_unread_mentions",
   SEARCH_ALL_MESSAGES = "search_all_messages",
+  // Per-user per-channel drafts (WASM-backed, effectively private).
+  SAVE_DRAFT = "save_draft",
+  GET_DRAFT = "get_draft",
+  DELETE_DRAFT = "delete_draft",
 }
 
 /// Per-context moderation role. Mirrors the Rust `Role` enum.

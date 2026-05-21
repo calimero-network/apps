@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import { useDraft } from "../hooks/useDraft";
 import { styled } from "styled-components";
 import type {
   AttachmentDraft,
@@ -318,6 +319,17 @@ const Placeholder = styled.div<{
   }
 `;
 
+const DraftBadge = styled.span`
+  font-size: 0.66rem;
+  color: rgba(255, 255, 255, 0.3);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+`;
+
 const ReadOnlyField = styled.div<{ $banned?: boolean }>`
   background-color: ${(p) => (p.$banned ? "rgba(255, 59, 59, 0.07)" : "#111111")};
   border: 1px solid
@@ -423,6 +435,12 @@ export default function MessageInput({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const editorRef = useRef<any>(null);
   const { addToast } = useToast();
+  // Drafts: disabled for thread replies to keep things simple.
+  const { draft: channelDraft, hasDraft, setDraft, clearDraft } = useDraft(
+    isThread ? undefined : selectedChat,
+  );
+  // Tracks which channel's draft has already been applied to the editor.
+  const draftAppliedRef = useRef<string | undefined>(undefined);
 
   const deleteBlobById = useCallback(async (blobId?: string) => {
     if (!blobId) {
@@ -535,7 +553,34 @@ export default function MessageInput({
     setShowUpload(false);
     clearUploadedFile();
     clearUploadedImage();
+    // Allow the draft for the new channel to be applied once it loads.
+    draftAppliedRef.current = undefined;
   }, [selectedChat, clearUploadedFile, clearUploadedImage]);
+
+  // When a thread closes, reset the ref so the channel draft is re-applied.
+  useEffect(() => {
+    if (!isThread) draftAppliedRef.current = undefined;
+  }, [isThread]);
+
+  // Pre-populate the editor with the persisted draft when it loads.
+  useEffect(() => {
+    if (!channelDraft || isThread) return;
+    if (draftAppliedRef.current === selectedChat) return;
+    draftAppliedRef.current = selectedChat;
+    setMessage({
+      id: "",
+      text: channelDraft,
+      nonce: "",
+      timestamp: Date.now(),
+      sender: "",
+      reactions: new Map(),
+      files: [],
+      images: [],
+      thread_count: 0,
+      thread_last_timestamp: 0,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelDraft]);
 
   const removeUploadedFile = useCallback(() => {
     if (uploadedFile?.file.blobId) {
@@ -638,6 +683,7 @@ export default function MessageInput({
 
       try {
         await sendMessage(payload);
+        if (!isThread) clearDraft();
         clearUploadedImage();
         clearUploadedFile();
         setShowUpload(false);
@@ -650,6 +696,12 @@ export default function MessageInput({
         // P2P sync found no connected peers — expected with a single node.
         // Don't surface this as an error to the user.
         if (/mesh|no.*peer|peer.*sync/i.test(message)) {
+          if (!isThread) clearDraft();
+          clearUploadedImage();
+          clearUploadedFile();
+          setShowUpload(false);
+          setEmojiSelectorOpen(false);
+          handleMessageChange(null);
           return;
         }
         addToast({
@@ -672,6 +724,8 @@ export default function MessageInput({
       setEmojiSelectorOpen,
       handleMessageChange,
       addToast,
+      clearDraft,
+      isThread,
     ]
   );
 
@@ -762,6 +816,12 @@ export default function MessageInput({
                             thread_last_timestamp: 0,
                           }
                     );
+                    if (!isThread) {
+                      // Mark draft as applied so the pre-populate effect doesn't
+                      // fire again on the channelDraft change caused by this keystroke.
+                      draftAppliedRef.current = selectedChat;
+                      setDraft(value);
+                    }
                   }}
                   onSend={handleSendMessageEnter}
                   placeholder={placeholderText}
@@ -809,6 +869,7 @@ export default function MessageInput({
             </>
           </Wrapper>
           <ActionsWrapper>
+            {hasDraft && !isThread && <DraftBadge>Draft</DraftBadge>}
             <IconUpload onClick={toggleUploadPopup} />
             <div onClick={toggleEmojiPopup}>
               <IconEmoji />

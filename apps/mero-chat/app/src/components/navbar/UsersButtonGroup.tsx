@@ -1,6 +1,6 @@
 import styled from "styled-components";
 import { useState } from "react";
-import { Avatar } from "@calimero-network/mero-ui";
+import { IdentityAvatar } from "../IdentityAvatar";
 
 interface UsersButtonGroupProps {
   channelUserList: Map<string, string>;
@@ -57,7 +57,7 @@ export default function UsersButtonGroup(props: UsersButtonGroupProps) {
         .map(([publicKey, userName]) => (
           <div key={publicKey}>
             <ProfileIconContainerGroup $isHovered={isHovered}>
-              <Avatar size="xs" name={userName} />
+              <IdentityAvatar size="xs" identity={publicKey} name={userName} />
             </ProfileIconContainerGroup>
           </div>
         ))}

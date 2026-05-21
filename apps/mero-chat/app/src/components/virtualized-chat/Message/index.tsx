@@ -9,7 +9,7 @@ import { formatTimeAgo } from "../utils";
 import { downloadBlob } from "../../../api/meroJsClient";
 
 import { POPUP_POSITION_SWITCH_HEIGHT } from "./AutocompleteList";
-import { Avatar } from "./Avatar";
+import { IdentityAvatar } from "../../IdentityAvatar";
 import DeletedMessage from "./DeletedMessage";
 import MessageSendingIcon from "./Icons/MessageSendingIcon";
 import MessageSentIcon from "./Icons/MessageSentIcon";
@@ -576,7 +576,7 @@ const Message = (props: MessageProps) => {
         {showHeader && (
           <SenderInfoContainer>
             <ProfileIconContainerMsg>
-              <Avatar size="sm" name={props.message.senderUsername} />
+              <IdentityAvatar size="sm" identity={props.message.sender} contextId={props.contextId} name={props.message.senderUsername} />
             </ProfileIconContainerMsg>
             <NameContainerSender>
               {props.message.senderUsername}

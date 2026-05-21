@@ -1,7 +1,7 @@
 import { useMemo, useCallback } from "react";
 import { styled } from "styled-components";
 import type { CurbFile, CurbMessage, FileObject } from "../types/Common";
-import Avatar from "../components/virtualized-chat/Message/Avatar";
+import { IdentityAvatar } from "../components/IdentityAvatar";
 import RenderHtml from "../components/virtualized-chat/Message/RenderHtml";
 import MessageImageField from "./MessageImageField";
 import MessageFileField from "./MessageFileField";
@@ -195,10 +195,11 @@ export default function SearchResultMessage({
       )}
       <Header>
         <AvatarWrapper>
-          <Avatar
+          <IdentityAvatar
             size="md"
+            identity={message.sender}
+            contextId={contextId}
             name={displayName || message.sender}
-            alt={displayName || message.sender}
           />
         </AvatarWrapper>
         <SenderBlock>

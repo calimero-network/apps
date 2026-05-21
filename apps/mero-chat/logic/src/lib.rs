@@ -40,6 +40,12 @@ fn parse_blob_id_base58(blob_id_str: &str) -> Result<[u8; BLOB_ID_SIZE], String>
     }
 }
 
+/// Build the storage key for a user's per-channel draft.
+/// Format: "<base58_user_id>:<channel_name>"
+fn draft_key(user_base58: &str, channel: &str) -> String {
+    format!("{user_base58}:{channel}")
+}
+
 fn serialize_blob_id_bytes<S>(
     blob_id_bytes: &[u8; BLOB_ID_SIZE],
     serializer: S,
@@ -454,6 +460,9 @@ pub struct MeroChat {
     /// Written by delete_message regardless of AuthoredVector ownership, so
     /// admins/mods can delete messages they didn't author.
     deleted_messages: UnorderedSet<String>,
+    /// Per-user per-channel draft text. Key: "{base58_user_id}:{channel_name}".
+    /// Effectively private — each user only reads/writes their own keys.
+    drafts: UnorderedMap<String, LwwRegister<String>>,
 }
 
 #[app::logic]
@@ -500,6 +509,7 @@ impl MeroChat {
             roles,
             read_receipts: UnorderedMap::new(),
             deleted_messages: UnorderedSet::new(),
+            drafts: UnorderedMap::new(),
         }
     }
 
@@ -668,20 +678,40 @@ impl MeroChat {
 
         let executor_id = Self::executor_id();
 
+        // Announce avatar blob to this context so it replicates to other nodes.
+        let avatar_register: Option<LwwRegister<String>> = if let Some(ref blob_id_str) = avatar {
+            match parse_blob_id_base58(blob_id_str) {
+                Ok(blob_id) => {
+                    let context_id = env::context_id();
+                    if !env::blob_announce_to_context(&blob_id, &context_id) {
+                        app::log!(
+                            "Warning: failed to announce avatar blob {} to context",
+                            blob_id_str
+                        );
+                    }
+                    Some(LwwRegister::new(blob_id_str.clone()))
+                }
+                Err(e) => return Err(format!("Invalid avatar blob ID: {e}")),
+            }
+        } else {
+            None
+        };
+
         if self.profiles.contains(&executor_id).unwrap_or(false) {
             // Preserve the frozen username; only the avatar is mutable.
+            // If no new avatar is provided (caller passed null), keep the existing one.
             if let Ok(Some(existing)) = self.profiles.get(&executor_id) {
                 let frozen_username = existing.username.get().clone();
                 let new_profile = StoredProfile {
                     username: LwwRegister::new(frozen_username),
-                    avatar: avatar.map(LwwRegister::new),
+                    avatar: avatar_register.or(existing.avatar),
                 };
                 let _ = self.profiles.update(&executor_id, new_profile);
             }
         } else {
             let profile = StoredProfile {
                 username: LwwRegister::new(username),
-                avatar: avatar.map(LwwRegister::new),
+                avatar: avatar_register,
             };
             let _ = self.profiles.insert(executor_id, profile);
         }
@@ -702,6 +732,41 @@ impl MeroChat {
             }
         }
         result
+    }
+
+    // ── Drafts ─────────────────────────────────────────────────────────────
+
+    /// Save a draft for the calling user in the given channel.
+    /// Passing an empty string is equivalent to deleting the draft.
+    pub fn save_draft(&mut self, channel: String, text: String) -> app::Result<(), String> {
+        self.require_not_banned()?;
+        let key = draft_key(&encode_blob_id_base58(&env::executor_id()), &channel);
+        if text.is_empty() {
+            let _ = self.drafts.remove(&key);
+        } else {
+            let _ = self.drafts.insert(key, LwwRegister::new(text));
+        }
+        Ok(())
+    }
+
+    /// Return the calling user's draft for the given channel, or an empty
+    /// string if none exists.
+    pub fn get_draft(&self, channel: String) -> String {
+        let key = draft_key(&encode_blob_id_base58(&env::executor_id()), &channel);
+        self.drafts
+            .get(&key)
+            .ok()
+            .flatten()
+            .map(|r| r.get().clone())
+            .unwrap_or_default()
+    }
+
+    /// Delete the calling user's draft for the given channel.
+    pub fn delete_draft(&mut self, channel: String) -> app::Result<(), String> {
+        self.require_not_banned()?;
+        let key = draft_key(&encode_blob_id_base58(&env::executor_id()), &channel);
+        let _ = self.drafts.remove(&key);
+        Ok(())
     }
 
     // ── Moderation: roles + ban gate ───────────────────────────────────────
@@ -1302,7 +1367,7 @@ impl MeroChat {
 
 #[cfg(test)]
 mod tests {
-    use super::{encode_blob_id_base58, parse_blob_id_base58, Role, BLOB_ID_SIZE};
+    use super::{draft_key, encode_blob_id_base58, parse_blob_id_base58, Role, BLOB_ID_SIZE};
 
     // ── Role-based delete permission logic ─────────────────────────────────────
 
@@ -1410,5 +1475,73 @@ mod tests {
     #[test]
     fn blob_id_size_constant_matches_32() {
         assert_eq!(BLOB_ID_SIZE, 32);
+    }
+
+    // ── Draft key format ────────────────────────────────────────────────────
+
+    #[test]
+    fn draft_key_contains_user_and_channel() {
+        let user = "SomeBase58UserId";
+        let key = draft_key(user, "general");
+        assert_eq!(key, "SomeBase58UserId:general");
+    }
+
+    #[test]
+    fn draft_key_separator_is_colon() {
+        let key = draft_key("abc", "my-channel");
+        let parts: Vec<&str> = key.splitn(2, ':').collect();
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0], "abc");
+        assert_eq!(parts[1], "my-channel");
+    }
+
+    #[test]
+    fn draft_key_with_real_base58_user_id() {
+        let user_bytes = [0x01u8; BLOB_ID_SIZE];
+        let user_b58 = encode_blob_id_base58(&user_bytes);
+        let key = draft_key(&user_b58, "announcements");
+        assert!(key.starts_with(&user_b58));
+        assert!(key.ends_with(":announcements"));
+    }
+
+    #[test]
+    fn draft_key_different_users_produce_different_keys() {
+        let user_a = encode_blob_id_base58(&[0x01u8; BLOB_ID_SIZE]);
+        let user_b = encode_blob_id_base58(&[0x02u8; BLOB_ID_SIZE]);
+        let key_a = draft_key(&user_a, "general");
+        let key_b = draft_key(&user_b, "general");
+        assert_ne!(key_a, key_b);
+    }
+
+    #[test]
+    fn draft_key_same_user_different_channels_produce_different_keys() {
+        let user = encode_blob_id_base58(&[0xaau8; BLOB_ID_SIZE]);
+        let key1 = draft_key(&user, "general");
+        let key2 = draft_key(&user, "random");
+        assert_ne!(key1, key2);
+    }
+
+    #[test]
+    fn draft_key_channel_name_with_colon_is_preserved() {
+        // Channel names shouldn't contain colons, but the key builder must
+        // not silently corrupt them if they do — splitn(2) guarantees the
+        // channel portion is still recoverable.
+        let key = draft_key("user123", "chan:with:colons");
+        let parts: Vec<&str> = key.splitn(2, ':').collect();
+        assert_eq!(parts[1], "chan:with:colons");
+    }
+
+    #[test]
+    fn draft_key_empty_channel_name() {
+        let key = draft_key("userXYZ", "");
+        assert_eq!(key, "userXYZ:");
+    }
+
+    #[test]
+    fn draft_key_is_deterministic() {
+        let user = encode_blob_id_base58(&[0x55u8; BLOB_ID_SIZE]);
+        let k1 = draft_key(&user, "stable");
+        let k2 = draft_key(&user, "stable");
+        assert_eq!(k1, k2);
     }
 }

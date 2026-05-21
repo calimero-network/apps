@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import styled from "styled-components";
-import { Avatar } from "@calimero-network/mero-ui";
+import { IdentityAvatar } from "../IdentityAvatar";
 import type { GroupMember, MemberCapabilities } from "../../api/groupApi";
 import ConfirmPopup from "../popups/ConfirmPopup";
 import {
@@ -253,7 +253,7 @@ export default function MembersTab({
         <React.Fragment key={member.identity}>
           <MemberRow>
             <MemberInfo>
-              <Avatar size="xs" name={getMemberDisplayName(member)} />
+              <IdentityAvatar size="xs" identity={member.identity} name={getMemberDisplayName(member)} />
               <IdentityStack>
                 <Identity title={member.identity}>
                   {getMemberDisplayName(member)}
