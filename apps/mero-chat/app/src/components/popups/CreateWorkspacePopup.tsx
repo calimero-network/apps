@@ -10,6 +10,7 @@ import {
   setGroupId,
   setGroupMemberIdentity,
 } from "../../constants/config";
+import { DEFAULT_MEMBER_CAPABILITIES } from "../../utils/groupCapabilities";
 
 const Overlay = styled.div`
   position: fixed;
@@ -173,7 +174,7 @@ export default function CreateWorkspacePopup({
       const applicationId = await resolveApplicationId(configuredApplicationId);
       const groupResult = await groupApi.createGroup({
         applicationId,
-        upgradePolicy: "LazyOnAccess",
+        upgradePolicy: "Automatic",
         alias: trimmedWorkspaceName,
       });
       if (groupResult.error || !groupResult.data) {
@@ -182,8 +183,7 @@ export default function CreateWorkspacePopup({
       const groupId = groupResult.data.groupId;
       setGroupId(groupId);
 
-      // Allow all members to create contexts, invite others, and join open subgroups (0x0F = 0b1111)
-      await groupApi.setDefaultCapabilities(groupId, { defaultCapabilities: 0x0F });
+      await groupApi.setDefaultCapabilities(groupId, { defaultCapabilities: DEFAULT_MEMBER_CAPABILITIES });
 
       const identityResult = await groupApi.resolveCurrentMemberIdentity(groupId);
       if (identityResult.data?.memberIdentity) {

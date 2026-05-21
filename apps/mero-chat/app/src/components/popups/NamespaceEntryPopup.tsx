@@ -25,6 +25,7 @@ import {
   setIdentityDisplayName,
 } from "../../utils/messengerName";
 import { clearStoredSession, setNamespaceReady } from "../../utils/session";
+import { DEFAULT_MEMBER_CAPABILITIES } from "../../utils/groupCapabilities";
 import {
   extractInvitationFromUrl,
   getInvitationFromStorage,
@@ -586,7 +587,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
       const appId = await resolveAppId(getApplicationId());
       const createRes = await api.current.createGroup({
         applicationId: appId,
-        upgradePolicy: "LazyOnAccess",
+        upgradePolicy: "Automatic",
         alias: trimmedNs,
       });
       if (createRes.error || !createRes.data) {
@@ -595,7 +596,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
 
       const { groupId } = createRes.data;
 
-      await api.current.setDefaultCapabilities(groupId, { defaultCapabilities: 0x0F }).catch(() => {});
+      await api.current.setDefaultCapabilities(groupId, { defaultCapabilities: DEFAULT_MEMBER_CAPABILITIES }).catch(() => {});
 
       // Create initial "general" channel so the namespace has something to chat in
       try {
@@ -623,7 +624,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
         alias: trimmedNs,
         appKey: "",
         targetApplicationId: "",
-        upgradePolicy: "LazyOnAccess",
+        upgradePolicy: "Automatic",
         createdAt: Math.floor(Date.now() / 1000),
       }]);
       setSelectedId(groupId);
