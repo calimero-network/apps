@@ -417,3 +417,122 @@ test.describe("SSE — latency measurements", () => {
     }
   });
 });
+
+// ── Event-kind verification ───────────────────────────────────────────────────
+// Checks that WASM calls produce StateMutation events with the expected
+// `kind` values inside `data.events`. Single node, no browser needed.
+
+type EventKindPayload = StateMutationPayload & {
+  result?: { data: { events: Array<{ kind: string }> } };
+};
+
+test.describe("SSE — event kind: messages", () => {
+  test.beforeAll(requireEnv);
+
+  test("send_message produces a MessageSent kind in StateMutation", async () => {
+    const env = getEnv();
+    const client = makeClient();
+    const sse = new SseListener(env.nodeUrl, env.accessToken);
+
+    try {
+      await sse.connect();
+      await sse.subscribe([env.contextId]);
+
+      const cursor = sse.getEventCount();
+      await client.call("send_message", sendMessageArgs(`kind-check-${Date.now()}`));
+
+      const event = (await sse.waitForEvent(
+        (d) =>
+          (d as StateMutationPayload)?.result?.contextId === env.contextId &&
+          (d as StateMutationPayload)?.result?.type === "StateMutation",
+        10_000,
+        cursor,
+      )) as EventKindPayload;
+
+      const kinds = event.result?.data.events.map((e) => e.kind) ?? [];
+      expect(kinds).toContain("MessageSent");
+    } finally {
+      sse.disconnect();
+    }
+  });
+});
+
+test.describe("SSE — event kind: channels", () => {
+  test.beforeAll(requireEnv);
+
+  test("create_channel produces a ChannelCreated kind in StateMutation", async () => {
+    const env = getEnv();
+    const client = makeClient();
+    const sse = new SseListener(env.nodeUrl, env.accessToken);
+
+    const channelName = `sse-test-ch-${Date.now()}`;
+
+    try {
+      await sse.connect();
+      await sse.subscribe([env.contextId]);
+
+      const cursor = sse.getEventCount();
+      await client.call("create_channel", {
+        channel: channelName,
+        channel_type: "Public",
+        read_only: false,
+        moderators: [],
+        links_allowed: true,
+        created_at: Math.floor(Date.now() / 1000),
+      });
+
+      const event = (await sse.waitForEvent(
+        (d) =>
+          (d as StateMutationPayload)?.result?.contextId === env.contextId &&
+          (d as StateMutationPayload)?.result?.type === "StateMutation",
+        10_000,
+        cursor,
+      )) as EventKindPayload;
+
+      const kinds = event.result?.data.events.map((e) => e.kind) ?? [];
+      expect(kinds).toContain("ChannelCreated");
+    } finally {
+      sse.disconnect();
+    }
+  });
+
+  test("leave_channel produces a ChannelLeft kind in StateMutation", async () => {
+    const env = getEnv();
+    const client = makeClient();
+    const sse = new SseListener(env.nodeUrl, env.accessToken);
+
+    const channelName = `sse-test-leave-${Date.now()}`;
+
+    try {
+      await sse.connect();
+      await sse.subscribe([env.contextId]);
+
+      // Create a channel to leave
+      await client.call("create_channel", {
+        channel: channelName,
+        channel_type: "Public",
+        read_only: false,
+        moderators: [],
+        links_allowed: true,
+        created_at: Math.floor(Date.now() / 1000),
+      });
+      await new Promise((r) => setTimeout(r, 200));
+
+      const cursor = sse.getEventCount();
+      await client.call("leave_channel", { channel: channelName });
+
+      const event = (await sse.waitForEvent(
+        (d) =>
+          (d as StateMutationPayload)?.result?.contextId === env.contextId &&
+          (d as StateMutationPayload)?.result?.type === "StateMutation",
+        10_000,
+        cursor,
+      )) as EventKindPayload;
+
+      const kinds = event.result?.data.events.map((e) => e.kind) ?? [];
+      expect(kinds).toContain("ChannelLeft");
+    } finally {
+      sse.disconnect();
+    }
+  });
+});

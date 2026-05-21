@@ -509,12 +509,13 @@ export function useChatHandlers(
             break;
 
           case "ChannelLeft":
+          case "ChannelDeleted":
             actions.fetchChannels = true;
             actions.fetchMembers = true;
             if (contextId === activeChatRef.current?.contextId) {
               refs.onLeftChannel.current(contextId);
             }
-            log.debug("ChatHandlers", "Channel left, refreshing channel list and members");
+            log.debug("ChatHandlers", `${executionEvent.kind}, refreshing channel list and members`);
             break;
 
           case "ChannelInvited":
@@ -527,6 +528,13 @@ export function useChatHandlers(
               } catch { /* ignore parse errors */ }
             }
             log.debug("ChatHandlers", "User invited to channel, refreshing channel list and members");
+            break;
+
+          case "RoleUpdated":
+            // Refresh member list so role badges update immediately for everyone.
+            // useMyChannelRole also subscribes to this event directly to re-fetch
+            // the current user's own role without waiting for the 30s poll.
+            actions.fetchMembers = true;
             break;
 
           case "ChatJoined":
