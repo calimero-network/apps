@@ -24,13 +24,35 @@ purgeLegacyIdentityDisplayNames();
 
 import 'react-photo-view/dist/react-photo-view.css';
 
+// Session-specific keys that become stale across SSO opens and must be
+// cleared so the app starts fresh rather than navigating into old state.
+const SESSION_STALE_KEYS = [
+  "calimero_group_id",
+  "calimero_group_member_identities",
+  "calimero_context_member_identities",
+  "lastSession",
+];
+
+function clearStaleSessionData() {
+  for (const key of SESSION_STALE_KEYS) {
+    localStorage.removeItem(key);
+  }
+  // Clear dynamic sessionLastActivity_* keys
+  const toRemove: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith("sessionLastActivity")) toRemove.push(k);
+  }
+  toRemove.forEach((k) => localStorage.removeItem(k));
+}
+
 // Tauri SSO and web-auth callbacks deliver fresh tokens via URL hash.
 // MeroProvider's internal `LocalStorageTokenStore()` reads tokens as a
 // single JSON blob at `mero-tokens`; persist the hash values there before
 // React mounts (effects would be too late).
 //
-// Returns the parsed hash params if SSO tokens were found, so the async
-// boot can refresh them if they're already expired.
+// Also clears stale session navigation keys so the app starts fresh.
+// Returns the parsed hash params so the async boot can refresh if expired.
 function persistAuthHashOnLoad(): { accessToken: string; refreshToken: string; nodeUrl: string; expiresAt: number } | null {
   const hash = window.location.hash.slice(1);
   if (!hash) return null;
@@ -42,6 +64,9 @@ function persistAuthHashOnLoad(): { accessToken: string; refreshToken: string; n
   if (nodeUrl) setNodeUrl(nodeUrl.trim());
   if (accessToken && refreshToken) {
     const expiresAtMs = expiresAt ? parseInt(expiresAt, 10) : Date.now() + 3600_000;
+    // Clear stale session data before writing new tokens — prevents the app
+    // from loading into a stale group/context from a previous SSO session.
+    clearStaleSessionData();
     localStorage.setItem(
       "mero-tokens",
       JSON.stringify({
@@ -49,6 +74,13 @@ function persistAuthHashOnLoad(): { accessToken: string; refreshToken: string; n
         refresh_token: refreshToken,
         expires_at: expiresAtMs,
       }),
+    );
+    // Remove the hash so MeroProvider's parseAuthCallback doesn't re-process
+    // the original tokens and overwrite the (possibly refreshed) ones we just wrote.
+    window.history.replaceState(
+      {},
+      "",
+      window.location.pathname + window.location.search,
     );
     return { accessToken, refreshToken, nodeUrl: nodeUrl?.trim() ?? "", expiresAt: expiresAtMs };
   }
@@ -110,7 +142,8 @@ function getExplicitApplicationId(): string {
 }
 
 const explicitApplicationId = getExplicitApplicationId();
-if (explicitApplicationId && !localStorage.getItem(CALIMERO_APP_ID_KEY)) {
+// Always overwrite — hash app-id must win over any stale value from a previous session.
+if (explicitApplicationId) {
   localStorage.setItem(CALIMERO_APP_ID_KEY, explicitApplicationId);
 }
 
