@@ -50,7 +50,7 @@ function run(cmd: string, args: string[], opts: { cwd?: string } = {}): void {
 }
 
 function ensureMpkBuilt(): void {
-  const mpk = resolve(REPO_ROOT, 'logic/dist/com.calimero.mero-drive-docs-9.1.0.mpk');
+  const mpk = resolve(REPO_ROOT, 'logic/dist/com.calimero.mero-drive-docs-9.1.1.mpk');
   if (existsSync(mpk)) {
     console.log(`mpk present: ${mpk}`);
     return;
