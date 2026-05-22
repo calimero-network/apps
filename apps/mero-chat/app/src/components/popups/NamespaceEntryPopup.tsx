@@ -246,6 +246,23 @@ const Divider = styled.div`
   margin: 1rem 0;
 `;
 
+const OrDivider = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+  color: rgba(255, 255, 255, 0.25);
+  font-size: 0.75rem;
+
+  &::before,
+  &::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.08);
+  }
+`;
+
 const LogoutBtn = styled.button`
   background: none;
   border: none;
@@ -466,6 +483,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
 
       setStep("enter-name");
     } catch (err) {
+      clearInvitationFromStorage();
       setError(err instanceof Error ? err.message : "Failed to process invitation");
       setStep("error");
     }
@@ -720,6 +738,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
             <CreateLink onClick={() => { setError(""); setNsNameInput(""); setStep("create"); }}>
               + Create new workspace
             </CreateLink>
+            <OrDivider>or</OrDivider>
             <CreateLink onClick={() => { setError(""); setJoinInviteInput(""); setStep("join-invitation"); }}>
               Join existing workspace
             </CreateLink>
@@ -759,16 +778,14 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
             >
               Join chat
             </Button>
-            {namespaces.length > 1 && (
-              <Button
-                type="button"
-                variant="secondary"
-                style={{ width: "100%", marginTop: "0.5rem" }}
-                onClick={() => setStep("select")}
-              >
-                ← Back
-              </Button>
-            )}
+            <Button
+              type="button"
+              variant="secondary"
+              style={{ width: "100%", marginTop: "0.5rem" }}
+              onClick={() => { setError(""); setStep("select"); }}
+            >
+              ← Back
+            </Button>
             <Divider />
             <LogoutBtn onClick={onLogout}>Disconnect node</LogoutBtn>
           </>
@@ -790,6 +807,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
             >
               Create workspace
             </Button>
+            <OrDivider>or</OrDivider>
             <CreateLink onClick={() => { setError(""); setJoinInviteInput(""); setStep("join-invitation"); }}>
               Join existing workspace
             </CreateLink>
@@ -906,19 +924,19 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
             <Row>
               <Button
                 type="button"
-                variant="primary"
-                style={{ flex: 1 }}
-                onClick={() => void loadNamespaces()}
-              >
-                Retry
-              </Button>
-              <Button
-                type="button"
                 variant="secondary"
                 style={{ flex: 1 }}
                 onClick={() => { setError(""); setStep(namespaces.length > 0 ? "select" : "no-workspace"); }}
               >
                 ← Back
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                style={{ flex: 1 }}
+                onClick={() => void loadNamespaces()}
+              >
+                Retry
               </Button>
             </Row>
           </>
