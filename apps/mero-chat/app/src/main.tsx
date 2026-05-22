@@ -28,9 +28,12 @@ import 'react-photo-view/dist/react-photo-view.css';
 // MeroProvider's internal `LocalStorageTokenStore()` reads tokens as a
 // single JSON blob at `mero-tokens`; persist the hash values there before
 // React mounts (effects would be too late).
-(function persistAuthHashOnLoad() {
+//
+// Returns the parsed hash params if SSO tokens were found, so the async
+// boot can refresh them if they're already expired.
+function persistAuthHashOnLoad(): { accessToken: string; refreshToken: string; nodeUrl: string; expiresAt: number } | null {
   const hash = window.location.hash.slice(1);
-  if (!hash) return;
+  if (!hash) return null;
   const p = new URLSearchParams(hash);
   const accessToken = p.get("access_token");
   const refreshToken = p.get("refresh_token");
@@ -38,16 +41,19 @@ import 'react-photo-view/dist/react-photo-view.css';
   const nodeUrl = p.get("node_url");
   if (nodeUrl) setNodeUrl(nodeUrl.trim());
   if (accessToken && refreshToken) {
+    const expiresAtMs = expiresAt ? parseInt(expiresAt, 10) : Date.now() + 3600_000;
     localStorage.setItem(
       "mero-tokens",
       JSON.stringify({
         access_token: accessToken,
         refresh_token: refreshToken,
-        expires_at: expiresAt ? parseInt(expiresAt, 10) : Date.now() + 3600_000,
+        expires_at: expiresAtMs,
       }),
     );
+    return { accessToken, refreshToken, nodeUrl: nodeUrl?.trim() ?? "", expiresAt: expiresAtMs };
   }
-})();
+  return null;
+}
 
 // Extract ?invitation= from URL before React mounts — React Router's <Navigate>
 // runs its useEffect before parent component effects (children fire first), so
@@ -130,26 +136,64 @@ if ("serviceWorker" in navigator && !import.meta.env.DEV) {
 
 const AppWrapper = import.meta.env.DEV ? StrictMode : React.Fragment;
 
-createRoot(document.getElementById("root")!).render(
-  <AppWrapper>
-    <ErrorBoundary
-      onError={(error, errorInfo) => {
-        log.error("App", "Uncaught error in React tree", { error, errorInfo });
-      }}
-    >
-      <MeroProvider
-        mode={MeroAppMode.MultiContext}
-        packageName={import.meta.env.VITE_APPLICATION_PACKAGE}
-        registryUrl="https://apps.calimero.network"
+async function boot() {
+  // Persist SSO tokens from the URL hash before React reads localStorage.
+  const sso = persistAuthHashOnLoad();
+
+  // If the desktop passed a token that's already expired (or expires within
+  // 30 s), refresh it now so MeroProvider starts with valid credentials.
+  if (sso && sso.nodeUrl && Date.now() > sso.expiresAt - 30_000) {
+    try {
+      const resp = await fetch(`${sso.nodeUrl}/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          access_token: sso.accessToken,
+          refresh_token: sso.refreshToken,
+        }),
+      });
+      if (resp.ok) {
+        const json = await resp.json();
+        const refreshed = json?.data ?? json;
+        if (refreshed?.access_token && refreshed?.refresh_token) {
+          localStorage.setItem(
+            "mero-tokens",
+            JSON.stringify({
+              access_token: refreshed.access_token,
+              refresh_token: refreshed.refresh_token,
+              expires_at: Date.now() + 3600_000,
+            }),
+          );
+        }
+      }
+    } catch {
+      // Refresh failed — let MeroProvider handle it reactively.
+    }
+  }
+
+  createRoot(document.getElementById("root")!).render(
+    <AppWrapper>
+      <ErrorBoundary
+        onError={(error, errorInfo) => {
+          log.error("App", "Uncaught error in React tree", { error, errorInfo });
+        }}
       >
-        <BrowserRouter>
-          <WebSocketProvider>
-            <ToastProvider>
-              <App />
-            </ToastProvider>
-          </WebSocketProvider>
-        </BrowserRouter>
-      </MeroProvider>
-    </ErrorBoundary>
-  </AppWrapper>,
-);
+        <MeroProvider
+          mode={MeroAppMode.MultiContext}
+          packageName={import.meta.env.VITE_APPLICATION_PACKAGE}
+          registryUrl="https://apps.calimero.network"
+        >
+          <BrowserRouter>
+            <WebSocketProvider>
+              <ToastProvider>
+                <App />
+              </ToastProvider>
+            </WebSocketProvider>
+          </BrowserRouter>
+        </MeroProvider>
+      </ErrorBoundary>
+    </AppWrapper>,
+  );
+}
+
+void boot();
