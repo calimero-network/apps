@@ -23,6 +23,7 @@
 // one lands.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useContextEvents } from './useContextEvents';
 import { useDriveWorkspace } from './useDriveWorkspace';
 import type { Role, FolderRoleEntry } from '../api/registry/RegistryClient';
 
@@ -52,11 +53,18 @@ export interface FolderRoleState {
 }
 
 export function useFolderRole(folderId: string | null): FolderRoleState {
-  const { registryClient, selfIdentity } = useDriveWorkspace();
+  const { registryClient, registryContextId, selfIdentity } =
+    useDriveWorkspace();
   const [role, setRoleState] = useState<Role | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [fetching, setFetching] = useState(false);
   const [tick, setTick] = useState(0);
+  // Registry role changes go through the registry context, not the
+  // group context — so subscribe there and force a refetch on any
+  // registry event. Coarse (re-runs for unrelated registry ops) but
+  // cheap (single getFolderRole call).
+  const refetch = useCallback(() => setTick((t) => t + 1), []);
+  useContextEvents(registryContextId, refetch);
 
   // Last folder id we kicked a fetch off for. When `folderId` changes
   // (genuinely different folder), we DO want to clear the previous
@@ -146,8 +154,6 @@ export function useFolderRole(folderId: string | null): FolderRoleState {
     [registryClient, folderId, selfIdentity],
   );
 
-  const refetch = useCallback(() => setTick((t) => t + 1), []);
-
   return {
     role,
     // Loading == "a fetch is in flight". When there's no Registry
@@ -173,11 +179,16 @@ export interface FolderRolesState {
 }
 
 export function useFolderRoles(folderId: string | null): FolderRolesState {
-  const { registryClient } = useDriveWorkspace();
+  const { registryClient, registryContextId } = useDriveWorkspace();
   const [entries, setEntries] = useState<FolderRoleEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [tick, setTick] = useState(0);
+  // Registry role changes propagate via the registry context. Bump
+  // the tick on any registry event so the next read picks up the
+  // updated FolderRoleEntry rows.
+  const refetch = useCallback(() => setTick((t) => t + 1), []);
+  useContextEvents(registryContextId, refetch);
 
   // Same flicker-prevention as useFolderRole: keep the previous
   // entries visible across registryClient re-memos / tick refetches;
@@ -215,8 +226,6 @@ export function useFolderRoles(folderId: string | null): FolderRolesState {
       cancelled = true;
     };
   }, [registryClient, folderId, tick]);
-
-  const refetch = useCallback(() => setTick((t) => t + 1), []);
 
   return { entries, loading, error, refetch };
 }

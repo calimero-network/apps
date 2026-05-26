@@ -8,6 +8,7 @@
 // lists, sharing panels, and confirmation dialogs.
 
 import React from 'react';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useMemberDisplayName } from '@/hooks/useMemberDisplayName';
 
 interface Props {
@@ -37,8 +38,24 @@ export function MemberLabel({
   className,
   isSelf,
 }: Props) {
+  // Two name sources:
+  //   1. The per-(namespace, identity) metadata fetch — authoritative
+  //      when it resolves with a name. Refreshes live via the
+  //      namespace SSE subscription added in PR #48.
+  //   2. The namespace-wide identity→name map in useDriveWorkspace.
+  //      Sourced from the namespace's root-group GroupMember rows,
+  //      so folder / sharing panels resolve names without each row
+  //      firing its own metadata HTTP call — and crucially, it still
+  //      surfaces a name when the per-row metadata fetch resolves to
+  //      null (e.g. a non-admin viewer who lacks the capability to
+  //      read another member's metadata directly). The map itself is
+  //      refreshed by the workspace's SSE refetch chain, so an
+  //      explicit "clear name" propagates here on the next event.
   const { name } = useMemberDisplayName(namespaceId, memberId);
-  const body = name ?? (fallback ? fallback(memberId) : defaultTruncate(memberId));
+  const { namespaceMemberNames } = useDriveWorkspace();
+  const resolvedName = name ?? namespaceMemberNames[memberId] ?? null;
+  const body =
+    resolvedName ?? (fallback ? fallback(memberId) : defaultTruncate(memberId));
   return (
     <span className={className} title={memberId}>
       {body}

@@ -1,25 +1,17 @@
-// Subscribe to SSE events on a docs context and invoke `onChange`
-// whenever any event arrives. Phase 8's DocumentEditor uses this to
-// invalidate its doc list / content without polling.
+// Thin alias for backwards-compat with the original docs-only
+// subscription helper. New call sites should import
+// `useContextEvents` directly from `./useContextEvents`.
 //
-// `useSubscription` from mero-react takes the context-id list and a
-// callback directly, handles the connection lifecycle internally,
-// and replays no state itself — we just forward the signal to the
-// caller's invalidation trigger.
+// @deprecated Use `useContextEvents` directly. This alias is kept
+// solely so the existing `useDocs` caller compiles without a rename
+// cascade; remove in a follow-up once `useDocs` migrates.
 
-import { useCallback } from 'react';
-import { useSubscription, type SseEventData } from '@calimero-network/mero-react';
+import { useContextEvents } from './useContextEvents';
 
+/** @deprecated Use {@link useContextEvents} instead. */
 export function useDocEvents(
   docsContextId: string | null,
   onChange: () => void,
 ): void {
-  const handler = useCallback(
-    (_event: SseEventData) => {
-      onChange();
-    },
-    [onChange],
-  );
-  // useSubscription accepts a string[]; [] disables the subscription.
-  useSubscription(docsContextId ? [docsContextId] : [], handler);
+  useContextEvents(docsContextId, onChange);
 }

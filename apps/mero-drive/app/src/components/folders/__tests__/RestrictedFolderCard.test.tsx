@@ -15,6 +15,7 @@ const joinContext = vi.fn();
 const getFolderContext = vi.fn();
 
 vi.mock('@calimero-network/mero-react', () => ({
+  useSubscription: vi.fn(),
   useJoinSubgroupInheritance: () => ({
     joinSubgroupInheritance,
     loading: false,

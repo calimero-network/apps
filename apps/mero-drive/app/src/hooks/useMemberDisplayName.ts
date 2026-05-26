@@ -14,6 +14,7 @@ import {
   useMemberMetadata,
   useSetMemberMetadata,
 } from '@calimero-network/mero-react';
+import { useContextEvents } from './useContextEvents';
 import { useDriveWorkspace } from './useDriveWorkspace';
 
 /** Display names are stored in core's `MetadataRecord.name` which has no
@@ -55,6 +56,14 @@ export function useMemberDisplayName(
     memberId ?? null,
   );
   const { setMemberMetadata } = useSetMemberMetadata();
+
+  // Live-refresh the cached metadata when a remote setMemberMetadata
+  // lands for this namespace. Coarse (refetches on every namespace
+  // event) but cheap — the call is a single admin-API hit.
+  const onMetadataEvent = useCallback(() => {
+    void refetch();
+  }, [refetch]);
+  useContextEvents(namespaceId ?? null, onMetadataEvent);
 
   const name = metadata?.name ?? null;
 

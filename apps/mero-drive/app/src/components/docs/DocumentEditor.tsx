@@ -1,7 +1,7 @@
 // Save-orchestrating wrapper around EditorShell. Loads the doc via
 // useDocs.get, binds EditorShell's controlled props to local state
 // + the save state machine, and persists:
-//   - content: debounced autosave (900ms idle) + flush on unmount
+//   - content: debounced autosave (AUTOSAVE_DEBOUNCE_MS idle) + flush on unmount
 //   - title:   explicit onDocumentNameChange; flushes pending
 //     content autosave first so a rename in the autosave window
 //     can't drop the last keystrokes
@@ -43,6 +43,7 @@ import { useConfirm } from '@/components/ui/confirm-dialog';
 import { MAX_ALIAS_LENGTH } from '@/constants/config';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
+import { useContextEvents } from '@/hooks/useContextEvents';
 import { useDocs } from '@/hooks/useDocs';
 import type { DocDto } from '@/api/docs/DocsClient';
 
@@ -52,10 +53,13 @@ interface Props {
   onClose: () => void;
 }
 
-// Idle window before an autosave fires. Kept intentionally short:
-// users typing in short bursts get their saves through between
-// paragraphs without explicit Save. If the window is longer, the
-// "unsaved" state lingers and the crash-recovery surface widens.
+// Idle window before an autosave fires. Kept short so reader-side
+// peers see updates within ~1s of the writer pausing — collaborative
+// editing breaks down quickly if the writer has to stop typing for
+// several seconds before remote viewers see anything. Each edit_doc
+// RPC acks in ~30–110ms in practice, so the cost of frequent saves
+// is acceptable. Hard-crash window is ~1s of keystrokes; beforeunload
+// catches intentional close and the unmount flush handles tab close.
 const AUTOSAVE_DEBOUNCE_MS = 900;
 
 export function DocumentEditor({ folderId, docId, onClose }: Props) {
@@ -138,13 +142,52 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
   // for the same document state (trailing <p></p>, attribute order),
   // which caused infinite save loops via string !== checks.
   const dirtyDuringSaveRef = useRef(false);
+  // True while the title-rename RPC (docsEdit({title})) is in
+  // flight. Lets refreshFromRemote defer body+title updates the
+  // same way savingInFlightRef does for content saves — without
+  // it, an SSE refetch mid-rename could clobber `documentName`
+  // with the pre-rename title and flip saveStatus to 'saved'.
+  const titleSavingInFlightRef = useRef(false);
+  // Highest server-side `updated_at` (ms) we have ever applied from a
+  // get_doc response — initial load or any refresh that landed. Used
+  // as the stale-response guard so refreshFromRemote never replaces
+  // current state with a snapshot whose server timestamp is older
+  // than something we've already applied. This is intentionally a
+  // server-clock value compared against another server-clock value
+  // (no Date.now() involved) so client clock skew vs. the merod node
+  // cannot cause legitimate remote edits to be silently dropped.
+  const serverUpdatedAtHighWaterRef = useRef(0);
 
-  useEffect(
-    () => () => {
+  // Race-control refs shared by the initial-load effect and the
+  // SSE refresh:
+  //   - refreshSeqRef: monotonic counter incremented at the start
+  //     of each load/refresh; the .then handler drops any response
+  //     whose stamp no longer equals .current (a newer load or
+  //     refresh has superseded it).
+  //   - docIdRef: latest prop docId; the .then handler drops
+  //     responses whose requested doc no longer matches (user
+  //     switched documents mid-fetch).
+  //   - pendingRefreshRef: marks that an SSE event arrived during
+  //     an in-flight save; persistContent replays after the save
+  //     ack so a mid-save remote update is not lost.
+  const refreshSeqRef = useRef(0);
+  const pendingRefreshRef = useRef(false);
+  const docIdRef = useRef(docId);
+  useEffect(() => {
+    docIdRef.current = docId;
+  }, [docId]);
+
+  useEffect(() => {
+    // StrictMode dev double-mount (mount → unmount → remount) sets
+    // unmountedRef.current = true in the first cleanup; reset on
+    // every mount so the remount doesn't see a stale "unmounted"
+    // and bail on every post-save .then continuation, which would
+    // strand setSaveStatus at 'saving' forever.
+    unmountedRef.current = false;
+    return () => {
       unmountedRef.current = true;
-    },
-    [],
-  );
+    };
+  }, []);
 
   const cancelPendingAutosave = useCallback(() => {
     if (autosaveTimeoutRef.current) {
@@ -167,12 +210,32 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
       return;
     }
     let alive = true;
+    // Share refreshSeqRef with refreshFromRemote so a slow initial
+    // load that resolves after a fresher SSE refresh doesn't
+    // overwrite the refreshed state with older content. Same idea
+    // as the seq guard inside refreshFromRemote.
+    const seq = ++refreshSeqRef.current;
+    const requestedDocId = docId;
+    // Reset doc-scoped refs on docId change. They're all
+    // component-scoped (the editor doesn't remount when docId
+    // changes), so without explicit resets:
+    //   - serverUpdatedAtHighWaterRef would carry the previous doc's
+    //     server timestamp and cause refreshFromRemote on the new
+    //     doc to treat its snapshot as stale.
+    //   - pendingRefreshRef would replay a deferred refresh
+    //     (originally queued for the previous doc) the next time a
+    //     save completes — harmless because the replay reads docId
+    //     fresh, but cleaner to drop the leftover flag.
+    serverUpdatedAtHighWaterRef.current = 0;
+    pendingRefreshRef.current = false;
     setLoading(true);
     setLoadError(null);
     setDoc(null);
     docsGet(docId)
       .then((d) => {
         if (!alive) return;
+        if (seq !== refreshSeqRef.current) return;
+        if (requestedDocId !== docIdRef.current) return;
         setDoc(d);
         setDocumentName(d.title || 'Untitled');
         workingContentRef.current = d.content;
@@ -183,11 +246,15 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         // expects milliseconds, so divide by 1e6. Multiplying by 1000
         // was the original bug — it pushed the value past the safe
         // Date range and rendered as "Invalid Date".
-        setLastSavedAt(new Date(d.updated_at / 1_000_000));
+        const serverUpdatedMs = d.updated_at / 1_000_000;
+        serverUpdatedAtHighWaterRef.current = serverUpdatedMs;
+        setLastSavedAt(new Date(serverUpdatedMs));
         setLoading(false);
       })
       .catch((e: unknown) => {
         if (!alive) return;
+        if (seq !== refreshSeqRef.current) return;
+        if (requestedDocId !== docIdRef.current) return;
         const err = e instanceof Error ? e : new Error(String(e));
         setLoadError(err);
         setLoading(false);
@@ -196,6 +263,106 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
       alive = false;
     };
   }, [docId, docsContextId, docsGet]);
+
+  // Live-refresh the open doc on remote edits. When the docs
+  // context emits an SSE event, re-fetch and reconcile:
+  //   - server metadata (title, updated_at) wins UNLESS a local
+  //     title-save is in flight (deferred to its own ack).
+  //   - body swap only when:
+  //     (a) the local working content matches the last server ack
+  //         (no in-flight typing), AND
+  //     (b) the server snapshot is not OLDER than the highest server
+  //         updated_at we've already applied (`serverUpdatedAtHighWaterRef`).
+  //     Otherwise metadata-only update; leave the editor body for
+  //     the autosave path / CRDT merge.
+  //
+  // The shared race-control refs (`refreshSeqRef`, `docIdRef`,
+  // `pendingRefreshRef`) are declared higher up and also drive the
+  // initial-load effect, so a slow initial load can't overwrite a
+  // fresher remote refresh and vice versa.
+  const refreshFromRemote = useCallback(() => {
+    if (!docsContextId) return;
+    if (unmountedRef.current) return;
+    if (savingInFlightRef.current || titleSavingInFlightRef.current) {
+      // Defer through the same flag regardless of which save (content
+      // or title) is racing — persistContent / onDocumentNameChange
+      // both replay refreshFromRemoteRef on their own ack.
+      pendingRefreshRef.current = true;
+      return;
+    }
+    const seq = ++refreshSeqRef.current;
+    const requestedDocId = docId;
+    void docsGet(requestedDocId)
+      .then((d) => {
+        if (unmountedRef.current) return;
+        if (seq !== refreshSeqRef.current) return;
+        if (requestedDocId !== docIdRef.current) return;
+        const serverUpdatedMs = d.updated_at / 1_000_000;
+        // Stale-response guard, server-clock-only: skip any snapshot
+        // whose server-side updated_at is older than the highest
+        // server timestamp we've ever applied. This catches a
+        // get_doc that resolves with a pre-save snapshot after a
+        // newer fetch has already landed, without depending on
+        // client wall-clock — so client/server clock skew can't
+        // silently drop legitimate remote edits.
+        if (serverUpdatedMs < serverUpdatedAtHighWaterRef.current) {
+          return;
+        }
+        serverUpdatedAtHighWaterRef.current = serverUpdatedMs;
+        // Clear any prior loadError now that we have a fresh
+        // successful response — without this, one transient failure
+        // pins the "Couldn't load document" UI until remount even
+        // though subsequent refreshes are succeeding.
+        setLoadError(null);
+        setDocumentName(d.title || 'Untitled');
+        setLastSavedAt(new Date(serverUpdatedMs));
+        const hadUnsavedEdits =
+          workingContentRef.current !== lastSavedContentRef.current;
+        lastSavedContentRef.current = d.content;
+        if (!hadUnsavedEdits) {
+          workingContentRef.current = d.content;
+          setDoc(d);
+          setSaveStatus('saved');
+        } else {
+          // Keep editor body; only refresh metadata fields.
+          setDoc((prev) =>
+            prev
+              ? { ...prev, title: d.title, updated_at: d.updated_at }
+              : d,
+          );
+          // Reconcile saveStatus when the user's working content
+          // happens to match the new server body — refs are now
+          // aligned, so we should be 'saved', not 'unsaved'.
+          if (workingContentRef.current === d.content) {
+            setSaveStatus('saved');
+          }
+        }
+      })
+      .catch((e: unknown) => {
+        if (unmountedRef.current) return;
+        if (seq !== refreshSeqRef.current) return;
+        if (requestedDocId !== docIdRef.current) return;
+        // Background SSE refresh failed — most likely a transient
+        // network blip. Do NOT promote this into `loadError`: that
+        // would flip the component into the "Couldn't load document"
+        // screen and rip the open editor (plus in-progress edits)
+        // away from the user. The editor's current state is the
+        // last known good; the next SSE event will retry. If the
+        // doc is genuinely gone / inaccessible, the next save's
+        // `edit_doc` will surface the error through `saveStatus`.
+        const err = e instanceof Error ? e : new Error(String(e));
+        console.warn('refreshFromRemote failed', err);
+      });
+  }, [docsContextId, docId, docsGet]);
+  // Keep a ref to the latest refreshFromRemote so persistContent's
+  // post-save replay can call it without listing it as a dep
+  // (which would cascade-rebind persistContent and downstream
+  // callbacks every time docId / docsContextId changes).
+  const refreshFromRemoteRef = useRef(refreshFromRemote);
+  useEffect(() => {
+    refreshFromRemoteRef.current = refreshFromRemote;
+  }, [refreshFromRemote]);
+  useContextEvents(docsContextId, refreshFromRemote);
 
   // Depend on `docs.edit` (the stable useCallback from useDocs),
   // not the whole `docs` object literal. The object is freshly
@@ -243,6 +410,10 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         // which if the user typed more during the in-flight save
         // would silently revert those keystrokes.
         lastSavedContentRef.current = content;
+        // Stamp `lastSavedAt` with the local wall-clock for the UI
+        // ("Saved 3s ago") — this value is only for display, never
+        // for the stale-response guard, which uses the server's own
+        // updated_at via `serverUpdatedAtHighWaterRef`.
         setLastSavedAt(new Date());
         // Check if the user typed more while the RPC was in flight.
         // onContentChange doesn't schedule autosaves during in-flight
@@ -287,6 +458,15 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         // set so onContentChange keeps deferring to it.
         if (mySeq === saveSeqRef.current) {
           savingInFlightRef.current = false;
+          // Replay any remote refresh that arrived while this save
+          // was in flight. refreshFromRemote stashed itself on
+          // pendingRefreshRef rather than racing the save's ack;
+          // now that the lock is dropped, give it a turn so the
+          // remote update doesn't get lost between events.
+          if (pendingRefreshRef.current && !unmountedRef.current) {
+            pendingRefreshRef.current = false;
+            refreshFromRemoteRef.current();
+          }
         }
       }
     },
@@ -384,6 +564,7 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
       }
 
       setSaveStatus('saving');
+      titleSavingInFlightRef.current = true;
       try {
         await docsEdit(currentDoc.id, { title });
         if (unmountedRef.current) return;
@@ -399,6 +580,16 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         if (unmountedRef.current) return;
         setSaveStatus('error');
         console.error('rename failed', e);
+      } finally {
+        titleSavingInFlightRef.current = false;
+        // Replay any remote refresh that arrived while this title
+        // save was in flight (mirrors the persistContent finally
+        // block — pendingRefreshRef can be flipped by either save
+        // path's deferral).
+        if (pendingRefreshRef.current && !unmountedRef.current) {
+          pendingRefreshRef.current = false;
+          refreshFromRemoteRef.current();
+        }
       }
     },
     // docsEdit is stable (useCallback in useDocs); depending on

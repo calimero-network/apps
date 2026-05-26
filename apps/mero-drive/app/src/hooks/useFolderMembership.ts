@@ -16,6 +16,7 @@ import {
   useRemoveGroupMembers,
   type GroupMember,
 } from '@calimero-network/mero-react';
+import { useContextEvents } from './useContextEvents';
 
 export interface FolderMembershipState {
   members: GroupMember[];
@@ -79,6 +80,14 @@ export function useFolderMembership(folderId: string | null): FolderMembershipSt
   useEffect(() => {
     void refetch();
   }, [refetch]);
+
+  // Live-refresh when remote membership ops land. The same group
+  // context the row data comes from also emits the events; the
+  // sequence guard in `refetch` handles overlapping fetches.
+  const onMembershipEvent = useCallback(() => {
+    void refetch();
+  }, [refetch]);
+  useContextEvents(folderId, onMembershipEvent);
 
   // Bump the sequence on unmount so any still-in-flight response
   // becomes a no-op (its captured seq won't match anymore). React 18+

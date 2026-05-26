@@ -34,8 +34,9 @@
 //   - `caps = 0,    error = Error` → retries exhausted; caller shows
 //     an error affordance rather than silently rendering "all denied".
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMero } from '@calimero-network/mero-react';
+import { useContextEvents } from './useContextEvents';
 import { useDriveWorkspace } from './useDriveWorkspace';
 
 // A u32 with every bit set — what we report as `caps` for a group-admin
@@ -106,14 +107,38 @@ export function useMemberCaps(
   });
   const [tick, setTick] = useState(0);
   const refetch = useCallback(() => setTick((t) => t + 1), []);
+  // Live-refresh caller's own caps when the group emits events
+  // (someone promoted/demoted us, or our membership was just
+  // materialised via auto-follow). Without this we'd keep showing
+  // the stale "loading retry exhausted" state until manual remount.
+  useContextEvents(groupId, refetch);
+
+  // Track the last (groupId, memberId) we kicked off a fetch for.
+  // When those genuinely change, the previous caps are stale and we
+  // reset to null so callers don't briefly read another group's
+  // state. When they stay the same (a tick bump from
+  // useContextEvents / external refetch()), we keep the prior value
+  // visible while the refetch is in flight — otherwise every
+  // unrelated event flickers permission-gated UI through
+  // disabled→enabled, which Bugbot caught as the "Registry SSE
+  // drops edit permission" regression.
+  const lastIdsRef = useRef<{ groupId: string; memberId: string } | null>(null);
 
   useEffect(() => {
     if (!mero || !groupId || !memberId) {
+      lastIdsRef.current = null;
       setState({ caps: null, isAdmin: false, error: null });
       return;
     }
     const signal = { aborted: false };
-    setState({ caps: null, isAdmin: false, error: null });
+    const idsChanged =
+      !lastIdsRef.current ||
+      lastIdsRef.current.groupId !== groupId ||
+      lastIdsRef.current.memberId !== memberId;
+    lastIdsRef.current = { groupId, memberId };
+    if (idsChanged) {
+      setState({ caps: null, isAdmin: false, error: null });
+    }
 
     (async () => {
       let lastErr: unknown = null;

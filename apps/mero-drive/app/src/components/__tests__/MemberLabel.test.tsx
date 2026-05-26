@@ -3,6 +3,10 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemberLabel } from '../common/MemberLabel';
 
+vi.mock('@/hooks/useDriveWorkspace', () => ({
+  useDriveWorkspace: () => ({ namespaceMemberNames: {} }),
+}));
+
 vi.mock('@/hooks/useMemberDisplayName', () => ({
   useMemberDisplayName: (_ns: string | null | undefined, mid: string) => {
     if (mid === 'alice-key') {

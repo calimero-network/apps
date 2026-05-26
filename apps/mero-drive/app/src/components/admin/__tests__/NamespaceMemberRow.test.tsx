@@ -27,6 +27,7 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => ({ namespaceId: 'ns', rootGroupId: 'ns' }),
 }));
 vi.mock('@calimero-network/mero-react', () => ({
+  useSubscription: vi.fn(),
   useGroupCapabilities: () => ({
     capabilities: 1,
     loading: false,

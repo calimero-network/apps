@@ -54,6 +54,7 @@ import {
   type Namespace,
 } from '@calimero-network/mero-react';
 import { RegistryClient } from '../api/registry/RegistryClient';
+import { useContextEvents } from './useContextEvents';
 import { useLocalStorage } from './useLocalStorage';
 import { useNamespaceDisplayNames } from './useNamespaceDisplayNames';
 import {
@@ -149,6 +150,13 @@ export interface DriveWorkspaceState {
   // identity
   applicationId: string | null;
   selfIdentity: string | null;
+  /** Identity → display name for members of the currently-selected
+   *  namespace. Populated from the namespace's root-group GroupMember
+   *  rows (server-reported `m.name`). MemberLabel reads this so
+   *  folder/sharing panels show namespace-set display names without
+   *  firing one getMemberMetadata HTTP call per row. Empty object
+   *  when no namespace is selected or the metadata hasn't loaded. */
+  namespaceMemberNames: Record<string, string>;
 
   // namespace list + selection
   namespaces: Namespace[];
@@ -254,9 +262,36 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   const rootGroupId = selectedNsId;
 
   // --- Per-namespace identity via mero-react's primitive ---
-  const { selfIdentity, loading: membersLoading } = useGroupMembers(
-    selectedNsId ?? undefined,
-  );
+  const {
+    selfIdentity,
+    members: nsMembers,
+    loading: membersLoading,
+    refetch: refetchNsMembers,
+  } = useGroupMembers(selectedNsId ?? undefined);
+
+  // Identity → server-reported display name map for THIS namespace.
+  // Sourced from the namespace's root-group member rows, where
+  // setMemberMetadata(namespaceId, identity, {name}) lands. Exposed
+  // so MemberLabel — and any other surface that renders an arbitrary
+  // identity within the namespace context — can show the user's
+  // chosen name instead of a truncated pubkey, without each render
+  // site firing its own getMemberMetadata round-trip.
+  //
+  // Subgroup (folder) member rows can also lift names from this map:
+  // an admin types a namespace identity into the folder's "Add
+  // member" input, so the identity stored on the folder GroupMember
+  // row matches the namespace-level identity. The subgroup's own
+  // GroupMember.name is independent metadata and is usually unset
+  // (users only edit their name in namespace settings, which writes
+  // to the namespace group), which is why the folder sharing panel
+  // previously showed raw pubkey truncations.
+  const namespaceMemberNames = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const m of nsMembers) {
+      if (m.name) out[m.identity] = m.name;
+    }
+    return out;
+  }, [nsMembers]);
 
   // --- Registry context discovery ---
   // The Registry context is the first context in the namespace's root
@@ -769,6 +804,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       refetchNamespaces(),
       refetchContexts(),
       refetchSubgroups(),
+      refetchNsMembers(),
       loadRegFolders(),
     ]);
     refetchRegAdmin();
@@ -779,9 +815,29 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     refetchNamespaces,
     refetchContexts,
     refetchSubgroups,
+    refetchNsMembers,
     loadRegFolders,
     refetchRegAdmin,
   ]);
+
+  // Live-refresh on remote workspace mutations. Subscribing to the
+  // active namespace + registry context covers:
+  //   - new subgroups / folder renames / re-parents / visibility flips
+  //     (namespace op-DAG events)
+  //   - registry folder metadata changes — colors, parent_id, alias
+  //     mirror (registry context events)
+  //   - namespace member adds/removes/role changes (namespace events)
+  // The full refetch() above is cheap relative to the user-visible
+  // win; if event volume becomes a problem we can debounce here.
+  //
+  // Handler captured in a stable useCallback so a render of this
+  // hook doesn't churn the SSE subscription. `refetch` itself is a
+  // stable useCallback over its constituent refetches, so the
+  // handler's identity only changes when one of them does.
+  const onWorkspaceEvent = useCallback(() => {
+    void refetch();
+  }, [refetch]);
+  useContextEvents([selectedNsId, registryContextId], onWorkspaceEvent);
 
   // --- Post-join sync gate ---
   // If the active namespace was freshly joined in this session,
@@ -866,6 +922,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   return {
     applicationId,
     selfIdentity: selfIdentity ?? contextIdentity ?? null,
+    namespaceMemberNames,
 
     namespaces,
     selectedNamespaceId: selectedNsId,

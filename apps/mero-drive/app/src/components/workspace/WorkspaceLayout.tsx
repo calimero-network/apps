@@ -89,11 +89,20 @@ export function WorkspaceLayout() {
   // Full-screen editor mode: bypass the workspace chrome entirely.
   // EditorShell owns its own header/toolbar/status-bar and uses
   // h-screen, so we let it take the viewport.
-  if (selectedFolder && selectedDocId) {
+  //
+  // Gate on `selectedFolderId` (persistent state), NOT the resolved
+  // `selectedFolder` object — `folders` is a useMemo that recomputes
+  // on every workspace SSE refetch, and any momentary gap where the
+  // matching folder isn't yet in the recomputed array would flip
+  // this branch and unmount DocumentEditor mid-save. The unmount-
+  // flush would then double-fire edit_doc and the save-status state
+  // would be lost across the remount, leaving the indicator stuck
+  // on "Saving…" from the user's perspective.
+  if (selectedFolderId && selectedDocId) {
     return (
       <DocumentEditor
-        key={`${selectedFolder.id}:${selectedDocId}`}
-        folderId={selectedFolder.id}
+        key={`${selectedFolderId}:${selectedDocId}`}
+        folderId={selectedFolderId}
         docId={selectedDocId}
         onClose={() => setSelectedDocId(null)}
       />

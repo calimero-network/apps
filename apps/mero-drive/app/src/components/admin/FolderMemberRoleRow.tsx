@@ -15,10 +15,11 @@
 // the server, so for an Admin member we show an "All permissions"
 // label instead of a (misleading) preset picker.
 
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import { useGroupCapabilities } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
+import { useContextEvents } from '@/hooks/useContextEvents';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { MemberLabel } from '@/components/common/MemberLabel';
 import {
@@ -66,6 +67,21 @@ export function FolderMemberRoleRow({
   const caps = useGroupCapabilities(folderId, identity);
   const [updating, setUpdating] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
+  // Live-refresh this row's capability bitmask when remote admin
+  // ops land on the folder (an admin elsewhere changing this
+  // member's caps). Same SSE connection that
+  // FolderSharingPanel already opens — mero-react dedupes by
+  // contextId set, so this is a free piggyback.
+  //
+  // Depend on `caps.refetch` (the stable useCallback inside
+  // mero-react's useGroupCapabilities), NOT the whole `caps`
+  // object — mero-react returns a fresh object literal each
+  // render, which would otherwise churn the SSE handler identity.
+  const capsRefetch = caps.refetch;
+  const onCapsEvent = useCallback(() => {
+    void capsRefetch();
+  }, [capsRefetch]);
+  useContextEvents(folderId, onCapsEvent);
 
   const onPreset = async (preset: FolderRolePreset) => {
     if (!registryClient) {

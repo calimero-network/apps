@@ -26,6 +26,11 @@ import { useDocEvents } from './useDocEvents';
 export interface UseDocsState {
   /** The docs context id bound to this folder (null until resolved). */
   contextId: string | null;
+  /** True while `getFolderContext` is in flight — distinguishes
+   *  "registry hasn't told us about this folder yet" (transient,
+   *  show a syncing message) from "folder genuinely has no binding"
+   *  (legacy / unbound state, show the static empty copy). */
+  contextResolving: boolean;
   /** Non-archived docs in the folder (sorted by updated_at desc). */
   list: DocDto[];
   loading: boolean;
@@ -108,6 +113,19 @@ export function useDocs(folderId: string | null): UseDocsState {
 
   const [contextId, setContextId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<Error | null>(null);
+  // True while getFolderContext is in flight for the current
+  // (registryClient, folderId). Set false on settle (success OR
+  // error) so the UI can tell "transient — wait for sync" apart
+  // from "settled to null — folder has no binding".
+  //
+  // Initial value derives from props directly so the very first
+  // paint of DocumentList already sees `contextResolving=true`
+  // when there's work pending. Without this, the useEffect runs
+  // post-paint and the legacy "no docs context bound yet" copy
+  // flashes for a frame.
+  const [contextResolving, setContextResolving] = useState<boolean>(
+    () => !!registryClient && !!folderId,
+  );
 
   // Resolve the docs context id for this folder. The registry's
   // folder-context binding is authoritative; if it's missing (legacy
@@ -118,11 +136,13 @@ export function useDocs(folderId: string | null): UseDocsState {
     if (!registryClient || !folderId) {
       setContextId(null);
       setResolveError(null);
+      setContextResolving(false);
       return;
     }
     let alive = true;
     setContextId(null);
     setResolveError(null);
+    setContextResolving(true);
     registryClient
       .getFolderContext({ folder_id: folderId })
       .then((ctxId) => {
@@ -133,6 +153,9 @@ export function useDocs(folderId: string | null): UseDocsState {
         const err = e instanceof Error ? e : new Error(String(e));
         setResolveError(err);
         setContextId(null);
+      })
+      .finally(() => {
+        if (alive) setContextResolving(false);
       });
     return () => {
       alive = false;
@@ -295,6 +318,7 @@ export function useDocs(folderId: string | null): UseDocsState {
 
   return {
     contextId,
+    contextResolving,
     list,
     loading: listLoading,
     error: resolveError ?? listError,

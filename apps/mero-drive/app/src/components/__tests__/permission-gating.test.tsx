@@ -105,6 +105,7 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => ({
     applicationId: 'app',
     selfIdentity: 'pk',
+    namespaceMemberNames: {},
     namespaces: [],
     selectedNamespaceId: 'ns',
     namespaceId: 'ns',
@@ -138,6 +139,7 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
   }),
 }));
 vi.mock('@calimero-network/mero-react', () => ({
+  useSubscription: vi.fn(),
   useSubgroups: () => ({ subgroups: [], loading: false, error: null, refetch: vi.fn() }),
   useGroupCapabilities: () => ({
     capabilities: 1,

@@ -74,7 +74,13 @@ export function DocumentList({ folderId, selectedDocId, onOpen }: Props) {
         </p>
       )}
 
-      {!docs.contextId && !docs.error && (
+      {!docs.contextId && !docs.error && docs.contextResolving && (
+        <div className="p-3 text-xs text-muted-foreground">
+          Syncing folder from peers…
+        </div>
+      )}
+
+      {!docs.contextId && !docs.error && !docs.contextResolving && (
         <div className="p-3 text-xs text-muted-foreground">
           This folder has no docs context bound yet.
         </div>

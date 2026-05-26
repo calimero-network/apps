@@ -23,10 +23,11 @@
 // TODO: "Advanced" per-row expander (individual core-cap checkboxes +
 // the Role radio) — a follow-up; today only the preset dropdown ships.
 
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { UserPlus, Link2, Globe } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
+import { useContextEvents } from '@/hooks/useContextEvents';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useFolderMembership } from '@/hooks/useFolderMembership';
@@ -54,6 +55,14 @@ export function FolderSharingPanel({ folderId }: Props) {
   const { entries: roleEntries, refetch: refetchRoles } =
     useFolderRoles(folderId);
   const { create: createFolderInvite } = useCreateFolderInvite();
+  // Live-refresh members + roles when remote admin ops land for
+  // this folder (add/remove/role-change). The two refetches cover
+  // the two independent stores backing the panel.
+  const onFolderEvent = useCallback(() => {
+    void refetch();
+    void refetchRoles();
+  }, [refetch, refetchRoles]);
+  useContextEvents(folderId, onFolderEvent);
   const confirm = useConfirm();
   const [inviteLinkOpen, setInviteLinkOpen] = useState(false);
 

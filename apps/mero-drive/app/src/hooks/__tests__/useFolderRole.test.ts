@@ -22,6 +22,9 @@ const wsState: { registryClient: unknown; selfIdentity: string | null } = {
 vi.mock('../useDriveWorkspace', () => ({
   useDriveWorkspace: () => wsState,
 }));
+vi.mock('@calimero-network/mero-react', () => ({
+  useSubscription: vi.fn(),
+}));
 
 describe('useFolderRole', () => {
   beforeEach(() => {

@@ -22,6 +22,7 @@ const MERO_STUB = {
   },
 };
 vi.mock('@calimero-network/mero-react', () => ({
+  useSubscription: vi.fn(),
   useMero: () => MERO_STUB,
 }));
 

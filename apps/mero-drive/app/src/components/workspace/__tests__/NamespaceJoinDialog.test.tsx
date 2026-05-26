@@ -13,6 +13,7 @@ import type { SignedGroupOpenInvitation } from '@calimero-network/mero-react';
 // we stub it to a marker so the assertion is stable regardless of
 // mero-react's internals.
 vi.mock('@calimero-network/mero-react', () => ({
+  useSubscription: vi.fn(),
   useMero: () => ({
     mero: null,
     isAuthenticated: false,

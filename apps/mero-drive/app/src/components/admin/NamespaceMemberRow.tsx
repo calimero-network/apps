@@ -24,6 +24,7 @@ import {
   useAdminRenameMember,
   MAX_DISPLAY_NAME_LEN,
 } from '@/hooks/useAdminRenameMember';
+import { useContextEvents } from '@/hooks/useContextEvents';
 import { useMemberDisplayName } from '@/hooks/useMemberDisplayName';
 import { MemberRoleSelect } from './MemberRoleSelect';
 
@@ -74,6 +75,19 @@ export function NamespaceMemberRow({
   const [updating, setUpdating] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
+  // Live-refresh this row's capability bitmask + display name when
+  // remote ops land for this namespace (an admin elsewhere editing
+  // the same member). The display-name refetch is wrapped below
+  // because `refetchName` is captured later.
+  //
+  // Depend on `caps.refetch` (stable useCallback inside mero-react)
+  // rather than the whole `caps` object — the object is a fresh
+  // literal each render and would otherwise churn the SSE handler.
+  const capsRefetch = caps.refetch;
+  const onMemberEvent = useCallback(() => {
+    void capsRefetch();
+  }, [capsRefetch]);
+  useContextEvents(groupId, onMemberEvent);
 
   // Admin-rename plumbing. In mero-drive a namespace's id IS its root
   // group id, and `groupId` is exactly that root for the namespace

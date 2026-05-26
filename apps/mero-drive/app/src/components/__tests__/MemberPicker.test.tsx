@@ -19,6 +19,7 @@ const members = [
 ];
 const useGroupMembersMock = vi.fn();
 vi.mock('@calimero-network/mero-react', () => ({
+  useSubscription: vi.fn(),
   useGroupMembers: (...a: unknown[]) => useGroupMembersMock(...a),
 }));
 vi.mock('@/hooks/useMemberDisplayName', () => ({
@@ -31,7 +32,11 @@ vi.mock('@/hooks/useMemberDisplayName', () => ({
   }),
 }));
 vi.mock('@/hooks/useDriveWorkspace', () => ({
-  useDriveWorkspace: () => ({ rootGroupId: 'root', selfIdentity: 'self' }),
+  useDriveWorkspace: () => ({
+    rootGroupId: 'root',
+    selfIdentity: 'self',
+    namespaceMemberNames: {},
+  }),
 }));
 
 beforeEach(() =>

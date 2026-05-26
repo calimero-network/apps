@@ -21,6 +21,7 @@ const docsClientStub = {
 };
 
 vi.mock('@calimero-network/mero-react', () => ({
+  useSubscription: vi.fn(),
   useJoinContext: () => ({ joinContext, loading: false, error: null }),
 }));
 vi.mock('../useDriveWorkspace', () => ({
