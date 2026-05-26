@@ -32,7 +32,7 @@ steps:
   - name: Install Mero Drive bundle on Alice
     type: install_application
     node: calimero-node-1
-    path: ../logic/dist/com.calimero.mero-drive-docs-9.1.1.mpk
+    path: ../logic/dist/com.calimero.mero-drive-docs-9.2.0.mpk
     dev: true
     outputs:
       app_id: applicationId
@@ -40,7 +40,7 @@ steps:
   - name: Install Mero Drive bundle on Bob
     type: install_application
     node: calimero-node-2
-    path: ../logic/dist/com.calimero.mero-drive-docs-9.1.1.mpk
+    path: ../logic/dist/com.calimero.mero-drive-docs-9.2.0.mpk
     dev: true
 
   - name: Alice creates namespace
