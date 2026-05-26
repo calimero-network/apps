@@ -291,6 +291,71 @@ export function useMessages() {
   );
 
   /**
+   * Fan-out search across multiple contexts. Calls searchAllMessages on each
+   * context in parallel, merges results sorted newest-first, and stores them
+   * in the same searchResults state that the single-context search uses.
+   * All results are fetched at once — no pagination.
+   */
+  const searchAllContexts = useCallback(
+    async (
+      contexts: Array<{
+        contextId: string;
+        executorPublicKey: string;
+        label: string;
+      }>,
+      query: string,
+    ): Promise<void> => {
+      const normalizedQuery = query.trim();
+      if (!normalizedQuery || contexts.length === 0) {
+        clearSearch();
+        setSearchQuery(normalizedQuery);
+        return;
+      }
+
+      setIsSearching(true);
+      setSearchError(null);
+      setSearchQuery(normalizedQuery);
+
+      try {
+        const api = new ClientApiDataSource();
+        const allResults: CurbMessage[] = [];
+
+        await Promise.all(
+          contexts.map(async ({ contextId, executorPublicKey, label }) => {
+            const resp = await api.searchAllMessages({
+              search_term: normalizedQuery,
+              contextId,
+              executorPublicKey,
+            });
+            if (resp.data) {
+              const msgs = transformMessagesToUI(resp.data.messages).map(
+                (m) => ({ ...m, contextLabel: label, contextId }),
+              );
+              allResults.push(...msgs);
+            }
+          }),
+        );
+
+        allResults.sort((a, b) => b.timestamp - a.timestamp);
+        setSearchResults(allResults);
+        setSearchTotalCount(allResults.length);
+        setSearchOffset(allResults.length);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : "Search failed";
+        // Clear results but preserve the error so the UI can display it.
+        setSearchResults([]);
+        setSearchTotalCount(0);
+        setSearchOffset(0);
+        setSearchQuery(normalizedQuery);
+        setSearchError(msg);
+      } finally {
+        setIsSearching(false);
+      }
+    },
+    [clearSearch],
+  );
+
+  /**
    * Add incoming messages (from websocket)
    * MessageStore handles deduplication of optimistic messages
    */
@@ -350,6 +415,7 @@ export function useMessages() {
     isSearching,
     searchError,
     searchMessages,
+    searchAllContexts,
     clearSearch,
   };
 }

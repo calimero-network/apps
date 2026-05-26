@@ -10,7 +10,7 @@ force_pull_image: true
 nodes:
   chain_id: testnet-1
   count: 3
-  image: ghcr.io/calimero-network/merod:edge
+  image: ghcr.io/calimero-network/merod:0.10.1-rc.43
   prefix: calimero-node
 
 steps:
@@ -171,6 +171,17 @@ steps:
     type: assert
     statements:
       - "contains({{update_info_result}}, 'Info updated')"
+
+  - name: Wait for Update Sync to Node 2
+    type: wait_for_sync
+    context_id: "{{channel_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+      - calimero-node-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
 
   - name: Verify Updated Info from Node 2
     type: call

@@ -16,6 +16,11 @@ export interface DMContextInfo extends GroupContextChannel {
   otherAlias: string;
   otherIdentity: string;
   myIdentity: string;
+  // The namespace group member identity of the other person — always the
+  // value parsed from the DM subgroup alias, never overwritten by the
+  // context executor key from get_profiles. Used for deduplication checks
+  // in the New DM dropdown (which keys members by namespace identity).
+  namespaceMemberIdentity: string;
 }
 
 /**
@@ -82,7 +87,15 @@ export function useDMs() {
         subgroups.map(async (sg) => {
           const ctxResp = await groupApi.listGroupContexts(sg.groupId);
           if (ctxResp.data) {
-            contextEntries.push(...ctxResp.data);
+            // Carry the subgroup alias as a fallback: the server may not echo
+            // the alias back on individual context entries, so parseDmAlias
+            // would get undefined and namespaceMemberIdentity would be "".
+            contextEntries.push(
+              ...ctxResp.data.map((entry) => ({
+                ...entry,
+                alias: entry.alias ?? sg.alias,
+              })),
+            );
           } else if (ctxResp.error) {
             log.debug("useDMs", `listGroupContexts failed for ${sg.groupId}`, ctxResp.error);
           }
@@ -137,7 +150,12 @@ export function useDMs() {
           }
 
           let otherUsername = "";
-          let otherIdentity = discovery?.otherIdentity || "";
+          // namespaceMemberIdentity is from the DM alias — always a namespace
+          // group member identity. Kept separate because otherIdentity gets
+          // overwritten by the context executor key when get_profiles succeeds,
+          // making it useless for membership/dedup lookups.
+          const namespaceMemberIdentity = discovery?.otherIdentity || "";
+          let otherIdentity = namespaceMemberIdentity;
           let otherAlias = otherIdentity
             ? memberAliasByIdentity.get(otherIdentity) || ""
             : "";
@@ -201,6 +219,7 @@ export function useDMs() {
             otherUsername,
             otherAlias,
             otherIdentity,
+            namespaceMemberIdentity,
             myIdentity: joinedIdentity || "",
             contextIdentity: joinedIdentity,
             isJoined: Boolean(joinedIdentity),

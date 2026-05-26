@@ -1,6 +1,6 @@
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
-import { useEffect, lazy, Suspense } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import { LoadingSpinner } from "./components/LoadingSpinner";
 import {
   isSessionExpired,
@@ -23,6 +23,16 @@ function ToastDisplay() {
 function App() {
   const { isAuthenticated, isLoading, logout } = useMero();
   const location = useLocation();
+  const [providerTimedOut, setProviderTimedOut] = useState(false);
+
+  useEffect(() => {
+    if (!isLoading) {
+      setProviderTimedOut(false);
+      return;
+    }
+    const id = setTimeout(() => setProviderTimedOut(true), 8000);
+    return () => clearTimeout(id);
+  }, [isLoading]);
 
   // Clean up invitation URL parameter and save to storage
   useEffect(() => {
@@ -52,7 +62,7 @@ function App() {
   // jumping straight to Home after a fresh login using stale localStorage values.
   const canEnterApp = isAuthenticated && isNamespaceReady();
 
-  if (isLoading) {
+  if (isLoading && !providerTimedOut) {
     return <LoadingSpinner />;
   }
 

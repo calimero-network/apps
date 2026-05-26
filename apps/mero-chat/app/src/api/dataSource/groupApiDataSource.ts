@@ -347,7 +347,11 @@ export class GroupApiDataSource implements GroupApi {
       // Fall back to /groups for older merod versions.
       let response;
       try {
-        response = await axios.get(`${this.base()}/namespaces`, {
+        const appId = import.meta.env.VITE_APPLICATION_ID as string | undefined;
+        const url = appId
+          ? `${this.base()}/namespaces/for-application/${appId}`
+          : `${this.base()}/namespaces`;
+        response = await axios.get(url, {
           headers: getAuthHeaders(),
         });
       } catch (firstError) {

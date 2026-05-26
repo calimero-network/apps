@@ -613,6 +613,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
       }
 
       const { groupId } = createRes.data;
+      setStoredGroupAlias(groupId, trimmedNs);
 
       await api.current.setDefaultCapabilities(groupId, { defaultCapabilities: DEFAULT_MEMBER_CAPABILITIES }).catch(() => {});
 

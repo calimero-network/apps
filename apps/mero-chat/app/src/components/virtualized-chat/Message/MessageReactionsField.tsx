@@ -271,6 +271,7 @@ const MessageReactionsField: React.FC<{
               closeMessageReactionsList();
             }
           }}
+          handleReaction={handleReaction}
         />
       )}
     </>

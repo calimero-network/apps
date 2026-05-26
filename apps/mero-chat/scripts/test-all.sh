@@ -2,17 +2,16 @@
 # scripts/test-all.sh — Full validation pipeline for curb.
 #
 # Runs the three one-shot Make targets that verify the project end-to-end:
-#   1. make build      — Rust WASM logic + frontend bundle
-#   2. make ci         — 2-node merod cluster, all RPC/admin tests, teardown
-#   3. make workflows  — merobox workflow tests
+#   1. make build           — Rust WASM logic + frontend bundle (WASM built once)
+#   2. make ci-no-build     — 2-node merod cluster, all RPC/admin tests, teardown
+#   3. make workflows-no-build — merobox workflow tests (reuses the already-built WASM)
 #
-# Each phase's full output is captured to a log file. The script tracks
-# pass/fail per phase and prints a coloured summary at the end. Exits 0 if
-# every phase passes, 1 otherwise (with log paths for failed phases).
+# Each phase's output is shown live AND captured to a log file. The script
+# tracks pass/fail per phase and prints a coloured summary at the end. Exits 0
+# if every phase passes, 1 otherwise (with log paths for failed phases).
 #
-# `make start` is intentionally skipped — it ends with `pnpm dev` which
-# never exits, so it isn't runnable in a one-shot script. `make ci` already
-# exercises 2-node bring-up + sync teardown.
+# `make start` is intentionally skipped — it ends with `pnpm dev` which never
+# exits. `make ci-no-build` exercises 2-node bring-up + sync teardown instead.
 
 set -uo pipefail
 
@@ -40,20 +39,21 @@ run_phase() {
   local name="$1" cmd="$2"
   local log_file="$LOG_DIR/${name// /-}.log"
 
-  printf '\n%s▶  %s%s%s\n' "$C_BOLD$C_CYAN" "" "$name" "$C_RESET"
+  printf '\n%s▶  %s%s\n' "$C_BOLD$C_CYAN" "$name" "$C_RESET"
   printf '   %scmd:%s %s\n' "$C_YELLOW" "$C_RESET" "$cmd"
   printf '   %slog:%s %s\n\n' "$C_YELLOW" "$C_RESET" "$log_file"
 
   local start=$SECONDS
   local result="PASS"
 
-  # Run in the repo root so relative paths in Make targets resolve.
-  if ( cd "$REPO_ROOT" && eval "$cmd" ) > "$log_file" 2>&1; then
+  # Run in repo root; tee output live to terminal AND to log file.
+  # pipefail (set at top) ensures the exit code reflects the command, not tee.
+  if ( cd "$REPO_ROOT" && eval "$cmd" ) 2>&1 | tee "$log_file"; then
     result="PASS"
-    printf '   %s✓  %s passed%s' "$C_GREEN" "$name" "$C_RESET"
+    printf '\n   %s✓  %s passed%s' "$C_GREEN" "$name" "$C_RESET"
   else
     result="FAIL"
-    printf '   %s✗  %s failed%s' "$C_RED" "$name" "$C_RESET"
+    printf '\n   %s✗  %s failed%s' "$C_RED" "$name" "$C_RESET"
   fi
   local elapsed=$((SECONDS - start))
   printf '  (%ss)\n' "$elapsed"
@@ -69,9 +69,10 @@ printf '%s%s  curb — full validation pipeline%s\n' "$C_BOLD" "$C_CYAN" "$C_RES
 printf '%s%s═══════════════════════════════════════════════%s\n' "$C_BOLD" "$C_CYAN" "$C_RESET"
 printf '  Logs directory: %s%s%s\n' "$C_YELLOW" "$LOG_DIR" "$C_RESET"
 
-run_phase "make build"     "make build"
-run_phase "make ci"        "make ci"
-run_phase "make workflows" "make workflows"
+# WASM is built once in phase 1; ci and workflows reuse it via --no-build variants.
+run_phase "make build"              "make build"
+run_phase "make ci-no-build"        "make ci-no-build"
+run_phase "make workflows-no-build" "make workflows-no-build"
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 
@@ -87,9 +88,9 @@ printf '%s%s══════════════════════�
 
 for i in "${!PHASE_NAMES[@]}"; do
   if [ "${PHASE_RESULTS[$i]}" = "PASS" ]; then
-    printf '  %s✓%s  %-20s  %ss\n' "$C_GREEN" "$C_RESET" "${PHASE_NAMES[$i]}" "${PHASE_DURATIONS[$i]}"
+    printf '  %s✓%s  %-26s  %ss\n' "$C_GREEN" "$C_RESET" "${PHASE_NAMES[$i]}" "${PHASE_DURATIONS[$i]}"
   else
-    printf '  %s✗%s  %-20s  %ss  %s→ %s%s\n' \
+    printf '  %s✗%s  %-26s  %ss  %s→ %s%s\n' \
       "$C_RED" "$C_RESET" "${PHASE_NAMES[$i]}" "${PHASE_DURATIONS[$i]}" \
       "$C_RED" "${PHASE_LOGS[$i]}" "$C_RESET"
   fi
@@ -102,13 +103,5 @@ if [ "$fails" -eq 0 ]; then
   exit 0
 fi
 
-printf '%s%s  %s/%s PHASES FAILED%s\n' "$C_BOLD" "$C_RED" "$fails" "$total" "$C_RESET"
-printf '\n  Failed-phase logs (last 40 lines each):\n'
-for i in "${!PHASE_NAMES[@]}"; do
-  if [ "${PHASE_RESULTS[$i]}" = "FAIL" ]; then
-    printf '\n  %s── %s ──%s\n' "$C_RED" "${PHASE_NAMES[$i]}" "$C_RESET"
-    tail -n 40 "${PHASE_LOGS[$i]}" | sed 's/^/    /'
-  fi
-done
-printf '\n'
+printf '%s%s  %s/%s PHASES FAILED%s\n\n' "$C_BOLD" "$C_RED" "$fails" "$total" "$C_RESET"
 exit 1

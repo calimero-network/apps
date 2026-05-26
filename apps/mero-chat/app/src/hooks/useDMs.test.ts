@@ -429,6 +429,47 @@ describe("useDMs (1-group-per-context)", () => {
     expect(mockGetProfiles).toHaveBeenCalled();
   });
 
+  it("populates namespaceMemberIdentity from subgroup alias when context entry has no alias", async () => {
+    // The server may not echo the alias back on context entries. Without the
+    // subgroup alias fallback, namespaceMemberIdentity would be "" and the
+    // dedup check in createDM would silently fail.
+    mockListSubgroups.mockResolvedValue({
+      data: [{ groupId: "dm-sg-1", alias: "DM_CONTEXT_member-me_member-you" }],
+      error: null,
+    });
+    mockListGroupContexts.mockImplementation(async (id: string) =>
+      id === "dm-sg-1"
+        ? {
+            data: [
+              {
+                contextId: "ctx-1",
+                // alias intentionally absent — simulates older server behaviour
+              },
+            ],
+            error: null,
+          }
+        : { data: [], error: null },
+    );
+    mockFetchContextIdentities.mockResolvedValue({
+      data: { data: { identities: ["member-me"] } },
+    });
+    mockGetContextInfo.mockResolvedValue({
+      data: { name: "DM: You", context_type: "Dm", creator: "member-me",
+              description: JSON.stringify({ c: "Me", o: "You" }) },
+      error: null,
+    });
+    mockGetProfiles.mockResolvedValue({ data: [], error: null });
+
+    const { result } = renderHook(() => useDMs());
+    let dms: Awaited<ReturnType<typeof result.current.fetchDms>> = [];
+    await act(async () => {
+      dms = await result.current.fetchDms("namespace-1");
+    });
+
+    expect(dms).toHaveLength(1);
+    expect(dms[0].namespaceMemberIdentity).toBe("member-you");
+  });
+
   it("falls back to get_profiles when description is empty", async () => {
     mockListSubgroups.mockResolvedValue({
       data: [{ groupId: "dm-sg-1", alias: "DM_CONTEXT_member-me_member-you" }],

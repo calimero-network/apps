@@ -41,6 +41,8 @@ export interface CurbMessage {
   status: MessageStatus;
   group?: string; // Channel name where the message was sent
   parentMessageId?: string; // Set for thread replies; identifies the parent channel message
+  contextLabel?: string; // Human-readable label of the originating channel/DM (set on search results)
+  contextId?: string; // Context ID of the originating channel/DM (set on search results)
 }
 export interface AccountData {
   id: string;

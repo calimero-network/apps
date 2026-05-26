@@ -23,6 +23,35 @@ import { extractUsernames } from "../utils/mentions";
 import { RichTextEditor } from "@calimero-network/mero-ui";
 import { useToast } from "../contexts/ToastContext";
 
+const MentionDropdown = styled.ul`
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 16px;
+  right: 16px;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  z-index: 200;
+  max-height: 200px;
+  overflow-y: auto;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.4);
+`;
+
+const MentionItem = styled.li<{ $active: boolean }>`
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: ${(p) => (p.$active ? "#fff" : "#aaa")};
+  background: ${(p) => (p.$active ? "#2a2a2a" : "transparent")};
+  &:hover {
+    background: #2a2a2a;
+    color: #fff;
+  }
+`;
+
 export const EditorWrapper = styled.div`
   flex: 1;
   min-width: 0;
@@ -406,6 +435,11 @@ export default function MessageInput({
   const [canWriteMessage, setCanWriteMessage] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [message, setMessage] = useState<MessageWithReactions | null>(null);
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [mentionSuggestions, setMentionSuggestions] = useState<{ name: string }[]>([]);
+  const [showMentions, setShowMentions] = useState(false);
+  const [mentionHighlight, setMentionHighlight] = useState(0);
+  const channelMembersRef = useRef<string[]>([]);
   const [uploadedFileState, setUploadedFileState] = useState<ChatFile | null>(
     null
   );
@@ -525,6 +559,81 @@ export default function MessageInput({
     []
   );
 
+  const detectMention = useCallback((html: string) => {
+    const plain = html.replace(/<[^>]+>/g, "");
+    const match = /@(\w*)$/.exec(plain);
+    if (match) {
+      const query = match[1];
+      const filtered = channelMembersRef.current.filter((name) =>
+        name.toLowerCase().startsWith(query.toLowerCase())
+      );
+      if (filtered.length > 0) {
+        setMentionQuery(query);
+        setMentionSuggestions(filtered.map((name) => ({ name })));
+        setMentionHighlight(0);
+        setShowMentions(true);
+        return;
+      }
+    }
+    setShowMentions(false);
+  }, []);
+
+  const applyMention = useCallback(
+    (name: string) => {
+      const html = message?.text ?? "";
+      // Match `@mentionQuery` only when NOT followed by more word chars (\w),
+      // and only the last such occurrence. This prevents replacing `@john`
+      // inside `@johnathan` when the query is `john`.
+      const escaped = mentionQuery.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const pattern = new RegExp(`@${escaped}(?!\\w)(?=[^@]*$)`);
+      if (!pattern.test(html)) {
+        setShowMentions(false);
+        return;
+      }
+      const newHtml = html.replace(pattern, `@${name} `);
+      setMessage(
+        message
+          ? { ...message, text: newHtml }
+          : {
+              id: "",
+              text: newHtml,
+              nonce: "",
+              timestamp: Date.now(),
+              sender: "",
+              reactions: new Map(),
+              files: [],
+              images: [],
+              thread_count: 0,
+              thread_last_timestamp: 0,
+            }
+      );
+      if (!isThread) setDraft(newHtml);
+      setShowMentions(false);
+    },
+    [message, mentionQuery, isThread, setDraft]
+  );
+
+  const handleMentionKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (!showMentions) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMentionHighlight((i) => Math.min(i + 1, mentionSuggestions.length - 1));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionHighlight((i) => Math.max(i - 1, 0));
+      } else if (e.key === "Enter" || e.key === "Tab") {
+        if (mentionSuggestions[mentionHighlight]) {
+          e.preventDefault();
+          applyMention(mentionSuggestions[mentionHighlight].name);
+        }
+      } else if (e.key === "Escape") {
+        setShowMentions(false);
+      }
+    },
+    [showMentions, mentionSuggestions, mentionHighlight, applyMention]
+  );
+
   const handleEmojiSelected = useCallback((emoji: string) => {
     editorRef.current?.insertContent(emoji);
   }, []);
@@ -553,8 +662,16 @@ export default function MessageInput({
     setShowUpload(false);
     clearUploadedFile();
     clearUploadedImage();
-    // Allow the draft for the new channel to be applied once it loads.
     draftAppliedRef.current = undefined;
+    setShowMentions(false);
+    // Prefetch members for mention autocomplete.
+    void new ClientApiDataSource()
+      .getChannelMembers({ channel: { name: selectedChat } })
+      .then((resp) => {
+        if (resp.data) {
+          channelMembersRef.current = Array.from(resp.data.values());
+        }
+      });
   }, [selectedChat, clearUploadedFile, clearUploadedImage]);
 
   // When a thread closes, reset the ref so the channel draft is re-applied.
@@ -784,7 +901,23 @@ export default function MessageInput({
   return (
     <>
       {canWriteMessage && (
-        <Container style={customStyle}>
+        <Container style={customStyle} onKeyDown={handleMentionKeyDown}>
+          {showMentions && mentionSuggestions.length > 0 && (
+            <MentionDropdown>
+              {mentionSuggestions.map((s, i) => (
+                <MentionItem
+                  key={s.name}
+                  $active={i === mentionHighlight}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    applyMention(s.name);
+                  }}
+                >
+                  @{s.name}
+                </MentionItem>
+              ))}
+            </MentionDropdown>
+          )}
           <Wrapper>
             <FullWidthWrapper>
               <EditorWrapper
@@ -797,7 +930,7 @@ export default function MessageInput({
                 <RichTextEditor
                   ref={editorRef}
                   value={message?.text ?? ""}
-                  sendOnEnter={true}
+                  sendOnEnter={showMentions ? false : true}
                   clearOnSend={true}
                   onChange={(value: string) => {
                     setMessage(
@@ -817,13 +950,12 @@ export default function MessageInput({
                           }
                     );
                     if (!isThread) {
-                      // Mark draft as applied so the pre-populate effect doesn't
-                      // fire again on the channelDraft change caused by this keystroke.
                       draftAppliedRef.current = selectedChat;
                       setDraft(value);
                     }
+                    detectMention(value);
                   }}
-                  onSend={handleSendMessageEnter}
+                  onSend={showMentions ? undefined : handleSendMessageEnter}
                   placeholder={placeholderText}
                   maxHeight={50}
                   style={{ fontSize: "14px" }}

@@ -30,9 +30,8 @@ NODE_2_URL="${E2E_NODE_URL_2:-}"
 ACCESS_TOKEN_1="${E2E_ACCESS_TOKEN:-}"
 ACCESS_TOKEN_2="${E2E_ACCESS_TOKEN_2:-}"
 GROUP_ID="${E2E_GROUP_ID:-}"
-CONTEXT_ID="${E2E_CONTEXT_ID:-}"
 
-for var in NODE_1_URL NODE_2_URL ACCESS_TOKEN_1 ACCESS_TOKEN_2 GROUP_ID CONTEXT_ID; do
+for var in NODE_1_URL NODE_2_URL ACCESS_TOKEN_1 ACCESS_TOKEN_2 GROUP_ID; do
   [ -n "${!var:-}" ] || { red "$var missing in $ENV_FILE"; exit 1; }
 done
 
@@ -89,89 +88,39 @@ curl -sf -X POST "${NODE_2_URL}/admin-api/groups/${GROUP_ID}/sync" \
   -H "Content-Type: application/json" -d '{}' &>/dev/null \
   && green "Sync triggered" || yellow "Sync failed (non-fatal)"
 
-# ── 3b. Discover the #general subgroup (1-group-per-context model) ───────────
-# Each channel = its own open subgroup under the namespace with one context
-# inside. Default namespace caps grant CAN_CREATE_SUBGROUP / DELETE / VISIBILITY
-# (rc.37) so node2 can also create its own channels after this.
+# ── 4. Node2 joins the #general context ──────────────────────────────────────
 
-step "Discovering #general subgroup on node1"
-SUBGROUPS_JSON=$(curl -sf "${NODE_1_URL}/admin-api/groups/${GROUP_ID}/subgroups" \
-  -H "Authorization: Bearer ${ACCESS_TOKEN_1}" 2>/dev/null) || SUBGROUPS_JSON='{"subgroups":[]}'
+CONTEXT_ID="${E2E_CONTEXT_ID:-}"
+MEMBER_KEY_2=""
 
-GENERAL_SG_ID=$(echo "$SUBGROUPS_JSON" \
-  | jq -r '(.subgroups // []) | map(select(.alias=="general")) | .[0].groupId // empty')
+if [ -n "$CONTEXT_ID" ]; then
+  step "Node2 joining context $CONTEXT_ID"
 
-[ -n "$GENERAL_SG_ID" ] && green "general subgroup : $GENERAL_SG_ID" || yellow "general subgroup not found (non-fatal)"
-
-# ── 4. Wait for #general context to surface on node2, then join it ───────────
-
-step "Waiting for #general to appear on node2"
-GENERAL_PARENT="${GENERAL_SG_ID:-$GROUP_ID}"
-for i in $(seq 1 30); do
-  CTXS_2=$(curl -sf "${NODE_2_URL}/admin-api/groups/${GENERAL_PARENT}/contexts" \
-    -H "Authorization: Bearer ${ACCESS_TOKEN_2}" 2>/dev/null) || CTXS_2="{}"
-  if echo "$CTXS_2" | jq -e \
-      --arg id "$CONTEXT_ID" \
-      '(.data // .) | if type=="array" then .[] | select(.contextId==$id or .id==$id) else empty end' \
-      >/dev/null 2>&1; then
-    green "Channel visible on node2 (attempt $i)"
-    break
-  fi
-  [ "$i" -eq 30 ] && yellow "Context not visible after 60s — proceeding anyway"
+  # Give node2 a moment to sync before joining
   sleep 2
-done
 
-step "Node2 joining #general channel"
-JOIN_CTX=$(curl -sf -X POST "${NODE_2_URL}/admin-api/contexts/${CONTEXT_ID}/join" \
-  -H "Authorization: Bearer ${ACCESS_TOKEN_2}" \
-  -H "Content-Type: application/json" -d '{}' 2>/dev/null) || JOIN_CTX="{}"
-MEMBER_KEY_2=$(echo "$JOIN_CTX" | jq -r '.data.memberPublicKey // .data.member_public_key // empty' 2>/dev/null || true)
-if [ -z "$MEMBER_KEY_2" ]; then
-  MEMBER_KEY_2=$(curl -sf "${NODE_2_URL}/admin-api/contexts/${CONTEXT_ID}/identities-owned" \
-    -H "Authorization: Bearer ${ACCESS_TOKEN_2}" 2>/dev/null \
-    | jq -r '(.data // .) | if type=="array" then .[0] else (.identities[0] // .items[0]) end' 2>/dev/null || true)
-fi
-[ -n "$MEMBER_KEY_2" ] && green "Joined channel (identity: $MEMBER_KEY_2)" \
-  || yellow "Could not resolve node2 member key (non-fatal)"
+  JOIN_CTX=$(curl -sf -X POST "${NODE_2_URL}/admin-api/contexts/${CONTEXT_ID}/join" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN_2}" \
+    -H "Content-Type: application/json" -d '{}' 2>/dev/null) || JOIN_CTX="{}"
+  MEMBER_KEY_2=$(echo "$JOIN_CTX" | jq -r '.data.memberPublicKey // .data.member_public_key // empty' 2>/dev/null || true)
 
-# ── 5. Persist node2 member key to .env.integration ──────────────────────────
-
-if [ -n "$MEMBER_KEY_2" ]; then
-  sed -i.bak "s|^E2E_MEMBER_KEY_2=.*|E2E_MEMBER_KEY_2=${MEMBER_KEY_2}|" "$ENV_FILE" \
-    && rm -f "${ENV_FILE}.bak"
-  green "Updated $ENV_FILE"
-fi
-
-# ── 6. Write dev-overlay.json so node-2's webapp can show the workspace alias.
-# Without this, the namespace alias ("Dev Workspace") set on node-1 doesn't
-# propagate via rc.35 governance — node-2's webapp would otherwise show
-# "Workspace {short-id}". main.tsx fetches this on boot in dev mode and
-# seeds localStorage. Best-effort: pull alias from node-1 directly.
-ALIAS_FROM_N1=$(curl -sf "${NODE_1_URL}/admin-api/namespaces" \
-  -H "Authorization: Bearer ${ACCESS_TOKEN_1:-}" 2>/dev/null \
-  | jq -r --arg id "$GROUP_ID" \
-      '(.data // [])[] | select(.namespaceId==$id) | .alias // empty' \
+  if [ -z "$MEMBER_KEY_2" ]; then
+    MEMBER_KEY_2=$(curl -sf "${NODE_2_URL}/admin-api/contexts/${CONTEXT_ID}/identities-owned" \
+      -H "Authorization: Bearer ${ACCESS_TOKEN_2}" 2>/dev/null \
+      | jq -r '(.data // .) | if type=="array" then .[0] else (.identities[0] // .items[0]) end' \
       2>/dev/null || true)
+  fi
 
-if [ -n "$ALIAS_FROM_N1" ]; then
-  OVERLAY="$REPO_ROOT/app/public/dev-overlay.json"
-  jq -n \
-    --arg ns "$GROUP_ID" \
-    --arg alias "$ALIAS_FROM_N1" \
-    --arg ctx "$CONTEXT_ID" \
-    --arg member "$MEMBER_KEY_2" \
-    --arg general "$GENERAL_SG_ID" \
-    '{
-      "namespace_id": $ns,
-      "namespace_alias": $alias,
-      "general_context_id": $ctx,
-      "general_subgroup_id": $general,
-      "node_2_member_key": $member,
-      "_note": "written by dev-invite.sh; main.tsx seeds localStorage from this in dev mode"
-    }' > "$OVERLAY"
-  green "Wrote $OVERLAY (alias: $ALIAS_FROM_N1)"
+  if [ -n "$MEMBER_KEY_2" ]; then
+    green "Node2 member key: $MEMBER_KEY_2"
+    sed -i.bak -e "s|^E2E_MEMBER_KEY_2=.*|E2E_MEMBER_KEY_2=${MEMBER_KEY_2}|" "$ENV_FILE" \
+      && rm -f "${ENV_FILE}.bak"
+    green "Updated $ENV_FILE with node2 member key"
+  else
+    yellow "Could not get node2 member key (2-node RPC tests will skip)"
+  fi
 else
-  yellow "Could not fetch namespace alias from node-1 (non-fatal — webapp will fall back to 'Workspace {id-slice}')"
+  yellow "E2E_CONTEXT_ID not set in $ENV_FILE — skipping node2 context join"
 fi
 
 printf '\n'
@@ -180,5 +129,5 @@ printf '\033[1;32m  Node2 invited into node1 workspace\033[0m\n'
 printf '\033[1;32m══════════════════════════════════════════\033[0m\n'
 printf '\n'
 printf '  Workspace:  %s\n' "$GROUP_ID"
-printf '  Channel:    %s  (#general)\n' "$CONTEXT_ID"
+printf '  Both nodes are members — create channels and DMs from the app.\n'
 printf '\n'

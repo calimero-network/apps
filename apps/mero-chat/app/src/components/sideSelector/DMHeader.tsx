@@ -1,6 +1,6 @@
 import { styled } from "styled-components";
 import StartDMPopup, { type CreateContextResult } from "../popups/StartDMPopup";
-import { useCallback, memo } from "react";
+import { useCallback, useMemo, memo } from "react";
 import { getGroupId } from "../../constants/config";
 import { useCurrentGroupPermissions } from "../../hooks/useCurrentGroupPermissions";
 import type { DMContextInfo } from "../../hooks/useDMs";
@@ -69,6 +69,24 @@ const DMHeader = memo(function DMHeader({
   const canShowCreate =
     !resolved || permissions.isAdmin || permissions.canCreateSubgroup;
 
+  const filteredMembers = useMemo(() => {
+    const existingDmIdentities = new Set(
+      privateDMs
+        .map((dm) => dm.namespaceMemberIdentity || dm.otherIdentity)
+        .filter(Boolean),
+    );
+    const existingDmUsernames = new Set(
+      privateDMs.map((dm) => dm.otherUsername).filter(Boolean),
+    );
+    const filtered = new Map<string, string>();
+    for (const [identity, label] of availableMembers) {
+      if (!existingDmIdentities.has(identity) && !existingDmUsernames.has(label)) {
+        filtered.set(identity, label);
+      }
+    }
+    return filtered;
+  }, [availableMembers, privateDMs]);
+
   const isValidIdentityId = useCallback(
     (value: string) => {
       const identity = value.trim();
@@ -77,13 +95,17 @@ const DMHeader = memo(function DMHeader({
       if (!isMember) {
         return {
           isValid: false,
-          error: "Cannot create DM: the user is not in the workspace",
+          error: "User not found — they may not be in the workspace or a DM already exists",
         };
       }
-      // Block (and disable Next via StartDMPopup's disabled-on-invalid wiring)
-      // when a DM with this identity already exists, instead of letting the
-      // user submit and surface the same error post-hoc from createDM.
-      if (privateDMs.some((dm) => dm.otherIdentity === identity)) {
+      // Belt-and-suspenders: filteredMembers already hides existing DM contacts,
+      // but guard here too for races. Check by both identity key and username
+      // since namespaceMemberIdentity can be empty when alias parsing fails.
+      const username = availableMembers.get(identity) || "";
+      if (privateDMs.some((dm) =>
+        (dm.namespaceMemberIdentity || dm.otherIdentity) === identity ||
+        (username && dm.otherUsername && dm.otherUsername === username)
+      )) {
         return {
           isValid: false,
           error: "A DM with this user already exists",
@@ -100,7 +122,7 @@ const DMHeader = memo(function DMHeader({
       {canShowCreate && (
         <StartDMPopup
           title="Create a new private DM context"
-          placeholder="Search by member identity"
+          placeholder="Enter username"
           buttonText="Next"
           toggle={
             <PlusButton>
@@ -109,7 +131,7 @@ const DMHeader = memo(function DMHeader({
               </svg>
             </PlusButton>
           }
-          chatMembers={availableMembers}
+          chatMembers={filteredMembers}
           validator={isValidIdentityId}
           functionLoader={createDM}
           onOpen={onFetchMembers}

@@ -57,6 +57,7 @@ interface ChatContainerProps {
   onClearSearch: () => void;
   isSearchOverlayOpen: boolean;
   onCloseSearchOverlay: () => void;
+  onSearchResultClick?: (contextId: string) => void;
 }
 
 const ChatContainerWrapper = styled.div`
@@ -123,6 +124,7 @@ function ChatContainer({
   onClearSearch,
   isSearchOverlayOpen,
   onCloseSearchOverlay,
+  onSearchResultClick,
 }: ChatContainerProps) {
   const [updatedMessages, setUpdatedMessages] = useState<UpdatedMessages[]>([]);
   const [_updatedThreadMessages, setUpdatedThreadMessages] = useState<
@@ -639,6 +641,7 @@ function ChatContainer({
             onCloseSearchOverlay();
           }}
           searchContextId={searchContextId}
+          onResultClick={onSearchResultClick}
         />
       )}
       {activeChat.canJoin && activeChat.type === "channel" ? (

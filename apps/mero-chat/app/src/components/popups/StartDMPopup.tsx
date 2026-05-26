@@ -175,6 +175,9 @@ const StartDMPopup = memo(function StartDMPopup({
   // setIsProcessing(true) commits. A ref reflects writes immediately and
   // closes the race.
   const inFlightRef = useRef(false);
+  // True while onOpen (DM list refresh) is in-flight. Member list is hidden
+  // until refresh completes so suggestions are based on current server state.
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [inputValue, setInputValue] = usePersistentState("startDMInputValue", "");
   const [selectedIdentity, setSelectedIdentity] = useState("");
   const [validInput, setValidInput] = useState(false);
@@ -291,7 +294,14 @@ const StartDMPopup = memo(function StartDMPopup({
             onChange={handleInputChange}
             style={isInvalid ? { border: "1px solid #ff6b6b", outline: "none" } : {}}
           />
-          {showSuggestions && suggestions.length > 0 && (
+          {isRefreshing && (
+            <SuggestionsDropdown>
+              <SuggestionItem style={{ cursor: "default", opacity: 0.5 }}>
+                <SuggestionName>Loading...</SuggestionName>
+              </SuggestionItem>
+            </SuggestionsDropdown>
+          )}
+          {!isRefreshing && showSuggestions && suggestions.length > 0 && (
             <SuggestionsDropdown>
               {suggestions.map((s) => (
                 <SuggestionItem key={s.identity} onClick={() => handleSuggestionClick(s)}>
@@ -309,7 +319,7 @@ const StartDMPopup = memo(function StartDMPopup({
         variant="primary"
         style={{ width: "100%", marginTop: "0.25rem", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}
         onClick={() => void runProcess()}
-        disabled={isProcessing || (inputValue ? !!isInvalid : true)}
+        disabled={isProcessing || isRefreshing || (inputValue ? !!isInvalid : true)}
       >
         {isProcessing ? <Loader size={16} /> : buttonText}
       </Button>
@@ -324,7 +334,12 @@ const StartDMPopup = memo(function StartDMPopup({
       onOpenChange={(open) => {
         if (!isProcessing && open) {
           setIsOpen(open);
-          if (onOpen) void onOpen();
+          if (onOpen) {
+            setIsRefreshing(true);
+            void Promise.resolve(onOpen()).finally(() => setIsRefreshing(false));
+          }
+        } else if (!isProcessing && !open) {
+          setIsOpen(false);
         }
       }}
       isChild={true}

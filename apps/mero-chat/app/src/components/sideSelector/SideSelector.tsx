@@ -10,6 +10,7 @@ import type { DMContextInfo } from "../../hooks/useDMs";
 import type { CreateContextResult } from "../popups/StartDMPopup";
 import { scrollbarStyles } from "../../styles/scrollbar";
 import type { ContextUnread } from "../../hooks/useUnreadCounts";
+import WorkspaceSwitcher from "./WorkspaceSwitcher";
 
 interface SideSelectorProps {
   channels: GroupContextChannel[];
@@ -262,6 +263,7 @@ const SideMenuContent = memo(function SideMenuContent({
         title="Channels"
         isCollapsed={isCollapsed}
         onChannelCreated={onChannelCreated}
+        onFetchChannels={onChannelCreated}
         onChannelSelected={onChannelSelected}
         existingChannelNames={existingChannelNames}
       />
@@ -277,6 +279,8 @@ const SideMenuContent = memo(function SideMenuContent({
 
   return (
     <>
+      <WorkspaceSwitcher isCollapsed={isCollapsed} />
+      <HorizontalSeparatorLine $isMobile={false} />
       <SearchChannels
         isOpenSearchChannel={isOpenSearchChannel}
         setIsOpenSearchChannel={setIsOpenSearchChannel}

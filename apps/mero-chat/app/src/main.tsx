@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.tsx";
 import { BrowserRouter } from "react-router-dom";
-import bs58 from "bs58";
+import { decodeInvitationPayload } from "./utils/invitation.ts";
 import {
   MeroProvider,
   AppMode as MeroAppMode,
@@ -90,36 +90,14 @@ function persistAuthHashOnLoad(): { accessToken: string; refreshToken: string; n
 // Extract ?invitation= from URL before React mounts — React Router's <Navigate>
 // runs its useEffect before parent component effects (children fire first), so
 // the URL is already changed to /login before App.tsx can read it.
+// Uses decodeInvitationPayload which handles deflate-compressed base58 (new),
+// uncompressed base58, base64url, and percent-encoded JSON (all legacy).
 (function extractInvitationOnLoad() {
   try {
     const params = new URLSearchParams(window.location.search);
     const raw = params.get("invitation");
     if (!raw) return;
-    const trimmed = raw.trim();
-    let decoded: string | undefined;
-
-    // Try base58 first (new format)
-    if (/^[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$/.test(trimmed)) {
-      try {
-        decoded = new TextDecoder().decode(bs58.decode(trimmed));
-      } catch { /* fall through */ }
-    }
-
-    // Legacy: base64url
-    if (!decoded && /^[A-Za-z0-9_-]+$/.test(trimmed)) {
-      try {
-        const base64 = trimmed.replace(/-/g, "+").replace(/_/g, "/");
-        const pad = base64.length % 4;
-        const padded = pad ? base64 + "=".repeat(4 - pad) : base64;
-        decoded = decodeURIComponent(escape(atob(padded)));
-      } catch { /* fall through */ }
-    }
-
-    // Legacy: percent-encoded JSON
-    if (!decoded) {
-      try { decoded = decodeURIComponent(trimmed); } catch { return; }
-    }
-
+    const decoded = decodeInvitationPayload(raw);
     if (decoded) localStorage.setItem("curb-invitation-payload", decoded);
     params.delete("invitation");
     const qs = params.toString();

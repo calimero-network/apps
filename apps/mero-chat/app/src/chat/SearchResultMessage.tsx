@@ -95,6 +95,20 @@ const ThreadBadge = styled.div`
   width: fit-content;
 `;
 
+const ContextLabel = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(165, 255, 17, 0.08);
+  color: rgba(165, 255, 17, 0.7);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  width: fit-content;
+`;
+
 const Attachments = styled.div`
   display: flex;
   flex-wrap: wrap;
@@ -188,8 +202,11 @@ export default function SearchResultMessage({
     [contextId]
   );
 
+  const contextLabel = message.contextLabel ?? message.group;
+
   return (
     <Wrapper>
+      {contextLabel && <ContextLabel># {contextLabel}</ContextLabel>}
       {message.parentMessageId && (
         <ThreadBadge>↩ Thread reply</ThreadBadge>
       )}

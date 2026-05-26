@@ -61,6 +61,7 @@ interface ChannelHeaderProps {
   title: string;
   isCollapsed?: boolean;
   onChannelCreated?: () => void;
+  onFetchChannels?: () => void;
   onChannelSelected?: (chat: ActiveChat) => void;
   existingChannelNames?: string[];
   targetGroupId?: string;
@@ -71,6 +72,9 @@ const ChannelHeader = memo(function ChannelHeader(props: ChannelHeaderProps) {
   const [inputValue, setInputValue] = usePersistentState("createChannelInputValue", "");
   const [defaultVisibility, setDefaultVisibility] = useState<"public" | "private">("public");
   const [isLoadingDefaultVisibility, setIsLoadingDefaultVisibility] = useState(false);
+  // Fresh subgroup names fetched from the server when the popup opens.
+  // These take priority over the possibly-stale existingChannelNames prop.
+  const [liveSubgroupNames, setLiveSubgroupNames] = useState<string[]>([]);
   const groupId = getGroupId();
   const permissionsGroupId = props.targetGroupId ?? groupId;
   const permissions = useCurrentGroupPermissions(permissionsGroupId);
@@ -87,32 +91,36 @@ const ChannelHeader = memo(function ChannelHeader(props: ChannelHeaderProps) {
       const base = isValidChannelName(value);
       if (!base.isValid) return base;
       const lower = value.toLowerCase();
-      const isDuplicate = (props.existingChannelNames ?? []).some(
-        (n) => n.toLowerCase() === lower,
-      );
-      if (isDuplicate) return { isValid: false, error: "A channel with this name already exists" };
+      // liveSubgroupNames is fresh from the server; existingChannelNames is a
+      // fallback for before the popup has fetched.
+      const allNames = liveSubgroupNames.length > 0
+        ? liveSubgroupNames
+        : (props.existingChannelNames ?? []);
+      const isDuplicate = allNames.some((n) => n.toLowerCase() === lower);
+      if (isDuplicate) return { isValid: false, error: "A group with this name already exists" };
       return { isValid: true, error: "" };
     },
-    [props.existingChannelNames],
+    [liveSubgroupNames, props.existingChannelNames],
   );
 
   const createChannel = async (
     channelName: string,
     isPublic: boolean,
     _isReadOnly: boolean,
-  ) => {
+  ): Promise<{ error: string } | void> => {
     if (!groupId) {
       log.error("ChannelHeader", "No groupId configured — cannot create channel");
-      return;
+      return { error: "No workspace configured" };
     }
 
     const lower = channelName.toLowerCase();
-    const isDuplicate = (props.existingChannelNames ?? []).some(
-      (n) => n.toLowerCase() === lower,
-    );
+    const allNames = liveSubgroupNames.length > 0
+      ? liveSubgroupNames
+      : (props.existingChannelNames ?? []);
+    const isDuplicate = allNames.some((n) => n.toLowerCase() === lower);
     if (isDuplicate) {
       log.warn("ChannelHeader", `Channel name "${channelName}" already exists`);
-      return;
+      return { error: "A group with this name already exists" };
     }
 
     const nodeApi = new ContextApiDataSource();
@@ -136,8 +144,9 @@ const ChannelHeader = memo(function ChannelHeader(props: ChannelHeaderProps) {
       name: channelName,
     });
     if (sgResp.error || !sgResp.data) {
+      const msg = sgResp.error?.message || "A channel with this name may already exist";
       log.error("ChannelHeader", "Failed to create channel subgroup", sgResp.error);
-      return;
+      return { error: msg };
     }
     const channelGroupId = sgResp.data.groupId;
 
@@ -166,8 +175,9 @@ const ChannelHeader = memo(function ChannelHeader(props: ChannelHeaderProps) {
     });
 
     if (createResp.error || !createResp.data) {
+      const msg = createResp.error?.message || "Failed to create channel context";
       log.error("ChannelHeader", "Failed to create channel context", createResp.error);
-      return;
+      return { error: msg };
     }
 
     const contextIdJustCreated = createResp.data.contextId;
@@ -203,24 +213,39 @@ const ChannelHeader = memo(function ChannelHeader(props: ChannelHeaderProps) {
 
     setIsLoadingDefaultVisibility(true);
     const groupApi = new GroupApiDataSource();
-    const groupResp = await groupApi.getGroup(targetGroupId);
 
-    if (groupResp.data?.subgroupVisibility) {
-      setDefaultVisibility(getChannelVisibilityOption(groupResp.data.subgroupVisibility));
-    } else {
-      setDefaultVisibility("public");
-      if (groupResp.error) {
-        log.error(
-          "ChannelHeader",
-          "Failed to read group default visibility, falling back to public",
-          groupResp.error,
+    try {
+      // Fetch subgroups and group info in parallel so the validator has
+      // fresh server-side names before the user starts typing.
+      const [subgroupsResp, groupResp] = await Promise.all([
+        groupApi.listSubgroups(targetGroupId),
+        groupApi.getGroup(targetGroupId),
+      ]);
+
+      if (subgroupsResp.data) {
+        setLiveSubgroupNames(
+          subgroupsResp.data.map((sg) => sg.alias ?? "").filter(Boolean),
         );
       }
-    }
 
-    setIsLoadingDefaultVisibility(false);
-    setIsOpen(true);
-  }, [isLoadingDefaultVisibility, setIsOpen]);
+      if (groupResp.data?.subgroupVisibility) {
+        setDefaultVisibility(getChannelVisibilityOption(groupResp.data.subgroupVisibility));
+      } else {
+        setDefaultVisibility("public");
+        if (groupResp.error) {
+          log.error(
+            "ChannelHeader",
+            "Failed to read group default visibility, falling back to public",
+            groupResp.error,
+          );
+        }
+      }
+
+      setIsOpen(true);
+    } finally {
+      setIsLoadingDefaultVisibility(false);
+    }
+  }, [isLoadingDefaultVisibility, setIsOpen, groupId]);
 
   return (
     <Container $isCollapsed={props.isCollapsed}>

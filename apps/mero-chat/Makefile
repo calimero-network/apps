@@ -1,5 +1,5 @@
-.PHONY: help setup install build dev dev-node dev-node2 start test test-all test-full unit e2e workflows ci ci-stop \
-        logic-build app-install app-build app-typecheck app-lint clean
+.PHONY: help setup install build dev dev-node dev-node2 start test test-all test-full unit e2e workflows workflows-no-build ci ci-stop \
+        logic-build app-install app-build app-typecheck app-lint clean run-all
 
 # ── Help ───────────────────────────────────────────────────────────────────────
 
@@ -27,6 +27,7 @@ help:
 	@echo "    app-lint       Run ESLint on frontend"
 	@echo ""
 	@echo "  Test"
+	@echo "    run-all        typecheck + unit + all playwright (needs 'make start' first)"
 	@echo "    test-all       Full pipeline: build + ci + workflows, with pass/fail summary"
 	@echo "    test-full      1 node: rpc + rpc-admin + mocked + live (58 tests, skips 2-node)"
 	@echo "    ci             2 nodes: rpc + rpc-admin + mocked — full suite (90 tests)"
@@ -103,6 +104,26 @@ test-full: app-install
 	  pnpm exec playwright test --project=mocked && \
 	  LIVE_AUTH=1 pnpm exec playwright test --project=live
 
+# Run everything locally — requires nodes already running via 'make start'.
+# Order: typecheck → unit (Vitest) → rpc/rpc-admin (headless, no Vite) → mocked (Playwright starts Vite)
+run-all: app-install
+	@echo ""
+	@printf '\033[1;36m▶  typecheck\033[0m\n'
+	cd app && pnpm exec tsc --noEmit
+	@echo ""
+	@printf '\033[1;36m▶  unit tests (Vitest)\033[0m\n'
+	cd app && pnpm test
+	@echo ""
+	@printf '\033[1;36m▶  RPC + admin tests (Playwright — needs running nodes)\033[0m\n'
+	cd app && SKIP_DEV_SERVER=1 pnpm exec playwright test --project=rpc --project=rpc-admin
+	@echo ""
+	@printf '\033[1;36m▶  mocked browser tests (Playwright)\033[0m\n'
+	cd app && pnpm exec playwright test --project=mocked
+	@echo ""
+	@printf '\033[1;32m══════════════════════════════\033[0m\n'
+	@printf '\033[1;32m  All checks passed\033[0m\n'
+	@printf '\033[1;32m══════════════════════════════\033[0m\n'
+
 unit:
 	cd app && pnpm test
 
@@ -135,6 +156,9 @@ WORKFLOW_FILES := \
 	workflows/dm.yml
 
 workflows: logic-build
+	@bash scripts/workflows.sh $(WORKFLOW_FILES)
+
+workflows-no-build:
 	@bash scripts/workflows.sh $(WORKFLOW_FILES)
 
 # Shell-based integration driver. Complements merobox by exposing real

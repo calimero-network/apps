@@ -19,6 +19,7 @@ import MessageFileField from "../../../chat/MessageFileField";
 import MessageImageField from "../../../chat/MessageImageField";
 import MessageReactionsField from "./MessageReactionsField";
 import RenderHtml from "./RenderHtml";
+import LinkPreview from "./LinkPreview";
 import ReplyContainerButton from "./ReplyContainerButton";
 import type { FileObject } from "../../../types/Common";
 
@@ -194,21 +195,21 @@ export const MessageText = styled.div<MessageTextProps>`
   .rich-text-link {
     cursor: pointer;
     text-decoration: none;
-    color: #4e95ff;
+    color: #a5ff11;
     word-break: break-all;
   }
 
   a:hover,
   .url-link:hover,
   .rich-text-link:hover {
-    color: #74abff;
+    color: #c4ff66;
     text-decoration: underline;
   }
 
   a:visited,
   .url-link:visited,
   .rich-text-link:visited {
-    color: #4e95ff;
+    color: #8fd60e;
   }
   span {
     color: #fff !important;
@@ -601,6 +602,7 @@ const Message = (props: MessageProps) => {
               $accountId={escapedAccountId}
             >
               <RenderHtml html={text} />
+              <LinkPreview html={text} />
             </MessageText>
             <Tick>
               {props.message.editedOn && "(edited) "}

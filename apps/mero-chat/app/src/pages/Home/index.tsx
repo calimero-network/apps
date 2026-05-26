@@ -97,6 +97,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     isSearching: isSearchingMessages,
     searchOffset,
     searchMessages: executeSearchMessages,
+    searchAllContexts: executeSearchAllContexts,
     clearSearch: clearMessageSearch,
     searchError,
   } = mainMessages;
@@ -114,6 +115,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   // Group-based channel list (replaces old useChannels)
   const groupContextsHook = useGroupContexts();
   const dmsHook = useDMs();
+  const privateDMs = dmsHook.dms;
   const chatMembersHook = useChatMembers();
   const channelMembersHook = useChannelMembers();
   const groupMembersHook = useGroupMembers();
@@ -306,21 +308,95 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
 
   const handleSearchMessages = useCallback(
     async (query: string) => {
-      await executeSearchMessages(activeChatRef.current, query, { reset: true });
+      const contexts: Array<{
+        contextId: string;
+        executorPublicKey: string;
+        label: string;
+      }> = [];
+
+      groupContextsHook.channels.forEach((ch) => {
+        if (ch.isJoined && ch.contextId && ch.contextIdentity) {
+          contexts.push({
+            contextId: ch.contextId,
+            executorPublicKey: ch.contextIdentity,
+            label:
+              ch.info?.name ?? ch.alias ?? ch.contextId.substring(0, 8),
+          });
+        }
+      });
+
+      privateDMs.forEach((dm) => {
+        if (dm.contextId && dm.contextIdentity) {
+          contexts.push({
+            contextId: dm.contextId,
+            executorPublicKey: dm.contextIdentity,
+            label: getDmDisplayName({
+              otherUsername: dm.otherUsername,
+              otherAlias: dm.otherAlias,
+              otherIdentity: dm.otherIdentity,
+              contextId: dm.contextId,
+            }),
+          });
+        }
+      });
+
+      if (contexts.length === 0) {
+        await executeSearchMessages(activeChatRef.current, query, {
+          reset: true,
+        });
+      } else {
+        await executeSearchAllContexts(contexts, query);
+      }
     },
-    [executeSearchMessages],
+    [
+      groupContextsHook.channels,
+      privateDMs,
+      executeSearchMessages,
+      executeSearchAllContexts,
+    ],
   );
 
-  const handleLoadMoreSearch = useCallback(async () => {
-    if (!searchQuery) return;
-    await executeSearchMessages(activeChatRef.current, searchQuery, {
-      offset: searchOffset,
-    });
-  }, [executeSearchMessages, searchOffset, searchQuery]);
+  // All results are fetched at once in searchAllContexts; load-more is a no-op.
+  const handleLoadMoreSearch = useCallback(async () => {}, []);
 
   const handleClearSearch = useCallback(() => {
     clearMessageSearch();
   }, [clearMessageSearch]);
+
+  const handleResultClick = useCallback(
+    (contextId: string) => {
+      const channel = groupContextsHook.channels.find(
+        (ch) => ch.contextId === contextId && ch.isJoined && ch.contextIdentity,
+      );
+      if (channel && channel.contextIdentity) {
+        void updateSelectedActiveChatRef.current({
+          type: "channel",
+          contextId,
+          id: contextId,
+          name:
+            channel.info?.name ?? channel.alias ?? contextId.substring(0, 8),
+          contextIdentity: channel.contextIdentity,
+        });
+        return;
+      }
+      const dm = privateDMs.find((d) => d.contextId === contextId);
+      if (dm && dm.contextIdentity) {
+        void updateSelectedActiveChatRef.current({
+          type: "direct_message",
+          contextId,
+          id: contextId,
+          name: getDmDisplayName({
+            otherUsername: dm.otherUsername,
+            otherAlias: dm.otherAlias,
+            otherIdentity: dm.otherIdentity,
+            contextId: dm.contextId,
+          }),
+          contextIdentity: dm.contextIdentity,
+        });
+      }
+    },
+    [groupContextsHook.channels, privateDMs],
+  );
 
   useEffect(() => {
     const storedSession: ActiveChat | null = getStoredSession();
@@ -415,6 +491,18 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
       }
     }, 3000);
   }, []);
+
+  // Called when the New DM popup opens — refresh both the member list and the
+  // DM list so the popup's dropdown excludes contacts who already have a DM.
+  // Bypasses the debounce so isRefreshing stays true until data actually arrives
+  // (debouncedFetchGroupMembers resolves immediately, causing the spinner to
+  // disappear 3 s before members load — making the first open look empty).
+  const onFetchDmMembersForPopup = useCallback(async () => {
+    const groupId = getGroupId();
+    const fetches: Promise<unknown>[] = [fetchDmsWithGroup()];
+    if (groupId) fetches.push(fetchGroupMembersRef.current(groupId));
+    await Promise.all(fetches);
+  }, [fetchDmsWithGroup]);
 
   const mainMessagesRef = useRef(mainMessages);
   const threadMessagesRef = useRef(threadMessages);
@@ -623,8 +711,6 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     ),
     [groupContextsHook.channels],
   );
-
-  const privateDMs = dmsHook.dms;
 
   const chatMembers = chatMembersHook.members;
   const currentMemberIdentity =
@@ -844,12 +930,21 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
         };
       }
 
-      const existingDm = privateDMs.find((dm) => dm.otherIdentity === otherIdentity);
-      if (existingDm) {
-        return { data: "", error: "Cannot create DM: already exists" };
-      }
-
       const otherUsername = dmMembers.get(otherIdentity) || chatMembers.get(otherIdentity) || "";
+
+      // Dedup: check by identity key AND by username — namespaceMemberIdentity
+      // can be empty when the server doesn't echo the alias back on context
+      // entries, so the username from get_info's description is a second line
+      // of defence.
+      const freshDms = await fetchDmsWithGroup();
+      const existingDm = (freshDms ?? []).find(
+        (dm) =>
+          dm.namespaceMemberIdentity === otherIdentity ||
+          (otherUsername && dm.otherUsername && dm.otherUsername === otherUsername),
+      );
+      if (existingDm?.contextId) {
+        return { data: existingDm.contextId, error: "" };
+      }
       const myUsername = getIdentityDisplayName(myIdentity) || getMessengerDisplayName();
 
       // 1-group-per-context model: DM = a new restricted subgroup under the
@@ -948,7 +1043,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
       dmMembers={dmMembers}
       createDM={createDM}
       privateDMs={privateDMs}
-      onFetchDmMembers={debouncedFetchGroupMembers}
+      onFetchDmMembers={onFetchDmMembersForPopup}
       unreadCounts={unreadCounts}
       loadInitialThreadMessages={loadInitialThreadMessages}
       incomingThreadMessages={threadMessages.incomingMessages}
@@ -972,6 +1067,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
       onSearchMessages={handleSearchMessages}
       onLoadMoreSearch={handleLoadMoreSearch}
       onClearSearch={handleClearSearch}
+      onSearchResultClick={handleResultClick}
     />
   );
 }

@@ -29,7 +29,7 @@ cat > res/bundle-temp/manifest.json <<EOF
 {
   "version": "1.0",
   "package": "com.calimero.curb",
-  "appVersion": "2.0.0",
+  "appVersion": "5.1.0",
   "minRuntimeVersion": "0.1.0",
   "metadata": {
     "name": "Mero Chat",
@@ -48,7 +48,7 @@ cat > res/bundle-temp/manifest.json <<EOF
   },
   "migrations": [],
   "links": {
-    "frontend": "http://localhost:5173/"
+    "frontend": "https://calimero-curb-rs.vercel.app/"
   }
 }
 EOF

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import StartDMPopup from "./StartDMPopup";
 
@@ -20,12 +20,17 @@ vi.mock("../common/popups/BaseModal", () => ({
   default: ({
     toggle,
     content,
+    onOpenChange,
   }: {
     toggle: React.ReactNode;
     content: React.ReactNode;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
   }) => (
     <div>
-      {toggle}
+      <div data-testid="modal-trigger" onClick={() => onOpenChange(true)}>
+        {toggle}
+      </div>
       {content}
     </div>
   ),
@@ -142,5 +147,57 @@ describe("StartDMPopup", () => {
 
     expect(screen.getByText("Alice Alias")).toBeInTheDocument();
     expect(screen.getByText("Bob Alias")).toBeInTheDocument();
+  });
+});
+
+// ── isRefreshing guard ────────────────────────────────────────────────────────
+// These tests rely on usePersistentState starting isOpen=true (from the
+// module-level mock above), but manipulate isRefreshing via the BaseModal
+// mock's onOpenChange trigger.
+
+describe("StartDMPopup — isRefreshing guard", () => {
+  it("shows Loading... while onOpen is in-flight and hides real suggestions", async () => {
+    let resolveOnOpen!: () => void;
+    const pendingOpen = new Promise<void>((res) => {
+      resolveOnOpen = res;
+    });
+    const onOpen = vi.fn(() => pendingOpen);
+
+    // usePersistentState mock starts isOpen=true so popup content is visible.
+    // Clicking the modal-trigger fires onOpenChange(true), which re-enters
+    // the opening branch and sets isRefreshing while onOpen is pending.
+    render(
+      <StartDMPopup
+        title="New DM"
+        placeholder="Search by member identity"
+        buttonText="Next"
+        toggle={<button type="button">Open</button>}
+        validator={() => ({ isValid: false, error: "" })}
+        functionLoader={vi.fn().mockResolvedValue({ data: "", error: "" })}
+        chatMembers={new Map([["user-x", "User X"]])}
+        onOpen={onOpen}
+      />,
+    );
+
+    // Click the trigger — this calls onOpenChange(true) which sets isRefreshing
+    fireEvent.click(screen.getByTestId("modal-trigger"));
+
+    // While onOpen is still pending: Loading... must appear, User X must not
+    expect(screen.getByText("Loading...")).toBeTruthy();
+    expect(screen.queryByText("User X")).toBeNull();
+    // Next button must be disabled while refreshing
+    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+
+    // Resolve onOpen — isRefreshing clears
+    await act(async () => {
+      resolveOnOpen();
+      await pendingOpen;
+    });
+
+    // After resolution: Loading... gone, User X suggestion visible
+    await waitFor(() => {
+      expect(screen.queryByText("Loading...")).toBeNull();
+      expect(screen.getByText("User X")).toBeTruthy();
+    });
   });
 });

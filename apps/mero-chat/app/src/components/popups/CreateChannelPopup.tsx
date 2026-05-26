@@ -143,7 +143,7 @@ interface CreateChannelPopupProps {
     channelName: string,
     isPublic: boolean,
     isReadOnly: boolean,
-  ) => Promise<void>;
+  ) => Promise<{ error: string } | void>;
   buttonText: string;
   channelNameValidator: (value: string) => { isValid: boolean; error: string };
   inputValue: string;
@@ -185,7 +185,12 @@ export default function CreateChannelPopup({
     inFlightRef.current = true;
     setIsProcessing(true);
     try {
-      await createChannel(inputValue, visibility === "public", false);
+      const result = await createChannel(inputValue, visibility === "public", false);
+      if (result?.error) {
+        setErrorMessage(result.error);
+        setValidInput(false);
+        return;
+      }
       setInputValue("");
       setIsOpen(false);
     } finally {
@@ -200,6 +205,7 @@ export default function CreateChannelPopup({
 
   const handleOpenChange = (newOpen: boolean) => {
     if (newOpen) setIsOpen(newOpen);
+    else handleClose();
   };
 
   const isInvalid = !!(inputValue && !validInput && errorMessage);

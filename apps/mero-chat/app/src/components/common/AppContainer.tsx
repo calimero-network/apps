@@ -85,6 +85,7 @@ interface AppContainerProps {
   onSearchMessages: (query: string) => Promise<void>;
   onLoadMoreSearch: () => Promise<void>;
   onClearSearch: () => void;
+  onSearchResultClick?: (contextId: string) => void;
 }
 function AppContainer({
   activeChat,
@@ -138,6 +139,7 @@ function AppContainer({
   onSearchMessages,
   onLoadMoreSearch,
   onClearSearch,
+  onSearchResultClick,
 }: AppContainerProps) {
   const [isSearchOverlayOpen, setIsSearchOverlayOpen] = useState(false);
 
@@ -232,6 +234,7 @@ function AppContainer({
                 onClearSearch={onClearSearch}
                 isSearchOverlayOpen={isSearchOverlayOpen}
                 onCloseSearchOverlay={() => setIsSearchOverlayOpen(false)}
+                onSearchResultClick={onSearchResultClick}
               />
             )}
             {isOpenSearchChannel && (
