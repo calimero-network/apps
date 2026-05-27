@@ -32,7 +32,7 @@
     "@calimero-network/mero-js": "^2.2.0",
     "@calimero-network/mero-react": "2.4.0",
     "@calimero-network/mero-ui": "1.4.0",
-    "@radix-ui/react-accordion": "^1.2.11",
+    "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-dialog": "^1.1.14",
     "@radix-ui/react-dropdown-menu": "^2.1.15",
     "@radix-ui/react-navigation-menu": "^1.2.13",
