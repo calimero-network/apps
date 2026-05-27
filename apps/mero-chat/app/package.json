@@ -83,7 +83,7 @@
     "vite": "^6.4.1",
     "vite-plugin-pwa": "^1.1.0",
     "vitest": "^4.0.18",
-    "workbox-window": "^7.3.0"
+    "workbox-window": "^7.4.1"
   },
   "optionalDependencies": {
     "@types/react": "^17.0.44"
