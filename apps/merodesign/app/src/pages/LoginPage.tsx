@@ -42,23 +42,26 @@ export default function LoginPage() {
         <h1 className={styles.title}>Connect to node</h1>
         <p className={styles.subtitle}>Enter your Calimero node URL and credentials.</p>
 
-        <label className={styles.label}>Node URL</label>
+        <label className={styles.label} htmlFor="login-node-url">Node URL</label>
         <input
+          id="login-node-url"
           className={styles.input}
           value={nodeUrl}
           onChange={(e) => setNodeUrl(e.target.value)}
           placeholder="http://localhost:2430"
         />
 
-        <label className={styles.label}>Username</label>
+        <label className={styles.label} htmlFor="login-username">Username</label>
         <input
+          id="login-username"
           className={styles.input}
           value={username}
           onChange={(e) => setUsername(e.target.value)}
         />
 
-        <label className={styles.label}>Password</label>
+        <label className={styles.label} htmlFor="login-password">Password</label>
         <input
+          id="login-password"
           className={styles.input}
           type="password"
           value={password}

@@ -1,17 +1,19 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useParams } from "react-router-dom";
+import { v4 as uuid } from "uuid";
 import { rpcCall } from "../api/rpc";
 import { useSse } from "../hooks/useSse";
 import { useCanvasStore } from "../store/canvasStore";
 import type { Element } from "../types";
 import Toolbar from "../components/Toolbar";
-import FabricCanvas from "../components/FabricCanvas";
+import FabricCanvas, { type FabricCanvasHandle } from "../components/FabricCanvas";
 import PropertiesPanel from "../components/PropertiesPanel";
 import styles from "./CanvasPage.module.css";
 
 export default function CanvasPage() {
   const { projectId } = useParams<{ projectId: string }>();
-  const { setElements, upsertElement, removeElement } = useCanvasStore();
+  const { setElements, upsertElement, removeElement, cacheImage, elements } = useCanvasStore();
+  const canvasRef = useRef<FabricCanvasHandle>(null);
 
   useEffect(() => {
     if (!projectId) return;
@@ -45,11 +47,54 @@ export default function CanvasPage() {
 
   useSse(projectId ?? null, handleSseEvent);
 
+  async function handleImageUpload(
+    _file: File,
+    dataUrl: string,
+    naturalWidth: number,
+    naturalHeight: number,
+  ) {
+    if (!projectId) return;
+
+    const maxW = 400;
+    const scale = naturalWidth > maxW ? maxW / naturalWidth : 1;
+    const w = Math.round(naturalWidth * scale);
+    const h = Math.round(naturalHeight * scale);
+
+    const el: Element = {
+      id: uuid(),
+      data: { kind: "Image", naturalWidth, naturalHeight },
+      x: 40,
+      y: 40,
+      width: w,
+      height: h,
+      rotation: 0,
+      fill: "transparent",
+      stroke: "transparent",
+      strokeWidth: 0,
+      opacity: 100,
+      layerIndex: elements.length,
+      createdBy: "",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    // Cache the data URL so FabricCanvas can render it immediately
+    cacheImage(el.id, dataUrl);
+    upsertElement(el);
+
+    await rpcCall(projectId, "add_element", { element: el }).catch(() => {});
+  }
+
   return (
     <div className={styles.root}>
-      <Toolbar contextId={projectId ?? ""} />
+      <Toolbar
+        contextId={projectId ?? ""}
+        onExportPng={() => canvasRef.current?.exportPng()}
+        onExportSvg={() => canvasRef.current?.exportSvg()}
+        onImageUpload={handleImageUpload}
+      />
       <div className={styles.workspace}>
-        <FabricCanvas contextId={projectId ?? ""} />
+        <FabricCanvas ref={canvasRef} contextId={projectId ?? ""} />
         <PropertiesPanel contextId={projectId ?? ""} />
       </div>
     </div>

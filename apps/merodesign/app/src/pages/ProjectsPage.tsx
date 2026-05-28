@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { adminGet, adminPost } from "../api/rpc";
+import InviteModal from "../components/InviteModal";
 import type { Project } from "../types";
 import styles from "./ProjectsPage.module.css";
 
@@ -11,6 +12,7 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
 
   useEffect(() => {
     if (!teamId) return;
@@ -28,11 +30,7 @@ export default function ProjectsPage() {
     try {
       const data = await adminPost<{ contextId?: string; id?: string }>(
         "/contexts",
-        {
-          groupId: teamId,
-          alias: newName.trim(),
-          initializationParams: [],
-        },
+        { groupId: teamId, alias: newName.trim(), initializationParams: [] },
       );
       const id = data.contextId ?? data.id ?? "";
       setProjects((prev) => [
@@ -48,10 +46,17 @@ export default function ProjectsPage() {
   return (
     <div className={styles.root}>
       <header className={styles.header}>
-        <button className={styles.back} onClick={() => navigate("/teams")}>
-          ← Teams
-        </button>
+        <button className={styles.back} onClick={() => navigate("/teams")}>← Teams</button>
         <span className={styles.logo}>MeroDesign</span>
+        <div className={styles.headerRight}>
+          <button
+            className={styles.inviteBtn}
+            onClick={() => setShowInvite(true)}
+            data-testid="invite-button"
+          >
+            + Invite member
+          </button>
+        </div>
       </header>
 
       <main className={styles.main}>
@@ -64,8 +69,14 @@ export default function ProjectsPage() {
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && createProject()}
+            data-testid="new-project-input"
           />
-          <button className={styles.btn} onClick={createProject} disabled={creating}>
+          <button
+            className={styles.btn}
+            onClick={createProject}
+            disabled={creating}
+            data-testid="create-project-btn"
+          >
             Create
           </button>
         </div>
@@ -73,16 +84,15 @@ export default function ProjectsPage() {
         {loading ? (
           <p className={styles.empty}>Loading…</p>
         ) : projects.length === 0 ? (
-          <p className={styles.empty}>No projects yet. Create one above.</p>
+          <p className={styles.empty} data-testid="empty-projects">No projects yet. Create one above.</p>
         ) : (
           <div className={styles.grid}>
             {projects.map((p) => (
               <button
                 key={p.contextId}
                 className={styles.card}
-                onClick={() =>
-                  navigate(`/teams/${teamId}/projects/${p.contextId}`)
-                }
+                data-testid={`project-card-${p.contextId}`}
+                onClick={() => navigate(`/teams/${teamId}/projects/${p.contextId}`)}
               >
                 <div className={styles.cardThumb} />
                 <span className={styles.cardName}>
@@ -93,6 +103,10 @@ export default function ProjectsPage() {
           </div>
         )}
       </main>
+
+      {showInvite && teamId && (
+        <InviteModal teamId={teamId} onClose={() => setShowInvite(false)} />
+      )}
     </div>
   );
 }

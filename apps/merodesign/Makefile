@@ -1,6 +1,6 @@
 .PHONY: help setup install build dev dev-node dev-node2 start stop \
         logic-build app-install app-build app-typecheck app-lint \
-        test unit e2e workflows workflows-no-build clean
+        test unit e2e e2e-ui workflows workflows-no-build logic-test clean
 
 # ── Help ───────────────────────────────────────────────────────────────────────
 
@@ -93,15 +93,24 @@ e2e:
 
 test: unit e2e
 
+e2e-ui:
+	cd app && pnpm exec playwright test --ui --project=mocked
+
 WORKFLOW_FILES := \
 	workflows/e2e.yml \
 	workflows/integration-setup.yml
+
+LOGIC_TEST_FILES := \
+	workflows/logic-test.yml
 
 workflows: logic-build
 	@bash scripts/workflows.sh $(WORKFLOW_FILES)
 
 workflows-no-build:
 	@bash scripts/workflows.sh $(WORKFLOW_FILES)
+
+logic-test: logic-build
+	@bash scripts/workflows.sh $(LOGIC_TEST_FILES)
 
 # ── Stop dev nodes ─────────────────────────────────────────────────────────────
 
