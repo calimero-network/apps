@@ -45,7 +45,6 @@ export function FolderContextMenu({
   const {
     namespaceId,
     rootGroupId,
-    folders,
     registryClient,
     applicationId,
     refetch,
@@ -54,10 +53,6 @@ export function FolderContextMenu({
   const ops = useFolderOperations(
     registryClient,
     rootGroupId,
-    folders.map((f) => ({
-      id: f.id,
-      parent_id: f.parent_id,
-    })),
     applicationId,
     refetch,
   );

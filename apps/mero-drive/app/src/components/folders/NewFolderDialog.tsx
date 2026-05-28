@@ -14,6 +14,8 @@ import { MAX_ALIAS_LENGTH, MAX_FOLDER_DEPTH } from '@/constants/config';
 import { depthOf } from '@/utils/ancestry';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderOperations } from '@/hooks/useFolderOperations';
+import { MemberPicker } from '@/components/common/MemberPicker';
+import { MemberLabel } from '@/components/common/MemberLabel';
 
 // Curated preset palette. Tailwind 500-tints — readable against both
 // light and dark surfaces. Keeping this short on purpose: the UX goal
@@ -35,18 +37,15 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
   const {
     namespaceId,
     rootGroupId,
-    folders,
+    allFolderNodes,
     registryClient,
     applicationId,
     refetch,
+    selfIdentity,
   } = useDriveWorkspace();
   const ops = useFolderOperations(
     registryClient,
     rootGroupId,
-    folders.map((f) => ({
-      id: f.id,
-      parent_id: f.parent_id,
-    })),
     applicationId,
     refetch,
   );
@@ -57,14 +56,17 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
   // parent-walk (PR #2261). Switch to Restricted for explicit-invite
   // folders.
   const [visibility, setVisibility] = useState<'Open' | 'Restricted'>('Open');
+  // Identities to add immediately (Restricted folders only). The
+  // creator is already the group admin, so exclude self from the picker.
+  const [members, setMembers] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const parentDepth = parentFolderId
-    ? depthOf(
-        folders.map((f) => ({ id: f.id, parent_id: f.parent_id })),
-        parentFolderId,
-      )
+    ? // Use the COMPLETE tree (not the visibility-filtered `folders`) so
+      // a hidden ancestor can't make depthOf undercount and bypass the
+      // MAX_FOLDER_DEPTH cap.
+      depthOf(allFolderNodes, parentFolderId)
     : -1; // nothing parents a root-level folder; depth below is 0
   const newDepth = parentDepth + 1;
   const atDepthCap = newDepth >= MAX_FOLDER_DEPTH;
@@ -103,6 +105,9 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
         alias,
         color: color || null,
         visibility,
+        // Open folders inherit members from the namespace, so only
+        // Restricted folders carry an explicit member list.
+        members: visibility === 'Restricted' ? members : [],
       });
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
@@ -233,6 +238,54 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
                 })}
               </div>
             </div>
+            {visibility === 'Restricted' && (
+              <div className="block text-sm">
+                <span className="mb-1 block text-muted-foreground">
+                  Members (added now)
+                </span>
+                <MemberPicker
+                  namespaceId={namespaceId}
+                  exclude={[
+                    ...members,
+                    ...(selfIdentity ? [selfIdentity] : []),
+                  ]}
+                  disabled={submitting}
+                  ariaLabel="Add member to folder"
+                  onSelect={(identity) =>
+                    setMembers((prev) =>
+                      prev.includes(identity) ? prev : [...prev, identity],
+                    )
+                  }
+                />
+                {members.length > 0 && (
+                  <ul className="mt-2 flex flex-wrap gap-1.5">
+                    {members.map((m) => (
+                      <li
+                        key={m}
+                        className="flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-xs"
+                      >
+                        <MemberLabel
+                          namespaceId={namespaceId}
+                          memberId={m}
+                          className="truncate"
+                        />
+                        <button
+                          type="button"
+                          aria-label={`Remove ${m}`}
+                          disabled={submitting}
+                          onClick={() =>
+                            setMembers((prev) => prev.filter((x) => x !== m))
+                          }
+                          className="text-muted-foreground hover:text-foreground"
+                        >
+                          ×
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
             {error && <p className="text-xs text-destructive">{error}</p>}
           </div>
         )}

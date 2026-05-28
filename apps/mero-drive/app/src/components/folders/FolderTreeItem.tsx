@@ -48,15 +48,11 @@ export function FolderTreeItem({
   // catch it and the rename runs twice.
   const submitRenameInFlightRef = useRef(false);
 
-  const { rootGroupId, folders, registryClient, applicationId, refetch } =
+  const { rootGroupId, registryClient, applicationId, refetch } =
     useDriveWorkspace();
   const ops = useFolderOperations(
     registryClient,
     rootGroupId,
-    folders.map((f) => ({
-      id: f.id,
-      parent_id: f.parent_id,
-    })),
     applicationId,
     refetch,
   );

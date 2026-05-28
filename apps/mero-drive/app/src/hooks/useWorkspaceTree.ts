@@ -61,10 +61,16 @@ export function mergeAdminAndRegistry(
   registry: RegistryFolderShape[],
   rootId: string,
   visibilityById?: Map<string, 'Open' | 'Restricted'>,
+  // Folder ids the current caller is NOT allowed to see (their
+  // per-folder getGroupInfo came back access-denied — core rejects
+  // non-members of a restricted subgroup). Restricted folders the
+  // caller isn't a member of land here and are dropped from the tree
+  // entirely, so they never appear in the rail.
+  hiddenIds?: Set<string>,
 ): { folders: MergedFolder[] } {
   const adminById = new Map(admin.map((a) => [a.groupId, a]));
   const folders: MergedFolder[] = registry
-    .filter((r) => r.id !== rootId)
+    .filter((r) => r.id !== rootId && !(hiddenIds?.has(r.id) ?? false))
     .map((r) => {
       const a = adminById.get(r.id);
       // Preference order: admin-API `name` (authoritative — core

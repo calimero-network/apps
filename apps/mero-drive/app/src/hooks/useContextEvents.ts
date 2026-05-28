@@ -23,6 +23,25 @@ import {
   type SseEventData,
 } from '@calimero-network/mero-react';
 
+export interface UseContextEventsOptions {
+  /**
+   * When true, `onChange` fires ONLY for events whose `event.contextId`
+   * is one of `contextIds`. Default false (legacy behaviour: fire on
+   * every delivered event, regardless of which context mutated).
+   *
+   * Use this for consumers that genuinely only care about *their own*
+   * contexts' state mutations — most notably the workspace hook, which
+   * only needs the registry context's dings and should ignore docs-box
+   * dings from an open editor (otherwise every autosave triggers a full
+   * workspace refetch + getGroupInfo fan-out).
+   *
+   * Do NOT enable this for consumers that rely on reacting to *any*
+   * event because the signal they need (e.g. a governance membership
+   * change) never dings a box they subscribe to — see useMemberCaps.
+   */
+  strict?: boolean;
+}
+
 export function useContextEvents(
   contextIds:
     | ReadonlyArray<string | null | undefined>
@@ -30,6 +49,7 @@ export function useContextEvents(
     | null
     | undefined,
   onChange: () => void,
+  options?: UseContextEventsOptions,
 ): void {
   // Normalise + sort the id set inline. Computing on every render is
   // cheap (≤ a handful of strings) and lets mero-react's
@@ -45,11 +65,22 @@ export function useContextEvents(
   }
   ids.sort();
 
+  const strict = options?.strict ?? false;
+  // Stable, comparable key for the id set — context ids are hex/base58
+  // so a comma separator never collides. Used as the callback dep
+  // (the `ids` array is a fresh reference each render) and to rebuild
+  // the allow-set inside the handler without capturing the array.
+  const idsKey = ids.join(',');
+
   const handler = useCallback(
-    (_event: SseEventData) => {
+    (event: SseEventData) => {
+      if (strict) {
+        const allowed = idsKey.length > 0 ? idsKey.split(',') : [];
+        if (!event || !allowed.includes(event.contextId)) return;
+      }
       onChange();
     },
-    [onChange],
+    [onChange, strict, idsKey],
   );
 
   useSubscription(ids, handler);

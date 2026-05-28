@@ -50,3 +50,35 @@ describe('mergeAdminAndRegistry', () => {
     expect(a?.alias).toMatch(/^folder-/);
   });
 });
+
+describe('mergeAdminAndRegistry hiddenIds', () => {
+  const root = 'root-group';
+  const reg = [
+    { id: 'f-open', parent_id: null, color: null },
+    { id: 'f-secret', parent_id: null, color: null },
+  ];
+
+  it('excludes folders whose id is in hiddenIds', () => {
+    const { folders } = mergeAdminAndRegistry(
+      [],
+      reg,
+      root,
+      new Map([
+        ['f-open', 'Open'],
+        ['f-secret', 'Restricted'],
+      ]),
+      new Set(['f-secret']),
+    );
+    expect(folders.map((f) => f.id)).toEqual(['f-open']);
+  });
+
+  it('keeps every folder when hiddenIds is undefined (back-compat)', () => {
+    const { folders } = mergeAdminAndRegistry([], reg, root);
+    expect(folders.map((f) => f.id).sort()).toEqual(['f-open', 'f-secret']);
+  });
+
+  it('keeps every folder when hiddenIds is empty', () => {
+    const { folders } = mergeAdminAndRegistry([], reg, root, undefined, new Set());
+    expect(folders.map((f) => f.id).sort()).toEqual(['f-open', 'f-secret']);
+  });
+});

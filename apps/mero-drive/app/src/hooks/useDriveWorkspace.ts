@@ -69,6 +69,7 @@ import {
   MAX_ALIAS_LENGTH,
   REGISTRY_SERVICE_ID,
 } from '@/constants/config';
+import { isAccessDeniedError } from '@/utils/accessDenied';
 
 /** Persisted-namespace localStorage key. Exported so other call sites
  *  (e.g. WorkspacePage's logout cleanup) can clear the same key without
@@ -178,6 +179,13 @@ export interface DriveWorkspaceState {
   registryContextId: string | null;
   registryClient: RegistryClient | null;
   folders: MergedFolder[];
+  /** The COMPLETE folder tree shape (id + parent_id) straight from the
+   *  registry — NOT filtered by visibility like `folders`. Use this for
+   *  structural operations that must see hidden/unresolved folders too,
+   *  e.g. depth-cap checks: filtering would drop a hidden ancestor and
+   *  undercount depth. (Deletion reads the tree directly from the
+   *  registry for the same reason.) */
+  allFolderNodes: { id: string; parent_id: string | null }[];
   /** Registry owner/managers — fetched once here, read by
    *  `useRegistryAdmin()` and `useFolderPermissions`. */
   registryAdmin: RegistryAdminSlice;
@@ -583,13 +591,47 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   const [visibilities, setVisibilities] = useState<
     Map<string, 'Open' | 'Restricted'>
   >(new Map());
+  // Folders the caller may NOT see — their getGroupInfo came back
+  // "not a member" (core rejects non-members of restricted subgroups,
+  // crates/context/.../get_group_info.rs). These are filtered out of
+  // the rail. A folder leaves this set automatically once the caller
+  // is added: the SSE-driven refetch re-runs this fan-out and the
+  // getGroupInfo then succeeds. Only a *definitive* access-denied
+  // hides a folder; transient (5xx/network) errors keep it visible.
+  const [hiddenFolderIds, setHiddenFolderIds] = useState<Set<string>>(
+    new Set(),
+  );
+  // Folders whose access has been *resolved* by the fan-out below
+  // (getGroupInfo settled — success, access-denied, or transient).
+  // The folder list is gated on this so a restricted folder the caller
+  // can't see never flashes in the rail during the async window before
+  // hiddenFolderIds is populated (the fan-out is NOT part of the
+  // `loading`/`stage` derivation, so without this gate the rail renders
+  // with a stale/empty hidden set on initial load + namespace switch).
+  const [resolvedFolderIds, setResolvedFolderIds] = useState<Set<string>>(
+    new Set(),
+  );
+  // Always-current namespace, read inside the fan-out's async tail. The
+  // fan-out effect doesn't depend on selectedNsId, so on a namespace
+  // switch an in-flight fan-out from the OLD namespace could resolve
+  // *after* the clear effect below runs and repopulate resolvedFolderIds
+  // with stale ids. Comparing the namespace captured at fan-out start
+  // against this ref lets us drop such a stale resolution.
+  const selectedNsIdRef = useRef(selectedNsId);
+  selectedNsIdRef.current = selectedNsId;
   const [aliasRevision, setAliasRevision] = useState(0);
   useEffect(() => {
     if (!mero) return;
     const ids = regFolders.map((f) => f.id);
+    // Capture via the ref (not a direct `selectedNsId` read) so this
+    // stays out of the dependency array — the effect intentionally
+    // re-runs on regFolders/aliasRevision, not on namespace.
+    const nsAtStart = selectedNsIdRef.current;
     if (ids.length === 0) {
       setAliases(new Map());
       setVisibilities(new Map());
+      setHiddenFolderIds(new Set());
+      setResolvedFolderIds(new Set());
       return;
     }
     let alive = true;
@@ -603,15 +645,22 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
                 id,
                 info?.metadata?.name ?? null,
                 info?.subgroupVisibility ?? null,
+                false, // not access-denied
               ] as const,
           )
-          .catch(() => [id, null, null] as const),
+          .catch((e) => [id, null, null, isAccessDeniedError(e)] as const),
       ),
     ).then((entries) => {
-      if (!alive) return;
+      // Drop the result if this effect was torn down, OR if the active
+      // namespace changed while the fan-out was in flight — otherwise a
+      // stale old-namespace batch would repopulate resolvedFolderIds
+      // after the namespace-switch clear effect.
+      if (!alive || selectedNsIdRef.current !== nsAtStart) return;
       const nextAliases = new Map<string, string>();
       const nextVis = new Map<string, 'Open' | 'Restricted'>();
-      for (const [id, alias, vis] of entries) {
+      const nextHidden = new Set<string>();
+      for (const [id, alias, vis, denied] of entries) {
+        if (denied) nextHidden.add(id);
         if (alias) nextAliases.set(id, alias);
         // Server returns lowercase ("open" / "restricted") per core
         // PR #2261; accept both casings so the toggle's optimistic
@@ -626,6 +675,11 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       }
       setAliases(nextAliases);
       setVisibilities(nextVis);
+      setHiddenFolderIds(nextHidden);
+      // Mark every folder in this batch resolved. Updated atomically on
+      // completion so a re-fan (e.g. SSE refetch with the same ids)
+      // keeps the previous resolved set applied meanwhile — no flicker.
+      setResolvedFolderIds(new Set(ids));
     });
     return () => {
       alive = false;
@@ -633,6 +687,15 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     // aliasRevision is intentional — bumping it forces this effect to
     // re-run after a rename even if regFolders is referentially stable.
   }, [mero, regFolders, aliasRevision]);
+
+  // Re-arm the first-paint gate on namespace switch: clear the resolved
+  // set so the new workspace's folders aren't rendered (with a stale
+  // hidden set) before their access is known. Keyed on selectedNsId
+  // ONLY — a same-namespace SSE refetch must not reset this, or the rail
+  // would blank on every event.
+  useEffect(() => {
+    setResolvedFolderIds(new Set());
+  }, [selectedNsId]);
 
   // --- Merge admin subgroups with registry metadata ---
   // Registry is the source of truth for existence + tree shape;
@@ -652,9 +715,37 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         name: aliasFromCache ?? nameFromSubgroups,
       };
     });
-    return mergeAdminAndRegistry(admin, regFolders, rootGroupId, visibilities)
-      .folders;
-  }, [rootGroupId, subgroups, regFolders, aliases, visibilities]);
+    return mergeAdminAndRegistry(
+      admin,
+      regFolders,
+      rootGroupId,
+      visibilities,
+      hiddenFolderIds,
+      // Gate: only surface folders whose access the fan-out has
+      // resolved, so a restricted folder never flashes before
+      // hiddenFolderIds is known. Already-resolved folders persist in
+      // resolvedFolderIds across re-fans, so when a new folder arrives
+      // only that folder is withheld until it resolves — the existing
+      // rows keep rendering, never blanked.
+    ).folders.filter((f) => resolvedFolderIds.has(f.id));
+  }, [
+    rootGroupId,
+    subgroups,
+    regFolders,
+    aliases,
+    visibilities,
+    hiddenFolderIds,
+    resolvedFolderIds,
+  ]);
+
+  // Complete, UNFILTERED tree shape (id + parent_id) for structural
+  // operations that must account for hidden/unresolved folders — e.g.
+  // the new-folder depth cap, which would undercount through a hidden
+  // ancestor if it used the filtered `folders` above.
+  const allFolderNodes = useMemo(
+    () => regFolders.map((f) => ({ id: f.id, parent_id: f.parent_id })),
+    [regFolders],
+  );
 
   // --- Selected folder (UI-only, not persisted) ---
   const [selectedFolderId, setSelectedFolderState] = useState<string | null>(null);
@@ -837,7 +928,19 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   const onWorkspaceEvent = useCallback(() => {
     void refetch();
   }, [refetch]);
-  useContextEvents([selectedNsId, registryContextId], onWorkspaceEvent);
+  // `strict`: only refetch the workspace for mutations of the contexts
+  // it actually owns — the namespace + the registry. Folder structure
+  // (create / color / role) writes the registry, so those still ding
+  // here. What this filters OUT is docs-context mutations: editing a
+  // doc fires rapid state-DAG events on that folder's docs context, and
+  // without this every autosave triggered a full workspace refetch +
+  // a getGroupInfo fan-out over every folder (500-ing on the restricted
+  // ones the caller can't read). The workspace never needs doc-content
+  // events, and being added to a folder is governance (never an SSE
+  // ding anyway), so filtering these doesn't change the un-hide path.
+  useContextEvents([selectedNsId, registryContextId], onWorkspaceEvent, {
+    strict: true,
+  });
 
   // --- Post-join sync gate ---
   // If the active namespace was freshly joined in this session,
@@ -903,6 +1006,18 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     setJustJoinedTick((t) => t + 1);
   }, [selectedNsId, isJustJoined, registryContextId, regFoldersLoadedForNs]);
 
+  // First-paint gate: we have folders to show but NONE have been
+  // resolved by the getGroupInfo fan-out yet. Keep the rail in
+  // "Loading folders…" rather than rendering an empty (and potentially
+  // leaky) list. This fires only on the *initial* paint of a folder set
+  // — on first load and on namespace switch (the effect above clears
+  // resolvedFolderIds keyed on selectedNsId). It does NOT fire when a
+  // single new folder arrives mid-session: resolvedFolderIds is already
+  // non-empty then, so the memo's `.filter` keeps the existing rows
+  // visible while only the new folder is withheld until it resolves.
+  const awaitingFirstFolderResolve =
+    regFolders.length > 0 && resolvedFolderIds.size === 0;
+
   // --- Stage derivation for loading-indicator UX ---
   let stage: DriveLoadingStage = 'ready';
   if (authLoading) stage = 'awaiting-auth';
@@ -913,6 +1028,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     stage = isJustJoined ? 'syncing-from-peers' : 'resolving-registry-context';
   else if (subLoading) stage = 'loading-subgroups';
   else if (regLoading) stage = 'loading-folders';
+  else if (awaitingFirstFolderResolve) stage = 'loading-folders';
   else if (isJustJoined && regFoldersLoadedForNs !== selectedNsId)
     stage = 'syncing-from-peers';
 
@@ -938,6 +1054,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     registryContextId,
     registryClient,
     folders,
+    allFolderNodes,
     registryAdmin,
 
     selectedFolderId,

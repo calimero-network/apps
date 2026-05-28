@@ -19,6 +19,7 @@ import {
   useDeleteGroup,
   useSetGroupMetadata,
   useSetSubgroupVisibility,
+  useAddGroupMembers,
   useMero,
 } from '@calimero-network/mero-react';
 import type { RegistryClient } from '../api/registry/RegistryClient';
@@ -34,11 +35,11 @@ export interface CreateFolderInput {
   /** 'Open' = namespace members inherit access (the default).
    *  'Restricted' = explicit invite required (per-subgroup wall). */
   visibility: 'Open' | 'Restricted';
-}
-
-export interface FolderTreeNode {
-  id: string;
-  parent_id: string | null;
+  /** Identities to add to the new subgroup immediately (Restricted
+   *  folders only — Open folders inherit members from the namespace).
+   *  Added best-effort as the final create step; a failure here does
+   *  NOT roll back the folder. */
+  members?: string[];
 }
 
 export interface FolderOperations {
@@ -51,7 +52,6 @@ export interface FolderOperations {
 export function useFolderOperations(
   registryClient: RegistryClient | null,
   rootGroupId: string | null,
-  tree: FolderTreeNode[],
   applicationId: string | null,
   // Called after a successful create/rename/remove to refresh the
   // workspace's cached subgroup list and registry folders. Without
@@ -65,6 +65,7 @@ export function useFolderOperations(
   const { deleteGroup } = useDeleteGroup();
   const { setGroupMetadata } = useSetGroupMetadata();
   const { setSubgroupVisibility } = useSetSubgroupVisibility();
+  const { addGroupMembers } = useAddGroupMembers();
   const { nodeUrl } = useMero();
 
   const create = useCallback(
@@ -93,6 +94,10 @@ export function useFolderOperations(
       let createdGroupId: string | null = null;
       let createdContextId: string | null = null;
       let registryEntryCreated = false;
+      // Flips true once the folder + docs context exist and are bound.
+      // Past this point a failure (e.g. adding members) must NOT roll
+      // back a perfectly good folder — it should surface instead.
+      let folderReady = false;
 
       try {
         // Step ordering is load-bearing for Open subgroups. Core
@@ -160,14 +165,14 @@ export function useFolderOperations(
           folder_id: newId,
           context_id: ctx.contextId,
         });
-
-        await refetch();
-        return newId;
+        folderReady = true;
       } catch (err) {
-        // Reverse in the opposite order of creation. Each cleanup is
-        // try/catch-wrapped and logged so a single cleanup failure
-        // doesn't mask the original error — the caller still sees
-        // the real cause via the outer rethrow.
+        // Only genuine *creation-step* failures reach here (everything
+        // up to and including bindFolderContext). Roll back the
+        // half-built folder, reversing creation order. Each cleanup is
+        // try/catch-wrapped and logged so one cleanup failure doesn't
+        // mask the original error — the caller still sees the real
+        // cause via the outer rethrow.
         if (registryEntryCreated && createdGroupId) {
           await registryClient
             .unregisterFolder({ id: createdGroupId })
@@ -185,6 +190,39 @@ export function useFolderOperations(
         }
         throw err;
       }
+
+      // --- Post-creation, best-effort (folder is fully built here) ---
+      // These steps must NOT throw: a throw propagates to the dialog,
+      // which keeps it open with "Create" re-enabled — letting the user
+      // resubmit and create a DUPLICATE folder. The folder is already
+      // valid, so on failure we log loudly (the role must be a core
+      // MemberRole variant — `Member`, not `member` — which silently
+      // broke adds before) and let the dialog close. Missing members
+      // can be re-added from the folder's sharing panel.
+      if (folderReady && createdGroupId) {
+        if (input.members && input.members.length > 0) {
+          try {
+            await addGroupMembers(createdGroupId, {
+              members: input.members.map((identity) => ({
+                identity,
+                role: 'Member',
+              })),
+            });
+          } catch (e) {
+            console.error(
+              '[create] addGroupMembers failed (folder kept; add via sharing panel)',
+              e,
+            );
+          }
+        }
+        await refetch().catch((e) =>
+          console.error('[create] post-create refetch failed', e),
+        );
+        return createdGroupId;
+      }
+      // Unreachable in practice (a creation failure rethrows above), but
+      // keeps the function total for TypeScript.
+      throw new Error('folder creation did not complete');
     },
     [
       registryClient,
@@ -195,6 +233,7 @@ export function useFolderOperations(
       createGroupInNamespace,
       setGroupMetadata,
       setSubgroupVisibility,
+      addGroupMembers,
       createContext,
       deleteContext,
       deleteGroup,
@@ -215,6 +254,19 @@ export function useFolderOperations(
   const remove = useCallback(
     async (folderId: string) => {
       if (!registryClient) throw new Error('registry not ready');
+      // Compute the cascade from the COMPLETE registry tree, not a
+      // display list. The workspace `folders` list is filtered to what
+      // the caller can see (hidden restricted folders are dropped), so
+      // using it here would miss a hidden restricted child under a
+      // visible parent — `descendantsOf` wouldn't enumerate it, and
+      // `deleteGroup(parent)` would then fail server-side ("live
+      // subgroups"). The registry owns the authoritative tree shape, so
+      // re-read it here.
+      const all = await registryClient.getFolders();
+      const tree = all.map((f) => ({
+        id: f.id,
+        parent_id: f.parent_id ?? null,
+      }));
       // `descendantsOf` from utils/ancestry already returns leaf-first
       // (post-order) — deepest first, root last — which is exactly
       // what the admin API's "no deletes with live subgroups"
@@ -246,7 +298,7 @@ export function useFolderOperations(
       }
       await refetch();
     },
-    [registryClient, tree, deleteGroup, deleteContext, refetch],
+    [registryClient, deleteGroup, deleteContext, refetch],
   );
 
   return { create, rename, remove };
