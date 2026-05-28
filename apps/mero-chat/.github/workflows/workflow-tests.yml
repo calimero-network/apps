@@ -58,7 +58,7 @@ jobs:
           cp target/wasm32-unknown-unknown/app-release/curb.wasm res/
 
       - name: Install merobox
-        run: pip install merobox==0.6.18 && merobox --version
+        run: pip install merobox==0.6.24 && merobox --version
 
       - name: Run E2E workflow (3-node)
         working-directory: workflows
