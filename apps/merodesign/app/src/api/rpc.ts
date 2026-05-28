@@ -54,3 +54,18 @@ export async function adminPost<T>(
   );
   return res.data.data ?? (res.data as T);
 }
+
+export async function adminPut<T>(
+  path: string,
+  body: Record<string, unknown>,
+): Promise<T> {
+  const { nodeUrl, accessToken } = useAuthStore.getState();
+  const res = await axios.put<RpcResponse<T>>(
+    `${nodeUrl}/admin-api${path}`,
+    body,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  return res.data.data ?? (res.data as T);
+}

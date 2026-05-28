@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { adminGet, adminPost } from "../api/rpc";
+import { adminGet, adminPost, adminPut } from "../api/rpc";
 import { useAuthStore } from "../store/authStore";
 import Logo from "../components/Logo";
 import InviteModal from "../components/InviteModal";
@@ -10,7 +10,7 @@ import styles from "./ProjectsPage.module.css";
 export default function ProjectsPage() {
   const { teamId } = useParams<{ teamId: string }>();
   const navigate = useNavigate();
-  const { clearAuth } = useAuthStore();
+  const { clearAuth, applicationId } = useAuthStore();
 
   function handleLogout() {
     clearAuth();
@@ -24,11 +24,25 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     if (!teamId) return;
-    adminGet<{ contexts?: Project[]; items?: Project[] }>(
-      `/groups/${teamId}/contexts`,
+    // Try namespace-level contexts endpoint; fall back to group-level
+    adminGet<{ contexts?: Project[]; items?: Project[] } | Project[]>(
+      `/namespaces/${teamId}/contexts`,
     )
-      .then((data) => setProjects(data.contexts ?? data.items ?? []))
-      .catch(() => setProjects([]))
+      .then((data) => {
+        const arr = Array.isArray(data)
+          ? data
+          : (data as { contexts?: Project[]; items?: Project[] }).contexts
+            ?? (data as { contexts?: Project[]; items?: Project[] }).items
+            ?? [];
+        setProjects(arr);
+      })
+      .catch(() =>
+        adminGet<{ contexts?: Project[]; items?: Project[] }>(
+          `/groups/${teamId}/contexts`,
+        )
+          .then((d) => setProjects(d.contexts ?? d.items ?? []))
+          .catch(() => setProjects([]))
+      )
       .finally(() => setLoading(false));
   }, [teamId]);
 
@@ -36,14 +50,35 @@ export default function ProjectsPage() {
     if (!newName.trim() || !teamId) return;
     setCreating(true);
     try {
-      const data = await adminPost<{ contextId?: string; id?: string }>(
-        "/contexts",
-        { groupId: teamId, alias: newName.trim(), initializationParams: [] },
+      // 1. Create a public subgroup within the namespace
+      const sgData = await adminPost<{ groupId?: string; group_id?: string; id?: string }>(
+        `/namespaces/${teamId}/groups`,
+        { groupAlias: newName.trim() },
       );
-      const id = data.contextId ?? data.id ?? "";
+      const subgroupId = sgData.groupId ?? sgData.group_id ?? sgData.id ?? "";
+
+      // 2. Set visibility to open (best-effort)
+      if (subgroupId) {
+        await adminPut(`/groups/${subgroupId}/settings/subgroup-visibility`, {
+          subgroupVisibility: "open",
+        }).catch(() => {});
+      }
+
+      // 3. Create context within the subgroup
+      const ctxData = await adminPost<{ contextId?: string; id?: string }>(
+        "/contexts",
+        {
+          applicationId,
+          protocol: "near",
+          groupId: subgroupId || teamId,
+          alias: newName.trim(),
+          initializationParams: [],
+        },
+      );
+      const id = ctxData.contextId ?? ctxData.id ?? "";
       setProjects((prev) => [
         ...prev,
-        { contextId: id, name: newName.trim(), description: "", isPublic: false },
+        { contextId: id, name: newName.trim(), description: "", isPublic: true },
       ]);
       setNewName("");
     } finally {
