@@ -1,5 +1,5 @@
-.PHONY: help setup install build dev dev-node dev-node2 start stop \
-        logic-build app-install app-build app-typecheck app-lint \
+.PHONY: help setup install build bundle dev dev-node dev-node2 start stop \
+        logic-build logic-bundle app-install app-build app-typecheck app-lint \
         test unit e2e e2e-ui workflows workflows-no-build logic-test clean
 
 # ── Help ───────────────────────────────────────────────────────────────────────
@@ -17,6 +17,7 @@ help:
 	@echo "  Build"
 	@echo "    build          Build Rust WASM logic + frontend"
 	@echo "    logic-build    Compile logic/src → logic/res/merodesign.wasm"
+	@echo "    bundle         Build WASM + create .mpk release bundle"
 	@echo "    app-build      Bundle frontend (dist/)"
 	@echo ""
 	@echo "  Dev"
@@ -55,6 +56,11 @@ install: app-install
 
 logic-build:
 	cd logic && ./build.sh
+
+logic-bundle:
+	cd logic && ./build-bundle.sh
+
+bundle: logic-bundle
 
 app-install:
 	cd app && pnpm install
