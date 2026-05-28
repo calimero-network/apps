@@ -5,7 +5,8 @@ interface AuthState {
   nodeUrl: string;
   accessToken: string;
   refreshToken: string;
-  setAuth: (nodeUrl: string, accessToken: string, refreshToken: string) => void;
+  applicationId: string;
+  setAuth: (nodeUrl: string, accessToken: string, refreshToken: string, applicationId: string) => void;
   clearAuth: () => void;
   isAuthenticated: () => boolean;
 }
@@ -16,9 +17,10 @@ export const useAuthStore = create<AuthState>()(
       nodeUrl: "",
       accessToken: "",
       refreshToken: "",
-      setAuth: (nodeUrl, accessToken, refreshToken) =>
-        set({ nodeUrl, accessToken, refreshToken }),
-      clearAuth: () => set({ nodeUrl: "", accessToken: "", refreshToken: "" }),
+      applicationId: "",
+      setAuth: (nodeUrl, accessToken, refreshToken, applicationId) =>
+        set({ nodeUrl, accessToken, refreshToken, applicationId }),
+      clearAuth: () => set({ nodeUrl: "", accessToken: "", refreshToken: "", applicationId: "" }),
       isAuthenticated: () => Boolean(get().accessToken && get().nodeUrl),
     }),
     { name: "merodesign-auth" },

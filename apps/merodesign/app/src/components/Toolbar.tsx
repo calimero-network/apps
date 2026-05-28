@@ -2,6 +2,7 @@ import { useRef } from "react";
 import { useCanvasStore, type Background } from "../store/canvasStore";
 import { fileToDataUrl } from "../utils/export";
 import { getImageDimensions } from "../utils/image";
+import Logo from "./Logo";
 import styles from "./Toolbar.module.css";
 
 const TOOLS = [
@@ -22,12 +23,14 @@ const BG_OPTIONS: { value: Background; label: string; style: string }[] = [
 
 interface Props {
   contextId: string;
+  onBack: () => void;
+  onLogout: () => void;
   onExportPng: () => void;
   onExportSvg: () => void;
   onImageUpload: (file: File, dataUrl: string, width: number, height: number) => void;
 }
 
-export default function Toolbar({ contextId: _contextId, onExportPng, onExportSvg, onImageUpload }: Props) {
+export default function Toolbar({ contextId: _contextId, onBack, onLogout, onExportPng, onExportSvg, onImageUpload }: Props) {
   const { activeTool, setTool, background, setBackground } = useCanvasStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -42,7 +45,8 @@ export default function Toolbar({ contextId: _contextId, onExportPng, onExportSv
 
   return (
     <div className={styles.bar}>
-      <span className={styles.logo}>MeroDesign</span>
+      <button className={styles.backBtn} onClick={onBack} title="Back to projects">←</button>
+      <span className={styles.logo}><Logo size={20} /> MeroDesign</span>
 
       <div className={styles.divider} />
 
@@ -100,6 +104,10 @@ export default function Toolbar({ contextId: _contextId, onExportPng, onExportSv
           SVG
         </button>
       </div>
+
+      <div className={styles.spacer} />
+
+      <button className={styles.logoutBtn} onClick={onLogout} title="Logout">Logout</button>
 
       <input
         ref={fileInputRef}

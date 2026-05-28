@@ -14,7 +14,7 @@
     "e2e:ui": "playwright test --ui --project=mocked"
   },
   "dependencies": {
-    "@calimero-network/mero-js": "^2.2.0",
+    "@calimero-network/mero-js": "^2.2.1",
     "@calimero-network/mero-react": "2.4.0",
     "@calimero-network/mero-ui": "1.4.0",
     "fabric": "^6.6.1",

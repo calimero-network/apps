@@ -1,19 +1,35 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { adminGet, adminPost } from "../api/rpc";
+import { useAuthStore } from "../store/authStore";
+import Logo from "../components/Logo";
 import type { Team } from "../types";
 import styles from "./TeamsPage.module.css";
 
+type NamespaceRaw = {
+  namespaceId?: string;
+  groupId?: string;
+  alias?: string;
+  name?: string;
+};
+
 export default function TeamsPage() {
   const navigate = useNavigate();
+  const { applicationId, clearAuth } = useAuthStore();
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
 
   useEffect(() => {
-    adminGet<{ groups?: Team[]; namespaces?: Team[] }>("/namespaces")
-      .then((data) => setTeams(data.groups ?? data.namespaces ?? []))
+    adminGet<NamespaceRaw[]>("/namespaces")
+      .then((items) => {
+        const arr = Array.isArray(items) ? items : [];
+        setTeams(arr.map((n) => ({
+          groupId: n.namespaceId ?? n.groupId ?? "",
+          name: n.alias ?? n.name ?? "",
+        })));
+      })
       .catch(() => setTeams([]))
       .finally(() => setLoading(false));
   }, []);
@@ -24,7 +40,11 @@ export default function TeamsPage() {
     try {
       const data = await adminPost<{ namespaceId?: string; groupId?: string }>(
         "/namespaces",
-        { alias: newName.trim() },
+        {
+          applicationId,
+          alias: newName.trim(),
+          upgradePolicy: "LazyOnAccess",
+        },
       );
       const id = data.namespaceId ?? data.groupId ?? "";
       setTeams((prev) => [...prev, { groupId: id, name: newName.trim() }]);
@@ -34,10 +54,18 @@ export default function TeamsPage() {
     }
   }
 
+  function handleLogout() {
+    clearAuth();
+    navigate("/login");
+  }
+
   return (
     <div className={styles.root}>
       <header className={styles.header}>
-        <span className={styles.logo}>MeroDesign</span>
+        <span className={styles.logo}><Logo size={24} /> MeroDesign</span>
+        <div className={styles.headerRight}>
+          <button className={styles.logoutBtn} onClick={handleLogout}>Logout</button>
+        </div>
       </header>
 
       <main className={styles.main}>

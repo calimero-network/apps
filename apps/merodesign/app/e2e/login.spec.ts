@@ -5,10 +5,12 @@ test.describe("Login page", () => {
     await page.goto("/login");
   });
 
-  test("renders connect form", async ({ page }) => {
+  test("renders connect form with only node url field", async ({ page }) => {
     await expect(page.getByText("Connect to node")).toBeVisible();
     await expect(page.getByPlaceholder("http://localhost:2430")).toBeVisible();
     await expect(page.getByRole("button", { name: "Connect" })).toBeVisible();
+    await expect(page.getByLabel("Username")).not.toBeVisible();
+    await expect(page.getByLabel("Password")).not.toBeVisible();
   });
 
   test("pre-fills node URL with localhost default", async ({ page }) => {
@@ -17,16 +19,14 @@ test.describe("Login page", () => {
   });
 
   test("shows error on failed connection", async ({ page }) => {
-    // Mock the auth endpoint to fail
     await page.route("**/auth/token", (route) =>
       route.fulfill({ status: 401, body: JSON.stringify({ error: "unauthorized" }) }),
     );
 
-    await page.getByLabel("Password").fill("wrongpassword");
     await page.getByRole("button", { name: "Connect" }).click();
 
     await expect(
-      page.getByText("Connection failed. Check node URL and credentials."),
+      page.getByText("Could not connect. Make sure the node is running."),
     ).toBeVisible({ timeout: 5000 });
   });
 
@@ -41,14 +41,12 @@ test.describe("Login page", () => {
       }),
     );
 
-    await page.getByLabel("Password").fill("calimero1234");
     await page.getByRole("button", { name: "Connect" }).click();
 
     await expect(page).toHaveURL(/\/teams/, { timeout: 5000 });
   });
 
   test("connect button disabled while loading", async ({ page }) => {
-    // Slow mock to observe loading state
     await page.route("**/auth/token", async (route) => {
       await new Promise((r) => setTimeout(r, 500));
       await route.fulfill({
@@ -58,7 +56,6 @@ test.describe("Login page", () => {
       });
     });
 
-    await page.getByLabel("Password").fill("calimero1234");
     await page.getByRole("button", { name: "Connect" }).click();
     await expect(page.getByRole("button", { name: "Connecting…" })).toBeDisabled();
   });

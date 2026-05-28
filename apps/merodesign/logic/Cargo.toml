@@ -11,14 +11,14 @@ crate-type = ["cdylib", "rlib"]
 borsh = "0.10.3"
 borsh-derive = "0.10.3"
 bs58 = "0.5.1"
-calimero-sdk = "0.10.1-rc.47"
-calimero-storage = "0.10.1-rc.47"
-calimero-storage-macros = "0.10.1-rc.47"
+calimero-sdk = "0.10.1-rc.46"
+calimero-storage = "0.10.1-rc.46"
+calimero-storage-macros = "0.10.1-rc.46"
 thiserror = "1.0.56"
 serde_json = "1.0.113"
 
 [build-dependencies]
-calimero-wasm-abi = "0.10.1-rc.47"
+calimero-wasm-abi = "0.10.1-rc.46"
 serde_json = "1.0.113"
 
 [profile.app-release]

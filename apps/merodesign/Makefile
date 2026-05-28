@@ -1,4 +1,4 @@
-.PHONY: help setup install build bundle dev dev-node dev-node2 start stop \
+.PHONY: help setup install build bundle dev frontend dev-node dev-node2 dev-invite stop \
         logic-build logic-bundle app-install app-build app-typecheck app-lint \
         test unit e2e e2e-ui workflows workflows-no-build logic-test clean
 
@@ -10,8 +10,9 @@ help:
 	@echo ""
 	@echo "  Setup"
 	@echo "    setup          Check prereqs, build logic, install app deps"
-	@echo "    dev-node       Start node1 with full workspace setup"
-	@echo "    dev-node2      Start node2 only (invite from webapp)"
+	@echo "    dev-node       Start node1: build WASM, init node, create workspace + board"
+	@echo "    dev-node2      Start node2 only"
+	@echo "    dev-invite     Invite node2 into node1's workspace (run after both nodes up)"
 	@echo "    install        Install frontend dependencies (pnpm)"
 	@echo ""
 	@echo "  Build"
@@ -21,8 +22,8 @@ help:
 	@echo "    app-build      Bundle frontend (dist/)"
 	@echo ""
 	@echo "  Dev"
-	@echo "    start          Node1 + node2 (auto-invited) + frontend"
-	@echo "    dev            Start Vite dev server (http://localhost:5173)"
+	@echo "    dev            Full stack: build WASM, 2 nodes, invite, frontend"
+	@echo "    frontend       Frontend only (http://localhost:5173)"
 	@echo "    stop           Stop all dev nodes and free ports"
 	@echo ""
 	@echo "  Quality"
@@ -50,6 +51,9 @@ dev-node:
 dev-node2:
 	@bash scripts/dev-node2.sh
 
+dev-invite:
+	@bash scripts/dev-invite.sh
+
 install: app-install
 
 # ── Build ──────────────────────────────────────────────────────────────────────
@@ -73,12 +77,12 @@ build: logic-build app-build
 # ── Dev ────────────────────────────────────────────────────────────────────────
 
 dev: app-install
-	cd app && pnpm dev
-
-start: app-install
 	@bash scripts/dev-node.sh
 	@bash scripts/dev-node2.sh
 	@bash scripts/dev-invite.sh
+	cd app && pnpm dev
+
+frontend: app-install
 	cd app && pnpm dev
 
 # ── Quality ────────────────────────────────────────────────────────────────────

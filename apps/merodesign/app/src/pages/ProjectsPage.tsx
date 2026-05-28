@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { adminGet, adminPost } from "../api/rpc";
+import { useAuthStore } from "../store/authStore";
+import Logo from "../components/Logo";
 import InviteModal from "../components/InviteModal";
 import type { Project } from "../types";
 import styles from "./ProjectsPage.module.css";
@@ -8,6 +10,12 @@ import styles from "./ProjectsPage.module.css";
 export default function ProjectsPage() {
   const { teamId } = useParams<{ teamId: string }>();
   const navigate = useNavigate();
+  const { clearAuth } = useAuthStore();
+
+  function handleLogout() {
+    clearAuth();
+    navigate("/login");
+  }
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState("");
@@ -47,7 +55,7 @@ export default function ProjectsPage() {
     <div className={styles.root}>
       <header className={styles.header}>
         <button className={styles.back} onClick={() => navigate("/teams")}>← Teams</button>
-        <span className={styles.logo}>MeroDesign</span>
+        <span className={styles.logo}><Logo size={22} /> MeroDesign</span>
         <div className={styles.headerRight}>
           <button
             className={styles.inviteBtn}
@@ -56,6 +64,7 @@ export default function ProjectsPage() {
           >
             + Invite member
           </button>
+          <button className={styles.logoutBtn} onClick={handleLogout}>Logout</button>
         </div>
       </header>
 

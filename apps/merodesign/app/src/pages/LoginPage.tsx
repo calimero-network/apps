@@ -8,8 +8,6 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const setAuth = useAuthStore((s) => s.setAuth);
   const [nodeUrl, setNodeUrl] = useState("http://localhost:2430");
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -20,17 +18,23 @@ export default function LoginPage() {
       const url = nodeUrl.replace(/\/$/, "");
       const res = await axios.post(`${url}/auth/token`, {
         auth_method: "user_password",
-        public_key: username,
+        public_key: "admin",
         client_name: "merodesign",
         timestamp: 0,
         permissions: [],
-        provider_data: { username, password },
+        provider_data: { username: "admin", password: "calimero1234" },
       });
       const { access_token, refresh_token } = res.data?.data ?? res.data;
-      setAuth(url, access_token, refresh_token);
+
+      const appsRes = await axios.get(`${url}/admin-api/applications`, {
+        headers: { Authorization: `Bearer ${access_token}` },
+      });
+      const applicationId: string = appsRes.data?.data?.apps?.[0]?.id ?? "";
+
+      setAuth(url, access_token, refresh_token, applicationId);
       navigate("/teams");
     } catch {
-      setError("Connection failed. Check node URL and credentials.");
+      setError("Could not connect. Make sure the node is running.");
     } finally {
       setLoading(false);
     }
@@ -38,9 +42,17 @@ export default function LoginPage() {
 
   return (
     <div className={styles.root}>
+      <div className={styles.bgCircle1} />
+      <div className={styles.bgCircle2} />
+      <div className={styles.bgCircle3} />
+
+      <button className={styles.backBtn} onClick={() => navigate("/")}>
+        ← Back
+      </button>
+
       <div className={styles.card}>
         <h1 className={styles.title}>Connect to node</h1>
-        <p className={styles.subtitle}>Enter your Calimero node URL and credentials.</p>
+        <p className={styles.subtitle}>Enter your Calimero node URL.</p>
 
         <label className={styles.label} htmlFor="login-node-url">Node URL</label>
         <input
@@ -49,23 +61,6 @@ export default function LoginPage() {
           value={nodeUrl}
           onChange={(e) => setNodeUrl(e.target.value)}
           placeholder="http://localhost:2430"
-        />
-
-        <label className={styles.label} htmlFor="login-username">Username</label>
-        <input
-          id="login-username"
-          className={styles.input}
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-        />
-
-        <label className={styles.label} htmlFor="login-password">Password</label>
-        <input
-          id="login-password"
-          className={styles.input}
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleConnect()}
         />
 

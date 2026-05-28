@@ -10,8 +10,21 @@
 }
 .back { background: none; border: none; font-size: 13px; color: #555; cursor: pointer; }
 .back:hover { color: #111; }
-.logo { font-size: 14px; font-weight: 600; }
-.headerRight { margin-left: auto; }
+.logo { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.headerRight { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+
+.nodeUrl { font-size: 11px; color: #999; }
+
+.logoutBtn {
+  padding: 6px 14px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 12px;
+  color: #555;
+  cursor: pointer;
+}
+.logoutBtn:hover { background: #f5f5f5; border-color: #bbb; }
 
 .inviteBtn {
   padding: 7px 14px;

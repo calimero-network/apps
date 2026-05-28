@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { v4 as uuid } from "uuid";
 import { rpcCall } from "../api/rpc";
 import { useSse } from "../hooks/useSse";
+import { useAuthStore } from "../store/authStore";
 import { useCanvasStore } from "../store/canvasStore";
 import type { Element } from "../types";
 import Toolbar from "../components/Toolbar";
@@ -11,8 +12,19 @@ import PropertiesPanel from "../components/PropertiesPanel";
 import styles from "./CanvasPage.module.css";
 
 export default function CanvasPage() {
-  const { projectId } = useParams<{ projectId: string }>();
+  const { teamId, projectId } = useParams<{ teamId: string; projectId: string }>();
+  const navigate = useNavigate();
+  const { clearAuth } = useAuthStore();
   const { setElements, upsertElement, removeElement, cacheImage, elements } = useCanvasStore();
+
+  function handleBack() {
+    navigate(`/teams/${teamId}/projects`);
+  }
+
+  function handleLogout() {
+    clearAuth();
+    navigate("/login");
+  }
   const canvasRef = useRef<FabricCanvasHandle>(null);
 
   useEffect(() => {
@@ -89,6 +101,8 @@ export default function CanvasPage() {
     <div className={styles.root}>
       <Toolbar
         contextId={projectId ?? ""}
+        onBack={handleBack}
+        onLogout={handleLogout}
         onExportPng={() => canvasRef.current?.exportPng()}
         onExportSvg={() => canvasRef.current?.exportSvg()}
         onImageUpload={handleImageUpload}

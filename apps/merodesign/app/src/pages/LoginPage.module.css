@@ -1,25 +1,107 @@
+@keyframes driftA {
+  0%   { transform: translate(0, 0) scale(1); }
+  25%  { transform: translate(80px, -60px) scale(1.1); }
+  50%  { transform: translate(40px, 80px) scale(0.95); }
+  75%  { transform: translate(-60px, 20px) scale(1.05); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+@keyframes driftB {
+  0%   { transform: translate(0, 0) scale(1); }
+  33%  { transform: translate(-70px, 50px) scale(1.08); }
+  66%  { transform: translate(50px, -40px) scale(0.92); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+@keyframes driftC {
+  0%   { transform: translate(0, 0); }
+  40%  { transform: translate(60px, 70px); }
+  80%  { transform: translate(-40px, -30px); }
+  100% { transform: translate(0, 0); }
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 .root {
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fafafa;
+  background: #fff;
+  background-image: radial-gradient(circle, #d4d4d4 1px, transparent 1px);
+  background-size: 24px 24px;
+  position: relative;
+  overflow: hidden;
 }
 
+/* Blurred background circles */
+.bgCircle1 {
+  position: absolute;
+  width: 480px; height: 480px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(37,99,235,0.16), transparent 70%);
+  top: -120px; left: -160px;
+  filter: blur(40px);
+  animation: driftA 18s ease-in-out infinite;
+  pointer-events: none;
+}
+.bgCircle2 {
+  position: absolute;
+  width: 360px; height: 360px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(168,85,247,0.13), transparent 70%);
+  bottom: -80px; right: -100px;
+  filter: blur(50px);
+  animation: driftB 14s ease-in-out infinite;
+  pointer-events: none;
+}
+.bgCircle3 {
+  position: absolute;
+  width: 280px; height: 280px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(16,185,129,0.11), transparent 70%);
+  top: 50%; left: 60%;
+  filter: blur(45px);
+  animation: driftC 20s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.backBtn {
+  position: absolute;
+  top: 24px; left: 28px;
+  background: none;
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: #555;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+  z-index: 10;
+}
+.backBtn:hover { color: #111; background: rgba(0,0,0,0.05); }
+
 .card {
-  background: #fff;
-  border: 1px solid #e0e0e0;
-  border-radius: 10px;
-  padding: 36px 32px;
+  background: rgba(255,255,255,0.88);
+  border: 1px solid rgba(0,0,0,0.09);
+  border-radius: 14px;
+  padding: 38px 34px;
   width: 360px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  position: relative;
+  z-index: 10;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04);
+  animation: fadeUp 0.45s ease both;
 }
 
 .title {
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
   margin-bottom: 2px;
 }
 
@@ -42,9 +124,10 @@
   border-radius: 6px;
   font-size: 13px;
   outline: none;
+  background: rgba(255,255,255,0.9);
   transition: border-color 0.15s;
 }
-.input:focus { border-color: #111; }
+.input:focus { border-color: #2563eb; }
 
 .error {
   font-size: 12px;
@@ -57,11 +140,11 @@
   background: #111;
   color: #fff;
   border: none;
-  border-radius: 6px;
+  border-radius: 7px;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.15s, transform 0.15s;
 }
-.btn:hover:not(:disabled) { background: #333; }
+.btn:hover:not(:disabled) { background: #2563eb; transform: translateY(-1px); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
