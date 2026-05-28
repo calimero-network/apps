@@ -1,0 +1,126 @@
+name: E2E Two-Node Test
+description: >
+  Full two-node MeroDesign e2e workflow. Installs app, creates a board,
+  adds elements from both nodes, verifies sync.
+
+stop_all_nodes: true
+restart: false
+wait_timeout: 120
+
+nodes:
+  chain_id: testnet-1
+  count: 2
+  image: ghcr.io/calimero-network/merod:0.10.1-rc.47
+  prefix: calimero-node
+
+steps:
+  - name: Install Application on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: "../logic/res/merodesign.wasm"
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install Application on Node 2
+    type: install_application
+    node: calimero-node-2
+    path: "../logic/res/merodesign.wasm"
+    dev: true
+
+  - name: Create Namespace
+    type: create_group
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Create Board
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    params: '{"name": "E2E Board", "description": ""}'
+    outputs:
+      context_id: contextId
+      member_public_key: memberPublicKey
+
+  - name: Create Identity on Node 2
+    type: create_identity
+    node: calimero-node-2
+    outputs:
+      public_key_2: publicKey
+
+  - name: Invite and Join
+    type: create_group_invitation
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    outputs:
+      invitation_2: invitation
+
+  - name: Node 2 Joins
+    type: join_group
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+    invitation: "{{invitation_2}}"
+
+  - name: Node 2 Joins Context
+    type: join_context
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+
+  - name: Sync
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Add Rect from Node 1
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: add_element
+    args:
+      element:
+        id: "elem-rect-1"
+        data: { kind: "Rect" }
+        x: 100
+        y: 100
+        width: 200
+        height: 150
+        rotation: 0
+        fill: "#ffffff"
+        stroke: "#000000"
+        strokeWidth: 2
+        opacity: 100
+        layerIndex: 0
+        createdBy: "node1"
+        createdAt: 1751953010
+        updatedAt: 1751953010
+
+  - name: Sync after rect
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Verify Elements
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: get_elements
+    args: {}
+    outputs:
+      elements: result
+
+  - name: Assert Element Synced
+    type: assert
+    statements:
+      - "contains({{elements}}, 'elem-rect-1')"
+      - "contains({{elements}}, 'Rect')"

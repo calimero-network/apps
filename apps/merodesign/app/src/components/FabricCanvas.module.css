@@ -1,0 +1,9 @@
+.wrap {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.wrap canvas {
+  display: block;
+}

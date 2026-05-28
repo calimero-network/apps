@@ -1,0 +1,42 @@
+.bar {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  background: #fff;
+  border-bottom: 1px solid #e0e0e0;
+  padding: 0 16px;
+  gap: 8px;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.logo {
+  font-size: 13px;
+  font-weight: 600;
+  margin-right: 16px;
+  white-space: nowrap;
+}
+
+.tools {
+  display: flex;
+  gap: 2px;
+}
+
+.tool {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  font-size: 13px;
+  cursor: pointer;
+  color: #444;
+  transition: background 0.12s;
+}
+.tool:hover { background: #f0f0f0; }
+.tool.active { background: #e8f0fe; color: #1a5fe4; }
+
+.right { flex: 1; }

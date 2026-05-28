@@ -1,0 +1,52 @@
+.panel {
+  width: 220px;
+  flex-shrink: 0;
+  background: #fff;
+  border-left: 1px solid #e0e0e0;
+  padding: 16px 14px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hint {
+  font-size: 12px;
+  color: #999;
+  text-align: center;
+  margin-top: 32px;
+}
+
+.section {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #888;
+  margin-bottom: 4px;
+}
+
+.label {
+  font-size: 11px;
+  color: #888;
+  margin-top: 6px;
+}
+
+.value {
+  font-size: 12px;
+  color: #222;
+}
+
+.colorRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  display: inline-block;
+  flex-shrink: 0;
+}
