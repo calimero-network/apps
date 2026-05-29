@@ -86,7 +86,7 @@ steps:
     args:
       element:
         id: "elem-rect-1"
-        data: { kind: "Rect" }
+        data: { kind: "rect" }
         x: 100
         y: 100
         width: 200
@@ -123,4 +123,4 @@ steps:
     type: assert
     statements:
       - "contains({{elements}}, 'elem-rect-1')"
-      - "contains({{elements}}, 'Rect')"
+      - "contains({{elements}}, 'rect')"
