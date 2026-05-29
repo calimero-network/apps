@@ -10,7 +10,7 @@ wait_timeout: 120
 nodes:
   chain_id: testnet-1
   count: 1
-  image: ghcr.io/calimero-network/merod:0.10.1-rc.47
+  image: ghcr.io/calimero-network/merod:0.10.1-rc.46
   prefix: calimero-node
 
 steps:
