@@ -17,11 +17,6 @@
   gap: 12px;
 }
 
-.nodeUrl {
-  font-size: 11px;
-  color: #999;
-}
-
 .logoutBtn {
   padding: 6px 14px;
   border: 1px solid #e0e0e0;
@@ -58,6 +53,7 @@
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
+  white-space: nowrap;
 }
 .btn:hover:not(:disabled) { background: #333; }
 .btn:disabled { opacity: 0.5; }
@@ -68,13 +64,21 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 16px;
+  margin-bottom: 48px;
 }
+
+/* Card with hover menu */
+.cardWrap {
+  position: relative;
+}
+.cardWrap:hover .menuBtn { opacity: 1; }
 
 .card {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   padding: 20px 18px;
+  width: 100%;
   background: #fff;
   border: 1px solid #e0e0e0;
   border-radius: 8px;
@@ -86,3 +90,82 @@
 
 .cardName { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
 .cardSub { font-size: 11px; color: #888; }
+
+.menuBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.9);
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  font-size: 14px;
+  color: #555;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 2;
+  line-height: 1;
+  padding: 0;
+}
+.menuBtn:hover { background: #f0f0f0; color: #111; }
+
+.dropdown {
+  position: absolute;
+  top: 36px;
+  right: 0;
+  min-width: 120px;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.dropdownItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 14px;
+  font-size: 13px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #333;
+  transition: background 0.1s;
+}
+.dropdownItem:hover { background: #f5f5f5; }
+
+.dropdownDanger { color: #c0392b; }
+.dropdownDanger:hover { background: #fdf3f2; }
+
+/* Join section */
+.joinSection {
+  border-top: 1px solid #ebebeb;
+  padding-top: 32px;
+  margin-top: 8px;
+}
+
+.joinLabel {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 12px;
+}
+
+.joinRow {
+  display: flex;
+  gap: 10px;
+  max-width: 480px;
+}
+
+.joinError {
+  font-size: 12px;
+  color: #c0392b;
+  margin-top: 6px;
+}

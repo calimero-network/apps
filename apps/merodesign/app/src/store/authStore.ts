@@ -23,6 +23,6 @@ export const useAuthStore = create<AuthState>()(
       clearAuth: () => set({ nodeUrl: "", accessToken: "", refreshToken: "", applicationId: "" }),
       isAuthenticated: () => Boolean(get().accessToken && get().nodeUrl),
     }),
-    { name: "merodesign-auth" },
+    { name: "merodesign-auth", version: 0 },
   ),
 );

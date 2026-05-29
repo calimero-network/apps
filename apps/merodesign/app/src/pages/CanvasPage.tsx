@@ -1,54 +1,271 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { v4 as uuid } from "uuid";
-import { rpcCall } from "../api/rpc";
+import { rpcCall, adminGet, adminUploadBlob, adminGetBlob } from "../api/rpc";
 import { useSse } from "../hooks/useSse";
 import { useAuthStore } from "../store/authStore";
 import { useCanvasStore } from "../store/canvasStore";
-import type { Element } from "../types";
+import { useUsernameStore } from "../store/usernameStore";
+import type { CanvasComment, CursorState, Element, Member } from "../types";
 import Toolbar from "../components/Toolbar";
 import FabricCanvas, { type FabricCanvasHandle } from "../components/FabricCanvas";
 import PropertiesPanel from "../components/PropertiesPanel";
+import CommentsOverlay from "../components/CommentsOverlay";
+import CursorsOverlay from "../components/CursorsOverlay";
+import UsernameModal from "../components/UsernameModal";
+import { exportProject, importProject, type ProjectSnapshot } from "../utils/projectFile";
 import styles from "./CanvasPage.module.css";
+
+function normalizeCursor(c: CursorState): CursorState {
+  return { ...c, updatedAt: c.updatedAt ?? c.updated_at ?? 0 };
+}
 
 export default function CanvasPage() {
   const { teamId, projectId } = useParams<{ teamId: string; projectId: string }>();
   const navigate = useNavigate();
   const { clearAuth } = useAuthStore();
-  const { setElements, upsertElement, removeElement, cacheImage, elements } = useCanvasStore();
+  const { setElements, upsertElement, removeElement, cacheImage, elements, imageCache, previewMode, setPreviewMode } = useCanvasStore();
+  const { getUsername, setUsername } = useUsernameStore();
 
-  function handleBack() {
-    navigate(`/teams/${teamId}/projects`);
-  }
-
-  function handleLogout() {
-    clearAuth();
-    navigate("/login");
-  }
   const canvasRef = useRef<FabricCanvasHandle>(null);
 
+  // Collaboration state
+  const [comments, setComments] = useState<CanvasComment[]>([]);
+  const [cursors, setCursors] = useState<CursorState[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [showUsernameModal, setShowUsernameModal] = useState(false);
+  const [addingComment, setAddingComment] = useState(false);
+  const [myIdentity, setMyIdentity] = useState("");
+  const [viewport, setViewport] = useState({ zoom: 1, panX: 0, panY: 0 });
+  const cursorThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // "loading" = first attempt; "syncing" = context not yet available on this node, retrying
+  const [syncStatus, setSyncStatus] = useState<"loading" | "syncing" | "ready">("loading");
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncTrigger, setSyncTrigger] = useState(0);
+  const syncRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncRetryCountRef = useRef(0);
+
+  // Fetch real context identity from the node (the key WASM knows as member_id).
+  // Persists the last known identity in localStorage so refresh doesn't produce a
+  // new random UUID when the API is temporarily unavailable.
   useEffect(() => {
     if (!projectId) return;
-    rpcCall<Element[]>(projectId, "get_elements", {})
-      .then(setElements)
-      .catch(() => setElements([]));
-  }, [projectId, setElements]);
+    const storageKey = `md-identity-${projectId}`;
+    adminGet<unknown>(`/contexts/${projectId}/identities-owned`)
+      .then((res) => {
+        const arr: string[] = Array.isArray(res)
+          ? (res as string[])
+          : ((res as { identities?: string[]; items?: string[] })?.identities
+              ?? (res as { identities?: string[]; items?: string[] })?.items
+              ?? []);
+        if (arr.length > 0) {
+          localStorage.setItem(storageKey, arr[0]);
+          setMyIdentity(arr[0]);
+        }
+      })
+      .catch(() => {
+        const stored = localStorage.getItem(storageKey);
+        setMyIdentity(stored ?? uuid());
+      });
+  }, [projectId]);
 
+  function handleBack() { navigate(`/teams/${teamId}/projects`); }
+  function handleLogout() { clearAuth(); navigate("/login"); }
+
+  // ESC exits preview / comment mode (not username modal — that's blocking)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !showUsernameModal) {
+        setPreviewMode(false);
+        setAddingComment(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [setPreviewMode, showUsernameModal]);
+
+  // Load initial data. Retries every 3 s if the context isn't available yet on
+  // this node (e.g. the project was created on a peer and sync is in progress).
+  useEffect(() => {
+    if (!projectId) return;
+    if (syncRetryRef.current) clearTimeout(syncRetryRef.current);
+    setSyncStatus("loading");
+    setSyncError(null);
+    syncRetryCountRef.current = 0;
+
+    function tryLoad() {
+      rpcCall<Element[]>(projectId!, "get_elements", {})
+        .then((els) => {
+          setElements(Array.isArray(els) ? els : []);
+          setSyncStatus("ready");
+          setSyncError(null);
+          rpcCall<CanvasComment[]>(projectId!, "get_comments", {})
+            .then((cs) => setComments(Array.isArray(cs) ? cs : []))
+            .catch(() => {});
+          rpcCall<CursorState[]>(projectId!, "get_cursors", {})
+            .then((cs) => setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []))
+            .catch(() => {});
+        })
+        .catch((err) => {
+          syncRetryCountRef.current += 1;
+          const msg: string = err?.message ?? String(err);
+          console.error(`[MeroDesign] get_elements failed (attempt ${syncRetryCountRef.current}):`, msg);
+          // After ~30s of retries surface the actual error so the user knows what's wrong
+          if (syncRetryCountRef.current >= 10) setSyncError(msg);
+          setSyncStatus("syncing");
+          syncRetryRef.current = setTimeout(tryLoad, 3000);
+        });
+    }
+
+    tryLoad();
+    return () => {
+      if (syncRetryRef.current) clearTimeout(syncRetryRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, syncTrigger]);
+
+  // Auto-fetch blobs for image elements that aren't in the local cache yet.
+  // Fires whenever elements change (initial load, SSE updates, etc.).
+  // fetchingRef prevents duplicate in-flight requests for the same element.
+  const fetchingBlobsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const el of elements) {
+      const blobId = (el.data as { blobId?: string }).blobId;
+      if ((el.data.kind === "image" || el.data.kind === "svg") && blobId && !imageCache[el.id] && !fetchingBlobsRef.current.has(el.id)) {
+        fetchingBlobsRef.current.add(el.id);
+        const kind = el.data.kind;
+        const elId = el.id;
+        adminGetBlob(blobId)
+          .then((buf) => {
+            const mime = kind === "svg" ? "image/svg+xml" : "image/png";
+            const url = URL.createObjectURL(new Blob([buf], { type: mime }));
+            cacheImage(elId, url);
+          })
+          .catch((err) => {
+            console.error("[MeroDesign] blob fetch failed for element", elId, err);
+            fetchingBlobsRef.current.delete(elId);
+          });
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [elements]);
+
+  // Check WASM members — WASM is the source of truth for username existence.
+  // Show modal if this identity has no username registered in the contract.
+  // usernameStore is only used to pre-fill the modal input.
+  useEffect(() => {
+    if (!projectId || !myIdentity) return;
+    rpcCall<Member[]>(projectId, "get_members", {})
+      .then((ms) => {
+        const list = Array.isArray(ms) ? ms : [];
+        setMembers(list);
+        const member = list.find((m) => m.id === myIdentity);
+        const hasUsername = member?.username && member.username.trim().length > 0;
+        if (!hasUsername) {
+          setShowUsernameModal(true);
+        }
+      })
+      .catch(() => {
+        // Can't verify — show modal to be safe
+        setShowUsernameModal(true);
+      });
+  }, [projectId, myIdentity]);
+
+  async function handleUsernameSubmit(username: string) {
+    if (!projectId || !myIdentity) return;
+    // Register in WASM — this is the authoritative store
+    await rpcCall(projectId, "join", {
+      member_id: myIdentity,
+      username,
+      avatar: null,
+      timestamp: Date.now(),
+    }).catch(() => {});
+    // Cache locally for convenience (pre-fill on future sessions)
+    setUsername(myIdentity, username);
+    setShowUsernameModal(false);
+    rpcCall<Member[]>(projectId, "get_members", {})
+      .then((ms) => setMembers(Array.isArray(ms) ? ms : []))
+      .catch(() => {});
+  }
+
+  // Poll cursors every 5 s so other members appear even without SSE
+  useEffect(() => {
+    if (!projectId) return;
+    const id = setInterval(() => {
+      rpcCall<CursorState[]>(projectId, "get_cursors", {})
+        .then((cs) => setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []))
+        .catch(() => {});
+    }, 5000);
+    return () => clearInterval(id);
+  }, [projectId]);
+
+  // Cursor broadcast (throttled to 2-3s)
+  const broadcastCursor = useCallback((x: number, y: number) => {
+    if (!projectId || !myIdentity) return;
+    if (cursorThrottleRef.current) return;
+    cursorThrottleRef.current = setTimeout(() => {
+      cursorThrottleRef.current = null;
+      const now = Date.now();
+      setCursors((prev) => {
+        const idx = prev.findIndex((c) => c.identity === myIdentity);
+        const updated = { identity: myIdentity, x, y, updatedAt: now };
+        if (idx >= 0) { const n = [...prev]; n[idx] = updated; return n; }
+        return [...prev, updated];
+      });
+      rpcCall(projectId, "update_cursor", { identity: myIdentity, x, y, updated_at: now }).catch(() => {});
+    }, 2500);
+  }, [projectId, myIdentity]);
+
+  function handleCanvasMouseMove(e: React.MouseEvent<HTMLDivElement>) {
+    broadcastCursor(Math.round(e.clientX), Math.round(e.clientY));
+  }
+
+  // SSE handler — the node sends StateMutation payloads:
+  // { newRoot: "...", events: [{ kind: "ElementAdded", data: u8[], handler: null }] }
+  // Each event's data bytes are the WASM-emitted content (JSON-encoded value).
   const handleSseEvent = useCallback(
-    (evt: MessageEvent) => {
+    (raw: unknown) => {
       try {
-        const payload = JSON.parse(evt.data as string);
-        if (!projectId) return;
-        if (payload.kind === "ElementAdded" || payload.kind === "ElementUpdated") {
-          rpcCall<Element>(projectId, "get_element", { id: payload.element_id })
-            .then((el) => { if (el) upsertElement(el); })
-            .catch(() => {});
-        } else if (payload.kind === "ElementDeleted") {
-          removeElement(payload.element_id);
-        } else if (payload.kind === "LayerReordered") {
-          rpcCall<Element[]>(projectId, "get_elements", {})
-            .then(setElements)
-            .catch(() => {});
+        if (!projectId || typeof raw !== "object" || raw === null) return;
+        const payload = raw as { events?: Array<{ kind: string; data: number[] }> };
+        const events = Array.isArray(payload.events) ? payload.events : [];
+
+        for (const ev of events) {
+          const kind = ev.kind ?? "";
+          let value: unknown = null;
+          if (Array.isArray(ev.data) && ev.data.length > 0) {
+            try {
+              const text = new TextDecoder().decode(new Uint8Array(ev.data));
+              value = JSON.parse(text);
+            } catch { /* keep null */ }
+          }
+
+          if (kind === "ElementAdded" || kind === "ElementUpdated") {
+            rpcCall<Element>(projectId, "get_element", { id: value as string })
+              .then((el) => { if (el) upsertElement(el); })
+              .catch(() => {});
+          } else if (kind === "ElementDeleted") {
+            removeElement(value as string);
+          } else if (kind === "LayerReordered") {
+            rpcCall<Element[]>(projectId, "get_elements", {})
+              .then((els) => setElements(Array.isArray(els) ? els : []))
+              .catch(() => {});
+          } else if (kind === "CommentAdded" || kind === "CommentUpdated") {
+            rpcCall<CanvasComment[]>(projectId, "get_comments", {})
+              .then((cs) => setComments(Array.isArray(cs) ? cs : []))
+              .catch(() => {});
+          } else if (kind === "CommentDeleted") {
+            setComments((prev) => prev.filter((c) => c.id !== (value as string)));
+          } else if (kind === "CursorMoved") {
+            rpcCall<CursorState[]>(projectId, "get_cursors", {})
+              .then((cs) => setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []))
+              .catch(() => {});
+          } else if (kind === "MemberJoined" || kind === "MemberUsernameUpdated") {
+            rpcCall<Member[]>(projectId, "get_members", {})
+              .then((ms) => setMembers(Array.isArray(ms) ? ms : []))
+              .catch(() => {});
+          }
         }
       } catch {
         // ignore parse errors
@@ -59,56 +276,144 @@ export default function CanvasPage() {
 
   useSse(projectId ?? null, handleSseEvent);
 
+  async function handleSaveProject() {
+    if (!projectId) return;
+    await exportProject(projectId).catch(() => {});
+  }
+
+  async function handleImportProject(snapshot: ProjectSnapshot) {
+    if (!projectId) return;
+    await importProject(projectId, snapshot).catch(() => {});
+    rpcCall<Element[]>(projectId, "get_elements", {})
+      .then((els) => setElements(Array.isArray(els) ? els : []))
+      .catch(() => {});
+    rpcCall<CanvasComment[]>(projectId, "get_comments", {})
+      .then((cs) => setComments(Array.isArray(cs) ? cs : []))
+      .catch(() => {});
+  }
+
   async function handleImageUpload(
-    _file: File,
-    dataUrl: string,
-    naturalWidth: number,
-    naturalHeight: number,
+    file: File, dataUrl: string, naturalWidth: number, naturalHeight: number,
   ) {
     if (!projectId) return;
-
     const maxW = 400;
     const scale = naturalWidth > maxW ? maxW / naturalWidth : 1;
-    const w = Math.round(naturalWidth * scale);
-    const h = Math.round(naturalHeight * scale);
+    const id = uuid();
+
+    // Upload blob to node so it propagates across the context
+    let blobId = "";
+    try {
+      const buf = await file.arrayBuffer();
+      const result = await adminUploadBlob(buf, projectId);
+      blobId = result?.blobId ?? "";
+    } catch (err) {
+      console.error("[MeroDesign] blob upload failed — image will only be visible this session:", err);
+    }
 
     const el: Element = {
-      id: uuid(),
-      data: { kind: "Image", naturalWidth, naturalHeight },
-      x: 40,
-      y: 40,
-      width: w,
-      height: h,
-      rotation: 0,
-      fill: "transparent",
-      stroke: "transparent",
-      strokeWidth: 0,
-      opacity: 100,
+      id,
+      data: { kind: "image", naturalWidth, naturalHeight, blobId },
+      x: 40, y: 40,
+      width: Math.round(naturalWidth * scale), height: Math.round(naturalHeight * scale),
+      rotation: 0, fill: "transparent", stroke: "transparent", strokeWidth: 0, opacity: 100,
       layerIndex: elements.length,
-      createdBy: "",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      createdBy: myIdentity, createdAt: Date.now(), updatedAt: Date.now(),
     };
-
-    // Cache the data URL so FabricCanvas can render it immediately
-    cacheImage(el.id, dataUrl);
+    cacheImage(id, dataUrl);
     upsertElement(el);
-
     await rpcCall(projectId, "add_element", { element: el }).catch(() => {});
+  }
+
+  if (syncStatus !== "ready") {
+    return (
+      <div className={styles.root}>
+        <div className={styles.syncScreen}>
+          <div className={styles.syncSpinner} />
+          <p className={styles.syncTitle}>
+            {syncStatus === "loading" ? "Loading project…" : "Syncing with network…"}
+          </p>
+          {syncStatus === "syncing" && !syncError && (
+            <p className={styles.syncHint}>
+              This project was created on another node. Waiting for context sync to complete.
+            </p>
+          )}
+          {syncError && (
+            <p className={styles.syncError}>
+              {syncError}
+            </p>
+          )}
+          {syncStatus === "syncing" && (
+            <button
+              className={styles.syncRetry}
+              onClick={() => setSyncTrigger((n) => n + 1)}
+            >
+              Retry now
+            </button>
+          )}
+          <button className={styles.syncBack} onClick={handleBack}>← Back to projects</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (previewMode) {
+    return (
+      <div className={styles.previewOverlay}>
+        <span className={styles.previewHint} onClick={() => setPreviewMode(false)}>
+          ESC to exit preview ✕
+        </span>
+        <FabricCanvas ref={canvasRef} contextId={projectId ?? ""} previewMode />
+      </div>
+    );
   }
 
   return (
     <div className={styles.root}>
+      {showUsernameModal && (
+        <UsernameModal
+          onSubmit={handleUsernameSubmit}
+          initialValue={getUsername(myIdentity)}
+        />
+      )}
       <Toolbar
         contextId={projectId ?? ""}
         onBack={handleBack}
         onLogout={handleLogout}
         onExportPng={() => canvasRef.current?.exportPng()}
         onExportSvg={() => canvasRef.current?.exportSvg()}
+        onPreview={() => setPreviewMode(true)}
         onImageUpload={handleImageUpload}
+        addingComment={addingComment}
+        onToggleComment={() => setAddingComment((v) => !v)}
+        members={cursors.filter((c) => c.identity !== myIdentity && Date.now() - c.updatedAt < 30_000)}
+        onSaveProject={handleSaveProject}
+        onImportProject={handleImportProject}
       />
       <div className={styles.workspace}>
-        <FabricCanvas ref={canvasRef} contextId={projectId ?? ""} />
+        <div className={styles.canvasWrap} onMouseMove={handleCanvasMouseMove}>
+          <FabricCanvas
+            ref={canvasRef}
+            contextId={projectId ?? ""}
+            onViewportChange={(z, px, py) => setViewport({ zoom: z, panX: px, panY: py })}
+          />
+          <CursorsOverlay cursors={cursors} myIdentity={myIdentity} members={members} viewport={viewport} />
+          <CommentsOverlay
+            contextId={projectId ?? ""}
+            comments={comments}
+            myIdentity={myIdentity}
+            addingComment={addingComment}
+            viewport={viewport}
+            onCommentAdded={(c) => setComments((prev) => [...prev, c])}
+            onCommentDeleted={(id) => setComments((prev) => prev.filter((c) => c.id !== id))}
+            onReplyAdded={(cid, r) => setComments((prev) =>
+              prev.map((c) => c.id === cid ? { ...c, replies: [...c.replies, r] } : c)
+            )}
+            onReplyDeleted={(cid, rid) => setComments((prev) =>
+              prev.map((c) => c.id === cid ? { ...c, replies: c.replies.filter((r) => r.id !== rid) } : c)
+            )}
+            onCancelAdd={() => setAddingComment(false)}
+          />
+        </div>
         <PropertiesPanel contextId={projectId ?? ""} />
       </div>
     </div>

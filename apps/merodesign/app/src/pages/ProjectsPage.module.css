@@ -13,8 +13,6 @@
 .logo { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .headerRight { margin-left: auto; display: flex; align-items: center; gap: 12px; }
 
-.nodeUrl { font-size: 11px; color: #999; }
-
 .logoutBtn {
   padding: 6px 14px;
   border: 1px solid #e0e0e0;
@@ -26,20 +24,30 @@
 }
 .logoutBtn:hover { background: #f5f5f5; border-color: #bbb; }
 
-.inviteBtn {
-  padding: 7px 14px;
-  border: 1px solid #e0e0e0;
-  border-radius: 6px;
-  background: #fff;
-  font-size: 12px;
-  font-weight: 500;
-  color: #333;
-  cursor: pointer;
-}
-.inviteBtn:hover { background: #f5f5f5; }
+.main { padding: 32px 40px; max-width: 900px; margin: 0 auto; }
 
-.main { padding: 40px; max-width: 900px; margin: 0 auto; }
-.title { font-size: 20px; font-weight: 600; margin-bottom: 22px; }
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid #e8e8e8;
+  margin-bottom: 28px;
+}
+
+.tab {
+  padding: 10px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #888;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.tab:hover { color: #333; }
+.tabActive { color: #111; border-bottom-color: #111; }
 
 .createRow { display: flex; gap: 10px; margin-bottom: 28px; }
 
@@ -63,6 +71,7 @@
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
+  white-space: nowrap;
 }
 .btn:hover:not(:disabled) { background: #333; }
 .btn:disabled { opacity: 0.5; }
@@ -75,10 +84,17 @@
   gap: 18px;
 }
 
+/* Card with hover menu */
+.cardWrap {
+  position: relative;
+}
+.cardWrap:hover .menuBtn { opacity: 1; }
+
 .card {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  width: 100%;
   background: #fff;
   border: 1px solid #e0e0e0;
   border-radius: 8px;
@@ -96,3 +112,102 @@
 }
 
 .cardName { padding: 10px 12px; font-size: 13px; font-weight: 500; }
+
+.menuBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.9);
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  font-size: 14px;
+  color: #555;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 2;
+  line-height: 1;
+  padding: 0;
+}
+.menuBtn:hover { background: #f0f0f0; color: #111; }
+
+.dropdown {
+  position: absolute;
+  top: 36px;
+  right: 0;
+  min-width: 120px;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.dropdownItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 14px;
+  font-size: 13px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #333;
+  transition: background 0.1s;
+}
+.dropdownItem:hover { background: #f5f5f5; }
+
+.dropdownDanger { color: #c0392b; }
+.dropdownDanger:hover { background: #fdf3f2; }
+
+/* Invitations tab */
+.inviteSection {
+  max-width: 500px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.inviteDesc {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.5;
+}
+
+.tokenBox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f5f5f5;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.token {
+  flex: 1;
+  font-size: 11px;
+  font-family: monospace;
+  word-break: break-all;
+  color: #333;
+}
+
+.copyBtn {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 5px;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.copyBtn:hover { background: #f5f5f5; }
+
+.inviteError { font-size: 12px; color: #c0392b; }

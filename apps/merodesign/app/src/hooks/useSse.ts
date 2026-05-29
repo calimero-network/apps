@@ -1,28 +1,42 @@
 import { useEffect, useRef } from "react";
+import { SseClient, type SseEventData } from "@calimero-network/mero-js";
 import { useAuthStore } from "../store/authStore";
 
 export function useSse(
   contextId: string | null,
-  onEvent: (event: MessageEvent) => void,
+  onEvent: (payload: unknown) => void,
 ) {
   const { nodeUrl, accessToken } = useAuthStore();
-  const esRef = useRef<EventSource | null>(null);
+  const onEventRef = useRef(onEvent);
+  onEventRef.current = onEvent;
 
   useEffect(() => {
     if (!contextId || !nodeUrl || !accessToken) return;
 
-    const url = `${nodeUrl}/admin-api/contexts/${contextId}/events?token=${encodeURIComponent(accessToken)}`;
-    const es = new EventSource(url);
-    esRef.current = es;
+    // reconnectDelayMs=8000: slower reconnects reduce MetaMask MaxListeners noise
+    // (MetaMask adds a listener per SSE reconnect; default 3s triggers 10+ quickly)
+    const client = new SseClient({
+      baseUrl: nodeUrl,
+      getAuthToken: async () => useAuthStore.getState().accessToken,
+      reconnectDelayMs: 8000,
+    });
 
-    es.onmessage = onEvent;
-    es.onerror = () => {
-      es.close();
+    const handler = (evt: SseEventData) => {
+      if (evt.contextId === contextId) {
+        onEventRef.current(evt.data);
+      }
     };
+
+    client.on("event", handler);
+    client.on("error", (err: Error) => {
+      console.warn("[MeroDesign] SSE error (will reconnect):", err.message);
+    });
+    client.connect().catch(() => {});
+    client.subscribe([contextId]).catch(() => {});
 
     return () => {
-      es.close();
-      esRef.current = null;
+      client.off("event", handler);
+      client.close();
     };
-  }, [contextId, nodeUrl, accessToken, onEvent]);
+  }, [contextId, nodeUrl, accessToken]);
 }

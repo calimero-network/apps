@@ -1,3 +1,9 @@
+@keyframes floatY {
+  0%   { transform: translateY(0px) rotate(0deg); }
+  50%  { transform: translateY(-14px) rotate(4deg); }
+  100% { transform: translateY(0px) rotate(0deg); }
+}
+
 @keyframes driftA {
   0%   { transform: translate(0, 0) scale(1); }
   25%  { transform: translate(80px, -60px) scale(1.1); }
@@ -148,3 +154,35 @@
 }
 .btn:hover:not(:disabled) { background: #2563eb; transform: translateY(-1px); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Dotted background overlay (subtle, behind everything) */
+.bgDots {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Floating design-element shapes */
+.floatEl {
+  position: absolute;
+  opacity: 0.18;
+  pointer-events: none;
+  animation: floatY 5s ease-in-out infinite;
+  z-index: 1;
+}
+
+/* Card logo row */
+.cardLogo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.cardLogoText {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: #111;
+}

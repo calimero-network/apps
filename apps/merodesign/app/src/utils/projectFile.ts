@@ -1,0 +1,87 @@
+import { rpcCall } from "../api/rpc";
+import type { CanvasComment, Element } from "../types";
+
+export interface ProjectSnapshot {
+  version: 1;
+  exportedAt: number;
+  boardName: string;
+  boardDescription: string;
+  elements: Element[];
+  comments: CanvasComment[];
+}
+
+export function validateSnapshot(data: unknown): data is ProjectSnapshot {
+  if (!data || typeof data !== "object") return false;
+  const d = data as Record<string, unknown>;
+  if (d.version !== 1) return false;
+  if (!Array.isArray(d.elements)) return false;
+  if (!Array.isArray(d.comments)) return false;
+  return true;
+}
+
+export async function exportProject(contextId: string): Promise<void> {
+  const [elements, comments, board] = await Promise.all([
+    rpcCall<Element[]>(contextId, "get_elements", {}),
+    rpcCall<CanvasComment[]>(contextId, "get_comments", {}),
+    rpcCall<{ name: string; description: string }>(contextId, "get_board", {}),
+  ]);
+
+  const snapshot: ProjectSnapshot = {
+    version: 1,
+    exportedAt: Date.now(),
+    boardName: board?.name ?? "",
+    boardDescription: board?.description ?? "",
+    elements: Array.isArray(elements) ? elements : [],
+    comments: Array.isArray(comments) ? comments : [],
+  };
+
+  const json = JSON.stringify(snapshot, null, 2);
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${snapshot.boardName || "merodesign"}.merodesign`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export async function importProject(
+  contextId: string,
+  snapshot: ProjectSnapshot,
+): Promise<void> {
+  await rpcCall(contextId, "clear_elements", {}).catch(() => {});
+  await rpcCall(contextId, "clear_comments", {}).catch(() => {});
+
+  if (snapshot.boardName) {
+    await rpcCall(contextId, "update_board", {
+      name: snapshot.boardName,
+      description: snapshot.boardDescription ?? null,
+    }).catch(() => {});
+  }
+
+  for (const el of snapshot.elements) {
+    await rpcCall(contextId, "add_element", { element: el }).catch(() => {});
+  }
+
+  for (const comment of snapshot.comments) {
+    await rpcCall(contextId, "add_comment", {
+      id: comment.id,
+      x: comment.x,
+      y: comment.y,
+      content: comment.content,
+      author: comment.author,
+      created_at: comment.createdAt,
+    }).catch(() => {});
+    for (const reply of comment.replies ?? []) {
+      await rpcCall(contextId, "add_reply", {
+        comment_id: comment.id,
+        reply_id: reply.id,
+        content: reply.content,
+        author: reply.author,
+        created_at: reply.createdAt,
+      }).catch(() => {});
+    }
+  }
+}

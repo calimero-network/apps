@@ -85,6 +85,25 @@ curl -sf -X POST "${NODE_2_URL}/admin-api/groups/${GROUP_ID}/sync" \
   -H "Content-Type: application/json" -d '{}' &>/dev/null \
   && green "Sync triggered" || yellow "Sync failed (non-fatal)"
 
+# ── 3b. Propagate namespace name to node2 ────────────────────────────────────
+
+step "Propagating namespace name to node2"
+NS_NAME=$(curl -sf "${NODE_1_URL}/admin-api/namespaces" \
+  -H "Authorization: Bearer ${ACCESS_TOKEN_1}" 2>/dev/null \
+  | jq -r --arg id "$GROUP_ID" \
+      '.data[]? | select(.namespaceId==$id or .groupId==$id or .id==$id) | .name // .alias // empty' \
+  2>/dev/null | head -1 || true)
+if [ -n "$NS_NAME" ]; then
+  curl -sf -X PUT "${NODE_2_URL}/admin-api/groups/${GROUP_ID}/metadata" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN_2}" \
+    -H "Content-Type: application/json" \
+    -d "$(jq -n --arg n "$NS_NAME" '{name: $n}')" &>/dev/null \
+    && green "Namespace name '$NS_NAME' set on node2" \
+    || yellow "Could not set namespace name on node2 (non-fatal)"
+else
+  yellow "Could not read namespace name from node1 (non-fatal)"
+fi
+
 # ── 4. Node2 joins the design board context ───────────────────────────────────
 
 CONTEXT_ID="${E2E_CONTEXT_ID:-}"
@@ -114,6 +133,24 @@ if [ -n "$CONTEXT_ID" ]; then
     green "Updated $ENV_FILE with node2 member key"
   else
     yellow "Could not get node2 member key (2-node tests will skip)"
+  fi
+
+  # Propagate context name to node2 (name is in MetadataRecord — set it locally)
+  BOARD_GROUP_ID="${E2E_BOARD_GROUP_ID:-}"
+  if [ -n "$BOARD_GROUP_ID" ]; then
+    CTX_NAME=$(curl -sf "${NODE_1_URL}/admin-api/groups/${BOARD_GROUP_ID}/contexts" \
+      -H "Authorization: Bearer ${ACCESS_TOKEN_1}" 2>/dev/null \
+      | jq -r --arg id "$CONTEXT_ID" \
+          '.data[]? | select(.contextId==$id or .id==$id) | .name // .alias // empty' \
+      2>/dev/null | head -1 || true)
+    if [ -n "$CTX_NAME" ]; then
+      curl -sf -X PUT "${NODE_2_URL}/admin-api/groups/${BOARD_GROUP_ID}/contexts/${CONTEXT_ID}/metadata" \
+        -H "Authorization: Bearer ${ACCESS_TOKEN_2}" \
+        -H "Content-Type: application/json" \
+        -d "$(jq -n --arg n "$CTX_NAME" '{name: $n}')" &>/dev/null \
+        && green "Context name '$CTX_NAME' set on node2" \
+        || yellow "Could not set context name on node2 (non-fatal)"
+    fi
   fi
 else
   yellow "E2E_CONTEXT_ID not set in $ENV_FILE — skipping node2 board join"

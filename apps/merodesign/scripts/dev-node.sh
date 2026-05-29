@@ -54,11 +54,12 @@ pid_file() { echo "/tmp/merodesign-dev-node.pid"; }
 
 # ── Parse args ────────────────────────────────────────────────────────────────
 
-STOP=false; CLEAN=false
+STOP=false; CLEAN=false; SKIP_BUILD=false
 for arg in "$@"; do
   case "$arg" in
-    --stop)   STOP=true ;;
-    --clean)  STOP=true; CLEAN=true ;;
+    --stop)        STOP=true ;;
+    --clean)       STOP=true; CLEAN=true ;;
+    --skip-build)  SKIP_BUILD=true ;;
     --help|-h)
       sed -n '3,13p' "${BASH_SOURCE[0]}"
       exit 0
@@ -113,9 +114,14 @@ green "Clean slate ready"
 
 # ── Build WASM ────────────────────────────────────────────────────────────────
 
-step "Building WASM"
-(cd "$REPO_ROOT/logic" && bash build.sh)
-green "merodesign.wasm built"
+if $SKIP_BUILD; then
+  yellow "Skipping WASM build (--skip-build)"
+  [ -f "$WASM_PATH" ] || { red "WASM not found at $WASM_PATH — run without --skip-build first"; exit 1; }
+else
+  step "Building WASM"
+  (cd "$REPO_ROOT/logic" && bash build.sh)
+  green "merodesign.wasm built"
+fi
 
 # ── Init node ─────────────────────────────────────────────────────────────────
 
@@ -145,7 +151,9 @@ fi
 # ── Start node ────────────────────────────────────────────────────────────────
 
 step "Starting node"
+export RUST_LOG="${RUST_LOG:-debug,h2=warn,hyper=warn,tower=warn,rustls=warn,tokio=warn,mio=warn}"
 merod --node "$NODE_NAME" --home "$NODE_HOME" run \
+  --auth-mode embedded \
   > "/tmp/merodesign-dev-node.log" 2>&1 &
 echo $! > "$(pid_file)"
 green "Node started (pid $!  logs: /tmp/merodesign-dev-node.log)"
@@ -201,7 +209,7 @@ step "Creating workspace"
 NS_RES=$(curl -sf -X POST "${NODE_URL}/admin-api/namespaces" \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d "$(jq -n --arg a "$APP_ID" '{applicationId: $a, upgradePolicy: "LazyOnAccess", alias: "Dev Workspace"}')" \
+  -d "$(jq -n --arg a "$APP_ID" '{applicationId: $a, upgradePolicy: "LazyOnAccess", alias: "Dev Workspace", name: "Dev Workspace"}')" \
   2>/dev/null) || NS_RES="{}"
 NAMESPACE_ID=$(echo "$NS_RES" | jq -r '.data.namespaceId // .data.groupId // .data.id // empty' 2>/dev/null || true)
 
@@ -240,7 +248,7 @@ if [ -n "$NAMESPACE_ID" ]; then
   SG_RES=$(curl -sf -X POST "${NODE_URL}/admin-api/namespaces/${NAMESPACE_ID}/groups" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "Content-Type: application/json" \
-    -d '{"groupAlias":"design-board"}' 2>/dev/null) || SG_RES="{}"
+    -d '{"groupAlias":"design-board","groupName":"design-board"}' 2>/dev/null) || SG_RES="{}"
   BOARD_GROUP_ID=$(echo "$SG_RES" | jq -r '.data.groupId // empty' 2>/dev/null || true)
 
   if [ -z "$BOARD_GROUP_ID" ]; then
@@ -269,7 +277,7 @@ if [ -n "$NAMESPACE_ID" ]; then
             --arg appId "$APP_ID" \
             --arg groupId "$BOARD_GROUP_ID" \
             --argjson initParams "$INIT_BYTES" \
-            '{applicationId: $appId, protocol: "near", groupId: $groupId, alias: "My Design Board", initializationParams: $initParams}')" \
+            '{applicationId: $appId, protocol: "near", groupId: $groupId, alias: "My Design Board", name: "My Design Board", initializationParams: $initParams}')" \
       2>/dev/null) || CTX_RES="{}"
 
     CONTEXT_ID=$(echo "$CTX_RES" | jq -r '.data.contextId // .data.id // empty' 2>/dev/null || true)

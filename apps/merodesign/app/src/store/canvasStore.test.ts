@@ -5,7 +5,7 @@ import type { Element } from "../types";
 function makeEl(id: string, overrides?: Partial<Element>): Element {
   return {
     id,
-    data: { kind: "Rect" },
+    data: { kind: "rect" },
     x: 10,
     y: 20,
     width: 100,
@@ -137,6 +137,157 @@ describe("canvasStore", () => {
       useCanvasStore.getState().cacheImage("b", "url-b");
       expect(useCanvasStore.getState().imageCache["a"]).toBe("url-a");
       expect(useCanvasStore.getState().imageCache["b"]).toBe("url-b");
+    });
+  });
+
+  describe("hand tool", () => {
+    it("setTool('hand') activates hand tool", () => {
+      useCanvasStore.getState().setTool("hand");
+      expect(useCanvasStore.getState().activeTool).toBe("hand");
+    });
+
+    it("switching from hand to rect clears selection", () => {
+      useCanvasStore.setState({ selectedElementId: "el-1" });
+      useCanvasStore.getState().setTool("hand");
+      expect(useCanvasStore.getState().selectedElementId).toBeNull();
+    });
+  });
+
+  describe("setElementLabel", () => {
+    it("stores label for element id", () => {
+      useCanvasStore.getState().setElementLabel("el-1", "My Label");
+      expect(useCanvasStore.getState().elementLabels["el-1"]).toBe("My Label");
+    });
+
+    it("preserves existing labels when adding a new one", () => {
+      useCanvasStore.getState().setElementLabel("a", "Label A");
+      useCanvasStore.getState().setElementLabel("b", "Label B");
+      expect(useCanvasStore.getState().elementLabels["a"]).toBe("Label A");
+      expect(useCanvasStore.getState().elementLabels["b"]).toBe("Label B");
+    });
+
+    it("overwrites an existing label", () => {
+      useCanvasStore.getState().setElementLabel("el-1", "Old");
+      useCanvasStore.getState().setElementLabel("el-1", "New");
+      expect(useCanvasStore.getState().elementLabels["el-1"]).toBe("New");
+    });
+  });
+
+  describe("snapshot / undo / redo", () => {
+    it("snapshot stores current elements in undoStack", () => {
+      useCanvasStore.getState().setElements([makeEl("a")]);
+      useCanvasStore.getState().snapshot();
+      expect(useCanvasStore.getState().undoStack).toHaveLength(1);
+      expect(useCanvasStore.getState().undoStack[0][0].id).toBe("a");
+    });
+
+    it("undo restores previous elements after snapshot", () => {
+      useCanvasStore.getState().setElements([makeEl("a")]);
+      useCanvasStore.getState().snapshot();
+      useCanvasStore.getState().upsertElement(makeEl("b"));
+      expect(useCanvasStore.getState().elements).toHaveLength(2);
+      useCanvasStore.getState().undo();
+      expect(useCanvasStore.getState().elements).toHaveLength(1);
+      expect(useCanvasStore.getState().elements[0].id).toBe("a");
+    });
+
+    it("undo moves current state onto redoStack", () => {
+      useCanvasStore.getState().setElements([makeEl("a")]);
+      useCanvasStore.getState().snapshot();
+      useCanvasStore.getState().upsertElement(makeEl("b"));
+      useCanvasStore.getState().undo();
+      expect(useCanvasStore.getState().redoStack).toHaveLength(1);
+    });
+
+    it("redo re-applies undone changes", () => {
+      useCanvasStore.getState().setElements([makeEl("a")]);
+      useCanvasStore.getState().snapshot();
+      useCanvasStore.getState().setElements([makeEl("a"), makeEl("b")]);
+      useCanvasStore.getState().undo();
+      expect(useCanvasStore.getState().elements).toHaveLength(1);
+      useCanvasStore.getState().redo();
+      expect(useCanvasStore.getState().elements).toHaveLength(2);
+    });
+
+    it("undo is a no-op when stack is empty", () => {
+      useCanvasStore.getState().setElements([makeEl("a")]);
+      useCanvasStore.getState().undo(); // no snapshot, no-op
+      expect(useCanvasStore.getState().elements).toHaveLength(1);
+    });
+
+    it("redo is a no-op when stack is empty", () => {
+      useCanvasStore.getState().setElements([makeEl("a")]);
+      useCanvasStore.getState().redo(); // no undone change, no-op
+      expect(useCanvasStore.getState().elements).toHaveLength(1);
+    });
+
+    it("snapshot clears redoStack", () => {
+      useCanvasStore.getState().setElements([makeEl("a")]);
+      useCanvasStore.getState().snapshot();
+      useCanvasStore.getState().setElements([makeEl("a"), makeEl("b")]);
+      useCanvasStore.getState().undo();
+      // Now redoStack has 1 entry. Taking a new snapshot should clear it.
+      useCanvasStore.getState().snapshot();
+      expect(useCanvasStore.getState().redoStack).toHaveLength(0);
+    });
+
+    it("undo / redo do not affect activeTool or selectedElementId", () => {
+      useCanvasStore.getState().setTool("rect");
+      useCanvasStore.getState().selectElement("el-1");
+      useCanvasStore.getState().setElements([makeEl("a")]);
+      useCanvasStore.getState().snapshot();
+      useCanvasStore.getState().setElements([]);
+      useCanvasStore.getState().undo();
+      expect(useCanvasStore.getState().activeTool).toBe("rect");
+      // selectedElementId is not touched by undo
+    });
+  });
+
+  describe("clipboard — copyElement / getPasted", () => {
+    it("getPasted returns null when clipboard is empty", () => {
+      expect(useCanvasStore.getState().getPasted()).toBeNull();
+    });
+
+    it("getPasted returns a new element after copyElement", () => {
+      useCanvasStore.getState().copyElement(makeEl("orig"));
+      const pasted = useCanvasStore.getState().getPasted();
+      expect(pasted).not.toBeNull();
+    });
+
+    it("pasted element has a different id than the original", () => {
+      useCanvasStore.getState().copyElement(makeEl("orig"));
+      const pasted = useCanvasStore.getState().getPasted();
+      expect(pasted!.id).not.toBe("orig");
+    });
+
+    it("pasted element is offset by 20px in both axes", () => {
+      useCanvasStore.getState().copyElement(makeEl("orig", { x: 100, y: 50 }));
+      const pasted = useCanvasStore.getState().getPasted();
+      expect(pasted!.x).toBe(120);
+      expect(pasted!.y).toBe(70);
+    });
+
+    it("pasted element preserves shape, fill, stroke from original", () => {
+      const orig = makeEl("orig", { data: { kind: "circle" }, fill: "#ff0000", stroke: "#00ff00" });
+      useCanvasStore.getState().copyElement(orig);
+      const pasted = useCanvasStore.getState().getPasted();
+      expect(pasted!.data.kind).toBe("circle");
+      expect(pasted!.fill).toBe("#ff0000");
+      expect(pasted!.stroke).toBe("#00ff00");
+    });
+
+    it("getPasted can be called multiple times producing unique ids", () => {
+      useCanvasStore.getState().copyElement(makeEl("orig"));
+      const p1 = useCanvasStore.getState().getPasted();
+      const p2 = useCanvasStore.getState().getPasted();
+      expect(p1!.id).not.toBe(p2!.id);
+    });
+
+    it("pasted element gets layerIndex equal to current elements count", () => {
+      useCanvasStore.getState().setElements([makeEl("a"), makeEl("b")]);
+      useCanvasStore.getState().copyElement(makeEl("orig"));
+      const pasted = useCanvasStore.getState().getPasted();
+      expect(pasted!.layerIndex).toBe(2);
     });
   });
 });

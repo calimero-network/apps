@@ -3,11 +3,13 @@ import { test, expect } from "@playwright/test";
 // Inject auth state so we land directly on the canvas
 async function injectAuth(page: import("@playwright/test").Page) {
   await page.addInitScript(() => {
+    // JWT payload: {"sub":"test-identity"} — must match TEST_MEMBER.id in mockRpc
     const auth = {
       state: {
         nodeUrl: "http://localhost:2430",
-        accessToken: "fake-access",
+        accessToken: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0LWlkZW50aXR5In0.sig",
         refreshToken: "fake-refresh",
+        applicationId: "app-1",
       },
       version: 0,
     };
@@ -16,23 +18,41 @@ async function injectAuth(page: import("@playwright/test").Page) {
 }
 
 function mockRpc(page: import("@playwright/test").Page) {
-  return page.route("**/jsonrpc", (route) =>
-    route.fulfill({
+  mockIdentities(page);
+  return page.route("**/jsonrpc", (route) => {
+    const body = route.request().postDataJSON() as { params?: { method?: string } };
+    const method = body?.params?.method ?? "";
+    // Return the test identity as a registered member so the username modal doesn't appear
+    const TEST_MEMBER = { id: "test-identity", username: "Tester", avatar: null, joinedAt: 1000 };
+    const value = method === "get_members" ? [TEST_MEMBER] : [];
+    const bytes = Array.from(new TextEncoder().encode(JSON.stringify(value)));
+    return route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ data: [] }),
-    }),
-  );
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, result: { output: bytes, logs: [] } }),
+    });
+  });
 }
 
 function mockSse(page: import("@playwright/test").Page) {
-  return page.route("**/events**", (route) => route.abort());
+  page.route("**/events**", (route) => route.abort());
+  return page.route("**/sse**", (route) => route.abort());
+}
+
+function mockIdentities(page: import("@playwright/test").Page) {
+  return page.route("**/admin-api/contexts/**/identities-owned", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: ["test-identity"] }),
+    }),
+  );
 }
 
 test.describe("Canvas page", () => {
   test.beforeEach(async ({ page }) => {
     await injectAuth(page);
-    await mockRpc(page);
+    await mockRpc(page);  // includes mockIdentities
     await mockSse(page);
     await page.goto("/teams/team-1/projects/project-1");
     await expect(page.getByTestId("fabric-canvas")).toBeVisible({ timeout: 8000 });
@@ -44,12 +64,15 @@ test.describe("Canvas page", () => {
     }
   });
 
-  test("renders export buttons", async ({ page }) => {
+  test("renders Options button and export buttons inside dropdown", async ({ page }) => {
+    await expect(page.getByTestId("options-btn")).toBeVisible();
+    await page.getByTestId("options-btn").click();
     await expect(page.getByTestId("export-png")).toBeVisible();
     await expect(page.getByTestId("export-svg")).toBeVisible();
   });
 
-  test("renders background color buttons", async ({ page }) => {
+  test("renders background color buttons inside Options dropdown", async ({ page }) => {
+    await page.getByTestId("options-btn").click();
     await expect(page.getByTestId("bg-w")).toBeVisible();
     await expect(page.getByTestId("bg-g")).toBeVisible();
     await expect(page.getByTestId("bg-b")).toBeVisible();
@@ -66,16 +89,21 @@ test.describe("Canvas page", () => {
   });
 
   test("background gray button applies .bgActive class", async ({ page }) => {
+    await page.getByTestId("options-btn").click();
     await page.getByTestId("bg-g").click();
+    await page.getByTestId("options-btn").click();
     await expect(page.getByTestId("bg-g")).toHaveClass(/bgActive/);
   });
 
   test("background black button applies .bgActive class", async ({ page }) => {
+    await page.getByTestId("options-btn").click();
     await page.getByTestId("bg-b").click();
+    await page.getByTestId("options-btn").click();
     await expect(page.getByTestId("bg-b")).toHaveClass(/bgActive/);
   });
 
   test("background white button is active by default", async ({ page }) => {
+    await page.getByTestId("options-btn").click();
     await expect(page.getByTestId("bg-w")).toHaveClass(/bgActive/);
   });
 
@@ -97,6 +125,13 @@ test.describe("Canvas page", () => {
 test.describe("Projects page", () => {
   test.beforeEach(async ({ page }) => {
     await injectAuth(page);
+    await page.route("**/admin-api/groups/**/subgroups", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: { subgroups: [] } }),
+      }),
+    );
     await page.route("**/admin-api/groups/**/contexts", (route) =>
       route.fulfill({
         status: 200,
@@ -111,19 +146,23 @@ test.describe("Projects page", () => {
     await expect(page.getByTestId("empty-projects")).toBeVisible({ timeout: 5000 });
   });
 
-  test("invite button opens modal", async ({ page }) => {
-    await page.getByTestId("invite-button").click();
-    await expect(page.getByTestId("invite-modal")).toBeVisible();
+  test("Invitations tab is visible", async ({ page }) => {
+    await expect(page.getByRole("button", { name: "Invitations" })).toBeVisible({ timeout: 5000 });
   });
 
-  test("invite modal closes when clicking overlay", async ({ page }) => {
-    await page.getByTestId("invite-button").click();
-    await expect(page.getByTestId("invite-modal")).toBeVisible();
-    await page.getByTestId("invite-modal-overlay").click({ position: { x: 10, y: 10 } });
-    await expect(page.getByTestId("invite-modal")).not.toBeVisible();
+  test("switching to Invitations tab shows generate button", async ({ page }) => {
+    await page.getByRole("button", { name: "Invitations" }).click();
+    await expect(page.getByTestId("generate-invite")).toBeVisible();
   });
 
   test("shows projects when API returns them", async ({ page }) => {
+    await page.route("**/admin-api/groups/**/subgroups", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: { subgroups: [{ groupId: "sg-1", alias: "My Design" }] } }),
+      }),
+    );
     await page.route("**/admin-api/groups/**/contexts", (route) =>
       route.fulfill({
         status: 200,
@@ -131,7 +170,7 @@ test.describe("Projects page", () => {
         body: JSON.stringify({
           data: {
             contexts: [
-              { contextId: "ctx-1", name: "My Design", description: "", isPublic: false },
+              { contextId: "ctx-1", name: "My Design" },
             ],
           },
         }),

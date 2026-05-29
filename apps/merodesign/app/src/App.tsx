@@ -1,4 +1,6 @@
-import { Routes, Route } from "react-router-dom";
+import { useEffect, useState, type ReactNode } from "react";
+import { Routes, Route, Navigate } from "react-router-dom";
+import { useAuthStore } from "./store/authStore";
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import TeamsPage from "./pages/TeamsPage";
@@ -6,16 +8,46 @@ import ProjectsPage from "./pages/ProjectsPage";
 import CanvasPage from "./pages/CanvasPage";
 import CursorDot from "./components/CursorDot";
 
+function useHydrated() {
+  const [hydrated, setHydrated] = useState(() => useAuthStore.persist.hasHydrated());
+  useEffect(() => {
+    if (hydrated) return;
+    // Hydration may have already finished between render and effect (it's a microtask)
+    if (useAuthStore.persist.hasHydrated()) {
+      setHydrated(true);
+      return;
+    }
+    return useAuthStore.persist.onFinishHydration(() => setHydrated(true));
+  }, [hydrated]);
+  return hydrated;
+}
+
+function RequireAuth({ children }: { children: ReactNode }) {
+  const hydrated = useHydrated();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated());
+  if (!hydrated) return null;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
+function RedirectIfAuthed({ children }: { children: ReactNode }) {
+  const hydrated = useHydrated();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated());
+  if (!hydrated) return null;
+  if (isAuthenticated) return <Navigate to="/teams" replace />;
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <>
       <CursorDot />
       <Routes>
         <Route path="/" element={<LandingPage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/teams" element={<TeamsPage />} />
-        <Route path="/teams/:teamId/projects" element={<ProjectsPage />} />
-        <Route path="/teams/:teamId/projects/:projectId" element={<CanvasPage />} />
+        <Route path="/login" element={<RedirectIfAuthed><LoginPage /></RedirectIfAuthed>} />
+        <Route path="/teams" element={<RequireAuth><TeamsPage /></RequireAuth>} />
+        <Route path="/teams/:teamId/projects" element={<RequireAuth><ProjectsPage /></RequireAuth>} />
+        <Route path="/teams/:teamId/projects/:projectId" element={<RequireAuth><CanvasPage /></RequireAuth>} />
       </Routes>
     </>
   );

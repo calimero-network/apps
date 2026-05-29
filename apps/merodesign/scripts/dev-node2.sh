@@ -176,7 +176,9 @@ fi
 # ── Start node2 ───────────────────────────────────────────────────────────────
 
 step "Starting node2"
+export RUST_LOG="${RUST_LOG:-debug,h2=warn,hyper=warn,tower=warn,rustls=warn,tokio=warn,mio=warn}"
 merod --node "$NODE_NAME" --home "$NODE_HOME" run \
+  --auth-mode embedded \
   > "/tmp/merodesign-dev-node2.log" 2>&1 &
 echo $! > "$(pid_file)"
 green "Node2 started (pid $!  logs: /tmp/merodesign-dev-node2.log)"

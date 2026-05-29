@@ -1,4 +1,4 @@
-.PHONY: help setup install build bundle dev frontend dev-node dev-node2 dev-invite stop \
+.PHONY: help setup install build bundle dev restart frontend dev-node dev-node2 dev-invite stop \
         logic-build logic-bundle app-install app-build app-typecheck app-lint \
         test unit e2e e2e-ui workflows workflows-no-build logic-test clean
 
@@ -23,6 +23,7 @@ help:
 	@echo ""
 	@echo "  Dev"
 	@echo "    dev            Full stack: build WASM, 2 nodes, invite, frontend"
+	@echo "    restart        Restart nodes without rebuilding WASM (faster)"
 	@echo "    frontend       Frontend only (http://localhost:5173)"
 	@echo "    stop           Stop all dev nodes and free ports"
 	@echo ""
@@ -82,6 +83,14 @@ dev: app-install
 	@bash scripts/dev-invite.sh
 	cd app && pnpm dev
 
+restart: app-install
+	@bash scripts/dev-node.sh --clean 2>/dev/null || true
+	@bash scripts/dev-node2.sh --clean 2>/dev/null || true
+	@bash scripts/dev-node.sh --skip-build
+	@bash scripts/dev-node2.sh
+	@bash scripts/dev-invite.sh
+	cd app && pnpm dev
+
 frontend: app-install
 	cd app && pnpm dev
 
@@ -135,8 +144,7 @@ stop:
 	    [ -n "$$pids" ] && { echo "  killing pid(s) on $$proto:$$p: $$pids"; kill -9 $$pids 2>/dev/null || true; } || true; \
 	  done; \
 	done
-	@rm -f /tmp/merodesign-dev-node.pid /tmp/merodesign-dev-node2.pid \
-	       /tmp/merodesign-dev-node.log /tmp/merodesign-dev-node2.log
+	@rm -f /tmp/merodesign-dev-node.pid /tmp/merodesign-dev-node2.pid
 	@printf '\033[32m  ✓  dev nodes stopped & cleaned\033[0m\n'
 
 # ── Clean ──────────────────────────────────────────────────────────────────────

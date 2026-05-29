@@ -11,7 +11,7 @@ describe("authStore", () => {
   });
 
   it("setAuth marks authenticated", () => {
-    useAuthStore.getState().setAuth("http://localhost:2430", "tok-access", "tok-refresh");
+    useAuthStore.getState().setAuth("http://localhost:2430", "tok-access", "tok-refresh", "");
     expect(useAuthStore.getState().isAuthenticated()).toBe(true);
     expect(useAuthStore.getState().nodeUrl).toBe("http://localhost:2430");
     expect(useAuthStore.getState().accessToken).toBe("tok-access");
@@ -19,7 +19,7 @@ describe("authStore", () => {
   });
 
   it("clearAuth resets to unauthenticated", () => {
-    useAuthStore.getState().setAuth("http://localhost:2430", "tok", "ref");
+    useAuthStore.getState().setAuth("http://localhost:2430", "tok", "ref", "");
     useAuthStore.getState().clearAuth();
     expect(useAuthStore.getState().isAuthenticated()).toBe(false);
     expect(useAuthStore.getState().accessToken).toBe("");

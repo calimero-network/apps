@@ -13,13 +13,13 @@ test.describe("Landing page", () => {
     await expect(page.getByText("Collaborative design.")).toBeVisible();
   });
 
-  test("renders four feature cards", async ({ page }) => {
-    const features = page.locator(".features .feature, [class*='features'] [class*='feature']");
-    await expect(features).toHaveCount(4);
+  test("renders feature cards", async ({ page }) => {
+    const features = page.locator("[class*='featureCard']");
+    expect(await features.count()).toBeGreaterThanOrEqual(4);
   });
 
   test("renders FAQ section with at least 3 items", async ({ page }) => {
-    await expect(page.getByText("FAQ")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "FAQ" })).toBeVisible();
     const faqItems = page.locator("[class*='faqItem']");
     expect(await faqItems.count()).toBeGreaterThanOrEqual(3);
   });

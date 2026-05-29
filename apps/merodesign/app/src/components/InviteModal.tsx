@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { adminPost } from "../api/rpc";
+import { encodeInvitation } from "../utils/invitation";
 import styles from "./InviteModal.module.css";
 
 interface Props {
@@ -21,7 +22,8 @@ export default function InviteModal({ teamId, onClose }: Props) {
         `/namespaces/${teamId}/invitations`,
         {},
       );
-      setInvitation(data.invitation ?? (data.data as string) ?? "");
+      const raw = data.invitation ?? (data.data as string) ?? "";
+      setInvitation(raw ? encodeInvitation(raw) : "");
     } catch {
       setError("Failed to generate invitation. Check node connection.");
     } finally {

@@ -6,7 +6,7 @@ import styles from "./LandingPage.module.css";
 const LOOP_MS = 7000;
 
 function useReveal() {
-  const ref = useRef<HTMLElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -196,7 +196,7 @@ export default function LandingPage() {
       <section className={styles.previewSection}>
         <div className={styles.previewLabel}>See it in action</div>
         <div
-          ref={previewRef as React.RefObject<HTMLDivElement>}
+          ref={previewRef}
           className={`${styles.previewWrap} ${styles.reveal}`}
         >
           <AppPreview animKey={animKey} />
@@ -206,7 +206,7 @@ export default function LandingPage() {
       {/* ── Features ──────────────────────────────────────────────────── */}
       <section id="features" className={styles.featuresSection}>
         <div
-          ref={featuresRef as React.RefObject<HTMLElement>}
+          ref={featuresRef}
           className={`${styles.featuresInner} ${styles.reveal}`}
         >
           <h2 className={styles.sectionTitle}>Everything a design tool needs</h2>
@@ -234,7 +234,7 @@ export default function LandingPage() {
       {/* ── How it works ──────────────────────────────────────────────── */}
       <section className={styles.howSection}>
         <div
-          ref={howRef as React.RefObject<HTMLElement>}
+          ref={howRef}
           className={`${styles.howInner} ${styles.reveal}`}
         >
           <h2 className={styles.sectionTitleLight}>How it works</h2>
@@ -258,7 +258,7 @@ export default function LandingPage() {
       {/* ── FAQ ───────────────────────────────────────────────────────── */}
       <section id="faq" className={styles.faqSection}>
         <div
-          ref={faqRef as React.RefObject<HTMLElement>}
+          ref={faqRef}
           className={`${styles.faqInner} ${styles.reveal}`}
         >
           <h2 className={styles.sectionTitle}>FAQ</h2>
