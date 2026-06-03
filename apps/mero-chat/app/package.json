@@ -82,7 +82,7 @@
     "typescript-eslint": "^8.30.1",
     "vite": "^6.4.1",
     "vite-plugin-pwa": "^1.1.0",
-    "vitest": "^4.0.18",
+    "vitest": "^4.1.8",
     "workbox-window": "^7.4.1"
   },
   "optionalDependencies": {
