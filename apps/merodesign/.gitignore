@@ -28,3 +28,8 @@ app/test-results/
 
 # Calimero node homes (dev)
 ~/.calimero/merodesign-*
+
+# build artifacts / caches (added 2026-06-08)
+node_modules/
+logic/res/*.mpk
+logic/res/bundle-temp/
