@@ -1,23 +1,24 @@
 import { useEffect, useRef } from "react";
 import { SseClient, type SseEventData } from "@calimero-network/mero-js";
-import { useAuthStore } from "../store/authStore";
+import { useMero } from "@calimero-network/mero-react";
+import { getJwt } from "../api/rpc";
 
 export function useSse(
   contextId: string | null,
   onEvent: (payload: unknown) => void,
 ) {
-  const { nodeUrl, accessToken } = useAuthStore();
+  const { nodeUrl } = useMero();
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
 
   useEffect(() => {
-    if (!contextId || !nodeUrl || !accessToken) return;
+    if (!contextId || !nodeUrl) return;
 
     // reconnectDelayMs=8000: slower reconnects reduce MetaMask MaxListeners noise
     // (MetaMask adds a listener per SSE reconnect; default 3s triggers 10+ quickly)
     const client = new SseClient({
       baseUrl: nodeUrl,
-      getAuthToken: async () => useAuthStore.getState().accessToken,
+      getAuthToken: async () => getJwt(),
       reconnectDelayMs: 8000,
     });
 
@@ -38,5 +39,5 @@ export function useSse(
       client.off("event", handler);
       client.close();
     };
-  }, [contextId, nodeUrl, accessToken]);
+  }, [contextId, nodeUrl]);
 }

@@ -3,14 +3,15 @@ import axios from "axios";
 import { rpcCall, adminGet, adminPost, adminDelete, adminPut, listNamespaces } from "./rpc";
 
 vi.mock("axios");
-vi.mock("../store/authStore", () => ({
-  useAuthStore: {
-    getState: vi.fn(() => ({
-      nodeUrl: "http://localhost:2430",
-      accessToken: "test-token",
-    })),
-  },
+vi.mock("@calimero-network/mero-react", () => ({
+  getNodeUrl: () => "http://localhost:2430",
+  clearAllStorage: vi.fn(),
 }));
+
+// Token now lives in the mero token store (localStorage["mero-tokens"]).
+beforeEach(() => {
+  localStorage.setItem("mero-tokens", JSON.stringify({ access_token: "test-token" }));
+});
 
 const mockPost   = vi.mocked(axios.post);
 const mockGet    = vi.mocked(axios.get);

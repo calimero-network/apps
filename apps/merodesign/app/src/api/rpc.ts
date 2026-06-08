@@ -1,10 +1,25 @@
 import axios from "axios";
-import { useAuthStore } from "../store/authStore";
+import { getNodeUrl, clearAllStorage } from "@calimero-network/mero-react";
 import { getCachedBlob, setCachedBlob } from "../utils/blobCache";
 
 interface RpcResponse<T> {
   data: T;
   error?: string;
+}
+
+/** Read the access token from the mero token store (localStorage["mero-tokens"]). */
+export function getJwt(): string {
+  try {
+    const raw = localStorage.getItem("mero-tokens");
+    return raw ? (JSON.parse(raw).access_token ?? "") : "";
+  } catch {
+    return "";
+  }
+}
+
+/** Node URL from mero-react storage (set by the auth callback / Tauri hash). */
+function nodeBase(): string {
+  return getNodeUrl() ?? "";
 }
 
 axios.interceptors.response.use(
@@ -16,7 +31,7 @@ axios.interceptors.response.use(
     // identities-owned failure is non-fatal — CanvasPage falls back to JWT sub
     const isIdentitiesOwned = url.includes("/identities-owned");
     if (is401 && !isAuthEndpoint && !isIdentitiesOwned) {
-      useAuthStore.getState().clearAuth();
+      clearAllStorage();
       window.location.href = "/login";
     }
     return Promise.reject(err);
@@ -28,7 +43,8 @@ export async function rpcCall<T>(
   method: string,
   args: Record<string, unknown>,
 ): Promise<T> {
-  const { nodeUrl, accessToken } = useAuthStore.getState();
+  const nodeUrl = nodeBase();
+  const accessToken = getJwt();
   const res = await axios.post(
     `${nodeUrl}/jsonrpc`,
     {
@@ -80,7 +96,8 @@ export async function rpcCall<T>(
 }
 
 export async function adminGet<T>(path: string): Promise<T> {
-  const { nodeUrl, accessToken } = useAuthStore.getState();
+  const nodeUrl = nodeBase();
+  const accessToken = getJwt();
   const res = await axios.get<RpcResponse<T>>(`${nodeUrl}/admin-api${path}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -111,7 +128,8 @@ export async function adminPost<T>(
   path: string,
   body: Record<string, unknown>,
 ): Promise<T> {
-  const { nodeUrl, accessToken } = useAuthStore.getState();
+  const nodeUrl = nodeBase();
+  const accessToken = getJwt();
   const res = await axios.post<RpcResponse<T>>(
     `${nodeUrl}/admin-api${path}`,
     body,
@@ -123,7 +141,8 @@ export async function adminPost<T>(
 }
 
 export async function adminDelete<T>(path: string): Promise<T> {
-  const { nodeUrl, accessToken } = useAuthStore.getState();
+  const nodeUrl = nodeBase();
+  const accessToken = getJwt();
   const res = await axios.delete<RpcResponse<T>>(`${nodeUrl}/admin-api${path}`, {
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
     data: {},
@@ -135,7 +154,8 @@ export async function adminPut<T>(
   path: string,
   body: Record<string, unknown>,
 ): Promise<T> {
-  const { nodeUrl, accessToken } = useAuthStore.getState();
+  const nodeUrl = nodeBase();
+  const accessToken = getJwt();
   const res = await axios.put<RpcResponse<T>>(
     `${nodeUrl}/admin-api${path}`,
     body,
@@ -147,7 +167,8 @@ export async function adminPut<T>(
 }
 
 export async function adminUploadBlob(data: ArrayBuffer, contextId?: string): Promise<{ blobId: string }> {
-  const { nodeUrl, accessToken } = useAuthStore.getState();
+  const nodeUrl = nodeBase();
+  const accessToken = getJwt();
   // Pass context_id so the node announces the blob to the network immediately.
   const url = contextId
     ? `${nodeUrl}/admin-api/blobs?context_id=${encodeURIComponent(contextId)}`
@@ -165,7 +186,8 @@ export async function adminGetBlob(blobId: string): Promise<ArrayBuffer> {
   const cached = await getCachedBlob(blobId);
   if (cached) return cached;
 
-  const { nodeUrl, accessToken } = useAuthStore.getState();
+  const nodeUrl = nodeBase();
+  const accessToken = getJwt();
   const t0 = performance.now();
   const res = await axios.get<ArrayBuffer>(
     `${nodeUrl}/admin-api/blobs/${blobId}`,

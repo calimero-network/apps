@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useMero } from "@calimero-network/mero-react";
 import { adminGet, adminPost, adminPut, adminDelete } from "../api/rpc";
-import { useAuthStore } from "../store/authStore";
 import Logo from "../components/Logo";
 import SettingsModal from "../components/SettingsModal";
 import type { Project } from "../types";
@@ -28,7 +28,7 @@ type Tab = "projects" | "invitations";
 export default function ProjectsPage() {
   const { teamId } = useParams<{ teamId: string }>();
   const navigate = useNavigate();
-  const { clearAuth, applicationId } = useAuthStore();
+  const { logout, applicationId } = useMero();
 
   const [tab, setTab] = useState<Tab>("projects");
   const [projects, setProjects] = useState<Project[]>([]);
@@ -46,7 +46,7 @@ export default function ProjectsPage() {
   const [inviteError, setInviteError] = useState("");
 
   function handleLogout() {
-    clearAuth();
+    logout();
     navigate("/login");
   }
 
@@ -130,7 +130,7 @@ export default function ProjectsPage() {
       const ctxData = await adminPost<{ contextId?: string; id?: string }>(
         "/contexts",
         {
-          applicationId,
+          applicationId: applicationId ?? "",
           protocol: "near",
           groupId: subgroupId || teamId,
           alias: newName.trim(),

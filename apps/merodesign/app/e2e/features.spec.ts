@@ -7,19 +7,22 @@ import { test, expect } from "@playwright/test";
 
 async function injectAuth(page: import("@playwright/test").Page) {
   await page.addInitScript(() => {
-    localStorage.setItem(
-      "merodesign-auth",
-      JSON.stringify({
-        state: {
-          nodeUrl: "http://localhost:2430",
-          accessToken: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0LWlkZW50aXR5In0.sig",
-          refreshToken: "fake-refresh",
-          applicationId: "app-1",
-        },
-        version: 0,
-      }),
-    );
+    localStorage.setItem("mero-tokens", JSON.stringify({
+      access_token: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0LWlkZW50aXR5In0.sig",
+      refresh_token: "fake-refresh",
+      expires_at: Date.now() + 3600_000,
+    }));
+    localStorage.setItem("mero:node_url", "http://localhost:2430");
+    localStorage.setItem("mero:application_id", "app-1");
   });
+  // MeroProvider gates isAuthenticated on a GET /admin-api/contexts probe; mock it.
+  await page.route("**/admin-api/contexts", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: { contexts: [] } }),
+    }),
+  );
 }
 
 /** Encode a JSON value as the Calimero `execute` response (output: u8[]) */
