@@ -1,7 +1,6 @@
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
-use calimero_sdk::serde::de::Error as SerdeDeError;
 use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::{app, env};
+use calimero_sdk::{app, env, BlobId};
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{
     AuthoredMap, AuthoredVector, LwwRegister, Mergeable as MergeableTrait, UnorderedMap,
@@ -14,70 +13,14 @@ use std::fmt::Write;
 
 id::define!(pub UserId<32, 44>);
 type MessageId = String;
-
-const BLOB_ID_SIZE: usize = 32;
-const BASE58_ENCODED_MAX_SIZE: usize = 44;
-
-fn encode_blob_id_base58(blob_id_bytes: &[u8; BLOB_ID_SIZE]) -> String {
-    let mut buf = [0u8; BASE58_ENCODED_MAX_SIZE];
-    let len = bs58::encode(blob_id_bytes).onto(&mut buf[..]).unwrap();
-    std::str::from_utf8(&buf[..len]).unwrap().to_owned()
-}
-
-fn parse_blob_id_base58(blob_id_str: &str) -> Result<[u8; BLOB_ID_SIZE], String> {
-    match bs58::decode(blob_id_str).into_vec() {
-        Ok(bytes) if bytes.len() == BLOB_ID_SIZE => {
-            let mut blob_id = [0u8; BLOB_ID_SIZE];
-            blob_id.copy_from_slice(&bytes);
-            Ok(blob_id)
-        }
-        Ok(bytes) => Err(format!(
-            "Invalid blob ID length: expected {} bytes, got {}",
-            BLOB_ID_SIZE,
-            bytes.len()
-        )),
-        Err(e) => Err(format!("Failed to decode blob ID '{blob_id_str}': {e}")),
-    }
-}
+// Type alias prevents the #[app::state] macro from mis-identifying
+// UnorderedMap<MessageId, ThreadVec> as an AuthoredVector field.
+type ThreadVec = AuthoredVector<Message>;
 
 /// Build the storage key for a user's per-channel draft.
 /// Format: "<base58_user_id>:<channel_name>"
 fn draft_key(user_base58: &str, channel: &str) -> String {
     format!("{user_base58}:{channel}")
-}
-
-fn serialize_blob_id_bytes<S>(
-    blob_id_bytes: &[u8; BLOB_ID_SIZE],
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: calimero_sdk::serde::Serializer,
-{
-    let safe_string = encode_blob_id_base58(blob_id_bytes);
-    serializer.serialize_str(&safe_string)
-}
-
-fn deserialize_blob_id_bytes<'de, D>(deserializer: D) -> Result<[u8; BLOB_ID_SIZE], D::Error>
-where
-    D: calimero_sdk::serde::Deserializer<'de>,
-{
-    let blob_id_str = <String as calimero_sdk::serde::Deserialize>::deserialize(deserializer)?;
-    match bs58::decode(&blob_id_str).into_vec() {
-        Ok(bytes) if bytes.len() == BLOB_ID_SIZE => {
-            let mut blob_id = [0u8; BLOB_ID_SIZE];
-            blob_id.copy_from_slice(&bytes);
-            Ok(blob_id)
-        }
-        Ok(bytes) => Err(SerdeDeError::custom(format!(
-            "Invalid blob ID length: expected {} bytes, got {}",
-            BLOB_ID_SIZE,
-            bytes.len()
-        ))),
-        Err(e) => Err(SerdeDeError::custom(format!(
-            "Failed to decode blob ID '{}': {}",
-            blob_id_str, e
-        ))),
-    }
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
@@ -94,11 +37,7 @@ pub struct Attachment {
     pub name: String,
     pub mime_type: String,
     pub size: u64,
-    #[serde(
-        serialize_with = "serialize_blob_id_bytes",
-        deserialize_with = "deserialize_blob_id_bytes"
-    )]
-    pub blob_id: [u8; BLOB_ID_SIZE],
+    pub blob_id: BlobId,
     pub uploaded_at: u64,
 }
 
@@ -117,7 +56,7 @@ impl Attachment {
             name: self.name.clone(),
             mime_type: self.mime_type.clone(),
             size: self.size,
-            blob_id: encode_blob_id_base58(&self.blob_id),
+            blob_id: self.blob_id.to_string(),
             uploaded_at: self.uploaded_at,
         }
     }
@@ -356,34 +295,26 @@ fn attachments_vector_to_public(vector: &Vector<Attachment>) -> Vec<AttachmentPu
 fn attachment_inputs_to_vector(
     inputs: Option<Vec<AttachmentInput>>,
     context_id: &[u8; 32],
-) -> Result<Vector<Attachment>, String> {
+) -> app::Result<Vector<Attachment>> {
     let mut vector = Vector::new();
-
     if let Some(attachment_inputs) = inputs {
         for attachment_input in attachment_inputs {
-            let blob_id = parse_blob_id_base58(&attachment_input.blob_id_str)?;
-
-            if !env::blob_announce_to_context(&blob_id, context_id) {
-                let context_b58 = encode_blob_id_base58(context_id);
+            let blob_id: BlobId = attachment_input.blob_id_str.parse()?;
+            if !env::blob_announce_to_context(blob_id.as_ref(), context_id) {
                 app::log!(
-                    "Warning: failed to announce blob {} to context {}",
+                    "Warning: failed to announce blob {} to context",
                     attachment_input.blob_id_str,
-                    context_b58
                 );
             }
-
-            let attachment = Attachment {
+            let _ = vector.push(Attachment {
                 name: attachment_input.name,
                 mime_type: attachment_input.mime_type,
                 size: attachment_input.size,
                 blob_id,
                 uploaded_at: env::time_now(),
-            };
-
-            let _ = vector.push(attachment);
+            });
         }
     }
-
     Ok(vector)
 }
 
@@ -438,8 +369,6 @@ impl MergeableTrait for StoredProfile {
 /// One context = one conversation (channel or DM).
 /// Messages, threads, reactions, profiles, and metadata live here.
 #[app::state(emits = Event)]
-#[derive(BorshSerialize, BorshDeserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
 pub struct MeroChat {
     name: LwwRegister<String>,
     context_type: LwwRegister<ContextType>,
@@ -447,7 +376,7 @@ pub struct MeroChat {
     created_at: LwwRegister<u64>,
     creator: LwwRegister<String>,
     messages: AuthoredVector<Message>,
-    threads: UnorderedMap<MessageId, AuthoredVector<Message>>,
+    threads: UnorderedMap<MessageId, ThreadVec>,
     reactions: UnorderedMap<MessageId, UnorderedMap<String, UnorderedSet<String>>>,
     profiles: AuthoredMap<UserId, StoredProfile>,
     /// Per-context moderation roles. Missing entry = Role::User (default).
@@ -480,7 +409,7 @@ impl MeroChat {
     ) -> MeroChat {
         app::emit!(Event::Initialized());
 
-        let creator = encode_blob_id_base58(&env::executor_id());
+        let creator = Self::executor_id().to_string();
 
         let mut roles = UnorderedMap::new();
         let _ = roles.insert(UserId::new(env::executor_id()), LwwRegister::new(Role::Admin));
@@ -539,14 +468,14 @@ impl MeroChat {
         &self,
         _channel: Option<String>,
         _timestamp: Option<u64>,
-    ) -> app::Result<String, String> {
+    ) -> app::Result<String> {
         Ok("ok".to_string())
     }
 
     /// Persist the caller's last-read position. No event is emitted so this
     /// is a silent CRDT write — it gossips to other nodes but does not trigger
     /// an SSE notification on any subscriber.
-    pub fn mark_as_read(&mut self, timestamp: u64) -> app::Result<String, String> {
+    pub fn mark_as_read(&mut self, timestamp: u64) -> app::Result<String> {
         let caller = Self::executor_id();
         let _ = self.read_receipts.insert(caller, LwwRegister::new(timestamp));
         Ok("ok".to_string())
@@ -641,7 +570,7 @@ impl MeroChat {
         &mut self,
         name: Option<String>,
         description: Option<String>,
-    ) -> app::Result<String, String> {
+    ) -> app::Result<String> {
         self.require_not_banned()?;
         if let Some(n) = name {
             self.name.set(n);
@@ -671,32 +600,24 @@ impl MeroChat {
         &mut self,
         username: String,
         avatar: Option<String>,
-    ) -> app::Result<String, String> {
+    ) -> app::Result<String> {
         self.require_not_banned()?;
         if username.trim().is_empty() {
-            return Err("Username cannot be empty".to_string());
+            app::bail!("Username cannot be empty");
         }
         if username.len() > 50 {
-            return Err("Username cannot be longer than 50 characters".to_string());
+            app::bail!("Username cannot be longer than 50 characters");
         }
 
         let executor_id = Self::executor_id();
 
         // Announce avatar blob to this context so it replicates to other nodes.
         let avatar_register: Option<LwwRegister<String>> = if let Some(ref blob_id_str) = avatar {
-            match parse_blob_id_base58(blob_id_str) {
-                Ok(blob_id) => {
-                    let context_id = env::context_id();
-                    if !env::blob_announce_to_context(&blob_id, &context_id) {
-                        app::log!(
-                            "Warning: failed to announce avatar blob {} to context",
-                            blob_id_str
-                        );
-                    }
-                    Some(LwwRegister::new(blob_id_str.clone()))
-                }
-                Err(e) => return Err(format!("Invalid avatar blob ID: {e}")),
+            let blob_id: BlobId = blob_id_str.parse().map_err(|e| app::err!("Invalid avatar blob ID: {e}"))?;
+            if !env::blob_announce_to_context(blob_id.as_ref(), &env::context_id()) {
+                app::log!("Warning: failed to announce avatar blob {} to context", blob_id_str);
             }
+            Some(LwwRegister::new(blob_id_str.clone()))
         } else {
             None
         };
@@ -742,9 +663,9 @@ impl MeroChat {
 
     /// Save a draft for the calling user in the given channel.
     /// Passing an empty string is equivalent to deleting the draft.
-    pub fn save_draft(&mut self, channel: String, text: String) -> app::Result<(), String> {
+    pub fn save_draft(&mut self, channel: String, text: String) -> app::Result<()> {
         self.require_not_banned()?;
-        let key = draft_key(&encode_blob_id_base58(&env::executor_id()), &channel);
+        let key = draft_key(&Self::executor_id().to_string(), &channel);
         if text.is_empty() {
             let _ = self.drafts.remove(&key);
         } else {
@@ -756,7 +677,7 @@ impl MeroChat {
     /// Return the calling user's draft for the given channel, or an empty
     /// string if none exists.
     pub fn get_draft(&self, channel: String) -> String {
-        let key = draft_key(&encode_blob_id_base58(&env::executor_id()), &channel);
+        let key = draft_key(&Self::executor_id().to_string(), &channel);
         self.drafts
             .get(&key)
             .ok()
@@ -766,9 +687,9 @@ impl MeroChat {
     }
 
     /// Delete the calling user's draft for the given channel.
-    pub fn delete_draft(&mut self, channel: String) -> app::Result<(), String> {
+    pub fn delete_draft(&mut self, channel: String) -> app::Result<()> {
         self.require_not_banned()?;
-        let key = draft_key(&encode_blob_id_base58(&env::executor_id()), &channel);
+        let key = draft_key(&Self::executor_id().to_string(), &channel);
         let _ = self.drafts.remove(&key);
         Ok(())
     }
@@ -778,7 +699,7 @@ impl MeroChat {
     /// Record the caller as online. Call every ~30 s while the app is active.
     /// No event is emitted — the write is a silent CRDT gossip so it won't
     /// trigger SSE noise on subscribers. Banned members are excluded.
-    pub fn heartbeat(&mut self) -> app::Result<(), String> {
+    pub fn heartbeat(&mut self) -> app::Result<()> {
         self.require_not_banned()?;
         let me = Self::executor_id();
         let _ = self.heartbeats.insert(me, LwwRegister::new(env::time_now()));
@@ -833,7 +754,7 @@ impl MeroChat {
         &mut self,
         target: UserId,
         role: Role,
-    ) -> app::Result<String, String> {
+    ) -> app::Result<String> {
         let me = Self::executor_id();
         let actor_role = self.role_of(&me);
         let target_role = self.role_of(&target);
@@ -846,10 +767,10 @@ impl MeroChat {
         let is_bootstrap = no_admin_exists && me == target && role == Role::Admin;
 
         if me == target && actor_role == Role::Admin && role != Role::Admin {
-            return Err("An admin cannot demote themselves below Admin".to_string());
+            app::bail!("An admin cannot demote themselves below Admin");
         }
         if !is_bootstrap && !Self::can_change_role(actor_role, target_role, role) {
-            return Err("You don't have permission to change this member's role".to_string());
+            app::bail!("You don't have permission to change this member's role");
         }
 
         // User is the implicit default — keep the map small by removing the
@@ -871,10 +792,9 @@ impl MeroChat {
         }
     }
 
-    fn require_not_banned(&self) -> app::Result<(), String> {
-        let me = Self::executor_id();
-        if self.role_of(&me) == Role::Banned {
-            return Err("You are banned from this context".to_string());
+    fn require_not_banned(&self) -> app::Result<()> {
+        if self.role_of(&Self::executor_id()) == Role::Banned {
+            app::bail!("You are banned from this context");
         }
         Ok(())
     }
@@ -938,7 +858,7 @@ impl MeroChat {
         sender_username: String,
         files: Option<Vec<AttachmentInput>>,
         images: Option<Vec<AttachmentInput>>,
-    ) -> app::Result<Message, String> {
+    ) -> app::Result<Message> {
         self.require_not_banned()?;
         let executor_id = Self::executor_id();
 
@@ -977,12 +897,9 @@ impl MeroChat {
         };
 
         if let Some(parent_id) = parent_message {
-            let mut thread_messages = match self.threads.get(&parent_id) {
-                Ok(Some(messages)) => messages,
-                _ => AuthoredVector::new(),
-            };
-            let _ = thread_messages.push(msg.clone());
-            let _ = self.threads.insert(parent_id, thread_messages);
+            let mut entry = self.threads.entry(parent_id)?.or_insert(AuthoredVector::new())?;
+            let _ = entry.push(msg.clone());
+            drop(entry);
 
             app::emit!(Event::MessageSentThread(MessageSentEvent {
                 message_id: message_id.clone(),
@@ -1004,7 +921,7 @@ impl MeroChat {
         limit: Option<usize>,
         offset: Option<usize>,
         search_term: Option<String>,
-    ) -> app::Result<FullMessageResponse, String> {
+    ) -> app::Result<FullMessageResponse> {
         let normalized_search = search_term.map(|term| term.to_lowercase());
 
         if let Some(parent_id) = parent_message {
@@ -1040,7 +957,7 @@ impl MeroChat {
         search_term: String,
         limit: Option<usize>,
         offset: Option<usize>,
-    ) -> app::Result<FullMessageResponse, String> {
+    ) -> app::Result<FullMessageResponse> {
         let normalized = search_term.to_lowercase();
         let term = normalized.as_str();
 
@@ -1214,28 +1131,20 @@ impl MeroChat {
         emoji: String,
         user: String,
         add: bool,
-    ) -> app::Result<String, String> {
+    ) -> app::Result<String> {
         self.require_not_banned()?;
-        let mut reactions = match self.reactions.get(&message_id) {
-            Ok(Some(reactions)) => reactions,
-            _ => UnorderedMap::new(),
-        };
-
-        let mut emoji_reactions = match reactions.get(&emoji) {
-            Ok(Some(users)) => users,
-            _ => UnorderedSet::new(),
-        };
-
-        if add {
-            let _ = emoji_reactions.insert(user);
-        } else {
-            let _ = emoji_reactions.remove(&user);
-        }
-
-        let _ = reactions.insert(emoji, emoji_reactions);
-        let _ = self.reactions.insert(message_id.clone(), reactions);
-
         let action = if add { "added" } else { "removed" };
+
+        let mut reactions_entry = self.reactions.entry(message_id.clone())?.or_insert(UnorderedMap::new())?;
+        let mut emoji_entry = reactions_entry.entry(emoji)?.or_insert(UnorderedSet::new())?;
+        if add {
+            let _ = emoji_entry.insert(user);
+        } else {
+            let _ = emoji_entry.remove(&user);
+        }
+        drop(emoji_entry);
+        drop(reactions_entry);
+
         app::emit!(Event::ReactionUpdated(message_id.to_string()));
         Ok(format!("Reaction {} successfully", action))
     }
@@ -1246,25 +1155,22 @@ impl MeroChat {
         new_message: String,
         timestamp: u64,
         parent_id: Option<MessageId>,
-    ) -> app::Result<Message, String> {
+    ) -> app::Result<Message> {
         self.require_not_banned()?;
         let executor_id = Self::executor_id();
 
         if let Some(parent_message_id) = parent_id {
-            let mut thread_messages = match self.threads.get(&parent_message_id) {
-                Ok(Some(messages)) => messages,
-                _ => return Err("Thread not found".to_string()),
+            let Some(mut thread_entry) = self.threads.get_mut(&parent_message_id)? else {
+                app::bail!("Thread not found")
             };
-
             let updated = Self::find_and_edit(
-                &mut thread_messages,
+                &mut *thread_entry,
                 &message_id,
                 &new_message,
                 timestamp,
                 &executor_id,
             )?;
-
-            let _ = self.threads.insert(parent_message_id, thread_messages);
+            drop(thread_entry);
 
             app::emit!(Event::MessageSentThread(MessageSentEvent {
                 message_id: updated.id.get().clone(),
@@ -1292,14 +1198,14 @@ impl MeroChat {
         new_text: &str,
         timestamp: u64,
         executor_id: &UserId,
-    ) -> Result<Message, String> {
+    ) -> app::Result<Message> {
         let mut target_index: Option<usize> = None;
 
         if let Ok(iter) = messages.iter() {
             for (index, message) in iter.enumerate() {
                 if *message.id == *message_id {
                     if message.sender != *executor_id {
-                        return Err("You can only edit your own messages".to_string());
+                        app::bail!("You can only edit your own messages");
                     }
                     target_index = Some(index);
                     break;
@@ -1307,12 +1213,12 @@ impl MeroChat {
             }
         }
 
-        let index = target_index.ok_or_else(|| "Message not found".to_string())?;
+        let index = target_index.ok_or_else(|| app::err!("Message not found"))?;
 
         let original = messages
             .get(index)
-            .map_err(|_| "Failed to read message".to_string())?
-            .ok_or_else(|| "Message not found".to_string())?;
+            .map_err(|_| app::err!("Failed to read message"))?
+            .ok_or_else(|| app::err!("Message not found"))?;
 
         let mut updated = original.clone();
         updated.text.set(new_text.to_string());
@@ -1326,21 +1232,20 @@ impl MeroChat {
         &mut self,
         message_id: MessageId,
         parent_id: Option<MessageId>,
-    ) -> app::Result<String, String> {
+    ) -> app::Result<String> {
         self.require_not_banned()?;
         let executor_id = Self::executor_id();
         let actor_role = self.role_of(&executor_id);
 
         if let Some(parent_message_id) = parent_id {
-            let mut thread_messages = match self.threads.get(&parent_message_id) {
-                Ok(Some(messages)) => messages,
-                _ => return Err("Thread not found".to_string()),
+            let Some(mut thread_entry) = self.threads.get_mut(&parent_message_id)? else {
+                app::bail!("Thread not found")
             };
+            Self::find_and_delete(&mut *thread_entry, &message_id, &executor_id, actor_role)?;
+            drop(thread_entry);
 
-            Self::find_and_delete(&mut thread_messages, &message_id, &executor_id, actor_role)?;
             let _ = self.deleted_messages.insert(message_id.clone());
             let _ = self.reactions.remove(&message_id);
-            let _ = self.threads.insert(parent_message_id, thread_messages);
 
             app::emit!(Event::MessageSentThread(MessageSentEvent {
                 message_id: message_id.clone(),
@@ -1363,7 +1268,7 @@ impl MeroChat {
         message_id: &str,
         executor_id: &UserId,
         actor_role: Role,
-    ) -> Result<(), String> {
+    ) -> app::Result<()> {
         let mut target_index: Option<usize> = None;
 
         if let Ok(iter) = messages.iter() {
@@ -1374,7 +1279,7 @@ impl MeroChat {
                         || actor_role == Role::Admin
                         || actor_role == Role::Mod;
                     if !can_delete {
-                        return Err("You don't have permission to delete this message".to_string());
+                        app::bail!("You don't have permission to delete this message");
                     }
                     target_index = Some(index);
                     break;
@@ -1382,12 +1287,12 @@ impl MeroChat {
             }
         }
 
-        let index = target_index.ok_or_else(|| "Message not found".to_string())?;
+        let index = target_index.ok_or_else(|| app::err!("Message not found"))?;
 
         let original = messages
             .get(index)
-            .map_err(|_| "Failed to read message".to_string())?
-            .ok_or_else(|| "Message not found".to_string())?;
+            .map_err(|_| app::err!("Failed to read message"))?
+            .ok_or_else(|| app::err!("Message not found"))?;
 
         let mut deleted = original.clone();
         deleted.text.set(String::new());
@@ -1400,7 +1305,9 @@ impl MeroChat {
 
 #[cfg(test)]
 mod tests {
-    use super::{draft_key, encode_blob_id_base58, parse_blob_id_base58, Role, BLOB_ID_SIZE};
+    use calimero_sdk::BlobId;
+
+    use super::{draft_key, Role};
 
     // ── Role-based delete permission logic ─────────────────────────────────────
 
@@ -1416,67 +1323,57 @@ mod tests {
 
     #[test]
     fn user_cannot_delete_others_message() {
-        let sender = [1u8; 32];
-        let other = [2u8; 32];
-        assert!(!can_delete(sender, other, Role::User));
+        assert!(!can_delete([1u8; 32], [2u8; 32], Role::User));
     }
 
     #[test]
     fn admin_can_delete_any_message() {
-        let sender = [1u8; 32];
-        let admin = [2u8; 32];
-        assert!(can_delete(sender, admin, Role::Admin));
+        assert!(can_delete([1u8; 32], [2u8; 32], Role::Admin));
     }
 
     #[test]
     fn mod_can_delete_any_message() {
-        let sender = [1u8; 32];
-        let moderator = [2u8; 32];
-        assert!(can_delete(sender, moderator, Role::Mod));
+        assert!(can_delete([1u8; 32], [2u8; 32], Role::Mod));
     }
 
     #[test]
     fn banned_user_cannot_delete_others_message() {
-        let sender = [1u8; 32];
-        let banned = [2u8; 32];
-        assert!(!can_delete(sender, banned, Role::Banned));
+        assert!(!can_delete([1u8; 32], [2u8; 32], Role::Banned));
     }
+
+    // ── BlobId roundtrip ───────────────────────────────────────────────────────
 
     #[test]
     fn blob_id_roundtrip_typical() {
-        let original: [u8; BLOB_ID_SIZE] = [
+        let original = BlobId::from([
             0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
             0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10,
             0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
             0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10,
-        ];
-        let encoded = encode_blob_id_base58(&original);
-        let decoded = parse_blob_id_base58(&encoded).expect("roundtrip should succeed");
+        ]);
+        let encoded = original.to_string();
+        let decoded: BlobId = encoded.parse().expect("roundtrip should succeed");
         assert_eq!(original, decoded);
     }
 
     #[test]
     fn blob_id_roundtrip_all_zeros() {
-        let zeros = [0u8; BLOB_ID_SIZE];
-        let encoded = encode_blob_id_base58(&zeros);
-        let decoded = parse_blob_id_base58(&encoded).expect("all-zeros roundtrip");
-        assert_eq!(zeros, decoded);
+        let blob_id = BlobId::from([0u8; 32]);
+        let parsed: BlobId = blob_id.to_string().parse().expect("all-zeros roundtrip");
+        assert_eq!(blob_id, parsed);
     }
 
     #[test]
     fn blob_id_roundtrip_all_max() {
-        let ones = [0xffu8; BLOB_ID_SIZE];
-        let encoded = encode_blob_id_base58(&ones);
-        let decoded = parse_blob_id_base58(&encoded).expect("all-0xFF roundtrip");
-        assert_eq!(ones, decoded);
+        let blob_id = BlobId::from([0xffu8; 32]);
+        let parsed: BlobId = blob_id.to_string().parse().expect("all-0xFF roundtrip");
+        assert_eq!(blob_id, parsed);
     }
 
     #[test]
     fn blob_id_encoded_is_non_empty_string() {
-        let bytes = [0x42u8; BLOB_ID_SIZE];
-        let encoded = encode_blob_id_base58(&bytes);
+        let encoded = BlobId::from([0x42u8; 32]).to_string();
         assert!(!encoded.is_empty());
-        // Base58 output should only contain valid base58 characters (no 0, O, I, l)
         assert!(!encoded.contains('0'));
         assert!(!encoded.contains('O'));
         assert!(!encoded.contains('I'));
@@ -1485,53 +1382,38 @@ mod tests {
 
     #[test]
     fn parse_blob_id_invalid_base58_chars() {
-        let result = parse_blob_id_base58("not-valid-base58!!!!-/-");
-        assert!(result.is_err());
+        assert!("not-valid-base58!!!!-/-".parse::<BlobId>().is_err());
     }
 
     #[test]
     fn parse_blob_id_wrong_byte_length() {
         // Valid base58 but encodes fewer than 32 bytes
         let short = bs58::encode(vec![1u8, 2, 3, 4]).into_string();
-        let result = parse_blob_id_base58(&short);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.contains("Invalid blob ID length"), "got: {err}");
+        assert!(short.parse::<BlobId>().is_err());
     }
 
     #[test]
     fn parse_blob_id_empty_string() {
-        let result = parse_blob_id_base58("");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn blob_id_size_constant_matches_32() {
-        assert_eq!(BLOB_ID_SIZE, 32);
+        assert!("".parse::<BlobId>().is_err());
     }
 
     // ── Draft key format ────────────────────────────────────────────────────
 
     #[test]
     fn draft_key_contains_user_and_channel() {
-        let user = "SomeBase58UserId";
-        let key = draft_key(user, "general");
-        assert_eq!(key, "SomeBase58UserId:general");
+        assert_eq!(draft_key("SomeBase58UserId", "general"), "SomeBase58UserId:general");
     }
 
     #[test]
     fn draft_key_separator_is_colon() {
         let key = draft_key("abc", "my-channel");
         let parts: Vec<&str> = key.splitn(2, ':').collect();
-        assert_eq!(parts.len(), 2);
-        assert_eq!(parts[0], "abc");
-        assert_eq!(parts[1], "my-channel");
+        assert_eq!(parts, ["abc", "my-channel"]);
     }
 
     #[test]
     fn draft_key_with_real_base58_user_id() {
-        let user_bytes = [0x01u8; BLOB_ID_SIZE];
-        let user_b58 = encode_blob_id_base58(&user_bytes);
+        let user_b58 = BlobId::from([0x01u8; 32]).to_string();
         let key = draft_key(&user_b58, "announcements");
         assert!(key.starts_with(&user_b58));
         assert!(key.ends_with(":announcements"));
@@ -1539,26 +1421,19 @@ mod tests {
 
     #[test]
     fn draft_key_different_users_produce_different_keys() {
-        let user_a = encode_blob_id_base58(&[0x01u8; BLOB_ID_SIZE]);
-        let user_b = encode_blob_id_base58(&[0x02u8; BLOB_ID_SIZE]);
-        let key_a = draft_key(&user_a, "general");
-        let key_b = draft_key(&user_b, "general");
-        assert_ne!(key_a, key_b);
+        let a = BlobId::from([0x01u8; 32]).to_string();
+        let b = BlobId::from([0x02u8; 32]).to_string();
+        assert_ne!(draft_key(&a, "general"), draft_key(&b, "general"));
     }
 
     #[test]
     fn draft_key_same_user_different_channels_produce_different_keys() {
-        let user = encode_blob_id_base58(&[0xaau8; BLOB_ID_SIZE]);
-        let key1 = draft_key(&user, "general");
-        let key2 = draft_key(&user, "random");
-        assert_ne!(key1, key2);
+        let user = BlobId::from([0xaau8; 32]).to_string();
+        assert_ne!(draft_key(&user, "general"), draft_key(&user, "random"));
     }
 
     #[test]
     fn draft_key_channel_name_with_colon_is_preserved() {
-        // Channel names shouldn't contain colons, but the key builder must
-        // not silently corrupt them if they do — splitn(2) guarantees the
-        // channel portion is still recoverable.
         let key = draft_key("user123", "chan:with:colons");
         let parts: Vec<&str> = key.splitn(2, ':').collect();
         assert_eq!(parts[1], "chan:with:colons");
@@ -1566,15 +1441,12 @@ mod tests {
 
     #[test]
     fn draft_key_empty_channel_name() {
-        let key = draft_key("userXYZ", "");
-        assert_eq!(key, "userXYZ:");
+        assert_eq!(draft_key("userXYZ", ""), "userXYZ:");
     }
 
     #[test]
     fn draft_key_is_deterministic() {
-        let user = encode_blob_id_base58(&[0x55u8; BLOB_ID_SIZE]);
-        let k1 = draft_key(&user, "stable");
-        let k2 = draft_key(&user, "stable");
-        assert_eq!(k1, k2);
+        let user = BlobId::from([0x55u8; 32]).to_string();
+        assert_eq!(draft_key(&user, "stable"), draft_key(&user, "stable"));
     }
 }
