@@ -3,18 +3,6 @@
 version = 4
 
 [[package]]
-name = "ahash"
-version = "0.8.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a15f179cd60c4584b8a8c596927aadc462e27f2ca70c04e0071964a73ba7a75"
-dependencies = [
- "cfg-if",
- "once_cell",
- "version_check",
- "zerocopy",
-]
-
-[[package]]
 name = "arrayref"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -55,16 +43,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
 dependencies = [
  "generic-array",
-]
-
-[[package]]
-name = "borsh"
-version = "0.10.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "115e54d64eb62cdebad391c19efc9dce4981c690c85a33a12199d99bb9546fee"
-dependencies = [
- "borsh-derive 0.10.4",
- "hashbrown 0.13.2",
 ]
 
 [[package]]
@@ -153,7 +131,7 @@ version = "0.11.0-rc.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6a7505df2e2e1a47ba5dbdc13e0ba0d94f082a00b6d3b69ad9d8dd4bbc56ee1"
 dependencies = [
- "borsh 1.6.1",
+ "borsh",
  "calimero-primitives",
  "serde",
  "sha2",
@@ -165,7 +143,7 @@ version = "0.11.0-rc.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2bb71617eac205c15c8de26c747788bb3ad92f2e36f556e152aaea3997cc78d5"
 dependencies = [
- "borsh 1.6.1",
+ "borsh",
  "bs58",
  "ed25519-dalek",
  "eyre",
@@ -184,7 +162,7 @@ version = "0.11.0-rc.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "86d2859b3a7bbafcb9befc1c1cdb682cf30464862160855055d399b6917ec268"
 dependencies = [
- "borsh 1.6.1",
+ "borsh",
  "calimero-prelude",
  "calimero-primitives",
  "calimero-sdk-macros",
@@ -215,7 +193,7 @@ version = "0.11.0-rc.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc75e43f1740353b6cc7f1062ae2557a5947637a9c9f0d18c708ef7ce8dc7375"
 dependencies = [
- "borsh 1.6.1",
+ "borsh",
  "calimero-prelude",
  "calimero-primitives",
  "calimero-sdk",
@@ -313,7 +291,7 @@ name = "curb"
 version = "2.0.0"
 dependencies = [
  "base64",
- "borsh 0.10.4",
+ "borsh",
  "borsh-derive 0.10.4",
  "bs58",
  "calimero-sdk",
@@ -496,15 +474,6 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.13.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43a3c133739dddd0d2990f9a4bdf8eb4b21ef50e4851ca85ab661199821d510e"
-dependencies = [
- "ahash",
-]
-
-[[package]]
-name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
@@ -649,7 +618,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d466e9454f08e4a911e14806c24e16fba1b4c121d1ea474396f396069cf949d9"
 dependencies = [
  "equivalent",
- "hashbrown 0.17.1",
+ "hashbrown",
 ]
 
 [[package]]
