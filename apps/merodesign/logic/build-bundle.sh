@@ -21,7 +21,7 @@ cat > res/bundle-temp/manifest.json <<EOF
 {
   "version": "1.0",
   "package": "com.calimero.merodesign",
-  "appVersion": "0.1.0",
+  "appVersion": "2.0.0",
   "minRuntimeVersion": "0.1.0",
   "metadata": {
     "name": "MeroDesign",
@@ -40,7 +40,7 @@ cat > res/bundle-temp/manifest.json <<EOF
   },
   "migrations": [],
   "links": {
-    "frontend": ""
+    "frontend": "https://mero-design.vercel.app/"
   }
 }
 EOF
