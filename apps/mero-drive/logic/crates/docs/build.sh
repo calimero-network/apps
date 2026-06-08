@@ -7,7 +7,14 @@ TARGET="${CARGO_TARGET_DIR:-../../target}"
 
 rustup target add wasm32-unknown-unknown 2>/dev/null || true
 
-cargo build --target wasm32-unknown-unknown --profile app-release
+# Optional cargo features (e.g. DOCS_FEATURES=schema_v2 for the migration
+# target build). Empty by default — existing callers are unaffected.
+FEATURES_ARG=""
+if [ -n "${DOCS_FEATURES:-}" ]; then
+  FEATURES_ARG="--features ${DOCS_FEATURES}"
+fi
+
+cargo build --target wasm32-unknown-unknown --profile app-release ${FEATURES_ARG}
 
 mkdir -p res
 

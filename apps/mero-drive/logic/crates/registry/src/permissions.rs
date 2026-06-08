@@ -130,7 +130,9 @@ impl RegistryState {
         let reg = self
             .managers
             .get(&member)
-            .map_err(|e| DriveError::Invalid(format!("managers.get: {e}")))?;
+            .map_err(|e| DriveError::Invalid(format!("managers.get: {e}")))?
+            // own the LwwRegister so it can be mutated and re-inserted
+            .map(|v| v.clone());
         match reg {
             Some(mut reg) if *reg.get() => {
                 reg.set(false);

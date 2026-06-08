@@ -133,7 +133,7 @@ pub struct FolderRoleEntry {
 /// resolution picks the inherent one from the derive expansion, which then
 /// fails the macro's `?` — same workaround battleships uses on
 /// `MatchSummary`.
-#[derive(BorshSerialize, BorshDeserialize)]
+#[derive(Clone, BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct FolderRecord {
     /// Parent folder id, or None for top-level folders. Stored as an
@@ -228,8 +228,6 @@ fn project(id: &str, rec: &FolderRecord, ctx: Option<&ContextId>) -> FolderDto {
 const ROOT_SORT_KEY: &str = "";
 
 #[app::state(emits = for<'a> Event<'a>)]
-#[derive(BorshSerialize, BorshDeserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
 pub struct RegistryState {
     /// folder_id (string) → FolderRecord
     folders: UnorderedMap<String, FolderRecord>,
@@ -414,7 +412,7 @@ impl RegistryState {
             .folder_contexts
             .get(&folder_id.0)
             .map_err(|e| AppError::msg(format!("folder_contexts.get: {e}")))?;
-        Ok(frozen.map(|f| f.0))
+        Ok(frozen.map(|f| f.0.clone()))
     }
 
     // ---- color / move ---------------------------------------------------
@@ -490,6 +488,9 @@ impl RegistryState {
             .folders
             .get(&id.to_string())
             .map_err(|e| DriveError::Invalid(format!("folders.get: {e}")))?
+            // `get` returns a read-only ValueRef; clone out an owned record to
+            // mutate and re-insert.
+            .map(|v| v.clone())
             .ok_or_else(|| DriveError::NotFound(id.to_string()))?;
         edit(&mut rec);
         self.folders

@@ -26,7 +26,7 @@ use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::types::Error as AppError;
 use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::{Counter, LwwRegister, Mergeable, UnorderedMap};
+use calimero_storage::collections::{AuthoredMap, Counter, LwwRegister, Mergeable, UnorderedMap};
 use calimero_storage::env as storage_env;
 use mero_drive_types::DriveError;
 
@@ -48,7 +48,7 @@ use events::Event;
 /// `Mergeable` is hand-written (not derived) to avoid the inherent-vs-trait
 /// `merge` ambiguity `LwwRegister` causes in the derive macro — same
 /// workaround the registry uses on `FolderRecord`.
-#[derive(BorshSerialize, BorshDeserialize)]
+#[derive(Clone, BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct DocRecord {
     pub title: LwwRegister<String>,
@@ -103,18 +103,110 @@ fn project(id: &str, rec: &DocRecord) -> Result<DocDto, DriveError> {
 }
 
 // ---------------------------------------------------------------------------
+// Comments — authored (identity-gated) annotations on a doc
+// ---------------------------------------------------------------------------
+
+/// A per-document comment, owned by its author. Stored in an `AuthoredMap`, so
+/// the runtime stamps the writer's identity and a per-entry schema version on
+/// insert; only the owner can re-sign it (the basis of the migration banner).
+///
+/// The value type is intentionally STABLE across schema versions — the v1→v2
+/// migration bumps the *state* schema and adds a top-level marker, never a
+/// field inside `Comment` (changing an authored value type is a content
+/// rewrite, a different and harder migration class).
+#[derive(Clone, BorshSerialize, BorshDeserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct Comment {
+    /// Which doc this annotates. Immutable after create.
+    pub doc_id: String,
+    pub body: LwwRegister<String>,
+    /// Immutable after create.
+    pub created_at: u64,
+}
+
+impl Mergeable for Comment {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // doc_id / created_at are immutable and identical across replicas.
+        <LwwRegister<String> as Mergeable>::merge(&mut self.body, &other.body)?;
+        Ok(())
+    }
+}
+
+/// Flat projection of a `Comment` for list / get APIs.
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct CommentDto {
+    pub id: String,
+    pub doc_id: String,
+    pub body: String,
+    pub created_at: u64,
+}
+
+fn project_comment(id: &str, c: &Comment) -> CommentDto {
+    CommentDto {
+        id: id.to_string(),
+        doc_id: c.doc_id.clone(),
+        body: c.body.get().clone(),
+        created_at: c.created_at,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
-#[app::state(emits = for<'a> Event<'a>)]
-#[derive(BorshSerialize, BorshDeserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
+/// v1 schema (default build). `docs` + authored `comments`.
+#[cfg(not(feature = "schema_v2"))]
+#[app::state(version = 1, emits = for<'a> Event<'a>)]
 pub struct DocsState {
     /// doc_id → record. The id is `doc-<counter>` and assigned by `create_doc`.
     docs: UnorderedMap<String, DocRecord>,
     /// Monotonic id allocator. G-Counter semantics: every create increments,
     /// concurrent creates produce distinct ids across replicas.
     next_id: Counter,
+    /// comment_id → authored comment. Identity-gated: each entry is owned by
+    /// its writer and carries a per-entry schema version.
+    comments: AuthoredMap<String, Comment>,
+    /// Monotonic comment-id allocator (`cmt-<n>`).
+    next_comment_id: Counter,
+}
+
+/// v2 schema (feature `schema_v2`), raised to `version = 2`. Two migrations
+/// ride the one derive-carry:
+///   1. a real top-level additive field — `default_sort_order` (a new docs
+///      setting, defaulted via `#[migrate(new = ...)]`) — exercising the engine
+///      migrating existing committed state;
+///   2. the authored `comments` map, carried byte-for-byte so each entry keeps
+///      its owner stamp at schema 1 until the owner re-signs (the banner path).
+/// The derive-carry is required for (2): a manual read_raw rebuild would re-sign
+/// comments as the migrating identity and lose their owner stamps.
+#[cfg(feature = "schema_v2")]
+#[app::state(version = 2, emits = for<'a> Event<'a>)]
+#[derive(app::Migrate)]
+#[migrate(
+    from = DocsStateV1,
+    method = migrate_v1_to_v2,
+    emit = Event::Migrated { from_version: "1.0.0", to_version: "2.0.0" }
+)]
+pub struct DocsState {
+    docs: UnorderedMap<String, DocRecord>,
+    next_id: Counter,
+    comments: AuthoredMap<String, Comment>,
+    next_comment_id: Counter,
+    #[migrate(new = LwwRegister::new("created".to_owned()))]
+    default_sort_order: LwwRegister<String>,
+}
+
+/// v1 reader for the v2 migrate — field order must match the v1 state exactly.
+#[cfg(feature = "schema_v2")]
+#[derive(BorshDeserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+struct DocsStateV1 {
+    docs: UnorderedMap<String, DocRecord>,
+    next_id: Counter,
+    comments: AuthoredMap<String, Comment>,
+    next_comment_id: Counter,
 }
 
 #[app::logic]
@@ -124,6 +216,12 @@ impl DocsState {
         DocsState {
             docs: UnorderedMap::new_with_field_name("docs:docs"),
             next_id: Counter::new_with_field_name("docs:next_id"),
+            comments: AuthoredMap::new_with_field_name("docs:comments"),
+            next_comment_id: Counter::new_with_field_name("docs:next_comment_id"),
+            // v2 adds a top-level setting (cfg'd field init is stripped
+            // correctly at compile time, unlike a cfg'd whole-fn).
+            #[cfg(feature = "schema_v2")]
+            default_sort_order: LwwRegister::new("created".to_owned()),
         }
     }
 
@@ -213,6 +311,9 @@ impl DocsState {
             .docs
             .get(&id)
             .map_err(|e| DriveError::Invalid(format!("docs.get: {e}")))?
+            // `get` returns a read-only ValueRef guard; clone out an owned
+            // record to mutate and re-insert.
+            .map(|v| v.clone())
             .ok_or_else(|| DriveError::NotFound(id.clone()))?;
         if let Some(t) = title {
             rec.title.set(t);
@@ -252,6 +353,9 @@ impl DocsState {
             .docs
             .get(&id)
             .map_err(|e| DriveError::Invalid(format!("docs.get: {e}")))?
+            // `get` returns a read-only ValueRef guard; clone out an owned
+            // record to mutate and re-insert.
+            .map(|v| v.clone())
             .ok_or_else(|| DriveError::NotFound(id.clone()))?;
         rec.archived.set(archived);
         rec.updated_at.set(storage_env::time_now());
@@ -298,6 +402,9 @@ impl DocsState {
             .docs
             .get(&id)
             .map_err(|e| DriveError::Invalid(format!("docs.get: {e}")))?
+            // `get` returns a read-only ValueRef guard; clone out an owned
+            // record to mutate and re-insert.
+            .map(|v| v.clone())
             .ok_or_else(|| DriveError::NotFound(id.clone()))?;
         // Read-modify-write over the whole tag list (LWW-replaced on merge).
         // De-duplicate inline so `add_tag(x)` twice is idempotent.
@@ -325,6 +432,9 @@ impl DocsState {
             .docs
             .get(&id)
             .map_err(|e| DriveError::Invalid(format!("docs.get: {e}")))?
+            // `get` returns a read-only ValueRef guard; clone out an owned
+            // record to mutate and re-insert.
+            .map(|v| v.clone())
             .ok_or_else(|| DriveError::NotFound(id.clone()))?;
         let mut tags = rec.tags.get().clone();
         tags.retain(|t| t != &tag);
@@ -333,6 +443,143 @@ impl DocsState {
             .insert(id, rec)
             .map_err(|e| DriveError::Invalid(format!("docs.insert: {e}")))?;
         Ok(())
+    }
+
+    // ---- comments (authored / identity-gated) ----------------------------
+
+    pub fn add_comment(&mut self, doc_id: String, body: String) -> app::Result<String> {
+        let id = self
+            .add_comment_inner(doc_id, body)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        app::emit!(Event::CommentAdded { id: &id });
+        Ok(id)
+    }
+
+    pub(crate) fn add_comment_inner(
+        &mut self,
+        doc_id: String,
+        body: String,
+    ) -> Result<String, DriveError> {
+        self.next_comment_id
+            .increment()
+            .map_err(|e| DriveError::Invalid(format!("next_comment_id.increment: {e}")))?;
+        let n = self
+            .next_comment_id
+            .value()
+            .map_err(|e| DriveError::Invalid(format!("next_comment_id.value: {e}")))?;
+        let id = format!("cmt-{}", n);
+
+        let comment = Comment {
+            doc_id,
+            body: LwwRegister::new(body),
+            created_at: storage_env::time_now(),
+        };
+        // `insert` stamps the caller as owner + the current schema version.
+        self.comments
+            .insert(id.clone(), comment)
+            .map_err(|e| DriveError::Invalid(format!("comments.insert: {e}")))?;
+        Ok(id)
+    }
+
+    pub fn list_comments(&self, doc_id: String) -> app::Result<Vec<CommentDto>> {
+        let entries = self
+            .comments
+            .entries()
+            .map_err(|e| AppError::msg(format!("comments.entries: {e}")))?;
+        let mut out = Vec::new();
+        for (id, c) in entries {
+            if c.doc_id == doc_id {
+                out.push(project_comment(&id, &c));
+            }
+        }
+        Ok(out)
+    }
+
+    pub fn get_comment(&self, id: String) -> app::Result<CommentDto> {
+        let c = self
+            .comments
+            .get(&id)
+            .map_err(|e| AppError::msg(format!("comments.get: {e}")))?
+            .ok_or_else(|| AppError::msg(format!("not found: {}", id)))?;
+        Ok(project_comment(&id, &c))
+    }
+
+    pub fn comment_count(&self) -> app::Result<u64> {
+        Ok(self
+            .comments
+            .len()
+            .map_err(|e| AppError::msg(format!("comments.len: {e}")))? as u64)
+    }
+
+    /// The comment's stored per-entry `schema_version` — `Some(1)` before
+    /// convert, `Some(2)` after the owner re-signs. Lets the e2e assert that a
+    /// one-tap `migrate_my_entries` actually re-stamped it.
+    pub fn comment_schema_version(&self, id: String) -> app::Result<Option<u32>> {
+        self.comments
+            .entry_schema_version(&id)
+            .map_err(|e| AppError::msg(format!("comments.entry_schema_version: {e}")))
+    }
+
+    pub fn edit_comment(&mut self, id: String, body: String) -> app::Result<()> {
+        let id_for_event = id.clone();
+        self.edit_comment_inner(id, body)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        app::emit!(Event::CommentEdited { id: &id_for_event });
+        Ok(())
+    }
+
+    pub(crate) fn edit_comment_inner(
+        &mut self,
+        id: String,
+        body: String,
+    ) -> Result<(), DriveError> {
+        let mut c = self
+            .comments
+            .get(&id)
+            .map_err(|e| DriveError::Invalid(format!("comments.get: {e}")))?
+            .ok_or_else(|| DriveError::NotFound(id.clone()))?;
+        c.body.set(body);
+        // `update` re-signs as the caller (owner-gated by the authored map).
+        self.comments
+            .update(&id, c)
+            .map_err(|e| DriveError::Invalid(format!("comments.update: {e}")))?;
+        Ok(())
+    }
+
+    pub fn delete_comment(&mut self, id: String) -> app::Result<()> {
+        let id_for_event = id.clone();
+        self.delete_comment_inner(id)
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        app::emit!(Event::CommentDeleted { id: &id_for_event });
+        Ok(())
+    }
+
+    pub(crate) fn delete_comment_inner(&mut self, id: String) -> Result<(), DriveError> {
+        let existed = self
+            .comments
+            .remove(&id)
+            .map_err(|e| DriveError::Invalid(format!("comments.remove: {e}")))?;
+        if existed.is_none() {
+            return Err(DriveError::NotFound(id));
+        }
+        Ok(())
+    }
+
+    /// The top-level setting added by the v2 migration. Present in both builds
+    /// (a `#[cfg]` on the whole method confuses `#[app::logic]`'s export
+    /// codegen); only the field access is cfg'd. v1 has no such field, so it
+    /// returns empty there — the e2e calls this post-cascade (v2) and asserts it
+    /// reads back its migrate default, proving the engine migrated the existing
+    /// non-authored state.
+    pub fn default_sort_order(&self) -> app::Result<String> {
+        #[cfg(feature = "schema_v2")]
+        {
+            Ok(self.default_sort_order.get().clone())
+        }
+        #[cfg(not(feature = "schema_v2"))]
+        {
+            Ok(String::new())
+        }
     }
 }
 
@@ -643,8 +890,8 @@ mod tests {
     fn doc_record_merge_is_idempotent() {
         let mut app = DocsState::init();
         let id = app.create_doc_inner("t".into(), "c".into()).unwrap();
-        let snapshot = app.docs.get(&id).unwrap().unwrap();
-        let mut working = app.docs.get(&id).unwrap().unwrap();
+        let snapshot = app.docs.get(&id).unwrap().unwrap().clone();
+        let mut working = app.docs.get(&id).unwrap().unwrap().clone();
         <DocRecord as Mergeable>::merge(&mut working, &snapshot).unwrap();
         <DocRecord as Mergeable>::merge(&mut working, &snapshot).unwrap();
         assert_eq!(working.title.get(), snapshot.title.get());

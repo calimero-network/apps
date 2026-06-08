@@ -7,8 +7,14 @@
 set -e
 cd "$(dirname $0)"
 
-APP_VERSION=$(grep '^version' crates/registry/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
-PACKAGE="com.calimero.mero-drive-docs"
+# Bundle/manifest version. Defaults to the registry crate version; override
+# with APP_VERSION_OVERRIDE to cut a migration-target bundle (e.g. 9.4.0)
+# without bumping the crate. DOCS_FEATURES (read by crates/docs/build.sh)
+# selects the docs schema variant.
+APP_VERSION="${APP_VERSION_OVERRIDE:-$(grep '^version' crates/registry/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')}"
+# Dev install dedups by package name, so a migration-target bundle must carry a
+# DISTINCT package to install as a separate application (override here).
+PACKAGE="${PACKAGE_OVERRIDE:-com.calimero.mero-drive-docs}"
 
 echo "Building registry service..."
 (cd crates/registry && bash build.sh)

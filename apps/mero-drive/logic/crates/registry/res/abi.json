@@ -177,7 +177,8 @@
         {
           "name": "context_id",
           "type": {
-            "$ref": "ContextId"
+            "kind": "bytes",
+            "size": 32
           },
           "nullable": true
         },
@@ -292,7 +293,8 @@
               "kind": "string"
             },
             "value": {
-              "$ref": "ContextId"
+              "kind": "bytes",
+              "size": 32
             },
             "crdt_type": "unordered_map"
           }
@@ -486,7 +488,8 @@
         {
           "name": "context_id",
           "type": {
-            "$ref": "ContextId"
+            "kind": "bytes",
+            "size": 32
           }
         }
       ],
@@ -505,7 +508,8 @@
         }
       ],
       "returns": {
-        "$ref": "ContextId"
+        "kind": "bytes",
+        "size": 32
       }
     },
     {

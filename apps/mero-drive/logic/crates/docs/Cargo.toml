@@ -1,10 +1,16 @@
 [package]
 name = "mero-drive-docs"
-version = "9.2.0"
+version = "9.3.0"
 edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+# Builds the v2 schema: state version 2 + #[app::migrate] carrying the v1
+# state forward. Used to produce the migration-target bundle (9.4.0).
+schema_v2 = []
 
 [dependencies]
 mero-drive-types = { workspace = true }
