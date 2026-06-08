@@ -394,6 +394,7 @@ export default function CanvasPage() {
           <FabricCanvas
             ref={canvasRef}
             contextId={projectId ?? ""}
+            addingComment={addingComment}
             onViewportChange={(z, px, py) => setViewport({ zoom: z, panX: px, panY: py })}
           />
           <CursorsOverlay cursors={cursors} myIdentity={myIdentity} members={members} viewport={viewport} />
