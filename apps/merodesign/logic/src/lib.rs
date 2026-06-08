@@ -1,6 +1,6 @@
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::{app, env as sdk_env};
+use calimero_sdk::{app, env as sdk_env, BlobId};
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{LwwRegister, Mergeable as MergeableTrait, UnorderedMap};
 
@@ -196,8 +196,6 @@ pub enum Event {
 // ── App state ─────────────────────────────────────────────────────────────────
 
 #[app::state(emits = Event)]
-#[derive(BorshSerialize, BorshDeserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
 pub struct MeroDesign {
     board_name:        LwwRegister<String>,
     board_description: LwwRegister<String>,
@@ -254,9 +252,9 @@ impl MeroDesign {
     }
 
     pub fn update_member_username(&mut self, member_id: String, username: String) {
-        if let Ok(Some(mut m)) = self.members.get(&member_id) {
+        if let Ok(Some(mut m)) = self.members.get_mut(&member_id) {
             m.username = username;
-            let _ = self.members.insert(member_id.clone(), m);
+            drop(m);
             app::emit!(Event::MemberUsernameUpdated(member_id));
         }
     }
@@ -271,13 +269,8 @@ impl MeroDesign {
             _ => "",
         };
         if !blob_id_str.is_empty() {
-            if let Ok(bytes) = bs58::decode(blob_id_str).into_vec() {
-                if bytes.len() == 32 {
-                    let ctx = sdk_env::context_id();
-                    let mut bid = [0u8; 32];
-                    bid.copy_from_slice(&bytes);
-                    sdk_env::blob_announce_to_context(&bid, &ctx);
-                }
+            if let Ok(blob_id) = blob_id_str.parse::<BlobId>() {
+                sdk_env::blob_announce_to_context(blob_id.as_ref(), &sdk_env::context_id());
             }
         }
         let _ = self.elements.insert(id.clone(), element);
@@ -295,7 +288,7 @@ impl MeroDesign {
         stroke_width: Option<u32>, opacity: Option<u8>,
         updated_at: u64,
     ) {
-        if let Ok(Some(mut el)) = self.elements.get(&id) {
+        if let Ok(Some(mut el)) = self.elements.get_mut(&id) {
             if let Some(v) = x            { el.x            = v; }
             if let Some(v) = y            { el.y            = v; }
             if let Some(v) = width        { el.width        = v; }
@@ -306,16 +299,16 @@ impl MeroDesign {
             if let Some(v) = stroke_width { el.stroke_width = v; }
             if let Some(v) = opacity      { el.opacity      = v; }
             el.updated_at = updated_at;
-            let _ = self.elements.insert(id.clone(), el);
+            drop(el);
             app::emit!(Event::ElementUpdated(id));
         }
     }
 
     pub fn update_element_label(&mut self, id: String, label: Option<String>, updated_at: u64) {
-        if let Ok(Some(mut el)) = self.elements.get(&id) {
+        if let Ok(Some(mut el)) = self.elements.get_mut(&id) {
             el.label      = label;
             el.updated_at = updated_at;
-            let _ = self.elements.insert(id.clone(), el);
+            drop(el);
             app::emit!(Event::ElementUpdated(id));
         }
     }
@@ -328,7 +321,7 @@ impl MeroDesign {
         text_align: Option<String>, vertical_align: Option<String>,
         updated_at: u64,
     ) {
-        if let Ok(Some(mut el)) = self.elements.get(&id) {
+        if let Ok(Some(mut el)) = self.elements.get_mut(&id) {
             if let ElementData::Text {
                 content: ref mut c, font_family: ref mut ff,
                 font_size: ref mut fs, bold: ref mut b, italic: ref mut i,
@@ -343,7 +336,7 @@ impl MeroDesign {
                 if let Some(v) = vertical_align { *va = Some(v); }
             }
             el.updated_at = updated_at;
-            let _ = self.elements.insert(id.clone(), el);
+            drop(el);
             app::emit!(Event::ElementUpdated(id));
         }
     }
@@ -374,13 +367,13 @@ impl MeroDesign {
         shadow_offset_y: Option<i32>, shadow_blur: Option<u32>,
         updated_at: u64,
     ) {
-        if let Ok(Some(mut el)) = self.elements.get(&id) {
+        if let Ok(Some(mut el)) = self.elements.get_mut(&id) {
             el.shadow_color    = shadow_color;
             el.shadow_offset_x = shadow_offset_x;
             el.shadow_offset_y = shadow_offset_y;
             el.shadow_blur     = shadow_blur;
             el.updated_at      = updated_at;
-            let _ = self.elements.insert(id.clone(), el);
+            drop(el);
             app::emit!(Event::ElementUpdated(id));
         }
     }
@@ -397,16 +390,15 @@ impl MeroDesign {
     }
 
     pub fn get_element(&self, id: String) -> Option<Element> {
-        self.elements.get(&id).unwrap_or(None)
+        self.elements.get(&id).ok().flatten().map(|v| v.clone())
     }
 
     // ── Layer order ───────────────────────────────────────────────────────────
 
     pub fn bring_to_front(&mut self, id: String) {
         let max_layer = self.elements.entries().unwrap().map(|(_, v)| v.layer_index).max().unwrap_or(0);
-        if let Ok(Some(mut el)) = self.elements.get(&id) {
+        if let Ok(Some(mut el)) = self.elements.get_mut(&id) {
             el.layer_index = max_layer + 1;
-            let _ = self.elements.insert(id, el);
         }
         app::emit!(Event::LayerReordered());
     }
@@ -414,15 +406,13 @@ impl MeroDesign {
     pub fn send_to_back(&mut self, id: String) {
         let other_ids: Vec<String> = self.elements.entries().unwrap()
             .filter(|(k, _)| *k != id).map(|(k, _)| k).collect();
-        for other_id in other_ids {
-            if let Ok(Some(mut other)) = self.elements.get(&other_id) {
+        for other_id in &other_ids {
+            if let Ok(Some(mut other)) = self.elements.get_mut(other_id) {
                 other.layer_index = other.layer_index.saturating_add(1);
-                let _ = self.elements.insert(other_id, other);
             }
         }
-        if let Ok(Some(mut el)) = self.elements.get(&id) {
+        if let Ok(Some(mut el)) = self.elements.get_mut(&id) {
             el.layer_index = 0;
-            let _ = self.elements.insert(id, el);
         }
         app::emit!(Event::LayerReordered());
     }
@@ -436,17 +426,17 @@ impl MeroDesign {
     }
 
     pub fn add_reply(&mut self, comment_id: String, reply_id: String, content: String, author: String, created_at: u64) {
-        if let Ok(Some(mut c)) = self.comments.get(&comment_id) {
+        if let Ok(Some(mut c)) = self.comments.get_mut(&comment_id) {
             c.replies.push(CommentReply { id: reply_id, content, author, created_at });
-            let _ = self.comments.insert(comment_id.clone(), c);
+            drop(c);
             app::emit!(Event::CommentUpdated(comment_id));
         }
     }
 
     pub fn delete_reply(&mut self, comment_id: String, reply_id: String) {
-        if let Ok(Some(mut c)) = self.comments.get(&comment_id) {
+        if let Ok(Some(mut c)) = self.comments.get_mut(&comment_id) {
             c.replies.retain(|r| r.id != reply_id);
-            let _ = self.comments.insert(comment_id.clone(), c);
+            drop(c);
             app::emit!(Event::CommentUpdated(comment_id));
         }
     }
