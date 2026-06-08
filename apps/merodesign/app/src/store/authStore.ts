@@ -7,6 +7,7 @@ interface AuthState {
   refreshToken: string;
   applicationId: string;
   setAuth: (nodeUrl: string, accessToken: string, refreshToken: string, applicationId: string) => void;
+  setApplicationId: (applicationId: string) => void;
   clearAuth: () => void;
   isAuthenticated: () => boolean;
 }
@@ -20,6 +21,7 @@ export const useAuthStore = create<AuthState>()(
       applicationId: "",
       setAuth: (nodeUrl, accessToken, refreshToken, applicationId) =>
         set({ nodeUrl, accessToken, refreshToken, applicationId }),
+      setApplicationId: (applicationId) => set({ applicationId }),
       clearAuth: () => set({ nodeUrl: "", accessToken: "", refreshToken: "", applicationId: "" }),
       isAuthenticated: () => Boolean(get().accessToken && get().nodeUrl),
     }),

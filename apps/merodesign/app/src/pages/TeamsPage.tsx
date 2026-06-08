@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { adminPost, adminDelete, listNamespaces } from "../api/rpc";
+import { resolveApplicationId } from "../api/appId";
 import { useAuthStore } from "../store/authStore";
 import Logo from "../components/Logo";
 import SettingsModal from "../components/SettingsModal";
@@ -17,7 +18,7 @@ type NamespaceRaw = {
 
 export default function TeamsPage() {
   const navigate = useNavigate();
-  const { applicationId, clearAuth } = useAuthStore();
+  const { applicationId, setApplicationId, clearAuth } = useAuthStore();
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -30,22 +31,34 @@ export default function TeamsPage() {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    function loadTeams() {
-      listNamespaces<NamespaceRaw[]>(applicationId)
+    let cancelled = false;
+    async function loadTeams() {
+      // If we don't yet know our application id (e.g. opened without an
+      // app-id hash), resolve it before listing — otherwise listNamespaces
+      // falls back to the unscoped endpoint and shows every app's namespaces.
+      let appId = applicationId;
+      if (!appId) {
+        try {
+          appId = await resolveApplicationId();
+          if (appId && !cancelled) setApplicationId(appId);
+        } catch { /* fall through with empty id */ }
+      }
+      listNamespaces<NamespaceRaw[]>(appId)
         .then((items) => {
+          if (cancelled) return;
           const arr = Array.isArray(items) ? items : [];
           setTeams(arr.map((n) => ({
             groupId: n.namespaceId ?? n.groupId ?? n.id ?? "",
             name: n.alias ?? n.name ?? "",
           })));
         })
-        .catch(() => setTeams([]))
-        .finally(() => setLoading(false));
+        .catch(() => { if (!cancelled) setTeams([]); })
+        .finally(() => { if (!cancelled) setLoading(false); });
     }
     loadTeams();
     const id = setInterval(loadTeams, 30_000);
-    return () => clearInterval(id);
-  }, [applicationId]);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [applicationId, setApplicationId]);
 
   // Close menu on outside click
   useEffect(() => {

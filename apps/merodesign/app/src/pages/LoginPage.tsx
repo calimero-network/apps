@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { useAuthStore } from "../store/authStore";
+import { pickApplicationId, type AppEntry } from "../api/appId";
 import Logo from "../components/Logo";
 import styles from "./LoginPage.module.css";
 
@@ -30,7 +31,10 @@ export default function LoginPage() {
       const appsRes = await axios.get(`${url}/admin-api/applications`, {
         headers: { Authorization: `Bearer ${access_token}` },
       });
-      const applicationId: string = appsRes.data?.data?.apps?.[0]?.id ?? "";
+      const apps: AppEntry[] = appsRes.data?.data?.apps ?? appsRes.data?.data?.applications ?? [];
+      // Match MeroDesign by manifest package — not apps[0], which on a
+      // multi-app node is some other application.
+      const applicationId = pickApplicationId(Array.isArray(apps) ? apps : []);
 
       setAuth(url, access_token, refresh_token, applicationId);
       navigate("/teams");
