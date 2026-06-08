@@ -1,6 +1,6 @@
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::{app, env as sdk_env};
+use calimero_sdk::{app, env as sdk_env, BlobId};
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{LwwRegister, Mergeable as MergeableTrait, UnorderedMap};
 
@@ -196,8 +196,6 @@ pub enum Event {
 // ── App state ─────────────────────────────────────────────────────────────────
 
 #[app::state(emits = Event)]
-#[derive(BorshSerialize, BorshDeserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
 pub struct MeroDesign {
     board_name:        LwwRegister<String>,
     board_description: LwwRegister<String>,
@@ -271,13 +269,8 @@ impl MeroDesign {
             _ => "",
         };
         if !blob_id_str.is_empty() {
-            if let Ok(bytes) = bs58::decode(blob_id_str).into_vec() {
-                if bytes.len() == 32 {
-                    let ctx = sdk_env::context_id();
-                    let mut bid = [0u8; 32];
-                    bid.copy_from_slice(&bytes);
-                    sdk_env::blob_announce_to_context(&bid, &ctx);
-                }
+            if let Ok(blob_id) = blob_id_str.parse::<BlobId>() {
+                sdk_env::blob_announce_to_context(blob_id.as_ref(), &sdk_env::context_id());
             }
         }
         let _ = self.elements.insert(id.clone(), element);
