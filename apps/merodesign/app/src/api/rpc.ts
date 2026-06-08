@@ -87,6 +87,26 @@ export async function adminGet<T>(path: string): Promise<T> {
   return res.data.data ?? (res.data as T);
 }
 
+/**
+ * List namespaces scoped to a single application. Uses the server-side
+ * `/namespaces/for-application/{appId}` endpoint so only this app's namespaces
+ * come back (instead of every namespace on the node). Falls back to the
+ * unscoped `/namespaces` endpoint on older merod versions that lack the
+ * scoped route (404/405).
+ */
+export async function listNamespaces<T>(applicationId?: string): Promise<T> {
+  if (applicationId) {
+    try {
+      return await adminGet<T>(`/namespaces/for-application/${applicationId}`);
+    } catch (err) {
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+      if (status !== 404 && status !== 405) throw err;
+      // fall through to unscoped endpoint
+    }
+  }
+  return adminGet<T>("/namespaces");
+}
+
 export async function adminPost<T>(
   path: string,
   body: Record<string, unknown>,

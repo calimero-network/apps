@@ -599,7 +599,9 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           return;
         }
 
-        if (e.key !== "Delete" && e.key !== "Backspace") return;
+        // Delete / Backspace / Escape remove the selected element
+        if (e.key !== "Delete" && e.key !== "Backspace" && e.key !== "Escape") return;
+        if (previewRef.current) return;
         const focusedTag = (document.activeElement as HTMLElement)?.tagName?.toLowerCase();
         if (focusedTag === "input" || focusedTag === "textarea" || focusedTag === "select") return;
         const active = fc.getActiveObject() as (FabricObject & { data?: Element }) | null;
