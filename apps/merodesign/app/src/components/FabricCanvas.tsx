@@ -37,6 +37,8 @@ export interface FabricCanvasHandle {
 interface Props {
   contextId: string;
   previewMode?: boolean;
+  /** True while the user is placing a comment — Escape cancels that instead of deleting. */
+  addingComment?: boolean;
   onViewportChange?: (zoom: number, panX: number, panY: number) => void;
 }
 
@@ -60,10 +62,11 @@ function makeDotPattern(bgColor: string): HTMLCanvasElement {
 }
 
 const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
-  ({ contextId, previewMode = false, onViewportChange }, ref) => {
+  ({ contextId, previewMode = false, addingComment = false, onViewportChange }, ref) => {
     const canvasElRef = useRef<HTMLCanvasElement>(null);
     const fabricRef = useRef<Canvas | null>(null);
     const previewRef = useRef(previewMode);
+    const addingCommentRef = useRef(addingComment);
     const backgroundRef = useRef<string>("#ffffff");
     const spaceHeldRef = useRef(false);
     const onViewportChangeRef = useRef(onViewportChange);
@@ -91,6 +94,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
     } = useCanvasStore();
 
     previewRef.current = previewMode;
+    addingCommentRef.current = addingComment;
     backgroundRef.current = background;
     onViewportChangeRef.current = onViewportChange;
 
@@ -599,7 +603,12 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           return;
         }
 
-        if (e.key !== "Delete" && e.key !== "Backspace") return;
+        // Delete / Backspace / Escape remove the selected element
+        if (e.key !== "Delete" && e.key !== "Backspace" && e.key !== "Escape") return;
+        if (previewRef.current) return;
+        // While placing a comment, Escape cancels that (handled in CanvasPage) —
+        // don't also delete the selected shape.
+        if (e.key === "Escape" && addingCommentRef.current) return;
         const focusedTag = (document.activeElement as HTMLElement)?.tagName?.toLowerCase();
         if (focusedTag === "input" || focusedTag === "textarea" || focusedTag === "select") return;
         const active = fc.getActiveObject() as (FabricObject & { data?: Element }) | null;

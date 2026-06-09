@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { adminGet, adminPost, adminDelete } from "../api/rpc";
-import { useAuthStore } from "../store/authStore";
+import { useMero, setApplicationId } from "@calimero-network/mero-react";
+import { adminPost, adminDelete, listNamespaces } from "../api/rpc";
+import { resolveApplicationId } from "../api/appId";
 import Logo from "../components/Logo";
 import SettingsModal from "../components/SettingsModal";
 import type { Team } from "../types";
@@ -17,7 +18,7 @@ type NamespaceRaw = {
 
 export default function TeamsPage() {
   const navigate = useNavigate();
-  const { applicationId, clearAuth } = useAuthStore();
+  const { applicationId, logout } = useMero();
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -29,23 +30,42 @@ export default function TeamsPage() {
   const [joinError, setJoinError] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
 
+  // MeroDesign's own application id, resolved once per mount.
+  // resolveApplicationId is authoritative — explicit VITE_APPLICATION_ID, else
+  // the installed app whose package is com.calimero.merodesign. We prefer it
+  // over a possibly-stale/wrong id from persisted auth or the Tauri hash, and
+  // only fall back to that id if resolution fails. Shared by list/create/join
+  // so namespaces are always scoped to (and created under) the right app.
+  const appIdRef = useRef<string>("");
+  const ensureAppId = useCallback(async (): Promise<string> => {
+    if (appIdRef.current) return appIdRef.current;
+    let id = "";
+    try { id = await resolveApplicationId(); } catch { /* ignore */ }
+    if (!id) id = applicationId ?? "";
+    if (id) { appIdRef.current = id; setApplicationId(id); }
+    return id;
+  }, [applicationId]);
+
   useEffect(() => {
-    function loadTeams() {
-      adminGet<NamespaceRaw[]>("/namespaces")
+    let cancelled = false;
+    async function loadTeams() {
+      const appId = await ensureAppId();
+      listNamespaces<NamespaceRaw[]>(appId)
         .then((items) => {
+          if (cancelled) return;
           const arr = Array.isArray(items) ? items : [];
           setTeams(arr.map((n) => ({
             groupId: n.namespaceId ?? n.groupId ?? n.id ?? "",
             name: n.alias ?? n.name ?? "",
           })));
         })
-        .catch(() => setTeams([]))
-        .finally(() => setLoading(false));
+        .catch(() => { if (!cancelled) setTeams([]); })
+        .finally(() => { if (!cancelled) setLoading(false); });
     }
     loadTeams();
     const id = setInterval(loadTeams, 30_000);
-    return () => clearInterval(id);
-  }, []);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [ensureAppId]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -64,7 +84,7 @@ export default function TeamsPage() {
     try {
       const data = await adminPost<{ namespaceId?: string; groupId?: string; id?: string }>(
         "/namespaces",
-        { applicationId, alias: newName.trim(), name: newName.trim(), upgradePolicy: "LazyOnAccess" },
+        { applicationId: await ensureAppId(), alias: newName.trim(), name: newName.trim(), upgradePolicy: "LazyOnAccess" },
       );
       const id = data.namespaceId ?? data.groupId ?? data.id ?? "";
       setTeams((prev) => [...prev, { groupId: id, name: newName.trim() }]);
@@ -109,7 +129,7 @@ export default function TeamsPage() {
       // Join body must wrap the invitation struct (outer), not the whole decoded token
       await adminPost(`/namespaces/${namespaceId}/join`, { invitation: outer });
       // Refresh list
-      const items = await adminGet<NamespaceRaw[]>("/namespaces");
+      const items = await listNamespaces<NamespaceRaw[]>(await ensureAppId());
       const arr = Array.isArray(items) ? items : [];
       setTeams(arr.map((n) => ({ groupId: n.namespaceId ?? n.groupId ?? n.id ?? "", name: n.alias ?? n.name ?? "" })));
       setJoinCode("");
@@ -121,7 +141,7 @@ export default function TeamsPage() {
   }
 
   function handleLogout() {
-    clearAuth();
+    logout();
     navigate("/login");
   }
 

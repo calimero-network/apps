@@ -1,16 +1,17 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
 import axios from "axios";
-import { rpcCall, adminGet, adminPost, adminDelete, adminPut } from "./rpc";
+import { rpcCall, adminGet, adminPost, adminDelete, adminPut, listNamespaces } from "./rpc";
 
 vi.mock("axios");
-vi.mock("../store/authStore", () => ({
-  useAuthStore: {
-    getState: vi.fn(() => ({
-      nodeUrl: "http://localhost:2430",
-      accessToken: "test-token",
-    })),
-  },
+vi.mock("@calimero-network/mero-react", () => ({
+  getNodeUrl: () => "http://localhost:2430",
+  clearAllStorage: vi.fn(),
 }));
+
+// Token now lives in the mero token store (localStorage["mero-tokens"]).
+beforeEach(() => {
+  localStorage.setItem("mero-tokens", JSON.stringify({ access_token: "test-token" }));
+});
 
 const mockPost   = vi.mocked(axios.post);
 const mockGet    = vi.mocked(axios.get);
@@ -201,6 +202,58 @@ describe("adminGet", () => {
     mockGet.mockResolvedValue({ data: { namespaces: [] } });
     const result = await adminGet<{ namespaces: unknown[] }>("/namespaces");
     expect(result).toEqual({ namespaces: [] });
+  });
+});
+
+// ── listNamespaces ────────────────────────────────────────────────────────────
+
+describe("listNamespaces", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("uses the application-scoped endpoint when an applicationId is given", async () => {
+    mockGet.mockResolvedValue({ data: { data: [] } });
+    await listNamespaces("app-123");
+    expect(mockGet.mock.calls[0][0]).toBe(
+      "http://localhost:2430/admin-api/namespaces/for-application/app-123",
+    );
+  });
+
+  it("uses the unscoped endpoint when no applicationId is given", async () => {
+    mockGet.mockResolvedValue({ data: { data: [] } });
+    await listNamespaces();
+    expect(mockGet.mock.calls[0][0]).toBe("http://localhost:2430/admin-api/namespaces");
+  });
+
+  it("falls back to the unscoped endpoint on 404", async () => {
+    const err = { response: { status: 404 } };
+    vi.mocked(axios.isAxiosError).mockReturnValue(true);
+    mockGet
+      .mockRejectedValueOnce(err)
+      .mockResolvedValueOnce({ data: { data: [{ id: "ns-1" }] } });
+    const result = await listNamespaces<{ id: string }[]>("app-123");
+    expect(mockGet.mock.calls[0][0]).toBe(
+      "http://localhost:2430/admin-api/namespaces/for-application/app-123",
+    );
+    expect(mockGet.mock.calls[1][0]).toBe("http://localhost:2430/admin-api/namespaces");
+    expect(result).toEqual([{ id: "ns-1" }]);
+  });
+
+  it("falls back to the unscoped endpoint on 405", async () => {
+    const err = { response: { status: 405 } };
+    vi.mocked(axios.isAxiosError).mockReturnValue(true);
+    mockGet
+      .mockRejectedValueOnce(err)
+      .mockResolvedValueOnce({ data: { data: [] } });
+    await listNamespaces("app-123");
+    expect(mockGet).toHaveBeenCalledTimes(2);
+  });
+
+  it("rethrows non-404/405 errors instead of falling back", async () => {
+    const err = { response: { status: 500 } };
+    vi.mocked(axios.isAxiosError).mockReturnValue(true);
+    mockGet.mockRejectedValueOnce(err);
+    await expect(listNamespaces("app-123")).rejects.toBe(err);
+    expect(mockGet).toHaveBeenCalledTimes(1);
   });
 });
 

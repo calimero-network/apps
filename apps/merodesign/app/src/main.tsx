@@ -1,21 +1,31 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
+import {
+  MeroProvider,
+  AppMode as MeroAppMode,
+  setNodeUrl,
+  setApplicationId,
+} from "@calimero-network/mero-react";
+import "@calimero-network/mero-ui/styles.css";
 import App from "./App";
-import { useAuthStore } from "./store/authStore";
 import "./index.css";
 
-// ── Tauri desktop SSO: read auth tokens from URL hash before React mounts ──────
+// ── Tauri desktop SSO: read auth tokens from the URL hash before React mounts ──
 //
-// tauri-app opens MeroDesign with a URL like:
-//   http://localhost:5173#node_url=...&access_token=...&refresh_token=...
-//                        &app-id=...&context_id=...&expires_at=...
+// On the web, MeroDesign goes through the node's real auth flow (ConnectButton
+// → /auth/login redirect → callback hash, which MeroProvider consumes itself).
+// We must NOT pre-process the hash there or it races MeroProvider.
 //
-// We write them straight into the Zustand auth store (which persists to
-// localStorage) so RequireAuth sees authenticated=true on first render.
-// The hash is stripped and, if a context_id was provided, the URL path is
-// rewritten so React Router lands directly on that canvas.
-function readHashAuth() {
+// Only the Tauri desktop skips auth: tauri-app opens a window like
+//   merodesign://…#node_url=…&access_token=…&refresh_token=…
+//                 &application_id=…&context_id=…&expires_at=…
+// (older builds use `app-id` instead of `application_id` — we tolerate both).
+// We write those straight into the mero token store so MeroProvider sees an
+// authenticated session on first render, then strip the hash.
+const IS_TAURI = "__TAURI_INTERNALS__" in window;
+
+function persistTauriHashAuth() {
   const hash = window.location.hash.slice(1);
   if (!hash) return;
 
@@ -23,31 +33,42 @@ function readHashAuth() {
   const nodeUrl = p.get("node_url")?.trim();
   const accessToken = p.get("access_token");
   const refreshToken = p.get("refresh_token");
-  const applicationId = p.get("app-id") ?? "";
+  const applicationId = (p.get("application_id") ?? p.get("app-id") ?? "").trim();
   const contextId = p.get("context_id");
+  const expiresAt = p.get("expires_at");
 
   if (!nodeUrl || !accessToken || !refreshToken) return;
 
-  // Overwrite whatever was previously stored — tauri tokens take precedence
-  useAuthStore.getState().setAuth(nodeUrl, accessToken, refreshToken, applicationId);
+  setNodeUrl(nodeUrl);
+  if (applicationId) setApplicationId(applicationId);
+  localStorage.setItem(
+    "mero-tokens",
+    JSON.stringify({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      expires_at: expiresAt ? parseInt(expiresAt, 10) : Date.now() + 3600_000,
+    }),
+  );
 
   // Navigate to the specific canvas if tauri told us which project to open.
-  // Use "t" as the placeholder teamId — CanvasPage only needs projectId to work;
-  // teamId is only used by the Back button.
-  const targetPath = contextId
-    ? `/teams/t/projects/${contextId}`
-    : "/teams";
-
-  // Replace URL: strips the hash and sets the correct path before React Router reads it
+  // "t" is a placeholder teamId — CanvasPage only needs projectId; teamId is
+  // only used by the Back button. Also strips the hash before React Router reads it.
+  const targetPath = contextId ? `/teams/t/projects/${contextId}` : "/teams";
   window.history.replaceState({}, "", targetPath);
 }
 
-readHashAuth();
+if (IS_TAURI) persistTauriHashAuth();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
+    <MeroProvider
+      mode={MeroAppMode.MultiContext}
+      packageName={import.meta.env.VITE_APPLICATION_PACKAGE ?? "com.calimero.merodesign"}
+      registryUrl="https://apps.calimero.network"
+    >
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </MeroProvider>
   </StrictMode>,
 );

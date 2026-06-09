@@ -87,10 +87,13 @@ async function uploadBlob(withContext = false): Promise<string> {
 async function injectAuth(page: import("@playwright/test").Page) {
   await page.addInitScript(
     ({ nodeUrl, accessToken, refreshToken, applicationId }) => {
-      localStorage.setItem("merodesign-auth", JSON.stringify({
-        state: { nodeUrl, accessToken, refreshToken, applicationId },
-        version: 0,
+      localStorage.setItem("mero-tokens", JSON.stringify({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        expires_at: Date.now() + 3600_000,
       }));
+      localStorage.setItem("mero:node_url", nodeUrl);
+      localStorage.setItem("mero:application_id", applicationId);
     },
     { nodeUrl: NODE_URL, accessToken: TOKEN, refreshToken: REFRESH, applicationId: APP_ID },
   );

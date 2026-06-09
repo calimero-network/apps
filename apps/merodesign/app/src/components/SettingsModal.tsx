@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
+import { useMero } from "@calimero-network/mero-react";
 import { adminGet } from "../api/rpc";
-import { useAuthStore } from "../store/authStore";
 import styles from "./SettingsModal.module.css";
 
 type MemberRaw = { identity?: string; memberId?: string; id?: string };
@@ -13,7 +13,7 @@ interface Props {
 }
 
 export default function SettingsModal({ type, id, name, onClose }: Props) {
-  const { applicationId } = useAuthStore();
+  const { applicationId } = useMero();
   const [members, setMembers] = useState<string[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);

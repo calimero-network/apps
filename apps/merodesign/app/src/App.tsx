@@ -1,6 +1,6 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
-import { useAuthStore } from "./store/authStore";
+import { useMero } from "@calimero-network/mero-react";
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import TeamsPage from "./pages/TeamsPage";
@@ -8,32 +8,16 @@ import ProjectsPage from "./pages/ProjectsPage";
 import CanvasPage from "./pages/CanvasPage";
 import CursorDot from "./components/CursorDot";
 
-function useHydrated() {
-  const [hydrated, setHydrated] = useState(() => useAuthStore.persist.hasHydrated());
-  useEffect(() => {
-    if (hydrated) return;
-    // Hydration may have already finished between render and effect (it's a microtask)
-    if (useAuthStore.persist.hasHydrated()) {
-      setHydrated(true);
-      return;
-    }
-    return useAuthStore.persist.onFinishHydration(() => setHydrated(true));
-  }, [hydrated]);
-  return hydrated;
-}
-
 function RequireAuth({ children }: { children: ReactNode }) {
-  const hydrated = useHydrated();
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated());
-  if (!hydrated) return null;
+  const { isAuthenticated, isLoading } = useMero();
+  if (isLoading) return null; // wait for the auth probe; avoids a flash to /login
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
-  const hydrated = useHydrated();
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated());
-  if (!hydrated) return null;
+  const { isAuthenticated, isLoading } = useMero();
+  if (isLoading) return null;
   if (isAuthenticated) return <Navigate to="/teams" replace />;
   return <>{children}</>;
 }

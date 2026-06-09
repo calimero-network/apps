@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { v4 as uuid } from "uuid";
 import { rpcCall, adminGet, adminUploadBlob, adminGetBlob } from "../api/rpc";
 import { useSse } from "../hooks/useSse";
-import { useAuthStore } from "../store/authStore";
+import { useMero } from "@calimero-network/mero-react";
 import { useCanvasStore } from "../store/canvasStore";
 import { useUsernameStore } from "../store/usernameStore";
 import type { CanvasComment, CursorState, Element, Member } from "../types";
@@ -23,7 +23,7 @@ function normalizeCursor(c: CursorState): CursorState {
 export default function CanvasPage() {
   const { teamId, projectId } = useParams<{ teamId: string; projectId: string }>();
   const navigate = useNavigate();
-  const { clearAuth } = useAuthStore();
+  const { logout } = useMero();
   const { setElements, upsertElement, removeElement, cacheImage, elements, imageCache, previewMode, setPreviewMode } = useCanvasStore();
   const { getUsername, setUsername } = useUsernameStore();
 
@@ -71,7 +71,7 @@ export default function CanvasPage() {
   }, [projectId]);
 
   function handleBack() { navigate(`/teams/${teamId}/projects`); }
-  function handleLogout() { clearAuth(); navigate("/login"); }
+  function handleLogout() { logout(); navigate("/login"); }
 
   // ESC exits preview / comment mode (not username modal — that's blocking)
   useEffect(() => {
@@ -394,6 +394,7 @@ export default function CanvasPage() {
           <FabricCanvas
             ref={canvasRef}
             contextId={projectId ?? ""}
+            addingComment={addingComment}
             onViewportChange={(z, px, py) => setViewport({ zoom: z, panX: px, panY: py })}
           />
           <CursorsOverlay cursors={cursors} myIdentity={myIdentity} members={members} viewport={viewport} />
