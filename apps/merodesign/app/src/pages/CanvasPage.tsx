@@ -111,11 +111,14 @@ export default function CanvasPage() {
     setSyncStatus("loading");
     setSyncError(null);
     // Clear the previous project's state so nothing leaks across a switch: stale
-    // elements would otherwise be blob-fetched against the new context id, and the
-    // old member id (per-context) must not linger until refreshIdentity resolves.
+    // elements would otherwise be blob-fetched against the new context id, the old
+    // member id (per-context) must not linger until refreshIdentity resolves, and
+    // stale members would let CursorsOverlay label this project's cursors with the
+    // previous project's usernames until the new get_members resolves.
     setElements([]);
     setComments([]);
     setCursors([]);
+    setMembers([]);
     setMyIdentity("");
     syncRetryCountRef.current = 0;
     joinAttemptedRef.current = false;
