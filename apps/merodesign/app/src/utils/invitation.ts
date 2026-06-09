@@ -1,12 +1,20 @@
 export function encodeInvitation(raw: string): string {
-  return btoa(raw).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+  // btoa only accepts Latin1 (code points 0-255) and throws on anything else, so
+  // UTF-8-encode to bytes first — otherwise a team name with an emoji or accented
+  // character would break invitation generation. ASCII input is unchanged.
+  const bytes = new TextEncoder().encode(raw);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 }
 
 export function decodeInvitation(encoded: string): string {
   const padded = encoded.replace(/-/g, "+").replace(/_/g, "/");
   const pad = padded.length % 4;
   try {
-    return atob(pad ? padded + "=".repeat(4 - pad) : padded);
+    const bin = atob(pad ? padded + "=".repeat(4 - pad) : padded);
+    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
   } catch {
     return encoded;
   }

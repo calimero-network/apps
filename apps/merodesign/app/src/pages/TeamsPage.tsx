@@ -7,6 +7,7 @@ import Logo from "../components/Logo";
 import SettingsModal from "../components/SettingsModal";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
+import { decodeInvitationObject } from "../utils/invitation";
 import { setStoredTeamName, teamLabel } from "../utils/teamName";
 import type { Team } from "../types";
 import styles from "./TeamsPage.module.css";
@@ -120,10 +121,9 @@ export default function TeamsPage() {
     setJoining(true);
     setJoinError("");
     try {
-      // Decode base64url → JSON invitation object
-      const padded = raw.replace(/-/g, "+").replace(/_/g, "/");
-      const pad = padded.length % 4;
-      const invObj = JSON.parse(atob(pad ? padded + "=".repeat(4 - pad) : padded)) as Record<string, unknown>;
+      // Decode base64url → JSON invitation object. Use the shared UTF-8-safe
+      // decoder so a Unicode __teamName (emoji/accents) round-trips correctly.
+      const invObj = decodeInvitationObject<Record<string, unknown>>(raw);
 
       // Invitation structure: { invitation: { invitation: { group_id: [...] }, inviterSignature, applicationId }, __teamName? }
       // group_id lives at invObj.invitation.invitation.group_id
