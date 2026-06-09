@@ -65,6 +65,9 @@ export interface Board {
 
 export interface Project {
   contextId: string;
+  // The subgroup's group id (hex 32 bytes). Distinct from contextId (base58):
+  // member/role admin-API endpoints key off the group id, not the context id.
+  groupId: string;
   name: string;
   description: string;
   isPublic: boolean;

@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { encodeInvitation, decodeInvitation } from "./invitation";
+import {
+  encodeInvitation,
+  decodeInvitation,
+  encodeInvitationObject,
+  decodeInvitationObject,
+} from "./invitation";
 
 describe("encodeInvitation", () => {
   it("produces a base64url string (no +, /, or = chars)", () => {
@@ -72,5 +77,23 @@ describe("decodeInvitation", () => {
     const result = decodeInvitation(garbage);
     // Should not throw, returns original
     expect(typeof result).toBe("string");
+  });
+});
+
+describe("UTF-8 / Unicode safety", () => {
+  it("does not throw and round-trips non-ASCII strings", () => {
+    const raw = "Café ☕ 团队 🚀 naïve";
+    expect(() => encodeInvitation(raw)).not.toThrow();
+    expect(decodeInvitation(encodeInvitation(raw))).toBe(raw);
+  });
+
+  it("round-trips an invitation object with a Unicode team name", () => {
+    const obj = {
+      invitation: { invitation: { group_id: [1, 2, 3] }, inviterSignature: "sig" },
+      __teamName: "Équipe 🎨 設計",
+    };
+    const token = encodeInvitationObject(obj);
+    expect(token).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(decodeInvitationObject(token)).toEqual(obj);
   });
 });

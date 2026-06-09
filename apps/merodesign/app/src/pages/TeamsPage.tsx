@@ -5,6 +5,10 @@ import { adminPost, adminDelete, listNamespaces } from "../api/rpc";
 import { resolveApplicationId } from "../api/appId";
 import Logo from "../components/Logo";
 import SettingsModal from "../components/SettingsModal";
+import { useToast } from "../contexts/ToastContext";
+import { extractErrorMessage } from "../utils/errorMessage";
+import { decodeInvitationObject } from "../utils/invitation";
+import { setStoredTeamName, teamLabel } from "../utils/teamName";
 import type { Team } from "../types";
 import styles from "./TeamsPage.module.css";
 
@@ -18,6 +22,7 @@ type NamespaceRaw = {
 
 export default function TeamsPage() {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const { applicationId, logout } = useMero();
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,16 +84,22 @@ export default function TeamsPage() {
   }, []);
 
   async function createTeam() {
-    if (!newName.trim()) return;
+    const name = newName.trim();
+    if (!name) return;
     setCreating(true);
     try {
       const data = await adminPost<{ namespaceId?: string; groupId?: string; id?: string }>(
         "/namespaces",
-        { applicationId: await ensureAppId(), alias: newName.trim(), name: newName.trim(), upgradePolicy: "LazyOnAccess" },
+        { applicationId: await ensureAppId(), alias: name, name, upgradePolicy: "LazyOnAccess" },
       );
       const id = data.namespaceId ?? data.groupId ?? data.id ?? "";
-      setTeams((prev) => [...prev, { groupId: id, name: newName.trim() }]);
+      // Cache the name so it survives even if the server later returns no alias,
+      // and so it can be embedded in invitations for joiners.
+      if (id) setStoredTeamName(id, name);
+      setTeams((prev) => [...prev, { groupId: id, name }]);
       setNewName("");
+    } catch (err) {
+      showToast(extractErrorMessage(err, "Could not create team."));
     } finally {
       setCreating(false);
     }
@@ -110,12 +121,11 @@ export default function TeamsPage() {
     setJoining(true);
     setJoinError("");
     try {
-      // Decode base64url → JSON invitation object
-      const padded = raw.replace(/-/g, "+").replace(/_/g, "/");
-      const pad = padded.length % 4;
-      const invObj = JSON.parse(atob(pad ? padded + "=".repeat(4 - pad) : padded)) as Record<string, unknown>;
+      // Decode base64url → JSON invitation object. Use the shared UTF-8-safe
+      // decoder so a Unicode __teamName (emoji/accents) round-trips correctly.
+      const invObj = decodeInvitationObject<Record<string, unknown>>(raw);
 
-      // Invitation structure: { invitation: { invitation: { group_id: [...] }, inviterSignature, applicationId }, groupName? }
+      // Invitation structure: { invitation: { invitation: { group_id: [...] }, inviterSignature, applicationId }, __teamName? }
       // group_id lives at invObj.invitation.invitation.group_id
       const outer = (invObj.invitation as Record<string, unknown>) ?? invObj;
       const inner = (outer?.invitation as Record<string, unknown>) ?? outer;
@@ -126,15 +136,27 @@ export default function TeamsPage() {
 
       if (!namespaceId) throw new Error("no namespace id in invitation");
 
+      // The inviter embeds the human team name so the joiner doesn't render a raw ID.
+      const embeddedName = typeof invObj.__teamName === "string" ? invObj.__teamName.trim() : "";
+      if (embeddedName) setStoredTeamName(namespaceId, embeddedName);
+
       // Join body must wrap the invitation struct (outer), not the whole decoded token
       await adminPost(`/namespaces/${namespaceId}/join`, { invitation: outer });
       // Refresh list
       const items = await listNamespaces<NamespaceRaw[]>(await ensureAppId());
       const arr = Array.isArray(items) ? items : [];
-      setTeams(arr.map((n) => ({ groupId: n.namespaceId ?? n.groupId ?? n.id ?? "", name: n.alias ?? n.name ?? "" })));
+      setTeams(arr.map((n) => {
+        const gid = n.namespaceId ?? n.groupId ?? n.id ?? "";
+        const serverName = (n.alias ?? n.name ?? "").trim();
+        if (gid === namespaceId && embeddedName && !serverName) return { groupId: gid, name: embeddedName };
+        return { groupId: gid, name: serverName };
+      }));
       setJoinCode("");
-    } catch {
-      setJoinError("Could not join. Check the invitation code.");
+      showToast("Joined team. Syncing projects…", "success");
+    } catch (err) {
+      const msg = extractErrorMessage(err, "Could not join. Check the invitation code.");
+      setJoinError(msg);
+      showToast(msg);
     } finally {
       setJoining(false);
     }
@@ -182,7 +204,7 @@ export default function TeamsPage() {
                   className={styles.card}
                   onClick={() => navigate(`/teams/${t.groupId}/projects`)}
                 >
-                  <span className={styles.cardName}>{t.name || t.groupId.slice(0, 8)}</span>
+                  <span className={styles.cardName}>{teamLabel(t.groupId, t.name)}</span>
                   <span className={styles.cardSub}>Team</span>
                 </button>
                 <button
@@ -227,7 +249,7 @@ export default function TeamsPage() {
         <SettingsModal
           type="team"
           id={settingsTeam.groupId}
-          name={settingsTeam.name || settingsTeam.groupId.slice(0, 8)}
+          name={teamLabel(settingsTeam.groupId, settingsTeam.name)}
           onClose={() => setSettingsTeam(null)}
         />
       )}

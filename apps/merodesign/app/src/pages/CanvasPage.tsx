@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { v4 as uuid } from "uuid";
-import { rpcCall, adminGet, adminUploadBlob, adminGetBlob } from "../api/rpc";
+import { rpcCall, adminGet, adminUploadBlob, adminGetBlob, joinContext } from "../api/rpc";
 import { useSse } from "../hooks/useSse";
 import { useMero } from "@calimero-network/mero-react";
 import { useCanvasStore } from "../store/canvasStore";
@@ -14,6 +14,7 @@ import CommentsOverlay from "../components/CommentsOverlay";
 import CursorsOverlay from "../components/CursorsOverlay";
 import UsernameModal from "../components/UsernameModal";
 import { exportProject, importProject, type ProjectSnapshot } from "../utils/projectFile";
+import { extractErrorMessage } from "../utils/errorMessage";
 import styles from "./CanvasPage.module.css";
 
 function normalizeCursor(c: CursorState): CursorState {
@@ -45,11 +46,17 @@ export default function CanvasPage() {
   const [syncTrigger, setSyncTrigger] = useState(0);
   const syncRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncRetryCountRef = useRef(0);
+  const joinAttemptedRef = useRef(false);
 
   // Fetch real context identity from the node (the key WASM knows as member_id).
   // Persists the last known identity in localStorage so refresh doesn't produce a
-  // new random UUID when the API is temporarily unavailable.
-  useEffect(() => {
+  // new random UUID when the API is temporarily unavailable. Re-run after we join
+  // a context (the node only returns our key once we're a member).
+  // `shouldApply` guards setMyIdentity so a slow response from a previous project
+  // can't clobber the identity after the user has switched canvases. Callers pass
+  // their own !cancelled check; the localStorage write is per-project (keyed by id)
+  // so it's safe to run regardless of which canvas is now active.
+  const refreshIdentity = useCallback((shouldApply: () => boolean = () => true) => {
     if (!projectId) return;
     const storageKey = `md-identity-${projectId}`;
     adminGet<unknown>(`/contexts/${projectId}/identities-owned`)
@@ -61,14 +68,32 @@ export default function CanvasPage() {
               ?? []);
         if (arr.length > 0) {
           localStorage.setItem(storageKey, arr[0]);
-          setMyIdentity(arr[0]);
+          if (shouldApply()) setMyIdentity(arr[0]);
         }
       })
       .catch(() => {
+        // identities-owned 404s when this node hasn't joined the context yet
+        // (e.g. a project created on a peer). Fall back to the cached key for THIS
+        // project — the member id is per-context, so never keep the previous
+        // canvas's identity (`cur`). Last resort: a fresh uuid, cached under this
+        // project's key so it stays stable across retries instead of churning, and
+        // is replaced by the real key once we join.
         const stored = localStorage.getItem(storageKey);
-        setMyIdentity(stored ?? uuid());
+        if (stored) {
+          if (shouldApply()) setMyIdentity(stored);
+        } else {
+          const generated = uuid();
+          localStorage.setItem(storageKey, generated);
+          if (shouldApply()) setMyIdentity(generated);
+        }
       });
   }, [projectId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    refreshIdentity(() => !cancelled);
+    return () => { cancelled = true; };
+  }, [refreshIdentity]);
 
   function handleBack() { navigate(`/teams/${teamId}/projects`); }
   function handleLogout() { logout(); navigate("/login"); }
@@ -92,24 +117,70 @@ export default function CanvasPage() {
     if (syncRetryRef.current) clearTimeout(syncRetryRef.current);
     setSyncStatus("loading");
     setSyncError(null);
+    // Clear the previous project's state so nothing leaks across a switch: stale
+    // elements would otherwise be blob-fetched against the new context id, the old
+    // member id (per-context) must not linger until refreshIdentity resolves, and
+    // stale members would let CursorsOverlay label this project's cursors with the
+    // previous project's usernames until the new get_members resolves.
+    setElements([]);
+    setComments([]);
+    setCursors([]);
+    setMembers([]);
+    setMyIdentity("");
     syncRetryCountRef.current = 0;
+    joinAttemptedRef.current = false;
+    // Guard all async work against project navigation: a slow joinContext / identity
+    // refresh from a previous project must not mutate state, join the wrong context,
+    // or schedule a retry for a canvas the user has already left.
+    let cancelled = false;
 
     function tryLoad() {
+      if (cancelled) return;
       rpcCall<Element[]>(projectId!, "get_elements", {})
         .then((els) => {
+          if (cancelled) return;
           setElements(Array.isArray(els) ? els : []);
           setSyncStatus("ready");
           setSyncError(null);
           rpcCall<CanvasComment[]>(projectId!, "get_comments", {})
-            .then((cs) => setComments(Array.isArray(cs) ? cs : []))
+            .then((cs) => { if (!cancelled) setComments(Array.isArray(cs) ? cs : []); })
             .catch(() => {});
           rpcCall<CursorState[]>(projectId!, "get_cursors", {})
-            .then((cs) => setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []))
+            .then((cs) => { if (!cancelled) setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []); })
             .catch(() => {});
         })
-        .catch((err) => {
-          syncRetryCountRef.current += 1;
+        .catch(async (err) => {
+          if (cancelled) return;
           const msg: string = err?.message ?? String(err);
+          // First failure → this node likely hasn't joined the context yet (it was
+          // created on a peer; we're only entitled via the team). The node reports
+          // this as "No owned identity found for this context" or "Context not found".
+          // Join once (idempotent — returns our existing key if already a member),
+          // then sync proceeds normally. Done unconditionally on the first failure
+          // rather than string-matching the error, which varies by node version.
+          if (!joinAttemptedRef.current) {
+            joinAttemptedRef.current = true;
+            console.warn(`[MeroDesign] get_elements failed ("${msg}") — joining context…`);
+            setSyncStatus("syncing");
+            try {
+              await joinContext(projectId!);
+              if (cancelled) return;
+              refreshIdentity(() => !cancelled); // now a member — fetch our real context key
+            } catch (joinErr) {
+              if (cancelled) return;
+              // joinContext uses adminPost → rejects with a raw Axios error, so pull
+              // the node's `{ error }` body (where entitlement rejections live) rather
+              // than the generic HTTP message.
+              const jmsg = extractErrorMessage(joinErr, "join failed");
+              console.error("[MeroDesign] auto-join failed:", jmsg);
+              // Surface it — otherwise the canvas shows an endless "syncing" hint and
+              // the user never learns the join was rejected (e.g. not entitled).
+              setSyncError(`Couldn't join this project: ${jmsg}`);
+            }
+            if (!cancelled) syncRetryRef.current = setTimeout(tryLoad, 1500);
+            return;
+          }
+          syncRetryCountRef.current += 1;
           console.error(`[MeroDesign] get_elements failed (attempt ${syncRetryCountRef.current}):`, msg);
           // After ~30s of retries surface the actual error so the user knows what's wrong
           if (syncRetryCountRef.current >= 10) setSyncError(msg);
@@ -120,6 +191,7 @@ export default function CanvasPage() {
 
     tryLoad();
     return () => {
+      cancelled = true;
       if (syncRetryRef.current) clearTimeout(syncRetryRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -136,7 +208,10 @@ export default function CanvasPage() {
         fetchingBlobsRef.current.add(el.id);
         const kind = el.data.kind;
         const elId = el.id;
-        adminGetBlob(blobId)
+        // Pass projectId (the context id) so the node can P2P-fetch blobs that
+        // were uploaded on a peer node — without it the receiver only checks
+        // local storage and 404s. See adminGetBlob.
+        adminGetBlob(blobId, projectId)
           .then((buf) => {
             const mime = kind === "svg" ? "image/svg+xml" : "image/png";
             const url = URL.createObjectURL(new Blob([buf], { type: mime }));
@@ -156,8 +231,12 @@ export default function CanvasPage() {
   // usernameStore is only used to pre-fill the modal input.
   useEffect(() => {
     if (!projectId || !myIdentity) return;
+    // Guard against a slow get_members from the previous project repopulating the
+    // roster (and mislabeling cursors) after the user switched canvases.
+    let cancelled = false;
     rpcCall<Member[]>(projectId, "get_members", {})
       .then((ms) => {
+        if (cancelled) return;
         const list = Array.isArray(ms) ? ms : [];
         setMembers(list);
         const member = list.find((m) => m.id === myIdentity);
@@ -167,9 +246,11 @@ export default function CanvasPage() {
         }
       })
       .catch(() => {
+        if (cancelled) return;
         // Can't verify — show modal to be safe
         setShowUsernameModal(true);
       });
+    return () => { cancelled = true; };
   }, [projectId, myIdentity]);
 
   async function handleUsernameSubmit(username: string) {
@@ -192,12 +273,16 @@ export default function CanvasPage() {
   // Poll cursors every 5 s so other members appear even without SSE
   useEffect(() => {
     if (!projectId) return;
+    // Guard against an in-flight poll response from the previous project landing
+    // after a switch and repopulating cursors (mislabeled via stale members) on the
+    // new canvas.
+    let cancelled = false;
     const id = setInterval(() => {
       rpcCall<CursorState[]>(projectId, "get_cursors", {})
-        .then((cs) => setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []))
+        .then((cs) => { if (!cancelled) setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []); })
         .catch(() => {});
     }, 5000);
-    return () => clearInterval(id);
+    return () => { cancelled = true; clearInterval(id); };
   }, [projectId]);
 
   // Cursor broadcast (throttled to 2-3s)

@@ -140,6 +140,15 @@ export async function adminPost<T>(
   return res.data.data ?? (res.data as T);
 }
 
+/**
+ * Join a context this node is entitled to but hasn't joined yet (e.g. a project
+ * created on a peer after we joined the team). Idempotent on the node side.
+ * `POST /admin-api/contexts/{id}/join` — mirrors curb's joinGroupContext.
+ */
+export async function joinContext(contextId: string): Promise<{ memberPublicKey?: string }> {
+  return adminPost<{ memberPublicKey?: string }>(`/contexts/${contextId}/join`, {});
+}
+
 export async function adminDelete<T>(path: string): Promise<T> {
   const nodeUrl = nodeBase();
   const accessToken = getJwt();
@@ -182,15 +191,23 @@ export async function adminUploadBlob(data: ArrayBuffer, contextId?: string): Pr
   return { blobId };
 }
 
-export async function adminGetBlob(blobId: string): Promise<ArrayBuffer> {
+export async function adminGetBlob(blobId: string, contextId?: string): Promise<ArrayBuffer> {
   const cached = await getCachedBlob(blobId);
   if (cached) return cached;
 
   const nodeUrl = nodeBase();
   const accessToken = getJwt();
+  // Pass context_id so the node does P2P network discovery for blobs it doesn't
+  // have locally (e.g. an image uploaded by a peer) AND signs the blob-access
+  // auth with our owned identity in that context. WITHOUT context_id the node
+  // only checks local storage and returns 404 "Blob not found locally or in
+  // network" — which is exactly the receiver-side error for peer-uploaded images.
+  const url = contextId
+    ? `${nodeUrl}/admin-api/blobs/${blobId}?context_id=${encodeURIComponent(contextId)}`
+    : `${nodeUrl}/admin-api/blobs/${blobId}`;
   const t0 = performance.now();
   const res = await axios.get<ArrayBuffer>(
-    `${nodeUrl}/admin-api/blobs/${blobId}`,
+    url,
     { headers: { Authorization: `Bearer ${accessToken}` }, responseType: "arraybuffer" },
   );
   const ms = Math.round(performance.now() - t0);

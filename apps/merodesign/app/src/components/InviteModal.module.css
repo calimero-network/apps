@@ -95,3 +95,19 @@
   color: #c0392b;
   margin-top: 10px;
 }
+
+.copiedMsg { font-size: 13px; color: #15803d; font-weight: 500; }
+
+.spinner {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #d7d7d7;
+  border-top-color: #15803d;
+  border-radius: 50%;
+  animation: inviteModalSpin 0.8s linear infinite;
+}
+
+@keyframes inviteModalSpin {
+  to { transform: rotate(360deg); }
+}

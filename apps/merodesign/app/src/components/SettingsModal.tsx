@@ -1,40 +1,104 @@
 import { useEffect, useState } from "react";
 import { useMero } from "@calimero-network/mero-react";
-import { adminGet } from "../api/rpc";
+import { adminGet, adminPut } from "../api/rpc";
+import { useToast } from "../contexts/ToastContext";
+import { extractErrorMessage } from "../utils/errorMessage";
+import { truncateMiddle } from "../utils/format";
 import styles from "./SettingsModal.module.css";
 
-type MemberRaw = { identity?: string; memberId?: string; id?: string };
+type MemberRole = "Admin" | "Member" | string;
+
+interface MemberEntry {
+  identity: string;
+  role: MemberRole;
+  name?: string;
+}
+
+type MembersResponse =
+  | MemberEntry[]
+  | { members?: MemberEntry[]; data?: MemberEntry[]; selfIdentity?: string; self_identity?: string };
 
 interface Props {
   type: "team" | "project";
+  /** The id shown in the header row — namespace id (team) or context id (project). */
   id: string;
+  /**
+   * The group id (hex 32 bytes) to query members/roles against. For a team this
+   * is the namespace id (same as `id`). For a project this is the subgroup id —
+   * NOT the base58 context id, which the /groups/{id}/members endpoint rejects
+   * with "Invalid group id format: expected hex-encoded 32 bytes".
+   */
+  groupId?: string;
   name: string;
   onClose: () => void;
 }
 
-export default function SettingsModal({ type, id, name, onClose }: Props) {
+export default function SettingsModal({ type, id, groupId, name, onClose }: Props) {
   const { applicationId } = useMero();
-  const [members, setMembers] = useState<string[]>([]);
+  const { showToast } = useToast();
+  const membersGroupId = groupId || id;
+  const [members, setMembers] = useState<MemberEntry[]>([]);
+  const [selfIdentity, setSelfIdentity] = useState("");
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [pendingRole, setPendingRole] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     setLoadingMembers(true);
-    adminGet<MemberRaw[] | { members?: MemberRaw[]; data?: MemberRaw[] }>(`/groups/${id}/members`)
+    adminGet<MembersResponse>(`/groups/${membersGroupId}/members`)
       .then((raw) => {
-        const arr: MemberRaw[] = Array.isArray(raw)
+        if (cancelled) return;
+        const arr: MemberEntry[] = Array.isArray(raw)
           ? raw
-          : (raw as { members?: MemberRaw[] }).members ?? (raw as { data?: MemberRaw[] }).data ?? [];
-        setMembers(arr.map((m) => m.identity ?? m.memberId ?? m.id ?? "?"));
+          : raw.members ?? raw.data ?? [];
+        const self = Array.isArray(raw)
+          ? ""
+          : (raw.selfIdentity ?? raw.self_identity ?? "");
+        setMembers(
+          arr
+            .map((m) => ({
+              identity: m.identity ?? (m as { memberId?: string }).memberId ?? (m as { id?: string }).id ?? "",
+              role: (m.role as MemberRole) ?? "Member",
+              name: m.name?.trim() || undefined,
+            }))
+            .filter((m) => m.identity),
+        );
+        setSelfIdentity(self ?? "");
       })
-      .catch(() => setMembers([]))
-      .finally(() => setLoadingMembers(false));
-  }, [id]);
+      .catch(() => {
+        if (!cancelled) setMembers([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingMembers(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [membersGroupId]);
+
+  const selfIsAdmin =
+    !!selfIdentity && members.some((m) => m.identity === selfIdentity && m.role === "Admin");
 
   async function copyText(text: string, key: string) {
     await navigator.clipboard.writeText(text);
     setCopied(key);
     setTimeout(() => setCopied(null), 2000);
+  }
+
+  // Promote (→ Admin) / demote (→ Member). Only namespace (team) members carry
+  // governance roles; only admins may change them.
+  async function changeRole(identity: string, role: "Admin" | "Member") {
+    setPendingRole(identity);
+    try {
+      await adminPut(`/groups/${membersGroupId}/members/${identity}/role`, { role });
+      setMembers((prev) => prev.map((m) => (m.identity === identity ? { ...m, role } : m)));
+      showToast(role === "Admin" ? "Member promoted to admin." : "Admin demoted to member.", "success");
+    } catch (err) {
+      showToast(extractErrorMessage(err, "Could not update role."));
+    } finally {
+      setPendingRole(null);
+    }
   }
 
   return (
@@ -77,19 +141,56 @@ export default function SettingsModal({ type, id, name, onClose }: Props) {
         <div className={styles.divider} />
 
         <div className={styles.row}>
-          <span className={styles.label}>Members</span>
+          <span className={styles.label}>
+            Members{members.length > 0 ? ` (${members.length})` : ""}
+          </span>
           {loadingMembers ? (
             <span className={styles.muted}>Loading…</span>
           ) : members.length === 0 ? (
             <span className={styles.muted}>No members found</span>
           ) : (
             <div className={styles.memberList}>
-              {members.map((m, i) => (
-                <div key={i} className={styles.member}>
-                  <span className={styles.memberAvatar}>{m[0]?.toUpperCase() ?? "?"}</span>
-                  <span className={styles.memberName}>{m}</span>
-                </div>
-              ))}
+              {members.map((m) => {
+                const isAdmin = m.role === "Admin";
+                const isSelf = m.identity === selfIdentity;
+                const initial = (m.name?.[0] ?? m.identity[0] ?? "?").toUpperCase();
+                const canModerate = type === "team" && selfIsAdmin && !isSelf;
+                const busy = pendingRole === m.identity;
+                return (
+                  <div key={m.identity} className={styles.member}>
+                    <span className={styles.memberAvatar}>{initial}</span>
+                    <div className={styles.memberInfo}>
+                      {m.name && <span className={styles.memberLabel}>{m.name}{isSelf ? " (you)" : ""}</span>}
+                      <div className={styles.memberIdRow}>
+                        <code className={styles.memberId} title={m.identity}>
+                          {truncateMiddle(m.identity, 10, 6)}
+                        </code>
+                        <button
+                          className={styles.copyIcon}
+                          onClick={() => copyText(m.identity, m.identity)}
+                          title="Copy full identity"
+                          aria-label="Copy full identity"
+                        >
+                          {copied === m.identity ? "✓" : "⧉"}
+                        </button>
+                        {!m.name && isSelf && <span className={styles.youTag}>you</span>}
+                      </div>
+                    </div>
+                    <span className={`${styles.roleBadge} ${isAdmin ? styles.roleAdmin : styles.roleMember}`}>
+                      {isAdmin ? "Admin" : "Member"}
+                    </span>
+                    {canModerate && (
+                      <button
+                        className={styles.roleBtn}
+                        disabled={busy}
+                        onClick={() => changeRole(m.identity, isAdmin ? "Member" : "Admin")}
+                      >
+                        {busy ? "…" : isAdmin ? "Demote" : "Promote"}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
