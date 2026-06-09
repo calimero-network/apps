@@ -14,6 +14,7 @@ import CommentsOverlay from "../components/CommentsOverlay";
 import CursorsOverlay from "../components/CursorsOverlay";
 import UsernameModal from "../components/UsernameModal";
 import { exportProject, importProject, type ProjectSnapshot } from "../utils/projectFile";
+import { extractErrorMessage } from "../utils/errorMessage";
 import styles from "./CanvasPage.module.css";
 
 function normalizeCursor(c: CursorState): CursorState {
@@ -51,7 +52,11 @@ export default function CanvasPage() {
   // Persists the last known identity in localStorage so refresh doesn't produce a
   // new random UUID when the API is temporarily unavailable. Re-run after we join
   // a context (the node only returns our key once we're a member).
-  const refreshIdentity = useCallback(() => {
+  // `shouldApply` guards setMyIdentity so a slow response from a previous project
+  // can't clobber the identity after the user has switched canvases. Callers pass
+  // their own !cancelled check; the localStorage write is per-project (keyed by id)
+  // so it's safe to run regardless of which canvas is now active.
+  const refreshIdentity = useCallback((shouldApply: () => boolean = () => true) => {
     if (!projectId) return;
     const storageKey = `md-identity-${projectId}`;
     adminGet<unknown>(`/contexts/${projectId}/identities-owned`)
@@ -63,7 +68,7 @@ export default function CanvasPage() {
               ?? []);
         if (arr.length > 0) {
           localStorage.setItem(storageKey, arr[0]);
-          setMyIdentity(arr[0]);
+          if (shouldApply()) setMyIdentity(arr[0]);
         }
       })
       .catch(() => {
@@ -75,17 +80,19 @@ export default function CanvasPage() {
         // is replaced by the real key once we join.
         const stored = localStorage.getItem(storageKey);
         if (stored) {
-          setMyIdentity(stored);
+          if (shouldApply()) setMyIdentity(stored);
         } else {
           const generated = uuid();
           localStorage.setItem(storageKey, generated);
-          setMyIdentity(generated);
+          if (shouldApply()) setMyIdentity(generated);
         }
       });
   }, [projectId]);
 
   useEffect(() => {
-    refreshIdentity();
+    let cancelled = false;
+    refreshIdentity(() => !cancelled);
+    return () => { cancelled = true; };
   }, [refreshIdentity]);
 
   function handleBack() { navigate(`/teams/${teamId}/projects`); }
@@ -158,10 +165,13 @@ export default function CanvasPage() {
             try {
               await joinContext(projectId!);
               if (cancelled) return;
-              refreshIdentity(); // now a member — fetch our real context key
+              refreshIdentity(() => !cancelled); // now a member — fetch our real context key
             } catch (joinErr) {
               if (cancelled) return;
-              const jmsg: string = (joinErr as { message?: string })?.message ?? String(joinErr);
+              // joinContext uses adminPost → rejects with a raw Axios error, so pull
+              // the node's `{ error }` body (where entitlement rejections live) rather
+              // than the generic HTTP message.
+              const jmsg = extractErrorMessage(joinErr, "join failed");
               console.error("[MeroDesign] auto-join failed:", jmsg);
               // Surface it — otherwise the canvas shows an endless "syncing" hint and
               // the user never learns the join was rejected (e.g. not entitled).
@@ -221,8 +231,12 @@ export default function CanvasPage() {
   // usernameStore is only used to pre-fill the modal input.
   useEffect(() => {
     if (!projectId || !myIdentity) return;
+    // Guard against a slow get_members from the previous project repopulating the
+    // roster (and mislabeling cursors) after the user switched canvases.
+    let cancelled = false;
     rpcCall<Member[]>(projectId, "get_members", {})
       .then((ms) => {
+        if (cancelled) return;
         const list = Array.isArray(ms) ? ms : [];
         setMembers(list);
         const member = list.find((m) => m.id === myIdentity);
@@ -232,9 +246,11 @@ export default function CanvasPage() {
         }
       })
       .catch(() => {
+        if (cancelled) return;
         // Can't verify — show modal to be safe
         setShowUsernameModal(true);
       });
+    return () => { cancelled = true; };
   }, [projectId, myIdentity]);
 
   async function handleUsernameSubmit(username: string) {
