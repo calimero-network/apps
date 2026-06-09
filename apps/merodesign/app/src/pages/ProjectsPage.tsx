@@ -153,9 +153,13 @@ export default function ProjectsPage() {
         },
       );
       const id = ctxData.contextId ?? ctxData.id ?? "";
+      // Store the same group the context was created under (`subgroupId || teamId`).
+      // If the subgroup create returned no id, an empty groupId would make Settings
+      // fall back to the base58 contextId for `/groups/{id}/members`, which the admin
+      // API rejects.
       setProjects((prev) => [
         ...prev,
-        { contextId: id, groupId: subgroupId, name: newName.trim(), description: "", isPublic: true },
+        { contextId: id, groupId: subgroupId || teamId, name: newName.trim(), description: "", isPublic: true },
       ]);
       setNewName("");
     } catch (err) {

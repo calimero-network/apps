@@ -273,12 +273,16 @@ export default function CanvasPage() {
   // Poll cursors every 5 s so other members appear even without SSE
   useEffect(() => {
     if (!projectId) return;
+    // Guard against an in-flight poll response from the previous project landing
+    // after a switch and repopulating cursors (mislabeled via stale members) on the
+    // new canvas.
+    let cancelled = false;
     const id = setInterval(() => {
       rpcCall<CursorState[]>(projectId, "get_cursors", {})
-        .then((cs) => setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []))
+        .then((cs) => { if (!cancelled) setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []); })
         .catch(() => {});
     }, 5000);
-    return () => clearInterval(id);
+    return () => { cancelled = true; clearInterval(id); };
   }, [projectId]);
 
   // Cursor broadcast (throttled to 2-3s)
