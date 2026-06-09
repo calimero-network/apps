@@ -4,6 +4,12 @@ import { useMero } from "@calimero-network/mero-react";
 import { adminGet, adminPost, adminPut, adminDelete } from "../api/rpc";
 import Logo from "../components/Logo";
 import SettingsModal from "../components/SettingsModal";
+import ProjectThumbnail from "../components/ProjectThumbnail";
+import { useToast } from "../contexts/ToastContext";
+import { extractErrorMessage, humanizeError } from "../utils/errorMessage";
+import { encodeInvitationObject } from "../utils/invitation";
+import { truncateMiddle } from "../utils/format";
+import { getStoredTeamName } from "../utils/teamName";
 import type { Project } from "../types";
 import styles from "./ProjectsPage.module.css";
 
@@ -28,6 +34,7 @@ type Tab = "projects" | "invitations";
 export default function ProjectsPage() {
   const { teamId } = useParams<{ teamId: string }>();
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const { logout, applicationId } = useMero();
 
   const [tab, setTab] = useState<Tab>("projects");
@@ -42,8 +49,9 @@ export default function ProjectsPage() {
   // Invitation state
   const [invitation, setInvitation] = useState("");
   const [inviteLoading, setInviteLoading] = useState(false);
-  const [inviteCopied, setInviteCopied] = useState(false);
+  const [inviteCopying, setInviteCopying] = useState(false);
   const [inviteError, setInviteError] = useState("");
+  const inviteResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function handleLogout() {
     logout();
@@ -76,6 +84,7 @@ export default function ProjectsPage() {
               const ctx = ctxs[0];
               resolved.push({
                 contextId: ctx.contextId ?? ctx.context_id ?? ctx.id ?? sgId,
+                groupId: sgId,
                 name: ctx.alias ?? ctx.name ?? sgName,
                 description: "",
                 isPublic: true,
@@ -106,6 +115,11 @@ export default function ProjectsPage() {
     }
     document.addEventListener("mousedown", onOutside);
     return () => document.removeEventListener("mousedown", onOutside);
+  }, []);
+
+  // Clear any pending invitation-reset timer on unmount.
+  useEffect(() => () => {
+    if (inviteResetRef.current) clearTimeout(inviteResetRef.current);
   }, []);
 
   async function createProject() {
@@ -141,9 +155,13 @@ export default function ProjectsPage() {
       const id = ctxData.contextId ?? ctxData.id ?? "";
       setProjects((prev) => [
         ...prev,
-        { contextId: id, name: newName.trim(), description: "", isPublic: true },
+        { contextId: id, groupId: subgroupId, name: newName.trim(), description: "", isPublic: true },
       ]);
       setNewName("");
+    } catch (err) {
+      // Surface node rejections (e.g. the namespace-admin gate on subgroup
+      // creation) instead of failing silently in the network console.
+      showToast(humanizeError(extractErrorMessage(err, "Could not create project.")));
     } finally {
       setCreating(false);
     }
@@ -164,26 +182,39 @@ export default function ProjectsPage() {
     setInviteError("");
     setInviteLoading(true);
     try {
-      const data = await adminPost<unknown>(
+      const data = await adminPost<Record<string, unknown>>(
         `/namespaces/${teamId}/invite`,
         {},
       );
       if (data) {
-        const encoded = btoa(JSON.stringify(data)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
-        setInvitation(encoded);
+        // Embed the team's human name so the joiner doesn't see a raw ID before
+        // the namespace metadata syncs. `__teamName` is a sibling of the signed
+        // invitation, so the existing decode path (invObj.invitation) is unchanged.
+        const teamName = getStoredTeamName(teamId);
+        const payload = teamName ? { ...data, __teamName: teamName } : data;
+        setInvitation(encodeInvitationObject(payload));
       }
-    } catch {
-      setInviteError("Failed to generate invitation. Check node connection.");
+    } catch (err) {
+      const msg = extractErrorMessage(err, "Failed to generate invitation. Check node connection.");
+      setInviteError(msg);
+      showToast(msg);
     } finally {
       setInviteLoading(false);
     }
   }
 
   async function copyInvite() {
-    if (!invitation) return;
+    if (!invitation || inviteCopying) return;
     await navigator.clipboard.writeText(invitation);
-    setInviteCopied(true);
-    setTimeout(() => setInviteCopied(false), 2000);
+    showToast("Invitation copied to clipboard.", "success");
+    // Show a brief loader, then reset back to the "Generate invitation" state so
+    // each share starts from a fresh, single-use invitation.
+    setInviteCopying(true);
+    if (inviteResetRef.current) clearTimeout(inviteResetRef.current);
+    inviteResetRef.current = setTimeout(() => {
+      setInviteCopying(false);
+      setInvitation("");
+    }, 5000);
   }
 
   return (
@@ -242,7 +273,7 @@ export default function ProjectsPage() {
                       data-testid={`project-card-${p.contextId}`}
                       onClick={() => navigate(`/teams/${teamId}/projects/${p.contextId}`)}
                     >
-                      <div className={styles.cardThumb} />
+                      <ProjectThumbnail seed={p.contextId} className={styles.cardThumb} />
                       <span className={styles.cardName}>{p.name || p.contextId.slice(0, 8)}</span>
                     </button>
                     <button
@@ -273,12 +304,21 @@ export default function ProjectsPage() {
               Generate an invitation code and share it with teammates. They paste it on the Teams page to join.
             </p>
             {invitation ? (
-              <div className={styles.tokenBox}>
-                <code className={styles.token} data-testid="invite-token">{invitation}</code>
-                <button className={styles.copyBtn} onClick={copyInvite} data-testid="copy-invite">
-                  {inviteCopied ? "Copied!" : "Copy"}
-                </button>
-              </div>
+              inviteCopying ? (
+                <div className={styles.tokenBox} data-testid="invite-copying">
+                  <span className={styles.inviteSpinner} aria-hidden="true" />
+                  <span className={styles.copiedMsg}>Copied! Resetting invitation…</span>
+                </div>
+              ) : (
+                <div className={styles.tokenBox}>
+                  <code className={styles.token} data-testid="invite-token" title={invitation}>
+                    {truncateMiddle(invitation, 22, 12)}
+                  </code>
+                  <button className={styles.copyBtn} onClick={copyInvite} data-testid="copy-invite">
+                    Copy
+                  </button>
+                </div>
+              )
             ) : (
               <button
                 className={styles.btn}
@@ -298,6 +338,7 @@ export default function ProjectsPage() {
         <SettingsModal
           type="project"
           id={settingsProject.contextId}
+          groupId={settingsProject.groupId}
           name={settingsProject.name || settingsProject.contextId.slice(0, 8)}
           onClose={() => setSettingsProject(null)}
         />

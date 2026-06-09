@@ -140,6 +140,15 @@ export async function adminPost<T>(
   return res.data.data ?? (res.data as T);
 }
 
+/**
+ * Join a context this node is entitled to but hasn't joined yet (e.g. a project
+ * created on a peer after we joined the team). Idempotent on the node side.
+ * `POST /admin-api/contexts/{id}/join` — mirrors curb's joinGroupContext.
+ */
+export async function joinContext(contextId: string): Promise<{ memberPublicKey?: string }> {
+  return adminPost<{ memberPublicKey?: string }>(`/contexts/${contextId}/join`, {});
+}
+
 export async function adminDelete<T>(path: string): Promise<T> {
   const nodeUrl = nodeBase();
   const accessToken = getJwt();

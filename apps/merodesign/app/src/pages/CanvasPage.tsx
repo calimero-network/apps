@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { v4 as uuid } from "uuid";
-import { rpcCall, adminGet, adminUploadBlob, adminGetBlob } from "../api/rpc";
+import { rpcCall, adminGet, adminUploadBlob, adminGetBlob, joinContext } from "../api/rpc";
 import { useSse } from "../hooks/useSse";
 import { useMero } from "@calimero-network/mero-react";
 import { useCanvasStore } from "../store/canvasStore";
@@ -45,11 +45,13 @@ export default function CanvasPage() {
   const [syncTrigger, setSyncTrigger] = useState(0);
   const syncRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncRetryCountRef = useRef(0);
+  const joinAttemptedRef = useRef(false);
 
   // Fetch real context identity from the node (the key WASM knows as member_id).
   // Persists the last known identity in localStorage so refresh doesn't produce a
-  // new random UUID when the API is temporarily unavailable.
-  useEffect(() => {
+  // new random UUID when the API is temporarily unavailable. Re-run after we join
+  // a context (the node only returns our key once we're a member).
+  const refreshIdentity = useCallback(() => {
     if (!projectId) return;
     const storageKey = `md-identity-${projectId}`;
     adminGet<unknown>(`/contexts/${projectId}/identities-owned`)
@@ -65,10 +67,18 @@ export default function CanvasPage() {
         }
       })
       .catch(() => {
+        // identities-owned 404s when this node hasn't joined the context yet
+        // (e.g. a project created on a peer). Keep the cached key if we have one;
+        // a fresh uuid is only the last resort and gets replaced once we join.
         const stored = localStorage.getItem(storageKey);
-        setMyIdentity(stored ?? uuid());
+        if (stored) setMyIdentity(stored);
+        else setMyIdentity((cur) => cur || uuid());
       });
   }, [projectId]);
+
+  useEffect(() => {
+    refreshIdentity();
+  }, [refreshIdentity]);
 
   function handleBack() { navigate(`/teams/${teamId}/projects`); }
   function handleLogout() { logout(); navigate("/login"); }
@@ -93,6 +103,7 @@ export default function CanvasPage() {
     setSyncStatus("loading");
     setSyncError(null);
     syncRetryCountRef.current = 0;
+    joinAttemptedRef.current = false;
 
     function tryLoad() {
       rpcCall<Element[]>(projectId!, "get_elements", {})
@@ -107,9 +118,28 @@ export default function CanvasPage() {
             .then((cs) => setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []))
             .catch(() => {});
         })
-        .catch((err) => {
-          syncRetryCountRef.current += 1;
+        .catch(async (err) => {
           const msg: string = err?.message ?? String(err);
+          // First failure → this node likely hasn't joined the context yet (it was
+          // created on a peer; we're only entitled via the team). The node reports
+          // this as "No owned identity found for this context" or "Context not found".
+          // Join once (idempotent — returns our existing key if already a member),
+          // then sync proceeds normally. Done unconditionally on the first failure
+          // rather than string-matching the error, which varies by node version.
+          if (!joinAttemptedRef.current) {
+            joinAttemptedRef.current = true;
+            console.warn(`[MeroDesign] get_elements failed ("${msg}") — joining context…`);
+            setSyncStatus("syncing");
+            try {
+              await joinContext(projectId!);
+              refreshIdentity(); // now a member — fetch our real context key
+            } catch (joinErr) {
+              console.error("[MeroDesign] auto-join failed (will retry):", joinErr);
+            }
+            syncRetryRef.current = setTimeout(tryLoad, 1500);
+            return;
+          }
+          syncRetryCountRef.current += 1;
           console.error(`[MeroDesign] get_elements failed (attempt ${syncRetryCountRef.current}):`, msg);
           // After ~30s of retries surface the actual error so the user knows what's wrong
           if (syncRetryCountRef.current >= 10) setSyncError(msg);

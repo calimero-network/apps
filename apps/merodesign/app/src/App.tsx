@@ -7,6 +7,7 @@ import TeamsPage from "./pages/TeamsPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import CanvasPage from "./pages/CanvasPage";
 import CursorDot from "./components/CursorDot";
+import { ToastProvider } from "./contexts/ToastContext";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useMero();
@@ -24,7 +25,7 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
 
 export default function App() {
   return (
-    <>
+    <ToastProvider>
       <CursorDot />
       <Routes>
         <Route path="/" element={<LandingPage />} />
@@ -33,6 +34,6 @@ export default function App() {
         <Route path="/teams/:teamId/projects" element={<RequireAuth><ProjectsPage /></RequireAuth>} />
         <Route path="/teams/:teamId/projects/:projectId" element={<RequireAuth><CanvasPage /></RequireAuth>} />
       </Routes>
-    </>
+    </ToastProvider>
   );
 }

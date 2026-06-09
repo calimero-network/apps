@@ -1,6 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { adminPost } from "../api/rpc";
-import { encodeInvitation } from "../utils/invitation";
+import { useToast } from "../contexts/ToastContext";
+import { extractErrorMessage } from "../utils/errorMessage";
+import { encodeInvitationObject } from "../utils/invitation";
+import { truncateMiddle } from "../utils/format";
+import { getStoredTeamName } from "../utils/teamName";
 import styles from "./InviteModal.module.css";
 
 interface Props {
@@ -9,33 +13,48 @@ interface Props {
 }
 
 export default function InviteModal({ teamId, onClose }: Props) {
+  const { showToast } = useToast();
   const [invitation, setInvitation] = useState("");
   const [loading, setLoading] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copying, setCopying] = useState(false);
   const [error, setError] = useState("");
+  const resetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (resetRef.current) clearTimeout(resetRef.current);
+  }, []);
 
   async function generate() {
     setError("");
     setLoading(true);
     try {
-      const data = await adminPost<{ invitation?: string; data?: string }>(
-        `/namespaces/${teamId}/invitations`,
-        {},
-      );
-      const raw = data.invitation ?? (data.data as string) ?? "";
-      setInvitation(raw ? encodeInvitation(raw) : "");
-    } catch {
-      setError("Failed to generate invitation. Check node connection.");
+      const data = await adminPost<Record<string, unknown>>(`/namespaces/${teamId}/invite`, {});
+      if (data) {
+        // Embed the team name so the joiner doesn't render a raw ID (see teamName.ts).
+        const teamName = getStoredTeamName(teamId);
+        const payload = teamName ? { ...data, __teamName: teamName } : data;
+        setInvitation(encodeInvitationObject(payload));
+      }
+    } catch (err) {
+      const msg = extractErrorMessage(err, "Failed to generate invitation. Check node connection.");
+      setError(msg);
+      showToast(msg);
     } finally {
       setLoading(false);
     }
   }
 
   async function copy() {
-    if (!invitation) return;
+    if (!invitation || copying) return;
     await navigator.clipboard.writeText(invitation);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    showToast("Invitation copied to clipboard.", "success");
+    // Brief loader, then reset to the "generate" state so each share is fresh.
+    setCopying(true);
+    if (resetRef.current) clearTimeout(resetRef.current);
+    resetRef.current = setTimeout(() => {
+      setCopying(false);
+      setInvitation("");
+    }, 5000);
   }
 
   return (
@@ -56,12 +75,21 @@ export default function InviteModal({ teamId, onClose }: Props) {
         </p>
 
         {invitation ? (
-          <div className={styles.tokenBox}>
-            <code className={styles.token} data-testid="invite-token">{invitation}</code>
-            <button className={styles.copyBtn} onClick={copy} data-testid="copy-invite">
-              {copied ? "Copied!" : "Copy"}
-            </button>
-          </div>
+          copying ? (
+            <div className={styles.tokenBox} data-testid="invite-copying">
+              <span className={styles.spinner} aria-hidden="true" />
+              <span className={styles.copiedMsg}>Copied! Resetting invitation…</span>
+            </div>
+          ) : (
+            <div className={styles.tokenBox}>
+              <code className={styles.token} data-testid="invite-token" title={invitation}>
+                {truncateMiddle(invitation, 22, 12)}
+              </code>
+              <button className={styles.copyBtn} onClick={copy} data-testid="copy-invite">
+                Copy
+              </button>
+            </div>
+          )
         ) : (
           <button
             className={styles.generateBtn}

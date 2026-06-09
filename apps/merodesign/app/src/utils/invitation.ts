@@ -11,3 +11,14 @@ export function decodeInvitation(encoded: string): string {
     return encoded;
   }
 }
+
+/** Encode an invitation *object* (the node's signed invitation response, plus
+ *  any extra fields like the team name) as a url-safe base64 token. */
+export function encodeInvitationObject(obj: unknown): string {
+  return encodeInvitation(JSON.stringify(obj));
+}
+
+/** Decode a token produced by {@link encodeInvitationObject} back to its object. */
+export function decodeInvitationObject<T = Record<string, unknown>>(encoded: string): T {
+  return JSON.parse(decodeInvitation(encoded)) as T;
+}

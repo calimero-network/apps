@@ -1,5 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// Dev server port — overridable so local runs can avoid a port clash with
+// another app already sitting on the default 5173 (Playwright would otherwise
+// silently reuse it and test the wrong app). Defaults to the standard 5173.
+const PORT = process.env.PW_PORT ?? "5173";
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -9,7 +14,7 @@ export default defineConfig({
   reporter: process.env.CI ? [["html", { outputFolder: "e2e-report" }]] : "list",
 
   use: {
-    baseURL: "http://localhost:5173",
+    baseURL: `http://localhost:${PORT}`,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
   },
@@ -29,8 +34,8 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: "pnpm dev",
-    url: "http://localhost:5173",
+    command: `pnpm exec vite --port ${PORT} --strictPort`,
+    url: `http://localhost:${PORT}`,
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
   },
