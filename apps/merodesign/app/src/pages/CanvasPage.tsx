@@ -104,21 +104,28 @@ export default function CanvasPage() {
     setSyncError(null);
     syncRetryCountRef.current = 0;
     joinAttemptedRef.current = false;
+    // Guard all async work against project navigation: a slow joinContext / identity
+    // refresh from a previous project must not mutate state, join the wrong context,
+    // or schedule a retry for a canvas the user has already left.
+    let cancelled = false;
 
     function tryLoad() {
+      if (cancelled) return;
       rpcCall<Element[]>(projectId!, "get_elements", {})
         .then((els) => {
+          if (cancelled) return;
           setElements(Array.isArray(els) ? els : []);
           setSyncStatus("ready");
           setSyncError(null);
           rpcCall<CanvasComment[]>(projectId!, "get_comments", {})
-            .then((cs) => setComments(Array.isArray(cs) ? cs : []))
+            .then((cs) => { if (!cancelled) setComments(Array.isArray(cs) ? cs : []); })
             .catch(() => {});
           rpcCall<CursorState[]>(projectId!, "get_cursors", {})
-            .then((cs) => setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []))
+            .then((cs) => { if (!cancelled) setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []); })
             .catch(() => {});
         })
         .catch(async (err) => {
+          if (cancelled) return;
           const msg: string = err?.message ?? String(err);
           // First failure → this node likely hasn't joined the context yet (it was
           // created on a peer; we're only entitled via the team). The node reports
@@ -132,11 +139,17 @@ export default function CanvasPage() {
             setSyncStatus("syncing");
             try {
               await joinContext(projectId!);
+              if (cancelled) return;
               refreshIdentity(); // now a member — fetch our real context key
             } catch (joinErr) {
-              console.error("[MeroDesign] auto-join failed (will retry):", joinErr);
+              if (cancelled) return;
+              const jmsg: string = (joinErr as { message?: string })?.message ?? String(joinErr);
+              console.error("[MeroDesign] auto-join failed:", jmsg);
+              // Surface it — otherwise the canvas shows an endless "syncing" hint and
+              // the user never learns the join was rejected (e.g. not entitled).
+              setSyncError(`Couldn't join this project: ${jmsg}`);
             }
-            syncRetryRef.current = setTimeout(tryLoad, 1500);
+            if (!cancelled) syncRetryRef.current = setTimeout(tryLoad, 1500);
             return;
           }
           syncRetryCountRef.current += 1;
@@ -150,6 +163,7 @@ export default function CanvasPage() {
 
     tryLoad();
     return () => {
+      cancelled = true;
       if (syncRetryRef.current) clearTimeout(syncRetryRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
