@@ -511,7 +511,6 @@ export class ClientApiDataSource implements ClientApi {
           contextId: useContext,
           method: ClientMethod.GET_MESSAGES,
           argsJson: {
-            group: props.group,
             parent_message: props.parent_message,
             limit: props.limit,
             offset: props.offset,
@@ -630,7 +629,6 @@ export class ClientApiDataSource implements ClientApi {
           contextId: getContextId() || "",
           method: ClientMethod.SEND_MESSAGE,
           argsJson: {
-            group: props.group,
             message: props.message,
             mentions: props.mentions,
             mentions_usernames: props.usernames,
@@ -872,7 +870,6 @@ export class ClientApiDataSource implements ClientApi {
           contextId: getContextId() || "",
           method: ClientMethod.DELETE_MESSAGE,
           argsJson: {
-            group: props.is_dm ? { name: "private_dm" } : props.group,
             message_id: props.messageId,
             parent_id: props.parent_id,
           },
@@ -925,7 +922,6 @@ export class ClientApiDataSource implements ClientApi {
           contextId: getContextId() || "",
           method: ClientMethod.EDIT_MESSAGE,
           argsJson: {
-            group: props.is_dm ? { name: "private_dm" } : props.group,
             message_id: props.messageId,
             new_message: props.newMessage,
             timestamp: props.timestamp,
@@ -1178,17 +1174,17 @@ export class ClientApiDataSource implements ClientApi {
     }
   }
 
-  async readMessage(props: ReadMessageProps): ApiResponse<string> {
+  async readMessage(_props: ReadMessageProps): ApiResponse<string> {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const response = await getJsonRpcClient().execute<any, string>(
         {
           contextId: getContextId() || "",
           method: ClientMethod.READ_MESSAGE,
-          argsJson: {
-            channel: props.channel,
-            timestamp: props.timestamp,
-          },
+          // mark_messages_as_read is a no-op stub taking Option<_channel>/
+          // Option<_timestamp>; the new SDK rejects unknown fields, so send none.
+          // Real read tracking goes through markAsRead → mark_as_read(timestamp).
+          argsJson: {},
           executorPublicKey: getExecutorPublicKey() || "",
         },
         {

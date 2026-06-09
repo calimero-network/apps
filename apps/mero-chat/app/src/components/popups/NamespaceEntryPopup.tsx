@@ -6,6 +6,7 @@ import { getNodeUrl } from "@calimero-network/mero-react";
 import { getAuthConfig } from "../../api/meroJsClient";
 import axios from "axios";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
+import { ContextApiDataSource } from "../../api/dataSource/nodeApiDataSource";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 import type { GroupSummary } from "../../api/groupApi";
 import {
@@ -617,17 +618,25 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
 
       await api.current.setDefaultCapabilities(groupId, { defaultCapabilities: DEFAULT_MEMBER_CAPABILITIES }).catch(() => {});
 
-      // Create initial "general" channel so the namespace has something to chat in
+      // Create initial "general" channel so the namespace has something to chat in.
+      // Goes through createGroupContext so `initializationParams` (required by core)
+      // is byte-encoded with the curb `init` shape — a raw POST omitting it is rejected.
       try {
-        const base = getNodeUrl() || DEFAULT_ENDPOINT;
-        const ctxRes = await axios.post<{ data: { contextId: string; memberPublicKey: string } }>(
-          `${base}/admin-api/contexts`,
-          // Send both `name` (new, persisted into MetadataRecord on core
-          // post-054a784f) and `alias` (old, for transition compatibility).
-          { applicationId: appId, groupId, alias: "general", name: "general" },
-          { headers: authHeaders() },
-        );
-        const ctxData = ctxRes.data?.data;
+        const ctxRes = await new ContextApiDataSource().createGroupContext({
+          applicationId: appId,
+          protocol: "near",
+          groupId,
+          alias: "general",
+          name: "general",
+          initializationParams: {
+            name: "general",
+            context_type: "Channel",
+            description: "",
+            created_at: Math.floor(Date.now() / 1000),
+            creator_username: "",
+          },
+        });
+        const ctxData = ctxRes.data;
         if (ctxData?.contextId && ctxData?.memberPublicKey) {
           setContextMemberIdentity(ctxData.contextId, ctxData.memberPublicKey);
         }

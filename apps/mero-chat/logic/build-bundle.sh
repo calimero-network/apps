@@ -29,7 +29,7 @@ cat > res/bundle-temp/manifest.json <<EOF
 {
   "version": "1.0",
   "package": "com.calimero.curb",
-  "appVersion": "5.4.0",
+  "appVersion": "7.0.0",
   "minRuntimeVersion": "0.1.0",
   "metadata": {
     "name": "Mero Chat",
