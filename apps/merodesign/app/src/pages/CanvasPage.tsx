@@ -68,11 +68,19 @@ export default function CanvasPage() {
       })
       .catch(() => {
         // identities-owned 404s when this node hasn't joined the context yet
-        // (e.g. a project created on a peer). Keep the cached key if we have one;
-        // a fresh uuid is only the last resort and gets replaced once we join.
+        // (e.g. a project created on a peer). Fall back to the cached key for THIS
+        // project — the member id is per-context, so never keep the previous
+        // canvas's identity (`cur`). Last resort: a fresh uuid, cached under this
+        // project's key so it stays stable across retries instead of churning, and
+        // is replaced by the real key once we join.
         const stored = localStorage.getItem(storageKey);
-        if (stored) setMyIdentity(stored);
-        else setMyIdentity((cur) => cur || uuid());
+        if (stored) {
+          setMyIdentity(stored);
+        } else {
+          const generated = uuid();
+          localStorage.setItem(storageKey, generated);
+          setMyIdentity(generated);
+        }
       });
   }, [projectId]);
 
@@ -102,6 +110,13 @@ export default function CanvasPage() {
     if (syncRetryRef.current) clearTimeout(syncRetryRef.current);
     setSyncStatus("loading");
     setSyncError(null);
+    // Clear the previous project's state so nothing leaks across a switch: stale
+    // elements would otherwise be blob-fetched against the new context id, and the
+    // old member id (per-context) must not linger until refreshIdentity resolves.
+    setElements([]);
+    setComments([]);
+    setCursors([]);
+    setMyIdentity("");
     syncRetryCountRef.current = 0;
     joinAttemptedRef.current = false;
     // Guard all async work against project navigation: a slow joinContext / identity
