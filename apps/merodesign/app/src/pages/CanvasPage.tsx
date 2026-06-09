@@ -166,7 +166,10 @@ export default function CanvasPage() {
         fetchingBlobsRef.current.add(el.id);
         const kind = el.data.kind;
         const elId = el.id;
-        adminGetBlob(blobId)
+        // Pass projectId (the context id) so the node can P2P-fetch blobs that
+        // were uploaded on a peer node — without it the receiver only checks
+        // local storage and 404s. See adminGetBlob.
+        adminGetBlob(blobId, projectId)
           .then((buf) => {
             const mime = kind === "svg" ? "image/svg+xml" : "image/png";
             const url = URL.createObjectURL(new Blob([buf], { type: mime }));
