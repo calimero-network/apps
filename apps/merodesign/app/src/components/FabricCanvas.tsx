@@ -39,6 +39,9 @@ interface Props {
   previewMode?: boolean;
   /** True while the user is placing a comment — Escape cancels that instead of deleting. */
   addingComment?: boolean;
+  /** True for viewers (no editor/admin role). Blocks all canvas mutations — the
+   *  contract also rejects them at merge, this just avoids ghost local edits. */
+  readOnly?: boolean;
   onViewportChange?: (zoom: number, panX: number, panY: number) => void;
 }
 
@@ -62,11 +65,12 @@ function makeDotPattern(bgColor: string): HTMLCanvasElement {
 }
 
 const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
-  ({ contextId, previewMode = false, addingComment = false, onViewportChange }, ref) => {
+  ({ contextId, previewMode = false, addingComment = false, readOnly = false, onViewportChange }, ref) => {
     const canvasElRef = useRef<HTMLCanvasElement>(null);
     const fabricRef = useRef<Canvas | null>(null);
     const previewRef = useRef(previewMode);
     const addingCommentRef = useRef(addingComment);
+    const readOnlyRef = useRef(readOnly);
     const backgroundRef = useRef<string>("#ffffff");
     const spaceHeldRef = useRef(false);
     const onViewportChangeRef = useRef(onViewportChange);
@@ -95,6 +99,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
 
     previewRef.current = previewMode;
     addingCommentRef.current = addingComment;
+    readOnlyRef.current = readOnly;
     backgroundRef.current = background;
     onViewportChangeRef.current = onViewportChange;
 
@@ -360,6 +365,8 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
 
         if (spaceHeldRef.current || e.altKey || e.button === 1) return;
         if (activeTool === "select" || activeTool === "path" || activeTool === "image") return;
+        // Viewers may pan/select to inspect, but never create.
+        if (readOnlyRef.current) return;
 
         if (activeTool === "text") {
           const p = fc.getScenePoint(e);
@@ -492,6 +499,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       };
 
       const onObjectModified = async (opt: { target?: FabricObject & { data?: Element } }) => {
+        if (readOnlyRef.current) return;
         const obj = opt.target;
         if (!obj?.data?.id) return;
         const el = obj.data;
@@ -515,6 +523,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       };
 
       const onTextEditingExited = async (opt: { target?: (IText & { data?: Element }) }) => {
+        if (readOnlyRef.current) return;
         const obj = opt.target;
         if (!obj?.data?.id || obj.data.data?.kind !== "text") return;
         const el = obj.data;
@@ -563,6 +572,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           return;
         }
         if (mod && e.key === "v") {
+          if (readOnlyRef.current) return;
           const newEl = getPasted();
           if (newEl) {
             upsertElement(newEl);
@@ -614,6 +624,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         const active = fc.getActiveObject() as (FabricObject & { data?: Element }) | null;
         if (!active?.data?.id) return;
         if (active.type === "i-text" && (active as IText).isEditing) return;
+        if (readOnlyRef.current) return; // viewers can't delete
         fc.remove(active);
         fc.renderAll();
         snapshot();

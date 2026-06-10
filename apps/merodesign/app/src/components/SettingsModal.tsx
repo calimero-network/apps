@@ -1,10 +1,16 @@
 import { useEffect, useState } from "react";
 import { useMero } from "@calimero-network/mero-react";
-import { adminGet, adminPut } from "../api/rpc";
+import { adminGet, adminPut, rpcCall } from "../api/rpc";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
 import { truncateMiddle } from "../utils/format";
 import styles from "./SettingsModal.module.css";
+
+/** Contract-level role for a member: "admin" | "editor" | "viewer". */
+interface ContractRole {
+  member: string;
+  role: string;
+}
 
 type MemberRole = "Admin" | "Member" | string;
 
@@ -42,6 +48,41 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [pendingRole, setPendingRole] = useState<string | null>(null);
+  // Contract-level (merge-enforced) canvas roles, project boards only.
+  const [contractRoles, setContractRoles] = useState<Record<string, string>>({});
+  const [myContractRole, setMyContractRole] = useState<string>("");
+  const [pendingEditor, setPendingEditor] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (type !== "project") return;
+    let cancelled = false;
+    Promise.all([
+      rpcCall<ContractRole[]>(id, "list_roles", {}).catch(() => [] as ContractRole[]),
+      rpcCall<string>(id, "my_role", {}).catch(() => ""),
+    ]).then(([roles, mine]) => {
+      if (cancelled) return;
+      const map: Record<string, string> = {};
+      (Array.isArray(roles) ? roles : []).forEach((r) => { if (r?.member) map[r.member] = r.role; });
+      setContractRoles(map);
+      setMyContractRole(mine || "");
+    });
+    return () => { cancelled = true; };
+  }, [type, id]);
+
+  // The board owner/admin (contract) may grant/revoke the editor role. The grant
+  // is admin-gated at merge, so a non-admin's forged grant is rejected by peers.
+  async function setEditor(identity: string, makeEditor: boolean) {
+    setPendingEditor(identity);
+    try {
+      await rpcCall(id, makeEditor ? "grant_editor" : "revoke_editor", { member: identity });
+      setContractRoles((prev) => ({ ...prev, [identity]: makeEditor ? "editor" : "viewer" }));
+      showToast(makeEditor ? "Member can now edit the canvas." : "Member set to view-only.", "success");
+    } catch (err) {
+      showToast(extractErrorMessage(err, "Could not update canvas role."));
+    } finally {
+      setPendingEditor(null);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -156,6 +197,14 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
                 const initial = (m.name?.[0] ?? m.identity[0] ?? "?").toUpperCase();
                 const canModerate = type === "team" && selfIsAdmin && !isSelf;
                 const busy = pendingRole === m.identity;
+                // Contract canvas role (project boards). Admins are implicitly
+                // editors; a member is shown as an editor if explicitly granted.
+                const contractRole = contractRoles[m.identity];
+                const isCanvasEditor = contractRole === "admin" || contractRole === "editor";
+                const isCanvasAdmin = contractRole === "admin";
+                const canSetEditor =
+                  type === "project" && myContractRole === "admin" && !isSelf && !isCanvasAdmin;
+                const editorBusy = pendingEditor === m.identity;
                 return (
                   <div key={m.identity} className={styles.member}>
                     <span className={styles.memberAvatar}>{initial}</span>
@@ -186,6 +235,24 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
                         onClick={() => changeRole(m.identity, isAdmin ? "Member" : "Admin")}
                       >
                         {busy ? "…" : isAdmin ? "Demote" : "Promote"}
+                      </button>
+                    )}
+                    {type === "project" && contractRole && (
+                      <span
+                        className={`${styles.roleBadge} ${isCanvasEditor ? styles.roleAdmin : styles.roleMember}`}
+                        title="Canvas access (merge-enforced)"
+                      >
+                        {isCanvasAdmin ? "Owner" : isCanvasEditor ? "Editor" : "Viewer"}
+                      </span>
+                    )}
+                    {canSetEditor && (
+                      <button
+                        className={styles.roleBtn}
+                        disabled={editorBusy}
+                        onClick={() => setEditor(m.identity, !isCanvasEditor)}
+                        title={isCanvasEditor ? "Revoke canvas edit access" : "Allow this member to edit the canvas"}
+                      >
+                        {editorBusy ? "…" : isCanvasEditor ? "Make viewer" : "Make editor"}
                       </button>
                     )}
                   </div>

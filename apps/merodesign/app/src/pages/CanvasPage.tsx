@@ -37,6 +37,9 @@ export default function CanvasPage() {
   const [showUsernameModal, setShowUsernameModal] = useState(false);
   const [addingComment, setAddingComment] = useState(false);
   const [myIdentity, setMyIdentity] = useState("");
+  // Effective canvas permission for this identity (admin/editor → true, viewer → false).
+  // The contract enforces this at merge; this flag is for read-only UX.
+  const [canEdit, setCanEdit] = useState(true);
   const [viewport, setViewport] = useState({ zoom: 1, panX: 0, panY: 0 });
   const cursorThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -255,9 +258,10 @@ export default function CanvasPage() {
 
   async function handleUsernameSubmit(username: string) {
     if (!projectId || !myIdentity) return;
-    // Register in WASM — this is the authoritative store
+    // Register in WASM — this is the authoritative store. The member id is
+    // derived server-side from the real signer (env::executor_id); we no longer
+    // pass a spoofable member_id.
     await rpcCall(projectId, "join", {
-      member_id: myIdentity,
       username,
       avatar: null,
       timestamp: Date.now(),
@@ -269,6 +273,19 @@ export default function CanvasPage() {
       .then((ms) => setMembers(Array.isArray(ms) ? ms : []))
       .catch(() => {});
   }
+
+  // Resolve this identity's canvas permission. Viewers (no editor/admin role)
+  // get a read-only canvas. Re-checked when the roster changes (e.g. an admin
+  // just granted us editor). Defaults to editable so a transient RPC failure
+  // never silently locks an editor out.
+  useEffect(() => {
+    if (!projectId || !myIdentity) return;
+    let cancelled = false;
+    rpcCall<boolean>(projectId, "can_edit", {})
+      .then((res) => { if (!cancelled) setCanEdit(res !== false); })
+      .catch(() => { if (!cancelled) setCanEdit(true); });
+    return () => { cancelled = true; };
+  }, [projectId, myIdentity, members]);
 
   // Poll cursors every 5 s so other members appear even without SSE
   useEffect(() => {
@@ -298,7 +315,8 @@ export default function CanvasPage() {
         if (idx >= 0) { const n = [...prev]; n[idx] = updated; return n; }
         return [...prev, updated];
       });
-      rpcCall(projectId, "update_cursor", { identity: myIdentity, x, y, updated_at: now }).catch(() => {});
+      // identity is derived server-side from the signer; not client-supplied.
+      rpcCall(projectId, "update_cursor", { x, y, updated_at: now }).catch(() => {});
     }, 2500);
   }, [projectId, myIdentity]);
 
@@ -473,6 +491,7 @@ export default function CanvasPage() {
         members={cursors.filter((c) => c.identity !== myIdentity && Date.now() - c.updatedAt < 30_000)}
         onSaveProject={handleSaveProject}
         onImportProject={handleImportProject}
+        readOnly={!canEdit}
       />
       <div className={styles.workspace}>
         <div className={styles.canvasWrap} onMouseMove={handleCanvasMouseMove}>
@@ -480,6 +499,7 @@ export default function CanvasPage() {
             ref={canvasRef}
             contextId={projectId ?? ""}
             addingComment={addingComment}
+            readOnly={!canEdit}
             onViewportChange={(z, px, py) => setViewport({ zoom: z, panX: px, panY: py })}
           />
           <CursorsOverlay cursors={cursors} myIdentity={myIdentity} members={members} viewport={viewport} />

@@ -115,6 +115,8 @@ interface Props {
   members?: CursorState[];
   onSaveProject?: () => void;
   onImportProject?: (snapshot: ProjectSnapshot) => void;
+  /** Viewer (no editor/admin role): hide creation tools + commenting. */
+  readOnly?: boolean;
 }
 
 export default function Toolbar({
@@ -128,6 +130,7 @@ export default function Toolbar({
   members = [],
   onSaveProject,
   onImportProject,
+  readOnly = false,
 }: Props) {
   const { activeTool, setTool, background, setBackground, undo, redo, undoStack, redoStack } = useCanvasStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -188,22 +191,28 @@ export default function Toolbar({
       <div className={styles.divider} />
 
       <div className={styles.tools}>
-        {TOOLS.map(({ id, title, Icon }) => (
-          <button
-            key={id}
-            className={`${styles.tool} ${activeTool === id ? styles.active : ""}`}
-            title={title}
-            onClick={() => setTool(id)}
-            data-testid={`tool-${id}`}
-          >
-            <Icon />
-          </button>
-        ))}
+        {TOOLS.map(({ id, title, Icon }) => {
+          // Viewers keep navigation (select/hand) but lose every creation tool.
+          const navOnly = id === "select" || id === "hand";
+          return (
+            <button
+              key={id}
+              className={`${styles.tool} ${activeTool === id ? styles.active : ""}`}
+              title={title}
+              onClick={() => setTool(id)}
+              data-testid={`tool-${id}`}
+              disabled={readOnly && !navOnly}
+            >
+              <Icon />
+            </button>
+          );
+        })}
         <button
           className={`${styles.tool} ${activeTool === "image" ? styles.active : ""}`}
           title="Image (I)"
           data-testid="tool-image"
           onClick={() => { setTool("image"); fileInputRef.current?.click(); }}
+          disabled={readOnly}
         >
           <IconImage />
         </button>
@@ -301,7 +310,20 @@ export default function Toolbar({
         )}
       </div>
 
-      {onToggleComment && (
+      {readOnly && (
+        <span
+          data-testid="view-only-badge"
+          title="You have view-only access to this board"
+          style={{
+            marginRight: 8, padding: "2px 8px", borderRadius: 4,
+            fontSize: 12, fontWeight: 600, color: "#92400e",
+            background: "#fef3c7", whiteSpace: "nowrap",
+          }}
+        >
+          View only
+        </span>
+      )}
+      {onToggleComment && !readOnly && (
         <button
           className={`${styles.iconBtn} ${addingComment ? styles.iconBtnActive : ""}`}
           onClick={onToggleComment}
