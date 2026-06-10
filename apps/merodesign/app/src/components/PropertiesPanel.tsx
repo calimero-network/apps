@@ -512,6 +512,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
         <div className={styles.shadowRow}>
           <div className={styles.groupTitle} style={{ marginBottom: 0 }}>Shadow</div>
           <input type="checkbox" className={styles.check}
+            disabled={readOnly}
             checked={(el.shadowBlur ?? 0) > 0}
             onChange={(e) => {
               const updatedAt = Date.now();
@@ -530,6 +531,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
             <div className={styles.fieldWrap} style={{ gridColumn: "span 2" }}>
               <label className={styles.fieldLabel}>Color</label>
               <input type="color" className={styles.colorSwatch}
+                disabled={readOnly}
                 value={el.shadowColor?.startsWith("rgba") ? "#000000" : (el.shadowColor ?? "#000000")}
                 onChange={(e) => {
                   const updatedAt = Date.now();
@@ -540,6 +542,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
             <div className={styles.fieldWrap}>
               <label className={styles.fieldLabel}>Blur</label>
               <input type="number" className={styles.field} min={0} max={50}
+                disabled={readOnly}
                 value={el.shadowBlur ?? 0}
                 onChange={(e) => {
                   const updatedAt = Date.now();
@@ -550,6 +553,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
             <div className={styles.fieldWrap}>
               <label className={styles.fieldLabel}>Offset X</label>
               <input type="number" className={styles.field}
+                disabled={readOnly}
                 value={el.shadowOffsetX ?? 0}
                 onChange={(e) => {
                   const updatedAt = Date.now();
@@ -560,6 +564,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
             <div className={styles.fieldWrap}>
               <label className={styles.fieldLabel}>Offset Y</label>
               <input type="number" className={styles.field}
+                disabled={readOnly}
                 value={el.shadowOffsetY ?? 0}
                 onChange={(e) => {
                   const updatedAt = Date.now();
@@ -573,7 +578,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
 
       {/* Delete */}
       <div className={styles.deleteRow}>
-        <button className={styles.deleteBtn} data-testid="delete-element" onClick={() => handleDelete()}>
+        <button className={styles.deleteBtn} data-testid="delete-element" disabled={readOnly} onClick={() => handleDelete()}>
           Delete element
         </button>
       </div>

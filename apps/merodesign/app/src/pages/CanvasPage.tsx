@@ -285,7 +285,8 @@ export default function CanvasPage() {
   // Resolve this identity's role. Viewers get a read-only canvas; only the
   // admin/owner may run board-replace ops (import). Re-checked when the roster
   // changes (e.g. an admin just granted us editor). On a transient RPC failure
-  // we fail open on edit (don't lock out an editor) but closed on admin.
+  // we fail CLOSED (read-only) — never hand a viewer edit UI; the contract is
+  // the real boundary and a real editor's access restores on the next resolve.
   useEffect(() => {
     if (!projectId || !myIdentity) return;
     let cancelled = false;
@@ -295,7 +296,7 @@ export default function CanvasPage() {
         setCanEdit(role !== "viewer");
         setIsAdmin(role === "admin");
       })
-      .catch(() => { if (!cancelled) { setCanEdit(true); setIsAdmin(false); } });
+      .catch(() => { if (!cancelled) { setCanEdit(false); setIsAdmin(false); } });
     return () => { cancelled = true; };
   }, [projectId, myIdentity, members]);
 
@@ -419,7 +420,9 @@ export default function CanvasPage() {
   async function handleImageUpload(
     file: File, dataUrl: string, naturalWidth: number, naturalHeight: number,
   ) {
-    if (!projectId) return;
+    // Adding an image is an edit (add_element) — viewers are read-only. The
+    // toolbar disables the control, but gate the handler too against any path.
+    if (!projectId || !canEdit) return;
     const maxW = 400;
     const scale = naturalWidth > maxW ? maxW / naturalWidth : 1;
     const id = uuid();
