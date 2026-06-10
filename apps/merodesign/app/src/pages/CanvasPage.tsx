@@ -40,6 +40,9 @@ export default function CanvasPage() {
   // Effective canvas permission for this identity (admin/editor → true, viewer → false).
   // The contract enforces this at merge; this flag is for read-only UX.
   const [canEdit, setCanEdit] = useState(true);
+  // Whether this identity is the board admin/owner. Admin-only board ops
+  // (clear, project import which replaces the board) are gated on this.
+  const [isAdmin, setIsAdmin] = useState(false);
   const [viewport, setViewport] = useState({ zoom: 1, panX: 0, panY: 0 });
   const cursorThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -131,9 +134,10 @@ export default function CanvasPage() {
     setMembers([]);
     setMyIdentity("");
     // Drop the previous board's permission so it can't briefly authorize edits
-    // on a view-only project before this project's can_edit resolves. Default to
-    // read-only on switch; the can_edit effect re-grants edit access if held.
+    // on a view-only project before this project's role resolves. Default to
+    // read-only on switch; the role effect re-grants edit/admin access if held.
     setCanEdit(false);
+    setIsAdmin(false);
     syncRetryCountRef.current = 0;
     joinAttemptedRef.current = false;
     // Guard all async work against project navigation: a slow joinContext / identity
@@ -278,16 +282,20 @@ export default function CanvasPage() {
       .catch(() => {});
   }
 
-  // Resolve this identity's canvas permission. Viewers (no editor/admin role)
-  // get a read-only canvas. Re-checked when the roster changes (e.g. an admin
-  // just granted us editor). Defaults to editable so a transient RPC failure
-  // never silently locks an editor out.
+  // Resolve this identity's role. Viewers get a read-only canvas; only the
+  // admin/owner may run board-replace ops (import). Re-checked when the roster
+  // changes (e.g. an admin just granted us editor). On a transient RPC failure
+  // we fail open on edit (don't lock out an editor) but closed on admin.
   useEffect(() => {
     if (!projectId || !myIdentity) return;
     let cancelled = false;
-    rpcCall<boolean>(projectId, "can_edit", {})
-      .then((res) => { if (!cancelled) setCanEdit(res !== false); })
-      .catch(() => { if (!cancelled) setCanEdit(true); });
+    rpcCall<string>(projectId, "my_role", {})
+      .then((role) => {
+        if (cancelled) return;
+        setCanEdit(role !== "viewer");
+        setIsAdmin(role === "admin");
+      })
+      .catch(() => { if (!cancelled) { setCanEdit(true); setIsAdmin(false); } });
     return () => { cancelled = true; };
   }, [projectId, myIdentity, members]);
 
@@ -373,10 +381,10 @@ export default function CanvasPage() {
               .then((ms) => setMembers(Array.isArray(ms) ? ms : []))
               .catch(() => {});
           } else if (kind === "RoleUpdated" || kind === "OwnerTransferred") {
-            // A grant/revoke/transfer may flip our own edit permission — re-resolve
-            // it immediately instead of waiting for a reload, and refresh the roster.
-            rpcCall<boolean>(projectId, "can_edit", {})
-              .then((res) => setCanEdit(res !== false))
+            // A grant/revoke/transfer may flip our own role — re-resolve it
+            // immediately instead of waiting for a reload, and refresh the roster.
+            rpcCall<string>(projectId, "my_role", {})
+              .then((role) => { setCanEdit(role !== "viewer"); setIsAdmin(role === "admin"); })
               .catch(() => {});
             rpcCall<Member[]>(projectId, "get_members", {})
               .then((ms) => setMembers(Array.isArray(ms) ? ms : []))
@@ -505,6 +513,7 @@ export default function CanvasPage() {
         onSaveProject={handleSaveProject}
         onImportProject={handleImportProject}
         readOnly={!canEdit}
+        canImport={isAdmin}
       />
       <div className={styles.workspace}>
         <div className={styles.canvasWrap} onMouseMove={handleCanvasMouseMove}>

@@ -117,6 +117,9 @@ interface Props {
   onImportProject?: (snapshot: ProjectSnapshot) => void;
   /** Viewer (no editor/admin role): hide creation tools + commenting. */
   readOnly?: boolean;
+  /** Project import replaces the whole board (admin-gated clear + add), so it
+   *  is offered only to the board admin/owner. */
+  canImport?: boolean;
 }
 
 export default function Toolbar({
@@ -131,6 +134,7 @@ export default function Toolbar({
   onSaveProject,
   onImportProject,
   readOnly = false,
+  canImport = false,
 }: Props) {
   const { activeTool, setTool, background, setBackground, undo, redo, undoStack, redoStack } = useCanvasStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -254,7 +258,9 @@ export default function Toolbar({
                 <div className={styles.optionsDivider} />
                 <p className={styles.optionsGroupLabel}>File</p>
                 <button className={styles.optionsItem} onClick={() => { onSaveProject(); setOptionsOpen(false); }} data-testid="save-project">Save (.merodesign)</button>
-                <button className={styles.optionsItem} onClick={() => { importFileInputRef.current?.click(); setOptionsOpen(false); }} data-testid="open-project">Open (.merodesign)</button>
+                {canImport && (
+                  <button className={styles.optionsItem} onClick={() => { importFileInputRef.current?.click(); setOptionsOpen(false); }} data-testid="open-project">Open (.merodesign)</button>
+                )}
               </>
             )}
             <div className={styles.optionsDivider} />

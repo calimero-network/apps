@@ -80,6 +80,7 @@ async function mockRpc(
       method === "get_cursors"  ? [] :
       method === "get_members"  ? [TEST_MEMBER] :
       method in overrides       ? overrides[method] :
+      method === "my_role"      ? "admin" :
       null;
 
     return route.fulfill({
