@@ -119,20 +119,25 @@ test.describe("Element CRUD", () => {
 // ── Member / username ─────────────────────────────────────────────────────────
 
 test.describe("Member username", () => {
-  // The member id is derived server-side from the signer (env::executor_id),
-  // not client-supplied — so we capture it from the first join.
+  // These steps mutate shared node state (rename, re-join) and so must run in
+  // order. The member id is derived server-side from the signer
+  // (env::executor_id), not client-supplied — resolve it once in beforeAll
+  // rather than depend on a value a sibling test fills (which fullyParallel
+  // could otherwise run out of order).
+  test.describe.configure({ mode: "serial" });
   let myId = "";
 
-  test("join registers a member with username", async () => {
-    await rpc("join", {
-      username: "IntegrationUser",
-      avatar: null,
-      timestamp: Date.now(),
-    });
+  test.beforeAll(async () => {
+    await rpc("join", { username: "IntegrationUser", avatar: null, timestamp: Date.now() });
     const members = await rpc<{ id: string; username: string }[]>("get_members", {});
-    const m = members?.find((m) => m.username === "IntegrationUser");
-    expect(m).toBeDefined();
-    myId = m!.id;
+    myId = members?.find((m) => m.username === "IntegrationUser")?.id ?? "";
+  });
+
+  test("join registers a member with username", async () => {
+    expect(myId).not.toBe("");
+    const members = await rpc<{ id: string; username: string }[]>("get_members", {});
+    const m = members?.find((m) => m.id === myId);
+    expect(m?.username).toBe("IntegrationUser");
   });
 
   test("update_member_username changes the caller's own display name", async () => {

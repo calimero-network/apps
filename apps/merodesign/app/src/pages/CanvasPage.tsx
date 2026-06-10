@@ -527,6 +527,7 @@ export default function CanvasPage() {
               prev.map((c) => c.id === cid ? { ...c, replies: c.replies.filter((r) => r.id !== rid) } : c)
             )}
             onCancelAdd={() => setAddingComment(false)}
+            readOnly={!canEdit}
           />
         </div>
         <PropertiesPanel contextId={projectId ?? ""} readOnly={!canEdit} />

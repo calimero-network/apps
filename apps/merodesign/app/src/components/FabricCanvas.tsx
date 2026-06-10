@@ -281,6 +281,8 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
                 angle: el.rotation,
                 opacity: el.opacity / 100,
                 data: el,
+                selectable: !readOnlyRef.current,
+                evented: !readOnlyRef.current,
               });
               fc.add(img);
               if (prevSelectedId && el.id === prevSelectedId) fc.setActiveObject(img);
@@ -303,7 +305,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
               top: el.height / 2,
               originX: "center", originY: "center",
             });
-            const group = new Group([bg, label], { left: el.x, top: el.y, selectable: true });
+            const group = new Group([bg, label], { left: el.x, top: el.y, selectable: !readOnlyRef.current, evented: !readOnlyRef.current });
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (group as any).data = el;
             fc.add(group);
@@ -313,6 +315,9 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         }
         const obj = buildFabricObject(el);
         if (obj) {
+          // Viewers may see shapes but never grab/move/resize them.
+          obj.selectable = !readOnlyRef.current;
+          obj.evented = !readOnlyRef.current;
           fc.add(obj);
           if (prevSelectedId && el.id === prevSelectedId) fc.setActiveObject(obj);
         }
@@ -320,6 +325,22 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       fc.renderAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [elements, imageCache]);
+
+    /* ── read-only: objects are inspectable but never interactive ── */
+    useEffect(() => {
+      const fc = fabricRef.current;
+      if (!fc) return;
+      fc.skipTargetFind = readOnly;
+      if (readOnly) {
+        fc.discardActiveObject();
+        fc.selection = false;
+      }
+      fc.getObjects().forEach((o) => {
+        o.selectable = !readOnly;
+        o.evented = !readOnly;
+      });
+      fc.renderAll();
+    }, [readOnly, elements, imageCache]);
 
     /* ── sync store selectedElementId → canvas active object ────── */
     useEffect(() => {
@@ -338,8 +359,8 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       const fc = fabricRef.current;
       if (!fc) return;
 
-      fc.isDrawingMode = activeTool === "path";
-      fc.selection = activeTool === "select";
+      fc.isDrawingMode = activeTool === "path" && !readOnly;
+      fc.selection = activeTool === "select" && !readOnly;
 
       if (activeTool === "hand") {
         fc.defaultCursor = "grab";
@@ -659,7 +680,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         window.removeEventListener("keyup", onKeyUp);
         if (previewObjRef.current) { fc.remove(previewObjRef.current); previewObjRef.current = null; }
       };
-    }, [activeTool, contextId, elements.length, selectElement, selectElements, upsertElement, removeElement, snapshot, undo, redo, copyElement, getPasted]);
+    }, [activeTool, readOnly, contextId, elements.length, selectElement, selectElements, upsertElement, removeElement, snapshot, undo, redo, copyElement, getPasted]);
 
     useEffect(() => {
       (canvasElRef.current as (HTMLCanvasElement & { _cacheImage?: typeof cacheImage }) | null)!._cacheImage = cacheImage;

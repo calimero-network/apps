@@ -22,12 +22,14 @@ interface Props {
   onReplyDeleted: (commentId: string, replyId: string) => void;
   onCancelAdd: () => void;
   viewport: { zoom: number; panX: number; panY: number };
+  /** Viewers can read comments/replies but not post or delete them. */
+  readOnly?: boolean;
 }
 
 export default function CommentsOverlay({
   contextId, comments, myIdentity, addingComment,
   onCommentAdded, onCommentDeleted, onReplyAdded, onReplyDeleted,
-  onCancelAdd, viewport,
+  onCancelAdd, viewport, readOnly = false,
 }: Props) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
@@ -53,7 +55,7 @@ export default function CommentsOverlay({
   }
 
   async function submitComment() {
-    if (!pendingPos || !addText.trim()) return;
+    if (readOnly || !pendingPos || !addText.trim()) return;
     const id = uuid();
     const c: CanvasComment = {
       id, x: pendingPos.x, y: pendingPos.y,
@@ -71,7 +73,7 @@ export default function CommentsOverlay({
   }
 
   async function submitReply(commentId: string) {
-    if (!replyText.trim()) return;
+    if (readOnly || !replyText.trim()) return;
     const replyId = uuid();
     const reply = { id: replyId, content: clampText(replyText, MAX_REPLY_LEN), author: myIdentity, createdAt: Date.now() };
     onReplyAdded(commentId, reply);
@@ -83,12 +85,14 @@ export default function CommentsOverlay({
   }
 
   async function deleteComment(commentId: string) {
+    if (readOnly) return;
     onCommentDeleted(commentId);
     setOpenId(null);
     await rpcCall(contextId, "delete_comment", { id: commentId }).catch(() => {});
   }
 
   async function deleteReply(commentId: string, replyId: string) {
+    if (readOnly) return;
     onReplyDeleted(commentId, replyId);
     await rpcCall(contextId, "delete_reply", { comment_id: commentId, reply_id: replyId }).catch(() => {});
   }
@@ -140,26 +144,28 @@ export default function CommentsOverlay({
               <div key={r.id} className={styles.reply}>
                 <span className={styles.replyAuthor}>{shortId(r.author)}</span>
                 <span className={styles.replyContent}>{r.content}</span>
-                {r.author === myIdentity && (
+                {!readOnly && r.author === myIdentity && (
                   <button className={styles.replyDelete} onClick={() => deleteReply(c.id, r.id)} title="Delete reply">×</button>
                 )}
               </div>
             ))}
 
-            <div className={styles.replyRow}>
-              <input
-                className={styles.replyInput}
-                placeholder="Reply…"
-                value={replyText}
-                maxLength={MAX_REPLY_LEN}
-                onChange={(e) => setReplyText(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && submitReply(c.id)}
-                onClick={(e) => e.stopPropagation()}
-              />
-              <button className={styles.replyBtn} onClick={() => submitReply(c.id)}>↵</button>
-            </div>
+            {!readOnly && (
+              <div className={styles.replyRow}>
+                <input
+                  className={styles.replyInput}
+                  placeholder="Reply…"
+                  value={replyText}
+                  maxLength={MAX_REPLY_LEN}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && submitReply(c.id)}
+                  onClick={(e) => e.stopPropagation()}
+                />
+                <button className={styles.replyBtn} onClick={() => submitReply(c.id)}>↵</button>
+              </div>
+            )}
 
-            {c.author === myIdentity && (
+            {!readOnly && c.author === myIdentity && (
               <button className={styles.deleteCommentBtn} onClick={() => deleteComment(c.id)}>
                 Delete comment
               </button>
