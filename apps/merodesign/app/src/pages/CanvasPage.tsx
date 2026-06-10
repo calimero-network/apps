@@ -386,7 +386,9 @@ export default function CanvasPage() {
             // immediately instead of waiting for a reload, and refresh the roster.
             rpcCall<string>(projectId, "my_role", {})
               .then((role) => { setCanEdit(role !== "viewer"); setIsAdmin(role === "admin"); })
-              .catch(() => {});
+              // Fail closed, matching the role effect — never keep stale edit
+              // access after a revoke/transfer if the refetch errors.
+              .catch(() => { setCanEdit(false); setIsAdmin(false); });
             rpcCall<Member[]>(projectId, "get_members", {})
               .then((ms) => setMembers(Array.isArray(ms) ? ms : []))
               .catch(() => {});

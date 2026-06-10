@@ -166,7 +166,9 @@ export default function Toolbar({
 
   async function handleImportFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file || !onImportProject) return;
+    // Import replaces the whole board (admin-only clear + add); never run it for
+    // a non-admin, even if this input is reached outside the gated button.
+    if (!file || !onImportProject || !canImport) return;
     e.target.value = "";
     setImportError(null);
     const text = await file.text().catch(() => "");
@@ -355,14 +357,16 @@ export default function Toolbar({
         onChange={handleFileChange}
         data-testid="image-file-input"
       />
-      <input
-        ref={importFileInputRef}
-        type="file"
-        accept=".merodesign,application/json"
-        style={{ display: "none" }}
-        onChange={handleImportFileChange}
-        data-testid="import-file-input"
-      />
+      {canImport && (
+        <input
+          ref={importFileInputRef}
+          type="file"
+          accept=".merodesign,application/json"
+          style={{ display: "none" }}
+          onChange={handleImportFileChange}
+          data-testid="import-file-input"
+        />
+      )}
     </div>
   );
 }
