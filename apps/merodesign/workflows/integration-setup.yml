@@ -91,7 +91,7 @@ steps:
     executor_public_key: "{{member_public_key}}"
     method: join
     args:
-      member_id: "alice"
+      # member id is derived server-side from the signer (env::executor_id).
       username: "Alice"
       avatar: null
       timestamp: 1751953000
@@ -113,7 +113,7 @@ steps:
     executor_public_key: "{{public_key_2}}"
     method: join
     args:
-      member_id: "bob"
+      # member id is derived server-side from the signer (env::executor_id).
       username: "Bob"
       avatar: null
       timestamp: 1751953001
