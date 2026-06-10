@@ -328,11 +328,21 @@ impl MeroDesign {
     /// Hand the board (and its owner-gated config) to another member. Owner-only.
     pub fn transfer_ownership(&mut self, new_owner: String) -> app::Result<()> {
         let owner = Self::parse_pk(&new_owner)?;
+        // Only the current owner can pass the `Ownable` transfer guards below,
+        // so the caller IS the previous owner.
+        let previous = Self::caller();
         self.board_name.transfer_ownership(owner)?;
         self.board_description.transfer_ownership(owner)?;
-        // Keep the new owner administratively able to manage roles too.
+        // The new owner becomes administratively able to manage roles…
         if !self.roles.is_admin(&owner) {
             self.roles.grant_admin(owner)?;
+        }
+        // …and the former owner relinquishes admin, so they can no longer pass
+        // `require_admin` (clear/role grants) after handing the board off. Skip
+        // when transferring to self. Granting the new admin first guarantees the
+        // set never empties.
+        if previous != owner && self.roles.is_admin(&previous) {
+            self.roles.revoke_admin(&previous)?;
         }
         app::emit!(Event::OwnerTransferred(new_owner));
         Ok(())
@@ -772,10 +782,14 @@ mod tests {
         let mut app = new_board();
         let other = String::from(PublicKey::from(OTHER));
         app.call(|s| s.transfer_ownership(other.clone())).unwrap();
-        assert_eq!(app.view(|s| s.get_board()).owner, Some(other));
+        assert_eq!(app.view(|s| s.get_board()).owner, Some(other.clone()));
         // The new owner can rename; the old owner can no longer.
         app.call_as(OTHER, |s| s.update_board(Some("Owned".to_owned()), None)).unwrap();
         assert_eq!(app.view(|s| s.get_board()).name, "Owned");
         assert!(app.call(|s| s.update_board(Some("nope".to_owned()), None)).is_err());
+        // The new owner is admin; the former owner relinquished admin entirely.
+        assert_eq!(app.view(|s| s.get_role(other)), "admin");
+        assert_eq!(app.view(|s| s.my_role()), "viewer");
+        assert!(!app.view(|s| s.can_edit()));
     }
 }

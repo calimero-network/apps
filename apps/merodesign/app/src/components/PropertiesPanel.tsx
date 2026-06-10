@@ -15,9 +15,11 @@ type PanelTab = "properties" | "layers" | "prototype";
 
 interface Props {
   contextId: string;
+  /** Viewers (no editor/admin role) can inspect but not mutate. */
+  readOnly?: boolean;
 }
 
-export default function PropertiesPanel({ contextId }: Props) {
+export default function PropertiesPanel({ contextId, readOnly = false }: Props) {
   const { selectedElementId, selectedElementIds, elements, elementLabels, upsertElement, removeElement, selectElement, selectElements, setElementLabel } = useCanvasStore();
   const el = elements.find((e) => e.id === selectedElementId);
   const rpcDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -33,7 +35,7 @@ export default function PropertiesPanel({ contextId }: Props) {
   }
 
   function update(patch: Record<string, unknown>) {
-    if (!el) return;
+    if (readOnly || !el) return;
     const updated = { ...el, ...patch, updatedAt: Date.now() };
     upsertElement(updated);
     scheduleRpc(() =>
@@ -61,7 +63,7 @@ export default function PropertiesPanel({ contextId }: Props) {
     // eslint-disable-next-line camelcase
     vertical_align?: "top" | "middle" | "bottom";
   }) {
-    if (!el || el.data.kind !== "text") return;
+    if (readOnly || !el || el.data.kind !== "text") return;
     const updatedData = {
       ...el.data,
       ...(patch.content        !== undefined && { content:        patch.content }),
@@ -90,6 +92,7 @@ export default function PropertiesPanel({ contextId }: Props) {
   }
 
   async function handleDelete(targetId?: string) {
+    if (readOnly) return;
     const id = targetId ?? el?.id;
     if (!id) return;
     removeElement(id);
@@ -97,6 +100,7 @@ export default function PropertiesPanel({ contextId }: Props) {
   }
 
   async function handleBringToFront(targetEl?: Element) {
+    if (readOnly) return;
     const target = targetEl ?? el;
     if (!target) return;
     const maxLayer = Math.max(0, ...elements.map((e) => e.layerIndex));
@@ -105,6 +109,7 @@ export default function PropertiesPanel({ contextId }: Props) {
   }
 
   async function handleSendToBack(targetEl?: Element) {
+    if (readOnly) return;
     const target = targetEl ?? el;
     if (!target) return;
     elements.forEach((e) =>
@@ -114,6 +119,7 @@ export default function PropertiesPanel({ contextId }: Props) {
   }
 
   async function handleMoveUp(targetEl: Element) {
+    if (readOnly) return;
     const sorted = [...elements].sort((a, b) => a.layerIndex - b.layerIndex);
     const idx = sorted.findIndex((e) => e.id === targetEl.id);
     if (idx >= sorted.length - 1) return;
@@ -126,6 +132,7 @@ export default function PropertiesPanel({ contextId }: Props) {
   }
 
   async function handleMoveDown(targetEl: Element) {
+    if (readOnly) return;
     const sorted = [...elements].sort((a, b) => a.layerIndex - b.layerIndex);
     const idx = sorted.findIndex((e) => e.id === targetEl.id);
     if (idx <= 0) return;

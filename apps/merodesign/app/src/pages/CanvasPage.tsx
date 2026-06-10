@@ -368,6 +368,15 @@ export default function CanvasPage() {
             rpcCall<Member[]>(projectId, "get_members", {})
               .then((ms) => setMembers(Array.isArray(ms) ? ms : []))
               .catch(() => {});
+          } else if (kind === "RoleUpdated" || kind === "OwnerTransferred") {
+            // A grant/revoke/transfer may flip our own edit permission — re-resolve
+            // it immediately instead of waiting for a reload, and refresh the roster.
+            rpcCall<boolean>(projectId, "can_edit", {})
+              .then((res) => setCanEdit(res !== false))
+              .catch(() => {});
+            rpcCall<Member[]>(projectId, "get_members", {})
+              .then((ms) => setMembers(Array.isArray(ms) ? ms : []))
+              .catch(() => {});
           }
         }
       } catch {
@@ -520,7 +529,7 @@ export default function CanvasPage() {
             onCancelAdd={() => setAddingComment(false)}
           />
         </div>
-        <PropertiesPanel contextId={projectId ?? ""} />
+        <PropertiesPanel contextId={projectId ?? ""} readOnly={!canEdit} />
       </div>
     </div>
   );
