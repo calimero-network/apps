@@ -579,12 +579,12 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
 
         if (mod && e.key === "z" && !e.shiftKey) {
           e.preventDefault();
-          undo();
+          if (!readOnlyRef.current) undo();
           return;
         }
         if (mod && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
           e.preventDefault();
-          redo();
+          if (!readOnlyRef.current) redo();
           return;
         }
         if (mod && e.key === "c") {

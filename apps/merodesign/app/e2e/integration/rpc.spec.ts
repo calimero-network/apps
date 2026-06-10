@@ -169,7 +169,6 @@ test.describe("Comments", () => {
       id: commentId,
       x: 100, y: 200,
       content: xssPayload,
-      author: "attacker",
       created_at: Date.now(),
     });
     const comments = await rpc<{ id: string; content: string }[]>("get_comments", {});
@@ -184,7 +183,6 @@ test.describe("Comments", () => {
       comment_id: commentId,
       reply_id: replyId,
       content: "A reply",
-      author: "user2",
       created_at: Date.now(),
     });
     const comments = await rpc<{ id: string; replies: { id: string; content: string }[] }[]>("get_comments", {});
@@ -322,7 +320,6 @@ test.describe("Import/Export: clear methods", () => {
       id: tempCommentId,
       x: 10, y: 20,
       content: "temp",
-      author: "test",
       created_at: Date.now(),
     });
     const before = await rpc<{ id: string }[]>("get_comments", {});

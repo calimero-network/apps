@@ -63,9 +63,10 @@ export default function CommentsOverlay({
       createdAt: Date.now(), replies: [],
     };
     onCommentAdded(c);
+    // author is derived server-side from the signer; not client-supplied.
     await rpcCall(contextId, "add_comment", {
       id: c.id, x: c.x, y: c.y, content: c.content,
-      author: c.author, created_at: c.createdAt,
+      created_at: c.createdAt,
     }).catch(() => {});
     setAddText("");
     setPendingPos(null);
@@ -79,7 +80,7 @@ export default function CommentsOverlay({
     onReplyAdded(commentId, reply);
     await rpcCall(contextId, "add_reply", {
       comment_id: commentId, reply_id: replyId,
-      content: reply.content, author: reply.author, created_at: reply.createdAt,
+      content: reply.content, created_at: reply.createdAt,
     }).catch(() => {});
     setReplyText("");
   }

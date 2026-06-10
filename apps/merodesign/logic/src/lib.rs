@@ -620,16 +620,20 @@ impl MeroDesign {
 
     // ── Comments ──────────────────────────────────────────────────────────────
 
-    pub fn add_comment(&mut self, id: String, x: i64, y: i64, content: String, author: String, created_at: u64) -> app::Result<()> {
+    pub fn add_comment(&mut self, id: String, x: i64, y: i64, content: String, created_at: u64) -> app::Result<()> {
         self.require_editor()?;
+        // Author is the real signer — not a client-supplied string — so a member
+        // cannot attribute a comment to someone else.
+        let author = Self::caller_id();
         let c = Comment { id: id.clone(), x, y, content, author, created_at, replies: vec![] };
         let _ = self.comments.insert(id.clone(), c);
         app::emit!(Event::CommentAdded(id));
         Ok(())
     }
 
-    pub fn add_reply(&mut self, comment_id: String, reply_id: String, content: String, author: String, created_at: u64) -> app::Result<()> {
+    pub fn add_reply(&mut self, comment_id: String, reply_id: String, content: String, created_at: u64) -> app::Result<()> {
         self.require_editor()?;
+        let author = Self::caller_id();
         if let Ok(Some(mut c)) = self.comments.get_mut(&comment_id) {
             c.replies.push(CommentReply { id: reply_id, content, author, created_at });
             drop(c);

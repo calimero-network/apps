@@ -130,6 +130,10 @@ export default function CanvasPage() {
     setCursors([]);
     setMembers([]);
     setMyIdentity("");
+    // Drop the previous board's permission so it can't briefly authorize edits
+    // on a view-only project before this project's can_edit resolves. Default to
+    // read-only on switch; the can_edit effect re-grants edit access if held.
+    setCanEdit(false);
     syncRetryCountRef.current = 0;
     joinAttemptedRef.current = false;
     // Guard all async work against project navigation: a slow joinContext / identity

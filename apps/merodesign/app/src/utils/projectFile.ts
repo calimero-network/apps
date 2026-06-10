@@ -65,13 +65,14 @@ export async function importProject(
     await rpcCall(contextId, "add_element", { element: el }).catch(() => {});
   }
 
+  // On import, comment/reply authorship is re-attributed to the importer
+  // (the signer) — author is no longer client-supplied.
   for (const comment of snapshot.comments) {
     await rpcCall(contextId, "add_comment", {
       id: comment.id,
       x: comment.x,
       y: comment.y,
       content: comment.content,
-      author: comment.author,
       created_at: comment.createdAt,
     }).catch(() => {});
     for (const reply of comment.replies ?? []) {
@@ -79,7 +80,6 @@ export async function importProject(
         comment_id: comment.id,
         reply_id: reply.id,
         content: reply.content,
-        author: reply.author,
         created_at: reply.createdAt,
       }).catch(() => {});
     }

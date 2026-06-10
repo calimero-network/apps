@@ -263,13 +263,13 @@ export default function Toolbar({
               className={styles.optionsItem}
               onClick={() => { undo(); setOptionsOpen(false); }}
               data-testid="undo-btn"
-              disabled={undoStack.length === 0}
+              disabled={readOnly || undoStack.length === 0}
             >Undo (Ctrl+Z)</button>
             <button
               className={styles.optionsItem}
               onClick={() => { redo(); setOptionsOpen(false); }}
               data-testid="redo-btn"
-              disabled={redoStack.length === 0}
+              disabled={readOnly || redoStack.length === 0}
             >Redo (Ctrl+Y)</button>
             {importError && <p className={styles.optionsError}>{importError}</p>}
           </div>
