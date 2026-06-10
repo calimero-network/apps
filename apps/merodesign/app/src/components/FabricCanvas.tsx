@@ -606,6 +606,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         // Ctrl+G: group selected objects
         if (mod && e.key === "g" && !e.shiftKey) {
           e.preventDefault();
+          if (readOnlyRef.current) return;
           const active = fc.getActiveObject();
           if (active && "getObjects" in active && typeof (active as { getObjects?: unknown }).getObjects === "function") {
             const objs = (active as { getObjects: () => FabricObject[] }).getObjects();
@@ -624,6 +625,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         // Ctrl+Shift+G: ungroup
         if (mod && e.shiftKey && e.key === "G") {
           e.preventDefault();
+          if (readOnlyRef.current) return;
           const active = fc.getActiveObject() as (FabricObject & { getObjects?: () => FabricObject[] }) | null;
           if (active instanceof Group) {
             const objs = active.getObjects();
