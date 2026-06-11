@@ -39,6 +39,9 @@ interface Props {
   previewMode?: boolean;
   /** True while the user is placing a comment — Escape cancels that instead of deleting. */
   addingComment?: boolean;
+  /** True for viewers (no editor/admin role). Blocks all canvas mutations — the
+   *  contract also rejects them at merge, this just avoids ghost local edits. */
+  readOnly?: boolean;
   onViewportChange?: (zoom: number, panX: number, panY: number) => void;
 }
 
@@ -62,11 +65,12 @@ function makeDotPattern(bgColor: string): HTMLCanvasElement {
 }
 
 const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
-  ({ contextId, previewMode = false, addingComment = false, onViewportChange }, ref) => {
+  ({ contextId, previewMode = false, addingComment = false, readOnly = false, onViewportChange }, ref) => {
     const canvasElRef = useRef<HTMLCanvasElement>(null);
     const fabricRef = useRef<Canvas | null>(null);
     const previewRef = useRef(previewMode);
     const addingCommentRef = useRef(addingComment);
+    const readOnlyRef = useRef(readOnly);
     const backgroundRef = useRef<string>("#ffffff");
     const spaceHeldRef = useRef(false);
     const onViewportChangeRef = useRef(onViewportChange);
@@ -95,6 +99,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
 
     previewRef.current = previewMode;
     addingCommentRef.current = addingComment;
+    readOnlyRef.current = readOnly;
     backgroundRef.current = background;
     onViewportChangeRef.current = onViewportChange;
 
@@ -276,6 +281,8 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
                 angle: el.rotation,
                 opacity: el.opacity / 100,
                 data: el,
+                selectable: !readOnlyRef.current,
+                evented: !readOnlyRef.current,
               });
               fc.add(img);
               if (prevSelectedId && el.id === prevSelectedId) fc.setActiveObject(img);
@@ -298,7 +305,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
               top: el.height / 2,
               originX: "center", originY: "center",
             });
-            const group = new Group([bg, label], { left: el.x, top: el.y, selectable: true });
+            const group = new Group([bg, label], { left: el.x, top: el.y, selectable: !readOnlyRef.current, evented: !readOnlyRef.current });
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (group as any).data = el;
             fc.add(group);
@@ -308,6 +315,9 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         }
         const obj = buildFabricObject(el);
         if (obj) {
+          // Viewers may see shapes but never grab/move/resize them.
+          obj.selectable = !readOnlyRef.current;
+          obj.evented = !readOnlyRef.current;
           fc.add(obj);
           if (prevSelectedId && el.id === prevSelectedId) fc.setActiveObject(obj);
         }
@@ -315,6 +325,22 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       fc.renderAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [elements, imageCache]);
+
+    /* ── read-only: objects are inspectable but never interactive ── */
+    useEffect(() => {
+      const fc = fabricRef.current;
+      if (!fc) return;
+      fc.skipTargetFind = readOnly;
+      if (readOnly) {
+        fc.discardActiveObject();
+        fc.selection = false;
+      }
+      fc.getObjects().forEach((o) => {
+        o.selectable = !readOnly;
+        o.evented = !readOnly;
+      });
+      fc.renderAll();
+    }, [readOnly, elements, imageCache]);
 
     /* ── sync store selectedElementId → canvas active object ────── */
     useEffect(() => {
@@ -333,8 +359,8 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       const fc = fabricRef.current;
       if (!fc) return;
 
-      fc.isDrawingMode = activeTool === "path";
-      fc.selection = activeTool === "select";
+      fc.isDrawingMode = activeTool === "path" && !readOnly;
+      fc.selection = activeTool === "select" && !readOnly;
 
       if (activeTool === "hand") {
         fc.defaultCursor = "grab";
@@ -360,6 +386,8 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
 
         if (spaceHeldRef.current || e.altKey || e.button === 1) return;
         if (activeTool === "select" || activeTool === "path" || activeTool === "image") return;
+        // Viewers may pan/select to inspect, but never create.
+        if (readOnlyRef.current) return;
 
         if (activeTool === "text") {
           const p = fc.getScenePoint(e);
@@ -492,6 +520,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       };
 
       const onObjectModified = async (opt: { target?: FabricObject & { data?: Element } }) => {
+        if (readOnlyRef.current) return;
         const obj = opt.target;
         if (!obj?.data?.id) return;
         const el = obj.data;
@@ -515,6 +544,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       };
 
       const onTextEditingExited = async (opt: { target?: (IText & { data?: Element }) }) => {
+        if (readOnlyRef.current) return;
         const obj = opt.target;
         if (!obj?.data?.id || obj.data.data?.kind !== "text") return;
         const el = obj.data;
@@ -549,12 +579,12 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
 
         if (mod && e.key === "z" && !e.shiftKey) {
           e.preventDefault();
-          undo();
+          if (!readOnlyRef.current) undo();
           return;
         }
         if (mod && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
           e.preventDefault();
-          redo();
+          if (!readOnlyRef.current) redo();
           return;
         }
         if (mod && e.key === "c") {
@@ -563,6 +593,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           return;
         }
         if (mod && e.key === "v") {
+          if (readOnlyRef.current) return;
           const newEl = getPasted();
           if (newEl) {
             upsertElement(newEl);
@@ -575,6 +606,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         // Ctrl+G: group selected objects
         if (mod && e.key === "g" && !e.shiftKey) {
           e.preventDefault();
+          if (readOnlyRef.current) return;
           const active = fc.getActiveObject();
           if (active && "getObjects" in active && typeof (active as { getObjects?: unknown }).getObjects === "function") {
             const objs = (active as { getObjects: () => FabricObject[] }).getObjects();
@@ -593,6 +625,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         // Ctrl+Shift+G: ungroup
         if (mod && e.shiftKey && e.key === "G") {
           e.preventDefault();
+          if (readOnlyRef.current) return;
           const active = fc.getActiveObject() as (FabricObject & { getObjects?: () => FabricObject[] }) | null;
           if (active instanceof Group) {
             const objs = active.getObjects();
@@ -614,6 +647,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         const active = fc.getActiveObject() as (FabricObject & { data?: Element }) | null;
         if (!active?.data?.id) return;
         if (active.type === "i-text" && (active as IText).isEditing) return;
+        if (readOnlyRef.current) return; // viewers can't delete
         fc.remove(active);
         fc.renderAll();
         snapshot();
@@ -648,7 +682,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         window.removeEventListener("keyup", onKeyUp);
         if (previewObjRef.current) { fc.remove(previewObjRef.current); previewObjRef.current = null; }
       };
-    }, [activeTool, contextId, elements.length, selectElement, selectElements, upsertElement, removeElement, snapshot, undo, redo, copyElement, getPasted]);
+    }, [activeTool, readOnly, contextId, elements.length, selectElement, selectElements, upsertElement, removeElement, snapshot, undo, redo, copyElement, getPasted]);
 
     useEffect(() => {
       (canvasElRef.current as (HTMLCanvasElement & { _cacheImage?: typeof cacheImage }) | null)!._cacheImage = cacheImage;

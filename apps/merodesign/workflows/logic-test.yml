@@ -64,7 +64,8 @@ steps:
     executor_public_key: "{{member_public_key}}"
     method: join
     args:
-      member_id: "alice"
+      # member id is derived server-side from the signer (env::executor_id);
+      # no client-supplied member_id.
       username: "Alice"
       avatar: null
       timestamp: 1000000
@@ -94,7 +95,7 @@ steps:
     args:
       element:
         id: "rect-1"
-        data: { kind: "Rect" }
+        data: { kind: "rect" }
         x: 100
         y: 100
         width: 200
@@ -118,7 +119,7 @@ steps:
     args:
       element:
         id: "circle-1"
-        data: { kind: "Circle" }
+        data: { kind: "circle" }
         x: 400
         y: 200
         width: 100
@@ -143,7 +144,7 @@ steps:
       element:
         id: "text-1"
         data:
-          kind: "Text"
+          kind: "text"
           content: "Hello MeroDesign"
           fontSize: 24
           fontFamily: "sans-serif"
@@ -241,10 +242,16 @@ steps:
     node: calimero-node-1
     context_id: "{{context_id}}"
     executor_public_key: "{{member_public_key}}"
-    method: update_text_content
+    method: update_text_style
     args:
       id: "text-1"
       content: "Updated text content"
+      font_family: null
+      font_size: null
+      bold: null
+      italic: null
+      text_align: null
+      vertical_align: null
       updated_at: 1000011
 
   - name: Verify Text Update

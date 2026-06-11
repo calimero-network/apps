@@ -119,34 +119,40 @@ test.describe("Element CRUD", () => {
 // ── Member / username ─────────────────────────────────────────────────────────
 
 test.describe("Member username", () => {
-  const memberId = `member-${Date.now()}`;
+  // These steps mutate shared node state (rename, re-join) and so must run in
+  // order. The member id is derived server-side from the signer
+  // (env::executor_id), not client-supplied — resolve it once in beforeAll
+  // rather than depend on a value a sibling test fills (which fullyParallel
+  // could otherwise run out of order).
+  test.describe.configure({ mode: "serial" });
+  let myId = "";
+
+  test.beforeAll(async () => {
+    await rpc("join", { username: "IntegrationUser", avatar: null, timestamp: Date.now() });
+    const members = await rpc<{ id: string; username: string }[]>("get_members", {});
+    myId = members?.find((m) => m.username === "IntegrationUser")?.id ?? "";
+  });
 
   test("join registers a member with username", async () => {
-    await rpc("join", {
-      member_id: memberId,
-      username: "IntegrationUser",
-      avatar: null,
-      timestamp: Date.now(),
-    });
+    expect(myId).not.toBe("");
     const members = await rpc<{ id: string; username: string }[]>("get_members", {});
-    const m = members?.find((m) => m.id === memberId);
-    expect(m).toBeDefined();
+    const m = members?.find((m) => m.id === myId);
     expect(m?.username).toBe("IntegrationUser");
   });
 
-  test("update_member_username changes the display name", async () => {
-    await rpc("update_member_username", { member_id: memberId, username: "Renamed" });
+  test("update_member_username changes the caller's own display name", async () => {
+    await rpc("update_member_username", { username: "Renamed", timestamp: Date.now() });
     const members = await rpc<{ id: string; username: string }[]>("get_members", {});
-    const m = members?.find((m) => m.id === memberId);
+    const m = members?.find((m) => m.id === myId);
     expect(m?.username).toBe("Renamed");
   });
 
   test("join is idempotent — second call does not duplicate member", async () => {
     const before = await rpc<{ id: string }[]>("get_members", {});
-    const countBefore = before?.filter((m) => m.id === memberId).length ?? 0;
-    await rpc("join", { member_id: memberId, username: "Again", avatar: null, timestamp: Date.now() });
+    const countBefore = before?.filter((m) => m.id === myId).length ?? 0;
+    await rpc("join", { username: "Again", avatar: null, timestamp: Date.now() });
     const after = await rpc<{ id: string }[]>("get_members", {});
-    const countAfter = after?.filter((m) => m.id === memberId).length ?? 0;
+    const countAfter = after?.filter((m) => m.id === myId).length ?? 0;
     expect(countAfter).toBe(countBefore);
   });
 });
@@ -163,7 +169,6 @@ test.describe("Comments", () => {
       id: commentId,
       x: 100, y: 200,
       content: xssPayload,
-      author: "attacker",
       created_at: Date.now(),
     });
     const comments = await rpc<{ id: string; content: string }[]>("get_comments", {});
@@ -178,7 +183,6 @@ test.describe("Comments", () => {
       comment_id: commentId,
       reply_id: replyId,
       content: "A reply",
-      author: "user2",
       created_at: Date.now(),
     });
     const comments = await rpc<{ id: string; replies: { id: string; content: string }[] }[]>("get_comments", {});
@@ -197,23 +201,21 @@ test.describe("Comments", () => {
 // ── Cursor ────────────────────────────────────────────────────────────────────
 
 test.describe("Cursor tracking", () => {
+  // identity is derived from the signer; a single node owns exactly one cursor
+  // entry, so we match on the position we just wrote.
   test("update_cursor stores position", async () => {
-    await rpc("update_cursor", {
-      identity: "cursor-test",
-      x: 300, y: 400,
-      updated_at: Date.now(),
-    });
+    await rpc("update_cursor", { x: 300, y: 400, updated_at: Date.now() });
     const cursors = await rpc<{ identity: string; x: number; y: number }[]>("get_cursors", {});
-    const c = cursors?.find((c) => c.identity === "cursor-test");
-    expect(c?.x).toBe(300);
-    expect(c?.y).toBe(400);
+    const c = cursors?.find((c) => c.x === 300 && c.y === 400);
+    expect(c).toBeDefined();
+    expect(c?.identity).toBeTruthy();
   });
 
   test("cursor response uses camelCase updatedAt", async () => {
     const now = Date.now();
-    await rpc("update_cursor", { identity: "cursor-test-2", x: 10, y: 20, updated_at: now });
+    await rpc("update_cursor", { x: 11, y: 22, updated_at: now });
     const cursors = await rpc<Record<string, unknown>[]>("get_cursors", {});
-    const c = cursors?.find((c) => c.identity === "cursor-test-2");
+    const c = cursors?.find((c) => c.x === 11 && c.y === 22);
     // With rename_all = "camelCase", the field should be updatedAt
     expect(c?.updatedAt).toBeDefined();
     expect(c?.updated_at).toBeUndefined();
@@ -318,7 +320,6 @@ test.describe("Import/Export: clear methods", () => {
       id: tempCommentId,
       x: 10, y: 20,
       content: "temp",
-      author: "test",
       created_at: Date.now(),
     });
     const before = await rpc<{ id: string }[]>("get_comments", {});

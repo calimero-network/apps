@@ -37,6 +37,12 @@ export default function CanvasPage() {
   const [showUsernameModal, setShowUsernameModal] = useState(false);
   const [addingComment, setAddingComment] = useState(false);
   const [myIdentity, setMyIdentity] = useState("");
+  // Effective canvas permission for this identity (admin/editor → true, viewer → false).
+  // The contract enforces this at merge; this flag is for read-only UX.
+  const [canEdit, setCanEdit] = useState(true);
+  // Whether this identity is the board admin/owner. Admin-only board ops
+  // (clear, project import which replaces the board) are gated on this.
+  const [isAdmin, setIsAdmin] = useState(false);
   const [viewport, setViewport] = useState({ zoom: 1, panX: 0, panY: 0 });
   const cursorThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -127,6 +133,11 @@ export default function CanvasPage() {
     setCursors([]);
     setMembers([]);
     setMyIdentity("");
+    // Drop the previous board's permission so it can't briefly authorize edits
+    // on a view-only project before this project's role resolves. Default to
+    // read-only on switch; the role effect re-grants edit/admin access if held.
+    setCanEdit(false);
+    setIsAdmin(false);
     syncRetryCountRef.current = 0;
     joinAttemptedRef.current = false;
     // Guard all async work against project navigation: a slow joinContext / identity
@@ -255,9 +266,10 @@ export default function CanvasPage() {
 
   async function handleUsernameSubmit(username: string) {
     if (!projectId || !myIdentity) return;
-    // Register in WASM — this is the authoritative store
+    // Register in WASM — this is the authoritative store. The member id is
+    // derived server-side from the real signer (env::executor_id); we no longer
+    // pass a spoofable member_id.
     await rpcCall(projectId, "join", {
-      member_id: myIdentity,
       username,
       avatar: null,
       timestamp: Date.now(),
@@ -269,6 +281,24 @@ export default function CanvasPage() {
       .then((ms) => setMembers(Array.isArray(ms) ? ms : []))
       .catch(() => {});
   }
+
+  // Resolve this identity's role. Viewers get a read-only canvas; only the
+  // admin/owner may run board-replace ops (import). Re-checked when the roster
+  // changes (e.g. an admin just granted us editor). On a transient RPC failure
+  // we fail CLOSED (read-only) — never hand a viewer edit UI; the contract is
+  // the real boundary and a real editor's access restores on the next resolve.
+  useEffect(() => {
+    if (!projectId || !myIdentity) return;
+    let cancelled = false;
+    rpcCall<string>(projectId, "my_role", {})
+      .then((role) => {
+        if (cancelled) return;
+        setCanEdit(role !== "viewer");
+        setIsAdmin(role === "admin");
+      })
+      .catch(() => { if (!cancelled) { setCanEdit(false); setIsAdmin(false); } });
+    return () => { cancelled = true; };
+  }, [projectId, myIdentity, members]);
 
   // Poll cursors every 5 s so other members appear even without SSE
   useEffect(() => {
@@ -298,7 +328,8 @@ export default function CanvasPage() {
         if (idx >= 0) { const n = [...prev]; n[idx] = updated; return n; }
         return [...prev, updated];
       });
-      rpcCall(projectId, "update_cursor", { identity: myIdentity, x, y, updated_at: now }).catch(() => {});
+      // identity is derived server-side from the signer; not client-supplied.
+      rpcCall(projectId, "update_cursor", { x, y, updated_at: now }).catch(() => {});
     }, 2500);
   }, [projectId, myIdentity]);
 
@@ -350,6 +381,17 @@ export default function CanvasPage() {
             rpcCall<Member[]>(projectId, "get_members", {})
               .then((ms) => setMembers(Array.isArray(ms) ? ms : []))
               .catch(() => {});
+          } else if (kind === "RoleUpdated" || kind === "OwnerTransferred") {
+            // A grant/revoke/transfer may flip our own role — re-resolve it
+            // immediately instead of waiting for a reload, and refresh the roster.
+            rpcCall<string>(projectId, "my_role", {})
+              .then((role) => { setCanEdit(role !== "viewer"); setIsAdmin(role === "admin"); })
+              // Fail closed, matching the role effect — never keep stale edit
+              // access after a revoke/transfer if the refetch errors.
+              .catch(() => { setCanEdit(false); setIsAdmin(false); });
+            rpcCall<Member[]>(projectId, "get_members", {})
+              .then((ms) => setMembers(Array.isArray(ms) ? ms : []))
+              .catch(() => {});
           }
         }
       } catch {
@@ -380,7 +422,9 @@ export default function CanvasPage() {
   async function handleImageUpload(
     file: File, dataUrl: string, naturalWidth: number, naturalHeight: number,
   ) {
-    if (!projectId) return;
+    // Adding an image is an edit (add_element) — viewers are read-only. The
+    // toolbar disables the control, but gate the handler too against any path.
+    if (!projectId || !canEdit) return;
     const maxW = 400;
     const scale = naturalWidth > maxW ? maxW / naturalWidth : 1;
     const id = uuid();
@@ -473,6 +517,8 @@ export default function CanvasPage() {
         members={cursors.filter((c) => c.identity !== myIdentity && Date.now() - c.updatedAt < 30_000)}
         onSaveProject={handleSaveProject}
         onImportProject={handleImportProject}
+        readOnly={!canEdit}
+        canImport={isAdmin}
       />
       <div className={styles.workspace}>
         <div className={styles.canvasWrap} onMouseMove={handleCanvasMouseMove}>
@@ -480,6 +526,7 @@ export default function CanvasPage() {
             ref={canvasRef}
             contextId={projectId ?? ""}
             addingComment={addingComment}
+            readOnly={!canEdit}
             onViewportChange={(z, px, py) => setViewport({ zoom: z, panX: px, panY: py })}
           />
           <CursorsOverlay cursors={cursors} myIdentity={myIdentity} members={members} viewport={viewport} />
@@ -498,9 +545,10 @@ export default function CanvasPage() {
               prev.map((c) => c.id === cid ? { ...c, replies: c.replies.filter((r) => r.id !== rid) } : c)
             )}
             onCancelAdd={() => setAddingComment(false)}
+            readOnly={!canEdit}
           />
         </div>
-        <PropertiesPanel contextId={projectId ?? ""} />
+        <PropertiesPanel contextId={projectId ?? ""} readOnly={!canEdit} />
       </div>
     </div>
   );

@@ -115,6 +115,11 @@ interface Props {
   members?: CursorState[];
   onSaveProject?: () => void;
   onImportProject?: (snapshot: ProjectSnapshot) => void;
+  /** Viewer (no editor/admin role): hide creation tools + commenting. */
+  readOnly?: boolean;
+  /** Project import replaces the whole board (admin-gated clear + add), so it
+   *  is offered only to the board admin/owner. */
+  canImport?: boolean;
 }
 
 export default function Toolbar({
@@ -128,6 +133,8 @@ export default function Toolbar({
   members = [],
   onSaveProject,
   onImportProject,
+  readOnly = false,
+  canImport = false,
 }: Props) {
   const { activeTool, setTool, background, setBackground, undo, redo, undoStack, redoStack } = useCanvasStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -159,7 +166,9 @@ export default function Toolbar({
 
   async function handleImportFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file || !onImportProject) return;
+    // Import replaces the whole board (admin-only clear + add); never run it for
+    // a non-admin, even if this input is reached outside the gated button.
+    if (!file || !onImportProject || !canImport) return;
     e.target.value = "";
     setImportError(null);
     const text = await file.text().catch(() => "");
@@ -188,22 +197,28 @@ export default function Toolbar({
       <div className={styles.divider} />
 
       <div className={styles.tools}>
-        {TOOLS.map(({ id, title, Icon }) => (
-          <button
-            key={id}
-            className={`${styles.tool} ${activeTool === id ? styles.active : ""}`}
-            title={title}
-            onClick={() => setTool(id)}
-            data-testid={`tool-${id}`}
-          >
-            <Icon />
-          </button>
-        ))}
+        {TOOLS.map(({ id, title, Icon }) => {
+          // Viewers keep navigation (select/hand) but lose every creation tool.
+          const navOnly = id === "select" || id === "hand";
+          return (
+            <button
+              key={id}
+              className={`${styles.tool} ${activeTool === id ? styles.active : ""}`}
+              title={title}
+              onClick={() => setTool(id)}
+              data-testid={`tool-${id}`}
+              disabled={readOnly && !navOnly}
+            >
+              <Icon />
+            </button>
+          );
+        })}
         <button
           className={`${styles.tool} ${activeTool === "image" ? styles.active : ""}`}
           title="Image (I)"
           data-testid="tool-image"
           onClick={() => { setTool("image"); fileInputRef.current?.click(); }}
+          disabled={readOnly}
         >
           <IconImage />
         </button>
@@ -245,7 +260,9 @@ export default function Toolbar({
                 <div className={styles.optionsDivider} />
                 <p className={styles.optionsGroupLabel}>File</p>
                 <button className={styles.optionsItem} onClick={() => { onSaveProject(); setOptionsOpen(false); }} data-testid="save-project">Save (.merodesign)</button>
-                <button className={styles.optionsItem} onClick={() => { importFileInputRef.current?.click(); setOptionsOpen(false); }} data-testid="open-project">Open (.merodesign)</button>
+                {canImport && (
+                  <button className={styles.optionsItem} onClick={() => { importFileInputRef.current?.click(); setOptionsOpen(false); }} data-testid="open-project">Open (.merodesign)</button>
+                )}
               </>
             )}
             <div className={styles.optionsDivider} />
@@ -254,13 +271,13 @@ export default function Toolbar({
               className={styles.optionsItem}
               onClick={() => { undo(); setOptionsOpen(false); }}
               data-testid="undo-btn"
-              disabled={undoStack.length === 0}
+              disabled={readOnly || undoStack.length === 0}
             >Undo (Ctrl+Z)</button>
             <button
               className={styles.optionsItem}
               onClick={() => { redo(); setOptionsOpen(false); }}
               data-testid="redo-btn"
-              disabled={redoStack.length === 0}
+              disabled={readOnly || redoStack.length === 0}
             >Redo (Ctrl+Y)</button>
             {importError && <p className={styles.optionsError}>{importError}</p>}
           </div>
@@ -301,7 +318,20 @@ export default function Toolbar({
         )}
       </div>
 
-      {onToggleComment && (
+      {readOnly && (
+        <span
+          data-testid="view-only-badge"
+          title="You have view-only access to this board"
+          style={{
+            marginRight: 8, padding: "2px 8px", borderRadius: 4,
+            fontSize: 12, fontWeight: 600, color: "#92400e",
+            background: "#fef3c7", whiteSpace: "nowrap",
+          }}
+        >
+          View only
+        </span>
+      )}
+      {onToggleComment && !readOnly && (
         <button
           className={`${styles.iconBtn} ${addingComment ? styles.iconBtnActive : ""}`}
           onClick={onToggleComment}
@@ -327,14 +357,16 @@ export default function Toolbar({
         onChange={handleFileChange}
         data-testid="image-file-input"
       />
-      <input
-        ref={importFileInputRef}
-        type="file"
-        accept=".merodesign,application/json"
-        style={{ display: "none" }}
-        onChange={handleImportFileChange}
-        data-testid="import-file-input"
-      />
+      {canImport && (
+        <input
+          ref={importFileInputRef}
+          type="file"
+          accept=".merodesign,application/json"
+          style={{ display: "none" }}
+          onChange={handleImportFileChange}
+          data-testid="import-file-input"
+        />
+      )}
     </div>
   );
 }
