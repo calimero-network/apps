@@ -1,10 +1,10 @@
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::{app, env, BlobId};
+use calimero_sdk::{app, env, BlobId, PublicKey};
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{
-    AuthoredMap, AuthoredVector, LwwRegister, Mergeable as MergeableTrait, UnorderedMap,
-    UnorderedSet, Vector,
+    AccessControl, AuthoredMap, AuthoredVector, LwwRegister, Mergeable as MergeableTrait,
+    UnorderedMap, UnorderedSet, Vector,
 };
 use types::id;
 mod types;
@@ -129,6 +129,11 @@ impl Default for Role {
         Role::User
     }
 }
+
+/// Named role inside `AccessControl` for moderators. `Admin` is the admin tier
+/// (writer set) and `Banned` is a separate exclusion set, so `"mod"` is the only
+/// named role the registry stores.
+const ROLE_MOD: &str = "mod";
 
 #[derive(BorshDeserialize, BorshSerialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -379,9 +384,19 @@ pub struct MeroChat {
     threads: UnorderedMap<MessageId, ThreadVec>,
     reactions: UnorderedMap<MessageId, UnorderedMap<String, UnorderedSet<String>>>,
     profiles: AuthoredMap<UserId, StoredProfile>,
-    /// Per-context moderation roles. Missing entry = Role::User (default).
-    /// LwwRegister-wrapped so the storage layer has merge semantics.
-    roles: UnorderedMap<UserId, LwwRegister<Role>>,
+    /// Per-context moderation roles, backed by a writer-set-guarded registry.
+    /// The admin tier IS the writer set, so a non-admin's forged `grant`/
+    /// `grant_admin` delta is rejected at merge — not merely by the fail-fast
+    /// API guard a plain `UnorderedMap` would leave bypassable. `Admin` maps to
+    /// the admin tier; `Mod` to the `"mod"` named role. `Banned` is tracked
+    /// separately (see `banned`) because it is an *exclusion* a moderator must
+    /// be able to set, not a positive admin-granted role.
+    roles: AccessControl,
+    /// Soft-ban exclusion set. Missing/`false` entry = not banned. Kept outside
+    /// `AccessControl` because moderators (not just admins) may ban/unban, which
+    /// the admin-gated `grant` API cannot express. Gated by `can_change_role`
+    /// app logic (same authority model as before).
+    banned: UnorderedMap<UserId, LwwRegister<bool>>,
     /// Per-user last-read timestamp. Enables cross-device unread tracking
     /// without localStorage — the CRDT replicates read position to all nodes.
     read_receipts: UnorderedMap<UserId, LwwRegister<u64>>,
@@ -411,8 +426,9 @@ impl MeroChat {
 
         let creator = Self::executor_id().to_string();
 
-        let mut roles = UnorderedMap::new();
-        let _ = roles.insert(UserId::new(env::executor_id()), LwwRegister::new(Role::Admin));
+        // The context creator is the sole initial admin (the writer set). Other
+        // admins/mods are granted at runtime by an existing admin.
+        let roles = AccessControl::new(env::executor_id().into());
 
         // Pre-seed the creator's profile so get_profiles returns their name
         // immediately after context state gossip, without waiting for an
@@ -439,6 +455,7 @@ impl MeroChat {
             reactions: UnorderedMap::new(),
             profiles,
             roles,
+            banned: UnorderedMap::new(),
             read_receipts: UnorderedMap::new(),
             deleted_messages: UnorderedSet::new(),
             drafts: UnorderedMap::new(),
@@ -732,16 +749,32 @@ impl MeroChat {
         self.role_of(&identity)
     }
 
-    /// All members with a non-default role. Members with the default
-    /// `User` role are not returned (they're inferred).
+    /// All members with a non-default role (Admin / Mod / Banned). Members with
+    /// the implicit `User` role are not returned (they're inferred).
     pub fn list_roles(&self) -> Vec<(UserId, Role)> {
-        let mut out = Vec::new();
-        if let Ok(entries) = self.roles.entries() {
-            for (id, role) in entries {
-                out.push((id, *role.get()));
+        // Collect candidate ids from the three sources, deduped with Banned >
+        // Admin > Mod precedence (the order we push in). `role_of` then assigns
+        // the authoritative role for each.
+        let mut ids: Vec<UserId> = Vec::new();
+        if let Ok(entries) = self.banned.entries() {
+            for (id, flag) in entries {
+                if *flag.get() && !ids.contains(&id) { ids.push(id); }
             }
         }
-        out
+        for pk in self.roles.admins() {
+            let id = UserId::new(*pk);
+            if !ids.contains(&id) { ids.push(id); }
+        }
+        if let Ok(mods) = self.roles.members_of(ROLE_MOD) {
+            for pk in mods {
+                let id = UserId::new(*pk);
+                if !ids.contains(&id) { ids.push(id); }
+            }
+        }
+        ids.into_iter()
+            .map(|id| { let r = self.role_of(&id); (id, r) })
+            .filter(|(_, r)| *r != Role::User)
+            .collect()
     }
 
     /// Change a member's role. Authorisation:
@@ -749,7 +782,11 @@ impl MeroChat {
     /// - `Mod`   may only flip a `User` to `Banned` (or back).
     /// - `User`/`Banned` may not call this.
     /// An admin cannot demote themselves below `Admin` (lockout-prevention).
-    /// Bootstrap: if no admin exists yet, any member may claim Admin for themselves.
+    ///
+    /// Admin/Mod grants go through `AccessControl` (admin-gated, rejected at
+    /// merge if forged). Ban/unban writes the separate `banned` set so a
+    /// moderator — who is not an admin — can still moderate; that path performs
+    /// no admin-gated `AccessControl` call.
     pub fn set_member_role(
         &mut self,
         target: UserId,
@@ -759,26 +796,52 @@ impl MeroChat {
         let actor_role = self.role_of(&me);
         let target_role = self.role_of(&target);
 
-        // Bootstrap: no admin exists yet → anyone may set themselves to Admin.
-        let no_admin_exists = match self.roles.entries() {
-            Ok(mut entries) => !entries.any(|(_, r)| *r.get() == Role::Admin),
-            Err(_) => true,
-        };
-        let is_bootstrap = no_admin_exists && me == target && role == Role::Admin;
-
         if me == target && actor_role == Role::Admin && role != Role::Admin {
             app::bail!("An admin cannot demote themselves below Admin");
         }
-        if !is_bootstrap && !Self::can_change_role(actor_role, target_role, role) {
+        if !Self::can_change_role(actor_role, target_role, role) {
             app::bail!("You don't have permission to change this member's role");
         }
 
-        // User is the implicit default — keep the map small by removing the
-        // entry instead of storing the default.
-        if role == Role::User {
-            let _ = self.roles.remove(&target);
-        } else {
-            let _ = self.roles.insert(target, LwwRegister::new(role));
+        let pk = Self::to_pk(&target);
+        let actor_is_admin = actor_role == Role::Admin;
+        // Strip grants based on the target's *actual* writer-set / registry
+        // membership, NOT the display role — `role_of` reports `Banned` whenever
+        // the ban flag is set, which would otherwise mask (and leave behind) an
+        // underlying admin/mod grant if the ban map and `AccessControl` diverged
+        // across a merge. Only an admin may revoke; a moderator's sole permitted
+        // transition is User<->Banned on a plain User, which holds no grants.
+        let has_mod   = self.roles.has_role(ROLE_MOD, &pk).unwrap_or(false);
+        let has_admin = self.roles.is_admin(&pk);
+        match role {
+            Role::Admin => {
+                if has_mod { self.revoke_mod(&pk)?; }
+                self.set_banned(&target, false);
+                self.roles
+                    .grant_admin(pk)
+                    .map_err(|e| app::err!("grant admin failed: {e}"))?;
+            }
+            Role::Mod => {
+                if has_admin { self.revoke_admin_member(&pk)?; }
+                self.set_banned(&target, false);
+                self.roles
+                    .grant(ROLE_MOD, pk)
+                    .map_err(|e| app::err!("grant mod failed: {e}"))?;
+            }
+            Role::Banned => {
+                if actor_is_admin {
+                    if has_mod   { self.revoke_mod(&pk)?; }
+                    if has_admin { self.revoke_admin_member(&pk)?; }
+                }
+                self.set_banned(&target, true);
+            }
+            Role::User => {
+                if actor_is_admin {
+                    if has_mod   { self.revoke_mod(&pk)?; }
+                    if has_admin { self.revoke_admin_member(&pk)?; }
+                }
+                self.set_banned(&target, false);
+            }
         }
 
         app::emit!(Event::RoleUpdated(target.to_string()));
@@ -786,14 +849,52 @@ impl MeroChat {
     }
 
     fn role_of(&self, user: &UserId) -> Role {
-        match self.roles.get(user) {
-            Ok(Some(r)) => *r.get(),
-            _ => Role::default(),
+        if self.is_banned(user) {
+            return Role::Banned;
+        }
+        let pk = Self::to_pk(user);
+        if self.roles.is_admin(&pk) {
+            Role::Admin
+        } else if self.roles.has_role(ROLE_MOD, &pk).unwrap_or(false) {
+            Role::Mod
+        } else {
+            Role::User
         }
     }
 
+    fn is_banned(&self, user: &UserId) -> bool {
+        matches!(self.banned.get(user), Ok(Some(flag)) if *flag.get())
+    }
+
+    fn set_banned(&mut self, user: &UserId, banned: bool) {
+        let _ = self.banned.insert(*user, LwwRegister::new(banned));
+    }
+
+    fn revoke_mod(&mut self, pk: &PublicKey) -> app::Result<()> {
+        self.roles
+            .revoke(ROLE_MOD, pk)
+            .map_err(|e| app::err!("revoke mod failed: {e}"))?;
+        Ok(())
+    }
+
+    fn revoke_admin_member(&mut self, pk: &PublicKey) -> app::Result<()> {
+        self.roles
+            .revoke_admin(pk)
+            .map_err(|e| app::err!("revoke admin failed: {e}"))?;
+        Ok(())
+    }
+
+    /// Map a curb `UserId` (32-byte key) to the storage-layer `PublicKey` the
+    /// access-control components key on.
+    fn to_pk(user: &UserId) -> PublicKey {
+        let slice: &[u8] = user.as_ref();
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(slice);
+        PublicKey::from(arr)
+    }
+
     fn require_not_banned(&self) -> app::Result<()> {
-        if self.role_of(&Self::executor_id()) == Role::Banned {
+        if self.is_banned(&Self::executor_id()) {
             app::bail!("You are banned from this context");
         }
         Ok(())
@@ -1305,9 +1406,107 @@ impl MeroChat {
 
 #[cfg(test)]
 mod tests {
+    use calimero_sdk::testing::TestHost;
     use calimero_sdk::BlobId;
 
-    use super::{draft_key, Role};
+    use super::{draft_key, ContextType, MeroChat, Role, UserId};
+
+    // ── AccessControl-backed roles (TestHost) ──────────────────────────────────
+
+    const MODR: [u8; 32] = [0x22; 32];
+    const USER: [u8; 32] = [0x33; 32];
+
+    fn new_chat() -> TestHost<MeroChat> {
+        // init runs as the default test executor, who becomes the sole admin.
+        TestHost::new(|| {
+            MeroChat::init(
+                "ctx".to_owned(),
+                ContextType::Channel,
+                "desc".to_owned(),
+                0,
+                "creator".to_owned(),
+            )
+        })
+    }
+
+    #[test]
+    fn creator_is_the_sole_admin() {
+        let app = new_chat();
+        let admins = app
+            .view(|s| s.list_roles())
+            .into_iter()
+            .filter(|(_, r)| *r == Role::Admin)
+            .count();
+        assert_eq!(admins, 1);
+    }
+
+    #[test]
+    fn non_admin_cannot_grant_admin() {
+        // The headline fix: a non-admin's attempt to promote themselves (or
+        // anyone) to Admin is refused by the fail-fast guard, and the
+        // authoritative writer-set check rejects a forged grant delta at merge.
+        let mut app = new_chat();
+        let target = UserId::new(USER);
+        let denied = app.call_as(MODR, |s| s.set_member_role(target, Role::Admin));
+        assert!(denied.is_err());
+        assert_eq!(app.view(|s| s.get_member_role(target)), Role::User);
+    }
+
+    #[test]
+    fn admin_promotes_mod_then_mod_moderates_within_limits() {
+        let mut app = new_chat();
+        let modr = UserId::new(MODR);
+        let user = UserId::new(USER);
+
+        // Admin promotes a moderator.
+        app.call(|s| s.set_member_role(modr, Role::Mod)).unwrap();
+        assert_eq!(app.view(|s| s.get_member_role(modr)), Role::Mod);
+
+        // The moderator may ban a user (separate exclusion set, no admin grant).
+        app.call_as(MODR, |s| s.set_member_role(user, Role::Banned)).unwrap();
+        assert_eq!(app.view(|s| s.get_member_role(user)), Role::Banned);
+
+        // …but may not escalate a user to Admin.
+        assert!(app.call_as(MODR, |s| s.set_member_role(user, Role::Admin)).is_err());
+
+        // …and may unban (Banned → User).
+        app.call_as(MODR, |s| s.set_member_role(user, Role::User)).unwrap();
+        assert_eq!(app.view(|s| s.get_member_role(user)), Role::User);
+    }
+
+    #[test]
+    fn banned_member_is_blocked_from_mutations() {
+        let mut app = new_chat();
+        let user = UserId::new(USER);
+        app.call(|s| s.set_member_role(user, Role::Banned)).unwrap();
+        // A banned caller's state-mutating action is rejected by the ban gate.
+        let r = app.call_as(USER, |s| s.save_draft("general".to_owned(), "hi".to_owned()));
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn admin_demotes_mod_to_user() {
+        let mut app = new_chat();
+        let modr = UserId::new(MODR);
+        app.call(|s| s.set_member_role(modr, Role::Mod)).unwrap();
+        app.call(|s| s.set_member_role(modr, Role::User)).unwrap();
+        assert_eq!(app.view(|s| s.get_member_role(modr)), Role::User);
+    }
+
+    #[test]
+    fn banning_then_clearing_does_not_leave_stale_grants() {
+        // Banning a mod and later assigning User/Mod must clear the underlying
+        // AccessControl grant rather than rely on the (ban-masked) display role,
+        // so role_of always matches the requested role.
+        let mut app = new_chat();
+        let modr = UserId::new(MODR);
+        app.call(|s| s.set_member_role(modr, Role::Mod)).unwrap();
+        app.call(|s| s.set_member_role(modr, Role::Banned)).unwrap();
+        assert_eq!(app.view(|s| s.get_member_role(modr)), Role::Banned);
+        // Underlying mod grant must already be cleared by the ban.
+        app.call(|s| s.set_member_role(modr, Role::User)).unwrap();
+        assert_eq!(app.view(|s| s.get_member_role(modr)), Role::User);
+    }
 
     // ── Role-based delete permission logic ─────────────────────────────────────
 
