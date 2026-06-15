@@ -1,0 +1,350 @@
+name: Mero Tag Logic Test
+description: >
+  Comprehensive merobox test of the Mero Tag WASM logic against a real merod
+  node: space init, member join, tracker CRUD, location ingest + ordering,
+  sharing, groups, geofences, presence, and history. Verifies state persists
+  correctly across calls (i.e. the WASM serialization round-trips).
+
+stop_all_nodes: true
+restart: false
+wait_timeout: 120
+
+nodes:
+  chain_id: testnet-1
+  count: 1
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.3
+  prefix: calimero-node
+
+steps:
+  # ── Bootstrap ─────────────────────────────────────────────────────────────
+  - name: Install Application
+    type: install_application
+    node: calimero-node-1
+    path: "../logic/res/mero_tag.wasm"
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Create Namespace
+    type: create_group
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Create Space Context
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    params: '{"name": "Test Space"}'
+    outputs:
+      context_id: contextId
+      member_public_key: memberPublicKey
+
+  # ── Space info ─────────────────────────────────────────────────────────────
+  - name: Get Space
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_space
+    args: {}
+    outputs:
+      space: result
+
+  - name: Assert Space Name
+    type: assert
+    statements:
+      - "contains({{space}}, 'Test Space')"
+
+  # ── Members ────────────────────────────────────────────────────────────────
+  - name: Join as Alice
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: join
+    args:
+      member_id: "alice"
+      username: "Alice"
+      timestamp: 1000000
+
+  - name: Get Members
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_members
+    args: {}
+    outputs:
+      members: result
+
+  - name: Assert Alice is Member
+    type: assert
+    statements:
+      - "contains({{members}}, 'Alice')"
+
+  # ── Tracker create ───────────────────────────────────────────────────────
+  - name: Create Tracker
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: create_tracker
+    args:
+      id: "t1"
+      name: "Alice Phone"
+      owner_id: "alice"
+      created_at: 1000001
+
+  - name: Get Trackers After Create
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_trackers
+    args: {}
+    outputs:
+      trackers: result
+
+  - name: Assert Tracker Created
+    type: assert
+    statements:
+      - "contains({{trackers}}, 't1')"
+      - "contains({{trackers}}, 'Alice Phone')"
+
+  # ── Location ingest ──────────────────────────────────────────────────────
+  - name: Update Location
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: update_location
+    args:
+      tracker_id: "t1"
+      latitude: 40.1
+      longitude: -74.2
+      altitude: 10.0
+      speed: 1.5
+      heading: 90.0
+      battery: 88
+      timestamp: 2000
+
+  - name: Get Tracker After Location
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_tracker
+    args:
+      id: "t1"
+    outputs:
+      tracker_loc: result
+
+  - name: Assert Location Stored
+    type: assert
+    statements:
+      - "contains({{tracker_loc}}, '88')"
+      - "contains({{tracker_loc}}, '2000')"
+
+  # ── Out-of-order rejection ─────────────────────────────────────────────────
+  - name: Update With Stale Timestamp
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: update_location
+    args:
+      tracker_id: "t1"
+      latitude: 0.0
+      longitude: 0.0
+      altitude: 0.0
+      speed: 0.0
+      heading: 0.0
+      battery: 1
+      timestamp: 1500
+
+  - name: Get Tracker After Stale Update
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_tracker
+    args:
+      id: "t1"
+    outputs:
+      tracker_after_stale: result
+
+  - name: Assert Stale Update Rejected
+    type: assert
+    statements:
+      - "contains({{tracker_after_stale}}, '88')"
+
+  # ── History ────────────────────────────────────────────────────────────────
+  - name: Get History
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_history
+    args:
+      tracker_id: "t1"
+      since: 0
+    outputs:
+      history: result
+
+  - name: Assert History Has Samples
+    type: assert
+    statements:
+      - "contains({{history}}, '40.1')"
+
+  # ── Sharing ────────────────────────────────────────────────────────────────
+  - name: Share Tracker With Bob
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: share_tracker
+    args:
+      tracker_id: "t1"
+      user_id: "bob"
+      updated_at: 3000
+
+  - name: Get Trackers After Share
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_trackers
+    args: {}
+    outputs:
+      shared_trackers: result
+
+  - name: Assert Bob Is Viewer
+    type: assert
+    statements:
+      - "contains({{shared_trackers}}, 'bob')"
+
+  # ── Groups ─────────────────────────────────────────────────────────────────
+  - name: Create Family Group
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: create_group
+    args:
+      id: "fam"
+      name: "Family"
+      owner_id: "alice"
+      updated_at: 3500
+
+  - name: Add Tracker To Group
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: add_tracker_to_group
+    args:
+      group_id: "fam"
+      tracker_id: "t1"
+      updated_at: 3600
+
+  - name: Get Groups
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_groups
+    args: {}
+    outputs:
+      groups: result
+
+  - name: Assert Group With Tracker
+    type: assert
+    statements:
+      - "contains({{groups}}, 'Family')"
+      - "contains({{groups}}, 't1')"
+
+  # ── Geofences ────────────────────────────────────────────────────────────
+  - name: Create Geofence
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: create_geofence
+    args:
+      id: "home"
+      name: "Home"
+      center_lat: 40.1
+      center_lng: -74.2
+      radius: 100.0
+      created_by: "alice"
+      created_at: 4000
+
+  - name: Get Geofences
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_geofences
+    args: {}
+    outputs:
+      geofences: result
+
+  - name: Assert Geofence Exists
+    type: assert
+    statements:
+      - "contains({{geofences}}, 'Home')"
+
+  # ── Presence ─────────────────────────────────────────────────────────────
+  - name: Update Presence
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: update_presence
+    args:
+      user_id: "alice"
+      online: true
+      last_seen: 5000
+
+  - name: Get Presence
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_presence
+    args: {}
+    outputs:
+      presence: result
+
+  - name: Assert Presence Online
+    type: assert
+    statements:
+      - "contains({{presence}}, 'alice')"
+
+  # ── Delete ────────────────────────────────────────────────────────────────
+  - name: Delete Tracker
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: delete_tracker
+    args:
+      id: "t1"
+
+  - name: Get Trackers After Delete
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_trackers
+    args: {}
+    outputs:
+      final_trackers: result
+
+  - name: Assert Tracker Deleted
+    type: assert
+    statements:
+      - "not_contains({{final_trackers}}, 't1')"

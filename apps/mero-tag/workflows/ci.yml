@@ -1,0 +1,70 @@
+# CI for Mero Tag. Mirror into .github/workflows/ to enable on GitHub.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  logic:
+    name: WASM contract (Rust)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: logic
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.89.0
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy
+      - run: cargo test
+      - run: cargo clippy --target wasm32-unknown-unknown --profile app-release -- -D warnings
+      - name: Build WASM
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          bash build.sh
+
+  merokit:
+    name: MeroKit (Swift)
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: app/MeroKit
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift run merokit-verify   # no-Xcode pure-logic smoke test
+      - run: swift test                 # full XCTest suite (Xcode on the runner)
+
+  app:
+    name: iOS app build
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - working-directory: app/MeroTag
+        run: xcodegen generate
+      - working-directory: app/MeroTag
+        name: Build + run app unit tests
+        run: |
+          xcodebuild test -project MeroTag.xcodeproj -scheme MeroTag \
+            -destination 'platform=iOS Simulator,name=iPhone 17' \
+            -derivedDataPath .build -only-testing:MeroTagTests \
+            CODE_SIGNING_ALLOWED=NO
+
+  logic-workflows:
+    name: WASM logic workflows (merobox)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.89.0
+        with:
+          targets: wasm32-unknown-unknown
+      - run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Build WASM
+        run: cd logic && bash build.sh
+      - name: Install merobox
+        run: pipx install merobox || pip install merobox
+      - name: Run merobox workflows (boots merod in Docker)
+        run: bash scripts/workflows.sh
