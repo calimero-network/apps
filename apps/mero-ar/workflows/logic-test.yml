@@ -1,0 +1,355 @@
+name: Mero AR Logic Test
+description: >
+  Comprehensive merobox test of the Mero AR scene-graph WASM against a real merod
+  node: room init, member join, object add with nested 3D transform, transform
+  updates with version LWW, advisory lock enforcement (non-holder rejected,
+  holder allowed), presence, spatial comments, and delete. Verifies the WASM
+  serializes the nested Transform/Vec3/Quat types correctly across calls.
+
+stop_all_nodes: true
+restart: false
+wait_timeout: 120
+
+nodes:
+  chain_id: testnet-1
+  count: 1
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.3
+  prefix: calimero-node
+
+steps:
+  # ── Bootstrap ─────────────────────────────────────────────────────────────
+  - name: Install Application
+    type: install_application
+    node: calimero-node-1
+    path: "../logic/res/mero_ar.wasm"
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Create Namespace
+    type: create_group
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Create Room Context
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    params: '{"name": "Test Room"}'
+    outputs:
+      context_id: contextId
+      member_public_key: memberPublicKey
+
+  - name: Get Room
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_room
+    args: {}
+    outputs:
+      room: result
+
+  - name: Assert Room Name
+    type: assert
+    statements:
+      - "contains({{room}}, 'Test Room')"
+
+  # ── Members ────────────────────────────────────────────────────────────────
+  - name: Join as Alice
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: join
+    args:
+      member_id: "alice"
+      username: "Alice"
+      avatar: null
+      timestamp: 1000000
+
+  - name: Get Members
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_members
+    args: {}
+    outputs:
+      members: result
+
+  - name: Assert Alice is Member
+    type: assert
+    statements:
+      - "contains({{members}}, 'Alice')"
+
+  # ── Add object with nested transform ──────────────────────────────────────
+  - name: Add Cube
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: add_object
+    args:
+      object:
+        id: "o1"
+        data: { kind: "cube" }
+        transform:
+          position: { x: 1.0, y: 0.5, z: -2.0 }
+          rotation: { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
+          scale: { x: 1.0, y: 1.0, z: 1.0 }
+        color: "3A86FF"
+        lockedBy: null
+        createdBy: "alice"
+        createdAt: 1000001
+        updatedAt: 1000001
+        version: 0
+
+  - name: Get Objects After Add
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_objects
+    args: {}
+    outputs:
+      objects: result
+
+  - name: Assert Cube Added
+    type: assert
+    statements:
+      - "contains({{objects}}, 'o1')"
+      - "contains({{objects}}, 'cube')"
+
+  # ── Transform update (version LWW) ─────────────────────────────────────────
+  - name: Move Cube To 111
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: update_transform
+    args:
+      id: "o1"
+      transform:
+        position: { x: 111.0, y: 1.0, z: -3.0 }
+        rotation: { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
+        scale: { x: 1.0, y: 1.0, z: 1.0 }
+      editor: "alice"
+      updated_at: 2000000
+
+  - name: Get Object After Move
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_object
+    args:
+      id: "o1"
+    outputs:
+      moved: result
+
+  - name: Assert Moved To 111
+    type: assert
+    statements:
+      - "contains({{moved}}, '111')"
+
+  # ── Lock enforcement ───────────────────────────────────────────────────────
+  - name: Lock Cube As Bob
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: lock_object
+    args:
+      id: "o1"
+      by: "bob"
+
+  - name: Alice Tries To Move To 999 (should be rejected)
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: update_transform
+    args:
+      id: "o1"
+      transform:
+        position: { x: 999.0, y: 1.0, z: -3.0 }
+        rotation: { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
+        scale: { x: 1.0, y: 1.0, z: 1.0 }
+      editor: "alice"
+      updated_at: 3000000
+
+  - name: Get Object After Locked Edit
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_object
+    args:
+      id: "o1"
+    outputs:
+      locked: result
+
+  - name: Assert Edit Rejected And Locked By Bob
+    type: assert
+    statements:
+      - "not_contains({{locked}}, '999')"
+      - "contains({{locked}}, '111')"
+      - "contains({{locked}}, 'bob')"
+
+  - name: Bob (lock holder) Moves To 222
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: update_transform
+    args:
+      id: "o1"
+      transform:
+        position: { x: 222.0, y: 1.0, z: -3.0 }
+        rotation: { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
+        scale: { x: 1.0, y: 1.0, z: 1.0 }
+      editor: "bob"
+      updated_at: 4000000
+
+  - name: Get Object After Holder Move
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_object
+    args:
+      id: "o1"
+    outputs:
+      holder_moved: result
+
+  - name: Assert Holder Could Move
+    type: assert
+    statements:
+      - "contains({{holder_moved}}, '222')"
+
+  - name: Unlock Cube
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: unlock_object
+    args:
+      id: "o1"
+      by: "bob"
+
+  - name: Alice Moves To 333 After Unlock
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: update_transform
+    args:
+      id: "o1"
+      transform:
+        position: { x: 333.0, y: 1.0, z: -3.0 }
+        rotation: { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
+        scale: { x: 1.0, y: 1.0, z: 1.0 }
+      editor: "alice"
+      updated_at: 5000000
+
+  - name: Get Object After Unlock Move
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_object
+    args:
+      id: "o1"
+    outputs:
+      unlocked_moved: result
+
+  - name: Assert Alice Could Move After Unlock
+    type: assert
+    statements:
+      - "contains({{unlocked_moved}}, '333')"
+
+  # ── Presence ─────────────────────────────────────────────────────────────
+  - name: Update Presence
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: update_presence
+    args:
+      identity: "alice"
+      camera_position: { x: 0.0, y: 1.6, z: 0.0 }
+      camera_rotation: { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
+      updated_at: 6000000
+
+  - name: Get Presence
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_presence
+    args: {}
+    outputs:
+      presence: result
+
+  - name: Assert Presence Recorded
+    type: assert
+    statements:
+      - "contains({{presence}}, 'alice')"
+
+  # ── Spatial comment ────────────────────────────────────────────────────────
+  - name: Add Comment
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: add_comment
+    args:
+      id: "c1"
+      text: "spatialnote"
+      position: { x: 1.0, y: 1.0, z: 1.0 }
+      author: "alice"
+      created_at: 7000000
+
+  - name: Get Comments
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_comments
+    args: {}
+    outputs:
+      comments: result
+
+  - name: Assert Comment Stored
+    type: assert
+    statements:
+      - "contains({{comments}}, 'spatialnote')"
+
+  # ── Delete ────────────────────────────────────────────────────────────────
+  - name: Delete Object
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: delete_object
+    args:
+      id: "o1"
+
+  - name: Get Objects After Delete
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_objects
+    args: {}
+    outputs:
+      final_objects: result
+
+  - name: Assert Object Deleted
+    type: assert
+    statements:
+      - "not_contains({{final_objects}}, 'o1')"

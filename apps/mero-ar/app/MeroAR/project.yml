@@ -1,0 +1,75 @@
+# XcodeGen spec — regenerate MeroAR.xcodeproj with: `xcodegen generate`
+# (from this directory) or `make app-gen` from the repo root.
+name: MeroAR
+options:
+  bundleIdPrefix: network.calimero
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+packages:
+  MeroKit:
+    path: ../MeroKit
+
+targets:
+  MeroAR:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Sources
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Mero AR
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        NSCameraUsageDescription: "Mero AR uses the camera to scan your room and place shared 3D objects in it."
+        UIRequiredDeviceCapabilities:
+          - arkit
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.meroar
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Info.plist
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5"
+        # Set your team here (or pass DEVELOPMENT_TEAM=XXXX to xcodebuild) for device builds.
+        # DEVELOPMENT_TEAM: ""
+    dependencies:
+      - package: MeroKit
+        product: MeroKit
+
+  MeroARTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: MeroAR
+
+  MeroARUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+        optional: true
+    dependencies:
+      - target: MeroAR
+
+schemes:
+  MeroAR:
+    build:
+      targets:
+        MeroAR: all
+    run:
+      config: Debug
+    test:
+      targets:
+        - MeroARTests
+        - MeroARUITests
