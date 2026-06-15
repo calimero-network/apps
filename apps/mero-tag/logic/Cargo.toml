@@ -1,0 +1,30 @@
+[package]
+name = "mero-tag"
+description = "Mero Tag — distributed real-time location sharing on Calimero"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+borsh = "0.10.3"
+borsh-derive = "0.10.3"
+calimero-sdk = "0.11.0-rc.3"
+calimero-storage = "0.11.0-rc.3"
+calimero-storage-macros = "0.11.0-rc.3"
+thiserror = "1.0.56"
+serde_json = "1.0.113"
+
+[build-dependencies]
+calimero-wasm-abi = "0.11.0-rc.3"
+serde_json = "1.0.113"
+
+[profile.app-release]
+inherits = "release"
+codegen-units = 1
+opt-level = "z"
+lto = true
+debug = false
+panic = "abort"
+overflow-checks = true

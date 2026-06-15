@@ -1,0 +1,77 @@
+# XcodeGen spec — regenerate MeroTag.xcodeproj with: `xcodegen generate`
+# (from this directory) or `make app-gen` from the repo root.
+name: MeroTag
+options:
+  bundleIdPrefix: network.calimero
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+packages:
+  MeroKit:
+    path: ../MeroKit
+
+targets:
+  MeroTag:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Sources
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Mero Tag
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        NSLocationWhenInUseUsageDescription: "Mero Tag shares your live location with people you authorize."
+        NSLocationAlwaysAndWhenInUseUsageDescription: "Mero Tag keeps sharing your location in the background so your group always sees where you are."
+        UIBackgroundModes:
+          - location
+          - fetch
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: network.calimero.merotag
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Info.plist
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5"
+        # Set your team here (or pass DEVELOPMENT_TEAM=XXXX to xcodebuild) for device builds.
+        # DEVELOPMENT_TEAM: ""
+    dependencies:
+      - package: MeroKit
+        product: MeroKit
+
+  MeroTagTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: MeroTag
+
+  MeroTagUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+        optional: true
+    dependencies:
+      - target: MeroTag
+
+schemes:
+  MeroTag:
+    build:
+      targets:
+        MeroTag: all
+    run:
+      config: Debug
+    test:
+      targets:
+        - MeroTagTests
+        - MeroTagUITests
