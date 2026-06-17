@@ -1,7 +1,6 @@
 # Rust
 logic/target/
 logic/res/
-logic/Cargo.lock
 
 # Swift / SwiftPM
 .build/
