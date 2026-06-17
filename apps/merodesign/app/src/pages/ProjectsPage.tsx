@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero, setApplicationId } from "@calimero-network/mero-react";
 import { adminGet, adminPost, adminPut, adminDelete } from "../api/rpc";
+import { resolveApplicationId } from "../api/appId";
 import Logo from "../components/Logo";
 import SettingsModal from "../components/SettingsModal";
 import ProjectThumbnail from "../components/ProjectThumbnail";
@@ -52,6 +53,23 @@ export default function ProjectsPage() {
   const [inviteCopying, setInviteCopying] = useState(false);
   const [inviteError, setInviteError] = useState("");
   const inviteResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Resolve MeroDesign's own application id (mirrors TeamsPage's ensureAppId).
+  // resolveApplicationId is authoritative: explicit VITE_APPLICATION_ID (set in
+  // the Vercel env) wins, else the installed app whose package is
+  // com.calimero.merodesign. The desktop deep-links straight to this page
+  // (bypassing TeamsPage), so we must resolve here too rather than trust a
+  // possibly-empty useMero().applicationId — otherwise createProject would POST
+  // an empty applicationId and the node rejects it ("invalid length 0").
+  const appIdRef = useRef<string>("");
+  const ensureAppId = useCallback(async (): Promise<string> => {
+    if (appIdRef.current) return appIdRef.current;
+    let id = "";
+    try { id = await resolveApplicationId(); } catch { /* ignore */ }
+    if (!id) id = applicationId ?? "";
+    if (id) { appIdRef.current = id; setApplicationId(id); }
+    return id;
+  }, [applicationId]);
 
   function handleLogout() {
     logout();
@@ -126,6 +144,14 @@ export default function ProjectsPage() {
     if (!newName.trim() || !teamId) return;
     setCreating(true);
     try {
+      // Resolve the app id up front. Never POST an empty one — the node rejects
+      // it ("applicationId: invalid length 0, expected a base58 encoded hash").
+      const appId = await ensureAppId();
+      if (!appId) {
+        showToast("Select or install the MeroDesign application first.");
+        return;
+      }
+
       const sgData = await adminPost<{ groupId?: string; group_id?: string; id?: string }>(
         `/namespaces/${teamId}/groups`,
         { groupAlias: newName.trim(), groupName: newName.trim() },
@@ -144,7 +170,7 @@ export default function ProjectsPage() {
       const ctxData = await adminPost<{ contextId?: string; id?: string }>(
         "/contexts",
         {
-          applicationId: applicationId ?? "",
+          applicationId: appId,
           protocol: "near",
           groupId: subgroupId || teamId,
           alias: newName.trim(),
