@@ -697,5 +697,12 @@
       }
     }
   ],
-  "state_root": "DocsState"
+  "state_root": "DocsState",
+  "state_version": 2,
+  "migrations": [
+    {
+      "method": "migrate_v1_to_v2",
+      "fromVersion": 1
+    }
+  ]
 }

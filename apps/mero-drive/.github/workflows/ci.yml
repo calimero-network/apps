@@ -150,7 +150,7 @@ jobs:
   # ============================================================
   # Job 3: Bundle — Build the multi-service .mpk against current core master
   # ============================================================
-  # Produces the bundle `com.calimero.mero-drive-docs-9.2.0.mpk` from the
+  # Produces the bundle `com.calimero.mero-drive-docs-9.3.0.mpk` from the
   # two wasm artifacts. Uploaded as a build artifact so the e2e job below
   # can consume it without rebuilding, and so PR reviewers can download
   # and inspect the actual artifact that would ship.

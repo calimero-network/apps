@@ -845,5 +845,6 @@
       }
     }
   ],
-  "state_root": "RegistryState"
+  "state_root": "RegistryState",
+  "state_version": 1
 }
