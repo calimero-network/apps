@@ -47,7 +47,7 @@
     "iframe-resizer-react": "^5.1.5",
     "install": "^0.13.0",
     "lodash": "^4.17.23",
-    "prettier": "^3.6.0",
+    "prettier": "^3.8.4",
     "quill": "^2.0.3",
     "react": "^19.1.0",
     "react-bootstrap": "^2.10.10",
