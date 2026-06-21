@@ -1,0 +1,35 @@
+# Rust / WASM
+logic/target/
+logic/res/*.wasm
+logic/res/*.mpk
+*.wasm
+
+# Node
+node_modules/
+app/node_modules/
+app/dist/
+app/dev-dist/
+app/.env.local
+app/.env.integration
+app/e2e-report/
+app/playwright-report/
+app/test-results/
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+/tmp/*.log
+/tmp/*.pid
+
+# Calimero node homes (dev)
+~/.calimero/meropixart-*
+
+# build artifacts / caches
+logic/res/bundle-temp/

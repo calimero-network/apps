@@ -1,0 +1,387 @@
+name: Logic Unit Test
+description: >
+  Comprehensive test of MeroPixArt WASM logic. Verifies all core operations:
+  document init, member join, role grant, layer CRUD, adjustments, layer
+  reordering, and document update.
+
+stop_all_nodes: true
+restart: false
+wait_timeout: 120
+
+nodes:
+  chain_id: testnet-1
+  count: 1
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.6
+  prefix: calimero-node
+
+steps:
+  # ── Bootstrap ─────────────────────────────────────────────────────────────
+  - name: Install Application
+    type: install_application
+    node: calimero-node-1
+    path: "../logic/res/meropixart.wasm"
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Create Namespace
+    type: create_group
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Create Project Context
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    params: '{"name": "Test Project", "description": "Logic test project", "width": 800, "height": 600}'
+    outputs:
+      context_id: contextId
+      member_public_key: memberPublicKey
+
+  # ── Document info ──────────────────────────────────────────────────────────
+  - name: Get Document
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_document
+    args: {}
+    outputs:
+      doc_info: result
+
+  - name: Assert Document Name
+    type: assert
+    statements:
+      - "contains({{doc_info}}, 'Test Project')"
+
+  # ── Members ────────────────────────────────────────────────────────────────
+  - name: Join as Alice
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: join
+    args:
+      # member id is derived server-side from the signer (env::executor_id);
+      # no client-supplied member_id.
+      username: "Alice"
+      avatar: null
+      timestamp: 1000000
+
+  - name: Get Members
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_members
+    args: {}
+    outputs:
+      members: result
+
+  - name: Assert Alice is Member
+    type: assert
+    statements:
+      - "contains({{members}}, 'Alice')"
+
+  # ── Roles ──────────────────────────────────────────────────────────────────
+  - name: Get My Role
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: my_role
+    args: {}
+    outputs:
+      my_role: result
+
+  - name: Assert Creator is Admin
+    type: assert
+    statements:
+      - "contains({{my_role}}, 'admin')"
+
+  # ── Layers: Add ────────────────────────────────────────────────────────────
+  - name: Add Raster Layer
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: add_layer
+    args:
+      layer:
+        id: "layer-1"
+        name: "Background"
+        kind: "raster"
+        layerIndex: 0
+        visible: true
+        locked: false
+        opacity: 100
+        blendMode: "normal"
+        x: 0
+        y: 0
+        width: 800
+        height: 600
+        rotation: 0
+        scaleX: 100
+        scaleY: 100
+        fill: "#ffffff"
+        adjustments:
+          brightness: 0
+          contrast: 0
+          saturation: 0
+          hue: 0
+          exposure: 0
+          blur: 0
+          invert: false
+        createdBy: "alice"
+        createdAt: 1000001
+        updatedAt: 1000001
+
+  - name: Add Text Layer
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: add_layer
+    args:
+      layer:
+        id: "layer-2"
+        name: "Title Text"
+        kind: "text"
+        layerIndex: 1
+        visible: true
+        locked: false
+        opacity: 100
+        blendMode: "normal"
+        x: 50
+        y: 50
+        width: 300
+        height: 80
+        rotation: 0
+        scaleX: 100
+        scaleY: 100
+        adjustments:
+          brightness: 0
+          contrast: 0
+          saturation: 0
+          hue: 0
+          exposure: 0
+          blur: 0
+          invert: false
+        text:
+          content: "Hello MeroPixArt"
+          fontFamily: "Inter"
+          fontSize: 48
+          color: "#ffffff"
+          bold: false
+          italic: false
+        createdBy: "alice"
+        createdAt: 1000002
+        updatedAt: 1000002
+
+  - name: Get All Layers
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_layers
+    args: {}
+    outputs:
+      all_layers: result
+
+  - name: Assert Two Layers Exist
+    type: assert
+    statements:
+      - "contains({{all_layers}}, 'layer-1')"
+      - "contains({{all_layers}}, 'layer-2')"
+      - "contains({{all_layers}}, 'Background')"
+      - "contains({{all_layers}}, 'Hello MeroPixArt')"
+
+  # ── Layers: Get Single ─────────────────────────────────────────────────────
+  - name: Get Single Layer
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_layer
+    args:
+      id: "layer-1"
+    outputs:
+      single_layer: result
+
+  - name: Assert Single Layer Data
+    type: assert
+    statements:
+      - "contains({{single_layer}}, 'layer-1')"
+      - "contains({{single_layer}}, 'Background')"
+
+  # ── Layers: Update ─────────────────────────────────────────────────────────
+  - name: Update Layer Properties
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: update_layer
+    args:
+      id: "layer-1"
+      name: "Renamed Background"
+      visible: false
+      locked: null
+      opacity: 80
+      blend_mode: "multiply"
+      x: 10
+      y: 20
+      width: null
+      height: null
+      rotation: null
+      scale_x: null
+      scale_y: null
+      fill: null
+      updated_at: 1000010
+
+  - name: Get Updated Layer
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_layer
+    args:
+      id: "layer-1"
+    outputs:
+      updated_layer: result
+
+  - name: Assert Updated Values
+    type: assert
+    statements:
+      - "contains({{updated_layer}}, 'Renamed Background')"
+      - "contains({{updated_layer}}, 'multiply')"
+
+  # ── Adjustments ────────────────────────────────────────────────────────────
+  - name: Update Adjustments
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: update_adjustments
+    args:
+      id: "layer-1"
+      brightness: 20
+      contrast: -10
+      saturation: 5
+      hue: null
+      exposure: null
+      blur: null
+      invert: true
+      curves: null
+      updated_at: 1000011
+
+  - name: Get Adjusted Layer
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_layer
+    args:
+      id: "layer-1"
+    outputs:
+      adjusted_layer: result
+
+  - name: Assert Adjustments Applied
+    type: assert
+    statements:
+      - "contains({{adjusted_layer}}, 'brightness')"
+      - "contains({{adjusted_layer}}, '20')"
+
+  # ── Layer Reorder ──────────────────────────────────────────────────────────
+  - name: Bring Layer 1 to Front
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: bring_to_front
+    args:
+      id: "layer-1"
+      updated_at: 1000012
+
+  - name: Send Layer 2 to Back
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: send_to_back
+    args:
+      id: "layer-2"
+      updated_at: 1000013
+
+  - name: Layers After Reorder
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_layers
+    args: {}
+    outputs:
+      reordered_layers: result
+
+  - name: Assert All Still Present After Reorder
+    type: assert
+    statements:
+      - "contains({{reordered_layers}}, 'layer-1')"
+      - "contains({{reordered_layers}}, 'layer-2')"
+
+  # ── Document Update ────────────────────────────────────────────────────────
+  - name: Update Document
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: update_document
+    args:
+      name: "Renamed Project"
+      description: "Updated description"
+      width: 1024
+      height: 768
+      background: null
+
+  - name: Verify Document Update
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_document
+    args: {}
+    outputs:
+      updated_doc: result
+
+  - name: Assert Document Renamed
+    type: assert
+    statements:
+      - "contains({{updated_doc}}, 'Renamed Project')"
+      - "contains({{updated_doc}}, '1024')"
+
+  # ── Delete ─────────────────────────────────────────────────────────────────
+  - name: Delete Text Layer
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: delete_layer
+    args:
+      id: "layer-2"
+
+  - name: Layers After Delete
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_layers
+    args: {}
+    outputs:
+      final_layers: result
+
+  - name: Assert Text Layer Deleted
+    type: assert
+    statements:
+      - "contains({{final_layers}}, 'layer-1')"

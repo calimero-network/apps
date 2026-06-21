@@ -1,0 +1,115 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 3200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: mp-fade-in 0.12s ease;
+}
+
+.panel {
+  width: 232px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.body {
+  display: flex;
+  gap: 10px;
+}
+
+.sv {
+  position: relative;
+  width: 176px;
+  height: 150px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  cursor: crosshair;
+  flex-shrink: 0;
+  touch-action: none;
+}
+.svWhite {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to right, #fff, rgba(255, 255, 255, 0));
+}
+.svBlack {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, #000, rgba(0, 0, 0, 0));
+}
+.svThumb {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.hue {
+  position: relative;
+  width: 16px;
+  height: 150px;
+  border-radius: var(--radius-sm);
+  cursor: ns-resize;
+  flex-shrink: 0;
+  touch-action: none;
+  background: linear-gradient(
+    to bottom,
+    #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%
+  );
+}
+.hueThumb {
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  height: 4px;
+  border: 2px solid #fff;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.hexRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  flex-shrink: 0;
+}
+
+.presets {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+.preset {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.06s, border-color 0.12s;
+}
+.preset:hover {
+  border-color: var(--accent);
+  transform: scale(1.08);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+}

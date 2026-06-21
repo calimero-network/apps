@@ -1,0 +1,48 @@
+{
+  "name": "meropixart",
+  "private": true,
+  "version": "0.1.0",
+  "description": "MeroPixArt — collaborative p2p image editor on Calimero",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "preview": "vite preview",
+    "e2e": "playwright test --project=mocked",
+    "e2e:ui": "playwright test --ui --project=mocked",
+    "test:all": "vitest run && playwright test --project=mocked"
+  },
+  "dependencies": {
+    "@calimero-network/mero-js": "^2.2.1",
+    "@calimero-network/mero-react": "2.4.0",
+    "@calimero-network/mero-ui": "1.4.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.15.1",
+    "zustand": "^5.0.5",
+    "uuid": "^11.1.0",
+    "axios": "^1.12.0",
+    "clsx": "^2.1.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.25.0",
+    "@playwright/test": "^1.52.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@types/uuid": "^10.0.0",
+    "@vitejs/plugin-react-swc": "^3.9.0",
+    "eslint": "^9.29.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.19",
+    "globals": "^16.0.0",
+    "jsdom": "^28.1.0",
+    "typescript": "~5.8.3",
+    "typescript-eslint": "^8.30.1",
+    "vite": "^6.4.1",
+    "vitest": "^4.0.18"
+  }
+}

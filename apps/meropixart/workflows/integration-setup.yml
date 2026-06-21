@@ -1,0 +1,165 @@
+name: Integration Test Setup
+description: >
+  Sets up a two-node environment for MeroPixArt integration tests.
+  Creates a project context, sets up two members (Alice and Bob),
+  adds a seed layer, then leaves nodes running for Playwright.
+
+stop_all_nodes: false
+restart: false
+wait_timeout: 120
+
+nodes:
+  chain_id: testnet-1
+  count: 2
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.6
+  prefix: calimero-node
+
+steps:
+  - name: Install Application on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: "../logic/res/meropixart.wasm"
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install Application on Node 2
+    type: install_application
+    node: calimero-node-2
+    path: "../logic/res/meropixart.wasm"
+    dev: true
+
+  - name: Create Namespace
+    type: create_group
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Create Project Context
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    params: '{"name": "Integration Project", "description": "Playwright test project", "width": 800, "height": 600}'
+    outputs:
+      context_id: contextId
+      member_public_key: memberPublicKey
+
+  - name: Create Identity on Node 2
+    type: create_identity
+    node: calimero-node-2
+    outputs:
+      public_key_2: publicKey
+
+  - name: Wait for Identity Setup
+    type: wait
+    seconds: 3
+
+  - name: Invite Node 2
+    type: create_group_invitation
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    outputs:
+      invitation_2: invitation
+
+  - name: Node 2 Joins Namespace
+    type: join_group
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+    invitation: "{{invitation_2}}"
+
+  - name: Node 2 Joins Project Context
+    type: join_context
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+
+  - name: Wait for Sync
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Alice Joins Project
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: join
+    args:
+      # member id is derived server-side from the signer (env::executor_id).
+      username: "Alice"
+      avatar: null
+      timestamp: 1751953000
+
+  - name: Sync Alice to Node 2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Bob Joins Project
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: join
+    args:
+      # member id is derived server-side from the signer (env::executor_id).
+      username: "Bob"
+      avatar: null
+      timestamp: 1751953001
+
+  - name: Alice Adds Seed Layer
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: add_layer
+    args:
+      layer:
+        id: "layer-1"
+        name: "Background"
+        kind: "raster"
+        layerIndex: 0
+        visible: true
+        locked: false
+        opacity: 100
+        blendMode: "normal"
+        x: 0
+        y: 0
+        width: 800
+        height: 600
+        rotation: 0
+        scaleX: 100
+        scaleY: 100
+        fill: "#ffffff"
+        adjustments:
+          brightness: 0
+          contrast: 0
+          saturation: 0
+          hue: 0
+          exposure: 0
+          blur: 0
+          invert: false
+        createdBy: "node1"
+        createdAt: 1751953010
+        updatedAt: 1751953010
+
+  - name: Final Sync
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
