@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useMero, ConnectButton } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-network/mero-react";
 import Logo from "../components/Logo";
 import styles from "./LandingPage.module.css";
 
@@ -171,7 +171,9 @@ export default function LandingPage() {
           </p>
           <div className={styles.heroActions}>
             <div className={styles.ctaConnect}>
-              <ConnectButton label="Open editor" />
+              <button onClick={openEditor}>
+                {isAuthenticated ? "Open editor →" : "Get started →"}
+              </button>
             </div>
             <a
               className={styles.ctaSecondary}

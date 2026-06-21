@@ -21,4 +21,15 @@ test.describe("Landing page", () => {
   test("renders a FAQ section", async ({ page }) => {
     await expect(page.getByRole("heading", { name: "FAQ" })).toBeVisible();
   });
+
+  test("header CTA redirects an unauthenticated visitor to /login", async ({ page }) => {
+    await page.getByRole("button", { name: "Open editor" }).click();
+    await expect(page).toHaveURL(/\/login$/);
+    await expect(page.getByText("Connect to node")).toBeVisible();
+  });
+
+  test("hero CTA redirects to /login", async ({ page }) => {
+    await page.getByRole("button", { name: /Get started/ }).click();
+    await expect(page).toHaveURL(/\/login$/);
+  });
 });

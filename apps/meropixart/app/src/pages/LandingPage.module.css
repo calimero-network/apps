@@ -72,8 +72,9 @@
   opacity: 0;
   transform: translateY(36px);
   transition: opacity 0.7s cubic-bezier(.22,1,.36,1), transform 0.7s cubic-bezier(.22,1,.36,1);
+  pointer-events: none; /* invisible (un-revealed) content must not intercept clicks */
 }
-.reveal.visible { opacity: 1; transform: translateY(0); }
+.reveal.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
 
 /* ═══════════════════════════════════════════════════════════════════
    Root
@@ -91,6 +92,8 @@
 ═══════════════════════════════════════════════════════════════════ */
 .heroSection {
   position: relative;
+  z-index: 1; /* keep the header + hero CTAs above following sections so clicks aren't intercepted */
+  flex-shrink: 0; /* never collapse as a flex item — otherwise the next section rides up and covers the hero CTAs */
   overflow: hidden;
   background:
     radial-gradient(circle at 50% -10%, rgba(165,255,17,0.07), transparent 55%),
@@ -222,6 +225,7 @@
    Preview — slightly raised surface
 ═══════════════════════════════════════════════════════════════════ */
 .previewSection {
+  flex-shrink: 0;
   background: var(--bg-1);
   padding: 64px 40px 72px;
   display: flex; flex-direction: column; align-items: center;
@@ -382,6 +386,7 @@
    How it works — raised surface
 ═══════════════════════════════════════════════════════════════════ */
 .howSection {
+  flex-shrink: 0;
   background: var(--bg-1);
   border-top: 1px solid var(--border);
   padding: 84px 40px;
@@ -402,6 +407,7 @@
    FAQ — base bg with grid
 ═══════════════════════════════════════════════════════════════════ */
 .faqSection {
+  flex-shrink: 0;
   background: var(--bg-0);
   background-image: radial-gradient(circle, rgba(255,255,255,0.03) 1px, transparent 1px);
   background-size: 26px 26px;
