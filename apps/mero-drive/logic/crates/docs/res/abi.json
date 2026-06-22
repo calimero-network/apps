@@ -392,7 +392,8 @@
       ],
       "returns": {
         "$ref": "DocDto"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "list_docs",
@@ -409,7 +410,8 @@
         "items": {
           "$ref": "DocDto"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "edit_doc",
@@ -556,7 +558,8 @@
         "items": {
           "$ref": "CommentDto"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_comment",
@@ -570,14 +573,16 @@
       ],
       "returns": {
         "$ref": "CommentDto"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "comment_count",
       "params": [],
       "returns": {
         "kind": "u64"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "comment_schema_version",
@@ -591,7 +596,8 @@
       ],
       "returns": {
         "kind": "u32"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "edit_comment",
@@ -632,7 +638,8 @@
       "params": [],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     }
   ],
   "events": [

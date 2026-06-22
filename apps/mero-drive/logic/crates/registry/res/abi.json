@@ -464,7 +464,8 @@
       ],
       "returns": {
         "$ref": "FolderDto"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_folders",
@@ -474,7 +475,8 @@
         "items": {
           "$ref": "FolderDto"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "bind_folder_context",
@@ -510,7 +512,8 @@
       "returns": {
         "kind": "bytes",
         "size": 32
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "set_color",
@@ -633,7 +636,8 @@
         "items": {
           "$ref": "FolderId"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "claim_owner",
@@ -647,7 +651,8 @@
       "params": [],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "add_manager",
@@ -685,7 +690,8 @@
         "items": {
           "kind": "string"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "set_folder_role",
@@ -751,7 +757,8 @@
       ],
       "returns": {
         "$ref": "Role"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "list_folder_roles",
@@ -768,7 +775,8 @@
         "items": {
           "$ref": "FolderRoleEntry"
         }
-      }
+      },
+      "intent": "read_only"
     }
   ],
   "events": [

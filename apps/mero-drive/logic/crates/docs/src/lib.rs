@@ -264,6 +264,7 @@ impl DocsState {
         Ok(id)
     }
 
+    #[app::view]
     pub fn get_doc(&self, id: String) -> app::Result<DocDto> {
         let rec = self
             .docs
@@ -273,6 +274,7 @@ impl DocsState {
         project(&id, &rec).map_err(|e| AppError::msg(e.to_string()))
     }
 
+    #[app::view]
     pub fn list_docs(&self, include_archived: bool) -> app::Result<Vec<DocDto>> {
         let entries = self
             .docs
@@ -481,6 +483,7 @@ impl DocsState {
         Ok(id)
     }
 
+    #[app::view]
     pub fn list_comments(&self, doc_id: String) -> app::Result<Vec<CommentDto>> {
         let entries = self
             .comments
@@ -495,6 +498,7 @@ impl DocsState {
         Ok(out)
     }
 
+    #[app::view]
     pub fn get_comment(&self, id: String) -> app::Result<CommentDto> {
         let c = self
             .comments
@@ -504,6 +508,7 @@ impl DocsState {
         Ok(project_comment(&id, &c))
     }
 
+    #[app::view]
     pub fn comment_count(&self) -> app::Result<u64> {
         Ok(self
             .comments
@@ -514,6 +519,7 @@ impl DocsState {
     /// The comment's stored per-entry `schema_version` — `Some(1)` before
     /// convert, `Some(2)` after the owner re-signs. Lets the e2e assert that a
     /// one-tap `migrate_my_entries` actually re-stamped it.
+    #[app::view]
     pub fn comment_schema_version(&self, id: String) -> app::Result<Option<u32>> {
         self.comments
             .entry_schema_version(&id)
@@ -571,6 +577,7 @@ impl DocsState {
     /// returns empty there — the e2e calls this post-cascade (v2) and asserts it
     /// reads back its migrate default, proving the engine migrated the existing
     /// non-authored state.
+    #[app::view]
     pub fn default_sort_order(&self) -> app::Result<String> {
         #[cfg(feature = "schema_v2")]
         {

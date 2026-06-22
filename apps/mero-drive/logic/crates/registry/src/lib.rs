@@ -332,6 +332,7 @@ impl RegistryState {
         Ok(())
     }
 
+    #[app::view]
     pub fn get_folder(&self, id: FolderId) -> app::Result<FolderDto> {
         let rec = self
             .folders
@@ -345,6 +346,7 @@ impl RegistryState {
         Ok(project(&id.0, &rec, ctx.as_ref().map(|f| &f.0)))
     }
 
+    #[app::view]
     pub fn get_folders(&self) -> app::Result<Vec<FolderDto>> {
         let entries = self
             .folders
@@ -407,6 +409,7 @@ impl RegistryState {
         Ok(())
     }
 
+    #[app::view]
     pub fn get_folder_context(&self, folder_id: FolderId) -> app::Result<Option<ContextId>> {
         let frozen = self
             .folder_contexts
@@ -544,6 +547,7 @@ impl RegistryState {
         Ok(())
     }
 
+    #[app::view]
     pub fn get_sort_order(&self, parent_id: Option<FolderId>) -> app::Result<Vec<FolderId>> {
         let key = parent_id
             .map(|p| p.0)
@@ -572,6 +576,7 @@ impl RegistryState {
     /// `claim_owner` has not been called yet. (Empty-string-means-unclaimed
     /// keeps the generated TS type honest — `Promise<string>`, not a lying
     /// non-nullable Option.)
+    #[app::view]
     pub fn get_owner(&self) -> app::Result<String> {
         Ok(self.owner_b58())
     }
@@ -598,6 +603,7 @@ impl RegistryState {
         Ok(())
     }
 
+    #[app::view]
     pub fn list_managers(&self) -> app::Result<Vec<String>> {
         self.list_managers_inner()
             .map_err(|e| AppError::msg(e.to_string()))
@@ -636,11 +642,13 @@ impl RegistryState {
         Ok(())
     }
 
+    #[app::view]
     pub fn get_folder_role(&self, folder_id: FolderId, member: String) -> app::Result<Role> {
         self.get_folder_role_inner(&folder_id.0, &member)
             .map_err(|e| AppError::msg(e.to_string()))
     }
 
+    #[app::view]
     pub fn list_folder_roles(&self, folder_id: FolderId) -> app::Result<Vec<FolderRoleEntry>> {
         self.list_folder_roles_inner(&folder_id.0)
             .map_err(|e| AppError::msg(e.to_string()))
