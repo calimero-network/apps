@@ -1,5 +1,7 @@
 import { create } from "zustand";
-import type { DocumentInfo, Layer, Role, Tool } from "../types";
+import type {
+  BrushType, DocumentInfo, GradientFill, GradientType, Layer, Role, Selection, ShapeKind, Tool,
+} from "../types";
 import { snapshotLayerCanvas, setLayerCanvas, getLayerCanvas } from "./layerCanvases";
 import { ctx2d, loadImageFromSrc } from "../utils/raster";
 
@@ -18,6 +20,7 @@ export interface EditorState {
   layers: Layer[];
   selectedLayerId: string | null;
   editingMaskOf: string | null; // layer id whose mask is being painted, or null
+  editingTextId: string | null; // text layer being edited inline, or null
 
   activeTool: Tool;
   zoom: number;
@@ -29,6 +32,15 @@ export interface EditorState {
   brushSize: number;
   brushHardness: number;
   brushOpacity: number;
+  brushType: BrushType;
+
+  // ── tool options ──
+  selection: Selection | null;
+  shapeKind: ShapeKind;
+  shapeStroke: boolean; // stroke (outline) instead of fill
+  gradientType: GradientType;
+  gradientFill: GradientFill;
+  cloneSource: { layerId: string; x: number; y: number } | null;
 
   myRole: Role;
   /** bump to force the compositor to redraw (after imperative pixel mutations) */
@@ -44,13 +56,20 @@ export interface EditorState {
   removeLayer: (id: string) => void;
   selectLayer: (id: string | null) => void;
   setEditingMask: (id: string | null) => void;
+  setEditingText: (id: string | null) => void;
   setTool: (t: Tool) => void;
   setZoom: (z: number) => void;
   setPan: (x: number, y: number) => void;
   setPrimaryColor: (c: string) => void;
   setSecondaryColor: (c: string) => void;
   swapColors: () => void;
-  setBrush: (patch: Partial<{ size: number; hardness: number; opacity: number }>) => void;
+  setBrush: (patch: Partial<{ size: number; hardness: number; opacity: number; type: BrushType }>) => void;
+  setSelection: (s: Selection | null) => void;
+  setShapeKind: (k: ShapeKind) => void;
+  setShapeStroke: (v: boolean) => void;
+  setGradientType: (t: GradientType) => void;
+  setGradientFill: (f: GradientFill) => void;
+  setCloneSource: (s: { layerId: string; x: number; y: number } | null) => void;
   setRole: (r: Role) => void;
   bumpRender: () => void;
 
@@ -69,6 +88,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   layers: [],
   selectedLayerId: null,
   editingMaskOf: null,
+  editingTextId: null,
 
   activeTool: "move",
   zoom: 1,
@@ -80,6 +100,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   brushSize: 24,
   brushHardness: 80,
   brushOpacity: 100,
+  brushType: "soft",
+
+  selection: null,
+  shapeKind: "rectangle",
+  shapeStroke: false,
+  gradientType: "linear",
+  gradientFill: "fg-transparent",
+  cloneSource: null,
 
   myRole: "viewer",
   renderTick: 0,
@@ -109,6 +137,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   selectLayer: (id) => set({ selectedLayerId: id, editingMaskOf: null }),
   setEditingMask: (id) => set({ editingMaskOf: id }),
+  setEditingText: (id) => set({ editingTextId: id }),
   setTool: (t) => set({ activeTool: t }),
   setZoom: (z) => set({ zoom: Math.min(16, Math.max(0.05, z)) }),
   setPan: (x, y) => set({ panX: x, panY: y }),
@@ -120,7 +149,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       brushSize: patch.size ?? s.brushSize,
       brushHardness: patch.hardness ?? s.brushHardness,
       brushOpacity: patch.opacity ?? s.brushOpacity,
+      brushType: patch.type ?? s.brushType,
     })),
+  setSelection: (selection) => set({ selection }),
+  setShapeKind: (shapeKind) => set({ shapeKind }),
+  setShapeStroke: (shapeStroke) => set({ shapeStroke }),
+  setGradientType: (gradientType) => set({ gradientType }),
+  setGradientFill: (gradientFill) => set({ gradientFill }),
+  setCloneSource: (cloneSource) => set({ cloneSource }),
   setRole: (r) => set({ myRole: r }),
   bumpRender: () => set((s) => ({ renderTick: s.renderTick + 1 })),
 

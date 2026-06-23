@@ -44,42 +44,27 @@
   color: var(--accent);
 }
 
-.glyph {
-  font-size: 17px;
-  line-height: 1;
+.tool svg {
+  display: block;
+  width: 18px;
+  height: 18px;
 }
 
-/* ── Brush popover (inline beside the rail) ── */
-.brushPop {
-  position: absolute;
-  left: calc(var(--tool-w) + 8px);
-  top: 8px;
-  width: 200px;
+/* ── Hover/focus tooltip (fixed-positioned beside the rail) ── */
+.tip {
+  position: fixed;
+  transform: translateY(-50%);
   background: var(--bg-1);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  z-index: 1500;
-}
-.brushRow {
-  display: grid;
-  grid-template-columns: 34px 1fr 28px;
-  align-items: center;
-  gap: 8px;
-}
-.brushLabel {
-  font-size: 11px;
-  color: var(--text-dim);
-}
-.brushVal {
-  font-size: 11px;
   color: var(--text);
-  font-family: var(--mono);
-  text-align: right;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2000;
 }
 
 /* ── Color swatches ── */

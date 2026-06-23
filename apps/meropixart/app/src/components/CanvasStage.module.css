@@ -13,3 +13,58 @@
   height: 100%;
   touch-action: none;
 }
+
+.cropBar {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  font-size: 12px;
+  color: var(--text);
+  z-index: 60;
+  white-space: nowrap;
+}
+.cropBar button {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-3);
+  color: var(--text);
+}
+.cropBar button:first-of-type { background: var(--accent); color: #0b0e12; font-weight: 600; }
+.cropBar button:hover { filter: brightness(1.1); }
+
+.hint {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  padding: 5px 12px;
+  background: rgba(15, 20, 25, 0.9);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--text-dim);
+  z-index: 60;
+  pointer-events: none;
+}
+
+.textEditor {
+  position: absolute;
+  margin: 0;
+  padding: 2px;
+  background: rgba(0, 0, 0, 0.06);
+  border: 1px dashed var(--accent);
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  white-space: pre;
+  z-index: 70;
+  caret-color: var(--accent);
+}

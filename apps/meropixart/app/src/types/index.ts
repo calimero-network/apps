@@ -150,3 +150,51 @@ export type Tool =
   | "clone"
   | "hand"
   | "zoom";
+
+// ── Tool options ──────────────────────────────────────────────────────────────
+
+/** Pixel selection (document-space). Constrains paint/fill/shape/gradient/delete. */
+export type Selection =
+  | { kind: "rect"; x: number; y: number; w: number; h: number }
+  | { kind: "poly"; points: number[] }; // flat [x0,y0,x1,y1,...] in doc space
+
+export type ShapeKind = "rectangle" | "rounded" | "ellipse" | "line" | "triangle";
+
+export const SHAPE_KINDS: { kind: ShapeKind; label: string }[] = [
+  { kind: "rectangle", label: "Rectangle" },
+  { kind: "rounded", label: "Rounded Rectangle" },
+  { kind: "ellipse", label: "Ellipse" },
+  { kind: "line", label: "Line" },
+  { kind: "triangle", label: "Triangle" },
+];
+
+export type BrushType = "round" | "soft" | "square";
+
+export const BRUSH_TYPES: { type: BrushType; label: string }[] = [
+  { type: "soft", label: "Soft Round" },
+  { type: "round", label: "Hard Round" },
+  { type: "square", label: "Square" },
+];
+
+export type GradientType = "linear" | "radial";
+/** fg→bg, fg→transparent. */
+export type GradientFill = "fg-bg" | "fg-transparent";
+
+export type FilterKind =
+  | "blur"
+  | "sharpen"
+  | "grayscale"
+  | "invert"
+  | "sepia"
+  | "brighten"
+  | "darken";
+
+export const FILTERS: { kind: FilterKind; label: string }[] = [
+  { kind: "blur", label: "Gaussian Blur" },
+  { kind: "sharpen", label: "Sharpen" },
+  { kind: "grayscale", label: "Grayscale" },
+  { kind: "sepia", label: "Sepia" },
+  { kind: "invert", label: "Invert" },
+  { kind: "brighten", label: "Brighten" },
+  { kind: "darken", label: "Darken" },
+];

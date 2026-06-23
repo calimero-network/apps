@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useEditorStore } from "../store/editorStore";
 import { peekLayerCanvas } from "../store/layerCanvases";
 import { BLEND_MODES, type BlendMode, type Layer, type LayerKind } from "../types";
+import { Icon, type IconName } from "./ToolIcons";
 import styles from "./LayersPanel.module.css";
 
 interface Props {
@@ -14,8 +15,8 @@ interface Props {
   onToggleMask: (id: string) => void;
 }
 
-const KIND_GLYPH: Record<LayerKind, string> = {
-  raster: "▦", group: "▣", text: "T", adjustment: "◐", fill: "■",
+const KIND_ICON: Record<LayerKind, IconName> = {
+  raster: "raster", group: "group", text: "textLayer", adjustment: "adjustmentLayer", fill: "fillLayer",
 };
 
 export default function LayersPanel({
@@ -105,10 +106,11 @@ export default function LayersPanel({
             >
               <button
                 className={styles.eye}
-                title={l.visible ? "Hide" : "Show"}
+                title={l.visible ? "Hide layer" : "Show layer"}
+                aria-label={l.visible ? "Hide layer" : "Show layer"}
                 onClick={(e) => { e.stopPropagation(); onUpdateMeta(l.id, { visible: !l.visible }); }}
               >
-                {l.visible ? "👁" : "—"}
+                <Icon name={l.visible ? "eye" : "eyeOff"} size={15} />
               </button>
 
               <Thumb layer={l} />
@@ -127,21 +129,25 @@ export default function LayersPanel({
                   className={styles.name}
                   onDoubleClick={(e) => { e.stopPropagation(); if (editable) setRenaming(l.id); }}
                 >
-                  <span className={styles.kind}>{KIND_GLYPH[l.kind]}</span>
+                  <span className={styles.kind} title={`${l.kind} layer`}><Icon name={KIND_ICON[l.kind]} size={14} /></span>
                   {l.name}
-                  {l.maskBlobId && <span className={styles.maskTag} title="Has mask">◳</span>}
+                  {l.maskBlobId && <span className={styles.maskTag} title="Has layer mask"><Icon name="mask" size={12} /></span>}
                 </span>
               )}
 
               {editable && (
                 <div className={styles.itemActions} onClick={(e) => e.stopPropagation()}>
-                  <button title={maskOn ? "Stop editing mask" : "Edit mask"}
+                  <button title={maskOn ? "Stop editing mask" : "Edit layer mask"}
+                    aria-label={maskOn ? "Stop editing mask" : "Edit layer mask"}
                     className={maskOn ? styles.maskActive : ""}
-                    onClick={() => setEditingMask(maskOn ? null : l.id)}>◳</button>
-                  <button title="Move up" onClick={() => move(l.id, -1)}>▲</button>
-                  <button title="Move down" onClick={() => move(l.id, 1)}>▼</button>
-                  <button title={l.locked ? "Unlock" : "Lock"}
-                    onClick={() => onUpdateMeta(l.id, { locked: !l.locked })}>{l.locked ? "🔒" : "🔓"}</button>
+                    onClick={() => setEditingMask(maskOn ? null : l.id)}><Icon name="mask" size={14} /></button>
+                  <button title="Move layer up" aria-label="Move layer up" onClick={() => move(l.id, -1)}><Icon name="arrowUp" size={14} /></button>
+                  <button title="Move layer down" aria-label="Move layer down" onClick={() => move(l.id, 1)}><Icon name="arrowDown" size={14} /></button>
+                  <button title={l.locked ? "Unlock layer" : "Lock layer"}
+                    aria-label={l.locked ? "Unlock layer" : "Lock layer"}
+                    onClick={() => onUpdateMeta(l.id, { locked: !l.locked })}><Icon name={l.locked ? "lock" : "unlock"} size={14} /></button>
+                  <button title="Delete layer" aria-label="Delete layer" className={styles.rowDel}
+                    onClick={() => onDelete(l.id)}><Icon name="trash" size={14} /></button>
                 </div>
               )}
             </div>
@@ -151,15 +157,15 @@ export default function LayersPanel({
 
       {editable && (
         <div className={styles.toolbar}>
-          <button title="New raster layer" onClick={() => onAdd("raster")}>＋▦</button>
-          <button title="New text layer" onClick={() => onAdd("text")}>＋T</button>
-          <button title="New fill layer" onClick={() => onAdd("fill")}>＋■</button>
-          <button title="New group" onClick={() => onAdd("group")}>＋▣</button>
+          <button title="New raster layer" aria-label="New raster layer" onClick={() => onAdd("raster")}><Icon name="raster" size={16} /></button>
+          <button title="New text layer" aria-label="New text layer" onClick={() => onAdd("text")}><Icon name="textLayer" size={16} /></button>
+          <button title="New fill layer" aria-label="New fill layer" onClick={() => onAdd("fill")}><Icon name="fillLayer" size={16} /></button>
+          <button title="New group" aria-label="New group" onClick={() => onAdd("group")}><Icon name="group" size={16} /></button>
           <span className={styles.spacer} />
-          <button title="Group selected" disabled={!sel} onClick={onGroupSelected}>▣</button>
-          <button title="Toggle mask" disabled={!sel} onClick={() => sel && onToggleMask(sel.id)}>◳</button>
-          <button title="Duplicate" disabled={!sel} onClick={() => sel && onDuplicate(sel.id)}>⧉</button>
-          <button title="Delete" className={styles.del} disabled={!sel} onClick={() => sel && onDelete(sel.id)}>🗑</button>
+          <button title="Group selected layer" aria-label="Group selected layer" disabled={!sel} onClick={onGroupSelected}><Icon name="group" size={16} /></button>
+          <button title="Add / remove layer mask" aria-label="Add or remove layer mask" disabled={!sel} onClick={() => sel && onToggleMask(sel.id)}><Icon name="mask" size={16} /></button>
+          <button title="Duplicate layer" aria-label="Duplicate layer" disabled={!sel} onClick={() => sel && onDuplicate(sel.id)}><Icon name="duplicate" size={16} /></button>
+          <button title="Delete layer" aria-label="Delete layer" className={styles.del} disabled={!sel} onClick={() => sel && onDelete(sel.id)}><Icon name="trash" size={16} /></button>
         </div>
       )}
     </div>

@@ -15,11 +15,14 @@ import {
   bytesToImage, canvasToPngBytes, createCanvas, ctx2d, applyCurves, parseCurves,
 } from "../utils/raster";
 import { composite } from "../utils/compositor";
+import { applyFilter } from "../utils/filters";
+import { selectionPathLocal } from "../utils/geometry";
 import {
   NEUTRAL_ADJUSTMENTS, type Adjustments, type CursorState, type DocumentInfo,
-  type Layer, type LayerKind, type Member, type Role,
+  type FilterKind, type Layer, type LayerKind, type Member, type Role, type TextProps,
 } from "../types";
 import Toolbar from "../components/Toolbar";
+import OptionsBar from "../components/OptionsBar";
 import CanvasStage from "../components/CanvasStage";
 import LayersPanel from "../components/LayersPanel";
 import AdjustmentsPanel from "../components/AdjustmentsPanel";
@@ -41,7 +44,7 @@ export default function EditorPage() {
   const {
     doc, layers, selectedLayerId, editingMaskOf,
     setDoc, setLayers, upsertLayer, removeLayer, selectLayer, setEditingMask,
-    setRole, setZoom, setPan, bumpRender, canEdit, clearHistory,
+    setRole, setZoom, setPan, bumpRender, canEdit, clearHistory, setSelection,
   } = useEditorStore();
 
   const myId = useRef<string>("");
@@ -462,9 +465,148 @@ export default function EditorPage() {
     } finally { setSaving(false); }
   }, [ctxId, doc, canEdit, upsertLayer, selectLayer, bumpRender, commitPixels, showToast]);
 
+  const onImportSvg = useCallback(async (file: File) => {
+    if (!canEdit() || !doc) { showToast("You need editor access to add SVGs.", "error"); return; }
+    setSaving(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const img = await bytesToImage(buf, "image/svg+xml");
+      // SVGs often lack an intrinsic size — fall back to a sensible box.
+      const w = img.width || Math.min(doc.width, 640);
+      const h = img.height || Math.min(doc.height, 640);
+      const layer = makeLayer("raster");
+      layer.name = file.name.replace(/\.[^.]+$/, "") || "SVG";
+      layer.width = w; layer.height = h;
+      layer.x = Math.round((doc.width - w) / 2);
+      layer.y = Math.round((doc.height - h) / 2);
+      const c = getLayerCanvas(layer.id, w, h);
+      ctx2d(c).drawImage(img, 0, 0, w, h);
+      upsertLayer(layer);
+      selectLayer(layer.id);
+      bumpRender();
+      await rpcCall(ctxId, "add_layer", { layer });
+      await commitPixels(layer.id);
+    } catch (e) {
+      showToast(errMsg(e), "error");
+    } finally { setSaving(false); }
+  }, [ctxId, doc, canEdit, upsertLayer, selectLayer, bumpRender, commitPixels, showToast]);
+
+  // ── Shape / gradient → new raster layer ────────────────────────────────────
+  const onCreateRasterLayer = useCallback(async ({ name, x, y, canvas }: { name: string; x: number; y: number; canvas: HTMLCanvasElement }) => {
+    if (!canEdit() || !doc) return;
+    const layer = makeLayer("raster");
+    layer.name = name;
+    layer.x = x; layer.y = y;
+    layer.width = canvas.width; layer.height = canvas.height;
+    const c = getLayerCanvas(layer.id, canvas.width, canvas.height);
+    ctx2d(c).drawImage(canvas, 0, 0);
+    setLayerCanvas(layer.id, c);
+    upsertLayer(layer);
+    selectLayer(layer.id);
+    bumpRender();
+    try { await rpcCall(ctxId, "add_layer", { layer }); await commitPixels(layer.id); }
+    catch (e) { showToast(errMsg(e), "error"); }
+  }, [ctxId, doc, canEdit, upsertLayer, selectLayer, bumpRender, commitPixels, showToast]);
+
+  // ── Text layer create / commit ──────────────────────────────────────────────
+  const onCreateTextLayer = useCallback(async (x: number, y: number): Promise<string | undefined> => {
+    if (!canEdit() || !doc) return undefined;
+    const layer = makeLayer("text");
+    layer.x = x; layer.y = y;
+    layer.width = 320;
+    layer.height = Math.round((layer.text?.fontSize ?? 72) * 1.4);
+    layer.text = { ...(layer.text as TextProps), content: "" };
+    upsertLayer(layer);
+    selectLayer(layer.id);
+    bumpRender();
+    try { await rpcCall(ctxId, "add_layer", { layer }); }
+    catch (e) { showToast(errMsg(e), "error"); }
+    return layer.id;
+  }, [ctxId, doc, canEdit, upsertLayer, selectLayer, bumpRender, showToast]);
+
+  const onCommitText = useCallback((id: string, text: TextProps, width: number, height: number) => {
+    const l = useEditorStore.getState().layers.find((x) => x.id === id);
+    if (!l) return;
+    const now = ts();
+    upsertLayer({ ...l, text, width, height, updatedAt: now });
+    bumpRender();
+    rpcCall(ctxId, "update_text", {
+      id, content: text.content, font_family: text.fontFamily, font_size: text.fontSize,
+      color: text.color, bold: text.bold, italic: text.italic, align: text.align ?? "left", updated_at: now,
+    }).catch((e) => showToast(errMsg(e), "error"));
+    commitMeta(id, { width, height });
+  }, [ctxId, upsertLayer, bumpRender, commitMeta, showToast]);
+
+  /** Typography change from the options bar — re-fit the layer box to the text. */
+  const onUpdateText = useCallback((id: string, patch: Partial<TextProps>) => {
+    const l = useEditorStore.getState().layers.find((x) => x.id === id);
+    if (!l || !l.text) return;
+    const text = { ...l.text, ...patch };
+    const m = ctx2d(createCanvas(8, 8));
+    m.font = `${text.italic ? "italic " : ""}${text.bold ? "700 " : "400 "}${text.fontSize}px ${text.fontFamily}, sans-serif`;
+    const lines = (text.content || "Text").split("\n");
+    const width = Math.max(8, ...lines.map((s) => Math.ceil(m.measureText(s).width))) + 8;
+    const height = Math.ceil(lines.length * text.fontSize * 1.2) + 8;
+    onCommitText(id, text, width, height);
+  }, [onCommitText]);
+
+  // ── Crop the document ───────────────────────────────────────────────────────
+  const onCrop = useCallback(async (rect: { x: number; y: number; w: number; h: number }) => {
+    if (!canEdit() || !doc) return;
+    const ox = Math.round(rect.x);
+    const oy = Math.round(rect.y);
+    const w = Math.max(1, Math.round(rect.w));
+    const h = Math.max(1, Math.round(rect.h));
+    const now = ts();
+    const moved = useEditorStore.getState().layers.map((l) => ({ ...l, x: l.x - ox, y: l.y - oy, updatedAt: now }));
+    setLayers(moved);
+    setDoc({ ...doc, width: w, height: h });
+    setSelection(null);
+    bumpRender();
+    try {
+      await rpcCall(ctxId, "update_document", { width: w, height: h });
+      for (const l of moved) await commitMeta(l.id, { x: l.x, y: l.y });
+    } catch (e) { showToast(errMsg(e), "error"); }
+  }, [ctxId, doc, canEdit, setLayers, setDoc, setSelection, bumpRender, commitMeta, showToast]);
+
+  // ── Filters (Image menu) — destructive, on the active raster/fill layer ─────
+  const onApplyFilter = useCallback(async (kind: FilterKind) => {
+    const sel = useEditorStore.getState().selectedLayer();
+    if (!sel || !canEdit()) return;
+    if (sel.kind !== "raster" && sel.kind !== "fill") { showToast("Select a raster layer to filter.", "error"); return; }
+    const c = peekLayerCanvas(sel.id);
+    if (!c) { showToast("This layer has no pixels yet.", "error"); return; }
+    useEditorStore.getState().pushHistory([sel.id]);
+    const out = applyFilter(c, kind);
+    const ctx = ctx2d(c);
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.drawImage(out, 0, 0);
+    bumpRender();
+    await commitPixels(sel.id);
+  }, [canEdit, bumpRender, commitPixels, showToast]);
+
+  const onSelectAll = useCallback(() => {
+    const d = useEditorStore.getState().doc;
+    if (d) setSelection({ kind: "rect", x: 0, y: 0, w: d.width, h: d.height });
+  }, [setSelection]);
+  const onDeselect = useCallback(() => setSelection(null), [setSelection]);
+
   // ── Export ───────────────────────────────────────────────────────────────
-  const onExport = useCallback((format: "png" | "jpeg") => {
+  const onExport = useCallback((format: "png" | "jpeg" | "svg") => {
     if (!doc) return;
+    if (format === "svg") {
+      const flat = composite(useEditorStore.getState().layers, doc.width, doc.height, { background: doc.background });
+      const dataUrl = flat.toDataURL("image/png");
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${doc.width}" height="${doc.height}" viewBox="0 0 ${doc.width} ${doc.height}"><image href="${dataUrl}" width="${doc.width}" height="${doc.height}"/></svg>`;
+      const blob = new Blob([svg], { type: "image/svg+xml" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${doc.name || "meropixart"}.svg`;
+      a.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
     const bg = format === "jpeg" ? (doc.background && doc.background !== "#00000000" ? doc.background : "#ffffff") : doc.background;
     let flat = composite(useEditorStore.getState().layers, doc.width, doc.height, { background: bg });
     if (format === "jpeg") {
@@ -495,23 +637,58 @@ export default function EditorPage() {
     const onKey = (e: KeyboardEvent) => {
       const tgt = e.target as HTMLElement;
       if (tgt && (tgt.tagName === "INPUT" || tgt.tagName === "TEXTAREA")) return;
+      const st = useEditorStore.getState();
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key.toLowerCase() === "z") {
         e.preventDefault();
-        if (e.shiftKey) useEditorStore.getState().redo();
-        else useEditorStore.getState().undo();
+        if (e.shiftKey) st.redo(); else st.undo();
+        return;
+      }
+      if (mod && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        if (st.doc) st.setSelection({ kind: "rect", x: 0, y: 0, w: st.doc.width, h: st.doc.height });
+        return;
+      }
+      if (mod && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        st.setSelection(null);
+        return;
+      }
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (st.editingTextId) return;
+        const layer = st.selectedLayer();
+        if (!layer || !st.canEdit()) return;
+        e.preventDefault();
+        if (st.selection && (layer.kind === "raster" || layer.kind === "fill")) {
+          const c = peekLayerCanvas(layer.id);
+          if (c) {
+            st.pushHistory([layer.id]);
+            const cx = ctx2d(c);
+            cx.save();
+            cx.globalCompositeOperation = "destination-out";
+            cx.fillStyle = "#000";
+            cx.fill(selectionPathLocal(st.selection, layer));
+            cx.restore();
+            bumpRender();
+            commitPixels(layer.id);
+          }
+        } else {
+          onDelete(layer.id);
+        }
+        return;
       }
       if (!mod) {
         const map: Record<string, string> = {
           v: "move", b: "brush", e: "eraser", g: "bucket", i: "eyedropper",
-          t: "text", m: "marquee", h: "hand", c: "crop",
+          t: "text", m: "marquee", l: "lasso", h: "hand", c: "crop",
+          u: "shape", k: "clone", z: "zoom",
         };
-        if (map[e.key]) useEditorStore.getState().setTool(map[e.key] as never);
+        if (map[e.key]) st.setTool(map[e.key] as never);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [onDelete, commitPixels, bumpRender]);
 
   // ── Remote cursors transformed to screen space ─────────────────────────────
   const screenCursors = useMemo(() => {
@@ -542,10 +719,15 @@ export default function EditorPage() {
         saving={saving}
         onBack={() => navigate(`/teams/${teamId}/projects`)}
         onImportImage={onImportImage}
+        onImportSvg={onImportSvg}
         onExport={onExport}
+        onApplyFilter={onApplyFilter}
+        onSelectAll={onSelectAll}
+        onDeselect={onDeselect}
         onOpenInvite={() => setShowInvite(true)}
         onOpenSettings={() => setShowSettings(true)}
       />
+      <OptionsBar onUpdateText={onUpdateText} />
 
       <div className={styles.body}>
         <Toolbar />
@@ -553,6 +735,10 @@ export default function EditorPage() {
           commitPixels={commitPixels}
           commitMaskPixels={commitMaskPixels}
           commitMeta={commitMeta}
+          onCreateRasterLayer={onCreateRasterLayer}
+          onCreateTextLayer={onCreateTextLayer}
+          onCommitText={onCommitText}
+          onCrop={onCrop}
           onCursorMove={onCursorMove}
           overlay={<CursorsOverlay cursors={screenCursors} myIdentity={myId.current} members={members} />}
         />
