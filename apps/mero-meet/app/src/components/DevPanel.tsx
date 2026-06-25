@@ -50,7 +50,7 @@ export default function DevPanel({ diagnostics, getStats, callId, onClose }: Dev
       <div className={styles.head}>
         <span className={styles.title}>⚙ WebRTC diagnostics</span>
         <span className={styles.call}>{callId ?? "—"}</span>
-        <button className={styles.close} onClick={onClose} title="Hide (Ctrl/Cmd+Shift+D)">
+        <button className={styles.close} onClick={onClose} title="Hide diagnostics">
           ✕
         </button>
       </div>

@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCall } from "../hooks/useCall";
 import VideoTile from "../components/VideoTile";
 import DevPanel from "../components/DevPanel";
-import { isDevMode, setDevMode } from "../lib/dev";
+import { isDevMode } from "../lib/dev";
 import styles from "./CallPage.module.css";
 
 /** The active call: a grid of video tiles + the control bar. */
@@ -11,22 +11,10 @@ export default function CallPage() {
   const navigate = useNavigate();
   const call = useCall(() => navigate("/lobby"));
 
-  // Developer mode: the ONLY place WebRTC internals surface. Hidden by default;
-  // toggle with Ctrl/Cmd+Shift+D.
-  const [dev, setDev] = useState(isDevMode());
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "D" || e.key === "d")) {
-        e.preventDefault();
-        setDev((on) => {
-          setDevMode(!on);
-          return !on;
-        });
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  // Developer mode comes from the desktop app's Settings → Developer mode
+  // (forwarded via the URL hash). It's the ONLY place WebRTC internals surface.
+  // The close button just dismisses the overlay for this session.
+  const [showDev, setShowDev] = useState(isDevMode());
 
   const tileCount = 1 + call.remotes.length;
   const gridClass =
@@ -57,15 +45,12 @@ export default function CallPage() {
 
       {call.joining && <div className={styles.joining}>joining call…</div>}
 
-      {dev && (
+      {showDev && (
         <DevPanel
           diagnostics={call.diagnostics}
           getStats={call.getStats}
           callId={call.callId}
-          onClose={() => {
-            setDevMode(false);
-            setDev(false);
-          }}
+          onClose={() => setShowDev(false)}
         />
       )}
 

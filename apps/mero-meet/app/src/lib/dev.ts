@@ -3,26 +3,16 @@
 // WebRTC is invisible plumbing for normal users — nothing about peers, signaling
 // or ICE is ever shown in the UI. Developer mode is the *only* place any of it
 // surfaces: a diagnostics overlay with the signaling log + per-peer connection
-// stats. It's OFF by default in the packaged desktop app and only turns on when:
-//   - explicitly toggled (Ctrl/Cmd+Shift+D in a call → persisted in localStorage), or
-//   - running against the Vite dev server (import.meta.env.DEV).
+// stats.
+//
+// The source of truth is the **Calimero desktop app's developer-mode setting**
+// (Settings → Developer mode). tauri-app forwards it to this window via the
+// `dev_mode` URL-hash param (see appUtils `openAppFrontend`); we read it from
+// the captured session. We also enable it under the Vite dev server for local
+// development. We do NOT keep a separate per-app toggle.
 
-const KEY = "mm-dev";
+import { isDeveloperMode } from "./session";
 
 export function isDevMode(): boolean {
-  try {
-    if (localStorage.getItem(KEY) === "1") return true;
-    if (localStorage.getItem(KEY) === "0") return false;
-  } catch {
-    /* localStorage unavailable */
-  }
-  return Boolean(import.meta.env.DEV);
-}
-
-export function setDevMode(on: boolean): void {
-  try {
-    localStorage.setItem(KEY, on ? "1" : "0");
-  } catch {
-    /* ignore */
-  }
+  return isDeveloperMode() || Boolean(import.meta.env.DEV);
 }

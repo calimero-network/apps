@@ -12,6 +12,7 @@
 
 let contextId: string | null = null;
 let executorPublicKey: string | null = null;
+let devMode = false;
 
 export function captureSessionFromHash(): void {
   const hash = window.location.hash.slice(1);
@@ -20,6 +21,13 @@ export function captureSessionFromHash(): void {
   contextId = p.get("context_id") ?? p.get("contextId") ?? null;
   executorPublicKey =
     p.get("executor_public_key") ?? p.get("executorPublicKey") ?? null;
+  // The desktop app forwards its developer-mode setting here.
+  devMode = p.get("dev_mode") === "1";
+}
+
+/** Developer mode as set in the Calimero desktop app's settings. */
+export function isDeveloperMode(): boolean {
+  return devMode;
 }
 
 export function getContextId(): string | null {
