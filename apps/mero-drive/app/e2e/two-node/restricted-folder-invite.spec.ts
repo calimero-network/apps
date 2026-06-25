@@ -62,9 +62,11 @@ test.describe('Restricted folder invite (two-node)', () => {
     await bob.tree.openFolder('Privileged');
     const bobIdentity = await bob.restrictedCard.copyIdentity();
 
-    // Alice: add Bob via the FolderSharingPanel.
+    // Alice: add Bob via the FolderSharingPanel inside the Info modal.
+    await alice.openFolderInfo('Privileged');
     await alice.sharing.addMember(bobIdentity);
     await alice.sharing.expectMemberVisible(bobIdentity.slice(0, 12));
+    await alice.closeFolderInfo();
 
     // Bob: refresh his view → restricted card unmounts, doc list
     // mounts, can read Alice's doc.

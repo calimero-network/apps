@@ -17,26 +17,32 @@ import type { MergedFolder } from '@/hooks/useWorkspaceTree';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderOperations } from '@/hooks/useFolderOperations';
 import { FolderContextMenu } from './FolderContextMenu';
+import { FolderDocLeaves } from './FolderDocLeaves';
 
 interface Props {
   node: TreeNode;
   byId: Map<string, MergedFolder>;
-  depth: number;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  expanded: Set<string>;
+  onToggleExpanded: (id: string) => void;
+  selectedDocId: string | null;
+  onOpenDoc: (folderId: string, docId: string) => void;
 }
 
 export function FolderTreeItem({
   node,
   byId,
-  depth,
   selectedId,
   onSelect,
+  expanded,
+  onToggleExpanded,
+  selectedDocId,
+  onOpenDoc,
 }: Props) {
   const folder = byId.get(node.id);
   const isSelected = selectedId === node.id;
-  const hasChildren = node.children.length > 0;
-  const [expanded, setExpanded] = useState(true);
+  const isExpanded = expanded.has(node.id);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   // Re-entry guard for submitRename. Without this, pressing Enter
@@ -93,35 +99,23 @@ export function FolderTreeItem({
             ? 'bg-primary/10 text-primary'
             : 'text-foreground hover:bg-muted'
         }`}
-        style={{ paddingLeft: 8 + depth * 14 }}
         onClick={() => !renaming && onSelect(node.id)}
       >
-        {hasChildren ? (
-          <button
-            type="button"
-            aria-label={expanded ? 'Collapse' : 'Expand'}
-            className="flex h-4 w-4 items-center justify-center text-muted-foreground hover:text-foreground"
-            onClick={(e) => {
-              // Only stop propagation when the button actually has
-              // a toggle to perform; swallowing clicks on the leaf-
-              // node spacer version of this button would make the
-              // left-edge of a leaf row unclickable for selection.
-              e.stopPropagation();
-              setExpanded((v) => !v);
-            }}
-          >
-            {expanded ? (
-              <ChevronDown className="h-3.5 w-3.5" />
-            ) : (
-              <ChevronRight className="h-3.5 w-3.5" />
-            )}
-          </button>
-        ) : (
-          // Inert spacer for leaf rows. A <span> doesn't intercept
-          // the row-level onClick, so the full row stays clickable
-          // for selection.
-          <span className="inline-block h-4 w-4" aria-hidden />
-        )}
+        <button
+          type="button"
+          aria-label={isExpanded ? 'Collapse' : 'Expand'}
+          className="flex h-4 w-4 items-center justify-center text-muted-foreground hover:text-foreground"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleExpanded(node.id);
+          }}
+        >
+          {isExpanded ? (
+            <ChevronDown className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5" />
+          )}
+        </button>
         {(() => {
           const color = safeColor(folder?.color);
           return color ? (
@@ -172,16 +166,29 @@ export function FolderTreeItem({
           />
         )}
       </div>
-      {hasChildren && expanded && (
-        <ul>
+      {isExpanded && (
+        // Subtree guide: the left border draws the vertical tree line,
+        // ml-4 positions it under the parent's chevron, and pl-1 gives
+        // children a small gap to the right of the line. Indentation is
+        // structural (one nested <ul> per level) rather than a computed
+        // per-row padding, so the line and the indent always agree.
+        <ul className="ml-4 space-y-0.5 border-l border-border/60 pl-1">
+          <FolderDocLeaves
+            folderId={node.id}
+            selectedDocId={selectedDocId}
+            onOpenDoc={onOpenDoc}
+          />
           {node.children.map((c) => (
             <FolderTreeItem
               key={c.id}
               node={c}
               byId={byId}
-              depth={depth + 1}
               selectedId={selectedId}
               onSelect={onSelect}
+              expanded={expanded}
+              onToggleExpanded={onToggleExpanded}
+              selectedDocId={selectedDocId}
+              onOpenDoc={onOpenDoc}
             />
           ))}
         </ul>

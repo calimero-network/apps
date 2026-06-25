@@ -57,7 +57,9 @@ test.describe('Folder CRUD (single-node)', () => {
   test('create folder with empty alias shows validation error', async ({
     alice,
   }) => {
-    await alice.page.getByRole('button', { name: /^New$/ }).click();
+    // Scope to aside — the only "New" button is the FolderTree header
+    // button (DocumentList's "New" is gone in the PR1 UI).
+    await alice.page.locator('aside').getByRole('button', { name: /^New$/ }).click();
     const dialog = alice.page.getByRole('dialog');
     // Leave the input empty and try to submit; create button should
     // be disabled OR a validation error appears.

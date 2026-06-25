@@ -10,12 +10,12 @@ test.describe('Document CRUD (single-node)', () => {
     await alice.tree.openFolder('Drafts');
   });
 
-  test('create doc appears in DocumentList', async ({ alice }) => {
+  test('create doc appears in the sidebar', async ({ alice }) => {
     await alice.createDoc('Hello World');
     await alice.docs.expectDocVisible('Hello World');
   });
 
-  test('open doc mounts the full-screen editor', async ({ alice }) => {
+  test('open doc mounts the inline editor', async ({ alice }) => {
     await alice.createDoc('Open Me');
     await alice.openDoc('Open Me');
     await alice.editor.expectMounted();
@@ -36,6 +36,9 @@ test.describe('Document CRUD (single-node)', () => {
     await alice.openDoc('Returnable');
     await alice.editor.close();
     await alice.docs.expectDocVisible('Returnable');
+    await expect(
+      alice.page.getByRole('heading', { name: /No document open/i }),
+    ).toBeVisible();
   });
 
   test('delete doc removes from list', async ({ alice }) => {
@@ -45,11 +48,14 @@ test.describe('Document CRUD (single-node)', () => {
     await alice.docs.expectDocHidden('To Trash');
   });
 
-  test('switching folders clears selectedDocId', async ({ alice }) => {
+  test('switching folders clears the open document', async ({ alice }) => {
     await alice.createDoc('Doc A');
     await alice.createFolder({ name: 'Other', visibility: 'Open' });
     await alice.tree.openFolder('Other');
-    // No doc selected in the new folder.
-    await alice.docs.expectDocHidden('Doc A');
+    // No doc open in the new folder — editor unmounts, empty state shows.
+    await expect(alice.page.locator('.ProseMirror')).toBeHidden();
+    await expect(
+      alice.page.getByRole('heading', { name: /No document open/i }),
+    ).toBeVisible({ timeout: 15_000 });
   });
 });

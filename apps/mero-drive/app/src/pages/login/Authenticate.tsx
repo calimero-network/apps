@@ -11,12 +11,18 @@
 // effect below navigates to /app.
 //
 // We keep our own Hero / Features / CTA / Footer sections for the
-// visual landing experience; the CTA's onConnect is wired to the
-// mero-react connect flow via scrolling the ConnectButton into view.
+// visual landing experience; the Hero / CTA "Get Started" / "Connect"
+// buttons open the mero-react login modal directly (the same flow the
+// ConnectButton triggers) via a controlled <LoginModal>.
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMero, ConnectButton } from '@calimero-network/mero-react';
+import {
+  useMero,
+  ConnectButton,
+  LoginModal,
+  ConnectionType,
+} from '@calimero-network/mero-react';
 import { Hero } from '@/components/landing/Hero';
 import { Features } from '@/components/landing/Features';
 import { EditorPreview } from '@/components/landing/EditorPreview';
@@ -25,37 +31,46 @@ import { Footer } from '@/components/landing/Footer';
 
 const Authenticate: React.FC = () => {
   const navigate = useNavigate();
-  const { isAuthenticated } = useMero();
-  const connectRef = useRef<HTMLDivElement>(null);
+  const { isAuthenticated, connectToNode } = useMero();
+  // Controls the mero-react login modal opened by the landing CTAs.
+  const [loginOpen, setLoginOpen] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) navigate('/app');
   }, [isAuthenticated, navigate]);
 
-  // CTA / Hero buttons call this to bring the ConnectButton into view
-  // and trigger its login flow. Clicking ConnectButton itself also
-  // works without this — the scroll is a UX affordance for the
-  // landing-page "Connect" / "Get Started" buttons rendered far from
-  // the actual auth control.
-  const scrollToConnect = () => {
-    connectRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  };
+  // Hero / CTA "Get Started" / "Connect" buttons open the login modal
+  // directly — the same node-picker + OAuth handoff the ConnectButton
+  // runs — instead of merely scrolling to the button. connectToNode is
+  // mero-react's public connect entry point; once it resolves, the
+  // OAuth callback flips isAuthenticated and the effect above routes to
+  // /app.
+  const openLogin = () => setLoginOpen(true);
 
   return (
     <div className="min-h-screen bg-background">
-      <Hero onConnect={scrollToConnect} />
+      <Hero onConnect={openLogin} />
 
-      {/* Dedicated mero-react connect surface. Sits between Hero and
-          Features so the CTA scrolls the user into an obvious
-          call-to-action zone. */}
-      <div ref={connectRef} className="flex justify-center py-10">
+      {/* Dedicated mero-react connect surface — also reflects connection
+          status. A second visible entry point alongside the CTAs. */}
+      <div className="flex justify-center py-10">
         <ConnectButton />
       </div>
 
       <Features />
       <EditorPreview />
-      <CTA onConnect={scrollToConnect} />
+      <CTA onConnect={openLogin} />
       <Footer />
+
+      <LoginModal
+        isOpen={loginOpen}
+        onClose={() => setLoginOpen(false)}
+        onConnect={(url) => {
+          connectToNode(url);
+          setLoginOpen(false);
+        }}
+        connectionType={ConnectionType.RemoteAndLocal}
+      />
     </div>
   );
 };

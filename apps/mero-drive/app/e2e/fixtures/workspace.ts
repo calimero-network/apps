@@ -60,7 +60,8 @@ export class WorkspaceDriver {
     });
   }
 
-  async createNamespace(name: string): Promise<void> {
+  // Private: performs the dialog steps only (no gate dismiss).
+  private async createNamespaceRaw(name: string): Promise<void> {
     await this.page
       .getByRole('button', { name: /New workspace/i })
       .click();
@@ -72,6 +73,41 @@ export class WorkspaceDriver {
     await expect(this.page.locator('select').first()).toContainText(name, {
       timeout: 15_000,
     });
+  }
+
+  // Dismiss the required display-name gate by setting a name. The gate
+  // blocks the sidebar + main pane after create/join until a name is set.
+  async dismissNameGate(displayName = this.label): Promise<void> {
+    const gate = this.page.getByRole('dialog', { name: /Set your name/i });
+    await expect(gate).toBeVisible({ timeout: 20_000 });
+    await gate.getByPlaceholder('Your display name').fill(displayName);
+    await gate.getByRole('button', { name: /^Continue$/ }).click();
+    await expect(gate).toBeHidden({ timeout: 20_000 });
+  }
+
+  // Dismiss the gate only if it appears (joiner may already be named,
+  // e.g. re-join / future scenario). Falls back silently if no gate.
+  async dismissNameGateIfPresent(displayName = this.label): Promise<void> {
+    const gate = this.page.getByRole('dialog', { name: /Set your name/i });
+    try {
+      await expect(gate).toBeVisible({ timeout: 20_000 });
+    } catch {
+      return; // no gate — already named
+    }
+    await gate.getByPlaceholder('Your display name').fill(displayName);
+    await gate.getByRole('button', { name: /^Continue$/ }).click();
+    await expect(gate).toBeHidden({ timeout: 20_000 });
+  }
+
+  async createNamespace(name: string): Promise<void> {
+    await this.createNamespaceRaw(name);
+    await this.dismissNameGate();
+  }
+
+  // Like createNamespace but does NOT dismiss the gate — used by the
+  // gate spec to assert the gate is blocking.
+  async createNamespaceKeepGate(name: string): Promise<void> {
+    await this.createNamespaceRaw(name);
   }
 
   // Selects a namespace from the top-bar select. Use the namespace
@@ -99,6 +135,7 @@ export class WorkspaceDriver {
       .getByRole('button', { name: /Accept & join/i })
       .click();
     await expect(this.page).toHaveURL(/\/app/, { timeout: 30_000 });
+    await this.dismissNameGateIfPresent();
   }
 
   // Opens the namespace settings pane.
@@ -175,29 +212,47 @@ export class WorkspaceDriver {
     await this.tree.expectFolderHidden(name);
   }
 
-  async toggleVisibility(folderName: string): Promise<void> {
-    await this.tree.openFolder(folderName);
+  // Opens the Info modal for a folder via the ⋯ context menu.
+  async openFolderInfo(folderName: string): Promise<void> {
     await this.tree.openContextMenu(folderName);
-    // Either 'Make restricted' or 'Make open' — both are valid.
+    await this.page.getByRole('menuitem', { name: /^Info$/ }).click();
+    await expect(
+      this.page.getByRole('dialog', { name: folderName }),
+    ).toBeVisible({ timeout: 15_000 });
+  }
+
+  async closeFolderInfo(): Promise<void> {
+    // Close button inside the Info dialog.
     await this.page
-      .getByRole('menuitem', { name: /Make (open|restricted)/i })
+      .getByRole('dialog')
+      .getByRole('button', { name: /^Close$/ })
       .click();
+  }
+
+  async toggleVisibility(folderName: string): Promise<void> {
+    await this.openFolderInfo(folderName);
+    // FolderVisibilityToggle renders a button: "Make restricted" (Open→) or "Make open" (Restricted→).
+    await this.page
+      .getByRole('dialog')
+      .getByRole('button', { name: /Make (open|restricted)/i })
+      .click();
+    await this.closeFolderInfo();
   }
 
   // ─── docs ──────────────────────────────────────────────────────
 
   async createDoc(title: string): Promise<void> {
-    // DocumentList's "New" button creates a doc named "Untitled" and
+    // DocumentList's "New document" button creates a doc named "Untitled" and
     // opens the editor immediately — there's no create-dialog with a
-    // title input. To get a named doc we click New, wait for the
+    // title input. To get a named doc we click New document, wait for the
     // editor to mount, rename via the EditorHeader's editable title,
     // close the editor, and assert the row.
     //
-    // Scope New to <main> so we don't match the FolderTree's "New"
+    // Scope New document to <main> so we don't match the FolderTree's "New"
     // (aside) button.
     await this.page
       .locator('main')
-      .getByRole('button', { name: /^New$/ })
+      .getByRole('button', { name: /^New document$/ })
       .click();
     await this.editor.expectMounted();
     await this.editor.renameTitle(title);
@@ -225,10 +280,14 @@ export class FolderTreeDriver {
   constructor(private page: Page) {}
 
   folderRow(name: string): Locator {
-    // Folder rows are <li> with a span/text node carrying the alias.
-    // Filter the tree-rail <li>s by visible text.
+    // Target the row <div> (direct child of <li>), not the <li> itself.
+    // When a folder is expanded, the <li>'s textContent accumulates all
+    // descendant doc/subfolder names — the anchored regex would no longer
+    // match. The row <div> holds only the chevron, icon, name span, and
+    // actions button, so its textContent stays stable regardless of
+    // expansion state.
     return this.page
-      .locator('aside li')
+      .locator('aside li > div')
       .filter({ hasText: new RegExp(`^\\s*${escapeRegex(name)}\\s*$`, 'i') });
   }
 
@@ -244,8 +303,20 @@ export class FolderTreeDriver {
     });
   }
 
+  // Expand a folder so its document leaves render. Selecting (clicking the
+  // row) does NOT expand — expansion is the chevron. No-op if already expanded.
+  async expandFolder(name: string): Promise<void> {
+    const row = this.folderRow(name).first();
+    const expandBtn = row.getByRole('button', { name: 'Expand' });
+    if (await expandBtn.count()) {
+      await expandBtn.click();
+    }
+  }
+
+  // Select a folder AND ensure it is expanded so its doc leaves render.
   async openFolder(name: string): Promise<void> {
-    await this.folderRow(name).first().click();
+    await this.folderRow(name).first().click(); // select → FolderEmptyState in <main>
+    await this.expandFolder(name);              // expand → doc leaves in sidebar
   }
 
   async openContextMenu(name: string): Promise<void> {
@@ -361,7 +432,7 @@ export class DocListDriver {
 
   docRow(title: string): Locator {
     return this.page
-      .locator('ul li button')
+      .locator('aside li button')
       .filter({ hasText: new RegExp(`^${escapeRegex(title)}$`) });
   }
 

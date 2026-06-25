@@ -9,7 +9,7 @@
 
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { FolderContextMenu } from '@/components/folders/FolderContextMenu';
@@ -245,7 +245,7 @@ describe('permission-gating', () => {
     vi.clearAllMocks();
   });
 
-  it('FolderContextMenu renders nothing when the caller has no caps', () => {
+  it('FolderContextMenu always renders the ⋯ trigger (read-only viewers can open Info)', () => {
     (useFolderPermissions as ReturnType<typeof vi.fn>).mockReturnValue(noFolderPerms);
     render(
       <FolderContextMenu
@@ -254,7 +254,19 @@ describe('permission-gating', () => {
         onRename={() => undefined}
       />,
     );
-    expect(screen.queryByLabelText('Folder actions')).toBeNull();
+    // Trigger always renders so read-only members can open Info.
+    expect(screen.getByLabelText('Folder actions')).toBeTruthy();
+    // Open the dropdown so menu items are in the DOM.
+    // Radix DropdownMenu responds to pointerdown to open in jsdom.
+    const trigger = screen.getByLabelText('Folder actions');
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+    fireEvent.click(trigger);
+    // Info is always present — read-only members can reach it.
+    expect(screen.getByRole('menuitem', { name: /Info/ })).toBeTruthy();
+    // Permission-gated items are absent for a caller with no caps.
+    expect(screen.queryByRole('menuitem', { name: /Rename/ })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /Delete/ })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /New subfolder/ })).toBeNull();
   });
 
   it('FolderContextMenu renders the ⋯ trigger when the caller has any cap', () => {

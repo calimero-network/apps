@@ -4,7 +4,7 @@
 // FolderTreeItem. Selection is also owned by useDriveWorkspace so
 // the right-pane DocumentList reads the same value.
 
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { buildTree } from '@/utils/ancestry';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { FolderTreeItem } from './FolderTreeItem';
@@ -22,7 +22,12 @@ const STAGE_LABELS: Record<string, string> = {
   'syncing-from-peers': 'Syncing workspace from peers…',
 };
 
-export function FolderTree() {
+interface FolderTreeProps {
+  selectedDocId: string | null;
+  onOpenDoc: (folderId: string, docId: string) => void;
+}
+
+export function FolderTree({ selectedDocId, onOpenDoc }: FolderTreeProps) {
   const {
     folders,
     loading,
@@ -32,6 +37,20 @@ export function FolderTree() {
     setSelectedFolder,
     namespaceId,
   } = useDriveWorkspace();
+
+  // Expansion is owned here (was per-row state) so it survives the
+  // frequent useMemo recompute of `folders` on SSE refetch and so a
+  // future "expand all" can live in one place. Default: nothing
+  // forced open — the user expands what they want.
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const toggleExpanded = useCallback((id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   const tree = useMemo(
     () => buildTree(folders.map((f) => ({ id: f.id, parent_id: f.parent_id }))),
@@ -90,9 +109,12 @@ export function FolderTree() {
               key={n.id}
               node={n}
               byId={byId}
-              depth={0}
               selectedId={selectedFolderId}
               onSelect={setSelectedFolder}
+              expanded={expanded}
+              onToggleExpanded={toggleExpanded}
+              selectedDocId={selectedDocId}
+              onOpenDoc={onOpenDoc}
             />
           ))}
         </ul>

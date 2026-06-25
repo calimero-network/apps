@@ -22,11 +22,11 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
-import { MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Info, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderOperations } from '@/hooks/useFolderOperations';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
-import { FolderVisibilityToggle } from './FolderVisibilityToggle';
+import { FolderInfoPanel } from './FolderInfoPanel';
 import { NewFolderDialog } from './NewFolderDialog';
 
 interface Props {
@@ -48,7 +48,11 @@ export function FolderContextMenu({
     registryClient,
     applicationId,
     refetch,
+    folders,
   } = useDriveWorkspace();
+
+  const folder = folders.find((f) => f.id === folderId);
+  const folderAlias = folder?.alias ?? `${folderId.slice(0, 8)}…`;
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const ops = useFolderOperations(
     registryClient,
@@ -58,17 +62,9 @@ export function FolderContextMenu({
   );
 
   const [showNewSub, setShowNewSub] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const confirm = useConfirm();
-
-  // Don't render the trigger at all if the caller can't do
-  // anything. Keeps the tree visually clean for read-only viewers.
-  const anyAction =
-    perms.canRename ||
-    perms.canCreateSubfolder ||
-    perms.canManageVisibility ||
-    perms.canDelete;
-  if (!anyAction) return null;
 
   const onDelete = async () => {
     const ok = await confirm({
@@ -122,11 +118,10 @@ export function FolderContextMenu({
               New subfolder
             </DropdownMenuItem>
           )}
-          <FolderVisibilityToggle
-            folderId={folderId}
-            current={currentVisibility}
-            onError={(err) => setActionError(err.message)}
-          />
+          <DropdownMenuItem onClick={() => setShowInfo(true)}>
+            <Info className="mr-2 h-4 w-4" />
+            Info
+          </DropdownMenuItem>
           {perms.canDelete && (
             <>
               <DropdownMenuSeparator />
@@ -146,6 +141,15 @@ export function FolderContextMenu({
         <NewFolderDialog
           parentFolderId={folderId}
           onClose={() => setShowNewSub(false)}
+        />
+      )}
+
+      {showInfo && (
+        <FolderInfoPanel
+          folderId={folderId}
+          folderAlias={folderAlias}
+          currentVisibility={currentVisibility}
+          onClose={() => setShowInfo(false)}
         />
       )}
 

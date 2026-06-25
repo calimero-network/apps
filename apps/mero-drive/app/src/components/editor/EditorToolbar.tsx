@@ -25,12 +25,31 @@ import {
   AlignRight,
   Highlighter,
   Minus,
+  Type,
 } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+
+// Preset sizes for the font-size picker. Applied to the current
+// selection via the FontSize extension (an inline <span style>), so
+// they layer on top of — and are independent of — the block heading
+// level. "Default" clears the inline size and reverts to the CSS.
+const FONT_SIZES: { label: string; value: string }[] = [
+  { label: 'Small', value: '14px' },
+  { label: 'Normal', value: '16px' },
+  { label: 'Large', value: '20px' },
+  { label: 'Huge', value: '28px' },
+];
 
 interface EditorToolbarProps {
   editor: Editor | null;
@@ -74,6 +93,12 @@ const ToolbarDivider: React.FC = () => (
 );
 
 export const EditorToolbar: React.FC<EditorToolbarProps> = ({ editor }) => {
+  // Hooks must run before any early return. The font-size picker stashes
+  // the editor selection here because the dropdown steals focus on open.
+  const savedSelectionRef = React.useRef<{ from: number; to: number } | null>(
+    null,
+  );
+
   if (!editor) return null;
 
   const setLink = () => {
@@ -88,6 +113,27 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({ editor }) => {
     }
 
     editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+  };
+
+  // The font-size picker lives in a dropdown, which steals focus from the
+  // editor when it opens — by the time an item is clicked the editor's
+  // selection is no longer the user's range, so the size ended up applying
+  // to the whole document. Capture the selection the instant the trigger
+  // is pressed (before focus moves), then restore it before applying so
+  // the size lands on exactly the originally-selected text.
+  const captureSelection = () => {
+    const { from, to } = editor.state.selection;
+    savedSelectionRef.current = { from, to };
+  };
+
+  const applyFontSize = (value: string | null) => {
+    const sel = savedSelectionRef.current ?? {
+      from: editor.state.selection.from,
+      to: editor.state.selection.to,
+    };
+    const chain = editor.chain().focus().setTextSelection(sel);
+    if (value) chain.setFontSize(value).run();
+    else chain.unsetFontSize().run();
   };
 
   return (
@@ -136,6 +182,41 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({ editor }) => {
           <Heading3 className="w-4 h-4" />
         </ToolbarButton>
       </div>
+
+      <ToolbarDivider />
+
+      {/* Font size — sets a custom size on the current selection,
+          independent of the H1/H2/H3 block headings. */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="toolbar"
+            size="icon"
+            className="h-8 w-8"
+            aria-label="Font size"
+            onPointerDown={captureSelection}
+          >
+            <Type className="w-4 h-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          {FONT_SIZES.map((s) => (
+            <DropdownMenuItem
+              key={s.value}
+              onClick={() => applyFontSize(s.value)}
+            >
+              {s.label}
+              <span className="ml-auto pl-4 text-xs text-muted-foreground">
+                {s.value}
+              </span>
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => applyFontSize(null)}>
+            Default
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       <ToolbarDivider />
 

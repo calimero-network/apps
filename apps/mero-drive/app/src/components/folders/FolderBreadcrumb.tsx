@@ -1,12 +1,19 @@
 // Root-to-leaf path above the selected folder. Pure presentational —
 // clicking an ancestor selects it via the parent's onSelect callback.
 //
+// NOTE: As of the PR1 shell restructure this component is not currently
+// rendered anywhere — the old folder-view pane that hosted it was
+// replaced by the inline document editor. It is retained intentionally
+// for PR2's EditorBreadcrumbBar (see the Notion-UX-redesign spec §1),
+// which reuses it to show the folder path above the open document.
+// Remove it only if that plan changes.
+//
 // `ancestorsOf` returns the chain leaf-to-root; we reverse to render
-// left-to-right (root first). The current folder is NOT rendered —
-// WorkspaceLayout already shows it as the pane's <h1>, so including
-// it here would produce a visible duplicate ("csc" in the breadcrumb
-// right above "CSC" in the header). For a root-level folder with no
-// ancestors, the whole breadcrumb collapses to nothing.
+// left-to-right (root first). The current folder is NOT rendered — the
+// caller is expected to show the active folder/document title
+// separately, so including it here would produce a visible duplicate.
+// For a root-level folder with no ancestors, the whole breadcrumb
+// collapses to nothing.
 
 import React from 'react';
 import { ChevronRight } from 'lucide-react';

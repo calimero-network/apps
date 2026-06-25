@@ -11,7 +11,7 @@
 
 import React, { useState } from 'react';
 import { useSetSubgroupVisibility } from '@calimero-network/mero-react';
-import { DropdownMenuItem } from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
 import { Eye, EyeOff } from 'lucide-react';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
@@ -58,18 +58,24 @@ export function FolderVisibilityToggle({ folderId, current, onError }: Props) {
   };
 
   return (
-    <DropdownMenuItem onClick={onToggle} disabled={busy}>
+    <Button
+      variant="outline"
+      size="sm"
+      className="gap-1.5"
+      onClick={onToggle}
+      disabled={busy}
+    >
       {current === 'Open' ? (
         <>
-          <EyeOff className="mr-2 h-4 w-4" />
+          <EyeOff className="h-3.5 w-3.5" />
           Make restricted
         </>
       ) : (
         <>
-          <Eye className="mr-2 h-4 w-4" />
+          <Eye className="h-3.5 w-3.5" />
           Make open
         </>
       )}
-    </DropdownMenuItem>
+    </Button>
   );
 }

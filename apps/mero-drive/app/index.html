@@ -4,6 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mero Drive</title>
+    <script>
+      // Apply the persisted theme before React mounts to avoid a
+      // light-mode flash. Default to dark unless explicitly 'light'.
+      (function () {
+        try {
+          var t = JSON.parse(localStorage.getItem('mero-theme'));
+          if (t !== 'light') document.documentElement.classList.add('dark');
+        } catch (e) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
 
     <!-- Start Single Page Apps for GitHub Pages -->
     <script type="text/javascript">

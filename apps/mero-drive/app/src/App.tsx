@@ -25,6 +25,7 @@ import { ToastProvider } from '@calimero-network/mero-ui';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ConfirmProvider } from '@/components/ui/confirm-dialog';
 import { DriveWorkspaceProvider } from '@/hooks/useDriveWorkspace';
+import { ThemeProvider } from '@/components/theme/ThemeProvider';
 
 import LandingPage from './pages/landing';
 import Authenticate from './pages/login/Authenticate';
@@ -36,38 +37,40 @@ export default function App() {
   const registryUrl = import.meta.env.VITE_REGISTRY_URL?.trim() || undefined;
 
   return (
-    <MeroProvider
-      mode={AppMode.MultiContext}
-      packageName={packageName}
-      registryUrl={registryUrl}
-    >
-      <ToastProvider>
-        <TooltipProvider>
-          <ConfirmProvider>
-            <BrowserRouter
-              future={{
-                v7_startTransition: true,
-                v7_relativeSplatPath: true,
-              }}
-            >
-              <Routes>
-                <Route path="/" element={<LandingPage />} />
-                <Route path="/login" element={<Authenticate />} />
-                <Route path="/join" element={<JoinPage />} />
-                <Route
-                  path="/app/*"
-                  element={
-                    <DriveWorkspaceProvider>
-                      <WorkspacePage />
-                    </DriveWorkspaceProvider>
-                  }
-                />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </BrowserRouter>
-          </ConfirmProvider>
-        </TooltipProvider>
-      </ToastProvider>
-    </MeroProvider>
+    <ThemeProvider>
+      <MeroProvider
+        mode={AppMode.MultiContext}
+        packageName={packageName}
+        registryUrl={registryUrl}
+      >
+        <ToastProvider>
+          <TooltipProvider>
+            <ConfirmProvider>
+              <BrowserRouter
+                future={{
+                  v7_startTransition: true,
+                  v7_relativeSplatPath: true,
+                }}
+              >
+                <Routes>
+                  <Route path="/" element={<LandingPage />} />
+                  <Route path="/login" element={<Authenticate />} />
+                  <Route path="/join" element={<JoinPage />} />
+                  <Route
+                    path="/app/*"
+                    element={
+                      <DriveWorkspaceProvider>
+                        <WorkspacePage />
+                      </DriveWorkspaceProvider>
+                    }
+                  />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </BrowserRouter>
+            </ConfirmProvider>
+          </TooltipProvider>
+        </ToastProvider>
+      </MeroProvider>
+    </ThemeProvider>
   );
 }

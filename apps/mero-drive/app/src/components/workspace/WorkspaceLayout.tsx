@@ -1,9 +1,10 @@
 // Three-pane workspace shell:
 //   - top bar (logo + NamespaceSwitcher)
 //   - left rail (FolderTree)
-//   - main content: folder view (breadcrumb + header + doc list +
-//     sharing) when a folder is selected; full-screen DocumentEditor
-//     when a doc is open.
+//   - main content: DocumentEditor rendered inline in the main pane
+//     (gated on selectedFolderId for save-stability, NOT selectedFolder)
+//     when a doc is open; folder view (breadcrumb + header + doc list +
+//     sharing) when a folder is selected but no doc is open.
 //
 // Mounted by App.tsx on the /app/* route (via WorkspacePage's
 // auth-guarded shell). MeroProvider is the only app-level provider;
@@ -13,27 +14,30 @@
 // reads it, and keeping it out of useDriveWorkspace avoids unwiring
 // a folder's active doc on every workspace re-render.
 
-import React, { useEffect, useState } from 'react';
-import { Settings, LogOut, Circle } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Settings, LogOut, Circle, PanelLeft } from 'lucide-react';
 import { useMero } from '@calimero-network/mero-react';
 import { LogoWithText } from '@/components/icons/Logo';
 import { Button } from '@/components/ui/button';
 import { NamespaceSwitcher } from './NamespaceSwitcher';
 import { NamespaceSettingsPanel } from './NamespaceSettingsPanel';
+import { WorkspaceSidebar } from './WorkspaceSidebar';
 import { FolderTree } from '@/components/folders/FolderTree';
-import { FolderBreadcrumb } from '@/components/folders/FolderBreadcrumb';
-import { FolderSharingPanel } from '@/components/folders/FolderSharingPanel';
 import { RestrictedFolderCard } from '@/components/folders/RestrictedFolderCard';
-import { DocumentList } from '@/components/docs/DocumentList';
 import { DocumentEditor } from '@/components/docs/DocumentEditor';
+import { FolderEmptyState } from './FolderEmptyState';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { isAccessDeniedError } from '@/utils/accessDenied';
+import { ThemeToggle } from '@/components/theme/ThemeToggle';
+import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { DisplayNameGate } from './DisplayNameGate';
 
 export function WorkspaceLayout() {
   const {
     namespaceId,
     selectedFolderId,
+    setSelectedFolder,
     folders,
     selfIdentity,
     stage,
@@ -54,20 +58,43 @@ export function WorkspaceLayout() {
   const displayNode = (nodeUrl ?? '').replace(/^https?:\/\//, '') || 'disconnected';
 
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>(
+    'mero-sidebar-width',
+    256,
+  );
+  const [sidebarCollapsed, setSidebarCollapsed] = useLocalStorage<boolean>(
+    'mero-sidebar-collapsed',
+    false,
+  );
+  // The folder the currently-open doc belongs to. Lets the reset
+  // effect below distinguish "user clicked a different folder" (clear
+  // the doc) from "user opened a doc in another folder" (keep it).
+  const selectedDocFolderRef = useRef<string | null>(null);
+
+  const openDoc = useCallback(
+    (folderId: string, docId: string) => {
+      selectedDocFolderRef.current = folderId;
+      setSelectedFolder(folderId);
+      setSelectedDocId(docId);
+    },
+    [setSelectedFolder],
+  );
+
   // Toggle between folder/editor view and the full-pane namespace
   // settings. Closing settings preserves the previously-selected
   // folder so the user lands back where they were.
   const [showSettings, setShowSettings] = useState(false);
 
-  // Clear selectedDocId whenever the active folder changes. Without
-  // this reset, switching folders or having the current folder
-  // disappear (remote delete, permission revoke) could leave a
-  // stale docId in state — and when a new folder lands with that
-  // stale docId still set, the editor guard below would re-satisfy
-  // and open DocumentEditor with a docId that belongs to the
-  // previous folder.
+  // Clear the open doc when the active folder changes to a folder the
+  // doc does NOT belong to — i.e. a folder-row click, remote delete,
+  // or permission revoke. When openDoc set both folder + doc together
+  // (cross-folder doc open), the ref matches the new folder and the
+  // doc is preserved.
   useEffect(() => {
-    setSelectedDocId(null);
+    if (selectedFolderId !== selectedDocFolderRef.current) {
+      setSelectedDocId(null);
+      selectedDocFolderRef.current = null;
+    }
   }, [selectedFolderId]);
 
   // Close settings when switching namespaces — the active
@@ -86,34 +113,21 @@ export function WorkspaceLayout() {
     if (selectedFolderId) setShowSettings(false);
   }, [selectedFolderId]);
 
-  // Full-screen editor mode: bypass the workspace chrome entirely.
-  // EditorShell owns its own header/toolbar/status-bar and uses
-  // h-screen, so we let it take the viewport.
-  //
-  // Gate on `selectedFolderId` (persistent state), NOT the resolved
-  // `selectedFolder` object — `folders` is a useMemo that recomputes
-  // on every workspace SSE refetch, and any momentary gap where the
-  // matching folder isn't yet in the recomputed array would flip
-  // this branch and unmount DocumentEditor mid-save. The unmount-
-  // flush would then double-fire edit_doc and the save-status state
-  // would be lost across the remount, leaving the indicator stuck
-  // on "Saving…" from the user's perspective.
-  if (selectedFolderId && selectedDocId) {
-    return (
-      <DocumentEditor
-        key={`${selectedFolderId}:${selectedDocId}`}
-        folderId={selectedFolderId}
-        docId={selectedDocId}
-        onClose={() => setSelectedDocId(null)}
-      />
-    );
-  }
-
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex h-screen flex-col bg-background">
       {/* Top bar */}
       <header className="flex h-14 items-center justify-between border-b border-border bg-card px-4">
         <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9"
+            aria-label={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+            aria-pressed={!sidebarCollapsed}
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          >
+            <PanelLeft className="h-4 w-4" />
+          </Button>
           <LogoWithText size={22} />
           <div className="hidden h-6 w-px bg-border sm:block" />
           <NamespaceSwitcher />
@@ -130,12 +144,15 @@ export function WorkspaceLayout() {
             >
               <Circle
                 className={`h-2 w-2 ${
-                  isOnline ? 'fill-green-500 text-green-500' : 'fill-destructive text-destructive'
+                  isOnline
+                    ? 'fill-[hsl(var(--synced))] text-[hsl(var(--synced))]'
+                    : 'fill-destructive text-destructive'
                 }`}
               />
               <span className="max-w-[16ch] truncate">{displayNode}</span>
             </div>
           )}
+          <ThemeToggle />
           {namespaceId && (
             <Button
               variant={showSettings ? 'default' : 'ghost'}
@@ -162,105 +179,84 @@ export function WorkspaceLayout() {
       </header>
 
       {/* Main grid */}
-      <div className="flex flex-1">
-        <aside className="w-64 shrink-0 border-r border-border bg-muted/20">
-          <FolderTree />
-        </aside>
+      <div className="relative flex flex-1">
+        {!sidebarCollapsed && (
+          <WorkspaceSidebar width={sidebarWidth} onWidthChange={setSidebarWidth}>
+            <FolderTree selectedDocId={selectedDocId} onOpenDoc={openDoc} />
+          </WorkspaceSidebar>
+        )}
 
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {showSettings && namespaceId ? (
-            <NamespaceSettingsPanel key={`settings:${namespaceId}`} />
+            <div className="flex-1 overflow-y-auto">
+              <NamespaceSettingsPanel key={`settings:${namespaceId}`} />
+            </div>
           ) : !namespaceId ? (
             <EmptyState
               title="No workspace selected"
               body="Create or pick a workspace from the top bar to see your folders."
+            />
+          ) : selectedFolderId && selectedDocId ? (
+            // Editor gated on selectedFolderId (stable persistent state),
+            // NOT selectedFolder — `folders` is a useMemo that recomputes on
+            // every workspace SSE refetch, and a momentary gap where the
+            // folder isn't yet in the recomputed array would otherwise flip
+            // this to "Select a folder", unmount DocumentEditor mid-save,
+            // double-fire edit_doc, and strand the save indicator on
+            // "Saving…".
+            //
+            // This branch also sits ABOVE the 'syncing-from-peers' check:
+            // if the workspace re-enters that stage while a doc is open, the
+            // syncing empty state must NOT replace (and unmount) the editor
+            // mid-edit. DocumentEditor runs its own per-folder permission
+            // probe + read-only mode and shows its own "syncing folder"
+            // state when its docs context isn't ready, so it is safe to
+            // render here ahead of the syncing + access-gating branches.
+            <DocumentEditor
+              key={`${selectedFolderId}:${selectedDocId}`}
+              folderId={selectedFolderId}
+              docId={selectedDocId}
+              onClose={() => setSelectedDocId(null)}
             />
           ) : stage === 'syncing-from-peers' ? (
             <EmptyState
               title="Syncing workspace from peers…"
               body="You've just joined this workspace. Waiting for the registry and folder state to propagate from other nodes. This usually takes a second."
             />
-          ) : !selectedFolder ? (
+          ) : !selectedFolderId ? (
             <EmptyState
               title="Select a folder"
               body="Pick a folder from the left rail to see its documents."
             />
-          ) : (
-            <div className="mx-auto max-w-5xl space-y-6 p-6">
-              <FolderBreadcrumb folderId={selectedFolder.id} />
-              <div>
-                <h1 className="text-2xl font-semibold text-foreground">
-                  {selectedFolder.alias}
-                </h1>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {selectedFolder.visibility === 'Restricted'
-                    ? 'Restricted — only explicit members can read/write'
-                    : selectedFolder.visibility === 'Open'
-                      ? 'Open — namespace members can join and read/write'
-                      : 'Loading visibility…'}
-                </p>
+          ) : !selectedFolder ? (
+            // A folder IS selected (selectedFolderId set) but its object
+            // isn't in the recomputed `folders` list yet — a transient gap
+            // during an SSE refetch. Show a neutral loading state rather
+            // than flashing "Select a folder" (same stable-id reasoning as
+            // the editor branch above).
+            <EmptyState title="Loading folder…" body="" />
+          ) : selectedFolderPerms.loading ? (
+            <EmptyState title="Checking access…" body="" />
+          ) : (selectedFolderPerms.error &&
+              isAccessDeniedError(selectedFolderPerms.error)) ||
+            (!selectedFolderPerms.isMember && !selectedFolderPerms.error) ? (
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="mx-auto max-w-3xl">
+                <RestrictedFolderCard
+                  folderId={selectedFolder.id}
+                  folderAlias={selectedFolder.alias}
+                  visibility={selectedFolder.visibility}
+                  selfIdentity={selfIdentity}
+                  refetch={refetch}
+                  refetchPerms={selectedFolderPerms.refetch}
+                />
               </div>
-
-              {/* Access gating: the server rejects admin-api calls on
-                  subgroups the caller isn't a member of, so docs /
-                  members fetches would otherwise surface as noisy red
-                  "Failed to load" errors. Intercept the access-denied
-                  signal and swap the whole content area for a single
-                  friendly card with a copy-your-identity affordance. */}
-              {selectedFolderPerms.loading ? (
-                <div className="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground">
-                  Checking access…
-                </div>
-              ) : selectedFolderPerms.error &&
-                isAccessDeniedError(selectedFolderPerms.error) ? (
-                <RestrictedFolderCard
-                  folderId={selectedFolder.id}
-                  folderAlias={selectedFolder.alias}
-                  visibility={selectedFolder.visibility}
-                  selfIdentity={selfIdentity}
-                  refetch={refetch}
-                  refetchPerms={selectedFolderPerms.refetch}
-                />
-              ) : !selectedFolderPerms.isMember &&
-                !selectedFolderPerms.error ? (
-                // Caps fetch came back but we're not a member of this
-                // folder subgroup — folder membership alone implies
-                // read, so no membership means no access. Same UX as
-                // access-denied from the user's perspective.
-                <RestrictedFolderCard
-                  folderId={selectedFolder.id}
-                  folderAlias={selectedFolder.alias}
-                  visibility={selectedFolder.visibility}
-                  selfIdentity={selfIdentity}
-                  refetch={refetch}
-                  refetchPerms={selectedFolderPerms.refetch}
-                />
-              ) : (
-                <>
-                  {/* Document list + sharing panel share the folder
-                      pane. Clicking a doc swaps to the full-screen
-                      editor via setSelectedDocId.
-                      key={folderId} on both forces a remount on folder
-                      switch so local state (typed alias, pending saves,
-                      invite/remove errors) can't leak between folders. */}
-                  <div className="rounded-lg border border-border bg-card">
-                    <DocumentList
-                      key={`list:${selectedFolder.id}`}
-                      folderId={selectedFolder.id}
-                      selectedDocId={selectedDocId}
-                      onOpen={setSelectedDocId}
-                    />
-                  </div>
-
-                  <FolderSharingPanel
-                    key={`sharing:${selectedFolder.id}`}
-                    folderId={selectedFolder.id}
-                  />
-                </>
-              )}
             </div>
+          ) : (
+            <FolderEmptyState folderId={selectedFolder.id} onOpenDoc={openDoc} />
           )}
         </main>
+        <DisplayNameGate />
       </div>
     </div>
   );

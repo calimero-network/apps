@@ -30,6 +30,7 @@ import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
 import TextAlign from '@tiptap/extension-text-align';
 import Highlight from '@tiptap/extension-highlight';
+import { TextStyle, FontSize } from '@tiptap/extension-text-style';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { EditorToolbar } from './EditorToolbar';
 import { EditorStatusBar } from './EditorStatusBar';
@@ -118,6 +119,12 @@ export const EditorShell: React.FC<EditorShellProps> = ({
       Highlight.configure({
         HTMLAttributes: { class: 'bg-primary/20 rounded px-1' },
       }),
+      // TextStyle is the inline <span> mark FontSize hangs its
+      // `font-size` attribute on. Together they let the toolbar set a
+      // custom size on just the selected range (independent of the
+      // block-level H1/H2/H3 headings), persisted in the stored HTML.
+      TextStyle,
+      FontSize,
     ],
     content: initialContent ?? WELCOME_CONTENT,
     editorProps: {
@@ -167,7 +174,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-background">
+      <div className="flex items-center justify-center h-full bg-background">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary mx-auto mb-4"></div>
           <p className="text-muted-foreground">Loading document...</p>
@@ -178,7 +185,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col h-screen bg-background">
+      <div className="flex flex-col h-full bg-background">
         <EditorHeader
           documentName={documentName}
           onDocumentNameChange={readOnly ? undefined : onDocumentNameChange}

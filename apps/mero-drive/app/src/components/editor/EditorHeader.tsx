@@ -2,7 +2,6 @@
 // takes `documentName` + callbacks and renders the editor's top bar.
 
 import React, { useState } from 'react';
-import { LogoWithText } from '@/components/icons/Logo';
 import { Button } from '@/components/ui/button';
 import {
   ChevronLeft,
@@ -61,10 +60,6 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
           <ChevronLeft className="w-4 h-4" />
           <span className="hidden sm:inline">Documents</span>
         </Button>
-
-        <div className="hidden sm:block w-px h-6 bg-border" />
-
-        <LogoWithText size={24} textClassName="text-base hidden sm:block" />
       </div>
 
       {/* Center - Document name */}
