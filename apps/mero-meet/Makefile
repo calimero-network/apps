@@ -34,8 +34,9 @@ dev: app-install
 	cd app && pnpm dev
 
 # Runs the 2-node signaling e2e. Requires Docker + merobox (`pip install merobox`).
+# Run from workflows/ so the `../logic/res/mero_meet.wasm` path resolves.
 workflows: logic-build
-	merobox bootstrap run workflows/e2e.yml
+	cd workflows && merobox bootstrap run e2e.yml
 
 clean:
 	cd logic && rm -rf res target

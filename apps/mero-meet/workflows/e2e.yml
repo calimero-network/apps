@@ -15,8 +15,12 @@ force_pull_image: true
 nodes:
   chain_id: testnet-1
   count: 2
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.3
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.6
   prefix: calimero-node
+  # Off the default 2428/2528 so the workflow doesn't collide with a local
+  # dev merod a developer may already be running.
+  base_port: 2740
+  base_rpc_port: 2640
 
 steps:
   # ── Bootstrap ───────────────────────────────────────────────────────────
@@ -159,7 +163,10 @@ steps:
     args: { now: 1751955010 }
     executor_public_key: "{{alice_key}}"
     outputs:
-      call_id: result
+      # start_call returns the call-id string; capture the unwrapped `output`
+      # (not `result`, which wraps it as {"output": "..."} and can't be passed
+      # back into a String arg).
+      call_id: output
 
   - name: Sync call start
     type: wait_for_sync
