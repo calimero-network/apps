@@ -181,8 +181,15 @@ stops at rc.5; rc.6 is a git tag only). borsh `1.6.1`. Merod runtime image in
 workflows = `merod:0.11.0-rc.6`. Contract verified live (the rc.6 build also runs
 on the locally-installed `merod 0.11.0-rc.4` — the host ABI is stable across RCs).
 
+## 2026-06-25 — UI pass (requirements.md)
+- [x] Professional color picker — RGB + HSL sliders (numeric inputs) on top of SV/hue/hex; now a **movable** floating dialog (drag by title bar).
+- [x] Layer color editing — fill/text layers expose a clickable Color swatch in LayersPanel props → opens the picker (live preview, single commit on close).
+- [x] Selection clipboard — right-click a marquee/lasso selection → **Cut / Copy / Paste**; paste creates a new raster layer with just the copied content; cut clears the region from a raster layer. Ctrl/Cmd+C/X/V too. `clipboard` added to the store.
+- [x] Removed the gradient tool icon from the rail (per request).
+- Still open from requirements.md (big-ticket): top menu bar (File/Edit/Image/…), precision rulers + crosshair guides, smaller 8px transparency checkerboard w/ size setting, Navigator panel, History panel UI, guides & snapping, status bar (zoom/coords/selection/doc/color), color wheel + opacity + current/previous swatches.
+
 ## Remaining work / follow-ups
-- Advanced tools: marquee/lasso selection, crop tool, warp mesh, gradient, clone stamp, shape-draw, standalone Levels + adjustment layers.
+- Advanced tools: crop tool, warp mesh, clone stamp polish, standalone Levels + adjustment layers (marquee/lasso/gradient/shape/clone shipped earlier).
 - Playwright integration suite + merobox workflow execution (need Docker / live nodes).
 - Group compositing isolation (currently approximated via inherited opacity/visibility, flat paint order).
 - Project thumbnails in the gallery (placeholder checkerboard today).
