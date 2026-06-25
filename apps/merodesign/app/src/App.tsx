@@ -6,7 +6,6 @@ import LoginPage from "./pages/LoginPage";
 import TeamsPage from "./pages/TeamsPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import CanvasPage from "./pages/CanvasPage";
-import CursorDot from "./components/CursorDot";
 import { ToastProvider } from "./contexts/ToastContext";
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -26,7 +25,6 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
 export default function App() {
   return (
     <ToastProvider>
-      <CursorDot />
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<RedirectIfAuthed><LoginPage /></RedirectIfAuthed>} />

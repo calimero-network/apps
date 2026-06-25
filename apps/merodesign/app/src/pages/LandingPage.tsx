@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Logo from "../components/Logo";
+import CursorDot from "../components/CursorDot";
 import styles from "./LandingPage.module.css";
 
 const LOOP_MS = 7000;
@@ -125,6 +126,7 @@ export default function LandingPage() {
 
   return (
     <div className={styles.root}>
+      <CursorDot />
 
       {/* ── Hero ──────────────────────────────────────────────────────── */}
       <section className={styles.heroSection}>
