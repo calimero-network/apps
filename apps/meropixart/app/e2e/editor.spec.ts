@@ -223,4 +223,82 @@ test.describe("Editor", () => {
     await expect(page.getByRole("button", { name: "Cut" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Paste" })).toBeVisible();
   });
+
+  const bg = (loc: ReturnType<Page["getByTestId"]>) =>
+    loc.evaluate((el) => getComputedStyle(el as HTMLElement).backgroundColor);
+
+  test("swap-colors button exchanges the two swatches", async ({ page }) => {
+    const primary = page.getByTestId("primary-swatch");
+    const secondary = page.getByTestId("secondary-swatch");
+    const p0 = await bg(primary);
+    const s0 = await bg(secondary);
+    expect(p0).not.toBe(s0);
+    await page.getByTestId("swap-colors").click();
+    expect(await bg(primary)).toBe(s0);
+    expect(await bg(secondary)).toBe(p0);
+  });
+
+  test("X swaps colors and D resets to black/white", async ({ page }) => {
+    const primary = page.getByTestId("primary-swatch");
+    const secondary = page.getByTestId("secondary-swatch");
+    const p0 = await bg(primary);
+    await page.keyboard.press("x");
+    expect(await bg(primary)).not.toBe(p0); // swapped
+    await page.keyboard.press("d");
+    expect(await bg(primary)).toBe("rgb(0, 0, 0)");
+    expect(await bg(secondary)).toBe("rgb(255, 255, 255)");
+  });
+
+  test("the secondary swatch opens its own color picker", async ({ page }) => {
+    await page.getByTestId("secondary-swatch").click();
+    const picker = page.getByTestId("color-picker");
+    await expect(picker).toBeVisible();
+    await expect(picker.getByText("Secondary color")).toBeVisible();
+  });
+
+  test("single-key shortcuts switch the active tool", async ({ page }) => {
+    await page.keyboard.press("b");
+    await expect(page.getByTestId("tool-brush")).toHaveAttribute("aria-pressed", "true");
+    await page.keyboard.press("e");
+    await expect(page.getByTestId("tool-eraser")).toHaveAttribute("aria-pressed", "true");
+    await page.keyboard.press("v");
+    await expect(page.getByTestId("tool-move")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("View menu toggles the precision rulers", async ({ page }) => {
+    // rulers on by default → 2 ruler canvases + the main canvas
+    await expect(page.locator("canvas")).toHaveCount(3);
+    await page.getByRole("button", { name: "View", exact: true }).click();
+    await page.getByRole("button", { name: "Rulers" }).click();
+    await expect(page.locator("canvas")).toHaveCount(1);
+  });
+
+  test("Layer menu creates a new raster layer", async ({ page }) => {
+    await page.getByRole("button", { name: "Layer", exact: true }).click();
+    // getByText (not role) so we don't also match the panel's icon button
+    // whose aria-label is "New raster layer".
+    await page.getByText("New Raster Layer", { exact: true }).click();
+    await expect(page.locator("span").filter({ hasText: /^Layer$/ })).toBeVisible();
+  });
+
+  test("View ▸ Actual Pixels resets zoom to 100%", async ({ page }) => {
+    const status = page.getByTestId("status-bar");
+    await page.getByRole("button", { name: "View", exact: true }).click();
+    await page.getByRole("button", { name: "Zoom In" }).click();
+    await expect(status.getByText("125%")).toBeVisible();
+    await page.getByRole("button", { name: "View", exact: true }).click();
+    await page.getByRole("button", { name: "Actual Pixels (100%)" }).click();
+    await expect(status.getByText("100%")).toBeVisible();
+  });
+
+  test("status bar tracks the cursor position over the canvas", async ({ page }) => {
+    const canvas = page.getByTestId("main-canvas");
+    const box = (await canvas.boundingBox())!;
+    // a pointer drag guarantees pointermove fires (feeding the pointer store)
+    await page.mouse.move(box.x + 200, box.y + 150);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 240, box.y + 180, { steps: 4 });
+    await page.mouse.up();
+    await expect(page.getByTestId("status-bar")).toContainText(/X:\s*-?\d/);
+  });
 });
