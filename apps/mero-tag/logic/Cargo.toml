@@ -10,14 +10,14 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 borsh = "0.10.3"
 borsh-derive = "0.10.3"
-calimero-sdk = "0.11.0-rc.4"
-calimero-storage = "0.11.0-rc.4"
-calimero-storage-macros = "0.11.0-rc.4"
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.7" }
+calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.7" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.7" }
 thiserror = "1.0.56"
 serde_json = "1.0.113"
 
 [build-dependencies]
-calimero-wasm-abi = "0.11.0-rc.4"
+calimero-wasm-abi = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.7" }
 serde_json = "1.0.113"
 
 [profile.app-release]
