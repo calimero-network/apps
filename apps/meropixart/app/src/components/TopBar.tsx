@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useEditorStore } from "../store/editorStore";
-import { FILTERS, type FilterKind, type Member, type Role } from "../types";
+import { FILTERS, type FilterKind, type LayerKind, type Member, type Role } from "../types";
 import { Icon } from "./ToolIcons";
 import styles from "./TopBar.module.css";
 
@@ -15,18 +15,35 @@ interface Props {
   onApplyFilter: (kind: FilterKind) => void;
   onSelectAll: () => void;
   onDeselect: () => void;
+  onAddLayer: (kind: LayerKind) => void;
+  onDuplicateLayer: (id: string) => void;
+  onDeleteLayer: (id: string) => void;
+  onGroupSelected: () => void;
+  onToggleMask: (id: string) => void;
   onOpenInvite: () => void;
   onOpenSettings: () => void;
   saving: boolean;
 }
 
-type MenuId = "file" | "edit" | "image" | null;
+type MenuId =
+  | "file" | "edit" | "image" | "layer" | "select"
+  | "filter" | "view" | "window" | "help" | null;
+
+// Bridge menu Cut/Copy/Paste to the canvas clipboard handlers (which listen for
+// Ctrl+C/X/V on window) without coupling TopBar to CanvasStage internals.
+function fireClipboard(key: "c" | "x" | "v") {
+  window.dispatchEvent(new KeyboardEvent("keydown", { key, ctrlKey: true }));
+}
 
 export default function TopBar({
   docName, members, role, onBack, onImportImage, onImportSvg, onExport,
-  onApplyFilter, onSelectAll, onDeselect, onOpenInvite, onOpenSettings, saving,
+  onApplyFilter, onSelectAll, onDeselect, onAddLayer, onDuplicateLayer,
+  onDeleteLayer, onGroupSelected, onToggleMask, onOpenInvite, onOpenSettings, saving,
 }: Props) {
-  const { zoom, setZoom, undo, redo, undoStack, redoStack, setPan, selection } = useEditorStore();
+  const {
+    zoom, setZoom, setPan, undo, redo, undoStack, redoStack, selection,
+    layers, selectedLayerId, doc, showRulers, toggleRulers, setTool,
+  } = useEditorStore();
   const imgRef = useRef<HTMLInputElement>(null);
   const svgRef = useRef<HTMLInputElement>(null);
   const [menu, setMenu] = useState<MenuId>(null);
@@ -34,7 +51,18 @@ export default function TopBar({
   const zoomPct = Math.round(zoom * 100);
   const canUndo = undoStack.length > 0;
   const canRedo = redoStack.length > 0;
+  const hasSel = !!selectedLayerId && layers.some((l) => l.id === selectedLayerId);
   const close = () => setMenu(null);
+
+  const fitScreen = () => {
+    if (!doc) return;
+    const vw = Math.max(200, window.innerWidth - 56 - 280 - 48);
+    const vh = Math.max(200, window.innerHeight - 110);
+    const z = Math.max(0.05, Math.min(8, Math.min(vw / doc.width, vh / doc.height)));
+    setZoom(z);
+    setPan(Math.max(8, (vw - doc.width * z) / 2), Math.max(8, (vh - doc.height * z) / 2));
+  };
+  const actualPixels = () => { setZoom(1); setPan(40, 40); };
 
   return (
     <header className={styles.bar}>
@@ -45,28 +73,82 @@ export default function TopBar({
         <span className={styles.logo}>Mero<b>PixArt</b></span>
 
         <nav className={styles.menus}>
-          <Menu id="file" label="File" open={menu === "file"} onToggle={setMenu}>
+          <Menu id="file" label="File" open={menu === "file"} anyOpen={menu !== null} onToggle={setMenu}>
             <button onClick={() => { imgRef.current?.click(); close(); }}>Place Image…</button>
             <button onClick={() => { svgRef.current?.click(); close(); }}>Place SVG…</button>
             <hr />
-            <button onClick={() => { onExport("png"); close(); }}>Export as PNG</button>
+            <button onClick={() => { onExport("png"); close(); }}>Export as PNG<kbd>⌘E</kbd></button>
             <button onClick={() => { onExport("jpeg"); close(); }}>Export as JPG</button>
             <button onClick={() => { onExport("svg"); close(); }}>Export as SVG</button>
+            <hr />
+            <button onClick={() => { onBack(); close(); }}>Close Project</button>
           </Menu>
 
-          <Menu id="edit" label="Edit" open={menu === "edit"} onToggle={setMenu}>
+          <Menu id="edit" label="Edit" open={menu === "edit"} anyOpen={menu !== null} onToggle={setMenu}>
             <button disabled={!canUndo} onClick={() => { undo(); close(); }}>Undo<kbd>⌘Z</kbd></button>
             <button disabled={!canRedo} onClick={() => { redo(); close(); }}>Redo<kbd>⌘⇧Z</kbd></button>
             <hr />
-            <button onClick={() => { onSelectAll(); close(); }}>Select All<kbd>⌘A</kbd></button>
-            <button disabled={!selection} onClick={() => { onDeselect(); close(); }}>Deselect<kbd>⌘D</kbd></button>
+            <button disabled={!selection} onClick={() => { fireClipboard("x"); close(); }}>Cut<kbd>⌘X</kbd></button>
+            <button disabled={!selection} onClick={() => { fireClipboard("c"); close(); }}>Copy<kbd>⌘C</kbd></button>
+            <button onClick={() => { fireClipboard("v"); close(); }}>Paste<kbd>⌘V</kbd></button>
+            <hr />
+            <button onClick={() => { setTool("transform"); close(); }}>Free Transform<kbd>⌘T</kbd></button>
           </Menu>
 
-          <Menu id="image" label="Image" open={menu === "image"} onToggle={setMenu}>
-            <span className={styles.menuHeading}>Filters (active layer)</span>
+          <Menu id="image" label="Image" open={menu === "image"} anyOpen={menu !== null} onToggle={setMenu}>
+            <button onClick={() => { onOpenSettings(); close(); }}>Canvas Size…</button>
+            <button onClick={() => { onOpenSettings(); close(); }}>Image Size…</button>
+            <hr />
+            <button onClick={() => { setTool("crop"); close(); }}>Crop<kbd>C</kbd></button>
+          </Menu>
+
+          <Menu id="layer" label="Layer" open={menu === "layer"} anyOpen={menu !== null} onToggle={setMenu}>
+            <button onClick={() => { onAddLayer("raster"); close(); }}>New Raster Layer</button>
+            <button onClick={() => { onAddLayer("text"); close(); }}>New Text Layer</button>
+            <button onClick={() => { onAddLayer("fill"); close(); }}>New Fill Layer</button>
+            <button onClick={() => { onAddLayer("group"); close(); }}>New Group</button>
+            <hr />
+            <button disabled={!hasSel} onClick={() => { if (selectedLayerId) onDuplicateLayer(selectedLayerId); close(); }}>Duplicate Layer</button>
+            <button disabled={!hasSel} onClick={() => { if (selectedLayerId) onDeleteLayer(selectedLayerId); close(); }}>Delete Layer</button>
+            <hr />
+            <button disabled={!hasSel} onClick={() => { onGroupSelected(); close(); }}>Group Layer</button>
+            <button disabled={!hasSel} onClick={() => { if (selectedLayerId) onToggleMask(selectedLayerId); close(); }}>Add / Remove Mask</button>
+          </Menu>
+
+          <Menu id="select" label="Select" open={menu === "select"} anyOpen={menu !== null} onToggle={setMenu}>
+            <button onClick={() => { onSelectAll(); close(); }}>Select All<kbd>⌘A</kbd></button>
+            <button disabled={!selection} onClick={() => { onDeselect(); close(); }}>Deselect<kbd>⌘D</kbd></button>
+            <hr />
+            <button onClick={() => { setTool("marquee"); close(); }}>Rectangular Marquee<kbd>M</kbd></button>
+            <button onClick={() => { setTool("lasso"); close(); }}>Lasso<kbd>L</kbd></button>
+          </Menu>
+
+          <Menu id="filter" label="Filter" open={menu === "filter"} anyOpen={menu !== null} onToggle={setMenu}>
+            <span className={styles.menuHeading}>Apply to active layer</span>
             {FILTERS.map((f) => (
               <button key={f.kind} onClick={() => { onApplyFilter(f.kind); close(); }}>{f.label}</button>
             ))}
+          </Menu>
+
+          <Menu id="view" label="View" open={menu === "view"} anyOpen={menu !== null} onToggle={setMenu}>
+            <button onClick={() => { setZoom(zoom * 1.25); close(); }}>Zoom In<kbd>＋</kbd></button>
+            <button onClick={() => { setZoom(zoom / 1.25); close(); }}>Zoom Out<kbd>−</kbd></button>
+            <button onClick={() => { fitScreen(); close(); }}>Fit on Screen</button>
+            <button onClick={() => { actualPixels(); close(); }}>Actual Pixels (100%)</button>
+            <hr />
+            <button onClick={() => { toggleRulers(); close(); }}>{showRulers ? "✓ " : ""}Rulers</button>
+          </Menu>
+
+          <Menu id="window" label="Window" open={menu === "window"} anyOpen={menu !== null} onToggle={setMenu}>
+            <span className={styles.menuHeading}>Panels</span>
+            <button onClick={close}>✓ Layers</button>
+            <button onClick={close}>✓ Adjustments</button>
+            <button onClick={close}>✓ Color</button>
+          </Menu>
+
+          <Menu id="help" label="Help" open={menu === "help"} anyOpen={menu !== null} onToggle={setMenu}>
+            <button onClick={() => { window.open("https://github.com/calimero-network/mero-pixart", "_blank", "noopener"); close(); }}>GitHub Repository</button>
+            <button onClick={() => { window.open("https://calimero.network", "_blank", "noopener"); close(); }}>About Calimero</button>
           </Menu>
         </nav>
 
@@ -94,7 +176,7 @@ export default function TopBar({
       <div className={styles.right}>
         <div className={styles.zoom}>
           <button onClick={() => setZoom(zoom / 1.25)} title="Zoom out">−</button>
-          <button className={styles.zoomVal} onClick={() => { setZoom(1); setPan(40, 40); }} title="Reset zoom">{zoomPct}%</button>
+          <button className={styles.zoomVal} onClick={actualPixels} title="Reset zoom">{zoomPct}%</button>
           <button onClick={() => setZoom(zoom * 1.25)} title="Zoom in">＋</button>
         </div>
 
@@ -121,13 +203,20 @@ export default function TopBar({
   );
 }
 
-function Menu({ id, label, open, onToggle, children }: {
-  id: Exclude<MenuId, null>; label: string; open: boolean;
+function Menu({ id, label, open, anyOpen, onToggle, children }: {
+  id: Exclude<MenuId, null>; label: string; open: boolean; anyOpen: boolean;
   onToggle: (m: MenuId) => void; children: React.ReactNode;
 }) {
   return (
     <div className={styles.menuWrap}>
-      <button className={`${styles.menuBtn} ${open ? styles.menuBtnOpen : ""}`} onClick={() => onToggle(open ? null : id)}>{label}</button>
+      <button
+        className={`${styles.menuBtn} ${open ? styles.menuBtnOpen : ""}`}
+        onClick={() => onToggle(open ? null : id)}
+        // once a menu is open, hovering siblings switches to them (PS-style)
+        onMouseEnter={() => { if (anyOpen) onToggle(id); }}
+      >
+        {label}
+      </button>
       {open && (
         <>
           <div className={styles.backdrop} onClick={() => onToggle(null)} />

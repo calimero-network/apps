@@ -27,6 +27,8 @@ import CanvasStage from "../components/CanvasStage";
 import LayersPanel from "../components/LayersPanel";
 import AdjustmentsPanel from "../components/AdjustmentsPanel";
 import TopBar from "../components/TopBar";
+import Ruler from "../components/Rulers";
+import StatusBar from "../components/StatusBar";
 import CursorsOverlay from "../components/CursorsOverlay";
 import InviteModal from "../components/InviteModal";
 import SettingsModal from "../components/SettingsModal";
@@ -42,7 +44,7 @@ export default function EditorPage() {
   const { showToast } = useToast();
 
   const {
-    doc, layers, selectedLayerId, editingMaskOf,
+    doc, layers, selectedLayerId, editingMaskOf, showRulers,
     setDoc, setLayers, upsertLayer, removeLayer, selectLayer, setEditingMask,
     setRole, setZoom, setPan, bumpRender, canEdit, clearHistory, setSelection,
   } = useEditorStore();
@@ -684,12 +686,15 @@ export default function EditorPage() {
         return;
       }
       if (!mod) {
+        const key = e.key.toLowerCase();
+        if (key === "x") { e.preventDefault(); st.swapColors(); return; }
+        if (key === "d") { e.preventDefault(); st.setPrimaryColor("#000000"); st.setSecondaryColor("#ffffff"); return; }
         const map: Record<string, string> = {
           v: "move", b: "brush", e: "eraser", g: "bucket", i: "eyedropper",
           t: "text", m: "marquee", l: "lasso", h: "hand", c: "crop",
           u: "shape", k: "clone", z: "zoom",
         };
-        if (map[e.key]) st.setTool(map[e.key] as never);
+        if (map[key]) st.setTool(map[key] as never);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -730,6 +735,11 @@ export default function EditorPage() {
         onApplyFilter={onApplyFilter}
         onSelectAll={onSelectAll}
         onDeselect={onDeselect}
+        onAddLayer={onAdd}
+        onDuplicateLayer={onDuplicate}
+        onDeleteLayer={onDelete}
+        onGroupSelected={onGroupSelected}
+        onToggleMask={onToggleMask}
         onOpenInvite={() => setShowInvite(true)}
         onOpenSettings={() => setShowSettings(true)}
       />
@@ -737,17 +747,28 @@ export default function EditorPage() {
 
       <div className={styles.body}>
         <Toolbar />
-        <CanvasStage
-          commitPixels={commitPixels}
-          commitMaskPixels={commitMaskPixels}
-          commitMeta={commitMeta}
-          onCreateRasterLayer={onCreateRasterLayer}
-          onCreateTextLayer={onCreateTextLayer}
-          onCommitText={onCommitText}
-          onCrop={onCrop}
-          onCursorMove={onCursorMove}
-          overlay={<CursorsOverlay cursors={screenCursors} myIdentity={myId.current} members={members} />}
-        />
+        <div className={`${styles.canvasArea} ${showRulers ? styles.withRulers : ""}`}>
+          {showRulers && (
+            <>
+              <div className={styles.rulerCorner} />
+              <div className={styles.rulerTop}><Ruler orientation="h" /></div>
+              <div className={styles.rulerLeft}><Ruler orientation="v" /></div>
+            </>
+          )}
+          <div className={styles.canvasCell}>
+            <CanvasStage
+              commitPixels={commitPixels}
+              commitMaskPixels={commitMaskPixels}
+              commitMeta={commitMeta}
+              onCreateRasterLayer={onCreateRasterLayer}
+              onCreateTextLayer={onCreateTextLayer}
+              onCommitText={onCommitText}
+              onCrop={onCrop}
+              onCursorMove={onCursorMove}
+              overlay={<CursorsOverlay cursors={screenCursors} myIdentity={myId.current} members={members} />}
+            />
+          </div>
+        </div>
         <div className={styles.rightDock}>
           <AdjustmentsPanel
             layer={selLayer}
@@ -767,6 +788,8 @@ export default function EditorPage() {
           />
         </div>
       </div>
+
+      <StatusBar />
 
       {editingMaskOf && (
         <div className={styles.maskBanner}>

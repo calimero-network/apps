@@ -109,7 +109,7 @@ test.describe("Editor", () => {
     // add a raster layer to paint onto, pick the brush, scribble on the canvas
     await page.getByTestId("tool-brush").click();
     await page.getByRole("button", { name: "New raster layer" }).click();
-    const canvas = page.locator("canvas").first();
+    const canvas = page.getByTestId("main-canvas");
     const box = (await canvas.boundingBox())!;
     await page.mouse.move(box.x + 120, box.y + 120);
     await page.mouse.down();
@@ -130,7 +130,7 @@ test.describe("Editor", () => {
   });
 
   test("marquee selects, zoom and text work", async ({ page }) => {
-    const canvas = page.locator("canvas").first();
+    const canvas = page.getByTestId("main-canvas");
     const box = (await canvas.boundingBox())!;
 
     // marquee → makes a selection (Deselect becomes enabled)
@@ -142,10 +142,11 @@ test.describe("Editor", () => {
     const deselect = page.getByTestId("options-bar").getByRole("button", { name: "Deselect" });
     await expect(deselect).toBeEnabled();
 
-    // zoom tool → click zooms in (top bar % grows)
+    // zoom tool → click zooms in (status bar % grows; scoped since the top bar
+    // also shows a zoom value)
     await page.getByTestId("tool-zoom").click();
     await page.mouse.click(box.x + 300, box.y + 250);
-    await expect(page.getByText("140%")).toBeVisible();
+    await expect(page.getByTestId("status-bar").getByText("140%")).toBeVisible();
 
     // text tool → clicking opens the inline editor
     await page.getByTestId("tool-text").click();
@@ -160,7 +161,7 @@ test.describe("Editor", () => {
   });
 
   test("renders the canvas surface with nonzero size", async ({ page }) => {
-    const canvas = page.locator("canvas").first();
+    const canvas = page.getByTestId("main-canvas");
     const box = await canvas.boundingBox();
     expect(box).not.toBeNull();
     expect(box!.width).toBeGreaterThan(100);
@@ -173,6 +174,22 @@ test.describe("Editor", () => {
 
   test("gradient tool is removed from the rail", async ({ page }) => {
     await expect(page.getByTestId("tool-gradient")).toHaveCount(0);
+  });
+
+  test("top menu bar has the full Photoshop-style menu set", async ({ page }) => {
+    for (const m of ["File", "Edit", "Image", "Layer", "Select", "Filter", "View", "Window", "Help"]) {
+      await expect(page.getByRole("button", { name: m, exact: true })).toBeVisible();
+    }
+    // Layer menu wires real actions
+    await page.getByRole("button", { name: "Layer", exact: true }).click();
+    await expect(page.getByText("New Raster Layer")).toBeVisible();
+    await expect(page.getByText("Duplicate Layer")).toBeVisible();
+  });
+
+  test("status bar shows the document size", async ({ page }) => {
+    const status = page.getByTestId("status-bar");
+    await expect(status).toBeVisible();
+    await expect(status.getByText("800 × 600 px")).toBeVisible();
   });
 
   test("clicking a fill layer's color opens the RGB/HSL picker", async ({ page }) => {
@@ -191,7 +208,7 @@ test.describe("Editor", () => {
   });
 
   test("right-clicking a selection shows cut/copy/paste", async ({ page }) => {
-    const canvas = page.locator("canvas").first();
+    const canvas = page.getByTestId("main-canvas");
     const box = (await canvas.boundingBox())!;
     // make a marquee selection
     await page.getByTestId("tool-marquee").click();

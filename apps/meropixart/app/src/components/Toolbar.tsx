@@ -34,9 +34,11 @@ export default function Toolbar() {
   const primaryColor = useEditorStore((s) => s.primaryColor);
   const secondaryColor = useEditorStore((s) => s.secondaryColor);
   const setPrimaryColor = useEditorStore((s) => s.setPrimaryColor);
+  const setSecondaryColor = useEditorStore((s) => s.setSecondaryColor);
   const swapColors = useEditorStore((s) => s.swapColors);
 
-  const [pickerOpen, setPickerOpen] = useState(false);
+  // Which swatch the picker edits (null = closed).
+  const [pickerFor, setPickerFor] = useState<null | "primary" | "secondary">(null);
   // Instant custom tooltip, fixed-positioned beside the hovered button so it
   // is never clipped by the rail's scroll overflow.
   const [tip, setTip] = useState<{ label: string; top: number; left: number } | null>(null);
@@ -76,16 +78,20 @@ export default function Toolbar() {
             className={`${styles.swatch} ${styles.swatchPrimary}`}
             style={{ backgroundColor: primaryColor }}
             aria-label="Primary color"
-            onClick={() => setPickerOpen(true)}
+            onClick={() => setPickerFor("primary")}
             onMouseEnter={showTip("Primary color")}
             onMouseLeave={hideTip}
             data-testid="primary-swatch"
           />
-          <span
+          <button
+            type="button"
             className={`${styles.swatch} ${styles.swatchSecondary}`}
             style={{ backgroundColor: secondaryColor }}
-            title="Secondary color"
-            aria-hidden="true"
+            aria-label="Secondary color"
+            onClick={() => setPickerFor("secondary")}
+            onMouseEnter={showTip("Secondary color")}
+            onMouseLeave={hideTip}
+            data-testid="secondary-swatch"
           />
         </div>
         <button
@@ -111,11 +117,12 @@ export default function Toolbar() {
         </div>
       )}
 
-      {pickerOpen && (
+      {pickerFor && (
         <ColorPicker
-          value={primaryColor}
-          onChange={setPrimaryColor}
-          onClose={() => setPickerOpen(false)}
+          title={pickerFor === "secondary" ? "Secondary color" : "Primary color"}
+          value={pickerFor === "secondary" ? secondaryColor : primaryColor}
+          onChange={pickerFor === "secondary" ? setSecondaryColor : setPrimaryColor}
+          onClose={() => setPickerFor(null)}
         />
       )}
     </div>

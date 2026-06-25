@@ -46,6 +46,8 @@ export interface EditorState {
   clipboard: { canvas: HTMLCanvasElement; x: number; y: number } | null;
 
   myRole: Role;
+  /** show the precision rulers around the canvas */
+  showRulers: boolean;
   /** bump to force the compositor to redraw (after imperative pixel mutations) */
   renderTick: number;
 
@@ -75,6 +77,7 @@ export interface EditorState {
   setCloneSource: (s: { layerId: string; x: number; y: number } | null) => void;
   setClipboard: (c: { canvas: HTMLCanvasElement; x: number; y: number } | null) => void;
   setRole: (r: Role) => void;
+  toggleRulers: () => void;
   bumpRender: () => void;
 
   // ── history ──
@@ -115,6 +118,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   clipboard: null,
 
   myRole: "viewer",
+  showRulers: true,
   renderTick: 0,
 
   undoStack: [],
@@ -164,6 +168,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setCloneSource: (cloneSource) => set({ cloneSource }),
   setClipboard: (clipboard) => set({ clipboard }),
   setRole: (r) => set({ myRole: r }),
+  toggleRulers: () => set((s) => ({ showRulers: !s.showRulers })),
   bumpRender: () => set((s) => ({ renderTick: s.renderTick + 1 })),
 
   pushHistory: (affectedLayerIds) =>

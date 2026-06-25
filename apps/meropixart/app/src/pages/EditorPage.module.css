@@ -13,6 +13,34 @@
   min-height: 0;
 }
 
+/* Canvas area: optionally wrapped by top/left precision rulers (a 2×2 grid). */
+.canvasArea {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+.canvasArea.withRulers {
+  --ruler: 22px;
+  display: grid;
+  grid-template-columns: var(--ruler) 1fr;
+  grid-template-rows: var(--ruler) 1fr;
+}
+.rulerCorner {
+  background: #15191f;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.rulerTop { border-bottom: 1px solid var(--border); overflow: hidden; }
+.rulerLeft { border-right: 1px solid var(--border); overflow: hidden; }
+.canvasCell {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+}
+.canvasArea:not(.withRulers) .canvasCell { flex: 1; }
+
 .rightDock {
   display: flex;
   flex-direction: column;

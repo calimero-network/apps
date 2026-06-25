@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useEditorStore } from "../store/editorStore";
+import { usePointerStore } from "../store/pointerStore";
 import { getLayerCanvas, getMaskCanvas, peekLayerCanvas, peekMaskCanvas } from "../store/layerCanvases";
 import { composite } from "../utils/compositor";
-import { createCanvas, ctx2d, floodFill, hexToRgb } from "../utils/raster";
+import { createCanvas, ctx2d, hexToRgb } from "../utils/raster";
 import { docToLayerLocal, normRect, selectionPathDoc, selectionPathLocal } from "../utils/geometry";
 import type { Layer, Selection, TextProps } from "../types";
 import styles from "./CanvasStage.module.css";
@@ -338,11 +339,16 @@ export default function CanvasStage({
     if (activeTool === "bucket" && sel) {
       pushHistory([sel.id]);
       const { canvas, isMask } = paintTarget(sel);
-      const loc = docToLayerLocal(sel, x, y);
-      const [cr, cg, cb] = hexToRgb(isMask ? "#ffffff" : primaryColor);
-      // confine the fill to the active selection (like every other paint tool)
-      const mask = selection ? selectionMask(selection, sel) : undefined;
-      floodFill(ctx2d(canvas), loc.x, loc.y, [cr, cg, cb, 255], 40, mask);
+      const cx = ctx2d(canvas);
+      // Fill the WHOLE layer with the colour — clipped to the active selection
+      // when one exists (so a marquee/lasso bounds the fill, otherwise the
+      // entire layer is painted). This matches "paint bucket fills the layer".
+      cx.save();
+      clipToSelection(cx, sel);
+      cx.globalCompositeOperation = "source-over";
+      cx.fillStyle = isMask ? "#ffffff" : primaryColor;
+      cx.fillRect(0, 0, canvas.width, canvas.height);
+      cx.restore();
       dirtyLayer.current = sel.id;
       drag.current.mode = "none";
       bumpRender();
@@ -363,6 +369,7 @@ export default function CanvasStage({
     if (!doc) return;
     const { x, y } = screenToDoc(e);
     onCursorMove?.(x, y);
+    usePointerStore.getState().set(x, y); // feed rulers + status bar
     const st = drag.current;
     if (st.mode === "none") { st.lastX = x; st.lastY = y; return; }
 
@@ -576,10 +583,12 @@ export default function CanvasStage({
       <canvas
         ref={canvasRef}
         className={styles.canvas}
+        data-testid="main-canvas"
         style={{ cursor }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
+        onPointerLeave={() => usePointerStore.getState().set(null, null)}
         onWheel={onWheel}
         onContextMenu={onContextMenu}
       />
@@ -705,25 +714,10 @@ function TextEditor({
   );
 }
 
-// Rasterise the active selection into the layer's local pixel space as an in/out
-// mask (nonzero = inside selection), used to confine flood fill.
-function selectionMask(selection: Selection, layer: Layer): Uint8Array {
-  const w = Math.max(1, layer.width);
-  const h = Math.max(1, layer.height);
-  const c = createCanvas(w, h);
-  const ctx = ctx2d(c);
-  ctx.fillStyle = "#fff";
-  ctx.fill(selectionPathLocal(selection, layer));
-  const data = ctx.getImageData(0, 0, w, h).data;
-  const mask = new Uint8Array(w * h);
-  for (let i = 0; i < mask.length; i++) mask[i] = data[i * 4 + 3] > 0 ? 1 : 0;
-  return mask;
-}
-
 // ── Draw helpers ─────────────────────────────────────────────────────────────
 
 function drawCheckerboard(ctx: CanvasRenderingContext2D, w: number, h: number) {
-  const s = 16;
+  const s = 8; // Photopea-style small transparency grid
   ctx.save();
   ctx.fillStyle = "#15191f";
   ctx.fillRect(0, 0, w, h);
