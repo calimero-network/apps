@@ -58,7 +58,8 @@ test.beforeAll(async () => {
       const res = await api.get(`/admin-api/contexts/${ctxId}/identities-owned`);
       if (res.ok()) {
         const body = await res.json();
-        const ids = body?.data ?? body ?? [];
+        // shape: { data: { identities: [pubkey, ...] } }
+        const ids = body?.data?.identities ?? body?.identities ?? body?.data ?? [];
         if (Array.isArray(ids) && ids.length) executorKey = String(ids[0]);
       }
     } catch {
