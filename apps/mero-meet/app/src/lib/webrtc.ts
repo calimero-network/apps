@@ -22,11 +22,30 @@ export interface OutSignal {
   payload: string;
 }
 
+export type DiagLevel = "info" | "signal" | "peer" | "error";
+
+export interface DiagEntry {
+  t: number;
+  level: DiagLevel;
+  msg: string;
+}
+
+/** Per-peer connection snapshot for the developer-mode diagnostics overlay. */
+export interface PeerStat {
+  peerId: string;
+  connection: RTCPeerConnectionState;
+  ice: RTCIceConnectionState;
+  outboundKbps: number;
+  inboundKbps: number;
+}
+
 export interface CallEngineCallbacks {
   onLocalStream(stream: MediaStream): void;
   onRemoteStream(peerId: string, stream: MediaStream | null): void;
   onSignal(sig: OutSignal): void;
   onPeerStateChange?(peerId: string, state: RTCPeerConnectionState): void;
+  /** Developer-mode only: structured diagnostics. Never shown to normal users. */
+  onDiag?(entry: DiagEntry): void;
 }
 
 interface PeerState {
@@ -47,14 +66,57 @@ export class CallEngine {
   private peers = new Map<string, PeerState>();
   private iceServers: RTCIceServer[] = DEFAULT_ICE;
 
+  // Previous getStats byte counters, for kbps deltas in the diagnostics panel.
+  private prevBytes = new Map<string, { out: number; in: number; t: number }>();
+
   constructor(selfId: string, cbs: CallEngineCallbacks) {
     this.selfId = selfId;
     this.cbs = cbs;
   }
 
+  private diag(level: DiagLevel, msg: string): void {
+    this.cbs.onDiag?.({ t: Date.now(), level, msg });
+  }
+
   /** Inject TURN/STUN servers (e.g. the relay bundled by tauri-app). */
   setIceServers(servers: RTCIceServer[]): void {
     this.iceServers = servers.length ? servers : DEFAULT_ICE;
+    this.diag("info", `ice servers: ${servers.map((s) => s.urls).join(", ")}`);
+  }
+
+  /**
+   * Developer-mode only: snapshot each peer connection (state + throughput).
+   * Pulled on an interval by the diagnostics overlay; no effect on the call.
+   */
+  async getStats(): Promise<PeerStat[]> {
+    const out: PeerStat[] = [];
+    for (const [peerId, { pc }] of this.peers) {
+      let bytesOut = 0;
+      let bytesIn = 0;
+      try {
+        const report = await pc.getStats();
+        report.forEach((s) => {
+          if (s.type === "outbound-rtp") bytesOut += (s as { bytesSent?: number }).bytesSent ?? 0;
+          if (s.type === "inbound-rtp") bytesIn += (s as { bytesReceived?: number }).bytesReceived ?? 0;
+        });
+      } catch {
+        /* getStats may reject while connecting */
+      }
+      const now = Date.now();
+      const prev = this.prevBytes.get(peerId);
+      const dt = prev ? (now - prev.t) / 1000 : 0;
+      const outKbps = prev && dt > 0 ? ((bytesOut - prev.out) * 8) / 1000 / dt : 0;
+      const inKbps = prev && dt > 0 ? ((bytesIn - prev.in) * 8) / 1000 / dt : 0;
+      this.prevBytes.set(peerId, { out: bytesOut, in: bytesIn, t: now });
+      out.push({
+        peerId,
+        connection: pc.connectionState,
+        ice: pc.iceConnectionState,
+        outboundKbps: Math.max(0, Math.round(outKbps)),
+        inboundKbps: Math.max(0, Math.round(inKbps)),
+      });
+    }
+    return out;
   }
 
   /** Acquire camera + mic and publish the local stream. */
@@ -64,6 +126,7 @@ export class CallEngine {
       video: true,
       audio: true,
     });
+    this.diag("info", "local media acquired (camera + mic)");
     this.cbs.onLocalStream(this.local);
     return this.local;
   }
@@ -103,6 +166,7 @@ export class CallEngine {
       ignoreOffer: false,
     };
     this.peers.set(peerId, state);
+    this.diag("peer", `+ peer ${peerId.slice(0, 8)} (polite=${state.polite})`);
 
     // Publish our tracks — this schedules `negotiationneeded`.
     this.local?.getTracks().forEach((track) => pc.addTrack(track, this.local!));
@@ -111,6 +175,7 @@ export class CallEngine {
 
     pc.onicecandidate = ({ candidate }) => {
       if (candidate) {
+        this.diag("signal", `→ ice ${peerId.slice(0, 8)}`);
         this.cbs.onSignal({
           to: peerId,
           kind: "ice",
@@ -124,6 +189,7 @@ export class CallEngine {
         state.makingOffer = true;
         await pc.setLocalDescription();
         if (pc.localDescription) {
+          this.diag("signal", `→ offer ${peerId.slice(0, 8)}`);
           this.cbs.onSignal({
             to: peerId,
             kind: "offer",
@@ -138,6 +204,7 @@ export class CallEngine {
     };
 
     pc.onconnectionstatechange = () => {
+      this.diag("peer", `${peerId.slice(0, 8)} → ${pc.connectionState}`);
       this.cbs.onPeerStateChange?.(peerId, pc.connectionState);
       if (pc.connectionState === "failed") pc.restartIce();
     };
@@ -147,6 +214,7 @@ export class CallEngine {
 
   /** Feed an inbound signaling message from `from`. */
   async handleSignal(from: string, kind: string, payload: string): Promise<void> {
+    this.diag("signal", `← ${kind} ${from.slice(0, 8)}`);
     if (kind === "bye") {
       this.closePeer(from);
       return;

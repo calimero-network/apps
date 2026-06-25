@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSubscription } from "@calimero-network/mero-react";
-import { CallEngine, type OutSignal } from "../lib/webrtc";
+import { CallEngine, type OutSignal, type DiagEntry, type PeerStat } from "../lib/webrtc";
 import { getExecutorPublicKey } from "../lib/session";
 import { invokeTauri } from "../lib/tauri";
 import { useMeroMeet } from "./useMeroMeet";
+
+const MAX_DIAG = 200;
 
 /** A remote participant's live stream (or null while connecting). */
 export interface RemoteParticipant {
@@ -23,6 +25,9 @@ interface UseCallResult {
   toggleMute: () => void;
   toggleVideo: () => void;
   leave: () => Promise<void>;
+  // Developer-mode diagnostics (never surfaced to normal users).
+  diagnostics: DiagEntry[];
+  getStats: () => Promise<PeerStat[]>;
 }
 
 const SIGNAL_POLL_MS = 2000;
@@ -45,6 +50,7 @@ export function useCall(onLeft: () => void): UseCallResult {
   const [callId, setCallId] = useState<string | null>(null);
   const [joining, setJoining] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [diagnostics, setDiagnostics] = useState<DiagEntry[]>([]);
 
   const engineRef = useRef<CallEngine | null>(null);
   const callIdRef = useRef<string>("");
@@ -98,6 +104,11 @@ export function useCall(onLeft: () => void): UseCallResult {
       onRemoteStream: (id, stream) => updateRemote(id, { stream }),
       onSignal: sendSignal,
       onPeerStateChange: (id, state) => updateRemote(id, { state }),
+      onDiag: (entry) =>
+        setDiagnostics((prev) => {
+          const next = prev.length >= MAX_DIAG ? prev.slice(prev.length - MAX_DIAG + 1) : prev;
+          return [...next, entry];
+        }),
     });
     engineRef.current = engine;
 
@@ -184,6 +195,8 @@ export function useCall(onLeft: () => void): UseCallResult {
     onLeft();
   }, [meet, onLeft]);
 
+  const getStats = useCallback(() => engineRef.current?.getStats() ?? Promise.resolve([]), []);
+
   return {
     localStream,
     remotes: [...remotes.values()],
@@ -195,5 +208,7 @@ export function useCall(onLeft: () => void): UseCallResult {
     toggleMute,
     toggleVideo,
     leave,
+    diagnostics,
+    getStats,
   };
 }

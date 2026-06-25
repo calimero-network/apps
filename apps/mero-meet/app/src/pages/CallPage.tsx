@@ -1,12 +1,32 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCall } from "../hooks/useCall";
 import VideoTile from "../components/VideoTile";
+import DevPanel from "../components/DevPanel";
+import { isDevMode, setDevMode } from "../lib/dev";
 import styles from "./CallPage.module.css";
 
 /** The active call: a grid of video tiles + the control bar. */
 export default function CallPage() {
   const navigate = useNavigate();
   const call = useCall(() => navigate("/lobby"));
+
+  // Developer mode: the ONLY place WebRTC internals surface. Hidden by default;
+  // toggle with Ctrl/Cmd+Shift+D.
+  const [dev, setDev] = useState(isDevMode());
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "D" || e.key === "d")) {
+        e.preventDefault();
+        setDev((on) => {
+          setDevMode(!on);
+          return !on;
+        });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const tileCount = 1 + call.remotes.length;
   const gridClass =
@@ -36,6 +56,18 @@ export default function CallPage() {
       </div>
 
       {call.joining && <div className={styles.joining}>joining call…</div>}
+
+      {dev && (
+        <DevPanel
+          diagnostics={call.diagnostics}
+          getStats={call.getStats}
+          callId={call.callId}
+          onClose={() => {
+            setDevMode(false);
+            setDev(false);
+          }}
+        />
+      )}
 
       <div className={styles.controls}>
         <button
