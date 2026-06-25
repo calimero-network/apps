@@ -7,24 +7,24 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-# Calimero SDK pinned to 0.11.0-rc.6. rc.6 is published only as a git tag on the
+# Calimero SDK pinned to 0.11.0-rc.7. rc.7 is published only as a git tag on the
 # core repo (crates.io stops at rc.5), and the workspace package version at the
-# tag is "0.0.0" — so a plain `= "0.11.0-rc.6"` version requirement cannot match.
-# Use the git tag form (same approach the other rc.6 apps use). All three crates
+# tag is "0.0.0" — so a plain `= "0.11.0-rc.7"` version requirement cannot match.
+# Use the git tag form (same approach the other rc.7 apps use). All three crates
 # share one tag so they resolve to a single, compatible commit.
 [dependencies]
 borsh = "1.6.1"
 borsh-derive = "1.6.1"
-calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.6" }
-calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.6" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.6" }
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.7" }
+calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.7" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.7" }
 thiserror = "1.0.56"
 serde_json = "1.0.113"
 
 [dev-dependencies]
 # Enables register_crdt_merge + the native mock host so TestHost can drive
 # CRDT state (incl. the permissioned components) under `cargo test`.
-calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.6", features = ["testing"] }
+calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.7", features = ["testing"] }
 
 [profile.app-release]
 inherits = "release"
