@@ -196,9 +196,9 @@ dependencies = [
 
 [[package]]
 name = "calimero-wasm-abi"
-version = "0.11.0-rc.5"
+version = "0.11.0-rc.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40dfa610d066c5ffeaab16d0842991d2d0820460189f89ddc3fe2ff36d31525b"
+checksum = "8e625c3c805e87c195ca506d8fe722aedeebafc1cd19951cba91b0c0d7f240b7"
 dependencies = [
  "proc-macro2",
  "serde",
