@@ -68,3 +68,34 @@
   z-index: 70;
   caret-color: var(--accent);
 }
+
+/* Right-click context menu (cut / copy / paste) */
+.ctxBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 3300;
+}
+.ctxMenu {
+  position: fixed;
+  z-index: 3301;
+  min-width: 120px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+}
+.ctxMenu button {
+  text-align: left;
+  padding: 6px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.ctxMenu button:hover:not(:disabled) { background: var(--bg-3); }
+.ctxMenu button:disabled { color: var(--text-dim); opacity: 0.5; cursor: default; }

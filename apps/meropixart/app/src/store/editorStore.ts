@@ -42,6 +42,8 @@ export interface EditorState {
   gradientType: GradientType;
   gradientFill: GradientFill;
   cloneSource: { layerId: string; x: number; y: number } | null;
+  /** Copied/cut selection pixels (doc-space top-left at x/y), pasted as a new layer. */
+  clipboard: { canvas: HTMLCanvasElement; x: number; y: number } | null;
 
   myRole: Role;
   /** bump to force the compositor to redraw (after imperative pixel mutations) */
@@ -71,6 +73,7 @@ export interface EditorState {
   setGradientType: (t: GradientType) => void;
   setGradientFill: (f: GradientFill) => void;
   setCloneSource: (s: { layerId: string; x: number; y: number } | null) => void;
+  setClipboard: (c: { canvas: HTMLCanvasElement; x: number; y: number } | null) => void;
   setRole: (r: Role) => void;
   bumpRender: () => void;
 
@@ -109,6 +112,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   gradientType: "linear",
   gradientFill: "fg-transparent",
   cloneSource: null,
+  clipboard: null,
 
   myRole: "viewer",
   renderTick: 0,
@@ -158,6 +162,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setGradientType: (gradientType) => set({ gradientType }),
   setGradientFill: (gradientFill) => set({ gradientFill }),
   setCloneSource: (cloneSource) => set({ cloneSource }),
+  setClipboard: (clipboard) => set({ clipboard }),
   setRole: (r) => set({ myRole: r }),
   bumpRender: () => set((s) => ({ renderTick: s.renderTick + 1 })),
 

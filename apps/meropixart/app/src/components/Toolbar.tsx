@@ -22,7 +22,6 @@ const TOOLS: ToolDef[] = [
   { tool: "eyedropper", label: "Eyedropper (I)" },
   { tool: "text", label: "Type (T)" },
   { tool: "shape", label: "Shape (U)" },
-  { tool: "gradient", label: "Gradient" },
   { tool: "transform", label: "Transform" },
   { tool: "clone", label: "Clone Stamp (S)" },
   { tool: "hand", label: "Hand (H)" },

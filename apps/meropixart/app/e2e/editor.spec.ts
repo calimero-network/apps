@@ -129,7 +129,7 @@ test.describe("Editor", () => {
     await expect(page.locator("span").filter({ hasText: /^Ellipse$/ })).toBeVisible();
   });
 
-  test("marquee selects, gradient adds a layer, zoom and text work", async ({ page }) => {
+  test("marquee selects, zoom and text work", async ({ page }) => {
     const canvas = page.locator("canvas").first();
     const box = (await canvas.boundingBox())!;
 
@@ -141,13 +141,6 @@ test.describe("Editor", () => {
     await page.mouse.up();
     const deselect = page.getByTestId("options-bar").getByRole("button", { name: "Deselect" });
     await expect(deselect).toBeEnabled();
-
-    // gradient drag → creates a layer
-    await page.getByTestId("tool-gradient").click();
-    await page.mouse.move(box.x + 160, box.y + 160);
-    await page.mouse.down();
-    await page.mouse.move(box.x + 400, box.y + 320, { steps: 10 });
-    await page.mouse.up();
 
     // zoom tool → click zooms in (top bar % grows)
     await page.getByTestId("tool-zoom").click();
@@ -176,5 +169,41 @@ test.describe("Editor", () => {
   test("has primary color and swap controls", async ({ page }) => {
     await expect(page.getByTestId("primary-swatch")).toBeVisible();
     await expect(page.getByTestId("swap-colors")).toBeVisible();
+  });
+
+  test("gradient tool is removed from the rail", async ({ page }) => {
+    await expect(page.getByTestId("tool-gradient")).toHaveCount(0);
+  });
+
+  test("clicking a fill layer's color opens the RGB/HSL picker", async ({ page }) => {
+    await page.getByRole("button", { name: "New fill layer" }).click();
+    const swatch = page.getByTestId("layer-color-swatch");
+    await expect(swatch).toBeVisible();
+    await swatch.click();
+    const picker = page.getByTestId("color-picker");
+    await expect(picker).toBeVisible();
+    await expect(picker.getByTestId("rgb-sliders")).toBeVisible();
+    await expect(picker.getByTestId("hsl-sliders")).toBeVisible();
+    // typing a hex updates the swatch
+    const hex = picker.getByTestId("color-hex-input");
+    await hex.fill("#3aa0ff");
+    await hex.press("Enter");
+  });
+
+  test("right-clicking a selection shows cut/copy/paste", async ({ page }) => {
+    const canvas = page.locator("canvas").first();
+    const box = (await canvas.boundingBox())!;
+    // make a marquee selection
+    await page.getByTestId("tool-marquee").click();
+    await page.mouse.move(box.x + 120, box.y + 120);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 300, box.y + 260, { steps: 8 });
+    await page.mouse.up();
+    // right-click inside the selection
+    await canvas.click({ button: "right", position: { x: 200, y: 180 } });
+    await expect(page.getByRole("menu")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Copy" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Cut" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Paste" })).toBeVisible();
   });
 });

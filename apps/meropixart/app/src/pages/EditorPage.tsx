@@ -760,6 +760,7 @@ export default function EditorPage() {
             onDelete={onDelete}
             onDuplicate={onDuplicate}
             onUpdateMeta={onUpdateMeta}
+            onUpdateText={onUpdateText}
             onReorder={onReorder}
             onGroupSelected={onGroupSelected}
             onToggleMask={onToggleMask}

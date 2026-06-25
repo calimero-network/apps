@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useEditorStore } from "../store/editorStore";
 import { peekLayerCanvas } from "../store/layerCanvases";
-import { BLEND_MODES, type BlendMode, type Layer, type LayerKind } from "../types";
+import { BLEND_MODES, type BlendMode, type Layer, type LayerKind, type TextProps } from "../types";
 import { Icon, type IconName } from "./ToolIcons";
+import ColorPicker from "./ColorPicker";
 import styles from "./LayersPanel.module.css";
 
 interface Props {
@@ -10,6 +11,7 @@ interface Props {
   onDelete: (id: string) => void;
   onDuplicate: (id: string) => void;
   onUpdateMeta: (id: string, patch: Partial<Layer>) => void;
+  onUpdateText: (id: string, patch: Partial<TextProps>) => void;
   onReorder: (orderedTopToBottom: string[]) => void;
   onGroupSelected: () => void;
   onToggleMask: (id: string) => void;
@@ -20,11 +22,13 @@ const KIND_ICON: Record<LayerKind, IconName> = {
 };
 
 export default function LayersPanel({
-  onAdd, onDelete, onDuplicate, onUpdateMeta, onReorder, onGroupSelected, onToggleMask,
+  onAdd, onDelete, onDuplicate, onUpdateMeta, onUpdateText, onReorder, onGroupSelected, onToggleMask,
 }: Props) {
-  const { layers, selectedLayerId, selectLayer, editingMaskOf, setEditingMask, canEdit } = useEditorStore();
+  const { layers, selectedLayerId, selectLayer, editingMaskOf, setEditingMask, canEdit, upsertLayer, bumpRender } = useEditorStore();
   const [renaming, setRenaming] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
+  const [colorOpen, setColorOpen] = useState(false);
+  const draftColor = useRef<string>("");
   const editable = canEdit();
 
   // top-to-bottom display = descending layerIndex
@@ -85,7 +89,42 @@ export default function LayersPanel({
             />
             <span className={styles.val}>{sel.opacity}</span>
           </div>
+          {(sel.kind === "fill" || sel.kind === "text") && (
+            <div className={styles.row}>
+              <span className={styles.propLabel}>Color</span>
+              <button
+                type="button"
+                className={styles.colorSwatch}
+                style={{ backgroundColor: layerColor(sel) }}
+                disabled={!editable}
+                title="Edit color"
+                aria-label="Edit layer color"
+                data-testid="layer-color-swatch"
+                onClick={() => { draftColor.current = layerColor(sel); setColorOpen(true); }}
+              />
+              <span className={styles.colorHex}>{layerColor(sel)}</span>
+            </div>
+          )}
         </div>
+      )}
+
+      {colorOpen && sel && (
+        <ColorPicker
+          title={sel.kind === "fill" ? "Fill color" : "Text color"}
+          value={layerColor(sel)}
+          onChange={(hex) => {
+            // Live preview without an RPC per change; persist once on close.
+            draftColor.current = hex;
+            if (sel.kind === "fill") upsertLayer({ ...sel, fill: hex });
+            else if (sel.text) upsertLayer({ ...sel, text: { ...sel.text, color: hex } });
+            bumpRender();
+          }}
+          onClose={() => {
+            setColorOpen(false);
+            if (sel.kind === "fill") onUpdateMeta(sel.id, { fill: draftColor.current });
+            else if (sel.kind === "text") onUpdateText(sel.id, { color: draftColor.current });
+          }}
+        />
       )}
 
       <div className={styles.list}>
@@ -170,6 +209,13 @@ export default function LayersPanel({
       )}
     </div>
   );
+}
+
+/** The editable color for a layer: fill layers use `fill`, text uses `text.color`. */
+function layerColor(layer: Layer): string {
+  if (layer.kind === "fill") return layer.fill || "#000000";
+  if (layer.kind === "text") return layer.text?.color || "#000000";
+  return "#000000";
 }
 
 function Thumb({ layer }: { layer: Layer }) {

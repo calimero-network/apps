@@ -58,14 +58,16 @@ export default function CanvasStage({
   // live drag geometry consumed by draw() for previews (doc space)
   const live = useRef<{ mode: Mode; x0: number; y0: number; x1: number; y1: number; points?: number[] } | null>(null);
   const [cropRect, setCropRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  // Right-click context menu (cut/copy/paste) anchored at screen coords.
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
 
   const {
     doc, layers, zoom, panX, panY, renderTick,
     activeTool, selectedLayerId, editingMaskOf, editingTextId,
     primaryColor, secondaryColor, brushSize, brushHardness, brushOpacity, brushType,
-    selection, shapeKind, shapeStroke, gradientType, gradientFill, cloneSource,
+    selection, shapeKind, shapeStroke, gradientType, gradientFill, cloneSource, clipboard,
     setPan, setZoom, setPrimaryColor, bumpRender, canEdit, pushHistory,
-    setSelection, setCloneSource, setEditingText, selectLayer,
+    setSelection, setCloneSource, setClipboard, setEditingText, selectLayer,
   } = useEditorStore();
 
   // ── Render ──────────────────────────────────────────────────────────────
@@ -130,7 +132,7 @@ export default function CanvasStage({
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.code === "Space") spaceDown.current = true;
-      if (e.key === "Escape") { setCropRect(null); setCloneSource(null); live.current = null; draw(); }
+      if (e.key === "Escape") { setCropRect(null); setCloneSource(null); setCtxMenu(null); live.current = null; draw(); }
     };
     const up = (e: KeyboardEvent) => { if (e.code === "Space") spaceDown.current = false; };
     window.addEventListener("keydown", down);
@@ -495,6 +497,70 @@ export default function CanvasStage({
 
   const confirmCrop = () => { if (cropRect) { onCrop(cropRect); setCropRect(null); } };
 
+  // ── Clipboard: cut / copy / paste on the active selection ───────────────────
+  // Copy grabs the composited pixels inside the selection (masked to its shape)
+  // into a bbox-sized canvas; paste drops them back as a brand-new raster layer.
+  const doCopy = useCallback((): boolean => {
+    if (!doc || !selection) return false;
+    const b = selectionBounds(selection, doc.width, doc.height);
+    if (b.w < 1 || b.h < 1) return false;
+    const flat = composite(layers, doc.width, doc.height, {}); // no background → transparent outside content
+    const out = createCanvas(b.w, b.h);
+    const octx = ctx2d(out);
+    octx.save();
+    octx.translate(-b.x, -b.y);
+    octx.clip(selectionPathDoc(selection));
+    octx.drawImage(flat, 0, 0);
+    octx.restore();
+    setClipboard({ canvas: out, x: b.x, y: b.y });
+    return true;
+  }, [doc, selection, layers, setClipboard]);
+
+  const doCut = useCallback(() => {
+    if (!canEdit() || !doCopy()) return;
+    const sel = layers.find((l) => l.id === selectedLayerId);
+    // Only raster layers have pixels to erase; clear the selected region.
+    if (sel && sel.kind === "raster" && selection) {
+      pushHistory([sel.id]);
+      const c = getLayerCanvas(sel.id, sel.width, sel.height);
+      const cx = ctx2d(c);
+      cx.save();
+      cx.globalCompositeOperation = "destination-out";
+      cx.fillStyle = "#000";
+      cx.fill(selectionPathLocal(selection, sel));
+      cx.restore();
+      bumpRender();
+      commitPixels(sel.id);
+    }
+  }, [canEdit, doCopy, layers, selectedLayerId, selection, pushHistory, bumpRender, commitPixels]);
+
+  const doPaste = useCallback(() => {
+    if (!canEdit() || !clipboard) return;
+    onCreateRasterLayer({ name: "Pasted", x: clipboard.x, y: clipboard.y, canvas: clipboard.canvas });
+  }, [canEdit, clipboard, onCreateRasterLayer]);
+
+  // Ctrl/Cmd + C / X / V shortcuts (mirror the right-click menu).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const k = e.key.toLowerCase();
+      if (k === "c" && selection) { e.preventDefault(); doCopy(); }
+      else if (k === "x" && selection) { e.preventDefault(); doCut(); }
+      else if (k === "v" && clipboard) { e.preventDefault(); doPaste(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selection, clipboard, doCopy, doCut, doPaste]);
+
+  const onContextMenu = (e: React.MouseEvent) => {
+    // Only hijack the browser menu when there's something to act on.
+    if (!selection && !clipboard) return;
+    e.preventDefault();
+    setCtxMenu({ x: e.clientX, y: e.clientY });
+  };
+
   const cursor =
     drag.current.mode === "pan" || activeTool === "hand" ? "grab"
     : activeTool === "zoom" ? "zoom-in"
@@ -515,6 +581,7 @@ export default function CanvasStage({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onWheel={onWheel}
+        onContextMenu={onContextMenu}
       />
 
       {cropRect && (
@@ -546,9 +613,44 @@ export default function CanvasStage({
         <div className={styles.hint}>Alt/⌘-click to set the clone source, then paint.</div>
       )}
 
+      {ctxMenu && (
+        <>
+          <div
+            className={styles.ctxBackdrop}
+            onPointerDown={() => setCtxMenu(null)}
+            onContextMenu={(e) => { e.preventDefault(); setCtxMenu(null); }}
+          />
+          <div className={styles.ctxMenu} style={{ left: ctxMenu.x, top: ctxMenu.y }} role="menu">
+            <button type="button" disabled={!selection || !canEdit()} onClick={() => { doCut(); setCtxMenu(null); }}>Cut</button>
+            <button type="button" disabled={!selection} onClick={() => { doCopy(); setCtxMenu(null); }}>Copy</button>
+            <button type="button" disabled={!clipboard || !canEdit()} onClick={() => { doPaste(); setCtxMenu(null); }}>Paste</button>
+          </div>
+        </>
+      )}
+
       {overlay}
     </div>
   );
+}
+
+// Tight integer bounding box of a selection in document space, clamped to canvas.
+function selectionBounds(sel: Selection, docW: number, docH: number) {
+  let x0: number, y0: number, x1: number, y1: number;
+  if (sel.kind === "rect") {
+    x0 = sel.x; y0 = sel.y; x1 = sel.x + sel.w; y1 = sel.y + sel.h;
+  } else {
+    const pts = sel.points;
+    x0 = Infinity; y0 = Infinity; x1 = -Infinity; y1 = -Infinity;
+    for (let i = 0; i < pts.length; i += 2) {
+      x0 = Math.min(x0, pts[i]); x1 = Math.max(x1, pts[i]);
+      y0 = Math.min(y0, pts[i + 1]); y1 = Math.max(y1, pts[i + 1]);
+    }
+  }
+  const X0 = Math.max(0, Math.floor(Math.min(x0, x1)));
+  const Y0 = Math.max(0, Math.floor(Math.min(y0, y1)));
+  const X1 = Math.min(docW, Math.ceil(Math.max(x0, x1)));
+  const Y1 = Math.min(docH, Math.ceil(Math.max(y0, y1)));
+  return { x: X0, y: Y0, w: Math.max(0, X1 - X0), h: Math.max(0, Y1 - Y0) };
 }
 
 // ── Inline text editor ─────────────────────────────────────────────────────────
