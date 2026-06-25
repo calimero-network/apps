@@ -178,8 +178,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
 
       const resize = () => {
         const { w: nw, h: nh } = getSize();
-        fc.setWidth(nw);
-        fc.setHeight(nh);
+        fc.setDimensions({ width: nw, height: nh });
         fc.renderAll();
       };
       window.addEventListener("resize", resize);

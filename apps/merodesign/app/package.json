@@ -18,7 +18,7 @@
     "@calimero-network/mero-js": "^2.2.1",
     "@calimero-network/mero-react": "2.4.0",
     "@calimero-network/mero-ui": "1.4.0",
-    "fabric": "^6.6.1",
+    "fabric": "^7.4.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.15.1",
