@@ -1,0 +1,276 @@
+name: Mero Meet — signaling over Calimero (2-node e2e)
+description: >
+  Proves the core thesis of Mero Meet: a Calimero context can carry the full
+  WebRTC signaling handshake with NO dedicated signaling server.
+
+  Two nodes join one room (context). Both register lobby presence, both start
+  the call, then they exchange an OFFER / ANSWER / ICE handshake purely through
+  the contract's post_signal / get_signals, and we assert each side received the
+  other's blobs (addressed peer→peer). The payloads here are placeholder SDP/ICE
+  strings — the contract treats them as opaque, exactly as a signaling relay
+  should. The real media never goes through here (see RESEARCH-01.md).
+
+force_pull_image: true
+
+nodes:
+  chain_id: testnet-1
+  count: 2
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.3
+  prefix: calimero-node
+
+steps:
+  # ── Bootstrap ───────────────────────────────────────────────────────────
+  - name: Install application on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: "../logic/res/mero_meet.wasm"
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install application on Node 2
+    type: install_application
+    node: calimero-node-2
+    path: "../logic/res/mero_meet.wasm"
+    dev: true
+
+  - name: Create namespace
+    type: create_namespace
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Set default member capabilities
+    type: set_default_capabilities
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    capabilities: 15
+
+  - name: Generate identity for Node 2
+    type: create_identity
+    node: calimero-node-2
+    outputs:
+      bob_identity: publicKey
+
+  - name: Wait for identity propagation
+    type: wait
+    seconds: 3
+
+  - name: Node 1 creates invitation for Node 2
+    type: create_namespace_invitation
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    outputs:
+      invite_bob: invitation
+
+  - name: Node 2 joins namespace
+    type: join_namespace
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+    invitation: "{{invite_bob}}"
+
+  - name: Settle after namespace join
+    type: wait
+    seconds: 5
+
+  # ── Create the room (context) ────────────────────────────────────────────
+  - name: Admin creates the meet room context
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    params: '{"name": "standup"}'
+    outputs:
+      room_id: contextId
+      alice_key: memberPublicKey
+
+  - name: Force Node 2 to sync namespace state
+    type: sync_group
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+
+  - name: Settle after sync
+    type: wait
+    seconds: 5
+
+  - name: Bob joins the room
+    type: join_context
+    node: calimero-node-2
+    context_id: "{{room_id}}"
+    outputs:
+      bob_key: memberPublicKey
+
+  - name: Wait for room sync
+    type: wait_for_sync
+    context_id: "{{room_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # ── Lobby presence ─────────────────────────────────────────────────────────
+  - name: Alice joins the lobby
+    type: call
+    node: calimero-node-1
+    context_id: "{{room_id}}"
+    method: join
+    args: { username: "Alice", now: 1751955000 }
+    executor_public_key: "{{alice_key}}"
+
+  - name: Bob joins the lobby
+    type: call
+    node: calimero-node-2
+    context_id: "{{room_id}}"
+    method: join
+    args: { username: "Bob", now: 1751955001 }
+    executor_public_key: "{{bob_key}}"
+
+  - name: Sync presence
+    type: wait_for_sync
+    context_id: "{{room_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Alice reads the lobby
+    type: call
+    node: calimero-node-1
+    context_id: "{{room_id}}"
+    method: get_lobby
+    args: { now: 1751955005 }
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      lobby_alice: result
+
+  - name: Assert both members present in the lobby
+    type: assert
+    statements:
+      - 'contains({{lobby_alice}}, "Alice")'
+      - 'contains({{lobby_alice}}, "Bob")'
+
+  # ── Start the call session ───────────────────────────────────────────────
+  - name: Alice starts the call
+    type: call
+    node: calimero-node-1
+    context_id: "{{room_id}}"
+    method: start_call
+    args: { now: 1751955010 }
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      call_id: result
+
+  - name: Sync call start
+    type: wait_for_sync
+    context_id: "{{room_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Bob joins the call
+    type: call
+    node: calimero-node-2
+    context_id: "{{room_id}}"
+    method: start_call
+    args: { now: 1751955011 }
+    executor_public_key: "{{bob_key}}"
+
+  - name: Sync roster
+    type: wait_for_sync
+    context_id: "{{room_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # ── The WebRTC handshake, carried entirely by the contract ────────────────
+  - name: Alice posts an OFFER addressed to Bob
+    type: call
+    node: calimero-node-1
+    context_id: "{{room_id}}"
+    method: post_signal
+    args:
+      to: "{{bob_key}}"
+      kind: "offer"
+      payload: '{"type":"offer","sdp":"v=0...ALICE_OFFER..."}'
+      call_id: "{{call_id}}"
+      now: 1751955012
+    executor_public_key: "{{alice_key}}"
+
+  - name: Sync offer
+    type: wait_for_sync
+    context_id: "{{room_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Bob drains his signals (expects Alice's offer)
+    type: call
+    node: calimero-node-2
+    context_id: "{{room_id}}"
+    method: get_signals
+    args: { after_seq: 0 }
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_signals: result
+
+  - name: Assert Bob received Alice's offer
+    type: assert
+    statements:
+      - 'contains({{bob_signals}}, "ALICE_OFFER")'
+      - 'contains({{bob_signals}}, "offer")'
+
+  - name: Bob posts an ANSWER addressed to Alice
+    type: call
+    node: calimero-node-2
+    context_id: "{{room_id}}"
+    method: post_signal
+    args:
+      to: "{{alice_key}}"
+      kind: "answer"
+      payload: '{"type":"answer","sdp":"v=0...BOB_ANSWER..."}'
+      call_id: "{{call_id}}"
+      now: 1751955013
+    executor_public_key: "{{bob_key}}"
+
+  - name: Bob posts an ICE candidate addressed to Alice
+    type: call
+    node: calimero-node-2
+    context_id: "{{room_id}}"
+    method: post_signal
+    args:
+      to: "{{alice_key}}"
+      kind: "ice"
+      payload: '{"candidate":"candidate:BOB_ICE 1 udp ..."}'
+      call_id: "{{call_id}}"
+      now: 1751955014
+    executor_public_key: "{{bob_key}}"
+
+  - name: Sync answer + ice
+    type: wait_for_sync
+    context_id: "{{room_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Alice drains her signals (expects Bob's answer + ice)
+    type: call
+    node: calimero-node-1
+    context_id: "{{room_id}}"
+    method: get_signals
+    args: { after_seq: 0 }
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      alice_signals: result
+
+  - name: 2E — Assert full handshake delivered peer→peer via the contract
+    type: assert
+    statements:
+      - 'contains({{alice_signals}}, "BOB_ANSWER")'
+      - 'contains({{alice_signals}}, "BOB_ICE")'
+      - 'contains({{alice_signals}}, "answer")'
+      - 'contains({{alice_signals}}, "ice")'

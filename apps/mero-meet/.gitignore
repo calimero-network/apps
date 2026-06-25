@@ -1,0 +1,17 @@
+# Rust / WASM
+logic/target/
+logic/res/
+
+# Frontend
+app/node_modules/
+app/dist/
+app/dev-dist/
+app/.vite/
+
+# merobox runtime data
+workflows/data/
+workflows/**/.pids/
+
+# misc
+.DS_Store
+*.log
