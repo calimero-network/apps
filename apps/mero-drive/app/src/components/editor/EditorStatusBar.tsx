@@ -1,38 +1,30 @@
-// Restored verbatim from pre-Phase-4 master (b811ffe), with `SaveStatus`
-// import redirected to `./types` so this file doesn't depend on the
-// shell. 100% presentational.
+// 100% presentational status bar. Decoupled from any editor library —
+// word/character counts arrive as plain props (the BlockNote shell
+// derives them from `editor.document` via blocksToPlainText), so this
+// file no longer imports Tiptap.
 
 import React from 'react';
 import { Shield, AlertCircle, Clock, FileText, WifiOff } from 'lucide-react';
-import { Editor } from '@tiptap/react';
 import type { SaveStatus } from './types';
 
 interface EditorStatusBarProps {
-  editor: Editor | null;
   documentName: string;
+  /** Word / character counts derived by the editor shell. */
+  wordCount?: number;
+  charCount?: number;
   saveStatus: SaveStatus;
   lastSavedAt: Date | null;
   isAppReady?: boolean;
 }
 
 export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
-  editor,
   documentName,
+  wordCount = 0,
+  charCount = 0,
   saveStatus,
   lastSavedAt,
   isAppReady = true,
 }) => {
-  const getWordCount = () => {
-    if (!editor) return 0;
-    const text = editor.state.doc.textContent;
-    return text.split(/\s+/).filter((word) => word.length > 0).length;
-  };
-
-  const getCharacterCount = () => {
-    if (!editor) return 0;
-    return editor.state.doc.textContent.length;
-  };
-
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
@@ -87,9 +79,9 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
           <span>{documentName}</span>
         </div>
         <div className="flex items-center gap-1.5 text-muted-foreground">
-          <span>{getWordCount()} words</span>
+          <span>{wordCount} words</span>
           <span className="text-border">•</span>
-          <span>{getCharacterCount()} characters</span>
+          <span>{charCount} characters</span>
         </div>
       </div>
 

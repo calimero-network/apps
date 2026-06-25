@@ -236,16 +236,39 @@ export function useDocs(folderId: string | null): UseDocsState {
     void refetch();
   }, [refetch]);
 
-  // Refresh on every SSE event from the docs context — covers
-  // remote creates/edits/deletes without polling. Wrapped in
-  // useCallback so useDocEvents' downstream useSubscription
-  // doesn't tear down and re-establish the SSE connection on
-  // every consumer re-render (each saveStatus update in
-  // DocumentEditor would otherwise churn the subscription).
+  // Refresh on SSE events from the docs context — covers remote
+  // creates/edits/deletes without polling. DEBOUNCED: the context emits
+  // an event on every edit_doc, including the writer's OWN ~900ms
+  // autosaves, so a 1:1 refetch makes the sidebar list re-fetch and
+  // re-sort (by updated_at) on every keystroke-burst — visible as
+  // constant flicker. A trailing debounce collapses a burst into one
+  // quiet refetch after activity settles. Explicit mutations (create /
+  // delete / rename) bypass this and refetch immediately via
+  // notifyDocsRefetch, so user-initiated changes still feel instant.
+  //
+  // Wrapped in useCallback so useDocEvents' downstream useSubscription
+  // doesn't tear down and re-establish the SSE connection on every
+  // consumer re-render (each saveStatus update in DocumentEditor would
+  // otherwise churn the subscription).
+  const sseRefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onDocsEvent = useCallback(() => {
-    void refetch();
+    if (sseRefetchTimerRef.current) clearTimeout(sseRefetchTimerRef.current);
+    sseRefetchTimerRef.current = setTimeout(() => {
+      sseRefetchTimerRef.current = null;
+      void refetch();
+    }, 1000);
   }, [refetch]);
   useDocEvents(contextId, onDocsEvent);
+  // Clear any pending debounced refetch on unmount / context change so a
+  // late timer can't fire a refetch against a torn-down client.
+  useEffect(() => {
+    return () => {
+      if (sseRefetchTimerRef.current) {
+        clearTimeout(sseRefetchTimerRef.current);
+        sseRefetchTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // Cross-instance refresh — when any other useDocs instance for the
   // same docs context mutates, re-read our list too. See the

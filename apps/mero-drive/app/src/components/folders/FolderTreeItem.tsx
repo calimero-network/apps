@@ -94,7 +94,7 @@ export function FolderTreeItem({
   return (
     <li>
       <div
-        className={`group flex items-center gap-1.5 rounded px-2 py-1 text-sm cursor-pointer ${
+        className={`group flex items-center gap-1.5 rounded px-2 py-1.5 text-sm cursor-pointer ${
           isSelected
             ? 'bg-primary/10 text-primary'
             : 'text-foreground hover:bg-muted'
@@ -172,7 +172,7 @@ export function FolderTreeItem({
         // children a small gap to the right of the line. Indentation is
         // structural (one nested <ul> per level) rather than a computed
         // per-row padding, so the line and the indent always agree.
-        <ul className="ml-4 space-y-0.5 border-l border-border/60 pl-1">
+        <ul className="ml-4 space-y-1 border-l border-border/60 pl-1">
           <FolderDocLeaves
             folderId={node.id}
             selectedDocId={selectedDocId}

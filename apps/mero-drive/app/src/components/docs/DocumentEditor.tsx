@@ -20,16 +20,17 @@
 //   error         (editDoc threw — next edit resets to unsaved)
 //
 // Refs vs state — what goes where:
-//   `lastSavedContentRef`   — the most recent server-acked HTML.
-//     Used for equality checks in onContentChange + the unmount
-//     flush. NOT kept in React state because updating it after
-//     every save would force EditorShell's initialContent effect
-//     to overwrite the editor's current HTML with the just-saved
-//     (stale-relative-to-user-typing) content — silently reverting
-//     any keystrokes between the save firing and resolving.
-//   `workingContentRef`     — mirrors what Tiptap has RIGHT NOW,
+//   `lastSavedContentRef`   — the most recent server-acked content
+//     string (BlockNote serializes the document to JSON; this layer
+//     treats it as opaque). Used for equality checks in onContentChange
+//     + the unmount flush. NOT kept in React state because updating it
+//     after every save would force EditorShell's initialContent effect
+//     to re-apply the just-saved (stale-relative-to-user-typing) content
+//     — silently reverting any keystrokes between the save firing and
+//     resolving.
+//   `workingContentRef`     — mirrors what the editor has RIGHT NOW,
 //     updated on every onContentChange. Used so the unmount flush
-//     and beforeunload handler can read the latest HTML without
+//     and beforeunload handler can read the latest content without
 //     being captured by a stale closure.
 //   `docRef`                — mirrors `doc` for the same closure-
 //     capture reason (the unmount-flush effect closes over the
@@ -131,16 +132,16 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
   const lastAppliedSeqRef = useRef(0);
   // True while persistContent is awaiting the RPC. Used by
   // onContentChange to avoid regressing 'saving' → 'unsaved' on
-  // Tiptap's spurious update events (cursor moves, internal
+  // the editor's spurious change events (cursor moves, internal
   // normalisation): transitioning out of 'saving' is the save's own
-  // job, not an update event's.
+  // job, not a change event's.
   const savingInFlightRef = useRef(false);
   // Flipped to true by onContentChange while a save is in-flight.
   // persistContent checks this after ack to decide whether to
-  // schedule a follow-up save. Using a flag avoids comparing HTML
-  // strings — Tiptap's getHTML() can return subtly different output
-  // for the same document state (trailing <p></p>, attribute order),
-  // which caused infinite save loops via string !== checks.
+  // schedule a follow-up save. Using a flag avoids comparing content
+  // strings — the editor can re-serialize the same document state to a
+  // slightly different string (block id/normalisation churn), which
+  // caused redundant save loops via string !== checks.
   const dirtyDuringSaveRef = useRef(false);
   // True while the title-rename RPC (docsEdit({title})) is in
   // flight. Lets refreshFromRemote defer body+title updates the
@@ -405,10 +406,9 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         if (mySeq <= lastAppliedSeqRef.current) return true;
         lastAppliedSeqRef.current = mySeq;
         // Record the server-acked content WITHOUT triggering
-        // EditorShell's initialContent effect. Updating doc.content
-        // here would make EditorShell call setContent(savedHTML),
-        // which if the user typed more during the in-flight save
-        // would silently revert those keystrokes.
+        // EditorShell's initialContent effect. Re-applying the just-saved
+        // content here would, if the user typed more during the in-flight
+        // save, silently revert those keystrokes.
         lastSavedContentRef.current = content;
         // Stamp `lastSavedAt` with the local wall-clock for the UI
         // ("Saved 3s ago") — this value is only for display, never
@@ -419,9 +419,9 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         // onContentChange doesn't schedule autosaves during in-flight
         // saves (to prevent cascading overlaps), so we handle the
         // "dirty after ack" case here. Using the flag instead of
-        // comparing HTML strings avoids infinite save loops caused
-        // by Tiptap emitting slightly different HTML for the same
-        // document state (trailing empty paragraphs, normalisation).
+        // comparing content strings avoids redundant save loops caused
+        // by the editor re-serializing the same document state to a
+        // slightly different string (block id / normalisation churn).
         if (dirtyDuringSaveRef.current) {
           dirtyDuringSaveRef.current = false;
           setSaveStatus('unsaved');
@@ -432,12 +432,12 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
             void persistContent(latest);
           }, AUTOSAVE_DEBOUNCE_MS);
         } else {
-          // Also sync lastSavedContentRef with whatever Tiptap
-          // currently has. Tiptap may have normalised the HTML
-          // (trailing <p></p>, attribute reordering) so its
-          // getHTML() won't match the exact string we saved. Without
-          // this sync, the next onContentChange sees a "difference"
-          // and starts a redundant save cycle.
+          // Also sync lastSavedContentRef with whatever the editor
+          // currently holds. The editor may re-serialize to a string
+          // that differs from the exact bytes we saved (block id /
+          // normalisation churn). Without this sync, the next
+          // onContentChange sees a "difference" and starts a redundant
+          // save cycle.
           lastSavedContentRef.current = workingContentRef.current;
           setSaveStatus('saved');
         }
@@ -474,9 +474,9 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
   );
 
   const onContentChange = useCallback(
-    (html: string) => {
-      workingContentRef.current = html;
-      if (html === lastSavedContentRef.current) {
+    (content: string) => {
+      workingContentRef.current = content;
+      if (content === lastSavedContentRef.current) {
         // Only drop to 'saved' if we're not mid-save — the save's own
         // resolver is the authoritative transition out of 'saving'.
         if (!savingInFlightRef.current) setSaveStatus('saved');
@@ -495,7 +495,7 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
       cancelPendingAutosave();
       autosaveTimeoutRef.current = setTimeout(() => {
         autosaveTimeoutRef.current = null;
-        void persistContent(html);
+        void persistContent(content);
       }, AUTOSAVE_DEBOUNCE_MS);
     },
     [cancelPendingAutosave, persistContent],

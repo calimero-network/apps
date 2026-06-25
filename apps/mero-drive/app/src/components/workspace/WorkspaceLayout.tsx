@@ -14,7 +14,14 @@
 // reads it, and keeping it out of useDriveWorkspace avoids unwiring
 // a folder's active doc on every workspace re-render.
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { Settings, LogOut, Circle, PanelLeft } from 'lucide-react';
 import { useMero } from '@calimero-network/mero-react';
 import { LogoWithText } from '@/components/icons/Logo';
@@ -24,7 +31,6 @@ import { NamespaceSettingsPanel } from './NamespaceSettingsPanel';
 import { WorkspaceSidebar } from './WorkspaceSidebar';
 import { FolderTree } from '@/components/folders/FolderTree';
 import { RestrictedFolderCard } from '@/components/folders/RestrictedFolderCard';
-import { DocumentEditor } from '@/components/docs/DocumentEditor';
 import { FolderEmptyState } from './FolderEmptyState';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
@@ -32,6 +38,15 @@ import { isAccessDeniedError } from '@/utils/accessDenied';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { DisplayNameGate } from './DisplayNameGate';
+
+// Code-split the editor: BlockNote + its Mantine UI are ~360 KB gzip and
+// only needed once a document is opened, so they must not weigh down the
+// landing / login / folder-view initial load.
+const DocumentEditor = lazy(() =>
+  import('@/components/docs/DocumentEditor').then((m) => ({
+    default: m.DocumentEditor,
+  })),
+);
 
 export function WorkspaceLayout() {
   const {
@@ -212,12 +227,14 @@ export function WorkspaceLayout() {
             // probe + read-only mode and shows its own "syncing folder"
             // state when its docs context isn't ready, so it is safe to
             // render here ahead of the syncing + access-gating branches.
-            <DocumentEditor
-              key={`${selectedFolderId}:${selectedDocId}`}
-              folderId={selectedFolderId}
-              docId={selectedDocId}
-              onClose={() => setSelectedDocId(null)}
-            />
+            <Suspense fallback={<EmptyState title="Loading editor…" body="" />}>
+              <DocumentEditor
+                key={`${selectedFolderId}:${selectedDocId}`}
+                folderId={selectedFolderId}
+                docId={selectedDocId}
+                onClose={() => setSelectedDocId(null)}
+              />
+            </Suspense>
           ) : stage === 'syncing-from-peers' ? (
             <EmptyState
               title="Syncing workspace from peers…"

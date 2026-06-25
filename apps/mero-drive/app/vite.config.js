@@ -33,15 +33,13 @@ export default defineConfig({
         manualChunks: {
           // Core React
           'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          // TipTap editor
-          'vendor-tiptap': [
-            '@tiptap/react',
-            '@tiptap/starter-kit',
-            '@tiptap/extension-highlight',
-            '@tiptap/extension-link',
-            '@tiptap/extension-placeholder',
-            '@tiptap/extension-text-align',
-            '@tiptap/extension-underline',
+          // BlockNote editor (ProseMirror-based) + its Mantine UI layer
+          'vendor-blocknote': [
+            '@blocknote/core',
+            '@blocknote/react',
+            '@blocknote/mantine',
+            '@mantine/core',
+            '@mantine/hooks',
           ],
           // Calimero SDK
           'vendor-calimero': [

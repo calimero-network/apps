@@ -192,96 +192,43 @@
   }
 }
 
-/* TipTap Editor Styles */
+/* ── BlockNote editor theming ──────────────────────────────────────
+   BlockNote ships its own complete styling (@blocknote/mantine/style.css);
+   here we only re-point its CSS custom properties at our design tokens so
+   the editor inherits the teal accent + light/dark system. Both
+   data-color-scheme values map to the SAME hsl(var(--token)) — those
+   tokens already flip with the `.dark` class, so the editor follows the
+   app theme automatically. The leading `html` raises specificity above
+   BlockNote's own `.bn-container[data-color-scheme]` rules regardless of
+   stylesheet import order. */
+html .bn-container[data-color-scheme='light'],
+html .bn-container[data-color-scheme='dark'] {
+  --bn-colors-editor-text: hsl(var(--card-foreground));
+  --bn-colors-editor-background: hsl(var(--card));
+  --bn-colors-menu-text: hsl(var(--popover-foreground));
+  --bn-colors-menu-background: hsl(var(--popover));
+  --bn-colors-tooltip-text: hsl(var(--popover-foreground));
+  --bn-colors-tooltip-background: hsl(var(--popover));
+  --bn-colors-hovered-text: hsl(var(--accent-foreground));
+  --bn-colors-hovered-background: hsl(var(--accent));
+  --bn-colors-selected-text: hsl(var(--primary-foreground));
+  --bn-colors-selected-background: hsl(var(--primary));
+  --bn-colors-disabled-text: hsl(var(--muted-foreground));
+  --bn-colors-disabled-background: hsl(var(--muted));
+  --bn-colors-border: hsl(var(--border));
+  --bn-colors-side-menu: hsl(var(--muted-foreground));
+  --bn-border-radius: 0.5rem;
+  --bn-font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* The editor sits inside the shell's own padded, centered column. */
+.bn-container .bn-editor {
+  background: transparent;
+  padding-inline: 0;
+}
+
 .ProseMirror {
   outline: none;
-}
-
-.ProseMirror > * + * {
-  margin-top: 0.75em;
-}
-
-.ProseMirror h1 {
-  @apply text-3xl font-bold mb-4 text-foreground;
-}
-
-.ProseMirror h2 {
-  @apply text-2xl font-semibold mb-3 mt-8 text-foreground;
-}
-
-.ProseMirror h3 {
-  @apply text-xl font-semibold mb-2 mt-6 text-foreground;
-}
-
-.ProseMirror p {
-  @apply mb-4 leading-relaxed text-foreground/90;
-}
-
-.ProseMirror ul {
-  @apply list-disc list-inside mb-4 space-y-1;
-}
-
-.ProseMirror ol {
-  @apply list-decimal list-inside mb-4 space-y-1;
-}
-
-.ProseMirror li {
-  @apply text-foreground/90;
-}
-
-.ProseMirror li p {
-  @apply inline mb-0;
-}
-
-.ProseMirror blockquote {
-  @apply border-l-4 border-primary/40 pl-4 my-4 italic text-muted-foreground;
-}
-
-.ProseMirror code {
-  font-family: 'JetBrains Mono', monospace;
-  @apply px-1.5 py-0.5 rounded bg-muted text-sm text-foreground;
-}
-
-.ProseMirror pre {
-  font-family: 'JetBrains Mono', monospace;
-  @apply bg-muted rounded-lg p-4 overflow-x-auto my-4;
-}
-
-.ProseMirror pre code {
-  @apply bg-transparent p-0;
-}
-
-.ProseMirror hr {
-  @apply border-t border-border my-8;
-}
-
-.ProseMirror a {
-  @apply text-primary underline cursor-pointer hover:text-primary/80;
-}
-
-.ProseMirror p.is-editor-empty:first-child::before {
-  @apply text-muted-foreground pointer-events-none float-left h-0;
-  content: attr(data-placeholder);
-}
-
-.ProseMirror mark {
-  @apply bg-primary/20 rounded px-0.5;
-}
-
-.ProseMirror strong {
-  @apply font-bold;
-}
-
-.ProseMirror em {
-  @apply italic;
-}
-
-.ProseMirror u {
-  @apply underline;
-}
-
-.ProseMirror s {
-  @apply line-through;
 }
 
 

@@ -54,3 +54,6 @@ e2e/data/
 # pattern would win even without this ordering, but ordering it last is
 # defensive against future rule additions.
 logic/res/bundle-temp/
+
+# Agent worktrees (isolated checkouts)
+.worktrees/

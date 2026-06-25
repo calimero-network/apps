@@ -53,7 +53,7 @@ test.describe('Document CRUD (single-node)', () => {
     await alice.createFolder({ name: 'Other', visibility: 'Open' });
     await alice.tree.openFolder('Other');
     // No doc open in the new folder — editor unmounts, empty state shows.
-    await expect(alice.page.locator('.ProseMirror')).toBeHidden();
+    await expect(alice.page.locator('.ProseMirror').first()).toBeHidden();
     await expect(
       alice.page.getByRole('heading', { name: /No document open/i }),
     ).toBeVisible({ timeout: 15_000 });

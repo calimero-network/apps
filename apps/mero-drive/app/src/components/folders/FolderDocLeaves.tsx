@@ -49,7 +49,7 @@ export function FolderDocLeaves({
             <button
               type="button"
               onClick={() => onOpenDoc(folderId, d.id)}
-              className={`flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-sm ${
+              className={`flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-left text-sm ${
                 isSelected
                   ? 'bg-primary/10 text-primary'
                   : 'text-foreground hover:bg-muted'

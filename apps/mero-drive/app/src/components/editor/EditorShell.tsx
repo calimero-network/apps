@@ -1,90 +1,69 @@
-// Visual-only editor skeleton — distilled from the pre-Phase-4
-// DocumentEditor.tsx (b811ffe) with every v8 data-layer call removed.
-// Phase 8 Task 41 will wrap this with the real save/load orchestration
-// using the new DocsClient + mero-react hooks.
+// Visual editor skeleton, now backed by BlockNote (replacing Tiptap).
 //
-// What stayed:
-//   - Tiptap extension config (StarterKit + Underline + Link +
-//     Placeholder + TextAlign + Highlight)
-//   - Welcome-content default
-//   - Layout: Header / Toolbar / Editor area / StatusBar inside a
-//     TooltipProvider
-//   - prose-invert + editor-area spacing (`px-8 py-6 md:px-16 lg:px-24`)
+// The prop contract is UNCHANGED from the Tiptap shell so the save
+// orchestrator (DocumentEditor) and the e2e driver don't care which
+// editor library is underneath:
+//   - `initialContent` / `onContentChange` carry an OPAQUE string. With
+//     BlockNote that string is `JSON.stringify(editor.document)` (a
+//     serialized Block[]) instead of HTML — DocumentEditor only ever
+//     compares the string, so its autosave / seq-guard / SSE-reconcile
+//     logic transfers verbatim.
+//   - `readOnly`, `saveStatus`, `lastSavedAt`, `isAppReady`, `isLoading`
+//     behave exactly as before.
 //
-// What left:
-//   - AbiClient / WorkspaceManager / useWorkspace data-layer imports
-//   - saveDocument / handleBack / handleDelete data-layer logic
-//   - useParams / useNavigate (route-shape is a caller concern)
-//   - isLoading / document state driven by fetches
-//
-// Callers that need state machine behaviour (autosave, error handling,
-// name change persistence) should wrap this shell with their own
-// orchestrator — the shell only surfaces an `onContentChange` callback
-// and accepts `saveStatus` / `lastSavedAt` as controlled props.
+// The one delicate piece is remote-content application. Tiptap let us
+// inject remote edits with `setContent(html, { emitUpdate: false })`.
+// BlockNote's `replaceBlocks` ALWAYS fires `onChange` (no suppress flag
+// exists — verified against source), so an SSE refresh would otherwise
+// masquerade as a local keystroke and trigger a spurious autosave (and,
+// worse, a feedback loop between two collaborators). We guard every
+// programmatic replace with `applyingRemoteRef`: set it, replaceBlocks,
+// the resulting synchronous onChange sees the flag and skips the save,
+// then we clear it. ProseMirror dispatches transactions synchronously,
+// so the flag is reliably down again before any real user edit.
 
-import React, { useEffect } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Underline from '@tiptap/extension-underline';
-import Link from '@tiptap/extension-link';
-import Placeholder from '@tiptap/extension-placeholder';
-import TextAlign from '@tiptap/extension-text-align';
-import Highlight from '@tiptap/extension-highlight';
-import { TextStyle, FontSize } from '@tiptap/extension-text-style';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { BlockNoteView } from '@blocknote/mantine';
+import { useCreateBlockNote } from '@blocknote/react';
+import '@blocknote/core/fonts/inter.css';
+import '@blocknote/mantine/style.css';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { EditorToolbar } from './EditorToolbar';
 import { EditorStatusBar } from './EditorStatusBar';
 import { EditorHeader } from './EditorHeader';
+import { useTheme } from '@/components/theme/ThemeProvider';
+import { schema } from './blocknote/schema';
+import { DriveFormattingToolbar } from './blocknote/FormattingToolbar';
+import {
+  serializeBlocks,
+  parseStoredContent,
+  blocksToPlainText,
+  countWords,
+  countCharacters,
+} from './blocknote/content';
 import type { SaveStatus } from './types';
-
-export const WELCOME_CONTENT = `
-<h1>Welcome to Mero Drive</h1>
-<p>Start writing your document here. Your content is saved as HTML snapshots and encrypted end-to-end.</p>
-<h2>Getting Started</h2>
-<ul>
-  <li><strong>Local-First:</strong> Documents live on your device first</li>
-  <li><strong>End-to-End Encrypted:</strong> Only you and your collaborators can read your content</li>
-  <li><strong>Auto-Save:</strong> Changes are saved automatically as you type</li>
-</ul>
-<p>Try formatting some text using the toolbar above, or use keyboard shortcuts:</p>
-<ul>
-  <li><code>Ctrl+B</code> for <strong>bold</strong></li>
-  <li><code>Ctrl+I</code> for <em>italic</em></li>
-  <li><code>Ctrl+U</code> for <u>underline</u></li>
-</ul>
-<blockquote>
-  <p>"Privacy is not about having something to hide. It's about having something to protect."</p>
-</blockquote>
-<p>Start writing below...</p>
-`;
 
 export interface EditorShellProps {
   documentName: string;
   /** Optional — when undefined the title renders as static text in
-   *  the header, matching the underlying EditorHeader's read-only
-   *  mode. Callers gating rename on permissions should pass
-   *  undefined rather than a no-op so the UI surface accurately
-   *  reflects capability. */
+   *  the header (read-only mode). */
   onDocumentNameChange?: (name: string) => void;
   onBack?: () => void;
   onDelete?: () => void;
-  /** Called with the current HTML on every Tiptap update. Caller
-   *  debounces and persists. */
-  onContentChange?: (html: string) => void;
-  /** Initial HTML for the editor — existing doc content or a
-   *  per-caller placeholder. Falls back to WELCOME_CONTENT. */
+  /** Called with the serialized document (JSON Block[] string) on every
+   *  local edit. Caller debounces and persists. NOT called for remote
+   *  content applied via the `initialContent` prop. */
+  onContentChange?: (content: string) => void;
+  /** Initial / remote content as a serialized Block[] JSON string. An
+   *  empty / non-JSON value opens a fresh empty document. Changes after
+   *  mount are applied as remote edits (guarded, no autosave echo). */
   initialContent?: string;
   saveStatus?: SaveStatus;
   lastSavedAt?: Date | null;
   isAppReady?: boolean;
   isLoading?: boolean;
-  /** When true, the editor + header title + toolbar operate in a
-   *  view-only mode. Tiptap becomes non-editable, the header
-   *  renders the title as plain text (no inline-edit affordance),
-   *  and the toolbar buttons all sit disabled. Callers should
-   *  ALSO gate onDelete / onContentChange / onDocumentNameChange
-   *  at the binding level — this flag is for visual + Tiptap-
-   *  level enforcement. */
+  /** View-only mode: BlockNote becomes non-editable and the header
+   *  renders the title as plain text. Callers should ALSO gate the
+   *  mutation callbacks at the binding level (defense in depth). */
   readOnly?: boolean;
 }
 
@@ -101,76 +80,113 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   isLoading = false,
   readOnly = false,
 }) => {
-  const editor = useEditor({
-    editable: !readOnly,
-    extensions: [
-      StarterKit.configure({
-        heading: { levels: [1, 2, 3] },
-      }),
-      Underline,
-      Link.configure({
-        openOnClick: false,
-        HTMLAttributes: {
-          class: 'text-primary underline cursor-pointer hover:text-primary/80',
-        },
-      }),
-      Placeholder.configure({ placeholder: 'Start writing...' }),
-      TextAlign.configure({ types: ['heading', 'paragraph'] }),
-      Highlight.configure({
-        HTMLAttributes: { class: 'bg-primary/20 rounded px-1' },
-      }),
-      // TextStyle is the inline <span> mark FontSize hangs its
-      // `font-size` attribute on. Together they let the toolbar set a
-      // custom size on just the selected range (independent of the
-      // block-level H1/H2/H3 headings), persisted in the stored HTML.
-      TextStyle,
-      FontSize,
-    ],
-    content: initialContent ?? WELCOME_CONTENT,
-    editorProps: {
-      attributes: {
-        class:
-          'prose prose-invert max-w-none focus:outline-none min-h-[calc(100vh-200px)] px-8 py-6 md:px-16 lg:px-24',
-      },
-    },
+  const { theme } = useTheme();
+
+  // BlockNote reads `initialContent` ONCE at creation. DocumentEditor
+  // mounts this shell before the doc has loaded (initialContent
+  // undefined → empty doc); the real content arrives later and is
+  // applied by the remote-apply effect below. Parsed once at mount.
+  const initialBlocks = useMemo(
+    () => parseStoredContent(initialContent),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- read once at creation; later changes go through the replace effect
+    [],
+  );
+
+  const editor = useCreateBlockNote({
+    schema,
+    initialContent: initialBlocks,
   });
 
-  // Swap content in when caller hands us an updated `initialContent`
-  // after the editor has already mounted (e.g. doc load resolves).
-  // `emitUpdate: false` is load-bearing — Tiptap v3's setContent
-  // emits the `update` event by default, which would fire
-  // onContentChange as if the user had typed. Phase 8's save
-  // orchestrator would then start an autosave cycle immediately
-  // after loading a document, burning a round-trip and flashing a
-  // false "unsaved changes" state.
-  useEffect(() => {
-    if (!editor || initialContent === undefined) return;
-    if (editor.getHTML() === initialContent) return;
-    editor.commands.setContent(initialContent, { emitUpdate: false });
-  }, [editor, initialContent]);
+  const [wordCount, setWordCount] = useState(0);
+  const [charCount, setCharCount] = useState(0);
 
-  // Re-apply editability whenever `readOnly` flips. useEditor's
-  // `editable` option is a one-shot snapshot captured at creation
-  // time — it does NOT react to later prop changes. useFolderPermissions
-  // resolves asynchronously, so `canEditDocs` (and therefore `readOnly`)
-  // can flip after the editor is already mounted. Without this effect,
-  // a writer whose permissions resolve after mount gets a permanently
-  // read-only editor, and a reader who later loses access keeps a
-  // writable one.
+  // True only while we are programmatically applying remote content, so
+  // the resulting onChange does NOT round-trip back out as a local save.
+  const applyingRemoteRef = useRef(false);
+  // The serialized content the editor is known to hold (last loaded /
+  // applied / emitted). Two jobs:
+  //   - onChange emits a save ONLY when the document genuinely differs
+  //     from this, so spurious onChange events (and the initial document)
+  //     never trigger a write.
+  //   - the remote-apply effect skips a no-op replace when the incoming
+  //     snapshot already matches (e.g. our own save echoing back via SSE),
+  //     which would otherwise reset the cursor.
+  const lastContentRef = useRef<string | undefined>(undefined);
+
+  // Prime counts + the content baseline ONCE per editor instance. Kept
+  // in its own effect (deps: [editor]) — NOT folded into the onChange
+  // subscription below — so that a change in `onContentChange` identity
+  // can't re-run the prime and reset `lastContentRef`, which would drop
+  // the baseline for an in-progress edit. CRITICAL: priming must NOT
+  // emit onContentChange — the shell is mounted with an empty editor
+  // while the doc loads, and emitting here would schedule a save of
+  // empty content that could land after the real content arrives and
+  // wipe the document.
   useEffect(() => {
     if (!editor) return;
-    if (editor.isEditable === !readOnly) return;
-    editor.setEditable(!readOnly);
-  }, [editor, readOnly]);
+    const text = blocksToPlainText(editor.document);
+    setWordCount(countWords(text));
+    setCharCount(countCharacters(text));
+    lastContentRef.current = serializeBlocks(editor.document);
+  }, [editor]);
 
+  // Subscribe to content changes. Counts always refresh; the autosave
+  // callback fires only for genuine local edits that move the document
+  // off `lastContentRef` (so the initial prime and remote applies never
+  // emit). Re-subscribes if `onContentChange` identity changes, but does
+  // NOT touch `lastContentRef` (the prime effect owns the baseline).
   useEffect(() => {
-    if (!editor || !onContentChange) return;
-    const handler = () => onContentChange(editor.getHTML());
-    editor.on('update', handler);
-    return () => {
-      editor.off('update', handler);
+    if (!editor) return;
+    const handler = () => {
+      const doc = editor.document;
+      const text = blocksToPlainText(doc);
+      setWordCount(countWords(text));
+      setCharCount(countCharacters(text));
+      if (applyingRemoteRef.current) return;
+      const serialized = serializeBlocks(doc);
+      if (serialized === lastContentRef.current) return; // no real change
+      lastContentRef.current = serialized;
+      onContentChange?.(serialized);
     };
+    return editor.onChange(handler);
   }, [editor, onContentChange]);
+
+  // Apply remote / late-arriving content. The onChange that replaceBlocks
+  // triggers must NOT round-trip back out as a local save. TWO independent
+  // guards make this robust regardless of whether BlockNote dispatches the
+  // transaction synchronously or (in some future version) asynchronously:
+  //   1. `applyingRemoteRef` short-circuits onChange for the duration of
+  //      the apply — covers the synchronous case and the intermediate
+  //      transaction states. Cleared in `finally`, so a throw can't strand
+  //      it true.
+  //   2. `lastContentRef` is set to the applied content, so once the doc
+  //      settles its serialization equals `lastContentRef` and onChange's
+  //      equality check drops it — covers any onChange that fires AFTER
+  //      the flag is cleared (i.e. an async dispatch). Belt and suspenders.
+  useEffect(() => {
+    if (!editor || initialContent === undefined) return;
+    if (initialContent === lastContentRef.current) return;
+    const blocks = parseStoredContent(initialContent);
+    if (!blocks) {
+      // Empty / legacy / non-JSON content. The freshly created editor is
+      // already an empty document, so don't replace (which would emit a
+      // spurious normalize-save); just baseline the ref so genuine edits
+      // still emit.
+      lastContentRef.current = serializeBlocks(editor.document);
+      return;
+    }
+    if (serializeBlocks(editor.document) === initialContent) {
+      lastContentRef.current = initialContent;
+      return;
+    }
+    applyingRemoteRef.current = true;
+    try {
+      editor.replaceBlocks(editor.document, blocks);
+      lastContentRef.current = initialContent; // guard (2): equality drop
+    } finally {
+      applyingRemoteRef.current = false; // guard (1): cleared even on throw
+    }
+  }, [editor, initialContent]);
 
   if (isLoading) {
     return (
@@ -194,17 +210,24 @@ export const EditorShell: React.FC<EditorShellProps> = ({
         />
 
         <div className="flex-1 flex flex-col overflow-hidden">
-          <EditorToolbar editor={editor} />
-
           <div className="flex-1 overflow-y-auto bg-card">
-            <div className="max-w-4xl mx-auto">
-              <EditorContent editor={editor} />
+            <div className="max-w-4xl mx-auto px-8 py-6 md:px-16 lg:px-24">
+              <BlockNoteView
+                editor={editor}
+                editable={!readOnly}
+                theme={theme}
+                formattingToolbar={false}
+              >
+                {/* Custom selection toolbar: defaults + font-size control. */}
+                <DriveFormattingToolbar />
+              </BlockNoteView>
             </div>
           </div>
 
           <EditorStatusBar
-            editor={editor}
             documentName={documentName}
+            wordCount={wordCount}
+            charCount={charCount}
             saveStatus={saveStatus}
             lastSavedAt={lastSavedAt}
             isAppReady={isAppReady}

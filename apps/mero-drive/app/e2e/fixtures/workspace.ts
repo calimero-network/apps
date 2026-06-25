@@ -65,10 +65,19 @@ export class WorkspaceDriver {
     await this.page
       .getByRole('button', { name: /New workspace/i })
       .click();
-    const dialog = this.page.getByRole('dialog');
+    // Scope to the creation dialog specifically (the one holding the
+    // "Workspace name" input). The instant Create succeeds, the
+    // DisplayNameGate — also role="dialog" — appears, so an unscoped
+    // getByRole('dialog') matches TWO elements and the toBeHidden below
+    // hits a strict-mode violation. Filtering by the input it contains
+    // pins this to the creation dialog, which has no name input once it
+    // closes (so toBeHidden resolves while the gate is up).
+    const dialog = this.page
+      .getByRole('dialog')
+      .filter({ has: this.page.getByPlaceholder(/Workspace name/i) });
     await dialog.getByPlaceholder(/Workspace name/i).fill(name);
     await dialog.getByRole('button', { name: /^Create$/ }).click();
-    // Dialog closes; namespace select shows the new value.
+    // Creation dialog closes (the name gate may now be showing).
     await expect(dialog).toBeHidden({ timeout: 15_000 });
     await expect(this.page.locator('select').first()).toContainText(name, {
       timeout: 15_000,
@@ -457,21 +466,28 @@ export class EditorDriver {
   constructor(private page: Page) {}
 
   async expectMounted(opts: { timeout?: number } = {}) {
-    await expect(this.page.locator('.ProseMirror')).toBeVisible({
+    // BlockNote renders its ProseMirror surface inside `.bn-container`.
+    // `.first()` guards against the transient aux ProseMirror instances
+    // BlockNote spawns for popups (link edit, etc.).
+    await expect(this.page.locator('.ProseMirror').first()).toBeVisible({
       timeout: opts.timeout ?? 30_000,
     });
   }
 
   async type(content: string): Promise<void> {
-    const editor = this.page.locator('.ProseMirror');
+    const editor = this.page.locator('.ProseMirror').first();
     await editor.click();
-    await editor.fill(content);
+    // pressSequentially sends real keystrokes through ProseMirror's input
+    // pipeline so BlockNote's onChange (and therefore autosave) fires —
+    // fill() sets the DOM directly and the editor may not observe it.
+    await editor.pressSequentially(content);
   }
 
   async expectContent(content: string, opts: { timeout?: number } = {}) {
-    await expect(this.page.locator('.ProseMirror')).toContainText(content, {
-      timeout: opts.timeout ?? 30_000,
-    });
+    await expect(this.page.locator('.ProseMirror').first()).toContainText(
+      content,
+      { timeout: opts.timeout ?? 30_000 },
+    );
   }
 
   async close(): Promise<void> {
@@ -482,14 +498,16 @@ export class EditorDriver {
   // it into an inline <input type="text"> (with autoFocus). Enter
   // commits the rename via the onKeyDown handler.
   async renameTitle(next: string): Promise<void> {
-    // A fresh doc is named "Untitled" (DocumentList.onCreate calls
-    // `docs.create({ title: 'Untitled' })`). Match the title button
-    // by exact name — the only other header button with letters is
-    // the "Documents" (plural) back button, which doesn't collide.
+    // A fresh doc is named "Untitled". It renders in TWO places at once:
+    // the editor-header title button (in <main>) AND a doc-leaf button in
+    // the sidebar tree (in <aside>, role="complementary"). Scope to <main>
+    // so the exact-name match resolves to the header title button only —
+    // otherwise it's a strict-mode violation against the sidebar leaf.
     await this.page
+      .getByRole('main')
       .getByRole('button', { name: 'Untitled', exact: true })
       .click();
-    const input = this.page.locator('input[type="text"]:focus');
+    const input = this.page.locator('main input[type="text"]:focus');
     await input.fill(next);
     await input.press('Enter');
   }

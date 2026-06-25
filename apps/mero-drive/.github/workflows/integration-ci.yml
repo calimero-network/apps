@@ -50,10 +50,13 @@ concurrency:
 jobs:
   e2e-fast:
     name: Browser e2e - fast (landing + single-node)
-    # TEMPORARILY DISABLED: the single-node folder-rename Playwright spec
+    # Off for master auto-CI: the single-node folder-rename Playwright spec
     # (folder-crud.spec.ts) flakes on a 15s click/fill timeout, unrelated to
-    # this PR's migration work. Re-enable once that browser flake is fixed.
-    if: false
+    # editor work. Still runnable ON DEMAND (workflow_dispatch) so a branch —
+    # e.g. the BlockNote editor migration — can validate the doc-crud /
+    # blocknote-editor specs in CI. Flip back to a full re-enable once the
+    # folder-rename flake is fixed.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -302,9 +305,11 @@ jobs:
 
   e2e-two-node:
     name: Browser e2e - two-node
-    # TEMPORARILY DISABLED alongside e2e-fast (same browser Playwright suite,
-    # unrelated to this PR's migration work). Re-enable with e2e-fast.
-    if: false
+    # Off for master auto-CI alongside e2e-fast (same browser Playwright
+    # suite). Runnable ON DEMAND (workflow_dispatch) — the two-node project
+    # is the real test of the BlockNote remote-apply guard (doc-collab:
+    # Alice's edits reach Bob without a feedback loop).
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
