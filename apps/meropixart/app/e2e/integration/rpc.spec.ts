@@ -19,8 +19,8 @@
  */
 import { test, expect, request, type APIRequestContext } from "@playwright/test";
 
-// merobox maps node-1's server port to 2428 on the host (see scripts/workflows.sh).
-const NODE_URL = process.env.INTEGRATION_NODE_URL ?? "http://localhost:2428";
+// merobox exposes node-1's RPC/Admin server on host port 2528 (2428 is P2P).
+const NODE_URL = process.env.INTEGRATION_NODE_URL ?? "http://localhost:2528";
 const TOKEN = process.env.INTEGRATION_ACCESS_TOKEN ?? "";
 
 let api: APIRequestContext;

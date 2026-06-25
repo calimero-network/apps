@@ -23,7 +23,7 @@ so nothing needs to be threaded through from the bootstrap step.
 Point them at any running node. Discovery still works, or you can pin the ids:
 
 ```bash
-INTEGRATION_NODE_URL=http://localhost:2460 \
+INTEGRATION_NODE_URL=http://localhost:2528 \   # merobox node-1 RPC/Admin port
 INTEGRATION_CONTEXT_ID=<ctx-id> \
 INTEGRATION_EXECUTOR_KEY=<owned-identity> \  # optional; enables mutation tests
 INTEGRATION_ACCESS_TOKEN=<jwt> \             # optional on an open dev node
