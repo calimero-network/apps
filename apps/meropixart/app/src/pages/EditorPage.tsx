@@ -558,6 +558,8 @@ export default function EditorPage() {
     const w = Math.max(1, Math.round(rect.w));
     const h = Math.max(1, Math.round(rect.h));
     const now = ts();
+    // snapshot doc size + layer positions so the crop can be undone
+    useEditorStore.getState().pushHistory([]);
     const moved = useEditorStore.getState().layers.map((l) => ({ ...l, x: l.x - ox, y: l.y - oy, updatedAt: now }));
     setLayers(moved);
     setDoc({ ...doc, width: w, height: h });
@@ -573,7 +575,9 @@ export default function EditorPage() {
   const onApplyFilter = useCallback(async (kind: FilterKind) => {
     const sel = useEditorStore.getState().selectedLayer();
     if (!sel || !canEdit()) return;
-    if (sel.kind !== "raster" && sel.kind !== "fill") { showToast("Select a raster layer to filter.", "error"); return; }
+    // Fill layers are procedural solids with no pixel buffer (the compositor
+    // regenerates them), so a filter would have nothing to act on — raster only.
+    if (sel.kind !== "raster") { showToast("Select a raster layer to filter.", "error"); return; }
     const c = peekLayerCanvas(sel.id);
     if (!c) { showToast("This layer has no pixels yet.", "error"); return; }
     useEditorStore.getState().pushHistory([sel.id]);
@@ -659,7 +663,9 @@ export default function EditorPage() {
         const layer = st.selectedLayer();
         if (!layer || !st.canEdit()) return;
         e.preventDefault();
-        if (st.selection && (layer.kind === "raster" || layer.kind === "fill")) {
+        // Only raster layers have pixels to clear within a selection; fill and
+        // other kinds have no buffer, so fall through to deleting the layer.
+        if (st.selection && layer.kind === "raster") {
           const c = peekLayerCanvas(layer.id);
           if (c) {
             st.pushHistory([layer.id]);

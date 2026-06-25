@@ -10,6 +10,7 @@ const MAX_HISTORY = 40;
 // A history entry captures the layers metadata plus a pixel snapshot (dataURL)
 // of any layer canvases that the operation is about to mutate.
 interface HistoryEntry {
+  doc: DocumentInfo | null; // doc size, so crop (resize + layer reposition) is undoable
   layers: Layer[];
   pixels: Record<string, string>; // layerId -> dataURL
   selectedLayerId: string | null;
@@ -135,7 +136,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       selectedLayerId: s.selectedLayerId === id ? null : s.selectedLayerId,
     })),
 
-  selectLayer: (id) => set({ selectedLayerId: id, editingMaskOf: null }),
+  selectLayer: (id) => set({ selectedLayerId: id, editingMaskOf: null, editingTextId: null }),
   setEditingMask: (id) => set({ editingMaskOf: id }),
   setEditingText: (id) => set({ editingTextId: id }),
   setTool: (t) => set({ activeTool: t }),
@@ -168,6 +169,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         if (snap) pixels[id] = snap;
       }
       const entry: HistoryEntry = {
+        doc: s.doc ? { ...s.doc } : null,
         layers: s.layers.map((l) => ({ ...l })),
         pixels,
         selectedLayerId: s.selectedLayerId,
@@ -187,12 +189,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (snap) redoPixels[id] = snap;
     }
     const redoEntry: HistoryEntry = {
+      doc: s.doc ? { ...s.doc } : null,
       layers: s.layers.map((l) => ({ ...l })),
       pixels: redoPixels,
       selectedLayerId: s.selectedLayerId,
     };
     restorePixels(entry.pixels, entry.layers);
     set({
+      doc: entry.doc,
       layers: entry.layers,
       selectedLayerId: entry.selectedLayerId,
       undoStack: s.undoStack.slice(0, -1),
@@ -211,12 +215,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (snap) undoPixels[id] = snap;
     }
     const undoEntry: HistoryEntry = {
+      doc: s.doc ? { ...s.doc } : null,
       layers: s.layers.map((l) => ({ ...l })),
       pixels: undoPixels,
       selectedLayerId: s.selectedLayerId,
     };
     restorePixels(entry.pixels, entry.layers);
     set({
+      doc: entry.doc,
       layers: entry.layers,
       selectedLayerId: entry.selectedLayerId,
       redoStack: s.redoStack.slice(0, -1),

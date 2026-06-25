@@ -157,11 +157,16 @@ export function floodFill(
   startY: number,
   fillColor: [number, number, number, number],
   tolerance = 32,
+  /** Optional in/out mask (length width*height, nonzero = fillable). Confines
+   *  the fill to an active pixel selection — a ctx clip cannot, since the fill
+   *  mutates ImageData directly. */
+  mask?: Uint8Array,
 ): void {
   const { width, height } = ctx.canvas;
   startX = Math.floor(startX);
   startY = Math.floor(startY);
   if (startX < 0 || startY < 0 || startX >= width || startY >= height) return;
+  if (mask && !mask[startY * width + startX]) return;
   const img = ctx.getImageData(0, 0, width, height);
   const d = img.data;
   const idx = (x: number, y: number) => (y * width + x) * 4;
@@ -183,6 +188,7 @@ export function floodFill(
     if (x < 0 || y < 0 || x >= width || y >= height) continue;
     const p = y * width + x;
     if (seen[p]) continue;
+    if (mask && !mask[p]) continue;
     const i = p * 4;
     if (!match(i)) continue;
     seen[p] = 1;

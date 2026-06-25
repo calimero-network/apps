@@ -130,13 +130,13 @@ export default function CanvasStage({
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.code === "Space") spaceDown.current = true;
-      if (e.key === "Escape") { setCropRect(null); live.current = null; draw(); }
+      if (e.key === "Escape") { setCropRect(null); setCloneSource(null); live.current = null; draw(); }
     };
     const up = (e: KeyboardEvent) => { if (e.code === "Space") spaceDown.current = false; };
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
     return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
-  }, [draw]);
+  }, [draw, setCloneSource]);
 
   // ── Coordinate helpers ────────────────────────────────────────────────────
   const screenToDoc = (e: { clientX: number; clientY: number }) => {
@@ -271,7 +271,12 @@ export default function CanvasStage({
     // text: edit an existing text layer under the cursor, else create one
     if (activeTool === "text") {
       const hit = [...layers].sort((a, b) => b.layerIndex - a.layerIndex)
-        .find((l) => l.kind === "text" && x >= l.x && x <= l.x + l.width && y >= l.y && y <= l.y + l.height);
+        .find((l) => {
+          if (l.kind !== "text") return false;
+          // map the click into the layer's local space so rotation/scale are honoured
+          const p = docToLayerLocal(l, x, y);
+          return p.x >= 0 && p.x <= l.width && p.y >= 0 && p.y <= l.height;
+        });
       if (hit) { selectLayer(hit.id); setEditingText(hit.id); return; }
       const id = await onCreateTextLayer(Math.round(x), Math.round(y));
       if (id) setEditingText(id);
@@ -302,7 +307,11 @@ export default function CanvasStage({
       if (!snap) return;
       const copy = createCanvas(snap.width, snap.height);
       ctx2d(copy).drawImage(snap, 0, 0);
-      const srcLocal = docToLayerLocal(sel, cloneSource.x, cloneSource.y);
+      // The snapshot lives in the SOURCE layer's local pixel space, so the source
+      // point must be mapped with the source layer's transform — not the active
+      // layer's, which may differ if the user switched layers after sampling.
+      const srcLayer = layers.find((l) => l.id === cloneSource.layerId) ?? sel;
+      const srcLocal = docToLayerLocal(srcLayer, cloneSource.x, cloneSource.y);
       const startLocal = docToLayerLocal(sel, x, y);
       pushHistory([sel.id]);
       dirtyLayer.current = sel.id;
@@ -329,7 +338,9 @@ export default function CanvasStage({
       const { canvas, isMask } = paintTarget(sel);
       const loc = docToLayerLocal(sel, x, y);
       const [cr, cg, cb] = hexToRgb(isMask ? "#ffffff" : primaryColor);
-      floodFill(ctx2d(canvas), loc.x, loc.y, [cr, cg, cb, 255], 40);
+      // confine the fill to the active selection (like every other paint tool)
+      const mask = selection ? selectionMask(selection, sel) : undefined;
+      floodFill(ctx2d(canvas), loc.x, loc.y, [cr, cg, cb, 255], 40, mask);
       dirtyLayer.current = sel.id;
       drag.current.mode = "none";
       bumpRender();
@@ -590,6 +601,21 @@ function TextEditor({
       }}
     />
   );
+}
+
+// Rasterise the active selection into the layer's local pixel space as an in/out
+// mask (nonzero = inside selection), used to confine flood fill.
+function selectionMask(selection: Selection, layer: Layer): Uint8Array {
+  const w = Math.max(1, layer.width);
+  const h = Math.max(1, layer.height);
+  const c = createCanvas(w, h);
+  const ctx = ctx2d(c);
+  ctx.fillStyle = "#fff";
+  ctx.fill(selectionPathLocal(selection, layer));
+  const data = ctx.getImageData(0, 0, w, h).data;
+  const mask = new Uint8Array(w * h);
+  for (let i = 0; i < mask.length; i++) mask[i] = data[i * 4 + 3] > 0 ? 1 : 0;
+  return mask;
 }
 
 // ── Draw helpers ─────────────────────────────────────────────────────────────
