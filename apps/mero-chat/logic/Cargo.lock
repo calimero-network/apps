@@ -86,15 +86,14 @@ checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 
 [[package]]
 name = "bytes"
-version = "1.11.1"
+version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
+checksum = "8ae3f5d315924270530207e2a68396c3cc547f6dca3fbdca317cfb1a51edb593"
 
 [[package]]
 name = "calimero-prelude"
-version = "0.11.0-rc.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76375a28fa22b6b51b2a0095d26168f1401ef5eabcc955a9edd3938b36cb01ac"
+version = "0.0.0"
+source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.7#6f50416c02d81b2c9090256536f7e550b989717e"
 dependencies = [
  "borsh",
  "calimero-primitives",
@@ -104,9 +103,8 @@ dependencies = [
 
 [[package]]
 name = "calimero-primitives"
-version = "0.11.0-rc.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6832873fe1aa94136f5470e1b2d61c500670ee67a4c3bf68df5089338de83848"
+version = "0.0.0"
+source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.7#6f50416c02d81b2c9090256536f7e550b989717e"
 dependencies = [
  "borsh",
  "bs58",
@@ -123,9 +121,8 @@ dependencies = [
 
 [[package]]
 name = "calimero-sdk"
-version = "0.11.0-rc.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8361ff8d4fdcf93120ca785ed05e531a7304db393230799e994a01156141da60"
+version = "0.0.0"
+source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.7#6f50416c02d81b2c9090256536f7e550b989717e"
 dependencies = [
  "borsh",
  "calimero-prelude",
@@ -140,9 +137,8 @@ dependencies = [
 
 [[package]]
 name = "calimero-sdk-macros"
-version = "0.11.0-rc.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a69306a9519c7707c53af3ca9b79fdff129accf01964d4b3c3ec2e3f00fd672"
+version = "0.0.0"
+source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.7#6f50416c02d81b2c9090256536f7e550b989717e"
 dependencies = [
  "prettyplease",
  "proc-macro2",
@@ -154,9 +150,8 @@ dependencies = [
 
 [[package]]
 name = "calimero-storage"
-version = "0.11.0-rc.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fefeaa2c34db58478bdefc554218105d9c57e7d3c372c63f60089ed53e59895f"
+version = "0.0.0"
+source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.7#6f50416c02d81b2c9090256536f7e550b989717e"
 dependencies = [
  "borsh",
  "calimero-prelude",
@@ -177,9 +172,8 @@ dependencies = [
 
 [[package]]
 name = "calimero-storage-macros"
-version = "0.11.0-rc.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2baa4f6b9ed49f873d760b116b6c58c99b72e43ad9792308fb787badb2010331"
+version = "0.0.0"
+source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.7#6f50416c02d81b2c9090256536f7e550b989717e"
 dependencies = [
  "quote",
  "syn",
@@ -187,18 +181,16 @@ dependencies = [
 
 [[package]]
 name = "calimero-sys"
-version = "0.11.0-rc.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4afaa2592165015c7225246e60db94b561c90c29d54a9a668328f53a25a5a0c9"
+version = "0.0.0"
+source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.7#6f50416c02d81b2c9090256536f7e550b989717e"
 dependencies = [
  "cfg-if",
 ]
 
 [[package]]
 name = "calimero-wasm-abi"
-version = "0.11.0-rc.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e625c3c805e87c195ca506d8fe722aedeebafc1cd19951cba91b0c0d7f240b7"
+version = "0.0.0"
+source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.7#6f50416c02d81b2c9090256536f7e550b989717e"
 dependencies = [
  "proc-macro2",
  "serde",
@@ -751,9 +743,9 @@ dependencies = [
 
 [[package]]
 name = "quote"
-version = "1.0.45"
+version = "1.0.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41f2619966050689382d2b44f664f4bc593e129785a36d6ee376ddf37259b924"
+checksum = "dfbc457d0c7a0759a614551b11a6409e5951f6c7537be1f1b7682b9ae9230368"
 dependencies = [
  "proc-macro2",
 ]
