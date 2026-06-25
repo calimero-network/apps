@@ -15,3 +15,6 @@ workflows/**/.pids/
 # misc
 .DS_Store
 *.log
+
+# merobox runtime data (when run from repo root)
+/data/
