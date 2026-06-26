@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSubscription, useMero } from "@calimero-network/mero-react";
 import { useMeroMeet } from "../hooks/useMeroMeet";
-import { getExecutorPublicKey } from "../lib/session";
+import { getExecutorPublicKey, setRoomName } from "../lib/session";
 import { encodeInvitationObject } from "../lib/invitation";
 import type { LobbyView, Presence } from "../types";
 import styles from "./LobbyPage.module.css";
@@ -30,7 +30,11 @@ export default function LobbyPage() {
 
   const refresh = useCallback(async () => {
     const view = await meet.getLobby();
-    if (view) setLobby(view);
+    if (view) {
+      setLobby(view);
+      // Cache the room's name so the Rooms picker shows it (not a raw id).
+      if (meet.contextId && view.room.name) setRoomName(meet.contextId, view.room.name);
+    }
   }, [meet]);
 
   // Initial join + presence refresh loop + heartbeat.
@@ -93,6 +97,9 @@ export default function LobbyPage() {
   const members: Presence[] = lobby?.members ?? [];
   const callActive = (lobby?.room.activeCall ?? "") !== "";
   const inCall = members.filter((m) => m.callId);
+  // Count online with the same self-override the rows use, so the header never
+  // says "0 online" while you're sitting in the room.
+  const onlineCount = members.filter((m) => m.memberId === selfId || online.has(m.memberId)).length;
 
   return (
     <div className={styles.page}>
@@ -103,7 +110,7 @@ export default function LobbyPage() {
           </button>
           <h1 className={styles.roomName}>{lobby?.room.name || "Room"}</h1>
           <p className={styles.roomMeta}>
-            {lobby?.room.onlineCount ?? 0} online · {lobby?.room.memberCount ?? 0} members
+            {onlineCount} online · {Math.max(lobby?.room.memberCount ?? 0, members.length)} members
             {callActive && <span className={styles.liveDot}> · call in progress</span>}
           </p>
         </div>
@@ -170,8 +177,10 @@ export default function LobbyPage() {
         <h2 className={styles.listTitle}>People</h2>
         {members.length === 0 && <p className={styles.empty}>No one here yet. Be the first.</p>}
         {members.map((m) => {
-          const isOnline = online.has(m.memberId);
           const isSelf = m.memberId === selfId;
+          // You're looking at the app right now, so always show yourself online —
+          // don't wait on the presence-TTL heartbeat to mark self online.
+          const isOnline = isSelf || online.has(m.memberId);
           return (
             <div key={m.memberId} className={styles.row}>
               <span className={`${styles.status} ${isOnline ? styles.on : styles.off}`} />

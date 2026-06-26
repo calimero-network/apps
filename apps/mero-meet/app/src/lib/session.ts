@@ -92,6 +92,33 @@ export function setSession(ctx: string, executor: string): void {
   setActiveRoom(ctx, executor);
 }
 
+// ── Room name cache ───────────────────────────────────────────────────────────
+// The room's human name lives in the contract (room.name) and in the namespace
+// alias, but neither is guaranteed to be synced when we render the room list
+// (especially right after joining via an invite). So we also cache the name
+// locally whenever we learn it — on create, on join (from the invite), and from
+// the lobby once entered — so the picker shows real names, never raw context ids.
+function roomNameKey(ctx: string): string {
+  return `mm-roomname:${applicationId ?? "default"}:${ctx}`;
+}
+
+export function setRoomName(ctx: string, name: string): void {
+  if (!ctx || !name.trim()) return;
+  try {
+    localStorage.setItem(roomNameKey(ctx), name.trim());
+  } catch {
+    /* ignore blocked storage */
+  }
+}
+
+export function getRoomName(ctx: string): string {
+  try {
+    return localStorage.getItem(roomNameKey(ctx)) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 /** Unix seconds — the clock the contract expects (WASM has no wall clock). */
 export function nowSecs(): number {
   return Math.floor(Date.now() / 1000);

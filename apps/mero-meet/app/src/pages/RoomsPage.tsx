@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useMero, useContexts } from "@calimero-network/mero-react";
-import { getApplicationId, setActiveRoom } from "../lib/session";
+import { useMero } from "@calimero-network/mero-react";
+import { getApplicationId, setActiveRoom, getRoomName, setRoomName } from "../lib/session";
 import { parseRoomInvitation } from "../lib/invitation";
 import styles from "./RoomsPage.module.css";
+
+interface RoomEntry {
+  contextId: string;
+  name: string;
+}
 
 /**
  * Room picker / creator — shown when the desktop opened Mero Meet without a
@@ -13,24 +18,56 @@ import styles from "./RoomsPage.module.css";
  * → create the context, then enter it.
  *
  * You can also JOIN a room someone shared: paste their invite code → join the
- * namespace → wait for the room context to sync → join it. Entering an existing
- * room resolves our owned member identity (`identities-owned`).
+ * namespace → wait for the room context to sync → join it.
+ *
+ * Rooms are shown by their human name (namespace alias, or the name we cached on
+ * create/join/enter) — never the raw context id.
  */
 export default function RoomsPage() {
   const navigate = useNavigate();
   const { mero, applicationId: providerAppId } = useMero();
   const appId = getApplicationId() ?? providerAppId ?? "";
 
-  const { contexts, loading: listing, error: listError, refetch } = useContexts(appId || null);
-
+  const [rooms, setRooms] = useState<RoomEntry[]>([]);
+  const [listing, setListing] = useState(true);
   const [name, setName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Build the room list: every context for this app, named by its namespace
+  // alias (or our locally-cached name), falling back to a short id.
+  const loadRooms = useCallback(async () => {
+    if (!mero || !appId) {
+      setListing(false);
+      return;
+    }
+    try {
+      const [ctxResp, namespaces] = await Promise.all([
+        mero.admin.getContextsForApplication(appId),
+        mero.admin.listNamespacesForApplication(appId).catch(() => []),
+      ]);
+      const nsName = new Map<string, string>();
+      for (const n of namespaces) {
+        const nm = (n.name ?? (n as { alias?: string }).alias ?? "").trim();
+        if (nm) nsName.set(n.namespaceId, nm);
+      }
+      const list = (ctxResp.contexts ?? []).map((c) => {
+        const cached = getRoomName(c.id);
+        const ns = nsName.get(c.groupId ?? "") ?? "";
+        return { contextId: c.id, name: cached || ns || `Room ${c.id.slice(0, 6)}` };
+      });
+      setRooms(list);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load rooms.");
+    } finally {
+      setListing(false);
+    }
+  }, [mero, appId]);
+
   useEffect(() => {
-    if (listError) setError(listError.message);
-  }, [listError]);
+    void loadRooms();
+  }, [loadRooms]);
 
   const enterRoom = useCallback(
     async (contextId: string) => {
@@ -83,16 +120,17 @@ export default function RoomsPage() {
         groupId: ns.namespaceId,
         initializationParams,
       });
+      setRoomName(ctx.contextId, roomName);
       setActiveRoom(ctx.contextId, ctx.memberPublicKey);
       setName("");
       navigate("/lobby");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not create the room.");
-      void refetch();
+      void loadRooms();
     } finally {
       setBusy(false);
     }
-  }, [name, mero, appId, navigate, refetch]);
+  }, [name, mero, appId, navigate, loadRooms]);
 
   const joinByCode = useCallback(async () => {
     const code = joinCode.trim();
@@ -104,7 +142,7 @@ export default function RoomsPage() {
     setBusy(true);
     setError(null);
     try {
-      const { namespaceId, signed } = parseRoomInvitation(code);
+      const { namespaceId, signed, roomName } = parseRoomInvitation(code);
       if (!namespaceId) throw new Error("That doesn't look like a valid invite code.");
 
       // Join the namespace the room lives in. (`signed` is the node's own
@@ -127,6 +165,7 @@ export default function RoomsPage() {
       }
 
       const joined = await mero.admin.joinContext(contextId);
+      if (roomName) setRoomName(contextId, roomName);
       setActiveRoom(contextId, joined.memberPublicKey);
       setJoinCode("");
       navigate("/lobby");
@@ -178,18 +217,18 @@ export default function RoomsPage() {
       <section className={styles.list}>
         <h2 className={styles.listTitle}>Your rooms</h2>
         {listing && <p className={styles.muted}>Loading rooms…</p>}
-        {!listing && contexts.length === 0 && (
+        {!listing && rooms.length === 0 && (
           <p className={styles.muted}>No rooms yet. Create one above to get started.</p>
         )}
-        {contexts.map((c) => (
+        {rooms.map((r) => (
           <button
-            key={c.contextId}
+            key={r.contextId}
             className={styles.row}
-            onClick={() => enterRoom(c.contextId)}
+            onClick={() => enterRoom(r.contextId)}
             disabled={busy}
           >
-            <span className={styles.roomAvatar}>{c.contextId.slice(0, 2).toUpperCase()}</span>
-            <span className={styles.roomId}>{c.contextId.slice(0, 12)}…</span>
+            <span className={styles.roomAvatar}>{r.name.slice(0, 2).toUpperCase()}</span>
+            <span className={styles.roomId}>{r.name}</span>
             <span className={styles.enter}>Enter →</span>
           </button>
         ))}
