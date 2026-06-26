@@ -207,6 +207,19 @@ test.describe("Editor", () => {
     await hex.press("Enter");
   });
 
+  test("paint bucket recolors a fill layer", async ({ page }) => {
+    await page.getByRole("button", { name: "New fill layer" }).click();
+    // default foreground (D) → black, then bucket-click the canvas
+    await page.keyboard.press("d");
+    await page.getByTestId("tool-bucket").click();
+    const canvas = page.getByTestId("main-canvas");
+    const box = (await canvas.boundingBox())!;
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    // the fill layer's colour swatch now reflects the foreground colour
+    const swatch = page.getByTestId("layer-color-swatch");
+    await expect(swatch).toHaveCSS("background-color", "rgb(0, 0, 0)");
+  });
+
   test("right-clicking a selection shows cut/copy/paste", async ({ page }) => {
     const canvas = page.getByTestId("main-canvas");
     const box = (await canvas.boundingBox())!;

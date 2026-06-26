@@ -391,6 +391,27 @@ export default function CanvasStage({
     }
 
     if (activeTool === "bucket" && sel) {
+      const editingMask = editingMaskOf === sel.id;
+      // Fill and text layers are procedural (the compositor regenerates them
+      // from layer.fill / text.color), so there's no pixel buffer to paint —
+      // the bucket changes their COLOUR via metadata instead.
+      if (!editingMask && sel.kind === "fill") {
+        pushHistory([], "Fill Color");
+        useEditorStore.getState().upsertLayer({ ...sel, fill: primaryColor, updatedAt: Date.now() });
+        bumpRender();
+        commitMeta(sel.id, { fill: primaryColor });
+        drag.current.mode = "none";
+        return;
+      }
+      if (!editingMask && sel.kind === "text" && sel.text) {
+        pushHistory([], "Text Color");
+        const text = { ...sel.text, color: primaryColor };
+        useEditorStore.getState().upsertLayer({ ...sel, text, updatedAt: Date.now() });
+        bumpRender();
+        onCommitText(sel.id, text, sel.width, sel.height);
+        drag.current.mode = "none";
+        return;
+      }
       pushHistory([sel.id], "Paint Bucket");
       const { canvas, isMask } = paintTarget(sel);
       const cx = ctx2d(canvas);
