@@ -514,6 +514,11 @@ jobs:
         env:
           CI: "true"
           INTEGRATION_MODE: "true"
+          # Turn on the collaborative (Yjs) editor for the two-node run so the
+          # concurrent-merge spec actually exercises the CRDT path. Forwarded to
+          # the Vite dev server via playwright.config.ts's webServer.env, and
+          # read at runtime by the spec's flag gate.
+          VITE_COLLAB_YJS: "true"
         run: pnpm exec playwright test --project=two-node
 
       - name: Stop merod nodes

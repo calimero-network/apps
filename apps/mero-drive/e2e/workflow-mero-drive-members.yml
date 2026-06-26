@@ -33,7 +33,7 @@ steps:
   - name: Install bundle on Node 1
     type: install_application
     node: calimero-node-1
-    path: ../logic/dist/com.calimero.mero-drive-docs-9.3.0.mpk
+    path: ../logic/dist/com.calimero.mero-drive-docs.mpk
     dev: true
     outputs:
       app_id: applicationId
@@ -41,7 +41,7 @@ steps:
   - name: Install bundle on Node 2
     type: install_application
     node: calimero-node-2
-    path: ../logic/dist/com.calimero.mero-drive-docs-9.3.0.mpk
+    path: ../logic/dist/com.calimero.mero-drive-docs.mpk
     dev: true
 
   - name: Alice creates namespace
@@ -307,11 +307,20 @@ steps:
       - '{{custom_caps}} == 256'
 
   # Cross-node propagation check: Bob's own node should see the same
-  # capability bitmask that Alice just wrote. Validates the namespace
-  # gossip layer, not just the admin-API write path.
-  # Match the 8-10s wait the rest of the e2e workflows use for
-  # governance gossip; the 5s we had before was half the norm and
-  # occasionally flaked on slow CI runners before the assertion.
+  # capability bitmask that Alice just wrote.
+  #
+  # KNOWN-FAILING (core/merod:edge regression, NOT a timing flake): since
+  # ~2026-06-25 this assert fails with bob_view_caps=0. Bob's node logs
+  # show his namespace governance DAG WEDGED — it rejects an earlier op
+  # with "cannot demote the last admin of the group" and retries it forever
+  # via backfill, so the later set_member_capabilities delta never applies
+  # and Bob reads 0. The unpinned merod:edge image (force_pull_image:true)
+  # tightened that governance rule in the 2026-06-22→25 window: members
+  # passed on master before and fails on master after, with no mero-drive
+  # governance changes between. A fixed wait cannot help (the delta will
+  # NEVER apply). Real fix is core-side, or pin merod:edge to a known-good
+  # rev — tracked separately, out of scope for this PR. Wait kept at the
+  # 10s norm; bumping it does nothing for a deterministic rejection.
   - name: Wait for cap change to propagate to Bob's node
     type: wait
     seconds: 10

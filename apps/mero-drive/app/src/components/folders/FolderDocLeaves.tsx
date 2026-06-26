@@ -49,17 +49,19 @@ export function FolderDocLeaves({
             <button
               type="button"
               onClick={() => onOpenDoc(folderId, d.id)}
-              className={`flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-left text-sm ${
+              className={`flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
                 isSelected
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-foreground hover:bg-muted'
+                  ? 'bg-primary/10 text-primary font-medium'
+                  : 'text-foreground hover:bg-muted/60'
               }`}
             >
               {/* Spacer matching the folder row's chevron column so doc
                   icons align under sibling subfolder icons. */}
               <span className="h-4 w-4 shrink-0" aria-hidden />
               <FileText
-                className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                className={`h-3.5 w-3.5 shrink-0 ${
+                  isSelected ? 'text-primary' : 'text-muted-foreground'
+                }`}
                 aria-hidden
               />
               <span className="truncate">{d.title || 'Untitled'}</span>

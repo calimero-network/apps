@@ -31,6 +31,19 @@ export default defineConfig({
         timeout: 120_000,
         stdout: 'pipe',
         stderr: 'pipe',
+        // Forward the collaboration feature flag to the dev server's
+        // environment so Vite actually exposes `import.meta.env.VITE_COLLAB_YJS`
+        // to the served app. Without this the flag set on the Playwright runner
+        // never reaches the built app, so `COLLAB_YJS_ENABLED` stays false and
+        // the collab editor never mounts — the two-node merge test would then
+        // silently exercise the LWW shell. CI sets `VITE_COLLAB_YJS=true` only
+        // on the two-node job (see integration-ci.yml); single-node/fast runs
+        // leave it unset so they keep testing the default LWW path.
+        env: {
+          ...(process.env.VITE_COLLAB_YJS
+            ? { VITE_COLLAB_YJS: process.env.VITE_COLLAB_YJS }
+            : {}),
+        },
       },
   projects: [
     {

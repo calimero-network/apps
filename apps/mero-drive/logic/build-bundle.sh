@@ -7,11 +7,12 @@
 set -e
 cd "$(dirname $0)"
 
-# Bundle/manifest version. Defaults to the registry crate version; override
-# with APP_VERSION_OVERRIDE to cut a migration-target bundle (e.g. 9.4.0)
-# without bumping the crate. DOCS_FEATURES (read by crates/docs/build.sh)
-# selects the docs schema variant.
-APP_VERSION="${APP_VERSION_OVERRIDE:-$(grep '^version' crates/registry/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')}"
+# Bundle/manifest version. Single source of truth: the workspace
+# [workspace.package] version in this dir's Cargo.toml (crates inherit it via
+# version.workspace = true). Override with APP_VERSION_OVERRIDE to cut a
+# migration-target bundle without bumping the workspace. DOCS_FEATURES (read
+# by crates/docs/build.sh) selects the docs schema variant.
+APP_VERSION="${APP_VERSION_OVERRIDE:-$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')}"
 # Dev install dedups by package name, so a migration-target bundle must carry a
 # DISTINCT package to install as a separate application (override here).
 PACKAGE="${PACKAGE_OVERRIDE:-com.calimero.mero-drive-docs}"
@@ -81,7 +82,12 @@ fi
 # Package as .mpk (tar.gz). Bundle into dist/ (committed per project
 # convention — see .gitignore: `!logic/dist/`).
 mkdir -p dist
-BUNDLE="dist/${PACKAGE}-${APP_VERSION}.mpk"
+# Unversioned filename: the version lives only in the manifest (appVersion,
+# from logic/Cargo.toml [workspace.package]) — keeping it out of the filename
+# means merobox workflows + e2e-up.ts never hardcode a version, so a version
+# bump touches exactly one place. (A migration-target bundle uses
+# PACKAGE_OVERRIDE for a distinct name.)
+BUNDLE="dist/${PACKAGE}.mpk"
 cd res/bundle-temp
 tar -czf "../../${BUNDLE}" \
     manifest.json \

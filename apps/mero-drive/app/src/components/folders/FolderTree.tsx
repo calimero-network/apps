@@ -103,7 +103,7 @@ export function FolderTree({ selectedDocId, onOpenDoc }: FolderTreeProps) {
           No folders yet. Create one to get started.
         </div>
       ) : (
-        <ul className="flex-1 space-y-1 overflow-y-auto p-2">
+        <ul className="flex-1 space-y-1.5 overflow-y-auto px-3 py-2">
           {tree.roots.map((n) => (
             <FolderTreeItem
               key={n.id}

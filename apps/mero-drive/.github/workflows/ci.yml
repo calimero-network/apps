@@ -150,8 +150,9 @@ jobs:
   # ============================================================
   # Job 3: Bundle — Build the multi-service .mpk against current core master
   # ============================================================
-  # Produces the bundle `com.calimero.mero-drive-docs-9.3.0.mpk` from the
-  # two wasm artifacts. Uploaded as a build artifact so the e2e job below
+  # Produces the bundle `com.calimero.mero-drive-docs.mpk` (version-free
+  # filename; the version lives in the manifest, from logic/Cargo.toml) from
+  # the two wasm artifacts. Uploaded as a build artifact so the e2e job below
   # can consume it without rebuilding, and so PR reviewers can download
   # and inspect the actual artifact that would ship.
   #
@@ -263,6 +264,13 @@ jobs:
           # expected_failure on group_management steps.
           - name: metadata-records
             file: workflow-mero-drive-metadata-records.yml
+          # Collaborative op-log (PR #57) — cross-node convergence of the
+          # Yjs content_updates set: append_doc_update / get_doc_updates,
+          # one-way + concurrent (add-wins union) + idempotent re-delivery.
+          # The always-on, non-flaky backend proxy for true 2-person editing
+          # (the browser text-merge half is two-node doc-collab.spec.ts).
+          - name: collab
+            file: workflow-mero-drive-collab.yml
           # NOTE: e2e/workflow-mero-drive-open-restricted-collab.yml (open/
           # restricted folders + registry permissions) is tracked but NOT in
           # the matrix yet — same as workflow-mero-drive-open-subgroup.yml. It

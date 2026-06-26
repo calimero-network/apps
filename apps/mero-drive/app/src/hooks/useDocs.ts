@@ -17,7 +17,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useJoinContext } from '@calimero-network/mero-react';
-import type { DocDto } from '../api/docs/DocsClient';
+import { CalimeroBytes, type DocDto } from '../api/docs/DocsClient';
 import { useDriveWorkspace } from '../hooks/useDriveWorkspace';
 import { useSelfIdentity } from './useSelfIdentity';
 import { useDocsClient } from './useDocsClient';
@@ -43,6 +43,11 @@ export interface UseDocsState {
   ) => Promise<void>;
   get: (id: string) => Promise<DocDto>;
   remove: (id: string) => Promise<void>;
+  /** Append one opaque Yjs update blob to a doc's collaborative content log.
+   *  Idempotent (content-addressed in the WASM). Used by the Yjs provider. */
+  appendUpdate: (id: string, update: Uint8Array) => Promise<void>;
+  /** Read the full (unordered) set of Yjs update blobs for a doc. */
+  getUpdates: (id: string) => Promise<Uint8Array[]>;
 }
 
 // Module-level fan-out so every useDocs instance for the same
@@ -170,6 +175,9 @@ export function useDocs(folderId: string | null): UseDocsState {
   // Guards `refetch` from double-fetching under Strict Mode
   // double-mount + useDocEvents firing on the same tick.
   const inFlightRef = useRef(false);
+  // Last rendered list signature — lets refetch skip a no-op setList when
+  // an SSE-driven refetch returns visually-identical data (diff-guard).
+  const lastListSigRef = useRef<string>('');
 
   const refetch = useCallback(async () => {
     if (!docsClient) {
@@ -220,7 +228,21 @@ export function useDocs(folderId: string | null): UseDocsState {
       // Sort most-recent first so the list's default cursor lands
       // on what the user likely wants to read.
       result.sort((a, b) => b.updated_at - a.updated_at);
-      setList(result);
+      // Diff-guard: only push new state when the rendered signature differs, so
+      // the sidebar doesn't flicker on every SSE event. Deliberately EXCLUDES
+      // updated_at — the list shows title + structure, not timestamps, so a
+      // remote CONTENT edit (which only bumps updated_at) must NOT re-render
+      // the other window's folder pane. Structural changes (create / delete /
+      // rename / archive) still change the signature and refresh. Trade-off:
+      // most-recent-first order re-sorts on the next structural change, not live
+      // on content edits — the desired stable behaviour.
+      const sig = result
+        .map((d) => `${d.id}:${d.title}:${d.archived ? 1 : 0}`)
+        .join('|');
+      if (sig !== lastListSigRef.current) {
+        lastListSigRef.current = sig;
+        setList(result);
+      }
       setListLoading(false);
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
@@ -339,6 +361,36 @@ export function useDocs(folderId: string | null): UseDocsState {
     [docsClient, refetch, contextId],
   );
 
+  const appendUpdate = useCallback(
+    async (id: string, update: Uint8Array): Promise<void> => {
+      if (!docsClient) throw new Error('docs context not ready');
+      // Deliberately does NOT notify siblings: the sidebar renders title, not
+      // body, so a list_docs fan-out per update would only add load. Peers
+      // learn of the new blob via the docs-context SSE event (DocEdited) the
+      // collab provider's pullRemote consumes.
+      await docsClient.appendDocUpdate({
+        id,
+        update: CalimeroBytes.fromUint8Array(update),
+      });
+    },
+    [docsClient],
+  );
+
+  const getUpdates = useCallback(
+    async (id: string): Promise<Uint8Array[]> => {
+      if (!docsClient) throw new Error('docs context not ready');
+      const blobs = await docsClient.getDocUpdates({ id });
+      // The generated DocsClient's convertWasmResultToCalimeroBytes tests
+      // `arr.every(isNumber)`, which is VACUOUSLY TRUE for `[]` — so an empty
+      // content_updates (a fresh doc) comes back as a single CalimeroBytes([])
+      // rather than an empty array. A non-array result means "no updates". The
+      // guard lives here because DocsClient is codegen'd (DO NOT EDIT).
+      if (!Array.isArray(blobs)) return [];
+      return blobs.map((b) => b.toUint8Array());
+    },
+    [docsClient],
+  );
+
   return {
     contextId,
     contextResolving,
@@ -350,5 +402,7 @@ export function useDocs(folderId: string | null): UseDocsState {
     edit,
     get,
     remove,
+    appendUpdate,
+    getUpdates,
   };
 }

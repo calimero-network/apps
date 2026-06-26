@@ -2,6 +2,14 @@
 members = ["crates/types", "crates/registry", "crates/docs"]
 resolver = "2"
 
+# Single source of truth for the bundle/app version. Bump HERE only; the
+# crates inherit via `version.workspace = true`, build-bundle.sh derives
+# APP_VERSION from this, and e2e-up.ts discovers the .mpk by glob (no
+# hardcoded version). (app/package.json carries the frontend's own npm
+# version separately — different ecosystem.)
+[workspace.package]
+version = "9.4.0"
+
 [workspace.dependencies]
 calimero-sdk = { git = "https://github.com/calimero-network/core", branch = "master" }
 calimero-storage = { git = "https://github.com/calimero-network/core", branch = "master" }

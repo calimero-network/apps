@@ -36,7 +36,7 @@ steps:
   - name: Install v1 bundle on Node 1 (9.3.0)
     type: install_application
     node: calimero-node-1
-    path: ../logic/dist/com.calimero.mero-drive-docs-9.3.0.mpk
+    path: ../logic/dist/com.calimero.mero-drive-docs.mpk
     dev: true
     outputs:
       app_v1: applicationId
@@ -44,7 +44,7 @@ steps:
   - name: Install v1 bundle on Node 2 (9.3.0)
     type: install_application
     node: calimero-node-2
-    path: ../logic/dist/com.calimero.mero-drive-docs-9.3.0.mpk
+    path: ../logic/dist/com.calimero.mero-drive-docs.mpk
     dev: true
 
   - name: Alice creates namespace (anchors app_v1)
@@ -208,7 +208,7 @@ steps:
   - name: Install v2 bundle on Node 1 (9.4.0, distinct package)
     type: install_application
     node: calimero-node-1
-    path: ../logic/dist/com.calimero.mero-drive-docs-v2-9.4.0.mpk
+    path: ../logic/dist/com.calimero.mero-drive-docs-v2.mpk
     dev: true
     outputs:
       app_v2: applicationId
@@ -216,7 +216,7 @@ steps:
   - name: Install v2 bundle on Node 2 (so Bob can run the migrated wasm)
     type: install_application
     node: calimero-node-2
-    path: ../logic/dist/com.calimero.mero-drive-docs-v2-9.4.0.mpk
+    path: ../logic/dist/com.calimero.mero-drive-docs-v2.mpk
     dev: true
 
   - name: Set upgrade policy to lazy-on-access

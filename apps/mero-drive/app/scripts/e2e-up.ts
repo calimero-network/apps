@@ -16,7 +16,7 @@
 //   pnpm e2e:down             # tear down
 
 import { spawnSync, spawn, ChildProcess } from 'node:child_process';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, writeFileSync, readdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -50,9 +50,16 @@ function run(cmd: string, args: string[], opts: { cwd?: string } = {}): void {
 }
 
 function ensureMpkBuilt(): void {
-  const mpk = resolve(REPO_ROOT, 'logic/dist/com.calimero.mero-drive-docs-9.3.0.mpk');
-  if (existsSync(mpk)) {
-    console.log(`mpk present: ${mpk}`);
+  // Discover the bundle by glob rather than a hardcoded version — the
+  // version lives only in logic/Cargo.toml ([workspace.package]).
+  const distDir = resolve(REPO_ROOT, 'logic/dist');
+  const found = existsSync(distDir)
+    ? readdirSync(distDir).find((f) =>
+        /^com\.calimero\.mero-drive-docs.*\.mpk$/.test(f),
+      )
+    : undefined;
+  if (found) {
+    console.log(`mpk present: ${resolve(distDir, found)}`);
     return;
   }
   console.log('mpk missing — building bundle…');

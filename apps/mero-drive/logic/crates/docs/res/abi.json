@@ -174,6 +174,16 @@
               "kind": "u64"
             }
           }
+        },
+        {
+          "name": "content_updates",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "bytes"
+            },
+            "crdt_type": "unordered_set"
+          }
         }
       ]
     },
@@ -440,6 +450,44 @@
       "returns": {
         "kind": "unit"
       }
+    },
+    {
+      "name": "append_doc_update",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "update",
+          "type": {
+            "kind": "bytes"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "get_doc_updates",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "bytes"
+        }
+      },
+      "intent": "read_only"
     },
     {
       "name": "archive_doc",

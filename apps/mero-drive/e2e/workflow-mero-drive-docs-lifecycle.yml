@@ -36,7 +36,7 @@ steps:
   - name: Install bundle on Node 1
     type: install_application
     node: calimero-node-1
-    path: ../logic/dist/com.calimero.mero-drive-docs-9.3.0.mpk
+    path: ../logic/dist/com.calimero.mero-drive-docs.mpk
     dev: true
     outputs:
       app_id: applicationId
@@ -44,7 +44,7 @@ steps:
   - name: Install bundle on Node 2
     type: install_application
     node: calimero-node-2
-    path: ../logic/dist/com.calimero.mero-drive-docs-9.3.0.mpk
+    path: ../logic/dist/com.calimero.mero-drive-docs.mpk
     dev: true
 
   - name: Alice creates namespace

@@ -94,12 +94,19 @@ export function FolderTreeItem({
   return (
     <li>
       <div
-        className={`group flex items-center gap-1.5 rounded px-2 py-1.5 text-sm cursor-pointer ${
+        className={`group flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm cursor-pointer transition-colors ${
           isSelected
-            ? 'bg-primary/10 text-primary'
-            : 'text-foreground hover:bg-muted'
+            ? 'bg-primary/10 text-primary font-medium'
+            : 'text-foreground hover:bg-muted/60'
         }`}
-        onClick={() => !renaming && onSelect(node.id)}
+        onClick={() => {
+          if (renaming) return;
+          onSelect(node.id);
+          // Selecting a folder also reveals its contents. Expand-only (not
+          // toggle) so clicking an already-open folder doesn't collapse it —
+          // the chevron remains the explicit collapse control.
+          if (!isExpanded) onToggleExpanded(node.id);
+        }}
       >
         <button
           type="button"
@@ -172,7 +179,7 @@ export function FolderTreeItem({
         // children a small gap to the right of the line. Indentation is
         // structural (one nested <ul> per level) rather than a computed
         // per-row padding, so the line and the indent always agree.
-        <ul className="ml-4 space-y-1 border-l border-border/60 pl-1">
+        <ul className="ml-4 mt-1.5 space-y-1.5 border-l border-border/50 pl-2">
           <FolderDocLeaves
             folderId={node.id}
             selectedDocId={selectedDocId}

@@ -41,17 +41,30 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { EditorShell } from '@/components/editor/EditorShell';
 import type { SaveStatus } from '@/components/editor/types';
 import { useConfirm } from '@/components/ui/confirm-dialog';
-import { MAX_ALIAS_LENGTH } from '@/constants/config';
+import { COLLAB_YJS_ENABLED, MAX_ALIAS_LENGTH } from '@/constants/config';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useContextEvents } from '@/hooks/useContextEvents';
 import { useDocs } from '@/hooks/useDocs';
 import type { DocDto } from '@/api/docs/DocsClient';
+import { CollabDocumentEditor } from './CollabDocumentEditor';
 
 interface Props {
   folderId: string;
   docId: string;
   onClose: () => void;
+}
+
+/**
+ * Document editor entry point. Branches on the collaboration feature flag:
+ *   - ON  → `CollabDocumentEditor` (Yjs collaboration; edits MERGE via the op-log).
+ *   - OFF → `LwwDocumentEditor` (the debounced whole-snapshot autosave path).
+ */
+export function DocumentEditor(props: Props) {
+  if (COLLAB_YJS_ENABLED) {
+    return <CollabDocumentEditor {...props} />;
+  }
+  return <LwwDocumentEditor {...props} />;
 }
 
 // Idle window before an autosave fires. Kept short so reader-side
@@ -63,7 +76,7 @@ interface Props {
 // catches intentional close and the unmount flush handles tab close.
 const AUTOSAVE_DEBOUNCE_MS = 900;
 
-export function DocumentEditor({ folderId, docId, onClose }: Props) {
+function LwwDocumentEditor({ folderId, docId, onClose }: Props) {
   const { namespaceId } = useDriveWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   // Doc-edit ability is the registry `Role` (Editor/Manager — not
