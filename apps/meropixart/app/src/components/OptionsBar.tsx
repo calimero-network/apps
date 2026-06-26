@@ -8,10 +8,19 @@ interface Props {
 }
 
 /** Photoshop-style contextual options bar — controls for the active tool. */
+const FONTS = [
+  "Inter", "Arial", "Helvetica", "Georgia", "Times New Roman",
+  "Courier New", "Verdana", "Trebuchet MS", "Impact", "Comic Sans MS",
+];
+
 export default function OptionsBar({ onUpdateText }: Props) {
   const s = useEditorStore();
   const { activeTool } = s;
   const sel = s.layers.find((l) => l.id === s.selectedLayerId);
+  // Typography controls show for a selected text layer under Text/Move/Transform
+  // (so you can re-style text without re-picking the Type tool).
+  const showText = sel?.kind === "text" && !!sel.text
+    && (activeTool === "text" || activeTool === "move" || activeTool === "transform");
 
   return (
     <div className={styles.bar} data-testid="options-bar">
@@ -97,17 +106,24 @@ export default function OptionsBar({ onUpdateText }: Props) {
         </>
       )}
 
-      {activeTool === "text" && sel?.kind === "text" && sel.text && (
+      {showText && sel?.text && (
         <>
           <span className={styles.toolName}>Type</span>
+          <Field label="Font">
+            <select className={styles.select} value={sel.text.fontFamily}
+              onChange={(e) => onUpdateText(sel.id, { fontFamily: e.target.value })}>
+              {FONTS.map((f) => <option key={f} value={f}>{f}</option>)}
+              {!FONTS.includes(sel.text.fontFamily) && <option value={sel.text.fontFamily}>{sel.text.fontFamily}</option>}
+            </select>
+          </Field>
           <Slider label="Size" min={6} max={400} value={sel.text.fontSize} suffix="px"
             onChange={(v) => onUpdateText(sel.id, { fontSize: v })} />
           <Field label="Color">
             <input className={styles.color} type="color" value={toHex(sel.text.color)}
               onChange={(e) => onUpdateText(sel.id, { color: e.target.value })} />
           </Field>
-          <button className={`${styles.btn} ${sel.text.bold ? styles.segOn : ""}`} onClick={() => onUpdateText(sel.id, { bold: !sel.text!.bold })}><b>B</b></button>
-          <button className={`${styles.btn} ${sel.text.italic ? styles.segOn : ""}`} onClick={() => onUpdateText(sel.id, { italic: !sel.text!.italic })}><i>I</i></button>
+          <button className={`${styles.btn} ${sel.text.bold ? styles.segOn : ""}`} title="Bold" onClick={() => onUpdateText(sel.id, { bold: !sel.text!.bold })}><b>B</b></button>
+          <button className={`${styles.btn} ${sel.text.italic ? styles.segOn : ""}`} title="Italic" onClick={() => onUpdateText(sel.id, { italic: !sel.text!.italic })}><i>I</i></button>
           <Field label="Align">
             <select className={styles.select} value={sel.text.align || "left"}
               onChange={(e) => onUpdateText(sel.id, { align: e.target.value })}>
@@ -116,10 +132,11 @@ export default function OptionsBar({ onUpdateText }: Props) {
               <option value="right">Right</option>
             </select>
           </Field>
+          <span className={styles.note}>Double-click the text on canvas to edit its words.</span>
         </>
       )}
 
-      {(activeTool === "move" || activeTool === "transform" || activeTool === "hand"
+      {!showText && (activeTool === "move" || activeTool === "transform" || activeTool === "hand"
         || activeTool === "zoom" || activeTool === "eyedropper" || activeTool === "bucket"
         || activeTool === "crop"
         || (activeTool === "text" && sel?.kind !== "text")) && (

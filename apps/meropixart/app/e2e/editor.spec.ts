@@ -156,6 +156,26 @@ test.describe("Editor", () => {
     await expect(page.locator("textarea")).toHaveValue("Hello");
   });
 
+  test("text layers can be re-edited (font picker + double-click)", async ({ page }) => {
+    const canvas = page.getByTestId("main-canvas");
+    const box = (await canvas.boundingBox())!;
+    // create a text layer and commit it
+    await page.getByTestId("tool-text").click();
+    await page.mouse.click(box.x + 220, box.y + 160);
+    await expect(page.locator("textarea")).toBeVisible();
+    await page.keyboard.type("Hi");
+    await page.keyboard.press("Control+Enter");
+    await expect(page.locator("textarea")).toHaveCount(0);
+    // typography controls (incl. the new Font picker) are available
+    const bar = page.getByTestId("options-bar");
+    await expect(bar.getByText("Font", { exact: true })).toBeVisible();
+    // with the Move tool, double-clicking the text re-opens the editor
+    await page.getByTestId("tool-move").click();
+    await page.mouse.dblclick(box.x + 226, box.y + 168);
+    await expect(page.locator("textarea")).toBeVisible();
+    await expect(page.locator("textarea")).toHaveValue("Hi");
+  });
+
   test("renders the Layers panel", async ({ page }) => {
     await expect(page.getByText("Layers", { exact: true })).toBeVisible();
   });

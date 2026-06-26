@@ -629,6 +629,18 @@ export default function CanvasStage({
 
   const confirmCrop = () => { if (cropRect) { onCrop(cropRect); setCropRect(null); } };
 
+  // Double-click a text layer (with any tool) to re-edit its content.
+  const onDoubleClick = (e: React.MouseEvent) => {
+    if (!doc) return;
+    const { x, y } = screenToDoc(e);
+    const hit = [...layers].sort((a, b) => b.layerIndex - a.layerIndex).find((l) => {
+      if (l.kind !== "text") return false;
+      const p = docToLayerLocal(l, x, y);
+      return p.x >= 0 && p.x <= l.width && p.y >= 0 && p.y <= l.height;
+    });
+    if (hit) { selectLayer(hit.id); setEditingText(hit.id); }
+  };
+
   // ── Clipboard: cut / copy / paste on the active selection ───────────────────
   // Copy grabs the composited pixels inside the selection (masked to its shape)
   // into a bbox-sized canvas; paste drops them back as a brand-new raster layer.
@@ -719,6 +731,7 @@ export default function CanvasStage({
         onPointerUp={onPointerUp}
         onPointerLeave={() => usePointerStore.getState().set(null, null)}
         onWheel={onWheel}
+        onDoubleClick={onDoubleClick}
         onContextMenu={onContextMenu}
       />
 
