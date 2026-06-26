@@ -1,11 +1,12 @@
 .tile {
   position: relative;
-  background: #11131a;
-  border-radius: 12px;
+  background: #0f1118;
+  border-radius: var(--radius-lg);
   overflow: hidden;
   aspect-ratio: 16 / 9;
   min-height: 0;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
 }
 
 .video {
@@ -13,7 +14,7 @@
   height: 100%;
   object-fit: cover;
   display: block;
-  background: #11131a;
+  background: #0f1118;
 }
 
 .avatar {
@@ -22,14 +23,21 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at 50% 40%, #2a2f3e, #11131a);
+  background: radial-gradient(circle at 50% 38%, #232838, #0f1118 72%);
 }
 
 .avatar span {
-  font-size: 2rem;
+  display: grid;
+  place-items: center;
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  background: var(--accent-grad);
+  font-size: 1.9rem;
   font-weight: 700;
-  color: #cfd6e6;
-  letter-spacing: 0.05em;
+  color: #fff;
+  letter-spacing: 0.04em;
+  box-shadow: 0 8px 26px rgba(109, 131, 255, 0.35);
 }
 
 .overlay {
@@ -38,22 +46,26 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
-  color: #cfd6e6;
+  background: rgba(6, 7, 10, 0.55);
+  color: var(--text-dim);
   font-size: 0.85rem;
+  backdrop-filter: blur(2px);
 }
 
 .label {
   position: absolute;
-  left: 8px;
-  bottom: 8px;
-  padding: 2px 8px;
-  border-radius: 6px;
+  left: 12px;
+  bottom: 12px;
+  padding: 5px 11px;
+  border-radius: 999px;
   background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   color: #fff;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
+  font-weight: 500;
   max-width: 80%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  backdrop-filter: blur(8px);
 }
