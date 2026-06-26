@@ -49,30 +49,24 @@
   border-left: 1px solid var(--border);
   background: var(--bg-1);
   min-height: 0;
+  /* the whole dock scrolls when its panels don't fit (collapsed panels shrink
+     to just their header so this rarely triggers, but it never clips) */
+  overflow-y: auto;
 }
 
-/* Each dockable panel is its own section; non-growing sections size to content
-   (with a scroll cap), the Layers section fills the remaining height. */
+/* Each dockable panel is its own section; sections size to content, the Layers
+   section grows to fill any leftover height. */
 .dockSection {
   display: flex;
   flex-direction: column;
-  flex-shrink: 0;
-  min-height: 0;
+  flex: 0 0 auto;
   border-bottom: 1px solid var(--border);
 }
 .dockSection:last-child { border-bottom: none; }
 
-.dockScroll {
-  max-height: 38%;
-  overflow-y: auto;
-}
-.dockHistory {
-  max-height: 26%;
-  min-height: 96px;
-}
 .dockGrow {
-  flex: 1;
-  min-height: 120px;
+  flex: 1 1 auto;
+  min-height: 180px;
 }
 
 .loading {

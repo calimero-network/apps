@@ -65,6 +65,7 @@ interface DragState {
   lastX: number;
   lastY: number;
   origin?: Layer;
+  originMulti?: Layer[]; // snapshots of all selected layers when moving several together
   handle?: string;
   points?: number[]; // lasso, doc space
   cloneOffset?: { x: number; y: number }; // doc-space source - start
@@ -89,7 +90,7 @@ export default function CanvasStage({
 
   const {
     doc, layers, zoom, panX, panY, renderTick,
-    activeTool, selectedLayerId, editingMaskOf, editingTextId,
+    activeTool, selectedLayerId, selectedLayerIds, editingMaskOf, editingTextId,
     primaryColor, secondaryColor, brushSize, brushHardness, brushOpacity, brushType,
     selection, shapeKind, shapeStroke, gradientType, gradientFill, cloneSource, clipboard,
     view, guides,
@@ -137,7 +138,12 @@ export default function CanvasStage({
 
     // selection bounding box + transform handles
     const sel = layers.find((l) => l.id === selectedLayerId);
-    if (sel && (activeTool === "transform" || activeTool === "move")) {
+    const multi = selectedLayerIds.length > 1
+      ? layers.filter((l) => selectedLayerIds.includes(l.id))
+      : [];
+    if (multi.length > 1 && (activeTool === "transform" || activeTool === "move")) {
+      drawMultiSelection(ctx, multi, zoom);
+    } else if (sel && (activeTool === "transform" || activeTool === "move")) {
       drawSelection(ctx, sel, zoom, activeTool === "transform");
     }
 
@@ -148,7 +154,7 @@ export default function CanvasStage({
     if (selection) drawAnts(ctx, selection, zoom, doc.width, doc.height);
 
     ctx.restore();
-  }, [doc, layers, zoom, panX, panY, selectedLayerId, activeTool, renderTick, selection, primaryColor, shapeKind, shapeStroke, gradientType, view]);
+  }, [doc, layers, zoom, panX, panY, selectedLayerId, selectedLayerIds, activeTool, renderTick, selection, primaryColor, shapeKind, shapeStroke, gradientType, view]);
 
   useEffect(() => { draw(); }, [draw]);
 
@@ -407,9 +413,15 @@ export default function CanvasStage({
     if ((activeTool === "move" || activeTool === "transform") && sel) {
       const handle = activeTool === "transform" ? hitHandle(sel, x, y, zoom) : null;
       drag.current.origin = { ...sel };
+      // When several layers are selected, a plain Move drags them all together
+      // (transform/scale/rotate still acts on the primary layer only).
+      const multi = layers.filter((l) => selectedLayerIds.includes(l.id));
+      if (activeTool === "move" && !handle && multi.length > 1) {
+        drag.current.originMulti = multi.map((l) => ({ ...l }));
+      }
       drag.current.handle = handle ?? undefined;
       drag.current.mode = handle === "rot" ? "rotate" : handle ? "scale" : "move";
-      pushHistory([], activeTool === "transform" ? "Transform" : "Move");
+      pushHistory([], activeTool === "transform" ? "Transform" : multi.length > 1 ? "Move Layers" : "Move");
     }
   };
 
@@ -467,9 +479,23 @@ export default function CanvasStage({
       return;
     }
 
-    if (st.mode === "move" && st.origin) {
-      let nx = Math.round(st.origin.x + (x - st.startX));
-      let ny = Math.round(st.origin.y + (y - st.startY));
+    if (st.mode === "move") {
+      const dx = x - st.startX;
+      const dy = y - st.startY;
+      // Multiple layers: translate them all by the raw delta (no per-layer snap
+      // so the group keeps its relative layout).
+      if (st.originMulti) {
+        const store = useEditorStore.getState();
+        for (const o of st.originMulti) {
+          const cur = store.layers.find((l) => l.id === o.id);
+          if (cur) store.upsertLayer({ ...cur, x: Math.round(o.x + dx), y: Math.round(o.y + dy) });
+        }
+        bumpRender();
+        return;
+      }
+      if (!st.origin) return;
+      let nx = Math.round(st.origin.x + dx);
+      let ny = Math.round(st.origin.y + dy);
       if (view.snap && doc && !e.altKey) {
         const lw = sel.width * (sel.scaleX || 100) / 100;
         const lh = sel.height * (sel.scaleY || 100) / 100;
@@ -533,6 +559,12 @@ export default function CanvasStage({
     } else if ((st.mode === "paint" || st.mode === "clone") && dirtyLayer.current) {
       finishStroke(dirtyLayer.current);
       dirtyLayer.current = null;
+    } else if (st.mode === "move" && st.originMulti) {
+      const cur = useEditorStore.getState().layers;
+      for (const o of st.originMulti) {
+        const l = cur.find((x) => x.id === o.id);
+        if (l) commitMeta(l.id, { x: l.x, y: l.y });
+      }
     } else if ((st.mode === "move" || st.mode === "scale" || st.mode === "rotate") && sel) {
       commitMeta(sel.id, { x: sel.x, y: sel.y, scaleX: sel.scaleX, scaleY: sel.scaleY, rotation: sel.rotation });
     }
@@ -566,9 +598,13 @@ export default function CanvasStage({
   // into a bbox-sized canvas; paste drops them back as a brand-new raster layer.
   const doCopy = useCallback((): boolean => {
     if (!doc || !selection) return false;
+    const active = layers.find((l) => l.id === selectedLayerId);
+    if (!active) return false;
     const b = selectionBounds(selection, doc.width, doc.height);
     if (b.w < 1 || b.h < 1) return false;
-    const flat = composite(layers, doc.width, doc.height, {}); // no background → transparent outside content
+    // Confine the copy to the ACTIVE layer only (not the flattened composite),
+    // so a selection never pulls pixels from other layers.
+    const flat = composite([active], doc.width, doc.height, {});
     const out = createCanvas(b.w, b.h);
     const octx = ctx2d(out);
     octx.save();
@@ -578,7 +614,7 @@ export default function CanvasStage({
     octx.restore();
     setClipboard({ canvas: out, x: b.x, y: b.y });
     return true;
-  }, [doc, selection, layers, setClipboard]);
+  }, [doc, selection, layers, selectedLayerId, setClipboard]);
 
   const doCut = useCallback(() => {
     if (!canEdit() || !doCopy()) return;
@@ -977,6 +1013,32 @@ function drawSelection(ctx: CanvasRenderingContext2D, l: Layer, zoom: number, ha
     ctx.arc(p.rot[0], p.rot[1], hs * 0.7, 0, Math.PI * 2);
     ctx.fill();
   }
+  ctx.restore();
+}
+
+// Combined bounding box around several selected layers (axis-aligned union of
+// their scaled boxes). Drawn when 2+ layers are selected under Move/Transform.
+function drawMultiSelection(ctx: CanvasRenderingContext2D, layers: Layer[], zoom: number) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const l of layers) {
+    const w = l.width * (l.scaleX || 100) / 100;
+    const h = l.height * (l.scaleY || 100) / 100;
+    x0 = Math.min(x0, l.x); y0 = Math.min(y0, l.y);
+    x1 = Math.max(x1, l.x + w); y1 = Math.max(y1, l.y + h);
+    // per-layer faint outline so it's clear which layers are in the set
+    ctx.save();
+    ctx.strokeStyle = "rgba(165,255,17,0.45)";
+    ctx.lineWidth = 1 / zoom;
+    ctx.setLineDash([3 / zoom, 3 / zoom]);
+    ctx.strokeRect(l.x, l.y, w, h);
+    ctx.restore();
+  }
+  if (!isFinite(x0)) return;
+  ctx.save();
+  ctx.strokeStyle = "#A5FF11";
+  ctx.lineWidth = 1.5 / zoom;
+  ctx.setLineDash([]);
+  ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
   ctx.restore();
 }
 

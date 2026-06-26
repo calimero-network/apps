@@ -9,7 +9,7 @@ import { useToast } from "../contexts/ToastContext";
 import { useEditorStore } from "../store/editorStore";
 import {
   getLayerCanvas, peekLayerCanvas, getMaskCanvas, peekMaskCanvas,
-  setLayerCanvas, dropLayerCanvas, dropMaskCanvas,
+  setLayerCanvas, dropLayerCanvas, dropMaskCanvas, clearAllCanvases,
 } from "../store/layerCanvases";
 import {
   bytesToImage, canvasToPngBytes, createCanvas, ctx2d, applyCurves, parseCurves,
@@ -136,6 +136,22 @@ export default function EditorPage() {
   // ── Init ────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!ctxId) { setFatal("No project specified."); return; }
+    // Hard-reset all editor state when switching projects. The route component
+    // stays mounted across :projectId changes, so the global store, the
+    // off-DOM canvas registry and the loaded-blob cache would otherwise carry
+    // one document's pixels into the next (every project looking identical).
+    const reset = useEditorStore.getState();
+    reset.setLayers([]);
+    reset.selectLayer(null);
+    reset.setSelection(null);
+    reset.clearGuides();
+    reset.clearHistory();
+    clearAllCanvases();
+    loadedBlobs.current = new Set();
+    setReady(false);
+    setMembers([]);
+    setCursors([]);
+
     let cancelled = false;
     (async () => {
       myId.current = await resolveIdentity();
@@ -767,7 +783,9 @@ export default function EditorPage() {
             commitPixels(layer.id);
           }
         } else {
-          onDelete(layer.id);
+          // delete every selected layer (multi-selection), else just the active one
+          const ids = st.selectedLayerIds.length > 1 ? st.selectedLayerIds : [layer.id];
+          for (const id of ids) onDelete(id);
         }
         return;
       }
@@ -864,7 +882,7 @@ export default function EditorPage() {
             <section className={styles.dockSection}><Navigator /></section>
           )}
           {panels.adjustments && (
-            <section className={`${styles.dockSection} ${styles.dockScroll}`}>
+            <section className={styles.dockSection}>
               <AdjustmentsPanel
                 layer={selLayer}
                 onAdjust={onAdjust}
@@ -875,7 +893,7 @@ export default function EditorPage() {
             </section>
           )}
           {panels.history && (
-            <section className={`${styles.dockSection} ${styles.dockHistory}`}>
+            <section className={styles.dockSection}>
               <HistoryPanel />
             </section>
           )}

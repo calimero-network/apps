@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useEditorStore } from "../store/editorStore";
 import type { Adjustments, Layer } from "../types";
 import { NEUTRAL_ADJUSTMENTS } from "../types";
 import type { LevelsData } from "../utils/raster";
@@ -46,11 +47,22 @@ const FILTERS: FilterPreset[] = [
 export default function AdjustmentsPanel({ layer, onAdjust, onApplyCurves, onApplyLevels, disabled }: Props) {
   const [curvesOpen, setCurvesOpen] = useState(false);
   const [levelsOpen, setLevelsOpen] = useState(false);
+  const collapsed = useEditorStore((s) => s.panelCollapsed.adjustments);
+  const toggleCollapsed = useEditorStore((s) => s.togglePanelCollapsed);
+
+  const heading = (
+    <button className="mp-collapse" onClick={() => toggleCollapsed("adjustments")}
+      aria-expanded={!collapsed} aria-label={`${collapsed ? "Expand" : "Collapse"} Adjustments`}>
+      <span className="mp-chev">{collapsed ? "▸" : "▾"}</span>
+      <span className="mp-label">Adjustments</span>
+    </button>
+  );
 
   if (!layer) {
     return (
       <div className={styles.panel} data-testid="adjustments-panel">
-        <div className={styles.empty}>Select a layer to adjust.</div>
+        <div className={styles.headerRow}>{heading}</div>
+        {!collapsed && <div className={styles.empty}>Select a layer to adjust.</div>}
       </div>
     );
   }
@@ -60,7 +72,7 @@ export default function AdjustmentsPanel({ layer, onAdjust, onApplyCurves, onApp
   return (
     <div className={styles.panel} data-testid="adjustments-panel">
       <div className={styles.headerRow}>
-        <span className="mp-label">Adjustments</span>
+        {heading}
         <button
           type="button"
           className="mp-btn mp-btn--ghost"
@@ -72,6 +84,7 @@ export default function AdjustmentsPanel({ layer, onAdjust, onApplyCurves, onApp
         </button>
       </div>
 
+      {collapsed ? null : (<>
       <div className={styles.sliders}>
         {SLIDERS.map((s) => {
           const value = adj[s.field] ?? NEUTRAL_ADJUSTMENTS[s.field];
@@ -164,6 +177,7 @@ export default function AdjustmentsPanel({ layer, onAdjust, onApplyCurves, onApp
           onClose={() => setLevelsOpen(false)}
         />
       )}
+      </>)}
     </div>
   );
 }

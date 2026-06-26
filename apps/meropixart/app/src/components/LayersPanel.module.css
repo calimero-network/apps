@@ -1,15 +1,22 @@
 .panel {
   display: flex;
   flex-direction: column;
-  width: var(--panel-w);
+  flex: 1;
   background: var(--bg-1);
-  border-left: 1px solid var(--border);
   min-height: 0;
 }
 
 .header {
   padding: 10px 12px;
   border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.selCount {
+  font-size: 11px;
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .props {
@@ -64,6 +71,7 @@
 }
 .item:hover { background: var(--bg-2); }
 .selected { background: var(--bg-4) !important; box-shadow: inset 2px 0 0 var(--accent); }
+.primary { box-shadow: inset 3px 0 0 var(--accent); }
 .dragging { opacity: 0.5; }
 
 .eye {

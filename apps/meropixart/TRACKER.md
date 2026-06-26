@@ -224,6 +224,28 @@ Still open from the backlog: marquee/lasso variants + Magic Wand (#5), layer
 styles/blending-options dialog (#6), Color Range (#7), adjustment layers (#8),
 free-floating/undockable panels (#10).
 
+## 2026-06-26 — Selections, multi-layer, dock + cross-project bug
+Follow-up to the backlog pass:
+- **Selections confined to the active layer** — Copy now samples only the
+  selected layer (was the full composite); paint/fill/cut/delete already
+  targeted the active layer.
+- **Multi-layer selection** — Cmd/Ctrl-click toggles, Shift-click range-selects
+  in the Layers panel (`selectedLayerIds`; `selectedLayerId` stays the primary
+  for props/adjustments/paint). Move drags all selected layers together with a
+  combined bounding box; Delete removes the whole selection.
+- **Collapsible dock + scroll** — each right-rail panel has a collapse chevron;
+  **History starts collapsed**; the dock itself scrolls (`overflow-y:auto`) so
+  panels never clip.
+- **BUG: every project showed the same image** — the editor route component
+  stays mounted across `:projectId` changes, so the global store + off-DOM
+  canvas registry + loaded-blob cache leaked one document's pixels into the
+  next. Fixed by a hard reset (`clearAllCanvases()` + store/layers/selection/
+  history/guides + `loadedBlobs`) at the top of the project-load effect.
+
+Verified: tsc clean · lint 0 errors · build clean · vitest 17/17 · Playwright
+mocked **38/38** (gallery thumbnails are still checkerboard placeholders — a
+separate follow-up).
+
 ## Remaining work / follow-ups
 - Advanced tools: crop tool, warp mesh, clone stamp polish, standalone Levels + adjustment layers (marquee/lasso/gradient/shape/clone shipped earlier).
 - Playwright integration suite + merobox workflow execution (need Docker / live nodes).

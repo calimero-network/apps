@@ -25,6 +25,8 @@ export default function Navigator() {
   const renderTick = useEditorStore((s) => s.renderTick);
   const setZoom = useEditorStore((s) => s.setZoom);
   const setPan = useEditorStore((s) => s.setPan);
+  const collapsed = useEditorStore((s) => s.panelCollapsed.navigator);
+  const toggleCollapsed = useEditorStore((s) => s.togglePanelCollapsed);
 
   const [thumb, setThumb] = useState<string>("");
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -38,7 +40,7 @@ export default function Navigator() {
 
   // Regenerate the (throttled) preview whenever the document changes.
   useEffect(() => {
-    if (!doc) return;
+    if (!doc || collapsed) return;
     if (genTimer.current) clearTimeout(genTimer.current);
     genTimer.current = setTimeout(() => {
       const { layers } = useEditorStore.getState();
@@ -50,7 +52,7 @@ export default function Navigator() {
       setThumb(small.toDataURL("image/png"));
     }, 220);
     return () => { if (genTimer.current) clearTimeout(genTimer.current); };
-  }, [doc, renderTick, tw, th]);
+  }, [doc, renderTick, tw, th, collapsed]);
 
   // Viewport rectangle (red box) in thumbnail coords, from the live canvas size.
   let vp: { left: number; top: number; w: number; h: number } | null = null;
@@ -88,10 +90,15 @@ export default function Navigator() {
   return (
     <div className={styles.panel} data-testid="navigator-panel">
       <div className={styles.header}>
-        <span className="mp-label">Navigator</span>
+        <button className="mp-collapse" onClick={() => toggleCollapsed("navigator")}
+          aria-expanded={!collapsed} aria-label={`${collapsed ? "Expand" : "Collapse"} Navigator`}>
+          <span className="mp-chev">{collapsed ? "▸" : "▾"}</span>
+          <span className="mp-label">Navigator</span>
+        </button>
         <span className={styles.pct}>{Math.round(zoom * 100)}%</span>
       </div>
 
+      {!collapsed && (<>
       <div className={styles.thumbWrap}>
         <div
           ref={wrapRef}
@@ -129,6 +136,7 @@ export default function Navigator() {
         />
         <button type="button" aria-label="Increase zoom" onClick={() => setZoom(zoom * 1.25)}>＋</button>
       </div>
+      </>)}
     </div>
   );
 }

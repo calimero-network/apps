@@ -24,7 +24,12 @@ const KIND_ICON: Record<LayerKind, IconName> = {
 export default function LayersPanel({
   onAdd, onDelete, onDuplicate, onUpdateMeta, onUpdateText, onReorder, onGroupSelected, onToggleMask,
 }: Props) {
-  const { layers, selectedLayerId, selectLayer, editingMaskOf, setEditingMask, canEdit, upsertLayer, bumpRender } = useEditorStore();
+  const {
+    layers, selectedLayerId, selectedLayerIds, selectLayer, setSelectedLayers,
+    toggleLayerSelection, editingMaskOf, setEditingMask, canEdit, upsertLayer, bumpRender,
+    panelCollapsed, togglePanelCollapsed,
+  } = useEditorStore();
+  const collapsed = panelCollapsed.layers;
   const [renaming, setRenaming] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [colorOpen, setColorOpen] = useState(false);
@@ -42,6 +47,23 @@ export default function LayersPanel({
     if (j < 0 || j >= ids.length) return;
     [ids[i], ids[j]] = [ids[j], ids[i]];
     onReorder(ids);
+  };
+
+  // Shift = range-select (panel order), Cmd/Ctrl = toggle, plain = single.
+  const onRowClick = (e: React.MouseEvent, id: string) => {
+    if (e.shiftKey && selectedLayerId) {
+      const ids = ordered.map((l) => l.id);
+      const a = ids.indexOf(selectedLayerId);
+      const b = ids.indexOf(id);
+      if (a >= 0 && b >= 0) {
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        const range = ids.slice(lo, hi + 1).filter((x) => x !== id);
+        setSelectedLayers([...range, id]); // keep the clicked layer as primary
+        return;
+      }
+    }
+    if (e.metaKey || e.ctrlKey) { toggleLayerSelection(id); return; }
+    selectLayer(id);
   };
 
   const onDrop = (targetId: string) => {
@@ -63,8 +85,16 @@ export default function LayersPanel({
   return (
     <div className={styles.panel}>
       <div className={styles.header}>
-        <span className="mp-label">Layers</span>
+        <button className="mp-collapse" onClick={() => togglePanelCollapsed("layers")}
+          aria-expanded={!collapsed} aria-label={`${collapsed ? "Expand" : "Collapse"} Layers`}>
+          <span className="mp-chev">{collapsed ? "▸" : "▾"}</span>
+          <span className="mp-label">Layers</span>
+        </button>
+        {selectedLayerIds.length > 1 && (
+          <span className={styles.selCount}>{selectedLayerIds.length} selected</span>
+        )}
       </div>
+      {!collapsed && (<>
 
       {sel && (
         <div className={styles.props}>
@@ -130,18 +160,19 @@ export default function LayersPanel({
       <div className={styles.list}>
         {ordered.length === 0 && <div className={styles.empty}>No layers yet</div>}
         {ordered.map((l) => {
-          const isSel = l.id === selectedLayerId;
+          const isSel = selectedLayerIds.includes(l.id);
+          const isPrimary = l.id === selectedLayerId;
           const maskOn = editingMaskOf === l.id;
           return (
             <div
               key={l.id}
-              className={`${styles.item} ${isSel ? styles.selected : ""} ${dragId === l.id ? styles.dragging : ""}`}
+              className={`${styles.item} ${isSel ? styles.selected : ""} ${isPrimary && selectedLayerIds.length > 1 ? styles.primary : ""} ${dragId === l.id ? styles.dragging : ""}`}
               style={{ paddingLeft: 8 + (l.parentId ? 16 : 0) }}
               draggable={editable}
               onDragStart={() => setDragId(l.id)}
               onDragOver={(e) => e.preventDefault()}
               onDrop={() => onDrop(l.id)}
-              onClick={() => selectLayer(l.id)}
+              onClick={(e) => onRowClick(e, l.id)}
             >
               <button
                 className={styles.eye}
@@ -207,6 +238,7 @@ export default function LayersPanel({
           <button title="Delete layer" aria-label="Delete layer" className={styles.del} disabled={!sel} onClick={() => sel && onDelete(sel.id)}><Icon name="trash" size={16} /></button>
         </div>
       )}
+      </>)}
     </div>
   );
 }

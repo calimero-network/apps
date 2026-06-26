@@ -32,7 +32,8 @@ export interface ViewSettings {
 export interface EditorState {
   doc: DocumentInfo | null;
   layers: Layer[];
-  selectedLayerId: string | null;
+  selectedLayerId: string | null;     // "primary" selection (props/adjustments/paint target)
+  selectedLayerIds: string[];         // full multi-selection (move/transform/delete together)
   editingMaskOf: string | null; // layer id whose mask is being painted, or null
   editingTextId: string | null; // text layer being edited inline, or null
 
@@ -67,8 +68,10 @@ export interface EditorState {
   // ── view (grid / guides / units) ──
   view: ViewSettings;
   guides: Guide[];
-  /** which dockable right-rail panels are visible */
+  /** which dockable right-rail panels are visible (Window menu) */
   panels: Record<PanelId, boolean>;
+  /** which visible panels are collapsed to just their header */
+  panelCollapsed: Record<PanelId, boolean>;
 
   undoStack: HistoryEntry[];
   redoStack: HistoryEntry[];
@@ -79,6 +82,10 @@ export interface EditorState {
   upsertLayer: (layer: Layer) => void;
   removeLayer: (id: string) => void;
   selectLayer: (id: string | null) => void;
+  /** Replace the multi-selection (primary = last id). */
+  setSelectedLayers: (ids: string[]) => void;
+  /** Add/remove a layer from the multi-selection (Cmd/Ctrl-click). */
+  toggleLayerSelection: (id: string) => void;
   setEditingMask: (id: string | null) => void;
   setEditingText: (id: string | null) => void;
   setTool: (t: Tool) => void;
@@ -106,6 +113,7 @@ export interface EditorState {
   removeGuide: (id: string) => void;
   clearGuides: () => void;
   togglePanel: (id: PanelId) => void;
+  togglePanelCollapsed: (id: PanelId) => void;
 
   // ── history ──
   pushHistory: (affectedLayerIds: string[], label?: string) => void;
@@ -122,6 +130,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   doc: null,
   layers: [],
   selectedLayerId: null,
+  selectedLayerIds: [],
   editingMaskOf: null,
   editingTextId: null,
 
@@ -160,6 +169,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
   guides: [],
   panels: { navigator: true, adjustments: true, history: true, layers: true },
+  // History starts collapsed to keep the dock compact (it's a tall list).
+  panelCollapsed: { navigator: false, adjustments: false, history: true, layers: false },
 
   undoStack: [],
   redoStack: [],
@@ -179,12 +190,27 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }),
 
   removeLayer: (id) =>
-    set((s) => ({
-      layers: s.layers.filter((l) => l.id !== id),
-      selectedLayerId: s.selectedLayerId === id ? null : s.selectedLayerId,
-    })),
+    set((s) => {
+      const ids = s.selectedLayerIds.filter((x) => x !== id);
+      return {
+        layers: s.layers.filter((l) => l.id !== id),
+        selectedLayerId: s.selectedLayerId === id ? (ids[ids.length - 1] ?? null) : s.selectedLayerId,
+        selectedLayerIds: ids,
+      };
+    }),
 
-  selectLayer: (id) => set({ selectedLayerId: id, editingMaskOf: null, editingTextId: null }),
+  selectLayer: (id) =>
+    set({ selectedLayerId: id, selectedLayerIds: id ? [id] : [], editingMaskOf: null, editingTextId: null }),
+
+  setSelectedLayers: (ids) =>
+    set({ selectedLayerIds: ids, selectedLayerId: ids[ids.length - 1] ?? null, editingMaskOf: null, editingTextId: null }),
+
+  toggleLayerSelection: (id) =>
+    set((s) => {
+      const has = s.selectedLayerIds.includes(id);
+      const ids = has ? s.selectedLayerIds.filter((x) => x !== id) : [...s.selectedLayerIds, id];
+      return { selectedLayerIds: ids, selectedLayerId: has ? (ids[ids.length - 1] ?? null) : id, editingMaskOf: null, editingTextId: null };
+    }),
   setEditingMask: (id) => set({ editingMaskOf: id }),
   setEditingText: (id) => set({ editingTextId: id }),
   setTool: (t) => set({ activeTool: t }),
@@ -220,6 +246,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   removeGuide: (id) => set((s) => ({ guides: s.guides.filter((g) => g.id !== id) })),
   clearGuides: () => set({ guides: [] }),
   togglePanel: (id) => set((s) => ({ panels: { ...s.panels, [id]: !s.panels[id] } })),
+  togglePanelCollapsed: (id) => set((s) => ({ panelCollapsed: { ...s.panelCollapsed, [id]: !s.panelCollapsed[id] } })),
 
   pushHistory: (affectedLayerIds, label = "Edit") =>
     set((s) => {

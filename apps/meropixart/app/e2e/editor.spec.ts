@@ -294,11 +294,13 @@ test.describe("Editor", () => {
   test("renders the Navigator and History dock panels", async ({ page }) => {
     await expect(page.getByTestId("navigator-panel")).toBeVisible();
     await expect(page.getByTestId("history-panel")).toBeVisible();
-    // the History panel always shows the initial "Open" state
+    // History starts collapsed; expand it to reveal the initial "Open" state
+    await page.getByRole("button", { name: "Expand History" }).click();
     await expect(page.getByTestId("history-panel").getByText("Open")).toBeVisible();
   });
 
   test("painting records a labelled History entry", async ({ page }) => {
+    await page.getByRole("button", { name: "Expand History" }).click();
     await page.getByTestId("tool-brush").click();
     await page.getByRole("button", { name: "New raster layer" }).click();
     const canvas = page.getByTestId("main-canvas");
@@ -308,6 +310,15 @@ test.describe("Editor", () => {
     await page.mouse.move(box.x + 220, box.y + 200, { steps: 8 });
     await page.mouse.up();
     await expect(page.getByTestId("history-panel").getByText("Brush")).toBeVisible();
+  });
+
+  test("multi-select: shift-click selects a range of layers", async ({ page }) => {
+    // add three raster layers, then shift-click from the top row to the bottom
+    for (let i = 0; i < 3; i++) await page.getByRole("button", { name: "New raster layer" }).click();
+    const rows = page.locator("span").filter({ hasText: /^Layer$/ });
+    await rows.first().click();
+    await rows.last().click({ modifiers: ["Shift"] });
+    await expect(page.getByText(/\d selected/)).toBeVisible();
   });
 
   test("View menu exposes grid, guides, snap, crosshair and units", async ({ page }) => {
@@ -322,7 +333,7 @@ test.describe("Editor", () => {
   test("Window menu toggles the History panel off", async ({ page }) => {
     await expect(page.getByTestId("history-panel")).toBeVisible();
     await page.getByRole("button", { name: "Window", exact: true }).click();
-    await page.getByRole("button", { name: /History$/ }).click();
+    await page.getByRole("button", { name: "✓ History" }).click();
     await expect(page.getByTestId("history-panel")).toHaveCount(0);
   });
 

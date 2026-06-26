@@ -16,6 +16,8 @@ export default function HistoryPanel() {
   const redoStack = useEditorStore((s) => s.redoStack);
   const jumpHistory = useEditorStore((s) => s.jumpHistory);
   const clearHistory = useEditorStore((s) => s.clearHistory);
+  const collapsed = useEditorStore((s) => s.panelCollapsed.history);
+  const toggleCollapsed = useEditorStore((s) => s.togglePanelCollapsed);
 
   // Ordered operation labels across the whole timeline (past then future).
   const future = [...redoStack].reverse();
@@ -25,7 +27,11 @@ export default function HistoryPanel() {
   return (
     <div className={styles.panel} data-testid="history-panel">
       <div className={styles.header}>
-        <span className="mp-label">History</span>
+        <button className="mp-collapse" onClick={() => toggleCollapsed("history")}
+          aria-expanded={!collapsed} aria-label={`${collapsed ? "Expand" : "Collapse"} History`}>
+          <span className="mp-chev">{collapsed ? "▸" : "▾"}</span>
+          <span className="mp-label">History</span>
+        </button>
         <button
           type="button"
           className="mp-btn mp-btn--ghost"
@@ -38,19 +44,21 @@ export default function HistoryPanel() {
         </button>
       </div>
 
-      <div className={styles.list}>
-        <Row label="Open" index={0} current={current} onJump={jumpHistory} icon="image" />
-        {ops.map((label, i) => (
-          <Row
-            key={i}
-            label={label}
-            index={i + 1}
-            current={current}
-            onJump={jumpHistory}
-            icon="undo"
-          />
-        ))}
-      </div>
+      {!collapsed && (
+        <div className={styles.list}>
+          <Row label="Open" index={0} current={current} onJump={jumpHistory} icon="image" />
+          {ops.map((label, i) => (
+            <Row
+              key={i}
+              label={label}
+              index={i + 1}
+              current={current}
+              onJump={jumpHistory}
+              icon="undo"
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

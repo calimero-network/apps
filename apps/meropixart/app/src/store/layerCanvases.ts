@@ -68,3 +68,10 @@ export function setMaskCanvas(id: string, canvas: HTMLCanvasElement): void {
 export function dropMaskCanvas(id: string): void {
   masks.delete(id);
 }
+
+/** Wipe every layer + mask canvas — call when switching projects so one
+ *  document's pixels never leak into another. */
+export function clearAllCanvases(): void {
+  canvases.clear();
+  masks.clear();
+}
