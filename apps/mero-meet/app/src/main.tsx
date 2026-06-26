@@ -65,7 +65,7 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <MeroProvider
       mode={MeroAppMode.MultiContext}
-      packageName={import.meta.env.VITE_APPLICATION_PACKAGE ?? "network.calimero.meromeet"}
+      packageName={import.meta.env.VITE_APPLICATION_PACKAGE ?? "com.calimero.meromeet"}
       registryUrl="https://apps.calimero.network"
     >
       <BrowserRouter>
