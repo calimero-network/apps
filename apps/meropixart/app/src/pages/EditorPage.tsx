@@ -196,6 +196,26 @@ export default function EditorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctxId]);
 
+  // ── Block native trackpad/browser gestures while editing ───────────────────
+  // macOS pinch maps to ctrl+wheel (page zoom) and Safari fires gesture* events;
+  // two-finger horizontal scroll triggers history back/forward. We swallow those
+  // so external inputs can't disrupt the canvas. (Canvas zoom/pan still work via
+  // the canvas's own wheel handler.)
+  useEffect(() => {
+    const onWheel = (e: WheelEvent) => { if (e.ctrlKey) e.preventDefault(); };
+    const onGesture = (e: Event) => e.preventDefault();
+    window.addEventListener("wheel", onWheel, { passive: false });
+    document.addEventListener("gesturestart", onGesture);
+    document.addEventListener("gesturechange", onGesture);
+    document.addEventListener("gestureend", onGesture);
+    return () => {
+      window.removeEventListener("wheel", onWheel);
+      document.removeEventListener("gesturestart", onGesture);
+      document.removeEventListener("gesturechange", onGesture);
+      document.removeEventListener("gestureend", onGesture);
+    };
+  }, []);
+
   // ── SSE: debounced refetch on any contract event ──────────────────────────
   useSse(ctxId || null, () => {
     if (refetchTimer.current) clearTimeout(refetchTimer.current);
@@ -260,20 +280,25 @@ export default function EditorPage() {
   // ── Metadata commit (transform / props) ───────────────────────────────────
   const commitMeta = useCallback(async (layerId: string, patch: Partial<Layer>) => {
     const now = ts();
+    // The contract types x/y as i64, width/height as u32, rotation/scale/opacity
+    // as integers — snapping & drag math can produce fractional values, which
+    // make borsh deserialization panic ("invalid type: floating point …").
+    // Round every numeric field defensively before sending.
+    const ri = (v: number | undefined | null) => (v == null ? null : Math.round(v));
     const args: Record<string, unknown> = {
       id: layerId,
       name: patch.name ?? null,
       visible: patch.visible ?? null,
       locked: patch.locked ?? null,
-      opacity: patch.opacity ?? null,
+      opacity: ri(patch.opacity),
       blend_mode: patch.blendMode ?? null,
-      x: patch.x ?? null,
-      y: patch.y ?? null,
-      width: patch.width ?? null,
-      height: patch.height ?? null,
-      rotation: patch.rotation ?? null,
-      scale_x: patch.scaleX ?? null,
-      scale_y: patch.scaleY ?? null,
+      x: ri(patch.x),
+      y: ri(patch.y),
+      width: ri(patch.width),
+      height: ri(patch.height),
+      rotation: ri(patch.rotation),
+      scale_x: ri(patch.scaleX),
+      scale_y: ri(patch.scaleY),
       fill: patch.fill ?? null,
       updated_at: now,
     };

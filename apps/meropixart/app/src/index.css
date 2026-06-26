@@ -52,6 +52,9 @@ html, body, #root {
   background: var(--bg-0);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* Stop the trackpad two-finger horizontal swipe from triggering browser
+     back/forward navigation while working on the canvas. */
+  overscroll-behavior: none;
 }
 
 #root { display: flex; flex-direction: column; }

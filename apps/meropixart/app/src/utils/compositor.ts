@@ -46,6 +46,11 @@ function sourceFor(layer: Layer): HTMLCanvasElement | null {
   if (layer.kind === "group" || layer.kind === "adjustment") return null;
   if (layer.kind === "text") return renderTextLayer(layer);
   if (layer.kind === "fill") {
+    // Once a fill layer has been painted on (brush/eraser/bucket-in-selection),
+    // it carries a pixel buffer — prefer it so strokes are visible. Otherwise
+    // it's still a procedural solid generated from `fill`.
+    const painted = peekLayerCanvas(layer.id);
+    if (painted) return painted;
     const c = createCanvas(layer.width, layer.height);
     const ctx = ctx2d(c);
     ctx.fillStyle = layer.fill || "#000000";

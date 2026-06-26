@@ -209,6 +209,18 @@ export default function CanvasStage({
     return { canvas: getLayerCanvas(layer.id, layer.width, layer.height), isMask: false };
   }, [editingMaskOf]);
 
+  // A fill layer is procedural until you paint on it. The first paint/erase/
+  // selection-bucket bakes its solid colour into a real pixel buffer so brush
+  // strokes are visible (the compositor then prefers that buffer). No-op once
+  // the layer already has pixels or isn't a fill layer.
+  const bakeFillIfNeeded = useCallback((layer: Layer) => {
+    if (layer.kind !== "fill" || peekLayerCanvas(layer.id)) return;
+    const c = getLayerCanvas(layer.id, layer.width, layer.height);
+    const cx = ctx2d(c);
+    cx.fillStyle = layer.fill || "#000000";
+    cx.fillRect(0, 0, c.width, c.height);
+  }, []);
+
   /** Clip a layer context to the active selection (in the layer's local space). */
   const clipToSelection = (ctx: CanvasRenderingContext2D, layer: Layer) => {
     if (selection) ctx.clip(selectionPathLocal(selection, layer, docBounds()), "evenodd");
@@ -381,6 +393,7 @@ export default function CanvasStage({
     }
 
     if ((activeTool === "brush" || activeTool === "eraser") && sel) {
+      if (editingMaskOf !== sel.id) bakeFillIfNeeded(sel); // paint shows on fill layers
       pushHistory([sel.id], activeTool === "eraser" ? "Erase" : "Brush");
       dirtyLayer.current = sel.id;
       drag.current.mode = "paint";
@@ -392,10 +405,11 @@ export default function CanvasStage({
 
     if (activeTool === "bucket" && sel) {
       const editingMask = editingMaskOf === sel.id;
-      // Fill and text layers are procedural (the compositor regenerates them
-      // from layer.fill / text.color), so there's no pixel buffer to paint —
-      // the bucket changes their COLOUR via metadata instead.
-      if (!editingMask && sel.kind === "fill") {
+      // With NO active selection, fill/text layers are procedural — the bucket
+      // just changes their COLOUR via metadata (whole layer). With a selection,
+      // we fall through to the pixel path so only the selected region is filled
+      // (a fill layer is baked into pixels first so the rest stays intact).
+      if (!editingMask && !selection && sel.kind === "fill") {
         pushHistory([], "Fill Color");
         useEditorStore.getState().upsertLayer({ ...sel, fill: primaryColor, updatedAt: Date.now() });
         bumpRender();
@@ -403,7 +417,7 @@ export default function CanvasStage({
         drag.current.mode = "none";
         return;
       }
-      if (!editingMask && sel.kind === "text" && sel.text) {
+      if (!editingMask && !selection && sel.kind === "text" && sel.text) {
         pushHistory([], "Text Color");
         const text = { ...sel.text, color: primaryColor };
         useEditorStore.getState().upsertLayer({ ...sel, text, updatedAt: Date.now() });
@@ -412,12 +426,12 @@ export default function CanvasStage({
         drag.current.mode = "none";
         return;
       }
+      if (!editingMask) bakeFillIfNeeded(sel); // selection-bucket onto a fill layer
       pushHistory([sel.id], "Paint Bucket");
       const { canvas, isMask } = paintTarget(sel);
       const cx = ctx2d(canvas);
-      // Fill the WHOLE layer with the colour — clipped to the active selection
-      // when one exists (so a marquee/lasso bounds the fill, otherwise the
-      // entire layer is painted). This matches "paint bucket fills the layer".
+      // Fill clipped to the active selection (marquee/lasso shape) when one
+      // exists, otherwise the entire layer.
       cx.save();
       clipToSelection(cx, sel);
       cx.globalCompositeOperation = "source-over";
@@ -523,8 +537,9 @@ export default function CanvasStage({
         const tol = 6 / zoom;
         const vCand = snapCandidates("v", doc, view, guides);
         const hCand = snapCandidates("h", doc, view, guides);
-        nx += bestSnapDelta([nx, nx + lw / 2, nx + lw], vCand, tol);
-        ny += bestSnapDelta([ny, ny + lh / 2, ny + lh], hCand, tol);
+        // candidates include doc-centre (width/2) which can be fractional → round
+        nx = Math.round(nx + bestSnapDelta([nx, nx + lw / 2, nx + lw], vCand, tol));
+        ny = Math.round(ny + bestSnapDelta([ny, ny + lh / 2, ny + lh], hCand, tol));
       }
       useEditorStore.getState().upsertLayer({ ...sel, x: nx, y: ny });
       bumpRender();

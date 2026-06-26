@@ -251,7 +251,9 @@ function layerColor(layer: Layer): string {
 }
 
 function Thumb({ layer }: { layer: Layer }) {
-  if (layer.kind === "fill") {
+  // A fill layer that hasn't been painted is a flat swatch; once it has pixels
+  // (brush/bucket), show those instead.
+  if (layer.kind === "fill" && !peekLayerCanvas(layer.id)) {
     return <span className={styles.thumb} style={{ background: layer.fill || "#000" }} />;
   }
   const c = peekLayerCanvas(layer.id);
