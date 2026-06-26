@@ -1,4 +1,4 @@
-.PHONY: help setup build logic-build app-install app-build app-typecheck dev workflows clean
+.PHONY: help setup build bundle logic-build logic-bundle app-install app-build app-typecheck dev workflows clean
 
 help:
 	@echo ""
@@ -6,7 +6,9 @@ help:
 	@echo ""
 	@echo "  setup          Build WASM logic + install app deps"
 	@echo "  build          Build Rust WASM logic + frontend bundle"
+	@echo "  bundle         Build WASM + create signed .mpk release bundle"
 	@echo "  logic-build    Compile logic/src → logic/res/mero_meet.wasm"
+	@echo "  logic-bundle   Build WASM + sign + package logic/res/mero-meet-<ver>.mpk"
 	@echo "  app-build      Bundle frontend (app/dist)"
 	@echo "  app-typecheck  tsc --noEmit on the frontend"
 	@echo "  dev            Vite dev server (desktop opens this in a window)"
@@ -18,6 +20,11 @@ setup: logic-build app-install
 
 logic-build:
 	cd logic && ./build.sh
+
+logic-bundle:
+	cd logic && ./build-bundle.sh
+
+bundle: logic-bundle
 
 app-install:
 	cd app && pnpm install

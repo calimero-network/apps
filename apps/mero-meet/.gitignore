@@ -18,3 +18,7 @@ workflows/**/.pids/
 
 # merobox runtime data (when run from repo root)
 /data/
+
+# Publisher keypair — fill via `meroctl app gen-key`, never commit real keys
+logic/calimero.json
+logic/key.json
