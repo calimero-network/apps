@@ -20,9 +20,15 @@ export function docToLayerLocal(layer: Layer, dx: number, dy: number): { x: numb
   return { x: rx / sx + layer.width / 2, y: ry / sy + layer.height / 2 };
 }
 
-/** A Path2D describing the selection in document space (for overlay/marching ants). */
-export function selectionPathDoc(sel: Selection): Path2D {
+/** Document bounds used to build the outer ring of an inverted selection. */
+export interface DocBounds { width: number; height: number; }
+
+/** A Path2D describing the selection in document space (for overlay/marching ants).
+ *  When `sel.inverted` and `bounds` are given, the doc rectangle is prepended so
+ *  an even-odd fill/clip yields everything OUTSIDE the shape. */
+export function selectionPathDoc(sel: Selection, bounds?: DocBounds): Path2D {
   const p = new Path2D();
+  if (sel.inverted && bounds) p.rect(0, 0, bounds.width, bounds.height);
   if (sel.kind === "rect") {
     p.rect(sel.x, sel.y, sel.w, sel.h);
   } else {
@@ -37,19 +43,23 @@ export function selectionPathDoc(sel: Selection): Path2D {
 }
 
 /** A Path2D describing the selection transformed into a layer's local pixel space. */
-export function selectionPathLocal(sel: Selection, layer: Layer): Path2D {
+export function selectionPathLocal(sel: Selection, layer: Layer, bounds?: DocBounds): Path2D {
   const p = new Path2D();
   const map = (x: number, y: number) => docToLayerLocal(layer, x, y);
-  if (sel.kind === "rect") {
-    const a = map(sel.x, sel.y);
-    const b = map(sel.x + sel.w, sel.y);
-    const c = map(sel.x + sel.w, sel.y + sel.h);
-    const d = map(sel.x, sel.y + sel.h);
-    p.moveTo(a.x, a.y);
-    p.lineTo(b.x, b.y);
-    p.lineTo(c.x, c.y);
-    p.lineTo(d.x, d.y);
+  const ring = (corners: Array<[number, number]>) => {
+    const first = map(corners[0][0], corners[0][1]);
+    p.moveTo(first.x, first.y);
+    for (let i = 1; i < corners.length; i++) {
+      const q = map(corners[i][0], corners[i][1]);
+      p.lineTo(q.x, q.y);
+    }
     p.closePath();
+  };
+  if (sel.inverted && bounds) {
+    ring([[0, 0], [bounds.width, 0], [bounds.width, bounds.height], [0, bounds.height]]);
+  }
+  if (sel.kind === "rect") {
+    ring([[sel.x, sel.y], [sel.x + sel.w, sel.y], [sel.x + sel.w, sel.y + sel.h], [sel.x, sel.y + sel.h]]);
   } else {
     const pts = sel.points;
     if (pts.length >= 2) {
@@ -63,6 +73,43 @@ export function selectionPathLocal(sel: Selection, layer: Layer): Path2D {
     }
   }
   return p;
+}
+
+/** Selection ops for the Select menu (Inverse / Expand / Contract). */
+export function invertSelection(sel: Selection): Selection {
+  return { ...sel, inverted: !sel.inverted };
+}
+
+/** Grow (delta>0) or shrink (delta<0) a selection by `delta` doc px. Rect grows
+ *  precisely; polygons are scaled about their centroid as an approximation. */
+export function resizeSelection(sel: Selection, delta: number, bounds: DocBounds): Selection {
+  if (sel.kind === "rect") {
+    const x = sel.x - delta;
+    const y = sel.y - delta;
+    const w = sel.w + delta * 2;
+    const h = sel.h + delta * 2;
+    if (w < 1 || h < 1) return sel;
+    return {
+      ...sel,
+      x: Math.max(0, x), y: Math.max(0, y),
+      w: Math.min(bounds.width, w), h: Math.min(bounds.height, h),
+    };
+  }
+  const pts = sel.points;
+  let cx = 0, cy = 0;
+  for (let i = 0; i < pts.length; i += 2) { cx += pts[i]; cy += pts[i + 1]; }
+  const n = pts.length / 2;
+  cx /= n; cy /= n;
+  // average radius → scale factor that moves the boundary out/in by ~delta
+  let r = 0;
+  for (let i = 0; i < pts.length; i += 2) r += Math.hypot(pts[i] - cx, pts[i + 1] - cy);
+  r /= n;
+  const k = r > 0 ? (r + delta) / r : 1;
+  const out: number[] = [];
+  for (let i = 0; i < pts.length; i += 2) {
+    out.push(cx + (pts[i] - cx) * k, cy + (pts[i + 1] - cy) * k);
+  }
+  return { ...sel, points: out };
 }
 
 /** Normalise a drag (start→current) into a positive-extent rect. */

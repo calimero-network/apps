@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useEditorStore } from "../store/editorStore";
-import { FILTERS, type FilterKind, type LayerKind, type Member, type Role } from "../types";
+import { invertSelection, resizeSelection } from "../utils/geometry";
+import { FILTERS, UNITS, type FilterKind, type LayerKind, type Member, type PanelId, type Role } from "../types";
 import { Icon } from "./ToolIcons";
 import styles from "./TopBar.module.css";
 
@@ -20,6 +21,10 @@ interface Props {
   onDeleteLayer: (id: string) => void;
   onGroupSelected: () => void;
   onToggleMask: (id: string) => void;
+  onRasterize: () => void;
+  onMergeDown: () => void;
+  onMergeVisible: () => void;
+  onFlatten: () => void;
   onOpenInvite: () => void;
   onOpenSettings: () => void;
   saving: boolean;
@@ -35,14 +40,21 @@ function fireClipboard(key: "c" | "x" | "v") {
   window.dispatchEvent(new KeyboardEvent("keydown", { key, ctrlKey: true }));
 }
 
+/** Leading checkmark for toggle menu items (empty when off). */
+function check(on: boolean): string {
+  return on ? "✓ " : "";
+}
+
 export default function TopBar({
   docName, members, role, onBack, onImportImage, onImportSvg, onExport,
   onApplyFilter, onSelectAll, onDeselect, onAddLayer, onDuplicateLayer,
-  onDeleteLayer, onGroupSelected, onToggleMask, onOpenInvite, onOpenSettings, saving,
+  onDeleteLayer, onGroupSelected, onToggleMask, onRasterize, onMergeDown,
+  onMergeVisible, onFlatten, onOpenInvite, onOpenSettings, saving,
 }: Props) {
   const {
     zoom, setZoom, setPan, undo, redo, undoStack, redoStack, selection,
     layers, selectedLayerId, doc, showRulers, toggleRulers, setTool,
+    view, setView, guides, clearGuides, panels, togglePanel, setSelection,
   } = useEditorStore();
   const imgRef = useRef<HTMLInputElement>(null);
   const svgRef = useRef<HTMLInputElement>(null);
@@ -113,11 +125,21 @@ export default function TopBar({
             <hr />
             <button disabled={!hasSel} onClick={() => { onGroupSelected(); close(); }}>Group Layer</button>
             <button disabled={!hasSel} onClick={() => { if (selectedLayerId) onToggleMask(selectedLayerId); close(); }}>Add / Remove Mask</button>
+            <hr />
+            <button disabled={!hasSel} onClick={() => { onRasterize(); close(); }}>Rasterize Layer</button>
+            <button disabled={!hasSel} onClick={() => { onMergeDown(); close(); }}>Merge Down</button>
+            <button disabled={layers.length < 2} onClick={() => { onMergeVisible(); close(); }}>Merge Visible</button>
+            <button disabled={layers.length === 0} onClick={() => { onFlatten(); close(); }}>Flatten Image</button>
           </Menu>
 
           <Menu id="select" label="Select" open={menu === "select"} anyOpen={menu !== null} onToggle={setMenu}>
             <button onClick={() => { onSelectAll(); close(); }}>Select All<kbd>⌘A</kbd></button>
             <button disabled={!selection} onClick={() => { onDeselect(); close(); }}>Deselect<kbd>⌘D</kbd></button>
+            <button disabled={!selection} onClick={() => { if (selection) setSelection(invertSelection(selection)); close(); }}>Inverse<kbd>⌘⇧I</kbd></button>
+            <hr />
+            <span className={styles.menuHeading}>Modify</span>
+            <button disabled={!selection || !doc} onClick={() => { if (selection && doc) setSelection(resizeSelection(selection, 8, { width: doc.width, height: doc.height })); close(); }}>Expand (8px)</button>
+            <button disabled={!selection || !doc} onClick={() => { if (selection && doc) setSelection(resizeSelection(selection, -8, { width: doc.width, height: doc.height })); close(); }}>Contract (8px)</button>
             <hr />
             <button onClick={() => { setTool("marquee"); close(); }}>Rectangular Marquee<kbd>M</kbd></button>
             <button onClick={() => { setTool("lasso"); close(); }}>Lasso<kbd>L</kbd></button>
@@ -136,14 +158,36 @@ export default function TopBar({
             <button onClick={() => { fitScreen(); close(); }}>Fit on Screen</button>
             <button onClick={() => { actualPixels(); close(); }}>Actual Pixels (100%)</button>
             <hr />
-            <button onClick={() => { toggleRulers(); close(); }}>{showRulers ? "✓ " : ""}Rulers</button>
+            <button onClick={() => { toggleRulers(); }}>{check(showRulers)}Rulers</button>
+            <button onClick={() => { setView({ showGrid: !view.showGrid }); }}>{check(view.showGrid)}Grid</button>
+            <button onClick={() => { setView({ showGuides: !view.showGuides }); }}>{check(view.showGuides)}Guides</button>
+            <button onClick={() => { setView({ snap: !view.snap }); }}>{check(view.snap)}Snap</button>
+            <button onClick={() => { setView({ showCrosshair: !view.showCrosshair }); }}>{check(view.showCrosshair)}Crosshair</button>
+            <button disabled={guides.length === 0} onClick={() => { clearGuides(); close(); }}>Clear Guides</button>
+            <hr />
+            <span className={styles.menuHeading}>Units</span>
+            {UNITS.map((u) => (
+              <button key={u.unit} onClick={() => { setView({ units: u.unit }); }}>{check(view.units === u.unit)}{u.label}</button>
+            ))}
+            <hr />
+            <span className={styles.menuHeading}>Transparency grid</span>
+            {[8, 16, 32].map((sz) => (
+              <button key={sz} onClick={() => { setView({ checkerSize: sz }); }}>
+                {check(view.checkerSize === sz)}{sz === 8 ? "Small" : sz === 16 ? "Medium" : "Large"} ({sz}px)
+              </button>
+            ))}
           </Menu>
 
           <Menu id="window" label="Window" open={menu === "window"} anyOpen={menu !== null} onToggle={setMenu}>
             <span className={styles.menuHeading}>Panels</span>
-            <button onClick={close}>✓ Layers</button>
-            <button onClick={close}>✓ Adjustments</button>
-            <button onClick={close}>✓ Color</button>
+            {([
+              ["navigator", "Navigator"], ["adjustments", "Adjustments"],
+              ["history", "History"], ["layers", "Layers"],
+            ] as [PanelId, string][]).map(([id, label]) => (
+              <button key={id} onClick={() => togglePanel(id)}>{check(panels[id])}{label}</button>
+            ))}
+            <hr />
+            <button onClick={() => { toggleRulers(); }}>{check(showRulers)}Rulers</button>
           </Menu>
 
           <Menu id="help" label="Help" open={menu === "help"} anyOpen={menu !== null} onToggle={setMenu}>

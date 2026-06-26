@@ -50,15 +50,29 @@
   background: var(--bg-1);
   min-height: 0;
 }
-.rightDock > :first-child {
-  border-bottom: 1px solid var(--border);
-  max-height: 46%;
-  overflow-y: auto;
+
+/* Each dockable panel is its own section; non-growing sections size to content
+   (with a scroll cap), the Layers section fills the remaining height. */
+.dockSection {
+  display: flex;
+  flex-direction: column;
   flex-shrink: 0;
-}
-.rightDock > :last-child {
-  flex: 1;
   min-height: 0;
+  border-bottom: 1px solid var(--border);
+}
+.dockSection:last-child { border-bottom: none; }
+
+.dockScroll {
+  max-height: 38%;
+  overflow-y: auto;
+}
+.dockHistory {
+  max-height: 26%;
+  min-height: 96px;
+}
+.dockGrow {
+  flex: 1;
+  min-height: 120px;
 }
 
 .loading {

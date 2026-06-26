@@ -1,13 +1,16 @@
 import { useState } from "react";
 import type { Adjustments, Layer } from "../types";
 import { NEUTRAL_ADJUSTMENTS } from "../types";
+import type { LevelsData } from "../utils/raster";
 import CurvesEditor from "./CurvesEditor";
+import LevelsEditor from "./LevelsEditor";
 import styles from "./AdjustmentsPanel.module.css";
 
 interface Props {
   layer: Layer | undefined;
   onAdjust: (patch: Partial<Adjustments>) => void;
   onApplyCurves: (curvesJson: string) => void;
+  onApplyLevels: (levels: LevelsData) => void;
   disabled: boolean;
 }
 
@@ -40,8 +43,9 @@ const FILTERS: FilterPreset[] = [
   { label: "Blur+", patch: { blur: 4 } },
 ];
 
-export default function AdjustmentsPanel({ layer, onAdjust, onApplyCurves, disabled }: Props) {
+export default function AdjustmentsPanel({ layer, onAdjust, onApplyCurves, onApplyLevels, disabled }: Props) {
   const [curvesOpen, setCurvesOpen] = useState(false);
+  const [levelsOpen, setLevelsOpen] = useState(false);
 
   if (!layer) {
     return (
@@ -125,21 +129,39 @@ export default function AdjustmentsPanel({ layer, onAdjust, onApplyCurves, disab
         ))}
       </div>
 
-      <button
-        type="button"
-        className="mp-btn"
-        onClick={() => setCurvesOpen(true)}
-        disabled={disabled}
-        data-testid="open-curves"
-      >
-        Curves…
-      </button>
+      <div className={styles.filters}>
+        <button
+          type="button"
+          className="mp-btn"
+          onClick={() => setCurvesOpen(true)}
+          disabled={disabled}
+          data-testid="open-curves"
+        >
+          Curves…
+        </button>
+        <button
+          type="button"
+          className="mp-btn"
+          onClick={() => setLevelsOpen(true)}
+          disabled={disabled}
+          data-testid="open-levels"
+        >
+          Levels…
+        </button>
+      </div>
 
       {curvesOpen && (
         <CurvesEditor
           initial={adj.curves}
           onApply={onApplyCurves}
           onClose={() => setCurvesOpen(false)}
+        />
+      )}
+
+      {levelsOpen && (
+        <LevelsEditor
+          onApply={onApplyLevels}
+          onClose={() => setLevelsOpen(false)}
         />
       )}
     </div>

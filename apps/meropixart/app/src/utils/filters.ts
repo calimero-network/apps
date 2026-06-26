@@ -53,6 +53,55 @@ function convolve(src: HTMLCanvasElement, kernel: number[]): HTMLCanvasElement {
   return out;
 }
 
+/** Directional (horizontal) blur — stacks shifted, alpha-weighted copies. */
+function motionBlur(src: HTMLCanvasElement, radius = 8): HTMLCanvasElement {
+  const out = createCanvas(src.width, src.height);
+  const ctx = ctx2d(out);
+  const n = radius * 2 + 1;
+  ctx.globalAlpha = 1 / n;
+  for (let dx = -radius; dx <= radius; dx++) ctx.drawImage(src, dx, 0);
+  ctx.globalAlpha = 1;
+  return out;
+}
+
+/** Monochrome film-grain noise added to RGB (alpha preserved). */
+function addNoise(src: HTMLCanvasElement, amount = 32): HTMLCanvasElement {
+  const out = createCanvas(src.width, src.height);
+  const sctx = ctx2d(src);
+  const octx = ctx2d(out);
+  const img = sctx.getImageData(0, 0, src.width, src.height);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] === 0) continue;
+    const n = (Math.random() - 0.5) * 2 * amount;
+    d[i] = clamp255(d[i] + n);
+    d[i + 1] = clamp255(d[i + 1] + n);
+    d[i + 2] = clamp255(d[i + 2] + n);
+  }
+  octx.putImageData(img, 0, 0);
+  return out;
+}
+
+/** Mosaic / pixelate by downscaling then nearest-neighbour upscaling. */
+function pixelate(src: HTMLCanvasElement, block = 10): HTMLCanvasElement {
+  const w = src.width, h = src.height;
+  const sw = Math.max(1, Math.round(w / block));
+  const sh = Math.max(1, Math.round(h / block));
+  const small = createCanvas(sw, sh);
+  const sctx = ctx2d(small);
+  sctx.imageSmoothingEnabled = false;
+  sctx.drawImage(src, 0, 0, sw, sh);
+  const out = createCanvas(w, h);
+  const octx = ctx2d(out);
+  octx.imageSmoothingEnabled = false;
+  octx.drawImage(small, 0, 0, sw, sh, 0, 0, w, h);
+  return out;
+}
+
+function clamp255(v: number): number {
+  return v < 0 ? 0 : v > 255 ? 255 : v;
+}
+
 export function applyFilter(src: HTMLCanvasElement, kind: FilterKind): HTMLCanvasElement {
   switch (kind) {
     case "blur": return viaCssFilter(src, "blur(2.5px)");
@@ -62,6 +111,9 @@ export function applyFilter(src: HTMLCanvasElement, kind: FilterKind): HTMLCanva
     case "brighten": return viaCssFilter(src, "brightness(1.18)");
     case "darken": return viaCssFilter(src, "brightness(0.82)");
     case "sharpen": return convolve(src, [0, -1, 0, -1, 5, -1, 0, -1, 0]);
+    case "motion-blur": return motionBlur(src, Math.max(2, Math.round(src.width * 0.012)));
+    case "noise": return addNoise(src, 36);
+    case "pixelate": return pixelate(src, Math.max(4, Math.round(Math.min(src.width, src.height) / 48)));
     default: return src;
   }
 }

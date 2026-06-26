@@ -1,12 +1,37 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useEditorStore } from "../store/editorStore";
+import { useEditorStore, type ViewSettings } from "../store/editorStore";
 import { usePointerStore } from "../store/pointerStore";
 import { getLayerCanvas, getMaskCanvas, peekLayerCanvas, peekMaskCanvas } from "../store/layerCanvases";
 import { composite } from "../utils/compositor";
 import { createCanvas, ctx2d, hexToRgb } from "../utils/raster";
 import { docToLayerLocal, normRect, selectionPathDoc, selectionPathLocal } from "../utils/geometry";
-import type { Layer, Selection, TextProps } from "../types";
+import type { DocumentInfo, Guide, Layer, Selection, TextProps } from "../types";
 import styles from "./CanvasStage.module.css";
+
+// ── Snapping ────────────────────────────────────────────────────────────────
+/** Snap target coordinates along an axis: doc edges + center, guides, grid. */
+function snapCandidates(orient: "h" | "v", doc: DocumentInfo, view: ViewSettings, guides: Guide[]): number[] {
+  const max = orient === "v" ? doc.width : doc.height;
+  const out = [0, max, max / 2];
+  for (const g of guides) if (g.orient === (orient === "v" ? "v" : "h")) out.push(g.pos);
+  if (view.showGrid) {
+    for (let p = 0; p <= max; p += Math.max(2, view.gridSize)) out.push(p);
+  }
+  return out;
+}
+
+/** Smallest offset that snaps any reference point onto a candidate within tol. */
+function bestSnapDelta(refs: number[], candidates: number[], tol: number): number {
+  let best = 0;
+  let bestAbs = tol;
+  for (const ref of refs) {
+    for (const c of candidates) {
+      const d = c - ref;
+      if (Math.abs(d) < bestAbs) { bestAbs = Math.abs(d); best = d; }
+    }
+  }
+  return best;
+}
 
 interface Props {
   /** upload the layer's pixels → update_layer_content (debounced on stroke end) */
@@ -67,6 +92,7 @@ export default function CanvasStage({
     activeTool, selectedLayerId, editingMaskOf, editingTextId,
     primaryColor, secondaryColor, brushSize, brushHardness, brushOpacity, brushType,
     selection, shapeKind, shapeStroke, gradientType, gradientFill, cloneSource, clipboard,
+    view, guides,
     setPan, setZoom, setPrimaryColor, bumpRender, canEdit, pushHistory,
     setSelection, setCloneSource, setClipboard, setEditingText, selectLayer,
   } = useEditorStore();
@@ -95,10 +121,13 @@ export default function CanvasStage({
     ctx.imageSmoothingEnabled = zoom < 3; // crisp pixels when zoomed in
 
     // checkerboard behind the document (transparency)
-    drawCheckerboard(ctx, doc.width, doc.height);
+    drawCheckerboard(ctx, doc.width, doc.height, view.checkerSize);
 
     const flat = composite(layers, doc.width, doc.height, { background: doc.background });
     ctx.drawImage(flat, 0, 0);
+
+    // optional grid overlay
+    if (view.showGrid) drawGrid(ctx, doc.width, doc.height, view.gridSize, zoom);
 
     // document border
     ctx.imageSmoothingEnabled = true;
@@ -116,10 +145,10 @@ export default function CanvasStage({
     drawLivePreview(ctx, live.current, zoom, primaryColor, shapeKind, shapeStroke, gradientType);
 
     // pixel selection marching ants
-    if (selection) drawAnts(ctx, selection, zoom);
+    if (selection) drawAnts(ctx, selection, zoom, doc.width, doc.height);
 
     ctx.restore();
-  }, [doc, layers, zoom, panX, panY, selectedLayerId, activeTool, renderTick, selection, primaryColor, shapeKind, shapeStroke, gradientType]);
+  }, [doc, layers, zoom, panX, panY, selectedLayerId, activeTool, renderTick, selection, primaryColor, shapeKind, shapeStroke, gradientType, view]);
 
   useEffect(() => { draw(); }, [draw]);
 
@@ -149,6 +178,23 @@ export default function CanvasStage({
     return { x: (sx - panX) / zoom, y: (sy - panY) / zoom };
   };
 
+  // Sample the already-rendered on-screen canvas pixel under the cursor (cheap —
+  // no recomposite) for the status-bar colour readout.
+  const sampleCanvasColor = (e: { clientX: number; clientY: number }): string | null => {
+    const canvas = canvasRef.current;
+    if (!canvas || !doc) return null;
+    const { x, y } = screenToDoc(e);
+    if (x < 0 || y < 0 || x >= doc.width || y >= doc.height) return null;
+    try {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const px = Math.round((e.clientX - rect.left) * dpr);
+      const py = Math.round((e.clientY - rect.top) * dpr);
+      const d = ctx2d(canvas).getImageData(px, py, 1, 1).data;
+      return "#" + [d[0], d[1], d[2]].map((v) => v.toString(16).padStart(2, "0")).join("");
+    } catch { return null; }
+  };
+
   // ── Brush dab onto the active layer (or its mask) ──────────────────────────
   const paintTarget = useCallback((layer: Layer): { canvas: HTMLCanvasElement; isMask: boolean } => {
     if (editingMaskOf === layer.id) {
@@ -159,8 +205,10 @@ export default function CanvasStage({
 
   /** Clip a layer context to the active selection (in the layer's local space). */
   const clipToSelection = (ctx: CanvasRenderingContext2D, layer: Layer) => {
-    if (selection) ctx.clip(selectionPathLocal(selection, layer));
+    if (selection) ctx.clip(selectionPathLocal(selection, layer, docBounds()), "evenodd");
   };
+
+  const docBounds = () => (doc ? { width: doc.width, height: doc.height } : undefined);
 
   const stamp = useCallback((layer: Layer, lx: number, ly: number, erase: boolean, isMask: boolean) => {
     const { canvas } = paintTarget(layer);
@@ -316,7 +364,7 @@ export default function CanvasStage({
       const srcLayer = layers.find((l) => l.id === cloneSource.layerId) ?? sel;
       const srcLocal = docToLayerLocal(srcLayer, cloneSource.x, cloneSource.y);
       const startLocal = docToLayerLocal(sel, x, y);
-      pushHistory([sel.id]);
+      pushHistory([sel.id], "Clone Stamp");
       dirtyLayer.current = sel.id;
       drag.current.mode = "clone";
       drag.current.cloneSnap = copy;
@@ -327,7 +375,7 @@ export default function CanvasStage({
     }
 
     if ((activeTool === "brush" || activeTool === "eraser") && sel) {
-      pushHistory([sel.id]);
+      pushHistory([sel.id], activeTool === "eraser" ? "Erase" : "Brush");
       dirtyLayer.current = sel.id;
       drag.current.mode = "paint";
       const loc = docToLayerLocal(sel, x, y);
@@ -337,7 +385,7 @@ export default function CanvasStage({
     }
 
     if (activeTool === "bucket" && sel) {
-      pushHistory([sel.id]);
+      pushHistory([sel.id], "Paint Bucket");
       const { canvas, isMask } = paintTarget(sel);
       const cx = ctx2d(canvas);
       // Fill the WHOLE layer with the colour — clipped to the active selection
@@ -361,7 +409,7 @@ export default function CanvasStage({
       drag.current.origin = { ...sel };
       drag.current.handle = handle ?? undefined;
       drag.current.mode = handle === "rot" ? "rotate" : handle ? "scale" : "move";
-      pushHistory([]);
+      pushHistory([], activeTool === "transform" ? "Transform" : "Move");
     }
   };
 
@@ -369,7 +417,7 @@ export default function CanvasStage({
     if (!doc) return;
     const { x, y } = screenToDoc(e);
     onCursorMove?.(x, y);
-    usePointerStore.getState().set(x, y); // feed rulers + status bar
+    usePointerStore.getState().set(x, y, sampleCanvasColor(e)); // feed rulers + status bar
     const st = drag.current;
     if (st.mode === "none") { st.lastX = x; st.lastY = y; return; }
 
@@ -420,8 +468,17 @@ export default function CanvasStage({
     }
 
     if (st.mode === "move" && st.origin) {
-      const nx = Math.round(st.origin.x + (x - st.startX));
-      const ny = Math.round(st.origin.y + (y - st.startY));
+      let nx = Math.round(st.origin.x + (x - st.startX));
+      let ny = Math.round(st.origin.y + (y - st.startY));
+      if (view.snap && doc && !e.altKey) {
+        const lw = sel.width * (sel.scaleX || 100) / 100;
+        const lh = sel.height * (sel.scaleY || 100) / 100;
+        const tol = 6 / zoom;
+        const vCand = snapCandidates("v", doc, view, guides);
+        const hCand = snapCandidates("h", doc, view, guides);
+        nx += bestSnapDelta([nx, nx + lw / 2, nx + lw], vCand, tol);
+        ny += bestSnapDelta([ny, ny + lh / 2, ny + lh], hCand, tol);
+      }
       useEditorStore.getState().upsertLayer({ ...sel, x: nx, y: ny });
       bumpRender();
       return;
@@ -516,7 +573,7 @@ export default function CanvasStage({
     const octx = ctx2d(out);
     octx.save();
     octx.translate(-b.x, -b.y);
-    octx.clip(selectionPathDoc(selection));
+    octx.clip(selectionPathDoc(selection, { width: doc.width, height: doc.height }), "evenodd");
     octx.drawImage(flat, 0, 0);
     octx.restore();
     setClipboard({ canvas: out, x: b.x, y: b.y });
@@ -528,18 +585,18 @@ export default function CanvasStage({
     const sel = layers.find((l) => l.id === selectedLayerId);
     // Only raster layers have pixels to erase; clear the selected region.
     if (sel && sel.kind === "raster" && selection) {
-      pushHistory([sel.id]);
+      pushHistory([sel.id], "Cut");
       const c = getLayerCanvas(sel.id, sel.width, sel.height);
       const cx = ctx2d(c);
       cx.save();
       cx.globalCompositeOperation = "destination-out";
       cx.fillStyle = "#000";
-      cx.fill(selectionPathLocal(selection, sel));
+      cx.fill(selectionPathLocal(selection, sel, doc ? { width: doc.width, height: doc.height } : undefined), "evenodd");
       cx.restore();
       bumpRender();
       commitPixels(sel.id);
     }
-  }, [canEdit, doCopy, layers, selectedLayerId, selection, pushHistory, bumpRender, commitPixels]);
+  }, [canEdit, doCopy, layers, selectedLayerId, selection, pushHistory, bumpRender, commitPixels, doc]);
 
   const doPaste = useCallback(() => {
     if (!canEdit() || !clipboard) return;
@@ -637,13 +694,91 @@ export default function CanvasStage({
         </>
       )}
 
+      <GuidesOverlay />
+      {view.showCrosshair && <Crosshair />}
+
       {overlay}
     </div>
   );
 }
 
+// ── Guides overlay (draggable when Move/Hand is active) ──────────────────────
+function GuidesOverlay() {
+  const guides = useEditorStore((s) => s.guides);
+  const showGuides = useEditorStore((s) => s.view.showGuides);
+  const zoom = useEditorStore((s) => s.zoom);
+  const panX = useEditorStore((s) => s.panX);
+  const panY = useEditorStore((s) => s.panY);
+  const activeTool = useEditorStore((s) => s.activeTool);
+  const moveGuide = useEditorStore((s) => s.moveGuide);
+  const removeGuide = useEditorStore((s) => s.removeGuide);
+  if (!showGuides || guides.length === 0) return null;
+  const grabbable = activeTool === "move" || activeTool === "hand";
+
+  const onDrag = (id: string, orient: "h" | "v") => (e: React.PointerEvent) => {
+    if (!grabbable) return;
+    e.stopPropagation();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    const cv = document.querySelector('[data-testid="main-canvas"]') as HTMLElement | null;
+    const rect = cv?.getBoundingClientRect();
+    const compute = (ev: PointerEvent | React.PointerEvent) =>
+      orient === "h"
+        ? ((ev.clientY - (rect?.top ?? 0)) - panY) / zoom
+        : ((ev.clientX - (rect?.left ?? 0)) - panX) / zoom;
+    const move = (ev: PointerEvent) => moveGuide(id, compute(ev));
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      if (compute(ev) < 0) removeGuide(id); // dragged back past the ruler → delete
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  return (
+    <>
+      {guides.map((g) => {
+        const horizontal = g.orient === "h";
+        const style: React.CSSProperties = horizontal
+          ? { top: g.pos * zoom + panY, left: 0, right: 0, height: 1 }
+          : { left: g.pos * zoom + panX, top: 0, bottom: 0, width: 1 };
+        return (
+          <div
+            key={g.id}
+            className={`${styles.guide} ${horizontal ? styles.guideH : styles.guideV} ${grabbable ? styles.guideGrab : ""}`}
+            style={style}
+            onPointerDown={onDrag(g.id, g.orient)}
+            onDoubleClick={(e) => { e.stopPropagation(); removeGuide(g.id); }}
+            title={grabbable ? "Drag to move · double-click to remove" : undefined}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+// ── Cursor crosshair across the whole canvas (Photoshop precise cursor) ──────
+function Crosshair() {
+  const x = usePointerStore((s) => s.x);
+  const y = usePointerStore((s) => s.y);
+  const zoom = useEditorStore((s) => s.zoom);
+  const panX = useEditorStore((s) => s.panX);
+  const panY = useEditorStore((s) => s.panY);
+  if (x == null || y == null) return null;
+  const sx = x * zoom + panX;
+  const sy = y * zoom + panY;
+  return (
+    <>
+      <div className={`${styles.cross} ${styles.crossV}`} style={{ left: sx }} />
+      <div className={`${styles.cross} ${styles.crossH}`} style={{ top: sy }} />
+    </>
+  );
+}
+
 // Tight integer bounding box of a selection in document space, clamped to canvas.
 function selectionBounds(sel: Selection, docW: number, docH: number) {
+  // Inverted selections cover everything outside the shape → use the full doc.
+  if (sel.inverted) return { x: 0, y: 0, w: docW, h: docH };
   let x0: number, y0: number, x1: number, y1: number;
   if (sel.kind === "rect") {
     x0 = sel.x; y0 = sel.y; x1 = sel.x + sel.w; y1 = sel.y + sel.h;
@@ -716,22 +851,46 @@ function TextEditor({
 
 // ── Draw helpers ─────────────────────────────────────────────────────────────
 
-function drawCheckerboard(ctx: CanvasRenderingContext2D, w: number, h: number) {
-  const s = 8; // Photopea-style small transparency grid
+function drawCheckerboard(ctx: CanvasRenderingContext2D, w: number, h: number, size = 8) {
+  const s = Math.max(2, size);
   ctx.save();
   ctx.fillStyle = "#15191f";
   ctx.fillRect(0, 0, w, h);
   ctx.fillStyle = "#1d232b";
   for (let y = 0; y < h; y += s) {
     for (let x = 0; x < w; x += s) {
-      if (((x / s) + (y / s)) % 2 === 0) ctx.fillRect(x, y, s, s);
+      if (((Math.floor(x / s)) + (Math.floor(y / s))) % 2 === 0) ctx.fillRect(x, y, s, s);
     }
   }
   ctx.restore();
 }
 
-function drawAnts(ctx: CanvasRenderingContext2D, sel: Selection, zoom: number) {
-  const path = selectionPathDoc(sel);
+// Document-aligned grid. Every 5th line is brighter (major) like Photoshop.
+function drawGrid(ctx: CanvasRenderingContext2D, w: number, h: number, size: number, zoom: number) {
+  const step = Math.max(2, size);
+  ctx.save();
+  ctx.lineWidth = 1 / zoom;
+  let n = 0;
+  for (let x = 0; x <= w; x += step, n++) {
+    ctx.strokeStyle = n % 5 === 0 ? "rgba(165,255,17,0.22)" : "rgba(255,255,255,0.10)";
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5 / zoom, 0);
+    ctx.lineTo(x + 0.5 / zoom, h);
+    ctx.stroke();
+  }
+  n = 0;
+  for (let y = 0; y <= h; y += step, n++) {
+    ctx.strokeStyle = n % 5 === 0 ? "rgba(165,255,17,0.22)" : "rgba(255,255,255,0.10)";
+    ctx.beginPath();
+    ctx.moveTo(0, y + 0.5 / zoom);
+    ctx.lineTo(w, y + 0.5 / zoom);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawAnts(ctx: CanvasRenderingContext2D, sel: Selection, zoom: number, docW?: number, docH?: number) {
+  const path = selectionPathDoc(sel, docW != null && docH != null ? { width: docW, height: docH } : undefined);
   ctx.save();
   ctx.lineWidth = 1 / zoom;
   ctx.strokeStyle = "#000";
@@ -879,7 +1038,7 @@ function bakeShape(
   else if (r.w < 2 || r.h < 2) return null;
   const c = createCanvas(docW, docH);
   const ctx = ctx2d(c);
-  if (selection) ctx.clip(selectionPathDoc(selection));
+  if (selection) ctx.clip(selectionPathDoc(selection, { width: docW, height: docH }), "evenodd");
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
   ctx.lineWidth = Math.max(1, lineWidth / 2);
@@ -903,7 +1062,7 @@ function bakeGradient(
   if (Math.hypot(x1 - x0, y1 - y0) < 2) return null;
   const c = createCanvas(docW, docH);
   const ctx = ctx2d(c);
-  if (selection) ctx.clip(selectionPathDoc(selection));
+  if (selection) ctx.clip(selectionPathDoc(selection, { width: docW, height: docH }), "evenodd");
   let grad: CanvasGradient;
   if (type === "radial") {
     const rad = Math.hypot(x1 - x0, y1 - y0);

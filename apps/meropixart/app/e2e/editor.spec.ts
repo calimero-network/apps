@@ -291,6 +291,62 @@ test.describe("Editor", () => {
     await expect(status.getByText("100%")).toBeVisible();
   });
 
+  test("renders the Navigator and History dock panels", async ({ page }) => {
+    await expect(page.getByTestId("navigator-panel")).toBeVisible();
+    await expect(page.getByTestId("history-panel")).toBeVisible();
+    // the History panel always shows the initial "Open" state
+    await expect(page.getByTestId("history-panel").getByText("Open")).toBeVisible();
+  });
+
+  test("painting records a labelled History entry", async ({ page }) => {
+    await page.getByTestId("tool-brush").click();
+    await page.getByRole("button", { name: "New raster layer" }).click();
+    const canvas = page.getByTestId("main-canvas");
+    const box = (await canvas.boundingBox())!;
+    await page.mouse.move(box.x + 120, box.y + 120);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 220, box.y + 200, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.getByTestId("history-panel").getByText("Brush")).toBeVisible();
+  });
+
+  test("View menu exposes grid, guides, snap, crosshair and units", async ({ page }) => {
+    await page.getByRole("button", { name: "View", exact: true }).click();
+    for (const item of ["Grid", "Guides", "Snap", "Crosshair"]) {
+      await expect(page.getByRole("button", { name: new RegExp(`^(✓ )?${item}$`) })).toBeVisible();
+    }
+    await expect(page.getByRole("button", { name: /^(✓ )?Pixels$/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Centimeters" })).toBeVisible();
+  });
+
+  test("Window menu toggles the History panel off", async ({ page }) => {
+    await expect(page.getByTestId("history-panel")).toBeVisible();
+    await page.getByRole("button", { name: "Window", exact: true }).click();
+    await page.getByRole("button", { name: /History$/ }).click();
+    await expect(page.getByTestId("history-panel")).toHaveCount(0);
+  });
+
+  test("Layer menu offers rasterize / merge / flatten", async ({ page }) => {
+    await page.getByRole("button", { name: "Layer", exact: true }).click();
+    await expect(page.getByText("Rasterize Layer")).toBeVisible();
+    await expect(page.getByText("Merge Visible")).toBeVisible();
+    await expect(page.getByText("Flatten Image")).toBeVisible();
+  });
+
+  test("Adjustments panel opens the Levels dialog", async ({ page }) => {
+    await page.getByRole("button", { name: "New raster layer" }).click();
+    await page.getByTestId("open-levels").click();
+    await expect(page.getByTestId("levels-editor")).toBeVisible();
+    await expect(page.getByTestId("levels-apply")).toBeVisible();
+  });
+
+  test("color picker has an alpha slider and saveable swatches", async ({ page }) => {
+    await page.getByTestId("secondary-swatch").click();
+    const picker = page.getByTestId("color-picker");
+    await expect(picker.getByTestId("alpha-slider")).toBeVisible();
+    await expect(picker.getByTestId("swatch-library")).toBeVisible();
+  });
+
   test("status bar tracks the cursor position over the canvas", async ({ page }) => {
     const canvas = page.getByTestId("main-canvas");
     const box = (await canvas.boundingBox())!;

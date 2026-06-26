@@ -153,10 +153,12 @@ export type Tool =
 
 // ── Tool options ──────────────────────────────────────────────────────────────
 
-/** Pixel selection (document-space). Constrains paint/fill/shape/gradient/delete. */
+/** Pixel selection (document-space). Constrains paint/fill/shape/gradient/delete.
+ *  `inverted` flips the active area to everything *outside* the shape (Select ▸
+ *  Inverse) — rendered/clipped with the even-odd rule against the doc bounds. */
 export type Selection =
-  | { kind: "rect"; x: number; y: number; w: number; h: number }
-  | { kind: "poly"; points: number[] }; // flat [x0,y0,x1,y1,...] in doc space
+  | { kind: "rect"; x: number; y: number; w: number; h: number; inverted?: boolean }
+  | { kind: "poly"; points: number[]; inverted?: boolean }; // flat [x0,y0,...] doc space
 
 export type ShapeKind = "rectangle" | "rounded" | "ellipse" | "line" | "triangle";
 
@@ -187,14 +189,43 @@ export type FilterKind =
   | "invert"
   | "sepia"
   | "brighten"
-  | "darken";
+  | "darken"
+  | "motion-blur"
+  | "noise"
+  | "pixelate";
 
 export const FILTERS: { kind: FilterKind; label: string }[] = [
   { kind: "blur", label: "Gaussian Blur" },
+  { kind: "motion-blur", label: "Motion Blur" },
   { kind: "sharpen", label: "Sharpen" },
+  { kind: "pixelate", label: "Pixelate" },
+  { kind: "noise", label: "Add Noise" },
   { kind: "grayscale", label: "Grayscale" },
   { kind: "sepia", label: "Sepia" },
   { kind: "invert", label: "Invert" },
   { kind: "brighten", label: "Brighten" },
   { kind: "darken", label: "Darken" },
 ];
+
+// ── Rulers / guides / panels ─────────────────────────────────────────────────
+
+/** Ruler measurement unit. `percent` is relative to the document dimension. */
+export type Unit = "px" | "in" | "cm" | "mm" | "percent";
+
+export const UNITS: { unit: Unit; label: string; abbr: string }[] = [
+  { unit: "px", label: "Pixels", abbr: "px" },
+  { unit: "in", label: "Inches", abbr: "in" },
+  { unit: "cm", label: "Centimeters", abbr: "cm" },
+  { unit: "mm", label: "Millimeters", abbr: "mm" },
+  { unit: "percent", label: "Percent", abbr: "%" },
+];
+
+/** A document-space guide line dragged out from a ruler. */
+export interface Guide {
+  id: string;
+  orient: "h" | "v";
+  pos: number; // doc-space coordinate (y for "h", x for "v")
+}
+
+/** Dockable right-rail panels toggled from the Window menu. */
+export type PanelId = "navigator" | "adjustments" | "history" | "layers";

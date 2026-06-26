@@ -69,6 +69,29 @@
   caret-color: var(--accent);
 }
 
+/* Ruler guides */
+.guide {
+  position: absolute;
+  background: #4da3ff;
+  z-index: 55;
+  pointer-events: none;
+}
+.guideH { box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.25); }
+.guideV { box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.25); }
+.guideGrab { pointer-events: auto; }
+.guideGrab.guideH { cursor: ns-resize; margin-top: -3px; padding: 3px 0; height: 1px; background-clip: content-box; }
+.guideGrab.guideV { cursor: ew-resize; margin-left: -3px; padding: 0 3px; width: 1px; background-clip: content-box; }
+
+/* Cursor crosshair */
+.cross {
+  position: absolute;
+  background: rgba(165, 255, 17, 0.5);
+  z-index: 58;
+  pointer-events: none;
+}
+.crossV { top: 0; bottom: 0; width: 1px; }
+.crossH { left: 0; right: 0; height: 1px; }
+
 /* Right-click context menu (cut / copy / paste) */
 .ctxBackdrop {
   position: fixed;

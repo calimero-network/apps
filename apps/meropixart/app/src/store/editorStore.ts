@@ -1,6 +1,8 @@
 import { create } from "zustand";
+import { v4 as uuid } from "uuid";
 import type {
-  BrushType, DocumentInfo, GradientFill, GradientType, Layer, Role, Selection, ShapeKind, Tool,
+  BrushType, DocumentInfo, GradientFill, GradientType, Guide, Layer, PanelId,
+  Role, Selection, ShapeKind, Tool, Unit,
 } from "../types";
 import { snapshotLayerCanvas, setLayerCanvas, getLayerCanvas } from "./layerCanvases";
 import { ctx2d, loadImageFromSrc } from "../utils/raster";
@@ -14,6 +16,17 @@ interface HistoryEntry {
   layers: Layer[];
   pixels: Record<string, string>; // layerId -> dataURL
   selectedLayerId: string | null;
+  label: string; // human-readable name surfaced in the History panel
+}
+
+export interface ViewSettings {
+  showGrid: boolean;
+  gridSize: number;       // doc-space px between grid lines
+  showGuides: boolean;
+  snap: boolean;          // snap moves to grid / guides / edges
+  showCrosshair: boolean; // Photoshop-style cursor crosshair across the canvas
+  units: Unit;
+  checkerSize: number;    // transparency checkerboard square size (px)
 }
 
 export interface EditorState {
@@ -51,6 +64,12 @@ export interface EditorState {
   /** bump to force the compositor to redraw (after imperative pixel mutations) */
   renderTick: number;
 
+  // ── view (grid / guides / units) ──
+  view: ViewSettings;
+  guides: Guide[];
+  /** which dockable right-rail panels are visible */
+  panels: Record<PanelId, boolean>;
+
   undoStack: HistoryEntry[];
   redoStack: HistoryEntry[];
 
@@ -80,10 +99,19 @@ export interface EditorState {
   toggleRulers: () => void;
   bumpRender: () => void;
 
+  // ── view / guides / panels ──
+  setView: (patch: Partial<ViewSettings>) => void;
+  addGuide: (orient: "h" | "v", pos: number) => void;
+  moveGuide: (id: string, pos: number) => void;
+  removeGuide: (id: string) => void;
+  clearGuides: () => void;
+  togglePanel: (id: PanelId) => void;
+
   // ── history ──
-  pushHistory: (affectedLayerIds: string[]) => void;
+  pushHistory: (affectedLayerIds: string[], label?: string) => void;
   undo: () => void;
   redo: () => void;
+  jumpHistory: (targetUndoLength: number) => void;
   clearHistory: () => void;
 
   selectedLayer: () => Layer | undefined;
@@ -120,6 +148,18 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   myRole: "viewer",
   showRulers: true,
   renderTick: 0,
+
+  view: {
+    showGrid: false,
+    gridSize: 50,
+    showGuides: true,
+    snap: true,
+    showCrosshair: false,
+    units: "px",
+    checkerSize: 8,
+  },
+  guides: [],
+  panels: { navigator: true, adjustments: true, history: true, layers: true },
 
   undoStack: [],
   redoStack: [],
@@ -171,7 +211,17 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   toggleRulers: () => set((s) => ({ showRulers: !s.showRulers })),
   bumpRender: () => set((s) => ({ renderTick: s.renderTick + 1 })),
 
-  pushHistory: (affectedLayerIds) =>
+  // ── view / guides / panels ──
+  setView: (patch) => set((s) => ({ view: { ...s.view, ...patch } })),
+  addGuide: (orient, pos) =>
+    set((s) => ({ guides: [...s.guides, { id: uuid(), orient, pos: Math.round(pos) }] })),
+  moveGuide: (id, pos) =>
+    set((s) => ({ guides: s.guides.map((g) => (g.id === id ? { ...g, pos: Math.round(pos) } : g)) })),
+  removeGuide: (id) => set((s) => ({ guides: s.guides.filter((g) => g.id !== id) })),
+  clearGuides: () => set({ guides: [] }),
+  togglePanel: (id) => set((s) => ({ panels: { ...s.panels, [id]: !s.panels[id] } })),
+
+  pushHistory: (affectedLayerIds, label = "Edit") =>
     set((s) => {
       const pixels: Record<string, string> = {};
       for (const id of affectedLayerIds) {
@@ -183,6 +233,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         layers: s.layers.map((l) => ({ ...l })),
         pixels,
         selectedLayerId: s.selectedLayerId,
+        label,
       };
       const undoStack = [...s.undoStack, entry].slice(-MAX_HISTORY);
       return { undoStack, redoStack: [] };
@@ -203,6 +254,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       layers: s.layers.map((l) => ({ ...l })),
       pixels: redoPixels,
       selectedLayerId: s.selectedLayerId,
+      label: entry.label,
     };
     restorePixels(entry.pixels, entry.layers);
     set({
@@ -229,6 +281,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       layers: s.layers.map((l) => ({ ...l })),
       pixels: undoPixels,
       selectedLayerId: s.selectedLayerId,
+      label: entry.label,
     };
     restorePixels(entry.pixels, entry.layers);
     set({
@@ -239,6 +292,17 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       undoStack: [...s.undoStack, undoEntry].slice(-MAX_HISTORY),
       renderTick: s.renderTick + 1,
     });
+  },
+
+  // Step the history pointer to a target depth (undoStack length). Used by the
+  // History panel to jump to a clicked state. Sequential undo/redo keeps the
+  // redo/undo chains intact; restorePixels' sequence guard prevents stale async
+  // decodes from clobbering the final state.
+  jumpHistory: (targetUndoLength) => {
+    const clamp = Math.max(0, targetUndoLength);
+    let guard = 0;
+    while (get().undoStack.length > clamp && guard++ < MAX_HISTORY * 2) get().undo();
+    while (get().undoStack.length < clamp && get().redoStack.length > 0 && guard++ < MAX_HISTORY * 2) get().redo();
   },
 
   clearHistory: () => set({ undoStack: [], redoStack: [] }),
@@ -254,6 +318,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 }));
 
+// Per-layer monotonic token: when jumpHistory fires several undo/redo steps in
+// a row, multiple async image decodes for the SAME layer may be in flight. We
+// only apply the most recently *requested* restore for each layer so the final
+// pixels match the final metadata state (no out-of-order clobbering).
+const restoreSeq = new Map<string, number>();
+
 // Restore pixel snapshots onto layer canvases. Async (image decode) but the
 // store update has already happened; we bump render once decoding completes.
 function restorePixels(pixels: Record<string, string>, layers: Layer[]) {
@@ -261,7 +331,10 @@ function restorePixels(pixels: Record<string, string>, layers: Layer[]) {
     const layer = layers.find((l) => l.id === id);
     const w = layer?.width ?? 1;
     const h = layer?.height ?? 1;
+    const token = (restoreSeq.get(id) ?? 0) + 1;
+    restoreSeq.set(id, token);
     loadImageFromSrc(dataUrl).then((img) => {
+      if (restoreSeq.get(id) !== token) return; // a newer restore superseded this one
       const c = getLayerCanvas(id, w, h);
       const ctx = ctx2d(c);
       ctx.clearRect(0, 0, c.width, c.height);

@@ -12,7 +12,14 @@
   flex-shrink: 0;
   user-select: none;
 }
-.item { white-space: nowrap; }
+.item { white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+.swatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  border: 1px solid var(--border-strong);
+  display: inline-block;
+}
 .sep {
   width: 1px;
   height: 12px;

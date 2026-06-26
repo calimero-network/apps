@@ -13,10 +13,11 @@ import {
 } from "../store/layerCanvases";
 import {
   bytesToImage, canvasToPngBytes, createCanvas, ctx2d, applyCurves, parseCurves,
+  applyLevels, type LevelsData,
 } from "../utils/raster";
 import { composite } from "../utils/compositor";
 import { applyFilter } from "../utils/filters";
-import { selectionPathLocal } from "../utils/geometry";
+import { invertSelection, selectionPathLocal } from "../utils/geometry";
 import {
   NEUTRAL_ADJUSTMENTS, type Adjustments, type CursorState, type DocumentInfo,
   type FilterKind, type Layer, type LayerKind, type Member, type Role, type TextProps,
@@ -26,6 +27,8 @@ import OptionsBar from "../components/OptionsBar";
 import CanvasStage from "../components/CanvasStage";
 import LayersPanel from "../components/LayersPanel";
 import AdjustmentsPanel from "../components/AdjustmentsPanel";
+import HistoryPanel from "../components/HistoryPanel";
+import Navigator from "../components/Navigator";
 import TopBar from "../components/TopBar";
 import Ruler from "../components/Rulers";
 import StatusBar from "../components/StatusBar";
@@ -44,7 +47,7 @@ export default function EditorPage() {
   const { showToast } = useToast();
 
   const {
-    doc, layers, selectedLayerId, editingMaskOf, showRulers,
+    doc, layers, selectedLayerId, editingMaskOf, showRulers, panels,
     setDoc, setLayers, upsertLayer, removeLayer, selectLayer, setEditingMask,
     setRole, setZoom, setPan, bumpRender, canEdit, clearHistory, setSelection,
   } = useEditorStore();
@@ -375,6 +378,69 @@ export default function EditorPage() {
     } catch (e) { showToast(errMsg(e), "error"); }
   }, [ctxId, canEdit, upsertLayer, onUpdateMeta, showToast]);
 
+  // ── Merge / flatten / rasterize ─────────────────────────────────────────────
+  // Composite `sources` (bottom→top) into one doc-sized raster layer, replace
+  // them with it, and persist (add + content + delete) on the node.
+  const bakeMerge = useCallback(async (
+    sources: Layer[], label: string, name: string, background?: string,
+  ) => {
+    if (!canEdit() || !doc || sources.length === 0) return;
+    useEditorStore.getState().pushHistory(sources.map((l) => l.id), label);
+    const flat = composite(sources, doc.width, doc.height, background ? { background } : {});
+    const targetIndex = Math.min(...sources.map((l) => l.layerIndex));
+    const merged = makeLayer("raster");
+    merged.name = name;
+    merged.x = 0; merged.y = 0; merged.width = doc.width; merged.height = doc.height;
+    merged.layerIndex = targetIndex;
+    const c = getLayerCanvas(merged.id, doc.width, doc.height);
+    const cx = ctx2d(c);
+    cx.clearRect(0, 0, c.width, c.height);
+    cx.drawImage(flat, 0, 0);
+    setLayerCanvas(merged.id, c);
+    for (const l of sources) { removeLayer(l.id); dropLayerCanvas(l.id); dropMaskCanvas(l.id); }
+    upsertLayer(merged);
+    selectLayer(merged.id);
+    bumpRender();
+    try {
+      await rpcCall(ctxId, "add_layer", { layer: merged });
+      await commitPixels(merged.id);
+      for (const l of sources) await rpcCall(ctxId, "delete_layer", { id: l.id });
+    } catch (e) { showToast(errMsg(e), "error"); }
+  }, [ctxId, doc, canEdit, upsertLayer, removeLayer, selectLayer, bumpRender, commitPixels, showToast]);
+
+  const onRasterize = useCallback(() => {
+    const sel = useEditorStore.getState().selectedLayer();
+    if (!sel) return;
+    if (sel.kind === "raster") { showToast("Layer is already raster.", "error"); return; }
+    if (sel.kind === "group") { showToast("Can't rasterize a group — flatten instead.", "error"); return; }
+    bakeMerge([sel], "Rasterize Layer", sel.name);
+  }, [bakeMerge, showToast]);
+
+  const onMergeDown = useCallback(() => {
+    const st = useEditorStore.getState();
+    const sel = st.selectedLayer();
+    if (!sel) return;
+    // the layer immediately below in z-order (same parent scope), skipping groups
+    const below = [...st.layers]
+      .filter((l) => l.kind !== "group" && l.layerIndex < sel.layerIndex)
+      .sort((a, b) => b.layerIndex - a.layerIndex)[0];
+    if (!below) { showToast("No layer below to merge into.", "error"); return; }
+    bakeMerge([below, sel], "Merge Down", below.name);
+  }, [bakeMerge, showToast]);
+
+  const onMergeVisible = useCallback(() => {
+    const st = useEditorStore.getState();
+    const visible = st.layers.filter((l) => l.visible && l.kind !== "group");
+    if (visible.length < 2) { showToast("Need at least two visible layers.", "error"); return; }
+    bakeMerge(visible, "Merge Visible", "Merged");
+  }, [bakeMerge, showToast]);
+
+  const onFlatten = useCallback(() => {
+    const st = useEditorStore.getState();
+    if (st.layers.length === 0 || !doc) return;
+    bakeMerge([...st.layers].filter((l) => l.kind !== "group"), "Flatten Image", "Background", doc.background);
+  }, [bakeMerge, doc]);
+
   const onToggleMask = useCallback(async (id: string) => {
     const l = useEditorStore.getState().layers.find((x) => x.id === id);
     if (!l || !canEdit()) return;
@@ -441,6 +507,21 @@ export default function EditorPage() {
       invert: sel.adjustments.invert, curves: curvesJson, updated_at: ts(),
     }).catch(() => {});
   }, [ctxId, canEdit, bumpRender, commitPixels]);
+
+  const onApplyLevels = useCallback(async (levels: LevelsData) => {
+    const sel = useEditorStore.getState().selectedLayer();
+    if (!sel || !canEdit()) return;
+    if (sel.kind !== "raster") { showToast("Select a raster layer for Levels.", "error"); return; }
+    const c = peekLayerCanvas(sel.id);
+    if (!c) { showToast("This layer has no pixels yet.", "error"); return; }
+    useEditorStore.getState().pushHistory([sel.id], "Levels");
+    const baked = applyLevels(c, levels);
+    const ctx = ctx2d(c);
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.drawImage(baked, 0, 0);
+    bumpRender();
+    await commitPixels(sel.id);
+  }, [canEdit, bumpRender, commitPixels, showToast]);
 
   // ── Image import ───────────────────────────────────────────────────────────
   const onImportImage = useCallback(async (file: File) => {
@@ -561,7 +642,7 @@ export default function EditorPage() {
     const h = Math.max(1, Math.round(rect.h));
     const now = ts();
     // snapshot doc size + layer positions so the crop can be undone
-    useEditorStore.getState().pushHistory([]);
+    useEditorStore.getState().pushHistory([], "Crop");
     const moved = useEditorStore.getState().layers.map((l) => ({ ...l, x: l.x - ox, y: l.y - oy, updatedAt: now }));
     setLayers(moved);
     setDoc({ ...doc, width: w, height: h });
@@ -582,7 +663,7 @@ export default function EditorPage() {
     if (sel.kind !== "raster") { showToast("Select a raster layer to filter.", "error"); return; }
     const c = peekLayerCanvas(sel.id);
     if (!c) { showToast("This layer has no pixels yet.", "error"); return; }
-    useEditorStore.getState().pushHistory([sel.id]);
+    useEditorStore.getState().pushHistory([sel.id], `Filter: ${kind}`);
     const out = applyFilter(c, kind);
     const ctx = ctx2d(c);
     ctx.clearRect(0, 0, c.width, c.height);
@@ -660,6 +741,11 @@ export default function EditorPage() {
         st.setSelection(null);
         return;
       }
+      if (mod && e.shiftKey && e.key.toLowerCase() === "i") {
+        e.preventDefault();
+        if (st.selection) st.setSelection(invertSelection(st.selection));
+        return;
+      }
       if (e.key === "Delete" || e.key === "Backspace") {
         if (st.editingTextId) return;
         const layer = st.selectedLayer();
@@ -670,12 +756,12 @@ export default function EditorPage() {
         if (st.selection && layer.kind === "raster") {
           const c = peekLayerCanvas(layer.id);
           if (c) {
-            st.pushHistory([layer.id]);
+            st.pushHistory([layer.id], "Clear Selection");
             const cx = ctx2d(c);
             cx.save();
             cx.globalCompositeOperation = "destination-out";
             cx.fillStyle = "#000";
-            cx.fill(selectionPathLocal(st.selection, layer));
+            cx.fill(selectionPathLocal(st.selection, layer, st.doc ? { width: st.doc.width, height: st.doc.height } : undefined), "evenodd");
             cx.restore();
             bumpRender();
             commitPixels(layer.id);
@@ -740,6 +826,10 @@ export default function EditorPage() {
         onDeleteLayer={onDelete}
         onGroupSelected={onGroupSelected}
         onToggleMask={onToggleMask}
+        onRasterize={onRasterize}
+        onMergeDown={onMergeDown}
+        onMergeVisible={onMergeVisible}
+        onFlatten={onFlatten}
         onOpenInvite={() => setShowInvite(true)}
         onOpenSettings={() => setShowSettings(true)}
       />
@@ -770,22 +860,39 @@ export default function EditorPage() {
           </div>
         </div>
         <div className={styles.rightDock}>
-          <AdjustmentsPanel
-            layer={selLayer}
-            onAdjust={onAdjust}
-            onApplyCurves={onApplyCurves}
-            disabled={!canEdit()}
-          />
-          <LayersPanel
-            onAdd={onAdd}
-            onDelete={onDelete}
-            onDuplicate={onDuplicate}
-            onUpdateMeta={onUpdateMeta}
-            onUpdateText={onUpdateText}
-            onReorder={onReorder}
-            onGroupSelected={onGroupSelected}
-            onToggleMask={onToggleMask}
-          />
+          {panels.navigator && (
+            <section className={styles.dockSection}><Navigator /></section>
+          )}
+          {panels.adjustments && (
+            <section className={`${styles.dockSection} ${styles.dockScroll}`}>
+              <AdjustmentsPanel
+                layer={selLayer}
+                onAdjust={onAdjust}
+                onApplyCurves={onApplyCurves}
+                onApplyLevels={onApplyLevels}
+                disabled={!canEdit()}
+              />
+            </section>
+          )}
+          {panels.history && (
+            <section className={`${styles.dockSection} ${styles.dockHistory}`}>
+              <HistoryPanel />
+            </section>
+          )}
+          {panels.layers && (
+            <section className={`${styles.dockSection} ${styles.dockGrow}`}>
+              <LayersPanel
+                onAdd={onAdd}
+                onDelete={onDelete}
+                onDuplicate={onDuplicate}
+                onUpdateMeta={onUpdateMeta}
+                onUpdateText={onUpdateText}
+                onReorder={onReorder}
+                onGroupSelected={onGroupSelected}
+                onToggleMask={onToggleMask}
+              />
+            </section>
+          )}
         </div>
       </div>
 

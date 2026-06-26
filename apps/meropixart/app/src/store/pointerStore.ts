@@ -6,11 +6,14 @@ import { create } from "zustand";
 interface PointerState {
   x: number | null;
   y: number | null;
-  set: (x: number | null, y: number | null) => void;
+  /** composited colour under the cursor (#rrggbb) for the status-bar readout */
+  color: string | null;
+  set: (x: number | null, y: number | null, color?: string | null) => void;
 }
 
 export const usePointerStore = create<PointerState>((set) => ({
   x: null,
   y: null,
-  set: (x, y) => set({ x, y }),
+  color: null,
+  set: (x, y, color = null) => set({ x, y, color }),
 }));
