@@ -22,7 +22,13 @@
       // https://username.github.io/repo-name/one/two?a=b&c=d#qwe becomes
       // https://username.github.io/repo-name/?/one/two&a=b~and~c=d#qwe
       // Otherwise, leave pathSegmentsToKeep as 0.
-      var pathSegmentsToKeep = 1;
+      // App is deployed at the domain ROOT (vite base: '/'), so keep 0 path
+      // segments — keeping 1 wrongly treats the first route segment (e.g.
+      // "login") as a real directory and mangles deep links. NOTE: this
+      // gh-pages SPA fallback should NOT run on Vercel at all — vercel.json
+      // rewrites every route to index.html so 404.html never fires there
+      // (it was the cause of the /~and~/ OAuth-callback redirect loop).
+      var pathSegmentsToKeep = 0;
 
       var l = window.location;
       l.replace(
