@@ -6,7 +6,6 @@ import { getNodeUrl } from "@calimero-network/mero-react";
 import { getAuthConfig } from "../../api/meroJsClient";
 import axios from "axios";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
-import { ContextApiDataSource } from "../../api/dataSource/nodeApiDataSource";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 import type { GroupSummary } from "../../api/groupApi";
 import {
@@ -17,7 +16,6 @@ import {
   setGroupMemberIdentity,
   getStoredGroupAlias,
   setStoredGroupAlias,
-  setContextMemberIdentity,
 } from "../../constants/config";
 import {
   getMessengerDisplayName,
@@ -617,30 +615,6 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
       setStoredGroupAlias(groupId, trimmedNs);
 
       await api.current.setDefaultCapabilities(groupId, { defaultCapabilities: DEFAULT_MEMBER_CAPABILITIES }).catch(() => {});
-
-      // Create initial "general" channel so the namespace has something to chat in.
-      // Goes through createGroupContext so `initializationParams` (required by core)
-      // is byte-encoded with the curb `init` shape — a raw POST omitting it is rejected.
-      try {
-        const ctxRes = await new ContextApiDataSource().createGroupContext({
-          applicationId: appId,
-          protocol: "near",
-          groupId,
-          alias: "general",
-          name: "general",
-          initializationParams: {
-            name: "general",
-            context_type: "Channel",
-            description: "",
-            created_at: Math.floor(Date.now() / 1000),
-            creator_username: "",
-          },
-        });
-        const ctxData = ctxRes.data;
-        if (ctxData?.contextId && ctxData?.memberPublicKey) {
-          setContextMemberIdentity(ctxData.contextId, ctxData.memberPublicKey);
-        }
-      } catch { /* non-fatal — user can create channels from the app */ }
 
       const idRes = await api.current.resolveCurrentMemberIdentity(groupId);
       if (idRes.data?.memberIdentity) {
