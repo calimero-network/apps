@@ -37,6 +37,9 @@ importers:
       '@eslint/js':
         specifier: ^9.25.0
         version: 9.39.4
+      '@types/node':
+        specifier: ^26.0.1
+        version: 26.0.1
       '@types/react':
         specifier: 19.2.17
         version: 19.2.17
@@ -45,7 +48,7 @@ importers:
         version: 19.2.3(@types/react@19.2.17)
       '@vitejs/plugin-react-swc':
         specifier: ^3.9.0
-        version: 3.11.0(vite@6.4.3)
+        version: 3.11.0(vite@6.4.3(@types/node@26.0.1))
       eslint:
         specifier: ^9.29.0
         version: 9.39.4
@@ -72,10 +75,10 @@ importers:
         version: 8.62.0(eslint@9.39.4)(typescript@6.0.3)
       vite:
         specifier: ^6.4.1
-        version: 6.4.3
+        version: 6.4.3(@types/node@26.0.1)
       vitest:
         specifier: ^4.1.9
-        version: 4.1.9(jsdom@29.1.1)(vite@6.4.3)
+        version: 4.1.9(@types/node@26.0.1)(jsdom@29.1.1)(vite@6.4.3(@types/node@26.0.1))
 
 packages:
 
@@ -788,6 +791,9 @@ packages:
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
 
+  '@types/node@26.0.1':
+    resolution: {integrity: sha512-fc3KiUoBt6kie0N9bIW3E47vZsuaMf0PM2AaUpLCLT0s/LvX1nxAim6Fc049cNxODPpGm6qRAuUOB86SkRuPQw==}
+
   '@types/react-dom@19.2.3':
     resolution: {integrity: sha512-jp2L/eY6fn+KgVVQAOqYItbF0VY/YApe5Mz2F0aykSO8gx31bYCZyvSeYxCHKvzHG5eZjc+zyaS5BrBWya2+kQ==}
     peerDependencies:
@@ -1471,6 +1477,9 @@ packages:
     resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
     engines: {node: '>=14.17'}
     hasBin: true
+
+  undici-types@8.3.0:
+    resolution: {integrity: sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==}
 
   undici@7.28.0:
     resolution: {integrity: sha512-cRZYrTDwWznlnRiPjggAGxZXanty6M8RV1ff8Wm4LWXBp7/IG8v5DnOm74DtUBp9OONpK75YlPnIjQqX0dBDtA==}
@@ -2202,6 +2211,10 @@ snapshots:
 
   '@types/json-schema@7.0.15': {}
 
+  '@types/node@26.0.1':
+    dependencies:
+      undici-types: 8.3.0
+
   '@types/react-dom@19.2.3(@types/react@19.2.17)':
     dependencies:
       '@types/react': 19.2.17
@@ -2303,11 +2316,11 @@ snapshots:
       '@typescript-eslint/types': 8.62.0
       eslint-visitor-keys: 5.0.1
 
-  '@vitejs/plugin-react-swc@3.11.0(vite@6.4.3)':
+  '@vitejs/plugin-react-swc@3.11.0(vite@6.4.3(@types/node@26.0.1))':
     dependencies:
       '@rolldown/pluginutils': 1.0.0-beta.27
       '@swc/core': 1.15.43
-      vite: 6.4.3
+      vite: 6.4.3(@types/node@26.0.1)
     transitivePeerDependencies:
       - '@swc/helpers'
 
@@ -2320,13 +2333,13 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.0
 
-  '@vitest/mocker@4.1.9(vite@6.4.3)':
+  '@vitest/mocker@4.1.9(vite@6.4.3(@types/node@26.0.1))':
     dependencies:
       '@vitest/spy': 4.1.9
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 6.4.3
+      vite: 6.4.3(@types/node@26.0.1)
 
   '@vitest/pretty-format@4.1.9':
     dependencies:
@@ -2960,6 +2973,8 @@ snapshots:
 
   typescript@6.0.3: {}
 
+  undici-types@8.3.0: {}
+
   undici@7.28.0: {}
 
   uri-js@4.4.1:
@@ -2970,7 +2985,7 @@ snapshots:
     dependencies:
       react: 19.2.7
 
-  vite@6.4.3:
+  vite@6.4.3(@types/node@26.0.1):
     dependencies:
       esbuild: 0.25.12
       fdir: 6.5.0(picomatch@4.0.4)
@@ -2979,12 +2994,13 @@ snapshots:
       rollup: 4.62.2
       tinyglobby: 0.2.17
     optionalDependencies:
+      '@types/node': 26.0.1
       fsevents: 2.3.3
 
-  vitest@4.1.9(jsdom@29.1.1)(vite@6.4.3):
+  vitest@4.1.9(@types/node@26.0.1)(jsdom@29.1.1)(vite@6.4.3(@types/node@26.0.1)):
     dependencies:
       '@vitest/expect': 4.1.9
-      '@vitest/mocker': 4.1.9(vite@6.4.3)
+      '@vitest/mocker': 4.1.9(vite@6.4.3(@types/node@26.0.1))
       '@vitest/pretty-format': 4.1.9
       '@vitest/runner': 4.1.9
       '@vitest/snapshot': 4.1.9
@@ -3001,9 +3017,10 @@ snapshots:
       tinyexec: 1.2.4
       tinyglobby: 0.2.17
       tinyrainbow: 3.1.0
-      vite: 6.4.3
+      vite: 6.4.3(@types/node@26.0.1)
       why-is-node-running: 2.3.0
     optionalDependencies:
+      '@types/node': 26.0.1
       jsdom: 29.1.1
     transitivePeerDependencies:
       - msw

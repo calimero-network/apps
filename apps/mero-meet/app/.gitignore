@@ -1,0 +1,4 @@
+.vercel
+
+# TypeScript incremental build info
+*.tsbuildinfo
