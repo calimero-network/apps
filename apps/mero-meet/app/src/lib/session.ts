@@ -3,26 +3,55 @@
 // tauri-app opens this app in a WebviewWindow with auth + routing context in
 // the URL hash (see tauri-app appUtils.ts `openAppFrontend`):
 //
-//   meromeet://…#node_url=…&access_token=…&refresh_token=…
-//                &application_id=…&context_id=…&executor_public_key=…&expires_at=…
+//   …#node_url=…&access_token=…&refresh_token=…
+//     &app-id=…&context_id=…&executor_public_key=…&expires_at=…&dev_mode=…
 //
-// A Mero Meet "room" == one Calimero context. The context_id tells us which
-// room to open; the executor_public_key is our own member identity inside it.
-// We capture both before React mounts and keep them for the app's lifetime.
+// A Mero Meet "room" == one Calimero context. When the desktop deep-links into a
+// specific room it passes `context_id` (+ our member identity
+// `executor_public_key`). When it just opens the app (no room chosen), those are
+// absent — then the user picks/creates a room in-app (RoomsPage), and we persist
+// the choice per-app so a reload returns to the same room.
+//
+// `app-id` is the installed Mero Meet application id; we need it to create
+// namespaces/contexts (rooms) for this app.
 
 let contextId: string | null = null;
 let executorPublicKey: string | null = null;
+let applicationId: string | null = null;
 let devMode = false;
+
+function roomStorageKey(): string {
+  return `mm-room:${applicationId ?? "default"}`;
+}
 
 export function captureSessionFromHash(): void {
   const hash = window.location.hash.slice(1);
-  if (!hash) return;
-  const p = new URLSearchParams(hash);
-  contextId = p.get("context_id") ?? p.get("contextId") ?? null;
-  executorPublicKey =
-    p.get("executor_public_key") ?? p.get("executorPublicKey") ?? null;
-  // The desktop app forwards its developer-mode setting here.
-  devMode = p.get("dev_mode") === "1";
+  if (hash) {
+    const p = new URLSearchParams(hash);
+    contextId = p.get("context_id") ?? p.get("contextId") ?? null;
+    executorPublicKey =
+      p.get("executor_public_key") ?? p.get("executorPublicKey") ?? null;
+    applicationId =
+      p.get("app-id") ?? p.get("application_id") ?? p.get("applicationId") ?? null;
+    // The desktop app forwards its developer-mode setting here.
+    devMode = p.get("dev_mode") === "1";
+  }
+
+  // No room handed in? Restore the last room the user opened for this app.
+  if (!contextId) {
+    try {
+      const saved = localStorage.getItem(roomStorageKey());
+      if (saved) {
+        const { ctx, executor } = JSON.parse(saved);
+        if (ctx && executor) {
+          contextId = ctx;
+          executorPublicKey = executor;
+        }
+      }
+    } catch {
+      /* ignore malformed/blocked storage */
+    }
+  }
 }
 
 /** Developer mode as set in the Calimero desktop app's settings. */
@@ -38,9 +67,29 @@ export function getExecutorPublicKey(): string | null {
   return executorPublicKey;
 }
 
-export function setSession(ctx: string, executor: string): void {
+/** The installed Mero Meet application id (needed to create rooms). */
+export function getApplicationId(): string | null {
+  return applicationId;
+}
+
+/**
+ * Make `ctx` the active room with member identity `executor`, and persist it so
+ * a reload (or the next open of this app) returns here. Used after the user
+ * creates or joins a room in the lobby/rooms UI.
+ */
+export function setActiveRoom(ctx: string, executor: string): void {
   contextId = ctx;
   executorPublicKey = executor;
+  try {
+    localStorage.setItem(roomStorageKey(), JSON.stringify({ ctx, executor }));
+  } catch {
+    /* ignore blocked storage */
+  }
+}
+
+/** Back-compat alias. */
+export function setSession(ctx: string, executor: string): void {
+  setActiveRoom(ctx, executor);
 }
 
 /** Unix seconds — the clock the contract expects (WASM has no wall clock). */

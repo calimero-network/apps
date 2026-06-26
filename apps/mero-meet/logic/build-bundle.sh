@@ -17,6 +17,10 @@ cd "$(dirname $0)"
 PACKAGE="com.calimero.meromeet"
 FALLBACK_VERSION="0.1.0"   # offline floor only; the registry path is authoritative
 REGISTRY_URL="${REGISTRY_URL:-https://apps.calimero.network}"
+# Frontend the desktop opens for this app. Override for local debugging, e.g.
+#   FRONTEND_URL=http://localhost:5173 ./build-bundle.sh
+# so `make dev` (Vite + HMR + devtools/console) backs the window instead of prod.
+FRONTEND_URL="${FRONTEND_URL:-https://mero-meet.vercel.app/}"
 
 resolve_app_version() {
   if [ -n "${APP_VERSION_OVERRIDE:-}" ]; then
@@ -86,7 +90,7 @@ cat > res/bundle-temp/manifest.json <<EOF
   },
   "migrations": [],
   "links": {
-    "frontend": "https://mero-meet.vercel.app/"
+    "frontend": "${FRONTEND_URL}"
   }
 }
 EOF
