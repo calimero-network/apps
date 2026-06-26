@@ -181,8 +181,73 @@ stops at rc.5; rc.6 is a git tag only). borsh `1.6.1`. Merod runtime image in
 workflows = `merod:0.11.0-rc.6`. Contract verified live (the rc.6 build also runs
 on the locally-installed `merod 0.11.0-rc.4` — the host ABI is stable across RCs).
 
+## 2026-06-25 — UI pass (requirements.md)
+- [x] Professional color picker — RGB + HSL sliders (numeric inputs) on top of SV/hue/hex; now a **movable** floating dialog (drag by title bar).
+- [x] Layer color editing — fill/text layers expose a clickable Color swatch in LayersPanel props → opens the picker (live preview, single commit on close).
+- [x] Selection clipboard — right-click a marquee/lasso selection → **Cut / Copy / Paste**; paste creates a new raster layer with just the copied content; cut clears the region from a raster layer. Ctrl/Cmd+C/X/V too. `clipboard` added to the store.
+- [x] Removed the gradient tool icon from the rail (per request).
+- Still open from requirements.md (big-ticket): top menu bar (File/Edit/Image/…), precision rulers + crosshair guides, smaller 8px transparency checkerboard w/ size setting, Navigator panel, History panel UI, guides & snapping, status bar (zoom/coords/selection/doc/color), color wheel + opacity + current/previous swatches.
+
+## 2026-06-26 — Priority-backlog pass (requirements.md)
+Worked the `## Priority backlog` list top-down. Done this session:
+- **History panel** — `HistoryPanel.tsx` surfaces the undo/redo stack. History
+  entries now carry a `label` (Brush/Erase/Paint Bucket/Move/Transform/Crop/
+  Cut/Filter:…/Levels/Rasterize/Merge…). Click any state to `jumpHistory(n)`;
+  a per-layer restore-sequence guard prevents stale async decodes when jumping
+  multiple steps.
+- **Navigator** — `Navigator.tsx`: throttled `<img>` minimap (no extra
+  `<canvas>`, so the e2e canvas-count assumptions hold), red viewport box,
+  click/drag-to-pan, log-scale zoom slider.
+- **Grid / guides / snapping / crosshair** — store `view` settings + `guides`.
+  CanvasStage draws the grid + a DOM crosshair + guide lines; rulers drag out
+  guides (drag back past the ruler to delete; double-click to remove); Move
+  snaps layer edges/centre to grid lines, guides, doc edges & centre.
+- **Ruler units** (px/in/cm/mm/%) — rulers tick/label in the chosen unit;
+  **transparency-grid size** (Small/Medium/Large) drives the checkerboard.
+- **Layer ops** — Rasterize / Merge Down / Merge Visible / Flatten Image
+  (composite subset → one raster blob, replace + persist). Layer menu wired.
+- **Select** — Inverse (⌘⇧I, even-odd vs doc bounds) + Modify Expand/Contract.
+- **Filters** — Motion Blur, Add Noise, Pixelate added to `filters.ts`.
+- **Levels** — `LevelsEditor.tsx` + `applyLevels` LUT (in/out black-white +
+  gamma), baked into the active raster layer.
+- **Color picker** — hue/sat **wheel**, **alpha** slider (emits #rrggbbaa when
+  <255), **current/previous** compare swatch, **saveable swatches** library
+  (localStorage `mp-swatches`).
+- **Window menu** — toggles Navigator/Adjustments/History/Layers dock panels;
+  View/Window also toggle Rulers, Grid, Guides, Snap, Crosshair, units, checker.
+- **Status bar** — live colour readout under the cursor + unit-aware X/Y.
+
+Verified: `tsc -b` clean · `pnpm lint` 0 errors (warnings only) · `vite build`
+clean · vitest 17/17 · Playwright mocked **37/37** (7 new tests for the above).
+
+Still open from the backlog: marquee/lasso variants + Magic Wand (#5), layer
+styles/blending-options dialog (#6), Color Range (#7), adjustment layers (#8),
+free-floating/undockable panels (#10).
+
+## 2026-06-26 — Selections, multi-layer, dock + cross-project bug
+Follow-up to the backlog pass:
+- **Selections confined to the active layer** — Copy now samples only the
+  selected layer (was the full composite); paint/fill/cut/delete already
+  targeted the active layer.
+- **Multi-layer selection** — Cmd/Ctrl-click toggles, Shift-click range-selects
+  in the Layers panel (`selectedLayerIds`; `selectedLayerId` stays the primary
+  for props/adjustments/paint). Move drags all selected layers together with a
+  combined bounding box; Delete removes the whole selection.
+- **Collapsible dock + scroll** — each right-rail panel has a collapse chevron;
+  **History starts collapsed**; the dock itself scrolls (`overflow-y:auto`) so
+  panels never clip.
+- **BUG: every project showed the same image** — the editor route component
+  stays mounted across `:projectId` changes, so the global store + off-DOM
+  canvas registry + loaded-blob cache leaked one document's pixels into the
+  next. Fixed by a hard reset (`clearAllCanvases()` + store/layers/selection/
+  history/guides + `loadedBlobs`) at the top of the project-load effect.
+
+Verified: tsc clean · lint 0 errors · build clean · vitest 17/17 · Playwright
+mocked **38/38** (gallery thumbnails are still checkerboard placeholders — a
+separate follow-up).
+
 ## Remaining work / follow-ups
-- Advanced tools: marquee/lasso selection, crop tool, warp mesh, gradient, clone stamp, shape-draw, standalone Levels + adjustment layers.
+- Advanced tools: crop tool, warp mesh, clone stamp polish, standalone Levels + adjustment layers (marquee/lasso/gradient/shape/clone shipped earlier).
 - Playwright integration suite + merobox workflow execution (need Docker / live nodes).
 - Group compositing isolation (currently approximated via inherited opacity/visibility, flat paint order).
 - Project thumbnails in the gallery (placeholder checkerboard today).

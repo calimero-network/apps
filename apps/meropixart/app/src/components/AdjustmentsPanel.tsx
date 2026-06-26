@@ -1,13 +1,17 @@
 import { useState } from "react";
+import { useEditorStore } from "../store/editorStore";
 import type { Adjustments, Layer } from "../types";
 import { NEUTRAL_ADJUSTMENTS } from "../types";
+import type { LevelsData } from "../utils/raster";
 import CurvesEditor from "./CurvesEditor";
+import LevelsEditor from "./LevelsEditor";
 import styles from "./AdjustmentsPanel.module.css";
 
 interface Props {
   layer: Layer | undefined;
   onAdjust: (patch: Partial<Adjustments>) => void;
   onApplyCurves: (curvesJson: string) => void;
+  onApplyLevels: (levels: LevelsData) => void;
   disabled: boolean;
 }
 
@@ -40,13 +44,25 @@ const FILTERS: FilterPreset[] = [
   { label: "Blur+", patch: { blur: 4 } },
 ];
 
-export default function AdjustmentsPanel({ layer, onAdjust, onApplyCurves, disabled }: Props) {
+export default function AdjustmentsPanel({ layer, onAdjust, onApplyCurves, onApplyLevels, disabled }: Props) {
   const [curvesOpen, setCurvesOpen] = useState(false);
+  const [levelsOpen, setLevelsOpen] = useState(false);
+  const collapsed = useEditorStore((s) => s.panelCollapsed.adjustments);
+  const toggleCollapsed = useEditorStore((s) => s.togglePanelCollapsed);
+
+  const heading = (
+    <button className="mp-collapse" onClick={() => toggleCollapsed("adjustments")}
+      aria-expanded={!collapsed} aria-label={`${collapsed ? "Expand" : "Collapse"} Adjustments`}>
+      <span className="mp-chev">{collapsed ? "▸" : "▾"}</span>
+      <span className="mp-label">Adjustments</span>
+    </button>
+  );
 
   if (!layer) {
     return (
       <div className={styles.panel} data-testid="adjustments-panel">
-        <div className={styles.empty}>Select a layer to adjust.</div>
+        <div className={styles.headerRow}>{heading}</div>
+        {!collapsed && <div className={styles.empty}>Select a layer to adjust.</div>}
       </div>
     );
   }
@@ -56,7 +72,7 @@ export default function AdjustmentsPanel({ layer, onAdjust, onApplyCurves, disab
   return (
     <div className={styles.panel} data-testid="adjustments-panel">
       <div className={styles.headerRow}>
-        <span className="mp-label">Adjustments</span>
+        {heading}
         <button
           type="button"
           className="mp-btn mp-btn--ghost"
@@ -68,6 +84,7 @@ export default function AdjustmentsPanel({ layer, onAdjust, onApplyCurves, disab
         </button>
       </div>
 
+      {collapsed ? null : (<>
       <div className={styles.sliders}>
         {SLIDERS.map((s) => {
           const value = adj[s.field] ?? NEUTRAL_ADJUSTMENTS[s.field];
@@ -125,15 +142,26 @@ export default function AdjustmentsPanel({ layer, onAdjust, onApplyCurves, disab
         ))}
       </div>
 
-      <button
-        type="button"
-        className="mp-btn"
-        onClick={() => setCurvesOpen(true)}
-        disabled={disabled}
-        data-testid="open-curves"
-      >
-        Curves…
-      </button>
+      <div className={styles.filters}>
+        <button
+          type="button"
+          className="mp-btn"
+          onClick={() => setCurvesOpen(true)}
+          disabled={disabled}
+          data-testid="open-curves"
+        >
+          Curves…
+        </button>
+        <button
+          type="button"
+          className="mp-btn"
+          onClick={() => setLevelsOpen(true)}
+          disabled={disabled}
+          data-testid="open-levels"
+        >
+          Levels…
+        </button>
+      </div>
 
       {curvesOpen && (
         <CurvesEditor
@@ -142,6 +170,14 @@ export default function AdjustmentsPanel({ layer, onAdjust, onApplyCurves, disab
           onClose={() => setCurvesOpen(false)}
         />
       )}
+
+      {levelsOpen && (
+        <LevelsEditor
+          onApply={onApplyLevels}
+          onClose={() => setLevelsOpen(false)}
+        />
+      )}
+      </>)}
     </div>
   );
 }

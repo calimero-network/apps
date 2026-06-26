@@ -82,10 +82,98 @@ test.describe("Editor", () => {
     await expect(page.getByText("admin", { exact: true })).toBeVisible();
   });
 
-  test("selecting the brush reveals brush controls", async ({ page }) => {
+  test("selecting the brush reveals brush options in the options bar", async ({ page }) => {
     await page.getByTestId("tool-brush").click();
-    await expect(page.getByTestId("brush-controls")).toBeVisible();
-    await expect(page.getByTestId("brush-size")).toBeVisible();
+    const bar = page.getByTestId("options-bar");
+    await expect(bar).toBeVisible();
+    await expect(bar.getByText("Brush", { exact: true })).toBeVisible();
+    await expect(bar.getByText("Size", { exact: true })).toBeVisible();
+    await expect(bar.getByText("Opacity", { exact: true })).toBeVisible();
+  });
+
+  test("shape tool shows shape options", async ({ page }) => {
+    await page.getByTestId("tool-shape").click();
+    const bar = page.getByTestId("options-bar");
+    await expect(bar.getByText("Shape", { exact: true })).toBeVisible();
+    await expect(bar.getByText("Fill", { exact: true })).toBeVisible();
+    await expect(bar.getByText("Stroke", { exact: true })).toBeVisible();
+  });
+
+  test("File menu exposes export and place options", async ({ page }) => {
+    await page.getByRole("button", { name: "File" }).click();
+    await expect(page.getByText("Place Image…")).toBeVisible();
+    await expect(page.getByText("Export as SVG")).toBeVisible();
+  });
+
+  test("brush paints and the shape tool adds a new layer", async ({ page }) => {
+    // add a raster layer to paint onto, pick the brush, scribble on the canvas
+    await page.getByTestId("tool-brush").click();
+    await page.getByRole("button", { name: "New raster layer" }).click();
+    const canvas = page.getByTestId("main-canvas");
+    const box = (await canvas.boundingBox())!;
+    await page.mouse.move(box.x + 120, box.y + 120);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 260, box.y + 180, { steps: 12 });
+    await page.mouse.move(box.x + 200, box.y + 300, { steps: 12 });
+    await page.mouse.up();
+
+    // draw an ellipse shape
+    await page.getByTestId("tool-shape").click();
+    await page.getByRole("combobox").first().selectOption("ellipse");
+    await page.mouse.move(box.x + 320, box.y + 120);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 460, box.y + 260, { steps: 12 });
+    await page.mouse.up();
+
+    // the shape drag created a new "Ellipse" layer (match the layer-row span, not the <option>)
+    await expect(page.locator("span").filter({ hasText: /^Ellipse$/ })).toBeVisible();
+  });
+
+  test("marquee selects, zoom and text work", async ({ page }) => {
+    const canvas = page.getByTestId("main-canvas");
+    const box = (await canvas.boundingBox())!;
+
+    // marquee → makes a selection (Deselect becomes enabled)
+    await page.getByTestId("tool-marquee").click();
+    await page.mouse.move(box.x + 150, box.y + 150);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 420, box.y + 340, { steps: 10 });
+    await page.mouse.up();
+    const deselect = page.getByTestId("options-bar").getByRole("button", { name: "Deselect" });
+    await expect(deselect).toBeEnabled();
+
+    // zoom tool → click zooms in (status bar % grows; scoped since the top bar
+    // also shows a zoom value)
+    await page.getByTestId("tool-zoom").click();
+    await page.mouse.click(box.x + 300, box.y + 250);
+    await expect(page.getByTestId("status-bar").getByText("140%")).toBeVisible();
+
+    // text tool → clicking opens the inline editor
+    await page.getByTestId("tool-text").click();
+    await page.mouse.click(box.x + 200, box.y + 200);
+    await expect(page.locator("textarea")).toBeVisible();
+    await page.keyboard.type("Hello");
+    await expect(page.locator("textarea")).toHaveValue("Hello");
+  });
+
+  test("text layers can be re-edited (font picker + double-click)", async ({ page }) => {
+    const canvas = page.getByTestId("main-canvas");
+    const box = (await canvas.boundingBox())!;
+    // create a text layer and commit it
+    await page.getByTestId("tool-text").click();
+    await page.mouse.click(box.x + 220, box.y + 160);
+    await expect(page.locator("textarea")).toBeVisible();
+    await page.keyboard.type("Hi");
+    await page.keyboard.press("Control+Enter");
+    await expect(page.locator("textarea")).toHaveCount(0);
+    // typography controls (incl. the new Font picker) are available
+    const bar = page.getByTestId("options-bar");
+    await expect(bar.getByText("Font", { exact: true })).toBeVisible();
+    // with the Move tool, double-clicking the text re-opens the editor
+    await page.getByTestId("tool-move").click();
+    await page.mouse.dblclick(box.x + 226, box.y + 168);
+    await expect(page.locator("textarea")).toBeVisible();
+    await expect(page.locator("textarea")).toHaveValue("Hi");
   });
 
   test("renders the Layers panel", async ({ page }) => {
@@ -93,7 +181,7 @@ test.describe("Editor", () => {
   });
 
   test("renders the canvas surface with nonzero size", async ({ page }) => {
-    const canvas = page.locator("canvas").first();
+    const canvas = page.getByTestId("main-canvas");
     const box = await canvas.boundingBox();
     expect(box).not.toBeNull();
     expect(box!.width).toBeGreaterThan(100);
@@ -102,5 +190,215 @@ test.describe("Editor", () => {
   test("has primary color and swap controls", async ({ page }) => {
     await expect(page.getByTestId("primary-swatch")).toBeVisible();
     await expect(page.getByTestId("swap-colors")).toBeVisible();
+  });
+
+  test("gradient tool is removed from the rail", async ({ page }) => {
+    await expect(page.getByTestId("tool-gradient")).toHaveCount(0);
+  });
+
+  test("top menu bar has the full Photoshop-style menu set", async ({ page }) => {
+    for (const m of ["File", "Edit", "Image", "Layer", "Select", "Filter", "View", "Window", "Help"]) {
+      await expect(page.getByRole("button", { name: m, exact: true })).toBeVisible();
+    }
+    // Layer menu wires real actions
+    await page.getByRole("button", { name: "Layer", exact: true }).click();
+    await expect(page.getByText("New Raster Layer")).toBeVisible();
+    await expect(page.getByText("Duplicate Layer")).toBeVisible();
+  });
+
+  test("status bar shows the document size", async ({ page }) => {
+    const status = page.getByTestId("status-bar");
+    await expect(status).toBeVisible();
+    await expect(status.getByText("800 × 600 px")).toBeVisible();
+  });
+
+  test("clicking a fill layer's color opens the RGB/HSL picker", async ({ page }) => {
+    await page.getByRole("button", { name: "New fill layer" }).click();
+    const swatch = page.getByTestId("layer-color-swatch");
+    await expect(swatch).toBeVisible();
+    await swatch.click();
+    const picker = page.getByTestId("color-picker");
+    await expect(picker).toBeVisible();
+    await expect(picker.getByTestId("rgb-sliders")).toBeVisible();
+    await expect(picker.getByTestId("hsl-sliders")).toBeVisible();
+    // typing a hex updates the swatch
+    const hex = picker.getByTestId("color-hex-input");
+    await hex.fill("#3aa0ff");
+    await hex.press("Enter");
+  });
+
+  test("paint bucket recolors a fill layer", async ({ page }) => {
+    await page.getByRole("button", { name: "New fill layer" }).click();
+    // default foreground (D) → black, then bucket-click the canvas
+    await page.keyboard.press("d");
+    await page.getByTestId("tool-bucket").click();
+    const canvas = page.getByTestId("main-canvas");
+    const box = (await canvas.boundingBox())!;
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    // the fill layer's colour swatch now reflects the foreground colour
+    const swatch = page.getByTestId("layer-color-swatch");
+    await expect(swatch).toHaveCSS("background-color", "rgb(0, 0, 0)");
+  });
+
+  test("right-clicking a selection shows cut/copy/paste", async ({ page }) => {
+    const canvas = page.getByTestId("main-canvas");
+    const box = (await canvas.boundingBox())!;
+    // make a marquee selection
+    await page.getByTestId("tool-marquee").click();
+    await page.mouse.move(box.x + 120, box.y + 120);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 300, box.y + 260, { steps: 8 });
+    await page.mouse.up();
+    // right-click inside the selection
+    await canvas.click({ button: "right", position: { x: 200, y: 180 } });
+    await expect(page.getByRole("menu")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Copy" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Cut" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Paste" })).toBeVisible();
+  });
+
+  const bg = (loc: ReturnType<Page["getByTestId"]>) =>
+    loc.evaluate((el) => getComputedStyle(el as HTMLElement).backgroundColor);
+
+  test("swap-colors button exchanges the two swatches", async ({ page }) => {
+    const primary = page.getByTestId("primary-swatch");
+    const secondary = page.getByTestId("secondary-swatch");
+    const p0 = await bg(primary);
+    const s0 = await bg(secondary);
+    expect(p0).not.toBe(s0);
+    await page.getByTestId("swap-colors").click();
+    expect(await bg(primary)).toBe(s0);
+    expect(await bg(secondary)).toBe(p0);
+  });
+
+  test("X swaps colors and D resets to black/white", async ({ page }) => {
+    const primary = page.getByTestId("primary-swatch");
+    const secondary = page.getByTestId("secondary-swatch");
+    const p0 = await bg(primary);
+    await page.keyboard.press("x");
+    expect(await bg(primary)).not.toBe(p0); // swapped
+    await page.keyboard.press("d");
+    expect(await bg(primary)).toBe("rgb(0, 0, 0)");
+    expect(await bg(secondary)).toBe("rgb(255, 255, 255)");
+  });
+
+  test("the secondary swatch opens its own color picker", async ({ page }) => {
+    await page.getByTestId("secondary-swatch").click();
+    const picker = page.getByTestId("color-picker");
+    await expect(picker).toBeVisible();
+    await expect(picker.getByText("Secondary color")).toBeVisible();
+  });
+
+  test("single-key shortcuts switch the active tool", async ({ page }) => {
+    await page.keyboard.press("b");
+    await expect(page.getByTestId("tool-brush")).toHaveAttribute("aria-pressed", "true");
+    await page.keyboard.press("e");
+    await expect(page.getByTestId("tool-eraser")).toHaveAttribute("aria-pressed", "true");
+    await page.keyboard.press("v");
+    await expect(page.getByTestId("tool-move")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("View menu toggles the precision rulers", async ({ page }) => {
+    // rulers on by default → 2 ruler canvases + the main canvas
+    await expect(page.locator("canvas")).toHaveCount(3);
+    await page.getByRole("button", { name: "View", exact: true }).click();
+    await page.getByRole("button", { name: "Rulers" }).click();
+    await expect(page.locator("canvas")).toHaveCount(1);
+  });
+
+  test("Layer menu creates a new raster layer", async ({ page }) => {
+    await page.getByRole("button", { name: "Layer", exact: true }).click();
+    // getByText (not role) so we don't also match the panel's icon button
+    // whose aria-label is "New raster layer".
+    await page.getByText("New Raster Layer", { exact: true }).click();
+    await expect(page.locator("span").filter({ hasText: /^Layer$/ })).toBeVisible();
+  });
+
+  test("View ▸ Actual Pixels resets zoom to 100%", async ({ page }) => {
+    const status = page.getByTestId("status-bar");
+    await page.getByRole("button", { name: "View", exact: true }).click();
+    await page.getByRole("button", { name: "Zoom In" }).click();
+    await expect(status.getByText("125%")).toBeVisible();
+    await page.getByRole("button", { name: "View", exact: true }).click();
+    await page.getByRole("button", { name: "Actual Pixels (100%)" }).click();
+    await expect(status.getByText("100%")).toBeVisible();
+  });
+
+  test("renders the Navigator and History dock panels", async ({ page }) => {
+    await expect(page.getByTestId("navigator-panel")).toBeVisible();
+    await expect(page.getByTestId("history-panel")).toBeVisible();
+    // History starts collapsed; expand it to reveal the initial "Open" state
+    await page.getByRole("button", { name: "Expand History" }).click();
+    await expect(page.getByTestId("history-panel").getByText("Open")).toBeVisible();
+  });
+
+  test("painting records a labelled History entry", async ({ page }) => {
+    await page.getByRole("button", { name: "Expand History" }).click();
+    await page.getByTestId("tool-brush").click();
+    await page.getByRole("button", { name: "New raster layer" }).click();
+    const canvas = page.getByTestId("main-canvas");
+    const box = (await canvas.boundingBox())!;
+    await page.mouse.move(box.x + 120, box.y + 120);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 220, box.y + 200, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.getByTestId("history-panel").getByText("Brush")).toBeVisible();
+  });
+
+  test("multi-select: shift-click selects a range of layers", async ({ page }) => {
+    // add three raster layers, then shift-click from the top row to the bottom
+    for (let i = 0; i < 3; i++) await page.getByRole("button", { name: "New raster layer" }).click();
+    const rows = page.locator("span").filter({ hasText: /^Layer$/ });
+    await rows.first().click();
+    await rows.last().click({ modifiers: ["Shift"] });
+    await expect(page.getByText(/\d selected/)).toBeVisible();
+  });
+
+  test("View menu exposes grid, guides, snap, crosshair and units", async ({ page }) => {
+    await page.getByRole("button", { name: "View", exact: true }).click();
+    for (const item of ["Grid", "Guides", "Snap", "Crosshair"]) {
+      await expect(page.getByRole("button", { name: new RegExp(`^(✓ )?${item}$`) })).toBeVisible();
+    }
+    await expect(page.getByRole("button", { name: /^(✓ )?Pixels$/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Centimeters" })).toBeVisible();
+  });
+
+  test("Window menu toggles the History panel off", async ({ page }) => {
+    await expect(page.getByTestId("history-panel")).toBeVisible();
+    await page.getByRole("button", { name: "Window", exact: true }).click();
+    await page.getByRole("button", { name: "✓ History" }).click();
+    await expect(page.getByTestId("history-panel")).toHaveCount(0);
+  });
+
+  test("Layer menu offers rasterize / merge / flatten", async ({ page }) => {
+    await page.getByRole("button", { name: "Layer", exact: true }).click();
+    await expect(page.getByText("Rasterize Layer")).toBeVisible();
+    await expect(page.getByText("Merge Visible")).toBeVisible();
+    await expect(page.getByText("Flatten Image")).toBeVisible();
+  });
+
+  test("Adjustments panel opens the Levels dialog", async ({ page }) => {
+    await page.getByRole("button", { name: "New raster layer" }).click();
+    await page.getByTestId("open-levels").click();
+    await expect(page.getByTestId("levels-editor")).toBeVisible();
+    await expect(page.getByTestId("levels-apply")).toBeVisible();
+  });
+
+  test("color picker has an alpha slider and saveable swatches", async ({ page }) => {
+    await page.getByTestId("secondary-swatch").click();
+    const picker = page.getByTestId("color-picker");
+    await expect(picker.getByTestId("alpha-slider")).toBeVisible();
+    await expect(picker.getByTestId("swatch-library")).toBeVisible();
+  });
+
+  test("status bar tracks the cursor position over the canvas", async ({ page }) => {
+    const canvas = page.getByTestId("main-canvas");
+    const box = (await canvas.boundingBox())!;
+    // a pointer drag guarantees pointermove fires (feeding the pointer store)
+    await page.mouse.move(box.x + 200, box.y + 150);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 240, box.y + 180, { steps: 4 });
+    await page.mouse.up();
+    await expect(page.getByTestId("status-bar")).toContainText(/X:\s*-?\d/);
   });
 });

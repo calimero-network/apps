@@ -149,6 +149,54 @@ export function applyCurves(src: HTMLCanvasElement, curves: CurvesData): HTMLCan
   return out;
 }
 
+// ── Levels ────────────────────────────────────────────────────────────────
+//
+// A Photoshop-style Levels adjustment: remap the input range
+// [inBlack..inWhite] through a gamma curve onto the output range
+// [outBlack..outWhite]. Baked via a 256-entry LUT. Returns a NEW canvas.
+
+export interface LevelsData {
+  inBlack: number;  // 0..255
+  inWhite: number;  // 0..255
+  gamma: number;    // 0.1..9.99 (1 = linear)
+  outBlack: number; // 0..255
+  outWhite: number; // 0..255
+}
+
+export const NEUTRAL_LEVELS: LevelsData = {
+  inBlack: 0, inWhite: 255, gamma: 1, outBlack: 0, outWhite: 255,
+};
+
+function buildLevelsLut(lv: LevelsData): Uint8ClampedArray {
+  const lut = new Uint8ClampedArray(256);
+  const inLo = clamp(lv.inBlack, 0, 254);
+  const inHi = clamp(lv.inWhite, inLo + 1, 255);
+  const g = clamp(lv.gamma, 0.1, 9.99);
+  const span = inHi - inLo;
+  for (let i = 0; i < 256; i++) {
+    let t = clamp((i - inLo) / span, 0, 1);
+    t = Math.pow(t, 1 / g);
+    lut[i] = Math.round(lv.outBlack + t * (lv.outWhite - lv.outBlack));
+  }
+  return lut;
+}
+
+export function applyLevels(src: HTMLCanvasElement, lv: LevelsData): HTMLCanvasElement {
+  const out = createCanvas(src.width, src.height);
+  const sctx = ctx2d(src);
+  const octx = ctx2d(out);
+  const img = sctx.getImageData(0, 0, src.width, src.height);
+  const d = img.data;
+  const lut = buildLevelsLut(lv);
+  for (let i = 0; i < d.length; i += 4) {
+    d[i] = lut[d[i]];
+    d[i + 1] = lut[d[i + 1]];
+    d[i + 2] = lut[d[i + 2]];
+  }
+  octx.putImageData(img, 0, 0);
+  return out;
+}
+
 // ── Flood fill (bucket) ─────────────────────────────────────────────────────
 
 export function floodFill(
@@ -157,11 +205,16 @@ export function floodFill(
   startY: number,
   fillColor: [number, number, number, number],
   tolerance = 32,
+  /** Optional in/out mask (length width*height, nonzero = fillable). Confines
+   *  the fill to an active pixel selection — a ctx clip cannot, since the fill
+   *  mutates ImageData directly. */
+  mask?: Uint8Array,
 ): void {
   const { width, height } = ctx.canvas;
   startX = Math.floor(startX);
   startY = Math.floor(startY);
   if (startX < 0 || startY < 0 || startX >= width || startY >= height) return;
+  if (mask && !mask[startY * width + startX]) return;
   const img = ctx.getImageData(0, 0, width, height);
   const d = img.data;
   const idx = (x: number, y: number) => (y * width + x) * 4;
@@ -183,6 +236,7 @@ export function floodFill(
     if (x < 0 || y < 0 || x >= width || y >= height) continue;
     const p = y * width + x;
     if (seen[p]) continue;
+    if (mask && !mask[p]) continue;
     const i = p * 4;
     if (!match(i)) continue;
     seen[p] = 1;

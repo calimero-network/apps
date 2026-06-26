@@ -4,6 +4,7 @@ import { adminGet, adminPut, rpcCall } from "../api/rpc";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
 import { truncateMiddle } from "../utils/format";
+import { useEditorStore } from "../store/editorStore";
 import type { DocumentInfo, MemberRole as ContractMemberRole } from "../types";
 import styles from "./SettingsModal.module.css";
 
@@ -122,6 +123,12 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
     try {
       await rpcCall(id, "update_document", { name: docName.trim(), width: w, height: h });
       setDoc((prev) => (prev ? { ...prev, name: docName.trim(), width: w, height: h } : prev));
+      // Reflect the new size in the live editor immediately (don't wait for an
+      // SSE refetch, which may not fire locally) and drop any stale selection
+      // marquee left over at the old canvas bounds.
+      const cur = useEditorStore.getState().doc;
+      if (cur) useEditorStore.getState().setDoc({ ...cur, name: docName.trim(), width: w, height: h });
+      useEditorStore.getState().setSelection(null);
       showToast("Document updated.", "success");
     } catch (err) {
       showToast(extractErrorMessage(err, "Could not update document."));

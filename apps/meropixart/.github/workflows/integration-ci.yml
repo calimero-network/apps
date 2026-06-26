@@ -87,6 +87,8 @@ jobs:
           CI: "true"
           INTEGRATION_MODE: "true"
           PW_PORT: "5176"
+          # merobox exposes node-1's RPC/Admin server on 2528 (2428 is P2P)
+          INTEGRATION_NODE_URL: "http://localhost:2528"
 
       - name: Stop nodes
         if: always()

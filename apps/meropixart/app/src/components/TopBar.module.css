@@ -12,35 +12,48 @@
 .left, .right { display: flex; align-items: center; gap: 6px; }
 .center { flex: 1; display: flex; align-items: center; justify-content: center; gap: 10px; }
 
-.back {
-  width: 28px; height: 28px; font-size: 20px; color: var(--text-dim);
-  border-radius: var(--radius-sm);
+/* Consistent square icon buttons (back, undo, redo, place, export). */
+.iconBtn {
+  width: 30px; height: 30px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-dim); border-radius: var(--radius-sm);
 }
-.back:hover { background: var(--bg-3); color: var(--text); }
+.iconBtn svg { display: block; }
+.iconBtn:hover:not(:disabled) { background: var(--bg-3); color: var(--text); }
+.iconBtn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.divider { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
 
 .logo { font-size: 14px; letter-spacing: -0.01em; color: var(--text-dim); margin-right: 4px; }
 .logo b { color: var(--accent); font-weight: 700; }
 
+.menus { display: flex; align-items: center; gap: 2px; }
 .menuWrap { position: relative; }
 .menuBtn { padding: 5px 10px; border-radius: var(--radius-sm); color: var(--text-dim); font-size: 13px; }
 .menuBtn:hover { background: var(--bg-3); color: var(--text); }
+.menuBtnOpen { background: var(--bg-3); color: var(--text); }
 .backdrop { position: fixed; inset: 0; z-index: 50; }
 .menu {
-  position: absolute; top: 32px; left: 0; z-index: 51;
+  position: absolute; top: 34px; left: 0; z-index: 51;
   background: var(--bg-1); border: 1px solid var(--border-strong);
-  border-radius: var(--radius); box-shadow: var(--shadow); padding: 5px; min-width: 160px;
+  border-radius: var(--radius); box-shadow: var(--shadow); padding: 5px; min-width: 190px;
 }
 .menu button {
-  display: block; width: 100%; text-align: left; padding: 8px 10px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  width: 100%; text-align: left; padding: 8px 10px;
   border-radius: var(--radius-sm); font-size: 13px; color: var(--text);
 }
-.menu button:hover { background: var(--bg-3); }
-
-.tool {
-  width: 28px; height: 28px; font-size: 15px; color: var(--text-dim); border-radius: var(--radius-sm);
+.menu button:hover:not(:disabled) { background: var(--bg-3); }
+.menu button:disabled { opacity: 0.35; cursor: not-allowed; }
+.menu hr { border: none; border-top: 1px solid var(--border); margin: 5px 4px; }
+.menu kbd {
+  font-family: var(--mono); font-size: 11px; color: var(--text-faint);
+  background: var(--bg-3); border-radius: 3px; padding: 1px 5px;
 }
-.tool:hover:not(:disabled) { background: var(--bg-3); color: var(--text); }
-.tool:disabled { opacity: 0.3; cursor: not-allowed; }
+.menuHeading {
+  display: block; padding: 6px 10px 4px; font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint);
+}
 
 .docName { font-size: 13px; font-weight: 600; color: var(--text); }
 .saving { font-size: 11px; color: var(--accent); opacity: 0.8; }

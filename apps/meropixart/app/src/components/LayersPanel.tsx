@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useEditorStore } from "../store/editorStore";
 import { peekLayerCanvas } from "../store/layerCanvases";
-import { BLEND_MODES, type BlendMode, type Layer, type LayerKind } from "../types";
+import { BLEND_MODES, type BlendMode, type Layer, type LayerKind, type TextProps } from "../types";
+import { Icon, type IconName } from "./ToolIcons";
+import ColorPicker from "./ColorPicker";
 import styles from "./LayersPanel.module.css";
 
 interface Props {
@@ -9,21 +11,29 @@ interface Props {
   onDelete: (id: string) => void;
   onDuplicate: (id: string) => void;
   onUpdateMeta: (id: string, patch: Partial<Layer>) => void;
+  onUpdateText: (id: string, patch: Partial<TextProps>) => void;
   onReorder: (orderedTopToBottom: string[]) => void;
   onGroupSelected: () => void;
   onToggleMask: (id: string) => void;
 }
 
-const KIND_GLYPH: Record<LayerKind, string> = {
-  raster: "▦", group: "▣", text: "T", adjustment: "◐", fill: "■",
+const KIND_ICON: Record<LayerKind, IconName> = {
+  raster: "raster", group: "group", text: "textLayer", adjustment: "adjustmentLayer", fill: "fillLayer",
 };
 
 export default function LayersPanel({
-  onAdd, onDelete, onDuplicate, onUpdateMeta, onReorder, onGroupSelected, onToggleMask,
+  onAdd, onDelete, onDuplicate, onUpdateMeta, onUpdateText, onReorder, onGroupSelected, onToggleMask,
 }: Props) {
-  const { layers, selectedLayerId, selectLayer, editingMaskOf, setEditingMask, canEdit } = useEditorStore();
+  const {
+    layers, selectedLayerId, selectedLayerIds, selectLayer, setSelectedLayers,
+    toggleLayerSelection, editingMaskOf, setEditingMask, canEdit, upsertLayer, bumpRender,
+    panelCollapsed, togglePanelCollapsed,
+  } = useEditorStore();
+  const collapsed = panelCollapsed.layers;
   const [renaming, setRenaming] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
+  const [colorOpen, setColorOpen] = useState(false);
+  const draftColor = useRef<string>("");
   const editable = canEdit();
 
   // top-to-bottom display = descending layerIndex
@@ -37,6 +47,23 @@ export default function LayersPanel({
     if (j < 0 || j >= ids.length) return;
     [ids[i], ids[j]] = [ids[j], ids[i]];
     onReorder(ids);
+  };
+
+  // Shift = range-select (panel order), Cmd/Ctrl = toggle, plain = single.
+  const onRowClick = (e: React.MouseEvent, id: string) => {
+    if (e.shiftKey && selectedLayerId) {
+      const ids = ordered.map((l) => l.id);
+      const a = ids.indexOf(selectedLayerId);
+      const b = ids.indexOf(id);
+      if (a >= 0 && b >= 0) {
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        const range = ids.slice(lo, hi + 1).filter((x) => x !== id);
+        setSelectedLayers([...range, id]); // keep the clicked layer as primary
+        return;
+      }
+    }
+    if (e.metaKey || e.ctrlKey) { toggleLayerSelection(id); return; }
+    selectLayer(id);
   };
 
   const onDrop = (targetId: string) => {
@@ -58,8 +85,16 @@ export default function LayersPanel({
   return (
     <div className={styles.panel}>
       <div className={styles.header}>
-        <span className="mp-label">Layers</span>
+        <button className="mp-collapse" onClick={() => togglePanelCollapsed("layers")}
+          aria-expanded={!collapsed} aria-label={`${collapsed ? "Expand" : "Collapse"} Layers`}>
+          <span className="mp-chev">{collapsed ? "▸" : "▾"}</span>
+          <span className="mp-label">Layers</span>
+        </button>
+        {selectedLayerIds.length > 1 && (
+          <span className={styles.selCount}>{selectedLayerIds.length} selected</span>
+        )}
       </div>
+      {!collapsed && (<>
 
       {sel && (
         <div className={styles.props}>
@@ -84,31 +119,68 @@ export default function LayersPanel({
             />
             <span className={styles.val}>{sel.opacity}</span>
           </div>
+          {(sel.kind === "fill" || sel.kind === "text") && (
+            <div className={styles.row}>
+              <span className={styles.propLabel}>Color</span>
+              <button
+                type="button"
+                className={styles.colorSwatch}
+                style={{ backgroundColor: layerColor(sel) }}
+                disabled={!editable}
+                title="Edit color"
+                aria-label="Edit layer color"
+                data-testid="layer-color-swatch"
+                onClick={() => { draftColor.current = layerColor(sel); setColorOpen(true); }}
+              />
+              <span className={styles.colorHex}>{layerColor(sel)}</span>
+            </div>
+          )}
         </div>
+      )}
+
+      {colorOpen && sel && (
+        <ColorPicker
+          title={sel.kind === "fill" ? "Fill color" : "Text color"}
+          value={layerColor(sel)}
+          onChange={(hex) => {
+            // Live preview without an RPC per change; persist once on close.
+            draftColor.current = hex;
+            if (sel.kind === "fill") upsertLayer({ ...sel, fill: hex });
+            else if (sel.text) upsertLayer({ ...sel, text: { ...sel.text, color: hex } });
+            bumpRender();
+          }}
+          onClose={() => {
+            setColorOpen(false);
+            if (sel.kind === "fill") onUpdateMeta(sel.id, { fill: draftColor.current });
+            else if (sel.kind === "text") onUpdateText(sel.id, { color: draftColor.current });
+          }}
+        />
       )}
 
       <div className={styles.list}>
         {ordered.length === 0 && <div className={styles.empty}>No layers yet</div>}
         {ordered.map((l) => {
-          const isSel = l.id === selectedLayerId;
+          const isSel = selectedLayerIds.includes(l.id);
+          const isPrimary = l.id === selectedLayerId;
           const maskOn = editingMaskOf === l.id;
           return (
             <div
               key={l.id}
-              className={`${styles.item} ${isSel ? styles.selected : ""} ${dragId === l.id ? styles.dragging : ""}`}
+              className={`${styles.item} ${isSel ? styles.selected : ""} ${isPrimary && selectedLayerIds.length > 1 ? styles.primary : ""} ${dragId === l.id ? styles.dragging : ""}`}
               style={{ paddingLeft: 8 + (l.parentId ? 16 : 0) }}
               draggable={editable}
               onDragStart={() => setDragId(l.id)}
               onDragOver={(e) => e.preventDefault()}
               onDrop={() => onDrop(l.id)}
-              onClick={() => selectLayer(l.id)}
+              onClick={(e) => onRowClick(e, l.id)}
             >
               <button
                 className={styles.eye}
-                title={l.visible ? "Hide" : "Show"}
+                title={l.visible ? "Hide layer" : "Show layer"}
+                aria-label={l.visible ? "Hide layer" : "Show layer"}
                 onClick={(e) => { e.stopPropagation(); onUpdateMeta(l.id, { visible: !l.visible }); }}
               >
-                {l.visible ? "👁" : "—"}
+                <Icon name={l.visible ? "eye" : "eyeOff"} size={15} />
               </button>
 
               <Thumb layer={l} />
@@ -127,21 +199,25 @@ export default function LayersPanel({
                   className={styles.name}
                   onDoubleClick={(e) => { e.stopPropagation(); if (editable) setRenaming(l.id); }}
                 >
-                  <span className={styles.kind}>{KIND_GLYPH[l.kind]}</span>
+                  <span className={styles.kind} title={`${l.kind} layer`}><Icon name={KIND_ICON[l.kind]} size={14} /></span>
                   {l.name}
-                  {l.maskBlobId && <span className={styles.maskTag} title="Has mask">◳</span>}
+                  {l.maskBlobId && <span className={styles.maskTag} title="Has layer mask"><Icon name="mask" size={12} /></span>}
                 </span>
               )}
 
               {editable && (
                 <div className={styles.itemActions} onClick={(e) => e.stopPropagation()}>
-                  <button title={maskOn ? "Stop editing mask" : "Edit mask"}
+                  <button title={maskOn ? "Stop editing mask" : "Edit layer mask"}
+                    aria-label={maskOn ? "Stop editing mask" : "Edit layer mask"}
                     className={maskOn ? styles.maskActive : ""}
-                    onClick={() => setEditingMask(maskOn ? null : l.id)}>◳</button>
-                  <button title="Move up" onClick={() => move(l.id, -1)}>▲</button>
-                  <button title="Move down" onClick={() => move(l.id, 1)}>▼</button>
-                  <button title={l.locked ? "Unlock" : "Lock"}
-                    onClick={() => onUpdateMeta(l.id, { locked: !l.locked })}>{l.locked ? "🔒" : "🔓"}</button>
+                    onClick={() => setEditingMask(maskOn ? null : l.id)}><Icon name="mask" size={14} /></button>
+                  <button title="Move layer up" aria-label="Move layer up" onClick={() => move(l.id, -1)}><Icon name="arrowUp" size={14} /></button>
+                  <button title="Move layer down" aria-label="Move layer down" onClick={() => move(l.id, 1)}><Icon name="arrowDown" size={14} /></button>
+                  <button title={l.locked ? "Unlock layer" : "Lock layer"}
+                    aria-label={l.locked ? "Unlock layer" : "Lock layer"}
+                    onClick={() => onUpdateMeta(l.id, { locked: !l.locked })}><Icon name={l.locked ? "lock" : "unlock"} size={14} /></button>
+                  <button title="Delete layer" aria-label="Delete layer" className={styles.rowDel}
+                    onClick={() => onDelete(l.id)}><Icon name="trash" size={14} /></button>
                 </div>
               )}
             </div>
@@ -151,23 +227,33 @@ export default function LayersPanel({
 
       {editable && (
         <div className={styles.toolbar}>
-          <button title="New raster layer" onClick={() => onAdd("raster")}>＋▦</button>
-          <button title="New text layer" onClick={() => onAdd("text")}>＋T</button>
-          <button title="New fill layer" onClick={() => onAdd("fill")}>＋■</button>
-          <button title="New group" onClick={() => onAdd("group")}>＋▣</button>
+          <button title="New raster layer" aria-label="New raster layer" onClick={() => onAdd("raster")}><Icon name="raster" size={16} /></button>
+          <button title="New text layer" aria-label="New text layer" onClick={() => onAdd("text")}><Icon name="textLayer" size={16} /></button>
+          <button title="New fill layer" aria-label="New fill layer" onClick={() => onAdd("fill")}><Icon name="fillLayer" size={16} /></button>
+          <button title="New group" aria-label="New group" onClick={() => onAdd("group")}><Icon name="group" size={16} /></button>
           <span className={styles.spacer} />
-          <button title="Group selected" disabled={!sel} onClick={onGroupSelected}>▣</button>
-          <button title="Toggle mask" disabled={!sel} onClick={() => sel && onToggleMask(sel.id)}>◳</button>
-          <button title="Duplicate" disabled={!sel} onClick={() => sel && onDuplicate(sel.id)}>⧉</button>
-          <button title="Delete" className={styles.del} disabled={!sel} onClick={() => sel && onDelete(sel.id)}>🗑</button>
+          <button title="Group selected layer" aria-label="Group selected layer" disabled={!sel} onClick={onGroupSelected}><Icon name="group" size={16} /></button>
+          <button title="Add / remove layer mask" aria-label="Add or remove layer mask" disabled={!sel} onClick={() => sel && onToggleMask(sel.id)}><Icon name="mask" size={16} /></button>
+          <button title="Duplicate layer" aria-label="Duplicate layer" disabled={!sel} onClick={() => sel && onDuplicate(sel.id)}><Icon name="duplicate" size={16} /></button>
+          <button title="Delete layer" aria-label="Delete layer" className={styles.del} disabled={!sel} onClick={() => sel && onDelete(sel.id)}><Icon name="trash" size={16} /></button>
         </div>
       )}
+      </>)}
     </div>
   );
 }
 
+/** The editable color for a layer: fill layers use `fill`, text uses `text.color`. */
+function layerColor(layer: Layer): string {
+  if (layer.kind === "fill") return layer.fill || "#000000";
+  if (layer.kind === "text") return layer.text?.color || "#000000";
+  return "#000000";
+}
+
 function Thumb({ layer }: { layer: Layer }) {
-  if (layer.kind === "fill") {
+  // A fill layer that hasn't been painted is a flat swatch; once it has pixels
+  // (brush/bucket), show those instead.
+  if (layer.kind === "fill" && !peekLayerCanvas(layer.id)) {
     return <span className={styles.thumb} style={{ background: layer.fill || "#000" }} />;
   }
   const c = peekLayerCanvas(layer.id);

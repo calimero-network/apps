@@ -9,21 +9,29 @@ import { useToast } from "../contexts/ToastContext";
 import { useEditorStore } from "../store/editorStore";
 import {
   getLayerCanvas, peekLayerCanvas, getMaskCanvas, peekMaskCanvas,
-  setLayerCanvas, dropLayerCanvas, dropMaskCanvas,
+  setLayerCanvas, dropLayerCanvas, dropMaskCanvas, clearAllCanvases,
 } from "../store/layerCanvases";
 import {
   bytesToImage, canvasToPngBytes, createCanvas, ctx2d, applyCurves, parseCurves,
+  applyLevels, type LevelsData,
 } from "../utils/raster";
 import { composite } from "../utils/compositor";
+import { applyFilter } from "../utils/filters";
+import { invertSelection, selectionPathLocal } from "../utils/geometry";
 import {
   NEUTRAL_ADJUSTMENTS, type Adjustments, type CursorState, type DocumentInfo,
-  type Layer, type LayerKind, type Member, type Role,
+  type FilterKind, type Layer, type LayerKind, type Member, type Role, type TextProps,
 } from "../types";
 import Toolbar from "../components/Toolbar";
+import OptionsBar from "../components/OptionsBar";
 import CanvasStage from "../components/CanvasStage";
 import LayersPanel from "../components/LayersPanel";
 import AdjustmentsPanel from "../components/AdjustmentsPanel";
+import HistoryPanel from "../components/HistoryPanel";
+import Navigator from "../components/Navigator";
 import TopBar from "../components/TopBar";
+import Ruler from "../components/Rulers";
+import StatusBar from "../components/StatusBar";
 import CursorsOverlay from "../components/CursorsOverlay";
 import InviteModal from "../components/InviteModal";
 import SettingsModal from "../components/SettingsModal";
@@ -39,9 +47,9 @@ export default function EditorPage() {
   const { showToast } = useToast();
 
   const {
-    doc, layers, selectedLayerId, editingMaskOf,
+    doc, layers, selectedLayerId, editingMaskOf, showRulers, panels,
     setDoc, setLayers, upsertLayer, removeLayer, selectLayer, setEditingMask,
-    setRole, setZoom, setPan, bumpRender, canEdit, clearHistory,
+    setRole, setZoom, setPan, bumpRender, canEdit, clearHistory, setSelection,
   } = useEditorStore();
 
   const myId = useRef<string>("");
@@ -128,6 +136,22 @@ export default function EditorPage() {
   // ── Init ────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!ctxId) { setFatal("No project specified."); return; }
+    // Hard-reset all editor state when switching projects. The route component
+    // stays mounted across :projectId changes, so the global store, the
+    // off-DOM canvas registry and the loaded-blob cache would otherwise carry
+    // one document's pixels into the next (every project looking identical).
+    const reset = useEditorStore.getState();
+    reset.setLayers([]);
+    reset.selectLayer(null);
+    reset.setSelection(null);
+    reset.clearGuides();
+    reset.clearHistory();
+    clearAllCanvases();
+    loadedBlobs.current = new Set();
+    setReady(false);
+    setMembers([]);
+    setCursors([]);
+
     let cancelled = false;
     (async () => {
       myId.current = await resolveIdentity();
@@ -171,6 +195,26 @@ export default function EditorPage() {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctxId]);
+
+  // ── Block native trackpad/browser gestures while editing ───────────────────
+  // macOS pinch maps to ctrl+wheel (page zoom) and Safari fires gesture* events;
+  // two-finger horizontal scroll triggers history back/forward. We swallow those
+  // so external inputs can't disrupt the canvas. (Canvas zoom/pan still work via
+  // the canvas's own wheel handler.)
+  useEffect(() => {
+    const onWheel = (e: WheelEvent) => { if (e.ctrlKey) e.preventDefault(); };
+    const onGesture = (e: Event) => e.preventDefault();
+    window.addEventListener("wheel", onWheel, { passive: false });
+    document.addEventListener("gesturestart", onGesture);
+    document.addEventListener("gesturechange", onGesture);
+    document.addEventListener("gestureend", onGesture);
+    return () => {
+      window.removeEventListener("wheel", onWheel);
+      document.removeEventListener("gesturestart", onGesture);
+      document.removeEventListener("gesturechange", onGesture);
+      document.removeEventListener("gestureend", onGesture);
+    };
+  }, []);
 
   // ── SSE: debounced refetch on any contract event ──────────────────────────
   useSse(ctxId || null, () => {
@@ -236,20 +280,25 @@ export default function EditorPage() {
   // ── Metadata commit (transform / props) ───────────────────────────────────
   const commitMeta = useCallback(async (layerId: string, patch: Partial<Layer>) => {
     const now = ts();
+    // The contract types x/y as i64, width/height as u32, rotation/scale/opacity
+    // as integers — snapping & drag math can produce fractional values, which
+    // make borsh deserialization panic ("invalid type: floating point …").
+    // Round every numeric field defensively before sending.
+    const ri = (v: number | undefined | null) => (v == null ? null : Math.round(v));
     const args: Record<string, unknown> = {
       id: layerId,
       name: patch.name ?? null,
       visible: patch.visible ?? null,
       locked: patch.locked ?? null,
-      opacity: patch.opacity ?? null,
+      opacity: ri(patch.opacity),
       blend_mode: patch.blendMode ?? null,
-      x: patch.x ?? null,
-      y: patch.y ?? null,
-      width: patch.width ?? null,
-      height: patch.height ?? null,
-      rotation: patch.rotation ?? null,
-      scale_x: patch.scaleX ?? null,
-      scale_y: patch.scaleY ?? null,
+      x: ri(patch.x),
+      y: ri(patch.y),
+      width: ri(patch.width),
+      height: ri(patch.height),
+      rotation: ri(patch.rotation),
+      scale_x: ri(patch.scaleX),
+      scale_y: ri(patch.scaleY),
       fill: patch.fill ?? null,
       updated_at: now,
     };
@@ -306,6 +355,7 @@ export default function EditorPage() {
 
   const onAdd = useCallback(async (kind: LayerKind) => {
     if (!canEdit() || !doc) return;
+    useEditorStore.getState().pushHistory([], "Add Layer"); // so the new layer is undoable
     const layer = makeLayer(kind);
     if (kind === "raster") getLayerCanvas(layer.id, layer.width, layer.height); // blank transparent
     upsertLayer(layer);
@@ -327,6 +377,7 @@ export default function EditorPage() {
   const onDuplicate = useCallback(async (id: string) => {
     const src = useEditorStore.getState().layers.find((l) => l.id === id);
     if (!src || !canEdit()) return;
+    useEditorStore.getState().pushHistory([], "Duplicate Layer");
     const copy: Layer = { ...src, id: uuid(), name: `${src.name} copy`, layerIndex: nextIndex(), blobId: "", maskBlobId: null, updatedAt: ts(), createdAt: ts() };
     const srcCanvas = peekLayerCanvas(id);
     if (srcCanvas) {
@@ -369,6 +420,69 @@ export default function EditorPage() {
       onUpdateMeta(sel.id, { parentId: group.id });
     } catch (e) { showToast(errMsg(e), "error"); }
   }, [ctxId, canEdit, upsertLayer, onUpdateMeta, showToast]);
+
+  // ── Merge / flatten / rasterize ─────────────────────────────────────────────
+  // Composite `sources` (bottom→top) into one doc-sized raster layer, replace
+  // them with it, and persist (add + content + delete) on the node.
+  const bakeMerge = useCallback(async (
+    sources: Layer[], label: string, name: string, background?: string,
+  ) => {
+    if (!canEdit() || !doc || sources.length === 0) return;
+    useEditorStore.getState().pushHistory(sources.map((l) => l.id), label);
+    const flat = composite(sources, doc.width, doc.height, background ? { background } : {});
+    const targetIndex = Math.min(...sources.map((l) => l.layerIndex));
+    const merged = makeLayer("raster");
+    merged.name = name;
+    merged.x = 0; merged.y = 0; merged.width = doc.width; merged.height = doc.height;
+    merged.layerIndex = targetIndex;
+    const c = getLayerCanvas(merged.id, doc.width, doc.height);
+    const cx = ctx2d(c);
+    cx.clearRect(0, 0, c.width, c.height);
+    cx.drawImage(flat, 0, 0);
+    setLayerCanvas(merged.id, c);
+    for (const l of sources) { removeLayer(l.id); dropLayerCanvas(l.id); dropMaskCanvas(l.id); }
+    upsertLayer(merged);
+    selectLayer(merged.id);
+    bumpRender();
+    try {
+      await rpcCall(ctxId, "add_layer", { layer: merged });
+      await commitPixels(merged.id);
+      for (const l of sources) await rpcCall(ctxId, "delete_layer", { id: l.id });
+    } catch (e) { showToast(errMsg(e), "error"); }
+  }, [ctxId, doc, canEdit, upsertLayer, removeLayer, selectLayer, bumpRender, commitPixels, showToast]);
+
+  const onRasterize = useCallback(() => {
+    const sel = useEditorStore.getState().selectedLayer();
+    if (!sel) return;
+    if (sel.kind === "raster") { showToast("Layer is already raster.", "error"); return; }
+    if (sel.kind === "group") { showToast("Can't rasterize a group — flatten instead.", "error"); return; }
+    bakeMerge([sel], "Rasterize Layer", sel.name);
+  }, [bakeMerge, showToast]);
+
+  const onMergeDown = useCallback(() => {
+    const st = useEditorStore.getState();
+    const sel = st.selectedLayer();
+    if (!sel) return;
+    // the layer immediately below in z-order (same parent scope), skipping groups
+    const below = [...st.layers]
+      .filter((l) => l.kind !== "group" && l.layerIndex < sel.layerIndex)
+      .sort((a, b) => b.layerIndex - a.layerIndex)[0];
+    if (!below) { showToast("No layer below to merge into.", "error"); return; }
+    bakeMerge([below, sel], "Merge Down", below.name);
+  }, [bakeMerge, showToast]);
+
+  const onMergeVisible = useCallback(() => {
+    const st = useEditorStore.getState();
+    const visible = st.layers.filter((l) => l.visible && l.kind !== "group");
+    if (visible.length < 2) { showToast("Need at least two visible layers.", "error"); return; }
+    bakeMerge(visible, "Merge Visible", "Merged");
+  }, [bakeMerge, showToast]);
+
+  const onFlatten = useCallback(() => {
+    const st = useEditorStore.getState();
+    if (st.layers.length === 0 || !doc) return;
+    bakeMerge([...st.layers].filter((l) => l.kind !== "group"), "Flatten Image", "Background", doc.background);
+  }, [bakeMerge, doc]);
 
   const onToggleMask = useCallback(async (id: string) => {
     const l = useEditorStore.getState().layers.find((x) => x.id === id);
@@ -437,6 +551,21 @@ export default function EditorPage() {
     }).catch(() => {});
   }, [ctxId, canEdit, bumpRender, commitPixels]);
 
+  const onApplyLevels = useCallback(async (levels: LevelsData) => {
+    const sel = useEditorStore.getState().selectedLayer();
+    if (!sel || !canEdit()) return;
+    if (sel.kind !== "raster") { showToast("Select a raster layer for Levels.", "error"); return; }
+    const c = peekLayerCanvas(sel.id);
+    if (!c) { showToast("This layer has no pixels yet.", "error"); return; }
+    useEditorStore.getState().pushHistory([sel.id], "Levels");
+    const baked = applyLevels(c, levels);
+    const ctx = ctx2d(c);
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.drawImage(baked, 0, 0);
+    bumpRender();
+    await commitPixels(sel.id);
+  }, [canEdit, bumpRender, commitPixels, showToast]);
+
   // ── Image import ───────────────────────────────────────────────────────────
   const onImportImage = useCallback(async (file: File) => {
     if (!canEdit() || !doc) { showToast("You need editor access to add images.", "error"); return; }
@@ -444,6 +573,7 @@ export default function EditorPage() {
     try {
       const buf = await file.arrayBuffer();
       const img = await bytesToImage(buf, file.type || "image/png");
+      useEditorStore.getState().pushHistory([], "Place Image");
       const layer = makeLayer("raster");
       layer.name = file.name.replace(/\.[^.]+$/, "") || "Image";
       layer.width = img.width;
@@ -462,9 +592,163 @@ export default function EditorPage() {
     } finally { setSaving(false); }
   }, [ctxId, doc, canEdit, upsertLayer, selectLayer, bumpRender, commitPixels, showToast]);
 
+  const onImportSvg = useCallback(async (file: File) => {
+    if (!canEdit() || !doc) { showToast("You need editor access to add SVGs.", "error"); return; }
+    setSaving(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const img = await bytesToImage(buf, "image/svg+xml");
+      useEditorStore.getState().pushHistory([], "Place SVG");
+      // SVGs often lack an intrinsic size — fall back to a sensible box.
+      const w = img.width || Math.min(doc.width, 640);
+      const h = img.height || Math.min(doc.height, 640);
+      const layer = makeLayer("raster");
+      layer.name = file.name.replace(/\.[^.]+$/, "") || "SVG";
+      layer.width = w; layer.height = h;
+      layer.x = Math.round((doc.width - w) / 2);
+      layer.y = Math.round((doc.height - h) / 2);
+      const c = getLayerCanvas(layer.id, w, h);
+      ctx2d(c).drawImage(img, 0, 0, w, h);
+      upsertLayer(layer);
+      selectLayer(layer.id);
+      bumpRender();
+      await rpcCall(ctxId, "add_layer", { layer });
+      await commitPixels(layer.id);
+    } catch (e) {
+      showToast(errMsg(e), "error");
+    } finally { setSaving(false); }
+  }, [ctxId, doc, canEdit, upsertLayer, selectLayer, bumpRender, commitPixels, showToast]);
+
+  // ── Shape / gradient → new raster layer ────────────────────────────────────
+  const onCreateRasterLayer = useCallback(async ({ name, x, y, canvas }: { name: string; x: number; y: number; canvas: HTMLCanvasElement }) => {
+    if (!canEdit() || !doc) return;
+    useEditorStore.getState().pushHistory([], name === "Pasted" ? "Paste" : `Add ${name}`);
+    const layer = makeLayer("raster");
+    layer.name = name;
+    layer.x = x; layer.y = y;
+    layer.width = canvas.width; layer.height = canvas.height;
+    const c = getLayerCanvas(layer.id, canvas.width, canvas.height);
+    ctx2d(c).drawImage(canvas, 0, 0);
+    setLayerCanvas(layer.id, c);
+    upsertLayer(layer);
+    selectLayer(layer.id);
+    bumpRender();
+    try { await rpcCall(ctxId, "add_layer", { layer }); await commitPixels(layer.id); }
+    catch (e) { showToast(errMsg(e), "error"); }
+  }, [ctxId, doc, canEdit, upsertLayer, selectLayer, bumpRender, commitPixels, showToast]);
+
+  // ── Text layer create / commit ──────────────────────────────────────────────
+  const onCreateTextLayer = useCallback(async (x: number, y: number): Promise<string | undefined> => {
+    if (!canEdit() || !doc) return undefined;
+    useEditorStore.getState().pushHistory([], "Add Text");
+    const layer = makeLayer("text");
+    layer.x = x; layer.y = y;
+    layer.width = 320;
+    layer.height = Math.round((layer.text?.fontSize ?? 72) * 1.4);
+    layer.text = { ...(layer.text as TextProps), content: "" };
+    upsertLayer(layer);
+    selectLayer(layer.id);
+    bumpRender();
+    try { await rpcCall(ctxId, "add_layer", { layer }); }
+    catch (e) { showToast(errMsg(e), "error"); }
+    return layer.id;
+  }, [ctxId, doc, canEdit, upsertLayer, selectLayer, bumpRender, showToast]);
+
+  const onCommitText = useCallback((id: string, text: TextProps, width: number, height: number) => {
+    const l = useEditorStore.getState().layers.find((x) => x.id === id);
+    if (!l) return;
+    const now = ts();
+    upsertLayer({ ...l, text, width, height, updatedAt: now });
+    bumpRender();
+    rpcCall(ctxId, "update_text", {
+      id, content: text.content, font_family: text.fontFamily, font_size: text.fontSize,
+      color: text.color, bold: text.bold, italic: text.italic, align: text.align ?? "left", updated_at: now,
+    }).catch((e) => showToast(errMsg(e), "error"));
+    commitMeta(id, { width, height });
+  }, [ctxId, upsertLayer, bumpRender, commitMeta, showToast]);
+
+  /** Typography change from the options bar — re-fit the layer box to the text. */
+  const onUpdateText = useCallback((id: string, patch: Partial<TextProps>) => {
+    const l = useEditorStore.getState().layers.find((x) => x.id === id);
+    if (!l || !l.text) return;
+    const text = { ...l.text, ...patch };
+    const m = ctx2d(createCanvas(8, 8));
+    m.font = `${text.italic ? "italic " : ""}${text.bold ? "700 " : "400 "}${text.fontSize}px ${text.fontFamily}, sans-serif`;
+    const lines = (text.content || "Text").split("\n");
+    const width = Math.max(8, ...lines.map((s) => Math.ceil(m.measureText(s).width))) + 8;
+    const height = Math.ceil(lines.length * text.fontSize * 1.2) + 8;
+    onCommitText(id, text, width, height);
+  }, [onCommitText]);
+
+  // ── Crop the document ───────────────────────────────────────────────────────
+  const onCrop = useCallback(async (rect: { x: number; y: number; w: number; h: number }) => {
+    if (!canEdit() || !doc) return;
+    const ox = Math.round(rect.x);
+    const oy = Math.round(rect.y);
+    const w = Math.max(1, Math.round(rect.w));
+    const h = Math.max(1, Math.round(rect.h));
+    const now = ts();
+    // snapshot doc size + layer positions so the crop can be undone
+    useEditorStore.getState().pushHistory([], "Crop");
+    const moved = useEditorStore.getState().layers.map((l) => ({ ...l, x: l.x - ox, y: l.y - oy, updatedAt: now }));
+    setLayers(moved);
+    setDoc({ ...doc, width: w, height: h });
+    setSelection(null);
+    bumpRender();
+    try {
+      await rpcCall(ctxId, "update_document", { width: w, height: h });
+      for (const l of moved) await commitMeta(l.id, { x: l.x, y: l.y });
+    } catch (e) { showToast(errMsg(e), "error"); }
+  }, [ctxId, doc, canEdit, setLayers, setDoc, setSelection, bumpRender, commitMeta, showToast]);
+
+  // ── Filters (Image menu) — destructive, on the active raster/fill layer ─────
+  const onApplyFilter = useCallback(async (kind: FilterKind) => {
+    const sel = useEditorStore.getState().selectedLayer();
+    if (!sel || !canEdit()) return;
+    if (sel.kind !== "raster" && sel.kind !== "fill") {
+      showToast("Select a raster or fill layer to filter.", "error"); return;
+    }
+    // A fill layer is procedural until painted — bake its solid colour into a
+    // pixel buffer so the filter has something to act on.
+    let c = peekLayerCanvas(sel.id);
+    if (!c && sel.kind === "fill") {
+      c = getLayerCanvas(sel.id, sel.width, sel.height);
+      const fc = ctx2d(c);
+      fc.fillStyle = sel.fill || "#000000";
+      fc.fillRect(0, 0, c.width, c.height);
+    }
+    if (!c) { showToast("This layer has no pixels yet.", "error"); return; }
+    useEditorStore.getState().pushHistory([sel.id], `Filter: ${kind}`);
+    const out = applyFilter(c, kind);
+    const ctx = ctx2d(c);
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.drawImage(out, 0, 0);
+    bumpRender();
+    await commitPixels(sel.id);
+  }, [canEdit, bumpRender, commitPixels, showToast]);
+
+  const onSelectAll = useCallback(() => {
+    const d = useEditorStore.getState().doc;
+    if (d) setSelection({ kind: "rect", x: 0, y: 0, w: d.width, h: d.height });
+  }, [setSelection]);
+  const onDeselect = useCallback(() => setSelection(null), [setSelection]);
+
   // ── Export ───────────────────────────────────────────────────────────────
-  const onExport = useCallback((format: "png" | "jpeg") => {
+  const onExport = useCallback((format: "png" | "jpeg" | "svg") => {
     if (!doc) return;
+    if (format === "svg") {
+      const flat = composite(useEditorStore.getState().layers, doc.width, doc.height, { background: doc.background });
+      const dataUrl = flat.toDataURL("image/png");
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${doc.width}" height="${doc.height}" viewBox="0 0 ${doc.width} ${doc.height}"><image href="${dataUrl}" width="${doc.width}" height="${doc.height}"/></svg>`;
+      const blob = new Blob([svg], { type: "image/svg+xml" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${doc.name || "meropixart"}.svg`;
+      a.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
     const bg = format === "jpeg" ? (doc.background && doc.background !== "#00000000" ? doc.background : "#ffffff") : doc.background;
     let flat = composite(useEditorStore.getState().layers, doc.width, doc.height, { background: bg });
     if (format === "jpeg") {
@@ -495,23 +779,78 @@ export default function EditorPage() {
     const onKey = (e: KeyboardEvent) => {
       const tgt = e.target as HTMLElement;
       if (tgt && (tgt.tagName === "INPUT" || tgt.tagName === "TEXTAREA")) return;
+      const st = useEditorStore.getState();
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key.toLowerCase() === "z") {
         e.preventDefault();
-        if (e.shiftKey) useEditorStore.getState().redo();
-        else useEditorStore.getState().undo();
+        if (e.shiftKey) st.redo(); else st.undo();
+        return;
+      }
+      if (mod && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        if (st.doc) st.setSelection({ kind: "rect", x: 0, y: 0, w: st.doc.width, h: st.doc.height });
+        return;
+      }
+      if (mod && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        st.setSelection(null);
+        return;
+      }
+      if (mod && e.shiftKey && e.key.toLowerCase() === "i") {
+        e.preventDefault();
+        if (st.selection) st.setSelection(invertSelection(st.selection));
+        return;
+      }
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (st.editingTextId) return;
+        const layer = st.selectedLayer();
+        if (!layer || !st.canEdit()) return;
+        e.preventDefault();
+        // Clear pixels within a selection on raster layers — and on fill layers,
+        // which we first bake into pixels (so Delete erases the selected region
+        // instead of doing nothing). Otherwise delete the selected layer(s).
+        const pixelKind = layer.kind === "raster" || layer.kind === "fill";
+        if (st.selection && pixelKind) {
+          let c = peekLayerCanvas(layer.id);
+          if (!c && layer.kind === "fill") {
+            c = getLayerCanvas(layer.id, layer.width, layer.height);
+            const fc = ctx2d(c);
+            fc.fillStyle = layer.fill || "#000000";
+            fc.fillRect(0, 0, c.width, c.height);
+          }
+          if (c) {
+            st.pushHistory([layer.id], "Clear Selection");
+            const cx = ctx2d(c);
+            cx.save();
+            cx.globalCompositeOperation = "destination-out";
+            cx.fillStyle = "#000";
+            cx.fill(selectionPathLocal(st.selection, layer, st.doc ? { width: st.doc.width, height: st.doc.height } : undefined), "evenodd");
+            cx.restore();
+            bumpRender();
+            commitPixels(layer.id);
+          }
+        } else {
+          // delete every selected layer (multi-selection), else just the active one
+          const ids = st.selectedLayerIds.length > 1 ? st.selectedLayerIds : [layer.id];
+          for (const id of ids) onDelete(id);
+        }
+        return;
       }
       if (!mod) {
+        const key = e.key.toLowerCase();
+        if (key === "x") { e.preventDefault(); st.swapColors(); return; }
+        if (key === "d") { e.preventDefault(); st.setPrimaryColor("#000000"); st.setSecondaryColor("#ffffff"); return; }
         const map: Record<string, string> = {
           v: "move", b: "brush", e: "eraser", g: "bucket", i: "eyedropper",
-          t: "text", m: "marquee", h: "hand", c: "crop",
+          t: "text", m: "marquee", l: "lasso", h: "hand", c: "crop",
+          u: "shape", k: "clone", z: "zoom",
         };
-        if (map[e.key]) useEditorStore.getState().setTool(map[e.key] as never);
+        if (map[key]) st.setTool(map[key] as never);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [onDelete, commitPixels, bumpRender]);
 
   // ── Remote cursors transformed to screen space ─────────────────────────────
   const screenCursors = useMemo(() => {
@@ -542,38 +881,88 @@ export default function EditorPage() {
         saving={saving}
         onBack={() => navigate(`/teams/${teamId}/projects`)}
         onImportImage={onImportImage}
+        onImportSvg={onImportSvg}
         onExport={onExport}
+        onApplyFilter={onApplyFilter}
+        onSelectAll={onSelectAll}
+        onDeselect={onDeselect}
+        onAddLayer={onAdd}
+        onDuplicateLayer={onDuplicate}
+        onDeleteLayer={onDelete}
+        onGroupSelected={onGroupSelected}
+        onToggleMask={onToggleMask}
+        onRasterize={onRasterize}
+        onMergeDown={onMergeDown}
+        onMergeVisible={onMergeVisible}
+        onFlatten={onFlatten}
         onOpenInvite={() => setShowInvite(true)}
         onOpenSettings={() => setShowSettings(true)}
       />
+      <OptionsBar onUpdateText={onUpdateText} />
 
       <div className={styles.body}>
         <Toolbar />
-        <CanvasStage
-          commitPixels={commitPixels}
-          commitMaskPixels={commitMaskPixels}
-          commitMeta={commitMeta}
-          onCursorMove={onCursorMove}
-          overlay={<CursorsOverlay cursors={screenCursors} myIdentity={myId.current} members={members} />}
-        />
+        <div className={`${styles.canvasArea} ${showRulers ? styles.withRulers : ""}`}>
+          {showRulers && (
+            <>
+              <div className={styles.rulerCorner} />
+              <div className={styles.rulerTop}><Ruler orientation="h" /></div>
+              <div className={styles.rulerLeft}><Ruler orientation="v" /></div>
+            </>
+          )}
+          <div className={styles.canvasCell}>
+            <CanvasStage
+              commitPixels={commitPixels}
+              commitMaskPixels={commitMaskPixels}
+              commitMeta={commitMeta}
+              onCreateRasterLayer={onCreateRasterLayer}
+              onCreateTextLayer={onCreateTextLayer}
+              onCommitText={onCommitText}
+              onDeleteLayer={onDelete}
+              onCrop={onCrop}
+              onCursorMove={onCursorMove}
+              overlay={<CursorsOverlay cursors={screenCursors} myIdentity={myId.current} members={members} />}
+            />
+          </div>
+        </div>
         <div className={styles.rightDock}>
-          <AdjustmentsPanel
-            layer={selLayer}
-            onAdjust={onAdjust}
-            onApplyCurves={onApplyCurves}
-            disabled={!canEdit()}
-          />
-          <LayersPanel
-            onAdd={onAdd}
-            onDelete={onDelete}
-            onDuplicate={onDuplicate}
-            onUpdateMeta={onUpdateMeta}
-            onReorder={onReorder}
-            onGroupSelected={onGroupSelected}
-            onToggleMask={onToggleMask}
-          />
+          {panels.navigator && (
+            <section className={styles.dockSection}><Navigator /></section>
+          )}
+          {panels.adjustments && (
+            <section className={styles.dockSection}>
+              <AdjustmentsPanel
+                layer={selLayer}
+                onAdjust={onAdjust}
+                onApplyCurves={onApplyCurves}
+                onApplyLevels={onApplyLevels}
+                disabled={!canEdit()}
+              />
+            </section>
+          )}
+          {panels.history && (
+            <section className={styles.dockSection}>
+              <HistoryPanel />
+            </section>
+          )}
+          {panels.layers && (
+            <section className={`${styles.dockSection} ${styles.dockGrow}`}>
+              <LayersPanel
+                onAdd={onAdd}
+                onDelete={onDelete}
+                onDuplicate={onDuplicate}
+                onUpdateMeta={onUpdateMeta}
+                onUpdateText={onUpdateText}
+                onReorder={onReorder}
+                onGroupSelected={onGroupSelected}
+                onToggleMask={onToggleMask}
+              />
+            </section>
+          )}
         </div>
       </div>
+
+      <StatusBar />
 
       {editingMaskOf && (
         <div className={styles.maskBanner}>

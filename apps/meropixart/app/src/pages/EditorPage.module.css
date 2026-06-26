@@ -13,6 +13,34 @@
   min-height: 0;
 }
 
+/* Canvas area: optionally wrapped by top/left precision rulers (a 2×2 grid). */
+.canvasArea {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+.canvasArea.withRulers {
+  --ruler: 22px;
+  display: grid;
+  grid-template-columns: var(--ruler) 1fr;
+  grid-template-rows: var(--ruler) 1fr;
+}
+.rulerCorner {
+  background: #15191f;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.rulerTop { border-bottom: 1px solid var(--border); overflow: hidden; }
+.rulerLeft { border-right: 1px solid var(--border); overflow: hidden; }
+.canvasCell {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+}
+.canvasArea:not(.withRulers) .canvasCell { flex: 1; }
+
 .rightDock {
   display: flex;
   flex-direction: column;
@@ -21,16 +49,24 @@
   border-left: 1px solid var(--border);
   background: var(--bg-1);
   min-height: 0;
-}
-.rightDock > :first-child {
-  border-bottom: 1px solid var(--border);
-  max-height: 46%;
+  /* the whole dock scrolls when its panels don't fit (collapsed panels shrink
+     to just their header so this rarely triggers, but it never clips) */
   overflow-y: auto;
-  flex-shrink: 0;
 }
-.rightDock > :last-child {
-  flex: 1;
-  min-height: 0;
+
+/* Each dockable panel is its own section; sections size to content, the Layers
+   section grows to fill any leftover height. */
+.dockSection {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--border);
+}
+.dockSection:last-child { border-bottom: none; }
+
+.dockGrow {
+  flex: 1 1 auto;
+  min-height: 180px;
 }
 
 .loading {

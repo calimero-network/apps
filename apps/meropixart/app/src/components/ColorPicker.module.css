@@ -2,18 +2,104 @@
   position: fixed;
   inset: 0;
   z-index: 3200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   animation: mp-fade-in 0.12s ease;
 }
 
 .panel {
-  width: 232px;
-  padding: 14px;
+  position: fixed;
+  width: 320px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  padding: 0 14px 14px;
   display: flex;
   flex-direction: column;
+  gap: 9px;
+  animation: mp-fade-in 0.1s ease;
+}
+
+/* Top region: SV+hue on the left, wheel + compare stacked on the right. */
+.top {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* RGB and HSL slider groups sit side by side to halve the dialog height. */
+.dual {
+  display: flex;
   gap: 12px;
+}
+.dual > * { flex: 1; min-width: 0; }
+
+/* Draggable header so the picker can be moved around the canvas. */
+.titleBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 -14px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}
+.titleText {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted, #9aa4b2);
+  letter-spacing: 0.02em;
+}
+.closeX {
+  background: none;
+  border: none;
+  color: var(--text-muted, #9aa4b2);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.closeX:hover { color: #fff; }
+
+.sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sliderRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sliderLabel {
+  width: 14px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted, #9aa4b2);
+  flex-shrink: 0;
+}
+.sliderRange {
+  flex: 1;
+  min-width: 0;
+  height: 4px;
+}
+.sliderNum {
+  width: 46px;
+  flex-shrink: 0;
+  background: var(--bg-input, #0a0e13);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: #fff;
+  font-size: 11px;
+  padding: 2px 4px;
+  text-align: right;
 }
 
 .body {
@@ -23,8 +109,8 @@
 
 .sv {
   position: relative;
-  width: 176px;
-  height: 150px;
+  width: 150px;
+  height: 118px;
   border-radius: var(--radius-sm);
   overflow: hidden;
   cursor: crosshair;
@@ -55,7 +141,7 @@
 .hue {
   position: relative;
   width: 16px;
-  height: 150px;
+  height: 118px;
   border-radius: var(--radius-sm);
   cursor: ns-resize;
   flex-shrink: 0;
@@ -92,8 +178,8 @@
 
 .presets {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 6px;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 5px;
 }
 .preset {
   width: 100%;
@@ -112,4 +198,78 @@
 .footer {
   display: flex;
   justify-content: flex-end;
+}
+
+/* Hue/sat wheel + current/previous compare */
+.wheelRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.wheelWrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.wheelWrap canvas { cursor: crosshair; touch-action: none; display: block; }
+.wheelThumb {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.compare {
+  display: flex;
+  gap: 0;
+  width: 100%;
+  max-width: 92px;
+}
+.compareSwatch {
+  flex: 1;
+  height: 22px;
+  border: 1px solid var(--border-strong);
+  padding: 0;
+  cursor: pointer;
+  overflow: hidden;
+}
+.compareSwatch:first-of-type { border-right: none; }
+.compareSwatch span { display: block; width: 100%; height: 100%; }
+
+/* Swatch library */
+.swatchHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.swatchTitle {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted, #9aa4b2);
+}
+.addSwatch {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.addSwatch:hover { background: var(--bg-4); }
+.swatchEmpty {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.presetFill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
 }
