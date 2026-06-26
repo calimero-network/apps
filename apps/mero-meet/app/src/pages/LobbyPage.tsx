@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useSubscription } from "@calimero-network/mero-react";
+import { useSubscription, useMero } from "@calimero-network/mero-react";
 import { useMeroMeet } from "../hooks/useMeroMeet";
 import { getExecutorPublicKey } from "../lib/session";
+import { encodeInvitationObject } from "../lib/invitation";
 import type { LobbyView, Presence } from "../types";
 import styles from "./LobbyPage.module.css";
 
@@ -16,12 +17,16 @@ const HEARTBEAT_MS = 10_000;
  */
 export default function LobbyPage() {
   const meet = useMeroMeet();
+  const { mero } = useMero();
   const navigate = useNavigate();
   const selfId = getExecutorPublicKey() ?? "";
 
   const [lobby, setLobby] = useState<LobbyView | null>(null);
   const [username, setUsername] = useState("");
   const [joined, setJoined] = useState(false);
+  const [inviteCode, setInviteCode] = useState("");
+  const [inviting, setInviting] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const refresh = useCallback(async () => {
     const view = await meet.getLobby();
@@ -57,6 +62,33 @@ export default function LobbyPage() {
     navigate("/call");
   };
 
+  // Invite = a namespace invitation for this room (same flow as the other mero
+  // apps): resolve the room's namespace, mint a signed invitation, ship it as a
+  // url-safe token the invitee pastes into "Join" on the Rooms screen.
+  const makeInvite = async () => {
+    if (!mero || !meet.contextId || inviting) return;
+    setInviting(true);
+    try {
+      const namespaceId = await mero.admin.getContextGroup(meet.contextId);
+      if (!namespaceId) throw new Error("no namespace for this room");
+      const inv = await mero.admin.createNamespaceInvitation(namespaceId);
+      const code = encodeInvitationObject({
+        ...(inv as unknown as Record<string, unknown>),
+        __roomName: lobby?.room.name ?? "",
+      });
+      setInviteCode(code);
+      setCopied(false);
+      try {
+        await navigator.clipboard.writeText(code);
+        setCopied(true);
+      } catch {/* clipboard blocked — user can still copy from the box */}
+    } catch {
+      setInviteCode("");
+    } finally {
+      setInviting(false);
+    }
+  };
+
   const online = new Set(lobby?.online ?? []);
   const members: Presence[] = lobby?.members ?? [];
   const callActive = (lobby?.room.activeCall ?? "") !== "";
@@ -66,16 +98,45 @@ export default function LobbyPage() {
     <div className={styles.page}>
       <header className={styles.header}>
         <div>
+          <button className={styles.switchBtn} onClick={() => navigate("/rooms")}>
+            ← All rooms
+          </button>
           <h1 className={styles.roomName}>{lobby?.room.name || "Room"}</h1>
           <p className={styles.roomMeta}>
             {lobby?.room.onlineCount ?? 0} online · {lobby?.room.memberCount ?? 0} members
             {callActive && <span className={styles.liveDot}> · call in progress</span>}
           </p>
         </div>
-        <button className={styles.callBtn} onClick={enterCall}>
-          {callActive ? "Join call" : "Start call"}
-        </button>
+        <div className={styles.headerActions}>
+          <button className={styles.inviteBtn} onClick={makeInvite} disabled={inviting}>
+            {inviting ? "Inviting…" : "Invite"}
+          </button>
+          <button className={styles.callBtn} onClick={enterCall}>
+            {callActive ? "Join call" : "Start call"}
+          </button>
+        </div>
       </header>
+
+      {inviteCode && (
+        <div className={styles.invitePanel}>
+          <div className={styles.inviteTop}>
+            <span className={styles.inviteTitle}>Invite to this room</span>
+            <button
+              className={styles.copyBtn}
+              onClick={() => {
+                void navigator.clipboard.writeText(inviteCode);
+                setCopied(true);
+              }}
+            >
+              {copied ? "Copied ✓" : "Copy"}
+            </button>
+          </div>
+          <code className={styles.inviteCode}>{inviteCode}</code>
+          <span className={styles.inviteHint}>
+            Share this code. They open Mero Meet → <strong>Join</strong> and paste it.
+          </span>
+        </div>
+      )}
 
       {!joined && (
         <div className={styles.joinBar}>

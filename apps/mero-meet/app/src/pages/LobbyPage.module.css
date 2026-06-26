@@ -15,11 +15,103 @@
   margin-bottom: 26px;
 }
 
+.switchBtn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 8px;
+  transition: color 0.12s ease;
+}
+.switchBtn:hover {
+  color: var(--text);
+}
+
 .roomName {
   font-size: 1.9rem;
   font-weight: 800;
   letter-spacing: -0.025em;
   margin: 0 0 8px;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.inviteBtn {
+  background: var(--surface-strong);
+  color: #fff;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  padding: 13px 20px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s ease;
+}
+.inviteBtn:hover {
+  background: var(--surface-hover);
+}
+.inviteBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.invitePanel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 24px;
+}
+.inviteTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.inviteTitle {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.copyBtn {
+  background: var(--accent-grad);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 16px;
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.copyBtn:hover {
+  filter: brightness(1.06);
+}
+.inviteCode {
+  display: block;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 10px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  word-break: break-all;
+  max-height: 76px;
+  overflow-y: auto;
+}
+.inviteHint {
+  display: block;
+  margin-top: 8px;
+  font-size: 0.82rem;
+  color: var(--text-faint);
 }
 
 .roomMeta {

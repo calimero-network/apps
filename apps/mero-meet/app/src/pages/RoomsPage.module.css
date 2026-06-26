@@ -72,6 +72,26 @@
   box-shadow: none;
 }
 
+.joinBtn {
+  background: var(--surface-strong);
+  color: #fff;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  padding: 13px 24px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s ease;
+}
+.joinBtn:hover {
+  background: var(--surface-hover);
+}
+.joinBtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .error {
   margin: 6px 0 18px;
   color: #ff8088;

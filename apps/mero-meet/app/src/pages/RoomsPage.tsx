@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMero, useContexts } from "@calimero-network/mero-react";
 import { getApplicationId, setActiveRoom } from "../lib/session";
+import { parseRoomInvitation } from "../lib/invitation";
 import styles from "./RoomsPage.module.css";
 
 /**
@@ -11,8 +12,9 @@ import styles from "./RoomsPage.module.css";
  * sequence (see workflows/e2e.yml): create namespace → set member capabilities
  * → create the context, then enter it.
  *
- * Entering an existing room resolves our owned member identity for that context
- * (`identities-owned`) so the lobby/call can execute contract methods as us.
+ * You can also JOIN a room someone shared: paste their invite code → join the
+ * namespace → wait for the room context to sync → join it. Entering an existing
+ * room resolves our owned member identity (`identities-owned`).
  */
 export default function RoomsPage() {
   const navigate = useNavigate();
@@ -22,6 +24,7 @@ export default function RoomsPage() {
   const { contexts, loading: listing, error: listError, refetch } = useContexts(appId || null);
 
   const [name, setName] = useState("");
+  const [joinCode, setJoinCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,11 +94,54 @@ export default function RoomsPage() {
     }
   }, [name, mero, appId, navigate, refetch]);
 
+  const joinByCode = useCallback(async () => {
+    const code = joinCode.trim();
+    if (!code || !mero) return;
+    if (!appId) {
+      setError("Missing application id — reopen Mero Meet from the desktop app.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const { namespaceId, signed } = parseRoomInvitation(code);
+      if (!namespaceId) throw new Error("That doesn't look like a valid invite code.");
+
+      // Join the namespace the room lives in. (`signed` is the node's own
+      // invitation struct, decoded from the token — typed loosely here.)
+      await mero.admin.joinNamespace(
+        namespaceId,
+        { invitation: signed } as Parameters<typeof mero.admin.joinNamespace>[1],
+      );
+
+      // The room context syncs in after the namespace join — poll for it.
+      let contextId = "";
+      for (let i = 0; i < 15 && !contextId; i++) {
+        const resp = await mero.admin.getContextsForApplication(appId);
+        const match = (resp.contexts ?? []).find((c) => (c.groupId ?? "") === namespaceId);
+        if (match) contextId = match.id ?? "";
+        if (!contextId) await new Promise((r) => setTimeout(r, 1500));
+      }
+      if (!contextId) {
+        throw new Error("Joined the namespace, but the room hasn't synced yet — try again shortly.");
+      }
+
+      const joined = await mero.admin.joinContext(contextId);
+      setActiveRoom(contextId, joined.memberPublicKey);
+      setJoinCode("");
+      navigate("/lobby");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not join with that code.");
+    } finally {
+      setBusy(false);
+    }
+  }, [joinCode, mero, appId, navigate]);
+
   return (
     <div className={styles.page}>
       <header className={styles.header}>
         <h1 className={styles.title}>Mero Meet</h1>
-        <p className={styles.subtitle}>Pick a room to join, or start a new one.</p>
+        <p className={styles.subtitle}>Pick a room, start a new one, or join with an invite.</p>
       </header>
 
       <section className={styles.createBar}>
@@ -110,6 +156,20 @@ export default function RoomsPage() {
         />
         <button className={styles.createBtn} onClick={createRoom} disabled={busy || !name.trim()}>
           {busy ? "Working…" : "Create room"}
+        </button>
+      </section>
+
+      <section className={styles.createBar}>
+        <input
+          className={styles.input}
+          placeholder="Paste an invite code to join"
+          value={joinCode}
+          onChange={(e) => setJoinCode(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && joinByCode()}
+          disabled={busy}
+        />
+        <button className={styles.joinBtn} onClick={joinByCode} disabled={busy || !joinCode.trim()}>
+          Join
         </button>
       </section>
 
