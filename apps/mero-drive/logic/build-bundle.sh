@@ -22,13 +22,18 @@ echo "Building registry service..."
 echo "Building docs service..."
 (cd crates/docs && bash build.sh)
 
-mkdir -p res/bundle-temp
-rm -f res/bundle-temp/*
+# Service artifacts live under a `services/` directory: the registry/publish
+# validator requires each service's wasm.path / abi.path to be a safe relative
+# path UNDER services/ (e.g. services/registry.wasm). merod resolves the
+# manifest path as-given against the bundle, so the tar layout and the manifest
+# paths must agree — both use the services/ prefix below.
+rm -rf res/bundle-temp
+mkdir -p res/bundle-temp/services
 
-cp crates/registry/res/registry.wasm res/bundle-temp/
-cp crates/docs/res/docs.wasm         res/bundle-temp/
-cp crates/registry/res/abi.json      res/bundle-temp/registry-abi.json
-cp crates/docs/res/abi.json          res/bundle-temp/docs-abi.json
+cp crates/registry/res/registry.wasm res/bundle-temp/services/
+cp crates/docs/res/docs.wasm         res/bundle-temp/services/
+cp crates/registry/res/abi.json      res/bundle-temp/services/registry-abi.json
+cp crates/docs/res/abi.json          res/bundle-temp/services/docs-abi.json
 
 size() {
     stat -f%z "$1" 2>/dev/null || stat -c%s "$1"
@@ -52,13 +57,13 @@ cat > res/bundle-temp/manifest.json <<EOF
   "services": [
     {
       "name": "registry",
-      "wasm": { "path": "registry.wasm", "size": ${REG_WASM_SIZE}, "hash": null },
-      "abi":  { "path": "registry-abi.json", "size": ${REG_ABI_SIZE}, "hash": null }
+      "wasm": { "path": "services/registry.wasm", "size": ${REG_WASM_SIZE}, "hash": null },
+      "abi":  { "path": "services/registry-abi.json", "size": ${REG_ABI_SIZE}, "hash": null }
     },
     {
       "name": "docs",
-      "wasm": { "path": "docs.wasm", "size": ${DOC_WASM_SIZE}, "hash": null },
-      "abi":  { "path": "docs-abi.json", "size": ${DOC_ABI_SIZE}, "hash": null }
+      "wasm": { "path": "services/docs.wasm", "size": ${DOC_WASM_SIZE}, "hash": null },
+      "abi":  { "path": "services/docs-abi.json", "size": ${DOC_ABI_SIZE}, "hash": null }
     }
   ],
   "migrations": [],
@@ -91,8 +96,8 @@ BUNDLE="dist/${PACKAGE}.mpk"
 cd res/bundle-temp
 tar -czf "../../${BUNDLE}" \
     manifest.json \
-    registry.wasm registry-abi.json \
-    docs.wasm     docs-abi.json
+    services/registry.wasm services/registry-abi.json \
+    services/docs.wasm     services/docs-abi.json
 cd ../..
 
 echo "Bundle created: ${BUNDLE}"
