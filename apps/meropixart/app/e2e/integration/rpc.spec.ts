@@ -100,7 +100,10 @@ function parseOutput<T>(out: unknown): T {
     try { return JSON.parse(out) as T; } catch { return out as T; }
   }
   if (Array.isArray(out)) {
-    if (out.length === 0) return null as T;
+    // An empty array is an empty JSON list ([]), NOT "no output" — returning
+    // null here would break list methods (get_layers/members/cursors) that
+    // legitimately return [].
+    if (out.length === 0) return [] as T;
     if (typeof out[0] !== "number") return out as T; // already JSON objects
     const text = Buffer.from(out as number[]).toString("utf8");
     return JSON.parse(text) as T;

@@ -355,6 +355,7 @@ export default function EditorPage() {
 
   const onAdd = useCallback(async (kind: LayerKind) => {
     if (!canEdit() || !doc) return;
+    useEditorStore.getState().pushHistory([], "Add Layer"); // so the new layer is undoable
     const layer = makeLayer(kind);
     if (kind === "raster") getLayerCanvas(layer.id, layer.width, layer.height); // blank transparent
     upsertLayer(layer);
@@ -376,6 +377,7 @@ export default function EditorPage() {
   const onDuplicate = useCallback(async (id: string) => {
     const src = useEditorStore.getState().layers.find((l) => l.id === id);
     if (!src || !canEdit()) return;
+    useEditorStore.getState().pushHistory([], "Duplicate Layer");
     const copy: Layer = { ...src, id: uuid(), name: `${src.name} copy`, layerIndex: nextIndex(), blobId: "", maskBlobId: null, updatedAt: ts(), createdAt: ts() };
     const srcCanvas = peekLayerCanvas(id);
     if (srcCanvas) {
@@ -571,6 +573,7 @@ export default function EditorPage() {
     try {
       const buf = await file.arrayBuffer();
       const img = await bytesToImage(buf, file.type || "image/png");
+      useEditorStore.getState().pushHistory([], "Place Image");
       const layer = makeLayer("raster");
       layer.name = file.name.replace(/\.[^.]+$/, "") || "Image";
       layer.width = img.width;
@@ -595,6 +598,7 @@ export default function EditorPage() {
     try {
       const buf = await file.arrayBuffer();
       const img = await bytesToImage(buf, "image/svg+xml");
+      useEditorStore.getState().pushHistory([], "Place SVG");
       // SVGs often lack an intrinsic size — fall back to a sensible box.
       const w = img.width || Math.min(doc.width, 640);
       const h = img.height || Math.min(doc.height, 640);
@@ -618,6 +622,7 @@ export default function EditorPage() {
   // ── Shape / gradient → new raster layer ────────────────────────────────────
   const onCreateRasterLayer = useCallback(async ({ name, x, y, canvas }: { name: string; x: number; y: number; canvas: HTMLCanvasElement }) => {
     if (!canEdit() || !doc) return;
+    useEditorStore.getState().pushHistory([], name === "Pasted" ? "Paste" : `Add ${name}`);
     const layer = makeLayer("raster");
     layer.name = name;
     layer.x = x; layer.y = y;
@@ -635,6 +640,7 @@ export default function EditorPage() {
   // ── Text layer create / commit ──────────────────────────────────────────────
   const onCreateTextLayer = useCallback(async (x: number, y: number): Promise<string | undefined> => {
     if (!canEdit() || !doc) return undefined;
+    useEditorStore.getState().pushHistory([], "Add Text");
     const layer = makeLayer("text");
     layer.x = x; layer.y = y;
     layer.width = 320;
@@ -699,10 +705,18 @@ export default function EditorPage() {
   const onApplyFilter = useCallback(async (kind: FilterKind) => {
     const sel = useEditorStore.getState().selectedLayer();
     if (!sel || !canEdit()) return;
-    // Fill layers are procedural solids with no pixel buffer (the compositor
-    // regenerates them), so a filter would have nothing to act on — raster only.
-    if (sel.kind !== "raster") { showToast("Select a raster layer to filter.", "error"); return; }
-    const c = peekLayerCanvas(sel.id);
+    if (sel.kind !== "raster" && sel.kind !== "fill") {
+      showToast("Select a raster or fill layer to filter.", "error"); return;
+    }
+    // A fill layer is procedural until painted — bake its solid colour into a
+    // pixel buffer so the filter has something to act on.
+    let c = peekLayerCanvas(sel.id);
+    if (!c && sel.kind === "fill") {
+      c = getLayerCanvas(sel.id, sel.width, sel.height);
+      const fc = ctx2d(c);
+      fc.fillStyle = sel.fill || "#000000";
+      fc.fillRect(0, 0, c.width, c.height);
+    }
     if (!c) { showToast("This layer has no pixels yet.", "error"); return; }
     useEditorStore.getState().pushHistory([sel.id], `Filter: ${kind}`);
     const out = applyFilter(c, kind);
@@ -792,10 +806,18 @@ export default function EditorPage() {
         const layer = st.selectedLayer();
         if (!layer || !st.canEdit()) return;
         e.preventDefault();
-        // Only raster layers have pixels to clear within a selection; fill and
-        // other kinds have no buffer, so fall through to deleting the layer.
-        if (st.selection && layer.kind === "raster") {
-          const c = peekLayerCanvas(layer.id);
+        // Clear pixels within a selection on raster layers — and on fill layers,
+        // which we first bake into pixels (so Delete erases the selected region
+        // instead of doing nothing). Otherwise delete the selected layer(s).
+        const pixelKind = layer.kind === "raster" || layer.kind === "fill";
+        if (st.selection && pixelKind) {
+          let c = peekLayerCanvas(layer.id);
+          if (!c && layer.kind === "fill") {
+            c = getLayerCanvas(layer.id, layer.width, layer.height);
+            const fc = ctx2d(c);
+            fc.fillStyle = layer.fill || "#000000";
+            fc.fillRect(0, 0, c.width, c.height);
+          }
           if (c) {
             st.pushHistory([layer.id], "Clear Selection");
             const cx = ctx2d(c);
@@ -896,6 +918,7 @@ export default function EditorPage() {
               onCreateRasterLayer={onCreateRasterLayer}
               onCreateTextLayer={onCreateTextLayer}
               onCommitText={onCommitText}
+              onDeleteLayer={onDelete}
               onCrop={onCrop}
               onCursorMove={onCursorMove}
               overlay={<CursorsOverlay cursors={screenCursors} myIdentity={myId.current} members={members} />}

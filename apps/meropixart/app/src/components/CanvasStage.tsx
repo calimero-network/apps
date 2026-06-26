@@ -46,6 +46,8 @@ interface Props {
   onCreateTextLayer: (x: number, y: number) => Promise<string | undefined>;
   /** persist edited text content + fitted size */
   onCommitText: (id: string, text: TextProps, width: number, height: number) => void;
+  /** delete a layer (used to discard an empty, just-created text layer) */
+  onDeleteLayer: (id: string) => void;
   /** apply a document crop rect */
   onCrop: (rect: { x: number; y: number; w: number; h: number }) => void;
   /** broadcast cursor position (document space) */
@@ -74,7 +76,7 @@ interface DragState {
 
 export default function CanvasStage({
   commitPixels, commitMaskPixels, commitMeta,
-  onCreateRasterLayer, onCreateTextLayer, onCommitText, onCrop,
+  onCreateRasterLayer, onCreateTextLayer, onCommitText, onDeleteLayer, onCrop,
   onCursorMove, overlay,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -328,7 +330,9 @@ export default function CanvasStage({
       live.current = { mode: "lasso", x0: x, y0: y, x1: x, y1: y, points: drag.current.points };
       return;
     }
+    // Crop mutates the document, so (unlike marquee/lasso) it needs edit rights.
     if (activeTool === "crop") {
+      if (!canEdit()) return;
       drag.current.mode = "crop";
       live.current = { mode: "crop", x0: x, y0: y, x1: x, y1: y };
       setCropRect(null);
@@ -753,7 +757,13 @@ export default function CanvasStage({
           panX={panX}
           panY={panY}
           onCommit={(text, w, h) => { onCommitText(editingText.id, text, w, h); setEditingText(null); }}
-          onCancel={() => setEditingText(null)}
+          onCancel={() => {
+            const id = editingText.id;
+            const c = editingText.text?.content ?? "";
+            setEditingText(null);
+            // discard a freshly created text layer that never got real content
+            if (!c || c === "Double-click to edit") onDeleteLayer(id);
+          }}
         />
       )}
 
@@ -893,12 +903,25 @@ function TextEditor({
   const t = layer.text!;
   const [value, setValue] = useState(t.content === "Double-click to edit" ? "" : t.content);
   const ref = useRef<HTMLTextAreaElement>(null);
+  // Guard so the textarea's onBlur (fired when we unmount on Escape) can't
+  // re-commit a cancelled edit.
+  const done = useRef(false);
 
   useEffect(() => { ref.current?.focus(); ref.current?.select(); }, []);
 
+  const cancel = () => {
+    if (done.current) return;
+    done.current = true;
+    onCancel();
+  };
+
   const commit = () => {
-    const content = value || "Text";
-    // measure to fit
+    if (done.current) return;
+    done.current = true;
+    const content = value.trim();
+    // Empty text isn't a real layer — discard it (deletes a freshly created one)
+    // rather than persisting the placeholder "Text".
+    if (!content) { onCancel(); return; }
     const measure = createCanvas(8, 8);
     const mctx = ctx2d(measure);
     mctx.font = `${t.italic ? "italic " : ""}${t.bold ? "700 " : "400 "}${t.fontSize}px ${t.fontFamily}, sans-serif`;
@@ -916,7 +939,7 @@ function TextEditor({
       onChange={(e) => setValue(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => {
-        if (e.key === "Escape") { e.preventDefault(); onCancel(); }
+        if (e.key === "Escape") { e.preventDefault(); cancel(); }
         if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); commit(); }
       }}
       style={{
