@@ -127,8 +127,8 @@ export default function ColorPicker({ value, onChange, onClose, title = "Color p
   const prevRef = useRef(value);
   // Floating dialog position (Photoshop-style movable picker).
   const [pos, setPos] = useState(() => ({
-    x: Math.max(8, window.innerWidth / 2 - 130),
-    y: Math.max(8, window.innerHeight / 2 - 230),
+    x: Math.max(8, window.innerWidth / 2 - 160),
+    y: Math.max(8, window.innerHeight / 2 - 200),
   }));
 
   const svRef = useRef<HTMLDivElement | null>(null);
@@ -276,6 +276,7 @@ export default function ColorPicker({ value, onChange, onClose, title = "Color p
           </button>
         </div>
 
+        <div className={styles.top}>
         <div className={styles.body}>
           <div
             ref={svRef}
@@ -309,11 +310,10 @@ export default function ColorPicker({ value, onChange, onClose, title = "Color p
           </div>
         </div>
 
-        <div className={styles.wheelRow}>
+        <div className={styles.side}>
           <HueSatWheel hue={hue} sat={sat} val={val} onPick={(h, s) => { setHue(h); setSat(s); emit(h, s, val); }} />
           <div className={styles.compare}>
-            <span className={styles.compareLabel}>new</span>
-            <div className={`${styles.compareSwatch} mp-checkerboard`}>
+            <div className={`${styles.compareSwatch} mp-checkerboard`} title="New color">
               <span style={{ background: currentHexA }} />
             </div>
             <button
@@ -325,8 +325,8 @@ export default function ColorPicker({ value, onChange, onClose, title = "Color p
             >
               <span style={{ background: prevRef.current }} />
             </button>
-            <span className={styles.compareLabel}>current</span>
           </div>
+        </div>
         </div>
 
         {/* Alpha / opacity */}
@@ -334,18 +334,18 @@ export default function ColorPicker({ value, onChange, onClose, title = "Color p
           <Slider label="A" max={255} value={alpha} accent="#bbbbbb" onChange={setAlphaAndEmit} />
         </div>
 
-        {/* RGB sliders */}
-        <div className={styles.sliders} data-testid="rgb-sliders">
-          <Slider label="R" max={255} value={cr} accent="#ff4d4d" onChange={(n) => applyRgb(n, cg, cb)} />
-          <Slider label="G" max={255} value={cg} accent="#4dd24d" onChange={(n) => applyRgb(cr, n, cb)} />
-          <Slider label="B" max={255} value={cb} accent="#4d8bff" onChange={(n) => applyRgb(cr, cg, n)} />
-        </div>
-
-        {/* HSL sliders */}
-        <div className={styles.sliders} data-testid="hsl-sliders">
-          <Slider label="H" max={360} value={Math.round(hsl.h)} onChange={(n) => applyHsl(n, hsl.s, hsl.l)} />
-          <Slider label="S" max={100} value={Math.round(hsl.s)} onChange={(n) => applyHsl(hsl.h, n, hsl.l)} />
-          <Slider label="L" max={100} value={Math.round(hsl.l)} onChange={(n) => applyHsl(hsl.h, hsl.s, n)} />
+        {/* RGB + HSL side by side to keep the dialog short */}
+        <div className={styles.dual}>
+          <div className={styles.sliders} data-testid="rgb-sliders">
+            <Slider label="R" max={255} value={cr} accent="#ff4d4d" onChange={(n) => applyRgb(n, cg, cb)} />
+            <Slider label="G" max={255} value={cg} accent="#4dd24d" onChange={(n) => applyRgb(cr, n, cb)} />
+            <Slider label="B" max={255} value={cb} accent="#4d8bff" onChange={(n) => applyRgb(cr, cg, n)} />
+          </div>
+          <div className={styles.sliders} data-testid="hsl-sliders">
+            <Slider label="H" max={360} value={Math.round(hsl.h)} onChange={(n) => applyHsl(n, hsl.s, hsl.l)} />
+            <Slider label="S" max={100} value={Math.round(hsl.s)} onChange={(n) => applyHsl(hsl.h, n, hsl.l)} />
+            <Slider label="L" max={100} value={Math.round(hsl.l)} onChange={(n) => applyHsl(hsl.h, hsl.s, n)} />
+          </div>
         </div>
 
         <div className={styles.hexRow}>
@@ -399,10 +399,6 @@ export default function ColorPicker({ value, onChange, onClose, title = "Color p
             </button>
           ))}
         </div>
-
-        <div className={styles.footer}>
-          <button type="button" className="mp-btn" onClick={onClose}>Close</button>
-        </div>
       </div>
     </div>
   );
@@ -411,7 +407,7 @@ export default function ColorPicker({ value, onChange, onClose, title = "Color p
 // ── Hue/Saturation color wheel ────────────────────────────────────────────────
 // Angle = hue, radius = saturation, brightness from the current `val`. Clicking
 // or dragging picks hue+sat; a thumb marks the current colour.
-const WHEEL = 116;
+const WHEEL = 92;
 function HueSatWheel({ hue, sat, val, onPick }: {
   hue: number; sat: number; val: number; onPick: (h: number, s: number) => void;
 }) {
