@@ -40,11 +40,24 @@ function rememberNameSet(key: string | null): void {
 }
 
 export function DisplayNameGate() {
-  const { namespaceId, selfIdentity } = useDriveWorkspace();
+  const { namespaceId, selfIdentity, namespaceMemberNames } =
+    useDriveWorkspace();
   const { name, loading, error, setName } = useMemberDisplayName(
     namespaceId,
     selfIdentity,
   );
+  // The name as seen by the rest of the app's member surfaces: the
+  // namespace GroupMember rows (keyed by identity), which reliably carry
+  // the name even when `useMemberDisplayName` returns null on a cold load
+  // (mero-react rehydration gap #42). This is the same source the members
+  // list + the settings panel use, so the gate agrees with them. By the
+  // time the gate mounts, the workspace stage is past `loading-*` (which
+  // gates on membersLoading), so these rows are already populated.
+  const memberRowName = selfIdentity
+    ? namespaceMemberNames[selfIdentity] ?? null
+    : null;
+  // The effective name from ANY reliable source.
+  const effectiveName = name ?? memberRowName;
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -77,21 +90,27 @@ export function DisplayNameGate() {
     }
   }, [markerKey]);
 
-  // The moment a real name is observed from the server, persist the
-  // marker so future refreshes trust it even if the hook stops returning
-  // the name.
+  // The moment a real name is observed from ANY reliable source (the
+  // metadata hook OR the namespace member rows), persist the marker so
+  // future refreshes trust it even if the hook stops returning the name.
   useEffect(() => {
-    if (markerKey && name !== null) {
+    if (markerKey && effectiveName !== null) {
       rememberNameSet(markerKey);
       setKnownSet(true);
     }
-  }, [markerKey, name]);
+  }, [markerKey, effectiveName]);
 
+  // Suppress the gate when the name is known from ANY reliable source.
+  // Gating on `effectiveName` (not just the flaky hook `name`) is the fix
+  // for the gate re-prompting on a cold/long-gap session: even if the
+  // localStorage marker is gone (new device, cleared storage) AND the
+  // hook returns null (#42), the member rows still show the name, so we
+  // must not ask the user to set it again.
   if (
     !namespaceId ||
     !selfIdentity ||
     loading ||
-    name !== null ||
+    effectiveName !== null ||
     dismissed ||
     knownSet
   )
