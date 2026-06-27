@@ -10,11 +10,23 @@ import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useMemberDisplayName } from '@/hooks/useMemberDisplayName';
 
 export function MyDisplayNamePanel() {
-  const { namespaceId, selfIdentity } = useDriveWorkspace();
-  const { name, loading, error, setName } = useMemberDisplayName(
-    namespaceId,
-    selfIdentity,
-  );
+  const { namespaceId, selfIdentity, namespaceMemberNames } =
+    useDriveWorkspace();
+  const {
+    name: hookName,
+    loading,
+    error,
+    setName,
+  } = useMemberDisplayName(namespaceId, selfIdentity);
+  // `useMemberDisplayName` (useMemberMetadata under the hood) can return
+  // null even when the name IS set server-side — a mero-react rehydration
+  // gap (mero-drive#42) that strands this panel on "Not set yet" while the
+  // members list shows the real name. Fall back to the namespace
+  // GroupMember rows (`namespaceMemberNames`, keyed by identity) that the
+  // members list reads, so the two surfaces agree.
+  const name =
+    hookName ??
+    (selfIdentity ? namespaceMemberNames[selfIdentity] ?? null : null);
   const [draft, setDraft] = useState<string>('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
