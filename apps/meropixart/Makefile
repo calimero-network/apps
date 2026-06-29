@@ -1,4 +1,4 @@
-.PHONY: help setup install build bundle dev restart frontend dev-node dev-node2 dev-invite stop \
+.PHONY: help setup install build bundle dev nodes restart frontend dev-node dev-node2 dev-invite stop \
         logic-build logic-bundle app-install app-build app-typecheck app-lint \
         test unit e2e e2e-ui workflows workflows-no-build logic-test clean
 
@@ -23,6 +23,7 @@ help:
 	@echo ""
 	@echo "  Dev"
 	@echo "    dev            Full stack: build WASM, 2 nodes, invite, frontend"
+	@echo "    nodes          Start both merod nodes only (no frontend) to test invitations"
 	@echo "    restart        Restart nodes without rebuilding WASM (faster)"
 	@echo "    frontend       Frontend only (http://localhost:5176)"
 	@echo "    stop           Stop all dev nodes and free ports"
@@ -82,6 +83,26 @@ dev: app-install
 	@bash scripts/dev-node2.sh
 	@bash scripts/dev-invite.sh
 	cd app && pnpm dev
+
+# Bring up BOTH merod nodes (no frontend) so you can exercise the invite flow.
+# node1 gets the app + a workspace + a project context; node2 gets the app only.
+# Re-running is safe: each script nukes and re-inits its node for a clean slate.
+# Then invite node2 either from the UI (`make frontend`) or with `make dev-invite`.
+nodes: logic-build
+	@bash scripts/dev-node.sh --skip-build
+	@bash scripts/dev-node2.sh
+	@printf '\n'
+	@printf '\033[1;32m══════════════════════════════════════════\033[0m\n'
+	@printf '\033[1;32m  Two nodes up — ready to test invitations\033[0m\n'
+	@printf '\033[1;32m══════════════════════════════════════════\033[0m\n'
+	@printf '\n'
+	@printf '  node1 (workspace):  \033[1mhttp://localhost:2460\033[0m\n'
+	@printf '  node2 (invitee):    \033[1mhttp://localhost:2461\033[0m\n'
+	@printf '  login:              \033[1madmin / calimero1234\033[0m\n'
+	@printf '\n'
+	@printf '  Invite node2:  \033[36mmake dev-invite\033[0m   (scripted)  or  \033[36mmake frontend\033[0m  (from the UI)\n'
+	@printf '  Stop nodes:    \033[36mmake stop\033[0m\n'
+	@printf '\n'
 
 restart: app-install
 	@bash scripts/dev-node.sh --clean 2>/dev/null || true
