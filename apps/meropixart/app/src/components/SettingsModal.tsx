@@ -139,6 +139,14 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
 
   useEffect(() => {
     let cancelled = false;
+    // The members endpoint only accepts a hex-encoded 32-byte group id; a base58
+    // context id (the fallback when no group id is resolved) is rejected with a
+    // 400 and would surface as an empty list. Skip the doomed request instead.
+    if (!/^[0-9a-fA-F]{64}$/.test(membersGroupId)) {
+      setMembers([]);
+      setLoadingMembers(false);
+      return;
+    }
     setLoadingMembers(true);
     adminGet<MembersResponse>(`/groups/${membersGroupId}/members`)
       .then((raw) => {
