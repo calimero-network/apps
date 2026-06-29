@@ -1,0 +1,57 @@
+# Mero Meet — self-hosted TURN stack. Fully independent: own instance, own
+# security group, own DNS name. It must NOT share a host or SG with the Calimero
+# relayer node.
+#
+#   coturn     STUN + TURN relay (host networking — needs the full UDP relay range)
+#   ice-cred   mints short-lived TURN credentials (GET /ice, bearer-authed)
+#   caddy      auto-HTTPS reverse proxy in front of ice-cred (Let's Encrypt)
+#
+# Fill ../.env (see .env.example), run ../setup.sh once to template the coturn
+# config, then `docker compose up -d`.
+
+services:
+  coturn:
+    image: coturn/coturn:4.6
+    container_name: meet-coturn
+    network_mode: host # TURN relays across a large UDP port range; host net is simplest
+    restart: unless-stopped
+    volumes:
+      - ./coturn/turnserver.runtime.conf:/etc/coturn/turnserver.conf:ro
+      # - ./certs:/etc/coturn/certs:ro   # Phase 2 (turns: TLS)
+    command: ["-c", "/etc/coturn/turnserver.conf"]
+
+  ice-cred:
+    image: node:20-alpine
+    container_name: meet-ice-cred
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./cred-service:/app:ro
+    environment:
+      PORT: "8080"
+      TURN_SECRET: "${TURN_SECRET}"
+      ICE_API_KEY: "${ICE_API_KEY}"
+      TURN_DOMAIN: "${TURN_DOMAIN}"
+      CRED_TTL_SECONDS: "${CRED_TTL_SECONDS:-3600}"
+      ENABLE_TURNS: "${ENABLE_TURNS:-false}"
+    command: ["node", "server.mjs"]
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2
+    container_name: meet-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      TURN_DOMAIN: "${TURN_DOMAIN}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
