@@ -21,6 +21,8 @@ REGISTRY_URL="${REGISTRY_URL:-https://apps.calimero.network}"
 #   FRONTEND_URL=http://localhost:5173 ./build-bundle.sh
 # so `make dev` (Vite + HMR + devtools/console) backs the window instead of prod.
 FRONTEND_URL="${FRONTEND_URL:-https://mero-meet.vercel.app/}"
+# Source repository, surfaced in the registry UI (links.github).
+GITHUB_URL="${GITHUB_URL:-https://github.com/calimero-network/mero-meet}"
 
 resolve_app_version() {
   if [ -n "${APP_VERSION_OVERRIDE:-}" ]; then
@@ -90,7 +92,8 @@ cat > res/bundle-temp/manifest.json <<EOF
   },
   "migrations": [],
   "links": {
-    "frontend": "${FRONTEND_URL}"
+    "frontend": "${FRONTEND_URL}",
+    "github": "${GITHUB_URL}"
   }
 }
 EOF
