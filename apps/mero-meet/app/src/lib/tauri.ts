@@ -27,6 +27,35 @@ export const IS_TAURI =
   "__TAURI__" in window || // withGlobalTauri builds
   "__TAURI_INTERNALS__" in window; // Tauri v2 (forward-compat)
 
+// ── Dev-only browser harness ──────────────────────────────────────────────────
+//
+// Mero Meet is desktop-only in production, but a real video call needs TWO
+// context members, which a single desktop instance can't provide on one laptop.
+// For solo testing we run two local nodes and point two browser profiles at
+// them — see scripts/dev-node*.sh + DEV-TESTING.md. The desktop normally hands
+// the node + auth + room in via the URL hash; the harness builds the exact same
+// hash by hand, so when one is present we let the full app run in a plain
+// browser. Gated on import.meta.env.DEV so it can NEVER be true in a prod build.
+function hasDevSession(): boolean {
+  if (!import.meta.env.DEV) return false;
+  try {
+    const p = new URLSearchParams(window.location.hash.slice(1));
+    return Boolean((p.get("node_url") ?? p.get("nodeUrl")) && p.get("access_token"));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether the full Mero Meet UI (lobby/call) is allowed to render. True inside
+ * the Tauri desktop shell, or in a dev browser session (see {@link hasDevSession}).
+ * Everywhere else we show the "open in the desktop app" landing page.
+ *
+ * Evaluated once at module load — before MeroProvider parses and strips the
+ * auth hash — so the dev-session detection still sees the hash.
+ */
+export const APP_ENABLED = IS_TAURI || hasDevSession();
+
 /**
  * Invoke a Tauri Rust command if running inside the desktop shell.
  *

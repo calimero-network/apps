@@ -4,7 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import { MeroProvider, AppMode as MeroAppMode } from "@calimero-network/mero-react";
 import "@calimero-network/mero-ui/styles.css";
 import App from "./App";
-import { IS_TAURI } from "./lib/tauri";
+import { APP_ENABLED } from "./lib/tauri";
 import { captureSessionFromHash } from "./lib/session";
 import "./index.css";
 
@@ -28,7 +28,7 @@ import "./index.css";
 // executor_public_key + dev_mode) before MeroProvider strips the hash; it reads
 // those by name and never mutates location, so it's safe to run first. The plain
 // web has no hash → no-op, and App renders the landing page (see App.tsx).
-if (IS_TAURI) captureSessionFromHash();
+if (APP_ENABLED) captureSessionFromHash();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
