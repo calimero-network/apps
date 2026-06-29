@@ -155,11 +155,32 @@ export default function EditorPage() {
     let cancelled = false;
     (async () => {
       myId.current = await resolveIdentity();
-      // resolve the subgroup id (for SettingsModal role queries)
+      // Resolve the subgroup (group) id this context lives under, for
+      // SettingsModal's governance member/role queries. `/contexts/{id}` does
+      // NOT expose the owning group, so walk the namespace's subgroups and
+      // match by context id. The base58 context id can't be used directly —
+      // `/groups/{id}/members` rejects it ("expected hex-encoded 32 bytes"),
+      // which is why members showed 0. Fall back to the namespace (teamId, hex)
+      // so Settings can still list members if the walk turns up nothing.
       try {
-        const ctxInfo = await adminGet<{ groupId?: string; subgroupId?: string }>(`/contexts/${ctxId}`);
-        if (ctxInfo?.subgroupId || ctxInfo?.groupId) setSubgroupId(ctxInfo.subgroupId ?? ctxInfo.groupId ?? "");
-      } catch { /* optional */ }
+        let resolved = "";
+        if (teamId) {
+          const sgRes = await adminGet<{
+            subgroups?: { groupId?: string; group_id?: string; id?: string }[];
+          }>(`/groups/${teamId}/subgroups`).catch(() => ({ subgroups: [] }));
+          const subs = Array.isArray(sgRes?.subgroups) ? sgRes.subgroups : [];
+          for (const sg of subs) {
+            const gid = sg.groupId ?? sg.group_id ?? sg.id ?? "";
+            if (!gid) continue;
+            const ctxs = await adminGet<{ contextId?: string; id?: string }[]>(
+              `/groups/${gid}/contexts`,
+            ).catch(() => [] as { contextId?: string; id?: string }[]);
+            const list = Array.isArray(ctxs) ? ctxs : [];
+            if (list.some((c) => (c.contextId ?? c.id) === ctxId)) { resolved = gid; break; }
+          }
+        }
+        if (!cancelled) setSubgroupId(resolved || teamId || "");
+      } catch { /* optional — Settings falls back to namespace scope */ }
 
       try {
         const d = await rpcCall<DocumentInfo>(ctxId, "get_document", {});
