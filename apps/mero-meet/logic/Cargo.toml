@@ -11,19 +11,19 @@ crate-type = ["cdylib", "rlib"]
 borsh = "1.6.1"
 borsh-derive = "1.6.1"
 bs58 = "0.5.1"
-calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.7" }
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.7" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.7" }
+calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.8" }
+calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.8" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.8" }
 thiserror = "1.0.56"
 
 [build-dependencies]
-calimero-wasm-abi = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.7" }
+calimero-wasm-abi = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.8" }
 serde_json = "1.0.113"
 
 [dev-dependencies]
 # Enables register_crdt_merge + the native mock host so TestHost can drive the
 # AccessControl writer-set state under `cargo test`.
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.7", features = ["testing"] }
+calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.8", features = ["testing"] }
 
 [profile.app-release]
 inherits = "release"
