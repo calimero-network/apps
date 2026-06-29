@@ -1,7 +1,0 @@
-# Auto-HTTPS for the credential endpoint. Caddy obtains + renews a Let's Encrypt
-# cert for {$TURN_DOMAIN} automatically (needs ports 80 + 443 open to the world).
-# The desktop app calls https://{$TURN_DOMAIN}/ice.
-{$TURN_DOMAIN} {
-	encode gzip
-	reverse_proxy ice-cred:8080
-}
