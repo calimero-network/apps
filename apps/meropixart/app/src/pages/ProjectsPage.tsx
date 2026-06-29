@@ -131,6 +131,16 @@ export default function ProjectsPage() {
               // unsynced) leave them undefined.
               let doc: DocumentInfo | null = null;
               try { doc = await rpcCall<DocumentInfo>(contextId, "get_document", {}); } catch { /* unsynced */ }
+              // Member count comes from the governance group, not the contract's
+              // `doc.memberCount` (which counts in-contract registrations and reads
+              // 0 for peers who joined the subgroup but never registered). The
+              // subgroup id is hex, so `/groups/{id}/members` accepts it.
+              let memberCount: number | undefined = doc?.memberCount;
+              try {
+                const m = await adminGet<{ members?: unknown[] } | unknown[]>(`/groups/${sgId}/members`);
+                const arr = Array.isArray(m) ? m : (m as { members?: unknown[] }).members ?? [];
+                if (Array.isArray(arr)) memberCount = arr.length;
+              } catch { /* keep the doc fallback */ }
               resolved.push({
                 contextId,
                 groupId: sgId,
@@ -138,7 +148,7 @@ export default function ProjectsPage() {
                 description: doc?.description ?? "",
                 width: doc?.width,
                 height: doc?.height,
-                memberCount: doc?.memberCount,
+                memberCount,
               });
             }
           } catch {
