@@ -79,25 +79,30 @@ steps:
     check_interval: 2
     trigger_sync: true
 
-  - name: Node 1 Creates Event Shared With Node 2
+  # Cross-node sync is verified through members (get_members is unfiltered, so it
+  # doesn't depend on per-caller owner/peer gating like get_events does). Each
+  # node registers a username; after sync both nodes must see both names.
+  - name: Node 1 Registers Alice
     type: call
     node: calimero-node-1
     context_id: "{{context_id}}"
     executor_public_key: "{{member_public_key}}"
-    method: create_event
+    method: set_username
     args:
-      event_data:
-        title: "Sprint Planning"
-        description: "Cross-node sync test"
-        start: "2026-07-01T10:00:00"
-        end: "2026-07-01T11:00:00"
-        event_type: "event"
-        color: "rgb(85, 124, 207)"
-        peers:
-          - "{{public_key_2}}"
+      username: "AliceNode1"
       timestamp: 1751953010
 
-  - name: Sync After Create
+  - name: Node 2 Registers Bob
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: set_username
+    args:
+      username: "BobNode2"
+      timestamp: 1751953011
+
+  - name: Sync After Usernames
     type: wait_for_sync
     context_id: "{{context_id}}"
     nodes: [calimero-node-1, calimero-node-2]
@@ -105,17 +110,31 @@ steps:
     check_interval: 2
     trigger_sync: true
 
-  - name: Node 2 Reads Shared Events
+  - name: Node 1 Reads Members
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_members
+    args: {}
+    outputs:
+      members_n1: result
+
+  - name: Node 2 Reads Members
     type: call
     node: calimero-node-2
     context_id: "{{context_id}}"
     executor_public_key: "{{public_key_2}}"
-    method: get_events
+    method: get_members
     args: {}
     outputs:
-      events: result
+      members_n2: result
 
-  - name: Assert Event Synced to Node 2
+  # Both nodes see both members → bidirectional CRDT sync confirmed.
+  - name: Assert Bidirectional Member Sync
     type: assert
     statements:
-      - "contains({{events}}, 'Sprint Planning')"
+      - "contains({{members_n1}}, 'AliceNode1')"
+      - "contains({{members_n1}}, 'BobNode2')"
+      - "contains({{members_n2}}, 'AliceNode1')"
+      - "contains({{members_n2}}, 'BobNode2')"

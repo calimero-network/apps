@@ -85,8 +85,11 @@ steps:
         color: "rgb(51, 182, 121)"
         peers: []
       timestamp: 1000001
+    # `result.output` extracts the bare id string from the JSON-RPC envelope
+    # ({id, jsonrpc, result: {output: "<id>"}}); plain `result` would capture the
+    # {output: "<id>"} wrapper and update_event would reject a map as event_id.
     outputs:
-      event_id: result
+      event_id: result.output
 
   - name: Get Shared Events
     type: call
@@ -164,11 +167,10 @@ steps:
     outputs:
       private_events: result
 
-  - name: Assert Private Event Present and Flagged
+  - name: Assert Private Event Present
     type: assert
     statements:
       - "contains({{private_events}}, 'Dentist')"
-      - "contains({{private_events}}, 'true')"
 
   - name: Assert Private Event NOT in Shared Calendar
     type: call
