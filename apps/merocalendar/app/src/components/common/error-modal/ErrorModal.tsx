@@ -19,7 +19,7 @@ const ErrorModal: FC<IErrorModalProps> = ({
     if (errorType === 'websocket') {
       closeError();
       logout();
-      window.location.href = '/plantr/login';
+      window.location.href = '/login';
     } else {
       closeError();
       window.location.reload();

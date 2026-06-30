@@ -1,11 +1,11 @@
 .time__line {
   position: absolute;
   width: 100%;
-  border-top: 2px solid #ea4335;
+  border-top: 2px solid var(--danger);
   z-index: 1;
 
   &::before {
-    background: #ea4335;
+    background: var(--danger);
     border-radius: 50%;
     content: "";
     position: absolute;

@@ -1,8 +1,8 @@
 .modal {
   position: fixed;
-  background: #fff;
+  background: var(--mc-surface);
   padding: 15px 10px 15px 10px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--mc-border);
   border-radius: 8px;
   max-width: 210px;
   width: 100%;
@@ -35,7 +35,7 @@
     margin-bottom: 10px;
 
     &__name {
-      color: #70757a;
+      color: var(--mc-text-dim);
       font-size: 11px;
       letter-spacing: .8px;
       line-height: 16px;
@@ -51,7 +51,7 @@
       letter-spacing: -0.6px;
       padding-right: 1px;
       border-radius: 50%;
-      color: rgb(60,64,67);
+      color: var(--mc-text);
       font-size: 26px;
       line-height: 40px;
       width: 40px;
@@ -59,7 +59,7 @@
       text-align: center;
 
       &:hover {
-        background-color: darken(#fff, 4%);
+        background-color: var(--mc-hover);
       }
     }
   }
@@ -75,7 +75,7 @@
 
   &__empty__events {
     font-size: 12px;
-    color: rgb(60,64,67);
+    color: var(--mc-text);
   }
 }
 

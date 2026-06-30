@@ -31,8 +31,8 @@ const DatePicker: FC<DatePickerProps> = ({
   const [isTyping, setIsTyping] = useState(false);
   const [stylesPicker, setStylesPicker] = useState({ width: 200 });
   
-  const miniCalendarRef = useRef<HTMLDivElement>();
-  const inputRef = useRef<HTMLInputElement>();
+  const miniCalendarRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const openMiniCalendar = () => setIsOpen(true);
   const closeMiniCalendar = () => {

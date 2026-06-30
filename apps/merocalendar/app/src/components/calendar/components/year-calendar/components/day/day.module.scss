@@ -12,35 +12,35 @@
     text-align: center;
     width: max-content;
     min-width: 24px;
-    color: #3c4043;
+    color: var(--mc-text);
     line-height: 24px;
     border-radius: 50%;
     white-space: nowrap;
     cursor: pointer;
 
     &:hover {
-      background-color: darken(#fff, 4%);
+      background-color: var(--mc-hover);
     }
 
     &_additional {
-      color: #959ba1;
+      color: var(--mc-text-dim);
     }
 
     &_selected {
       color: var(--secondary);
-      background-color: #aecbfa;
+      background-color: var(--accent-soft);
       
       &:hover {
-        background-color: #aecbfa;
+        background-color: var(--accent-soft);
       }
     }
     
     &_active {
       color: #fff;
-      background-color: #1a73e8;
+      background-color: var(--accent);
 
       &:hover {
-        background-color: darken(#1a73e8, 4%);
+        background-color: var(--accent-dim);
       }
     }
   }

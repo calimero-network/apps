@@ -5,21 +5,24 @@ export interface IModalValues extends IValidatorData {
   title: string;
   startDate: Date;
   endDate: Date;
-  peers: string;
+  peers: string[];
   startTime: string;
   endTime: string;
   description: string;
   isLongEvent: boolean;
+  isPrivate: boolean;
   color: string;
+  owner: string;
 }
 
 export interface IMapEventValues {
   title: string;
   description: string;
-  peers: string;
+  peers: string[];
   startDate: Date;
   endDate: Date;
   type: TEventTypes;
   color?: string;
   owner: string;
+  isPrivate?: boolean;
 }

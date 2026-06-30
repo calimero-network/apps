@@ -6,15 +6,15 @@
   display: flex;
   line-height: 36px;
   height: 36px;
-  color: #222;
+  color: var(--mc-text);
   cursor: pointer;
 
   &:hover {
-    background-color: darken(#fff, 4%);
+    background-color: var(--mc-hover);
   }
   
   &:active {
-    background-color: #dadce0;
+    background-color: var(--mc-hover);
   }
 
   &__name {

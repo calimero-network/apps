@@ -16,6 +16,6 @@
   color: var(--color-placeholder);
   
   &:hover {
-    background-color: darken(#fff, 4%);
+    background-color: var(--mc-hover);
   }
 }

@@ -50,7 +50,7 @@ export const getCalendarDaysOfMonth = (params: GetCalendarDaysOfMonthParams): IM
     dayFrom: lastDay.dayNumber + 1 
   });
 
-  const calendarDaysOfMonth: IMonthDay[] = [].concat(
+  const calendarDaysOfMonth: IMonthDay[] = ([] as IMonthDay[]).concat(
     ...daysFromPrevMonth,
     ...days,
     ...daysFromNextMonth

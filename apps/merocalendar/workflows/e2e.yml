@@ -1,0 +1,121 @@
+name: E2E Two-Node Test
+description: >
+  Two-node Mero Calendar workflow. Installs the app on both nodes, creates a
+  shared calendar context, joins node 2, then verifies that a shared event
+  created on node 1 (and shared with node 2 as a peer) syncs and is visible
+  to node 2.
+
+stop_all_nodes: true
+restart: false
+wait_timeout: 120
+
+nodes:
+  chain_id: testnet-1
+  count: 2
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.6
+  prefix: calimero-node
+
+steps:
+  - name: Install Application on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: "../logic/res/merocalendar.wasm"
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install Application on Node 2
+    type: install_application
+    node: calimero-node-2
+    path: "../logic/res/merocalendar.wasm"
+    dev: true
+
+  - name: Create Namespace
+    type: create_group
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Create Calendar Context
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    params: '{}'
+    outputs:
+      context_id: contextId
+      member_public_key: memberPublicKey
+
+  - name: Create Identity on Node 2
+    type: create_identity
+    node: calimero-node-2
+    outputs:
+      public_key_2: publicKey
+
+  - name: Invite Node 2
+    type: create_group_invitation
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    outputs:
+      invitation_2: invitation
+
+  - name: Node 2 Joins Namespace
+    type: join_group
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+    invitation: "{{invitation_2}}"
+
+  - name: Node 2 Joins Context
+    type: join_context
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+
+  - name: Sync
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Node 1 Creates Event Shared With Node 2
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: create_event
+    args:
+      event_data:
+        title: "Sprint Planning"
+        description: "Cross-node sync test"
+        start: "2026-07-01T10:00:00"
+        end: "2026-07-01T11:00:00"
+        event_type: "event"
+        color: "rgb(85, 124, 207)"
+        peers:
+          - "{{public_key_2}}"
+      timestamp: 1751953010
+
+  - name: Sync After Create
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Node 2 Reads Shared Events
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: get_events
+    args: {}
+    outputs:
+      events: result
+
+  - name: Assert Event Synced to Node 2
+    type: assert
+    statements:
+      - "contains({{events}}, 'Sprint Planning')"

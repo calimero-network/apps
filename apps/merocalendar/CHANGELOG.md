@@ -2,6 +2,46 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased] — Mero Calendar
+
+Major rebrand and rewrite of the former "plantr" template into **Mero Calendar**.
+
+### 🚀 Features
+
+- **Teams (namespaces).** A team is a Calimero namespace with one shared calendar
+  context; invite teammates with a code and sync events P2P.
+- **Private events.** Node-local `#[app::private]` storage — private entries never
+  leave your node.
+- **Display names.** Members register a username (`set_username` / `get_members`),
+  so the UI shows names instead of raw public keys.
+- **Landing page** with a calendar preview, plus a `ConnectButton` login flow.
+- **Dark / light mode** with a persisted theme toggle and CSS-variable theming.
+- **Refreshed, accessible event color palette** that reads well on both themes.
+
+### 🏗️ Migration
+
+- Contract upgraded to `calimero-sdk` / `calimero-storage` / `calimero-storage-macros`
+  `0.11.0-rc.8` (git-tag deps).
+- Frontend migrated from `@calimero-network/calimero-client@1.6.3` to
+  `@calimero-network/mero-react` + `mero-js` + `mero-ui` (React 19, Vite 6);
+  `JsonRpcClient`/`WsSubscriptionsClient` replaced by JSON-RPC `execute` + `SseClient`.
+- Removed the GitHub-Pages `/plantr/` base path and the NEAR release flow.
+
+### 🐛 Bug Fixes
+
+- **Peers no longer collapse on edit** — events store/transport peers as a real
+  `string[]` end-to-end instead of round-tripping a string with mismatched delimiters.
+- **Missing names fixed** — owner/peers resolve to usernames via `get_members`.
+- **Peer entry** replaced fragile `@`/comma parsing with a member autocomplete.
+
+### 🧪 Tests
+
+- Rust `TestHost` unit tests for the contract.
+- merobox workflows: `logic-test.yml` (single-node CRUD), `e2e.yml` (two-node sync),
+  `integration-setup.yml` (seeded stack for Playwright).
+- Playwright mocked + integration suites; GitHub Actions CI for unit/e2e/rust,
+  merobox workflows, and full-stack integration.
+
 ## [0.2.0] - 2024-10-21
 
 ### 🚀 Features

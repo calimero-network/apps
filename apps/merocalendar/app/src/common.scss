@@ -1,22 +1,22 @@
 .button {
   border-radius: 4px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--mc-border);
   outline: none;
   cursor: pointer;
   font-weight: 500;
-  font-size: .875rem;
+  font-size: 0.875rem;
   padding: 0 12px;
-  color: rgb(60,64,67);
-  background-color: #fff;
-  letter-spacing: .0107142857em;
+  color: var(--mc-text);
+  background-color: var(--mc-surface);
+  letter-spacing: 0.0107142857em;
   height: 36px;
-  
+
   &:hover {
-    background-color: darken(#fff, 4%);
+    background-color: var(--mc-hover);
   }
-  
+
   &:active {
-    background-color: #dadce0;
+    background-color: var(--mc-hover);
   }
 }
 
@@ -26,7 +26,7 @@
   left: 0;
   width: 100vw;
   height: 100vh;
-  background-color: rgb(251 251 251 / 27%);
+  background-color: rgba(5, 8, 11, 0.4);
   z-index: 10;
   cursor: pointer;
 }
@@ -42,14 +42,14 @@
 ::-webkit-scrollbar-track {
   background: inherit;
 }
- 
+
 ::-webkit-scrollbar-thumb {
   border: none;
   box-shadow: none;
-  background: #cbcccf;
+  background: var(--border-strong);
   border-radius: 8px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgb(130, 130, 130); 
+  background: var(--mc-text-dim);
 }

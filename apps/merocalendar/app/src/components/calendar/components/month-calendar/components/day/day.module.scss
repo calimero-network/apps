@@ -3,50 +3,48 @@
   width: 100%;
   flex-direction: column;
   align-items: center;
-  border-right: 1px solid #dadce0;
-  border-bottom: 1px solid #dadce0;
+  border-right: 1px solid var(--mc-grid-line);
+  border-bottom: 1px solid var(--mc-grid-line);
   height: 100%;
 
-  &:nth-of-type(7n+1) {
-    border-left: 1px solid #dadce0;
+  &:nth-of-type(7n + 1) {
+    border-left: 1px solid var(--mc-grid-line);
   }
 
   &__label {
     margin-top: 3px;
     font-size: 12px;
     font-weight: 500;
-    letter-spacing: .3px;
+    letter-spacing: 0.3px;
     text-align: center;
     width: max-content;
     min-width: 24px;
-    color: #3c4043;
+    color: var(--mc-text);
     line-height: 24px;
     border-radius: 50%;
     white-space: nowrap;
     cursor: pointer;
 
     &:hover {
-      background-color: darken(#fff, 4%);
+      background-color: var(--mc-hover);
     }
 
     &_additional {
-      color: #959ba1;
+      color: var(--mc-text-dim);
+      opacity: 0.7;
     }
-    
+
     &_active {
       color: #fff;
-      background-color: #1a73e8;
+      background-color: var(--accent);
 
       &:hover {
-        background-color: darken(#1a73e8, 4%);
+        background-color: var(--accent-dim);
       }
     }
   }
 
   &__events {
-    // overflow-y: auto;
-    // overflow-x: hidden;
-    // white-space: nowrap;
     width: 100%;
     position: relative;
     margin-top: 7px;
@@ -67,7 +65,7 @@
     line-height: 20px;
     border-radius: 4px;
     overflow: hidden;
-    color: rgb(60,64,67);
+    color: var(--mc-text);
     background-color: inherit;
     margin-bottom: 3px;
     cursor: pointer;
@@ -76,13 +74,12 @@
     outline: none;
     border: none;
     position: absolute;
-    overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     font-weight: 500;
 
     &:hover {
-      background-color: whitesmoke;
+      background-color: var(--mc-hover);
     }
   }
 }

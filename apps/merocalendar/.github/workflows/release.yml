@@ -1,0 +1,46 @@
+name: Release bundle (.mpk)
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  bundle:
+    name: Build signed .mpk bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.89.0"
+          targets: wasm32-unknown-unknown
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            logic/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('logic/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+      - name: Build WASM + bundle
+        # build-bundle.sh skips signing when mero-sign isn't on the runner — the
+        # unsigned .mpk is still produced and uploaded as a build artifact.
+        run: |
+          cd logic
+          ./build-bundle.sh
+      - name: Upload .mpk artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: merocalendar-mpk
+          path: logic/res/*.mpk
+          retention-days: 30
+      - name: Attach .mpk to GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: logic/res/*.mpk

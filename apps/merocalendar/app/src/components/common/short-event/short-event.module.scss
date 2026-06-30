@@ -9,12 +9,17 @@
   line-height: 20px;
   border-radius: 4px;
   overflow: hidden;
-  color: rgb(60,64,67);
+  color: var(--mc-text);
   margin-bottom: 3px;
   cursor: pointer;
 
   &:hover {
-    background-color: whitesmoke;
+    background-color: var(--mc-hover);
+  }
+
+  &__lock {
+    font-size: 9px;
+    margin-right: 4px;
   }
 
   &__circle {

@@ -12,11 +12,11 @@
   line-height: 42px;
 
   &:hover {
-    background-color: whitesmoke;
+    background-color: var(--mc-hover);
   }
 
   &:active {
-    background-color: #dadce0;
+    background-color: var(--mc-hover);
   }
   
   &__text {
@@ -27,9 +27,9 @@
 .popup {
   z-index: 10;
   position: absolute;
-  background: #fff;
+  background: var(--mc-surface);
   overflow: hidden;
-  border: 1px solid #ccc;
+  border: 1px solid var(--mc-border);
   border-radius: 8px;
   display: flex;
   flex-direction: column;

@@ -34,7 +34,7 @@ const TimeInput: FC<ITimeInputProps> = ({
   selectTime,
   onFocus
 }) => {
-  const inputRef = useRef<HTMLInputElement>();
+  const inputRef = useRef<HTMLInputElement>(null);
   
   const onChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { time } = parseTimeString(e.target.value);

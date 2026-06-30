@@ -1,44 +1,42 @@
-import React, { FC } from 'react';
-import { getMapEventValues } from '../helpers';
-import ModalFormEvent from '../modal-form-event/ModalFormEvent';
-import { TPartialEvent } from '../../../../types/event';
-import { useActions, useModal } from '../../../../hooks/index';
-import { IModalEditEventOptions } from '../../../../store/modals/types';
+import { FC } from "react";
+import { getMapEventValues } from "../helpers";
+import ModalFormEvent from "../modal-form-event/ModalFormEvent";
+import { TPartialEvent } from "../../../../types/event";
+import { useActions, useModal } from "../../../../hooks/index";
+import { IModalEditEventOptions } from "../../../../store/modals/types";
 
 const ModalEditEvent: FC<IModalEditEventOptions> = ({ eventData, eventId }) => {
   const { updateEvent } = useActions();
   const { closeModalEdit } = useModal();
-  // @ts-ignore
-  const startDate = new Date(eventData.start);
-  // @ts-ignore
-  const endDate = new Date(eventData.end);
+  const startDate = new Date(eventData.start ?? Date.now());
+  const endDate = new Date(eventData.end ?? Date.now());
 
   const defaultEventValues = getMapEventValues({
-    // @ts-ignore
-    title: eventData.title,
-    // @ts-ignore
-    description: eventData.description,
-    // @ts-ignore
-    peers: eventData.peers,
+    title: eventData.title ?? "",
+    description: eventData.description ?? "",
+    peers: eventData.peers ?? [],
     startDate,
     endDate,
-    // @ts-ignore
-    type: eventData.type,
-    // @ts-ignore
+    type: eventData.type ?? "event",
     color: eventData.color,
-    // @ts-ignore
-    owner: eventData.owner,
+    owner: eventData.owner ?? "",
+    isPrivate: Boolean(eventData.private),
   });
 
-
+  // Carry the event's private flag into the update so the data source routes to
+  // the correct (shared vs private) contract method.
   const onUpdateEvent = (event: TPartialEvent) =>
-    updateEvent({ eventId: eventId, event });
+    updateEvent({
+      eventId,
+      event: { ...event, private: Boolean(eventData.private) },
+    });
 
   return (
     <ModalFormEvent
       textSendButton="Edit"
       textSendingBtn="Editing"
       defaultEventValues={defaultEventValues}
+      // @ts-ignore — handlerSubmit returns the dispatched thunk (has .unwrap)
       handlerSubmit={onUpdateEvent}
       closeModal={closeModalEdit}
     />

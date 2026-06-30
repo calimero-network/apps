@@ -3,7 +3,7 @@ import { useCallback, useEffect, RefObject } from "react";
 type Handler = (event: MouseEvent) => void
 
 export const useClickOutside = <T extends HTMLElement = HTMLElement>(
-  ref: RefObject<T>,
+  ref: RefObject<T | null>,
   callback: Handler
 ): void => {
   const handler = useCallback((e: MouseEvent) => {

@@ -22,7 +22,7 @@ const Hour: FC<IHourProps> = ({
   dayEvents
 }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
-  const timeSlotRef = useRef<HTMLDivElement>();
+  const timeSlotRef = useRef<HTMLDivElement>(null);
   const isCurrentHour = dataHour === currentDate.getHours();
   const { openModalCreate } = useModal();
 
@@ -67,6 +67,7 @@ const Hour: FC<IHourProps> = ({
             id={id}
             left={left}
             width={width}
+            isPrivate={event.private}
           />
         );
       })}

@@ -12,6 +12,7 @@ interface IEventProps {
   id: string;
   width: string;
   left: string;
+  isPrivate?: boolean;
 }
 
 const Event: FC<IEventProps> = ({
@@ -22,7 +23,8 @@ const Event: FC<IEventProps> = ({
   color,
   id,
   width,
-  left
+  left,
+  isPrivate
 }) => {
   const { openPopup } = usePopup();
 
@@ -31,7 +33,9 @@ const Event: FC<IEventProps> = ({
     top,
     background: color,
     width,
-    left
+    left,
+    // FEATURE: private events get a dashed outline marker
+    border: isPrivate ? '1.5px dashed rgba(255,255,255,0.85)' : undefined
   };
 
   const handleClick = (e: MouseEvent<HTMLElement>) => {
@@ -45,8 +49,13 @@ const Event: FC<IEventProps> = ({
       style={eventStyle}
       className={styles.event}
       onClick={handleClick}
+      data-testid="event-chip"
+      data-private={isPrivate ? "true" : "false"}
     >
-      <div className={styles.event__title}>{title}</div>
+      <div className={styles.event__title}>
+        {isPrivate && <span title="Private event">🔒 </span>}
+        {title}
+      </div>
       <div className={styles.event__time}>{time}</div>
     </div>
   );

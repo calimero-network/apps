@@ -1,0 +1,92 @@
+name: Integration Tests (Full Stack)
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "logic/**"
+      - "app/**"
+      - "workflows/**"
+      - "scripts/**"
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "logic/**"
+      - "app/**"
+      - "workflows/**"
+      - "scripts/**"
+
+concurrency:
+  group: integration-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    name: Full-Stack Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.89.0"
+          targets: wasm32-unknown-unknown
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            logic/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('logic/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+      - name: Build WASM
+        run: |
+          cd logic
+          cargo build --target wasm32-unknown-unknown --profile app-release
+          mkdir -p res
+          cp target/wasm32-unknown-unknown/app-release/merocalendar.wasm res/
+      - name: Install merobox
+        run: pip install merobox==0.6.24 && merobox --version
+      - name: Run integration-setup workflow
+        working-directory: workflows
+        run: |
+          merobox stop --all 2>/dev/null || true
+          merobox nuke --force 2>/dev/null || true
+          merobox bootstrap run integration-setup.yml
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+      - name: Install frontend dependencies
+        working-directory: app
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright browsers
+        working-directory: app
+        run: pnpm exec playwright install chromium --with-deps
+      - name: Run integration tests
+        working-directory: app
+        run: pnpm exec playwright test --project=integration
+        env:
+          CI: "true"
+          INTEGRATION_MODE: "true"
+          PW_PORT: "5174"
+          # merobox exposes node-1's RPC/Admin server on 2528 (2428 is P2P).
+          INTEGRATION_NODE_URL: "http://localhost:2528"
+      - name: Stop nodes
+        if: always()
+        run: |
+          merobox stop --all 2>/dev/null || true
+          merobox nuke --force 2>/dev/null || true
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-playwright-report
+          path: app/e2e-report/
+          retention-days: 7

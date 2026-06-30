@@ -14,7 +14,7 @@ const TextField = forwardRef<HTMLInputElement, IFieldProps>(({
   onClick,
   ...rest
 }, ref) => {
-  const inputRef = useRef<HTMLInputElement>();
+  const inputRef = useRef<HTMLInputElement>(null);
   
   useImperativeHandle(ref, () => inputRef.current!, [inputRef])
   // @ts-ignore

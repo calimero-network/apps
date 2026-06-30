@@ -33,7 +33,7 @@ const DateInput = forwardRef<HTMLInputElement, IDateInputProps>(({
   error,
   ...rest
 }, ref) => {
-  const inputRef = useRef<HTMLInputElement>();
+  const inputRef = useRef<HTMLInputElement>(null);
   
   useImperativeHandle(ref, () => inputRef.current!, [inputRef])
 

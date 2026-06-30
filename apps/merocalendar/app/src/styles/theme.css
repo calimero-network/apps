@@ -1,0 +1,218 @@
+/* ════════════════════════════════════════════════════════════════════════
+   Mero Calendar — global theme tokens (dark + light)
+
+   Two families of custom properties:
+   1. the mero-pixart-derived bg / text / accent names used by the Landing /
+      Login / Teams pages (the copied CSS modules reference them).
+   2. the mc- prefixed calendar surface tokens that the calendar SCSS consumes.
+
+   Both are redefined per [data-theme] so the whole app — including the
+   calendar grid — re-themes instantly when the ThemeProvider flips the
+   <html data-theme> attribute.
+════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --radius: 8px;
+  --radius-sm: 6px;
+  --radius-lg: 12px;
+  --font: Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+
+  /* signature accent — a calm calendar blue/indigo */
+  --accent: #6c8cff;
+  --accent-dim: #5575e8;
+  --accent-soft: rgba(108, 140, 255, 0.16);
+  --accent-text: #ffffff;
+
+  --danger: #ff5d6c;
+  --ok: #43d17a;
+  --warn: #ffb02e;
+
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.12);
+}
+
+/* ── Light theme (default) ───────────────────────────────────────────── */
+:root,
+[data-theme="light"] {
+  --bg-0: #f6f8fc; /* app background */
+  --bg-1: #ffffff; /* primary surface — cards, panels */
+  --bg-2: #ffffff; /* raised surface — header */
+  --bg-3: #eef1f6; /* hover / inset */
+  --bg-4: #e4e9f1; /* active / selected */
+  --border: #e2e6ee;
+  --border-strong: #cdd4e0;
+
+  --text: #1d2433;
+  --text-dim: #5b6577;
+  --text-faint: #97a0b0;
+
+  /* calendar tokens */
+  --mc-bg: #ffffff;
+  --mc-surface: #ffffff;
+  --mc-surface-alt: #f6f8fc;
+  --mc-text: #3c4043;
+  --mc-text-dim: #5b6577;
+  --mc-border: #e2e6ee;
+  --mc-border-soft: #eef1f6;
+  --mc-header-bg: #ffffff;
+  --mc-today-bg: #eef3ff;
+  --mc-today-text: var(--accent);
+  --mc-hover: #f1f4fa;
+  --mc-grid-line: #e8ebf1;
+  --mc-shadow: 0 1px 0 rgba(0, 0, 0, 0.11);
+}
+
+/* ── Dark theme ──────────────────────────────────────────────────────── */
+[data-theme="dark"] {
+  --bg-0: #0a0e13;
+  --bg-1: #0f1419;
+  --bg-2: #141a21;
+  --bg-3: #1b232c;
+  --bg-4: #232e39;
+  --border: #232b34;
+  --border-strong: #303a45;
+
+  --text: #e6eaef;
+  --text-dim: #9aa6b2;
+  --text-faint: #5c6772;
+
+  --accent: #8aa6ff;
+  --accent-dim: #6c8cff;
+  --accent-soft: rgba(138, 166, 255, 0.18);
+  --accent-text: #0a0e13;
+
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.4);
+
+  /* calendar tokens */
+  --mc-bg: #0f1419;
+  --mc-surface: #141a21;
+  --mc-surface-alt: #0f1419;
+  --mc-text: #e6eaef;
+  --mc-text-dim: #9aa6b2;
+  --mc-border: #232b34;
+  --mc-border-soft: #1b232c;
+  --mc-header-bg: #141a21;
+  --mc-today-bg: #1c2740;
+  --mc-today-text: #8aa6ff;
+  --mc-hover: #1b232c;
+  --mc-grid-line: #232b34;
+  --mc-shadow: 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font);
+  background: var(--bg-0);
+  color: var(--text);
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+/* ── Reusable primitives (mero-pixart "mp-*" → "mc-*") ────────────────── */
+.mc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-3);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, transform 0.06s;
+}
+.mc-btn:hover {
+  background: var(--bg-4);
+  border-color: var(--border-strong);
+}
+.mc-btn:active {
+  transform: translateY(1px);
+}
+.mc-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.mc-btn--primary {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.mc-btn--primary:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent-dim);
+}
+.mc-btn--ghost {
+  background: transparent;
+  border-color: transparent;
+}
+.mc-btn--ghost:hover {
+  background: var(--bg-3);
+}
+
+.mc-input {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.12s;
+}
+.mc-input:focus {
+  border-color: var(--accent);
+}
+
+.mc-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 8, 11, 0.55);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+}
+
+/* Sun/moon theme toggle button */
+.mc-theme-toggle {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 16px;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.mc-theme-toggle:hover {
+  background: var(--bg-3);
+  border-color: var(--border-strong);
+  color: var(--accent);
+}
+
+@keyframes mc-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

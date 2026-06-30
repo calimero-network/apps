@@ -1,14 +1,17 @@
+// FEATURE (better meeting colors): a refreshed, accessible 10-color palette.
+// Each chip renders white event text, so every color is dark/saturated enough
+// to keep that text legible on BOTH light and dark calendar backgrounds (all
+// ≥ ~3:1 contrast against white). Picked to be distinguishable for common
+// color-vision differences.
 export const colors = [
-  'rgb(3, 155, 229)',
-  'rgb(85, 124, 207)',
-  'rgb(121, 134, 203)',
-  'rgb(142, 36, 170)',
-  'rgb(97, 97, 97)',
-  'rgb(213, 0, 0)',
-  'rgb(230, 124, 115)',
-  'rgb(244, 81, 30)',
-  'rgb(246, 191, 38)',
-  'rgb(51, 182, 121)',
-  'rgb(11, 128, 67)',
-  'rgb(83, 206, 214)'
+  "#3b6fe0", // indigo blue
+  "#2aa775", // emerald
+  "#c8472b", // brick red
+  "#9b4dca", // violet
+  "#0f7c8c", // teal
+  "#d98324", // amber
+  "#c2356f", // magenta
+  "#5566c4", // periwinkle
+  "#6b7280", // slate gray
+  "#1f9e54", // green
 ];

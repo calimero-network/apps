@@ -1,34 +1,12 @@
-import {
-  clearAppEndpoint,
-  clearContextId,
-  clearExecutorPublicKey,
-  getAppEndpointKey,
-  getApplicationId,
-  getContextId,
-  getExecutorPublicKey,
-} from '@calimero-network/calimero-client';
-import { useState, useEffect } from 'react';
+import { clearAllStorage } from "@calimero-network/mero-react";
 
+// rc.8 auth helper. mero-react owns the real auth state (see useMero() in
+// App.tsx route guards); this thin hook just exposes a logout for components
+// that aren't inside a route (e.g. ErrorModal). clearAllStorage wipes tokens,
+// node url, and the active context/identity.
 export const useAuth = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const pk = getExecutorPublicKey();
-  const contextId = getContextId();
-  const appId = getApplicationId();
-  const nodeUrl = getAppEndpointKey();
-
-  useEffect(() => {
-    if (pk && contextId && appId && nodeUrl) {
-      setIsLoggedIn(true);
-    } else {
-      setIsLoggedIn(false);
-    }
-  }, [pk, contextId, appId, nodeUrl]);
-
   const logout = () => {
-    clearAppEndpoint();
-    clearContextId();
-    clearExecutorPublicKey();
+    clearAllStorage();
   };
-
-  return { isLoggedIn, logout };
+  return { logout };
 };

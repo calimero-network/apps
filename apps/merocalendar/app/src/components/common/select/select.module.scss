@@ -9,8 +9,8 @@
     box-shadow: 0 2px 3px rgba(0, 0, 0, 0.15);
     font-weight: 500;
     font-size: 1.3rem;
-    color: #3faffa;
-    background: #ffffff;
+    color: var(--accent);
+    background: var(--mc-surface);
     display: flex;
     align-items: center;
 
@@ -29,7 +29,7 @@
   &__list {
     padding: 0;
     margin: 0;
-    background: #ffffff;
+    background: var(--mc-surface);
     font-size: 14px;
     font-weight: 400;
     padding: 8px 0;

@@ -1,7 +1,8 @@
 import { validationMethodsWithDates, validationMethodsWithoutParams, validationMethodsWithParams } from "../../utils/validations";
 
 export interface IValidatorData {
-  [k: string]: string | number | boolean | Date;
+  // Includes string[] so event `peers` (array of pubkeys) is a valid field.
+  [k: string]: string | number | boolean | Date | string[];
 }
 
 export interface IRules {

@@ -10,9 +10,17 @@
 
 # production
 /build
+/dist
+/dev-dist
+
+# test artifacts
+/e2e-report
+/playwright-report
+/test-results
 
 # misc
 .DS_Store
+.env.integration
 .env.local
 .env.development.local
 .env.test.local

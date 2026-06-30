@@ -12,10 +12,10 @@
 }
 
 .errorModal {
-  background: #fff;
+  background: var(--mc-surface);
   padding-left: 10px;
   padding-right: 10px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--mc-border);
   border-radius: 8px;
   max-width: 400px;
   width: 100%;
@@ -41,7 +41,7 @@
   &__message {
     margin-top: 20px;
     font-size: 18px;
-    color: #333;
+    color: var(--mc-text);
     text-align: center;
   }
 }
@@ -57,13 +57,13 @@
   display: block;
   border: none;
   color: #fff;
-  background-color: #3e7bea;
+  background-color: var(--accent);
   padding: 8px 16px;
   border-radius: 8px;
   cursor: pointer;
   
   &:disabled {
-    background-color: cornflowerblue;
+    background-color: var(--accent-dim);
     cursor: not-allowed;
   }
 }

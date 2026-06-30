@@ -9,7 +9,7 @@ import {
 } from '../../../hooks/index';
 
 import styles from './popup.module.scss';
-import { getExecutorPublicKey } from '@calimero-network/calimero-client';
+import { getContextIdentity } from '@calimero-network/mero-react';
 
 interface IPopupProps {
   x: number;
@@ -18,7 +18,7 @@ interface IPopupProps {
 }
 
 const Popup: FC<IPopupProps> = ({ x, y, eventId }) => {
-  const accountId = getExecutorPublicKey();
+  const accountId = getContextIdentity();
   const popupRef = useRef<HTMLDivElement>(null);
   const { events } = useTypedSelector(({ events }) => events);
   const { deleteEvent } = useActions();
@@ -56,7 +56,9 @@ const Popup: FC<IPopupProps> = ({ x, y, eventId }) => {
   useClickOutside(popupRef, handleClosePopup);
 
   const onDelete = () => {
-    deleteEvent(eventId);
+    // Route deletion to the private vs shared contract method based on the event.
+    const ev = events.find((e) => e.id === eventId);
+    deleteEvent({ eventId, isPrivate: Boolean(ev?.private) });
     closePopup();
   };
 

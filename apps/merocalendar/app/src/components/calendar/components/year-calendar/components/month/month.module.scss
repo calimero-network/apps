@@ -21,7 +21,7 @@
       font-weight: 500;
       letter-spacing: .25px;
       line-height: 20px;
-      color: rgb(60,64,67);
+      color: var(--mc-text);
 
       &::first-letter {
         text-transform: uppercase;
@@ -38,7 +38,7 @@
     &__day {
       font-size: 12px;
       font-weight: 400;
-      color: #70757a;
+      color: var(--mc-text-dim);
       display: inline-block;
       line-height: 28px;
       text-align: center;

@@ -1,83 +1,47 @@
 {
-  "name": "plantr",
-  "version": "0.0.0",
+  "name": "mero-calendar",
+  "version": "0.1.0",
   "private": true,
+  "description": "Mero Calendar — shared p2p team calendars on Calimero",
   "type": "module",
   "dependencies": {
-    "@calimero-network/calimero-client": "1.6.3",
+    "@calimero-network/mero-js": "^2.2.0",
+    "@calimero-network/mero-react": "^3.0.0",
+    "@calimero-network/mero-ui": "^1.4.0",
     "@reduxjs/toolkit": "^1.8.3",
-    "@types/react": "^18.3.3",
-    "@types/react-dom": "^18.3.0",
-    "@types/redux": "^3.6.0",
-    "axios": "^1.8.2",
+    "axios": "^1.12.0",
     "classnames": "^2.3.1",
-    "next": "^14.2.35",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
     "react-redux": "^8.0.2",
-    "react-router-dom": "^6.22.3",
+    "react-router-dom": "^7.15.1",
     "react-toastify": "^11.0.5",
-    "redux": "^5.0.1",
-    "styled-components": "^6.1.11",
-    "vite-plugin-environment": "^1.1.3",
-    "web-vitals": "^2.1.4"
+    "redux": "^5.0.1"
   },
   "devDependencies": {
-    "@eslint/js": "^9.4.0",
-    "@types/eslint__js": "^8.42.3",
-    "@types/node": "^16.18.98",
-    "@types/react": "^18.2.79",
-    "@types/react-copy-to-clipboard": "^5.0.7",
-    "@types/react-dom": "^18.2.25",
-    "@types/styled-components": "^5.1.34",
-    "@typescript-eslint/eslint-plugin": "^7.13.0",
-    "@typescript-eslint/parser": "^7.13.0",
-    "@vitejs/plugin-react": "^4.2.1",
-    "concurrently": "^7.3.0",
-    "eslint": "^8.57.0",
-    "eslint-config-prettier": "^9.1.0",
-    "eslint-config-react-app": "^7.0.1",
-    "eslint-plugin-react": "^7.34.2",
-    "eslint-plugin-react-hooks": "^4.6.2",
-    "eslint-plugin-react-refresh": "^0.4.7",
-    "gh-pages": "^6.1.1",
-    "prettier": "3.3.2",
+    "@playwright/test": "^1.52.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "^20.19.43",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "jsdom": "^25.0.1",
     "sass": "^1.43.4",
-    "sass-loader": "^12.3.0",
-    "style-loader": "^3.3.1",
-    "typescript": "^4.9.5",
-    "typescript-eslint": "^7.13.0",
-    "vite": "^5.4.21",
-    "vite-plugin-node-polyfills": "^0.21.0"
+    "typescript": "~5.8.3",
+    "vite": "^6.4.1",
+    "vite-plugin-node-polyfills": "^0.21.0",
+    "vitest": "^2.1.9"
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "lint": "concurrently \"pnpm:lint:*(!fix)\"",
-    "lint:src": "eslint . --ext .ts,.tsx src --report-unused-disable-directives --max-warnings 0",
-    "lint:fix": "concurrently \"pnpm:lint:*:fix\"",
-    "lint:src:fix": "eslint . --ext .ts,.tsx --fix src",
+    "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "predeploy": "pnpm run build",
-    "deploy": "gh-pages -d build",
-    "prettier": "exec prettier . --write"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e": "playwright test --project=mocked",
+    "e2e:ui": "playwright test --ui --project=mocked",
+    "e2e:integration": "playwright test --project=integration"
   }
 }

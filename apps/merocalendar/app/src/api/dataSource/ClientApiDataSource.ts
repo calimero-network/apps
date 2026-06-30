@@ -1,260 +1,100 @@
+import { getContextId } from "@calimero-network/mero-react";
+import { rpcCall } from "../rpc";
 import {
   ApiResponse,
-  JsonRpcClient,
-  WsSubscriptionsClient,
-  RpcError,
-  handleRpcError,
-  getAppEndpointKey,
-  getAuthConfig,
-} from '@calimero-network/calimero-client';
-import {
   ClientApi,
   ClientMethod,
   CreateEventResponse,
   DeleteEventResponse,
   GetEventsResponse,
+  GetMembersResponse,
   IEventJsonRpc,
   UpdateEventResponse,
-} from '../clientApi';
-import { IEvent, IEventCreate, TPartialEvent } from '../../types/event';
-import parseEvents from '../../utils/helpers/parseEvents';
+} from "../clientApi";
+import { IEvent, IEventCreate, Member, TPartialEvent } from "../../types/event";
+import parseEvents from "../../utils/helpers/parseEvents";
 
-export function getJsonRpcClient() {
-  const appEndpointKey = getAppEndpointKey();
-  if (!appEndpointKey) {
-    throw new Error(
-      'Application endpoint key is missing. Please check your configuration.',
-    );
-  }
-  return new JsonRpcClient(appEndpointKey, '/jsonrpc');
+// ── rc.8 data source ──────────────────────────────────────────────────────────
+//
+// The legacy version pulled contextId + executorPublicKey out of getAuthConfig()
+// and went through JsonRpcClient. In rc.8 the *active context* is whatever the
+// CalendarPage set via setContextId() on mount, so we read it back from
+// getContextId(). The JWT (set by mero-react) carries the caller identity, so we
+// no longer pass an executorPublicKey — rpcCall() handles auth headers.
+
+/** The context the CalendarPage activated. Throws a friendly error if missing. */
+function activeContextId(): string {
+  const id = getContextId();
+  if (!id) throw new Error("No active calendar context");
+  return id;
 }
 
-export function getWsSubscriptionsClient() {
-  const appEndpointKey = getAppEndpointKey();
-  if (!appEndpointKey) {
-    throw new Error(
-      'Application endpoint key is missing. Please check your configuration.',
-    );
-  }
-  return new WsSubscriptionsClient(appEndpointKey, '/ws');
+function fail(error: unknown, where: string) {
+  console.error(`${where} failed:`, error);
+  let message = `An unexpected error occurred during ${where}`;
+  if (error instanceof Error) message = error.message;
+  else if (typeof error === "string") message = error;
+  return { data: null, error: { code: 500, message } };
 }
 
 export class ClientApiDataSource implements ClientApi {
-  private async handleError(
-    error: RpcError,
-    params: any,
-    callbackFunction: any,
-  ) {
-    if (error && error.code) {
-      const response = await handleRpcError(error, getAppEndpointKey);
-      if (response.code === 403) {
-        return await callbackFunction(params);
-      }
-      return {
-        error: await handleRpcError(error, getAppEndpointKey),
-      };
+  async getEvents(): ApiResponse<GetEventsResponse> {
+    try {
+      const contextId = activeContextId();
+      // FEATURE (private events): fetch BOTH the shared and node-local event
+      // sets and merge them. The contract stamps `private` on each, but we set
+      // it defensively here too so the calendar can route edits correctly.
+      const [shared, priv] = await Promise.all([
+        rpcCall<IEventJsonRpc[]>(contextId, ClientMethod.GET_EVENTS, {}),
+        rpcCall<IEventJsonRpc[]>(contextId, ClientMethod.GET_PRIVATE_EVENTS, {}).catch(
+          () => [] as IEventJsonRpc[],
+        ),
+      ]);
+      const events: IEvent[] = [
+        ...parseEvents((shared ?? []).map((e) => ({ ...e, private: false }))),
+        ...parseEvents((priv ?? []).map((e) => ({ ...e, private: true }))),
+      ];
+      return { data: events, error: null };
+    } catch (error) {
+      return fail(error, "getEvents");
     }
   }
 
-  async getEvents(): ApiResponse<GetEventsResponse> {
+  async getMembers(): ApiResponse<GetMembersResponse> {
     try {
-      const config = getAuthConfig();
-
-      if (!config || !config.contextId || !config.executorPublicKey) {
-        return {
-          data: null,
-          error: {
-            code: 500,
-            message: 'Authentication configuration not found',
-          },
-        };
-      }
-
-      const response = await getJsonRpcClient().execute<any, GetEventsResponse>(
-        {
-          contextId: config.contextId,
-          method: ClientMethod.GET_EVENTS,
-          argsJson: {},
-          executorPublicKey: config.executorPublicKey,
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          timeout: 10000,
-        },
-      );
-      if (response?.error) {
-        return await this.handleError(response.error, {}, this.getEvents);
-      }
-
-      let events: IEvent[] = parseEvents(
-        (response?.result.output as IEventJsonRpc[]) ?? [],
-      );
-
-      return {
-        data: events,
-        error: null,
-      };
+      const contextId = activeContextId();
+      // Member field names are camelCase straight from the contract.
+      const members = await rpcCall<Member[]>(contextId, ClientMethod.GET_MEMBERS, {});
+      return { data: Array.isArray(members) ? members : [], error: null };
     } catch (error) {
-      console.error('getEvents failed:', error);
-      let errorMessage = 'An unexpected error occurred during getEvents';
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      } else if (typeof error === 'string') {
-        errorMessage = error;
-      }
-      return {
-        error: {
-          code: 500,
-          message: errorMessage,
-        },
-      };
+      return fail(error, "getMembers");
     }
   }
 
   async createEvent(event: IEventCreate): ApiResponse<CreateEventResponse> {
     try {
-      const config = getAuthConfig();
-
-      if (!config || !config.contextId || !config.executorPublicKey) {
-        return {
-          data: null,
-          error: {
-            code: 500,
-            message: 'Authentication configuration not found',
-          },
-        };
-      }
-
-      const response = await getJsonRpcClient().execute<
-        any,
-        CreateEventResponse
-      >(
-        {
-          contextId: config.contextId,
-          method: ClientMethod.CREATE_EVENT,
-          argsJson: {
-            event_data: {
-              color: event.color,
-              description: event.description,
-              end: event.end,
-              start: event.start,
-              title: event.title,
-              event_type: event.type,
-              peers: event.peers.length > 0 ? event.peers.split(', ') : [],
-            },
-          },
-          executorPublicKey: config.executorPublicKey,
+      const contextId = activeContextId();
+      // Route to the private contract method when the event is private. Private
+      // events ignore `peers`, but we send the array regardless — harmless.
+      const method = event.private
+        ? ClientMethod.CREATE_PRIVATE_EVENT
+        : ClientMethod.CREATE_EVENT;
+      const eventId = await rpcCall<string>(contextId, method, {
+        event_data: {
+          title: event.title,
+          description: event.description,
+          start: event.start,
+          end: event.end,
+          event_type: event.type,
+          color: event.color,
+          peers: event.peers, // BUGFIX: send the real string[] of pubkeys
         },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          timeout: 10000,
-        },
-      );
-
-      if (response?.error) {
-        return await this.handleError(response.error, {}, this.createEvent);
-      }
-
-      const eventId = response?.result?.output;
-
-      if (!eventId) {
-        return {
-          error: {
-            code: 500,
-            message: 'Event ID is missing',
-          },
-        };
-      }
-
-      return {
-        data: eventId,
-        error: null,
-      };
+        timestamp: Date.now(),
+      });
+      if (!eventId) return { error: { code: 500, message: "Event ID is missing" } };
+      return { data: eventId, error: null };
     } catch (error) {
-      console.error('createEvent failed:', error);
-      let errorMessage = 'An unexpected error occurred during createEvent';
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      } else if (typeof error === 'string') {
-        errorMessage = error;
-      }
-      return {
-        error: {
-          code: 500,
-          message: errorMessage,
-        },
-      };
-    }
-  }
-
-  async deleteEvent(eventId: string): ApiResponse<DeleteEventResponse> {
-    try {
-      const config = getAuthConfig();
-
-      if (!config || !config.contextId || !config.executorPublicKey) {
-        return {
-          data: null,
-          error: {
-            code: 500,
-            message: 'Authentication configuration not found',
-          },
-        };
-      }
-
-      const response = await getJsonRpcClient().execute<
-        any,
-        DeleteEventResponse
-      >(
-        {
-          contextId: config.contextId,
-          method: ClientMethod.DELETE_EVENT,
-          argsJson: { event_id: eventId },
-          executorPublicKey: config.executorPublicKey,
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          timeout: 10000,
-        },
-      );
-      if (response?.error) {
-        return await this.handleError(response.error, {}, this.deleteEvent);
-      }
-
-      const eventIdResponse = response?.result?.output;
-
-      if (!eventIdResponse) {
-        return {
-          error: {
-            code: 500,
-            message: 'Event ID is missing',
-          },
-        };
-      }
-
-      return {
-        data: eventIdResponse,
-        error: null,
-      };
-    } catch (error) {
-      console.error('deleteEvent failed:', error);
-      let errorMessage = 'An unexpected error occurred during deleteEvent';
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      } else if (typeof error === 'string') {
-        errorMessage = error;
-      }
-      return {
-        error: {
-          code: 500,
-          message: errorMessage,
-        },
-      };
+      return fail(error, "createEvent");
     }
   }
 
@@ -263,82 +103,62 @@ export class ClientApiDataSource implements ClientApi {
     eventData: TPartialEvent,
   ): ApiResponse<UpdateEventResponse> {
     try {
-      const config = getAuthConfig();
-
-      if (!config || !config.contextId || !config.executorPublicKey) {
-        return {
-          data: null,
-          error: {
-            code: 500,
-            message: 'Authentication configuration not found',
-          },
-        };
-      }
-
-      const response = await getJsonRpcClient().execute<
-        any,
-        UpdateEventResponse
-      >(
-        {
-          contextId: config.contextId,
-          method: ClientMethod.UPDATE_EVENT,
-          argsJson: {
-            event_id: eventId,
-            event_data: {
-              color: eventData.color ?? null,
-              description: eventData.description ?? null,
-              end: eventData.end ?? null,
-              start: eventData.start ?? null,
-              title: eventData.title ?? null,
-              event_type: eventData.type ?? null,
-              peers:
-                eventData.peers && eventData.peers?.length > 0
-                  ? eventData.peers.split(', ')
-                  : [],
-            },
-          },
-          executorPublicKey: config.executorPublicKey,
+      const contextId = activeContextId();
+      const method = eventData.private
+        ? ClientMethod.UPDATE_PRIVATE_EVENT
+        : ClientMethod.UPDATE_EVENT;
+      const eventIdResponse = await rpcCall<string>(contextId, method, {
+        event_id: eventId,
+        event_data: {
+          title: eventData.title ?? null,
+          description: eventData.description ?? null,
+          start: eventData.start ?? null,
+          end: eventData.end ?? null,
+          event_type: eventData.type ?? null,
+          color: eventData.color ?? null,
+          // BUGFIX: pass the real string[] (or null to leave unchanged).
+          peers: eventData.peers ?? null,
         },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          timeout: 10000,
-        },
-      );
-      if (response?.error) {
-        return await this.handleError(response.error, {}, this.updateEvent);
-      }
-
-      const eventIdResponse = response?.result?.output;
-
-      if (!eventIdResponse) {
-        return {
-          error: {
-            code: 500,
-            message: 'Event ID is missing',
-          },
-        };
-      }
-
-      return {
-        data: eventIdResponse,
-        error: null,
-      };
+        timestamp: Date.now(),
+      });
+      if (!eventIdResponse)
+        return { error: { code: 500, message: "Event ID is missing" } };
+      return { data: eventIdResponse, error: null };
     } catch (error) {
-      console.error('updateEvent failed:', error);
-      let errorMessage = 'An unexpected error occurred during updateEvent';
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      } else if (typeof error === 'string') {
-        errorMessage = error;
-      }
-      return {
-        error: {
-          code: 500,
-          message: errorMessage,
-        },
-      };
+      return fail(error, "updateEvent");
+    }
+  }
+
+  async deleteEvent(
+    eventId: string,
+    isPrivate: boolean,
+  ): ApiResponse<DeleteEventResponse> {
+    try {
+      const contextId = activeContextId();
+      const method = isPrivate
+        ? ClientMethod.DELETE_PRIVATE_EVENT
+        : ClientMethod.DELETE_EVENT;
+      const eventIdResponse = await rpcCall<string>(contextId, method, {
+        event_id: eventId,
+      });
+      if (!eventIdResponse)
+        return { error: { code: 500, message: "Event ID is missing" } };
+      return { data: eventIdResponse, error: null };
+    } catch (error) {
+      return fail(error, "deleteEvent");
+    }
+  }
+
+  async setUsername(username: string): ApiResponse<null> {
+    try {
+      const contextId = activeContextId();
+      await rpcCall<null>(contextId, ClientMethod.SET_USERNAME, {
+        username,
+        timestamp: Date.now(),
+      });
+      return { data: null, error: null };
+    } catch (error) {
+      return fail(error, "setUsername");
     }
   }
 }

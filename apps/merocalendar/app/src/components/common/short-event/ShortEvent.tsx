@@ -38,11 +38,15 @@ const ShortEvent: FC<IShortEventProps> = ({
       className={styles.event}
       onClick={handleOpenModal}
       style={eventStyle}
+      data-testid="event-chip"
+      data-private={event.private ? "true" : "false"}
     >
       <div
         className={styles.event__circle}
         style={eventCircleStyle}
       />
+      {/* FEATURE: private events get a lock marker */}
+      {event.private && <span className={styles.event__lock} title="Private event">🔒</span>}
       <div className={styles.event__time}>{timeStart}</div>
       <div className={styles.event__title}>{event.title}</div>
     </div>

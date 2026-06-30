@@ -30,7 +30,7 @@ export const useForm = <FormValues extends IValidatorData>({ defaultValues, rule
       if (Boolean(errorMessage)) {
         setErrors({...errors, [name]: errorMessage as string });
       } else {
-        setErrors(createNewErrors(errors, name));
+        setErrors(createNewErrors(errors, name as string));
       }
     }
     

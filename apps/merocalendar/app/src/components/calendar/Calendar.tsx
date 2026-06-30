@@ -7,7 +7,11 @@ import YearCalendar from './components/year-calendar/YearCalendar';
 import MonthCalendar from './components/month-calendar/MonthCalendar';
 import WeekCalendar from './components/week-calendar/WeekCalendar';
 
-export default function Calendar() {
+interface CalendarProps {
+  onBack?: () => void;
+}
+
+export default function Calendar({ onBack }: CalendarProps) {
   const { state, functions } = useCalendar({ selectedDate: new Date() });
   return (
     <>
@@ -17,6 +21,7 @@ export default function Calendar() {
         onChangeOption={functions.setMode}
         selectedOption={state.mode}
         selectedDay={state.selectedDay}
+        onBack={onBack}
       />
       <section className="calendar">
         {state.mode === 'year' && (

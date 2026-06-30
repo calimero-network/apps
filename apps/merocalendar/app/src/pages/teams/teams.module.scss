@@ -1,0 +1,170 @@
+.root { min-height: 100vh; background: var(--bg-0); }
+
+.header {
+  display: flex;
+  align-items: center;
+  padding: 0 40px;
+  height: 56px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-1);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+.logo {
+  font-size: 15px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+}
+.headerRight { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+
+.main { padding: 48px 40px; max-width: 880px; margin: 0 auto; }
+
+.title { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 6px; color: var(--text); }
+.subtitle { font-size: 13px; color: var(--text-dim); margin-bottom: 28px; }
+
+.createRow { display: flex; gap: 10px; margin-bottom: 32px; }
+.createInput { flex: 1; max-width: 420px; }
+
+.empty { color: var(--text-faint); font-size: 13px; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 16px;
+  margin-bottom: 48px;
+}
+
+.cardWrap { position: relative; }
+.cardWrap:hover .menuBtn { opacity: 1; }
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 20px 18px;
+  width: 100%;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+}
+.card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-2px);
+}
+.card:disabled { cursor: progress; }
+
+.cardIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  background: var(--accent-soft);
+  margin-bottom: 10px;
+}
+.cardName { font-size: 14px; font-weight: 600; color: var(--text); }
+.cardSub { font-size: 11px; color: var(--text-faint); }
+
+.menuBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  color: var(--text-dim);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.12s;
+  z-index: 2;
+  line-height: 1;
+  padding: 0;
+}
+.menuBtn:hover { background: var(--bg-3); color: var(--text); }
+
+.dropdown {
+  position: absolute;
+  top: 38px;
+  right: 0;
+  min-width: 150px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  z-index: 100;
+  overflow: hidden;
+  padding: 4px;
+}
+.dropdownItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 13px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  transition: background 0.1s;
+}
+.dropdownItem:hover { background: var(--bg-3); }
+.dropdownDanger { color: var(--danger); }
+.dropdownDanger:hover { background: rgba(255, 93, 108, 0.12); }
+
+.inviteBox {
+  position: absolute;
+  top: 38px;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  z-index: 110;
+}
+.inviteCode {
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--text-dim);
+  background: var(--bg-0);
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.joinSection {
+  border-top: 1px solid var(--border);
+  padding-top: 32px;
+  margin-top: 8px;
+}
+.joinLabel { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 12px; }
+.joinRow { display: flex; gap: 10px; max-width: 520px; }
+.joinError { font-size: 12px; color: var(--danger); margin-top: 8px; }
+
+@media (max-width: 640px) {
+  .header { padding: 0 20px; }
+  .main { padding: 32px 20px; }
+  .createRow { flex-direction: column; }
+  .createInput { max-width: 100%; }
+  .joinRow { flex-direction: column; }
+}

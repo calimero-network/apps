@@ -93,7 +93,7 @@ const Day: FC<IDayProps> = ({
 
           const event = dayLongEvents.find(event => event.id === eventId);
 
-          const { width, isShowEvent, isMovingFromPrev, isMovingToNext } = getStyledForLongEvent(weekDays, day, event);
+          const { width, isShowEvent, isMovingFromPrev, isMovingToNext } = getStyledForLongEvent(weekDays, day, event!);
 
           const top = indx * 24;
 

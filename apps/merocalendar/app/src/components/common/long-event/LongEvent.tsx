@@ -52,14 +52,18 @@ const LongEvent: FC<ILongEventProps> = ({
       className={cn(styles.event, {
         [styles.event_left]: isMovingFromPrev,
         [styles.event_right]: isMovingToNext,
+        [styles.event_private]: event.private,
       })}
       style={eventStyle}
       onClick={handleOpenModal}
+      data-testid="event-chip"
+      data-private={event.private ? "true" : "false"}
     >
       <div
         className={styles.event__container}
         style={eventContainerStyle}
       >
+        {event.private && <span title="Private event">🔒 </span>}
         {event.title}
         {event.type === 'event' && (
           `, ${formatDate(new Date(event.start), 'hh:mm')}`

@@ -23,6 +23,12 @@
     padding-left: 10px;
   }
 
+  &_private {
+    outline: 1.5px dashed rgba(255, 255, 255, 0.85);
+    outline-offset: -2px;
+    border-radius: 6px;
+  }
+
   &__container {
     position: relative;
     width: 100%;

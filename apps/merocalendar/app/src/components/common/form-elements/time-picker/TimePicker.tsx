@@ -35,8 +35,8 @@ const TimePicker: FC<TimePickerProps> = ({
 
   const [selectedOptionId, setSelectedOptionId] = useState(getOptionIndx(times, timeValue));
 
-  const timePickerRef = useRef<HTMLDivElement>();
-  const optionContainerRef = useRef<HTMLInputElement>();
+  const timePickerRef = useRef<HTMLDivElement>(null);
+  const optionContainerRef = useRef<HTMLInputElement>(null);
   
   const openOptions = () => setIsOpen(true);
   const closeOptions = () => setIsOpen(false);

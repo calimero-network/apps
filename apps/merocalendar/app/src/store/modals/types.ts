@@ -23,5 +23,5 @@ export interface IModalEditEventOptions {
 
 export interface IErrorModalOptions {
   message: string;
-  type: 'websocket' | 'create' | 'edit' | 'delete' | 'appError';
+  errorType: 'websocket' | 'create' | 'edit' | 'delete' | 'appError';
 }

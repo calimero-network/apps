@@ -6,7 +6,7 @@
   cursor: pointer;
   
   &:hover {
-    background-color: darken(#fff, 4%);
+    background-color: var(--mc-hover);
   }
 
   &_additional {

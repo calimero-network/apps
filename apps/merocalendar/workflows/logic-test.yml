@@ -1,0 +1,211 @@
+name: Logic Unit Test
+description: >
+  End-to-end exercise of the Mero Calendar WASM contract on a single node:
+  member username registration, shared event CRUD with owner gating, and
+  node-local private events kept separate from the shared calendar.
+
+stop_all_nodes: true
+restart: false
+wait_timeout: 120
+
+nodes:
+  chain_id: testnet-1
+  count: 1
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.6
+  prefix: calimero-node
+
+steps:
+  # ── Bootstrap ─────────────────────────────────────────────────────────────
+  - name: Install Application
+    type: install_application
+    node: calimero-node-1
+    path: "../logic/res/merocalendar.wasm"
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Create Namespace
+    type: create_group
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Create Calendar Context
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    # The contract's init() takes no arguments.
+    params: '{}'
+    outputs:
+      context_id: contextId
+      member_public_key: memberPublicKey
+
+  # ── Members / usernames ─────────────────────────────────────────────────────
+  - name: Set Username (Alice)
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: set_username
+    args:
+      username: "Alice"
+      timestamp: 1000000
+
+  - name: Get Members
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_members
+    args: {}
+    outputs:
+      members: result
+
+  - name: Assert Alice is a Member
+    type: assert
+    statements:
+      - "contains({{members}}, 'Alice')"
+
+  # ── Shared events ───────────────────────────────────────────────────────────
+  - name: Create Shared Event
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: create_event
+    args:
+      event_data:
+        title: "Team Standup"
+        description: "Daily sync"
+        start: "2026-07-01T09:00:00"
+        end: "2026-07-01T09:30:00"
+        event_type: "event"
+        color: "rgb(51, 182, 121)"
+        peers: []
+      timestamp: 1000001
+    outputs:
+      event_id: result
+
+  - name: Get Shared Events
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_events
+    args: {}
+    outputs:
+      events: result
+
+  - name: Assert Shared Event Present
+    type: assert
+    statements:
+      - "contains({{events}}, 'Team Standup')"
+
+  - name: Update Shared Event
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: update_event
+    args:
+      event_id: "{{event_id}}"
+      event_data:
+        title: "Renamed Standup"
+        description: null
+        start: null
+        end: null
+        event_type: null
+        color: null
+        peers: null
+      timestamp: 1000002
+
+  - name: Get Events After Update
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_events
+    args: {}
+    outputs:
+      updated_events: result
+
+  - name: Assert Event Renamed
+    type: assert
+    statements:
+      - "contains({{updated_events}}, 'Renamed Standup')"
+
+  # ── Private events (node-local) ─────────────────────────────────────────────
+  - name: Create Private Event
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: create_private_event
+    args:
+      event_data:
+        title: "Dentist"
+        description: "Personal"
+        start: "2026-07-02T14:00:00"
+        end: "2026-07-02T15:00:00"
+        event_type: "event"
+        color: "rgb(213, 0, 0)"
+        peers: []
+      timestamp: 1000003
+
+  - name: Get Private Events
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_private_events
+    args: {}
+    outputs:
+      private_events: result
+
+  - name: Assert Private Event Present and Flagged
+    type: assert
+    statements:
+      - "contains({{private_events}}, 'Dentist')"
+      - "contains({{private_events}}, 'true')"
+
+  - name: Assert Private Event NOT in Shared Calendar
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_events
+    args: {}
+    outputs:
+      shared_after_private: result
+
+  - name: Assert Shared Has No Dentist
+    type: assert
+    statements:
+      - "not_contains({{shared_after_private}}, 'Dentist')"
+
+  # ── Delete ──────────────────────────────────────────────────────────────────
+  - name: Delete Shared Event
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: delete_event
+    args:
+      event_id: "{{event_id}}"
+
+  - name: Get Events After Delete
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_events
+    args: {}
+    outputs:
+      final_events: result
+
+  - name: Assert Event Deleted
+    type: assert
+    statements:
+      - "not_contains({{final_events}}, 'Renamed Standup')"

@@ -1,30 +1,26 @@
-import React, { ChangeEvent, FC, useEffect, useRef, useState } from 'react';
-import { useClickOutside, useForm } from '../../../../hooks/index';
+import { ChangeEvent, FC, useEffect, useMemo, useRef, useState } from "react";
+import { getContextIdentity } from "@calimero-network/mero-react";
+import { useClickOutside, useForm, useMembers } from "../../../../hooks/index";
 import {
   checkDateIsEqual,
   getDateTime,
   getDifferenceInTimeFromTwoTimes,
   getDifferenceOfTwoDates,
   shmoment,
-} from '../../../../utils/date';
-import { TSubmitHandler } from '../../../../hooks/useForm/types';
-import { createEventSchema } from '../../../../validation-schemas/index';
-import { IModalValues } from './types';
-import { TPartialEvent } from '../../../../types/event';
+} from "../../../../utils/date";
+import { TSubmitHandler } from "../../../../hooks/useForm/types";
+import { createEventSchema } from "../../../../validation-schemas/index";
+import { IModalValues } from "./types";
+import { TPartialEvent } from "../../../../types/event";
+import { shortPk } from "../../../../hooks/useMembers";
 import {
   TextField,
   DatePicker,
   ColorPicker,
-} from '../../../../components/common/form-elements';
-import cn from 'classnames';
+} from "../../../../components/common/form-elements";
+import cn from "classnames";
 
-import styles from './modal-form-event.module.scss';
-import {
-  getAppEndpointKey,
-  getContextId,
-  getExecutorPublicKey,
-} from '@calimero-network/calimero-client';
-import axios from 'axios';
+import styles from "./modal-form-event.module.scss";
 
 interface IModalFormEventProps {
   textSendButton: string;
@@ -41,9 +37,13 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
   defaultEventValues,
   handlerSubmit,
 }) => {
-  const contextId = getContextId();
-  const accountId = getExecutorPublicKey();
-  const modalRef = useRef<HTMLDivElement>();
+  // rc.8: the caller identity is the active context identity.
+  const accountId = getContextIdentity();
+  // FEATURE (missing names): members power the peer autocomplete (show username,
+  // store pubkey).
+  const { members, displayName } = useMembers();
+  const modalRef = useRef<HTMLDivElement>(null);
+  const peerBoxRef = useRef<HTMLDivElement>(null);
   const [viewOnly, setViewOnly] = useState(false);
   const { values, handleChange, handleSubmit, setValue, errors, submitting } =
     useForm<IModalValues>({
@@ -55,59 +55,47 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
 
   const onSelectStartDate = (date: Date) => {
     if (values.isLongEvent) {
-      const { minutes } = getDifferenceOfTwoDates(
-        values.startDate,
-        values.endDate,
-      );
-      const newEndDate = shmoment(date).add('minutes', minutes).result();
-
-      setValue('endDate', newEndDate);
-      setValue('startDate', date);
+      const { minutes } = getDifferenceOfTwoDates(values.startDate, values.endDate);
+      const newEndDate = shmoment(date).add("minutes", minutes).result();
+      setValue("endDate", newEndDate);
+      setValue("startDate", date);
       return;
     }
-
     const oldStartDate = getDateTime(values.startDate, values.startTime);
     const newStartDate = getDateTime(date, values.startTime);
     const { minutes } = getDifferenceOfTwoDates(oldStartDate, values.endDate);
-    const newEndDate = shmoment(newStartDate).add('minutes', minutes).result();
-
-    setValue('endDate', newEndDate);
-    setValue('startDate', newStartDate);
+    const newEndDate = shmoment(newStartDate).add("minutes", minutes).result();
+    setValue("endDate", newEndDate);
+    setValue("startDate", newStartDate);
   };
 
   const onSelectEndDate = (date: Date) => {
-    const endTime = values.isLongEvent ? '23:59' : values.endTime;
-    setValue('endDate', getDateTime(date, endTime));
+    const endTime = values.isLongEvent ? "23:59" : values.endTime;
+    setValue("endDate", getDateTime(date, endTime));
   };
 
   const onSelectStartTime = (time: string) => {
-    const [startHours, startMins] = time.split(':');
+    const [startHours, startMins] = time.split(":");
     const { hours, minutes } = getDifferenceOfTwoDates(
       values.startDate,
       values.endDate,
     );
     const restHourFromDiff = +startMins + (minutes % 60) >= 60 ? 1 : 0;
-
-    const newEndMins = ((+startMins + minutes) % 60)
-      .toString()
-      .padStart(2, '0');
+    const newEndMins = ((+startMins + minutes) % 60).toString().padStart(2, "0");
     const newEndHours = (
       (+startHours + Math.floor(hours) + restHourFromDiff) %
       24
     )
       .toString()
-      .padStart(2, '0');
-
+      .padStart(2, "0");
     const newEndTime = `${newEndHours}:${newEndMins}`;
     const newEndDate = shmoment(getDateTime(values.startDate, time))
-      .add('minutes', minutes)
+      .add("minutes", minutes)
       .result();
-
-    setValue('startTime', time);
-    setValue('endTime', newEndTime);
-
-    setValue('endDate', newEndDate);
-    setValue('startDate', getDateTime(values.startDate, time));
+    setValue("startTime", time);
+    setValue("endTime", newEndTime);
+    setValue("endDate", newEndDate);
+    setValue("startDate", getDateTime(values.startDate, time));
   };
 
   const onSelectEndTime = (time: string) => {
@@ -120,23 +108,28 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
             getDateTime(values.endDate, time),
           );
     const newEndDate = shmoment(getDateTime(values.startDate, values.startTime))
-      .add('minutes', minutes)
+      .add("minutes", minutes)
       .result();
-
-    setValue('endTime', time);
-    setValue('endDate', newEndDate);
+    setValue("endTime", time);
+    setValue("endDate", newEndDate);
   };
 
-  const onChangeColor = (color: string) => setValue('color', color);
+  const onChangeColor = (color: string) => setValue("color", color);
 
   const onToggleIsLongEvent = (e: ChangeEvent<HTMLInputElement>) => {
     const isLongEvent = e.target.checked;
-    const startTime = isLongEvent ? '00:00' : values.startTime;
-    const endTime = isLongEvent ? '23:59' : values.endTime;
+    const startTime = isLongEvent ? "00:00" : values.startTime;
+    const endTime = isLongEvent ? "23:59" : values.endTime;
+    setValue("isLongEvent", isLongEvent);
+    setValue("startDate", getDateTime(values.startDate, startTime));
+    setValue("endDate", getDateTime(values.endDate, endTime));
+  };
 
-    setValue('isLongEvent', isLongEvent);
-    setValue('startDate', getDateTime(values.startDate, startTime));
-    setValue('endDate', getDateTime(values.endDate, endTime));
+  const onToggleIsPrivate = (e: ChangeEvent<HTMLInputElement>) => {
+    const isPrivate = e.target.checked;
+    setValue("isPrivate", isPrivate);
+    // Private events ignore peers — clear them when switching to private.
+    if (isPrivate) setValue("peers", []);
   };
 
   const [error, setError] = useState<string | null>(null);
@@ -145,105 +138,80 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
     const newEvent: TPartialEvent = {
       title: data.title,
       description: data.description,
-      peers: data.peers.toString(),
+      // BUGFIX: peers are a real string[] of pubkeys end-to-end.
+      peers: data.isPrivate ? [] : data.peers,
       start: data.startDate.toString(),
       end: data.endDate.toString(),
-      type: data.isLongEvent ? 'long-event' : 'event',
+      type: data.isLongEvent ? "long-event" : "event",
       color: data.color,
+      private: data.isPrivate,
     };
 
     try {
-      // @ts-ignore
-      let response = await handlerSubmit(newEvent).unwrap();
+      // @ts-ignore — handlerSubmit returns the dispatched thunk (has .unwrap)
+      await handlerSubmit(newEvent).unwrap();
       closeModal();
-    } catch (error: any) {
-      setError(`JsonRPC error: ${error.message}`);
+    } catch (err: any) {
+      setError(`Error: ${err?.message ?? err}`);
     }
   };
 
-  // @ts-ignore
+  // @ts-ignore — useClickOutside ref typing
   useClickOutside(modalRef, closeModal);
 
   useEffect(() => {
-    if (textSendButton === 'Edit') {
-      if (accountId === defaultEventValues.owner) {
-        setViewOnly(false);
-      } else {
-        setViewOnly(true);
-      }
+    if (textSendButton === "Edit") {
+      // Only the owner can edit; everyone else opens in view-only mode.
+      setViewOnly(accountId !== defaultEventValues.owner);
     }
-  }, [
-    accountId,
-    defaultEventValues.owner,
-    defaultEventValues.peers,
-    textSendButton,
-  ]);
+  }, [accountId, defaultEventValues.owner, textSendButton]);
 
-  const [fetchedPeers, setFetchedPeers] = useState<string[]>([]);
+  // ── Peer multi-select autocomplete ──────────────────────────────────────────
+  // BUGFIX (brittle peer entry): replace the `@`/comma string parsing with a
+  // clean type-ahead over members. Selected peers are stored as a string[] of
+  // pubkeys and rendered as removable chips with their usernames.
+  const [peerQuery, setPeerQuery] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
-  const [filteredPeers, setFilteredPeers] = useState<string[]>([]);
 
-  useEffect(() => {
-    const fetchPeers = async () => {
-      try {
-        const response = await axios.get(
-          `${getAppEndpointKey()}/admin-api/contexts/${contextId}/identities`,
-        );
-        setFetchedPeers(response.data.data.identities);
-      } catch (error) {
-        console.error('Error fetching peers:', error);
-        setFetchedPeers([]);
-      }
-    };
-    fetchPeers();
-  }, []);
+  useClickOutside(peerBoxRef as any, () => setShowDropdown(false));
 
-  const handlePeersChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const inputValue = e.target.value;
-    handleChange(e);
+  const selectedPeers = values.peers ?? [];
 
-    if (inputValue.includes('@')) {
-      setShowDropdown(true);
-      const query = inputValue.split('@').pop();
-      setFilteredPeers(
-        fetchedPeers.filter((peer) =>
-          peer.toLowerCase().includes(query?.toLowerCase() || ''),
-        ),
+  const candidates = useMemo(() => {
+    const q = peerQuery.trim().toLowerCase();
+    return members
+      .filter((m) => m.id !== accountId) // can't invite yourself
+      .filter((m) => !selectedPeers.includes(m.id)) // not already added
+      .filter(
+        (m) =>
+          !q ||
+          m.username?.toLowerCase().includes(q) ||
+          m.id.toLowerCase().includes(q),
       );
-    } else {
-      setShowDropdown(false);
-    }
+  }, [members, peerQuery, selectedPeers, accountId]);
+
+  const addPeer = (pk: string) => {
+    if (!selectedPeers.includes(pk)) setValue("peers", [...selectedPeers, pk]);
+    setPeerQuery("");
+    setShowDropdown(false);
   };
 
-  const handlePeerSelect = (peer: string) => {
-    const cleanedPeer = peer.replace('@', '');
-    let oldValues = values.peers.replace('@', '');
-    const currentPeers = oldValues
-      ? oldValues.split(',').map((p) => p.trim())
-      : [];
-
-    if (!currentPeers.includes(cleanedPeer)) {
-      const newPeers =
-        currentPeers.length > 0
-          ? `${oldValues.trim()}, ${cleanedPeer}`
-          : cleanedPeer;
-      setValue('peers', newPeers);
-    }
-    setShowDropdown(false);
+  const removePeer = (pk: string) => {
+    setValue(
+      "peers",
+      selectedPeers.filter((p) => p !== pk),
+    );
   };
 
   return (
     <div className="overlay">
-      {/* @ts-ignore */}
+      {/* @ts-ignore — modalRef typing */}
       <div className={styles.modal} ref={modalRef}>
         <div className={styles.modal__content}>
           <button className={styles.modal__content__close} onClick={closeModal}>
             <i className="fas fa-times"></i>
           </button>
-          <form
-            className={styles.modal__form}
-            onSubmit={handleSubmit(onSubmit)}
-          >
+          <form className={styles.modal__form} onSubmit={handleSubmit(onSubmit)}>
             <TextField
               type="text"
               name="title"
@@ -255,12 +223,7 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
               fullWidth
               readOnly={viewOnly}
             />
-            <div
-              className={cn(
-                styles.modal__form__date,
-                styles.modal__form__group,
-              )}
-            >
+            <div className={cn(styles.modal__form__date, styles.modal__form__group)}>
               <DatePicker
                 selectedDate={values.startDate}
                 selectDate={onSelectStartDate}
@@ -322,10 +285,21 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
                     id="type"
                     onChange={onToggleIsLongEvent}
                     checked={values.isLongEvent}
-                    readOnly={viewOnly}
+                  />
+                  <span className={styles.modal__form__checkbox__title}>All day</span>
+                </label>
+                {/* FEATURE: private toggle — routes to *_private_event methods */}
+                <label htmlFor="private" className={styles.modal__form__private}>
+                  <input
+                    type="checkbox"
+                    name="private"
+                    id="private"
+                    onChange={onToggleIsPrivate}
+                    checked={values.isPrivate}
+                    data-testid="private-toggle"
                   />
                   <span className={styles.modal__form__checkbox__title}>
-                    All day
+                    Private (only on my node)
                   </span>
                 </label>
               </div>
@@ -342,37 +316,74 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
                 />
               </div>
             )}
-            <div className={styles.modal__form__group}>
-              <div className={styles.modal__form__group__title}>
-                Invite peers
-              </div>
-              <div className={styles.modal__form__group__peers}>
-                <div className={styles.modal__form__group__peers__item}>
-                  <input
-                    name="peers"
-                    onChange={handlePeersChange}
-                    value={values.peers as string}
-                    className={styles.modal__form__textarea}
-                    type="text"
-                    placeholder="peer1, peer2, peer3"
-                    readOnly={viewOnly}
-                  />
-                  {showDropdown && (
-                    <ul className={styles.dropdown}>
-                      {filteredPeers.map((peer) => (
+
+            {/* Peer multi-select — hidden for private events (they don't sync) */}
+            {!values.isPrivate && (
+              <div className={styles.modal__form__group}>
+                <div className={styles.modal__form__group__title}>Invite peers</div>
+                <div className={styles.peers} ref={peerBoxRef}>
+                  <div className={styles.peers__chips}>
+                    {selectedPeers.map((pk) => (
+                      <span key={pk} className={styles.peers__chip} title={pk}>
+                        {displayName(pk)}
+                        {!viewOnly && (
+                          <button
+                            type="button"
+                            className={styles.peers__chipRemove}
+                            onClick={() => removePeer(pk)}
+                            aria-label={`Remove ${displayName(pk)}`}
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </span>
+                    ))}
+                    {!viewOnly && (
+                      <input
+                        className={styles.peers__input}
+                        value={peerQuery}
+                        placeholder={
+                          selectedPeers.length ? "Add another…" : "Search teammates…"
+                        }
+                        onChange={(e) => {
+                          setPeerQuery(e.target.value);
+                          setShowDropdown(true);
+                        }}
+                        onFocus={() => setShowDropdown(true)}
+                        data-testid="peer-search"
+                      />
+                    )}
+                  </div>
+                  {!viewOnly && showDropdown && candidates.length > 0 && (
+                    <ul className={styles.peers__dropdown}>
+                      {candidates.slice(0, 8).map((m) => (
                         <li
-                          key={peer}
-                          onClick={() => handlePeerSelect(peer)}
-                          className={styles.dropdown__item}
+                          key={m.id}
+                          className={styles.peers__option}
+                          onClick={() => addPeer(m.id)}
                         >
-                          {peer}
+                          <span className={styles.peers__optionName}>
+                            {m.username?.trim() || shortPk(m.id)}
+                          </span>
+                          <span className={styles.peers__optionPk}>
+                            {shortPk(m.id)}
+                          </span>
                         </li>
                       ))}
                     </ul>
                   )}
+                  {!viewOnly &&
+                    showDropdown &&
+                    candidates.length === 0 &&
+                    members.length === 0 && (
+                      <div className={styles.peers__empty}>
+                        No teammates have joined yet.
+                      </div>
+                    )}
                 </div>
               </div>
-            </div>
+            )}
+
             <div
               className={cn(
                 styles.modal__form__textarea__container,
@@ -394,6 +405,7 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
                 type="submit"
                 className={styles.modal__form__btn}
                 disabled={submitting || !isValid}
+                data-testid="event-submit"
               >
                 {submitting ? textSendingBtn : textSendButton}
               </button>
