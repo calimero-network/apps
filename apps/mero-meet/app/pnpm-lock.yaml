@@ -16,8 +16,8 @@ importers:
         specifier: ^7.0.0
         version: 7.0.0
       '@calimero-network/mero-react':
-        specifier: 4.0.1
-        version: 4.0.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        specifier: ^4.1.0
+        version: 4.1.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@calimero-network/mero-ui':
         specifier: 1.4.0
         version: 1.4.0(@floating-ui/dom@1.7.6)(@tiptap/core@3.27.1(@tiptap/pm@3.27.1))(@tiptap/pm@3.27.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -114,8 +114,8 @@ packages:
     resolution: {integrity: sha512-t8sQqw7ndbsI1UE/z/6cl8teVCARrJJ7v/WirbYRpIKMsyaSQlU55q/KGyDItKzjp/b1MU2xbs8qcT0HIQWfGQ==}
     engines: {node: '>=18.0.0'}
 
-  '@calimero-network/mero-react@4.0.1':
-    resolution: {integrity: sha512-co8ApuB8NOyD0OlNyQitcPOdYGXokGeG9d6N2bLeTXYOPChczukzeG3JfF1q+A0fKbsCcjSpWrjehqGli2IjGQ==}
+  '@calimero-network/mero-react@4.1.0':
+    resolution: {integrity: sha512-Hk+25rEvYQrtUsFaiJTVXhPl+zWkbpshcEH6mlqrO8MDJqnOanRDdNvEP2Y7gUEV+LR+D03IcKGaWa06y1Lq9A==}
     peerDependencies:
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
@@ -1670,7 +1670,7 @@ snapshots:
 
   '@calimero-network/mero-js@7.0.0': {}
 
-  '@calimero-network/mero-react@4.0.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@calimero-network/mero-react@4.1.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
       '@calimero-network/mero-js': 6.1.0
       react: 19.2.7
