@@ -24,7 +24,9 @@ use std::str::FromStr;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, env as sdk_env, PublicKey};
+use calimero_storage::address::Id;
 use calimero_storage::collections::crdt_meta::MergeError;
+use calimero_storage::collections::rekey::RekeyTarget;
 use calimero_storage::collections::{
     AccessControl, LwwRegister, Mergeable as MergeableTrait, Ownable, UnorderedMap, UnorderedSet,
 };
@@ -83,6 +85,13 @@ impl MergeableTrait for Presence {
     }
 }
 
+// `Presence` is a flat record (no nested collections), so re-keying is a no-op —
+// but rc.9's `Mergeable: RekeyTarget` supertrait bound requires the impl. The
+// default `register_nested_value_types` (empty) is correct: nothing to cascade.
+impl RekeyTarget for Presence {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
+}
+
 // ── Signaling ───────────────────────────────────────────────────────────────
 
 /// A single WebRTC signaling message, addressed from one peer to another.
@@ -117,6 +126,12 @@ impl MergeableTrait for Signal {
         }
         Ok(())
     }
+}
+
+// Flat record (no nested collections) → re-key is a no-op; impl exists only to
+// satisfy rc.9's `Mergeable: RekeyTarget` supertrait bound.
+impl RekeyTarget for Signal {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
 // ── Views (read-model returned to the frontend) ───────────────────────────────
