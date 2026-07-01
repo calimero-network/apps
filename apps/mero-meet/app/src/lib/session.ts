@@ -20,24 +20,62 @@ let executorPublicKey: string | null = null;
 let applicationId: string | null = null;
 let devMode = false;
 
+// The desktop passes the session (app id, room context, identity, dev mode) in
+// the URL hash only on the FIRST open — MeroProvider then strips the hash. So a
+// plain refresh arrives with no hash and would lose all of it (blank app: no
+// rooms, no namespaces). We persist the whole bootstrap under one STABLE key
+// (not app-scoped — the app id itself lives here) and restore it before any
+// app-scoped storage key is computed.
+const SESSION_KEY = "mm-session";
+
+function persistSession(): void {
+  try {
+    localStorage.setItem(
+      SESSION_KEY,
+      JSON.stringify({ applicationId, contextId, executorPublicKey, devMode }),
+    );
+  } catch {
+    /* ignore blocked storage */
+  }
+}
+
+function restoreSession(): void {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    applicationId = s.applicationId ?? applicationId;
+    contextId = s.contextId ?? contextId;
+    executorPublicKey = s.executorPublicKey ?? executorPublicKey;
+    if (typeof s.devMode === "boolean") devMode = s.devMode;
+  } catch {
+    /* ignore malformed/blocked storage */
+  }
+}
+
 function roomStorageKey(): string {
   return `mm-room:${applicationId ?? "default"}`;
 }
 
 export function captureSessionFromHash(): void {
+  // Restore any persisted session first, so a refresh (no hash) keeps the app
+  // id / room / identity the desktop only forwards on the first open. Hash
+  // values (a fresh deep-link) still take precedence below.
+  restoreSession();
+
   const hash = window.location.hash.slice(1);
   if (hash) {
     const p = new URLSearchParams(hash);
-    contextId = p.get("context_id") ?? p.get("contextId") ?? null;
+    contextId = p.get("context_id") ?? p.get("contextId") ?? contextId;
     executorPublicKey =
-      p.get("executor_public_key") ?? p.get("executorPublicKey") ?? null;
+      p.get("executor_public_key") ?? p.get("executorPublicKey") ?? executorPublicKey;
     applicationId =
-      p.get("app-id") ?? p.get("application_id") ?? p.get("applicationId") ?? null;
+      p.get("app-id") ?? p.get("application_id") ?? p.get("applicationId") ?? applicationId;
     // The desktop app forwards its developer-mode setting here.
-    devMode = p.get("dev_mode") === "1";
+    if (p.has("dev_mode")) devMode = p.get("dev_mode") === "1";
   }
 
-  // No room handed in? Restore the last room the user opened for this app.
+  // No room handed in or persisted? Restore the last room opened for this app.
   if (!contextId) {
     try {
       const saved = localStorage.getItem(roomStorageKey());
@@ -52,6 +90,9 @@ export function captureSessionFromHash(): void {
       /* ignore malformed/blocked storage */
     }
   }
+
+  // Re-persist so the app id + restored/updated room survive the next refresh.
+  persistSession();
 }
 
 /** Developer mode as set in the Calimero desktop app's settings. */
@@ -85,6 +126,10 @@ export function setActiveRoom(ctx: string, executor: string): void {
   } catch {
     /* ignore blocked storage */
   }
+  // Also fold into the stable session blob so a refresh restores this room
+  // directly (the app-scoped key above needs applicationId, which only the
+  // session blob preserves across a hash-less reload).
+  persistSession();
 }
 
 /** Back-compat alias. */
