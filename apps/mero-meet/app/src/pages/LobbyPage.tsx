@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useSubscription, useMero } from "@calimero-network/mero-react";
+import { useSubscription } from "@calimero-network/mero-react";
 import { useMeroMeet } from "../hooks/useMeroMeet";
-import { getExecutorPublicKey, setRoomName } from "../lib/session";
-import { encodeInvitationObject } from "../lib/invitation";
+import { useRoomInvite } from "../hooks/useRoomInvite";
+import { useCall } from "../call/CallContext";
+import { getExecutorPublicKey, setRoomName, getUsername, setUsername } from "../lib/session";
+import ThemeToggle from "../components/ThemeToggle";
 import type { LobbyView, Presence } from "../types";
 import styles from "./LobbyPage.module.css";
 
@@ -17,16 +19,14 @@ const HEARTBEAT_MS = 10_000;
  */
 export default function LobbyPage() {
   const meet = useMeroMeet();
-  const { mero } = useMero();
   const navigate = useNavigate();
+  const call = useCall();
   const selfId = getExecutorPublicKey() ?? "";
 
   const [lobby, setLobby] = useState<LobbyView | null>(null);
-  const [username, setUsername] = useState("");
+  const [username, setUsernameInput] = useState(getUsername());
   const [joined, setJoined] = useState(false);
-  const [inviteCode, setInviteCode] = useState("");
-  const [inviting, setInviting] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const invite = useRoomInvite(lobby?.room.name);
 
   const refresh = useCallback(async () => {
     const view = await meet.getLobby();
@@ -50,47 +50,38 @@ export default function LobbyPage() {
     };
   }, [refresh, meet, joined]);
 
+  // Re-register presence on a refresh: if we already have a saved name, rejoin
+  // silently so the room shows us as present without re-typing (fixes "on
+  // refresh I lose things").
+  useEffect(() => {
+    const saved = getUsername();
+    if (saved && !joined) {
+      void meet.join(saved).then(() => {
+        setJoined(true);
+        void refresh();
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Live updates when others change presence.
   const onEvent = useCallback(() => void refresh(), [refresh]);
   useSubscription(meet.contextId ? [meet.contextId] : [], onEvent);
 
   const handleJoin = async () => {
     const name = username.trim() || "Guest";
+    setUsername(name);
     await meet.join(name);
     setJoined(true);
     await refresh();
   };
 
   const enterCall = async () => {
-    if (!joined) await meet.join(username.trim() || "Guest");
+    const name = username.trim() || "Guest";
+    setUsername(name);
+    if (!joined) await meet.join(name);
+    call.start();
     navigate("/call");
-  };
-
-  // Invite = a namespace invitation for this room (same flow as the other mero
-  // apps): resolve the room's namespace, mint a signed invitation, ship it as a
-  // url-safe token the invitee pastes into "Join" on the Rooms screen.
-  const makeInvite = async () => {
-    if (!mero || !meet.contextId || inviting) return;
-    setInviting(true);
-    try {
-      const namespaceId = await mero.admin.getContextGroup(meet.contextId);
-      if (!namespaceId) throw new Error("no namespace for this room");
-      const inv = await mero.admin.createNamespaceInvitation(namespaceId);
-      const code = encodeInvitationObject({
-        ...(inv as unknown as Record<string, unknown>),
-        __roomName: lobby?.room.name ?? "",
-      });
-      setInviteCode(code);
-      setCopied(false);
-      try {
-        await navigator.clipboard.writeText(code);
-        setCopied(true);
-      } catch {/* clipboard blocked — user can still copy from the box */}
-    } catch {
-      setInviteCode("");
-    } finally {
-      setInviting(false);
-    }
   };
 
   const online = new Set(lobby?.online ?? []);
@@ -115,8 +106,9 @@ export default function LobbyPage() {
           </p>
         </div>
         <div className={styles.headerActions}>
-          <button className={styles.inviteBtn} onClick={makeInvite} disabled={inviting}>
-            {inviting ? "Inviting…" : "Invite"}
+          <ThemeToggle />
+          <button className={styles.inviteBtn} onClick={() => void invite.generate()} disabled={invite.inviting}>
+            {invite.inviting ? "Inviting…" : "Invite"}
           </button>
           <button className={styles.callBtn} onClick={enterCall}>
             {callActive ? "Join call" : "Start call"}
@@ -124,21 +116,15 @@ export default function LobbyPage() {
         </div>
       </header>
 
-      {inviteCode && (
+      {invite.code && (
         <div className={styles.invitePanel}>
           <div className={styles.inviteTop}>
             <span className={styles.inviteTitle}>Invite to this room</span>
-            <button
-              className={styles.copyBtn}
-              onClick={() => {
-                void navigator.clipboard.writeText(inviteCode);
-                setCopied(true);
-              }}
-            >
-              {copied ? "Copied ✓" : "Copy"}
+            <button className={styles.copyBtn} onClick={invite.copy}>
+              {invite.copied ? "Copied ✓" : "Copy"}
             </button>
           </div>
-          <code className={styles.inviteCode}>{inviteCode}</code>
+          <code className={styles.inviteCode}>{invite.code}</code>
           <span className={styles.inviteHint}>
             Share this code. They open Mero Meet → <strong>Join</strong> and paste it.
           </span>
@@ -151,7 +137,7 @@ export default function LobbyPage() {
             className={styles.input}
             placeholder="Your name"
             value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            onChange={(e) => setUsernameInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleJoin()}
             maxLength={40}
           />

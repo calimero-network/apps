@@ -45,7 +45,7 @@
 
 .inviteBtn {
   background: var(--surface-strong);
-  color: #fff;
+  color: var(--text);
   border: 1px solid var(--border-strong);
   border-radius: 12px;
   padding: 13px 20px;
@@ -96,7 +96,7 @@
 }
 .inviteCode {
   display: block;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 9px;
   padding: 10px 12px;
@@ -164,7 +164,7 @@
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 13px 16px;
-  color: #fff;
+  color: var(--text);
   font-size: 0.95rem;
   transition: border-color 0.12s ease, background 0.12s ease;
 }
@@ -179,7 +179,7 @@
 
 .joinBtn {
   background: var(--surface-strong);
-  color: #fff;
+  color: var(--text);
   border: 1px solid var(--border-strong);
   border-radius: 12px;
   padding: 13px 22px;

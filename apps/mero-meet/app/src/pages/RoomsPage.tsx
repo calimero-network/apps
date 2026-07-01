@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
 import { getApplicationId, setActiveRoom, getRoomName, setRoomName } from "../lib/session";
 import { parseRoomInvitation } from "../lib/invitation";
+import ThemeToggle from "../components/ThemeToggle";
 import styles from "./RoomsPage.module.css";
 
 interface RoomEntry {
@@ -179,7 +180,10 @@ export default function RoomsPage() {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <h1 className={styles.title}>Mero Meet</h1>
+        <div className={styles.headerRow}>
+          <h1 className={styles.title}>Mero Meet</h1>
+          <ThemeToggle />
+        </div>
         <p className={styles.subtitle}>Pick a room, start a new one, or join with an invite.</p>
       </header>
 

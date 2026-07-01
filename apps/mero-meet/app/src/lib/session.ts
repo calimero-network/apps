@@ -119,6 +119,31 @@ export function getRoomName(ctx: string): string {
   }
 }
 
+// ── Display name cache ──────────────────────────────────────────────────────
+// The name the user typed in the lobby is stored in the contract (presence), but
+// on a hard refresh the presence round-trip hasn't happened yet and the input
+// would be blank. Cache it locally (per app) so a reload restores it instantly.
+function usernameKey(): string {
+  return `mm-username:${applicationId ?? "default"}`;
+}
+
+export function getUsername(): string {
+  try {
+    return localStorage.getItem(usernameKey()) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function setUsername(name: string): void {
+  if (!name.trim()) return;
+  try {
+    localStorage.setItem(usernameKey(), name.trim());
+  } catch {
+    /* ignore blocked storage */
+  }
+}
+
 /** Unix seconds — the clock the contract expects (WASM has no wall clock). */
 export function nowSecs(): number {
   return Math.floor(Date.now() / 1000);

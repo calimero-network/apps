@@ -1,4 +1,12 @@
-:root {
+/* ── Theme tokens ───────────────────────────────────────────────────────────
+ *
+ * Two themes, selected via `data-theme` on <html> (see lib/theme.ts). Dark is
+ * the default; light is a full, first-class palette (not a washed-out invert).
+ * Every surface/text/brand colour is a variable so the whole app — including the
+ * call screen and video tiles — re-themes from here with no per-component logic.
+ */
+:root,
+:root[data-theme="dark"] {
   color-scheme: dark;
 
   /* Surfaces */
@@ -14,6 +22,15 @@
   --text: #eef1f7;
   --text-dim: #9aa6bd;
   --text-faint: #69748a;
+
+  /* Call surfaces (the immersive dark stage) */
+  --call-bg: #06070a;
+  --tile-bg: #0f1118;
+  --scrim: rgba(0, 0, 0, 0.55);
+  --scrim-strong: rgba(0, 0, 0, 0.65);
+  --dock-bg: rgba(20, 22, 30, 0.72);
+  --panel-bg: rgba(18, 21, 29, 0.94);
+  --on-media: #ffffff;
 
   /* Brand + status */
   --accent: #6d83ff;
@@ -31,7 +48,54 @@
   --shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
   --shadow-glow: 0 8px 30px rgba(109, 131, 255, 0.35);
 
+  --page-glow-1: rgba(109, 131, 255, 0.14);
+  --page-glow-2: rgba(160, 107, 255, 0.1);
+  --scrollbar: rgba(255, 255, 255, 0.12);
+  --scrollbar-hover: rgba(255, 255, 255, 0.2);
+
   --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f4f6fb;
+  --bg-elev: #ffffff;
+  --surface: rgba(15, 23, 42, 0.04);
+  --surface-hover: rgba(15, 23, 42, 0.07);
+  --surface-strong: rgba(15, 23, 42, 0.09);
+  --border: rgba(15, 23, 42, 0.1);
+  --border-strong: rgba(15, 23, 42, 0.18);
+
+  --text: #16192a;
+  --text-dim: #566079;
+  --text-faint: #8a93a8;
+
+  /* Even in light mode the call stage stays dark-ish for video contrast, but a
+     touch lighter and with softer scrims so controls read on a bright room. */
+  --call-bg: #1a1d26;
+  --tile-bg: #23262f;
+  --scrim: rgba(0, 0, 0, 0.42);
+  --scrim-strong: rgba(0, 0, 0, 0.55);
+  --dock-bg: rgba(28, 31, 41, 0.82);
+  --panel-bg: rgba(255, 255, 255, 0.96);
+  --on-media: #ffffff;
+
+  --accent: #4f63e8;
+  --accent-2: #8a4fe6;
+  --accent-grad: linear-gradient(135deg, #4f63e8 0%, #8a4fe6 100%);
+  --green: #17a95c;
+  --red: #e23b4d;
+  --amber: #d98515;
+
+  --shadow-sm: 0 2px 10px rgba(15, 23, 42, 0.08);
+  --shadow: 0 12px 40px rgba(15, 23, 42, 0.16);
+  --shadow-glow: 0 8px 30px rgba(79, 99, 232, 0.25);
+
+  --page-glow-1: rgba(79, 99, 232, 0.12);
+  --page-glow-2: rgba(138, 79, 230, 0.1);
+  --scrollbar: rgba(15, 23, 42, 0.18);
+  --scrollbar-hover: rgba(15, 23, 42, 0.3);
 }
 
 * {
@@ -48,15 +112,16 @@ body,
 
 body {
   background: var(--bg);
-  /* Subtle brand glow so flat-dark screens have depth. */
+  /* Subtle brand glow so flat screens have depth. */
   background-image:
-    radial-gradient(1100px 600px at 78% -10%, rgba(109, 131, 255, 0.14), transparent 60%),
-    radial-gradient(900px 520px at 12% 8%, rgba(160, 107, 255, 0.1), transparent 55%);
+    radial-gradient(1100px 600px at 78% -10%, var(--page-glow-1), transparent 60%),
+    radial-gradient(900px 520px at 12% 8%, var(--page-glow-2), transparent 55%);
   background-attachment: fixed;
   color: var(--text);
   font-family: var(--font);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
 button {
@@ -68,12 +133,12 @@ button {
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--scrollbar);
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--scrollbar-hover);
   background-clip: padding-box;
 }

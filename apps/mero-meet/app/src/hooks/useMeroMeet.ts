@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useExecute } from "@calimero-network/mero-react";
 import { getContextId, getExecutorPublicKey, nowSecs } from "../lib/session";
-import type { LobbyView, Signal } from "../types";
+import type { ChatMessage, LobbyView, Signal } from "../types";
 
 /**
  * Typed wrapper over the mero-meet contract RPC. Every mutating method passes
@@ -77,6 +77,16 @@ export function useMeroMeet() {
     [execute],
   );
 
+  const postMessage = useCallback(
+    (text: string) => execute<number>("post_message", { text, now: nowSecs() }),
+    [execute],
+  );
+
+  const getMessages = useCallback(
+    (afterSeq: number) => execute<ChatMessage[]>("get_messages", { after_seq: afterSeq }),
+    [execute],
+  );
+
   return useMemo(
     () => ({
       contextId,
@@ -94,6 +104,8 @@ export function useMeroMeet() {
       getCallParticipants,
       postSignal,
       getSignals,
+      postMessage,
+      getMessages,
     }),
     [
       contextId,
@@ -111,6 +123,8 @@ export function useMeroMeet() {
       getCallParticipants,
       postSignal,
       getSignals,
+      postMessage,
+      getMessages,
     ],
   );
 }

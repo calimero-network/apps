@@ -2,3 +2,7 @@
 
 # TypeScript incremental build info
 *.tsbuildinfo
+
+# MediaPipe WASM runtime — generated from node_modules by scripts/copy-mediapipe.mjs
+# (predev/prebuild). The segmentation model (public/models) IS committed.
+public/mediapipe/wasm/

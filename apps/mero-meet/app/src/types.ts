@@ -23,6 +23,15 @@ export interface Signal {
   createdAt: number;
 }
 
+export interface ChatMessage {
+  id: string;
+  seq: number;
+  from: string;
+  username: string;
+  text: string;
+  createdAt: number;
+}
+
 export interface RoomInfo {
   name: string;
   owner: string | null;

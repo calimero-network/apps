@@ -126,7 +126,11 @@ export class CallEngine {
       video: true,
       audio: true,
     });
-    this.diag("info", "local media acquired (camera + mic)");
+    const v = this.local.getVideoTracks()[0]?.getSettings();
+    this.diag(
+      "info",
+      `local media acquired — cam ${v?.width ?? "?"}×${v?.height ?? "?"}@${Math.round(v?.frameRate ?? 0)}fps, mic ${this.local.getAudioTracks().length ? "on" : "none"}`,
+    );
     this.cbs.onLocalStream(this.local);
     return this.local;
   }
@@ -151,7 +155,7 @@ export class CallEngine {
       if (!this.peers.has(id)) this.addPeer(id);
     }
     for (const id of [...this.peers.keys()]) {
-      if (!wanted.has(id)) this.closePeer(id);
+      if (!wanted.has(id)) this.closePeer(id, "left roster");
     }
   }
 
@@ -206,17 +210,61 @@ export class CallEngine {
     pc.onconnectionstatechange = () => {
       this.diag("peer", `${peerId.slice(0, 8)} → ${pc.connectionState}`);
       this.cbs.onPeerStateChange?.(peerId, pc.connectionState);
-      if (pc.connectionState === "failed") pc.restartIce();
+      // Recover dropped connections. "failed" always needs an ICE restart;
+      // "disconnected" often self-heals, but a short-fused restart makes
+      // reconnection after a peer briefly leaves/rejoins far more reliable.
+      if (pc.connectionState === "failed") {
+        this.diag("peer", `${peerId.slice(0, 8)} failed → restarting ICE`);
+        try { pc.restartIce(); } catch { /* pc may be closing */ }
+      } else if (pc.connectionState === "disconnected") {
+        setTimeout(() => {
+          if (this.peers.get(peerId) === state && pc.connectionState === "disconnected") {
+            this.diag("peer", `${peerId.slice(0, 8)} still disconnected → restarting ICE`);
+            try { pc.restartIce(); } catch { /* pc may be closing */ }
+          }
+        }, 2500);
+      }
     };
 
     return state;
+  }
+
+  /**
+   * Swap the published video track on every peer (and the local stream) without
+   * renegotiating — used to turn camera background effects on/off mid-call.
+   * `replaceTrack` is transparent to the remote peer (no new SDP).
+   */
+  async replaceVideoTrack(track: MediaStreamTrack | null): Promise<void> {
+    // Update the local stream we expose to the UI.
+    if (this.local) {
+      this.local.getVideoTracks().forEach((t) => this.local!.removeTrack(t));
+      if (track) this.local.addTrack(track);
+      this.cbs.onLocalStream(this.local);
+    }
+    // Update each peer's outbound video sender in place.
+    for (const { pc } of this.peers.values()) {
+      const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+      if (sender) {
+        try {
+          await sender.replaceTrack(track);
+        } catch {
+          /* sender may be gone if the peer just left */
+        }
+      }
+    }
+    this.diag("info", `published video track swapped (${track ? track.label || "processed" : "none"})`);
+  }
+
+  /** The live local media stream (raw camera + mic), if started. */
+  getLocalStream(): MediaStream | null {
+    return this.local;
   }
 
   /** Feed an inbound signaling message from `from`. */
   async handleSignal(from: string, kind: string, payload: string): Promise<void> {
     this.diag("signal", `← ${kind} ${from.slice(0, 8)}`);
     if (kind === "bye") {
-      this.closePeer(from);
+      this.closePeer(from, "bye");
       return;
     }
     const state = this.peers.get(from) ?? this.addPeer(from);
@@ -255,7 +303,7 @@ export class CallEngine {
     }
   }
 
-  private closePeer(peerId: string): void {
+  private closePeer(peerId: string, reason = ""): void {
     const state = this.peers.get(peerId);
     if (!state) return;
     state.pc.onicecandidate = null;
@@ -264,15 +312,17 @@ export class CallEngine {
     state.pc.onconnectionstatechange = null;
     state.pc.close();
     this.peers.delete(peerId);
+    this.diag("peer", `- peer ${peerId.slice(0, 8)}${reason ? ` (${reason})` : ""}`);
     this.cbs.onRemoteStream(peerId, null);
   }
 
   /** Announce departure to peers and tear everything down. */
   stop(): void {
+    this.diag("info", `stopping call — saying bye to ${this.peers.size} peer(s)`);
     for (const peerId of this.peers.keys()) {
       this.cbs.onSignal({ to: peerId, kind: "bye", payload: "" });
     }
-    for (const peerId of [...this.peers.keys()]) this.closePeer(peerId);
+    for (const peerId of [...this.peers.keys()]) this.closePeer(peerId, "call ended");
     this.local?.getTracks().forEach((t) => t.stop());
     this.local = null;
   }

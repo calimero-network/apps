@@ -6,7 +6,12 @@ import "@calimero-network/mero-ui/styles.css";
 import App from "./App";
 import { APP_ENABLED } from "./lib/tauri";
 import { captureSessionFromHash } from "./lib/session";
+import { initTheme } from "./lib/theme";
 import "./index.css";
+
+// Resolve the light/dark theme before first paint (avoids a flash of the wrong
+// theme). Reads the persisted choice or the OS preference.
+initTheme();
 
 // ── Tauri desktop SSO ─────────────────────────────────────────────────────────
 //

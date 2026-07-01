@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { DiagEntry, PeerStat } from "../lib/webrtc";
 import styles from "./DevPanel.module.css";
 
@@ -7,9 +7,13 @@ interface DevPanelProps {
   getStats: () => Promise<PeerStat[]>;
   callId: string | null;
   onClose: () => void;
+  /** Extra context shown in the summary row. */
+  effect?: string;
+  remoteCount?: number;
 }
 
 const STATS_INTERVAL_MS = 2000;
+const LEVELS: DiagEntry["level"][] = ["info", "signal", "peer", "error"];
 
 function ts(t: number): string {
   const d = new Date(t);
@@ -17,12 +21,15 @@ function ts(t: number): string {
 }
 
 /**
- * Developer-mode WebRTC diagnostics. This is the ONLY surface in the whole app
- * where WebRTC internals (signaling log, peer connection state, throughput)
- * are shown. Hidden unless dev mode is on (Ctrl/Cmd+Shift+D).
+ * Developer-mode WebRTC diagnostics — the only surface where WebRTC internals
+ * (signaling log, peer state, throughput, roster/effect events) are shown. It is
+ * closable (✕) and re-openable from the ⚙ button in the call top bar. Filter by
+ * level, copy the whole log, or clear the view.
  */
-export default function DevPanel({ diagnostics, getStats, callId, onClose }: DevPanelProps) {
+export default function DevPanel({ diagnostics, getStats, callId, onClose, effect, remoteCount }: DevPanelProps) {
   const [stats, setStats] = useState<PeerStat[]>([]);
+  const [enabled, setEnabled] = useState<Set<DiagEntry["level"]>>(new Set(LEVELS));
+  const [copied, setCopied] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -39,11 +46,32 @@ export default function DevPanel({ diagnostics, getStats, callId, onClose }: Dev
     };
   }, [getStats]);
 
+  const shown = useMemo(() => diagnostics.filter((d) => enabled.has(d.level)), [diagnostics, enabled]);
+
   // Keep the log scrolled to the newest entry.
   useEffect(() => {
     const el = logRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [diagnostics]);
+  }, [shown]);
+
+  const toggleLevel = (lvl: DiagEntry["level"]) =>
+    setEnabled((prev) => {
+      const next = new Set(prev);
+      if (next.has(lvl)) next.delete(lvl);
+      else next.add(lvl);
+      return next;
+    });
+
+  const copyLog = async () => {
+    const text = diagnostics.map((d) => `${ts(d.t)} [${d.level}] ${d.msg}`).join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      /* clipboard blocked */
+    }
+  };
 
   return (
     <div className={styles.panel}>
@@ -53,6 +81,13 @@ export default function DevPanel({ diagnostics, getStats, callId, onClose }: Dev
         <button className={styles.close} onClick={onClose} title="Hide diagnostics">
           ✕
         </button>
+      </div>
+
+      <div className={styles.summary}>
+        <span>peers: <b>{stats.length}</b></span>
+        <span>tiles: <b>{remoteCount ?? 0}</b></span>
+        <span>effect: <b>{effect ?? "none"}</b></span>
+        <span>log: <b>{diagnostics.length}</b></span>
       </div>
 
       <div className={styles.peers}>
@@ -67,8 +102,25 @@ export default function DevPanel({ diagnostics, getStats, callId, onClose }: Dev
         ))}
       </div>
 
+      <div className={styles.toolbar}>
+        {LEVELS.map((lvl) => (
+          <button
+            key={lvl}
+            className={`${styles.filter} ${enabled.has(lvl) ? styles.filterOn : ""}`}
+            onClick={() => toggleLevel(lvl)}
+            title={`Toggle ${lvl} lines`}
+          >
+            {lvl}
+          </button>
+        ))}
+        <button className={styles.action} onClick={copyLog} title="Copy full log">
+          {copied ? "copied ✓" : "copy"}
+        </button>
+      </div>
+
       <div className={styles.log} ref={logRef}>
-        {diagnostics.map((d, i) => (
+        {shown.length === 0 && <span className={styles.dim}>no log entries</span>}
+        {shown.map((d, i) => (
           <div key={i} className={`${styles.line} ${styles[`lvl_${d.level}`] ?? ""}`}>
             <span className={styles.t}>{ts(d.t)}</span>
             <span>{d.msg}</span>

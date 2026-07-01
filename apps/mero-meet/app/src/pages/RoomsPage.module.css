@@ -11,6 +11,13 @@
   margin-bottom: 28px;
 }
 
+.headerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
 .title {
   font-size: 2rem;
   font-weight: 800;
@@ -36,7 +43,7 @@
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 13px 16px;
-  color: #fff;
+  color: var(--text);
   font-size: 0.95rem;
   transition: border-color 0.12s ease, background 0.12s ease;
 }
@@ -74,7 +81,7 @@
 
 .joinBtn {
   background: var(--surface-strong);
-  color: #fff;
+  color: var(--text);
   border: 1px solid var(--border-strong);
   border-radius: 12px;
   padding: 13px 24px;

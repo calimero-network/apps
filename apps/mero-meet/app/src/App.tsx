@@ -6,7 +6,8 @@ import { getContextId } from "./lib/session";
 import LandingPage from "./pages/LandingPage";
 import RoomsPage from "./pages/RoomsPage";
 import LobbyPage from "./pages/LobbyPage";
-import CallPage from "./pages/CallPage";
+import CallView from "./call/CallView";
+import { CallProvider } from "./call/CallContext";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useMero();
@@ -29,13 +30,17 @@ export default function App() {
   // landing page. See APP_ENABLED in lib/tauri.ts.
   if (!APP_ENABLED) return <LandingPage />;
 
+  // CallProvider holds the live call above the router so it survives navigation
+  // (minimize → browse the lobby while the call keeps running as a mini-call).
   return (
-    <Routes>
-      <Route path="/" element={<Navigate to={getContextId() ? "/lobby" : "/rooms"} replace />} />
-      <Route path="/rooms" element={<RequireAuth><RoomsPage /></RequireAuth>} />
-      <Route path="/lobby" element={<RequireAuth><RequireRoom><LobbyPage /></RequireRoom></RequireAuth>} />
-      <Route path="/call" element={<RequireAuth><RequireRoom><CallPage /></RequireRoom></RequireAuth>} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <CallProvider>
+      <Routes>
+        <Route path="/" element={<Navigate to={getContextId() ? "/lobby" : "/rooms"} replace />} />
+        <Route path="/rooms" element={<RequireAuth><RoomsPage /></RequireAuth>} />
+        <Route path="/lobby" element={<RequireAuth><RequireRoom><LobbyPage /></RequireRoom></RequireAuth>} />
+        <Route path="/call" element={<RequireAuth><RequireRoom><CallView /></RequireRoom></RequireAuth>} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </CallProvider>
   );
 }
