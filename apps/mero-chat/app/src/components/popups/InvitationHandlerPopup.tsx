@@ -311,7 +311,7 @@ export default function InvitationHandlerPopup({
               .getContext(contextId);
             if (verifyResponse.data) {
               const isSynced =
-                verifyResponse.data.rootHash !==
+                verifyResponse.data.contextStateHash !==
                 "11111111111111111111111111111111";
               if (isSynced) {
                 if (syncIntervalRef.current)
