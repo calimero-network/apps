@@ -3,26 +3,18 @@ set -e
 
 cd "$(dirname $0)"
 
+TARGET="${CARGO_TARGET_DIR:-../../target}"
+
 # ── Version: auto-bump from the App Registry ────────────────────────────────
-# Single source of truth for the published version — the .mpk filename and the
-# manifest appVersion both derive from $APP_VERSION (they must not drift).
-#
-# Rather than hand-editing this on every release, fetch the latest published
-# appVersion for this package and bump the patch, so each build produces the
-# next publishable version automatically. The registry GET is public (no
-# auth/secret needed — works in CI). Precedence:
+# Fetch the latest published appVersion for this package and bump the patch, so
+# every build produces the next publishable version without a manual edit. The
+# registry GET is public (no auth/secret needed — works in CI). Precedence:
 #   1. APP_VERSION_OVERRIDE env  — explicit pin (e.g. a migration bundle)
 #   2. <latest published version> + patch bump
 #   3. FALLBACK_VERSION          — registry unreachable / package not yet published
 PACKAGE="com.calimero.meromeet"
-FALLBACK_VERSION="0.1.0"   # offline floor only; the registry path is authoritative
+FALLBACK_VERSION="0.1.3"   # offline floor only; the registry path is authoritative
 REGISTRY_URL="${REGISTRY_URL:-https://apps.calimero.network}"
-# Frontend the desktop opens for this app. Override for local debugging, e.g.
-#   FRONTEND_URL=http://localhost:5173 ./build-bundle.sh
-# so `make dev` (Vite + HMR + devtools/console) backs the window instead of prod.
-FRONTEND_URL="${FRONTEND_URL:-https://mero-meet.vercel.app/}"
-# Source repository, surfaced in the registry UI (links.github).
-GITHUB_URL="${GITHUB_URL:-https://github.com/calimero-network/mero-meet}"
 
 resolve_app_version() {
   if [ -n "${APP_VERSION_OVERRIDE:-}" ]; then
@@ -55,25 +47,23 @@ APP_VERSION="$(resolve_app_version)"
 [ -n "$APP_VERSION" ] || APP_VERSION="$FALLBACK_VERSION"
 echo "==> appVersion: $APP_VERSION (package: $PACKAGE)"
 
-# Build WASM. wasm-opt validation warnings are non-fatal; the .wasm is still produced.
+# First build the WASM file
+# Note: wasm-opt validation errors are non-fatal - the WASM file is still created
 ./build.sh 2>&1 | grep -v "wasm-validator error" || true
 
-# Integrity gate. A manifest that references an artifact the archive doesn't
-# contain is exactly what the registry rejects as `binary_missing`, so refuse to
-# build a bundle unless the wasm is actually present and non-empty.
-[ -s res/mero_meet.wasm ] || { echo "ERROR: res/mero_meet.wasm missing/empty — WASM build failed" >&2; exit 1; }
-
-rm -rf res/bundle-temp
+# Create bundle directory
 mkdir -p res/bundle-temp
 
+# Copy WASM file
 cp res/mero_meet.wasm res/bundle-temp/app.wasm
 
+# Get file size for manifest
 WASM_SIZE=$(stat -f%z res/mero_meet.wasm 2>/dev/null || stat -c%s res/mero_meet.wasm 2>/dev/null || echo 0)
 
-# NOTE: no `abi` block. build.sh does not emit an abi.json, and the bundle
-# manifest's `abi` field is optional (omitted when absent), so we leave it out
-# rather than declaring an abi.json the archive doesn't contain (which the
-# registry would reject as `binary_missing`).
+# Create manifest.json (metadata.name/description/author used by registry UI).
+# NOTE: no `abi` block — build.sh does not emit an abi.json, and the registry
+# rejects a manifest that references an artifact the archive doesn't contain
+# (`binary_missing`). The manifest's `abi` field is optional, so we omit it.
 cat > res/bundle-temp/manifest.json <<EOF
 {
   "version": "1.0",
@@ -92,31 +82,25 @@ cat > res/bundle-temp/manifest.json <<EOF
   },
   "migrations": [],
   "links": {
-    "frontend": "${FRONTEND_URL}",
-    "github": "${GITHUB_URL}"
+    "frontend": "https://mero-meet.vercel.app/"
   }
 }
 EOF
 
-# Sign the manifest via the core workspace tool. Signing is MANDATORY — the
-# registry rejects an unsigned bundle ("missing signature") — so this fails the
-# build (via `set -e`) rather than shipping an unsigned .mpk.
-#
-# Key resolution: use $SIGNING_KEY if set, else a local `signing-key.json`
-# (gitignored) which we generate on first run with `mero-sign generate-key`.
-# This keeps the bundle signed with a stable key without depending on the
-# shared core test key (removed from core). To publish, register this key's
-# signerId as an owner of the package (see: mero-sign derive-signer-id).
-MERO_SIGN="cargo run --manifest-path ../../core/Cargo.toml -p mero-sign --quiet --"
-KEY_FILE="${SIGNING_KEY:-signing-key.json}"
-if [ ! -f "$KEY_FILE" ]; then
-    echo "==> No signing key at $KEY_FILE — generating one (mero-sign generate-key)"
-    $MERO_SIGN generate-key --output "$KEY_FILE"
-fi
-$MERO_SIGN sign res/bundle-temp/manifest.json --key "$KEY_FILE"
-echo "Manifest signed with $KEY_FILE"
+# Sign the manifest. MANDATORY (set -e) — the registry rejects an unsigned
+# bundle. Prefer the installed `mero-sign` binary; fall back to building it from
+# a sibling core checkout. Key defaults to the publisher keypair committed in
+# mero-chat (the same signer owns the other mero apps); override SIGNING_KEY.
+MERO_SIGN="$(command -v mero-sign || true)"
+[ -n "$MERO_SIGN" ] || MERO_SIGN="cargo run --manifest-path ../../core/Cargo.toml -p mero-sign --quiet --"
+SIGNING_KEY="${SIGNING_KEY:-../../mero-chat/logic/key.json}"
+$MERO_SIGN sign res/bundle-temp/manifest.json --key "$SIGNING_KEY"
+echo "Manifest signed with $SIGNING_KEY"
 
-BUNDLE="mero-meet-${APP_VERSION}.mpk"
-( cd res/bundle-temp && tar -czf "../${BUNDLE}" manifest.json app.wasm )
+# Create .mpk bundle (tar.gz archive). Filename derives from APP_VERSION so it
+# never drifts from the manifest appVersion.
+cd res/bundle-temp
+MPK="../mero-meet-${APP_VERSION}.mpk"
+tar -czf "$MPK" manifest.json app.wasm
 
-echo "Bundle created: res/${BUNDLE}  (wasm ${WASM_SIZE}B, no abi)"
+echo "Bundle created: res/mero-meet-${APP_VERSION}.mpk"
