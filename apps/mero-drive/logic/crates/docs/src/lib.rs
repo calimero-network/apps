@@ -313,6 +313,14 @@ impl Mergeable for Comment {
     }
 }
 
+// `Mergeable`'s `RekeyTarget` supertrait (core 0.11.0-rc.8+). `Comment` nests no
+// collections — `body` is an `LwwRegister` leaf, `doc_id`/`created_at` are plain
+// immutable fields — so re-keying is a no-op. See `DocRecord` for the case that
+// actually re-keys a nested set.
+impl calimero_storage::collections::rekey::RekeyTarget for Comment {
+    fn rekey_relative_to(&mut self, _parent_id: calimero_storage::address::Id) {}
+}
+
 /// Flat projection of a `Comment` for list / get APIs.
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]

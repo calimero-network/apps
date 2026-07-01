@@ -94,6 +94,14 @@ impl Mergeable for UnfixedDoc {
     }
 }
 
+// rc.9 makes `RekeyTarget` a supertrait of `Mergeable`. `UnfixedDoc` is the
+// negative control: it must NOT re-key its nested set (that is what keeps it
+// pre-fix / divergent), so this impl is intentionally a no-op and it is never
+// registered via `register_rekey_if_supported!`.
+impl RekeyTarget for UnfixedDoc {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
+}
+
 /// Root app generic over the doc value type, so one driver exercises both.
 trait DocsApp: BorshSerialize + BorshDeserialize + Default + Mergeable + 'static {
     fn append_update(&mut self, doc: &str, blob: Vec<u8>) -> Result<(), MergeError>;
@@ -111,6 +119,14 @@ macro_rules! docs_app {
             fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
                 self.docs.merge(&other.docs)
             }
+        }
+        // rc.9: satisfy the `Mergeable: RekeyTarget` supertrait bound. Re-keying
+        // is driven by the explicit `register_rekey_if_supported!` calls in each
+        // test (the value + key types), mirroring the `#[app::state]` scan — not
+        // by this wrapper — so a no-op here preserves both the fixed (converge)
+        // and unfixed (negative-control) outcomes.
+        impl RekeyTarget for $app {
+            fn rekey_relative_to(&mut self, _parent_id: Id) {}
         }
         impl DocsApp for $app {
             fn append_update(&mut self, doc: &str, blob: Vec<u8>) -> Result<(), MergeError> {

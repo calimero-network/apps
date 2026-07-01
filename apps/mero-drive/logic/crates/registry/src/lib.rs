@@ -162,6 +162,15 @@ impl Mergeable for FolderRecord {
     }
 }
 
+// `Mergeable` gained a `RekeyTarget` supertrait (core 0.11.0-rc.8+): a value
+// type stored in a CRDT map must be able to deterministically re-key any nested
+// collection ids. Every `FolderRecord` field is an `LwwRegister<_>` leaf — none
+// carry a nested collection id — so both hooks are no-ops. Kept explicit (rather
+// than a blank impl) to mirror `DocRecord` and document the intent.
+impl calimero_storage::collections::rekey::RekeyTarget for FolderRecord {
+    fn rekey_relative_to(&mut self, _parent_id: calimero_storage::address::Id) {}
+}
+
 impl FolderRecord {
     pub(crate) fn new(
         parent_id: Option<String>,
