@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSubscription } from "@calimero-network/mero-react";
 import { CallEngine, type OutSignal, type DiagEntry, type PeerStat } from "../lib/webrtc";
 import { BackgroundProcessor, type BgEffect } from "../lib/effects";
-import { getExecutorPublicKey } from "../lib/session";
+import { getExecutorPublicKey, nowSecs } from "../lib/session";
 import { invokeTauri } from "../lib/tauri";
 import { useMeroMeet } from "./useMeroMeet";
 import type { Presence } from "../types";
@@ -43,6 +43,11 @@ export interface CallController {
 
 const SIGNAL_POLL_MS = 2000;
 const HEARTBEAT_MS = 10_000;
+// Only treat a call participant as a dead "ghost" once their presence heartbeat
+// is stale by this much. It is 2× the contract's PRESENCE_TTL (30s) so gossip
+// propagation lag + modest clock skew never falsely drops a live peer (they
+// heartbeat every 10s). A peer whose presence hasn't propagated at all is kept.
+const GHOST_STALE_SECS = 60;
 
 /**
  * Drives the (single) active call, independent of which page is showing. Lives in
@@ -77,7 +82,10 @@ export function useCallController(): CallController {
   const callIdRef = useRef<string>("");
   const lastSeqRef = useRef<number>(0);
   const drainingRef = useRef<boolean>(false);
-  const onlineRef = useRef<Set<string>>(new Set());
+  // Gate inbound draining until lastSeq has been seeded to the mailbox head at
+  // join. Otherwise the 2s poll / an SSE nudge could drain from lastSeq=0 during
+  // the async startup and replay the whole stale mailbox into the fresh engine.
+  const seededRef = useRef<boolean>(false);
   const prevLiveRef = useRef<Set<string>>(new Set());
 
   // Controller-level diagnostics (roster/effect/lifecycle), interleaved with the
@@ -115,17 +123,21 @@ export function useCallController(): CallController {
 
   // ── Inbound signaling: contract → engine ────────────────────────────────────
   const drainSignals = useCallback(async () => {
-    if (drainingRef.current || !engineRef.current) return;
+    if (drainingRef.current || !engineRef.current || !seededRef.current) return;
     drainingRef.current = true;
     try {
       const signals = await meet.getSignals(lastSeqRef.current);
       for (const s of signals ?? []) {
         if (s.seq > lastSeqRef.current) lastSeqRef.current = s.seq;
-        // Drop stale signals from a *previous* call session. Without this, a new
-        // call re-drains the whole mailbox (lastSeq resets to 0), replaying old
-        // offers/ice/bye into the fresh engine — the "won't reconnect after you
-        // leave" bug. Signals carry their call_id, so we can scope precisely.
-        if (s.callId && callIdRef.current && s.callId !== callIdRef.current) continue;
+        // NOTE: we deliberately do NOT filter by `s.callId`. `active_call` is an
+        // LwwRegister that propagates over CRDT gossip, so two peers joining the
+        // same call can briefly hold *different* call ids (each stamps the id its
+        // own start_call returned). Filtering on callId dropped the peer's
+        // offer/answer/ice during that window → the handshake never completed and
+        // no media flowed. The stale-mailbox-replay problem the filter was meant
+        // to solve is instead handled at join time by seeding lastSeq to the
+        // mailbox head (see the start effect), so a fresh call never re-drains
+        // signals from a previous session.
         await engineRef.current.handleSignal(s.from, s.kind, s.payload);
       }
     } finally {
@@ -146,17 +158,24 @@ export function useCallController(): CallController {
     const presenceMap = new Map<string, Presence>();
     if (lobby) {
       for (const m of lobby.members) presenceMap.set(m.memberId, m);
-      onlineRef.current = new Set(lobby.online);
       setPresence(presenceMap);
       if (lobby.room?.name) setRoomName(lobby.room.name);
     }
     if (!roster) return;
 
-    // Drop ghosts: still listed in the call roster but not seen within the
-    // presence TTL (a peer that refreshed/crashed without leaving). Reconnecting
-    // to a ghost just spins ICE forever.
-    const online = onlineRef.current;
-    const liveIds = roster.filter((id) => id === selfId || online.size === 0 || online.has(id));
+    // The roster IS the media session (call_participants). Only drop a peer as a
+    // "ghost" when we have POSITIVE evidence they're gone: their presence row
+    // exists AND its heartbeat is stale beyond GHOST_STALE_SECS. A peer whose
+    // presence CRDT hasn't reached us yet (p === undefined) is KEPT — the old
+    // code dropped those, tearing down freshly-joined peers before their presence
+    // gossiped in, so the handshake never completed and calls never connected.
+    const now = nowSecs();
+    const liveIds = roster.filter((id) => {
+      if (id === selfId) return true;
+      const p = presenceMap.get(id);
+      if (!p) return true;
+      return now - p.updatedAt <= GHOST_STALE_SECS;
+    });
     for (const id of roster) {
       if (!liveIds.includes(id)) {
         pushDiag("peer", `roster: dropping ghost ${(presenceMap.get(id)?.username) || id.slice(0, 8)} (stale presence)`);
@@ -206,6 +225,7 @@ export function useCallController(): CallController {
     setJoining(true);
     setError(null);
     lastSeqRef.current = 0;
+    seededRef.current = false;
 
     const engine = new CallEngine(selfId, {
       onLocalStream: (s) => !cancelled && setLocalStream(s),
@@ -233,6 +253,15 @@ export function useCallController(): CallController {
         if (cancelled) return;
         callIdRef.current = id ?? "";
         setCallId(id ?? null);
+        // Seed lastSeq to the current mailbox head so this fresh call skips every
+        // signal already posted (stale offer/ice/bye from a previous session) and
+        // only processes NEW ones. This is the real fix for the "won't reconnect
+        // after you leave" replay bug — without it, lastSeq=0 re-drained the whole
+        // mailbox into the new engine. Peers re-offer to us on roster sync, so we
+        // don't need the historical signals.
+        const backlog = await meet.getSignals(0);
+        lastSeqRef.current = (backlog ?? []).reduce((m, s) => Math.max(m, s.seq), 0);
+        seededRef.current = true;
         pushDiag("info", `call session: ${id ?? "?"}`);
         await syncRoster();
         await drainSignals();
@@ -263,6 +292,7 @@ export function useCallController(): CallController {
       setRemotes(new Map());
       setCallId(null);
       callIdRef.current = "";
+      seededRef.current = false;
       setEffectState("none");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
