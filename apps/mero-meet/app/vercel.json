@@ -4,14 +4,12 @@
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
   "headers": [
     {
-      "//": "Hashed build assets are content-addressed — safe to cache forever.",
       "source": "/assets/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
       ]
     },
     {
-      "//": "The HTML document (and every SPA route that rewrites to it) must NOT be cached, or the desktop WKWebView keeps serving a stale index.html that points at an old hashed JS bundle — i.e. the app shows old code after a deploy until the cache evicts. no-cache forces a revalidation on every load/refresh.",
       "source": "/((?!assets/|mediapipe/|models/).*)",
       "headers": [
         { "key": "Cache-Control", "value": "no-cache, must-revalidate" }
