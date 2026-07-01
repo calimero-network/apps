@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSubscription } from "@calimero-network/mero-react";
 import { CallEngine, type OutSignal, type DiagEntry, type PeerStat } from "../lib/webrtc";
 import { BackgroundProcessor, type BgEffect } from "../lib/effects";
-import { getExecutorPublicKey, nowSecs } from "../lib/session";
+import { getExecutorPublicKey } from "../lib/session";
 import { invokeTauri } from "../lib/tauri";
 import { useMeroMeet } from "./useMeroMeet";
 import type { Presence } from "../types";
@@ -43,11 +43,6 @@ export interface CallController {
 
 const SIGNAL_POLL_MS = 2000;
 const HEARTBEAT_MS = 10_000;
-// Only treat a call participant as a dead "ghost" once their presence heartbeat
-// is stale by this much. It is 2× the contract's PRESENCE_TTL (30s) so gossip
-// propagation lag + modest clock skew never falsely drops a live peer (they
-// heartbeat every 10s). A peer whose presence hasn't propagated at all is kept.
-const GHOST_STALE_SECS = 60;
 
 /**
  * Drives the (single) active call, independent of which page is showing. Lives in
@@ -163,24 +158,15 @@ export function useCallController(): CallController {
     }
     if (!roster) return;
 
-    // The roster IS the media session (call_participants). Only drop a peer as a
-    // "ghost" when we have POSITIVE evidence they're gone: their presence row
-    // exists AND its heartbeat is stale beyond GHOST_STALE_SECS. A peer whose
-    // presence CRDT hasn't reached us yet (p === undefined) is KEPT — the old
-    // code dropped those, tearing down freshly-joined peers before their presence
-    // gossiped in, so the handshake never completed and calls never connected.
-    const now = nowSecs();
-    const liveIds = roster.filter((id) => {
-      if (id === selfId) return true;
-      const p = presenceMap.get(id);
-      if (!p) return true;
-      return now - p.updatedAt <= GHOST_STALE_SECS;
-    });
-    for (const id of roster) {
-      if (!liveIds.includes(id)) {
-        pushDiag("peer", `roster: dropping ghost ${(presenceMap.get(id)?.username) || id.slice(0, 8)} (stale presence)`);
-      }
-    }
+    // The call roster IS the media session: call_participants is a CRDT set you
+    // are added to by start_call and removed from by leave_call. That — NOT
+    // presence liveness — decides who we hold a peer connection with. We used to
+    // additionally drop anyone whose presence looked stale/absent, but presence
+    // gossips on a separate, laggy path (and barely propagates between co-located
+    // dev nodes), so that repeatedly tore down live peers mid-handshake
+    // ("dropping ghost <name>") and no call ever connected. Presence is now used
+    // ONLY to enrich tiles (name / mic / camera) below, never for membership.
+    const liveIds = roster;
     engine.syncPeers(liveIds);
 
     // Reconcile the *tile set* to exactly the live remote roster (people actually
