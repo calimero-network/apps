@@ -98,14 +98,23 @@ cat > res/bundle-temp/manifest.json <<EOF
 }
 EOF
 
-# Sign the manifest if mero-sign is available (same key as the other mero apps).
-if cargo run --manifest-path ../../core/Cargo.toml -p mero-sign --quiet -- \
-    sign res/bundle-temp/manifest.json \
-    --key ../../core/scripts/test-signing-key/test-key.json 2>/dev/null; then
-    echo "Manifest signed"
-else
-    echo "mero-sign not available — skipping signing (non-fatal for local dev)"
+# Sign the manifest via the core workspace tool. Signing is MANDATORY — the
+# registry rejects an unsigned bundle ("missing signature") — so this fails the
+# build (via `set -e`) rather than shipping an unsigned .mpk.
+#
+# Key resolution: use $SIGNING_KEY if set, else a local `signing-key.json`
+# (gitignored) which we generate on first run with `mero-sign generate-key`.
+# This keeps the bundle signed with a stable key without depending on the
+# shared core test key (removed from core). To publish, register this key's
+# signerId as an owner of the package (see: mero-sign derive-signer-id).
+MERO_SIGN="cargo run --manifest-path ../../core/Cargo.toml -p mero-sign --quiet --"
+KEY_FILE="${SIGNING_KEY:-signing-key.json}"
+if [ ! -f "$KEY_FILE" ]; then
+    echo "==> No signing key at $KEY_FILE — generating one (mero-sign generate-key)"
+    $MERO_SIGN generate-key --output "$KEY_FILE"
 fi
+$MERO_SIGN sign res/bundle-temp/manifest.json --key "$KEY_FILE"
+echo "Manifest signed with $KEY_FILE"
 
 BUNDLE="mero-meet-${APP_VERSION}.mpk"
 ( cd res/bundle-temp && tar -czf "../${BUNDLE}" manifest.json app.wasm )
