@@ -9,11 +9,11 @@ importers:
   .:
     dependencies:
       '@calimero-network/mero-js':
-        specifier: ^2.2.1
-        version: 2.2.1
+        specifier: ^7.0.0
+        version: 7.0.0
       '@calimero-network/mero-react':
-        specifier: 2.4.0
-        version: 2.4.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+        specifier: ^4.1.0
+        version: 4.1.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@calimero-network/mero-ui':
         specifier: 1.4.0
         version: 1.4.0(@floating-ui/dom@1.7.6)(@tiptap/core@3.23.6(@tiptap/pm@3.23.6))(@tiptap/pm@3.23.6)(@types/react-dom@19.2.3(@types/react@19.2.15))(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -140,12 +140,16 @@ packages:
     peerDependencies:
       react: ^18.3.1
 
-  '@calimero-network/mero-js@2.2.1':
-    resolution: {integrity: sha512-xDBMpk0w3wxnYCh5cwVCUiQ0rjU1+LD6uHCHRWdSI0i4myTfLByOBamgYQX76RF8+6LS+O1sSDddmjbC8u9Y/g==}
+  '@calimero-network/mero-js@6.1.0':
+    resolution: {integrity: sha512-gYabeP3UfDjmlkHgcVPv9aggFedQDjIhbTbqm54k0CTiEH/1xZEo9yW87av/rxrG7CJg8OXE3VggMluhT6biJg==}
     engines: {node: '>=18.0.0'}
 
-  '@calimero-network/mero-react@2.4.0':
-    resolution: {integrity: sha512-QkTOhVVbkp41dmn8VJcK34y3/9IIaz8lDcKgMKjRo8Do7ez8uRqIT6jwPK+mj11Eb6q8DPLd/zOa8P+mGc9xlQ==}
+  '@calimero-network/mero-js@7.0.0':
+    resolution: {integrity: sha512-t8sQqw7ndbsI1UE/z/6cl8teVCARrJJ7v/WirbYRpIKMsyaSQlU55q/KGyDItKzjp/b1MU2xbs8qcT0HIQWfGQ==}
+    engines: {node: '>=18.0.0'}
+
+  '@calimero-network/mero-react@4.1.0':
+    resolution: {integrity: sha512-Hk+25rEvYQrtUsFaiJTVXhPl+zWkbpshcEH6mlqrO8MDJqnOanRDdNvEP2Y7gUEV+LR+D03IcKGaWa06y1Lq9A==}
     peerDependencies:
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
@@ -2183,11 +2187,13 @@ snapshots:
     dependencies:
       react: 19.2.6
 
-  '@calimero-network/mero-js@2.2.1': {}
+  '@calimero-network/mero-js@6.1.0': {}
 
-  '@calimero-network/mero-react@2.4.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
+  '@calimero-network/mero-js@7.0.0': {}
+
+  '@calimero-network/mero-react@4.1.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
     dependencies:
-      '@calimero-network/mero-js': 2.2.1
+      '@calimero-network/mero-js': 6.1.0
       react: 19.2.6
       react-dom: 19.2.6(react@19.2.6)
 
