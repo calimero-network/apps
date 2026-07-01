@@ -46,7 +46,7 @@
     "fflate": "^0.8.3",
     "iframe-resizer-react": "^5.1.5",
     "install": "^0.13.0",
-    "lodash": "^4.17.23",
+    "lodash": "^4.18.1",
     "prettier": "^3.8.4",
     "quill": "^2.0.3",
     "react": "^19.2.7",
