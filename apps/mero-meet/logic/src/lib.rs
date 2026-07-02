@@ -347,6 +347,11 @@ impl MeroMeet {
         let muted = existing.as_ref().map(|p| p.muted).unwrap_or(false);
         let video_on = existing.as_ref().map(|p| p.video_on).unwrap_or(true);
         let call_id = existing.as_ref().and_then(|p| p.call_id.clone());
+        // Monotonic vs the prior row — see touch_presence (backward clocks).
+        let updated_at = existing
+            .as_ref()
+            .map(|p| now.max(p.updated_at.saturating_add(1)))
+            .unwrap_or(now);
         drop(existing);
 
         let presence = Presence {
@@ -357,7 +362,7 @@ impl MeroMeet {
             video_on,
             call_id,
             joined_at,
-            updated_at: now,
+            updated_at,
         };
         self.presence.insert(id.clone(), presence.clone())?;
         app::emit!(Event::PresenceChanged(id));
@@ -371,12 +376,21 @@ impl MeroMeet {
     /// roster honest (events fire only when something was actually reaped).
     pub fn heartbeat(&mut self, now: u64) -> app::Result<()> {
         let id = Self::caller_id();
-        if let Ok(Some(mut p)) = self.presence.get_mut(&id) {
-            p.updated_at = now;
-            drop(p);
-        }
+        self.touch_presence(&id, now);
         self.reap_stale_participants(now);
         Ok(())
+    }
+
+    /// Bump `updated_at` MONOTONICALLY: `max(now, stored + 1)`. Presence
+    /// merges are newer-wins on this field, so if a client's clock ever jumps
+    /// BACKWARD (NTP correction mid-call), plain `= now` writes would lose the
+    /// merge against the stored row forever — the member's liveness froze and
+    /// everyone ghosted them while they were demonstrably alive.
+    fn touch_presence(&mut self, id: &MemberId, now: u64) {
+        if let Ok(Some(mut p)) = self.presence.get_mut(id) {
+            p.updated_at = now.max(p.updated_at.saturating_add(1));
+            drop(p);
+        }
     }
 
     /// Drop call participants who crashed / closed the window without
@@ -431,7 +445,7 @@ impl MeroMeet {
             if let Some(s) = status {
                 p.status = s;
             }
-            p.updated_at = now;
+            p.updated_at = now.max(p.updated_at.saturating_add(1));
             drop(p);
             found = true;
         }
@@ -448,7 +462,7 @@ impl MeroMeet {
         if let Ok(Some(mut p)) = self.presence.get_mut(&id) {
             p.status = "away".to_string();
             p.call_id = None;
-            p.updated_at = now;
+            p.updated_at = now.max(p.updated_at.saturating_add(1));
             drop(p);
         }
         let _ = self.call_participants.remove(&id);
@@ -505,7 +519,7 @@ impl MeroMeet {
         if let Ok(Some(mut p)) = self.presence.get_mut(&id) {
             p.status = "in_call".to_string();
             p.call_id = Some(call_id.clone());
-            p.updated_at = now;
+            p.updated_at = now.max(p.updated_at.saturating_add(1));
             drop(p);
         }
         app::emit!(Event::PresenceChanged(id));
@@ -519,7 +533,7 @@ impl MeroMeet {
         if let Ok(Some(mut p)) = self.presence.get_mut(&id) {
             p.status = "available".to_string();
             p.call_id = None;
-            p.updated_at = now;
+            p.updated_at = now.max(p.updated_at.saturating_add(1));
             drop(p);
         }
         if self.call_participants.len().unwrap_or(0) == 0 {
@@ -592,6 +606,10 @@ impl MeroMeet {
         if self.presence.get(&from)?.is_none() {
             app::bail!("join the room before sending signals");
         }
+        // Posting a signal IS a sign of life — count it as one. A peer whose
+        // heartbeat timers are throttled (minimized window) but who is
+        // actively negotiating must not look dead to the reaper or the lobby.
+        self.touch_presence(&from, now);
         // SDP/ICE blobs are small; this is a sanity cap, not a real limit.
         if payload.len() > 64 * 1024 {
             app::bail!("signal payload too large");
@@ -952,6 +970,37 @@ mod tests {
             s.post_signal(id_of(BOB), "offer".to_owned(), "sdp".to_owned(), "c1".to_owned(), 1000)
         });
         assert!(denied.is_err());
+    }
+
+    #[test]
+    fn backward_clock_cannot_freeze_liveness() {
+        let mut app = new_room();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        // Alice's clock jumps BACKWARD (NTP correction) — her next heartbeats
+        // carry older wall times. updated_at must still advance monotonically,
+        // or the LWW merge would reject every future write and she'd read as
+        // a ghost forever while demonstrably alive.
+        app.call_as(ALICE, |s| s.heartbeat(900)).unwrap();
+        let lobby = app.view(|s| s.get_lobby(1005));
+        assert_eq!(lobby.online, vec![id_of(ALICE)], "still online after clock jump");
+        assert!(lobby.members[0].updated_at > 1000, "updated_at advanced past the join");
+    }
+
+    #[test]
+    fn posting_a_signal_counts_as_liveness() {
+        let mut app = new_room();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
+        // Alice's heartbeats stop (throttled window) but she keeps negotiating.
+        app.call_as(ALICE, |s| {
+            s.post_signal(id_of(BOB), "offer".to_owned(), "sdp".to_owned(), "c1".to_owned(), 1050)
+        })
+        .unwrap();
+        let lobby = app.view(|s| s.get_lobby(1060));
+        assert!(
+            lobby.online.contains(&id_of(ALICE)),
+            "actively-signaling member must not read as offline/ghost"
+        );
     }
 
     // ── Chat ───────────────────────────────────────────────────────────────────

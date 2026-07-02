@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSubscription } from "@calimero-network/mero-react";
 import { CallEngine, type OutSignal, type DiagEntry, type PeerStat } from "../lib/webrtc";
 import { BackgroundProcessor, type BgEffect } from "../lib/effects";
-import { getContextId, getExecutorPublicKey, getUsername, nowSecs } from "../lib/session";
-import { GHOST_STALE_SECS, partitionRoster } from "../lib/roster";
+import { getContextId, getExecutorPublicKey, getUsername } from "../lib/session";
+import { GHOST_SILENCE_MS, partitionRoster } from "../lib/roster";
 
 // sessionStorage key marking "there is a live call in this room". Set while the
 // call is active, cleared by an explicit Leave. sessionStorage survives a page
@@ -99,6 +99,13 @@ export function useCallController(): CallController {
   const seenSigIdsRef = useRef<Set<string>>(new Set());
   // Live peer connection states, for the adaptive poll cadence.
   const peerStatesRef = useRef<Map<string, RTCPeerConnectionState>>(new Map());
+  // Observed liveness (all LOCAL clock — never compared across machines):
+  // last locally-seen presence.updatedAt per member, last local time any life
+  // sign was observed, and which peers are currently ghosted (for
+  // transition-only diag logging instead of a line every 600ms poll).
+  const lastUpdatedAtRef = useRef<Map<string, number>>(new Map());
+  const lastAliveRef = useRef<Map<string, number>>(new Map());
+  const ghostedRef = useRef<Set<string>>(new Set());
 
   // Controller-level diagnostics (roster/effect/lifecycle), interleaved with the
   // engine's own signal/peer logs in the same closable log popup.
@@ -146,6 +153,9 @@ export function useCallController(): CallController {
       const signals = await meet.getSignals(after);
       for (const s of signals ?? []) {
         if (s.seq > lastSeqRef.current) lastSeqRef.current = s.seq;
+        // Any inbound signal is proof of life — a peer whose heartbeats are
+        // throttled (minimized window) or whose clock is skewed still signals.
+        lastAliveRef.current.set(s.from, Date.now());
         if (seenSigIdsRef.current.has(s.id)) continue;
         seenSigIdsRef.current.add(s.id);
         if (seenSigIdsRef.current.size > 1024) {
@@ -183,22 +193,59 @@ export function useCallController(): CallController {
       for (const m of lobby.members) presenceMap.set(m.memberId, m);
       setPresence(presenceMap);
       if (lobby.room?.name) setRoomName(lobby.room.name);
+      // Liveness observation: their presence row MOVED (any change of
+      // updatedAt — we never compare their clock to ours, which broke under
+      // cross-laptop clock skew) counts as a sign of life at OUR local time.
+      for (const m of lobby.members) {
+        const prev = lastUpdatedAtRef.current.get(m.memberId);
+        if (prev !== m.updatedAt) {
+          lastUpdatedAtRef.current.set(m.memberId, m.updatedAt);
+          lastAliveRef.current.set(m.memberId, Date.now());
+        }
+      }
     }
     if (!roster) return;
 
-    // Membership = the call_participants roster, minus ghosts we have POSITIVE
-    // evidence for (presence row exists but silent > 60s — crashed/closed
-    // without leave_call). A peer with NO presence row is kept: their join just
-    // hasn't gossiped in yet, and dropping those tore down handshakes
-    // mid-flight. The contract also reaps ghosts on any member's heartbeat;
-    // this is the client-side cover until that lands/gossips.
-    const { live: liveIds, ghosts } = partitionRoster(roster, presenceMap, selfId, nowSecs());
-    for (const id of ghosts) {
-      pushDiag(
-        "peer",
-        `ghost peer ${presenceMap.get(id)?.username || id.slice(0, 8)} dropped — no heartbeat for ${GHOST_STALE_SECS}s (left without saying bye)`,
-      );
+    // Seed first-sighted participants so a truly dead ghost still expires
+    // GHOST_SILENCE_MS after we first observe it.
+    for (const id of roster) {
+      if (!lastAliveRef.current.has(id)) lastAliveRef.current.set(id, Date.now());
     }
+
+    // Membership: the call_participants roster minus peers with NO observed
+    // sign of life for 60s. Life = moving presence row, an inbound signal
+    // (drainSignals bumps), or CONNECTED media — a peer that is provably
+    // signaling/streaming is never a ghost, no matter what their heartbeat
+    // clock says. (The old presence-clock check killed live handshakes in a
+    // loop when a peer's window was minimized or their clock was skewed.)
+    const connected = new Set(
+      [...peerStatesRef.current].filter(([, s]) => s === "connected").map(([id]) => id),
+    );
+    const { live, ghosts } = partitionRoster({
+      roster,
+      selfId,
+      nowMs: Date.now(),
+      lastAliveMs: lastAliveRef.current,
+      connected,
+    });
+    // Transition-only ghost logging (the old per-poll line spammed the log).
+    for (const id of ghosts) {
+      if (!ghostedRef.current.has(id)) {
+        ghostedRef.current.add(id);
+        pushDiag(
+          "peer",
+          `ghost peer ${presenceMap.get(id)?.username || id.slice(0, 8)} dropped — no sign of life for ${GHOST_SILENCE_MS / 1000}s`,
+        );
+      }
+    }
+    for (const id of live) ghostedRef.current.delete(id);
+
+    // Media beats a lagging roster: keep any CONNECTED peer even if the
+    // roster no longer lists them (e.g. server-side reap while their window
+    // was minimized) — the call is demonstrably still running.
+    const liveSet = new Set(live);
+    for (const id of connected) liveSet.add(id);
+    const liveIds = [...liveSet];
     engine.syncPeers(liveIds);
 
     // Reconcile the *tile set* to exactly the live remote roster (people actually
@@ -348,6 +395,9 @@ export function useCallController(): CallController {
       seededRef.current = false;
       seenSigIdsRef.current = new Set();
       peerStatesRef.current = new Map();
+      lastUpdatedAtRef.current = new Map();
+      lastAliveRef.current = new Map();
+      ghostedRef.current = new Set();
       setEffectState("none");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -400,11 +450,25 @@ export function useCallController(): CallController {
       void meet.leaveCall();
     };
     window.addEventListener("pagehide", onHide);
+    // When the window becomes visible again: WKWebView throttles/suspends JS
+    // timers in occluded windows, so heartbeats + polls may have been silent
+    // for minutes while WebRTC media kept flowing. Immediately re-announce
+    // liveness and re-assert call membership (start_call is idempotent — it
+    // re-adds us if a server-side reap dropped us while we were suspended).
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      void meet.heartbeat();
+      void meet.startCall();
+      void syncRoster();
+      void drainSignals();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       stopped = true;
       clearTimeout(timer);
       clearInterval(hb);
       window.removeEventListener("pagehide", onHide);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [active, drainSignals, syncRoster, meet]);
 

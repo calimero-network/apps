@@ -220,6 +220,20 @@ export class CallEngine {
     }
     for (const [id, state] of [...this.peers.entries()]) {
       if (wanted.has(id)) continue;
+      // Connected media outranks the roster: a peer can vanish from
+      // call_participants while their media is demonstrably flowing (their
+      // window was minimized → timers suspended → heartbeats stopped → the
+      // contract reaped them). Keep the connection; `bye` or a real
+      // connection failure still tears it down. missingStreak = -1 marks
+      // "roster-absent but connected" so this logs once, not per sync.
+      if (state.pc.connectionState === "connected") {
+        if (state.missingStreak !== -1) {
+          state.missingStreak = -1;
+          this.diag("peer", `${id.slice(0, 8)} left roster but media is connected — keeping`);
+        }
+        continue;
+      }
+      if (state.missingStreak < 0) state.missingStreak = 0;
       state.missingStreak += 1;
       if (state.missingStreak >= ROSTER_MISS_LIMIT) {
         this.closePeer(id, "left roster");

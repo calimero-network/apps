@@ -235,6 +235,24 @@ describe("roster reconciliation", () => {
     expect(cbs.onRemoteStream).toHaveBeenCalledWith(PEER_POLITE, null);
   });
 
+  it("a CONNECTED peer survives roster absence indefinitely (media outranks roster)", async () => {
+    const { engine } = makeEngine();
+    engine.syncPeers([PEER_POLITE]);
+    const pc = FakePC.all[0];
+    pc.setConn("connected");
+    // The roster reaps them (e.g. their heartbeats were throttled) — but the
+    // call is demonstrably running, so the connection must be kept.
+    for (let i = 0; i < 10; i++) engine.syncPeers([]);
+    expect(await peerCount(engine)).toBe(1);
+    expect(pc.closed).toBe(false);
+    // Once the connection actually degrades, roster absence may close it.
+    pc.setConn("failed");
+    engine.syncPeers([]);
+    engine.syncPeers([]);
+    engine.syncPeers([]);
+    expect(await peerCount(engine)).toBe(0);
+  });
+
   it("a reappearing peer resets the miss streak", async () => {
     const { engine } = makeEngine();
     engine.syncPeers([PEER_POLITE]);
