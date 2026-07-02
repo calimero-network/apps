@@ -9,8 +9,10 @@ import ThemeToggle from "../components/ThemeToggle";
 import type { LobbyView, Presence } from "../types";
 import styles from "./LobbyPage.module.css";
 
-const REFRESH_MS = 4000;
-const HEARTBEAT_MS = 10_000;
+// Fast presence: 3s heartbeats against the contract's 10s online TTL keep the
+// available/away status near-live; 2s refreshes keep the list honest.
+const REFRESH_MS = 2000;
+const HEARTBEAT_MS = 3_000;
 
 /**
  * The lobby = the room directory. Shows everyone who's in this Calimero room
@@ -222,7 +224,10 @@ export default function LobbyPage() {
                   {isSelf && <span className={styles.youTag}> you</span>}
                 </span>
                 <span className={styles.sub}>
-                  {m.callId ? "in call" : isOnline ? "available" : "away"}
+                  {/* "in call" only for members who are demonstrably alive —
+                      an ungraceful exit leaves callId set until the contract
+                      reap clears it, and a stale row must read "away". */}
+                  {m.callId && isOnline ? "in call" : isOnline ? "available" : "away"}
                   {m.muted && " · muted"}
                   {!m.videoOn && " · camera off"}
                 </span>

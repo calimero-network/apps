@@ -493,6 +493,23 @@ export class CallEngine {
     if (!keepStream) this.cbs.onRemoteStream(peerId, null);
   }
 
+  /**
+   * Manual force-reconnect: tear down and re-negotiate EVERY peer connection
+   * from scratch (fresh pc, fresh offer/answer). Streams are kept on the
+   * tiles under "reconnecting…" until the rebuilt connection's ontrack
+   * replaces them. Also clears the recently-left suppression, so the next
+   * roster sync may re-add peers we previously wrote off.
+   */
+  rebuildAll(): void {
+    const ids = [...this.peers.keys()];
+    this.diag("info", `force reconnect — rebuilding ${ids.length} peer connection(s)`);
+    this.recentlyLeft.clear();
+    for (const id of ids) {
+      this.closePeer(id, "force reconnect", true);
+      this.addPeer(id);
+    }
+  }
+
   /** Announce departure to peers and tear everything down. */
   stop(): void {
     this.diag("info", `stopping call — saying bye to ${this.peers.size} peer(s)`);

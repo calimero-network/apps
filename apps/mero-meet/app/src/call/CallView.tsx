@@ -7,10 +7,9 @@ import VideoTile from "../components/VideoTile";
 import ChatPanel from "../components/ChatPanel";
 import ThemeToggle from "../components/ThemeToggle";
 import DevPanel from "../components/DevPanel";
-import { isDevMode } from "../lib/dev";
 import {
   MicIcon, MicOffIcon, VideoIcon, VideoOffIcon, LeaveIcon, PeopleIcon,
-  ChatIcon, InviteIcon, SparkleIcon, MinimizeIcon,
+  ChatIcon, InviteIcon, SparkleIcon, MinimizeIcon, ReconnectIcon,
 } from "./icons";
 import styles from "./CallView.module.css";
 
@@ -32,7 +31,6 @@ export default function CallView() {
   const [showInvite, setShowInvite] = useState(false);
   const [showEffects, setShowEffects] = useState(false);
   const invite = useRoomInvite(call.roomName);
-  const dev = isDevMode();
   const { setPanelOpen } = chat;
 
   // Entering the call: if nothing is active yet (deep link or fresh open), start.
@@ -58,15 +56,15 @@ export default function CallView() {
             <PeopleIcon />
             {tileCount} {tileCount === 1 ? "person" : "people"}
           </span>
-          {dev && (
-            <button
-              className={styles.chip}
-              onClick={() => setShowDev((v) => !v)}
-              title="WebRTC diagnostics"
-            >
-              ⚙
-            </button>
-          )}
+          {/* Diagnostics are for EVERY participant, not just desktops with
+              developer mode on — debugging a call needs both sides' logs. */}
+          <button
+            className={styles.chip}
+            onClick={() => setShowDev((v) => !v)}
+            title="Call diagnostics"
+          >
+            ⚙
+          </button>
           <ThemeToggle overlay />
         </div>
       </header>
@@ -223,6 +221,14 @@ export default function CallView() {
             aria-label="Invite people"
           >
             <InviteIcon />
+          </button>
+          <button
+            className={styles.ctrl}
+            onClick={call.reconnect}
+            title="Reconnect (rebuild all connections)"
+            aria-label="Reconnect"
+          >
+            <ReconnectIcon />
           </button>
           <button
             className={styles.ctrl}

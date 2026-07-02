@@ -44,6 +44,8 @@ export interface CallController {
   setEffect: (e: BgEffect) => void;
   start: () => void;
   leave: () => Promise<void>;
+  /** Force reconnect: re-assert call membership + rebuild every peer connection. */
+  reconnect: () => void;
   diagnostics: DiagEntry[];
   getStats: () => Promise<PeerStat[]>;
 }
@@ -52,7 +54,12 @@ const SIGNAL_POLL_MS = 2000;
 // While a peer connection is still handshaking, poll this fast — the
 // offer/answer roundtrip shouldn't pay poll latency on top of gossip latency.
 const SIGNAL_POLL_FAST_MS = 600;
-const HEARTBEAT_MS = 10_000;
+// Presence ping cadence. 3s (with the contract's 10s online TTL) keeps the
+// lobby's available/away status near-live, as requested.
+const HEARTBEAT_MS = 3_000;
+// If the contract roster loses us (a reap misfire, someone's stale end_call,
+// gossip hiccup), re-assert membership via start_call — but at most this often.
+const REASSERT_MS = 5_000;
 
 /**
  * Drives the (single) active call, independent of which page is showing. Lives in
@@ -106,6 +113,11 @@ export function useCallController(): CallController {
   const lastUpdatedAtRef = useRef<Map<string, number>>(new Map());
   const lastAliveRef = useRef<Map<string, number>>(new Map());
   const ghostedRef = useRef<Set<string>>(new Set());
+  // Throttle for membership re-assertion (see syncRoster).
+  const lastReassertRef = useRef<number>(0);
+  // RPC health flags, so failures log on TRANSITION instead of every poll.
+  const drainFailedRef = useRef<boolean>(false);
+  const rosterFailedRef = useRef<boolean>(false);
 
   // Controller-level diagnostics (roster/effect/lifecycle), interleaved with the
   // engine's own signal/peer logs in the same closable log popup.
@@ -133,11 +145,25 @@ export function useCallController(): CallController {
   }, []);
 
   // ── Outbound signaling: engine → contract ──────────────────────────────────
+  // Every post is verified and logged: a silently-lost offer/answer used to
+  // kill the handshake with ZERO evidence in anyone's log. `execute` resolves
+  // null on RPC failure, so retry once and shout if the signal is truly lost.
   const sendSignal = useCallback(
     (sig: OutSignal) => {
-      void meet.postSignal(sig.to, sig.kind, sig.payload, callIdRef.current);
+      const label = `${sig.kind}→${sig.to.slice(0, 8)}`;
+      void (async () => {
+        const seq = await meet.postSignal(sig.to, sig.kind, sig.payload, callIdRef.current);
+        if (seq != null) {
+          pushDiag("signal", `posted ${label} (seq ${seq})`);
+          return;
+        }
+        pushDiag("error", `post_signal ${label} failed — retrying once`);
+        const retry = await meet.postSignal(sig.to, sig.kind, sig.payload, callIdRef.current);
+        if (retry != null) pushDiag("signal", `posted ${label} on retry (seq ${retry})`);
+        else pushDiag("error", `post_signal ${label} failed twice — signal LOST (node down?)`);
+      })();
     },
-    [meet],
+    [meet, pushDiag],
   );
 
   // ── Inbound signaling: contract → engine ────────────────────────────────────
@@ -151,6 +177,19 @@ export function useCallController(): CallController {
       // query and never misses a signal.
       const after = Math.max(0, lastSeqRef.current - 16);
       const signals = await meet.getSignals(after);
+      // Transition-logged RPC health: a dead node otherwise looked identical
+      // to an empty mailbox ("no logs change, nothing is going on").
+      if (signals == null) {
+        if (!drainFailedRef.current) {
+          drainFailedRef.current = true;
+          pushDiag("error", "get_signals RPC failing — inbound signaling is BLIND (node down?)");
+        }
+        return;
+      }
+      if (drainFailedRef.current) {
+        drainFailedRef.current = false;
+        pushDiag("info", "get_signals RPC recovered");
+      }
       for (const s of signals ?? []) {
         if (s.seq > lastSeqRef.current) lastSeqRef.current = s.seq;
         // Any inbound signal is proof of life — a peer whose heartbeats are
@@ -176,7 +215,7 @@ export function useCallController(): CallController {
     } finally {
       drainingRef.current = false;
     }
-  }, [meet]);
+  }, [meet, pushDiag]);
 
   // ── Roster reconciliation ───────────────────────────────────────────────────
   const syncRoster = useCallback(async () => {
@@ -187,6 +226,19 @@ export function useCallController(): CallController {
       meet.getCallParticipants(),
       meet.getLobby(),
     ]);
+    // Transition-logged RPC health (see drainSignals for why).
+    if (roster == null || lobby == null) {
+      if (!rosterFailedRef.current) {
+        rosterFailedRef.current = true;
+        pushDiag(
+          "error",
+          `roster sync RPC failing (participants=${roster == null ? "ERR" : "ok"}, lobby=${lobby == null ? "ERR" : "ok"})`,
+        );
+      }
+    } else if (rosterFailedRef.current) {
+      rosterFailedRef.current = false;
+      pushDiag("info", "roster sync RPC recovered");
+    }
 
     const presenceMap = new Map<string, Presence>();
     if (lobby) {
@@ -205,6 +257,26 @@ export function useCallController(): CallController {
       }
     }
     if (!roster) return;
+
+    // Self-heal membership: if the contract roster no longer lists US while we
+    // are demonstrably in the call, someone's reap/end dropped us (skewed
+    // clock, suspended timers, stale end_call). Re-assert via start_call —
+    // it is idempotent — instead of sitting in a call nobody can see us in.
+    // (Previously this only happened on visibilitychange, so a dropped member
+    // stayed invisible forever: "we're both in a call but there's no one".)
+    if (seededRef.current && callIdRef.current && !roster.includes(selfId)) {
+      const nowT = Date.now();
+      if (nowT - lastReassertRef.current > REASSERT_MS) {
+        lastReassertRef.current = nowT;
+        pushDiag("error", "contract roster lost us — re-asserting call membership (start_call)");
+        void meet.startCall().then((id) => {
+          if (id) {
+            callIdRef.current = id;
+            setCallId(id);
+          }
+        });
+      }
+    }
 
     // Seed first-sighted participants so a truly dead ghost still expires
     // GHOST_SILENCE_MS after we first observe it.
@@ -398,6 +470,9 @@ export function useCallController(): CallController {
       lastUpdatedAtRef.current = new Map();
       lastAliveRef.current = new Map();
       ghostedRef.current = new Set();
+      lastReassertRef.current = 0;
+      drainFailedRef.current = false;
+      rosterFailedRef.current = false;
       setEffectState("none");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -525,6 +600,30 @@ export function useCallController(): CallController {
 
   const start = useCallback(() => setActive(true), []);
 
+  // Manual "force reconnect": re-assert contract membership, rebuild every
+  // peer connection from a clean slate, then drain whatever is pending. For
+  // when a call wedges and waiting for the automatic recovery ladder is worse
+  // than redialing.
+  const reconnect = useCallback(() => {
+    pushDiag("info", "force reconnect requested — re-asserting membership + rebuilding peers");
+    lastReassertRef.current = Date.now();
+    void meet
+      .startCall()
+      .then((id) => {
+        if (id) {
+          callIdRef.current = id;
+          setCallId(id);
+        } else {
+          pushDiag("error", "start_call failed during reconnect (node down?)");
+        }
+      })
+      .then(() => {
+        engineRef.current?.rebuildAll();
+        void syncRoster();
+        void drainSignals();
+      });
+  }, [meet, syncRoster, drainSignals, pushDiag]);
+
   const leave = useCallback(async () => {
     pushDiag("info", "leaving call");
     try {
@@ -597,6 +696,7 @@ export function useCallController(): CallController {
     setEffect,
     start,
     leave,
+    reconnect,
     diagnostics,
     getStats,
   };

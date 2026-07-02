@@ -47,8 +47,23 @@ const ROLE_HOST: &str = "host";
 const MAX_SIGNALS: usize = 512;
 
 /// A participant heard from within this window (seconds) is considered online.
-/// The frontend heartbeats every ~10s; 30s tolerates a couple of missed beats.
-const PRESENCE_TTL_SECS: u64 = 30;
+/// The frontend heartbeats every ~3s; 10s tolerates a couple of missed beats
+/// while keeping the lobby's available/away status close to live.
+const PRESENCE_TTL_SECS: u64 = 10;
+
+/// A call participant silent for longer than this (in ROOM time — see
+/// `room_now`) is a reap CANDIDATE. Far larger than the presence TTL: a
+/// minimized window suspends JS timers (heartbeats stop) while WebRTC media
+/// keeps flowing, and reaping must not kill demonstrably-live calls.
+const REAP_STALE_SECS: u64 = 60;
+
+/// A reap candidate is only actually reaped after staying silent for this
+/// long AFTER being marked (two-pass reap). This grace absorbs room-clock
+/// jumps: a joiner whose wall clock runs ahead teleports room time forward,
+/// making everyone else look momentarily stale — one heartbeat clears the
+/// mark. Only a peer whose presence row stays FROZEN through the grace is
+/// truly gone.
+const REAP_GRACE_SECS: u64 = 30;
 
 /// Cap on retained chat messages (a room's rolling history).
 const MAX_MESSAGES: usize = 1000;
@@ -137,6 +152,41 @@ impl MergeableTrait for Signal {
 // Flat record (no nested collections) → re-key is a no-op; impl exists only to
 // satisfy rc.9's `Mergeable: RekeyTarget` supertrait bound.
 impl RekeyTarget for Signal {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
+}
+
+// ── Reap marks (two-pass ghost detection) ─────────────────────────────────────
+
+/// First-pass observation that a call participant looks stale. The participant
+/// is reaped only if their presence row is STILL frozen at `row_ts` once
+/// `REAP_GRACE_SECS` of room time has passed since `marked_at`. Any presence
+/// movement clears the mark — this is "observed staleness", the contract-side
+/// twin of the frontend's observed-liveness ghost logic, and it is what makes
+/// reaping immune to wall-clock skew between members' machines.
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+#[serde(rename_all = "camelCase")]
+pub struct ReapMark {
+    /// Room time when the participant was first seen stale.
+    pub marked_at: u64,
+    /// Their presence `updated_at` at mark time — movement clears the mark.
+    pub row_ts: u64,
+}
+
+impl MergeableTrait for ReapMark {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // Later mark wins: concurrent observers converge on the most recent
+        // observation, which only ever DELAYS a reap (the safe direction).
+        if other.marked_at > self.marked_at {
+            *self = other.clone();
+        }
+        Ok(())
+    }
+}
+
+// Flat record → no-op re-key; required by rc.9's `Mergeable: RekeyTarget`.
+impl RekeyTarget for ReapMark {
     fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
@@ -249,6 +299,9 @@ pub struct MeroMeet {
     messages: UnorderedMap<String, ChatMessage>,
     /// Monotonic chat sequence counter.
     next_msg_seq: LwwRegister<u64>,
+    /// Two-pass reap bookkeeping (see `ReapMark`). NOTE: state-layout change —
+    /// rooms created before this field must be recreated (no migrations).
+    reap_marks: UnorderedMap<MemberId, ReapMark>,
 }
 
 // ── Logic ─────────────────────────────────────────────────────────────────────
@@ -270,6 +323,7 @@ impl MeroMeet {
             roles: AccessControl::new(me),
             messages: UnorderedMap::new(),
             next_msg_seq: LwwRegister::new(0),
+            reap_marks: UnorderedMap::new(),
         }
     }
 
@@ -306,9 +360,39 @@ impl MeroMeet {
         self.room_name.get().map(|r| r.get().clone()).unwrap_or_default()
     }
 
+    // ── Room time (skew-proof liveness clock) ──────────────────────────────────
+
+    /// The newest presence stamp in the room. Together with the caller's clock
+    /// this forms "room time": a monotone timeline that runs at the FASTEST
+    /// member's clock rate. Members whose wall clocks run behind stamp their
+    /// writes at room time (see `stamp`), so their rows never look stale to a
+    /// member whose clock runs ahead. This is the contract-side fix for the
+    /// clock-skew bug the frontend fixed in roster.ts: caller-`now` minus
+    /// another-machine-`updated_at` is meaningless across laptops.
+    fn latest_presence_ts(&self) -> u64 {
+        self.presence
+            .entries()
+            .map(|e| e.map(|(_, p)| p.updated_at).max().unwrap_or(0))
+            .unwrap_or(0)
+    }
+
+    /// Normalize the caller's clock onto room time. All liveness math (online
+    /// TTL, reap candidacy) MUST go through this, never raw caller `now`.
+    fn room_now(&self, caller_now: u64) -> u64 {
+        caller_now.max(self.latest_presence_ts())
+    }
+
+    /// The value to write into a presence row: room time, and strictly after
+    /// the stored stamp (backward clocks must never freeze liveness — the LWW
+    /// merge would reject every future write).
+    fn stamp(&self, caller_now: u64, stored: u64) -> u64 {
+        self.room_now(caller_now).max(stored.saturating_add(1))
+    }
+
     // ── Room ─────────────────────────────────────────────────────────────────
 
     pub fn get_room(&self, now: u64) -> RoomInfo {
+        let now = self.room_now(now);
         let members: Vec<Presence> = self
             .presence
             .entries()
@@ -347,12 +431,10 @@ impl MeroMeet {
         let muted = existing.as_ref().map(|p| p.muted).unwrap_or(false);
         let video_on = existing.as_ref().map(|p| p.video_on).unwrap_or(true);
         let call_id = existing.as_ref().and_then(|p| p.call_id.clone());
-        // Monotonic vs the prior row — see touch_presence (backward clocks).
-        let updated_at = existing
-            .as_ref()
-            .map(|p| now.max(p.updated_at.saturating_add(1)))
-            .unwrap_or(now);
+        // Room-time stamp, monotonic vs the prior row (backward clocks / skew).
+        let stored = existing.as_ref().map(|p| p.updated_at).unwrap_or(0);
         drop(existing);
+        let updated_at = self.stamp(now, stored);
 
         let presence = Presence {
             member_id: id.clone(),
@@ -381,45 +463,90 @@ impl MeroMeet {
         Ok(())
     }
 
-    /// Bump `updated_at` MONOTONICALLY: `max(now, stored + 1)`. Presence
-    /// merges are newer-wins on this field, so if a client's clock ever jumps
-    /// BACKWARD (NTP correction mid-call), plain `= now` writes would lose the
-    /// merge against the stored row forever — the member's liveness froze and
-    /// everyone ghosted them while they were demonstrably alive.
+    /// Bump `updated_at` onto room time, MONOTONICALLY past the stored value
+    /// (see `stamp`) — a backward clock jump or a behind-running clock must
+    /// never freeze liveness or lose the LWW merge.
     fn touch_presence(&mut self, id: &MemberId, now: u64) {
+        let stored = match self.presence.get(id) {
+            Ok(Some(p)) => p.updated_at,
+            _ => return,
+        };
+        let stamp = self.stamp(now, stored);
         if let Ok(Some(mut p)) = self.presence.get_mut(id) {
-            p.updated_at = now.max(p.updated_at.saturating_add(1));
+            p.updated_at = stamp;
             drop(p);
         }
     }
 
     /// Drop call participants who crashed / closed the window without
-    /// `leave_call`: their presence row exists but hasn't heartbeated for
-    /// 2× the presence TTL (a lagging beat must not be a death sentence).
-    /// Participants with NO presence row are kept — we cannot judge their
-    /// freshness. Ends the call when the last living participant is gone.
-    /// Runs on every heartbeat, so the roster self-heals as long as anyone
-    /// in the room is alive — clients stop seeing a ghost "1 person in call".
+    /// `leave_call` — in TWO passes. Pass 1: a participant silent for
+    /// `REAP_STALE_SECS` of room time gets a `ReapMark`. Pass 2 (a later
+    /// invocation): if their presence row is STILL frozen after
+    /// `REAP_GRACE_SECS`, they are reaped; any movement clears the mark.
+    /// Single-pass reaping killed live calls whenever a member's wall clock
+    /// ran ahead (their heartbeat made everyone else look stale) — the exact
+    /// "we're both in a call but can't see each other" failure.
+    ///
+    /// Reaping also clears the ghost's own presence call state, so the lobby
+    /// stops saying "in call" forever about someone whose window closed.
+    /// Participants with NO presence row are kept — we cannot judge them.
+    /// Ends the call when the last participant is gone. Runs on every
+    /// heartbeat, so the roster self-heals as long as anyone is alive.
     fn reap_stale_participants(&mut self, now: u64) {
-        let stale: Vec<MemberId> = self
-            .get_call_participants()
-            .into_iter()
-            .filter(|id| match self.presence.get(id) {
-                Ok(Some(p)) => now.saturating_sub(p.updated_at) > 2 * PRESENCE_TTL_SECS,
-                _ => false,
-            })
-            .collect();
-        if stale.is_empty() {
+        let room_now = self.room_now(now);
+        let mut reaped: Vec<MemberId> = Vec::new();
+        for id in self.get_call_participants() {
+            let row_ts = match self.presence.get(&id) {
+                Ok(Some(p)) => p.updated_at,
+                _ => continue, // no presence row — cannot judge, keep
+            };
+            if room_now.saturating_sub(row_ts) <= REAP_STALE_SECS {
+                let _ = self.reap_marks.remove(&id); // provably alive
+                continue;
+            }
+            // Copy the mark out (owned) so the read borrow ends before the
+            // insert below.
+            let mark = match self.reap_marks.get(&id) {
+                Ok(Some(m)) => Some((m.marked_at, m.row_ts)),
+                _ => None,
+            };
+            match mark {
+                Some((marked_at, mark_row)) if mark_row == row_ts => {
+                    if room_now.saturating_sub(marked_at) > REAP_GRACE_SECS {
+                        reaped.push(id);
+                    }
+                }
+                _ => {
+                    // First sighting as stale (or they moved since the last
+                    // mark): (re)start the grace clock.
+                    let _ = self
+                        .reap_marks
+                        .insert(id.clone(), ReapMark { marked_at: room_now, row_ts });
+                }
+            }
+        }
+        if reaped.is_empty() {
             return;
         }
-        for id in &stale {
+        for id in &reaped {
             let _ = self.call_participants.remove(id);
+            let _ = self.reap_marks.remove(id);
+            // Clear the ghost's "in call" presence. The +1 bump stays on their
+            // own timeline (they remain stale — we never forge a foreign
+            // clock) but wins the merge against the frozen row; if they are
+            // actually alive, their next own write stamps room time and wins.
+            if let Ok(Some(mut p)) = self.presence.get_mut(id) {
+                p.status = "away".to_string();
+                p.call_id = None;
+                p.updated_at = p.updated_at.saturating_add(1);
+                drop(p);
+            }
         }
         if self.call_participants.len().unwrap_or(0) == 0 {
             // Emits CallEnded — the room falls back to "Start call".
             self.end_active_call_internal();
         } else {
-            for id in stale {
+            for id in reaped {
                 app::emit!(Event::MemberLeft(id));
             }
         }
@@ -434,6 +561,7 @@ impl MeroMeet {
         now: u64,
     ) -> app::Result<()> {
         let id = Self::caller_id();
+        let room = self.room_now(now);
         let mut found = false;
         if let Ok(Some(mut p)) = self.presence.get_mut(&id) {
             if let Some(m) = muted {
@@ -445,7 +573,7 @@ impl MeroMeet {
             if let Some(s) = status {
                 p.status = s;
             }
-            p.updated_at = now.max(p.updated_at.saturating_add(1));
+            p.updated_at = room.max(p.updated_at.saturating_add(1));
             drop(p);
             found = true;
         }
@@ -459,10 +587,11 @@ impl MeroMeet {
     /// Leave the room: mark away and drop out of any active call.
     pub fn leave(&mut self, now: u64) -> app::Result<()> {
         let id = Self::caller_id();
+        let room = self.room_now(now);
         if let Ok(Some(mut p)) = self.presence.get_mut(&id) {
             p.status = "away".to_string();
             p.call_id = None;
-            p.updated_at = now.max(p.updated_at.saturating_add(1));
+            p.updated_at = room.max(p.updated_at.saturating_add(1));
             drop(p);
         }
         let _ = self.call_participants.remove(&id);
@@ -475,6 +604,7 @@ impl MeroMeet {
     }
 
     pub fn get_lobby(&self, now: u64) -> LobbyView {
+        let room_now = self.room_now(now);
         let members: Vec<Presence> = self
             .presence
             .entries()
@@ -482,7 +612,7 @@ impl MeroMeet {
             .unwrap_or_default();
         let online = members
             .iter()
-            .filter(|p| now.saturating_sub(p.updated_at) <= PRESENCE_TTL_SECS)
+            .filter(|p| room_now.saturating_sub(p.updated_at) <= PRESENCE_TTL_SECS)
             .map(|p| p.member_id.clone())
             .collect();
         LobbyView {
@@ -499,14 +629,16 @@ impl MeroMeet {
     /// room rings.
     pub fn start_call(&mut self, now: u64) -> app::Result<String> {
         let id = Self::caller_id();
-        // If the recorded call has no participant seen within the presence TTL,
-        // everyone left ungracefully (closed window / crashed) and the session is
-        // dead. Clear it so we start a FRESH call instead of joining a ghost with
-        // a stale id and phantom roster. This is the backstop for the "everybody
-        // leaves → kill everything → next caller starts clean" requirement.
-        if !self.active_call.get().is_empty() && !self.has_fresh_participant(now) {
-            self.end_active_call_internal();
-        }
+        // Refresh our own presence FIRST (joining a call is a sign of life),
+        // then run the standard two-pass reap. If everyone in the recorded
+        // call is provably gone (silent through the mark + grace windows),
+        // the reap ends it and we mint a FRESH session below — the backstop
+        // for "everybody leaves ungracefully → next caller starts clean".
+        // NOTE: this must NOT be an instant staleness check — a joiner whose
+        // wall clock ran ahead used to kill the live call right here, which
+        // is why "the other person never got the invite".
+        self.touch_presence(&id, now);
+        self.reap_stale_participants(now);
         let mut call_id = self.active_call.get().clone();
         if call_id.is_empty() {
             // Deterministic id (no WASM randomness): starter prefix + clock.
@@ -516,10 +648,11 @@ impl MeroMeet {
             app::emit!(Event::CallStarted(call_id.clone()));
         }
         self.call_participants.insert(id.clone())?;
+        let room = self.room_now(now);
         if let Ok(Some(mut p)) = self.presence.get_mut(&id) {
             p.status = "in_call".to_string();
             p.call_id = Some(call_id.clone());
-            p.updated_at = now.max(p.updated_at.saturating_add(1));
+            p.updated_at = room.max(p.updated_at.saturating_add(1));
             drop(p);
         }
         app::emit!(Event::PresenceChanged(id));
@@ -530,10 +663,11 @@ impl MeroMeet {
     pub fn leave_call(&mut self, now: u64) -> app::Result<()> {
         let id = Self::caller_id();
         let _ = self.call_participants.remove(&id);
+        let room = self.room_now(now);
         if let Ok(Some(mut p)) = self.presence.get_mut(&id) {
             p.status = "available".to_string();
             p.call_id = None;
-            p.updated_at = now.max(p.updated_at.saturating_add(1));
+            p.updated_at = room.max(p.updated_at.saturating_add(1));
             drop(p);
         }
         if self.call_participants.len().unwrap_or(0) == 0 {
@@ -557,22 +691,6 @@ impl MeroMeet {
             let _ = self.call_participants.clear();
             app::emit!(Event::CallEnded(call_id));
         }
-    }
-
-    /// True if any current call participant has a fresh (within-TTL) heartbeat.
-    /// A call whose participants have ALL gone stale is dead — used by start_call
-    /// to reap ghost sessions left by ungraceful exits (no leave_call). Read-only:
-    /// it inspects presence rather than mutating another member's state, which
-    /// would be unsafe under LWW merge.
-    fn has_fresh_participant(&self, now: u64) -> bool {
-        for id in self.get_call_participants() {
-            if let Ok(Some(p)) = self.presence.get(&id) {
-                if now.saturating_sub(p.updated_at) <= PRESENCE_TTL_SECS {
-                    return true;
-                }
-            }
-        }
-        false
     }
 
     /// Roster of identities currently in the call.
@@ -687,6 +805,8 @@ impl MeroMeet {
             Some(p) => p.username.clone(),
             None => app::bail!("join the room before posting messages"),
         };
+        // Chatting is a sign of life — same reasoning as post_signal.
+        self.touch_presence(&from, now);
         let text = text.trim().to_owned();
         if text.is_empty() {
             app::bail!("message is empty");
@@ -797,14 +917,14 @@ mod tests {
     fn join_lists_members_and_online_respects_ttl() {
         let mut app = new_room();
         app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
-        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1020)).unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1005)).unwrap();
 
-        let lobby = app.view(|s| s.get_lobby(1025));
+        let lobby = app.view(|s| s.get_lobby(1008));
         assert_eq!(lobby.members.len(), 2);
         assert_eq!(lobby.online.len(), 2);
 
-        // 35s after Alice's last beat she is offline; Bob (15s) is still online.
-        let lobby = app.view(|s| s.get_lobby(1035));
+        // 12s after Alice's last beat she is offline; Bob (7s) is still online.
+        let lobby = app.view(|s| s.get_lobby(1012));
         assert_eq!(lobby.online, vec![id_of(BOB)]);
     }
 
@@ -813,7 +933,7 @@ mod tests {
         let mut app = new_room();
         app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
         app.call_as(ALICE, |s| s.heartbeat(1040)).unwrap();
-        let lobby = app.view(|s| s.get_lobby(1060));
+        let lobby = app.view(|s| s.get_lobby(1045));
         assert_eq!(lobby.online, vec![id_of(ALICE)]);
     }
 
@@ -851,17 +971,38 @@ mod tests {
     }
 
     #[test]
-    fn stale_ghost_call_is_reaped_on_next_start() {
+    fn stale_ghost_participant_is_reaped_after_mark_and_grace() {
         let mut app = new_room();
         app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
         let ghost = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
 
         // Alice's window died: no leave_call, heartbeats stop. 1000s later Bob
-        // calls — the ghost must be ended and a FRESH session created.
+        // calls. The FIRST pass only MARKS Alice (an instant kill here is the
+        // clock-skew bug: a joiner with a fast clock murdered live calls).
         app.call_as(BOB, |s| s.join("Bob".to_owned(), 2000)).unwrap();
-        let fresh = app.call_as(BOB, |s| s.start_call(2001)).unwrap();
-        assert_ne!(fresh, ghost, "dead session must not be rejoined");
+        let joined = app.call_as(BOB, |s| s.start_call(2001)).unwrap();
+        assert_eq!(joined, ghost, "session survives until the ghost is PROVEN dead");
+        // Alice's row stays frozen through the grace window → next pass reaps.
+        app.call_as(BOB, |s| s.heartbeat(2040)).unwrap();
         assert_eq!(app.view(|s| s.get_call_participants()), vec![id_of(BOB)]);
+    }
+
+    #[test]
+    fn fully_dead_call_is_ended_and_next_start_is_fresh() {
+        let mut app = new_room();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        let ghost = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
+
+        // Alice crashed; Bob sits in the LOBBY. His first beat marks her, his
+        // second (past the grace) reaps her — the empty call is killed, and
+        // the next start mints a fresh session ("everybody leaves → kill it").
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 2000)).unwrap();
+        app.call_as(BOB, |s| s.heartbeat(2005)).unwrap();
+        app.call_as(BOB, |s| s.heartbeat(2040)).unwrap();
+        assert!(app.view(|s| s.get_call_participants()).is_empty());
+        assert_eq!(app.view(|s| s.active_call_id()), "", "empty call is killed");
+        let fresh = app.call_as(BOB, |s| s.start_call(2050)).unwrap();
+        assert_ne!(fresh, ghost, "dead session must not be resurrected");
     }
 
     #[test]
@@ -872,15 +1013,29 @@ mod tests {
         let call = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
         let _ = app.call_as(BOB, |s| s.start_call(1002)).unwrap();
 
-        // Alice crashes (no leave_call, heartbeats stop). Bob keeps beating;
-        // once Alice is stale past 2×TTL his heartbeat reaps her.
+        // Alice crashes (no leave_call, heartbeats stop). Bob keeps beating:
+        // once she is REAP_STALE_SECS silent he marks her, and REAP_GRACE_SECS
+        // later — row still frozen — reaps her.
         app.call_as(BOB, |s| s.heartbeat(1070)).unwrap();
+        assert_eq!(
+            app.view(|s| s.get_call_participants()).len(),
+            2,
+            "first stale sighting only marks"
+        );
+        app.call_as(BOB, |s| s.heartbeat(1105)).unwrap();
         assert_eq!(
             app.view(|s| s.get_call_participants()),
             vec![id_of(BOB)],
             "crashed peer dropped from the roster"
         );
         assert_eq!(app.view(|s| s.active_call_id()), call, "call survives for the living");
+
+        // The ghost's own presence was cleared too — the lobby must stop
+        // saying "in call" forever about someone whose window closed.
+        let lobby = app.view(|s| s.get_lobby(1106));
+        let alice = lobby.members.iter().find(|m| m.member_id == id_of(ALICE)).unwrap();
+        assert_eq!(alice.call_id, None, "ghost presence no longer in-call");
+        assert_eq!(alice.status, "away");
     }
 
     #[test]
@@ -891,8 +1046,9 @@ mod tests {
         let _ = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
 
         // Alice (the only participant) crashes; Bob is in the lobby, not the
-        // call. His heartbeat reaps her and ends the ghost call entirely.
+        // call. His beats mark then reap her, ending the ghost call entirely.
         app.call_as(BOB, |s| s.heartbeat(1070)).unwrap();
+        app.call_as(BOB, |s| s.heartbeat(1105)).unwrap();
         assert!(app.view(|s| s.get_call_participants()).is_empty());
         assert_eq!(app.view(|s| s.active_call_id()), "", "empty call is killed");
     }
@@ -903,9 +1059,57 @@ mod tests {
         app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
         app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
         let _ = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
-        // 30s later Alice is inside 2×TTL — a lagging beat is not death.
+        // 30s later Alice is inside the reap window — a lagging beat is not
+        // death (she is not even marked).
         app.call_as(BOB, |s| s.heartbeat(1031)).unwrap();
+        app.call_as(BOB, |s| s.heartbeat(1055)).unwrap();
         assert_eq!(app.view(|s| s.get_call_participants()), vec![id_of(ALICE)]);
+    }
+
+    #[test]
+    fn clock_skew_does_not_kill_a_live_call() {
+        // Alice's laptop clock runs ~90s behind Bob's. Under the old
+        // caller-clock staleness check, Bob's start_call saw Alice "91s
+        // silent", ended her live call and minted his own session — both
+        // users ended up alone in a call ("black screen").
+        let mut app = new_room();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1090)).unwrap();
+        let a = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
+        let b = app.call_as(BOB, |s| s.start_call(1092)).unwrap();
+        assert_eq!(a, b, "skewed joiner joins the running session, never kills it");
+
+        // Both keep beating on their own (skewed) clocks; nobody gets reaped.
+        for i in 0..20u64 {
+            app.call_as(ALICE, |s| s.heartbeat(1002 + i * 3)).unwrap();
+            app.call_as(BOB, |s| s.heartbeat(1093 + i * 3)).unwrap();
+        }
+        assert_eq!(app.view(|s| s.get_call_participants()).len(), 2);
+        assert_eq!(app.view(|s| s.active_call_id()), a);
+        // And BOTH read as online to any viewer, regardless of viewer clock.
+        let lobby = app.view(|s| s.get_lobby(1060));
+        assert_eq!(lobby.online.len(), 2, "skewed-behind member still shows online");
+    }
+
+    #[test]
+    fn clock_teleport_is_survived_by_one_heartbeat() {
+        // Bob's clock is ~10min ahead: his join teleports room time forward,
+        // making Alice look stale for a moment. One heartbeat from her (on
+        // her own slow clock) must clear the mark before the grace expires.
+        let mut app = new_room();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        let call = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1600)).unwrap();
+        let joined = app.call_as(BOB, |s| s.start_call(1601)).unwrap();
+        assert_eq!(joined, call, "first stale sighting may only mark, not kill");
+
+        app.call_as(ALICE, |s| s.heartbeat(1004)).unwrap(); // her clock, seconds later
+        app.call_as(BOB, |s| s.heartbeat(1640)).unwrap(); // past the grace window
+        assert_eq!(
+            app.view(|s| s.get_call_participants()).len(),
+            2,
+            "alice survived the room-clock teleport"
+        );
     }
 
     #[test]
