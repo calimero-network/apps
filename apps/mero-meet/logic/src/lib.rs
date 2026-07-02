@@ -311,16 +311,51 @@ impl MeroMeet {
         Ok(presence)
     }
 
-    /// Cheap liveness ping. **Silent CRDT write** — gossips to other nodes so
-    /// they see me as online, but emits NO event (avoids SSE churn). This is
-    /// mero-chat's heartbeat pattern.
+    /// Cheap liveness ping. Normally a **silent CRDT write** — gossips to other
+    /// nodes so they see me as online, but emits NO event (avoids SSE churn;
+    /// mero-chat's heartbeat pattern). As a side effect it reaps call
+    /// participants whose presence went stale, so any living member keeps the
+    /// roster honest (events fire only when something was actually reaped).
     pub fn heartbeat(&mut self, now: u64) -> app::Result<()> {
         let id = Self::caller_id();
         if let Ok(Some(mut p)) = self.presence.get_mut(&id) {
             p.updated_at = now;
             drop(p);
         }
+        self.reap_stale_participants(now);
         Ok(())
+    }
+
+    /// Drop call participants who crashed / closed the window without
+    /// `leave_call`: their presence row exists but hasn't heartbeated for
+    /// 2× the presence TTL (a lagging beat must not be a death sentence).
+    /// Participants with NO presence row are kept — we cannot judge their
+    /// freshness. Ends the call when the last living participant is gone.
+    /// Runs on every heartbeat, so the roster self-heals as long as anyone
+    /// in the room is alive — clients stop seeing a ghost "1 person in call".
+    fn reap_stale_participants(&mut self, now: u64) {
+        let stale: Vec<MemberId> = self
+            .get_call_participants()
+            .into_iter()
+            .filter(|id| match self.presence.get(id) {
+                Ok(Some(p)) => now.saturating_sub(p.updated_at) > 2 * PRESENCE_TTL_SECS,
+                _ => false,
+            })
+            .collect();
+        if stale.is_empty() {
+            return;
+        }
+        for id in &stale {
+            let _ = self.call_participants.remove(id);
+        }
+        if self.call_participants.len().unwrap_or(0) == 0 {
+            // Emits CallEnded — the room falls back to "Start call".
+            self.end_active_call_internal();
+        } else {
+            for id in stale {
+                app::emit!(Event::MemberLeft(id));
+            }
+        }
     }
 
     /// Update my mic/camera/status. Emits so the lobby UI updates live.
@@ -687,6 +722,50 @@ mod tests {
         let fresh = app.call_as(BOB, |s| s.start_call(2001)).unwrap();
         assert_ne!(fresh, ghost, "dead session must not be rejoined");
         assert_eq!(app.view(|s| s.get_call_participants()), vec![id_of(BOB)]);
+    }
+
+    #[test]
+    fn heartbeat_reaps_crashed_participants() {
+        let mut app = new_room();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
+        let call = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
+        let _ = app.call_as(BOB, |s| s.start_call(1002)).unwrap();
+
+        // Alice crashes (no leave_call, heartbeats stop). Bob keeps beating;
+        // once Alice is stale past 2×TTL his heartbeat reaps her.
+        app.call_as(BOB, |s| s.heartbeat(1070)).unwrap();
+        assert_eq!(
+            app.view(|s| s.get_call_participants()),
+            vec![id_of(BOB)],
+            "crashed peer dropped from the roster"
+        );
+        assert_eq!(app.view(|s| s.active_call_id()), call, "call survives for the living");
+    }
+
+    #[test]
+    fn heartbeat_reap_ends_call_when_last_living_participant_is_a_ghost() {
+        let mut app = new_room();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
+        let _ = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
+
+        // Alice (the only participant) crashes; Bob is in the lobby, not the
+        // call. His heartbeat reaps her and ends the ghost call entirely.
+        app.call_as(BOB, |s| s.heartbeat(1070)).unwrap();
+        assert!(app.view(|s| s.get_call_participants()).is_empty());
+        assert_eq!(app.view(|s| s.active_call_id()), "", "empty call is killed");
+    }
+
+    #[test]
+    fn heartbeat_does_not_reap_fresh_participants() {
+        let mut app = new_room();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
+        let _ = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
+        // 30s later Alice is inside 2×TTL — a lagging beat is not death.
+        app.call_as(BOB, |s| s.heartbeat(1031)).unwrap();
+        assert_eq!(app.view(|s| s.get_call_participants()), vec![id_of(ALICE)]);
     }
 
     #[test]

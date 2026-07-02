@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSubscription } from "@calimero-network/mero-react";
 import { CallEngine, type OutSignal, type DiagEntry, type PeerStat } from "../lib/webrtc";
 import { BackgroundProcessor, type BgEffect } from "../lib/effects";
-import { getExecutorPublicKey } from "../lib/session";
+import { getExecutorPublicKey, nowSecs } from "../lib/session";
+import { GHOST_STALE_SECS, partitionRoster } from "../lib/roster";
 import { invokeTauri } from "../lib/tauri";
 import { useMeroMeet } from "./useMeroMeet";
 import type { Presence } from "../types";
@@ -179,15 +180,19 @@ export function useCallController(): CallController {
     }
     if (!roster) return;
 
-    // The call roster IS the media session: call_participants is a CRDT set you
-    // are added to by start_call and removed from by leave_call. That — NOT
-    // presence liveness — decides who we hold a peer connection with. We used to
-    // additionally drop anyone whose presence looked stale/absent, but presence
-    // gossips on a separate, laggy path (and barely propagates between co-located
-    // dev nodes), so that repeatedly tore down live peers mid-handshake
-    // ("dropping ghost <name>") and no call ever connected. Presence is now used
-    // ONLY to enrich tiles (name / mic / camera) below, never for membership.
-    const liveIds = roster;
+    // Membership = the call_participants roster, minus ghosts we have POSITIVE
+    // evidence for (presence row exists but silent > 60s — crashed/closed
+    // without leave_call). A peer with NO presence row is kept: their join just
+    // hasn't gossiped in yet, and dropping those tore down handshakes
+    // mid-flight. The contract also reaps ghosts on any member's heartbeat;
+    // this is the client-side cover until that lands/gossips.
+    const { live: liveIds, ghosts } = partitionRoster(roster, presenceMap, selfId, nowSecs());
+    for (const id of ghosts) {
+      pushDiag(
+        "peer",
+        `ghost peer ${presenceMap.get(id)?.username || id.slice(0, 8)} dropped — no heartbeat for ${GHOST_STALE_SECS}s (left without saying bye)`,
+      );
+    }
     engine.syncPeers(liveIds);
 
     // Reconcile the *tile set* to exactly the live remote roster (people actually

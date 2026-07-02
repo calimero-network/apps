@@ -61,6 +61,8 @@ interface PeerState {
    * arrives after the gathering cap is trickled individually so it isn't lost.
    */
   sdpSent: boolean;
+  /** Armed while the connection is degraded; fires a from-scratch rebuild. */
+  rebuildTimer: ReturnType<typeof setTimeout> | null;
 }
 
 const DEFAULT_ICE: RTCIceServer[] = [
@@ -82,6 +84,15 @@ const ROSTER_MISS_LIMIT = 3;
  * pathological interface list can't stall the handshake.
  */
 const ICE_GATHER_TIMEOUT_MS = 2000;
+
+/**
+ * If a connection stays degraded (disconnected/failed) this long despite ICE
+ * restarts, the RTCPeerConnection is presumed wedged: tear it down and rebuild
+ * from scratch (fresh pc, fresh offer/answer). restartIce() reuses transport
+ * state that can itself be the problem after a long network drop; a clean
+ * rebuild is the reliable reconnect of last resort.
+ */
+const REBUILD_AFTER_MS = 8000;
 
 export class CallEngine {
   private readonly selfId: string;
@@ -233,6 +244,7 @@ export class CallEngine {
       ignoreOffer: false,
       missingStreak: 0,
       sdpSent: false,
+      rebuildTimer: null,
     };
     this.peers.set(peerId, state);
     this.diag("peer", `+ peer ${peerId.slice(0, 8)} (polite=${state.polite})`);
@@ -281,19 +293,48 @@ export class CallEngine {
     pc.onconnectionstatechange = () => {
       this.diag("peer", `${peerId.slice(0, 8)} → ${pc.connectionState}`);
       this.cbs.onPeerStateChange?.(peerId, pc.connectionState);
-      // Recover dropped connections. "failed" always needs an ICE restart;
-      // "disconnected" often self-heals, but a short-fused restart makes
-      // reconnection after a peer briefly leaves/rejoins far more reliable.
-      if (pc.connectionState === "failed") {
+      const st = pc.connectionState;
+
+      if (st === "connected") {
+        // Healed — stand down the rebuild.
+        state.missingStreak = 0;
+        if (state.rebuildTimer) {
+          clearTimeout(state.rebuildTimer);
+          state.rebuildTimer = null;
+        }
+        return;
+      }
+
+      // Recovery ladder for degraded connections:
+      //  1. "failed" → immediate ICE restart; "disconnected" often self-heals,
+      //     so it gets a 2.5s fuse before the restart.
+      //  2. If still degraded after REBUILD_AFTER_MS, the pc is presumed wedged
+      //     (a ghost/half-dead transport): rebuild the peer from scratch, which
+      //     runs a brand-new offer/answer handshake.
+      if (st === "failed") {
         this.diag("peer", `${peerId.slice(0, 8)} failed → restarting ICE`);
         try { pc.restartIce(); } catch { /* pc may be closing */ }
-      } else if (pc.connectionState === "disconnected") {
+      } else if (st === "disconnected") {
         setTimeout(() => {
           if (this.peers.get(peerId) === state && pc.connectionState === "disconnected") {
             this.diag("peer", `${peerId.slice(0, 8)} still disconnected → restarting ICE`);
             try { pc.restartIce(); } catch { /* pc may be closing */ }
           }
         }, 2500);
+      }
+      if ((st === "failed" || st === "disconnected") && !state.rebuildTimer) {
+        state.rebuildTimer = setTimeout(() => {
+          state.rebuildTimer = null;
+          if (this.peers.get(peerId) !== state) return; // already rebuilt/left
+          const cur = pc.connectionState;
+          if (cur !== "failed" && cur !== "disconnected") return; // healed/healing
+          this.diag(
+            "peer",
+            `${peerId.slice(0, 8)} unreachable for ${REBUILD_AFTER_MS / 1000}s — rebuilding connection from scratch`,
+          );
+          this.closePeer(peerId, "rebuilding");
+          this.addPeer(peerId);
+        }, REBUILD_AFTER_MS);
       }
     };
 
@@ -386,6 +427,10 @@ export class CallEngine {
   private closePeer(peerId: string, reason = ""): void {
     const state = this.peers.get(peerId);
     if (!state) return;
+    if (state.rebuildTimer) {
+      clearTimeout(state.rebuildTimer);
+      state.rebuildTimer = null;
+    }
     state.pc.onicecandidate = null;
     state.pc.ontrack = null;
     state.pc.onnegotiationneeded = null;

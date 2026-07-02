@@ -46,7 +46,11 @@ export default function VideoTile({
     if (el && el.srcObject !== stream) el.srcObject = stream;
   }, [stream]);
 
-  const connecting = !isLocal && state !== "connected" && state !== undefined;
+  // Overlay message for remote tiles: a degraded formerly-live connection says
+  // "reconnecting…" (the engine is restarting ICE / rebuilding the peer), a
+  // first-time handshake says "connecting…".
+  const reconnecting = !isLocal && (state === "disconnected" || state === "failed");
+  const connecting = !isLocal && !reconnecting && state !== "connected" && state !== undefined;
   const streamHasVideo = stream?.getVideoTracks().some((t) => t.enabled) ?? false;
   const showVideo = streamHasVideo && !camOff;
   const doMirror = mirror ?? Boolean(isLocal);
@@ -70,6 +74,7 @@ export default function VideoTile({
         </div>
       )}
       {connecting && <div className={styles.overlay}>connecting…</div>}
+      {reconnecting && <div className={styles.overlay}>reconnecting…</div>}
       <div className={styles.label}>
         {micMuted && (
           <span className={styles.micOff} title="Muted">
