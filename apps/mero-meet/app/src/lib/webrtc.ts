@@ -53,11 +53,35 @@ interface PeerState {
   polite: boolean;
   makingOffer: boolean;
   ignoreOffer: boolean;
+  /** Consecutive roster syncs this peer has been absent from (see syncPeers). */
+  missingStreak: number;
+  /**
+   * True once the current local description has been posted. Candidates
+   * gathered before that are bundled into the SDP; the rare straggler that
+   * arrives after the gathering cap is trickled individually so it isn't lost.
+   */
+  sdpSent: boolean;
 }
 
 const DEFAULT_ICE: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
 ];
+
+/**
+ * How many consecutive roster syncs a peer may be absent before we tear it
+ * down. The call roster (call_participants) converges via CRDT gossip, so a
+ * peer whose OFFER reached us can easily be missing from our roster view for a
+ * few seconds — closing them immediately (the old behaviour) cancelled
+ * handshakes mid-flight and connections churned instead of completing.
+ */
+const ROSTER_MISS_LIMIT = 3;
+
+/**
+ * Cap on waiting for ICE gathering before sending an offer/answer. With a
+ * STUN+TURN config gathering completes well under this; the cap just ensures a
+ * pathological interface list can't stall the handshake.
+ */
+const ICE_GATHER_TIMEOUT_MS = 2000;
 
 export class CallEngine {
   private readonly selfId: string;
@@ -147,16 +171,55 @@ export class CallEngine {
 
   /**
    * Reconcile the peer set against the call roster. New peers get a connection
-   * (which kicks off negotiation); departed peers are torn down.
+   * (which kicks off negotiation). Departed peers are torn down only after
+   * being absent for {@link ROSTER_MISS_LIMIT} consecutive syncs: our roster
+   * view converges via CRDT gossip and routinely lags a peer's own join (their
+   * offer often arrives first), so an immediate close would cancel handshakes
+   * mid-flight. A `bye` signal still closes instantly (see handleSignal).
    */
   syncPeers(roster: string[]): void {
     const wanted = new Set(roster.filter((id) => id !== this.selfId));
     for (const id of wanted) {
-      if (!this.peers.has(id)) this.addPeer(id);
+      const existing = this.peers.get(id);
+      if (existing) existing.missingStreak = 0;
+      else this.addPeer(id);
     }
-    for (const id of [...this.peers.keys()]) {
-      if (!wanted.has(id)) this.closePeer(id, "left roster");
+    for (const [id, state] of [...this.peers.entries()]) {
+      if (wanted.has(id)) continue;
+      state.missingStreak += 1;
+      if (state.missingStreak >= ROSTER_MISS_LIMIT) {
+        this.closePeer(id, "left roster");
+      } else {
+        this.diag("peer", `${id.slice(0, 8)} missing from roster (${state.missingStreak}/${ROSTER_MISS_LIMIT})`);
+      }
     }
+  }
+
+  /**
+   * Wait until ICE gathering finishes (or the cap elapses) so the local
+   * description carries ALL candidates inline — non-trickle ICE.
+   *
+   * Our signaling channel is a CRDT contract replicated over gossip: every
+   * message costs a contract write plus node-to-node propagation (seconds, not
+   * milliseconds). Trickled candidates meant ~10 extra writes per peer racing
+   * the offer they belong to. Bundling makes the whole handshake exactly two
+   * messages (offer → answer), which is dramatically faster AND more reliable
+   * over this transport.
+   */
+  private waitForIceGathering(pc: RTCPeerConnection): Promise<void> {
+    if (pc.iceGatheringState === "complete") return Promise.resolve();
+    return new Promise((resolve) => {
+      const timer = setTimeout(done, ICE_GATHER_TIMEOUT_MS);
+      function done() {
+        clearTimeout(timer);
+        pc.removeEventListener("icegatheringstatechange", check);
+        resolve();
+      }
+      function check() {
+        if (pc.iceGatheringState === "complete") done();
+      }
+      pc.addEventListener("icegatheringstatechange", check);
+    });
   }
 
   private addPeer(peerId: string): PeerState {
@@ -168,6 +231,8 @@ export class CallEngine {
       polite: this.selfId > peerId,
       makingOffer: false,
       ignoreOffer: false,
+      missingStreak: 0,
+      sdpSent: false,
     };
     this.peers.set(peerId, state);
     this.diag("peer", `+ peer ${peerId.slice(0, 8)} (polite=${state.polite})`);
@@ -177,9 +242,12 @@ export class CallEngine {
 
     pc.ontrack = (e) => this.cbs.onRemoteStream(peerId, e.streams[0] ?? null);
 
+    // Candidates gathered before the SDP is posted ride inside it (non-trickle,
+    // see waitForIceGathering). Only a straggler past the gathering cap is
+    // trickled individually, so slow TURN allocations still make it across.
     pc.onicecandidate = ({ candidate }) => {
-      if (candidate) {
-        this.diag("signal", `→ ice ${peerId.slice(0, 8)}`);
+      if (candidate && state.sdpSent) {
+        this.diag("signal", `→ ice ${peerId.slice(0, 8)} (late)`);
         this.cbs.onSignal({
           to: peerId,
           kind: "ice",
@@ -191,14 +259,17 @@ export class CallEngine {
     pc.onnegotiationneeded = async () => {
       try {
         state.makingOffer = true;
+        state.sdpSent = false;
         await pc.setLocalDescription();
+        await this.waitForIceGathering(pc);
         if (pc.localDescription) {
-          this.diag("signal", `→ offer ${peerId.slice(0, 8)}`);
+          this.diag("signal", `→ offer ${peerId.slice(0, 8)} (ice bundled)`);
           this.cbs.onSignal({
             to: peerId,
             kind: "offer",
             payload: JSON.stringify(pc.localDescription),
           });
+          state.sdpSent = true;
         }
       } catch {
         /* negotiation will be retried on the next event */
@@ -235,10 +306,15 @@ export class CallEngine {
    * `replaceTrack` is transparent to the remote peer (no new SDP).
    */
   async replaceVideoTrack(track: MediaStreamTrack | null): Promise<void> {
-    // Update the local stream we expose to the UI.
+    // Update the local stream we expose to the UI. Hand the UI a NEW
+    // MediaStream instance: React state compares by reference (the same object
+    // would skip the re-render entirely) and WebKit does not reliably refresh a
+    // <video> whose srcObject had tracks swapped in place — both made the local
+    // preview keep showing the raw camera after enabling blur.
     if (this.local) {
       this.local.getVideoTracks().forEach((t) => this.local!.removeTrack(t));
       if (track) this.local.addTrack(track);
+      this.local = new MediaStream(this.local.getTracks());
       this.cbs.onLocalStream(this.local);
     }
     // Update each peer's outbound video sender in place.
@@ -281,13 +357,17 @@ export class CallEngine {
 
         await pc.setRemoteDescription(desc);
         if (desc.type === "offer") {
+          state.sdpSent = false;
           await pc.setLocalDescription();
+          await this.waitForIceGathering(pc);
           if (pc.localDescription) {
+            this.diag("signal", `→ answer ${from.slice(0, 8)} (ice bundled)`);
             this.cbs.onSignal({
               to: from,
               kind: "answer",
               payload: JSON.stringify(pc.localDescription),
             });
+            state.sdpSent = true;
           }
         }
       } else if (kind === "ice") {

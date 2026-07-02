@@ -204,15 +204,18 @@ export default function CallView() {
             )}
           </div>
 
-          <button
-            className={`${styles.ctrl} ${chatOpen ? styles.ctrlActive : ""}`}
-            onClick={() => setChatOpen((v) => !v)}
-            title="Chat"
-            aria-label="Chat"
-          >
-            <ChatIcon />
-            {chat.unread > 0 && !chatOpen && <span className={styles.badge}>{chat.unread}</span>}
-          </button>
+          {/* Hidden while the room's contract predates the chat methods. */}
+          {chat.supported && (
+            <button
+              className={`${styles.ctrl} ${chatOpen ? styles.ctrlActive : ""}`}
+              onClick={() => setChatOpen((v) => !v)}
+              title="Chat"
+              aria-label="Chat"
+            >
+              <ChatIcon />
+              {chat.unread > 0 && !chatOpen && <span className={styles.badge}>{chat.unread}</span>}
+            </button>
+          )}
           <button
             className={`${styles.ctrl} ${showInvite ? styles.ctrlActive : ""}`}
             onClick={() => setShowInvite((v) => !v)}

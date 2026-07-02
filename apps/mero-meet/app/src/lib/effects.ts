@@ -73,10 +73,16 @@ export class BackgroundProcessor {
    */
   async start(input: MediaStream, effect: BgEffect): Promise<MediaStream> {
     this.effect = effect;
+    if (typeof this.out.captureStream !== "function") {
+      throw new Error("canvas.captureStream unsupported in this webview");
+    }
     await this.ensureSegmenter();
 
     this.video.srcObject = input;
     await this.video.play().catch(() => {/* autoplay policies are lenient for muted */});
+    // Wait until the video actually delivers frames — capturing before the
+    // first frame publishes a dead black track (WebKit won't start it late).
+    await this.waitForFrames();
 
     const track = input.getVideoTracks()[0];
     const settings = track?.getSettings() ?? {};
@@ -96,6 +102,22 @@ export class BackgroundProcessor {
 
   setEffect(effect: BgEffect): void {
     this.effect = effect;
+  }
+
+  /** Resolve once the wrapped video is decoding frames; reject after 4s. */
+  private waitForFrames(): Promise<void> {
+    if (this.video.readyState >= 2 && this.video.videoWidth > 0) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const started = performance.now();
+      const poll = () => {
+        if (this.video.readyState >= 2 && this.video.videoWidth > 0) return resolve();
+        if (performance.now() - started > 4000) {
+          return reject(new Error("camera track produced no frames for the effect pipeline"));
+        }
+        setTimeout(poll, 50);
+      };
+      poll();
+    });
   }
 
   private loop = (): void => {

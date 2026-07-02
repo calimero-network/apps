@@ -187,7 +187,8 @@ pub struct MeroMeet {
     room_name: Ownable<LwwRegister<String>>,
     /// The lobby: every member who has joined the room, by identity.
     presence: UnorderedMap<MemberId, Presence>,
-    /// Signaling mailbox. Keyed by signal id ("sig-{seq}"); pruned to MAX_SIGNALS.
+    /// Signaling mailbox. Keyed by signal id ("sig-{seq}-{from}" — the sender
+    /// suffix keeps concurrent same-seq posts distinct); pruned to MAX_SIGNALS.
     signals: UnorderedMap<SignalId, Signal>,
     /// Identities currently in the active call (the media session roster).
     call_participants: UnorderedSet<MemberId>,
@@ -509,7 +510,12 @@ impl MeroMeet {
         }
         let seq = self.next_seq.get().saturating_add(1);
         self.next_seq.set(seq);
-        let sig_id = format!("sig-{}", seq);
+        // Id must include the SENDER: `next_seq` is an LwwRegister, so two nodes
+        // posting concurrently mint the SAME seq — with a bare `sig-{seq}` both
+        // signals landed on one map key and the merge silently dropped one
+        // (losing an offer/answer mid-handshake). The frontend tolerates the
+        // duplicate seq numbers by draining with a margin and deduping by id.
+        let sig_id = format!("sig-{}-{}", seq, &from[..from.len().min(8)]);
         let signal = Signal {
             id: sig_id.clone(),
             seq,
@@ -544,21 +550,23 @@ impl MeroMeet {
     }
 
     /// Keep only the most recent `MAX_SIGNALS` by dropping the lowest seqs.
-    /// Keys are "sig-{seq}", so we reconstruct them — no side index needed.
+    /// Collects (seq, id) pairs and removes by the ACTUAL stored id — ids embed
+    /// the sender (`sig-{seq}-{from}`), and two concurrent posts can share a
+    /// seq, so reconstructing keys from seq alone would miss entries.
     fn prune_signals(&mut self) {
         let len = self.signals.len().unwrap_or(0);
         if len <= MAX_SIGNALS {
             return;
         }
-        let mut seqs: Vec<u64> = self
+        let mut entries: Vec<(u64, SignalId)> = self
             .signals
             .entries()
-            .map(|e| e.map(|(_, s)| s.seq).collect())
+            .map(|e| e.map(|(id, s)| (s.seq, id)).collect())
             .unwrap_or_default();
-        seqs.sort_unstable();
+        entries.sort();
         let to_drop = len - MAX_SIGNALS;
-        for seq in seqs.into_iter().take(to_drop) {
-            let _ = self.signals.remove(&format!("sig-{}", seq));
+        for (_, id) in entries.into_iter().take(to_drop) {
+            let _ = self.signals.remove(&id);
         }
     }
 
@@ -585,5 +593,180 @@ impl MeroMeet {
             Ok(pk) => self.is_host(&pk),
             Err(_) => false,
         }
+    }
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use calimero_sdk::testing::TestHost;
+
+    use super::{MeroMeet, MAX_SIGNALS};
+
+    const ALICE: [u8; 32] = [0x11; 32];
+    const BOB: [u8; 32] = [0x22; 32];
+
+    fn id_of(bytes: [u8; 32]) -> String {
+        bs58::encode(bytes).into_string()
+    }
+
+    /// init runs as the default test executor, who becomes the room owner/admin.
+    fn new_room() -> TestHost<MeroMeet> {
+        TestHost::new(|| MeroMeet::init("standup".to_owned()))
+    }
+
+    // ── Lobby / presence ───────────────────────────────────────────────────────
+
+    #[test]
+    fn join_lists_members_and_online_respects_ttl() {
+        let mut app = new_room();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1020)).unwrap();
+
+        let lobby = app.view(|s| s.get_lobby(1025));
+        assert_eq!(lobby.members.len(), 2);
+        assert_eq!(lobby.online.len(), 2);
+
+        // 35s after Alice's last beat she is offline; Bob (15s) is still online.
+        let lobby = app.view(|s| s.get_lobby(1035));
+        assert_eq!(lobby.online, vec![id_of(BOB)]);
+    }
+
+    #[test]
+    fn heartbeat_refreshes_online_status() {
+        let mut app = new_room();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.heartbeat(1040)).unwrap();
+        let lobby = app.view(|s| s.get_lobby(1060));
+        assert_eq!(lobby.online, vec![id_of(ALICE)]);
+    }
+
+    // ── Call lifecycle ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn start_call_shares_one_session_and_last_leave_ends_it() {
+        let mut app = new_room();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
+
+        let id1 = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
+        let id2 = app.call_as(BOB, |s| s.start_call(1002)).unwrap();
+        assert_eq!(id1, id2, "second caller joins the running session");
+        assert_eq!(app.view(|s| s.get_call_participants()).len(), 2);
+
+        app.call_as(ALICE, |s| s.leave_call(1010)).unwrap();
+        assert_eq!(app.view(|s| s.get_call_participants()).len(), 1);
+        assert_ne!(app.view(|s| s.active_call_id()), "", "call survives while someone is in it");
+
+        app.call_as(BOB, |s| s.leave_call(1011)).unwrap();
+        assert_eq!(app.view(|s| s.active_call_id()), "", "last leave ends the call");
+        assert!(app.view(|s| s.get_call_participants()).is_empty());
+    }
+
+    #[test]
+    fn live_call_is_joined_not_reaped() {
+        let mut app = new_room();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
+        let id1 = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
+        // Bob joins 9s later — Alice's presence is fresh, so same session.
+        let id2 = app.call_as(BOB, |s| s.start_call(1010)).unwrap();
+        assert_eq!(id1, id2);
+    }
+
+    #[test]
+    fn stale_ghost_call_is_reaped_on_next_start() {
+        let mut app = new_room();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        let ghost = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
+
+        // Alice's window died: no leave_call, heartbeats stop. 1000s later Bob
+        // calls — the ghost must be ended and a FRESH session created.
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 2000)).unwrap();
+        let fresh = app.call_as(BOB, |s| s.start_call(2001)).unwrap();
+        assert_ne!(fresh, ghost, "dead session must not be rejoined");
+        assert_eq!(app.view(|s| s.get_call_participants()), vec![id_of(BOB)]);
+    }
+
+    #[test]
+    fn leaving_the_room_also_leaves_the_call() {
+        let mut app = new_room();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        let _ = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
+        app.call_as(ALICE, |s| s.leave(1002)).unwrap();
+        assert_eq!(app.view(|s| s.active_call_id()), "");
+        assert!(app.view(|s| s.get_call_participants()).is_empty());
+    }
+
+    #[test]
+    fn end_call_requires_host() {
+        let mut app = new_room();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
+        let _ = app.call_as(BOB, |s| s.start_call(1001)).unwrap();
+
+        assert!(app.call_as(BOB, |s| s.end_call()).is_err(), "non-host cannot end for everyone");
+        app.call(|s| s.end_call()).unwrap(); // creator (admin) can
+        assert_eq!(app.view(|s| s.active_call_id()), "");
+    }
+
+    // ── Signaling ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn signals_are_addressed_seq_filtered_and_sender_unique() {
+        let mut app = new_room();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
+
+        app.call_as(ALICE, |s| {
+            s.post_signal(id_of(BOB), "offer".to_owned(), "sdp-a".to_owned(), "c1".to_owned(), 1001)
+        })
+        .unwrap();
+        app.call_as(BOB, |s| {
+            s.post_signal(id_of(ALICE), "answer".to_owned(), "sdp-b".to_owned(), "c1".to_owned(), 1002)
+        })
+        .unwrap();
+
+        // Addressed delivery: each side sees only what was sent TO them.
+        let bobs = app.call_as(BOB, |s| s.get_signals(0));
+        assert_eq!(bobs.len(), 1);
+        assert_eq!(bobs[0].kind, "offer");
+        assert_eq!(bobs[0].from, id_of(ALICE));
+
+        // Ids embed the sender so two nodes minting the same seq concurrently
+        // can never collide on a map key (which silently dropped one signal).
+        assert_eq!(bobs[0].id, format!("sig-{}-{}", bobs[0].seq, &id_of(ALICE)[..8]));
+
+        // after_seq filtering.
+        let alices = app.call_as(ALICE, |s| s.get_signals(0));
+        assert_eq!(alices.len(), 1);
+        let none = app.call_as(ALICE, |s| s.get_signals(alices[0].seq));
+        assert!(none.is_empty());
+    }
+
+    #[test]
+    fn posting_requires_room_membership() {
+        let mut app = new_room();
+        let denied = app.call_as(ALICE, |s| {
+            s.post_signal(id_of(BOB), "offer".to_owned(), "sdp".to_owned(), "c1".to_owned(), 1000)
+        });
+        assert!(denied.is_err());
+    }
+
+    #[test]
+    fn mailbox_prunes_to_cap_dropping_lowest_seqs() {
+        let mut app = new_room();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        let over = 8;
+        for i in 0..(MAX_SIGNALS as u64 + over) {
+            app.call_as(ALICE, |s| {
+                s.post_signal(id_of(BOB), "ice".to_owned(), format!("c{i}"), "c1".to_owned(), 1000 + i)
+            })
+            .unwrap();
+        }
+        let sigs = app.call_as(BOB, |s| s.get_signals(0));
+        assert_eq!(sigs.len(), MAX_SIGNALS);
+        // Seqs are 1..=cap+over; the `over` lowest were pruned.
+        assert_eq!(sigs.first().unwrap().seq, over + 1);
     }
 }

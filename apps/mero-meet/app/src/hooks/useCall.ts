@@ -42,6 +42,9 @@ export interface CallController {
 }
 
 const SIGNAL_POLL_MS = 2000;
+// While a peer connection is still handshaking, poll this fast — the
+// offer/answer roundtrip shouldn't pay poll latency on top of gossip latency.
+const SIGNAL_POLL_FAST_MS = 600;
 const HEARTBEAT_MS = 10_000;
 
 /**
@@ -82,6 +85,13 @@ export function useCallController(): CallController {
   // the async startup and replay the whole stale mailbox into the fresh engine.
   const seededRef = useRef<boolean>(false);
   const prevLiveRef = useRef<Set<string>>(new Set());
+  // Signal ids already fed to the engine. Two nodes can mint the same seq
+  // concurrently (next_seq is an LWW register), so we drain with a small seq
+  // margin and dedupe by id instead of trusting `seq > lastSeq` alone — that
+  // rule silently skipped the second of two equal-seq signals.
+  const seenSigIdsRef = useRef<Set<string>>(new Set());
+  // Live peer connection states, for the adaptive poll cadence.
+  const peerStatesRef = useRef<Map<string, RTCPeerConnectionState>>(new Map());
 
   // Controller-level diagnostics (roster/effect/lifecycle), interleaved with the
   // engine's own signal/peer logs in the same closable log popup.
@@ -121,9 +131,20 @@ export function useCallController(): CallController {
     if (drainingRef.current || !engineRef.current || !seededRef.current) return;
     drainingRef.current = true;
     try {
-      const signals = await meet.getSignals(lastSeqRef.current);
+      // Small seq margin: two nodes can mint the SAME seq concurrently, and the
+      // later-gossiped twin would be skipped forever by a strict `> lastSeq`.
+      // Re-reading a short window and deduping by id costs one cheap local
+      // query and never misses a signal.
+      const after = Math.max(0, lastSeqRef.current - 16);
+      const signals = await meet.getSignals(after);
       for (const s of signals ?? []) {
         if (s.seq > lastSeqRef.current) lastSeqRef.current = s.seq;
+        if (seenSigIdsRef.current.has(s.id)) continue;
+        seenSigIdsRef.current.add(s.id);
+        if (seenSigIdsRef.current.size > 1024) {
+          // Bound the set; ancient ids can't reappear (mailbox is pruned).
+          seenSigIdsRef.current = new Set([...seenSigIdsRef.current].slice(-512));
+        }
         // NOTE: we deliberately do NOT filter by `s.callId`. `active_call` is an
         // LwwRegister that propagates over CRDT gossip, so two peers joining the
         // same call can briefly hold *different* call ids (each stamps the id its
@@ -215,9 +236,15 @@ export function useCallController(): CallController {
 
     const engine = new CallEngine(selfId, {
       onLocalStream: (s) => !cancelled && setLocalStream(s),
-      onRemoteStream: (id, stream) => updateRemote(id, { stream }),
+      onRemoteStream: (id, stream) => {
+        if (stream === null) peerStatesRef.current.delete(id); // peer closed
+        updateRemote(id, { stream });
+      },
       onSignal: sendSignal,
-      onPeerStateChange: (id, state) => updateRemote(id, { state }),
+      onPeerStateChange: (id, state) => {
+        peerStatesRef.current.set(id, state);
+        updateRemote(id, { state });
+      },
       onDiag: (entry) =>
         setDiagnostics((prev) => {
           const next = prev.length >= MAX_DIAG ? prev.slice(prev.length - MAX_DIAG + 1) : prev;
@@ -228,25 +255,31 @@ export function useCallController(): CallController {
 
     (async () => {
       try {
-        pushDiag("info", "joining call — requesting ICE servers…");
-        const ice = await invokeTauri<RTCIceServer[]>("get_ice_servers");
+        pushDiag("info", "joining call — ICE servers + camera + session in parallel…");
+        // None of these depend on each other, and each costs real time (ICE
+        // endpoint roundtrip, getUserMedia, contract execute, mailbox read) —
+        // running them serially added ~1.5-2s to every join.
+        const [ice, , id, backlog] = await Promise.all([
+          invokeTauri<RTCIceServer[]>("get_ice_servers").catch(() => null),
+          engine.start(),
+          meet.startCall(),
+          meet.getSignals(0),
+        ]);
+        if (cancelled) return;
         if (ice && ice.length) engine.setIceServers(ice);
         else pushDiag("info", "no bundled ICE servers — using default STUN");
 
-        await engine.start();
         rawVideoTrackRef.current = engine.getLocalStream()?.getVideoTracks()[0] ?? null;
-        const id = await meet.startCall();
-        if (cancelled) return;
         callIdRef.current = id ?? "";
         setCallId(id ?? null);
-        // Seed lastSeq to the current mailbox head so this fresh call skips every
-        // signal already posted (stale offer/ice/bye from a previous session) and
-        // only processes NEW ones. This is the real fix for the "won't reconnect
-        // after you leave" replay bug — without it, lastSeq=0 re-drained the whole
-        // mailbox into the new engine. Peers re-offer to us on roster sync, so we
-        // don't need the historical signals.
-        const backlog = await meet.getSignals(0);
+        // Seed to the current mailbox head so this fresh call skips every signal
+        // already posted (stale offer/ice/bye from a previous session) and only
+        // processes NEW ones — the fix for the "won't reconnect after you leave"
+        // replay bug. Peers re-offer to us on roster sync, so the history is
+        // not needed. Seed the seen-id set too so the drain margin can't replay
+        // the newest historical signals.
         lastSeqRef.current = (backlog ?? []).reduce((m, s) => Math.max(m, s.seq), 0);
+        seenSigIdsRef.current = new Set((backlog ?? []).map((s) => s.id));
         seededRef.current = true;
         pushDiag("info", `call session: ${id ?? "?"}`);
         await syncRoster();
@@ -279,6 +312,8 @@ export function useCallController(): CallController {
       setCallId(null);
       callIdRef.current = "";
       seededRef.current = false;
+      seenSigIdsRef.current = new Set();
+      peerStatesRef.current = new Map();
       setEffectState("none");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -306,10 +341,21 @@ export function useCallController(): CallController {
   // ── Poll fallback + heartbeat (only while in a call) ─────────────────────────
   useEffect(() => {
     if (!active) return;
-    const poll = setInterval(() => {
+    // Adaptive cadence: while any peer connection is still coming up, poll fast
+    // so the offer/answer roundtrip isn't padded with poll latency on top of
+    // gossip latency; once everyone is connected (or we're alone), relax to the
+    // slow fallback and let SSE nudges carry the urgency.
+    let timer: ReturnType<typeof setTimeout>;
+    let stopped = false;
+    const tick = () => {
+      if (stopped) return;
       void drainSignals();
       void syncRoster();
-    }, SIGNAL_POLL_MS);
+      const states = [...peerStatesRef.current.values()];
+      const handshaking = states.some((s) => s !== "connected");
+      timer = setTimeout(tick, handshaking ? SIGNAL_POLL_FAST_MS : SIGNAL_POLL_MS);
+    };
+    timer = setTimeout(tick, SIGNAL_POLL_FAST_MS);
     const hb = setInterval(() => void meet.heartbeat(), HEARTBEAT_MS);
     // Best-effort graceful leave if the window is closed/refreshed mid-call
     // (the normal path is the Leave button → leave()). Without this, closing the
@@ -321,7 +367,8 @@ export function useCallController(): CallController {
     };
     window.addEventListener("pagehide", onHide);
     return () => {
-      clearInterval(poll);
+      stopped = true;
+      clearTimeout(timer);
       clearInterval(hb);
       window.removeEventListener("pagehide", onHide);
     };
