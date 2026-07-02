@@ -2,8 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSubscription } from "@calimero-network/mero-react";
 import { CallEngine, type OutSignal, type DiagEntry, type PeerStat } from "../lib/webrtc";
 import { BackgroundProcessor, type BgEffect } from "../lib/effects";
-import { getExecutorPublicKey, nowSecs } from "../lib/session";
+import { getContextId, getExecutorPublicKey, getUsername, nowSecs } from "../lib/session";
 import { GHOST_STALE_SECS, partitionRoster } from "../lib/roster";
+
+// sessionStorage key marking "there is a live call in this room". Set while the
+// call is active, cleared by an explicit Leave. sessionStorage survives a page
+// REFRESH but not a window close — exactly the semantics we want: F5 mid-call
+// auto-rejoins; opening the app fresh does not.
+const RESUME_KEY = "mm-call-resume";
 import { invokeTauri } from "../lib/tauri";
 import { useMeroMeet } from "./useMeroMeet";
 import type { Presence } from "../types";
@@ -457,9 +463,42 @@ export function useCallController(): CallController {
 
   const leave = useCallback(async () => {
     pushDiag("info", "leaving call");
+    try {
+      sessionStorage.removeItem(RESUME_KEY); // explicit leave — do not resume
+    } catch { /* blocked storage */ }
     setActive(false); // triggers cleanup effect (engine.stop, processor.close)
     await meet.leaveCall();
   }, [meet, pushDiag]);
+
+  // ── Refresh persistence ───────────────────────────────────────────────────────
+  // Mark the live call in sessionStorage (survives F5, dies with the window).
+  useEffect(() => {
+    if (!active) return;
+    const ctx = getContextId();
+    if (!ctx) return;
+    try {
+      sessionStorage.setItem(RESUME_KEY, ctx);
+    } catch { /* blocked storage */ }
+  }, [active]);
+
+  // On mount (i.e. right after a refresh): if this window had a live call in
+  // the current room and we know the user's name, rejoin presence and restart
+  // the call automatically — a mid-call F5 used to dead-end in the lobby.
+  const resumedRef = useRef(false);
+  useEffect(() => {
+    if (resumedRef.current) return;
+    resumedRef.current = true;
+    const ctx = getContextId();
+    const name = getUsername();
+    let stored: string | null = null;
+    try {
+      stored = sessionStorage.getItem(RESUME_KEY);
+    } catch { /* blocked storage */ }
+    if (!ctx || stored !== ctx || !name) return;
+    pushDiag("info", "resuming call after page refresh");
+    void meet.join(name).then(() => setActive(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const getStats = useCallback(() => engineRef.current?.getStats() ?? Promise.resolve([]), []);
 

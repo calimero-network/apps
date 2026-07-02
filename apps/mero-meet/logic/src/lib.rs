@@ -50,6 +50,12 @@ const MAX_SIGNALS: usize = 512;
 /// The frontend heartbeats every ~10s; 30s tolerates a couple of missed beats.
 const PRESENCE_TTL_SECS: u64 = 30;
 
+/// Cap on retained chat messages (a room's rolling history).
+const MAX_MESSAGES: usize = 1000;
+
+/// Max chat message length. SDP blobs get 64 KiB; humans get 4 KiB.
+const MAX_MESSAGE_CHARS: usize = 4096;
+
 // ── Presence (the lobby) ──────────────────────────────────────────────────────
 
 /// One row in the lobby: a person who is (or recently was) in this room.
@@ -134,6 +140,42 @@ impl RekeyTarget for Signal {
     fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
+// ── Chat ──────────────────────────────────────────────────────────────────────
+
+/// One durable in-room chat message. Broadcast (not addressed): everyone in the
+/// room reads the same rolling history via `get_messages`.
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+#[serde(rename_all = "camelCase")]
+pub struct ChatMessage {
+    pub id: String,
+    /// Monotonic per-room sequence — lets a client poll "everything after N".
+    pub seq: u64,
+    pub from: MemberId,
+    /// Sender's display name at post time (denormalized so history keeps the
+    /// name even after the member leaves).
+    pub username: String,
+    pub text: String,
+    pub created_at: u64,
+}
+
+impl MergeableTrait for ChatMessage {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // Messages are immutable once posted; ids are unique per sender, so a
+        // merge of "the same" message is a no-op. Newer wins defensively.
+        if other.created_at > self.created_at {
+            *self = other.clone();
+        }
+        Ok(())
+    }
+}
+
+// Flat record → no-op re-key; required by rc.9's `Mergeable: RekeyTarget`.
+impl RekeyTarget for ChatMessage {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
+}
+
 // ── Views (read-model returned to the frontend) ───────────────────────────────
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -175,6 +217,9 @@ pub enum Event {
     /// A member left the room.
     MemberLeft(MemberId),
     RoleUpdated(MemberId),
+    /// A chat message was posted (carries its seq). Frontends drain via
+    /// `get_messages(after_seq)` — this is what makes chat live over SSE.
+    MessagePosted(u64),
 }
 
 // ── App state ─────────────────────────────────────────────────────────────────
@@ -198,6 +243,12 @@ pub struct MeroMeet {
     active_call: LwwRegister<String>,
     /// Role registry: the creator is the sole initial admin (host).
     roles: AccessControl,
+    /// Durable in-room chat, keyed by message id ("msg-{seq}-{from}"); pruned
+    /// to MAX_MESSAGES. NOTE: added after 0.1.x — changes the state layout, so
+    /// pre-chat rooms must be recreated (fake-prod convention: no migrations).
+    messages: UnorderedMap<String, ChatMessage>,
+    /// Monotonic chat sequence counter.
+    next_msg_seq: LwwRegister<u64>,
 }
 
 // ── Logic ─────────────────────────────────────────────────────────────────────
@@ -217,6 +268,8 @@ impl MeroMeet {
             next_seq: LwwRegister::new(0),
             active_call: LwwRegister::new(String::new()),
             roles: AccessControl::new(me),
+            messages: UnorderedMap::new(),
+            next_msg_seq: LwwRegister::new(0),
         }
     }
 
@@ -605,6 +658,75 @@ impl MeroMeet {
         }
     }
 
+    // ── Chat (durable in-room messages) ────────────────────────────────────────
+
+    /// Post a chat message to the room. Requires room membership (presence).
+    /// Returns the message seq; emits `MessagePosted(seq)` so subscribed
+    /// frontends drain immediately over SSE instead of waiting for a poll.
+    pub fn post_message(&mut self, text: String, now: u64) -> app::Result<u64> {
+        let from = Self::caller_id();
+        let username = match self.presence.get(&from)? {
+            Some(p) => p.username.clone(),
+            None => app::bail!("join the room before posting messages"),
+        };
+        let text = text.trim().to_owned();
+        if text.is_empty() {
+            app::bail!("message is empty");
+        }
+        if text.len() > MAX_MESSAGE_CHARS {
+            app::bail!("message too long");
+        }
+        let seq = self.next_msg_seq.get().saturating_add(1);
+        self.next_msg_seq.set(seq);
+        // Sender-suffixed id — same reasoning as signals: `next_msg_seq` is an
+        // LwwRegister, so two nodes can mint the same seq concurrently; distinct
+        // ids keep both messages instead of silently merging one away.
+        let id = format!("msg-{}-{}", seq, &from[..from.len().min(8)]);
+        let msg = ChatMessage {
+            id: id.clone(),
+            seq,
+            from,
+            username,
+            text,
+            created_at: now,
+        };
+        self.messages.insert(id, msg)?;
+        self.prune_messages();
+        app::emit!(Event::MessagePosted(seq));
+        Ok(seq)
+    }
+
+    /// Rolling room history with `seq > after_seq`, oldest first. Broadcast:
+    /// every member reads the same messages (unlike addressed signals).
+    pub fn get_messages(&self, after_seq: u64) -> Vec<ChatMessage> {
+        let mut out: Vec<ChatMessage> = self
+            .messages
+            .entries()
+            .map(|e| e.map(|(_, m)| m).filter(|m| m.seq > after_seq).collect())
+            .unwrap_or_default();
+        out.sort_by_key(|m| m.seq);
+        out
+    }
+
+    /// Keep only the most recent MAX_MESSAGES, dropping the lowest seqs.
+    /// Removes by actual stored id (ids embed the sender; seqs can duplicate).
+    fn prune_messages(&mut self) {
+        let len = self.messages.len().unwrap_or(0);
+        if len <= MAX_MESSAGES {
+            return;
+        }
+        let mut entries: Vec<(u64, String)> = self
+            .messages
+            .entries()
+            .map(|e| e.map(|(id, m)| (m.seq, id)).collect())
+            .unwrap_or_default();
+        entries.sort();
+        let to_drop = len - MAX_MESSAGES;
+        for (_, id) in entries.into_iter().take(to_drop) {
+            let _ = self.messages.remove(&id);
+        }
+    }
+
     // ── Roles (host management) ────────────────────────────────────────────────
 
     pub fn grant_host(&mut self, member: MemberId) -> app::Result<()> {
@@ -830,6 +952,58 @@ mod tests {
             s.post_signal(id_of(BOB), "offer".to_owned(), "sdp".to_owned(), "c1".to_owned(), 1000)
         });
         assert!(denied.is_err());
+    }
+
+    // ── Chat ───────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn chat_roundtrip_broadcast_and_seq_filtered() {
+        let mut app = new_room();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
+
+        let s1 = app.call_as(ALICE, |s| s.post_message("hi all".to_owned(), 1001)).unwrap();
+        let s2 = app.call_as(BOB, |s| s.post_message("hey".to_owned(), 1002)).unwrap();
+        assert!(s2 > s1);
+
+        // Broadcast: BOTH members read the same history, oldest first, with the
+        // sender's display name denormalized in.
+        let all = app.call_as(ALICE, |s| s.get_messages(0));
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].text, "hi all");
+        assert_eq!(all[0].username, "Alice");
+        assert_eq!(all[1].username, "Bob");
+        // Sender-unique id (same LWW-seq-collision defence as signals).
+        assert_eq!(all[0].id, format!("msg-{}-{}", all[0].seq, &id_of(ALICE)[..8]));
+
+        // after_seq filtering drains only the new tail.
+        let tail = app.call_as(BOB, |s| s.get_messages(s1));
+        assert_eq!(tail.len(), 1);
+        assert_eq!(tail[0].text, "hey");
+    }
+
+    #[test]
+    fn chat_requires_membership_and_rejects_empty_or_oversized() {
+        let mut app = new_room();
+        assert!(app.call_as(ALICE, |s| s.post_message("hi".to_owned(), 1000)).is_err());
+
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        assert!(app.call_as(ALICE, |s| s.post_message("   ".to_owned(), 1001)).is_err());
+        let huge = "x".repeat(super::MAX_MESSAGE_CHARS + 1);
+        assert!(app.call_as(ALICE, |s| s.post_message(huge, 1002)).is_err());
+    }
+
+    #[test]
+    fn chat_prunes_to_cap_dropping_lowest_seqs() {
+        let mut app = new_room();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        let over = 5;
+        for i in 0..(super::MAX_MESSAGES as u64 + over) {
+            app.call_as(ALICE, |s| s.post_message(format!("m{i}"), 1000 + i)).unwrap();
+        }
+        let msgs = app.call_as(ALICE, |s| s.get_messages(0));
+        assert_eq!(msgs.len(), super::MAX_MESSAGES);
+        assert_eq!(msgs.first().unwrap().seq, over + 1);
     }
 
     #[test]

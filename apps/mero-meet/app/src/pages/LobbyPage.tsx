@@ -26,6 +26,7 @@ export default function LobbyPage() {
   const [lobby, setLobby] = useState<LobbyView | null>(null);
   const [username, setUsernameInput] = useState(getUsername());
   const [joined, setJoined] = useState(false);
+  const [nameError, setNameError] = useState(false);
   const invite = useRoomInvite(lobby?.room.name);
 
   const refresh = useCallback(async () => {
@@ -68,17 +69,30 @@ export default function LobbyPage() {
   const onEvent = useCallback(() => void refresh(), [refresh]);
   useSubscription(meet.contextId ? [meet.contextId] : [], onEvent);
 
-  const handleJoin = async () => {
-    const name = username.trim() || "Guest";
+  // A real display name is REQUIRED — no more silent "Guest" fallback. Peers
+  // identify each other by these names in the call grid and the chat.
+  const requireName = (): string | null => {
+    const name = username.trim();
+    if (!name) {
+      setNameError(true);
+      return null;
+    }
+    setNameError(false);
     setUsername(name);
+    return name;
+  };
+
+  const handleJoin = async () => {
+    const name = requireName();
+    if (!name) return;
     await meet.join(name);
     setJoined(true);
     await refresh();
   };
 
   const enterCall = async () => {
-    const name = username.trim() || "Guest";
-    setUsername(name);
+    const name = requireName();
+    if (!name) return;
     if (!joined) await meet.join(name);
     call.start();
     navigate("/call");
@@ -100,6 +114,8 @@ export default function LobbyPage() {
   // Count online with the same self-override the rows use, so the header never
   // says "0 online" while you're sitting in the room.
   const onlineCount = members.filter((m) => m.memberId === selfId || online.has(m.memberId)).length;
+  // Calls require a display name (already joined counts — the name is known).
+  const canCall = joined || username.trim().length > 0;
 
   return (
     <div className={styles.page}>
@@ -119,7 +135,12 @@ export default function LobbyPage() {
           <button className={styles.inviteBtn} onClick={() => void invite.generate()} disabled={invite.inviting}>
             {invite.inviting ? "Inviting…" : "Invite"}
           </button>
-          <button className={styles.callBtn} onClick={enterCall}>
+          <button
+            className={styles.callBtn}
+            onClick={enterCall}
+            disabled={!canCall}
+            title={canCall ? undefined : "Enter your name below first"}
+          >
             {callActive ? "Join call" : "Start call"}
           </button>
         </div>
@@ -144,15 +165,25 @@ export default function LobbyPage() {
         <div className={styles.joinBar}>
           <input
             className={styles.input}
-            placeholder="Your name"
+            placeholder="Your name (required)"
             value={username}
-            onChange={(e) => setUsernameInput(e.target.value)}
+            onChange={(e) => {
+              setUsernameInput(e.target.value);
+              if (e.target.value.trim()) setNameError(false);
+            }}
             onKeyDown={(e) => e.key === "Enter" && handleJoin()}
             maxLength={40}
+            aria-invalid={nameError}
+            style={nameError ? { borderColor: "var(--danger, #e5484d)" } : undefined}
           />
           <button className={styles.joinBtn} onClick={handleJoin}>
             Enter room
           </button>
+          {nameError && (
+            <span role="alert" style={{ color: "var(--danger, #e5484d)", fontSize: 13 }}>
+              Please enter your name first
+            </span>
+          )}
         </div>
       )}
 
@@ -162,7 +193,12 @@ export default function LobbyPage() {
           <span>
             {inCall.length} {inCall.length === 1 ? "person is" : "people are"} in a call
           </span>
-          <button className={styles.bannerJoin} onClick={enterCall}>
+          <button
+            className={styles.bannerJoin}
+            onClick={enterCall}
+            disabled={!canCall}
+            title={canCall ? undefined : "Enter your name first"}
+          >
             Join
           </button>
         </section>

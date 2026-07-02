@@ -26,7 +26,10 @@ export function useChat(enabled: boolean) {
   const mutedRef = useRef(false); // when true, incoming messages count as unread
 
   const drain = useCallback(async () => {
-    const batch = await meet.getMessages(lastSeqRef.current);
+    // Same seq-margin as signal draining: two nodes can mint the same msg seq
+    // concurrently (next_msg_seq is an LwwRegister); re-reading a short window
+    // and deduping by id (below) never misses the late-gossiped twin.
+    const batch = await meet.getMessages(Math.max(0, lastSeqRef.current - 16));
     if (batch === null || batch === undefined) {
       setSupported(false);
       return;

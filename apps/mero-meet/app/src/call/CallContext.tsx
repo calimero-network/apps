@@ -22,10 +22,26 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const wasActive = useRef(false);
+  // A refresh mid-call auto-resumes (useCall's RESUME_KEY, sessionStorage):
+  // when the call comes back on its own, land the user on the full call screen
+  // instead of the lobby with a stray mini-call.
+  const resumeIntent = useRef(
+    (() => {
+      try {
+        return sessionStorage.getItem("mm-call-resume") !== null;
+      } catch {
+        return false;
+      }
+    })(),
+  );
 
   // When the call ends (leave / host ended / last one out) while we're on the
   // full call screen, fall back to the lobby.
   useEffect(() => {
+    if (call.active && resumeIntent.current) {
+      resumeIntent.current = false;
+      if (location.pathname !== "/call") navigate("/call");
+    }
     if (wasActive.current && !call.active && location.pathname === "/call") {
       navigate("/lobby");
     }
