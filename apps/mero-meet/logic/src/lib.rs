@@ -28,7 +28,7 @@ use calimero_storage::address::Id;
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::rekey::RekeyTarget;
 use calimero_storage::collections::{
-    AccessControl, LwwRegister, Mergeable as MergeableTrait, Ownable, UnorderedMap, UnorderedSet,
+    AccessControl, LwwRegister, Mergeable as MergeableTrait, Ownable, UnorderedMap,
 };
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -285,8 +285,14 @@ pub struct MeroMeet {
     /// Signaling mailbox. Keyed by signal id ("sig-{seq}-{from}" — the sender
     /// suffix keeps concurrent same-seq posts distinct); pruned to MAX_SIGNALS.
     signals: UnorderedMap<SignalId, Signal>,
-    /// Identities currently in the active call (the media session roster).
-    call_participants: UnorderedSet<MemberId>,
+    // NOTE: there is deliberately NO `call_participants: UnorderedSet` — the
+    // call roster is DERIVED from presence (`call_id == active_call`, see
+    // `get_call_participants`). The set version had a fatal CRDT flaw:
+    // insert-after-remove never converged (the leave's tombstone permanently
+    // shadowed the re-insert, even on the writer's own node), so anyone who
+    // left a call could NEVER rejoin it — "works the first time, black screen
+    // forever after". Presence is an UnorderedMap whose values merge LWW,
+    // and repeated updates to it demonstrably converge.
     /// Monotonic signal sequence counter.
     next_seq: LwwRegister<u64>,
     /// Id of the currently-active call ("" = no call in progress).
@@ -317,7 +323,6 @@ impl MeroMeet {
             room_name,
             presence: UnorderedMap::new(),
             signals: UnorderedMap::new(),
-            call_participants: UnorderedSet::new(),
             next_seq: LwwRegister::new(0),
             active_call: LwwRegister::new(String::new()),
             roles: AccessControl::new(me),
@@ -529,12 +534,13 @@ impl MeroMeet {
             return;
         }
         for id in &reaped {
-            let _ = self.call_participants.remove(id);
             let _ = self.reap_marks.remove(id);
-            // Clear the ghost's "in call" presence. The +1 bump stays on their
-            // own timeline (they remain stale — we never forge a foreign
-            // clock) but wins the merge against the frozen row; if they are
-            // actually alive, their next own write stamps room time and wins.
+            // Clear the ghost's "in call" presence — this IS the roster
+            // removal (the roster is derived from `call_id`). The +1 bump
+            // stays on their own timeline (they remain stale — we never forge
+            // a foreign clock) but wins the merge against the frozen row; if
+            // they are actually alive, their next own write stamps room time
+            // and wins.
             if let Ok(Some(mut p)) = self.presence.get_mut(id) {
                 p.status = "away".to_string();
                 p.call_id = None;
@@ -542,7 +548,7 @@ impl MeroMeet {
                 drop(p);
             }
         }
-        if self.call_participants.len().unwrap_or(0) == 0 {
+        if self.get_call_participants().is_empty() {
             // Emits CallEnded — the room falls back to "Start call".
             self.end_active_call_internal();
         } else {
@@ -594,9 +600,8 @@ impl MeroMeet {
             p.updated_at = room.max(p.updated_at.saturating_add(1));
             drop(p);
         }
-        let _ = self.call_participants.remove(&id);
-        // Last one out ends the call.
-        if self.call_participants.len().unwrap_or(0) == 0 {
+        // Last one out ends the call (roster is derived from presence).
+        if self.get_call_participants().is_empty() {
             self.end_active_call_internal();
         }
         app::emit!(Event::MemberLeft(id));
@@ -647,7 +652,7 @@ impl MeroMeet {
             self.active_call.set(call_id.clone());
             app::emit!(Event::CallStarted(call_id.clone()));
         }
-        self.call_participants.insert(id.clone())?;
+        // Joining IS the presence stamp — the roster is derived from it.
         let room = self.room_now(now);
         if let Ok(Some(mut p)) = self.presence.get_mut(&id) {
             p.status = "in_call".to_string();
@@ -662,7 +667,6 @@ impl MeroMeet {
     /// Leave the call but stay in the lobby.
     pub fn leave_call(&mut self, now: u64) -> app::Result<()> {
         let id = Self::caller_id();
-        let _ = self.call_participants.remove(&id);
         let room = self.room_now(now);
         if let Ok(Some(mut p)) = self.presence.get_mut(&id) {
             p.status = "available".to_string();
@@ -670,7 +674,7 @@ impl MeroMeet {
             p.updated_at = room.max(p.updated_at.saturating_add(1));
             drop(p);
         }
-        if self.call_participants.len().unwrap_or(0) == 0 {
+        if self.get_call_participants().is_empty() {
             self.end_active_call_internal();
         }
         app::emit!(Event::PresenceChanged(id));
@@ -687,17 +691,28 @@ impl MeroMeet {
     fn end_active_call_internal(&mut self) {
         let call_id = self.active_call.get().clone();
         if !call_id.is_empty() {
+            // Clearing the register empties the derived roster: presence rows
+            // still carrying the dead call id simply no longer match.
             self.active_call.set(String::new());
-            let _ = self.call_participants.clear();
             app::emit!(Event::CallEnded(call_id));
         }
     }
 
-    /// Roster of identities currently in the call.
+    /// Roster of identities currently in the call — DERIVED from presence:
+    /// everyone whose `call_id` matches the active call. See the state-struct
+    /// note for why this must not be an UnorderedSet.
     pub fn get_call_participants(&self) -> Vec<MemberId> {
-        self.call_participants
-            .iter()
-            .map(|it| it.collect())
+        let call = self.active_call.get().clone();
+        if call.is_empty() {
+            return Vec::new();
+        }
+        self.presence
+            .entries()
+            .map(|e| {
+                e.filter(|(_, p)| p.call_id.as_deref() == Some(call.as_str()))
+                    .map(|(id, _)| id)
+                    .collect()
+            })
             .unwrap_or_default()
     }
 

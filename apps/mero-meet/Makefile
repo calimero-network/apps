@@ -1,4 +1,4 @@
-.PHONY: help setup build bundle logic-build logic-bundle app-install app-build app-typecheck dev dev-nodes dev-call dev-invite-test dev-stop workflows clean
+.PHONY: help setup build bundle logic-build logic-bundle app-install app-build app-typecheck dev dev-nodes dev-call dev-e2e dev-invite-test dev-stop workflows clean
 
 help:
 	@echo ""
@@ -17,6 +17,7 @@ help:
 	@echo "    dev-nodes        Start node1 + node2 + create room + auto-invite (one shot)"
 	@echo "    dev              (in another terminal) Vite dev server"
 	@echo "    dev-call         Open two fake-camera Chrome profiles into the room"
+	@echo "    dev-e2e          HEADLESS asserted call lifecycle (join/media/leave/rejoin/die)"
 	@echo "    dev-invite-test  Clean slate; node2 left UNjoined to test the in-app invite flow"
 	@echo "    dev-stop         Stop both dev nodes"
 	@echo "  See DEV-TESTING.md."
@@ -59,6 +60,12 @@ dev-nodes:
 
 dev-call:
 	@bash scripts/dev-call.sh
+
+# Headless, ASSERTED call lifecycle over the same two dev nodes: join → media
+# both ways → leave → rejoin (both directions) → everyone leaves → call dies.
+# Needs dev-nodes + a running vite (make dev). DEV_VITE_PORT overridable.
+dev-e2e:
+	@bash scripts/dev-e2e.sh
 
 # Clean slate for testing the in-app invite flow: node2 is NOT auto-joined, so
 # peer A mints an invite in the UI and peer B pastes it on the Rooms page.

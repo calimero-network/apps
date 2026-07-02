@@ -221,6 +221,12 @@ export function useCallController(): CallController {
   const syncRoster = useCallback(async () => {
     const engine = engineRef.current;
     if (!engine) return;
+    // Never reconcile peers before startup finishes (media + session + mailbox
+    // seed). The 600ms poll used to race getUserMedia here: a peer connection
+    // created BEFORE local media exists has no tracks, so it never fires
+    // negotiationneeded, never offers, and streams nothing — the other side
+    // sees a black tile forever ("they can only see themselves").
+    if (!seededRef.current) return;
     // Pull presence (names + mic/camera + online-ness) and the call roster.
     const [roster, lobby] = await Promise.all([
       meet.getCallParticipants(),

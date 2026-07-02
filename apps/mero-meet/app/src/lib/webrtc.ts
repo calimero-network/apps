@@ -179,6 +179,16 @@ export class CallEngine {
       "info",
       `local media acquired — cam ${v?.width ?? "?"}×${v?.height ?? "?"}@${Math.round(v?.frameRate ?? 0)}fps, mic ${this.local.getAudioTracks().length ? "on" : "none"}`,
     );
+    // Belt-and-braces for the media/peer race: a peer created BEFORE this
+    // point (an inbound offer, or a roster sync that slipped through) has no
+    // outbound tracks — it would answer/connect but stream NOTHING, leaving
+    // the other side a black tile. Publish to any track-less pc now; addTrack
+    // schedules negotiationneeded, so they renegotiate with media attached.
+    for (const [id, { pc }] of this.peers) {
+      if (pc.getSenders().some((s) => s.track)) continue;
+      this.diag("peer", `publishing local tracks to ${id.slice(0, 8)} (media raced the peer)`);
+      this.local.getTracks().forEach((t) => pc.addTrack(t, this.local!));
+    }
     this.cbs.onLocalStream(this.local);
     return this.local;
   }

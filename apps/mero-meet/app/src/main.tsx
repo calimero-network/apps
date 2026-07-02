@@ -35,12 +35,25 @@ initTheme();
 // web has no hash → no-op, and App renders the landing page (see App.tsx).
 if (APP_ENABLED) captureSessionFromHash();
 
+// mero-react ≥4.1 REJECTS an SSO callback whose node_url is not explicitly
+// trusted (`allowedNodeUrls`) — it drops the tokens with only a console error,
+// and the app dead-ends unauthenticated on the landing page. Our node_url
+// legitimately varies per user (everyone runs their own node), so the only
+// workable trust anchor is the node the desktop itself handed us in THIS
+// open's hash. Read it before MeroProvider strips the hash. This restores the
+// pre-4.1 desktop SSO behavior; the check still protects the plain-web build,
+// where APP_ENABLED is false and no hash node is ever trusted.
+const hashNodeUrl = APP_ENABLED
+  ? new URLSearchParams(window.location.hash.slice(1)).get("node_url")
+  : null;
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <MeroProvider
       mode={MeroAppMode.MultiContext}
       packageName={import.meta.env.VITE_APPLICATION_PACKAGE ?? "com.calimero.meromeet"}
       registryUrl="https://apps.calimero.network"
+      allowedNodeUrls={hashNodeUrl ? [hashNodeUrl] : undefined}
     >
       <BrowserRouter>
         <App />

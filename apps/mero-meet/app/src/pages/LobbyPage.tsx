@@ -102,12 +102,17 @@ export default function LobbyPage() {
 
   const online = new Set(lobby?.online ?? []);
   const members: Presence[] = lobby?.members ?? [];
-  // Count only members whose presence is FRESH (in the online TTL set). A member
-  // who left the call clears their callId, but one who closed the window
-  // ungracefully leaves callId set forever — gating on `online` drops them once
-  // their heartbeat goes stale, so we stop saying "1 person in a call" when
-  // nobody really is.
-  const inCall = members.filter((m) => m.callId && (m.memberId === selfId || online.has(m.memberId)));
+  const activeCall = lobby?.room.activeCall || "";
+  // "In call" = presence points at the CURRENTLY active call (the roster is
+  // derived this way contract-side too — a row still carrying a dead call id
+  // is not in a call) AND the member is fresh (in the online TTL set), so an
+  // ungraceful exit stops counting once their heartbeat goes stale.
+  const inCall = members.filter(
+    (m) =>
+      m.callId &&
+      m.callId === activeCall &&
+      (m.memberId === selfId || online.has(m.memberId)),
+  );
   // The call is active only if someone fresh is actually in it — not merely
   // because the active_call register still holds a stale id from an ungraceful
   // exit. This makes the room fall back to "Start call" (a fresh session) once
@@ -224,10 +229,14 @@ export default function LobbyPage() {
                   {isSelf && <span className={styles.youTag}> you</span>}
                 </span>
                 <span className={styles.sub}>
-                  {/* "in call" only for members who are demonstrably alive —
-                      an ungraceful exit leaves callId set until the contract
-                      reap clears it, and a stale row must read "away". */}
-                  {m.callId && isOnline ? "in call" : isOnline ? "available" : "away"}
+                  {/* "in call" only for live members pointing at the ACTIVE
+                      call — a stale row or a dead call id must read away/
+                      available, never "in call" forever. */}
+                  {m.callId && m.callId === activeCall && isOnline
+                    ? "in call"
+                    : isOnline
+                      ? "available"
+                      : "away"}
                   {m.muted && " · muted"}
                   {!m.videoOn && " · camera off"}
                 </span>

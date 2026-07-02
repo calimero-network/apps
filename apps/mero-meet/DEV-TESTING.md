@@ -42,6 +42,27 @@ The app needs no special web build: `MeroProvider` already reads `node_url` +
 that hash is present. `import.meta.env.DEV` guards it, so it can never ship in a
 production build.
 
+## Fully automated: `make dev-e2e`
+
+Don't want to click through two windows at all? With the nodes and vite running:
+
+```bash
+make dev-nodes                  # once
+make dev                        # separate terminal (or any port: DEV_VITE_PORT=…)
+make dev-e2e                    # headless, asserted, ~3 min
+```
+
+It drives both peers with Playwright (fake cameras, isolated browser contexts)
+and **asserts real video frames flow**, through the exact lifecycle that has
+broken before: join → media both ways → leave (remote tile must disappear) →
+rejoin in BOTH directions → everyone leaves → the call must die ("Start call"
+again). On failure it dumps screenshots, per-peer browser consoles, and each
+peer's in-call diagnostics (the ⚙ log) to `/tmp/meet-dev-e2e/`.
+
+Run this before shipping anything that touches the contract, `useCall.ts`, or
+`webrtc.ts` — in one afternoon it caught an SSO-trust regression, a
+media/negotiation race, and a CRDT rejoin bug.
+
 ## Testing the in-app invite flow
 
 `make dev-nodes` auto-joins node2 (fast path for call testing). To test the real
