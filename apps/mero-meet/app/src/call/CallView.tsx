@@ -136,7 +136,7 @@ export default function CallView() {
         </div>
       )}
 
-      {chatOpen && (
+      {chatOpen && chat.supported && (
         <ChatPanel
           messages={chat.messages}
           selfId={chat.selfId}

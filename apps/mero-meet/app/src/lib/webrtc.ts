@@ -94,12 +94,25 @@ const ICE_GATHER_TIMEOUT_MS = 2000;
  */
 const REBUILD_AFTER_MS = 8000;
 
+/**
+ * After a peer says `bye` (or is closed as roster-departed), suppress re-adding
+ * them from the roster for this long. The call roster converges via gossip and
+ * keeps listing a departed peer for a while — without this, the next roster
+ * sync resurrected them, we posted a junk offer to someone who already left,
+ * and the grace counter had to close them all over again. A genuine REJOIN
+ * clears the suppression instantly: their fresh inbound offer removes the
+ * entry (see handleSignal).
+ */
+const RECENTLY_LEFT_TTL_MS = 20_000;
+
 export class CallEngine {
   private readonly selfId: string;
   private readonly cbs: CallEngineCallbacks;
   private local: MediaStream | null = null;
   private peers = new Map<string, PeerState>();
   private iceServers: RTCIceServer[] = DEFAULT_ICE;
+  /** Peers that left (bye / roster-departed) → departure time; see RECENTLY_LEFT_TTL_MS. */
+  private recentlyLeft = new Map<string, number>();
 
   // Previous getStats byte counters, for kbps deltas in the diagnostics panel.
   private prevBytes = new Map<string, { out: number; in: number; t: number }>();
@@ -192,8 +205,18 @@ export class CallEngine {
     const wanted = new Set(roster.filter((id) => id !== this.selfId));
     for (const id of wanted) {
       const existing = this.peers.get(id);
-      if (existing) existing.missingStreak = 0;
-      else this.addPeer(id);
+      if (existing) {
+        existing.missingStreak = 0;
+        continue;
+      }
+      // Don't resurrect a peer we just saw leave: the roster keeps listing
+      // them until gossip catches up. Their own rejoin offer bypasses this.
+      const leftAt = this.recentlyLeft.get(id);
+      if (leftAt !== undefined) {
+        if (Date.now() - leftAt < RECENTLY_LEFT_TTL_MS) continue;
+        this.recentlyLeft.delete(id);
+      }
+      this.addPeer(id);
     }
     for (const [id, state] of [...this.peers.entries()]) {
       if (wanted.has(id)) continue;
@@ -247,7 +270,12 @@ export class CallEngine {
       rebuildTimer: null,
     };
     this.peers.set(peerId, state);
+    this.recentlyLeft.delete(peerId); // any add is authoritative (e.g. a rejoin offer)
     this.diag("peer", `+ peer ${peerId.slice(0, 8)} (polite=${state.polite})`);
+    // Surface the initial state immediately: the adaptive fast-poll upstream
+    // keys off "any peer not yet connected", and the first real
+    // connectionstatechange only fires once the answer is already back.
+    this.cbs.onPeerStateChange?.(peerId, pc.connectionState);
 
     // Publish our tracks — this schedules `negotiationneeded`.
     this.local?.getTracks().forEach((track) => pc.addTrack(track, this.local!));
@@ -332,7 +360,8 @@ export class CallEngine {
             "peer",
             `${peerId.slice(0, 8)} unreachable for ${REBUILD_AFTER_MS / 1000}s — rebuilding connection from scratch`,
           );
-          this.closePeer(peerId, "rebuilding");
+          // keepStream: leave the last frame on the tile under "reconnecting…".
+          this.closePeer(peerId, "rebuilding", true);
           this.addPeer(peerId);
         }, REBUILD_AFTER_MS);
       }
@@ -381,6 +410,9 @@ export class CallEngine {
   async handleSignal(from: string, kind: string, payload: string): Promise<void> {
     this.diag("signal", `← ${kind} ${from.slice(0, 8)}`);
     if (kind === "bye") {
+      // Remember the departure so the (gossip-stale) roster can't resurrect
+      // them; their own rejoin offer clears this via addPeer.
+      this.recentlyLeft.set(from, Date.now());
       this.closePeer(from, "bye");
       return;
     }
@@ -424,7 +456,13 @@ export class CallEngine {
     }
   }
 
-  private closePeer(peerId: string, reason = ""): void {
+  /**
+   * Tear down a peer connection. `keepStream` (rebuild path) skips the
+   * stream-cleared callback so the UI keeps the last frame under its
+   * "reconnecting…" overlay instead of flashing the tile empty — the rebuilt
+   * connection's ontrack replaces the stream when media resumes.
+   */
+  private closePeer(peerId: string, reason = "", keepStream = false): void {
     const state = this.peers.get(peerId);
     if (!state) return;
     if (state.rebuildTimer) {
@@ -438,7 +476,7 @@ export class CallEngine {
     state.pc.close();
     this.peers.delete(peerId);
     this.diag("peer", `- peer ${peerId.slice(0, 8)}${reason ? ` (${reason})` : ""}`);
-    this.cbs.onRemoteStream(peerId, null);
+    if (!keepStream) this.cbs.onRemoteStream(peerId, null);
   }
 
   /** Announce departure to peers and tear everything down. */

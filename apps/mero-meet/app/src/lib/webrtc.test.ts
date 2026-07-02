@@ -253,6 +253,35 @@ describe("roster reconciliation", () => {
     expect(await peerCount(engine)).toBe(0);
     expect(cbs.onRemoteStream).toHaveBeenCalledWith(PEER_POLITE, null);
   });
+
+  it("a gossip-stale roster cannot resurrect a peer that said bye", async () => {
+    const { engine } = makeEngine();
+    engine.syncPeers([PEER_POLITE]);
+    await engine.handleSignal(PEER_POLITE, "bye", "");
+    // The roster hasn't caught up and still lists the departed peer.
+    engine.syncPeers([PEER_POLITE]);
+    expect(await peerCount(engine)).toBe(0); // stays gone — no junk re-offer
+  });
+
+  it("a rejoin offer bypasses the recently-left suppression instantly", async () => {
+    const { engine, signals } = makeEngine();
+    engine.syncPeers([PEER_POLITE]);
+    await engine.handleSignal(PEER_POLITE, "bye", "");
+    // They come back: a fresh inbound offer re-adds them immediately…
+    await engine.handleSignal(PEER_POLITE, "offer", JSON.stringify({ type: "offer", sdp: "x" }));
+    await flush();
+    expect(await peerCount(engine)).toBe(1);
+    expect(signals.filter((s) => s.kind === "answer" && s.to === PEER_POLITE)).toHaveLength(1);
+    // …and the roster may list them again without being suppressed.
+    engine.syncPeers([PEER_POLITE]);
+    expect(await peerCount(engine)).toBe(1);
+  });
+
+  it("emits the initial peer state on add so the fast poll engages before the first ICE event", async () => {
+    const { engine, cbs } = makeEngine();
+    engine.syncPeers([PEER_POLITE]);
+    expect(cbs.onPeerStateChange).toHaveBeenCalledWith(PEER_POLITE, "new");
+  });
 });
 
 describe("ghost-peer reconnection ladder", () => {
@@ -271,7 +300,9 @@ describe("ghost-peer reconnection ladder", () => {
     expect(pc.closed).toBe(true);
     expect(FakePC.all.length).toBe(2);
     expect(await peerCount(engine)).toBe(1);
-    expect(cbs.onRemoteStream).toHaveBeenCalledWith(PEER_POLITE, null); // old stream cleared
+    // Rebuild keeps the last frame on the tile ("reconnecting…" overlay) —
+    // the stream-cleared callback must NOT fire for a rebuild.
+    expect(cbs.onRemoteStream).not.toHaveBeenCalledWith(PEER_POLITE, null);
     // Rebuilt pc published our tracks → fresh offer goes out.
     await vi.advanceTimersByTimeAsync(0);
     const offers = cbs.onSignal.mock.calls.filter(([s]) => (s as OutSignal).kind === "offer");

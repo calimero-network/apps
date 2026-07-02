@@ -242,7 +242,19 @@ export function useCallController(): CallController {
     const engine = new CallEngine(selfId, {
       onLocalStream: (s) => !cancelled && setLocalStream(s),
       onRemoteStream: (id, stream) => {
-        if (stream === null) peerStatesRef.current.delete(id); // peer closed
+        if (stream === null) {
+          // Peer closed. Remove the tile entry instead of upserting a null
+          // patch — the upsert re-created a default tile for a peer that had
+          // just left, which lingered until the next roster sync pruned it.
+          peerStatesRef.current.delete(id);
+          setRemotes((prev) => {
+            if (!prev.has(id)) return prev;
+            const next = new Map(prev);
+            next.delete(id);
+            return next;
+          });
+          return;
+        }
         updateRemote(id, { stream });
       },
       onSignal: sendSignal,
@@ -264,13 +276,24 @@ export function useCallController(): CallController {
         // None of these depend on each other, and each costs real time (ICE
         // endpoint roundtrip, getUserMedia, contract execute, mailbox read) —
         // running them serially added ~1.5-2s to every join.
-        const [ice, , id, backlog] = await Promise.all([
+        const [ice, , id, firstBacklog] = await Promise.all([
           invokeTauri<RTCIceServer[]>("get_ice_servers").catch(() => null),
           engine.start(),
           meet.startCall(),
           meet.getSignals(0),
         ]);
         if (cancelled) return;
+        // The seed read is what stops a fresh call from replaying the whole
+        // stale mailbox (null = the RPC errored, NOT an empty mailbox) — retry
+        // once before accepting a lossy seed.
+        let backlog = firstBacklog;
+        if (backlog == null) {
+          backlog = await meet.getSignals(0);
+          if (cancelled) return;
+          if (backlog == null) {
+            pushDiag("error", "mailbox seed failed twice — old signals may replay briefly");
+          }
+        }
         if (ice && ice.length) engine.setIceServers(ice);
         else pushDiag("info", "no bundled ICE servers — using default STUN");
 
