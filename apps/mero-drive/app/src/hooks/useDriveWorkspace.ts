@@ -55,6 +55,7 @@ import {
 } from '@calimero-network/mero-react';
 import { RegistryClient } from '../api/registry/RegistryClient';
 import { useContextEvents } from './useContextEvents';
+import { useSyncStatus, type SyncSnapshot } from './useSyncStatus';
 import { useLocalStorage } from './useLocalStorage';
 import { useNamespaceDisplayNames } from './useNamespaceDisplayNames';
 import {
@@ -80,11 +81,15 @@ export const ACTIVE_NS_KEY = 'mero-drive:activeNs';
 // joinGroup; the first time the namespace reaches a ready state in
 // useDriveWorkspace, the flag is cleared and we stop gating.
 const JUST_JOINED_KEY = 'mero-drive:justJoined';
-// How long to keep showing "Syncing workspace…" before surfacing a
-// "taking longer than expected" hint. The governance op + registry
-// state typically land in <1s on a healthy mesh; the upper bound
-// exists so a flaky peer doesn't leave the UI pinned forever.
+// Base window for the syncing gate. The governance op + registry state
+// typically land in <1s on a healthy mesh; past this window we give up
+// ONLY if no sync is actively in flight (see the watchdog effect).
 const JUST_JOINED_WATCHDOG_MS = 30_000;
+// Hard ceiling: bound a genuinely stuck sync so the gate can never pin
+// the UI forever, even while a sync keeps reporting activity.
+const JUST_JOINED_MAX_MS = 120_000;
+// How often the watchdog re-checks live sync activity past the base window.
+const WATCHDOG_POLL_MS = 2_000;
 
 /** Registry-level ownership + managers, hoisted onto the workspace
  *  state so it's fetched ONCE for the whole folder tree (was N×getOwner
@@ -197,6 +202,10 @@ export interface DriveWorkspaceState {
   // status
   loading: boolean;
   stage: DriveLoadingStage;
+  /** Live sync-status of the active namespace / registry context, read off
+   *  SSE. Non-null while a sync is (or recently was) in flight; the join
+   *  UI reads it to show real progress during `stage === 'syncing-from-peers'`. */
+  syncStatus: SyncSnapshot | null;
   error: Error | null;
   refetch: () => Promise<void>;
 }
@@ -942,6 +951,16 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     strict: true,
   });
 
+  // Live sync-status off the SAME SSE stream (shared socket, extra handler).
+  // Lets the post-join UI show real progress and lets the watchdog below
+  // tell "still discovering peers / streaming snapshot" from "genuinely
+  // stuck" instead of blindly timing out.
+  const syncStatus = useSyncStatus([selectedNsId, registryContextId]);
+  // Ref so the watchdog tick reads the latest snapshot without listing
+  // syncStatus as an effect dep (which would restart the timer every event).
+  const syncStatusRef = useRef<SyncSnapshot | null>(null);
+  syncStatusRef.current = syncStatus;
+
   // --- Post-join sync gate ---
   // If the active namespace was freshly joined in this session,
   // suppress the "uninitialised"-looking empty state and hold on a
@@ -977,22 +996,39 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNsId, justJoinedTick]);
 
-  // Watchdog: expire the just-joined flag after JUST_JOINED_WATCHDOG_MS
-  // so a stuck sync doesn't pin the UI on "Syncing…" forever.
+  // Watchdog: past the base window, drop the gate ONLY if no sync is
+  // actively in flight — a cold cross-network join legitimately exceeds
+  // 30s (the peer-discovery floor alone is 30-60s), and a large snapshot
+  // streams for a while, both of which keep reporting SSE activity. We
+  // read live activity from a ref (no effect re-run per event) and poll
+  // it every WATCHDOG_POLL_MS. JUST_JOINED_MAX_MS is the hard ceiling so
+  // a genuinely stuck sync can never pin the UI forever.
   useEffect(() => {
     if (!selectedNsId || !isJustJoined) return;
     const firstSeen = justJoinedAt.current.get(selectedNsId) ?? Date.now();
-    const remaining = JUST_JOINED_WATCHDOG_MS - (Date.now() - firstSeen);
-    if (remaining <= 0) {
-      clearNamespaceJustJoined(selectedNsId);
-      setJustJoinedTick((t) => t + 1);
-      return;
-    }
-    const t = setTimeout(() => {
-      clearNamespaceJustJoined(selectedNsId);
-      setJustJoinedTick((t) => t + 1);
-    }, remaining);
-    return () => clearTimeout(t);
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      const elapsed = Date.now() - firstSeen;
+      // Active = a sync making forward progress (discovering peers /
+      // streaming). `backingOff` is the stuck signal — the UI shows Retry
+      // for it — so it counts as inactive: no reason to hold the gate to the
+      // 120s cap when the sync is failing and the user can act. `idle` (or
+      // no event yet) is also inactive.
+      const snap = syncStatusRef.current;
+      const active =
+        !!snap && snap.phase !== 'idle' && snap.phase !== 'backingOff';
+      const giveUp =
+        elapsed >= JUST_JOINED_MAX_MS ||
+        (elapsed >= JUST_JOINED_WATCHDOG_MS && !active);
+      if (giveUp) {
+        clearNamespaceJustJoined(selectedNsId);
+        setJustJoinedTick((t) => t + 1);
+        return;
+      }
+      timer = setTimeout(tick, WATCHDOG_POLL_MS);
+    };
+    timer = setTimeout(tick, JUST_JOINED_WATCHDOG_MS);
+    return () => clearTimeout(timer);
   }, [selectedNsId, isJustJoined]);
 
   // Clear the flag once sync has landed — registry resolved AND we
@@ -1062,6 +1098,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
 
     loading,
     stage,
+    syncStatus,
     error,
     refetch,
   };

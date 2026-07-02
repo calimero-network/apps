@@ -23,6 +23,28 @@ import {
   type SseEventData,
 } from '@calimero-network/mero-react';
 
+/** Normalise a context-id input (single id, array, or nullable) into a
+ *  sorted, de-nulled string[]. Shared with useSyncStatus so both feed
+ *  mero-react's per-id-set `useSubscription` an identical, stable key. */
+export function normalizeContextIds(
+  contextIds:
+    | ReadonlyArray<string | null | undefined>
+    | string
+    | null
+    | undefined,
+): string[] {
+  const ids: string[] = [];
+  if (typeof contextIds === 'string') {
+    if (contextIds.length > 0) ids.push(contextIds);
+  } else if (Array.isArray(contextIds)) {
+    for (const c of contextIds) {
+      if (typeof c === 'string' && c.length > 0) ids.push(c);
+    }
+  }
+  ids.sort();
+  return ids;
+}
+
 export interface UseContextEventsOptions {
   /**
    * When true, `onChange` fires ONLY for events whose `event.contextId`
@@ -51,19 +73,10 @@ export function useContextEvents(
   onChange: () => void,
   options?: UseContextEventsOptions,
 ): void {
-  // Normalise + sort the id set inline. Computing on every render is
-  // cheap (≤ a handful of strings) and lets mero-react's
-  // JSON.stringify dedupe inside useSubscription do its job without
-  // a redundant local memo layer.
-  const ids: string[] = [];
-  if (typeof contextIds === 'string') {
-    if (contextIds.length > 0) ids.push(contextIds);
-  } else if (Array.isArray(contextIds)) {
-    for (const c of contextIds) {
-      if (typeof c === 'string' && c.length > 0) ids.push(c);
-    }
-  }
-  ids.sort();
+  // Computing on every render is cheap (≤ a handful of strings) and lets
+  // mero-react's JSON.stringify dedupe inside useSubscription do its job
+  // without a redundant local memo layer.
+  const ids = normalizeContextIds(contextIds);
 
   const strict = options?.strict ?? false;
   // Stable, comparable key for the id set — context ids are hex/base58

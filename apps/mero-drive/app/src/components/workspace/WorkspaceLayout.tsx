@@ -33,6 +33,7 @@ import { FolderTree } from '@/components/folders/FolderTree';
 import { RestrictedFolderCard } from '@/components/folders/RestrictedFolderCard';
 import { FolderEmptyState } from './FolderEmptyState';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import type { SyncSnapshot } from '@/hooks/useSyncStatus';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { isAccessDeniedError } from '@/utils/accessDenied';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
@@ -51,15 +52,32 @@ const DocumentEditor = lazy(() =>
 export function WorkspaceLayout() {
   const {
     namespaceId,
+    registryContextId,
     selectedFolderId,
     setSelectedFolder,
     folders,
     selfIdentity,
     stage,
+    syncStatus,
     refetch,
   } = useDriveWorkspace();
-  const { nodeUrl, isOnline, logout } = useMero();
+  const { mero, nodeUrl, isOnline, logout } = useMero();
   const selectedFolder = folders.find((f) => f.id === selectedFolderId);
+
+  // Explicit re-trigger for a stalled post-join sync — a real action so a
+  // user staring at a stuck "syncing" state re-fires the sync instead of
+  // re-joining. Best-effort: the SSE stream + refetch surface the outcome.
+  const onRetrySync = useCallback(() => {
+    const ids = [namespaceId, registryContextId].filter(
+      (id): id is string => !!id,
+    );
+    for (const id of ids) {
+      mero.admin.syncContext(id).catch((err: unknown) => {
+        console.warn('retry syncContext failed', id, err);
+      });
+    }
+    void refetch();
+  }, [mero, namespaceId, registryContextId, refetch]);
   // Per-folder permission probe. caps=null while fetching; caps=0
   // means "not a member" (or genuinely no caps). See RestrictedFolderCard
   // branch below for how we distinguish from "still loading".
@@ -236,9 +254,9 @@ export function WorkspaceLayout() {
               />
             </Suspense>
           ) : stage === 'syncing-from-peers' ? (
-            <EmptyState
-              title="Syncing workspace from peers…"
-              body="You've just joined this workspace. Waiting for the registry and folder state to propagate from other nodes. This usually takes a second."
+            <SyncingWorkspaceState
+              syncStatus={syncStatus}
+              onRetry={onRetrySync}
             />
           ) : !selectedFolderId ? (
             <EmptyState
@@ -285,6 +303,105 @@ function EmptyState({ title, body }: { title: string; body: string }) {
       <div className="max-w-md text-center">
         <h2 className="text-xl font-semibold text-foreground">{title}</h2>
         <p className="mt-2 text-sm text-muted-foreground">{body}</p>
+      </div>
+    </div>
+  );
+}
+
+// Phase → user-facing copy for the post-join syncing state. Pure and
+// lifted out so the component stays declarative (no let-mutation ladder);
+// the `default` covers "no event yet" and `idle`.
+function describeSync(snap: SyncSnapshot | null): {
+  title: string;
+  body: string;
+} {
+  switch (snap?.phase) {
+    case 'waitingForPeers':
+      return {
+        title: 'Connecting to peers…',
+        body: 'Finding a node that has this workspace. A fresh cross-network join can take up to a minute.',
+      };
+    case 'syncing':
+      return {
+        title: 'Syncing workspace…',
+        body: 'Found a peer — pulling the latest workspace state.',
+      };
+    case 'receivingSnapshot':
+      return {
+        title: 'Receiving workspace…',
+        body:
+          snap.etaSecs != null
+            ? `Downloading state — about ${snap.etaSecs}s left.`
+            : 'Downloading workspace state from a peer.',
+      };
+    case 'backingOff': {
+      const attempt = snap.failureCount
+        ? ` (attempt ${snap.failureCount + 1})`
+        : '';
+      const when =
+        snap.retryInSecs != null ? ` in ${snap.retryInSecs}s` : ' shortly';
+      return {
+        title: 'Reconnecting…',
+        body: `Sync hit a snag${attempt}. Retrying${when}.`,
+      };
+    }
+    default:
+      return {
+        title: 'Syncing workspace from peers…',
+        body: "You've just joined this workspace. Connecting to the network to pull its state.",
+      };
+  }
+}
+
+// Post-join "syncing" state, driven by live SSE sync-status so the user
+// can tell "still connecting / receiving X%" from "stuck" — the whole
+// point of the fix (a static message reads the same as a failure, so
+// people re-click Join). Falls back to a generic connecting message
+// until the first SyncStatus event arrives.
+function SyncingWorkspaceState({
+  syncStatus,
+  onRetry,
+}: {
+  syncStatus: SyncSnapshot | null;
+  onRetry: () => void;
+}) {
+  const phase = syncStatus?.phase;
+  // `backingOff` is the authoritative "stuck" signal. A `lastError` can
+  // linger on the wire during an active phase, so it must NOT hide the
+  // spinner / show Retry — it's rendered separately as informational text.
+  const stalled = phase === 'backingOff';
+  const percent = phase === 'receivingSnapshot' ? syncStatus?.percent : null;
+  const { title, body } = describeSync(syncStatus);
+
+  return (
+    <div className="flex h-full items-center justify-center p-8">
+      <div className="w-full max-w-md text-center">
+        {!stalled && (
+          <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-b-2 border-t-2 border-primary" />
+        )}
+        <h2 className="text-xl font-semibold text-foreground">{title}</h2>
+        <p className="mt-2 text-sm text-muted-foreground">{body}</p>
+        {percent != null && (
+          <div className="mt-4">
+            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-primary transition-all"
+                style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
+              />
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">{percent}%</p>
+          </div>
+        )}
+        {stalled && syncStatus?.lastError && (
+          <p className="mt-3 text-xs text-destructive">
+            {syncStatus.lastError.slice(0, 200)}
+          </p>
+        )}
+        {stalled && (
+          <Button variant="outline" className="mt-4" onClick={onRetry}>
+            Retry sync
+          </Button>
+        )}
       </div>
     </div>
   );
