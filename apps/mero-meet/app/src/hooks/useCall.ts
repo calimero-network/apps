@@ -311,9 +311,19 @@ export function useCallController(): CallController {
       void syncRoster();
     }, SIGNAL_POLL_MS);
     const hb = setInterval(() => void meet.heartbeat(), HEARTBEAT_MS);
+    // Best-effort graceful leave if the window is closed/refreshed mid-call
+    // (the normal path is the Leave button → leave()). Without this, closing the
+    // window leaves your presence.callId set and you linger as a phantom
+    // participant for others until your heartbeat goes stale. The contract also
+    // reaps a stale call on the next start_call as a backstop.
+    const onHide = () => {
+      void meet.leaveCall();
+    };
+    window.addEventListener("pagehide", onHide);
     return () => {
       clearInterval(poll);
       clearInterval(hb);
+      window.removeEventListener("pagehide", onHide);
     };
   }, [active, drainSignals, syncRoster, meet]);
 

@@ -86,8 +86,17 @@ export default function LobbyPage() {
 
   const online = new Set(lobby?.online ?? []);
   const members: Presence[] = lobby?.members ?? [];
-  const callActive = (lobby?.room.activeCall ?? "") !== "";
-  const inCall = members.filter((m) => m.callId);
+  // Count only members whose presence is FRESH (in the online TTL set). A member
+  // who left the call clears their callId, but one who closed the window
+  // ungracefully leaves callId set forever — gating on `online` drops them once
+  // their heartbeat goes stale, so we stop saying "1 person in a call" when
+  // nobody really is.
+  const inCall = members.filter((m) => m.callId && (m.memberId === selfId || online.has(m.memberId)));
+  // The call is active only if someone fresh is actually in it — not merely
+  // because the active_call register still holds a stale id from an ungraceful
+  // exit. This makes the room fall back to "Start call" (a fresh session) once
+  // everyone has really left.
+  const callActive = inCall.length > 0;
   // Count online with the same self-override the rows use, so the header never
   // says "0 online" while you're sitting in the room.
   const onlineCount = members.filter((m) => m.memberId === selfId || online.has(m.memberId)).length;

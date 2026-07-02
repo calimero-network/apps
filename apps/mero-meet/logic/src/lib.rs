@@ -396,6 +396,14 @@ impl MeroMeet {
     /// room rings.
     pub fn start_call(&mut self, now: u64) -> app::Result<String> {
         let id = Self::caller_id();
+        // If the recorded call has no participant seen within the presence TTL,
+        // everyone left ungracefully (closed window / crashed) and the session is
+        // dead. Clear it so we start a FRESH call instead of joining a ghost with
+        // a stale id and phantom roster. This is the backstop for the "everybody
+        // leaves → kill everything → next caller starts clean" requirement.
+        if !self.active_call.get().is_empty() && !self.has_fresh_participant(now) {
+            self.end_active_call_internal();
+        }
         let mut call_id = self.active_call.get().clone();
         if call_id.is_empty() {
             // Deterministic id (no WASM randomness): starter prefix + clock.
@@ -446,6 +454,22 @@ impl MeroMeet {
             let _ = self.call_participants.clear();
             app::emit!(Event::CallEnded(call_id));
         }
+    }
+
+    /// True if any current call participant has a fresh (within-TTL) heartbeat.
+    /// A call whose participants have ALL gone stale is dead — used by start_call
+    /// to reap ghost sessions left by ungraceful exits (no leave_call). Read-only:
+    /// it inspects presence rather than mutating another member's state, which
+    /// would be unsafe under LWW merge.
+    fn has_fresh_participant(&self, now: u64) -> bool {
+        for id in self.get_call_participants() {
+            if let Ok(Some(p)) = self.presence.get(&id) {
+                if now.saturating_sub(p.updated_at) <= PRESENCE_TTL_SECS {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     /// Roster of identities currently in the call.
