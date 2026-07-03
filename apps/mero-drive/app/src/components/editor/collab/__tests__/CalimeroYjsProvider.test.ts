@@ -462,3 +462,77 @@ describe('CalimeroYjsProvider — origin guard (no echo)', () => {
     remoteDoc.destroy();
   });
 });
+
+// Layer 2: two providers sharing ONE log (a fake in-memory "server") — the
+// deterministic, node-free proxy for "do two clients actually converge?".
+// The single-provider tests above cover flush/retry/echo mechanics; these
+// prove the end-to-end CRDT contract the collab feature rests on.
+describe('CalimeroYjsProvider — two-client convergence', () => {
+  it("one-way: B pulls A's edit and converges", async () => {
+    const server = new FakeTransport(); // shared log between both providers
+    const docA = new Y.Doc();
+    const docB = new Y.Doc();
+    const provA = new CalimeroYjsProvider(docA, server, fastOpts);
+    const provB = new CalimeroYjsProvider(docB, server, fastOpts);
+    try {
+      docA.getText('t').insert(0, 'hello from A');
+      await provA.flush();
+      await provB.pullRemote();
+      expect(docB.getText('t').toString()).toBe('hello from A');
+    } finally {
+      await provA.destroy();
+      await provB.destroy();
+      docA.destroy();
+      docB.destroy();
+    }
+  });
+
+  it('concurrent edits from both replicas MERGE (neither clobbered) and converge', async () => {
+    const server = new FakeTransport();
+    const docA = new Y.Doc();
+    const docB = new Y.Doc();
+    const provA = new CalimeroYjsProvider(docA, server, fastOpts);
+    const provB = new CalimeroYjsProvider(docB, server, fastOpts);
+    try {
+      // Each writes to its OWN replica before seeing the other — true
+      // concurrency. A last-writer-wins store would drop one side here.
+      docA.getText('t').insert(0, 'AAA');
+      docB.getText('t').insert(0, 'BBB');
+      await provA.flush();
+      await provB.flush();
+      await provA.pullRemote();
+      await provB.pullRemote();
+      const a = docA.getText('t').toString();
+      const b = docB.getText('t').toString();
+      expect(a).toBe(b); // converged to identical state
+      expect(a).toContain('AAA'); // Alice survived
+      expect(a).toContain('BBB'); // Bob survived
+    } finally {
+      await provA.destroy();
+      await provB.destroy();
+      docA.destroy();
+      docB.destroy();
+    }
+  });
+
+  it('re-pulling the same log is idempotent (no duplicated content)', async () => {
+    const server = new FakeTransport();
+    const docA = new Y.Doc();
+    const docB = new Y.Doc();
+    const provA = new CalimeroYjsProvider(docA, server, fastOpts);
+    const provB = new CalimeroYjsProvider(docB, server, fastOpts);
+    try {
+      docA.getText('t').insert(0, 'once');
+      await provA.flush();
+      await provB.pullRemote();
+      await provB.pullRemote();
+      await provB.pullRemote();
+      expect(docB.getText('t').toString()).toBe('once');
+    } finally {
+      await provA.destroy();
+      await provB.destroy();
+      docA.destroy();
+      docB.destroy();
+    }
+  });
+});

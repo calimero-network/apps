@@ -552,13 +552,19 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     setRegError(null);
     try {
       const fs = await registryClient.getFolders();
-      setRegFolders(
-        fs.map((f) => ({
-          id: f.id,
-          parent_id: f.parent_id ?? null,
-          color: f.color ?? null,
-          alias: f.alias ?? null,
-        })),
+      const mapped = fs.map((f) => ({
+        id: f.id,
+        parent_id: f.parent_id ?? null,
+        color: f.color ?? null,
+        alias: f.alias ?? null,
+      }));
+      // Keep the previous array identity when the fetched content is
+      // byte-identical, so the `folders`/`allFolderNodes` memos (and the
+      // whole folder tree) don't get a fresh identity on every refetch.
+      // ponytail: JSON compare is fine for these small flat rows; if the
+      // folder set grows large, switch to a shallow per-field compare.
+      setRegFolders((prev) =>
+        JSON.stringify(prev) === JSON.stringify(mapped) ? prev : mapped,
       );
     } catch (e: unknown) {
       setRegError(e instanceof Error ? e : new Error(String(e)));
@@ -949,6 +955,11 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   // ding anyway), so filtering these doesn't change the un-hide path.
   useContextEvents([selectedNsId, registryContextId], onWorkspaceEvent, {
     strict: true,
+    // Coalesce event bursts into one refetch: a settled batch of registry
+    // ops (or a sync tick fan-out) rebuilds the folder tree once, not per
+    // event. 300ms is imperceptible for structure changes but collapses the
+    // churn that was rebuilding the sidebar on every SyncStatus tick.
+    debounceMs: 300,
   });
 
   // Live sync-status off the SAME SSE stream (shared socket, extra handler).
@@ -1071,37 +1082,65 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   const loading = stage !== 'ready' && stage !== 'idle';
   const error = nsError ?? regError ?? null;
 
-  return {
-    applicationId,
-    selfIdentity: selfIdentity ?? contextIdentity ?? null,
-    namespaceMemberNames,
+  return useMemo<DriveWorkspaceState>(
+    () => ({
+      applicationId,
+      selfIdentity: selfIdentity ?? contextIdentity ?? null,
+      namespaceMemberNames,
 
-    namespaces,
-    selectedNamespaceId: selectedNsId,
-    namespaceId: selectedNsId,
-    rootGroupId,
-    selectNamespace,
-    clearNamespace,
+      namespaces,
+      selectedNamespaceId: selectedNsId,
+      namespaceId: selectedNsId,
+      rootGroupId,
+      selectNamespace,
+      clearNamespace,
 
-    createWorkspace,
-    createWorkspaceLoading: createLoading,
-    createWorkspaceError: createError,
+      createWorkspace,
+      createWorkspaceLoading: createLoading,
+      createWorkspaceError: createError,
 
-    registryContextId,
-    registryClient,
-    folders,
-    allFolderNodes,
-    registryAdmin,
+      registryContextId,
+      registryClient,
+      folders,
+      allFolderNodes,
+      registryAdmin,
 
-    selectedFolderId,
-    setSelectedFolder,
+      selectedFolderId,
+      setSelectedFolder,
 
-    loading,
-    stage,
-    syncStatus,
-    error,
-    refetch,
-  };
+      loading,
+      stage,
+      syncStatus,
+      error,
+      refetch,
+    }),
+    [
+      applicationId,
+      selfIdentity,
+      contextIdentity,
+      namespaceMemberNames,
+      namespaces,
+      selectedNsId,
+      rootGroupId,
+      selectNamespace,
+      clearNamespace,
+      createWorkspace,
+      createLoading,
+      createError,
+      registryContextId,
+      registryClient,
+      folders,
+      allFolderNodes,
+      registryAdmin,
+      selectedFolderId,
+      setSelectedFolder,
+      loading,
+      stage,
+      syncStatus,
+      error,
+      refetch,
+    ],
+  );
 }
 
 // --- Context / Provider / public hook ---

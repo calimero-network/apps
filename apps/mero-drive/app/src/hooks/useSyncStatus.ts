@@ -50,6 +50,24 @@ const PHASES: ReadonlySet<string> = new Set<SyncPhase>([
   'backingOff',
 ]);
 
+/** True when two snapshots are field-identical. The node re-emits SyncStatus
+ *  on a timer (and per snapshot page), so consecutive events are often the same
+ *  phase/progress; bailing out on an unchanged snapshot keeps `setLatest` from
+ *  re-rendering every consumer (the whole workspace provider) on each idle tick. */
+function sameSnapshot(a: SyncSnapshot | null, b: SyncSnapshot): boolean {
+  return (
+    a !== null &&
+    a.contextId === b.contextId &&
+    a.phase === b.phase &&
+    a.percent === b.percent &&
+    a.etaSecs === b.etaSecs &&
+    a.recordsReceived === b.recordsReceived &&
+    a.retryInSecs === b.retryInSecs &&
+    a.failureCount === b.failureCount &&
+    a.lastError === b.lastError
+  );
+}
+
 /** Coerce a wire value to a finite number, else null — the payload is
  *  untrusted network input, and a bad `percent` would otherwise render as
  *  `NaN%` (and a broken width) in the progress bar. */
@@ -129,7 +147,8 @@ export function useSyncStatus(
       // Only track contexts we asked about (the shared socket fans events
       // for every subscribed id set through to every handler).
       if (!idSet.has(snap.contextId)) return;
-      setLatest(snap);
+      // Bail out (return prev) when nothing changed so React skips the render.
+      setLatest((prev) => (sameSnapshot(prev, snap) ? prev : snap));
     },
     [idSet],
   );

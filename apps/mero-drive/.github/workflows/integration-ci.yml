@@ -303,10 +303,15 @@ jobs:
 
   e2e-two-node:
     name: Browser e2e - two-node
-    # Off for master auto-CI alongside e2e-fast (same browser Playwright
-    # suite). Runnable ON DEMAND (workflow_dispatch) — the two-node project
-    # is the real test of the BlockNote remote-apply guard (doc-collab:
-    # Alice's edits reach Bob without a feedback loop).
+    # Dispatch-only. This job is the real test of collaborative editing
+    # (doc-collab merge), BUT the two-node browser harness currently fails
+    # wholesale against `merod:edge` — cross-node propagation is broken at
+    # the node level (folder/inheritance/invite tests all fail too, not just
+    # doc-collab), and the job blows its 35m budget. Re-enabling it as a PR
+    # gate requires first pinning merod off `:edge` and repairing propagation
+    # (its own effort). Until then it stays on-demand so it can't red-X every
+    # PR. The collab MERGE logic is validated meanwhile by the Rust
+    # `E2E (collab)` job and the CalimeroYjsProvider two-client unit tests.
     if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35

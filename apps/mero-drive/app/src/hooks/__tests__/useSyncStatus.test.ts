@@ -172,6 +172,19 @@ describe('useSyncStatus', () => {
     expect(result.current).toBeNull();
   });
 
+  it('returns a stable reference when consecutive snapshots are identical', () => {
+    const { result } = renderHook(() => useSyncStatus('ctx-a'));
+    act(() => lastHandler?.(waitingForPeers('ctx-a')));
+    const first = result.current;
+    // Same phase/fields again (node re-emits on a timer) → no new object.
+    act(() => lastHandler?.(waitingForPeers('ctx-a')));
+    expect(result.current).toBe(first);
+    // A genuine change → new snapshot.
+    act(() => lastHandler?.(receivingSnapshot('ctx-a')));
+    expect(result.current).not.toBe(first);
+    expect(result.current?.phase).toBe('receivingSnapshot');
+  });
+
   it('resets the snapshot to null when the subscribed id set changes', () => {
     const { result, rerender } = renderHook(
       ({ ids }) => useSyncStatus(ids),

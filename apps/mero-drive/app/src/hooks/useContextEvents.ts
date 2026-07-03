@@ -17,7 +17,7 @@
 // caller should still keep handler identity stable so the
 // per-subscriber bookkeeping doesn't churn.
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   useSubscription,
   type SseEventData,
@@ -62,6 +62,16 @@ export interface UseContextEventsOptions {
    * change) never dings a box they subscribe to — see useMemberCaps.
    */
   strict?: boolean;
+  /**
+   * Coalesce bursts: when > 0, `onChange` fires once `debounceMs` after the
+   * LAST event in a burst, instead of once per event. A doc autosave fans
+   * rapid state-DAG events across the shared socket; without this, every
+   * non-strict subscriber (each folder row's caps/role hook) re-fetches per
+   * event — an N-row RPC storm on every keystroke-batch. Debouncing keeps the
+   * "react to any event" semantics while collapsing the storm to one refetch.
+   * Trailing-edge only (a settled burst still triggers exactly one refetch).
+   */
+  debounceMs?: number;
 }
 
 export function useContextEvents(
@@ -79,11 +89,22 @@ export function useContextEvents(
   const ids = normalizeContextIds(contextIds);
 
   const strict = options?.strict ?? false;
+  const debounceMs = options?.debounceMs ?? 0;
   // Stable, comparable key for the id set — context ids are hex/base58
   // so a comma separator never collides. Used as the callback dep
   // (the `ids` array is a fresh reference each render) and to rebuild
   // the allow-set inside the handler without capturing the array.
   const idsKey = ids.join(',');
+
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Clear any pending debounced fire on unmount so a settled timer can't
+  // call onChange after the consumer is gone.
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    [],
+  );
 
   const handler = useCallback(
     (event: SseEventData) => {
@@ -91,9 +112,17 @@ export function useContextEvents(
         const allowed = idsKey.length > 0 ? idsKey.split(',') : [];
         if (!event || !allowed.includes(event.contextId)) return;
       }
-      onChange();
+      if (debounceMs <= 0) {
+        onChange();
+        return;
+      }
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        timerRef.current = null;
+        onChange();
+      }, debounceMs);
     },
-    [onChange, strict, idsKey],
+    [onChange, strict, idsKey, debounceMs],
   );
 
   useSubscription(ids, handler);

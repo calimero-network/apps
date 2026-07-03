@@ -33,6 +33,7 @@ import { FolderTree } from '@/components/folders/FolderTree';
 import { RestrictedFolderCard } from '@/components/folders/RestrictedFolderCard';
 import { FolderEmptyState } from './FolderEmptyState';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import type { SyncSnapshot } from '@/hooks/useSyncStatus';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { isAccessDeniedError } from '@/utils/accessDenied';
@@ -61,7 +62,9 @@ export function WorkspaceLayout() {
     syncStatus,
     refetch,
   } = useDriveWorkspace();
-  const { mero, nodeUrl, isOnline, logout } = useMero();
+  const { mero, nodeUrl, logout } = useMero();
+  // Grace-wrapped so a transient SSE blip doesn't flap the node dot red.
+  const isOnline = useOnlineStatus();
   const selectedFolder = folders.find((f) => f.id === selectedFolderId);
 
   // Explicit re-trigger for a stalled post-join sync — a real action so a

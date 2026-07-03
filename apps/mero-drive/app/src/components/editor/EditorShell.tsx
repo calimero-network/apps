@@ -179,10 +179,43 @@ export const EditorShell: React.FC<EditorShellProps> = ({
       lastContentRef.current = initialContent;
       return;
     }
+    // Best-effort caret preservation across the whole-doc replace: capture
+    // the cursor's block (by id + index) so a remote edit landing while you
+    // are idle doesn't drop the caret to the top. replaceBlocks regenerates
+    // ids from serialized JSON, so we restore by id if it survived, else by
+    // the same index clamped to the new doc. (The real fix is the Yjs path,
+    // which applies incremental steps and never needs this.)
+    let priorBlockId: string | undefined;
+    let priorIndex = -1;
+    try {
+      priorBlockId = editor.getTextCursorPosition()?.block?.id;
+      if (priorBlockId) {
+        priorIndex = editor.document.findIndex((b) => b.id === priorBlockId);
+      }
+    } catch {
+      /* no active selection to preserve */
+    }
     applyingRemoteRef.current = true;
     try {
       editor.replaceBlocks(editor.document, blocks);
       lastContentRef.current = initialContent; // guard (2): equality drop
+      const doc = editor.document;
+      if (doc.length > 0) {
+        const target =
+          (priorBlockId &&
+            doc.some((b) => b.id === priorBlockId) &&
+            priorBlockId) ||
+          (priorIndex >= 0
+            ? doc[Math.min(priorIndex, doc.length - 1)]?.id
+            : undefined);
+        if (target) {
+          try {
+            editor.setTextCursorPosition(target, 'end');
+          } catch {
+            /* block no longer focusable — leave default caret */
+          }
+        }
+      }
     } finally {
       applyingRemoteRef.current = false; // guard (1): cleared even on throw
     }

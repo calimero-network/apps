@@ -64,7 +64,10 @@ export function useFolderRole(folderId: string | null): FolderRoleState {
   // registry event. Coarse (re-runs for unrelated registry ops) but
   // cheap (single getFolderRole call).
   const refetch = useCallback(() => setTick((t) => t + 1), []);
-  useContextEvents(registryContextId, refetch);
+  // Debounced: coalesce bursts of registry events so a rapid sequence
+  // (e.g. autosave churn on the shared socket) triggers one refetch per
+  // settled burst instead of one per event across every folder row.
+  useContextEvents(registryContextId, refetch, { debounceMs: 400 });
 
   // Last folder id we kicked a fetch off for. When `folderId` changes
   // (genuinely different folder), we DO want to clear the previous
@@ -111,7 +114,12 @@ export function useFolderRole(folderId: string | null): FolderRoleState {
       .getFolderRole({ folder_id: folder, member })
       .then((r) => {
         if (cancelled) return;
-        setRoleState((r as Role) ?? 'Editor');
+        const fetchedRole = (r as Role) ?? 'Editor';
+        // Diff-guard: an SSE-triggered refetch that resolves to the
+        // same role should not touch state — returning `prev` lets
+        // React bail the re-render (see useMemberCaps for why this
+        // matters more once `role` sits inside a compound object).
+        setRoleState((prev) => (prev === fetchedRole ? prev : fetchedRole));
       })
       .catch((e) => {
         if (cancelled) return;
@@ -188,7 +196,10 @@ export function useFolderRoles(folderId: string | null): FolderRolesState {
   // the tick on any registry event so the next read picks up the
   // updated FolderRoleEntry rows.
   const refetch = useCallback(() => setTick((t) => t + 1), []);
-  useContextEvents(registryContextId, refetch);
+  // Debounced: coalesce bursts of registry events so a rapid sequence
+  // (e.g. autosave churn on the shared socket) triggers one refetch per
+  // settled burst instead of one per event across every folder row.
+  useContextEvents(registryContextId, refetch, { debounceMs: 400 });
 
   // Same flicker-prevention as useFolderRole: keep the previous
   // entries visible across registryClient re-memos / tick refetches;

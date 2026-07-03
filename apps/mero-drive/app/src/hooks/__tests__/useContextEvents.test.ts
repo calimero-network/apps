@@ -55,4 +55,43 @@ describe('useContextEvents', () => {
     );
     expect(lastIds).toEqual(['ctx-a', 'ctx-b']);
   });
+
+  it('debounceMs: coalesces a burst into one trailing onChange', () => {
+    vi.useFakeTimers();
+    try {
+      const onChange = vi.fn();
+      renderHook(() =>
+        useContextEvents(['ctx-a'], onChange, { debounceMs: 400 }),
+      );
+      // Three events in quick succession.
+      fire('ctx-a');
+      fire('ctx-a');
+      fire('ctx-a');
+      expect(onChange).not.toHaveBeenCalled(); // nothing yet — still within window
+      vi.advanceTimersByTime(399);
+      expect(onChange).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(onChange).toHaveBeenCalledTimes(1); // exactly one fire for the burst
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('debounceMs with strict: filters first, then debounces allowed events', () => {
+    vi.useFakeTimers();
+    try {
+      const onChange = vi.fn();
+      renderHook(() =>
+        useContextEvents(['ctx-a'], onChange, { strict: true, debounceMs: 400 }),
+      );
+      fire('other-ctx'); // filtered out — must not arm the timer
+      vi.advanceTimersByTime(400);
+      expect(onChange).not.toHaveBeenCalled();
+      fire('ctx-a');
+      vi.advanceTimersByTime(400);
+      expect(onChange).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

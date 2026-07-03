@@ -111,7 +111,11 @@ export function useMemberCaps(
   // (someone promoted/demoted us, or our membership was just
   // materialised via auto-follow). Without this we'd keep showing
   // the stale "loading retry exhausted" state until manual remount.
-  useContextEvents(groupId, refetch);
+  // Debounced: a doc autosave fans rapid events across the shared socket;
+  // coalesce them so we refetch caps once per settled burst, not per event
+  // (this hook is intentionally non-strict to catch membership changes that
+  // don't ding its own context).
+  useContextEvents(groupId, refetch, { debounceMs: 400 });
 
   // Track the last (groupId, memberId) we kicked off a fetch for.
   // When those genuinely change, the previous caps are stale and we
@@ -171,11 +175,13 @@ export function useMemberCaps(
           //    means fall through to the capability probe below.
           if (me?.role === 'Admin') {
             if (!signal.aborted) {
-              setState({
-                caps: ADMIN_CAPS_BITMASK,
-                isAdmin: true,
-                error: null,
-              });
+              setState((prev) =>
+                prev.caps === ADMIN_CAPS_BITMASK &&
+                prev.isAdmin === true &&
+                prev.error === null
+                  ? prev
+                  : { caps: ADMIN_CAPS_BITMASK, isAdmin: true, error: null },
+              );
             }
             return;
           }
@@ -194,11 +200,19 @@ export function useMemberCaps(
             memberId,
           );
           if (signal.aborted) return;
-          setState({
-            caps: result.capabilities ?? 0,
-            isAdmin: false,
-            error: null,
-          });
+          const caps = result.capabilities ?? 0;
+          // Diff-guard: an SSE-triggered refetch (tick bump) that
+          // resolves to the same caps/isAdmin/error must not replace
+          // `state` with a new-but-equal object — a fresh object
+          // literal here would always fail React's Object.is bail
+          // check and re-render every row on every unrelated context
+          // event (e.g. a doc autosave). Returning `prev` when nothing
+          // changed lets React skip the re-render.
+          setState((prev) =>
+            prev.caps === caps && prev.isAdmin === false && prev.error === null
+              ? prev
+              : { caps, isAdmin: false, error: null },
+          );
           return;
         } catch (err) {
           lastErr = err;
