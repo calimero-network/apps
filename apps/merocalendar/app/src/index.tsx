@@ -55,6 +55,17 @@ function persistTauriHashAuth() {
   window.history.replaceState({}, "", "/teams");
 }
 
+// mero-react ≥4.1 REJECTS SSO tokens whose node_url is not explicitly trusted
+// (`allowedNodeUrls`) — they are dropped with only a console error and the app
+// dead-ends unauthenticated. Desktop node URLs legitimately vary per user
+// (everyone runs their own node), so the only workable trust anchor is the node
+// the desktop itself handed us in THIS open's hash. Capture it before
+// persistTauriHashAuth() strips the hash. On the plain web IS_TAURI is false, no
+// hash node is ever trusted, and the check keeps protecting the real auth flow.
+const tauriHashNodeUrl = IS_TAURI
+  ? (new URLSearchParams(window.location.hash.slice(1)).get("node_url")?.trim() ?? null)
+  : null;
+
 if (IS_TAURI) persistTauriHashAuth();
 
 const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement);
@@ -64,6 +75,7 @@ root.render(
       mode={MeroAppMode.MultiContext}
       packageName={import.meta.env.VITE_APPLICATION_PACKAGE ?? "com.calimero.merocalendar"}
       registryUrl="https://apps.calimero.network"
+      allowedNodeUrls={tauriHashNodeUrl ? [tauriHashNodeUrl] : undefined}
     >
       <ThemeProvider>
         <StoreProvider store={store}>
