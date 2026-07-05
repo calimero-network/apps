@@ -11,7 +11,9 @@
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::app;
+use calimero_storage::address::Id;
 use calimero_storage::collections::crdt_meta::MergeError;
+use calimero_storage::collections::rekey::RekeyTarget;
 use calimero_storage::collections::{LwwRegister, Mergeable as MergeableTrait, UnorderedMap};
 
 // ── ID aliases ──────────────────────────────────────────────────────────────
@@ -130,6 +132,13 @@ pub struct Tracker {
     pub updated_at: u64,
 }
 
+// Flat record (no nested Calimero collections) → no-op re-key; required by
+// rc.9's `Mergeable: RekeyTarget` supertrait bound. The default (empty)
+// `register_nested_value_types` is correct: nothing to cascade.
+impl RekeyTarget for Tracker {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
+}
+
 impl MergeableTrait for Tracker {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         if other.updated_at > self.updated_at { *self = other.clone(); }
@@ -150,6 +159,11 @@ pub struct Group {
     pub member_ids:  Vec<MemberId>,
     pub tracker_ids: Vec<TrackerId>,
     pub updated_at:  u64,
+}
+
+// Flat record → no-op re-key; required by rc.9's `Mergeable: RekeyTarget`.
+impl RekeyTarget for Group {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
 impl MergeableTrait for Group {
@@ -176,6 +190,11 @@ pub struct Geofence {
     pub created_at: u64,
 }
 
+// Flat record → no-op re-key; required by rc.9's `Mergeable: RekeyTarget`.
+impl RekeyTarget for Geofence {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
+}
+
 impl MergeableTrait for Geofence {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         // Geofences are immutable once created; newest definition wins.
@@ -194,6 +213,11 @@ pub struct Presence {
     pub user_id:   MemberId,
     pub online:    bool,
     pub last_seen: u64,
+}
+
+// Flat record → no-op re-key; required by rc.9's `Mergeable: RekeyTarget`.
+impl RekeyTarget for Presence {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
 impl MergeableTrait for Presence {
@@ -215,6 +239,11 @@ pub struct Member {
     pub joined_at: u64,
 }
 
+// Flat record → no-op re-key; required by rc.9's `Mergeable: RekeyTarget`.
+impl RekeyTarget for Member {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
+}
+
 impl MergeableTrait for Member {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         if other.joined_at > self.joined_at { *self = other.clone(); }
@@ -229,6 +258,11 @@ impl MergeableTrait for Member {
 #[serde(crate = "calimero_sdk::serde")]
 pub struct History {
     pub samples: Vec<LocationSample>,
+}
+
+// Flat record → no-op re-key; required by rc.9's `Mergeable: RekeyTarget`.
+impl RekeyTarget for History {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
 impl MergeableTrait for History {
