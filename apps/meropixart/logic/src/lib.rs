@@ -4,6 +4,8 @@ use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, env as sdk_env, BlobId, PublicKey};
 use calimero_storage::collections::crdt_meta::MergeError;
+use calimero_storage::collections::rekey::RekeyTarget;
+use calimero_storage::address::Id;
 use calimero_storage::collections::{
     AccessControl, LwwRegister, Mergeable as MergeableTrait, Ownable, UnorderedMap,
 };
@@ -149,6 +151,12 @@ impl MergeableTrait for Layer {
     }
 }
 
+// rc.9 made `RekeyTarget` a supertrait of `Mergeable`. `Layer` is a plain data
+// struct with no nested Calimero collections, so re-keying is a no-op.
+impl RekeyTarget for Layer {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
+}
+
 // ── Member ────────────────────────────────────────────────────────────────────
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
@@ -174,6 +182,11 @@ impl MergeableTrait for Member {
         }
         Ok(())
     }
+}
+
+// No nested Calimero collections — re-keying is a no-op (see `Layer`).
+impl RekeyTarget for Member {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
 // ── Document info ───────────────────────────────────────────────────────────
@@ -219,6 +232,11 @@ impl MergeableTrait for CursorState {
         if other.updated_at > self.updated_at { *self = other.clone(); }
         Ok(())
     }
+}
+
+// No nested Calimero collections — re-keying is a no-op (see `Layer`).
+impl RekeyTarget for CursorState {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
 // ── Events ────────────────────────────────────────────────────────────────────
