@@ -92,12 +92,9 @@ pub struct Element {
     pub label:          Option<String>,
 }
 
-impl MergeableTrait for Element {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if other.updated_at > self.updated_at { *self = other.clone(); }
-        Ok(())
-    }
-}
+// Whole-record LWW by the monotonic `updated_at`; a leaf value with no nested
+// collections, so this also emits the required no-op `RekeyTarget`.
+calimero_storage::impl_atomic_lww_leaf!(Element, updated_at);
 
 // ── Member ────────────────────────────────────────────────────────────────────
 
@@ -128,6 +125,13 @@ impl MergeableTrait for Member {
         }
         Ok(())
     }
+}
+
+// `Member` uses a custom selective (not whole-record) merge, so it can't use
+// `impl_atomic_lww_leaf!`. It is still a leaf value with no nested collections,
+// so `RekeyTarget` (the new `Mergeable` supertrait) is a no-op.
+impl calimero_storage::collections::rekey::RekeyTarget for Member {
+    fn rekey_relative_to(&mut self, _parent_id: calimero_storage::address::Id) {}
 }
 
 // ── Board info ────────────────────────────────────────────────────────────────
@@ -179,12 +183,9 @@ pub struct Comment {
     pub replies:    Vec<CommentReply>,
 }
 
-impl MergeableTrait for Comment {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if other.created_at > self.created_at { *self = other.clone(); }
-        Ok(())
-    }
-}
+// Whole-record LWW by the monotonic `created_at`; a leaf value with no nested
+// collections, so this also emits the required no-op `RekeyTarget`.
+calimero_storage::impl_atomic_lww_leaf!(Comment, created_at);
 
 // ── Cursor state (ephemeral — last known position per identity) ────────────────
 
@@ -199,12 +200,9 @@ pub struct CursorState {
     pub updated_at: u64,
 }
 
-impl MergeableTrait for CursorState {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if other.updated_at > self.updated_at { *self = other.clone(); }
-        Ok(())
-    }
-}
+// Whole-record LWW by the monotonic `updated_at`; a leaf value with no nested
+// collections, so this also emits the required no-op `RekeyTarget`.
+calimero_storage::impl_atomic_lww_leaf!(CursorState, updated_at);
 
 // ── Events ────────────────────────────────────────────────────────────────────
 
