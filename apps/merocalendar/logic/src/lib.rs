@@ -16,7 +16,9 @@ use base64::Engine;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, env};
+use calimero_storage::address::Id;
 use calimero_storage::collections::crdt_meta::MergeError;
+use calimero_storage::collections::rekey::RekeyTarget;
 use calimero_storage::collections::{Mergeable as MergeableTrait, UnorderedMap};
 use thiserror::Error;
 use types::id;
@@ -53,6 +55,12 @@ pub struct Member {
     pub username_updated_at: u64,
 }
 
+// Flat record (no nested Calimero collections) → no-op re-key; required by
+// rc.9's `Mergeable: RekeyTarget` supertrait bound.
+impl RekeyTarget for Member {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
+}
+
 impl MergeableTrait for Member {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         // `id` and `joined_at` are immutable after first join; only the
@@ -81,6 +89,12 @@ pub struct CalendarEventState {
     peers: Vec<UserId>,
     created_at: u64,
     updated_at: u64,
+}
+
+// Flat record (no nested Calimero collections) → no-op re-key; required by
+// rc.9's `Mergeable: RekeyTarget` supertrait bound.
+impl RekeyTarget for CalendarEventState {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
 impl MergeableTrait for CalendarEventState {
