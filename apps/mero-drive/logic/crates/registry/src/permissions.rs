@@ -236,8 +236,9 @@ impl RegistryState {
 
     /// Drop every per-member role row for a folder (called from
     /// `unregister_folder_inner`). Uses `remove` deliberately — the folder id
-    /// is tombstoned in `folders` and can never be re-registered, so
-    /// tombstoning its role rows too is correct and consistent.
+    /// is tombstoned in `folders` alongside these rows. Since core rc.10 a
+    /// strictly-newer register can revive the folder id; the revived folder
+    /// then starts with default roles, so purging here stays correct.
     pub(crate) fn purge_folder_roles(&mut self, folder_id: &str) -> Result<(), DriveError> {
         let prefix = role_key_prefix(folder_id);
         let stale: Vec<String> = self

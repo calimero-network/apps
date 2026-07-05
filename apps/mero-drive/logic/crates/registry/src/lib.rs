@@ -334,9 +334,10 @@ impl RegistryState {
         let _ = self.folder_contexts.remove(&id.0);
         // Drop any per-member role rows for this folder. These ARE
         // CRDT-tombstoned (unlike the live clear_folder_role path), which is
-        // correct here: an unregistered folder id is itself tombstoned in
-        // `folders` and can never be re-registered, so its role rows should
-        // stay gone too.
+        // correct here: the folder id is tombstoned in `folders` alongside
+        // them. (Since core rc.10 a strictly-newer register lifts the
+        // tombstone and revives the id — the revived folder then starts
+        // with default roles, which is what we want.)
         self.purge_folder_roles(&id.0)?;
         Ok(())
     }
@@ -1032,29 +1033,28 @@ mod tests {
 
     // ---- tombstone behaviour — documents the CRDT invariant ----
     //
-    // `UnorderedMap::remove` tombstones the entry for CRDT safety
-    // (so a concurrent remove+re-insert on two replicas resolves
-    // deterministically instead of diverging). Once a `FolderId` is
-    // unregistered, re-registering under the same id does NOT revive the
-    // entry — the tombstone wins. This is intentional, not a bug.
+    // `UnorderedMap::remove` tombstones the entry for CRDT safety, but as
+    // of core 0.11.0-rc.10 (core#3123, "D1") a strictly-newer insert LIFTS
+    // the tombstone: unregister → register under the same id revives the
+    // entry. (Before rc.10 the tombstone won forever and the re-insert was
+    // silently swallowed — this test used to pin that older semantic.)
     //
     // In production this never matters because admin-API allocates a fresh
     // random group_id for every new folder — no `FolderId` ever recycles.
-    // This test pins down the semantic so a future refactor that "fixes"
-    // the tombstone (thinking it's a bug) would fail obviously.
+    // This test pins down the current semantic so a future core change in
+    // either direction fails obviously.
 
     #[test]
-    fn tombstone_persists_after_unregister() {
+    fn reregister_after_unregister_revives_entry() {
         let mut app = RegistryState::init();
         app.register_folder_inner(fid("f"), None, None, None)
             .unwrap();
         app.unregister_folder_inner(fid("f")).unwrap();
-        // The inner insert path doesn't error, but the record is not revived:
-        // `get_folder` still reports NotFound.
-        let _ = app.register_folder_inner(fid("f"), None, None, None);
+        app.register_folder_inner(fid("f"), None, None, None)
+            .unwrap();
         assert!(
-            app.get_folder(fid("f")).is_err(),
-            "re-registering a tombstoned FolderId must NOT revive the entry",
+            app.get_folder(fid("f")).is_ok(),
+            "rc.10 lifts the tombstone: re-registering a FolderId revives the entry",
         );
     }
 }
