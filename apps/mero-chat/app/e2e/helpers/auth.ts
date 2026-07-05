@@ -19,7 +19,10 @@ export async function injectMeroAuthTokens(
         "mero-tokens",
         JSON.stringify({
           access_token: accessToken,
-          refresh_token: refreshToken ?? "",
+          // Must be non-empty: mero-js's LocalStorageTokenStore.getTokens()
+          // returns null when either token is falsy, and mero-react ≥4.1.1's
+          // checkAuth treats a null store as unauthenticated.
+          refresh_token: refreshToken || "mock-refresh",
           expires_at: Date.now() + 3600_000,
         }),
       );
