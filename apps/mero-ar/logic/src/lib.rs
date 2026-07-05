@@ -12,7 +12,9 @@
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, env as sdk_env, BlobId};
+use calimero_storage::address::Id;
 use calimero_storage::collections::crdt_meta::MergeError;
+use calimero_storage::collections::rekey::RekeyTarget;
 use calimero_storage::collections::{LwwRegister, Mergeable as MergeableTrait, UnorderedMap};
 
 type ObjectId  = String;
@@ -128,6 +130,13 @@ pub struct SceneObject {
     pub version:    u64,
 }
 
+// `SceneObject` is a flat record (no nested collections), so re-keying is a
+// no-op — but rc.9's `Mergeable: RekeyTarget` supertrait bound requires the
+// impl. The default `register_nested_value_types` (empty) is correct.
+impl RekeyTarget for SceneObject {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
+}
+
 impl MergeableTrait for SceneObject {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         if pure::should_replace(self.version, self.updated_at, other.version, other.updated_at) {
@@ -150,6 +159,11 @@ pub struct Member {
     pub joined_at: u64,
 }
 
+// Flat record → no-op re-key; required by rc.9's `Mergeable: RekeyTarget`.
+impl RekeyTarget for Member {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
+}
+
 impl MergeableTrait for Member {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         if other.joined_at > self.joined_at { *self = other.clone(); }
@@ -168,6 +182,11 @@ pub struct Presence {
     pub camera_position: Vec3,
     pub camera_rotation: Quat,
     pub updated_at:      u64,
+}
+
+// Flat record → no-op re-key; required by rc.9's `Mergeable: RekeyTarget`.
+impl RekeyTarget for Presence {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
 impl MergeableTrait for Presence {
@@ -189,6 +208,11 @@ pub struct SpatialComment {
     pub position:   Vec3,
     pub author:     String,
     pub created_at: u64,
+}
+
+// Flat record → no-op re-key; required by rc.9's `Mergeable: RekeyTarget`.
+impl RekeyTarget for SpatialComment {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
 impl MergeableTrait for SpatialComment {
