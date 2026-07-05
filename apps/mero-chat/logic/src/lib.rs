@@ -2,6 +2,7 @@ use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, env, BlobId, PublicKey};
 use calimero_storage::collections::crdt_meta::MergeError;
+use calimero_storage::collections::rekey::RekeyTarget;
 use calimero_storage::collections::{
     AccessControl, AuthoredMap, AuthoredVector, LwwRegister, Mergeable as MergeableTrait,
     UnorderedMap, UnorderedSet, Vector,
@@ -48,6 +49,12 @@ impl MergeableTrait for Attachment {
         }
         Ok(())
     }
+}
+
+// `Mergeable` requires `RekeyTarget` (rc.8+). `Attachment` holds only leaf
+// fields (no nested collections), so re-keying is a no-op.
+impl RekeyTarget for Attachment {
+    fn rekey_relative_to(&mut self, _parent_id: calimero_storage::address::Id) {}
 }
 
 impl Attachment {
@@ -176,6 +183,64 @@ impl MergeableTrait for Message {
             }
         }
         Ok(())
+    }
+}
+
+// `Mergeable` requires `RekeyTarget` (rc.8+). Mirrors what `#[derive(Mergeable)]`
+// would emit: deterministically re-key each field's nested collection ids under
+// a field-namespaced child of the entry id, so replicas converge. The
+// autoref-dispatching macro re-keys collection fields (`UnorderedSet`, `Vector`)
+// and no-ops on leaf fields (`LwwRegister`, `Option<..>`, `UserId`).
+impl RekeyTarget for Message {
+    fn rekey_relative_to(&mut self, parent_id: calimero_storage::address::Id) {
+        use calimero_storage::collections::rekey::field_child_id;
+        calimero_storage::rekey_field_if_supported!(
+            &mut self.timestamp,
+            field_child_id(parent_id, "timestamp")
+        );
+        calimero_storage::rekey_field_if_supported!(
+            &mut self.sender_username,
+            field_child_id(parent_id, "sender_username")
+        );
+        calimero_storage::rekey_field_if_supported!(
+            &mut self.mentions,
+            field_child_id(parent_id, "mentions")
+        );
+        calimero_storage::rekey_field_if_supported!(
+            &mut self.mentions_usernames,
+            field_child_id(parent_id, "mentions_usernames")
+        );
+        calimero_storage::rekey_field_if_supported!(
+            &mut self.files,
+            field_child_id(parent_id, "files")
+        );
+        calimero_storage::rekey_field_if_supported!(
+            &mut self.images,
+            field_child_id(parent_id, "images")
+        );
+        calimero_storage::rekey_field_if_supported!(
+            &mut self.id,
+            field_child_id(parent_id, "id")
+        );
+        calimero_storage::rekey_field_if_supported!(
+            &mut self.text,
+            field_child_id(parent_id, "text")
+        );
+        calimero_storage::rekey_field_if_supported!(
+            &mut self.edited_on,
+            field_child_id(parent_id, "edited_on")
+        );
+        calimero_storage::rekey_field_if_supported!(
+            &mut self.deleted,
+            field_child_id(parent_id, "deleted")
+        );
+    }
+
+    fn register_nested_value_types() {
+        // `Attachment` is the only custom struct nested through this type's
+        // collections (`files`/`images: Vector<Attachment>`); register it so it
+        // is re-keyed when stored, not last-writer-wins'd.
+        calimero_storage::register_rekey_if_supported!(Attachment);
     }
 }
 
@@ -368,6 +433,22 @@ impl MergeableTrait for StoredProfile {
             self.avatar = other.avatar.clone();
         }
         Ok(())
+    }
+}
+
+// `Mergeable` requires `RekeyTarget` (rc.8+). `StoredProfile` holds only
+// `LwwRegister` leaves, so every field re-key dispatches to the no-op arm.
+impl RekeyTarget for StoredProfile {
+    fn rekey_relative_to(&mut self, parent_id: calimero_storage::address::Id) {
+        use calimero_storage::collections::rekey::field_child_id;
+        calimero_storage::rekey_field_if_supported!(
+            &mut self.username,
+            field_child_id(parent_id, "username")
+        );
+        calimero_storage::rekey_field_if_supported!(
+            &mut self.avatar,
+            field_child_id(parent_id, "avatar")
+        );
     }
 }
 
