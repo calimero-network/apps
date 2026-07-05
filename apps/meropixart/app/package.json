@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@calimero-network/mero-js": "^7.0.0",
-    "@calimero-network/mero-react": "^4.1.0",
+    "@calimero-network/mero-react": "^4.1.1",
     "@calimero-network/mero-ui": "1.4.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
