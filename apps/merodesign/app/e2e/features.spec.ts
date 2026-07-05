@@ -15,7 +15,9 @@ async function injectAuth(page: import("@playwright/test").Page) {
     localStorage.setItem("mero:node_url", "http://localhost:2430");
     localStorage.setItem("mero:application_id", "app-1");
   });
-  // MeroProvider gates isAuthenticated on a GET /admin-api/contexts probe; mock it.
+  // mero-react <4.1.1 gated isAuthenticated on a GET /admin-api/contexts probe;
+  // since 4.1.1 checkAuth probes HEAD /auth/validate instead. Mock both.
+  await page.route("**/auth/validate", (route) => route.fulfill({ status: 200 }));
   await page.route("**/admin-api/contexts", (route) =>
     route.fulfill({
       status: 200,

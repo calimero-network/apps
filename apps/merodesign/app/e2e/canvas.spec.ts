@@ -15,9 +15,11 @@ async function injectAuth(page: import("@playwright/test").Page) {
   });
 }
 
-// MeroProvider gates isAuthenticated on a GET /admin-api/contexts probe; mock it.
-function mockContexts(page: import("@playwright/test").Page) {
-  return page.route("**/admin-api/contexts", (route) =>
+// mero-react <4.1.1 gated isAuthenticated on a GET /admin-api/contexts probe;
+// since 4.1.1 checkAuth probes HEAD /auth/validate instead. Mock both.
+async function mockContexts(page: import("@playwright/test").Page) {
+  await page.route("**/auth/validate", (route) => route.fulfill({ status: 200 }));
+  await page.route("**/admin-api/contexts", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",

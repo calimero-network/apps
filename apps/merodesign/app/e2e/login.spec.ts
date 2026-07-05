@@ -3,6 +3,8 @@ import { test, expect, type Page } from "@playwright/test";
 // MeroProvider reports authenticated only after a GET /admin-api/contexts probe
 // succeeds, so every "skip" test mocks the node.
 async function mockNode(page: Page) {
+  // mero-react ≥4.1.1's checkAuth probes HEAD /auth/validate (not under /admin-api/**).
+  await page.route("**/auth/validate", (route) => route.fulfill({ status: 200 }));
   await page.route("**/admin-api/contexts", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { contexts: [] } }) }),
   );
