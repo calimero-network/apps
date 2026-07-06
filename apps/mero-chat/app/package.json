@@ -30,7 +30,7 @@
   "dependencies": {
     "@braintree/sanitize-url": "^7.1.1",
     "@calimero-network/mero-js": "^7.0.0",
-    "@calimero-network/mero-react": "^4.3.0",
+    "@calimero-network/mero-react": "^4.3.1",
     "@calimero-network/mero-ui": "1.4.0",
     "@radix-ui/react-accordion": "^1.2.15",
     "@radix-ui/react-dialog": "^1.1.14",
