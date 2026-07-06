@@ -1,67 +1,76 @@
-//! Convergence coverage for the item-registry service.
+//! Convergence coverage for the spreadsheet service.
 //!
-//! `Registry` hand-writes `Mergeable`/`RekeyTarget` on its `Item` map value (it
-//! nests an `LwwRegister`), so this is the #2577 case: without deterministic
-//! re-keying the nested register would be last-writer-wins'd as an opaque blob.
-//! We register the generated re-key thunks (`__calimero_register_rekey()` — the
-//! WASM-load / TestHost-bridge path) so the nested register gets a deterministic
-//! id and converges as a child entity, then assert every replica lands on the
-//! same Merkle root.
+//! `Spreadsheet` hand-writes `Mergeable` on `SheetData` and `CellData` (plain
+//! struct fields, no nested CRDTs), so no `__calimero_register_rekey()` is
+//! needed. The test exercises the `sheets` and `cells` `UnorderedMap` fields only.
 //!
-//! Surface under test: the `items: UnorderedMap<String, Item>` field only. The
-//! sibling `owners: AuthoredMap` is `CrdtType::UserStorage`, whose per-entry
-//! merge runs on the *signed* delta path (`Interface::apply_action`) — the bare
-//! `converge_app` harness has no signing identity and cannot reconcile `User`
-//! deltas (see `core/crates/storage/src/testing.rs` Limitations; no
-//! converge-tested core app puts authored/shared/user storage in state). So we
-//! seed items at **genesis** (single identity, snapshotted identically into
-//! every replica — no concurrent owners-merge) and then drive only `update`,
-//! which touches `items` exclusively. That is exactly the nested-register #2577
-//! exercise, isomorphic to the canonical `team-metrics-custom` converge test.
+//! The `cursors: AuthoredMap` is seeded empty at genesis and never touched by
+//! `.ops()` — the bare converge harness has no signing identity and cannot
+//! reconcile `AuthoredMap` entries written concurrently.
 //!
 //! `#[serial]`: `converge_app` clears/repopulates the process-global merge
-//! registry per run (it self-serializes via an internal lock, but `#[serial]`
-//! avoids the contention and matches the canonical core pattern —
-//! `apps/team-metrics-custom/tests/converge.rs`). Own integration binary so it
-//! is isolated from the in-`lib.rs` `TestHost` unit tests.
+//! registry per run.
 
 use calimero_storage::testing::converge_app;
-use p2p_sheets_spreadsheet::Registry;
+use p2p_sheets_spreadsheet::Spreadsheet;
 use serial_test::serial;
 
-// One item is seeded at genesis (under the genesis identity, before any
-// concurrent op), so every replica starts from the identical seeded state. Each
-// replica then concurrently `update`s that item's nested `LwwRegister` to the
-// same value, in a per-replica shuffled order. The hand-written `Item` merge +
-// nested-register re-key must converge all replicas to one Merkle root, and the
-// value must survive (LWW, not blob-LWW'd to a stale/empty value).
 #[test]
 #[serial]
-fn registry_updates_converge() {
-    // Register the nested-CRDT-value re-key thunks for `Item` (its `LwwRegister`
-    // field). Without this the value blob is LWW'd and replicas can diverge.
-    Registry::__calimero_register_rekey();
-
+fn cell_updates_converge() {
     converge_app(|| {
-        // Genesis seed: runs once under the single genesis identity, so the
-        // `owners` AuthoredMap entry is written without any concurrent
-        // User-storage merge, then snapshotted byte-identical into all replicas.
-        let mut r = Registry::init();
-        let _ = r.add("widget".into(), "v0".into());
-        r
+        // Genesis seed: init project + create one sheet + set one cell.
+        // All written under the single genesis identity (no concurrent ops here),
+        // so the AuthoredMap (cursors) is never touched.
+        let mut s = Spreadsheet::init();
+        let _ = s.init_project("Test Project".into());
+        let sheet_id = s.create_sheet("Sheet1".into()).unwrap();
+        let _ = s.set_cell(sheet_id, 0, 0, "v0".into());
+        s
     })
     .replicas(3)
-    // Each replica concurrently rewrites the single seeded item's value. `update`
-    // touches `items` only (no `owners` write), so this is the pure nested-
-    // register convergence case.
+    // Each replica concurrently rewrites the single seeded cell's value.
+    // `set_cell` touches `cells: UnorderedMap` only — the `sheets` UnorderedMap
+    // is read (to verify the sheet exists) but not written.
     .ops(|s| {
-        if let Some(view) = s.list().ok().and_then(|v| v.into_iter().next()) {
-            let _ = s.update(view.id, "v1".into());
+        let sheets = s.list_sheets().unwrap_or_default();
+        if let Some(sheet) = sheets.into_iter().next() {
+            let _ = s.set_cell(sheet.id, 0, 0, "v1".into());
         }
     })
-    .invariant("the single seeded item survives and holds the merged value", |s| {
-        let items = s.list().unwrap_or_default();
-        items.len() == 1 && items[0].value == "v1"
+    .invariant(
+        "the seeded cell survives and holds the converged value",
+        |s| {
+            let sheets = s.list_sheets().unwrap_or_default();
+            if sheets.len() != 1 {
+                return false;
+            }
+            let cells = s.get_cells(sheets[0].id.clone()).unwrap_or_default();
+            cells.len() == 1 && cells[0].computed_value == "v1"
+        },
+    )
+    .assert_all_replicas_equal();
+}
+
+#[test]
+#[serial]
+fn sheet_renames_converge() {
+    converge_app(|| {
+        let mut s = Spreadsheet::init();
+        let _ = s.init_project("Test Project".into());
+        let _ = s.create_sheet("Original".into());
+        s
+    })
+    .replicas(3)
+    .ops(|s| {
+        let sheets = s.list_sheets().unwrap_or_default();
+        if let Some(sheet) = sheets.into_iter().next() {
+            let _ = s.rename_sheet(sheet.id, "Renamed".into());
+        }
+    })
+    .invariant("sheet name converges to the renamed value", |s| {
+        let sheets = s.list_sheets().unwrap_or_default();
+        sheets.len() == 1 && sheets[0].name == "Renamed"
     })
     .assert_all_replicas_equal();
 }

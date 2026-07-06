@@ -9,6 +9,6 @@
     "app:dev": "pnpm --filter ./app dev",
     "app:build": "pnpm --filter ./app build",
     "app:codegen": "pnpm --filter ./app codegen",
-    "test:smoke": "merobox bootstrap run test/smoke.workflow.yml"
+    "test:smoke": "merobox bootstrap run test/spec-smoke.workflow.yml"
   }
 }

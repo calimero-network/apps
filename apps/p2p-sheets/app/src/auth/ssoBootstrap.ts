@@ -16,10 +16,9 @@
  *     token in the wrong place, so every API call goes out unauthenticated (401)
  *     and the user is bounced back to the landing page.
  *
- *     We pre-seed `node_url` / `application_id` (stored separately from the
- *     token blob) for BOTH token-less and token-bearing hashes: token-less
- *     pre-fills the connect screen, and token-bearing needs node_url seeded
- *     so mero-react ≥4.2.0 trusts the callback's node (see persistAuthHash).
+ *     We only pre-seed `node_url` / `application_id` for a TOKEN-LESS cold open
+ *     (which mero-react's callback parser ignores), so the connect screen is
+ *     pre-filled.
  *  2. Web invitation capture: a shared link is `?invitation=<encoded>`. We stash
  *     it (the join flow consumes it after auth) and strip it from the URL.
  *
@@ -54,28 +53,17 @@ function persistAuthHash(): void {
 
   const p = new URLSearchParams(hash);
 
-  // Pre-seed node_url / application_id regardless of whether a token is
-  // present. These are stored SEPARATELY from the token blob, so seeding
-  // them never races the token handling below.
-  //
-  // Why this must happen for a token-bearing hash too (mero-react ≥4.2.0):
-  // MeroProvider.parseAuthCallback now REJECTS an auth callback whose
-  // node_url wasn't the one login was "initiated" with (getNodeUrl()) and
-  // isn't in `allowedNodeUrls` — logging "OAuth callback node_url is not
-  // trusted … no tokens stored". A desktop-SSO / e2e hash is a direct
-  // callback with no prior initiation, so without this seed getNodeUrl() is
-  // empty and every token-in-hash login silently fails. Seeding node_url
-  // here makes `initiated` == the callback's node_url (same origin) → the
-  // callback is trusted and the token is stored.
+  // Token-bearing hash → it's an auth callback. Leave it entirely to mero-react.
+  if (p.get('access_token')) return;
+
+  // No token: only node URL / app id may be present (cold desktop open).
+  // mero-react ignores a token-less callback, so seed these for the connect
+  // screen. These ARE the correct keys (node_url / application_id are stored
+  // separately from the token blob).
   const nodeUrl = p.get('node_url')?.trim();
   const applicationId = (p.get('application_id') ?? p.get('app-id') ?? '').trim();
   if (nodeUrl) setNodeUrl(nodeUrl);
   if (applicationId) setApplicationId(applicationId);
-
-  // Token-bearing hash → it's an auth callback mero-react owns. We've seeded
-  // node_url above; leave the TOKEN and the hash itself untouched so
-  // parseAuthCallback stores the token where mero-js reads it and strips the
-  // hash (see file header — touching the token/hash here breaks auth).
 }
 
 /** Web invitation: stash `?invitation=` for the join flow, then clean the URL. */

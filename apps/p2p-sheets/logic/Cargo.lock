@@ -399,30 +399,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "foundation-service"
-version = "0.1.0"
-dependencies = [
- "bs58 0.4.0",
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "calimero-wasm-abi",
- "p2p-sheets-types",
- "serde_json",
- "serial_test",
-]
-
-[[package]]
-name = "p2p-sheets-types"
-version = "0.1.0"
-dependencies = [
- "borsh",
- "bs58 0.4.0",
- "serde",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "futures-core"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -736,6 +712,30 @@ name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
+
+[[package]]
+name = "p2p-sheets-spreadsheet"
+version = "0.1.0"
+dependencies = [
+ "bs58 0.4.0",
+ "calimero-sdk",
+ "calimero-storage",
+ "calimero-storage-macros",
+ "calimero-wasm-abi",
+ "p2p-sheets-types",
+ "serde_json",
+ "serial_test",
+]
+
+[[package]]
+name = "p2p-sheets-types"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "bs58 0.4.0",
+ "serde",
+ "thiserror 1.0.69",
+]
 
 [[package]]
 name = "parking_lot"

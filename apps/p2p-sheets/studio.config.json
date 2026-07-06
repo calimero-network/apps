@@ -9,8 +9,8 @@
     "route": "/p2p-sheets"
   },
   "theme": {
-    "primaryColor": "#1A7F5A",
-    "accentColor": "#4A90D9",
+    "primaryColor": "#1A7F64",
+    "accentColor": "#3B82F6",
     "style": "clean-productivity"
   },
   "services": [
