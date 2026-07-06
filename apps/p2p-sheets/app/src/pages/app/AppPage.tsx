@@ -74,6 +74,12 @@ export default function AppPage() {
   const [formulaInput, setFormulaInput] = useState('');
   const [isDirty, setIsDirty] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const formulaInputRef = useRef<HTMLInputElement>(null);
+
+  // Point mode: active while editing a formula (a dirty cell whose value starts
+  // with `=`). In this mode clicking/dragging cells inserts their reference into
+  // the formula instead of moving the selection — standard spreadsheet flow.
+  const isEditingFormula = isDirty && formulaInput.trimStart().startsWith('=');
 
   // Auto-select the first sheet when sheets load / change
   useEffect(() => {
@@ -196,6 +202,30 @@ export default function AppPage() {
     setFormulaInput(cell?.raw_value ?? '');
     setIsDirty(false);
   }, [selectedCell, activeSheetId, ss.cells]);
+
+  // Insert a cell/range reference into the formula at the caret (point mode).
+  const insertRef = useCallback(
+    (ref: string) => {
+      const el = formulaInputRef.current;
+      const cur = formulaInput;
+      const start = el?.selectionStart ?? cur.length;
+      const end = el?.selectionEnd ?? start;
+      const next = cur.slice(0, start) + ref + cur.slice(end);
+      setFormulaInput(next);
+      setIsDirty(true);
+      // Restore focus and place the caret just after the inserted reference so
+      // the user can keep typing (e.g. an operator, or `)`).
+      requestAnimationFrame(() => {
+        const e2 = formulaInputRef.current;
+        if (e2) {
+          e2.focus();
+          const pos = start + ref.length;
+          e2.setSelectionRange(pos, pos);
+        }
+      });
+    },
+    [formulaInput],
+  );
 
   // ── Sheet management ────────────────────────────────────────────
   const handleAddSheet = useCallback(async () => {
@@ -395,6 +425,7 @@ export default function AppPage() {
         onCancel={handleFormulaCancel}
         functions={ss.functions}
         disabled={!activeSheetId}
+        inputRef={formulaInputRef}
       />
 
       {/* Commit button next to formula bar (accessible test target) */}
@@ -426,6 +457,8 @@ export default function AppPage() {
         cursors={ss.cursors}
         selectedCell={selectedCell}
         editingValue={isDirty ? formulaInput : null}
+        pointMode={isEditingFormula}
+        onPointRef={insertRef}
         onSelectCell={handleSelectCell}
         onCommitAndMove={handleCommitAndMove}
       />

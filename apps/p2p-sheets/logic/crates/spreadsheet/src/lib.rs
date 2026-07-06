@@ -652,106 +652,263 @@ mod formula {
     /// (e.g. `A1` → row 0, col 0).
     pub fn evaluate(formula: &str, get_value: impl Fn(u32, u32) -> Option<String>) -> String {
         let expr = formula.trim().strip_prefix('=').unwrap_or(formula).trim();
-        evaluate_expr(expr, &get_value)
+        eval_to_string(expr, &get_value)
     }
 
-    fn evaluate_expr(expr: &str, get_value: &impl Fn(u32, u32) -> Option<String>) -> String {
+    /// Evaluate an expression to its display string.
+    fn eval_to_string(expr: &str, get_value: &impl Fn(u32, u32) -> Option<String>) -> String {
         let expr = expr.trim();
+        if expr.is_empty() {
+            return String::new();
+        }
 
-        // Try to parse a function call: NAME(args)
+        // String literal in double quotes.
+        if expr.len() >= 2 && expr.starts_with('"') && expr.ends_with('"') {
+            return expr[1..expr.len() - 1].to_string();
+        }
+
+        // A single top-level function call — evaluated here so it can return
+        // string results (IF) and specific error strings (#DIV/0!, #NAME?).
         if let Some(result) = try_function(expr, get_value) {
             return result;
         }
 
-        // Bare cell reference like A1
-        if let Some((row, col)) = parse_cell_ref(expr) {
-            return get_value(row, col).unwrap_or_default();
-        }
-
-        // Numeric literal
-        if let Ok(n) = expr.parse::<f64>() {
+        // Numeric expression: arithmetic (`+ - * /`, parens, unary), cell
+        // references, numeric literals, and functions used as operands.
+        if let Some(n) = eval_number(expr, get_value) {
             return format_num(n);
         }
 
-        // String literal in double quotes
-        if expr.starts_with('"') && expr.ends_with('"') && expr.len() >= 2 {
-            return expr[1..expr.len() - 1].to_string();
+        // Bare cell reference holding non-numeric text.
+        if let Some((row, col)) = parse_cell_ref(expr) {
+            return get_value(row, col).unwrap_or_default();
         }
 
         "#VALUE!".to_string()
     }
 
+    /// If `expr` is exactly a single `NAME(args)` call, evaluate it; else
+    /// `None` (so `SUM(..)+1` and bare arithmetic fall to the number parser).
     fn try_function(expr: &str, get_value: &impl Fn(u32, u32) -> Option<String>) -> Option<String> {
         let paren = expr.find('(')?;
         let name = &expr[..paren];
-        if !name.chars().all(|c| c.is_ascii_alphabetic()) {
+        if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphabetic()) {
             return None;
         }
-        let rest = expr[paren + 1..].trim();
-        let rest = rest.strip_suffix(')')?;
+        // The call must span the whole expression: strip the trailing ')' and
+        // require the inner parens to balance. `SUM(A1:A2)+1` fails this (the
+        // string doesn't end in ')'), so it's owned by the arithmetic parser.
+        let inner = expr[paren + 1..].strip_suffix(')')?;
+        if !parens_balanced(inner) {
+            return None;
+        }
 
         match name.to_uppercase().as_str() {
-            "SUM" => {
-                let vals = collect_range_values(rest.trim(), get_value);
-                let sum: f64 = vals.iter().sum();
-                Some(format_num(sum))
-            }
+            "SUM" => Some(format_num(collect_arg_values(inner, get_value).iter().sum())),
             "AVERAGE" => {
-                let vals = collect_range_values(rest.trim(), get_value);
+                let vals = collect_arg_values(inner, get_value);
                 if vals.is_empty() {
                     return Some("#DIV/0!".into());
                 }
-                let avg = vals.iter().sum::<f64>() / vals.len() as f64;
-                Some(format_num(avg))
+                Some(format_num(vals.iter().sum::<f64>() / vals.len() as f64))
             }
             "MIN" => {
-                let vals = collect_range_values(rest.trim(), get_value);
-                let min = vals.into_iter().fold(f64::INFINITY, f64::min);
-                if min.is_infinite() { Some("0".into()) } else { Some(format_num(min)) }
+                let min = collect_arg_values(inner, get_value)
+                    .into_iter()
+                    .fold(f64::INFINITY, f64::min);
+                Some(if min.is_infinite() { "0".into() } else { format_num(min) })
             }
             "MAX" => {
-                let vals = collect_range_values(rest.trim(), get_value);
-                let max = vals.into_iter().fold(f64::NEG_INFINITY, f64::max);
-                if max.is_infinite() { Some("0".into()) } else { Some(format_num(max)) }
+                let max = collect_arg_values(inner, get_value)
+                    .into_iter()
+                    .fold(f64::NEG_INFINITY, f64::max);
+                Some(if max.is_infinite() { "0".into() } else { format_num(max) })
             }
-            "COUNT" => {
-                let vals = collect_range_values(rest.trim(), get_value);
-                Some(vals.len().to_string())
-            }
+            "COUNT" => Some(collect_arg_values(inner, get_value).len().to_string()),
             "IF" => {
                 // Split on top-level commas only.
-                let args = split_args(rest);
+                let args = split_args(inner);
                 if args.len() != 3 {
                     return Some("#ARG!".into());
                 }
-                let cond = evaluate_expr(args[0].trim(), get_value);
+                let cond = eval_to_string(args[0].trim(), get_value);
                 let non_zero = cond.parse::<f64>().map(|n| n != 0.0).unwrap_or(!cond.is_empty());
-                if non_zero {
-                    Some(evaluate_expr(args[1].trim(), get_value))
-                } else {
-                    Some(evaluate_expr(args[2].trim(), get_value))
-                }
+                Some(eval_to_string(args[if non_zero { 1 } else { 2 }].trim(), get_value))
             }
             _ => Some("#NAME?".into()),
         }
     }
 
-    /// Collect all numeric cell values covered by a range string like `A1:B3`
-    /// or a single ref `A1`.
-    fn collect_range_values(
-        range: &str,
-        get_value: &impl Fn(u32, u32) -> Option<String>,
-    ) -> Vec<f64> {
+    /// Values contributed by a function's argument list. A range arg (`A1:B3`)
+    /// expands to its numeric cells; every other comma-separated arg is
+    /// evaluated as an expression (cell ref, number, or arithmetic) and
+    /// contributes its numeric value — so `SUM(3+4)` and `SUM(A1, A2, 5)` work.
+    fn collect_arg_values(args: &str, get_value: &impl Fn(u32, u32) -> Option<String>) -> Vec<f64> {
         let mut nums = Vec::new();
-        let cells = expand_range(range);
-        for (r, c) in cells {
-            if let Some(raw) = get_value(r, c) {
-                if let Ok(n) = raw.trim().parse::<f64>() {
-                    nums.push(n);
+        for arg in split_args(args) {
+            let arg = arg.trim();
+            if arg.is_empty() {
+                continue;
+            }
+            if arg.contains(':') {
+                for (r, c) in expand_range(arg) {
+                    if let Some(raw) = get_value(r, c) {
+                        if let Ok(n) = raw.trim().parse::<f64>() {
+                            nums.push(n);
+                        }
+                    }
                 }
+            } else if let Some(n) = eval_number(arg, get_value) {
+                nums.push(n);
             }
         }
         nums
+    }
+
+    // ── Arithmetic expression parser (recursive descent) ──────────────────
+    // add    := mul (('+' | '-') mul)*
+    // mul    := factor (('*' | '/') factor)*
+    // factor := number | cellref | NAME(args) | '(' add ')' | ('+' | '-') factor
+    // Returns None on any parse error or non-numeric operand, so the caller can
+    // fall back to string handling.
+
+    fn eval_number(expr: &str, gv: &impl Fn(u32, u32) -> Option<String>) -> Option<f64> {
+        let chars: Vec<char> = expr.chars().collect();
+        let mut p = 0usize;
+        let v = parse_add(&chars, &mut p, gv)?;
+        skip_ws(&chars, &mut p);
+        if p == chars.len() { Some(v) } else { None } // reject trailing junk
+    }
+
+    fn skip_ws(c: &[char], p: &mut usize) {
+        while *p < c.len() && c[*p].is_whitespace() {
+            *p += 1;
+        }
+    }
+
+    fn parse_add(c: &[char], p: &mut usize, gv: &impl Fn(u32, u32) -> Option<String>) -> Option<f64> {
+        let mut v = parse_mul(c, p, gv)?;
+        loop {
+            skip_ws(c, p);
+            match c.get(*p) {
+                Some('+') => { *p += 1; v += parse_mul(c, p, gv)?; }
+                Some('-') => { *p += 1; v -= parse_mul(c, p, gv)?; }
+                _ => break,
+            }
+        }
+        Some(v)
+    }
+
+    fn parse_mul(c: &[char], p: &mut usize, gv: &impl Fn(u32, u32) -> Option<String>) -> Option<f64> {
+        let mut v = parse_factor(c, p, gv)?;
+        loop {
+            skip_ws(c, p);
+            match c.get(*p) {
+                Some('*') => { *p += 1; v *= parse_factor(c, p, gv)?; }
+                Some('/') => {
+                    *p += 1;
+                    let d = parse_factor(c, p, gv)?;
+                    if d == 0.0 {
+                        return None; // #DIV/0! surfaces as a non-numeric result
+                    }
+                    v /= d;
+                }
+                _ => break,
+            }
+        }
+        Some(v)
+    }
+
+    fn parse_factor(c: &[char], p: &mut usize, gv: &impl Fn(u32, u32) -> Option<String>) -> Option<f64> {
+        skip_ws(c, p);
+        match c.get(*p)? {
+            '(' => {
+                *p += 1;
+                let v = parse_add(c, p, gv)?;
+                skip_ws(c, p);
+                if c.get(*p) != Some(&')') {
+                    return None;
+                }
+                *p += 1;
+                Some(v)
+            }
+            '-' => { *p += 1; Some(-parse_factor(c, p, gv)?) }
+            '+' => { *p += 1; parse_factor(c, p, gv) }
+            ch if ch.is_ascii_alphabetic() => parse_ident(c, p, gv),
+            ch if ch.is_ascii_digit() || *ch == '.' => {
+                let start = *p;
+                while *p < c.len() && (c[*p].is_ascii_digit() || c[*p] == '.') {
+                    *p += 1;
+                }
+                c[start..*p].iter().collect::<String>().parse::<f64>().ok()
+            }
+            _ => None,
+        }
+    }
+
+    /// A leading alphabetic run is either a function call `NAME(...)` or a cell
+    /// reference `A1`.
+    fn parse_ident(c: &[char], p: &mut usize, gv: &impl Fn(u32, u32) -> Option<String>) -> Option<f64> {
+        let start = *p;
+        while *p < c.len() && c[*p].is_ascii_alphabetic() {
+            *p += 1;
+        }
+        if c.get(*p) == Some(&'(') {
+            // Function call — capture through the matching ')' and reuse the
+            // string evaluator (handles SUM/AVERAGE/… nested in arithmetic).
+            *p += 1;
+            let mut depth = 1usize;
+            while *p < c.len() && depth > 0 {
+                match c[*p] {
+                    '(' => depth += 1,
+                    ')' => depth -= 1,
+                    _ => {}
+                }
+                *p += 1;
+            }
+            if depth != 0 {
+                return None;
+            }
+            let call: String = c[start..*p].iter().collect();
+            eval_to_string(&call, gv).trim().parse::<f64>().ok()
+        } else {
+            // Cell reference: column letters followed by row digits.
+            let dstart = *p;
+            while *p < c.len() && c[*p].is_ascii_digit() {
+                *p += 1;
+            }
+            if *p == dstart {
+                return None; // letters with no row digits — not a cell ref
+            }
+            let refstr: String = c[start..*p].iter().collect();
+            let (row, col) = parse_cell_ref(&refstr)?;
+            match gv(row, col) {
+                // Empty / missing cell counts as 0 in arithmetic; non-numeric
+                // text makes the surrounding expression non-numeric (None).
+                Some(val) => {
+                    let t = val.trim();
+                    if t.is_empty() { Some(0.0) } else { t.parse::<f64>().ok() }
+                }
+                None => Some(0.0),
+            }
+        }
+    }
+
+    fn parens_balanced(s: &str) -> bool {
+        let mut depth = 0i32;
+        for ch in s.chars() {
+            match ch {
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth < 0 {
+                        return false;
+                    }
+                }
+                _ => {}
+            }
+        }
+        depth == 0
     }
 
     /// Expand a range string (`A1:B3` or `A1`) into `(row, col)` pairs.
@@ -925,6 +1082,33 @@ mod tests {
         let cells = app.view(|s| s.get_cells(sid)).unwrap();
         let formula_cell = cells.iter().find(|c| c.id == fid).unwrap();
         assert_eq!(formula_cell.computed_value, "60");
+    }
+
+    #[test]
+    fn formula_arithmetic_literals() {
+        let gv = |_r: u32, _c: u32| None;
+        assert_eq!(formula::evaluate("=3+4", &gv), "7");
+        assert_eq!(formula::evaluate("=SUM(3+4)", &gv), "7");
+        assert_eq!(formula::evaluate("=10-4", &gv), "6");
+        assert_eq!(formula::evaluate("=2*3", &gv), "6");
+        assert_eq!(formula::evaluate("=8/2", &gv), "4");
+        assert_eq!(formula::evaluate("=(1+2)*3", &gv), "9");
+        assert_eq!(formula::evaluate("=2+3*4", &gv), "14"); // precedence
+    }
+
+    #[test]
+    fn formula_arithmetic_with_cells_and_args() {
+        // A1 = 10 (row 0, col 0), A2 = 20 (row 1, col 0)
+        let gv = |r: u32, c: u32| match (r, c) {
+            (0, 0) => Some("10".to_string()),
+            (1, 0) => Some("20".to_string()),
+            _ => None,
+        };
+        assert_eq!(formula::evaluate("=A1+A2", &gv), "30");
+        assert_eq!(formula::evaluate("=A1*2", &gv), "20");
+        assert_eq!(formula::evaluate("=SUM(A1, A2, 5)", &gv), "35"); // comma args
+        assert_eq!(formula::evaluate("=SUM(A1:A2)", &gv), "30"); // range still works
+        assert_eq!(formula::evaluate("=SUM(A1:A2)+100", &gv), "130"); // function in arithmetic
     }
 
     #[test]

@@ -10,7 +10,7 @@
  * The formula bar (FormulaBar component) handles all editing input.
  * Keyboard navigation: arrow keys move selection, Enter moves down, Tab moves right.
  */
-import React, { memo, useCallback, useMemo, useRef } from 'react';
+import React, { memo, useCallback, useMemo, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { C } from '../theme';
 import { type Cell, type Cursor } from '../hooks/useSpreadsheet';
@@ -34,8 +34,26 @@ interface SpreadsheetGridProps {
   /** In-progress formula-bar text for the selected cell while editing; shown
    *  live in the cell so you see what you type. `null` when not editing. */
   editingValue: string | null;
+  /** Point mode: true while a formula is being edited. In this mode clicking or
+   *  dragging cells inserts their reference/range into the formula (via
+   *  `onPointRef`) instead of moving the selection. */
+  pointMode: boolean;
+  onPointRef: (ref: string) => void;
   onSelectCell: (row: number, col: number) => void;
   onCommitAndMove: (direction: 'down' | 'right' | 'none') => void;
+}
+
+/** `A1`-style reference for a 0-indexed cell. */
+function cellRefStr(row: number, col: number): string {
+  return `${colLetter(col)}${row + 1}`;
+}
+
+/** Reference for a rectangular range between two cells (single ref if equal). */
+function rangeRefStr(a: { row: number; col: number }, b: { row: number; col: number }): string {
+  if (a.row === b.row && a.col === b.col) return cellRefStr(a.row, a.col);
+  const tl = { row: Math.min(a.row, b.row), col: Math.min(a.col, b.col) };
+  const br = { row: Math.max(a.row, b.row), col: Math.max(a.col, b.col) };
+  return `${cellRefStr(tl.row, tl.col)}:${cellRefStr(br.row, br.col)}`;
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -46,10 +64,19 @@ function SpreadsheetGrid({
   cursors,
   selectedCell,
   editingValue,
+  pointMode,
+  onPointRef,
   onSelectCell,
   onCommitAndMove,
 }: SpreadsheetGridProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Point-mode drag state: anchor is where the drag began; `pointRange` is the
+  // live rectangle used to highlight the range being pointed at.
+  const dragAnchorRef = useRef<{ row: number; col: number } | null>(null);
+  const [pointRange, setPointRange] = useState<
+    { a: { row: number; col: number }; b: { row: number; col: number } } | null
+  >(null);
 
   // Build lookup maps for O(1) access by "row-col" key
   const cellMap = useMemo(() => {
@@ -72,16 +99,61 @@ function SpreadsheetGrid({
     return m;
   }, [cursors, sheetId]);
 
-  // Event delegation: one click handler on the table body
+  const cellFromEvent = (
+    e: React.MouseEvent,
+  ): { row: number; col: number } | null => {
+    const td = (e.target as Element).closest('td[data-row]') as HTMLElement | null;
+    if (!td) return null;
+    return {
+      row: parseInt(td.dataset.row ?? '0', 10),
+      col: parseInt(td.dataset.col ?? '0', 10),
+    };
+  };
+
+  // Event delegation: one click handler on the table body. In point mode the
+  // drag handlers below own cell interaction, so click does nothing here.
   const handleTableClick = useCallback(
     (e: React.MouseEvent<HTMLTableSectionElement>) => {
-      const td = (e.target as Element).closest('td[data-row]') as HTMLElement | null;
-      if (!td) return;
-      const row = parseInt(td.dataset.row ?? '0', 10);
-      const col = parseInt(td.dataset.col ?? '0', 10);
-      onSelectCell(row, col);
+      if (pointMode) return;
+      const cell = cellFromEvent(e);
+      if (cell) onSelectCell(cell.row, cell.col);
     },
-    [onSelectCell],
+    [onSelectCell, pointMode],
+  );
+
+  // ── Point-mode drag: insert a cell/range reference into the formula ────────
+  const handleTableMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLTableSectionElement>) => {
+      if (!pointMode) return;
+      const cell = cellFromEvent(e);
+      if (!cell) return;
+      // Don't blur the focused formula input — keep its caret for insertion.
+      e.preventDefault();
+      dragAnchorRef.current = cell;
+      setPointRange({ a: cell, b: cell });
+    },
+    [pointMode],
+  );
+
+  const handleTableMouseOver = useCallback(
+    (e: React.MouseEvent<HTMLTableSectionElement>) => {
+      if (!pointMode || !dragAnchorRef.current) return;
+      const cell = cellFromEvent(e);
+      if (!cell) return;
+      setPointRange({ a: dragAnchorRef.current, b: cell });
+    },
+    [pointMode],
+  );
+
+  const handleTableMouseUp = useCallback(
+    (e: React.MouseEvent<HTMLTableSectionElement>) => {
+      if (!pointMode || !dragAnchorRef.current) return;
+      const end = cellFromEvent(e) ?? dragAnchorRef.current;
+      onPointRef(rangeRefStr(dragAnchorRef.current, end));
+      dragAnchorRef.current = null;
+      setPointRange(null);
+    },
+    [pointMode, onPointRef],
   );
 
   // Keyboard navigation on the grid container
@@ -160,7 +232,12 @@ function SpreadsheetGrid({
         </thead>
 
         {/* Rows */}
-        <tbody onClick={handleTableClick}>
+        <tbody
+          onClick={handleTableClick}
+          onMouseDown={handleTableMouseDown}
+          onMouseOver={handleTableMouseOver}
+          onMouseUp={handleTableMouseUp}
+        >
           {Array.from({ length: ROWS }, (_, row) => (
             <tr key={row}>
               {/* Row number — sticky */}
@@ -178,6 +255,14 @@ function SpreadsheetGrid({
                 const cursor = cursorMap.get(key);
                 const isSelected =
                   selectedCell?.row === row && selectedCell?.col === col;
+
+                // Highlight cells inside the range currently being pointed at.
+                const inPointRange =
+                  pointRange !== null &&
+                  row >= Math.min(pointRange.a.row, pointRange.b.row) &&
+                  row <= Math.max(pointRange.a.row, pointRange.b.row) &&
+                  col >= Math.min(pointRange.a.col, pointRange.b.col) &&
+                  col <= Math.max(pointRange.a.col, pointRange.b.col);
 
                 // While editing the selected cell, show the raw in-progress
                 // text live; otherwise show the stored computed value.
@@ -197,6 +282,7 @@ function SpreadsheetGrid({
                     data-testid="item-cell"
                     $selected={isSelected}
                     $cursorColor={cursor?.color}
+                    $pointHighlight={inPointRange}
                     aria-selected={isSelected}
                     role="gridcell"
                     title={cell ? `${colLetter(col)}${row + 1}: ${cell.raw_value}` : undefined}
@@ -293,7 +379,7 @@ const RowTh = styled.td<{ $selected: boolean }>`
   transition: background 0.1s, color 0.1s;
 `;
 
-const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string }>`
+const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $pointHighlight?: boolean }>`
   height: 24px;
   min-width: 60px;
   max-width: 200px;
@@ -328,6 +414,14 @@ const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string }>`
     outline: 2px solid ${p.$cursorColor};
     outline-offset: -2px;
     z-index: 1;
+  `}
+
+  /* Point-mode: cell is inside the range being dragged into the formula */
+  ${(p) =>
+    p.$pointHighlight &&
+    !p.$selected &&
+    `
+    background: rgba(59, 130, 246, 0.14);
   `}
 
   &:hover:not([aria-selected='true']) {

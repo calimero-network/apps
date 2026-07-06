@@ -32,6 +32,9 @@ interface FormulaBarProps {
   onCancel: () => void;
   functions: FunctionDef[];
   disabled?: boolean;
+  /** Shared ref to the underlying input, so the page can read/set the caret
+   *  for point-mode reference insertion. Falls back to an internal ref. */
+  inputRef?: React.RefObject<HTMLInputElement | null>;
 }
 
 export default function FormulaBar({
@@ -42,8 +45,10 @@ export default function FormulaBar({
   onCancel,
   functions,
   disabled,
+  inputRef: externalInputRef,
 }: FormulaBarProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const internalInputRef = useRef<HTMLInputElement>(null);
+  const inputRef = externalInputRef ?? internalInputRef;
   const [acOpen, setAcOpen] = useState(false);
 
   // Autocomplete: show for `=<letters-only>` — hides once `(` is typed
