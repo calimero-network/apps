@@ -71,6 +71,8 @@ export interface UseSpreadsheetReturn {
   cursors: Cursor[];
   functions: FunctionDef[];
   loading: boolean;
+  /** True once the first refresh for the current context has completed. */
+  loaded: boolean;
   error: Error | null;
   /** True when contextId + executorPublicKey are resolved and client is ready. */
   ready: boolean;
@@ -104,6 +106,10 @@ export function useSpreadsheet({
   const [cursors, setCursors] = useState<Cursor[]>([]);
   const [functions, setFunctions] = useState<FunctionDef[]>(BUILTIN_FUNCTIONS);
   const [loading, setLoading] = useState(false);
+  // False until the first refresh for the current client resolves. Distinguishes
+  // "not fetched yet" from "fetched and genuinely empty" — callers must not treat
+  // an empty `sheets`/`cells` as authoritative until `loaded` is true.
+  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   // Memoized typed client — null until mero + context + identity all resolve.
@@ -146,8 +152,13 @@ export function useSpreadsheet({
       setError(err instanceof Error ? err : new Error(String(err)));
     } finally {
       setLoading(false);
+      setLoaded(true);
     }
   }, [client]);
+
+  // Reset the loaded flag whenever the client changes (new context) so callers
+  // wait for that context's first fetch before acting on empty state.
+  useEffect(() => { setLoaded(false); }, [client]);
 
   // Initial fetch and re-fetch when client changes (new context)
   useEffect(() => { void refresh(); }, [refresh]);
@@ -167,6 +178,13 @@ export function useSpreadsheet({
   const initProject = useCallback(async (name: string) => {
     if (!client) return;
     await client.initProject({ name });
+    // A freshly-initialised project has zero sheets. The grid's formula bar is
+    // disabled until an active sheet exists (`activeSheetId`), so without a
+    // sheet the workspace opens read-only and you can't type in any cell.
+    // Create a default blank sheet so the workspace is immediately editable;
+    // it replicates to invited collaborators (the "default blank sheet within
+    // 5s" contract).
+    await client.createSheet({ name: 'Sheet 1' });
     await refresh();
   }, [client, refresh]);
 
@@ -237,6 +255,7 @@ export function useSpreadsheet({
     cursors,
     functions,
     loading,
+    loaded,
     error,
     ready: client !== null,
     initProject,

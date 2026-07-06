@@ -83,6 +83,28 @@ export default function AppPage() {
     }
   }, [ss.sheets, activeSheetId]);
 
+  // Safety net: guarantee an editable sheet exists. The formula bar is disabled
+  // without an active sheet, so a workspace with zero sheets opens read-only —
+  // you can't type in any cell. `initProject` creates a default sheet for the
+  // creator, but a context can become ready without that path (e.g. an
+  // auto-created / externally-provisioned context), leaving it sheetless. When
+  // the workspace is ready, finished its initial load, and is genuinely empty
+  // (no sheets AND no cells — so we don't race a joiner mid-sync into creating
+  // a duplicate), create one default sheet, once per session.
+  const ensuredDefaultSheetRef = useRef(false);
+  useEffect(() => {
+    if (
+      ss.ready &&
+      ss.loaded && // the first fetch has resolved — empty is authoritative, not "not-yet-loaded"
+      ss.sheets.length === 0 &&
+      ss.cells.length === 0 &&
+      !ensuredDefaultSheetRef.current
+    ) {
+      ensuredDefaultSheetRef.current = true;
+      void ss.createSheet('Sheet 1');
+    }
+  }, [ss.ready, ss.loaded, ss.sheets.length, ss.cells.length, ss]);
+
   // Sync formula bar when selected cell or cells data changes
   const prevCellRef = useRef<string | null>(null);
   useEffect(() => {
@@ -403,6 +425,7 @@ export default function AppPage() {
         cells={ss.cells}
         cursors={ss.cursors}
         selectedCell={selectedCell}
+        editingValue={isDirty ? formulaInput : null}
         onSelectCell={handleSelectCell}
         onCommitAndMove={handleCommitAndMove}
       />

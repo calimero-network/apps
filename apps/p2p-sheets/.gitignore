@@ -21,3 +21,5 @@ logic/res/bundle-temp/
 logic/res/*.mpk
 logic/crates/*/res/*.wasm
 logic/crates/*/res/abi.json
+app/test-results/
+app/playwright-report/

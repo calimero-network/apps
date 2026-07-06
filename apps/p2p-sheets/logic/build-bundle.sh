@@ -182,10 +182,18 @@ if [[ "$MODE" == "release" ]]; then
   mero-sign sign --key "$MERO_SIGN_KEY" res/bundle-temp/manifest.json
 else
   if command -v mero-sign > /dev/null; then
-    # Resolve the dev key: $STUDIO_DEV_SIGNING_KEY (path or inline JSON), else
-    # a generated-once key reused across builds for a stable signerId.
+    # Dev signing key resolution:
+    #   $STUDIO_DEV_SIGNING_KEY (path or inline JSON) if set — else the
+    #   WELL-KNOWN dev key via `mero-sign sign --dev`.
+    #
+    # The well-known dev key matters: merod's embedded auth frontend only
+    # skips the App Registry lookup (and reuses the locally dev-installed
+    # application id) when the installed bundle's signer_id equals the
+    # canonical dev signer DID baked into mero-sign (`--dev`). Signing with a
+    # random generated key instead makes the auth frontend fall through to the
+    # registry and fail with "No versions found for package <pkg>" for any app
+    # that was never published. So default to `--dev` for local runs.
     DEV_KEY_RAW="${STUDIO_DEV_SIGNING_KEY:-}"
-    DEV_KEY_PATH=""
     if [[ -n "$DEV_KEY_RAW" ]]; then
       if [[ "${DEV_KEY_RAW#\{}" != "$DEV_KEY_RAW" ]]; then
         # Inline key JSON — materialize to a temp file.
@@ -197,15 +205,11 @@ else
         echo "Error: STUDIO_DEV_SIGNING_KEY set but is neither inline JSON nor an existing file: $DEV_KEY_RAW" >&2
         exit 1
       fi
+      mero-sign sign --key "$DEV_KEY_PATH" res/bundle-temp/manifest.json
     else
-      DEV_KEY_PATH="$HOME/.calimero-studio/studio-dev-signing.key.json"
-      if [[ ! -f "$DEV_KEY_PATH" ]]; then
-        mkdir -p "$(dirname "$DEV_KEY_PATH")"
-        mero-sign generate-key --output "$DEV_KEY_PATH"
-        echo "Generated dev signing key at $DEV_KEY_PATH (reused on future builds)"
-      fi
+      echo "Signing with the well-known dev key (mero-sign --dev)"
+      mero-sign sign --dev res/bundle-temp/manifest.json
     fi
-    mero-sign sign --key "$DEV_KEY_PATH" res/bundle-temp/manifest.json
   else
     echo "Warning: mero-sign not found, bundle will be unsigned" >&2
   fi

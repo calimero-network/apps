@@ -62,6 +62,17 @@ export default function FormulaBar({
     setAcOpen(acPrefix !== null && suggestions.length > 0);
   }, [acPrefix, suggestions.length]);
 
+  // Auto-focus the input when a cell is selected, so you can start typing
+  // immediately after clicking a cell (no second click into the formula bar).
+  // Keyed on row/col so it re-focuses on every selection change, not on each
+  // keystroke-driven re-render.
+  useEffect(() => {
+    if (selectedCell && !disabled) {
+      inputRef.current?.focus();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCell?.row, selectedCell?.col, disabled]);
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();

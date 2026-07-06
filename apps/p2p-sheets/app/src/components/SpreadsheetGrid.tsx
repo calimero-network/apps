@@ -31,6 +31,9 @@ interface SpreadsheetGridProps {
   cells: Cell[];
   cursors: Cursor[];
   selectedCell: { row: number; col: number } | null;
+  /** In-progress formula-bar text for the selected cell while editing; shown
+   *  live in the cell so you see what you type. `null` when not editing. */
+  editingValue: string | null;
   onSelectCell: (row: number, col: number) => void;
   onCommitAndMove: (direction: 'down' | 'right' | 'none') => void;
 }
@@ -42,6 +45,7 @@ function SpreadsheetGrid({
   cells,
   cursors,
   selectedCell,
+  editingValue,
   onSelectCell,
   onCommitAndMove,
 }: SpreadsheetGridProps) {
@@ -175,6 +179,16 @@ function SpreadsheetGrid({
                 const isSelected =
                   selectedCell?.row === row && selectedCell?.col === col;
 
+                // While editing the selected cell, show the raw in-progress
+                // text live; otherwise show the stored computed value.
+                const isEditingThis = isSelected && editingValue !== null;
+                const shownValue = isEditingThis
+                  ? editingValue
+                  : (cell?.computed_value ?? '');
+                const shownIsFormula = isEditingThis
+                  ? editingValue.startsWith('=')
+                  : (cell?.raw_value.startsWith('=') ?? false);
+
                 return (
                   <DataCell
                     key={col}
@@ -187,8 +201,8 @@ function SpreadsheetGrid({
                     role="gridcell"
                     title={cell ? `${colLetter(col)}${row + 1}: ${cell.raw_value}` : undefined}
                   >
-                    <CellValue $isFormula={cell?.raw_value.startsWith('=') ?? false}>
-                      {cell?.computed_value ?? ''}
+                    <CellValue $isFormula={shownIsFormula}>
+                      {shownValue}
                     </CellValue>
                     {/* Cursor label for collaborators */}
                     {cursor && !isSelected && (
