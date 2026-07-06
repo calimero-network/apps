@@ -399,7 +399,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "p2p-sheets-spreadsheet"
+name = "foundation-service"
 version = "0.1.0"
 dependencies = [
  "bs58 0.4.0",

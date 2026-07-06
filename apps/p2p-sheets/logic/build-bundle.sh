@@ -85,6 +85,16 @@ else
   fi
 fi
 
+# Persist the resolved version back to studio.config.json so every consumer
+# that derives the .mpk filename from the config (e2e global-setup, the
+# merobox smoke workflow, the worker's verify fallback) agrees with the
+# bundle this build actually produces.
+if [[ "$APP_VERSION" != "$(jq -r '.appVersion' "$CONFIG")" ]]; then
+  CONFIG_TMP=$(mktemp "${TMPDIR:-/tmp}/studio-config.XXXXXX")
+  jq --arg v "$APP_VERSION" '.appVersion = $v' "$CONFIG" > "$CONFIG_TMP" && mv "$CONFIG_TMP" "$CONFIG"
+  echo "Persisted resolved appVersion to studio.config.json: $APP_VERSION"
+fi
+
 echo "Building $APP_DISPLAY ($APP_PACKAGE@$APP_VERSION) in $MODE mode — $SERVICE_COUNT services"
 
 # Build each service via its build.sh — those scripts read the crate name
