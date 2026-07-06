@@ -36,6 +36,7 @@ function persistTauriHashAuth() {
   const accessToken = p.get("access_token");
   const refreshToken = p.get("refresh_token");
   const applicationId = (p.get("application_id") ?? p.get("app-id") ?? "").trim();
+  const contextId = p.get("context_id");
   const expiresAt = p.get("expires_at");
 
   if (!nodeUrl || !accessToken || !refreshToken) return;
@@ -51,8 +52,12 @@ function persistTauriHashAuth() {
     }),
   );
 
-  // Land on the teams list; the user picks a team → calendar.
-  window.history.replaceState({}, "", "/teams");
+  // Deep-link straight into the shared calendar when the desktop told us which
+  // context to open (same as mero-design/mero-pixart). "t" is a placeholder
+  // teamId — CalendarPage only needs contextId; teamId only drives the Back
+  // button. Otherwise land on the teams list.
+  const targetPath = contextId ? `/teams/t/calendar/${contextId}` : "/teams";
+  window.history.replaceState({}, "", targetPath);
 }
 
 // mero-react ≥4.1 REJECTS SSO tokens whose node_url is not explicitly trusted
