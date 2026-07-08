@@ -27,6 +27,7 @@ import { describeError } from '../../utils/errors';
 import { cellRef } from '../../components/FormulaBar';
 import { isFormula, insertReference, type AutoRef } from '../../spreadsheet/formulaEdit';
 import { normalizeRect, sheetPrefix, type CellCoord, type Rect } from '../../spreadsheet/refs';
+import { planFill } from '../../spreadsheet/fill';
 import FormulaBar from '../../components/FormulaBar';
 import SpreadsheetGrid from '../../components/SpreadsheetGrid';
 import SheetTabs from '../../components/SheetTabs';
@@ -454,6 +455,27 @@ export default function AppPage() {
     [activeSheetId, selectionRange, selectedCell, ss],
   );
 
+  // Apply a fill drag: compute the writes from the source→target rects and
+  // persist them. Empty results clear the cell; formats follow the pattern.
+  const handleFill = useCallback(
+    async (source: Rect, target: Rect) => {
+      if (!activeSheetId) return;
+      const getCell = (r: number, c: number) => {
+        const cell = ss.cells.find(
+          (x) => x.sheet_id === activeSheetId && x.row === r && x.col === c,
+        );
+        return cell ? { raw: cell.raw_value, format: cell.format } : null;
+      };
+      const writes = planFill(source, target, getCell);
+      for (const w of writes) {
+        if (w.raw.trim() === '') await ss.clearCell(activeSheetId, w.row, w.col);
+        else await ss.setCell(activeSheetId, w.row, w.col, w.raw);
+        if (w.format) await ss.setCellFormat(activeSheetId, w.row, w.col, w.format);
+      }
+    },
+    [activeSheetId, ss],
+  );
+
   // Format of the anchor cell, to check-mark the active option in the menu.
   const activeCellFormat =
     (selectedCell && activeSheetId
@@ -727,6 +749,7 @@ export default function AppPage() {
         onEditCell={handleEditCell}
         onCommitAndMove={handleCommitAndMove}
         onCellContextMenu={handleCellContextMenu}
+        onFill={handleFill}
       />
 
       {/* ── Sheet tabs ───────────────────────────────────────────── */}
