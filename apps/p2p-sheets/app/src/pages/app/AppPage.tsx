@@ -33,6 +33,7 @@ import SheetTabs from '../../components/SheetTabs';
 import FunctionHelpPanel from '../../components/FunctionHelpPanel';
 import InviteModal from '../../components/InviteModal';
 import JoinModal from '../../components/JoinModal';
+import ContextMenu from '../../components/ContextMenu';
 
 const COLS = 26;
 const ROWS = 50;
@@ -80,6 +81,7 @@ export default function AppPage() {
   // editing a formula insert a reference.
   const [editing, setEditing] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const formulaInputRef = useRef<HTMLInputElement>(null);
   // Marks the reference the last point-click inserted, so the next click can
   // replace it (Sheets behaviour: click A1 then B2 → `=B2`, not `=A1B2`).
@@ -412,6 +414,53 @@ export default function AppPage() {
     [isDirty, pointMode, ensureEditAnchor],
   );
 
+  // Right-click a cell: if it's outside the current selection, select just it;
+  // then open the Format menu at the cursor.
+  const handleCellContextMenu = useCallback(
+    (row: number, col: number, x: number, y: number) => {
+      const inSel =
+        selectionRange &&
+        row >= selectionRange.top && row <= selectionRange.bottom &&
+        col >= selectionRange.left && col <= selectionRange.right;
+      if (!inSel) {
+        setSelectedCell({ row, col });
+        setSelectionRange(null);
+        setEditing(false);
+      }
+      setCtxMenu({ x, y });
+    },
+    [selectionRange],
+  );
+
+  // Apply a format keyword to every cell in the current selection (or the
+  // single selected cell), then close the menu.
+  const applyFormat = useCallback(
+    async (format: string) => {
+      setCtxMenu(null);
+      if (!activeSheetId) return;
+      const rect =
+        selectionRange ??
+        (selectedCell
+          ? { top: selectedCell.row, left: selectedCell.col, bottom: selectedCell.row, right: selectedCell.col }
+          : null);
+      if (!rect) return;
+      for (let r = rect.top; r <= rect.bottom; r++) {
+        for (let c = rect.left; c <= rect.right; c++) {
+          await ss.setCellFormat(activeSheetId, r, c, format);
+        }
+      }
+    },
+    [activeSheetId, selectionRange, selectedCell, ss],
+  );
+
+  // Format of the anchor cell, to check-mark the active option in the menu.
+  const activeCellFormat =
+    (selectedCell && activeSheetId
+      ? ss.cells.find(
+          (c) => c.sheet_id === activeSheetId && c.row === selectedCell.row && c.col === selectedCell.col,
+        )?.format
+      : '') ?? '';
+
   // ── Download ────────────────────────────────────────────────────
   const handleDownload = useCallback(() => {
     const lines: string[] = [];
@@ -674,6 +723,7 @@ export default function AppPage() {
         onSelectRow={handleSelectRow}
         onEditCell={handleEditCell}
         onCommitAndMove={handleCommitAndMove}
+        onCellContextMenu={handleCellContextMenu}
       />
 
       {/* ── Sheet tabs ───────────────────────────────────────────── */}
@@ -703,6 +753,15 @@ export default function AppPage() {
         <JoinModal
           onJoin={async (code) => { await ws.join(code); setShowJoin(false); }}
           onClose={() => setShowJoin(false)}
+        />
+      )}
+      {ctxMenu && (
+        <ContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          activeFormat={activeCellFormat}
+          onSelect={(fmt) => void applyFormat(fmt)}
+          onClose={() => setCtxMenu(null)}
         />
       )}
     </AppShell>
