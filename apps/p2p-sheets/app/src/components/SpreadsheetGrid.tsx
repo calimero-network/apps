@@ -48,6 +48,7 @@ interface SpreadsheetGridProps {
   onEditCell: (row: number, col: number) => void;
   onCommitAndMove: (direction: 'down' | 'right' | 'none') => void;
   onCellContextMenu?: (row: number, col: number, x: number, y: number) => void;
+  onFill?: (source: Rect, target: Rect) => void;
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -68,6 +69,7 @@ function SpreadsheetGrid({
   onEditCell,
   onCommitAndMove,
   onCellContextMenu,
+  onFill,
 }: SpreadsheetGridProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -75,6 +77,12 @@ function SpreadsheetGrid({
   // rectangle highlighted while dragging (both for range-select and point-mode).
   const dragAnchorRef = useRef<CellCoord | null>(null);
   const [dragRect, setDragRect] = useState<Rect | null>(null);
+
+  // Fill-drag: `fillAnchorRef` holds the source rect while the fill handle is
+  // being dragged; `fillTarget` is the live target rect (source extended down
+  // or right) highlighted with a dashed outline.
+  const fillAnchorRef = useRef<Rect | null>(null);
+  const [fillTarget, setFillTarget] = useState<Rect | null>(null);
 
   // Build lookup maps for O(1) access by "row-col" key
   const cellMap = useMemo(() => {
@@ -126,6 +134,31 @@ function SpreadsheetGrid({
     };
   };
 
+  // Extend `source` toward `cell` along whichever axis was dragged farther.
+  const computeFillTarget = (source: Rect, cell: CellCoord): Rect => {
+    const down = Math.max(0, cell.row - source.bottom);
+    const right = Math.max(0, cell.col - source.right);
+    if (down >= right && down > 0) return { ...source, bottom: cell.row };
+    if (right > 0) return { ...source, right: cell.col };
+    return source;
+  };
+
+  const handleFillStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation(); // don't start a selection drag
+      e.preventDefault();
+      const src =
+        selectionRange ??
+        (selectedCell
+          ? { top: selectedCell.row, left: selectedCell.col, bottom: selectedCell.row, right: selectedCell.col }
+          : null);
+      if (!src) return;
+      fillAnchorRef.current = src;
+      setFillTarget(src);
+    },
+    [selectionRange, selectedCell],
+  );
+
   // ── Cell pointer handling (select-drag OR point-drag) ─────────────────────
   const handleCellMouseDown = useCallback(
     (e: React.MouseEvent<HTMLTableSectionElement>) => {
@@ -146,6 +179,11 @@ function SpreadsheetGrid({
 
   const handleCellMouseOver = useCallback(
     (e: React.MouseEvent<HTMLTableSectionElement>) => {
+      if (fillAnchorRef.current) {
+        const cell = cellFromEvent(e);
+        if (cell) setFillTarget(computeFillTarget(fillAnchorRef.current, cell));
+        return;
+      }
       const anchor = dragAnchorRef.current;
       if (!anchor) return;
       const cell = cellFromEvent(e);
@@ -160,6 +198,14 @@ function SpreadsheetGrid({
 
   const handleCellMouseUp = useCallback(
     (e: React.MouseEvent<HTMLTableSectionElement>) => {
+      if (fillAnchorRef.current) {
+        const src = fillAnchorRef.current;
+        const tgt = fillTarget ?? src;
+        fillAnchorRef.current = null;
+        setFillTarget(null);
+        if (tgt.bottom > src.bottom || tgt.right > src.right) onFill?.(src, tgt);
+        return;
+      }
       const anchor = dragAnchorRef.current;
       if (!anchor) return;
       const end = cellFromEvent(e) ?? anchor;
@@ -173,7 +219,7 @@ function SpreadsheetGrid({
       dragAnchorRef.current = null;
       setDragRect(null);
     },
-    [pointMode, dispatch],
+    [pointMode, dispatch, fillTarget, onFill],
   );
 
   const handleCellDoubleClick = useCallback(
@@ -320,6 +366,24 @@ function SpreadsheetGrid({
                   col >= highlightRect.left &&
                   col <= highlightRect.right;
 
+                const inFillTarget =
+                  fillTarget !== null &&
+                  row >= fillTarget.top && row <= fillTarget.bottom &&
+                  col >= fillTarget.left && col <= fillTarget.right &&
+                  !(
+                    selectionRange
+                      ? row >= selectionRange.top && row <= selectionRange.bottom &&
+                        col >= selectionRange.left && col <= selectionRange.right
+                      : selectedCell?.row === row && selectedCell?.col === col
+                  );
+
+                // The handle sits on the selection's bottom-right cell.
+                const selBottom = selectionRange ? selectionRange.bottom : selectedCell?.row;
+                const selRight = selectionRange ? selectionRange.right : selectedCell?.col;
+                const isFillCorner =
+                  !pointMode && editingValue === null && row === selBottom && col === selRight &&
+                  (isSelected || (selectionRange != null && inRange));
+
                 const isEditingThis = isSelected && editingValue !== null;
                 const shownValue = isEditingThis
                   ? editingValue
@@ -337,6 +401,7 @@ function SpreadsheetGrid({
                     $selected={isSelected}
                     $cursorColor={cursor?.color}
                     $inRange={inRange && !isSelected}
+                    $inFillTarget={inFillTarget}
                     aria-selected={isSelected}
                     role="gridcell"
                     onContextMenu={(e) => {
@@ -351,6 +416,13 @@ function SpreadsheetGrid({
                       <CursorTag style={{ background: cursor.color }}>
                         {cursor.author.slice(0, 3)}
                       </CursorTag>
+                    )}
+                    {isFillCorner && (
+                      <FillHandle
+                        data-testid="fill-handle"
+                        onMouseDown={handleFillStart}
+                        aria-label="Fill handle"
+                      />
                     )}
                   </DataCell>
                 );
@@ -437,7 +509,7 @@ const RowTh = styled.td<{ $selected: boolean }>`
   &:hover { background: rgba(59,130,246,0.14); }
 `;
 
-const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $inRange?: boolean }>`
+const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $inRange?: boolean; $inFillTarget?: boolean }>`
   height: 24px;
   min-width: 60px;
   max-width: 200px;
@@ -478,9 +550,27 @@ const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $inRange
     background: rgba(59, 130, 246, 0.14);
   `}
 
+  ${(p) => p.$inFillTarget && `outline: 1px dashed ${C.green}; outline-offset: -1px;`}
+
   &:hover:not([aria-selected='true']) {
     background: ${C.paper2};
   }
+`;
+
+const FillHandle = styled.div`
+  position: absolute;
+  /* Sit flush in the cell's inner bottom-right corner. DataCell has
+     overflow:hidden (for text-ellipsis), so a negative offset would clip the
+     handle to a sliver — keep it fully inside the box. */
+  right: 0;
+  bottom: 0;
+  width: 7px;
+  height: 7px;
+  background: ${C.green};
+  border: 1px solid ${C.paper};
+  border-radius: 1px;
+  cursor: crosshair;
+  z-index: 5;
 `;
 
 const CellValue = styled.div<{ $isFormula: boolean }>`
