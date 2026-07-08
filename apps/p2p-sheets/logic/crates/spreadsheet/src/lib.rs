@@ -69,6 +69,10 @@ pub struct CellData {
     pub raw_value: String,
     /// Evaluated result (equals raw_value for non-formula cells).
     pub computed_value: String,
+    /// Display format for this cell (e.g. "number", "currency", "percent",
+    /// "date"; empty = Automatic). Rendered client-side; does not affect
+    /// evaluation. Colon-delimited for future options (e.g. "number:2").
+    pub format: String,
     pub updated_at: u64,
 }
 
@@ -80,6 +84,7 @@ impl Mergeable for CellData {
         {
             self.raw_value = other.raw_value.clone();
             self.computed_value = other.computed_value.clone();
+            self.format = other.format.clone();
             self.updated_at = other.updated_at;
         }
         Ok(())
@@ -136,6 +141,7 @@ pub struct Cell {
     pub col: u32,
     pub raw_value: String,
     pub computed_value: String,
+    pub format: String,
     pub updated_at: u64,
 }
 
@@ -248,19 +254,64 @@ impl Spreadsheet {
 
     pub fn rename_sheet(&mut self, sheet_id: String, new_name: String) -> app::Result<()> {
         validate_label(&new_name).map_err(AppError::from)?;
-        let mut guard = self
-            .sheets
-            .get_mut(&sheet_id)
-            .map_err(|e| AppError::msg(format!("sheets.get_mut: {e}")))?
-            .ok_or_else(|| AppError::from(Error::NotFound(sheet_id.clone())))?;
         let now = storage_env::time_now();
-        guard.name = new_name.clone();
-        guard.updated_at = now;
-        drop(guard);
+        // Capture the old name before mutating so we can rewrite references.
+        let old_name = {
+            let guard = self
+                .sheets
+                .get_mut(&sheet_id)
+                .map_err(|e| AppError::msg(format!("sheets.get_mut: {e}")))?
+                .ok_or_else(|| AppError::from(Error::NotFound(sheet_id.clone())))?;
+            let old = guard.name.clone();
+            drop(guard);
+            old
+        };
+        {
+            let mut guard = self
+                .sheets
+                .get_mut(&sheet_id)
+                .map_err(|e| AppError::msg(format!("sheets.get_mut: {e}")))?
+                .unwrap();
+            guard.name = new_name.clone();
+            guard.updated_at = now;
+        }
+
+        // References resolve by sheet name, so a rename would orphan every
+        // formula pointing at the old name. Rewrite them to follow the rename
+        // (Excel/Sheets behaviour) so cross-sheet formulas keep resolving.
+        if old_name != new_name {
+            let updates: Vec<(String, String)> = self
+                .cells
+                .entries()
+                .map_err(|e| AppError::msg(format!("cells.entries: {e}")))?
+                .filter_map(|(k, d)| {
+                    if !d.raw_value.trim_start().starts_with('=') {
+                        return None;
+                    }
+                    let rewritten =
+                        formula::rewrite_sheet_qualifiers(&d.raw_value, &old_name, &new_name);
+                    (rewritten != d.raw_value).then_some((k, rewritten))
+                })
+                .collect();
+            for (k, new_raw) in updates {
+                if let Some(mut guard) = self
+                    .cells
+                    .get_mut(&k)
+                    .map_err(|e| AppError::msg(format!("cells.get_mut: {e}")))?
+                {
+                    guard.raw_value = new_raw;
+                    guard.updated_at = now;
+                }
+            }
+        }
+
         app::emit!(Event::SheetRenamed {
             id: &sheet_id,
             name: &new_name,
         });
+        // Refresh computed values: rewritten refs (and anything depending on
+        // them) must re-evaluate against the new name.
+        self.recompute_all()?;
         Ok(())
     }
 
@@ -338,6 +389,7 @@ impl Spreadsheet {
             col,
             raw_value: raw_value.clone(),
             computed_value: raw_value,
+            format: String::new(),
             updated_at: now,
         };
         let exists = self
@@ -363,6 +415,8 @@ impl Spreadsheet {
             id: &key,
             sheet_id: &sheet_id,
         });
+        // Recompute every formula (across all sheets) that may depend on this.
+        self.recompute_all()?;
         Ok(key)
     }
 
@@ -382,35 +436,18 @@ impl Spreadsheet {
         {
             return Err(AppError::from(Error::NotFound(sheet_id.clone())));
         }
-        // Snapshot current cell values for formula evaluation.
-        let cell_snapshot: Vec<(String, String)> = self
-            .cells
-            .entries()
-            .map_err(|e| AppError::msg(format!("cells.entries: {e}")))?
-            .filter_map(|(k, d)| {
-                if d.sheet_id == sheet_id {
-                    Some((k, d.computed_value.clone()))
-                } else {
-                    None
-                }
-            })
-            .collect();
-        let computed = formula::evaluate(&formula, |r, c| {
-            let k = Spreadsheet::cell_key(&sheet_id, r, c);
-            cell_snapshot
-                .iter()
-                .find(|(key, _)| key == &k)
-                .map(|(_, v)| v.clone())
-        });
         let key = Spreadsheet::cell_key(&sheet_id, row, col);
         let now = storage_env::time_now();
+        // Store the raw formula; `recompute_all` computes its value (and every
+        // dependent), so a single code path handles same- and cross-sheet refs.
         let data = CellData {
             id: key.clone(),
             sheet_id: sheet_id.clone(),
             row,
             col,
-            raw_value: formula,
-            computed_value: computed,
+            raw_value: formula.clone(),
+            computed_value: formula,
+            format: String::new(),
             updated_at: now,
         };
         let exists = self
@@ -428,6 +465,63 @@ impl Spreadsheet {
             guard.computed_value = data.computed_value;
             guard.updated_at = data.updated_at;
         } else {
+            self.cells
+                .insert(key.clone(), data)
+                .map_err(|e| AppError::msg(format!("cells.insert: {e}")))?;
+        }
+        app::emit!(Event::CellUpdated {
+            id: &key,
+            sheet_id: &sheet_id,
+        });
+        self.recompute_all()?;
+        Ok(key)
+    }
+
+    /// Set only the display format of a cell, preserving its value. Creates the
+    /// cell (empty value) if it does not exist yet, so you can format ahead of
+    /// typing. `format` is a keyword like "number"/"currency"/"percent"/"date"
+    /// ("" = Automatic).
+    pub fn set_cell_format(
+        &mut self,
+        sheet_id: String,
+        row: u32,
+        col: u32,
+        format: String,
+    ) -> app::Result<String> {
+        if self
+            .sheets
+            .get(&sheet_id)
+            .map_err(|e| AppError::msg(format!("sheets.get: {e}")))?
+            .is_none()
+        {
+            return Err(AppError::from(Error::NotFound(sheet_id.clone())));
+        }
+        let key = Spreadsheet::cell_key(&sheet_id, row, col);
+        let now = storage_env::time_now();
+        let exists = self
+            .cells
+            .get(&key)
+            .map_err(|e| AppError::msg(format!("cells.get: {e}")))?
+            .is_some();
+        if exists {
+            let mut guard = self
+                .cells
+                .get_mut(&key)
+                .map_err(|e| AppError::msg(format!("cells.get_mut: {e}")))?
+                .unwrap();
+            guard.format = format;
+            guard.updated_at = now;
+        } else {
+            let data = CellData {
+                id: key.clone(),
+                sheet_id: sheet_id.clone(),
+                row,
+                col,
+                raw_value: String::new(),
+                computed_value: String::new(),
+                format,
+                updated_at: now,
+            };
             self.cells
                 .insert(key.clone(), data)
                 .map_err(|e| AppError::msg(format!("cells.insert: {e}")))?;
@@ -449,6 +543,107 @@ impl Spreadsheet {
             row,
             col,
         });
+        // Removing a cell can change formulas that referenced it.
+        self.recompute_all()?;
+        Ok(())
+    }
+
+    /// Re-evaluate every formula cell in the whole workbook until values
+    /// stabilise, so a change to one cell propagates to all cells that
+    /// (transitively) reference it — on the same sheet OR across sheets
+    /// (`Data!A1`). Runs a bounded fixed-point iteration (safe against chains
+    /// and terminating on circular references). Persists and emits only the
+    /// cells whose computed value actually changed.
+    fn recompute_all(&mut self) -> app::Result<()> {
+        // Sheet name → id, so cross-sheet references resolve by name.
+        let sheets: Vec<(String, String)> = self
+            .sheets
+            .entries()
+            .map_err(|e| AppError::msg(format!("sheets.entries: {e}")))?
+            .map(|(id, d)| (d.name.clone(), id))
+            .collect();
+
+        // Snapshot every cell: (key, sheet_id, row, col, raw, computed, original).
+        let mut snap: Vec<(String, String, u32, u32, String, String, String)> = self
+            .cells
+            .entries()
+            .map_err(|e| AppError::msg(format!("cells.entries: {e}")))?
+            .map(|(k, d)| {
+                (
+                    k,
+                    d.sheet_id.clone(),
+                    d.row,
+                    d.col,
+                    d.raw_value.clone(),
+                    d.computed_value.clone(),
+                    d.computed_value.clone(),
+                )
+            })
+            .collect();
+
+        // Fixed-point: at most one pass per cell covers the longest acyclic
+        // chain; the extra guard bounds cyclic references.
+        let max_iter = snap.len() + 1;
+        for _ in 0..max_iter {
+            // Freeze current computed values for this pass's lookups.
+            let lookup: Vec<(String, u32, u32, String)> = snap
+                .iter()
+                .map(|(_, sid, r, c, _, comp, _)| (sid.clone(), *r, *c, comp.clone()))
+                .collect();
+            let mut changed = false;
+            for entry in snap.iter_mut() {
+                if entry.4.trim_start().starts_with('=') {
+                    let cur_sheet = entry.1.clone();
+                    let raw = entry.4.clone();
+                    // Set if the formula names a sheet that doesn't exist (e.g. a
+                    // typo `Sheet1` for `Sheet 1`). Such a reference must surface
+                    // as #REF!, not silently resolve every cell to empty (0).
+                    let bad_sheet = core::cell::Cell::new(false);
+                    let new_val = formula::evaluate(&raw, |sheet, r, c| {
+                        // Resolve the sheet: named → its id, else the cell's own sheet.
+                        let sid = match sheet {
+                            Some(name) => match sheets.iter().find(|(n, _)| n == name) {
+                                Some((_, id)) => id.as_str(),
+                                None => {
+                                    bad_sheet.set(true);
+                                    return None;
+                                }
+                            },
+                            None => cur_sheet.as_str(),
+                        };
+                        lookup
+                            .iter()
+                            .find(|(s, rr, cc, _)| s == sid && *rr == r && *cc == c)
+                            .map(|(_, _, _, v)| v.clone())
+                    });
+                    let new_val = if bad_sheet.get() { "#REF!".to_string() } else { new_val };
+                    if new_val != entry.5 {
+                        entry.5 = new_val;
+                        changed = true;
+                    }
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+
+        // Persist + emit the cells whose computed value changed.
+        for (key, sid, _r, _c, _raw, computed, original) in snap {
+            if computed != original {
+                if let Some(mut guard) = self
+                    .cells
+                    .get_mut(&key)
+                    .map_err(|e| AppError::msg(format!("cells.get_mut: {e}")))?
+                {
+                    guard.computed_value = computed;
+                }
+                app::emit!(Event::CellUpdated {
+                    id: &key,
+                    sheet_id: &sid,
+                });
+            }
+        }
         Ok(())
     }
 
@@ -467,6 +662,7 @@ impl Spreadsheet {
                         col: d.col,
                         raw_value: d.raw_value.clone(),
                         computed_value: d.computed_value.clone(),
+                        format: d.format.clone(),
                         updated_at: d.updated_at,
                     })
                 } else {
@@ -646,17 +842,18 @@ fn builtin_functions() -> Vec<FunctionDef> {
 mod formula {
     /// Evaluate a spreadsheet formula string.
     ///
-    /// `formula` should start with `=`. `get_value` maps `(row, col)` — both
-    /// 0-indexed as used by the API — to the cell's current computed value.
-    /// Cell references in formulas use 1-indexed rows and A-Z columns
-    /// (e.g. `A1` → row 0, col 0).
-    pub fn evaluate(formula: &str, get_value: impl Fn(u32, u32) -> Option<String>) -> String {
+    /// `formula` should start with `=`. `get_value(sheet, row, col)` maps a cell
+    /// to its current computed value: `sheet` is `None` for a reference on the
+    /// current sheet, or `Some(name)` for a cross-sheet reference (`Data!A1` or
+    /// `'My Sheet'!A1`). Rows/cols are 0-indexed as used by the API; references
+    /// use 1-indexed rows and A-Z columns (e.g. `A1` → row 0, col 0).
+    pub fn evaluate(formula: &str, get_value: impl Fn(Option<&str>, u32, u32) -> Option<String>) -> String {
         let expr = formula.trim().strip_prefix('=').unwrap_or(formula).trim();
         eval_to_string(expr, &get_value)
     }
 
     /// Evaluate an expression to its display string.
-    fn eval_to_string(expr: &str, get_value: &impl Fn(u32, u32) -> Option<String>) -> String {
+    fn eval_to_string(expr: &str, get_value: &impl Fn(Option<&str>, u32, u32) -> Option<String>) -> String {
         let expr = expr.trim();
         if expr.is_empty() {
             return String::new();
@@ -679,17 +876,144 @@ mod formula {
             return format_num(n);
         }
 
-        // Bare cell reference holding non-numeric text.
-        if let Some((row, col)) = parse_cell_ref(expr) {
-            return get_value(row, col).unwrap_or_default();
+        // Bare cell reference holding non-numeric text (possibly cross-sheet).
+        let (sheet, rest) = split_sheet_qualifier(expr);
+        if let Some((row, col)) = parse_cell_ref(&rest) {
+            return get_value(sheet.as_deref(), row, col).unwrap_or_default();
         }
 
         "#VALUE!".to_string()
     }
 
+    /// Split an optional `Sheet!` / `'Sheet Name'!` prefix off a reference.
+    /// Returns `(sheet_name, rest)` — `sheet_name` is `None` for a same-sheet
+    /// reference. Quoted names may contain spaces.
+    fn split_sheet_qualifier(s: &str) -> (Option<String>, String) {
+        let s = s.trim();
+        if s.starts_with('\'') {
+            // Quoted sheet name. An internal apostrophe is doubled (`''`), the
+            // Excel/Sheets convention emitted by the frontend `sheetPrefix`, so a
+            // lone `'` is the terminator and `''` collapses to one literal `'`.
+            let chars: Vec<char> = s.chars().collect();
+            let mut i = 1; // past the opening quote
+            let mut name = String::new();
+            loop {
+                match chars.get(i) {
+                    Some('\'') if chars.get(i + 1) == Some(&'\'') => {
+                        name.push('\'');
+                        i += 2;
+                    }
+                    Some('\'') => {
+                        i += 1; // closing quote
+                        break;
+                    }
+                    Some(&ch) => {
+                        name.push(ch);
+                        i += 1;
+                    }
+                    None => return (None, s.to_string()), // unterminated
+                }
+            }
+            let rest: String = chars[i..].iter().collect();
+            if let Some(cell) = rest.trim_start().strip_prefix('!') {
+                return (Some(name), cell.trim().to_string());
+            }
+            return (None, s.to_string());
+        }
+        if let Some(pos) = s.find('!') {
+            let name = s[..pos].trim();
+            if !name.is_empty() {
+                return (Some(name.to_string()), s[pos + 1..].trim().to_string());
+            }
+        }
+        (None, s.to_string())
+    }
+
+    /// Sheet-name prefix for a reference: bare when the name is a simple
+    /// identifier (`Data!`), single-quoted with internal `'` doubled otherwise
+    /// (`'Q3 Budget'!`). Mirrors the frontend `sheetPrefix` so refs are written
+    /// identically whichever side produces them.
+    pub fn sheet_prefix(name: &str) -> String {
+        let simple = name
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic())
+            && name.chars().all(|c| c.is_ascii_alphanumeric());
+        if simple {
+            format!("{name}!")
+        } else {
+            format!("'{}'!", name.replace('\'', "''"))
+        }
+    }
+
+    /// Rewrite every sheet qualifier that names `old` so it references `new`
+    /// instead, leaving the rest of the formula untouched. Handles bare (`Old!`)
+    /// and quoted (`'Old Name'!`, `''`-escaped) qualifiers, and re-quotes `new`
+    /// as needed. A longer name sharing a prefix (`Sheet10` vs `Sheet1`) is left
+    /// alone because bare matches are whole-token. Used when a sheet is renamed
+    /// so references follow it (Excel/Sheets behaviour).
+    pub fn rewrite_sheet_qualifiers(formula: &str, old: &str, new: &str) -> String {
+        let chars: Vec<char> = formula.chars().collect();
+        let mut out = String::with_capacity(formula.len());
+        let mut i = 0;
+        while i < chars.len() {
+            let ch = chars[i];
+            if ch == '\'' {
+                // Quoted name: read to the closing lone quote, collapsing `''`.
+                let mut j = i + 1;
+                let mut name = String::new();
+                let mut terminated = false;
+                while j < chars.len() {
+                    if chars[j] == '\'' {
+                        if chars.get(j + 1) == Some(&'\'') {
+                            name.push('\'');
+                            j += 2;
+                        } else {
+                            j += 1; // closing quote
+                            terminated = true;
+                            break;
+                        }
+                    } else {
+                        name.push(chars[j]);
+                        j += 1;
+                    }
+                }
+                if terminated && chars.get(j) == Some(&'!') && name == old {
+                    out.push_str(&sheet_prefix(new));
+                    i = j + 1; // past the '!'
+                    continue;
+                }
+                // Not a matching qualifier — emit the original span verbatim.
+                out.extend(&chars[i..j]);
+                i = j;
+                continue;
+            }
+            if ch.is_ascii_alphabetic() {
+                // Bare identifier run; a trailing '!' makes it a sheet qualifier.
+                let start = i;
+                let mut j = i;
+                while j < chars.len() && chars[j].is_ascii_alphanumeric() {
+                    j += 1;
+                }
+                let word: String = chars[start..j].iter().collect();
+                if chars.get(j) == Some(&'!') && word == old {
+                    out.push_str(&sheet_prefix(new));
+                    i = j + 1;
+                    continue;
+                }
+                out.push_str(&word);
+                i = j;
+                continue;
+            }
+            out.push(ch);
+            i += 1;
+        }
+        out
+    }
+
     /// If `expr` is exactly a single `NAME(args)` call, evaluate it; else
     /// `None` (so `SUM(..)+1` and bare arithmetic fall to the number parser).
-    fn try_function(expr: &str, get_value: &impl Fn(u32, u32) -> Option<String>) -> Option<String> {
+    fn try_function(expr: &str, get_value: &impl Fn(Option<&str>, u32, u32) -> Option<String>) -> Option<String> {
         let paren = expr.find('(')?;
         let name = &expr[..paren];
         if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphabetic()) {
@@ -743,7 +1067,7 @@ mod formula {
     /// expands to its numeric cells; every other comma-separated arg is
     /// evaluated as an expression (cell ref, number, or arithmetic) and
     /// contributes its numeric value — so `SUM(3+4)` and `SUM(A1, A2, 5)` work.
-    fn collect_arg_values(args: &str, get_value: &impl Fn(u32, u32) -> Option<String>) -> Vec<f64> {
+    fn collect_arg_values(args: &str, get_value: &impl Fn(Option<&str>, u32, u32) -> Option<String>) -> Vec<f64> {
         let mut nums = Vec::new();
         for arg in split_args(args) {
             let arg = arg.trim();
@@ -751,14 +1075,18 @@ mod formula {
                 continue;
             }
             if arg.contains(':') {
-                for (r, c) in expand_range(arg) {
-                    if let Some(raw) = get_value(r, c) {
+                // A range, possibly sheet-qualified (`Data!A1:A3`, `'S'!A:A`).
+                let (sheet, rest) = split_sheet_qualifier(arg);
+                for (r, c) in expand_range(&rest) {
+                    if let Some(raw) = get_value(sheet.as_deref(), r, c) {
                         if let Ok(n) = raw.trim().parse::<f64>() {
                             nums.push(n);
                         }
                     }
                 }
             } else if let Some(n) = eval_number(arg, get_value) {
+                // Single cells (incl. cross-sheet), numbers and arithmetic go
+                // through the number parser, which handles `Data!A1` itself.
                 nums.push(n);
             }
         }
@@ -772,7 +1100,7 @@ mod formula {
     // Returns None on any parse error or non-numeric operand, so the caller can
     // fall back to string handling.
 
-    fn eval_number(expr: &str, gv: &impl Fn(u32, u32) -> Option<String>) -> Option<f64> {
+    fn eval_number(expr: &str, gv: &impl Fn(Option<&str>, u32, u32) -> Option<String>) -> Option<f64> {
         let chars: Vec<char> = expr.chars().collect();
         let mut p = 0usize;
         let v = parse_add(&chars, &mut p, gv)?;
@@ -786,7 +1114,7 @@ mod formula {
         }
     }
 
-    fn parse_add(c: &[char], p: &mut usize, gv: &impl Fn(u32, u32) -> Option<String>) -> Option<f64> {
+    fn parse_add(c: &[char], p: &mut usize, gv: &impl Fn(Option<&str>, u32, u32) -> Option<String>) -> Option<f64> {
         let mut v = parse_mul(c, p, gv)?;
         loop {
             skip_ws(c, p);
@@ -799,7 +1127,7 @@ mod formula {
         Some(v)
     }
 
-    fn parse_mul(c: &[char], p: &mut usize, gv: &impl Fn(u32, u32) -> Option<String>) -> Option<f64> {
+    fn parse_mul(c: &[char], p: &mut usize, gv: &impl Fn(Option<&str>, u32, u32) -> Option<String>) -> Option<f64> {
         let mut v = parse_factor(c, p, gv)?;
         loop {
             skip_ws(c, p);
@@ -819,7 +1147,7 @@ mod formula {
         Some(v)
     }
 
-    fn parse_factor(c: &[char], p: &mut usize, gv: &impl Fn(u32, u32) -> Option<String>) -> Option<f64> {
+    fn parse_factor(c: &[char], p: &mut usize, gv: &impl Fn(Option<&str>, u32, u32) -> Option<String>) -> Option<f64> {
         skip_ws(c, p);
         match c.get(*p)? {
             '(' => {
@@ -834,6 +1162,7 @@ mod formula {
             }
             '-' => { *p += 1; Some(-parse_factor(c, p, gv)?) }
             '+' => { *p += 1; parse_factor(c, p, gv) }
+            '\'' => parse_quoted_ref(c, p, gv),
             ch if ch.is_ascii_alphabetic() => parse_ident(c, p, gv),
             ch if ch.is_ascii_digit() || *ch == '.' => {
                 let start = *p;
@@ -846,9 +1175,9 @@ mod formula {
         }
     }
 
-    /// A leading alphabetic run is either a function call `NAME(...)` or a cell
-    /// reference `A1`.
-    fn parse_ident(c: &[char], p: &mut usize, gv: &impl Fn(u32, u32) -> Option<String>) -> Option<f64> {
+    /// A leading alphabetic run is a function call `NAME(...)`, a plain cell
+    /// reference `A1`, or an unquoted cross-sheet reference `Data!A1`.
+    fn parse_ident(c: &[char], p: &mut usize, gv: &impl Fn(Option<&str>, u32, u32) -> Option<String>) -> Option<f64> {
         let start = *p;
         while *p < c.len() && c[*p].is_ascii_alphabetic() {
             *p += 1;
@@ -870,27 +1199,84 @@ mod formula {
                 return None;
             }
             let call: String = c[start..*p].iter().collect();
-            eval_to_string(&call, gv).trim().parse::<f64>().ok()
-        } else {
-            // Cell reference: column letters followed by row digits.
-            let dstart = *p;
-            while *p < c.len() && c[*p].is_ascii_digit() {
-                *p += 1;
-            }
-            if *p == dstart {
-                return None; // letters with no row digits — not a cell ref
-            }
-            let refstr: String = c[start..*p].iter().collect();
+            return eval_to_string(&call, gv).trim().parse::<f64>().ok();
+        }
+
+        // Consume any trailing digits — part of a cell ref (`A1`) or an unquoted
+        // sheet name (`Sheet2`).
+        let digits_start = *p;
+        while *p < c.len() && c[*p].is_ascii_digit() {
+            *p += 1;
+        }
+
+        // Cross-sheet reference: `<name>!<cellref>`.
+        if c.get(*p) == Some(&'!') {
+            let name: String = c[start..*p].iter().collect();
+            *p += 1; // consume '!'
+            let cs = *p;
+            while *p < c.len() && c[*p].is_ascii_uppercase() { *p += 1; }
+            while *p < c.len() && c[*p].is_ascii_digit() { *p += 1; }
+            let refstr: String = c[cs..*p].iter().collect();
             let (row, col) = parse_cell_ref(&refstr)?;
-            match gv(row, col) {
-                // Empty / missing cell counts as 0 in arithmetic; non-numeric
-                // text makes the surrounding expression non-numeric (None).
-                Some(val) => {
-                    let t = val.trim();
-                    if t.is_empty() { Some(0.0) } else { t.parse::<f64>().ok() }
+            return cell_num(gv, Some(&name), row, col);
+        }
+
+        // Plain same-sheet cell reference.
+        if *p == digits_start {
+            return None; // letters with no row digits — not a cell ref
+        }
+        let refstr: String = c[start..*p].iter().collect();
+        let (row, col) = parse_cell_ref(&refstr)?;
+        cell_num(gv, None, row, col)
+    }
+
+    /// Parse a quoted cross-sheet reference `'Sheet Name'!A1` as a number.
+    fn parse_quoted_ref(c: &[char], p: &mut usize, gv: &impl Fn(Option<&str>, u32, u32) -> Option<String>) -> Option<f64> {
+        *p += 1; // opening quote
+        // Read the name, collapsing a doubled `''` into one literal apostrophe
+        // and stopping at the first lone `'` (Excel/Sheets quoting).
+        let mut name = String::new();
+        loop {
+            match c.get(*p) {
+                Some('\'') if c.get(*p + 1) == Some(&'\'') => {
+                    name.push('\'');
+                    *p += 2;
                 }
-                None => Some(0.0),
+                Some('\'') => {
+                    *p += 1; // closing quote
+                    break;
+                }
+                Some(&ch) => {
+                    name.push(ch);
+                    *p += 1;
+                }
+                None => return None, // unterminated
             }
+        }
+        if c.get(*p) != Some(&'!') { return None; }
+        *p += 1; // '!'
+        let cs = *p;
+        while *p < c.len() && c[*p].is_ascii_uppercase() { *p += 1; }
+        while *p < c.len() && c[*p].is_ascii_digit() { *p += 1; }
+        let refstr: String = c[cs..*p].iter().collect();
+        let (row, col) = parse_cell_ref(&refstr)?;
+        cell_num(gv, Some(&name), row, col)
+    }
+
+    /// Resolve a cell reference to a number for arithmetic: empty / missing → 0,
+    /// non-numeric text → `None` (makes the surrounding expression non-numeric).
+    fn cell_num(
+        gv: &impl Fn(Option<&str>, u32, u32) -> Option<String>,
+        sheet: Option<&str>,
+        row: u32,
+        col: u32,
+    ) -> Option<f64> {
+        match gv(sheet, row, col) {
+            Some(val) => {
+                let t = val.trim();
+                if t.is_empty() { Some(0.0) } else { t.parse::<f64>().ok() }
+            }
+            None => Some(0.0),
         }
     }
 
@@ -912,6 +1298,34 @@ mod formula {
     }
 
     /// Expand a range string (`A1:B3` or `A1`) into `(row, col)` pairs.
+    // Bounds for whole-column (`A:A`) and whole-row (`1:1`) references. The UI
+    // grid is 26 columns (A–Z) × 50 rows; we scan a little past the visible rows
+    // so column sums still pick up anything entered lower down. Empty cells
+    // contribute nothing, so an over-estimate is harmless (only affects how far
+    // we iterate, never the result).
+    const MAX_ROWS: u32 = 1000;
+    const MAX_COLS: u32 = 26;
+
+    /// A bare column label (`A`..`Z`) → 0-based column index. `None` if the
+    /// string isn't a single uppercase letter (so `A1` is not a column).
+    fn parse_col_only(s: &str) -> Option<u32> {
+        let mut chars = s.chars();
+        let c = chars.next()?;
+        if chars.next().is_some() || !c.is_ascii_uppercase() {
+            return None;
+        }
+        Some(c as u32 - 'A' as u32)
+    }
+
+    /// A bare 1-based row number (`1`, `42`) → 0-based row index. `None` if the
+    /// string isn't all digits.
+    fn parse_row_only(s: &str) -> Option<u32> {
+        if s.is_empty() || !s.chars().all(|c| c.is_ascii_digit()) {
+            return None;
+        }
+        s.parse::<u32>().ok()?.checked_sub(1)
+    }
+
     fn expand_range(range: &str) -> Vec<(u32, u32)> {
         let parts: Vec<&str> = range.split(':').collect();
         match parts.as_slice() {
@@ -919,7 +1333,29 @@ mod formula {
                 .map(|rc| vec![rc])
                 .unwrap_or_default(),
             [start, end] => {
-                match (parse_cell_ref(start.trim()), parse_cell_ref(end.trim())) {
+                let (s, e) = (start.trim(), end.trim());
+                // Whole-column range: `A:A`, `A:C` → every row of those columns.
+                if let (Some(c1), Some(c2)) = (parse_col_only(s), parse_col_only(e)) {
+                    let mut cells = Vec::new();
+                    for c in c1.min(c2)..=c1.max(c2) {
+                        for r in 0..MAX_ROWS {
+                            cells.push((r, c));
+                        }
+                    }
+                    return cells;
+                }
+                // Whole-row range: `1:1`, `2:5` → every column of those rows.
+                if let (Some(r1), Some(r2)) = (parse_row_only(s), parse_row_only(e)) {
+                    let mut cells = Vec::new();
+                    for r in r1.min(r2)..=r1.max(r2) {
+                        for c in 0..MAX_COLS {
+                            cells.push((r, c));
+                        }
+                    }
+                    return cells;
+                }
+                // Ordinary cell range: `A1:C3`.
+                match (parse_cell_ref(s), parse_cell_ref(e)) {
                     (Some((r1, c1)), Some((r2, c2))) => {
                         let mut cells = Vec::new();
                         for r in r1.min(r2)..=r1.max(r2) {
@@ -1064,6 +1500,50 @@ mod tests {
     }
 
     #[test]
+    fn set_cell_format_persists_and_preserves_value() {
+        let mut app = make_app();
+        app.call(|s| s.init_project("P".into())).unwrap();
+        let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
+        app.call(|s| s.set_cell(sid.clone(), 0, 0, "1234.5".into())).unwrap();
+        app.call(|s| s.set_cell_format(sid.clone(), 0, 0, "currency".into())).unwrap();
+        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
+        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
+        assert_eq!(a1.format, "currency");
+        assert_eq!(a1.raw_value, "1234.5", "value preserved when format is set");
+    }
+
+    #[test]
+    fn setting_value_preserves_existing_format() {
+        let mut app = make_app();
+        app.call(|s| s.init_project("P".into())).unwrap();
+        let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
+        // Format an empty cell, then type a value into it.
+        app.call(|s| s.set_cell_format(sid.clone(), 0, 0, "percent".into())).unwrap();
+        app.call(|s| s.set_cell(sid.clone(), 0, 0, "0.25".into())).unwrap();
+        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
+        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
+        assert_eq!(a1.format, "percent", "format survives a later value edit");
+        assert_eq!(a1.computed_value, "0.25");
+    }
+
+    #[test]
+    fn cell_merge_carries_format_from_winner() {
+        let mut a = CellData {
+            id: "k".into(), sheet_id: "s".into(), row: 0, col: 0,
+            raw_value: "1".into(), computed_value: "1".into(),
+            format: String::new(), updated_at: 1,
+        };
+        let b = CellData {
+            id: "k".into(), sheet_id: "s".into(), row: 0, col: 0,
+            raw_value: "2".into(), computed_value: "2".into(),
+            format: "currency".into(), updated_at: 2,
+        };
+        a.merge(&b).unwrap();
+        assert_eq!(a.raw_value, "2");
+        assert_eq!(a.format, "currency", "LWW winner's format is kept");
+    }
+
+    #[test]
     fn set_cell_formula_sum_evaluates() {
         let mut app = make_app();
         app.call(|s| s.init_project("P".into())).unwrap();
@@ -1086,7 +1566,7 @@ mod tests {
 
     #[test]
     fn formula_arithmetic_literals() {
-        let gv = |_r: u32, _c: u32| None;
+        let gv = |_s: Option<&str>, _r: u32, _c: u32| None;
         assert_eq!(formula::evaluate("=3+4", &gv), "7");
         assert_eq!(formula::evaluate("=SUM(3+4)", &gv), "7");
         assert_eq!(formula::evaluate("=10-4", &gv), "6");
@@ -1097,9 +1577,33 @@ mod tests {
     }
 
     #[test]
+    fn formula_whole_column_and_row_refs() {
+        // Column A (col 0): A1=1, A2=2, A3=3.  Row 5 (index 4): B5=10, C5=20.
+        let gv = |_s: Option<&str>, r: u32, c: u32| match (r, c) {
+            (0, 0) => Some("1".to_string()),
+            (1, 0) => Some("2".to_string()),
+            (2, 0) => Some("3".to_string()),
+            (4, 1) => Some("10".to_string()),
+            (4, 2) => Some("20".to_string()),
+            _ => None,
+        };
+        // Whole-column reference A:A
+        assert_eq!(formula::evaluate("=SUM(A:A)", &gv), "6");
+        assert_eq!(formula::evaluate("=COUNT(A:A)", &gv), "3");
+        assert_eq!(formula::evaluate("=AVERAGE(A:A)", &gv), "2");
+        assert_eq!(formula::evaluate("=MAX(A:A)", &gv), "3");
+        assert_eq!(formula::evaluate("=MIN(A:A)", &gv), "1");
+        // Whole-row reference 5:5 (1-based → row index 4)
+        assert_eq!(formula::evaluate("=SUM(5:5)", &gv), "30");
+        assert_eq!(formula::evaluate("=COUNT(5:5)", &gv), "2");
+        // Multi-column range: col A (1+2+3=6) + col B (B5=10) = 16
+        assert_eq!(formula::evaluate("=SUM(A:B)", &gv), "16");
+    }
+
+    #[test]
     fn formula_arithmetic_with_cells_and_args() {
         // A1 = 10 (row 0, col 0), A2 = 20 (row 1, col 0)
-        let gv = |r: u32, c: u32| match (r, c) {
+        let gv = |_s: Option<&str>, r: u32, c: u32| match (r, c) {
             (0, 0) => Some("10".to_string()),
             (1, 0) => Some("20".to_string()),
             _ => None,
@@ -1109,6 +1613,203 @@ mod tests {
         assert_eq!(formula::evaluate("=SUM(A1, A2, 5)", &gv), "35"); // comma args
         assert_eq!(formula::evaluate("=SUM(A1:A2)", &gv), "30"); // range still works
         assert_eq!(formula::evaluate("=SUM(A1:A2)+100", &gv), "130"); // function in arithmetic
+    }
+
+    #[test]
+    fn dependent_formulas_recompute_when_source_changes() {
+        let mut app = make_app();
+        app.call(|s| s.init_project("P".into())).unwrap();
+        let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
+        app.call(|s| s.set_cell(sid.clone(), 0, 0, "1".into())).unwrap(); // A1 = 1
+        app.call(|s| s.set_cell(sid.clone(), 1, 0, "2".into())).unwrap(); // A2 = 2
+        // A3 = SUM(A1,A2) = 3
+        app.call(|s| s.set_cell_formula(sid.clone(), 2, 0, "=SUM(A1,A2)".into()))
+            .unwrap();
+        // B1 = A3 * 10 = 30 (chained: B1 → A3 → A2)
+        app.call(|s| s.set_cell_formula(sid.clone(), 0, 1, "=A3*10".into()))
+            .unwrap();
+
+        // Change A2 to 5. A3 must recompute to 6, and B1 (which depends on A3)
+        // must recompute to 60.
+        app.call(|s| s.set_cell(sid.clone(), 1, 0, "5".into())).unwrap();
+
+        let cells = app.view(|s| s.get_cells(sid)).unwrap();
+        let a3 = cells.iter().find(|c| c.row == 2 && c.col == 0).unwrap();
+        let b1 = cells.iter().find(|c| c.row == 0 && c.col == 1).unwrap();
+        assert_eq!(a3.computed_value, "6", "A3 = SUM(A1,A2) after A2→5");
+        assert_eq!(b1.computed_value, "60", "B1 = A3*10 after chain recompute");
+    }
+
+    #[test]
+    fn clearing_a_cell_recomputes_dependents() {
+        let mut app = make_app();
+        app.call(|s| s.init_project("P".into())).unwrap();
+        let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
+        app.call(|s| s.set_cell(sid.clone(), 0, 0, "10".into())).unwrap(); // A1
+        app.call(|s| s.set_cell(sid.clone(), 1, 0, "20".into())).unwrap(); // A2
+        app.call(|s| s.set_cell_formula(sid.clone(), 2, 0, "=SUM(A1:A2)".into()))
+            .unwrap(); // A3 = 30
+        // Clear A2 → A3 should recompute to 10.
+        app.call(|s| s.clear_cell(sid.clone(), 1, 0)).unwrap();
+        let cells = app.view(|s| s.get_cells(sid)).unwrap();
+        let a3 = cells.iter().find(|c| c.row == 2 && c.col == 0).unwrap();
+        assert_eq!(a3.computed_value, "10");
+    }
+
+    #[test]
+    fn cross_sheet_cell_and_range_references() {
+        let mut app = make_app();
+        app.call(|s| s.init_project("P".into())).unwrap();
+        let s1 = app.call(|s| s.create_sheet("Sheet1".into())).unwrap();
+        let data = app.call(|s| s.create_sheet("Data".into())).unwrap();
+        // Data!A1 = 10, Data!A2 = 20
+        app.call(|s| s.set_cell(data.clone(), 0, 0, "10".into())).unwrap();
+        app.call(|s| s.set_cell(data.clone(), 1, 0, "20".into())).unwrap();
+        // Sheet1!B1 = =Data!A1 + Data!A2 → 30
+        app.call(|s| s.set_cell_formula(s1.clone(), 0, 1, "=Data!A1+Data!A2".into()))
+            .unwrap();
+        // Sheet1!B2 = =SUM(Data!A1:A2) → 30
+        app.call(|s| s.set_cell_formula(s1.clone(), 1, 1, "=SUM(Data!A1:A2)".into()))
+            .unwrap();
+        let cells = app.view(|s| s.get_cells(s1.clone())).unwrap();
+        let b1 = cells.iter().find(|c| c.row == 0 && c.col == 1).unwrap();
+        let b2 = cells.iter().find(|c| c.row == 1 && c.col == 1).unwrap();
+        assert_eq!(b1.computed_value, "30", "=Data!A1+Data!A2");
+        assert_eq!(b2.computed_value, "30", "=SUM(Data!A1:A2)");
+    }
+
+    #[test]
+    fn cross_sheet_quoted_name_with_space() {
+        let mut app = make_app();
+        app.call(|s| s.init_project("P".into())).unwrap();
+        let s1 = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
+        let s2 = app.call(|s| s.create_sheet("Sheet 2".into())).unwrap();
+        app.call(|s| s.set_cell(s1.clone(), 0, 0, "7".into())).unwrap(); // 'Sheet 1'!A1 = 7
+        // Sheet 2!A1 = ='Sheet 1'!A1 * 2 → 14
+        app.call(|s| s.set_cell_formula(s2.clone(), 0, 0, "='Sheet 1'!A1*2".into()))
+            .unwrap();
+        let cells = app.view(|s| s.get_cells(s2.clone())).unwrap();
+        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
+        assert_eq!(a1.computed_value, "14");
+    }
+
+    #[test]
+    fn cross_sheet_quoted_name_with_apostrophe() {
+        let mut app = make_app();
+        app.call(|s| s.init_project("P".into())).unwrap();
+        // A sheet whose name contains an apostrophe. The frontend qualifies refs
+        // to it as `'Bob''s data'!A1` (Excel/Sheets: internal `'` is doubled).
+        let s1 = app.call(|s| s.create_sheet("Bob's data".into())).unwrap();
+        let s2 = app.call(|s| s.create_sheet("Sheet 2".into())).unwrap();
+        app.call(|s| s.set_cell(s1.clone(), 0, 0, "9".into())).unwrap(); // 'Bob''s data'!A1 = 9
+        // Single ref and a range, both quoting the apostrophe name.
+        app.call(|s| s.set_cell(s1.clone(), 1, 0, "1".into())).unwrap(); // A2 = 1
+        app.call(|s| s.set_cell_formula(s2.clone(), 0, 0, "='Bob''s data'!A1*2".into()))
+            .unwrap();
+        app.call(|s| s.set_cell_formula(s2.clone(), 1, 0, "=SUM('Bob''s data'!A1:A2)".into()))
+            .unwrap();
+        let cells = app.view(|s| s.get_cells(s2.clone())).unwrap();
+        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
+        let a2 = cells.iter().find(|c| c.row == 1 && c.col == 0).unwrap();
+        assert_eq!(a1.computed_value, "18", "='Bob''s data'!A1*2");
+        assert_eq!(a2.computed_value, "10", "=SUM('Bob''s data'!A1:A2)");
+    }
+
+    #[test]
+    fn reference_to_unknown_sheet_is_ref_error() {
+        let mut app = make_app();
+        app.call(|s| s.init_project("P".into())).unwrap();
+        // The default sheet name has a space: "Sheet 1".
+        let s1 = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
+        let s2 = app.call(|s| s.create_sheet("Sheet 2".into())).unwrap();
+        app.call(|s| s.set_cell(s1.clone(), 1, 3, "5".into())).unwrap(); // 'Sheet 1'!D2 = 5
+        // Typo: `Sheet1` (no space) names no existing sheet. This must surface as
+        // #REF!, not a silent 0 that looks like the cells are empty.
+        app.call(|s| s.set_cell_formula(s2.clone(), 0, 0, "=SUM(Sheet1!D2:D6)".into()))
+            .unwrap();
+        // The correctly-quoted name resolves normally.
+        app.call(|s| s.set_cell_formula(s2.clone(), 1, 0, "=SUM('Sheet 1'!D2:D6)".into()))
+            .unwrap();
+        let cells = app.view(|s| s.get_cells(s2.clone())).unwrap();
+        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
+        let a2 = cells.iter().find(|c| c.row == 1 && c.col == 0).unwrap();
+        assert_eq!(a1.computed_value, "#REF!", "unknown sheet name → #REF!");
+        assert_eq!(a2.computed_value, "5", "'Sheet 1'!D2:D6 resolves");
+    }
+
+    #[test]
+    fn renaming_a_sheet_rewrites_references_to_it() {
+        let mut app = make_app();
+        app.call(|s| s.init_project("P".into())).unwrap();
+        let s1 = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
+        let s2 = app.call(|s| s.create_sheet("Sheet 2".into())).unwrap();
+        app.call(|s| s.set_cell(s1.clone(), 0, 0, "10".into())).unwrap(); // 'Sheet 1'!A1 = 10
+        app.call(|s| s.set_cell(s1.clone(), 1, 0, "20".into())).unwrap(); // 'Sheet 1'!A2 = 20
+        app.call(|s| s.set_cell_formula(s2.clone(), 0, 0, "='Sheet 1'!A1+5".into()))
+            .unwrap(); // 15
+        app.call(|s| s.set_cell_formula(s2.clone(), 1, 0, "=SUM('Sheet 1'!A1:A2)".into()))
+            .unwrap(); // 30
+        // Rename the referenced sheet to a simple identifier → references follow
+        // it, re-quoting appropriately (bare, since "Budget" needs no quotes).
+        app.call(|s| s.rename_sheet(s1.clone(), "Budget".into())).unwrap();
+        let cells = app.view(|s| s.get_cells(s2.clone())).unwrap();
+        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
+        let a2 = cells.iter().find(|c| c.row == 1 && c.col == 0).unwrap();
+        assert_eq!(a1.raw_value, "=Budget!A1+5", "single ref follows the rename");
+        assert_eq!(a2.raw_value, "=SUM(Budget!A1:A2)", "range ref follows the rename");
+        assert_eq!(a1.computed_value, "15", "still resolves after rename");
+        assert_eq!(a2.computed_value, "30", "range still resolves after rename");
+    }
+
+    #[test]
+    fn renaming_to_a_name_with_spaces_requotes_references() {
+        let mut app = make_app();
+        app.call(|s| s.init_project("P".into())).unwrap();
+        let s1 = app.call(|s| s.create_sheet("Data".into())).unwrap();
+        let s2 = app.call(|s| s.create_sheet("Main".into())).unwrap();
+        app.call(|s| s.set_cell(s1.clone(), 0, 0, "7".into())).unwrap();
+        app.call(|s| s.set_cell_formula(s2.clone(), 0, 0, "=Data!A1*2".into()))
+            .unwrap(); // bare ref, 14
+        // Rename to a name with a space → the reference must become quoted.
+        app.call(|s| s.rename_sheet(s1.clone(), "Q3 Budget".into())).unwrap();
+        let cells = app.view(|s| s.get_cells(s2.clone())).unwrap();
+        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
+        assert_eq!(a1.raw_value, "='Q3 Budget'!A1*2", "bare ref becomes quoted");
+        assert_eq!(a1.computed_value, "14", "still resolves");
+    }
+
+    #[test]
+    fn renaming_does_not_touch_similarly_prefixed_sheet_names() {
+        let mut app = make_app();
+        app.call(|s| s.init_project("P".into())).unwrap();
+        let s1 = app.call(|s| s.create_sheet("Sheet1".into())).unwrap();
+        let s10 = app.call(|s| s.create_sheet("Sheet10".into())).unwrap();
+        let s2 = app.call(|s| s.create_sheet("Main".into())).unwrap();
+        app.call(|s| s.set_cell(s10.clone(), 0, 0, "3".into())).unwrap();
+        app.call(|s| s.set_cell_formula(s2.clone(), 0, 0, "=Sheet10!A1".into()))
+            .unwrap(); // references Sheet10, not Sheet1
+        // Renaming "Sheet1" must not corrupt a reference to "Sheet10".
+        app.call(|s| s.rename_sheet(s1.clone(), "X".into())).unwrap();
+        let cells = app.view(|s| s.get_cells(s2.clone())).unwrap();
+        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
+        assert_eq!(a1.raw_value, "=Sheet10!A1", "Sheet10 reference untouched");
+        assert_eq!(a1.computed_value, "3");
+    }
+
+    #[test]
+    fn cross_sheet_recompute_propagates() {
+        let mut app = make_app();
+        app.call(|s| s.init_project("P".into())).unwrap();
+        let a = app.call(|s| s.create_sheet("A".into())).unwrap();
+        let b = app.call(|s| s.create_sheet("B".into())).unwrap();
+        app.call(|s| s.set_cell(a.clone(), 0, 0, "5".into())).unwrap(); // A!A1 = 5
+        app.call(|s| s.set_cell_formula(b.clone(), 0, 0, "=A!A1*10".into()))
+            .unwrap(); // B!A1 = 50
+        // Change A!A1 → 8; B!A1 (on the other sheet) must recompute to 80.
+        app.call(|s| s.set_cell(a.clone(), 0, 0, "8".into())).unwrap();
+        let cells = app.view(|s| s.get_cells(b.clone())).unwrap();
+        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
+        assert_eq!(a1.computed_value, "80");
     }
 
     #[test]
