@@ -21,6 +21,7 @@ import { C } from '../theme';
 import { type Cell, type Cursor } from '../hooks/useSpreadsheet';
 import { columnLabel, normalizeRect, type CellCoord, type Rect } from '../spreadsheet/refs';
 import { resolvePoint, type PointAction } from '../spreadsheet/pointing';
+import { formatValue } from '../spreadsheet/format';
 
 const ROWS = 50;
 const COLS = 26; // A–Z
@@ -46,6 +47,7 @@ interface SpreadsheetGridProps {
   onSelectRow: (row: number) => void;
   onEditCell: (row: number, col: number) => void;
   onCommitAndMove: (direction: 'down' | 'right' | 'none') => void;
+  onCellContextMenu?: (row: number, col: number, x: number, y: number) => void;
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -65,6 +67,7 @@ function SpreadsheetGrid({
   onSelectRow,
   onEditCell,
   onCommitAndMove,
+  onCellContextMenu,
 }: SpreadsheetGridProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -320,7 +323,7 @@ function SpreadsheetGrid({
                 const isEditingThis = isSelected && editingValue !== null;
                 const shownValue = isEditingThis
                   ? editingValue
-                  : (cell?.computed_value ?? '');
+                  : formatValue(cell?.computed_value ?? '', cell?.format ?? '');
                 const shownIsFormula = isEditingThis
                   ? editingValue.startsWith('=')
                   : (cell?.raw_value.startsWith('=') ?? false);
@@ -336,6 +339,11 @@ function SpreadsheetGrid({
                     $inRange={inRange && !isSelected}
                     aria-selected={isSelected}
                     role="gridcell"
+                    onContextMenu={(e) => {
+                      if (!onCellContextMenu) return;
+                      e.preventDefault();
+                      onCellContextMenu(row, col, e.clientX, e.clientY);
+                    }}
                     title={cell ? `${columnLabel(col)}${row + 1}: ${cell.raw_value}` : undefined}
                   >
                     <CellValue $isFormula={shownIsFormula}>{shownValue}</CellValue>
