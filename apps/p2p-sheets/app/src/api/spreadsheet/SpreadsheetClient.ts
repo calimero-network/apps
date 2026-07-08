@@ -13,6 +13,7 @@ export interface Cell {
   col: number;
   raw_value: string;
   computed_value: string;
+  format: string;
   updated_at: number;
 }
 
@@ -23,6 +24,7 @@ export interface CellData {
   col: number;
   raw_value: string;
   computed_value: string;
+  format: string;
   updated_at: number;
 }
 
@@ -206,6 +208,14 @@ export class SpreadsheetClient {
    */
   public async setCellFormula(params: { sheet_id: string; row: number; col: number; formula: string }): Promise<string> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_cell_formula', argsJson: params, executorPublicKey: this._executorPublicKey });
+    return response as string;
+  }
+
+  /**
+   * set_cell_format
+   */
+  public async setCellFormat(params: { sheet_id: string; row: number; col: number; format: string }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_cell_format', argsJson: params, executorPublicKey: this._executorPublicKey });
     return response as string;
   }
 
