@@ -155,9 +155,6 @@ const Tab = styled.div<{ $active: boolean }>`
   transition: background 0.15s, color 0.15s;
   user-select: none;
 
-  /* Reveal the delete button on hover */
-  &:hover .delete-btn { opacity: 1; }
-
   &:hover {
     background: ${(p) => (p.$active ? C.paper : C.paper2)};
     color: ${C.ink};
@@ -196,12 +193,14 @@ const DeleteBtn = styled.button`
   border-radius: 4px;
   cursor: pointer;
   padding: 0;
-  opacity: 0;
+  /* Always faintly visible so "delete" is discoverable; brightens on hover. */
+  opacity: 0.5;
   flex-shrink: 0;
   transition: opacity 0.15s, background 0.12s, color 0.12s;
   margin-left: 2px;
 
   &:hover {
+    opacity: 1;
     background: rgba(220, 38, 38, 0.12);
     color: ${C.danger};
   }

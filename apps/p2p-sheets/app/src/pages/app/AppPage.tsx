@@ -12,9 +12,9 @@
  * FunctionHelpPanel slides in from the right as an overlay.
  *
  * Three states:
- *  1. Loading — null render (wait for auth probe)
- *  2. Welcome gate (!ws.ready && !ws.loading) — create or join
- *  3. Workspace ready — full spreadsheet UI
+ *  1. Workspace picker (!ws.contextId) — open / create / join a workspace
+ *  2. Opening (ws.contextId set, !ws.ready) — identity resolving
+ *  3. Workspace open — full spreadsheet UI (with ← back to the picker)
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
@@ -25,6 +25,8 @@ import { useWorkspace } from '../../hooks/useWorkspace';
 import { useSpreadsheet } from '../../hooks/useSpreadsheet';
 import { describeError } from '../../utils/errors';
 import { cellRef } from '../../components/FormulaBar';
+import { isFormula, insertReference, type AutoRef } from '../../spreadsheet/formulaEdit';
+import { normalizeRect, sheetPrefix, type CellCoord, type Rect } from '../../spreadsheet/refs';
 import FormulaBar from '../../components/FormulaBar';
 import SpreadsheetGrid from '../../components/SpreadsheetGrid';
 import SheetTabs from '../../components/SheetTabs';
@@ -47,39 +49,53 @@ export default function AppPage() {
   const [showInvite, setShowInvite] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
 
-  // ── Project bootstrap flow ──────────────────────────────────────
+  // ── New-workspace bootstrap ─────────────────────────────────────
   const [projectName, setProjectName] = useState('Untitled Spreadsheet');
 
-  // After bootstrap completes, initProject must be called with the project name.
-  // We store the pending name here; a useEffect fires it once ws.ready transitions
-  // to true (the client is available by then, so ss.initProject works).
-  const [pendingInitName, setPendingInitName] = useState<string | null>(null);
-  const wasReadyRef = useRef(false);
+  // A freshly-created workspace must be initialised with its project name once
+  // its context is ready (the client is available by then). `ws.pendingInitName`
+  // is set by createWorkspace and cleared here after init runs, so it fires once
+  // per newly-created workspace and never when opening an existing one.
   const initProjectRef = useRef(ss.initProject);
   useEffect(() => { initProjectRef.current = ss.initProject; });
+  const initedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (ws.ready && !wasReadyRef.current && pendingInitName) {
-      wasReadyRef.current = true;
-      const name = pendingInitName;
-      setPendingInitName(null);
+    if (ws.ready && ws.contextId && ws.pendingInitName && initedRef.current !== ws.contextId) {
+      initedRef.current = ws.contextId;
+      const name = ws.pendingInitName;
+      ws.clearPendingInit();
       void initProjectRef.current(name);
-    } else if (ws.ready) {
-      wasReadyRef.current = true;
     }
-  }, [ws.ready, pendingInitName]);
+  }, [ws.ready, ws.contextId, ws.pendingInitName, ws]);
 
   // ── Spreadsheet state ───────────────────────────────────────────
   const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
-  const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null);
+  const [selectedCell, setSelectedCell] = useState<CellCoord | null>(null);
+  const [selectionRange, setSelectionRange] = useState<Rect | null>(null);
   const [formulaInput, setFormulaInput] = useState('');
   const [isDirty, setIsDirty] = useState(false);
+  // Edit mode: true while actively editing the selected cell (entered by typing,
+  // F2, double-click, or clicking into the formula bar). Distinct from mere
+  // selection — that's what lets a plain click navigate but a click while
+  // editing a formula insert a reference.
+  const [editing, setEditing] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const formulaInputRef = useRef<HTMLInputElement>(null);
+  // Marks the reference the last point-click inserted, so the next click can
+  // replace it (Sheets behaviour: click A1 then B2 → `=B2`, not `=A1B2`).
+  const autoRefRef = useRef<AutoRef | undefined>(undefined);
+  // The cell whose formula is being edited (its "home"). Stays fixed while you
+  // browse other sheet tabs to point-pick cells, so cross-sheet refs insert and
+  // the commit lands back on the home cell. Null when not editing.
+  const [editAnchor, setEditAnchor] = useState<{ sheetId: string; row: number; col: number } | null>(null);
 
-  // Point mode: active while editing a formula (a dirty cell whose value starts
-  // with `=`). In this mode clicking/dragging cells inserts their reference into
-  // the formula instead of moving the selection — standard spreadsheet flow.
-  const isEditingFormula = isDirty && formulaInput.trimStart().startsWith('=');
+  // Point mode: active while editing a formula. In this mode clicking/dragging
+  // cells (or headers) inserts their reference into the formula instead of
+  // moving the selection — standard spreadsheet flow.
+  const pointMode = editing && isFormula(formulaInput);
+  // While point-picking on a sheet other than the formula's home sheet, refs
+  // are qualified with that sheet's name (`Data!A1`).
+  const pickingForeignSheet = pointMode && editAnchor != null && editAnchor.sheetId !== activeSheetId;
 
   // Auto-select the first sheet when sheets load / change
   useEffect(() => {
@@ -96,20 +112,32 @@ export default function AppPage() {
   // auto-created / externally-provisioned context), leaving it sheetless. When
   // the workspace is ready, finished its initial load, and is genuinely empty
   // (no sheets AND no cells — so we don't race a joiner mid-sync into creating
-  // a duplicate), create one default sheet, once per session.
-  const ensuredDefaultSheetRef = useRef(false);
+  // a duplicate), create one default sheet, once per opened workspace.
+  const ensuredDefaultSheetRef = useRef<string | null>(null);
   useEffect(() => {
     if (
       ss.ready &&
       ss.loaded && // the first fetch has resolved — empty is authoritative, not "not-yet-loaded"
       ss.sheets.length === 0 &&
       ss.cells.length === 0 &&
-      !ensuredDefaultSheetRef.current
+      ws.contextId &&
+      ensuredDefaultSheetRef.current !== ws.contextId
     ) {
-      ensuredDefaultSheetRef.current = true;
+      ensuredDefaultSheetRef.current = ws.contextId;
       void ss.createSheet('Sheet 1');
     }
-  }, [ss.ready, ss.loaded, ss.sheets.length, ss.cells.length, ss]);
+  }, [ss.ready, ss.loaded, ss.sheets.length, ss.cells.length, ss, ws.contextId]);
+
+  // Reset per-workspace view state when switching workspaces.
+  useEffect(() => {
+    setActiveSheetId(null);
+    setSelectedCell(null);
+    setSelectionRange(null);
+    setFormulaInput('');
+    setIsDirty(false);
+    setEditing(false);
+    setEditAnchor(null);
+  }, [ws.contextId]);
 
   // Sync formula bar when selected cell or cells data changes
   const prevCellRef = useRef<string | null>(null);
@@ -117,6 +145,10 @@ export default function AppPage() {
     const key = selectedCell ? `${activeSheetId}:${selectedCell.row}-${selectedCell.col}` : null;
     if (key === prevCellRef.current) return;
     prevCellRef.current = key;
+
+    // Mid-edit the formula text is authoritative — don't let a sheet/cell key
+    // change (e.g. switching tabs to point-pick a cross-sheet ref) overwrite it.
+    if (editing) return;
 
     if (!selectedCell || !activeSheetId) {
       setFormulaInput('');
@@ -136,18 +168,51 @@ export default function AppPage() {
   // ── Commit current cell ─────────────────────────────────────────
   const commitCellRef = useRef<(() => Promise<void>) | null>(null);
   const commitCell = useCallback(async () => {
-    if (!selectedCell || !activeSheetId || !isDirty) return;
+    // The formula belongs to its home cell (editAnchor) even if you're viewing
+    // another sheet to point-pick; otherwise it's the plain selected cell.
+    const target =
+      editAnchor ??
+      (selectedCell && activeSheetId
+        ? { sheetId: activeSheetId, row: selectedCell.row, col: selectedCell.col }
+        : null);
+    if (!target || !isDirty) return;
     const value = formulaInput;
     if (!value.trim()) {
-      await ss.clearCell(activeSheetId, selectedCell.row, selectedCell.col);
+      await ss.clearCell(target.sheetId, target.row, target.col);
     } else {
-      await ss.setCell(activeSheetId, selectedCell.row, selectedCell.col, value);
+      await ss.setCell(target.sheetId, target.row, target.col, value);
     }
     setIsDirty(false);
-  }, [selectedCell, activeSheetId, isDirty, formulaInput, ss]);
+    setEditing(false);
+    setEditAnchor(null);
+    autoRefRef.current = undefined;
+  }, [editAnchor, selectedCell, activeSheetId, isDirty, formulaInput, ss]);
 
   // Keep ref current so SpreadsheetGrid can call it
   commitCellRef.current = commitCell;
+
+  // Focus the formula bar after a selection so you can type immediately
+  // (autofocus-on-select) without entering edit mode.
+  const focusFormulaBar = useCallback(() => {
+    requestAnimationFrame(() => {
+      const el = formulaInputRef.current;
+      if (el && !el.disabled) {
+        el.focus();
+        const len = el.value.length;
+        el.setSelectionRange(len, len);
+      }
+    });
+  }, []);
+
+  // Pin the formula's home cell the first time an edit begins, so browsing to
+  // another sheet to point-pick keeps the formula anchored there. No-op once set.
+  const ensureEditAnchor = useCallback(() => {
+    if (activeSheetId && selectedCell) {
+      setEditAnchor((prev) =>
+        prev ?? { sheetId: activeSheetId, row: selectedCell.row, col: selectedCell.col },
+      );
+    }
+  }, [activeSheetId, selectedCell]);
 
   // ── Cell selection ──────────────────────────────────────────────
   const handleSelectCell = useCallback(
@@ -157,11 +222,68 @@ export default function AppPage() {
         await commitCellRef.current?.();
       }
       setSelectedCell({ row, col });
+      setSelectionRange(null);
+      setEditing(false);
+      setEditAnchor(null);
+      autoRefRef.current = undefined;
+      focusFormulaBar();
       if (activeSheetId) {
         void ss.updateCursor(activeSheetId, row, col);
       }
     },
-    [isDirty, selectedCell, activeSheetId, ss],
+    [isDirty, selectedCell, activeSheetId, ss, focusFormulaBar],
+  );
+
+  // Drag-select a rectangular range; the focus (active) cell is the drag end.
+  const handleSelectRange = useCallback(
+    (a: CellCoord, b: CellCoord) => {
+      setSelectedCell(b);
+      setSelectionRange(normalizeRect(a, b));
+      setEditing(false);
+      setEditAnchor(null);
+      autoRefRef.current = undefined;
+    },
+    [],
+  );
+
+  // Whole-column / whole-row selection from a header click.
+  const handleSelectColumn = useCallback(
+    async (col: number) => {
+      if (isDirty && selectedCell && activeSheetId) await commitCellRef.current?.();
+      setSelectedCell({ row: 0, col });
+      setSelectionRange({ top: 0, left: col, bottom: ROWS - 1, right: col });
+      setEditing(false);
+      setEditAnchor(null);
+      autoRefRef.current = undefined;
+      focusFormulaBar();
+    },
+    [isDirty, selectedCell, activeSheetId, focusFormulaBar],
+  );
+  const handleSelectRow = useCallback(
+    async (row: number) => {
+      if (isDirty && selectedCell && activeSheetId) await commitCellRef.current?.();
+      setSelectedCell({ row, col: 0 });
+      setSelectionRange({ top: row, left: 0, bottom: row, right: COLS - 1 });
+      setEditing(false);
+      setEditAnchor(null);
+      autoRefRef.current = undefined;
+      focusFormulaBar();
+    },
+    [isDirty, selectedCell, activeSheetId, focusFormulaBar],
+  );
+
+  // Double-click / F2: enter edit mode on a cell and focus the formula bar.
+  const handleEditCell = useCallback(
+    (row: number, col: number) => {
+      const already = selectedCell?.row === row && selectedCell?.col === col;
+      if (!already) setSelectedCell({ row, col });
+      setSelectionRange(null);
+      setEditing(true);
+      if (activeSheetId) setEditAnchor({ sheetId: activeSheetId, row, col });
+      autoRefRef.current = undefined;
+      requestAnimationFrame(() => formulaInputRef.current?.focus());
+    },
+    [selectedCell, activeSheetId],
   );
 
   // Commit + move (Enter = down, Tab = right)
@@ -180,51 +302,83 @@ export default function AppPage() {
   const handleFormulaChange = useCallback((v: string) => {
     setFormulaInput(v);
     setIsDirty(true);
-  }, []);
+    setEditing(true);
+    ensureEditAnchor();
+    // Typing breaks the point-mode replace chain — the next clicked ref should
+    // insert at the caret, not replace the previously-inserted one.
+    autoRefRef.current = undefined;
+  }, [ensureEditAnchor]);
+
+  // Clicking into the formula bar begins editing (so a subsequent cell click
+  // inserts a reference rather than navigating).
+  const handleBeginEdit = useCallback(() => {
+    setEditing(true);
+    ensureEditAnchor();
+  }, [ensureEditAnchor]);
 
   const handleFormulaCommit = useCallback(async () => {
+    const home = editAnchor;
     await commitCellRef.current?.();
+    // If we wandered onto another sheet to point-pick, snap back to the home
+    // sheet so the committed cell and the post-commit "move down" are visible.
+    if (home && home.sheetId !== activeSheetId) setActiveSheetId(home.sheetId);
     // Move down after commit via formula bar Enter
     setSelectedCell((prev) =>
       prev && prev.row < ROWS - 1 ? { row: prev.row + 1, col: prev.col } : prev,
     );
-  }, []);
+    setSelectionRange(null);
+  }, [editAnchor, activeSheetId]);
 
   const handleFormulaCancel = useCallback(() => {
-    // Revert to stored value
-    if (!selectedCell || !activeSheetId) return;
+    const home = editAnchor;
+    setEditing(false);
+    setEditAnchor(null);
+    autoRefRef.current = undefined;
+    if (home && home.sheetId !== activeSheetId) setActiveSheetId(home.sheetId);
+    // Revert to stored value at the home cell
+    const sheetId = home?.sheetId ?? activeSheetId;
+    if (!selectedCell || !sheetId) return;
     const cell = ss.cells.find(
       (c) =>
-        c.sheet_id === activeSheetId &&
+        c.sheet_id === sheetId &&
         c.row === selectedCell.row &&
         c.col === selectedCell.col,
     );
     setFormulaInput(cell?.raw_value ?? '');
     setIsDirty(false);
-  }, [selectedCell, activeSheetId, ss.cells]);
+  }, [editAnchor, selectedCell, activeSheetId, ss.cells]);
 
   // Insert a cell/range reference into the formula at the caret (point mode).
   const insertRef = useCallback(
     (ref: string) => {
       const el = formulaInputRef.current;
       const cur = formulaInput;
-      const start = el?.selectionStart ?? cur.length;
-      const end = el?.selectionEnd ?? start;
-      const next = cur.slice(0, start) + ref + cur.slice(end);
-      setFormulaInput(next);
+      const selStart = el?.selectionStart ?? cur.length;
+      const selEnd = el?.selectionEnd ?? selStart;
+      // When point-picking on a sheet other than the formula's home, qualify the
+      // reference with that sheet's name (`Data!A1`, `'Q3 Budget'!B2:C4`).
+      const qualified = pickingForeignSheet
+        ? `${sheetPrefix(ss.sheets.find((s) => s.id === activeSheetId)?.name ?? '')}${ref}`
+        : ref;
+      const res = insertReference(
+        { text: cur, selStart, selEnd, autoRef: autoRefRef.current },
+        qualified,
+      );
+      autoRefRef.current = res.autoRef;
+      setFormulaInput(res.text);
       setIsDirty(true);
+      setEditing(true);
       // Restore focus and place the caret just after the inserted reference so
       // the user can keep typing (e.g. an operator, or `)`).
       requestAnimationFrame(() => {
         const e2 = formulaInputRef.current;
         if (e2) {
           e2.focus();
-          const pos = start + ref.length;
-          e2.setSelectionRange(pos, pos);
+          e2.setSelectionRange(res.caret, res.caret);
         }
       });
     },
-    [formulaInput],
+    [formulaInput, pickingForeignSheet, ss.sheets, activeSheetId],
   );
 
   // ── Sheet management ────────────────────────────────────────────
@@ -235,13 +389,27 @@ export default function AppPage() {
 
   const handleSelectSheet = useCallback(
     async (id: string) => {
+      // While editing a formula, switching tabs is a point-pick move: keep the
+      // edit (formula text, home anchor, formula-bar focus) and just view the
+      // other sheet so its cells can be clicked in as `Sheet!A1` references.
+      if (pointMode) {
+        ensureEditAnchor();
+        setActiveSheetId(id);
+        setSelectionRange(null);
+        requestAnimationFrame(() => formulaInputRef.current?.focus());
+        return;
+      }
       if (isDirty) await commitCellRef.current?.();
       setActiveSheetId(id);
       setSelectedCell(null);
+      setSelectionRange(null);
       setFormulaInput('');
       setIsDirty(false);
+      setEditing(false);
+      setEditAnchor(null);
+      autoRefRef.current = undefined;
     },
-    [isDirty],
+    [isDirty, pointMode, ensureEditAnchor],
   );
 
   // ── Download ────────────────────────────────────────────────────
@@ -278,11 +446,10 @@ export default function AppPage() {
   //  RENDER
   // ════════════════════════════════════════════════════════════════
 
-  // 1. Loading
-  if (ws.loading) return null;
-
-  // 2. Welcome gate
-  if (!ws.ready) {
+  // 1. Workspace picker — shown whenever no workspace is open. Lists every
+  //    workspace on this node and lets you open, create, or join one.
+  if (!ws.contextId) {
+    const listLoading = ws.loading && ws.workspaces.length === 0;
     return (
       <FullCenter>
         <WelcomeCard>
@@ -293,14 +460,35 @@ export default function AppPage() {
               <path d="M3 9h18M9 21V9" />
             </svg>
           </WelcomeIcon>
-          <h2>Welcome to {APP_DISPLAY_NAME}</h2>
+          <h2>{APP_DISPLAY_NAME}</h2>
           <p>
-            Create a peer-to-peer spreadsheet workspace, or join one you&rsquo;ve been
+            Open a workspace, create a new one, or join one you&rsquo;ve been
             invited to. All data lives on your node — no central server.
           </p>
 
+          {ws.workspaces.length > 0 && (
+            <WorkspaceList aria-label="Your workspaces">
+              {ws.workspaces.map((w) => (
+                <WorkspaceRow
+                  key={w.contextId}
+                  data-testid="workspace-item"
+                  onClick={() => ws.openWorkspace(w.contextId)}
+                  title={`Open ${w.name}`}
+                >
+                  <WorkspaceMeta>
+                    <WorkspaceName>{w.name}</WorkspaceName>
+                    <WorkspaceId>{w.contextId.slice(0, 10)}…</WorkspaceId>
+                  </WorkspaceMeta>
+                  <OpenChevron aria-hidden="true">→</OpenChevron>
+                </WorkspaceRow>
+              ))}
+            </WorkspaceList>
+          )}
+
+          {listLoading && <p style={{ margin: '4px 0 16px' }}>Loading workspaces…</p>}
+
           <label htmlFor="project-name" style={{ display: 'block', textAlign: 'left', marginBottom: 6, fontSize: 13, fontWeight: 600, color: C.muted }}>
-            Project name
+            New workspace name
           </label>
           <ProjectNameInput
             id="project-name"
@@ -313,11 +501,8 @@ export default function AppPage() {
           <ButtonRow>
             <PrimaryBtn
               data-testid="action-init_project"
-              disabled={!projectName.trim()}
-              onClick={() => {
-                setPendingInitName(projectName.trim());
-                void ws.bootstrap();
-              }}
+              disabled={!projectName.trim() || ws.loading}
+              onClick={() => void ws.createWorkspace(projectName.trim())}
             >
               Create workspace
             </PrimaryBtn>
@@ -339,14 +524,36 @@ export default function AppPage() {
     );
   }
 
+  // 2. A workspace is opening — its context identity is still resolving.
+  if (!ws.ready) {
+    return (
+      <FullCenter>
+        <WelcomeCard>
+          <h2>Opening workspace…</h2>
+          <p>Resolving your identity in this context.</p>
+          <SecondaryBtn onClick={ws.leaveWorkspace}>← Back to workspaces</SecondaryBtn>
+        </WelcomeCard>
+      </FullCenter>
+    );
+  }
+
   // 3. Full spreadsheet view
   const selRef = selectedCell ? cellRef(selectedCell.row, selectedCell.col) : null;
+  const activeWorkspaceName =
+    ws.workspaces.find((w) => w.contextId === ws.contextId)?.name ?? APP_DISPLAY_NAME;
 
   return (
     <AppShell>
       {/* ── Toolbar ──────────────────────────────────────────────── */}
       <Toolbar>
         <Brand>
+          <BackBtn
+            onClick={async () => { if (isDirty) await commitCellRef.current?.(); ws.leaveWorkspace(); }}
+            title="Back to workspaces"
+            aria-label="Back to workspaces"
+          >
+            ←
+          </BackBtn>
           <GridIcon aria-hidden="true">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -354,7 +561,7 @@ export default function AppPage() {
               <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
             </svg>
           </GridIcon>
-          <AppName>{APP_DISPLAY_NAME}</AppName>
+          <AppName>{activeWorkspaceName}</AppName>
         </Brand>
 
         <ToolbarActions>
@@ -423,6 +630,7 @@ export default function AppPage() {
         onChange={handleFormulaChange}
         onCommit={handleFormulaCommit}
         onCancel={handleFormulaCancel}
+        onBeginEdit={handleBeginEdit}
         functions={ss.functions}
         disabled={!activeSheetId}
         inputRef={formulaInputRef}
@@ -455,11 +663,16 @@ export default function AppPage() {
         sheetId={activeSheetId}
         cells={ss.cells}
         cursors={ss.cursors}
-        selectedCell={selectedCell}
-        editingValue={isDirty ? formulaInput : null}
-        pointMode={isEditingFormula}
+        selectedCell={pickingForeignSheet ? null : selectedCell}
+        selectionRange={pickingForeignSheet ? null : selectionRange}
+        editingValue={pickingForeignSheet ? null : isDirty ? formulaInput : null}
+        pointMode={pointMode}
         onPointRef={insertRef}
         onSelectCell={handleSelectCell}
+        onSelectRange={handleSelectRange}
+        onSelectColumn={handleSelectColumn}
+        onSelectRow={handleSelectRow}
+        onEditCell={handleEditCell}
         onCommitAndMove={handleCommitAndMove}
       />
 
@@ -526,6 +739,23 @@ const Brand = styled.div`
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+`;
+
+const BackBtn = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  font-size: 17px;
+  line-height: 1;
+  color: ${C.muted};
+  background: transparent;
+  border: 1px solid ${C.line};
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.14s, color 0.14s;
+  &:hover { background: ${C.paper2}; color: ${C.ink}; }
 `;
 
 const GridIcon = styled.div`
@@ -678,6 +908,65 @@ const WelcomeCard = styled.div`
     margin: 0 0 24px;
     line-height: 1.6;
   }
+`;
+
+const WorkspaceList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 20px;
+  max-height: 260px;
+  overflow-y: auto;
+  text-align: left;
+`;
+
+const WorkspaceRow = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  background: ${C.paper};
+  border: 1px solid ${C.line};
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.14s, border-color 0.14s, transform 0.12s;
+
+  &:hover {
+    background: ${C.paper2};
+    border-color: ${C.green};
+    transform: translateY(-1px);
+  }
+`;
+
+const WorkspaceMeta = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+`;
+
+const WorkspaceName = styled.span`
+  font-size: 14px;
+  font-weight: 600;
+  color: ${C.ink};
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+const WorkspaceId = styled.span`
+  font-size: 11.5px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  color: ${C.mutedSoft};
+`;
+
+const OpenChevron = styled.span`
+  font-size: 16px;
+  color: ${C.green};
+  flex-shrink: 0;
 `;
 
 const WelcomeIcon = styled.div`

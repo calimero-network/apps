@@ -30,6 +30,9 @@ interface FormulaBarProps {
   onChange: (v: string) => void;
   onCommit: () => void;
   onCancel: () => void;
+  /** Fired when the user actively begins editing (clicks into the input), so
+   *  the page can enter edit mode and route subsequent cell clicks as refs. */
+  onBeginEdit?: () => void;
   functions: FunctionDef[];
   disabled?: boolean;
   /** Shared ref to the underlying input, so the page can read/set the caret
@@ -43,6 +46,7 @@ export default function FormulaBar({
   onChange,
   onCommit,
   onCancel,
+  onBeginEdit,
   functions,
   disabled,
   inputRef: externalInputRef,
@@ -121,6 +125,7 @@ export default function FormulaBar({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
+          onMouseDown={() => onBeginEdit?.()}
           onBlur={() => setAcOpen(false)}
           disabled={disabled || !selectedCell}
           placeholder={
