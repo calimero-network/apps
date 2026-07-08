@@ -234,13 +234,13 @@ Expected: a `setCellFormat(params: { … format: string })` method and `format: 
 Run: `(cd app && npx tsc --noEmit 2>&1 | head -20)`
 Expected: no output (clean).
 
-- [ ] **Step 6: Commit the regenerated artifacts**
+- [ ] **Step 6: Commit the regenerated client**
 
-The `.mpk` is a gitignored build artifact — do NOT `git add` it (that errors). Commit only the ABI and generated client:
+Both the `.mpk` AND `logic/crates/*/res/abi.json` are gitignored build artifacts ("never commit; they bloat the scaffold") — do NOT `git add` them (that errors). They regenerate on build. Commit only the tracked generated client:
 
 ```bash
-git add logic/crates/spreadsheet/res/abi.json app/src/api/spreadsheet/SpreadsheetClient.ts
-git commit -m "chore: regenerate ABI + client for set_cell_format
+git add app/src/api/spreadsheet/SpreadsheetClient.ts
+git commit -m "chore: regenerate client for set_cell_format
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
