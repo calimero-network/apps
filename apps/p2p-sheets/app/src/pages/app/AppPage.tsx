@@ -34,6 +34,7 @@ import FunctionHelpPanel from '../../components/FunctionHelpPanel';
 import InviteModal from '../../components/InviteModal';
 import JoinModal from '../../components/JoinModal';
 import ContextMenu from '../../components/ContextMenu';
+import { formatValue } from '../../spreadsheet/format';
 
 const COLS = 26;
 const ROWS = 50;
@@ -474,7 +475,9 @@ export default function AppPage() {
           const rowData: string[] = [];
           for (let c = 0; c <= maxCol; c++) {
             const cell = sheetCells.find((x) => x.row === r && x.col === c);
-            const val = cell ? cell.computed_value.replace(/"/g, '""') : '';
+            const val = cell
+              ? formatValue(cell.computed_value, cell.format).replace(/"/g, '""')
+              : '';
             rowData.push(`"${val}"`);
           }
           lines.push(rowData.join(','));
