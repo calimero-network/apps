@@ -85,6 +85,7 @@ export interface UseSpreadsheetReturn {
   // Cell mutations
   setCell: (sheetId: string, row: number, col: number, rawValue: string) => Promise<void>;
   clearCell: (sheetId: string, row: number, col: number) => Promise<void>;
+  setCellFormat: (sheetId: string, row: number, col: number, format: string) => Promise<void>;
   // Cursor (fire-and-forget)
   updateCursor: (sheetId: string, row: number, col: number) => Promise<void>;
   // Export
@@ -226,6 +227,15 @@ export function useSpreadsheet({
     await refresh();
   }, [client, refresh]);
 
+  const setCellFormat = useCallback(
+    async (sheetId: string, row: number, col: number, format: string) => {
+      if (!client) return;
+      await client.setCellFormat({ sheet_id: sheetId, row, col, format });
+      await refresh();
+    },
+    [client, refresh],
+  );
+
   // Fire-and-forget cursor broadcast — never block the UI waiting for it
   const updateCursor = useCallback(
     async (sheetId: string, row: number, col: number) => {
@@ -264,6 +274,7 @@ export function useSpreadsheet({
     deleteSheet,
     setCell,
     clearCell,
+    setCellFormat,
     updateCursor,
     exportAll,
     searchFunctions,
