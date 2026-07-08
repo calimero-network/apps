@@ -849,7 +849,10 @@ mod formula {
     /// use 1-indexed rows and A-Z columns (e.g. `A1` → row 0, col 0).
     pub fn evaluate(formula: &str, get_value: impl Fn(Option<&str>, u32, u32) -> Option<String>) -> String {
         let expr = formula.trim().strip_prefix('=').unwrap_or(formula).trim();
-        eval_to_string(expr, &get_value)
+        // `$` marks an absolute reference (a fill/copy anchor). It has no effect
+        // on evaluation, so strip it and `=$A$1` evaluates exactly like `=A1`.
+        let expr = expr.replace('$', "");
+        eval_to_string(&expr, &get_value)
     }
 
     /// Evaluate an expression to its display string.
@@ -1562,6 +1565,24 @@ mod tests {
         let cells = app.view(|s| s.get_cells(sid)).unwrap();
         let formula_cell = cells.iter().find(|c| c.id == fid).unwrap();
         assert_eq!(formula_cell.computed_value, "60");
+    }
+
+    #[test]
+    fn absolute_refs_evaluate_like_relative() {
+        let mut app = make_app();
+        app.call(|s| s.init_project("P".into())).unwrap();
+        let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
+        app.call(|s| s.set_cell(sid.clone(), 0, 0, "10".into())).unwrap(); // A1 = 10
+        app.call(|s| s.set_cell(sid.clone(), 1, 0, "20".into())).unwrap(); // A2 = 20
+        // $ anchors are evaluation no-ops: these must all compute like the bare refs.
+        app.call(|s| s.set_cell_formula(sid.clone(), 0, 1, "=$A$1".into())).unwrap();     // B1
+        app.call(|s| s.set_cell_formula(sid.clone(), 1, 1, "=A$1+$A2".into())).unwrap();   // B2
+        app.call(|s| s.set_cell_formula(sid.clone(), 2, 1, "=SUM($A$1:$A$2)".into())).unwrap(); // B3
+        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
+        let get = |r: u32, c: u32| cells.iter().find(|x| x.row == r && x.col == c).unwrap().computed_value.clone();
+        assert_eq!(get(0, 1), "10", "=$A$1");
+        assert_eq!(get(1, 1), "30", "=A$1+$A2");
+        assert_eq!(get(2, 1), "30", "=SUM($A$1:$A$2)");
     }
 
     #[test]
