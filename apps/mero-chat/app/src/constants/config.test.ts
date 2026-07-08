@@ -1,10 +1,38 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  getApplicationId,
   getContextMemberIdentity,
   getStoredGroupAlias,
   setContextMemberIdentity,
   setStoredGroupAlias,
 } from "./config";
+
+describe("getApplicationId", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    window.history.replaceState({}, "", "/");
+  });
+
+  it("prefers the app-id URL hash param and persists it", () => {
+    window.history.replaceState({}, "", "/#app-id=hash-app-id");
+
+    expect(getApplicationId()).toBe("hash-app-id");
+    expect(localStorage.getItem("calimero-application-id")).toBe("hash-app-id");
+  });
+
+  it("falls back to the stored id once the SSO bootstrap strips the hash", () => {
+    // Desktop launch: main.tsx persists the hash app-id, then the hash is
+    // stripped. A live URL read must NOT fall through to build-time defaults
+    // (that made channel creation target the wrong application on the node).
+    localStorage.setItem("calimero-application-id", "desktop-app-id");
+
+    expect(getApplicationId()).toBe("desktop-app-id");
+  });
+
+  it("falls back to build defaults when neither URL nor storage have an id", () => {
+    expect(getApplicationId()).not.toBe("");
+  });
+});
 
 describe("per-context member identity storage", () => {
   beforeEach(() => {

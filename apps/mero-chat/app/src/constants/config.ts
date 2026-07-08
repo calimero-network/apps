@@ -8,10 +8,36 @@ const getUrlParam = (name: string): string => {
   return hashParams.get(name)?.trim() || "";
 };
 
-/** Application ID: URL param `app-id` > env VITE_APPLICATION_ID > fallback */
+const APP_ID_STORAGE_KEY = "calimero-application-id";
+
+/**
+ * Application ID: URL param `app-id` > stored id > env VITE_APPLICATION_ID > fallback.
+ *
+ * The stored id (persisted by main.tsx before the SSO bootstrap strips the
+ * URL hash) must take precedence over the build-time defaults: the desktop
+ * passes `app-id` in the hash, and once the hash is gone a live URL read
+ * comes back empty. Falling through to VITE/hardcoded here made channel
+ * creation target whatever app those defaults happen to name on the node
+ * (e.g. mero-meet), whose contract then rejects chat's init args.
+ */
 export function getApplicationId(): string {
+  const fromUrl = getUrlParam("app-id");
+  if (fromUrl) {
+    try {
+      localStorage.setItem(APP_ID_STORAGE_KEY, fromUrl);
+    } catch {
+      /* best-effort — storage may be unavailable */
+    }
+    return fromUrl;
+  }
+  let stored = "";
+  try {
+    stored = localStorage.getItem(APP_ID_STORAGE_KEY)?.trim() || "";
+  } catch {
+    /* ignore blocked storage */
+  }
   return (
-    getUrlParam("app-id") ||
+    stored ||
     import.meta.env.VITE_APPLICATION_ID ||
     "37poFMF4VaNgfyeaKdGbiacWsCjySJxrtgakT8EFyVL1"
   );
