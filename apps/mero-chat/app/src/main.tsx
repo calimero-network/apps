@@ -111,18 +111,21 @@ function persistAuthHashOnLoad(): { accessToken: string; refreshToken: string; n
 
 const CALIMERO_APP_ID_KEY = "calimero-application-id";
 
-function getExplicitApplicationId(): string {
+// Persist ONLY a URL-provided app-id (desktop SSO hash / explicit link).
+// The VITE_APPLICATION_ID build default must never be written to storage:
+// a misconfigured build env would poison the stored id for every later
+// session, and getApplicationId() (constants/config.ts) reads the stored
+// value ahead of the build defaults.
+function getUrlApplicationId(): string {
   const fromSearch = new URLSearchParams(window.location.search).get("app-id")?.trim();
   if (fromSearch) return fromSearch;
-  const fromHash = new URLSearchParams(window.location.hash.slice(1)).get("app-id")?.trim();
-  if (fromHash) return fromHash;
-  return (import.meta.env.VITE_APPLICATION_ID as string | undefined)?.trim() || "";
+  return new URLSearchParams(window.location.hash.slice(1)).get("app-id")?.trim() || "";
 }
 
-const explicitApplicationId = getExplicitApplicationId();
+const urlApplicationId = getUrlApplicationId();
 // Always overwrite — hash app-id must win over any stale value from a previous session.
-if (explicitApplicationId) {
-  localStorage.setItem(CALIMERO_APP_ID_KEY, explicitApplicationId);
+if (urlApplicationId) {
+  localStorage.setItem(CALIMERO_APP_ID_KEY, urlApplicationId);
 }
 
 // Dev-only: when running under `make start`, dev-invite.sh writes
