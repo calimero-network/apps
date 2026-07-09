@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { shiftFormula } from './shift';
+import { shiftFormula, qualifyFormula } from './shift';
 
 describe('shiftFormula', () => {
   it('shifts relative refs by the offset', () => {
@@ -46,5 +46,44 @@ describe('shiftFormula', () => {
     // ...while real refs around the string still shift.
     expect(shiftFormula('=IF(A1>0,"Q1",A1)', 1, 0)).toBe('=IF(A2>0,"Q1",A2)');
     expect(shiftFormula('=A1&" FY2024"', 0, 1)).toBe('=B1&" FY2024"');
+  });
+});
+
+describe('qualifyFormula', () => {
+  it('qualifies a standalone ref with the source sheet', () => {
+    expect(qualifyFormula('=A9', 'Sheet1')).toBe('=Sheet1!A9');
+  });
+
+  it('qualifies a range once, at the start (end inherits the sheet)', () => {
+    // This is the reported bug: a cross-sheet copy of =SUM(A9:F9) must point
+    // back at the source sheet, never shift into #REF!.
+    expect(qualifyFormula('=SUM(A9:F9)', 'Sheet1')).toBe('=SUM(Sheet1!A9:F9)');
+  });
+
+  it('qualifies every standalone ref in an expression', () => {
+    expect(qualifyFormula('=A1+B2', 'Data')).toBe('=Data!A1+Data!B2');
+  });
+
+  it('quotes a sheet name that needs quoting', () => {
+    expect(qualifyFormula('=SUM(A1:B2)', 'Q3 Budget')).toBe("=SUM('Q3 Budget'!A1:B2)");
+  });
+
+  it('preserves absolute markers under the qualifier', () => {
+    expect(qualifyFormula('=$A$9', 'Sheet1')).toBe('=Sheet1!$A$9');
+  });
+
+  it('leaves already-qualified refs untouched', () => {
+    expect(qualifyFormula('=SUM(Data!A1:A3)', 'Sheet1')).toBe('=SUM(Data!A1:A3)');
+    expect(qualifyFormula("=SUM('Q1 2026'!A1:A3)", 'Sheet1')).toBe("=SUM('Q1 2026'!A1:A3)");
+  });
+
+  it('does not qualify function names or string literals', () => {
+    expect(qualifyFormula('=ATAN2(A1)', 'Sheet1')).toBe('=ATAN2(Sheet1!A1)');
+    expect(qualifyFormula('=IF(A1>0,"A1",A1)', 'Sheet1')).toBe('=IF(Sheet1!A1>0,"A1",Sheet1!A1)');
+  });
+
+  it('passes through non-formula text', () => {
+    expect(qualifyFormula('42', 'Sheet1')).toBe('42');
+    expect(qualifyFormula('hello', 'Sheet1')).toBe('hello');
   });
 });

@@ -7,6 +7,7 @@ function single(raw: string, cut = false): ClipPayload {
     cells: [{ dr: 0, dc: 0, raw, format: '' }],
     rows: 1, cols: 1, cut,
     sourceRect: { top: 0, left: 0, bottom: 0, right: 0 },
+    sourceSheetId: 'src',
     tsv: '',
   };
 }
@@ -38,6 +39,7 @@ describe('planPaste — copy', () => {
       ],
       rows: 2, cols: 2, cut: false,
       sourceRect: { top: 0, left: 0, bottom: 1, right: 1 },
+      sourceSheetId: 'src',
       tsv: '',
     };
     const w = planPaste(payload, { row: 10, col: 5 });
@@ -55,5 +57,26 @@ describe('planPaste — cut', () => {
     expect(w[0].raw).toBe('=A1');
     expect(w[0].row).toBe(4);
     expect(w[0].col).toBe(4);
+  });
+});
+
+describe('planPaste — cross-sheet copy', () => {
+  it('qualifies formula refs to the source sheet instead of shifting', () => {
+    // The reported bug: copying =SUM(A9:F9) to another sheet used to shift
+    // refs off-grid into =SUM(#REF!:C9). It must now point back at the source.
+    const w = planPaste(single('=SUM(A9:F9)'), { row: 4, col: 2 }, { sourceSheetName: 'Sheet1' });
+    expect(w[0].raw).toBe('=SUM(Sheet1!A9:F9)');
+  });
+  it('still positions the cell by anchor + dr/dc', () => {
+    const w = planPaste(single('=A1'), { row: 4, col: 2 }, { sourceSheetName: 'Sheet1' });
+    expect(w[0]).toEqual({ row: 4, col: 2, raw: '=Sheet1!A1', format: '' });
+  });
+  it('pastes verbatim (never #REF!) when the source sheet name is unknown', () => {
+    const w = planPaste(single('=SUM(A9:F9)'), { row: 4, col: 2 }, { sourceSheetName: null });
+    expect(w[0].raw).toBe('=SUM(A9:F9)');
+  });
+  it('leaves a cut untouched even across sheets (move keeps refs verbatim)', () => {
+    const w = planPaste(single('=A1', true), { row: 4, col: 2 }, { sourceSheetName: 'Sheet1' });
+    expect(w[0].raw).toBe('=A1');
   });
 });

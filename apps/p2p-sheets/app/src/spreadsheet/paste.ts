@@ -5,7 +5,7 @@
  * did). Pure — the caller performs the actual setCell/clearCell writes and
  * clips out-of-bounds targets.
  */
-import { shiftFormula } from './shift';
+import { shiftFormula, qualifyFormula } from './shift';
 import type { CellCoord, Rect } from './refs';
 
 export interface ClipCell {
@@ -21,6 +21,7 @@ export interface ClipPayload {
   cols: number;
   cut: boolean;
   sourceRect: Rect;
+  sourceSheetId: string; // the sheet the copy came from — drives cross-sheet qualifying
   tsv: string; // the exact TSV written to the system clipboard (for self-detection)
 }
 
@@ -31,14 +32,32 @@ export interface PasteWrite {
   format: string;
 }
 
-export function planPaste(payload: ClipPayload, anchor: CellCoord): PasteWrite[] {
-  // The whole block translates by (anchor - source top-left); every relative
-  // ref in a copied formula shifts by that same delta.
+export function planPaste(
+  payload: ClipPayload,
+  anchor: CellCoord,
+  // When a copy crosses sheets, formulas are QUALIFIED to the source sheet
+  // (`=SUM(A9:F9)` → `=SUM(Sheet1!A9:F9)`) rather than shifted — the positional
+  // delta between two sheets is meaningless and would corrupt refs into #REF!.
+  // `sourceSheetName: null` means cross-sheet but the source name is unknown
+  // (e.g. sheet deleted): paste verbatim, never #REF. Omit/null for same-sheet.
+  crossSheet?: { sourceSheetName: string | null } | null,
+): PasteWrite[] {
+  // Same-sheet: the whole block translates by (anchor - source top-left); every
+  // relative ref in a copied formula shifts by that same delta.
   const dRow = anchor.row - payload.sourceRect.top;
   const dCol = anchor.col - payload.sourceRect.left;
   return payload.cells.map((c) => {
-    const raw =
-      !payload.cut && c.raw.startsWith('=') ? shiftFormula(c.raw, dRow, dCol) : c.raw;
+    let raw = c.raw;
+    if (!payload.cut && c.raw.startsWith('=')) {
+      if (crossSheet) {
+        raw =
+          crossSheet.sourceSheetName != null
+            ? qualifyFormula(c.raw, crossSheet.sourceSheetName)
+            : c.raw; // cross-sheet, source name unknown → verbatim (never #REF!)
+      } else {
+        raw = shiftFormula(c.raw, dRow, dCol);
+      }
+    }
     return { row: anchor.row + c.dr, col: anchor.col + c.dc, raw, format: c.format };
   });
 }

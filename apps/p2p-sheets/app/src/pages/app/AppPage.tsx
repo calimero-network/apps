@@ -540,6 +540,7 @@ export default function AppPage() {
         cols: region.right - region.left + 1,
         cut,
         sourceRect: region,
+        sourceSheetId: activeSheetId,
         tsv,
       });
     },
@@ -571,8 +572,19 @@ export default function AppPage() {
         }
       }
 
+      // A copy pasted onto a DIFFERENT sheet qualifies its formulas to the
+      // source sheet (=SUM(A9:F9) → =SUM(Sheet1!A9:F9)) instead of shifting refs
+      // by the meaningless cross-sheet positional delta. Same-sheet → shift.
+      const crossSheet =
+        internal && clipboard!.sourceSheetId !== activeSheetId
+          ? {
+              sourceSheetName:
+                ss.sheets.find((s) => s.id === clipboard!.sourceSheetId)?.name ?? null,
+            }
+          : null;
+
       const writes: PasteWrite[] = internal
-        ? planPaste(clipboard!, anchor)
+        ? planPaste(clipboard!, anchor, crossSheet)
         : // External TSV → raw values, anchored at the selection top-left.
           fromTSV(text).flatMap((rowVals, r) =>
             rowVals.map((v, c) => ({ row: anchor.row + r, col: anchor.col + c, raw: v, format: '' })),

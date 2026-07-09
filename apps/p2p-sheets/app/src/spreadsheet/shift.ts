@@ -11,7 +11,7 @@
  *
  * v1 does not shift whole-column/row refs (`A:A`, `1:1`) — they pass through.
  */
-import { columnLabel } from './refs';
+import { columnLabel, sheetPrefix } from './refs';
 
 const REF_RE = /^\$?[A-Z]+\$?\d+/;
 
@@ -33,7 +33,25 @@ function shiftRef(token: string, dRow: number, dCol: number): string | null {
   return `${colAbs}${columnLabel(col)}${rowAbs}${row + 1}`;
 }
 
-export function shiftFormula(formula: string, dRow: number, dCol: number): string {
+/** Last non-space character already emitted — used to tell a range's start ref
+ *  (qualifiable) from its end ref (`prev === ':'`, inherits the start's sheet)
+ *  and from an already-qualified ref (`prev === '!'`). */
+function lastNonSpace(s: string): string {
+  let j = s.length - 1;
+  while (j >= 0 && (s[j] === ' ' || s[j] === '\t')) j--;
+  return j >= 0 ? s[j] : '';
+}
+
+/**
+ * Scan a formula and rewrite each real cell-ref token via `onRef`, leaving
+ * sheet-name qualifiers, function names, and string literals verbatim. Shared
+ * by shiftFormula (relative math) and qualifyFormula (cross-sheet qualifying).
+ * `onRef` receives the token and the previous non-space output char.
+ */
+function transformRefs(
+  formula: string,
+  onRef: (token: string, prevChar: string) => string,
+): string {
   if (!formula.startsWith('=')) return formula;
   let out = '';
   let i = 0;
@@ -53,7 +71,7 @@ export function shiftFormula(formula: string, dRow: number, dCol: number): strin
     if (ch === '"') {
       // Double-quoted string literal (e.g. an IF label). Copy it verbatim
       // through the closing quote so ref-shaped text inside — "Q1", "FY2024" —
-      // never shifts. The engine's strings are simple/unescaped.
+      // is never rewritten. The engine's strings are simple/unescaped.
       out += ch;
       i++;
       while (i < formula.length) {
@@ -74,8 +92,7 @@ export function shiftFormula(formula: string, dRow: number, dCol: number): strin
         i += token.length;
         continue;
       }
-      const shifted = shiftRef(token, dRow, dCol);
-      out += shifted === null ? '#REF!' : shifted;
+      out += onRef(token, lastNonSpace(out));
       i += token.length;
       continue;
     }
@@ -83,4 +100,26 @@ export function shiftFormula(formula: string, dRow: number, dCol: number): strin
     i++;
   }
   return out;
+}
+
+export function shiftFormula(formula: string, dRow: number, dCol: number): string {
+  return transformRefs(formula, (token) => {
+    const shifted = shiftRef(token, dRow, dCol);
+    return shifted === null ? '#REF!' : shifted;
+  });
+}
+
+/**
+ * Qualify every BARE cell reference in a formula with `sheetName`, so a formula
+ * copied to another sheet keeps pointing at the source sheet's data
+ * (`=SUM(A9:F9)` → `=SUM(Sheet1!A9:F9)`). Refs that already carry a sheet
+ * qualifier (prev `!`) and the end of a range (prev `:`, which inherits the
+ * start's sheet — the engine's `split_sheet_qualifier` reads one qualifier per
+ * range) are left untouched. Absolute `$` markers are preserved.
+ */
+export function qualifyFormula(formula: string, sheetName: string): string {
+  const prefix = sheetPrefix(sheetName);
+  return transformRefs(formula, (token, prev) =>
+    prev === '!' || prev === ':' ? token : `${prefix}${token}`,
+  );
 }
