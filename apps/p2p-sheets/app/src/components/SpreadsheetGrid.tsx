@@ -49,6 +49,12 @@ interface SpreadsheetGridProps {
   onCommitAndMove: (direction: 'down' | 'right' | 'none') => void;
   onCellContextMenu?: (row: number, col: number, x: number, y: number) => void;
   onFill?: (source: Rect, target: Rect) => void;
+  onCopy?: (e: React.ClipboardEvent) => void;
+  onCut?: (e: React.ClipboardEvent) => void;
+  onPaste?: (e: React.ClipboardEvent) => void;
+  onDelete?: () => void;
+  onClearClipboard?: () => void;
+  copiedRegion?: { rect: Rect; cut: boolean } | null;
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -70,6 +76,12 @@ function SpreadsheetGrid({
   onCommitAndMove,
   onCellContextMenu,
   onFill,
+  onCopy,
+  onCut,
+  onPaste,
+  onDelete,
+  onClearClipboard,
+  copiedRegion,
 }: SpreadsheetGridProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -283,13 +295,17 @@ function SpreadsheetGrid({
           break;
         case 'Delete':
         case 'Backspace':
-          // Handled in AppPage (clears the cell)
+          e.preventDefault();
+          onDelete?.();
+          break;
+        case 'Escape':
+          onClearClipboard?.();
           break;
         default:
           break;
       }
     },
-    [selectedCell, onSelectCell, onEditCell, onCommitAndMove],
+    [selectedCell, onSelectCell, onEditCell, onCommitAndMove, onDelete, onClearClipboard],
   );
 
   // The rectangle to highlight: the live drag while dragging, else the
@@ -301,6 +317,9 @@ function SpreadsheetGrid({
       ref={containerRef}
       tabIndex={0}
       onKeyDown={handleKeyDown}
+      onCopy={onCopy}
+      onCut={onCut}
+      onPaste={onPaste}
       aria-label="Spreadsheet grid"
       role="grid"
     >
@@ -377,6 +396,12 @@ function SpreadsheetGrid({
                       : selectedCell?.row === row && selectedCell?.col === col
                   );
 
+                const copiedHere =
+                  copiedRegion != null &&
+                  row >= copiedRegion.rect.top && row <= copiedRegion.rect.bottom &&
+                  col >= copiedRegion.rect.left && col <= copiedRegion.rect.right;
+                const copiedKind = copiedHere ? (copiedRegion!.cut ? 'cut' : 'copy') : undefined;
+
                 // The handle sits on the selection's bottom-right cell.
                 const selBottom = selectionRange ? selectionRange.bottom : selectedCell?.row;
                 const selRight = selectionRange ? selectionRange.right : selectedCell?.col;
@@ -402,6 +427,7 @@ function SpreadsheetGrid({
                     $cursorColor={cursor?.color}
                     $inRange={inRange && !isSelected}
                     $inFillTarget={inFillTarget}
+                    $copied={copiedKind}
                     aria-selected={isSelected}
                     role="gridcell"
                     onContextMenu={(e) => {
@@ -509,7 +535,7 @@ const RowTh = styled.td<{ $selected: boolean }>`
   &:hover { background: rgba(59,130,246,0.14); }
 `;
 
-const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $inRange?: boolean; $inFillTarget?: boolean }>`
+const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $inRange?: boolean; $inFillTarget?: boolean; $copied?: 'copy' | 'cut' }>`
   height: 24px;
   min-width: 60px;
   max-width: 200px;
@@ -551,6 +577,9 @@ const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $inRange
   `}
 
   ${(p) => p.$inFillTarget && `outline: 1px dashed ${C.green}; outline-offset: -1px;`}
+
+  ${(p) => p.$copied === 'copy' && `outline: 1px dashed ${C.ink}; outline-offset: -1px;`}
+  ${(p) => p.$copied === 'cut' && `outline: 1px dashed ${C.muted}; outline-offset: -1px;`}
 
   &:hover:not([aria-selected='true']) {
     background: ${C.paper2};
