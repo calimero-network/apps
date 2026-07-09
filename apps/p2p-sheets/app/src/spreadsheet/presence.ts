@@ -12,19 +12,39 @@ export interface Collaborator {
   isSelf: boolean;
 }
 
-/** Distinct authors from live cursors, self ordered first and marked. */
+/**
+ * Distinct authors from live cursors, self ordered first and marked.
+ *
+ * The local user is ALWAYS included, even when they have no live cursor: your
+ * cursor is ephemeral (written on cell-select, removed on unmount), so relying
+ * on it would drop you from the bar the moment you navigate away and back. You
+ * are a collaborator in your own workspace regardless. Self is painted with the
+ * signature `selfColor` (the green accent) rather than any cursor colour, so
+ * "you" is instantly recognisable and stable across navigation.
+ */
 export function distinctCollaborators(
   cursors: Cursor[],
   selfKey: string | null,
+  selfColor: string,
 ): Collaborator[] {
   const seen = new Map<string, Collaborator>();
   for (const c of cursors) {
     if (seen.has(c.author)) continue;
+    const isSelf = c.author === selfKey;
     seen.set(c.author, {
       author: c.author,
-      color: c.color,
+      color: isSelf ? selfColor : c.color,
       label: avatarLabel(c.author),
-      isSelf: c.author === selfKey,
+      isSelf,
+    });
+  }
+  // Guarantee the local user is present even without a live cursor.
+  if (selfKey && !seen.has(selfKey)) {
+    seen.set(selfKey, {
+      author: selfKey,
+      color: selfColor,
+      label: avatarLabel(selfKey),
+      isSelf: true,
     });
   }
   return [...seen.values()].sort(

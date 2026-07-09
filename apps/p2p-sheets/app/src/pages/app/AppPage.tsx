@@ -747,7 +747,7 @@ export default function AppPage() {
   const selRef = selectedCell ? cellRef(selectedCell.row, selectedCell.col) : null;
   const activeWorkspaceName =
     ws.workspaces.find((w) => w.contextId === ws.contextId)?.name ?? APP_DISPLAY_NAME;
-  const collaborators = distinctCollaborators(ss.cursors, ws.executorPublicKey);
+  const collaborators = distinctCollaborators(ss.cursors, ws.executorPublicKey, C.green);
   const peers = peerCount(ss.cursors, ws.executorPublicKey);
   const connected = ss.ready && ss.loaded;
   const synced = ss.loaded && !ss.mutating;

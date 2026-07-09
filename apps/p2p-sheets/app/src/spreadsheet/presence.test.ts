@@ -32,17 +32,30 @@ describe('avatarLabel', () => {
 });
 
 describe('distinctCollaborators', () => {
-  it('dedupes by author and marks/sorts self first', () => {
+  it('dedupes by author, sorts self first, and paints self with the self colour', () => {
     const cursors = [cur('bob', '#f00'), cur('me', '#0f0'), cur('bob', '#f00')];
-    const result = distinctCollaborators(cursors, 'me');
+    const result = distinctCollaborators(cursors, 'me', 'SELF');
     expect(result).toEqual([
-      { author: 'me', color: '#0f0', label: 'ME', isSelf: true },
+      { author: 'me', color: 'SELF', label: 'ME', isSelf: true },
       { author: 'bob', color: '#f00', label: 'BO', isSelf: false },
     ]);
   });
-  it('returns only peers when self is not present in cursors', () => {
-    const result = distinctCollaborators([cur('bob', '#f00')], 'me');
+  it('always includes the local user even without a live cursor', () => {
+    // The regression: navigating away removes your cursor, so `me` is absent
+    // from `cursors`, yet you are still a collaborator in your own workspace.
+    const result = distinctCollaborators([cur('bob', '#f00')], 'me', 'SELF');
     expect(result).toEqual([
+      { author: 'me', color: 'SELF', label: 'ME', isSelf: true },
+      { author: 'bob', color: '#f00', label: 'BO', isSelf: false },
+    ]);
+  });
+  it('shows just the local user when no cursors exist at all', () => {
+    expect(distinctCollaborators([], 'me', 'SELF')).toEqual([
+      { author: 'me', color: 'SELF', label: 'ME', isSelf: true },
+    ]);
+  });
+  it('synthesises no self entry when the self key is null', () => {
+    expect(distinctCollaborators([cur('bob', '#f00')], null, 'SELF')).toEqual([
       { author: 'bob', color: '#f00', label: 'BO', isSelf: false },
     ]);
   });
