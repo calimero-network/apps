@@ -26,8 +26,10 @@ import { useSpreadsheet } from '../../hooks/useSpreadsheet';
 import { describeError } from '../../utils/errors';
 import { cellRef } from '../../components/FormulaBar';
 import { isFormula, insertReference, type AutoRef } from '../../spreadsheet/formulaEdit';
-import { normalizeRect, sheetPrefix, type CellCoord, type Rect } from '../../spreadsheet/refs';
+import { normalizeRect, sheetPrefix, rectCells, type CellCoord, type Rect } from '../../spreadsheet/refs';
 import { planFill } from '../../spreadsheet/fill';
+import { toTSV, fromTSV } from '../../spreadsheet/clipboard';
+import { planPaste, type ClipPayload, type ClipCell, type PasteWrite } from '../../spreadsheet/paste';
 import FormulaBar from '../../components/FormulaBar';
 import SpreadsheetGrid from '../../components/SpreadsheetGrid';
 import SheetTabs from '../../components/SheetTabs';
@@ -75,6 +77,7 @@ export default function AppPage() {
   const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
   const [selectedCell, setSelectedCell] = useState<CellCoord | null>(null);
   const [selectionRange, setSelectionRange] = useState<Rect | null>(null);
+  const [clipboard, setClipboard] = useState<ClipPayload | null>(null);
   const [formulaInput, setFormulaInput] = useState('');
   const [isDirty, setIsDirty] = useState(false);
   // Edit mode: true while actively editing the selected cell (entered by typing,
@@ -483,6 +486,112 @@ export default function AppPage() {
     [activeSheetId, ss],
   );
 
+  // The rect the clipboard/delete operate on: the multi-cell selection, or the
+  // single selected cell.
+  const currentRegion = useCallback((): Rect | null => {
+    if (selectionRange) return selectionRange;
+    if (selectedCell) {
+      return { top: selectedCell.row, left: selectedCell.col, bottom: selectedCell.row, right: selectedCell.col };
+    }
+    return null;
+  }, [selectionRange, selectedCell]);
+
+  // Build the internal payload + TSV for a copy or cut of the current region.
+  const buildClip = useCallback(
+    (cut: boolean, e: React.ClipboardEvent) => {
+      if (editing || !activeSheetId) return;
+      const region = currentRegion();
+      if (!region) return;
+      e.preventDefault();
+      const at = (r: number, c: number) =>
+        ss.cells.find((x) => x.sheet_id === activeSheetId && x.row === r && x.col === c);
+      // TSV of computed values (for external apps), row-major over the rect.
+      const values: string[][] = [];
+      for (let r = region.top; r <= region.bottom; r++) {
+        const rowVals: string[] = [];
+        for (let c = region.left; c <= region.right; c++) rowVals.push(at(r, c)?.computed_value ?? '');
+        values.push(rowVals);
+      }
+      const tsv = toTSV(values);
+      // Internal cells (raw + format), offsets from the region top-left. Empty
+      // source cells are included so a paste clears the matching target cell.
+      const cells: ClipCell[] = rectCells(region).map(({ row, col }) => {
+        const cell = at(row, col);
+        return {
+          dr: row - region.top,
+          dc: col - region.left,
+          raw: cell?.raw_value ?? '',
+          format: cell?.format ?? '',
+        };
+      });
+      e.clipboardData.setData('text/plain', tsv);
+      setClipboard({
+        cells,
+        rows: region.bottom - region.top + 1,
+        cols: region.right - region.left + 1,
+        cut,
+        sourceRect: region,
+        tsv,
+      });
+    },
+    [editing, activeSheetId, currentRegion, ss.cells],
+  );
+
+  const handleCopy = useCallback((e: React.ClipboardEvent) => buildClip(false, e), [buildClip]);
+  const handleCut = useCallback((e: React.ClipboardEvent) => buildClip(true, e), [buildClip]);
+
+  const handlePaste = useCallback(
+    async (e: React.ClipboardEvent) => {
+      if (editing || !activeSheetId) return;
+      const region = currentRegion();
+      if (!region) return;
+      e.preventDefault();
+      const anchor = { row: region.top, col: region.left };
+      const text = e.clipboardData.getData('text/plain');
+
+      let writes: PasteWrite[];
+      const internal = clipboard && text === clipboard.tsv;
+      if (internal) {
+        writes = planPaste(clipboard!, anchor);
+      } else {
+        // External TSV → raw values, anchored at the selection top-left.
+        writes = fromTSV(text).flatMap((rowVals, r) =>
+          rowVals.map((v, c) => ({ row: anchor.row + r, col: anchor.col + c, raw: v, format: '' })),
+        );
+      }
+
+      for (const w of writes) {
+        if (w.row < 0 || w.row >= ROWS || w.col < 0 || w.col >= COLS) continue; // clip
+        if (w.raw.trim() === '') {
+          await ss.clearCell(activeSheetId, w.row, w.col);
+        } else {
+          await ss.setCell(activeSheetId, w.row, w.col, w.raw);
+          await ss.setCellFormat(activeSheetId, w.row, w.col, w.format);
+        }
+      }
+
+      // A consumed cut clears its source and empties the clipboard; copy persists.
+      if (internal && clipboard!.cut) {
+        for (const { row, col } of rectCells(clipboard!.sourceRect)) {
+          await ss.clearCell(activeSheetId, row, col);
+        }
+        setClipboard(null);
+      }
+    },
+    [editing, activeSheetId, currentRegion, clipboard, ss],
+  );
+
+  const handleDelete = useCallback(async () => {
+    if (editing || !activeSheetId) return;
+    const region = currentRegion();
+    if (!region) return;
+    for (const { row, col } of rectCells(region)) {
+      await ss.clearCell(activeSheetId, row, col);
+    }
+  }, [editing, activeSheetId, currentRegion, ss]);
+
+  const handleClearClipboard = useCallback(() => setClipboard(null), []);
+
   // Format of the anchor cell, to check-mark the active option in the menu.
   const activeCellFormat =
     (selectedCell && activeSheetId
@@ -757,6 +866,12 @@ export default function AppPage() {
         onCommitAndMove={handleCommitAndMove}
         onCellContextMenu={handleCellContextMenu}
         onFill={handleFill}
+        onCopy={handleCopy}
+        onCut={handleCut}
+        onPaste={handlePaste}
+        onDelete={handleDelete}
+        onClearClipboard={handleClearClipboard}
+        copiedRegion={clipboard ? { rect: clipboard.sourceRect, cut: clipboard.cut } : null}
       />
 
       {/* ── Sheet tabs ───────────────────────────────────────────── */}
