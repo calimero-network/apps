@@ -460,7 +460,8 @@ export default memo(SpreadsheetGrid);
 
 // ── Styled components ────────────────────────────────────────────────────────
 
-const ACCENT = '#3B82F6'; // blue accent for selection (spec accent color)
+const ACCENT = C.green; // green selection accent (matches landing mockup)
+const ACCENT_TEXT = C.greenDeep; // readable green for selected header labels
 
 const GridContainer = styled.div`
   flex: 1;
@@ -498,36 +499,36 @@ const ColTh = styled.th<{ $selected: boolean }>`
   position: sticky;
   top: 0;
   z-index: 2;
-  background: ${(p) => (p.$selected ? 'rgba(59,130,246,0.1)' : C.paper2)};
+  background: ${(p) => (p.$selected ? 'rgba(164,255,17,0.12)' : C.paper2)};
   border-right: 1px solid ${C.line};
   border-bottom: 2px solid ${C.line};
   text-align: center;
   font-size: 12px;
   font-weight: 600;
-  color: ${(p) => (p.$selected ? ACCENT : C.muted)};
+  color: ${(p) => (p.$selected ? ACCENT_TEXT : C.muted)};
   padding: 4px 2px;
   cursor: pointer;
   user-select: none;
   transition: background 0.1s, color 0.1s;
-  &:hover { background: rgba(59,130,246,0.14); }
+  &:hover { background: rgba(164,255,17,0.10); }
 `;
 
 const RowTh = styled.td<{ $selected: boolean }>`
   position: sticky;
   left: 0;
   z-index: 1;
-  background: ${(p) => (p.$selected ? 'rgba(59,130,246,0.1)' : C.paper2)};
+  background: ${(p) => (p.$selected ? 'rgba(164,255,17,0.12)' : C.paper2)};
   border-right: 2px solid ${C.line};
   border-bottom: 1px solid ${C.line};
   text-align: center;
   font-size: 11px;
   font-weight: 500;
-  color: ${(p) => (p.$selected ? ACCENT : C.muted)};
+  color: ${(p) => (p.$selected ? ACCENT_TEXT : C.muted)};
   padding: 2px 4px;
   cursor: pointer;
   user-select: none;
   transition: background 0.1s, color 0.1s;
-  &:hover { background: rgba(59,130,246,0.14); }
+  &:hover { background: rgba(164,255,17,0.10); }
 `;
 
 const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $inRange?: boolean; $inFillTarget?: boolean; $copied?: 'copy' | 'cut' }>`
@@ -553,7 +554,7 @@ const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $inRange
     `
     outline: 2px solid ${ACCENT};
     outline-offset: -2px;
-    background: rgba(59, 130, 246, 0.04);
+    background: rgba(164, 255, 17, 0.06);
     z-index: 1;
   `}
 
@@ -568,7 +569,7 @@ const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $inRange
   ${(p) =>
     p.$inRange &&
     `
-    background: rgba(59, 130, 246, 0.14);
+    background: rgba(164, 255, 17, 0.12);
   `}
 
   ${(p) => p.$inFillTarget && `outline: 1px dashed ${C.green}; outline-offset: -1px;`}
