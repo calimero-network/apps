@@ -73,6 +73,8 @@ export interface UseSpreadsheetReturn {
   loading: boolean;
   /** True once the first refresh for the current context has completed. */
   loaded: boolean;
+  /** True while ≥1 state-changing mutation is in flight (serialization queue non-empty). */
+  mutating: boolean;
   error: Error | null;
   /** True when contextId + executorPublicKey are resolved and client is ready. */
   ready: boolean;
@@ -112,6 +114,7 @@ export function useSpreadsheet({
   // an empty `sheets`/`cells` as authoritative until `loaded` is true.
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [pendingMutations, setPendingMutations] = useState(0);
 
   // Memoized typed client — null until mero + context + identity all resolve.
   const client = useMemo(
@@ -130,10 +133,15 @@ export function useSpreadsheet({
   // apply strictly one at a time. Reads (refresh) stay off the queue.
   const mutationQueue = useRef<Promise<unknown>>(Promise.resolve());
   const enqueue = useCallback(<T,>(op: () => Promise<T>): Promise<T> => {
+    setPendingMutations((n) => n + 1);
     const next = mutationQueue.current.then(op, op);
     mutationQueue.current = next.then(
       () => undefined,
       () => undefined,
+    );
+    next.then(
+      () => setPendingMutations((n) => n - 1),
+      () => setPendingMutations((n) => n - 1),
     );
     return next;
   }, []);
@@ -286,6 +294,7 @@ export function useSpreadsheet({
     functions,
     loading,
     loaded,
+    mutating: pendingMutations > 0,
     error,
     ready: client !== null,
     initProject,
