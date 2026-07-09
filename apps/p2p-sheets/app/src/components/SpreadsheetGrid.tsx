@@ -49,11 +49,6 @@ interface SpreadsheetGridProps {
   onCommitAndMove: (direction: 'down' | 'right' | 'none') => void;
   onCellContextMenu?: (row: number, col: number, x: number, y: number) => void;
   onFill?: (source: Rect, target: Rect) => void;
-  onCopy?: (e: React.ClipboardEvent) => void;
-  onCut?: (e: React.ClipboardEvent) => void;
-  onPaste?: (e: React.ClipboardEvent) => void;
-  onDelete?: () => void;
-  onClearClipboard?: () => void;
   copiedRegion?: { rect: Rect; cut: boolean } | null;
 }
 
@@ -76,11 +71,6 @@ function SpreadsheetGrid({
   onCommitAndMove,
   onCellContextMenu,
   onFill,
-  onCopy,
-  onCut,
-  onPaste,
-  onDelete,
-  onClearClipboard,
   copiedRegion,
 }: SpreadsheetGridProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -180,8 +170,10 @@ function SpreadsheetGrid({
         // Keep the formula input focused so its caret survives the click.
         e.preventDefault();
       } else {
-        // Move selection immediately on press (single-click select).
+        // Move selection immediately on press (single-click select). Focus the
+        // grid container so arrow-key navigation works after a mouse select.
         onSelectCell(cell.row, cell.col);
+        containerRef.current?.focus();
       }
       dragAnchorRef.current = cell;
       setDragRect(normalizeRect(cell, cell));
@@ -293,19 +285,15 @@ function SpreadsheetGrid({
           e.preventDefault();
           onCommitAndMove('right');
           break;
-        case 'Delete':
-        case 'Backspace':
-          e.preventDefault();
-          onDelete?.();
-          break;
-        case 'Escape':
-          onClearClipboard?.();
-          break;
         default:
           break;
       }
+      // Delete/Backspace (clear selection) and Escape (clear the copied region)
+      // are handled by document-level listeners in AppPage — native clipboard
+      // events and these keys are bound there so they fire regardless of which
+      // element holds focus.
     },
-    [selectedCell, onSelectCell, onEditCell, onCommitAndMove, onDelete, onClearClipboard],
+    [selectedCell, onSelectCell, onEditCell, onCommitAndMove],
   );
 
   // The rectangle to highlight: the live drag while dragging, else the
@@ -317,9 +305,6 @@ function SpreadsheetGrid({
       ref={containerRef}
       tabIndex={0}
       onKeyDown={handleKeyDown}
-      onCopy={onCopy}
-      onCut={onCut}
-      onPaste={onPaste}
       aria-label="Spreadsheet grid"
       role="grid"
     >

@@ -498,8 +498,8 @@ export default function AppPage() {
 
   // Build the internal payload + TSV for a copy or cut of the current region.
   const buildClip = useCallback(
-    (cut: boolean, e: React.ClipboardEvent) => {
-      if (editing || !activeSheetId) return;
+    (cut: boolean, e: ClipboardEvent) => {
+      if (editing || !activeSheetId || !e.clipboardData) return;
       const region = currentRegion();
       if (!region) return;
       e.preventDefault();
@@ -537,28 +537,34 @@ export default function AppPage() {
     [editing, activeSheetId, currentRegion, ss.cells],
   );
 
-  const handleCopy = useCallback((e: React.ClipboardEvent) => buildClip(false, e), [buildClip]);
-  const handleCut = useCallback((e: React.ClipboardEvent) => buildClip(true, e), [buildClip]);
-
   const handlePaste = useCallback(
-    async (e: React.ClipboardEvent) => {
-      if (editing || !activeSheetId) return;
+    async (e: ClipboardEvent) => {
+      if (editing || !activeSheetId || !e.clipboardData) return;
       const region = currentRegion();
       if (!region) return;
       e.preventDefault();
       const anchor = { row: region.top, col: region.left };
-      const text = e.clipboardData.getData('text/plain');
+      // Normalize CRLF — Windows clipboards round-trip text/plain as \r\n, so
+      // without this an internal multi-row copy would fail self-detection and
+      // fall through to the values-only external path.
+      const text = e.clipboardData.getData('text/plain').replace(/\r\n/g, '\n');
+      const internal = !!clipboard && text === clipboard.tsv;
 
-      let writes: PasteWrite[];
-      const internal = clipboard && text === clipboard.tsv;
-      if (internal) {
-        writes = planPaste(clipboard!, anchor);
-      } else {
-        // External TSV → raw values, anchored at the selection top-left.
-        writes = fromTSV(text).flatMap((rowVals, r) =>
-          rowVals.map((v, c) => ({ row: anchor.row + r, col: anchor.col + c, raw: v, format: '' })),
-        );
+      // For a cut, clear the source FIRST: the writes come from the in-memory
+      // payload (not re-read from live cells), so clearing first means an
+      // overlapping paste target isn't wiped by a later source-clear.
+      if (internal && clipboard!.cut) {
+        for (const { row, col } of rectCells(clipboard!.sourceRect)) {
+          await ss.clearCell(activeSheetId, row, col);
+        }
       }
+
+      const writes: PasteWrite[] = internal
+        ? planPaste(clipboard!, anchor)
+        : // External TSV → raw values, anchored at the selection top-left.
+          fromTSV(text).flatMap((rowVals, r) =>
+            rowVals.map((v, c) => ({ row: anchor.row + r, col: anchor.col + c, raw: v, format: '' })),
+          );
 
       for (const w of writes) {
         if (w.row < 0 || w.row >= ROWS || w.col < 0 || w.col >= COLS) continue; // clip
@@ -570,13 +576,7 @@ export default function AppPage() {
         }
       }
 
-      // A consumed cut clears its source and empties the clipboard; copy persists.
-      if (internal && clipboard!.cut) {
-        for (const { row, col } of rectCells(clipboard!.sourceRect)) {
-          await ss.clearCell(activeSheetId, row, col);
-        }
-        setClipboard(null);
-      }
+      if (internal && clipboard!.cut) setClipboard(null); // consumed cut empties the clipboard
     },
     [editing, activeSheetId, currentRegion, clipboard, ss],
   );
@@ -591,6 +591,40 @@ export default function AppPage() {
   }, [editing, activeSheetId, currentRegion, ss]);
 
   const handleClearClipboard = useCallback(() => setClipboard(null), []);
+
+  // Copy/cut/paste and Delete/Escape are bound at the DOCUMENT level: native
+  // clipboard events only fire on the focused node, and the grid is a
+  // non-editable <div> that isn't reliably the active element, so container-
+  // level handlers never fire. Document listeners fire whenever the page has
+  // focus. Skip when a text input (the formula bar) owns the event.
+  useEffect(() => {
+    const editable = (t: EventTarget | null): boolean => {
+      const el = t as HTMLElement | null;
+      return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+    };
+    const onCopy = (e: ClipboardEvent) => { if (!editable(e.target)) buildClip(false, e); };
+    const onCut = (e: ClipboardEvent) => { if (!editable(e.target)) buildClip(true, e); };
+    const onPaste = (e: ClipboardEvent) => { if (!editable(e.target)) void handlePaste(e); };
+    const onKey = (e: KeyboardEvent) => {
+      if (editable(e.target) || editing) return;
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        void handleDelete();
+      } else if (e.key === 'Escape') {
+        handleClearClipboard();
+      }
+    };
+    document.addEventListener('copy', onCopy);
+    document.addEventListener('cut', onCut);
+    document.addEventListener('paste', onPaste);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('copy', onCopy);
+      document.removeEventListener('cut', onCut);
+      document.removeEventListener('paste', onPaste);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [buildClip, handlePaste, handleDelete, handleClearClipboard, editing]);
 
   // Format of the anchor cell, to check-mark the active option in the menu.
   const activeCellFormat =
@@ -866,11 +900,6 @@ export default function AppPage() {
         onCommitAndMove={handleCommitAndMove}
         onCellContextMenu={handleCellContextMenu}
         onFill={handleFill}
-        onCopy={handleCopy}
-        onCut={handleCut}
-        onPaste={handlePaste}
-        onDelete={handleDelete}
-        onClearClipboard={handleClearClipboard}
         copiedRegion={clipboard ? { rect: clipboard.sourceRect, cut: clipboard.cut } : null}
       />
 
