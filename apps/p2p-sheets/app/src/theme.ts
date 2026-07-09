@@ -24,6 +24,7 @@ export const C = {
   paper: 'var(--c-paper)',
   paper2: 'var(--c-paper2)',
   line: 'var(--c-line)',
+  chrome: 'var(--c-chrome)',
   lineDark: 'rgba(164,255,17,0.14)',
   muted: 'var(--c-muted)',
   mutedSoft: 'var(--c-muted-soft)',
@@ -37,9 +38,9 @@ const STORAGE_KEY = 'app:theme';
 
 export function getStoredTheme(): ThemeMode {
   try {
-    return localStorage.getItem(STORAGE_KEY) === 'dark' ? 'dark' : 'light';
+    return localStorage.getItem(STORAGE_KEY) === 'light' ? 'light' : 'dark';
   } catch {
-    return 'light';
+    return 'dark';
   }
 }
 
