@@ -270,7 +270,7 @@ const Input = styled.input`
   outline: none;
 
   &:focus {
-    background: rgba(59, 130, 246, 0.04);
+    background: rgba(164, 255, 17, 0.06);
   }
 
   &::placeholder {
