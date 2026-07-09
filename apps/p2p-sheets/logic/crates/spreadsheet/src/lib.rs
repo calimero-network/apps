@@ -535,15 +535,28 @@ impl Spreadsheet {
 
     pub fn clear_cell(&mut self, sheet_id: String, row: u32, col: u32) -> app::Result<()> {
         let key = Spreadsheet::cell_key(&sheet_id, row, col);
-        self.cells
-            .remove(&key)
-            .map_err(|e| AppError::msg(format!("cells.remove: {e}")))?;
+        // Soft-clear: blank the cell in place rather than removing it. Removing
+        // it tombstones the deterministic CRDT key, and a later write to the same
+        // coordinate (a paste or a re-type) then never re-appears. A fully-blank
+        // cell is treated as absent everywhere — hidden by `get_cells` and read
+        // as 0/empty by the formula engine (`cell_num`) — so this is invisible to
+        // consumers while keeping the coordinate writable again.
+        if let Some(mut guard) = self
+            .cells
+            .get_mut(&key)
+            .map_err(|e| AppError::msg(format!("cells.get_mut: {e}")))?
+        {
+            guard.raw_value = String::new();
+            guard.computed_value = String::new();
+            guard.format = String::new();
+            guard.updated_at = storage_env::time_now();
+        }
         app::emit!(Event::CellCleared {
             sheet_id: &sheet_id,
             row,
             col,
         });
-        // Removing a cell can change formulas that referenced it.
+        // Clearing a cell can change formulas that referenced it.
         self.recompute_all()?;
         Ok(())
     }
@@ -654,7 +667,12 @@ impl Spreadsheet {
             .entries()
             .map_err(|e| AppError::msg(format!("cells.entries: {e}")))?
             .filter_map(|(k, d)| {
-                if k.starts_with(&prefix) {
+                // A cleared cell is kept in the map (blank in place) rather than
+                // removed, so its coordinate can be re-written — removing it
+                // tombstones the deterministic key and blocks re-insertion. Such
+                // fully-blank cells are hidden here so consumers still see a
+                // cleared cell as gone. A value-less but formatted cell stays.
+                if k.starts_with(&prefix) && !(d.raw_value.is_empty() && d.format.is_empty()) {
                     Some(Cell {
                         id: d.id.clone(),
                         sheet_id: d.sheet_id.clone(),
@@ -1889,6 +1907,22 @@ mod tests {
         app.call(|s| s.clear_cell(sid.clone(), 0, 0)).unwrap();
         let cells = app.view(|s| s.get_cells(sid)).unwrap();
         assert!(cells.is_empty());
+    }
+
+    #[test]
+    fn cleared_cell_can_be_rewritten() {
+        let mut app = make_app();
+        app.call(|s| s.init_project("P".into())).unwrap();
+        let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
+        app.call(|s| s.set_cell(sid.clone(), 0, 0, "first".into())).unwrap();
+        app.call(|s| s.clear_cell(sid.clone(), 0, 0)).unwrap();
+        // Writing the same coordinate again after a clear must persist — a paste
+        // or a fresh type into a previously-deleted cell.
+        app.call(|s| s.set_cell(sid.clone(), 0, 0, "second".into())).unwrap();
+        let cells = app.view(|s| s.get_cells(sid)).unwrap();
+        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0);
+        assert!(a1.is_some(), "cell missing after re-write of a cleared cell");
+        assert_eq!(a1.unwrap().raw_value, "second");
     }
 
     #[test]
