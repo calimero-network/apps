@@ -2,12 +2,14 @@
  * AppPage — the full spreadsheet workspace.
  *
  * Layout (full viewport):
- *   ┌──────────────────────── Toolbar ────────────────────────────┐
+ *   ┌──────────────────────── TitleBar ───────────────────────────┐
+ *   ├──────────────────────── CollabBar ──────────────────────────┤
  *   ├─────────────────────── FormulaBar ──────────────────────────┤
  *   │                                                             │
  *   │                    SpreadsheetGrid                          │
  *   │                                                             │
- *   └──────────────────────── SheetTabs ──────────────────────────┘
+ *   ├──────────────────────── SheetTabs ──────────────────────────┤
+ *   └──────────────────────── StatusBar ──────────────────────────┘
  *
  * FunctionHelpPanel slides in from the right as an overlay.
  *
@@ -19,7 +21,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { useMero } from '@calimero-network/mero-react';
-import { C } from '../../theme';
+import { C, useTheme, MoonIcon } from '../../theme';
 import { APP_DISPLAY_NAME } from '../../config';
 import { useWorkspace } from '../../hooks/useWorkspace';
 import { useSpreadsheet } from '../../hooks/useSpreadsheet';
@@ -38,6 +40,8 @@ import InviteModal from '../../components/InviteModal';
 import JoinModal from '../../components/JoinModal';
 import ContextMenu from '../../components/ContextMenu';
 import { formatValue } from '../../spreadsheet/format';
+import StatusBar from '../../components/StatusBar';
+import { distinctCollaborators, peerCount } from '../../spreadsheet/presence';
 
 const COLS = 26;
 const ROWS = 50;
@@ -49,6 +53,7 @@ export default function AppPage() {
     contextId: ws.contextId,
     executorPublicKey: ws.executorPublicKey,
   });
+  const { theme, toggle: toggleTheme } = useTheme();
 
   // ── Workspace modals ────────────────────────────────────────────
   const [showInvite, setShowInvite] = useState(false);
@@ -742,87 +747,104 @@ export default function AppPage() {
   const selRef = selectedCell ? cellRef(selectedCell.row, selectedCell.col) : null;
   const activeWorkspaceName =
     ws.workspaces.find((w) => w.contextId === ws.contextId)?.name ?? APP_DISPLAY_NAME;
+  const collaborators = distinctCollaborators(ss.cursors, ws.executorPublicKey);
+  const peers = peerCount(ss.cursors, ws.executorPublicKey);
+  const connected = ss.ready && ss.loaded;
+  const synced = ss.loaded && !ss.mutating;
 
   return (
     <AppShell>
-      {/* ── Toolbar ──────────────────────────────────────────────── */}
-      <Toolbar>
-        <Brand>
-          <BackBtn
-            onClick={async () => { if (isDirty) await commitCellRef.current?.(); ws.leaveWorkspace(); }}
-            title="Back to workspaces"
-            aria-label="Back to workspaces"
-          >
-            ←
-          </BackBtn>
-          <GridIcon aria-hidden="true">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
-            </svg>
-          </GridIcon>
-          <AppName>{activeWorkspaceName}</AppName>
-        </Brand>
+      {/* ── Window chrome: title bar + collaborator bar ─────────────── */}
+      <TitleBar>
+        <Lights aria-hidden="true"><i /><i /><i /></Lights>
+        <BackBtn
+          onClick={async () => { if (isDirty) await commitCellRef.current?.(); ws.leaveWorkspace(); }}
+          title="Back to workspaces"
+          aria-label="Back to workspaces"
+        >
+          ←
+        </BackBtn>
+        <GridIcon aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
+          </svg>
+        </GridIcon>
+        <TitleName>{activeWorkspaceName}</TitleName>
+        <NodeTag>· your node</NodeTag>
+        <LivePill $on={connected} title={connected ? 'Live' : 'Offline'}>
+          <span aria-hidden="true">●</span>{connected ? 'live' : 'offline'}
+        </LivePill>
+      </TitleBar>
 
-        <ToolbarActions>
-          <ToolBtn
-            data-testid="action-export_all"
-            onClick={handleDownload}
-            title="Download as CSV"
-            aria-label="Download spreadsheet as CSV"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-            <span>Download</span>
-          </ToolBtn>
+      <CollabBar>
+        <Avatars aria-label={`${collaborators.length} collaborators`}>
+          {collaborators.map((c) => (
+            <Avatar
+              key={c.author}
+              style={{ background: c.color }}
+              $self={c.isSelf}
+              title={c.isSelf ? 'You' : c.author}
+            >
+              {c.label}
+            </Avatar>
+          ))}
+        </Avatars>
+        <CollabCount>
+          {collaborators.length} collaborator{collaborators.length === 1 ? '' : 's'}
+        </CollabCount>
 
-          <ToolBtn
-            onClick={() => setShowHelp(true)}
-            title="Function reference"
-            aria-label="Open function reference"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-              <line x1="12" y1="17" x2="12.01" y2="17" />
-            </svg>
-            <span>Functions</span>
-          </ToolBtn>
+        <ActionsSpacer />
 
-          <Divider />
+        <PrimaryAction onClick={() => setShowInvite(true)} aria-label="Invite collaborators">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <line x1="19" y1="8" x2="19" y2="14" /><line x1="22" y1="11" x2="16" y2="11" />
+          </svg>
+          <span>Invite</span>
+        </PrimaryAction>
 
-          <ToolBtn onClick={() => setShowInvite(true)} aria-label="Invite collaborators">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-              <circle cx="9" cy="7" r="4" />
-              <line x1="19" y1="8" x2="19" y2="14" />
-              <line x1="22" y1="11" x2="16" y2="11" />
-            </svg>
-            <span>Invite</span>
-          </ToolBtn>
+        <ToolBtn onClick={() => setShowJoin(true)} aria-label="Join workspace">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+            <polyline points="10 17 15 12 10 7" /><line x1="15" y1="12" x2="3" y2="12" />
+          </svg>
+          <span>Join</span>
+        </ToolBtn>
 
-          <ToolBtn onClick={() => setShowJoin(true)} aria-label="Join workspace">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
-              <polyline points="10 17 15 12 10 7" />
-              <line x1="15" y1="12" x2="3" y2="12" />
-            </svg>
-            <span>Join</span>
-          </ToolBtn>
+        <ToolBtn
+          data-testid="action-export_all"
+          onClick={handleDownload}
+          title="Download as CSV"
+          aria-label="Download spreadsheet as CSV"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          <span>Download</span>
+        </ToolBtn>
 
-          <SignOutBtn onClick={logout} aria-label="Sign out">
-            Sign out
-          </SignOutBtn>
-        </ToolbarActions>
-      </Toolbar>
+        <ToolBtn onClick={() => setShowHelp(true)} title="Function reference" aria-label="Open function reference">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
+          <span>Functions</span>
+        </ToolBtn>
+
+        <IconBtn onClick={toggleTheme} title="Toggle theme" aria-label="Toggle light/dark theme">
+          <MoonIcon filled={theme === 'dark'} size={16} />
+        </IconBtn>
+
+        <SignOutBtn onClick={logout} aria-label="Sign out">Sign out</SignOutBtn>
+      </CollabBar>
 
       {/* ── Formula bar ──────────────────────────────────────────── */}
       <FormulaBar
@@ -898,6 +920,8 @@ export default function AppPage() {
         onDelete={ss.deleteSheet}
       />
 
+      <StatusBar synced={synced} peers={peers} cells={ss.cells.length} />
+
       {/* ── Overlays ─────────────────────────────────────────────── */}
       {showHelp && (
         <FunctionHelpPanel
@@ -943,23 +967,128 @@ const AppShell = styled.div`
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 `;
 
-const Toolbar = styled.header`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 48px;
-  padding: 0 12px 0 14px;
-  background: ${C.paper};
-  border-bottom: 1px solid ${C.line};
-  flex-shrink: 0;
-  gap: 12px;
-`;
-
-const Brand = styled.div`
+const TitleBar = styled.header`
   display: flex;
   align-items: center;
   gap: 8px;
+  height: 38px;
   flex-shrink: 0;
+  padding: 0 12px;
+  background: ${C.chrome};
+  border-bottom: 1px solid ${C.line};
+`;
+
+const Lights = styled.div`
+  display: flex;
+  gap: 6px;
+  margin-right: 4px;
+  i {
+    width: 10px; height: 10px; border-radius: 50%;
+    display: block;
+  }
+  i:nth-child(1) { background: #ff5f56; }
+  i:nth-child(2) { background: #ffbd2e; }
+  i:nth-child(3) { background: ${C.green}; }
+`;
+
+const TitleName = styled.span`
+  font-size: 13px;
+  font-weight: 700;
+  color: ${C.ink};
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+`;
+
+const NodeTag = styled.span`
+  font-size: 12px;
+  color: ${C.muted};
+  white-space: nowrap;
+`;
+
+const LivePill = styled.span<{ $on: boolean }>`
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: ${(p) => (p.$on ? C.green : C.muted)};
+  span { font-size: 8px; }
+`;
+
+const CollabBar = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 46px;
+  flex-shrink: 0;
+  padding: 0 12px;
+  background: ${C.paper};
+  border-bottom: 1px solid ${C.line};
+`;
+
+const Avatars = styled.div`
+  display: flex;
+  align-items: center;
+  padding-left: 6px;
+`;
+
+const Avatar = styled.span<{ $self: boolean }>`
+  width: 24px; height: 24px;
+  margin-left: -6px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: ${C.onAccent};
+  border: 2px solid ${C.paper};
+  box-shadow: ${(p) => (p.$self ? `0 0 0 2px ${C.green}` : 'none')};
+`;
+
+const CollabCount = styled.span`
+  font-size: 12px;
+  color: ${C.muted};
+  white-space: nowrap;
+  @media (max-width: 700px) { display: none; }
+`;
+
+const ActionsSpacer = styled.div`
+  margin-left: auto;
+`;
+
+const PrimaryAction = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: ${C.onAccent};
+  background: ${C.green};
+  border: 1px solid ${C.greenHover};
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.14s, transform 0.12s;
+  svg { flex-shrink: 0; }
+  &:hover { background: ${C.greenHover}; transform: translateY(-1px); }
+  @media (max-width: 700px) { span { display: none; } }
+`;
+
+const IconBtn = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px; height: 32px;
+  color: ${C.muted};
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.14s, color 0.14s;
+  &:hover { background: ${C.paper2}; color: ${C.ink}; }
 `;
 
 const BackBtn = styled.button`
@@ -985,20 +1114,6 @@ const GridIcon = styled.div`
   color: ${C.green};
 `;
 
-const AppName = styled.span`
-  font-size: 14px;
-  font-weight: 700;
-  color: ${C.ink};
-  letter-spacing: -0.2px;
-  white-space: nowrap;
-`;
-
-const ToolbarActions = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 4px;
-`;
-
 const ToolBtn = styled.button`
   display: inline-flex;
   align-items: center;
@@ -1022,14 +1137,6 @@ const ToolBtn = styled.button`
   }
 
   @media (max-width: 700px) { span { display: none; } }
-`;
-
-const Divider = styled.div`
-  width: 1px;
-  height: 20px;
-  background: ${C.line};
-  margin: 0 4px;
-  flex-shrink: 0;
 `;
 
 const SignOutBtn = styled.button`
