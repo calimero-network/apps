@@ -497,8 +497,12 @@ export default function AppPage() {
   }, [selectionRange, selectedCell]);
 
   // Build the internal payload + TSV for a copy or cut of the current region.
+  // The event originates on the grid's hidden focus-catcher textarea (see
+  // SpreadsheetGrid): Chrome only fires copy/cut/paste when an editable element
+  // is focused (or text is selected), so a non-editable grid div never receives
+  // them — the catcher is the element that makes these events fire at all.
   const buildClip = useCallback(
-    (cut: boolean, e: ClipboardEvent) => {
+    (cut: boolean, e: React.ClipboardEvent) => {
       if (editing || !activeSheetId || !e.clipboardData) return;
       const region = currentRegion();
       if (!region) return;
@@ -537,8 +541,11 @@ export default function AppPage() {
     [editing, activeSheetId, currentRegion, ss.cells],
   );
 
+  const handleCopy = useCallback((e: React.ClipboardEvent) => buildClip(false, e), [buildClip]);
+  const handleCut = useCallback((e: React.ClipboardEvent) => buildClip(true, e), [buildClip]);
+
   const handlePaste = useCallback(
-    async (e: ClipboardEvent) => {
+    async (e: React.ClipboardEvent) => {
       if (editing || !activeSheetId || !e.clipboardData) return;
       const region = currentRegion();
       if (!region) return;
@@ -591,40 +598,6 @@ export default function AppPage() {
   }, [editing, activeSheetId, currentRegion, ss]);
 
   const handleClearClipboard = useCallback(() => setClipboard(null), []);
-
-  // Copy/cut/paste and Delete/Escape are bound at the DOCUMENT level: native
-  // clipboard events only fire on the focused node, and the grid is a
-  // non-editable <div> that isn't reliably the active element, so container-
-  // level handlers never fire. Document listeners fire whenever the page has
-  // focus. Skip when a text input (the formula bar) owns the event.
-  useEffect(() => {
-    const editable = (t: EventTarget | null): boolean => {
-      const el = t as HTMLElement | null;
-      return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
-    };
-    const onCopy = (e: ClipboardEvent) => { if (!editable(e.target)) buildClip(false, e); };
-    const onCut = (e: ClipboardEvent) => { if (!editable(e.target)) buildClip(true, e); };
-    const onPaste = (e: ClipboardEvent) => { if (!editable(e.target)) void handlePaste(e); };
-    const onKey = (e: KeyboardEvent) => {
-      if (editable(e.target) || editing) return;
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        e.preventDefault();
-        void handleDelete();
-      } else if (e.key === 'Escape') {
-        handleClearClipboard();
-      }
-    };
-    document.addEventListener('copy', onCopy);
-    document.addEventListener('cut', onCut);
-    document.addEventListener('paste', onPaste);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('copy', onCopy);
-      document.removeEventListener('cut', onCut);
-      document.removeEventListener('paste', onPaste);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [buildClip, handlePaste, handleDelete, handleClearClipboard, editing]);
 
   // Format of the anchor cell, to check-mark the active option in the menu.
   const activeCellFormat =
@@ -900,6 +873,11 @@ export default function AppPage() {
         onCommitAndMove={handleCommitAndMove}
         onCellContextMenu={handleCellContextMenu}
         onFill={handleFill}
+        onCopy={handleCopy}
+        onCut={handleCut}
+        onPaste={handlePaste}
+        onDelete={handleDelete}
+        onClearClipboard={handleClearClipboard}
         copiedRegion={clipboard ? { rect: clipboard.sourceRect, cut: clipboard.cut } : null}
       />
 
