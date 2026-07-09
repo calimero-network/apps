@@ -875,6 +875,17 @@ mod formula {
             return String::new();
         }
 
+        // Error tokens propagate verbatim. A formula that references a cell
+        // shifted out of range is stored as `=#REF!`; without this, the trailing
+        // `!` makes `split_sheet_qualifier` treat `#REF` as a sheet name and the
+        // value collapses to `#VALUE!`.
+        if matches!(
+            expr,
+            "#REF!" | "#VALUE!" | "#DIV/0!" | "#NAME?" | "#NUM!" | "#NULL!" | "#N/A"
+        ) {
+            return expr.to_string();
+        }
+
         // String literal in double quotes.
         if expr.len() >= 2 && expr.starts_with('"') && expr.ends_with('"') {
             return expr[1..expr.len() - 1].to_string();
@@ -1596,6 +1607,17 @@ mod tests {
         assert_eq!(get(0, 1), "10", "=$A$1");
         assert_eq!(get(1, 1), "30", "=A$1+$A2");
         assert_eq!(get(2, 1), "30", "=SUM($A$1:$A$2)");
+    }
+
+    #[test]
+    fn error_tokens_propagate_verbatim() {
+        let gv = |_s: Option<&str>, _r: u32, _c: u32| None;
+        // A formula whose reference shifted out of range is stored as `=#REF!`;
+        // it must display `#REF!`, not be misparsed (trailing `!` → sheet
+        // qualifier) and collapse to `#VALUE!`.
+        assert_eq!(formula::evaluate("=#REF!", &gv), "#REF!");
+        assert_eq!(formula::evaluate("=#DIV/0!", &gv), "#DIV/0!");
+        assert_eq!(formula::evaluate("=#NAME?", &gv), "#NAME?");
     }
 
     #[test]

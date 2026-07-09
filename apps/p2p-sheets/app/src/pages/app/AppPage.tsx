@@ -468,9 +468,16 @@ export default function AppPage() {
       };
       const writes = planFill(source, target, getCell);
       for (const w of writes) {
-        if (w.raw.trim() === '') await ss.clearCell(activeSheetId, w.row, w.col);
-        else await ss.setCell(activeSheetId, w.row, w.col, w.raw);
-        if (w.format) await ss.setCellFormat(activeSheetId, w.row, w.col, w.format);
+        if (w.raw.trim() === '') {
+          // Empty target: clear the cell (drops any value AND format).
+          await ss.clearCell(activeSheetId, w.row, w.col);
+        } else {
+          await ss.setCell(activeSheetId, w.row, w.col, w.raw);
+          // Always apply the pattern's format — including '' — so filling an
+          // unformatted pattern over a previously-formatted cell clears the
+          // stale format instead of leaving it behind.
+          await ss.setCellFormat(activeSheetId, w.row, w.col, w.format);
+        }
       }
     },
     [activeSheetId, ss],

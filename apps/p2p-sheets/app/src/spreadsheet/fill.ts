@@ -41,11 +41,11 @@ export function planFill(
       const series = allFormula ? [] : fillSeries(src.map((s) => s.raw), targets.length);
       targets.forEach((tr, j) => {
         const s = src[j % k];
-        const raw = s.raw.startsWith('=')
-          ? shiftFormula(s.raw, tr - s.pos, 0)
-          : series.length
-            ? series[j]
-            : s.raw;
+        // A non-formula cell always has a series entry here (series is only
+        // empty when every source cell is a formula, in which case this branch
+        // is unreachable), so `series[j]` covers both the numeric-series and
+        // cyclic-copy cases.
+        const raw = s.raw.startsWith('=') ? shiftFormula(s.raw, tr - s.pos, 0) : series[j];
         writes.push({ row: tr, col: c, raw, format: s.format });
       });
     }
@@ -60,11 +60,8 @@ export function planFill(
       const series = allFormula ? [] : fillSeries(src.map((s) => s.raw), targets.length);
       targets.forEach((tc, j) => {
         const s = src[j % k];
-        const raw = s.raw.startsWith('=')
-          ? shiftFormula(s.raw, 0, tc - s.pos)
-          : series.length
-            ? series[j]
-            : s.raw;
+        // See the vertical branch: a non-formula cell always has a series entry.
+        const raw = s.raw.startsWith('=') ? shiftFormula(s.raw, 0, tc - s.pos) : series[j];
         writes.push({ row: r, col: tc, raw, format: s.format });
       });
     }
