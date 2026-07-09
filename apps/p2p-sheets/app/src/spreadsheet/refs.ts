@@ -44,6 +44,17 @@ export function normalizeRect(a: CellCoord, b: CellCoord): Rect {
   };
 }
 
+/** Every cell in an inclusive rectangle, row-major. */
+export function rectCells(rect: Rect): CellCoord[] {
+  const out: CellCoord[] = [];
+  for (let row = rect.top; row <= rect.bottom; row++) {
+    for (let col = rect.left; col <= rect.right; col++) {
+      out.push({ row, col });
+    }
+  }
+  return out;
+}
+
 /** Range reference between two corners; a single ref when the corners coincide. */
 export function rangeRef(a: CellCoord, b: CellCoord): string {
   if (a.row === b.row && a.col === b.col) return cellRef(a.row, a.col);

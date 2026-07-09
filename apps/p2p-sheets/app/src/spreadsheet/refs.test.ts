@@ -7,6 +7,7 @@ import {
   rowRef,
   normalizeRect,
   sheetPrefix,
+  rectCells,
 } from './refs';
 
 describe('columnLabel', () => {
@@ -77,5 +78,22 @@ describe('normalizeRect', () => {
       bottom: 3,
       right: 5,
     });
+  });
+});
+
+describe('rectCells', () => {
+  it('enumerates a single cell', () => {
+    expect(rectCells({ top: 2, left: 3, bottom: 2, right: 3 })).toEqual([{ row: 2, col: 3 }]);
+  });
+  it('enumerates a block row-major', () => {
+    expect(rectCells({ top: 0, left: 0, bottom: 1, right: 1 })).toEqual([
+      { row: 0, col: 0 }, { row: 0, col: 1 },
+      { row: 1, col: 0 }, { row: 1, col: 1 },
+    ]);
+  });
+  it('enumerates a single row', () => {
+    expect(rectCells({ top: 5, left: 0, bottom: 5, right: 2 })).toEqual([
+      { row: 5, col: 0 }, { row: 5, col: 1 }, { row: 5, col: 2 },
+    ]);
   });
 });
