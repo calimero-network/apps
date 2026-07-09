@@ -851,8 +851,21 @@ mod formula {
         let expr = formula.trim().strip_prefix('=').unwrap_or(formula).trim();
         // `$` marks an absolute reference (a fill/copy anchor). It has no effect
         // on evaluation, so strip it and `=$A$1` evaluates exactly like `=A1`.
-        let expr = expr.replace('$', "");
-        eval_to_string(&expr, &get_value)
+        // Only strip it OUTSIDE double-quoted string literals, so a string like
+        // `"$5"` keeps its `$` (the evaluator supports string literals via IF).
+        let mut cleaned = String::with_capacity(expr.len());
+        let mut in_string = false;
+        for ch in expr.chars() {
+            match ch {
+                '"' => {
+                    in_string = !in_string;
+                    cleaned.push(ch);
+                }
+                '$' if !in_string => {} // absolute-ref anchor: drop it
+                _ => cleaned.push(ch),
+            }
+        }
+        eval_to_string(&cleaned, &get_value)
     }
 
     /// Evaluate an expression to its display string.
@@ -1583,6 +1596,17 @@ mod tests {
         assert_eq!(get(0, 1), "10", "=$A$1");
         assert_eq!(get(1, 1), "30", "=A$1+$A2");
         assert_eq!(get(2, 1), "30", "=SUM($A$1:$A$2)");
+    }
+
+    #[test]
+    fn dollar_preserved_inside_string_literals() {
+        let gv = |_s: Option<&str>, _r: u32, _c: u32| None;
+        // `$` is stripped only as an absolute-ref anchor — never inside a string.
+        assert_eq!(formula::evaluate("=\"$5\"", &gv), "$5");
+        assert_eq!(formula::evaluate("=\"Total $\"", &gv), "Total $");
+        // And `$` outside strings is still stripped, so absolute refs still work.
+        let gv1 = |_s: Option<&str>, _r: u32, _c: u32| Some("9".to_string());
+        assert_eq!(formula::evaluate("=$A$1", &gv1), "9");
     }
 
     #[test]

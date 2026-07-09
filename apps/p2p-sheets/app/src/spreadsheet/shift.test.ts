@@ -39,4 +39,12 @@ describe('shiftFormula', () => {
     expect(shiftFormula('hello', 5, 5)).toBe('hello');
     expect(shiftFormula('=A1+B2', 0, 0)).toBe('=A1+B2');
   });
+
+  it('does not shift ref-like text inside double-quoted string literals', () => {
+    // A label that looks like a ref must survive verbatim...
+    expect(shiftFormula('="A1 total"', 1, 0)).toBe('="A1 total"');
+    // ...while real refs around the string still shift.
+    expect(shiftFormula('=IF(A1>0,"Q1",A1)', 1, 0)).toBe('=IF(A2>0,"Q1",A2)');
+    expect(shiftFormula('=A1&" FY2024"', 0, 1)).toBe('=B1&" FY2024"');
+  });
 });

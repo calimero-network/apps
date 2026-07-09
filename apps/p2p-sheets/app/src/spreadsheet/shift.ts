@@ -50,6 +50,19 @@ export function shiftFormula(formula: string, dRow: number, dCol: number): strin
       continue;
     }
     if (ch === "'") { inQuote = true; out += ch; i++; continue; }
+    if (ch === '"') {
+      // Double-quoted string literal (e.g. an IF label). Copy it verbatim
+      // through the closing quote so ref-shaped text inside — "Q1", "FY2024" —
+      // never shifts. The engine's strings are simple/unescaped.
+      out += ch;
+      i++;
+      while (i < formula.length) {
+        out += formula[i];
+        if (formula[i] === '"') { i++; break; }
+        i++;
+      }
+      continue;
+    }
     const m = REF_RE.exec(formula.slice(i));
     if (m) {
       const token = m[0];
