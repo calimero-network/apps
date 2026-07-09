@@ -49,10 +49,10 @@ interface SpreadsheetGridProps {
   onCommitAndMove: (direction: 'down' | 'right' | 'none') => void;
   onCellContextMenu?: (row: number, col: number, x: number, y: number) => void;
   onFill?: (source: Rect, target: Rect) => void;
-  onCopy?: (e: React.ClipboardEvent) => void;
-  onCut?: (e: React.ClipboardEvent) => void;
-  onPaste?: (e: React.ClipboardEvent) => void;
+  /** Clear the selection (Delete/Backspace) — a fallback for when the grid
+   *  itself holds focus; the formula bar handles the common case. */
   onDelete?: () => void;
+  /** Clear the copied-region outline (Escape) — same fallback role. */
   onClearClipboard?: () => void;
   copiedRegion?: { rect: Rect; cut: boolean } | null;
 }
@@ -76,19 +76,11 @@ function SpreadsheetGrid({
   onCommitAndMove,
   onCellContextMenu,
   onFill,
-  onCopy,
-  onCut,
-  onPaste,
   onDelete,
   onClearClipboard,
   copiedRegion,
 }: SpreadsheetGridProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  // Hidden, always-focusable textarea. Chrome only dispatches copy/cut/paste
-  // when an editable element is focused (or text is selected), so we keep this
-  // catcher focused whenever a cell is selected — it is what makes clipboard
-  // events fire for a grid built from non-editable divs. See handleCellMouseDown.
-  const catcherRef = useRef<HTMLTextAreaElement>(null);
 
   // Drag state: `anchor` is where the drag began; `dragRect` is the live
   // rectangle highlighted while dragging (both for range-select and point-mode).
@@ -181,15 +173,13 @@ function SpreadsheetGrid({
     (e: React.MouseEvent<HTMLTableSectionElement>) => {
       const cell = cellFromEvent(e);
       if (!cell) return;
-      // Always suppress the native mousedown default: in point mode it keeps the
-      // formula input's caret; otherwise it stops the focusable GridContainer
-      // from stealing focus back from the catcher we focus just below.
-      e.preventDefault();
-      if (!pointMode) {
-        // Move selection immediately on press (single-click select). Focus the
-        // hidden catcher so clipboard events fire and arrow-key nav works.
+      if (pointMode) {
+        // Keep the formula input focused so its caret survives the click.
+        e.preventDefault();
+      } else {
+        // Move selection immediately on press (single-click select). The formula
+        // bar auto-focuses on selection and owns clipboard/Delete when not editing.
         onSelectCell(cell.row, cell.col);
-        catcherRef.current?.focus();
       }
       dragAnchorRef.current = cell;
       setDragRect(normalizeRect(cell, cell));
@@ -328,33 +318,6 @@ function SpreadsheetGrid({
       aria-label="Spreadsheet grid"
       role="grid"
     >
-      {/* Hidden focus-catcher: keeps an editable element focused so Chrome
-          actually fires copy/cut/paste (it won't on a non-editable div).
-          Keydown bubbles from here to GridContainer's handler. */}
-      <textarea
-        ref={catcherRef}
-        onCopy={onCopy}
-        onCut={onCut}
-        onPaste={onPaste}
-        value=""
-        // Editable (not readOnly) so Chrome fires cut/paste; held empty by the
-        // controlled value="" — stray keystrokes never accumulate.
-        onChange={() => {}}
-        aria-hidden="true"
-        tabIndex={-1}
-        style={{
-          position: 'absolute',
-          width: 1,
-          height: 1,
-          padding: 0,
-          border: 0,
-          opacity: 0,
-          pointerEvents: 'none',
-          left: 0,
-          top: 0,
-          resize: 'none',
-        }}
-      />
       <Table role="presentation">
         <colgroup>
           <col style={{ width: '52px', minWidth: '52px' }} />

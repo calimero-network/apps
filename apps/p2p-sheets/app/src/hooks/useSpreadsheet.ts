@@ -10,7 +10,7 @@
  *  - useSubscription re-fetches on every context sync event (local + remote peers).
  *  - Every mutation calls the client then refresh() for an optimistic refetch.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMero, useSubscription } from '@calimero-network/mero-react';
 import { SpreadsheetClient } from '../api/spreadsheet/SpreadsheetClient';
 import type { Sheet, Cell, Cursor, FunctionDef } from '../api/spreadsheet/SpreadsheetClient';
@@ -122,6 +122,22 @@ export function useSpreadsheet({
     [mero, contextId, executorPublicKey],
   );
 
+  // Serialize state-changing rpc.execute calls. The node commits each mutation
+  // as a full-state snapshot, so two mutations issued concurrently (e.g. the
+  // fire-and-forget updateCursor from a cell selection racing the setCell of a
+  // paste) clobber each other — the last to commit wins and silently drops the
+  // other's write. Chaining every mutation through one promise guarantees they
+  // apply strictly one at a time. Reads (refresh) stay off the queue.
+  const mutationQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const enqueue = useCallback(<T,>(op: () => Promise<T>): Promise<T> => {
+    const next = mutationQueue.current.then(op, op);
+    mutationQueue.current = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    return next;
+  }, []);
+
   // ── Refresh: fetch all sheets, their cells, cursors, and functions ────────
 
   const refresh = useCallback(async () => {
@@ -178,71 +194,75 @@ export function useSpreadsheet({
 
   const initProject = useCallback(async (name: string) => {
     if (!client) return;
-    await client.initProject({ name });
     // A freshly-initialised project has zero sheets. The grid's formula bar is
     // disabled until an active sheet exists (`activeSheetId`), so without a
     // sheet the workspace opens read-only and you can't type in any cell.
     // Create a default blank sheet so the workspace is immediately editable;
     // it replicates to invited collaborators (the "default blank sheet within
     // 5s" contract).
-    await client.createSheet({ name: 'Sheet 1' });
+    await enqueue(async () => {
+      await client.initProject({ name });
+      await client.createSheet({ name: 'Sheet 1' });
+    });
     await refresh();
-  }, [client, refresh]);
+  }, [client, refresh, enqueue]);
 
   const createSheet = useCallback(async (name: string) => {
     if (!client) return;
-    await client.createSheet({ name });
+    await enqueue(() => client.createSheet({ name }));
     await refresh();
-  }, [client, refresh]);
+  }, [client, refresh, enqueue]);
 
   const renameSheet = useCallback(async (sheetId: string, newName: string) => {
     if (!client) return;
-    await client.renameSheet({ sheet_id: sheetId, new_name: newName });
+    await enqueue(() => client.renameSheet({ sheet_id: sheetId, new_name: newName }));
     await refresh();
-  }, [client, refresh]);
+  }, [client, refresh, enqueue]);
 
   const deleteSheet = useCallback(async (sheetId: string) => {
     if (!client) return;
-    await client.deleteSheet({ sheet_id: sheetId });
+    await enqueue(() => client.deleteSheet({ sheet_id: sheetId }));
     await refresh();
-  }, [client, refresh]);
+  }, [client, refresh, enqueue]);
 
   const setCell = useCallback(
     async (sheetId: string, row: number, col: number, rawValue: string) => {
       if (!client) return;
-      if (rawValue.startsWith('=')) {
-        // Store as formula — backend evaluates and returns computed_value
-        await client.setCellFormula({ sheet_id: sheetId, row, col, formula: rawValue });
-      } else {
-        await client.setCell({ sheet_id: sheetId, row, col, raw_value: rawValue });
-      }
+      await enqueue(() =>
+        rawValue.startsWith('=')
+          ? // Store as formula — backend evaluates and returns computed_value
+            client.setCellFormula({ sheet_id: sheetId, row, col, formula: rawValue })
+          : client.setCell({ sheet_id: sheetId, row, col, raw_value: rawValue }),
+      );
       await refresh();
     },
-    [client, refresh],
+    [client, refresh, enqueue],
   );
 
   const clearCell = useCallback(async (sheetId: string, row: number, col: number) => {
     if (!client) return;
-    await client.clearCell({ sheet_id: sheetId, row, col });
+    await enqueue(() => client.clearCell({ sheet_id: sheetId, row, col }));
     await refresh();
-  }, [client, refresh]);
+  }, [client, refresh, enqueue]);
 
   const setCellFormat = useCallback(
     async (sheetId: string, row: number, col: number, format: string) => {
       if (!client) return;
-      await client.setCellFormat({ sheet_id: sheetId, row, col, format });
+      await enqueue(() => client.setCellFormat({ sheet_id: sheetId, row, col, format }));
       await refresh();
     },
-    [client, refresh],
+    [client, refresh, enqueue],
   );
 
-  // Fire-and-forget cursor broadcast — never block the UI waiting for it
+  // Fire-and-forget cursor broadcast — never block the UI waiting for it, but
+  // still route it through the mutation queue so it can't clobber a concurrent
+  // cell write (both are full-state commits on the node).
   const updateCursor = useCallback(
     async (sheetId: string, row: number, col: number) => {
       if (!client) return;
-      void client.updateCursor({ sheet_id: sheetId, row, col });
+      void enqueue(() => client.updateCursor({ sheet_id: sheetId, row, col }));
     },
-    [client],
+    [client, enqueue],
   );
 
   const exportAll = useCallback(async (): Promise<Sheet[]> => {

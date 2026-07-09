@@ -579,7 +579,11 @@ export default function AppPage() {
           await ss.clearCell(activeSheetId, w.row, w.col);
         } else {
           await ss.setCell(activeSheetId, w.row, w.col, w.raw);
-          await ss.setCellFormat(activeSheetId, w.row, w.col, w.format);
+          // Only apply a non-empty format. A plain copy carries "", and applying
+          // an empty format is a pointless second mutation on the cell.
+          if (w.format) {
+            await ss.setCellFormat(activeSheetId, w.row, w.col, w.format);
+          }
         }
       }
 
@@ -831,6 +835,12 @@ export default function AppPage() {
         functions={ss.functions}
         disabled={!activeSheetId}
         inputRef={formulaInputRef}
+        editing={editing}
+        onCopy={handleCopy}
+        onCut={handleCut}
+        onPaste={handlePaste}
+        onGridDelete={handleDelete}
+        onGridClearClipboard={handleClearClipboard}
       />
 
       {/* Commit button next to formula bar (accessible test target) */}
@@ -873,9 +883,6 @@ export default function AppPage() {
         onCommitAndMove={handleCommitAndMove}
         onCellContextMenu={handleCellContextMenu}
         onFill={handleFill}
-        onCopy={handleCopy}
-        onCut={handleCut}
-        onPaste={handlePaste}
         onDelete={handleDelete}
         onClearClipboard={handleClearClipboard}
         copiedRegion={clipboard ? { rect: clipboard.sourceRect, cut: clipboard.cut } : null}

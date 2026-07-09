@@ -38,6 +38,20 @@ interface FormulaBarProps {
   /** Shared ref to the underlying input, so the page can read/set the caret
    *  for point-mode reference insertion. Falls back to an internal ref. */
   inputRef?: React.RefObject<HTMLInputElement | null>;
+  /** True while the user is actively editing a formula. When false, the bar is
+   *  merely focused for quick-typing after a selection, and clipboard/Delete
+   *  keys act on the grid selection rather than the input text. */
+  editing?: boolean;
+  /** Clipboard events on the input — the page hijacks them when not editing to
+   *  copy/cut/paste the grid selection (the input is the reliably-focused
+   *  element after a cell selection, so this is where the browser fires them). */
+  onCopy?: (e: React.ClipboardEvent) => void;
+  onCut?: (e: React.ClipboardEvent) => void;
+  onPaste?: (e: React.ClipboardEvent) => void;
+  /** Clear the grid selection (Delete/Backspace when not editing). */
+  onGridDelete?: () => void;
+  /** Clear the copied-region outline (Escape when not editing). */
+  onGridClearClipboard?: () => void;
 }
 
 export default function FormulaBar({
@@ -50,6 +64,12 @@ export default function FormulaBar({
   functions,
   disabled,
   inputRef: externalInputRef,
+  editing = false,
+  onCopy,
+  onCut,
+  onPaste,
+  onGridDelete,
+  onGridClearClipboard,
 }: FormulaBarProps) {
   const internalInputRef = useRef<HTMLInputElement>(null);
   const inputRef = externalInputRef ?? internalInputRef;
@@ -83,6 +103,22 @@ export default function FormulaBar({
   }, [selectedCell?.row, selectedCell?.col, disabled]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Not editing: the bar is focused only because a cell is selected, so
+    // Delete/Backspace clears the grid selection and Escape clears the copied
+    // outline — the keys act on the sheet, not the (unentered) input text.
+    if (!editing) {
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        onGridDelete?.();
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setAcOpen(false);
+        onGridClearClipboard?.();
+        return;
+      }
+    }
     if (e.key === 'Enter') {
       e.preventDefault();
       setAcOpen(false);
@@ -125,6 +161,9 @@ export default function FormulaBar({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
+          onCopy={onCopy}
+          onCut={onCut}
+          onPaste={onPaste}
           onMouseDown={() => onBeginEdit?.()}
           onBlur={() => setAcOpen(false)}
           disabled={disabled || !selectedCell}
