@@ -876,7 +876,7 @@ fn builtin_functions() -> Vec<FunctionDef> {
 // Formula evaluator
 // ---------------------------------------------------------------------------
 
-mod formula {
+pub(crate) mod formula {
     /// Evaluate a spreadsheet formula string.
     ///
     /// `formula` should start with `=`. `get_value(sheet, row, col)` maps a cell
@@ -884,7 +884,7 @@ mod formula {
     /// current sheet, or `Some(name)` for a cross-sheet reference (`Data!A1` or
     /// `'My Sheet'!A1`). Rows/cols are 0-indexed as used by the API; references
     /// use 1-indexed rows and A-Z columns (e.g. `A1` → row 0, col 0).
-    pub fn evaluate(formula: &str, get_value: impl Fn(Option<&str>, u32, u32) -> Option<String>) -> String {
+    pub(crate) fn evaluate(formula: &str, get_value: impl Fn(Option<&str>, u32, u32) -> Option<String>) -> String {
         let expr = formula.trim().strip_prefix('=').unwrap_or(formula).trim();
         // `$` marks an absolute reference (a fill/copy anchor). It has no effect
         // on evaluation, so strip it and `=$A$1` evaluates exactly like `=A1`.
@@ -1300,6 +1300,115 @@ mod formula {
         }
     }
 
+    /// Every cell reference a formula syntactically contains, as absolute
+    /// `(sheet_id, row, col)` targets (`home_sheet` for un-qualified refs). Ranges
+    /// are expanded to member cells; string literals and function names are ignored.
+    /// Over-approximates (captures all branches) — this is what makes the dependency
+    /// graph conservative and the topological order valid for any runtime branch.
+    pub(crate) fn precedents(formula: &str, home_sheet: &str) -> Vec<(String, u32, u32)> {
+        let trimmed = formula.trim();
+        if !trimmed.starts_with('=') {
+            return Vec::new();
+        }
+        // Drop '=' and all '$' anchors (they never change which cell is
+        // referenced — an absolute ref `$B$2` targets the same cell as `B2`).
+        let body = &trimmed[1..];
+        let chars: Vec<char> = body.chars().filter(|&c| c != '$').collect();
+        let mut out: Vec<(String, u32, u32)> = Vec::new();
+        let mut i = 0usize;
+        while i < chars.len() {
+            let ch = chars[i];
+            // String literal — copy through the closing quote, capturing nothing.
+            if ch == '"' {
+                i += 1;
+                while i < chars.len() && chars[i] != '"' {
+                    i += 1;
+                }
+                if i < chars.len() {
+                    i += 1;
+                }
+                continue;
+            }
+            // Cross-sheet qualifier [id]! followed by a ref or range.
+            if ch == '[' {
+                if let Some(end) = chars[i + 1..].iter().position(|&c| c == ']') {
+                    let id: String = chars[i + 1..i + 1 + end].iter().collect();
+                    let mut j = i + 1 + end + 1; // past ']'
+                    if chars.get(j) == Some(&'!') {
+                        j += 1;
+                        let (unit, next) = read_ref_unit(&chars, j);
+                        for (r, c) in expand_range(&unit) {
+                            out.push((id.clone(), r, c));
+                        }
+                        i = next.max(j);
+                        continue;
+                    }
+                }
+                i += 1;
+                continue;
+            }
+            // A letter run followed immediately by '(' is a function name — skip the
+            // name only; its arguments are scanned by the outer loop.
+            if ch.is_ascii_uppercase() || ch.is_ascii_lowercase() {
+                let mut k = i;
+                while k < chars.len() && chars[k].is_ascii_alphabetic() {
+                    k += 1;
+                }
+                if chars.get(k) == Some(&'(') {
+                    i = k; // leave '(' for the loop; args scanned next
+                    continue;
+                }
+                // Otherwise read a ref-or-range unit starting at i.
+                if ch.is_ascii_uppercase() {
+                    let (unit, next) = read_ref_unit(&chars, i);
+                    if next > i {
+                        for (r, c) in expand_range(&unit) {
+                            out.push((home_sheet.to_string(), r, c));
+                        }
+                        i = next;
+                        continue;
+                    }
+                }
+                i += 1;
+                continue;
+            }
+            // A digit run may open a whole-row range (`1:1`); a lone number is a
+            // literal and captures nothing.
+            if ch.is_ascii_digit() {
+                let (unit, next) = read_ref_unit(&chars, i);
+                if unit.contains(':') {
+                    for (r, c) in expand_range(&unit) {
+                        out.push((home_sheet.to_string(), r, c));
+                    }
+                }
+                i = next.max(i + 1);
+                continue;
+            }
+            i += 1;
+        }
+        out
+    }
+
+    /// Read a ref-or-range token starting at `start`: a run of uppercase letters
+    /// and/or digits, optionally `':'` and a second such run. Returns the token
+    /// string (e.g. `"A1"`, `"A1:B3"`, `"A:A"`, `"1:1"`) and the index just past it.
+    fn read_ref_unit(chars: &[char], start: usize) -> (String, usize) {
+        let read_atom = |mut p: usize| -> usize {
+            while p < chars.len() && chars[p].is_ascii_uppercase() {
+                p += 1;
+            }
+            while p < chars.len() && chars[p].is_ascii_digit() {
+                p += 1;
+            }
+            p
+        };
+        let mut end = read_atom(start);
+        if chars.get(end) == Some(&':') {
+            end = read_atom(end + 1);
+        }
+        (chars[start..end].iter().collect(), end)
+    }
+
     /// Parse a cell reference like `A1` → (row=0, col=0).
     /// Columns are A=0, B=1, …; rows are 1-indexed in the formula.
     fn parse_cell_ref(r: &str) -> Option<(u32, u32)> {
@@ -1357,6 +1466,43 @@ mod tests {
 
     fn make_app() -> TestHost<Spreadsheet> {
         TestHost::new(Spreadsheet::init)
+    }
+
+    #[test]
+    fn precedents_single_and_range() {
+        // A range expands to every member cell; a lone ref is one cell.
+        let mut p = formula::precedents("=A1+B2", "s1");
+        p.sort();
+        assert_eq!(p, vec![("s1".into(), 0, 0), ("s1".into(), 1, 1)]);
+
+        let mut r = formula::precedents("=SUM(A1:A3)", "s1");
+        r.sort();
+        assert_eq!(
+            r,
+            vec![("s1".into(), 0, 0), ("s1".into(), 1, 0), ("s1".into(), 2, 0)]
+        );
+    }
+
+    #[test]
+    fn precedents_ignores_function_names_and_strings() {
+        // SUM/IF are names, not refs; "A1" inside a string literal is text.
+        let mut p = formula::precedents("=IF(A1, \"B2\", C3)", "s1");
+        p.sort();
+        assert_eq!(p, vec![("s1".into(), 0, 0), ("s1".into(), 2, 2)]); // A1 and C3 only
+    }
+
+    #[test]
+    fn precedents_cross_sheet_and_absolute() {
+        // [id]! qualifies the sheet; $ anchors are irrelevant to dependency.
+        let mut p = formula::precedents("=[data]!A1 + $B$2", "s1");
+        p.sort();
+        assert_eq!(p, vec![("data".into(), 0, 0), ("s1".into(), 1, 1)]);
+    }
+
+    #[test]
+    fn precedents_non_formula_is_empty() {
+        assert!(formula::precedents("42", "s1").is_empty());
+        assert!(formula::precedents("hello", "s1").is_empty());
     }
 
     #[test]
