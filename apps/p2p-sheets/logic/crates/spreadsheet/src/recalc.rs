@@ -4,6 +4,13 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use crate::formula;
 
+/// A raw cell value is a formula when it starts with `=` (leading whitespace
+/// tolerated). Shared by the closure walk and the evaluator so the "what counts
+/// as a formula" rule lives in exactly one place.
+fn is_formula(raw: &str) -> bool {
+    raw.trim_start().starts_with('=')
+}
+
 /// Absolute cell coordinate (0-based row/col).
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct CellRef {
@@ -65,7 +72,6 @@ pub(crate) fn sheet_closure(
     cells: &BTreeMap<CellRef, String>,
     requested_sheet: &str,
 ) -> HashSet<String> {
-    let is_formula = |raw: &str| raw.trim_start().starts_with('=');
     let mut closure: HashSet<String> = HashSet::new();
     closure.insert(requested_sheet.to_string());
     loop {
@@ -93,8 +99,6 @@ pub struct WorkbookInputs {
 }
 
 pub fn evaluate(inputs: &WorkbookInputs) -> BTreeMap<CellRef, String> {
-    let is_formula = |raw: &str| raw.trim_start().starts_with('=');
-
     // Seed: every cell's value defaults to its raw input (literals are final;
     // formula cells are overwritten below). Empty/absent cells stay absent.
     let mut results: BTreeMap<CellRef, String> = inputs.cells.clone();
