@@ -154,6 +154,12 @@ export function useSpreadsheet({
 
   // ── Refresh: fetch all sheets, their cells, cursors, and functions ────────
 
+  // The active sheet is read through a ref so `refresh`'s identity stays stable
+  // across tab switches — switching sheets refetches only cells (the effect
+  // below), never the sheet list / cursors / functions.
+  const activeSheetIdRef = useRef(activeSheetId);
+  activeSheetIdRef.current = activeSheetId;
+
   const refresh = useCallback(async () => {
     if (!client) return;
     setLoading(true);
@@ -168,9 +174,8 @@ export function useSpreadsheet({
       // Fetch ONLY the active sheet's cells. The node derives cross-sheet
       // references during eval, so the active sheet is correct without holding
       // other sheets' cells; any context sync refetches the active sheet.
-      const activeCells = activeSheetId
-        ? await client.getCells({ sheet_id: activeSheetId })
-        : [];
+      const active = activeSheetIdRef.current;
+      const activeCells = active ? await client.getCells({ sheet_id: active }) : [];
 
       setSheets(fetchedSheets.sort((a, b) => a.position - b.position));
       setCells(activeCells);
@@ -183,14 +188,35 @@ export function useSpreadsheet({
       setLoading(false);
       setLoaded(true);
     }
-  }, [client, activeSheetId]);
+  }, [client]);
 
   // Reset the loaded flag whenever the client changes (new context) so callers
   // wait for that context's first fetch before acting on empty state.
   useEffect(() => { setLoaded(false); }, [client]);
 
-  // Initial fetch and re-fetch when client changes (new context)
+  // Full reload when the context (client) changes.
   useEffect(() => { void refresh(); }, [refresh]);
+
+  // Tab switch: refetch ONLY the active sheet's cells. The sheet list, cursors,
+  // and functions are unchanged by switching sheets, so refreshing them would be
+  // wasted work (this is what avoided the duplicate fetch on first open, where
+  // activeSheetId goes null → first sheet). The node derives cross-sheet refs, so
+  // the active sheet is correct on its own.
+  useEffect(() => {
+    if (!client) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const cells = activeSheetId
+          ? await client.getCells({ sheet_id: activeSheetId })
+          : [];
+        if (!cancelled) setCells(cells);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err : new Error(String(err)));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [client, activeSheetId]);
 
   // Live updates: re-fetch on any CRDT sync event for this context
   useSubscription(contextId ? [contextId] : [], () => { void refresh(); });
