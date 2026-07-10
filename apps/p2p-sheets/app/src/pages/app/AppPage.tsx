@@ -40,6 +40,7 @@ import InviteModal from '../../components/InviteModal';
 import JoinModal from '../../components/JoinModal';
 import ContextMenu from '../../components/ContextMenu';
 import { formatValue } from '../../spreadsheet/format';
+import { idsToNames, namesToIds } from '../../spreadsheet/sheetref';
 import StatusBar from '../../components/StatusBar';
 import { distinctCollaborators, peerCount } from '../../spreadsheet/presence';
 
@@ -54,6 +55,17 @@ export default function AppPage() {
     executorPublicKey: ws.executorPublicKey,
   });
   const { theme, toggle: toggleTheme } = useTheme();
+
+  // id↔name resolvers for translating formulas at the frontend boundary: the
+  // engine/store deal in canonical sheet ids; the formula bar shows names.
+  const idToName = useCallback(
+    (id: string) => ss.sheets.find((s) => s.id === id)?.name ?? null,
+    [ss.sheets],
+  );
+  const nameToId = useCallback(
+    (name: string) => ss.sheets.find((s) => s.name === name)?.id ?? null,
+    [ss.sheets],
+  );
 
   // ── Workspace modals ────────────────────────────────────────────
   const [showInvite, setShowInvite] = useState(false);
@@ -126,6 +138,12 @@ export default function AppPage() {
   // (no sheets AND no cells — so we don't race a joiner mid-sync into creating
   // a duplicate), create one default sheet, once per opened workspace.
   const ensuredDefaultSheetRef = useRef<string | null>(null);
+  // Contexts we created — their default sheet comes from initProject, so the
+  // ensure-default safety net must not also create one (it would duplicate).
+  const selfCreatedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (ws.contextId && ws.pendingInitName) selfCreatedRef.current.add(ws.contextId);
+  }, [ws.contextId, ws.pendingInitName]);
   useEffect(() => {
     if (
       ss.ready &&
@@ -133,6 +151,7 @@ export default function AppPage() {
       ss.sheets.length === 0 &&
       ss.cells.length === 0 &&
       ws.contextId &&
+      !selfCreatedRef.current.has(ws.contextId) &&
       ensuredDefaultSheetRef.current !== ws.contextId
     ) {
       ensuredDefaultSheetRef.current = ws.contextId;
@@ -173,9 +192,9 @@ export default function AppPage() {
         c.row === selectedCell.row &&
         c.col === selectedCell.col,
     );
-    setFormulaInput(cell?.raw_value ?? '');
+    setFormulaInput(idsToNames(cell?.raw_value ?? '', idToName));
     setIsDirty(false);
-  }, [selectedCell, activeSheetId]); // intentionally omit ss.cells so typing doesn't reset
+  }, [selectedCell, activeSheetId, idToName]); // intentionally omit ss.cells so typing doesn't reset
 
   // ── Commit current cell ─────────────────────────────────────────
   const commitCellRef = useRef<(() => Promise<void>) | null>(null);
@@ -188,7 +207,7 @@ export default function AppPage() {
         ? { sheetId: activeSheetId, row: selectedCell.row, col: selectedCell.col }
         : null);
     if (!target || !isDirty) return;
-    const value = formulaInput;
+    const value = namesToIds(formulaInput, nameToId);
     if (!value.trim()) {
       await ss.clearCell(target.sheetId, target.row, target.col);
     } else {
@@ -198,7 +217,7 @@ export default function AppPage() {
     setEditing(false);
     setEditAnchor(null);
     autoRefRef.current = undefined;
-  }, [editAnchor, selectedCell, activeSheetId, isDirty, formulaInput, ss]);
+  }, [editAnchor, selectedCell, activeSheetId, isDirty, formulaInput, ss, nameToId]);
 
   // Keep ref current so SpreadsheetGrid can call it
   commitCellRef.current = commitCell;
@@ -356,9 +375,9 @@ export default function AppPage() {
         c.row === selectedCell.row &&
         c.col === selectedCell.col,
     );
-    setFormulaInput(cell?.raw_value ?? '');
+    setFormulaInput(idsToNames(cell?.raw_value ?? '', idToName));
     setIsDirty(false);
-  }, [editAnchor, selectedCell, activeSheetId, ss.cells]);
+  }, [editAnchor, selectedCell, activeSheetId, ss.cells, idToName]);
 
   // Insert a cell/range reference into the formula at the caret (point mode).
   const insertRef = useCallback(
@@ -577,10 +596,7 @@ export default function AppPage() {
       // by the meaningless cross-sheet positional delta. Same-sheet → shift.
       const crossSheet =
         internal && clipboard!.sourceSheetId !== activeSheetId
-          ? {
-              sourceSheetName:
-                ss.sheets.find((s) => s.id === clipboard!.sourceSheetId)?.name ?? null,
-            }
+          ? { sourceSheetId: clipboard!.sourceSheetId }
           : null;
 
       const writes: PasteWrite[] = internal
