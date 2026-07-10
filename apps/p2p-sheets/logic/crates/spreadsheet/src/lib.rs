@@ -12,7 +12,7 @@ use calimero_sdk::types::Error as AppError;
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{AuthoredMap, LwwRegister, Mergeable, UnorderedMap};
 use calimero_storage::env as storage_env;
-use p2p_sheets_types::{generate_id, validate_label, Error};
+use p2p_sheets_types::{generate_id, validate_label, validate_sheet_name, Error};
 
 pub mod events;
 use events::Event;
@@ -225,8 +225,31 @@ impl Spreadsheet {
 
     // ---- Sheets ----
 
+    /// Make `desired` unique among existing sheet names (excluding `exclude_id`),
+    /// auto-suffixing ` (2)`, ` (3)`, … on collision.
+    fn unique_sheet_name(&self, desired: &str, exclude_id: Option<&str>) -> app::Result<String> {
+        let existing: Vec<String> = self
+            .sheets
+            .entries()
+            .map_err(|e| AppError::msg(format!("sheets.entries: {e}")))?
+            .filter(|(id, _)| exclude_id != Some(id.as_str()))
+            .map(|(_, d)| d.name.clone())
+            .collect();
+        if !existing.iter().any(|n| n == desired) {
+            return Ok(desired.to_string());
+        }
+        for n in 2u32.. {
+            let cand = format!("{desired} ({n})");
+            if !existing.iter().any(|x| x == &cand) {
+                return Ok(cand);
+            }
+        }
+        Ok(desired.to_string()) // unreachable in practice
+    }
+
     pub fn create_sheet(&mut self, name: String) -> app::Result<String> {
-        validate_label(&name).map_err(AppError::from)?;
+        validate_sheet_name(&name).map_err(AppError::from)?;
+        let name = self.unique_sheet_name(&name, None)?;
         let now = storage_env::time_now();
         let mut nonce = [0u8; 4];
         env::random_bytes(&mut nonce);
@@ -253,7 +276,19 @@ impl Spreadsheet {
     }
 
     pub fn rename_sheet(&mut self, sheet_id: String, new_name: String) -> app::Result<()> {
-        validate_label(&new_name).map_err(AppError::from)?;
+        validate_sheet_name(&new_name).map_err(AppError::from)?;
+        // Reject a rename that collides with a DIFFERENT sheet (renaming to the
+        // current name is a no-op below).
+        let collides = self
+            .sheets
+            .entries()
+            .map_err(|e| AppError::msg(format!("sheets.entries: {e}")))?
+            .any(|(id, d)| id != sheet_id && d.name == new_name);
+        if collides {
+            return Err(AppError::from(Error::Invalid(format!(
+                "a sheet named '{new_name}' already exists"
+            ))));
+        }
         let now = storage_env::time_now();
         // Capture the old name before mutating so we can rewrite references.
         let old_name = {
@@ -2004,5 +2039,49 @@ mod tests {
         let cnt = cells.iter().find(|c| c.row == 3).unwrap();
         assert_eq!(avg.computed_value, "15");
         assert_eq!(cnt.computed_value, "2");
+    }
+
+    #[test]
+    fn create_sheet_auto_suffixes_duplicate_names() {
+        let mut app = make_app();
+        app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
+        app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
+        app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
+        let names: Vec<String> = app
+            .call(|s| -> app::Result<Vec<String>> {
+                Ok(s.list_sheets()?.into_iter().map(|x| x.name).collect())
+            })
+            .unwrap();
+        assert!(names.contains(&"Sheet 1".to_string()));
+        assert!(names.contains(&"Sheet 1 (2)".to_string()));
+        assert!(names.contains(&"Sheet 1 (3)".to_string()));
+    }
+
+    #[test]
+    fn rename_to_an_existing_name_is_rejected() {
+        let mut app = make_app();
+        let a = app.call(|s| s.create_sheet("Alpha".into())).unwrap();
+        let _b = app.call(|s| s.create_sheet("Beta".into())).unwrap();
+        assert!(app
+            .call(|s| s.rename_sheet(a.clone(), "Beta".into()))
+            .is_err());
+    }
+
+    #[test]
+    fn rename_to_own_name_is_ok() {
+        let mut app = make_app();
+        let a = app.call(|s| s.create_sheet("Alpha".into())).unwrap();
+        assert!(app
+            .call(|s| s.rename_sheet(a.clone(), "Alpha".into()))
+            .is_ok());
+    }
+
+    #[test]
+    fn rename_rejects_forbidden_chars() {
+        let mut app = make_app();
+        let a = app.call(|s| s.create_sheet("Alpha".into())).unwrap();
+        assert!(app
+            .call(|s| s.rename_sheet(a.clone(), "Bad!Name".into()))
+            .is_err());
     }
 }
