@@ -51,9 +51,11 @@ const ROWS = 50;
 export default function AppPage() {
   const { logout } = useMero();
   const ws = useWorkspace();
+  const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
   const ss = useSpreadsheet({
     contextId: ws.contextId,
     executorPublicKey: ws.executorPublicKey,
+    activeSheetId,
   });
   const { theme, toggle: toggleTheme } = useTheme();
 
@@ -92,7 +94,6 @@ export default function AppPage() {
   }, [ws.ready, ws.contextId, ws.pendingInitName, ws]);
 
   // ── Spreadsheet state ───────────────────────────────────────────
-  const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
   const [selectedCell, setSelectedCell] = useState<CellCoord | null>(null);
   const [selectionRange, setSelectionRange] = useState<Rect | null>(null);
   const [clipboard, setClipboard] = useState<ClipPayload | null>(null);

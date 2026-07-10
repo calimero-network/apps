@@ -63,6 +63,8 @@ export const BUILTIN_FUNCTIONS: FunctionDef[] = [
 export interface UseSpreadsheetArgs {
   contextId: string | null;
   executorPublicKey: string | null;
+  /** The sheet currently displayed — refresh() fetches only this sheet's cells. */
+  activeSheetId: string | null;
 }
 
 export interface UseSpreadsheetReturn {
@@ -105,6 +107,7 @@ export interface UseSpreadsheetReturn {
 export function useSpreadsheet({
   contextId,
   executorPublicKey,
+  activeSheetId,
 }: UseSpreadsheetArgs): UseSpreadsheetReturn {
   const { mero } = useMero();
   const [sheets, setSheets] = useState<Sheet[]>([]);
@@ -162,17 +165,15 @@ export function useSpreadsheet({
         client.getFunctions(),
       ]);
 
-      // Fetch cells for every sheet in parallel
-      const allCells: Cell[] = [];
-      if (fetchedSheets.length > 0) {
-        const cellArrays = await Promise.all(
-          fetchedSheets.map((sheet) => client.getCells({ sheet_id: sheet.id })),
-        );
-        for (const arr of cellArrays) allCells.push(...arr);
-      }
+      // Fetch ONLY the active sheet's cells. The node derives cross-sheet
+      // references during eval, so the active sheet is correct without holding
+      // other sheets' cells; any context sync refetches the active sheet.
+      const activeCells = activeSheetId
+        ? await client.getCells({ sheet_id: activeSheetId })
+        : [];
 
       setSheets(fetchedSheets.sort((a, b) => a.position - b.position));
-      setCells(allCells);
+      setCells(activeCells);
       setCursors(fetchedCursors);
       // Only replace the built-in functions if the backend returned a non-empty list
       if (fetchedFunctions.length > 0) setFunctions(fetchedFunctions);
@@ -182,7 +183,7 @@ export function useSpreadsheet({
       setLoading(false);
       setLoaded(true);
     }
-  }, [client]);
+  }, [client, activeSheetId]);
 
   // Reset the loaded flag whenever the client changes (new context) so callers
   // wait for that context's first fetch before acting on empty state.
