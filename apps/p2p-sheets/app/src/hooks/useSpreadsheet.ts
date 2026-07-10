@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMero, useSubscription } from '@calimero-network/mero-react';
 import { SpreadsheetClient } from '../api/spreadsheet/SpreadsheetClient';
-import type { Sheet, Cell, Cursor, FunctionDef } from '../api/spreadsheet/SpreadsheetClient';
+import type { Sheet, Cell, Cursor, FunctionDef, CellOp } from '../api/spreadsheet/SpreadsheetClient';
 
 // Re-export domain types so components import from one place
 export type { Sheet, Cell, Cursor, FunctionDef };
@@ -88,6 +88,7 @@ export interface UseSpreadsheetReturn {
   setCell: (sheetId: string, row: number, col: number, rawValue: string) => Promise<void>;
   clearCell: (sheetId: string, row: number, col: number) => Promise<void>;
   setCellFormat: (sheetId: string, row: number, col: number, format: string) => Promise<void>;
+  applyCellOps: (sheetId: string, ops: CellOp[]) => Promise<void>;
   // Cursor (fire-and-forget)
   updateCursor: (sheetId: string, row: number, col: number) => Promise<void>;
   // Export
@@ -262,6 +263,15 @@ export function useSpreadsheet({
     [client, refresh, enqueue],
   );
 
+  const applyCellOps = useCallback(
+    async (sheetId: string, ops: CellOp[]) => {
+      if (!client || ops.length === 0) return;
+      await enqueue(() => client.applyCellOps({ sheet_id: sheetId, ops }));
+      await refresh();
+    },
+    [client, refresh, enqueue],
+  );
+
   // Fire-and-forget cursor broadcast — never block the UI waiting for it, but
   // still route it through the mutation queue so it can't clobber a concurrent
   // cell write (both are full-state commits on the node).
@@ -304,6 +314,7 @@ export function useSpreadsheet({
     setCell,
     clearCell,
     setCellFormat,
+    applyCellOps,
     updateCursor,
     exportAll,
     searchFunctions,

@@ -32,6 +32,7 @@ import { normalizeRect, sheetPrefix, rectCells, type CellCoord, type Rect } from
 import { planFill } from '../../spreadsheet/fill';
 import { toTSV, fromTSV } from '../../spreadsheet/clipboard';
 import { planPaste, type ClipPayload, type ClipCell, type PasteWrite } from '../../spreadsheet/paste';
+import { setOp, formatOp, clearOp, type CellOp } from '../../spreadsheet/ops';
 import FormulaBar from '../../components/FormulaBar';
 import SpreadsheetGrid from '../../components/SpreadsheetGrid';
 import SheetTabs from '../../components/SheetTabs';
@@ -473,11 +474,13 @@ export default function AppPage() {
           ? { top: selectedCell.row, left: selectedCell.col, bottom: selectedCell.row, right: selectedCell.col }
           : null);
       if (!rect) return;
+      const ops: CellOp[] = [];
       for (let r = rect.top; r <= rect.bottom; r++) {
         for (let c = rect.left; c <= rect.right; c++) {
-          await ss.setCellFormat(activeSheetId, r, c, format);
+          ops.push(formatOp(r, c, format));
         }
       }
+      await ss.applyCellOps(activeSheetId, ops);
     },
     [activeSheetId, selectionRange, selectedCell, ss],
   );
@@ -494,18 +497,20 @@ export default function AppPage() {
         return cell ? { raw: cell.raw_value, format: cell.format } : null;
       };
       const writes = planFill(source, target, getCell);
+      const ops: CellOp[] = [];
       for (const w of writes) {
         if (w.raw.trim() === '') {
           // Empty target: clear the cell (drops any value AND format).
-          await ss.clearCell(activeSheetId, w.row, w.col);
+          ops.push(clearOp(w.row, w.col));
         } else {
-          await ss.setCell(activeSheetId, w.row, w.col, w.raw);
+          ops.push(setOp(w.row, w.col, w.raw));
           // Always apply the pattern's format — including '' — so filling an
           // unformatted pattern over a previously-formatted cell clears the
           // stale format instead of leaving it behind.
-          await ss.setCellFormat(activeSheetId, w.row, w.col, w.format);
+          ops.push(formatOp(w.row, w.col, w.format));
         }
       }
+      if (ops.length > 0) await ss.applyCellOps(activeSheetId, ops);
     },
     [activeSheetId, ss],
   );
@@ -585,11 +590,10 @@ export default function AppPage() {
       // For a cut, clear the source FIRST: the writes come from the in-memory
       // payload (not re-read from live cells), so clearing first means an
       // overlapping paste target isn't wiped by a later source-clear.
-      if (internal && clipboard!.cut) {
-        for (const { row, col } of rectCells(clipboard!.sourceRect)) {
-          await ss.clearCell(activeSheetId, row, col);
-        }
-      }
+      const cutClears: CellOp[] =
+        internal && clipboard!.cut
+          ? [...rectCells(clipboard!.sourceRect)].map(({ row, col }) => clearOp(row, col))
+          : [];
 
       // A copy pasted onto a DIFFERENT sheet qualifies its formulas to the
       // source sheet (=SUM(A9:F9) → =SUM(Sheet1!A9:F9)) instead of shifting refs
@@ -606,19 +610,23 @@ export default function AppPage() {
             rowVals.map((v, c) => ({ row: anchor.row + r, col: anchor.col + c, raw: v, format: '' })),
           );
 
+      const pasteOps: CellOp[] = [];
       for (const w of writes) {
         if (w.row < 0 || w.row >= ROWS || w.col < 0 || w.col >= COLS) continue; // clip
         if (w.raw.trim() === '') {
-          await ss.clearCell(activeSheetId, w.row, w.col);
+          pasteOps.push(clearOp(w.row, w.col));
         } else {
-          await ss.setCell(activeSheetId, w.row, w.col, w.raw);
+          pasteOps.push(setOp(w.row, w.col, w.raw));
           // Only apply a non-empty format. A plain copy carries "", and applying
           // an empty format is a pointless second mutation on the cell.
           if (w.format) {
-            await ss.setCellFormat(activeSheetId, w.row, w.col, w.format);
+            pasteOps.push(formatOp(w.row, w.col, w.format));
           }
         }
       }
+
+      const ops = [...cutClears, ...pasteOps];
+      if (ops.length > 0) await ss.applyCellOps(activeSheetId, ops);
 
       if (internal && clipboard!.cut) setClipboard(null); // consumed cut empties the clipboard
     },
@@ -629,9 +637,14 @@ export default function AppPage() {
     if (editing || !activeSheetId) return;
     const region = currentRegion();
     if (!region) return;
-    for (const { row, col } of rectCells(region)) {
-      await ss.clearCell(activeSheetId, row, col);
+    const cells = [...rectCells(region)];
+    if (cells.length === 1) {
+      // Single-cell delete stays on the direct clearCell path.
+      await ss.clearCell(activeSheetId, cells[0].row, cells[0].col);
+      return;
     }
+    const ops = cells.map(({ row, col }) => clearOp(row, col));
+    await ss.applyCellOps(activeSheetId, ops);
   }, [editing, activeSheetId, currentRegion, ss]);
 
   const handleClearClipboard = useCallback(() => setClipboard(null), []);

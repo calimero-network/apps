@@ -28,6 +28,11 @@ export interface CellData {
   updated_at: number;
 }
 
+export type CellOp =
+  | { kind: 'Set'; row: number; col: number; raw_value: string }
+  | { kind: 'Format'; row: number; col: number; format: string }
+  | { kind: 'Clear'; row: number; col: number };
+
 export interface Cursor {
   id: string;
   author: string;
@@ -224,6 +229,14 @@ export class SpreadsheetClient {
    */
   public async clearCell(params: { sheet_id: string; row: number; col: number }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'clear_cell', argsJson: params, executorPublicKey: this._executorPublicKey });
+    return response as void;
+  }
+
+  /**
+   * apply_cell_ops
+   */
+  public async applyCellOps(params: { sheet_id: string; ops: CellOp[] }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'apply_cell_ops', argsJson: params, executorPublicKey: this._executorPublicKey });
     return response as void;
   }
 
