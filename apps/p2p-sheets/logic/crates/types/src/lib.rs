@@ -72,6 +72,21 @@ pub fn validate_label(label: &str) -> Result<(), Error> {
     Ok(())
 }
 
+/// Validate a sheet name: the `validate_label` rules plus a character
+/// restriction so a name can never collide with the canonical `[id]!` reference
+/// qualifier (and stays parseable when typed). Forbids `[ ] ! : ' "` and control
+/// characters (mirrors Excel's forbidden set plus our delimiters).
+pub fn validate_sheet_name(name: &str) -> Result<(), Error> {
+    validate_label(name)?;
+    const FORBIDDEN: &[char] = &['[', ']', '!', ':', '\'', '"'];
+    if name.chars().any(|c| FORBIDDEN.contains(&c) || c.is_control()) {
+        return Err(Error::Invalid(
+            "sheet name may not contain [ ] ! : ' \" or control characters".into(),
+        ));
+    }
+    Ok(())
+}
+
 /// Generate an id from a prefix, timestamp, and 4 random bytes.
 /// Format: `{prefix}-{timestamp}-{hex}`.
 pub fn generate_id(prefix: &str, timestamp: u64, nonce: &[u8; 4]) -> String {
@@ -132,5 +147,23 @@ mod tests {
     fn generate_id_has_expected_shape() {
         let id = generate_id("item", 1700000000000, &[0xde, 0xad, 0xbe, 0xef]);
         assert_eq!(id, "item-1700000000000-deadbeef");
+    }
+
+    #[test]
+    fn validate_sheet_name_accepts_normal() {
+        assert!(validate_sheet_name("Q3 Budget").is_ok());
+        assert!(validate_sheet_name("Sheet 1 (2)").is_ok());
+    }
+
+    #[test]
+    fn validate_sheet_name_rejects_delimiter_chars() {
+        for bad in ["a!b", "a[b", "a]b", "a:b", "a'b", "a\"b"] {
+            assert!(validate_sheet_name(bad).is_err(), "should reject {bad:?}");
+        }
+    }
+
+    #[test]
+    fn validate_sheet_name_rejects_empty() {
+        assert!(validate_sheet_name("   ").is_err());
     }
 }
