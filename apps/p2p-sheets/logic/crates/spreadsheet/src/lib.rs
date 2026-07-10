@@ -290,63 +290,23 @@ impl Spreadsheet {
             ))));
         }
         let now = storage_env::time_now();
-        // Capture the old name before mutating so we can rewrite references.
-        let old_name = {
-            let guard = self
-                .sheets
-                .get_mut(&sheet_id)
-                .map_err(|e| AppError::msg(format!("sheets.get_mut: {e}")))?
-                .ok_or_else(|| AppError::from(Error::NotFound(sheet_id.clone())))?;
-            let old = guard.name.clone();
-            drop(guard);
-            old
-        };
         {
             let mut guard = self
                 .sheets
                 .get_mut(&sheet_id)
                 .map_err(|e| AppError::msg(format!("sheets.get_mut: {e}")))?
-                .unwrap();
+                .ok_or_else(|| AppError::from(Error::NotFound(sheet_id.clone())))?;
             guard.name = new_name.clone();
             guard.updated_at = now;
         }
 
-        // References resolve by sheet name, so a rename would orphan every
-        // formula pointing at the old name. Rewrite them to follow the rename
-        // (Excel/Sheets behaviour) so cross-sheet formulas keep resolving.
-        if old_name != new_name {
-            let updates: Vec<(String, String)> = self
-                .cells
-                .entries()
-                .map_err(|e| AppError::msg(format!("cells.entries: {e}")))?
-                .filter_map(|(k, d)| {
-                    if !d.raw_value.trim_start().starts_with('=') {
-                        return None;
-                    }
-                    let rewritten =
-                        formula::rewrite_sheet_qualifiers(&d.raw_value, &old_name, &new_name);
-                    (rewritten != d.raw_value).then_some((k, rewritten))
-                })
-                .collect();
-            for (k, new_raw) in updates {
-                if let Some(mut guard) = self
-                    .cells
-                    .get_mut(&k)
-                    .map_err(|e| AppError::msg(format!("cells.get_mut: {e}")))?
-                {
-                    guard.raw_value = new_raw;
-                    guard.updated_at = now;
-                }
-            }
-        }
-
+        // Cross-sheet references are id-based ([id]!...), so a rename changes
+        // no formula and no computed value: nothing to rewrite, nothing to
+        // recompute.
         app::emit!(Event::SheetRenamed {
             id: &sheet_id,
             name: &new_name,
         });
-        // Refresh computed values: rewritten refs (and anything depending on
-        // them) must re-evaluate against the new name.
-        self.recompute_all()?;
         Ok(())
     }
 
@@ -930,9 +890,10 @@ mod formula {
         }
 
         // Error tokens propagate verbatim. A formula that references a cell
-        // shifted out of range is stored as `=#REF!`; without this, the trailing
-        // `!` makes `split_sheet_qualifier` treat `#REF` as a sheet name and the
-        // value collapses to `#VALUE!`.
+        // shifted out of range is stored as `=#REF!`; without this, it falls
+        // through to `split_sheet_qualifier`/`parse_cell_ref` (which only
+        // recognize the `[id]!cell` form), fails to parse as a reference, and
+        // the value collapses to `#VALUE!`.
         if matches!(
             expr,
             "#REF!" | "#VALUE!" | "#DIV/0!" | "#NAME?" | "#NUM!" | "#NULL!" | "#N/A"
@@ -980,88 +941,6 @@ mod formula {
             }
         }
         (None, s.to_string())
-    }
-
-    /// Sheet-name prefix for a reference: bare when the name is a simple
-    /// identifier (`Data!`), single-quoted with internal `'` doubled otherwise
-    /// (`'Q3 Budget'!`). Mirrors the frontend `sheetPrefix` so refs are written
-    /// identically whichever side produces them.
-    pub fn sheet_prefix(name: &str) -> String {
-        let simple = name
-            .chars()
-            .next()
-            .is_some_and(|c| c.is_ascii_alphabetic())
-            && name.chars().all(|c| c.is_ascii_alphanumeric());
-        if simple {
-            format!("{name}!")
-        } else {
-            format!("'{}'!", name.replace('\'', "''"))
-        }
-    }
-
-    /// Rewrite every sheet qualifier that names `old` so it references `new`
-    /// instead, leaving the rest of the formula untouched. Handles bare (`Old!`)
-    /// and quoted (`'Old Name'!`, `''`-escaped) qualifiers, and re-quotes `new`
-    /// as needed. A longer name sharing a prefix (`Sheet10` vs `Sheet1`) is left
-    /// alone because bare matches are whole-token. Used when a sheet is renamed
-    /// so references follow it (Excel/Sheets behaviour).
-    pub fn rewrite_sheet_qualifiers(formula: &str, old: &str, new: &str) -> String {
-        let chars: Vec<char> = formula.chars().collect();
-        let mut out = String::with_capacity(formula.len());
-        let mut i = 0;
-        while i < chars.len() {
-            let ch = chars[i];
-            if ch == '\'' {
-                // Quoted name: read to the closing lone quote, collapsing `''`.
-                let mut j = i + 1;
-                let mut name = String::new();
-                let mut terminated = false;
-                while j < chars.len() {
-                    if chars[j] == '\'' {
-                        if chars.get(j + 1) == Some(&'\'') {
-                            name.push('\'');
-                            j += 2;
-                        } else {
-                            j += 1; // closing quote
-                            terminated = true;
-                            break;
-                        }
-                    } else {
-                        name.push(chars[j]);
-                        j += 1;
-                    }
-                }
-                if terminated && chars.get(j) == Some(&'!') && name == old {
-                    out.push_str(&sheet_prefix(new));
-                    i = j + 1; // past the '!'
-                    continue;
-                }
-                // Not a matching qualifier — emit the original span verbatim.
-                out.extend(&chars[i..j]);
-                i = j;
-                continue;
-            }
-            if ch.is_ascii_alphabetic() {
-                // Bare identifier run; a trailing '!' makes it a sheet qualifier.
-                let start = i;
-                let mut j = i;
-                while j < chars.len() && chars[j].is_ascii_alphanumeric() {
-                    j += 1;
-                }
-                let word: String = chars[start..j].iter().collect();
-                if chars.get(j) == Some(&'!') && word == old {
-                    out.push_str(&sheet_prefix(new));
-                    i = j + 1;
-                    continue;
-                }
-                out.push_str(&word);
-                i = j;
-                continue;
-            }
-            out.push(ch);
-            i += 1;
-        }
-        out
     }
 
     /// If `expr` is exactly a single `NAME(args)` call, evaluate it; else
@@ -1128,7 +1007,7 @@ mod formula {
                 continue;
             }
             if arg.contains(':') {
-                // A range, possibly sheet-qualified (`Data!A1:A3`, `'S'!A:A`).
+                // A range, possibly sheet-qualified (`[id]!A1:A3`).
                 let (sheet, rest) = split_sheet_qualifier(arg);
                 for (r, c) in expand_range(&rest) {
                     if let Some(raw) = get_value(sheet.as_deref(), r, c) {
@@ -1139,7 +1018,7 @@ mod formula {
                 }
             } else if let Some(n) = eval_number(arg, get_value) {
                 // Single cells (incl. cross-sheet), numbers and arithmetic go
-                // through the number parser, which handles `Data!A1` itself.
+                // through the number parser, which handles `[id]!A1` itself.
                 nums.push(n);
             }
         }
@@ -1926,5 +1805,26 @@ mod tests {
         assert!(app
             .call(|s| s.rename_sheet(a.clone(), "Bad!Name".into()))
             .is_err());
+    }
+
+    #[test]
+    fn rename_does_not_touch_formulas_or_values() {
+        let mut app = make_app();
+        let data = app.call(|s| s.create_sheet("Data".into())).unwrap();
+        let main = app.call(|s| s.create_sheet("Main".into())).unwrap();
+        app.call(|s| s.set_cell(data.clone(), 0, 0, "10".into())).unwrap();
+        let formula = format!("=[{data}]!A1*2");
+        app.call(|s| s.set_cell_formula(main.clone(), 0, 0, formula.clone())).unwrap();
+        let before = app.view(|s| s.get_cells(main.clone())).unwrap();
+        let cell_before = before.iter().find(|c| c.row == 0 && c.col == 0).unwrap().clone();
+        assert_eq!(cell_before.computed_value, "20");
+
+        app.call(|s| s.rename_sheet(data.clone(), "Renamed".into())).unwrap();
+
+        let after = app.view(|s| s.get_cells(main.clone())).unwrap();
+        let cell_after = after.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
+        // raw formula unchanged (id-based), computed value unchanged.
+        assert_eq!(cell_after.raw_value, formula, "rename must not rewrite the formula");
+        assert_eq!(cell_after.computed_value, "20", "rename must not change values");
     }
 }
