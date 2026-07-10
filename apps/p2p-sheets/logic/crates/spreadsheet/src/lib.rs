@@ -603,12 +603,12 @@ impl Spreadsheet {
     /// and terminating on circular references). Persists and emits only the
     /// cells whose computed value actually changed.
     fn recompute_all(&mut self) -> app::Result<()> {
-        // Sheet name → id, so cross-sheet references resolve by name.
-        let sheets: Vec<(String, String)> = self
+        // Existing sheet ids — cross-sheet references resolve by id.
+        let sheet_ids: Vec<String> = self
             .sheets
             .entries()
             .map_err(|e| AppError::msg(format!("sheets.entries: {e}")))?
-            .map(|(id, d)| (d.name.clone(), id))
+            .map(|(id, _)| id)
             .collect();
 
         // Snapshot every cell: (key, sheet_id, row, col, raw, computed, original).
@@ -648,15 +648,16 @@ impl Spreadsheet {
                     // as #REF!, not silently resolve every cell to empty (0).
                     let bad_sheet = core::cell::Cell::new(false);
                     let new_val = formula::evaluate(&raw, |sheet, r, c| {
-                        // Resolve the sheet: named → its id, else the cell's own sheet.
+                        // Resolve the sheet: id → itself if it exists, else the cell's own sheet.
                         let sid = match sheet {
-                            Some(name) => match sheets.iter().find(|(n, _)| n == name) {
-                                Some((_, id)) => id.as_str(),
-                                None => {
+                            Some(id) => {
+                                if sheet_ids.iter().any(|s| s == id) {
+                                    id
+                                } else {
                                     bad_sheet.set(true);
                                     return None;
                                 }
-                            },
+                            }
                             None => cur_sheet.as_str(),
                         };
                         lookup
@@ -965,45 +966,17 @@ mod formula {
         "#VALUE!".to_string()
     }
 
-    /// Split an optional `Sheet!` / `'Sheet Name'!` prefix off a reference.
-    /// Returns `(sheet_name, rest)` — `sheet_name` is `None` for a same-sheet
-    /// reference. Quoted names may contain spaces.
+    /// Split an optional `[<sheet_id>]!` prefix off a reference. Returns
+    /// `(sheet_id, rest)` — `sheet_id` is `None` for a same-sheet reference.
     fn split_sheet_qualifier(s: &str) -> (Option<String>, String) {
         let s = s.trim();
-        if s.starts_with('\'') {
-            // Quoted sheet name. An internal apostrophe is doubled (`''`), the
-            // Excel/Sheets convention emitted by the frontend `sheetPrefix`, so a
-            // lone `'` is the terminator and `''` collapses to one literal `'`.
-            let chars: Vec<char> = s.chars().collect();
-            let mut i = 1; // past the opening quote
-            let mut name = String::new();
-            loop {
-                match chars.get(i) {
-                    Some('\'') if chars.get(i + 1) == Some(&'\'') => {
-                        name.push('\'');
-                        i += 2;
-                    }
-                    Some('\'') => {
-                        i += 1; // closing quote
-                        break;
-                    }
-                    Some(&ch) => {
-                        name.push(ch);
-                        i += 1;
-                    }
-                    None => return (None, s.to_string()), // unterminated
+        if let Some(rest) = s.strip_prefix('[') {
+            if let Some(end) = rest.find(']') {
+                let id = &rest[..end];
+                let after = &rest[end + 1..];
+                if let Some(cell) = after.trim_start().strip_prefix('!') {
+                    return (Some(id.to_string()), cell.trim().to_string());
                 }
-            }
-            let rest: String = chars[i..].iter().collect();
-            if let Some(cell) = rest.trim_start().strip_prefix('!') {
-                return (Some(name), cell.trim().to_string());
-            }
-            return (None, s.to_string());
-        }
-        if let Some(pos) = s.find('!') {
-            let name = s[..pos].trim();
-            if !name.is_empty() {
-                return (Some(name.to_string()), s[pos + 1..].trim().to_string());
             }
         }
         (None, s.to_string())
@@ -1242,7 +1215,7 @@ mod formula {
             }
             '-' => { *p += 1; Some(-parse_factor(c, p, gv)?) }
             '+' => { *p += 1; parse_factor(c, p, gv) }
-            '\'' => parse_quoted_ref(c, p, gv),
+            '[' => parse_bracket_ref(c, p, gv),
             ch if ch.is_ascii_alphabetic() => parse_ident(c, p, gv),
             ch if ch.is_ascii_digit() || *ch == '.' => {
                 let start = *p;
@@ -1255,8 +1228,9 @@ mod formula {
         }
     }
 
-    /// A leading alphabetic run is a function call `NAME(...)`, a plain cell
-    /// reference `A1`, or an unquoted cross-sheet reference `Data!A1`.
+    /// A leading alphabetic run is a function call `NAME(...)` or a plain cell
+    /// reference `A1`. Cross-sheet references use the bracket form `[id]!A1`
+    /// (see `parse_bracket_ref`), not a bare `name!` qualifier.
     fn parse_ident(c: &[char], p: &mut usize, gv: &impl Fn(Option<&str>, u32, u32) -> Option<String>) -> Option<f64> {
         let start = *p;
         while *p < c.len() && c[*p].is_ascii_alphabetic() {
@@ -1282,23 +1256,10 @@ mod formula {
             return eval_to_string(&call, gv).trim().parse::<f64>().ok();
         }
 
-        // Consume any trailing digits — part of a cell ref (`A1`) or an unquoted
-        // sheet name (`Sheet2`).
+        // Consume any trailing digits — the row part of a cell ref (`A1`).
         let digits_start = *p;
         while *p < c.len() && c[*p].is_ascii_digit() {
             *p += 1;
-        }
-
-        // Cross-sheet reference: `<name>!<cellref>`.
-        if c.get(*p) == Some(&'!') {
-            let name: String = c[start..*p].iter().collect();
-            *p += 1; // consume '!'
-            let cs = *p;
-            while *p < c.len() && c[*p].is_ascii_uppercase() { *p += 1; }
-            while *p < c.len() && c[*p].is_ascii_digit() { *p += 1; }
-            let refstr: String = c[cs..*p].iter().collect();
-            let (row, col) = parse_cell_ref(&refstr)?;
-            return cell_num(gv, Some(&name), row, col);
         }
 
         // Plain same-sheet cell reference.
@@ -1310,29 +1271,14 @@ mod formula {
         cell_num(gv, None, row, col)
     }
 
-    /// Parse a quoted cross-sheet reference `'Sheet Name'!A1` as a number.
-    fn parse_quoted_ref(c: &[char], p: &mut usize, gv: &impl Fn(Option<&str>, u32, u32) -> Option<String>) -> Option<f64> {
-        *p += 1; // opening quote
-        // Read the name, collapsing a doubled `''` into one literal apostrophe
-        // and stopping at the first lone `'` (Excel/Sheets quoting).
-        let mut name = String::new();
-        loop {
-            match c.get(*p) {
-                Some('\'') if c.get(*p + 1) == Some(&'\'') => {
-                    name.push('\'');
-                    *p += 2;
-                }
-                Some('\'') => {
-                    *p += 1; // closing quote
-                    break;
-                }
-                Some(&ch) => {
-                    name.push(ch);
-                    *p += 1;
-                }
-                None => return None, // unterminated
-            }
-        }
+    /// Parse an id-qualified reference `[sheet-id]!A1` as a number.
+    fn parse_bracket_ref(c: &[char], p: &mut usize, gv: &impl Fn(Option<&str>, u32, u32) -> Option<String>) -> Option<f64> {
+        *p += 1; // opening '['
+        let ids = *p;
+        while *p < c.len() && c[*p] != ']' { *p += 1; }
+        if c.get(*p) != Some(&']') { return None; }
+        let id: String = c[ids..*p].iter().collect();
+        *p += 1; // ']'
         if c.get(*p) != Some(&'!') { return None; }
         *p += 1; // '!'
         let cs = *p;
@@ -1340,7 +1286,7 @@ mod formula {
         while *p < c.len() && c[*p].is_ascii_digit() { *p += 1; }
         let refstr: String = c[cs..*p].iter().collect();
         let (row, col) = parse_cell_ref(&refstr)?;
-        cell_num(gv, Some(&name), row, col)
+        cell_num(gv, Some(&id), row, col)
     }
 
     /// Resolve a cell reference to a number for arithmetic: empty / missing → 0,
@@ -1785,135 +1731,32 @@ mod tests {
         // Data!A1 = 10, Data!A2 = 20
         app.call(|s| s.set_cell(data.clone(), 0, 0, "10".into())).unwrap();
         app.call(|s| s.set_cell(data.clone(), 1, 0, "20".into())).unwrap();
-        // Sheet1!B1 = =Data!A1 + Data!A2 → 30
-        app.call(|s| s.set_cell_formula(s1.clone(), 0, 1, "=Data!A1+Data!A2".into()))
+        // Sheet1!B1 = =[data]!A1 + [data]!A2 → 30
+        app.call(|s| s.set_cell_formula(s1.clone(), 0, 1, format!("=[{data}]!A1+[{data}]!A2")))
             .unwrap();
-        // Sheet1!B2 = =SUM(Data!A1:A2) → 30
-        app.call(|s| s.set_cell_formula(s1.clone(), 1, 1, "=SUM(Data!A1:A2)".into()))
+        // Sheet1!B2 = =SUM([data]!A1:A2) → 30
+        app.call(|s| s.set_cell_formula(s1.clone(), 1, 1, format!("=SUM([{data}]!A1:A2)")))
             .unwrap();
         let cells = app.view(|s| s.get_cells(s1.clone())).unwrap();
         let b1 = cells.iter().find(|c| c.row == 0 && c.col == 1).unwrap();
         let b2 = cells.iter().find(|c| c.row == 1 && c.col == 1).unwrap();
-        assert_eq!(b1.computed_value, "30", "=Data!A1+Data!A2");
-        assert_eq!(b2.computed_value, "30", "=SUM(Data!A1:A2)");
-    }
-
-    #[test]
-    fn cross_sheet_quoted_name_with_space() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let s1 = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
-        let s2 = app.call(|s| s.create_sheet("Sheet 2".into())).unwrap();
-        app.call(|s| s.set_cell(s1.clone(), 0, 0, "7".into())).unwrap(); // 'Sheet 1'!A1 = 7
-        // Sheet 2!A1 = ='Sheet 1'!A1 * 2 → 14
-        app.call(|s| s.set_cell_formula(s2.clone(), 0, 0, "='Sheet 1'!A1*2".into()))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(s2.clone())).unwrap();
-        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
-        assert_eq!(a1.computed_value, "14");
-    }
-
-    #[test]
-    fn cross_sheet_quoted_name_with_apostrophe() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        // A sheet whose name contains an apostrophe. The frontend qualifies refs
-        // to it as `'Bob''s data'!A1` (Excel/Sheets: internal `'` is doubled).
-        let s1 = app.call(|s| s.create_sheet("Bob's data".into())).unwrap();
-        let s2 = app.call(|s| s.create_sheet("Sheet 2".into())).unwrap();
-        app.call(|s| s.set_cell(s1.clone(), 0, 0, "9".into())).unwrap(); // 'Bob''s data'!A1 = 9
-        // Single ref and a range, both quoting the apostrophe name.
-        app.call(|s| s.set_cell(s1.clone(), 1, 0, "1".into())).unwrap(); // A2 = 1
-        app.call(|s| s.set_cell_formula(s2.clone(), 0, 0, "='Bob''s data'!A1*2".into()))
-            .unwrap();
-        app.call(|s| s.set_cell_formula(s2.clone(), 1, 0, "=SUM('Bob''s data'!A1:A2)".into()))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(s2.clone())).unwrap();
-        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
-        let a2 = cells.iter().find(|c| c.row == 1 && c.col == 0).unwrap();
-        assert_eq!(a1.computed_value, "18", "='Bob''s data'!A1*2");
-        assert_eq!(a2.computed_value, "10", "=SUM('Bob''s data'!A1:A2)");
+        assert_eq!(b1.computed_value, "30", "=[data]!A1+[data]!A2");
+        assert_eq!(b2.computed_value, "30", "=SUM([data]!A1:A2)");
     }
 
     #[test]
     fn reference_to_unknown_sheet_is_ref_error() {
         let mut app = make_app();
         app.call(|s| s.init_project("P".into())).unwrap();
-        // The default sheet name has a space: "Sheet 1".
-        let s1 = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
-        let s2 = app.call(|s| s.create_sheet("Sheet 2".into())).unwrap();
-        app.call(|s| s.set_cell(s1.clone(), 1, 3, "5".into())).unwrap(); // 'Sheet 1'!D2 = 5
-        // Typo: `Sheet1` (no space) names no existing sheet. This must surface as
-        // #REF!, not a silent 0 that looks like the cells are empty.
-        app.call(|s| s.set_cell_formula(s2.clone(), 0, 0, "=SUM(Sheet1!D2:D6)".into()))
+        let sid = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
+        // No sheet has this id, so the reference must surface as #REF!, not a
+        // silent 0 that looks like the cell is empty.
+        app.call(|s| s.set_cell_formula(sid.clone(), 0, 0, "=[sheet-does-not-exist]!A1".into()))
             .unwrap();
-        // The correctly-quoted name resolves normally.
-        app.call(|s| s.set_cell_formula(s2.clone(), 1, 0, "=SUM('Sheet 1'!D2:D6)".into()))
-            .unwrap();
-        let cells = app.view(|s| s.get_cells(s2.clone())).unwrap();
+        // resolves to #REF! because no sheet has that id
+        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
         let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
-        let a2 = cells.iter().find(|c| c.row == 1 && c.col == 0).unwrap();
-        assert_eq!(a1.computed_value, "#REF!", "unknown sheet name → #REF!");
-        assert_eq!(a2.computed_value, "5", "'Sheet 1'!D2:D6 resolves");
-    }
-
-    #[test]
-    fn renaming_a_sheet_rewrites_references_to_it() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let s1 = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
-        let s2 = app.call(|s| s.create_sheet("Sheet 2".into())).unwrap();
-        app.call(|s| s.set_cell(s1.clone(), 0, 0, "10".into())).unwrap(); // 'Sheet 1'!A1 = 10
-        app.call(|s| s.set_cell(s1.clone(), 1, 0, "20".into())).unwrap(); // 'Sheet 1'!A2 = 20
-        app.call(|s| s.set_cell_formula(s2.clone(), 0, 0, "='Sheet 1'!A1+5".into()))
-            .unwrap(); // 15
-        app.call(|s| s.set_cell_formula(s2.clone(), 1, 0, "=SUM('Sheet 1'!A1:A2)".into()))
-            .unwrap(); // 30
-        // Rename the referenced sheet to a simple identifier → references follow
-        // it, re-quoting appropriately (bare, since "Budget" needs no quotes).
-        app.call(|s| s.rename_sheet(s1.clone(), "Budget".into())).unwrap();
-        let cells = app.view(|s| s.get_cells(s2.clone())).unwrap();
-        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
-        let a2 = cells.iter().find(|c| c.row == 1 && c.col == 0).unwrap();
-        assert_eq!(a1.raw_value, "=Budget!A1+5", "single ref follows the rename");
-        assert_eq!(a2.raw_value, "=SUM(Budget!A1:A2)", "range ref follows the rename");
-        assert_eq!(a1.computed_value, "15", "still resolves after rename");
-        assert_eq!(a2.computed_value, "30", "range still resolves after rename");
-    }
-
-    #[test]
-    fn renaming_to_a_name_with_spaces_requotes_references() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let s1 = app.call(|s| s.create_sheet("Data".into())).unwrap();
-        let s2 = app.call(|s| s.create_sheet("Main".into())).unwrap();
-        app.call(|s| s.set_cell(s1.clone(), 0, 0, "7".into())).unwrap();
-        app.call(|s| s.set_cell_formula(s2.clone(), 0, 0, "=Data!A1*2".into()))
-            .unwrap(); // bare ref, 14
-        // Rename to a name with a space → the reference must become quoted.
-        app.call(|s| s.rename_sheet(s1.clone(), "Q3 Budget".into())).unwrap();
-        let cells = app.view(|s| s.get_cells(s2.clone())).unwrap();
-        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
-        assert_eq!(a1.raw_value, "='Q3 Budget'!A1*2", "bare ref becomes quoted");
-        assert_eq!(a1.computed_value, "14", "still resolves");
-    }
-
-    #[test]
-    fn renaming_does_not_touch_similarly_prefixed_sheet_names() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let s1 = app.call(|s| s.create_sheet("Sheet1".into())).unwrap();
-        let s10 = app.call(|s| s.create_sheet("Sheet10".into())).unwrap();
-        let s2 = app.call(|s| s.create_sheet("Main".into())).unwrap();
-        app.call(|s| s.set_cell(s10.clone(), 0, 0, "3".into())).unwrap();
-        app.call(|s| s.set_cell_formula(s2.clone(), 0, 0, "=Sheet10!A1".into()))
-            .unwrap(); // references Sheet10, not Sheet1
-        // Renaming "Sheet1" must not corrupt a reference to "Sheet10".
-        app.call(|s| s.rename_sheet(s1.clone(), "X".into())).unwrap();
-        let cells = app.view(|s| s.get_cells(s2.clone())).unwrap();
-        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
-        assert_eq!(a1.raw_value, "=Sheet10!A1", "Sheet10 reference untouched");
-        assert_eq!(a1.computed_value, "3");
+        assert_eq!(a1.computed_value, "#REF!", "unknown sheet id → #REF!");
     }
 
     #[test]
@@ -1922,10 +1765,10 @@ mod tests {
         app.call(|s| s.init_project("P".into())).unwrap();
         let a = app.call(|s| s.create_sheet("A".into())).unwrap();
         let b = app.call(|s| s.create_sheet("B".into())).unwrap();
-        app.call(|s| s.set_cell(a.clone(), 0, 0, "5".into())).unwrap(); // A!A1 = 5
-        app.call(|s| s.set_cell_formula(b.clone(), 0, 0, "=A!A1*10".into()))
-            .unwrap(); // B!A1 = 50
-        // Change A!A1 → 8; B!A1 (on the other sheet) must recompute to 80.
+        app.call(|s| s.set_cell(a.clone(), 0, 0, "5".into())).unwrap(); // [a]!A1 = 5
+        app.call(|s| s.set_cell_formula(b.clone(), 0, 0, format!("=[{a}]!A1*10")))
+            .unwrap(); // [b]!A1 = 50
+        // Change [a]!A1 → 8; [b]!A1 (on the other sheet) must recompute to 80.
         app.call(|s| s.set_cell(a.clone(), 0, 0, "8".into())).unwrap();
         let cells = app.view(|s| s.get_cells(b.clone())).unwrap();
         let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
