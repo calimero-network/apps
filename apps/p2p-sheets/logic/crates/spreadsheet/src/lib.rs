@@ -67,8 +67,6 @@ pub struct CellData {
     pub col: u32,
     /// Raw user input (may be a formula like `=SUM(A1:A5)`).
     pub raw_value: String,
-    /// Evaluated result (equals raw_value for non-formula cells).
-    pub computed_value: String,
     /// Display format for this cell (e.g. "number", "currency", "percent",
     /// "date"; empty = Automatic). Rendered client-side; does not affect
     /// evaluation. Colon-delimited for future options (e.g. "number:2").
@@ -83,7 +81,6 @@ impl Mergeable for CellData {
             || (other.updated_at == self.updated_at && other.raw_value > self.raw_value)
         {
             self.raw_value = other.raw_value.clone();
-            self.computed_value = other.computed_value.clone();
             self.format = other.format.clone();
             self.updated_at = other.updated_at;
         }
@@ -383,7 +380,6 @@ impl Spreadsheet {
             row,
             col,
             raw_value: raw_value.clone(),
-            computed_value: raw_value,
             format: String::new(),
             updated_at: now,
         };
@@ -399,7 +395,6 @@ impl Spreadsheet {
                 .map_err(|e| AppError::msg(format!("cells.get_mut: {e}")))?
                 .unwrap();
             guard.raw_value = data.raw_value;
-            guard.computed_value = data.computed_value;
             guard.updated_at = data.updated_at;
         } else {
             self.cells
@@ -410,8 +405,6 @@ impl Spreadsheet {
             id: &key,
             sheet_id: &sheet_id,
         });
-        // Recompute every formula (across all sheets) that may depend on this.
-        self.recompute_all()?;
         Ok(key)
     }
 
@@ -433,15 +426,15 @@ impl Spreadsheet {
         }
         let key = Spreadsheet::cell_key(&sheet_id, row, col);
         let now = storage_env::time_now();
-        // Store the raw formula; `recompute_all` computes its value (and every
-        // dependent), so a single code path handles same- and cross-sheet refs.
+        // Store the raw formula; `get_cells` derives its value (and every
+        // dependent) on read, so a single code path handles same- and
+        // cross-sheet refs.
         let data = CellData {
             id: key.clone(),
             sheet_id: sheet_id.clone(),
             row,
             col,
-            raw_value: formula.clone(),
-            computed_value: formula,
+            raw_value: formula,
             format: String::new(),
             updated_at: now,
         };
@@ -457,7 +450,6 @@ impl Spreadsheet {
                 .map_err(|e| AppError::msg(format!("cells.get_mut: {e}")))?
                 .unwrap();
             guard.raw_value = data.raw_value;
-            guard.computed_value = data.computed_value;
             guard.updated_at = data.updated_at;
         } else {
             self.cells
@@ -468,7 +460,6 @@ impl Spreadsheet {
             id: &key,
             sheet_id: &sheet_id,
         });
-        self.recompute_all()?;
         Ok(key)
     }
 
@@ -513,7 +504,6 @@ impl Spreadsheet {
                 row,
                 col,
                 raw_value: String::new(),
-                computed_value: String::new(),
                 format,
                 updated_at: now,
             };
@@ -542,7 +532,6 @@ impl Spreadsheet {
             .map_err(|e| AppError::msg(format!("cells.get_mut: {e}")))?
         {
             guard.raw_value = String::new();
-            guard.computed_value = String::new();
             guard.format = String::new();
             guard.updated_at = storage_env::time_now();
         }
@@ -551,140 +540,42 @@ impl Spreadsheet {
             row,
             col,
         });
-        // Clearing a cell can change formulas that referenced it.
-        self.recompute_all()?;
         Ok(())
     }
 
-    /// Re-evaluate every formula cell in the whole workbook until values
-    /// stabilise, so a change to one cell propagates to all cells that
-    /// (transitively) reference it — on the same sheet OR across sheets
-    /// (`Data!A1`). Runs a bounded fixed-point iteration (safe against chains
-    /// and terminating on circular references). Persists and emits only the
-    /// cells whose computed value actually changed.
-    fn recompute_all(&mut self) -> app::Result<()> {
-        // Existing sheet ids — cross-sheet references resolve by id.
-        let sheet_ids: Vec<String> = self
+    pub fn get_cells(&self, sheet_id: String) -> app::Result<Vec<Cell>> {
+        // Build inputs from ALL cells (cross-sheet refs need other sheets) and the
+        // set of valid sheet ids, then derive every value once. Phase 1 evaluates
+        // the whole workbook per read; node-side scoping is deferred (spec §9).
+        let sheet_ids: std::collections::HashSet<String> = self
             .sheets
             .entries()
             .map_err(|e| AppError::msg(format!("sheets.entries: {e}")))?
             .map(|(id, _)| id)
             .collect();
-
-        // Snapshot every cell: (key, sheet_id, row, col, raw, computed, original).
-        let mut snap: Vec<(String, String, u32, u32, String, String, String)> = self
-            .cells
-            .entries()
-            .map_err(|e| AppError::msg(format!("cells.entries: {e}")))?
-            .map(|(k, d)| {
-                (
-                    k,
-                    d.sheet_id.clone(),
-                    d.row,
-                    d.col,
-                    d.raw_value.clone(),
-                    d.computed_value.clone(),
-                    d.computed_value.clone(),
-                )
-            })
-            .collect();
-
-        // Evaluate one formula cell against a frozen `lookup` of computed values.
-        // A reference to a non-existent sheet id (a deleted sheet, or a stale id)
-        // surfaces as #REF! rather than silently resolving every cell to empty.
-        let eval_cell = |raw: &str, cur_sheet: &str, lookup: &[(String, u32, u32, String)]| -> String {
-            let bad_sheet = core::cell::Cell::new(false);
-            let v = formula::evaluate(raw, |sheet, r, c| {
-                let sid = match sheet {
-                    Some(id) => {
-                        if sheet_ids.iter().any(|s| s == id) {
-                            id
-                        } else {
-                            bad_sheet.set(true);
-                            return None;
-                        }
-                    }
-                    None => cur_sheet,
-                };
-                lookup
-                    .iter()
-                    .find(|(s, rr, cc, _)| s == sid && *rr == r && *cc == c)
-                    .map(|(_, _, _, v)| v.clone())
-            });
-            if bad_sheet.get() { "#REF!".to_string() } else { v }
+        let mut inputs = recalc::WorkbookInputs {
+            cells: std::collections::BTreeMap::new(),
+            sheet_ids,
         };
-
-        // Fixed-point: at most one pass per cell covers the longest acyclic
-        // chain; the extra guard bounds cyclic references.
-        let max_iter = snap.len() + 1;
-        let mut converged = false;
-        for _ in 0..max_iter {
-            // Freeze current computed values for this pass's lookups.
-            let lookup: Vec<(String, u32, u32, String)> = snap
-                .iter()
-                .map(|(_, sid, r, c, _, comp, _)| (sid.clone(), *r, *c, comp.clone()))
-                .collect();
-            let mut changed = false;
-            for entry in snap.iter_mut() {
-                if entry.4.trim_start().starts_with('=') {
-                    let new_val = eval_cell(&entry.4, &entry.1, &lookup);
-                    if new_val != entry.5 {
-                        entry.5 = new_val;
-                        changed = true;
-                    }
-                }
-            }
-            if !changed {
-                converged = true;
-                break;
-            }
-        }
-
-        // A well-formed acyclic sheet always settles within max_iter (which
-        // exceeds the longest possible dependency chain). If it didn't, the cells
-        // still moving are part of — or downstream of — a circular reference
-        // (e.g. `B1 = SUM(A1, B1)`): left alone their value grows with the
-        // iteration count. Stamp each non-convergent cell #CYCLE! so the result
-        // is a stable error instead of a meaningless number.
-        if !converged {
-            let lookup: Vec<(String, u32, u32, String)> = snap
-                .iter()
-                .map(|(_, sid, r, c, _, comp, _)| (sid.clone(), *r, *c, comp.clone()))
-                .collect();
-            for entry in snap.iter_mut() {
-                if entry.4.trim_start().starts_with('=')
-                    && eval_cell(&entry.4, &entry.1, &lookup) != entry.5
-                {
-                    entry.5 = "#CYCLE!".to_string();
-                }
-            }
-        }
-
-        // Persist + emit the cells whose computed value changed.
-        for (key, sid, _r, _c, _raw, computed, original) in snap {
-            if computed != original {
-                if let Some(mut guard) = self
-                    .cells
-                    .get_mut(&key)
-                    .map_err(|e| AppError::msg(format!("cells.get_mut: {e}")))?
-                {
-                    guard.computed_value = computed;
-                }
-                app::emit!(Event::CellUpdated {
-                    id: &key,
-                    sheet_id: &sid,
-                });
-            }
-        }
-        Ok(())
-    }
-
-    pub fn get_cells(&self, sheet_id: String) -> app::Result<Vec<Cell>> {
-        let prefix = format!("{sheet_id}|");
-        let mut out: Vec<Cell> = self
+        let mut stored: Vec<(String, CellData)> = Vec::new();
+        for (k, d) in self
             .cells
             .entries()
             .map_err(|e| AppError::msg(format!("cells.entries: {e}")))?
+        {
+            if !d.raw_value.is_empty() {
+                inputs.cells.insert(
+                    recalc::CellRef { sheet_id: d.sheet_id.clone(), row: d.row, col: d.col },
+                    d.raw_value.clone(),
+                );
+            }
+            stored.push((k, d));
+        }
+        let computed = recalc::evaluate(&inputs);
+
+        let prefix = format!("{sheet_id}|");
+        let mut out: Vec<Cell> = stored
+            .into_iter()
             .filter_map(|(k, d)| {
                 // A cleared cell is kept in the map (blank in place) rather than
                 // removed, so its coordinate can be re-written — removing it
@@ -692,13 +583,17 @@ impl Spreadsheet {
                 // fully-blank cells are hidden here so consumers still see a
                 // cleared cell as gone. A value-less but formatted cell stays.
                 if k.starts_with(&prefix) && !(d.raw_value.is_empty() && d.format.is_empty()) {
+                    let cv = computed
+                        .get(&recalc::CellRef { sheet_id: d.sheet_id.clone(), row: d.row, col: d.col })
+                        .cloned()
+                        .unwrap_or_else(|| d.raw_value.clone());
                     Some(Cell {
                         id: d.id.clone(),
                         sheet_id: d.sheet_id.clone(),
                         row: d.row,
                         col: d.col,
                         raw_value: d.raw_value.clone(),
-                        computed_value: d.computed_value.clone(),
+                        computed_value: cv,
                         format: d.format.clone(),
                         updated_at: d.updated_at,
                     })
@@ -1606,12 +1501,12 @@ mod tests {
     fn cell_merge_carries_format_from_winner() {
         let mut a = CellData {
             id: "k".into(), sheet_id: "s".into(), row: 0, col: 0,
-            raw_value: "1".into(), computed_value: "1".into(),
+            raw_value: "1".into(),
             format: String::new(), updated_at: 1,
         };
         let b = CellData {
             id: "k".into(), sheet_id: "s".into(), row: 0, col: 0,
-            raw_value: "2".into(), computed_value: "2".into(),
+            raw_value: "2".into(),
             format: "currency".into(), updated_at: 2,
         };
         a.merge(&b).unwrap();
@@ -2037,5 +1932,23 @@ mod tests {
         let a3 = cells.iter().find(|c| c.row == 2 && c.col == 0).unwrap();
         // A well-formed chain must converge, never be misflagged as a cycle.
         assert_eq!(a3.computed_value, "3");
+    }
+
+    #[test]
+    fn get_cells_derives_dependent_values_on_read() {
+        let mut app = make_app();
+        let sid = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
+        // Store inputs only — set_cell must NOT recompute.
+        app.call(|s| s.set_cell(sid.clone(), 0, 0, "2".into())).unwrap();
+        app.call(|s| s.set_cell_formula(sid.clone(), 1, 0, "=A1*10".into()))
+            .unwrap();
+        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
+        let b = cells.iter().find(|c| c.row == 1 && c.col == 0).unwrap();
+        assert_eq!(b.computed_value, "20", "dependent derived on read");
+        // Change the precedent; the dependent re-derives with no extra write to B1.
+        app.call(|s| s.set_cell(sid.clone(), 0, 0, "3".into())).unwrap();
+        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
+        let b = cells.iter().find(|c| c.row == 1 && c.col == 0).unwrap();
+        assert_eq!(b.computed_value, "30");
     }
 }
