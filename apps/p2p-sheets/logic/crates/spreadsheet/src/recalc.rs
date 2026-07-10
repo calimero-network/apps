@@ -54,6 +54,39 @@ pub(crate) fn order(
     (ordered, cyclic)
 }
 
+/// The set of sheet ids that must be evaluated to compute `requested_sheet`
+/// correctly: the requested sheet plus every sheet transitively referenced by a
+/// formula reachable from it. Sheet-level (not cell-level) reachability — a
+/// touched sheet is included in full, so the result is robust to `precedents()`
+/// under-reporting a range/whole-column ref and stays identical to a
+/// whole-workbook evaluation. Terminates: `closure` grows monotonically and is
+/// bounded by the finite set of sheet ids present in `cells`.
+pub(crate) fn sheet_closure(
+    cells: &BTreeMap<CellRef, String>,
+    requested_sheet: &str,
+) -> HashSet<String> {
+    let is_formula = |raw: &str| raw.trim_start().starts_with('=');
+    let mut closure: HashSet<String> = HashSet::new();
+    closure.insert(requested_sheet.to_string());
+    loop {
+        let mut added = false;
+        for (cell, raw) in cells {
+            if !is_formula(raw) || !closure.contains(&cell.sheet_id) {
+                continue;
+            }
+            for (sid, _row, _col) in formula::precedents(raw, &cell.sheet_id) {
+                if closure.insert(sid) {
+                    added = true;
+                }
+            }
+        }
+        if !added {
+            break;
+        }
+    }
+    closure
+}
+
 pub struct WorkbookInputs {
     pub cells: BTreeMap<CellRef, String>,
     pub sheet_ids: HashSet<String>,
@@ -124,6 +157,67 @@ mod tests {
 
     fn cr(sheet: &str, row: u32, col: u32) -> CellRef {
         CellRef { sheet_id: sheet.into(), row, col }
+    }
+
+    fn inputs(pairs: &[(CellRef, &str)]) -> BTreeMap<CellRef, String> {
+        pairs.iter().map(|(k, v)| (k.clone(), v.to_string())).collect()
+    }
+
+    #[test]
+    fn closure_excludes_independent_sheets() {
+        // S1 only self-references; S2 is unrelated → closure(S1) = {S1}.
+        let cells = inputs(&[
+            (cr("S1", 0, 0), "=A2"),
+            (cr("S1", 1, 0), "5"),
+            (cr("S2", 0, 0), "9"),
+        ]);
+        assert_eq!(sheet_closure(&cells, "S1"), ["S1".to_string()].into_iter().collect());
+    }
+
+    #[test]
+    fn closure_includes_directly_referenced_sheet() {
+        let cells = inputs(&[
+            (cr("S1", 0, 0), "=[S2]!A1"),
+            (cr("S2", 0, 0), "5"),
+        ]);
+        assert_eq!(
+            sheet_closure(&cells, "S1"),
+            ["S1".to_string(), "S2".to_string()].into_iter().collect()
+        );
+    }
+
+    #[test]
+    fn closure_is_transitive_and_drops_unrelated() {
+        // S1 → S2 → S3 chained; S4 unrelated.
+        let cells = inputs(&[
+            (cr("S1", 0, 0), "=[S2]!A1"),
+            (cr("S2", 0, 0), "=[S3]!A1"),
+            (cr("S3", 0, 0), "5"),
+            (cr("S4", 0, 0), "9"),
+        ]);
+        assert_eq!(
+            sheet_closure(&cells, "S1"),
+            ["S1", "S2", "S3"].iter().map(|s| s.to_string()).collect()
+        );
+    }
+
+    #[test]
+    fn closure_of_sheet_with_no_cells_is_self() {
+        let cells = inputs(&[(cr("S2", 0, 0), "9")]);
+        assert_eq!(sheet_closure(&cells, "S1"), ["S1".to_string()].into_iter().collect());
+    }
+
+    #[test]
+    fn closure_handles_cross_sheet_cycle() {
+        // S1 ↔ S2 mutually reference; closure(S1) must include both and terminate.
+        let cells = inputs(&[
+            (cr("S1", 0, 0), "=[S2]!A1"),
+            (cr("S2", 0, 0), "=[S1]!A1"),
+        ]);
+        assert_eq!(
+            sheet_closure(&cells, "S1"),
+            ["S1".to_string(), "S2".to_string()].into_iter().collect()
+        );
     }
 
     #[test]
