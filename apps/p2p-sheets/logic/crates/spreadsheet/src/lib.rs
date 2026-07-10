@@ -589,9 +589,35 @@ impl Spreadsheet {
             })
             .collect();
 
+        // Evaluate one formula cell against a frozen `lookup` of computed values.
+        // A reference to a non-existent sheet id (a deleted sheet, or a stale id)
+        // surfaces as #REF! rather than silently resolving every cell to empty.
+        let eval_cell = |raw: &str, cur_sheet: &str, lookup: &[(String, u32, u32, String)]| -> String {
+            let bad_sheet = core::cell::Cell::new(false);
+            let v = formula::evaluate(raw, |sheet, r, c| {
+                let sid = match sheet {
+                    Some(id) => {
+                        if sheet_ids.iter().any(|s| s == id) {
+                            id
+                        } else {
+                            bad_sheet.set(true);
+                            return None;
+                        }
+                    }
+                    None => cur_sheet,
+                };
+                lookup
+                    .iter()
+                    .find(|(s, rr, cc, _)| s == sid && *rr == r && *cc == c)
+                    .map(|(_, _, _, v)| v.clone())
+            });
+            if bad_sheet.get() { "#REF!".to_string() } else { v }
+        };
+
         // Fixed-point: at most one pass per cell covers the longest acyclic
         // chain; the extra guard bounds cyclic references.
         let max_iter = snap.len() + 1;
+        let mut converged = false;
         for _ in 0..max_iter {
             // Freeze current computed values for this pass's lookups.
             let lookup: Vec<(String, u32, u32, String)> = snap
@@ -601,31 +627,7 @@ impl Spreadsheet {
             let mut changed = false;
             for entry in snap.iter_mut() {
                 if entry.4.trim_start().starts_with('=') {
-                    let cur_sheet = entry.1.clone();
-                    let raw = entry.4.clone();
-                    // Set if the formula names a sheet that doesn't exist (e.g. a
-                    // typo `Sheet1` for `Sheet 1`). Such a reference must surface
-                    // as #REF!, not silently resolve every cell to empty (0).
-                    let bad_sheet = core::cell::Cell::new(false);
-                    let new_val = formula::evaluate(&raw, |sheet, r, c| {
-                        // Resolve the sheet: id → itself if it exists, else the cell's own sheet.
-                        let sid = match sheet {
-                            Some(id) => {
-                                if sheet_ids.iter().any(|s| s == id) {
-                                    id
-                                } else {
-                                    bad_sheet.set(true);
-                                    return None;
-                                }
-                            }
-                            None => cur_sheet.as_str(),
-                        };
-                        lookup
-                            .iter()
-                            .find(|(s, rr, cc, _)| s == sid && *rr == r && *cc == c)
-                            .map(|(_, _, _, v)| v.clone())
-                    });
-                    let new_val = if bad_sheet.get() { "#REF!".to_string() } else { new_val };
+                    let new_val = eval_cell(&entry.4, &entry.1, &lookup);
                     if new_val != entry.5 {
                         entry.5 = new_val;
                         changed = true;
@@ -633,7 +635,28 @@ impl Spreadsheet {
                 }
             }
             if !changed {
+                converged = true;
                 break;
+            }
+        }
+
+        // A well-formed acyclic sheet always settles within max_iter (which
+        // exceeds the longest possible dependency chain). If it didn't, the cells
+        // still moving are part of — or downstream of — a circular reference
+        // (e.g. `B1 = SUM(A1, B1)`): left alone their value grows with the
+        // iteration count. Stamp each non-convergent cell #CYCLE! so the result
+        // is a stable error instead of a meaningless number.
+        if !converged {
+            let lookup: Vec<(String, u32, u32, String)> = snap
+                .iter()
+                .map(|(_, sid, r, c, _, comp, _)| (sid.clone(), *r, *c, comp.clone()))
+                .collect();
+            for entry in snap.iter_mut() {
+                if entry.4.trim_start().starts_with('=')
+                    && eval_cell(&entry.4, &entry.1, &lookup) != entry.5
+                {
+                    entry.5 = "#CYCLE!".to_string();
+                }
             }
         }
 
@@ -896,7 +919,7 @@ mod formula {
         // the value collapses to `#VALUE!`.
         if matches!(
             expr,
-            "#REF!" | "#VALUE!" | "#DIV/0!" | "#NAME?" | "#NUM!" | "#NULL!" | "#N/A"
+            "#REF!" | "#VALUE!" | "#DIV/0!" | "#NAME?" | "#NUM!" | "#NULL!" | "#N/A" | "#CYCLE!"
         ) {
             return expr.to_string();
         }
@@ -1826,5 +1849,45 @@ mod tests {
         // raw formula unchanged (id-based), computed value unchanged.
         assert_eq!(cell_after.raw_value, formula, "rename must not rewrite the formula");
         assert_eq!(cell_after.computed_value, "20", "rename must not change values");
+    }
+
+    #[test]
+    fn self_referential_formula_is_cycle_error() {
+        let mut app = make_app();
+        let sid = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
+        app.call(|s| s.set_cell(sid.clone(), 0, 0, "1".into())).unwrap(); // A1 = 1
+        // B1 = SUM(A1, B1) — references itself; must not diverge into a number.
+        app.call(|s| s.set_cell_formula(sid.clone(), 0, 1, "=SUM(A1,B1)".into()))
+            .unwrap();
+        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
+        let b1 = cells.iter().find(|c| c.row == 0 && c.col == 1).unwrap();
+        assert_eq!(b1.computed_value, "#CYCLE!");
+    }
+
+    #[test]
+    fn mutual_divergent_cycle_is_cycle_error() {
+        let mut app = make_app();
+        let sid = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
+        // A1 = B1 + 1, B1 = A1 + 1 — a mutual cycle that diverges.
+        app.call(|s| s.set_cell_formula(sid.clone(), 0, 0, "=B1+1".into())).unwrap();
+        app.call(|s| s.set_cell_formula(sid.clone(), 0, 1, "=A1+1".into())).unwrap();
+        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
+        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
+        let b1 = cells.iter().find(|c| c.row == 0 && c.col == 1).unwrap();
+        assert_eq!(a1.computed_value, "#CYCLE!");
+        assert_eq!(b1.computed_value, "#CYCLE!");
+    }
+
+    #[test]
+    fn long_acyclic_chain_still_converges() {
+        let mut app = make_app();
+        let sid = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
+        app.call(|s| s.set_cell(sid.clone(), 0, 0, "1".into())).unwrap(); // A1 = 1
+        app.call(|s| s.set_cell_formula(sid.clone(), 1, 0, "=A1+1".into())).unwrap(); // A2
+        app.call(|s| s.set_cell_formula(sid.clone(), 2, 0, "=A2+1".into())).unwrap(); // A3
+        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
+        let a3 = cells.iter().find(|c| c.row == 2 && c.col == 0).unwrap();
+        // A well-formed chain must converge, never be misflagged as a cycle.
+        assert_eq!(a3.computed_value, "3");
     }
 }
