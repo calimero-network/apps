@@ -54,6 +54,70 @@ pub(crate) fn order(
     (ordered, cyclic)
 }
 
+pub struct WorkbookInputs {
+    pub cells: BTreeMap<CellRef, String>,
+    pub sheet_ids: HashSet<String>,
+}
+
+pub fn evaluate(inputs: &WorkbookInputs) -> BTreeMap<CellRef, String> {
+    let is_formula = |raw: &str| raw.trim_start().starts_with('=');
+
+    // Seed: every cell's value defaults to its raw input (literals are final;
+    // formula cells are overwritten below). Empty/absent cells stay absent.
+    let mut results: BTreeMap<CellRef, String> = inputs.cells.clone();
+
+    // Formula cells are the graph nodes.
+    let nodes: BTreeSet<CellRef> = inputs
+        .cells
+        .iter()
+        .filter(|(_, raw)| is_formula(raw))
+        .map(|(k, _)| k.clone())
+        .collect();
+
+    let precedents_of = |n: &CellRef| -> Vec<CellRef> {
+        let raw = inputs.cells.get(n).map(String::as_str).unwrap_or("");
+        formula::precedents(raw, &n.sheet_id)
+            .into_iter()
+            .map(|(sheet_id, row, col)| CellRef { sheet_id, row, col })
+            .collect()
+    };
+
+    let (ordered, cyclic) = order(&nodes, &precedents_of);
+
+    // Cyclic / downstream cells resolve to #CYCLE! and are not evaluated.
+    for n in &cyclic {
+        results.insert(n.clone(), "#CYCLE!".to_string());
+    }
+
+    // Evaluate acyclic formula cells once, precedents-first.
+    for n in &ordered {
+        let raw = match inputs.cells.get(n) {
+            Some(r) => r.clone(),
+            None => continue,
+        };
+        let home = n.sheet_id.clone();
+        let bad_sheet = core::cell::Cell::new(false);
+        let value = formula::evaluate(&raw, |sheet, r, c| {
+            let sid = match sheet {
+                Some(id) => {
+                    if inputs.sheet_ids.contains(id) {
+                        id.to_string()
+                    } else {
+                        bad_sheet.set(true);
+                        return None;
+                    }
+                }
+                None => home.clone(),
+            };
+            results.get(&CellRef { sheet_id: sid, row: r, col: c }).cloned()
+        });
+        let value = if bad_sheet.get() { "#REF!".to_string() } else { value };
+        results.insert(n.clone(), value);
+    }
+
+    results
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,5 +180,60 @@ mod tests {
         let prec = |_n: &CellRef| vec![];
         let (ordered, _) = order(&nodes, &prec);
         assert_eq!(ordered, vec![a, b]);
+    }
+}
+
+#[cfg(test)]
+mod eval_tests {
+    use super::*;
+
+    fn inputs(sheets: &[&str], cells: &[(&str, u32, u32, &str)]) -> WorkbookInputs {
+        WorkbookInputs {
+            cells: cells
+                .iter()
+                .map(|(s, r, c, v)| (CellRef { sheet_id: (*s).into(), row: *r, col: *c }, (*v).into()))
+                .collect(),
+            sheet_ids: sheets.iter().map(|s| (*s).to_string()).collect(),
+        }
+    }
+    fn get(out: &BTreeMap<CellRef, String>, s: &str, r: u32, c: u32) -> String {
+        out.get(&CellRef { sheet_id: s.into(), row: r, col: c }).cloned().unwrap_or_default()
+    }
+
+    #[test]
+    fn literal_and_chain() {
+        // A1=1, A2=A1+4, A3=SUM(A1,A2). Single pass in dependency order.
+        let inp = inputs(&["s"], &[("s", 0, 0, "1"), ("s", 1, 0, "=A1+4"), ("s", 2, 0, "=SUM(A1,A2)")]);
+        let out = evaluate(&inp);
+        assert_eq!(get(&out, "s", 0, 0), "1");
+        assert_eq!(get(&out, "s", 1, 0), "5");
+        assert_eq!(get(&out, "s", 2, 0), "6");
+    }
+
+    #[test]
+    fn cross_sheet_and_unknown_sheet() {
+        let inp = inputs(
+            &["s", "data"],
+            &[("data", 0, 0, "10"), ("s", 0, 0, "=[data]!A1*2"), ("s", 1, 0, "=[gone]!A1")],
+        );
+        let out = evaluate(&inp);
+        assert_eq!(get(&out, "s", 0, 0), "20");
+        assert_eq!(get(&out, "s", 1, 0), "#REF!");
+    }
+
+    #[test]
+    fn cycle_and_downstream_are_cycle_error() {
+        // B1 references itself; C1 references B1 → both #CYCLE!.
+        let inp = inputs(&["s"], &[("s", 0, 1, "=SUM(A1,B1)"), ("s", 0, 2, "=B1+1")]);
+        let out = evaluate(&inp);
+        assert_eq!(get(&out, "s", 0, 1), "#CYCLE!");
+        assert_eq!(get(&out, "s", 0, 2), "#CYCLE!");
+    }
+
+    #[test]
+    fn deterministic_regardless_of_insertion_order() {
+        let a = inputs(&["s"], &[("s", 0, 0, "1"), ("s", 1, 0, "=A1+1"), ("s", 2, 0, "=A2+1")]);
+        let b = inputs(&["s"], &[("s", 2, 0, "=A2+1"), ("s", 1, 0, "=A1+1"), ("s", 0, 0, "1")]);
+        assert_eq!(evaluate(&a), evaluate(&b));
     }
 }
