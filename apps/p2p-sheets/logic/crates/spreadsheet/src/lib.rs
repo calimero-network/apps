@@ -144,6 +144,15 @@ pub struct Cell {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(crate = "calimero_sdk::serde")]
+#[serde(tag = "kind")]
+pub enum CellOp {
+    Set { row: u32, col: u32, raw_value: String },
+    Format { row: u32, col: u32, format: String },
+    Clear { row: u32, col: u32 },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
 pub struct Cursor {
     /// Same as `author` — the pubkey b58 that uniquely identifies this cursor.
     pub id: String,
@@ -540,6 +549,37 @@ impl Spreadsheet {
             row,
             col,
         });
+        Ok(())
+    }
+
+    /// Apply a batch of cell operations to one sheet in a single mutation. One
+    /// CRDT commit for the whole range op; values are derived on read.
+    pub fn apply_cell_ops(&mut self, sheet_id: String, ops: Vec<CellOp>) -> app::Result<()> {
+        if self
+            .sheets
+            .get(&sheet_id)
+            .map_err(|e| AppError::msg(format!("sheets.get: {e}")))?
+            .is_none()
+        {
+            return Err(AppError::from(Error::NotFound(sheet_id.clone())));
+        }
+        for op in ops {
+            match op {
+                CellOp::Set { row, col, raw_value } => {
+                    if raw_value.trim_start().starts_with('=') {
+                        self.set_cell_formula(sheet_id.clone(), row, col, raw_value)?;
+                    } else {
+                        self.set_cell(sheet_id.clone(), row, col, raw_value)?;
+                    }
+                }
+                CellOp::Format { row, col, format } => {
+                    self.set_cell_format(sheet_id.clone(), row, col, format)?;
+                }
+                CellOp::Clear { row, col } => {
+                    self.clear_cell(sheet_id.clone(), row, col)?;
+                }
+            }
+        }
         Ok(())
     }
 
@@ -1746,6 +1786,37 @@ mod tests {
         let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0);
         assert!(a1.is_some(), "cell missing after re-write of a cleared cell");
         assert_eq!(a1.unwrap().raw_value, "second");
+    }
+
+    #[test]
+    fn apply_cell_ops_applies_mixed_batch() {
+        let mut app = make_app();
+        app.call(|s| s.init_project("P".into())).unwrap();
+        let sid = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
+        app.call(|s| s.set_cell(sid.clone(), 5, 5, "old".into()))
+            .unwrap();
+        app.call(|s| {
+            s.apply_cell_ops(
+                sid.clone(),
+                vec![
+                    CellOp::Set { row: 0, col: 0, raw_value: "7".into() },
+                    CellOp::Set { row: 1, col: 0, raw_value: "=A1*2".into() },
+                    CellOp::Format { row: 0, col: 0, format: "number".into() },
+                    CellOp::Clear { row: 5, col: 5 },
+                ],
+            )
+        })
+        .unwrap();
+        let cells = app.view(|s| s.get_cells(sid)).unwrap();
+        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
+        let a2 = cells.iter().find(|c| c.row == 1 && c.col == 0).unwrap();
+        assert_eq!(a1.computed_value, "7");
+        assert_eq!(a1.format, "number");
+        assert_eq!(a2.computed_value, "14"); // derived on read
+        assert!(
+            cells.iter().all(|c| !(c.row == 5 && c.col == 5)),
+            "cleared cell hidden"
+        );
     }
 
     #[test]
