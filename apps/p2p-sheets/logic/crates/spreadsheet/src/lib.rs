@@ -584,19 +584,10 @@ impl Spreadsheet {
     }
 
     pub fn get_cells(&self, sheet_id: String) -> app::Result<Vec<Cell>> {
-        // Build inputs from ALL cells (cross-sheet refs need other sheets) and the
-        // set of valid sheet ids, then derive every value once. Phase 1 evaluates
-        // the whole workbook per read; node-side scoping is deferred (spec §9).
-        let sheet_ids: std::collections::HashSet<String> = self
-            .sheets
-            .entries()
-            .map_err(|e| AppError::msg(format!("sheets.entries: {e}")))?
-            .map(|(id, _)| id)
-            .collect();
-        let mut inputs = recalc::WorkbookInputs {
-            cells: std::collections::BTreeMap::new(),
-            sheet_ids,
-        };
+        // Collect all non-empty cells once; `stored` retains every cell (the
+        // output for the requested sheet is filtered from it below).
+        let mut all_inputs: std::collections::BTreeMap<recalc::CellRef, String> =
+            std::collections::BTreeMap::new();
         let mut stored: Vec<(String, CellData)> = Vec::new();
         for (k, d) in self
             .cells
@@ -604,13 +595,34 @@ impl Spreadsheet {
             .map_err(|e| AppError::msg(format!("cells.entries: {e}")))?
         {
             if !d.raw_value.is_empty() {
-                inputs.cells.insert(
+                all_inputs.insert(
                     recalc::CellRef { sheet_id: d.sheet_id.clone(), row: d.row, col: d.col },
                     d.raw_value.clone(),
                 );
             }
             stored.push((k, d));
         }
+
+        // Build the set of valid sheet ids for error detection.
+        let sheet_ids: std::collections::HashSet<String> = self
+            .sheets
+            .entries()
+            .map_err(|e| AppError::msg(format!("sheets.entries: {e}")))?
+            .map(|(id, _)| id)
+            .collect();
+
+        // Sheet-level read scoping: evaluate only the requested sheet and the
+        // sheets it transitively references. `sheet_ids` stays the FULL set so
+        // unknown-sheet → #REF! detection is exact. Result is identical to a
+        // whole-workbook eval (unreachable sheets cannot affect this sheet).
+        let closure = recalc::sheet_closure(&all_inputs, &sheet_id);
+        let inputs = recalc::WorkbookInputs {
+            cells: all_inputs
+                .into_iter()
+                .filter(|(k, _)| closure.contains(&k.sheet_id))
+                .collect(),
+            sheet_ids,
+        };
         let computed = recalc::evaluate(&inputs);
 
         let prefix = format!("{sheet_id}|");
@@ -2021,5 +2033,43 @@ mod tests {
         let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
         let b = cells.iter().find(|c| c.row == 1 && c.col == 0).unwrap();
         assert_eq!(b.computed_value, "30");
+    }
+
+    #[test]
+    fn get_cells_scoped_matches_cross_sheet_and_ignores_unrelated() {
+        let mut app = make_app();
+        let s1 = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
+        let s2 = app.call(|s| s.create_sheet("Sheet 2".into())).unwrap();
+        let s3 = app.call(|s| s.create_sheet("Sheet 3".into())).unwrap();
+
+        // S2!A1 = 5 ; S1!A1 = S2!A1 + 100 (cross-sheet dependency).
+        app.call(|s| s.set_cell(s2.clone(), 0, 0, "5".into())).unwrap();
+        app.call(|s| s.set_cell_formula(s1.clone(), 0, 0, format!("=[{s2}]!A1+100")))
+            .unwrap();
+        // S3 has an unrelated self-cycle — must never affect S1's read.
+        app.call(|s| s.set_cell_formula(s3.clone(), 0, 0, "=A1".into())).unwrap();
+
+        // Scoped get_cells(S1) still resolves the cross-sheet ref correctly.
+        let s1_cells = app.view(|s| s.get_cells(s1.clone())).unwrap();
+        let a1 = s1_cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
+        assert_eq!(a1.computed_value, "105");
+
+        // get_cells(S3) still flags its own cycle — scoping doesn't hide it.
+        let s3_cells = app.view(|s| s.get_cells(s3.clone())).unwrap();
+        let c = s3_cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
+        assert_eq!(c.computed_value, "#CYCLE!");
+    }
+
+    #[test]
+    fn get_cells_scoped_preserves_ref_to_missing_sheet() {
+        let mut app = make_app();
+        let s1 = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
+        // Reference a sheet id that does not exist → #REF! (all sheet ids are
+        // passed to the evaluator, so this stays exact under scoping).
+        app.call(|s| s.set_cell_formula(s1.clone(), 0, 0, "=[nope]!A1".into()))
+            .unwrap();
+        let cells = app.view(|s| s.get_cells(s1.clone())).unwrap();
+        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
+        assert_eq!(a1.computed_value, "#REF!");
     }
 }
