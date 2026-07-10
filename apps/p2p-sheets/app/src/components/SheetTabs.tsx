@@ -12,13 +12,14 @@ import React, { useRef, useState } from 'react';
 import styled from 'styled-components';
 import { C } from '../theme';
 import { type Sheet } from '../hooks/useSpreadsheet';
+import { describeError } from '../utils/errors';
 
 interface SheetTabsProps {
   sheets: Sheet[];
   activeSheetId: string | null;
   onSelect: (id: string) => void;
   onAdd: () => void;
-  onRename: (id: string, name: string) => void;
+  onRename: (id: string, name: string) => Promise<void>;
   onDelete: (id: string) => void;
 }
 
@@ -32,23 +33,43 @@ export default function SheetTabs({
 }: SheetTabsProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
+  const [renameError, setRenameError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const startRename = (sheet: Sheet) => {
     setEditingId(sheet.id);
     setEditDraft(sheet.name);
+    setRenameError(null);
     // Focus the input on next tick
     setTimeout(() => inputRef.current?.select(), 0);
   };
 
-  const commitRename = () => {
+  const commitRename = async () => {
     if (!editingId) return;
     const trimmed = editDraft.trim();
-    if (trimmed) onRename(editingId, trimmed);
-    setEditingId(null);
+    const current = sheets.find((s) => s.id === editingId);
+    // Empty draft or no change → just close without a mutation.
+    if (!trimmed || (current && current.name === trimmed)) {
+      setEditingId(null);
+      setRenameError(null);
+      return;
+    }
+    try {
+      await onRename(editingId, trimmed);
+      setEditingId(null);
+      setRenameError(null);
+    } catch (err) {
+      // The engine rejects a duplicate or forbidden name — keep the editor open
+      // and surface why, instead of silently reverting.
+      setRenameError(describeError(err));
+      inputRef.current?.focus();
+    }
   };
 
-  const cancelRename = () => setEditingId(null);
+  const cancelRename = () => {
+    setEditingId(null);
+    setRenameError(null);
+  };
 
   return (
     <TabBar role="tablist" aria-label="Spreadsheet sheets">
@@ -69,20 +90,25 @@ export default function SheetTabs({
               onDoubleClick={() => startRename(sheet)}
             >
               {isEditing ? (
-                <RenameInput
-                  ref={inputRef}
-                  value={editDraft}
-                  onChange={(e) => setEditDraft(e.target.value)}
-                  onBlur={commitRename}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
-                    if (e.key === 'Escape') { e.preventDefault(); cancelRename(); }
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  data-testid="field-name"
-                  aria-label="Rename sheet"
-                  autoFocus
-                />
+                <>
+                  <RenameInput
+                    ref={inputRef}
+                    value={editDraft}
+                    $invalid={!!renameError}
+                    onChange={(e) => { setEditDraft(e.target.value); if (renameError) setRenameError(null); }}
+                    onBlur={commitRename}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { e.preventDefault(); void commitRename(); }
+                      if (e.key === 'Escape') { e.preventDefault(); cancelRename(); }
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    data-testid="field-name"
+                    aria-label="Rename sheet"
+                    aria-invalid={!!renameError}
+                    autoFocus
+                  />
+                  {renameError && <RenameError role="alert">{renameError}</RenameError>}
+                </>
               ) : (
                 <TabName>{sheet.name}</TabName>
               )}
@@ -167,17 +193,37 @@ const TabName = styled.span`
   text-overflow: ellipsis;
 `;
 
-const RenameInput = styled.input`
+const RenameInput = styled.input<{ $invalid: boolean }>`
   font-size: 13px;
   font-weight: 600;
   color: ${C.ink};
   background: ${C.paper};
-  border: 1px solid ${C.green};
+  border: 1px solid ${(p) => (p.$invalid ? C.danger : C.green)};
   border-radius: 4px;
   padding: 2px 6px;
   width: 100px;
   outline: none;
-  box-shadow: 0 0 0 3px rgba(164, 255, 17, 0.2);
+  box-shadow: 0 0 0 3px
+    ${(p) => (p.$invalid ? 'rgba(220, 38, 38, 0.2)' : 'rgba(164, 255, 17, 0.2)')};
+`;
+
+/* Floating message shown above the rename input when the engine rejects the
+   new name (duplicate / forbidden characters). */
+const RenameError = styled.div`
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 6px;
+  z-index: 30;
+  max-width: 220px;
+  padding: 5px 8px;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: #fff;
+  background: ${C.danger};
+  border-radius: 6px;
+  box-shadow: 0 6px 18px -6px rgba(0, 0, 0, 0.4);
+  white-space: normal;
 `;
 
 const DeleteBtn = styled.button`
