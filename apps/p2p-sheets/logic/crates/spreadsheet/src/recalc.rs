@@ -1,6 +1,6 @@
 //! Pure recalculation engine: workbook inputs -> computed values.
 
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use crate::formula;
 
@@ -72,22 +72,31 @@ pub(crate) fn sheet_closure(
     cells: &BTreeMap<CellRef, String>,
     requested_sheet: &str,
 ) -> HashSet<String> {
+    // Adjacency: sheet -> the set of sheets its formulas reference. Built in one
+    // pass over the cells (each formula's precedents parsed exactly once).
+    let mut refs: HashMap<String, HashSet<String>> = HashMap::new();
+    for (cell, raw) in cells {
+        if !is_formula(raw) {
+            continue;
+        }
+        let targets = refs.entry(cell.sheet_id.clone()).or_default();
+        for (sid, _row, _col) in formula::precedents(raw, &cell.sheet_id) {
+            targets.insert(sid);
+        }
+    }
+
+    // BFS over the sheet reference graph from the requested sheet. The `closure`
+    // set doubles as the visited set, so cross-sheet cycles terminate.
     let mut closure: HashSet<String> = HashSet::new();
     closure.insert(requested_sheet.to_string());
-    loop {
-        let mut added = false;
-        for (cell, raw) in cells {
-            if !is_formula(raw) || !closure.contains(&cell.sheet_id) {
-                continue;
-            }
-            for (sid, _row, _col) in formula::precedents(raw, &cell.sheet_id) {
-                if closure.insert(sid) {
-                    added = true;
+    let mut queue: Vec<String> = vec![requested_sheet.to_string()];
+    while let Some(sheet) = queue.pop() {
+        if let Some(targets) = refs.get(&sheet) {
+            for target in targets {
+                if closure.insert(target.clone()) {
+                    queue.push(target.clone());
                 }
             }
-        }
-        if !added {
-            break;
         }
     }
     closure
