@@ -36,11 +36,12 @@ export function planPaste(
   payload: ClipPayload,
   anchor: CellCoord,
   // When a copy crosses sheets, formulas are QUALIFIED to the source sheet
-  // (`=SUM(A9:F9)` → `=SUM(Sheet1!A9:F9)`) rather than shifted — the positional
-  // delta between two sheets is meaningless and would corrupt refs into #REF!.
-  // `sourceSheetName: null` means cross-sheet but the source name is unknown
-  // (e.g. sheet deleted): paste verbatim, never #REF. Omit/null for same-sheet.
-  crossSheet?: { sourceSheetName: string | null } | null,
+  // (`=SUM(A9:F9)` → `=SUM([sheet-1-aa]!A9:F9)`) rather than shifted — the
+  // positional delta between two sheets is meaningless and would corrupt refs
+  // into #REF!. `sourceSheetId: null` means cross-sheet but the source id is
+  // unknown (e.g. sheet deleted): paste verbatim, never #REF. Omit/null for
+  // same-sheet.
+  crossSheet?: { sourceSheetId: string | null } | null,
 ): PasteWrite[] {
   // Same-sheet: the whole block translates by (anchor - source top-left); every
   // relative ref in a copied formula shifts by that same delta.
@@ -51,9 +52,9 @@ export function planPaste(
     if (!payload.cut && c.raw.startsWith('=')) {
       if (crossSheet) {
         raw =
-          crossSheet.sourceSheetName != null
-            ? qualifyFormula(c.raw, crossSheet.sourceSheetName)
-            : c.raw; // cross-sheet, source name unknown → verbatim (never #REF!)
+          crossSheet.sourceSheetId != null
+            ? qualifyFormula(c.raw, crossSheet.sourceSheetId)
+            : c.raw; // cross-sheet, source id unknown → verbatim (never #REF!)
       } else {
         raw = shiftFormula(c.raw, dRow, dCol);
       }

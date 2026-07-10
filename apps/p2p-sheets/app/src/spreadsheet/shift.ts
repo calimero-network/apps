@@ -11,7 +11,7 @@
  *
  * v1 does not shift whole-column/row refs (`A:A`, `1:1`) — they pass through.
  */
-import { columnLabel, sheetPrefix } from './refs';
+import { columnLabel } from './refs';
 
 const REF_RE = /^\$?[A-Z]+\$?\d+/;
 
@@ -68,6 +68,17 @@ function transformRefs(
       continue;
     }
     if (ch === "'") { inQuote = true; out += ch; i++; continue; }
+    if (ch === '[') {
+      // Canonical `[id]!` qualifier — copy the bracketed span verbatim so the
+      // id's digits/letters are never treated as a cell ref. The cell after `!`
+      // is handled normally by the ref branch (prev char `!`).
+      const end = formula.indexOf(']', i + 1);
+      if (end !== -1) {
+        out += formula.slice(i, end + 1);
+        i = end + 1;
+        continue;
+      }
+    }
     if (ch === '"') {
       // Double-quoted string literal (e.g. an IF label). Copy it verbatim
       // through the closing quote so ref-shaped text inside — "Q1", "FY2024" —
@@ -110,15 +121,16 @@ export function shiftFormula(formula: string, dRow: number, dCol: number): strin
 }
 
 /**
- * Qualify every BARE cell reference in a formula with `sheetName`, so a formula
- * copied to another sheet keeps pointing at the source sheet's data
- * (`=SUM(A9:F9)` → `=SUM(Sheet1!A9:F9)`). Refs that already carry a sheet
- * qualifier (prev `!`) and the end of a range (prev `:`, which inherits the
- * start's sheet — the engine's `split_sheet_qualifier` reads one qualifier per
- * range) are left untouched. Absolute `$` markers are preserved.
+ * Qualify every BARE cell reference in a formula with the canonical id
+ * qualifier `[sheetId]!`, so a formula copied to another sheet keeps pointing
+ * at the source sheet's data (`=SUM(A9:F9)` → `=SUM([sheet-1-aa]!A9:F9)`).
+ * Refs that already carry a sheet qualifier (prev `!`) and the end of a range
+ * (prev `:`, which inherits the start's sheet — the engine's
+ * `split_sheet_qualifier` reads one qualifier per range) are left untouched.
+ * Absolute `$` markers are preserved.
  */
-export function qualifyFormula(formula: string, sheetName: string): string {
-  const prefix = sheetPrefix(sheetName);
+export function qualifyFormula(formula: string, sheetId: string): string {
+  const prefix = `[${sheetId}]!`;
   return transformRefs(formula, (token, prev) =>
     prev === '!' || prev === ':' ? token : `${prefix}${token}`,
   );
