@@ -40,7 +40,7 @@ import FunctionHelpPanel from '../../components/FunctionHelpPanel';
 import InviteModal from '../../components/InviteModal';
 import JoinModal from '../../components/JoinModal';
 import ContextMenu from '../../components/ContextMenu';
-import { formatValue } from '../../spreadsheet/format';
+import { sheetsToCsv } from '../../spreadsheet/download';
 import { idsToNames, namesToIds } from '../../spreadsheet/sheetref';
 import StatusBar from '../../components/StatusBar';
 import { distinctCollaborators, peerCount } from '../../spreadsheet/presence';
@@ -658,36 +658,23 @@ export default function AppPage() {
       : '') ?? '';
 
   // ── Download ────────────────────────────────────────────────────
-  const handleDownload = useCallback(() => {
-    const lines: string[] = [];
-    for (const sheet of ss.sheets) {
-      lines.push(`# ${sheet.name}`);
-      const sheetCells = ss.cells.filter((c) => c.sheet_id === sheet.id);
-      if (sheetCells.length > 0) {
-        const maxRow = sheetCells.reduce((m, c) => Math.max(m, c.row), 0);
-        const maxCol = sheetCells.reduce((m, c) => Math.max(m, c.col), 0);
-        for (let r = 0; r <= maxRow; r++) {
-          const rowData: string[] = [];
-          for (let c = 0; c <= maxCol; c++) {
-            const cell = sheetCells.find((x) => x.row === r && x.col === c);
-            const val = cell
-              ? formatValue(cell.computed_value, cell.format).replace(/"/g, '""')
-              : '';
-            rowData.push(`"${val}"`);
-          }
-          lines.push(rowData.join(','));
-        }
-      }
-      lines.push('');
-    }
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const handleDownload = useCallback(async () => {
+    // Fetch every sheet's cells on demand — resident `cells` holds only the
+    // active sheet, so a full snapshot must be pulled at export time.
+    const sheetData = await Promise.all(
+      ss.sheets.map(async (sheet) => ({
+        name: sheet.name,
+        cells: await ss.getSheetCells(sheet.id),
+      })),
+    );
+    const blob = new Blob([sheetsToCsv(sheetData)], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `${APP_DISPLAY_NAME.replace(/\s+/g, '-').toLowerCase()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [ss.sheets, ss.cells]);
+  }, [ss]);
 
   // ════════════════════════════════════════════════════════════════
   //  RENDER

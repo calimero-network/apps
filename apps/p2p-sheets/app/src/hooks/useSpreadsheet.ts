@@ -93,6 +93,8 @@ export interface UseSpreadsheetReturn {
   updateCursor: (sheetId: string, row: number, col: number) => Promise<void>;
   // Export
   exportAll: () => Promise<Sheet[]>;
+  /** Fetch one sheet's cells on demand (off the mutation queue) — used by download. */
+  getSheetCells: (sheetId: string) => Promise<Cell[]>;
   // Function search (local filter)
   searchFunctions: (prefix: string) => FunctionDef[];
   refresh: () => Promise<void>;
@@ -288,6 +290,11 @@ export function useSpreadsheet({
     return client.exportAll();
   }, [client, sheets]);
 
+  const getSheetCells = useCallback(
+    (sheetId: string) => (client ? client.getCells({ sheet_id: sheetId }) : Promise.resolve([])),
+    [client],
+  );
+
   const searchFunctions = useCallback(
     (prefix: string): FunctionDef[] => {
       if (!prefix) return functions;
@@ -317,6 +324,7 @@ export function useSpreadsheet({
     applyCellOps,
     updateCursor,
     exportAll,
+    getSheetCells,
     searchFunctions,
     refresh,
   };
