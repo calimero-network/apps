@@ -171,6 +171,9 @@ steps:
       - 'contains({{roster_alice}}, "Bob")'
 
   # ── Alice builds, Bob sees it ─────────────────────────────────────────────
+  # Coordinates are chosen so each key has a UNIQUE comma-free number (44/45/
+  # 46) — merobox's contains() splits its arguments on commas, so a needle
+  # like "12,40,12" cannot be asserted directly.
   - name: Alice places a glowstone tower
     type: call
     node: calimero-node-1
@@ -178,9 +181,9 @@ steps:
     method: set_blocks
     args:
       edits:
-        - { x: 12, y: 40, z: 12, b: 12 }
-        - { x: 12, y: 41, z: 12, b: 12 }
-        - { x: 12, y: 42, z: 12, b: 3 }
+        - { x: 33, y: 44, z: 55, b: 12 }
+        - { x: 33, y: 45, z: 55, b: 12 }
+        - { x: 33, y: 46, z: 55, b: 3 }
       now: 1752264010
     executor_public_key: "{{alice_key}}"
 
@@ -205,9 +208,9 @@ steps:
   - name: Assert Bob received Alice's blocks (the whole world in 3 entries)
     type: assert
     statements:
-      - 'contains({{overrides_bob}}, "12,40,12")'
-      - 'contains({{overrides_bob}}, "12,41,12")'
-      - 'contains({{overrides_bob}}, "12,42,12")'
+      - 'contains({{overrides_bob}}, "44")'
+      - 'contains({{overrides_bob}}, "45")'
+      - 'contains({{overrides_bob}}, "46")'
 
   # ── Bob breaks a block, Alice sees the explicit air override ─────────────
   - name: Bob breaks the top block (b=0, never a map-remove)
@@ -217,7 +220,7 @@ steps:
     method: set_blocks
     args:
       edits:
-        - { x: 12, y: 42, z: 12, b: 0 }
+        - { x: 33, y: 46, z: 55, b: 0 }
       now: 1752264020
     executor_public_key: "{{bob_key}}"
 
@@ -239,11 +242,11 @@ steps:
     outputs:
       overrides_alice: result
 
-  - name: Assert the break converged as an explicit air override
+  - name: Assert the break converged as an explicit air override (key kept)
     type: assert
     statements:
-      - 'contains({{overrides_alice}}, "12,42,12")'
-      - 'contains({{overrides_alice}}, "12,40,12")'
+      - 'contains({{overrides_alice}}, "46")'
+      - 'contains({{overrides_alice}}, "44")'
 
   - name: Alice counts overrides (still 3 keys — LWW upsert, no duplicates)
     type: call
