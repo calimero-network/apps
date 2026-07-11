@@ -1,0 +1,261 @@
+name: Mero Blocks — shared voxel world (2-node e2e)
+description: >
+  Proves the core thesis of mero-blocks: a Calimero context can carry a whole
+  multiplayer voxel world as nothing but an override diff + presence.
+
+  Two nodes join one world (context). Both players join, Alice places blocks,
+  Bob sees them via get_overrides, Bob breaks one (an explicit b=0 override —
+  never a map-remove), Alice sees the break, and the roster shows both players
+  online. Terrain itself never crosses the network — every client regenerates
+  it from the seed in world_meta.
+
+force_pull_image: true
+
+nodes:
+  chain_id: testnet-1
+  count: 2
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.13
+  prefix: calimero-node
+  # Off the default 2428/2528 so the workflow doesn't collide with a local
+  # dev merod a developer may already be running.
+  base_port: 2760
+  base_rpc_port: 2660
+
+steps:
+  # ── Bootstrap ───────────────────────────────────────────────────────────
+  - name: Install application on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: "../logic/res/mero_blocks.wasm"
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install application on Node 2
+    type: install_application
+    node: calimero-node-2
+    path: "../logic/res/mero_blocks.wasm"
+    dev: true
+
+  - name: Create namespace
+    type: create_namespace
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Set default member capabilities
+    type: set_default_capabilities
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    capabilities: 15
+
+  - name: Generate identity for Node 2
+    type: create_identity
+    node: calimero-node-2
+    outputs:
+      bob_identity: publicKey
+
+  - name: Wait for identity propagation
+    type: wait
+    seconds: 3
+
+  - name: Node 1 creates invitation for Node 2
+    type: create_namespace_invitation
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    outputs:
+      invite_bob: invitation
+
+  - name: Node 2 joins namespace
+    type: join_namespace
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+    invitation: "{{invite_bob}}"
+
+  - name: Settle after namespace join
+    type: wait
+    seconds: 5
+
+  # ── Create the world (context) ────────────────────────────────────────────
+  - name: Node 1 creates the world
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    params: '{"name": "overworld", "seed": 1337, "now": 1752264000}'
+    outputs:
+      world_id: contextId
+      alice_key: memberPublicKey
+
+  - name: Force Node 2 to sync namespace state
+    type: sync_group
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+
+  - name: Settle after sync
+    type: wait
+    seconds: 5
+
+  - name: Bob joins the world context
+    type: join_context
+    node: calimero-node-2
+    context_id: "{{world_id}}"
+    outputs:
+      bob_key: memberPublicKey
+
+  - name: Wait for world sync
+    type: wait_for_sync
+    context_id: "{{world_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # ── The seed is the world: both clients would generate identical terrain ──
+  - name: Bob reads world meta (seed + shared day clock)
+    type: call
+    node: calimero-node-2
+    context_id: "{{world_id}}"
+    method: world_meta
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      meta_bob: result
+
+  - name: Assert the seed replicated to Node 2
+    type: assert
+    statements:
+      - 'contains({{meta_bob}}, "1337")'
+      - 'contains({{meta_bob}}, "overworld")'
+
+  # ── Presence ───────────────────────────────────────────────────────────────
+  - name: Alice joins the world
+    type: call
+    node: calimero-node-1
+    context_id: "{{world_id}}"
+    method: join
+    args: { name: "Alice", now: 1752264001 }
+    executor_public_key: "{{alice_key}}"
+
+  - name: Bob joins the world
+    type: call
+    node: calimero-node-2
+    context_id: "{{world_id}}"
+    method: join
+    args: { name: "Bob", now: 1752264002 }
+    executor_public_key: "{{bob_key}}"
+
+  - name: Sync presence
+    type: wait_for_sync
+    context_id: "{{world_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Alice reads the roster
+    type: call
+    node: calimero-node-1
+    context_id: "{{world_id}}"
+    method: get_players
+    args: { now: 1752264005 }
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      roster_alice: result
+
+  - name: Assert both players are in the roster
+    type: assert
+    statements:
+      - 'contains({{roster_alice}}, "Alice")'
+      - 'contains({{roster_alice}}, "Bob")'
+
+  # ── Alice builds, Bob sees it ─────────────────────────────────────────────
+  - name: Alice places a glowstone tower
+    type: call
+    node: calimero-node-1
+    context_id: "{{world_id}}"
+    method: set_blocks
+    args:
+      edits:
+        - { x: 12, y: 40, z: 12, b: 12 }
+        - { x: 12, y: 41, z: 12, b: 12 }
+        - { x: 12, y: 42, z: 12, b: 3 }
+      now: 1752264010
+    executor_public_key: "{{alice_key}}"
+
+  - name: Sync Alice's edits
+    type: wait_for_sync
+    context_id: "{{world_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Bob pulls the override diff
+    type: call
+    node: calimero-node-2
+    context_id: "{{world_id}}"
+    method: get_overrides
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      overrides_bob: result
+
+  - name: Assert Bob received Alice's blocks (the whole world in 3 entries)
+    type: assert
+    statements:
+      - 'contains({{overrides_bob}}, "12,40,12")'
+      - 'contains({{overrides_bob}}, "12,41,12")'
+      - 'contains({{overrides_bob}}, "12,42,12")'
+
+  # ── Bob breaks a block, Alice sees the explicit air override ─────────────
+  - name: Bob breaks the top block (b=0, never a map-remove)
+    type: call
+    node: calimero-node-2
+    context_id: "{{world_id}}"
+    method: set_blocks
+    args:
+      edits:
+        - { x: 12, y: 42, z: 12, b: 0 }
+      now: 1752264020
+    executor_public_key: "{{bob_key}}"
+
+  - name: Sync Bob's break
+    type: wait_for_sync
+    context_id: "{{world_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Alice pulls the override diff
+    type: call
+    node: calimero-node-1
+    context_id: "{{world_id}}"
+    method: get_overrides
+    args: {}
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      overrides_alice: result
+
+  - name: Assert the break converged as an explicit air override
+    type: assert
+    statements:
+      - 'contains({{overrides_alice}}, "12,42,12")'
+      - 'contains({{overrides_alice}}, "12,40,12")'
+
+  - name: Alice counts overrides (still 3 keys — LWW upsert, no duplicates)
+    type: call
+    node: calimero-node-1
+    context_id: "{{world_id}}"
+    method: override_count
+    args: {}
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      count_alice: result
+
+  - name: Assert override count is exactly 3
+    type: assert
+    statements:
+      - 'contains({{count_alice}}, "3")'

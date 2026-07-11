@@ -1,5 +1,8 @@
 # mero-blocks
 
+[![CI](https://github.com/calimero-network/mero-blocks/actions/workflows/ci.yml/badge.svg)](https://github.com/calimero-network/mero-blocks/actions/workflows/ci.yml)
+**Play it now: [mero-blocks.vercel.app](https://mero-blocks.vercel.app)** (offline mode needs no node)
+
 **A browser-playable, Minecraft-style multiplayer voxel sandbox with no game
 server — the world lives on [Calimero](https://calimero.network) nodes.**
 
@@ -99,6 +102,24 @@ or click **Connect a node** on the landing page and log in on your own node.
 | `join` / `leave` | `name?, now` | emits `PlayerJoined` / `PlayerLeft` |
 | `heartbeat` | `t: transform, now` | silent presence write + reap pass |
 | `get_players` | `now` | roster with `online` liveness |
+
+## CI / CD
+
+Every push and PR runs four gates in GitHub Actions; production only ships
+when all of them are green:
+
+1. **App** — typecheck, 125 vitest tests, production build
+2. **Logic** — 20 contract tests on the native mock host + WASM build (the
+   artifact feeds the merobox job)
+3. **E2E mocked** — 22 Playwright tests against a fully mocked node
+4. **E2E merobox** — two real `merod` nodes (rc.13 image) in Docker run the
+   full world lifecycle: install app → namespace invite → create world →
+   both players join → Alice builds → Bob sees it → Bob breaks a block →
+   convergence asserted (`workflows/e2e.yml`, also runnable locally with
+   `make workflows`)
+
+On `main`, a fifth job then builds and deploys to Vercel
+(**mero-blocks.vercel.app**) via `vercel build && vercel deploy --prebuilt`.
 
 ## Sister project
 
