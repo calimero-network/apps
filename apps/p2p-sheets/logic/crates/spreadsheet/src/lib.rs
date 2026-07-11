@@ -659,6 +659,61 @@ impl Spreadsheet {
         Ok(out)
     }
 
+    /// Every non-blank cell across ALL sheets, with raw + computed values —
+    /// a single-call warm-store read for the client. Unlike `get_cells`
+    /// (scoped to one sheet's closure), this evaluates the whole workbook
+    /// once. `export_all` is metadata-only (sheets) and is unrelated.
+    pub fn get_all_cells(&self) -> app::Result<Vec<Cell>> {
+        let mut all_inputs: std::collections::BTreeMap<recalc::CellRef, String> =
+            std::collections::BTreeMap::new();
+        let mut stored: Vec<CellData> = Vec::new();
+        for (_k, d) in self
+            .cells
+            .entries()
+            .map_err(|e| AppError::msg(format!("cells.entries: {e}")))?
+        {
+            if !d.raw_value.is_empty() {
+                all_inputs.insert(
+                    recalc::CellRef { sheet_id: d.sheet_id.clone(), row: d.row, col: d.col },
+                    d.raw_value.clone(),
+                );
+            }
+            stored.push(d);
+        }
+        let sheet_ids: std::collections::HashSet<String> = self
+            .sheets
+            .entries()
+            .map_err(|e| AppError::msg(format!("sheets.entries: {e}")))?
+            .map(|(id, _)| id)
+            .collect();
+        let computed = recalc::evaluate(&recalc::WorkbookInputs { cells: all_inputs, sheet_ids });
+
+        let mut out: Vec<Cell> = stored
+            .into_iter()
+            .filter_map(|d| {
+                if d.raw_value.is_empty() && d.format.is_empty() {
+                    return None;
+                }
+                let cv = computed
+                    .get(&recalc::CellRef { sheet_id: d.sheet_id.clone(), row: d.row, col: d.col })
+                    .cloned()
+                    .unwrap_or_else(|| d.raw_value.clone());
+                Some(Cell {
+                    id: d.id.clone(),
+                    sheet_id: d.sheet_id.clone(),
+                    row: d.row,
+                    col: d.col,
+                    raw_value: d.raw_value.clone(),
+                    computed_value: cv,
+                    format: d.format.clone(),
+                    updated_at: d.updated_at,
+                })
+            })
+            .collect();
+        out.sort_by_key(|c| (c.sheet_id.clone(), c.row, c.col));
+        Ok(out)
+    }
+
     // ---- Cursors ----
 
     pub fn update_cursor(&mut self, sheet_id: String, row: u32, col: u32) -> app::Result<()> {
@@ -1178,6 +1233,22 @@ mod tests {
         let fns = app.view(|s| s.search_functions("SU".into())).unwrap();
         assert_eq!(fns.len(), 1);
         assert_eq!(fns[0].name, "SUM");
+    }
+
+    #[test]
+    fn get_all_cells_spans_sheets_with_computed_values() {
+        let mut app = make_app();
+        app.call(|s| s.init_project("P".into())).unwrap();
+        let s1 = app.call(|s| s.create_sheet("One".into())).unwrap();
+        let s2 = app.call(|s| s.create_sheet("Two".into())).unwrap();
+        app.call(|s| s.set_cell(s1.clone(), 0, 0, "10".into())).unwrap();
+        app.call(|s| s.set_cell(s2.clone(), 0, 0, format!("=[{s1}]!A1*2"))).unwrap();
+
+        let all = app.view(|s| s.get_all_cells()).unwrap();
+        // Both sheets' cells present; cross-sheet computed value derived (20).
+        let c2 = all.iter().find(|c| c.sheet_id == s2 && c.row == 0 && c.col == 0).unwrap();
+        assert_eq!(c2.computed_value, "20");
+        assert!(all.iter().any(|c| c.sheet_id == s1 && c.raw_value == "10"));
     }
 
     #[test]
