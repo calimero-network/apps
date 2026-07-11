@@ -584,13 +584,55 @@ impl Spreadsheet {
         Ok(())
     }
 
+    /// Shared by `get_cells`/`get_all_cells`: filters out fully-blank cells
+    /// (see the cleared-cell note below) and builds the output `Cell` list,
+    /// looking up each cell's computed value (falling back to its raw value
+    /// when recalc has nothing for it, e.g. blank-but-formatted cells).
+    /// Does not sort — callers sort with their own key.
+    fn cells_from_stored(
+        stored: impl IntoIterator<Item = CellData>,
+        computed: &std::collections::BTreeMap<recalc::CellRef, String>,
+    ) -> Vec<Cell> {
+        stored
+            .into_iter()
+            .filter_map(|d| {
+                // A cleared cell is kept in the map (blank in place) rather than
+                // removed, so its coordinate can be re-written — removing it
+                // tombstones the deterministic key and blocks re-insertion. Such
+                // fully-blank cells are hidden here so consumers still see a
+                // cleared cell as gone. A value-less but formatted cell stays.
+                if d.raw_value.is_empty() && d.format.is_empty() {
+                    return None;
+                }
+                // `d` is owned here, so its fields move into `Cell` directly
+                // instead of being cloned. `raw_value` is only cloned in the
+                // fallback branch (no computed value for this cell) — the
+                // common case (a hit in `computed`) clones nothing.
+                let cv = computed
+                    .get(&recalc::CellRef { sheet_id: d.sheet_id.clone(), row: d.row, col: d.col })
+                    .cloned()
+                    .unwrap_or_else(|| d.raw_value.clone());
+                Some(Cell {
+                    id: d.id,
+                    sheet_id: d.sheet_id,
+                    row: d.row,
+                    col: d.col,
+                    raw_value: d.raw_value,
+                    computed_value: cv,
+                    format: d.format,
+                    updated_at: d.updated_at,
+                })
+            })
+            .collect()
+    }
+
     pub fn get_cells(&self, sheet_id: String) -> app::Result<Vec<Cell>> {
         // Collect all non-empty cells once; `stored` retains every cell (the
         // output for the requested sheet is filtered from it below).
         let mut all_inputs: std::collections::BTreeMap<recalc::CellRef, String> =
             std::collections::BTreeMap::new();
-        let mut stored: Vec<(String, CellData)> = Vec::new();
-        for (k, d) in self
+        let mut stored: Vec<CellData> = Vec::new();
+        for (_k, d) in self
             .cells
             .entries()
             .map_err(|e| AppError::msg(format!("cells.entries: {e}")))?
@@ -601,7 +643,7 @@ impl Spreadsheet {
                     d.raw_value.clone(),
                 );
             }
-            stored.push((k, d));
+            stored.push(d);
         }
 
         // Build the set of valid sheet ids for error detection.
@@ -626,35 +668,13 @@ impl Spreadsheet {
         };
         let computed = recalc::evaluate(&inputs);
 
-        let prefix = format!("{sheet_id}|");
-        let mut out: Vec<Cell> = stored
-            .into_iter()
-            .filter_map(|(k, d)| {
-                // A cleared cell is kept in the map (blank in place) rather than
-                // removed, so its coordinate can be re-written — removing it
-                // tombstones the deterministic key and blocks re-insertion. Such
-                // fully-blank cells are hidden here so consumers still see a
-                // cleared cell as gone. A value-less but formatted cell stays.
-                if k.starts_with(&prefix) && !(d.raw_value.is_empty() && d.format.is_empty()) {
-                    let cv = computed
-                        .get(&recalc::CellRef { sheet_id: d.sheet_id.clone(), row: d.row, col: d.col })
-                        .cloned()
-                        .unwrap_or_else(|| d.raw_value.clone());
-                    Some(Cell {
-                        id: d.id.clone(),
-                        sheet_id: d.sheet_id.clone(),
-                        row: d.row,
-                        col: d.col,
-                        raw_value: d.raw_value.clone(),
-                        computed_value: cv,
-                        format: d.format.clone(),
-                        updated_at: d.updated_at,
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect();
+        // `d.sheet_id` mirrors the `"{sheet_id}|{row}|{col}"` map key (see
+        // `cell_key`), so filtering on it is equivalent to the old
+        // key-prefix check without needing to keep the map key around.
+        let mut out = Spreadsheet::cells_from_stored(
+            stored.into_iter().filter(|d| d.sheet_id == sheet_id),
+            &computed,
+        );
         out.sort_by_key(|c| (c.row, c.col));
         Ok(out)
     }
@@ -688,28 +708,7 @@ impl Spreadsheet {
             .collect();
         let computed = recalc::evaluate(&recalc::WorkbookInputs { cells: all_inputs, sheet_ids });
 
-        let mut out: Vec<Cell> = stored
-            .into_iter()
-            .filter_map(|d| {
-                if d.raw_value.is_empty() && d.format.is_empty() {
-                    return None;
-                }
-                let cv = computed
-                    .get(&recalc::CellRef { sheet_id: d.sheet_id.clone(), row: d.row, col: d.col })
-                    .cloned()
-                    .unwrap_or_else(|| d.raw_value.clone());
-                Some(Cell {
-                    id: d.id.clone(),
-                    sheet_id: d.sheet_id.clone(),
-                    row: d.row,
-                    col: d.col,
-                    raw_value: d.raw_value.clone(),
-                    computed_value: cv,
-                    format: d.format.clone(),
-                    updated_at: d.updated_at,
-                })
-            })
-            .collect();
+        let mut out = Spreadsheet::cells_from_stored(stored, &computed);
         out.sort_by_key(|c| (c.sheet_id.clone(), c.row, c.col));
         Ok(out)
     }
