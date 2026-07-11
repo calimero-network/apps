@@ -1,8 +1,16 @@
-// SSO session bootstrap: the desktop (tauri-app) opens the game with
-//   #node_url=…&access_token=…&refresh_token=…&app-id=…&context_id=…
-//   &executor_public_key=…&expires_at=…&dev_mode=1
-// Capture everything BEFORE anything strips the hash, persist it, and prefer
-// hash > stored > env for the application id (the mero-chat SSO-strip lesson).
+// Session bootstrap for BOTH auth paths:
+//  - Desktop SSO: tauri-app opens the game with a full hash
+//      #node_url=…&access_token=…&refresh_token=…&app-id=…&context_id=…
+//      &executor_public_key=…&expires_at=…&dev_mode=1
+//    → capture everything and auto-enter the world (zero clicks).
+//  - Web login: we redirected to {node}/auth/login and came back with
+//      #access_token=…&refresh_token=…&application_id=…&context_id=…
+//      &context_identity=…[&node_url=…]
+//    (mero-js parseAuthCallback format; node_url may be absent — we stashed
+//    it before redirecting, see auth.ts takePendingNodeUrl).
+// App-id resolution prefers hash > stored > env (the mero-chat SSO-strip lesson).
+
+import { takePendingNodeUrl } from "./auth";
 
 const STORE_KEY = "mb-session";
 const TOKENS_KEY = "mero-tokens";
@@ -14,6 +22,11 @@ export interface Session {
   executorPublicKey: string | null;
   devMode: boolean;
 }
+
+export type CaptureResult =
+  | "none" // no usable hash; session possibly restored from storage
+  | "partial" // credentials captured but no context yet (web callback)
+  | "full"; // credentials + context — straight into the game
 
 let session: Session = {
   nodeUrl: null,
@@ -40,22 +53,27 @@ function restore(): void {
   }
 }
 
-/** Parse the SSO hash. Returns true when a hash session was captured. */
-export function captureSessionFromHash(): boolean {
+/** Parse the SSO / auth-callback hash. Always restores stored state first. */
+export function captureSessionFromHash(): CaptureResult {
   restore();
   const hash = window.location.hash;
-  if (!hash || hash.length < 2) return false;
+  if (!hash || hash.length < 2) return "none";
   const p = new URLSearchParams(hash.slice(1));
-  const nodeUrl = p.get("node_url");
   const accessToken = p.get("access_token");
-  if (!nodeUrl || !accessToken) return false;
+  if (!accessToken) return "none";
 
+  // node url: hash > the one stashed before the web-login redirect > stored
+  const nodeUrl = p.get("node_url") ?? takePendingNodeUrl() ?? session.nodeUrl;
+  if (!nodeUrl) return "none";
   session.nodeUrl = nodeUrl;
-  session.contextId = p.get("context_id") ?? session.contextId;
-  // tolerate both key spellings (tauri-app sends app-id)
+
+  session.contextId = p.get("context_id") || session.contextId;
+  // tolerate both spellings (tauri sends app-id, auth callback application_id)
   const appId = (p.get("application_id") ?? p.get("app-id") ?? "").trim();
   if (appId) session.applicationId = appId;
-  session.executorPublicKey = p.get("executor_public_key") ?? session.executorPublicKey;
+  // desktop names it executor_public_key, the auth callback context_identity
+  session.executorPublicKey =
+    p.get("executor_public_key") ?? p.get("context_identity") ?? session.executorPublicKey;
   session.devMode = p.get("dev_mode") === "1";
   persist();
 
@@ -70,11 +88,17 @@ export function captureSessionFromHash(): boolean {
 
   // we own the page (no MeroProvider) — safe to strip
   window.history.replaceState({}, "", window.location.pathname + window.location.search);
-  return true;
+  return session.contextId ? "full" : "partial";
 }
 
 export function getSession(): Session {
   return session;
+}
+
+/** merge fields chosen after login (world picker, resolved app id) */
+export function updateSession(patch: Partial<Session>): void {
+  session = { ...session, ...patch };
+  persist();
 }
 
 export function getAccessToken(): string | null {
@@ -87,8 +111,30 @@ export function getAccessToken(): string | null {
   }
 }
 
+/** logged into a node (may still need to pick a world) */
+export function isAuthenticated(): boolean {
+  return Boolean(session.nodeUrl && getAccessToken());
+}
+
+/** ready to play online right now */
 export function hasConnection(): boolean {
   return Boolean(session.nodeUrl && session.contextId && getAccessToken());
+}
+
+export function clearSession(): void {
+  session = {
+    nodeUrl: null,
+    contextId: null,
+    applicationId: null,
+    executorPublicKey: null,
+    devMode: false,
+  };
+  try {
+    localStorage.removeItem(STORE_KEY);
+    localStorage.removeItem(TOKENS_KEY);
+  } catch {
+    /* nothing to clear */
+  }
 }
 
 /** for tests */

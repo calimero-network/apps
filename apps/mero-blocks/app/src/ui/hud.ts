@@ -22,29 +22,9 @@ const css = `
 .mb-toast { background: rgba(0,0,0,0.65); padding: 5px 14px; border-radius: 14px;
   font-size: 13px; animation: mbfade 4s forwards; }
 @keyframes mbfade { 0%,80% { opacity: 1; } 100% { opacity: 0; } }
-#mb-connect { position: fixed; inset: 0; display: flex; align-items: center;
-  justify-content: center; background: linear-gradient(160deg, #0b0e14, #17202e);
-  z-index: 20; pointer-events: auto; }
-.mb-card { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 14px; padding: 34px 40px; width: 360px; color: #fff; text-align: center; }
-.mb-card h1 { margin: 0 0 4px; font-size: 26px; letter-spacing: 1px; }
-.mb-card p { color: #9fb0c3; font-size: 13px; margin: 0 0 22px; }
-.mb-card label { display: block; text-align: left; font-size: 12px; color: #9fb0c3; margin: 10px 0 4px; }
-.mb-card input { width: 100%; box-sizing: border-box; padding: 9px 10px; border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3); color: #fff; }
-.mb-btn { width: 100%; margin-top: 14px; padding: 11px; border-radius: 8px; border: none;
-  font-size: 15px; font-weight: 600; cursor: pointer; }
-.mb-btn.primary { background: #4f8cff; color: #fff; }
-.mb-btn.ghost { background: rgba(255,255,255,0.1); color: #fff; }
 #mb-hint { position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%);
   font-size: 12px; color: rgba(255,255,255,0.75); text-shadow: 0 0 3px #000; }
 `;
-
-export interface ConnectChoice {
-  mode: "offline" | "online";
-  name: string;
-  seed: number;
-}
 
 export class Hud {
   root: HTMLElement;
@@ -117,41 +97,6 @@ export class Hud {
     setTimeout(() => el.remove(), 4100);
   }
 
-  /** connect screen; resolves with the player's choice */
-  connectScreen(canConnect: boolean, defaults: { name: string; seed: number }): Promise<ConnectChoice> {
-    return new Promise((resolve) => {
-      const overlay = document.createElement("div");
-      overlay.id = "mb-connect";
-      overlay.innerHTML = `
-        <div class="mb-card">
-          <h1>mero-blocks</h1>
-          <p>multiplayer voxel sandbox on Calimero</p>
-          <label>player name</label>
-          <input id="mb-name" data-testid="name-input" value="${escapeHtml(defaults.name)}" maxlength="16" />
-          <label>world seed (offline)</label>
-          <input id="mb-seed" data-testid="seed-input" value="${defaults.seed}" />
-          ${canConnect ? `<button class="mb-btn primary" data-testid="connect-btn">Enter shared world</button>` : ""}
-          <button class="mb-btn ghost" data-testid="offline-btn">Play offline</button>
-        </div>
-      `;
-      this.root.appendChild(overlay);
-      const done = (mode: "offline" | "online") => {
-        const name =
-          (overlay.querySelector<HTMLInputElement>("#mb-name")!.value || "Player").trim();
-        const seed =
-          Math.abs(Math.floor(Number(overlay.querySelector<HTMLInputElement>("#mb-seed")!.value))) ||
-          defaults.seed;
-        overlay.remove();
-        resolve({ mode, name, seed });
-      };
-      overlay
-        .querySelector("[data-testid=offline-btn]")!
-        .addEventListener("click", () => done("offline"));
-      overlay
-        .querySelector("[data-testid=connect-btn]")
-        ?.addEventListener("click", () => done("online"));
-    });
-  }
 }
 
 function escapeHtml(s: string): string {

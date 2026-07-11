@@ -1,59 +1,92 @@
 # mero-blocks
 
-Browser-playable multiplayer voxel sandbox (Minecraft-style) running on
-[Calimero](https://calimero.network). No game server: a Calimero context *is*
-the world — block edits are CRDT state, presence rides heartbeats, and media
-never leaves the browser.
+**A browser-playable, Minecraft-style multiplayer voxel sandbox with no game
+server — the world lives on [Calimero](https://calimero.network) nodes.**
 
-See **[PLAN.md](./PLAN.md)** for the full architecture and design decisions.
+This repo is a showcase of how far the Calimero stack can be pushed as a
+real-time multiplayer game backend: block edits are CRDT contract state
+replicated peer-to-peer, players are presence heartbeats, and the game itself
+runs entirely in the browser (TypeScript + Three.js, custom voxel engine).
 
-## The one idea everything hangs on
+See **[PLAN.md](./PLAN.md)** for the full design document.
 
-**World = f(seed) + overrides.** Terrain is generated deterministically from a
-shared seed on every client; the contract stores only the diff (placed/broken
-blocks) plus player presence. Joining a world costs two queries
-(`world_meta`, `get_overrides`) — chunk data is never networked.
+---
 
-## Layout
+## What it showcases
+
+1. **A Calimero context as a game world.** No dedicated server, no matchmaking
+   infra. Creating a world = creating a context; joining = joining the
+   context. Everyone who runs a node owns a full replica of the world.
+2. **The seed + diff trick.** The contract never stores terrain. Every client
+   generates the identical 128×64×128 world from a seed; the contract carries
+   only the *override diff* (place = block id, break = explicit `0` — keys are
+   never removed, staying clear of CRDT tombstone pitfalls). A world with
+   thousands of edits is a few KB of consensus state, and joining costs
+   exactly two queries.
+3. **Skew-proof presence.** Heartbeats are silent CRDT writes stamped on a
+   *room clock* (max of caller clock and newest row), with a two-pass
+   mark/grace reap — a machine with a fast or backwards clock can never kill
+   live players (the algorithm battle-tested in mero-meet).
+4. **Derived state costs nothing.** Lighting (flood-fill sunlight + torch
+   light) is recomputed locally from block events; the day/night cycle is a
+   pure function of the world's `created_at`. Both are perfectly synchronized
+   across peers with zero network traffic.
+5. **Both auth paths, no friction.**
+   - *Desktop:* the Calimero desktop opens the game with an SSO hash
+     (`#node_url=…&access_token=…&context_id=…`) — the game auto-enters the
+     shared world with **zero clicks**.
+   - *Web:* the landing page redirects to your node's auth page
+     (`/auth/login?callback-url=…`, the standard mero-js flow) and returns
+     with tokens; a world picker then lists this app's contexts or creates a
+     new one via the admin API.
+   - *Offline:* no node at all — play locally, persist to localStorage, and
+     reconcile with a shared world when you later connect.
+
+## How it works
 
 ```
-logic/   Rust WASM contract (calimero-sdk @ core 0.11.0-rc.13 git tags)
-app/     Vite + TypeScript + Three.js frontend
-  src/engine/   pure-TS voxel engine (terrain, meshing, lighting, physics, raycast)
-  src/net/      session (SSO hash), JSON-RPC, SSE decode, SyncEngine
-  tests/        98 vitest unit tests
-  e2e/          12 mocked Playwright tests
+ browser A                    node A          node B                 browser B
+┌────────────┐  set_blocks   ┌──────┐  CRDT  ┌──────┐  SSE nudge   ┌────────────┐
+│ voxel      │ ────────────▶ │ WASM │ ◀────▶ │ WASM │ ───────────▶ │ re-pull    │
+│ engine     │  (150ms batch)│ ctx  │ gossip │ ctx  │              │ overrides  │
+│ + Three.js │ ◀──────────── └──────┘        └──────┘ ◀─────────── │ + remesh   │
+└────────────┘  get_players / heartbeat (1s/3s, silent)            └────────────┘
 ```
+
+- **Contract** (`logic/`, Rust on calimero-sdk, pinned to core
+  **0.11.0-rc.13** git tags — the latest rc): `overrides: UnorderedMap<"x,y,z",
+  {b, updatedAt}>` with per-key LWW, `players` presence map, room-clock reap.
+- **Engine** (`app/src/engine/`, pure TS — unit-testable without a GPU):
+  deterministic terrain (value noise + trees + ores), culled chunk mesher with
+  per-vertex baked light, Amanatides–Woo raycast, AABB physics, day/night.
+- **Renderer** (`app/src/renderer.ts`, the only Three.js file): one geometry
+  per chunk, custom shader with a `dayFactor` uniform — time passing never
+  remeshes anything.
+- **Net** (`app/src/net/`): JSON-RPC `execute` calls (camelCase envelope, raw
+  `argsJson`), SSE subscription decoding *both* event payload shapes seen
+  across node versions, 150ms edit batching with echo suppression, and a
+  reconcile pass (pull → merge → flush) on every (re)connect.
 
 ## Run it
 
 ```bash
 make setup     # pnpm install
-make dev       # http://localhost:5183 — click "Play offline", no node needed
+make dev       # http://localhost:5183 → "Play offline" needs no node at all
 ```
 
-**Controls:** click to lock the mouse; WASD + Space to move/jump; LMB break,
-RMB place; 1–9 / wheel to pick a block; torches and glowstone are real lights.
+**Controls:** click to lock the mouse · WASD + Space · LMB break · RMB place ·
+1–9/wheel select · torches and glowstone are real light sources.
 
-## Multiplayer
+For multiplayer, either open the app from the Calimero desktop (instant SSO)
+or click **Connect a node** on the landing page and log in on your own node.
 
-Open the app from the Calimero desktop (tauri-app) — the SSO hash
-(`#node_url=…&access_token=…&context_id=…`) connects you straight into the
-context's shared world. Peers see your avatar + name in real time; edits
-propagate via `set_blocks` batches → `BlocksChanged` SSE nudges → override
-re-pull (event = nudge, state = truth).
+## Tests — 167 total, all green
 
-Presence uses the mero-meet room-clock + two-pass mark/grace reap, so clock
-skew between machines can never kill live players. Heartbeats are silent CRDT
-writes (no SSE churn); rosters poll every 1.5s with SSE nudges for join/leave.
-
-## Tests
-
-```bash
-make unit        # 98 vitest tests (engine + protocol)
-make e2e         # 12 Playwright tests against a fully mocked node
-make logic-test  # contract tests on the native mock host (TestHost)
-```
+| suite | count | what it proves |
+|---|---|---|
+| `make unit` (vitest) | 125 | terrain determinism, meshing face counts, lighting flood-fill, raycast, physics, sync batching/echo/reconcile, session/auth/admin parsing |
+| `make e2e` (Playwright, fully mocked node) | 22 | landing + web-login redirect, desktop SSO auto-enter, world picker (list/join/create), live edit round-trips, presence, persistence |
+| `make logic-test` (cargo, native mock host) | 20 | LWW convergence, bounds, batch caps, clock-skew reap scenarios, rejoin self-heal |
 
 ## Contract API
 
@@ -61,12 +94,14 @@ make logic-test  # contract tests on the native mock host (TestHost)
 |---|---|---|
 | `init` | `name, seed, now` | `now` anchors the shared day/night clock |
 | `world_meta` | — | `{name, seed, createdAt}` |
-| `set_blocks` | `edits: [{x,y,z,b}], now` | batched, ≤512, LWW per block, emits `BlocksChanged(by)` |
-| `get_overrides` | — | full diff, `[{k: "x,y,z", b}]` |
+| `set_blocks` | `edits: [{x,y,z,b}], now` | batched ≤512, LWW per block, emits `BlocksChanged(by)` |
+| `get_overrides` | — | full diff `[{k: "x,y,z", b}]` |
 | `join` / `leave` | `name?, now` | emits `PlayerJoined` / `PlayerLeft` |
 | `heartbeat` | `t: transform, now` | silent presence write + reap pass |
 | `get_players` | `now` | roster with `online` liveness |
 
-Design rules honored (hard-won elsewhere): no `UnorderedSet` remove+reinsert
-(tombstone bug), break = explicit `b: 0` (never map-remove), room-clock
-normalized liveness, app-id resolution prefers the URL hash.
+## Sister project
+
+[**merraria**](../merraria) — the same architecture one dimension lower: a 2D
+Terraria-style mining sandbox on Canvas2D with zero rendering dependencies
+(the whole game is a 31 kB bundle).
