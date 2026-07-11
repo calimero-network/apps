@@ -6,9 +6,14 @@
  *
  * Pattern:
  *  - useMemo creates the typed client when mero + contextId + executorPublicKey resolve.
- *  - refresh() fetches sheets, cells (per-sheet), cursors, and functions.
- *  - useSubscription re-fetches on every context sync event (local + remote peers).
- *  - Every mutation calls the client then refresh() for an optimistic refetch.
+ *  - refresh() fetches the whole workbook (get_all_cells) into a warm snapshot, then
+ *    derives the active sheet's computed cells locally via the WASM recalc engine.
+ *  - useSubscription re-fetches on every context sync event (local + remote peers),
+ *    which reconciles the warm snapshot and retires confirmed overlay entries.
+ *  - Cell writes (setCell/clearCell/setCellFormat/applyCellOps) paint optimistically
+ *    through the pending overlay and rely on the subscription refresh to reconcile —
+ *    they do NOT call refresh() directly. Sheet-level ops (initProject/createSheet/
+ *    renameSheet/deleteSheet) still call refresh() directly after the write.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMero, useSubscription } from '@calimero-network/mero-react';
@@ -173,13 +178,24 @@ export function useSpreadsheet({
   const activeSheetIdRef = useRef(activeSheetId);
   activeSheetIdRef.current = activeSheetId;
 
+  // The full sheet list read through a ref so the engine's `sheet_ids` matches the
+  // node's exactly (the node builds sheet_ids from its whole sheet list, including
+  // sheets with no cells yet). Missing an existing-but-empty sheet id would make
+  // the client's engine return #REF! for cross-sheet refs the node computed fine.
+  const sheetsRef = useRef(sheets);
+  sheetsRef.current = sheets;
+
   // Derive the active sheet's cells from the warm store ⊕ overlay and paint them.
   // Before the engine is ready, fall back to the node computed values captured in
   // the snapshot (pre-WASM initial paint — no flash of raw formulas).
   const deriveAndSet = useCallback(() => {
     const active = activeSheetIdRef.current;
     if (!active) { setCells([]); return; }
-    const sheetIds = [...new Set([...snapshotRef.current.values()].map((c) => c.sheet_id))];
+    const sheetIds = [...new Set([
+      ...sheetsRef.current.map((s) => s.id),
+      ...[...snapshotRef.current.values()].map((c) => c.sheet_id),
+      ...[...overlayRef.current.values()].map((e) => e.sheet_id),
+    ])];
     if (!engineReady()) {
       setCells([...snapshotRef.current.values()].filter((c) => c.sheet_id === active));
       return;
@@ -191,7 +207,7 @@ export function useSpreadsheet({
     if (import.meta.env.DEV) {
       const nodeActive = [...snapshotRef.current.values()].filter((c) => c.sheet_id === active);
       const bad = diffComputed(nodeActive, derived);
-      if (bad.length) console.error('[recalc] WASM/node disagreement at', bad, '— stale wasm artifact?');
+      if (bad.length) console.error('[recalc] WASM/node computed-value disagreement at', bad, '— stale wasm artifact or engine-input mismatch');
     }
   }, []);
 
