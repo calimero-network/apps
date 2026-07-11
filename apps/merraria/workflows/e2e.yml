@@ -170,6 +170,8 @@ steps:
       - 'contains({{roster_alice}}, "Bob")'
 
   # ── Alice builds, Bob sees it ─────────────────────────────────────────────
+  # x coords 210/211/212 are each a unique comma-free needle — merobox's
+  # contains() splits its arguments on commas, so "210,55" can't be asserted.
   - name: Alice builds a plank shelter with a torch
     type: call
     node: calimero-node-1
@@ -179,7 +181,7 @@ steps:
       edits:
         - { x: 210, y: 55, t: 7 }
         - { x: 211, y: 55, t: 7 }
-        - { x: 210, y: 54, t: 8 }
+        - { x: 212, y: 54, t: 8 }
       now: 1752264010
     executor_public_key: "{{alice_key}}"
 
@@ -204,9 +206,9 @@ steps:
   - name: Assert Bob received Alice's tiles
     type: assert
     statements:
-      - 'contains({{overrides_bob}}, "210,55")'
-      - 'contains({{overrides_bob}}, "211,55")'
-      - 'contains({{overrides_bob}}, "210,54")'
+      - 'contains({{overrides_bob}}, "210")'
+      - 'contains({{overrides_bob}}, "211")'
+      - 'contains({{overrides_bob}}, "212")'
 
   # ── Bob digs, Alice sees the explicit air override ───────────────────────
   - name: Bob digs out a wall tile (t=0, never a map-remove)
@@ -241,6 +243,6 @@ steps:
   - name: Assert the dig converged (all 3 keys still present, LWW upsert)
     type: assert
     statements:
-      - 'contains({{overrides_alice}}, "211,55")'
-      - 'contains({{overrides_alice}}, "210,55")'
-      - 'contains({{overrides_alice}}, "210,54")'
+      - 'contains({{overrides_alice}}, "211")'
+      - 'contains({{overrides_alice}}, "210")'
+      - 'contains({{overrides_alice}}, "212")'
