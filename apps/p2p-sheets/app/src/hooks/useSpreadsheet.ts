@@ -16,7 +16,7 @@ import { SpreadsheetClient } from '../api/spreadsheet/SpreadsheetClient';
 import type { Sheet, Cell, Cursor, FunctionDef, CellOp } from '../api/spreadsheet/SpreadsheetClient';
 import { initEngine, engineReady, evaluate as engineEvaluate } from '../engine/engine';
 import {
-  snapshotFromCells, retireOverlay, deriveActiveCells, diffComputed,
+  snapshotFromCells, retireOverlay, deriveActiveCells, diffComputed, cellKey,
   type Snapshot, type Overlay,
 } from '../engine/derive';
 
@@ -195,6 +195,28 @@ export function useSpreadsheet({
     }
   }, []);
 
+  // Apply local ops to the overlay and repaint immediately (before the node write).
+  const applyOverlay = useCallback(
+    (sheetId: string, edits: { row: number; col: number; raw_value?: string; format?: string; clear?: boolean }[]) => {
+      for (const e of edits) {
+        const key = cellKey(sheetId, e.row, e.col);
+        const prev = overlayRef.current.get(key)
+          ?? snapshotRef.current.get(key)
+          ?? { sheet_id: sheetId, row: e.row, col: e.col, raw_value: '', format: '' };
+        const next = e.clear
+          ? { sheet_id: sheetId, row: e.row, col: e.col, raw_value: '', format: '' }
+          : {
+              sheet_id: sheetId, row: e.row, col: e.col,
+              raw_value: e.raw_value ?? prev.raw_value,
+              format: e.format ?? prev.format,
+            };
+        overlayRef.current.set(key, next);
+      }
+      deriveAndSet();
+    },
+    [deriveAndSet],
+  );
+
   const refresh = useCallback(async () => {
     if (!client) return;
     setLoading(true);
@@ -283,39 +305,44 @@ export function useSpreadsheet({
   const setCell = useCallback(
     async (sheetId: string, row: number, col: number, rawValue: string) => {
       if (!client) return;
+      applyOverlay(sheetId, [{ row, col, raw_value: rawValue }]);
       await enqueue(() =>
         rawValue.startsWith('=')
           ? // Store as formula — backend evaluates and returns computed_value
             client.setCellFormula({ sheet_id: sheetId, row, col, formula: rawValue })
           : client.setCell({ sheet_id: sheetId, row, col, raw_value: rawValue }),
       );
-      await refresh();
+      // No await refresh() here — the subscription refresh reconciles + retires.
     },
-    [client, refresh, enqueue],
+    [client, applyOverlay, enqueue],
   );
 
   const clearCell = useCallback(async (sheetId: string, row: number, col: number) => {
     if (!client) return;
+    applyOverlay(sheetId, [{ row, col, clear: true }]);
     await enqueue(() => client.clearCell({ sheet_id: sheetId, row, col }));
-    await refresh();
-  }, [client, refresh, enqueue]);
+  }, [client, applyOverlay, enqueue]);
 
   const setCellFormat = useCallback(
     async (sheetId: string, row: number, col: number, format: string) => {
       if (!client) return;
+      applyOverlay(sheetId, [{ row, col, format }]);
       await enqueue(() => client.setCellFormat({ sheet_id: sheetId, row, col, format }));
-      await refresh();
     },
-    [client, refresh, enqueue],
+    [client, applyOverlay, enqueue],
   );
 
   const applyCellOps = useCallback(
     async (sheetId: string, ops: CellOp[]) => {
       if (!client || ops.length === 0) return;
+      applyOverlay(sheetId, ops.map((op) =>
+        op.kind === 'Set'    ? { row: op.row, col: op.col, raw_value: op.raw_value }
+        : op.kind === 'Format' ? { row: op.row, col: op.col, format: op.format }
+        : { row: op.row, col: op.col, clear: true },
+      ));
       await enqueue(() => client.applyCellOps({ sheet_id: sheetId, ops }));
-      await refresh();
     },
-    [client, refresh, enqueue],
+    [client, applyOverlay, enqueue],
   );
 
   // Fire-and-forget cursor broadcast — never block the UI waiting for it, but
