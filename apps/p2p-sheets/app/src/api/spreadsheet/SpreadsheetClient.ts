@@ -23,37 +23,15 @@ export interface CellData {
   row: number;
   col: number;
   raw_value: string;
+  computed_value: string;
   format: string;
   updated_at: number;
 }
 
-export type CellOpPayload =
-  | { name: 'Set'; payload: CellOp_Set }
-  | { name: 'Format'; payload: CellOp_Format }
-  | { name: 'Clear'; payload: CellOp_Clear }
-
-export const CellOp = {
-  Set: (set: CellOp_Set): CellOpPayload => ({ name: 'Set', payload: set }),
-  Format: (format: CellOp_Format): CellOpPayload => ({ name: 'Format', payload: format }),
-  Clear: (clear: CellOp_Clear): CellOpPayload => ({ name: 'Clear', payload: clear }),
-} as const;
-
-export interface CellOp_Clear {
-  row: number;
-  col: number;
-}
-
-export interface CellOp_Format {
-  row: number;
-  col: number;
-  format: string;
-}
-
-export interface CellOp_Set {
-  row: number;
-  col: number;
-  raw_value: string;
-}
+export type CellOp =
+  | { kind: 'Set'; row: number; col: number; raw_value: string }
+  | { kind: 'Format'; row: number; col: number; format: string }
+  | { kind: 'Clear'; row: number; col: number };
 
 export interface Cursor {
   id: string;
@@ -257,7 +235,7 @@ export class SpreadsheetClient {
   /**
    * apply_cell_ops
    */
-  public async applyCellOps(params: { sheet_id: string; ops: CellOpPayload[] }): Promise<void> {
+  public async applyCellOps(params: { sheet_id: string; ops: CellOp[] }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'apply_cell_ops', argsJson: params, executorPublicKey: this._executorPublicKey });
     return response as void;
   }
