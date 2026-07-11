@@ -1,5 +1,8 @@
 # merraria
 
+[![CI](https://github.com/calimero-network/merraria/actions/workflows/ci.yml/badge.svg)](https://github.com/calimero-network/merraria/actions/workflows/ci.yml)
+**Play it now: [merraria.vercel.app](https://merraria.vercel.app)** (offline mode needs no node)
+
 **A browser-playable, Terraria-style 2D multiplayer mining sandbox with no
 game server — the world lives on [Calimero](https://calimero.network) nodes.**
 
@@ -78,6 +81,17 @@ For multiplayer, open from the Calimero desktop (instant SSO) or click
 | `make unit` (vitest) | 103 | terrain determinism + cave/ore distribution, lighting, physics (incl. head bumps and swimming), mining/inventory, sync protocol, session/auth/admin parsing |
 | `make e2e` (Playwright, fully mocked node) | 20 | landing + web login, desktop SSO auto-enter, world picker, live tile round-trips, presence, inventory persistence |
 | `make logic-test` (cargo, native mock host) | 17 | LWW convergence, bounds, clock-skew reap scenarios, rejoin self-heal |
+
+## CI / CD
+
+Every push and PR runs four gates in GitHub Actions; production only ships
+when all are green: **App** (typecheck + 103 vitest + build), **Logic** (17
+contract tests + WASM build), **E2E mocked** (20 Playwright tests), and
+**E2E merobox** — two real `merod` nodes (rc.13 image) in Docker running the
+full world lifecycle: install → namespace invite → create world → both miners
+join → Alice builds a shelter → Bob sees it → Bob digs it out → convergence
+asserted (`workflows/e2e.yml`, locally via `make workflows`). On `main`, a
+fifth job deploys to Vercel (**merraria.vercel.app**).
 
 ## Contract API
 
