@@ -1,0 +1,83 @@
+"""Node-side timing harness for the perf workflows. Wraps merobox's authenticated
+node client with timed calls, chunked apply, derive, sync-poll, and a reporter."""
+import json
+import time
+
+from merobox.commands.client import get_client_for_node
+
+COLUMNS = ["size", "input_cells", "formula_cells", "apply_ms",
+           "derive_active_ms", "derive_all_ms", "sync_ms", "correct"]
+
+
+def chunked(seq, size):
+    return [seq[i:i + size] for i in range(0, len(seq), size)]
+
+
+def node_client(node_name):
+    client, _rpc = get_client_for_node(node_name)
+    return client
+
+
+def _output(res):
+    """Normalize execute_function's return to the method's `output` payload.
+    The client may return a dict {"output": ...} / {"result": {"output": ...}}
+    or an object; unwrap defensively."""
+    if isinstance(res, dict):
+        if "output" in res:
+            return res["output"]
+        if "result" in res and isinstance(res["result"], dict):
+            return res["result"].get("output", res["result"])
+        return res
+    return getattr(res, "output", res)
+
+
+def timed_execute(client, cid, method, args):
+    t0 = time.perf_counter()
+    res = client.execute_function(context_id=cid, method=method, args=json.dumps(args))
+    ms = (time.perf_counter() - t0) * 1000.0
+    return _output(res), ms
+
+
+def apply_ops(client, cid, sheet_id, ops, chunk_size=2000):
+    """Apply ops via apply_cell_ops. One call when it fits chunk_size, else split
+    into chunks (each a commit) — total wall-clock summed. Returns (ms, n_chunks)."""
+    batches = chunked(ops, chunk_size) if chunk_size and len(ops) > chunk_size else [ops]
+    total = 0.0
+    for batch in batches:
+        _, ms = timed_execute(client, cid, "apply_cell_ops",
+                              {"sheet_id": sheet_id, "ops": batch})
+        total += ms
+    return total, len(batches)
+
+
+def derive_active(client, cid, sheet_id):
+    out, ms = timed_execute(client, cid, "get_cells", {"sheet_id": sheet_id})
+    return out, ms
+
+
+def derive_all(client, cid):
+    out, ms = timed_execute(client, cid, "get_all_cells", {})
+    return out, ms
+
+
+def wait_converged(client2, cid, min_cells, timeout_s=60.0):
+    """Poll node 2's get_all_cells until it reports >= min_cells. Returns ms."""
+    t0 = time.perf_counter()
+    while True:
+        out, _ = timed_execute(client2, cid, "get_all_cells", {})
+        if isinstance(out, list) and len(out) >= min_cells:
+            return (time.perf_counter() - t0) * 1000.0
+        if time.perf_counter() - t0 > timeout_s:
+            raise TimeoutError(
+                f"node 2 did not reach {min_cells} cells within {timeout_s}s "
+                f"(saw {len(out) if isinstance(out, list) else out})")
+        time.sleep(0.25)
+
+
+def format_summary(rows):
+    header = "| " + " | ".join(COLUMNS) + " |"
+    sep = "| " + " | ".join("---" for _ in COLUMNS) + " |"
+    lines = [header, sep]
+    for r in rows:
+        lines.append("| " + " | ".join(str(r.get(c, "")) for c in COLUMNS) + " |")
+    return "\n".join(lines)
