@@ -14,6 +14,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMero, useSubscription } from '@calimero-network/mero-react';
 import { SpreadsheetClient } from '../api/spreadsheet/SpreadsheetClient';
 import type { Sheet, Cell, Cursor, FunctionDef, CellOp } from '../api/spreadsheet/SpreadsheetClient';
+import { initEngine, engineReady, evaluate as engineEvaluate } from '../engine/engine';
+import {
+  snapshotFromCells, retireOverlay, deriveActiveCells, diffComputed,
+  type Snapshot, type Overlay,
+} from '../engine/derive';
 
 // Re-export domain types so components import from one place
 export type { Sheet, Cell, Cursor, FunctionDef };
@@ -122,6 +127,14 @@ export function useSpreadsheet({
   const [error, setError] = useState<Error | null>(null);
   const [pendingMutations, setPendingMutations] = useState(0);
 
+  const snapshotRef = useRef<Snapshot>(new Map());
+  const overlayRef = useRef<Overlay>(new Map());
+  const [engineTick, setEngineTick] = useState(0); // bump to re-derive after init
+
+  useEffect(() => {
+    void initEngine().then(() => setEngineTick((t) => t + 1));
+  }, []);
+
   // Memoized typed client — null until mero + context + identity all resolve.
   const client = useMemo(
     () =>
@@ -160,35 +173,53 @@ export function useSpreadsheet({
   const activeSheetIdRef = useRef(activeSheetId);
   activeSheetIdRef.current = activeSheetId;
 
+  // Derive the active sheet's cells from the warm store ⊕ overlay and paint them.
+  // Before the engine is ready, fall back to the node computed values captured in
+  // the snapshot (pre-WASM initial paint — no flash of raw formulas).
+  const deriveAndSet = useCallback(() => {
+    const active = activeSheetIdRef.current;
+    if (!active) { setCells([]); return; }
+    const sheetIds = [...new Set([...snapshotRef.current.values()].map((c) => c.sheet_id))];
+    if (!engineReady()) {
+      setCells([...snapshotRef.current.values()].filter((c) => c.sheet_id === active));
+      return;
+    }
+    const derived = deriveActiveCells(
+      snapshotRef.current, overlayRef.current, sheetIds, active, engineEvaluate,
+    );
+    setCells(derived);
+    if (import.meta.env.DEV) {
+      const nodeActive = [...snapshotRef.current.values()].filter((c) => c.sheet_id === active);
+      const bad = diffComputed(nodeActive, derived);
+      if (bad.length) console.error('[recalc] WASM/node disagreement at', bad, '— stale wasm artifact?');
+    }
+  }, []);
+
   const refresh = useCallback(async () => {
     if (!client) return;
     setLoading(true);
     setError(null);
     try {
-      const [fetchedSheets, fetchedCursors, fetchedFunctions] = await Promise.all([
+      const [fetchedSheets, fetchedCursors, fetchedFunctions, allCells] = await Promise.all([
         client.listSheets(),
         client.getCursors(),
         client.getFunctions(),
+        client.getAllCells(),
       ]);
-
-      // Fetch ONLY the active sheet's cells. The node derives cross-sheet
-      // references during eval, so the active sheet is correct without holding
-      // other sheets' cells; any context sync refetches the active sheet.
-      const active = activeSheetIdRef.current;
-      const activeCells = active ? await client.getCells({ sheet_id: active }) : [];
-
+      snapshotRef.current = snapshotFromCells(allCells);
+      overlayRef.current = retireOverlay(overlayRef.current, snapshotRef.current);
       setSheets(fetchedSheets.sort((a, b) => a.position - b.position));
-      setCells(activeCells);
       setCursors(fetchedCursors);
       // Only replace the built-in functions if the backend returned a non-empty list
       if (fetchedFunctions.length > 0) setFunctions(fetchedFunctions);
+      deriveAndSet();
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
     } finally {
       setLoading(false);
       setLoaded(true);
     }
-  }, [client]);
+  }, [client, deriveAndSet]);
 
   // Reset the loaded flag whenever the client changes (new context) so callers
   // wait for that context's first fetch before acting on empty state.
@@ -197,26 +228,12 @@ export function useSpreadsheet({
   // Full reload when the context (client) changes.
   useEffect(() => { void refresh(); }, [refresh]);
 
-  // Tab switch: refetch ONLY the active sheet's cells. The sheet list, cursors,
-  // and functions are unchanged by switching sheets, so refreshing them would be
-  // wasted work (this is what avoided the duplicate fetch on first open, where
-  // activeSheetId goes null → first sheet). The node derives cross-sheet refs, so
-  // the active sheet is correct on its own.
+  // Tab switch / engine init: re-derive the active sheet from the warm store.
+  // No node round-trip — all sheets' inputs are already in snapshotRef.
   useEffect(() => {
-    if (!client) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const cells = activeSheetId
-          ? await client.getCells({ sheet_id: activeSheetId })
-          : [];
-        if (!cancelled) setCells(cells);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err : new Error(String(err)));
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [client, activeSheetId]);
+    deriveAndSet();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSheetId, engineTick, deriveAndSet]);
 
   // Live updates: re-fetch on any CRDT sync event for this context
   useSubscription(contextId ? [contextId] : [], () => { void refresh(); });
