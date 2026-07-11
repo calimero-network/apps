@@ -68,7 +68,7 @@ pub(crate) fn order(
 /// under-reporting a range/whole-column ref and stays identical to a
 /// whole-workbook evaluation. Terminates: `closure` grows monotonically and is
 /// bounded by the finite set of sheet ids present in `cells`.
-pub(crate) fn sheet_closure(
+pub fn sheet_closure(
     cells: &BTreeMap<CellRef, String>,
     requested_sheet: &str,
 ) -> HashSet<String> {

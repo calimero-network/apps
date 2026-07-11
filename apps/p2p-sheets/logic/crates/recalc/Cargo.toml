@@ -1,0 +1,11 @@
+[package]
+name = "p2p-sheets-recalc"
+version = "0.1.0"
+edition = "2021"
+
+# Pure evaluation engine (formula parser + recalc). std-only and calimero-free
+# so it links into the node crate AND compiles to browser WASM via recalc-wasm.
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]

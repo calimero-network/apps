@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/types",
+    "crates/recalc",
     "crates/spreadsheet"
 ]
 resolver = "2"
@@ -20,6 +21,7 @@ bs58 = "0.4"
 serde_json = "1.0.113"
 serial_test = "3"
 p2p-sheets-types = { path = "crates/types" }
+p2p-sheets-recalc = { path = "crates/recalc" }
 
 [profile.app-release]
 inherits = "release"

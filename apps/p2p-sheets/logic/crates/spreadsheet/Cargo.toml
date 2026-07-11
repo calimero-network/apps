@@ -11,6 +11,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 p2p-sheets-types = { workspace = true }
+p2p-sheets-recalc = { workspace = true }
 calimero-sdk = { workspace = true }
 calimero-storage = { workspace = true }
 calimero-storage-macros = { workspace = true }
