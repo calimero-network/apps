@@ -1,4 +1,3 @@
-import re
 from generators import (
     a1, set_op, financial_data_sheet, financial_summary, SUMMARY_TOTAL_CELL,
 )

@@ -48,8 +48,8 @@ def run():
         formula_cells = 0
 
         for s in range(spec["sheets"]):
-            out, _ = b.timed_execute(c1, cid, "create_sheet", {"name": f"Data {s+1}"})
-            sheet_id = out if isinstance(out, str) else out.get("id", out)
+            out, _ = b.timed_execute(c1, cid, "create_sheet", {"name": f"{spec['label']} Data {s+1}"})
+            sheet_id = out if isinstance(out, str) else (out.get("id", out) if isinstance(out, dict) else out)
             if not isinstance(sheet_id, str) or not sheet_id:
                 raise RuntimeError(f"unexpected create_sheet return: {out!r}")
             ds = g.financial_data_sheet(spec["rows"], spec["cols"])
@@ -60,8 +60,8 @@ def run():
             input_cells += spec["rows"] * spec["cols"]
             formula_cells += len(ds.ops) - spec["rows"] * spec["cols"]
 
-        out, _ = b.timed_execute(c1, cid, "create_sheet", {"name": "Summary"})
-        summary_id = out if isinstance(out, str) else out.get("id", out)
+        out, _ = b.timed_execute(c1, cid, "create_sheet", {"name": f"{spec['label']} Summary"})
+        summary_id = out if isinstance(out, str) else (out.get("id", out) if isinstance(out, dict) else out)
         if not isinstance(summary_id, str) or not summary_id:
             raise RuntimeError(f"unexpected create_sheet return: {out!r}")
         summary_ops = g.financial_summary(entries)
