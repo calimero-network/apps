@@ -1,0 +1,26 @@
+name: recalc-wasm freshness
+
+on:
+  pull_request:
+    paths:
+      - 'logic/crates/recalc/**'
+      - 'logic/crates/recalc-wasm/**'
+      - 'app/src/engine/recalc/**'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain (wasm32)
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Rebuild the committed artifact
+        run: bash logic/build-recalc-wasm.sh
+
+      - name: Fail if the committed artifact is stale
+        run: git diff --exit-code -- app/src/engine/recalc
