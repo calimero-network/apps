@@ -93,9 +93,20 @@ jobs:
           python-version: "3.12"
       - name: Install merobox
         run: pip install merobox
+      # merod occasionally hits a RocksDB manifest race right after init on CI
+      # disks ("MANIFEST-xxxxxx: No such file or directory") — retry from a
+      # clean slate rather than fail the pipeline on a startup flake.
       - name: Run 2-node world e2e (build → sync → break → converge)
         working-directory: workflows
-        run: merobox bootstrap run e2e.yml
+        run: |
+          for attempt in 1 2 3; do
+            if merobox bootstrap run e2e.yml; then exit 0; fi
+            echo "attempt ${attempt} failed — cleaning up and retrying"
+            merobox stop --all || true
+            rm -rf data
+            sleep 5
+          done
+          exit 1
       - name: Stop nodes
         if: always()
         run: merobox stop --all || true
