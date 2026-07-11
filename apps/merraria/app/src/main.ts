@@ -13,6 +13,7 @@ import { RemotePlayer, SyncEngine, Transform } from "./net/sync";
 import { GameRenderer, RemoteDraw } from "./renderer";
 import { loadWorld, saveWorld } from "./state/persistence";
 import { Hud } from "./ui/hud";
+import { Landing, LaunchChoice } from "./ui/landing";
 
 const SAVE_MS = 5000;
 const MINIMAP_MS = 2000;
@@ -24,7 +25,7 @@ interface RemoteAvatar {
 }
 
 async function boot(): Promise<void> {
-  captureSessionFromHash();
+  const captured = captureSessionFromHash();
 
   const app = document.getElementById("app")!;
   const canvas = document.createElement("canvas");
@@ -33,7 +34,14 @@ async function boot(): Promise<void> {
   const hud = new Hud(app);
 
   const defaults = { name: localStorage.getItem("mt-name") ?? "Player", seed: 1337 };
-  const choice = await hud.connectScreen(hasConnection(), defaults);
+  // Desktop SSO auto-enter: a full hash (tokens + context) means the desktop
+  // already authenticated us — zero clicks, straight into the shared world.
+  let choice: LaunchChoice;
+  if (captured === "full" && hasConnection()) {
+    choice = { mode: "online", ...defaults };
+  } else {
+    choice = await new Landing(app).show(defaults);
+  }
   localStorage.setItem("mt-name", choice.name);
 
   // ---- world + net bootstrap -----------------------------------------

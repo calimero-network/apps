@@ -26,29 +26,9 @@ const css = `
 .mt-toast { background: rgba(0,0,0,0.65); padding: 5px 14px; border-radius: 14px;
   font-size: 13px; animation: mtfade 4s forwards; }
 @keyframes mtfade { 0%,80% { opacity: 1; } 100% { opacity: 0; } }
-#mt-connect { position: fixed; inset: 0; display: flex; align-items: center;
-  justify-content: center; background: linear-gradient(160deg, #0b0e14, #1c2a1e);
-  z-index: 20; pointer-events: auto; }
-.mt-card { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 14px; padding: 34px 40px; width: 360px; color: #fff; text-align: center; }
-.mt-card h1 { margin: 0 0 4px; font-size: 26px; letter-spacing: 1px; }
-.mt-card p { color: #9fc3a8; font-size: 13px; margin: 0 0 22px; }
-.mt-card label { display: block; text-align: left; font-size: 12px; color: #9fc3a8; margin: 10px 0 4px; }
-.mt-card input { width: 100%; box-sizing: border-box; padding: 9px 10px; border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3); color: #fff; }
-.mt-btn { width: 100%; margin-top: 14px; padding: 11px; border-radius: 8px; border: none;
-  font-size: 15px; font-weight: 600; cursor: pointer; }
-.mt-btn.primary { background: #4faf5c; color: #fff; }
-.mt-btn.ghost { background: rgba(255,255,255,0.1); color: #fff; }
 #mt-hint { position: absolute; bottom: 74px; left: 50%; transform: translateX(-50%);
   font-size: 12px; color: rgba(255,255,255,0.75); text-shadow: 0 0 3px #000; }
 `;
-
-export interface ConnectChoice {
-  mode: "offline" | "online";
-  name: string;
-  seed: number;
-}
 
 export class Hud {
   root: HTMLElement;
@@ -126,39 +106,6 @@ export class Hud {
     setTimeout(() => el.remove(), 4100);
   }
 
-  connectScreen(canConnect: boolean, defaults: { name: string; seed: number }): Promise<ConnectChoice> {
-    return new Promise((resolve) => {
-      const overlay = document.createElement("div");
-      overlay.id = "mt-connect";
-      overlay.innerHTML = `
-        <div class="mt-card">
-          <h1>merraria</h1>
-          <p>2D multiplayer mining sandbox on Calimero</p>
-          <label>player name</label>
-          <input id="mt-name" data-testid="name-input" value="${escapeHtml(defaults.name)}" maxlength="16" />
-          <label>world seed (offline)</label>
-          <input id="mt-seed" data-testid="seed-input" value="${defaults.seed}" />
-          ${canConnect ? `<button class="mt-btn primary" data-testid="connect-btn">Enter shared world</button>` : ""}
-          <button class="mt-btn ghost" data-testid="offline-btn">Play offline</button>
-        </div>
-      `;
-      this.root.appendChild(overlay);
-      const done = (mode: "offline" | "online") => {
-        const name = (overlay.querySelector<HTMLInputElement>("#mt-name")!.value || "Player").trim();
-        const seed =
-          Math.abs(Math.floor(Number(overlay.querySelector<HTMLInputElement>("#mt-seed")!.value))) ||
-          defaults.seed;
-        overlay.remove();
-        resolve({ mode, name, seed });
-      };
-      overlay
-        .querySelector("[data-testid=offline-btn]")!
-        .addEventListener("click", () => done("offline"));
-      overlay
-        .querySelector("[data-testid=connect-btn]")
-        ?.addEventListener("click", () => done("online"));
-    });
-  }
 }
 
 function escapeHtml(s: string): string {

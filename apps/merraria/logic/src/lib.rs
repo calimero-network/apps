@@ -589,6 +589,81 @@ mod tests {
     }
 
     #[test]
+    fn rejoin_preserves_joined_at_and_position() {
+        let mut app = new_world();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 42.0), 1005)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice2".to_owned(), 1010)).unwrap();
+        let players = app.view(|s| s.get_players(1011));
+        assert_eq!(players[0].x, 42.0, "position survives rejoin");
+        assert_eq!(players[0].name, "Alice2");
+    }
+
+    #[test]
+    fn heartbeat_without_join_creates_a_live_row() {
+        let mut app = new_world();
+        app.call_as(ALICE, |s| s.heartbeat(t("Ghost", 1.0), 1000)).unwrap();
+        let players = app.view(|s| s.get_players(1001));
+        assert_eq!(players.len(), 1);
+        assert!(players[0].online);
+    }
+
+    #[test]
+    fn leave_when_never_joined_is_a_no_op() {
+        let mut app = new_world();
+        assert!(app.call_as(ALICE, |s| s.leave(1000)).is_ok());
+        assert!(app.view(|s| s.get_players(1001)).is_empty());
+    }
+
+    #[test]
+    fn concurrent_edits_by_two_players_both_land() {
+        let mut app = new_world();
+        app.call_as(ALICE, |s| s.set_tiles(vec![Edit { x: 1, y: 1, t: 3 }], 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.set_tiles(vec![Edit { x: 2, y: 2, t: 8 }], 1000))
+            .unwrap();
+        assert_eq!(app.view(|s| s.get_overrides()).len(), 2);
+    }
+
+    #[test]
+    fn transform_fields_survive_the_roundtrip() {
+        let mut app = new_world();
+        let tr = Transform {
+            name: "Alice".to_owned(),
+            x: 1.25,
+            y: 60.5,
+            dir: -1.0,
+            sel: 7,
+        };
+        app.call_as(ALICE, |s| s.heartbeat(tr, 1000)).unwrap();
+        let p = &app.view(|s| s.get_players(1001))[0];
+        assert_eq!((p.x, p.y), (1.25, 60.5));
+        assert_eq!(p.dir, -1.0);
+        assert_eq!(p.sel, 7);
+    }
+
+    #[test]
+    fn empty_batch_applies_nothing_and_succeeds() {
+        let mut app = new_world();
+        let applied = app.call_as(ALICE, |s| s.set_tiles(vec![], 1000)).unwrap();
+        assert_eq!(applied, 0);
+    }
+
+    #[test]
+    fn world_edges_are_editable() {
+        let mut app = new_world();
+        let applied = app
+            .call_as(ALICE, |s| {
+                s.set_tiles(
+                    vec![Edit { x: 0, y: 0, t: 1 }, Edit { x: 399, y: 199, t: 1 }],
+                    1000,
+                )
+            })
+            .unwrap();
+        assert_eq!(applied, 2, "corner tiles are in bounds");
+    }
+
+    #[test]
     fn tile_lww_stamps_are_monotonic_per_key() {
         let mut app = new_world();
         app.call_as(ALICE, |s| s.set_tiles(vec![Edit { x: 2, y: 2, t: 7 }], 9000))
