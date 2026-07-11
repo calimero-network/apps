@@ -87,4 +87,9 @@ describe('diffComputed', () => {
     const derived = [cell('s', 0, 0, '=A', 'X')];
     expect(diffComputed(node, derived)).toEqual([]);
   });
+  it('reports a node cell missing from derived (dropped out of derivation)', () => {
+    const node = [cell('s', 0, 0, '=A', 'NODE')];
+    const derived: Cell[] = [];
+    expect(diffComputed(node, derived)).toEqual([cellKey('s', 0, 0)]);
+  });
 });

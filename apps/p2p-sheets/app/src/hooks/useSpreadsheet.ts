@@ -191,15 +191,15 @@ export function useSpreadsheet({
   const deriveAndSet = useCallback(() => {
     const active = activeSheetIdRef.current;
     if (!active) { setCells([]); return; }
+    if (!engineReady()) {
+      setCells([...snapshotRef.current.values()].filter((c) => c.sheet_id === active));
+      return;
+    }
     const sheetIds = [...new Set([
       ...sheetsRef.current.map((s) => s.id),
       ...[...snapshotRef.current.values()].map((c) => c.sheet_id),
       ...[...overlayRef.current.values()].map((e) => e.sheet_id),
     ])];
-    if (!engineReady()) {
-      setCells([...snapshotRef.current.values()].filter((c) => c.sheet_id === active));
-      return;
-    }
     const derived = deriveActiveCells(
       snapshotRef.current, overlayRef.current, sheetIds, active, engineEvaluate,
     );
@@ -270,7 +270,6 @@ export function useSpreadsheet({
   // No node round-trip — all sheets' inputs are already in snapshotRef.
   useEffect(() => {
     deriveAndSet();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSheetId, engineTick, deriveAndSet]);
 
   // Live updates: re-fetch on any CRDT sync event for this context

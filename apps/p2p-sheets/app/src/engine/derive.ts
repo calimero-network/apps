@@ -59,7 +59,12 @@ export function retireOverlay(overlay: Overlay, snapshot: Snapshot): Overlay {
   return next;
 }
 
-/** Engine input JSON for `snapshot ⊕ overlay`: every effective non-blank cell. */
+/**
+ * Engine input JSON for `snapshot ⊕ overlay`: every effective non-blank cell.
+ * `sheetIds` is metadata-only — the full sheet set, passed through so the
+ * engine can tell an unknown-sheet reference (→ #REF!) from a known-but-empty
+ * one. It does NOT filter which cells are included above.
+ */
 export function buildEngineInput(snapshot: Snapshot, overlay: Overlay, sheetIds: string[]): string {
   const cells: { sheet_id: string; row: number; col: number; raw_value: string }[] = [];
   for (const key of unionKeys(snapshot, overlay)) {
@@ -109,14 +114,19 @@ export function deriveActiveCells(
   return out;
 }
 
-/** Dev-assert helper: keys where node-computed and WASM-derived values disagree. */
+/**
+ * Dev-assert helper: keys where node-computed and WASM-derived values disagree,
+ * INCLUDING a node cell that has no corresponding derived cell at all (it
+ * dropped out of derivation) — a missing key is as much a divergence as a
+ * disagreeing value.
+ */
 export function diffComputed(nodeActive: Cell[], derivedActive: Cell[]): string[] {
   const derived = new Map<string, string>();
   for (const c of derivedActive) derived.set(cellKey(c.sheet_id, c.row, c.col), c.computed_value);
   const bad: string[] = [];
   for (const c of nodeActive) {
     const k = cellKey(c.sheet_id, c.row, c.col);
-    if (derived.has(k) && derived.get(k) !== c.computed_value) bad.push(k);
+    if (!derived.has(k) || derived.get(k) !== c.computed_value) bad.push(k);
   }
   return bad;
 }
