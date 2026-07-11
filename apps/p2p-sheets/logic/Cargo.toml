@@ -2,6 +2,7 @@
 members = [
     "crates/types",
     "crates/recalc",
+    "crates/recalc-wasm",
     "crates/spreadsheet"
 ]
 resolver = "2"

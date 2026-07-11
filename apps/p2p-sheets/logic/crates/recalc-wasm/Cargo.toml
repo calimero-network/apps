@@ -1,0 +1,16 @@
+[package]
+name = "recalc-wasm"
+version = "0.1.0"
+edition = "2021"
+
+# wasm-bindgen bindings over the pure engine. The ONLY crate pulling wasm-bindgen;
+# keeps p2p-sheets-recalc node-linkable. cdylib for the browser artifact; rlib so
+# evaluate_json is unit-testable on the host target.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+p2p-sheets-recalc = { workspace = true }
+wasm-bindgen = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { workspace = true }
