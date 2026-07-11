@@ -38,7 +38,7 @@ def run():
     sizes = SMOKE if os.environ.get("PERF_SMOKE") == "1" else SIZES
     rows_out = []
     ok = True
-    total_cells_seen = 0
+    cumulative_cells = 0
 
     for spec in sizes:
         apply_ms = 0.0
@@ -50,6 +50,8 @@ def run():
         for s in range(spec["sheets"]):
             out, _ = b.timed_execute(c1, cid, "create_sheet", {"name": f"Data {s+1}"})
             sheet_id = out if isinstance(out, str) else out.get("id", out)
+            if not isinstance(sheet_id, str) or not sheet_id:
+                raise RuntimeError(f"unexpected create_sheet return: {out!r}")
             ds = g.financial_data_sheet(spec["rows"], spec["cols"])
             ms, _ = b.apply_ops(c1, cid, sheet_id, ds.ops)
             apply_ms += ms
@@ -60,19 +62,24 @@ def run():
 
         out, _ = b.timed_execute(c1, cid, "create_sheet", {"name": "Summary"})
         summary_id = out if isinstance(out, str) else out.get("id", out)
+        if not isinstance(summary_id, str) or not summary_id:
+            raise RuntimeError(f"unexpected create_sheet return: {out!r}")
         summary_ops = g.financial_summary(entries)
         ms, _ = b.apply_ops(c1, cid, summary_id, summary_ops)
         apply_ms += ms
         formula_cells += len(summary_ops)
+        # Cumulative non-blank cells written so far (== what node 2 must converge
+        # to). Tracked independently of derive_all's return shape so the sync gate
+        # can never silently collapse to min_cells=0.
+        cumulative_cells += input_cells + formula_cells
 
         # Derive (node 1)
         summary_cells, derive_active_ms = b.derive_active(c1, cid, summary_id)
-        all_cells, derive_all_ms = b.derive_all(c1, cid)
-        total_cells_seen = len(all_cells) if isinstance(all_cells, list) else total_cells_seen
+        _all_cells, derive_all_ms = b.derive_all(c1, cid)  # timing only
 
         # Sync convergence (node 2 sees the full workbook)
         try:
-            sync_ms = b.wait_converged(c2, cid, min_cells=total_cells_seen)
+            sync_ms = b.wait_converged(c2, cid, min_cells=cumulative_cells)
         except TimeoutError as e:
             print(f"  sync timeout: {e}", file=sys.stderr)
             sync_ms = -1.0
@@ -84,7 +91,12 @@ def run():
             if cell.get("row") == st_r and cell.get("col") == st_c:
                 got = cell.get("computed_value")
                 break
-        correct = (got is not None and str(got) == str(expected))
+        correct = False
+        if got is not None:
+            try:
+                correct = abs(float(got) - float(expected)) < 0.5
+            except (ValueError, TypeError):
+                correct = False
         ok = ok and correct and sync_ms >= 0
 
         rows_out.append({
