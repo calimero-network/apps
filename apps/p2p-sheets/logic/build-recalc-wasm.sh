@@ -8,7 +8,7 @@
 # The generated JS+wasm is committed under app/src/engine/recalc so Vercel needs
 # no Rust toolchain (mirrors the committed-generated-client pattern). Re-run this
 # whenever crates/recalc or crates/recalc-wasm change; CI verifies it is current.
-set -e
+set -euo pipefail
 cd "$(dirname "$0")"
 
 if ! command -v wasm-pack > /dev/null; then
@@ -16,6 +16,9 @@ if ! command -v wasm-pack > /dev/null; then
   exit 1
 fi
 
+# Absolute path, deliberately: wasm-pack resolves --out-dir relative to the
+# crate dir (crates/recalc-wasm), not the cwd, so a naive relative path here
+# would land the artifact in the wrong place.
 OUT_DIR="$(pwd)/../app/src/engine/recalc"
 wasm-pack build crates/recalc-wasm \
   --target web \
