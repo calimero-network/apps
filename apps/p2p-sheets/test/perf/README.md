@@ -32,6 +32,9 @@ node-2 sync ms, and a correctness flag (the scenario's invariant held).
 - **Aggregation dashboard** — `workflow-perf-aggregation.yml` — a column-A data
   ramp (1..N) plus a 5-cell SUM/AVERAGE/COUNT/MAX/MIN panel over an explicit
   `A1:A{N}` range; validates all five aggregates against closed forms.
+- **Dense grid** — `workflow-perf-grid.yml` — an R×C table where each cell =
+  up+left-diag+1 (cumulative prefix-sum); bottom-right cell must equal `R*C`;
+  stresses wide fan-out derive across every filled cell (cols capped at 26).
 
 ## Findings (financial model, 2-node, merod 0.11.0-rc.8)
 
@@ -95,3 +98,29 @@ the same order of magnitude as amortization's 3000-deep chain (153 ms) despite
 the very different dependency shape (wide fan-in vs. deep chain). Apply remains
 the dominant cost and the sole bottleneck, for the same `APPLY_CHUNK`-driven
 O(N²) commit-count reason documented above.
+
+## Findings (dense grid, 2-node)
+
+An R×C table where every cell = `up + left-diag + 1` (cumulative prefix-sum);
+each cell has up to two upstream dependencies and the whole grid forms a wide
+diagonal fan-out — the opposite dependency shape from amortization's single
+deep chain and closer to aggregation's wide fan-in, but with O(R×C) formula
+cells instead of a handful of aggregate cells reading a range.
+
+| size | grid | cells | apply | derive (active sheet) | derive (whole workbook) | node-2 sync |
+|---|---|---|---|---|---|---|
+| small | 10×10 | 100 | 67.4 ms | 6.9 ms | 5.4 ms | 360.0 ms |
+| medium | 32×26 | 832 | 1.7 s | 41.8 ms | 44.6 ms | 57.8 ms |
+| large | 120×26 | 3120 | **27.1 s** | 191.2 ms | 212.9 ms | 306.8 ms |
+
+All three sizes validate exactly: bottom-right cell = `rows*cols` (100, 832,
+3120).
+
+**Dense fan-out derive is still cheap** — 3120 filled cells, each depending on
+up to two neighbors, derive the whole workbook in **213 ms**, in the same
+ballpark as amortization's 3000-deep chain (153 ms) and aggregation's 3000-row
+fan-in (155 ms) despite having ~3000 *formula* cells instead of a handful.
+Apply remains the dominant cost by two orders of magnitude, for the same
+`APPLY_CHUNK`/commit-count O(N²) reason documented above — dense grids don't
+introduce a new bottleneck, they just confirm derive-on-read scales with cell
+count regardless of dependency shape.
