@@ -13,7 +13,8 @@ Requires Docker running and network access to pull the merod image.
     PERF_SMOKE=1 bash test/perf/run-perf.sh
 
     # full sweep
-    bash test/perf/run-perf.sh
+    bash test/perf/run-perf.sh                 # all scenarios
+    bash test/perf/run-perf.sh amortization    # just one
 
 Results are written to `test/perf/results/financial.json` and printed as a
 markdown table. Each row: input/formula cell counts, apply ms, derive ms
@@ -24,7 +25,10 @@ markdown table. Each row: input/formula cell counts, apply ms, derive ms
 
 - **Financial model (P&L)** — `workflow-perf-financial.yml` — line items × months
   with row/col subtotals and a cross-sheet summary. (First slice.)
-- Amortization / aggregation / dense-grid — planned, same harness.
+- **Cascading calc (amortization)** — `workflow-perf-amortization.yml` — a deep
+  single-column dependency chain (`A[n]=A[n-1]+step`, integer recurrence for an
+  exact invariant); stresses topological-sort chain depth.
+- Aggregation / dense-grid — planned, same harness.
 
 ## Findings (financial model, 2-node, merod 0.11.0-rc.8)
 
