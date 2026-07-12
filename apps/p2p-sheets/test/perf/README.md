@@ -1,126 +1,111 @@
-# p2p-sheets perf workflows
+# p2p-sheets perf suite
 
 merobox workflows that feed heavy workbooks to two merod nodes and time the
 **node-side** recalc engine: `apply_cell_ops` throughput, `get_cells` /
-`get_all_cells` derive latency, and node-2 sync convergence — across a size
-sweep. (This does NOT measure the client-side WASM engine — that's browser-only.)
+`get_all_cells` derive-on-read latency, and node-2 sync convergence — across a
+size sweep, each scenario doubling as a believable demo and a rough benchmark.
 
-## Run
+- **Results & analysis:** [`PERFORMANCE.md`](./PERFORMANCE.md).
+- **Engine design:** `docs/superpowers/specs/2026-07-10-recalc-engine-architecture-design.md`.
+
+This measures the **server-side** engine only. The client-side WASM instant-echo
+engine is browser-only and out of scope here.
+
+## Quickstart
 
 Requires Docker running and network access to pull the merod image.
 
-    # smoke (tiny, fast — validates the pipeline)
-    PERF_SMOKE=1 bash test/perf/run-perf.sh
+```bash
+# smoke — tiny sizes, fast; validates the whole pipeline
+PERF_SMOKE=1 bash test/perf/run-perf.sh
 
-    # full sweep
-    bash test/perf/run-perf.sh                 # all scenarios
-    bash test/perf/run-perf.sh amortization    # just one
+# full sweep
+bash test/perf/run-perf.sh                 # all four scenarios, sequentially
+bash test/perf/run-perf.sh aggregation     # just one: financial|amortization|aggregation|grid
+```
 
-Each scenario writes its own `test/perf/results/<scenario>.json`
-(`financial.json`, `amortization.json`, `aggregation.json`) and prints a
-markdown table. Each row:
+Each scenario prints a markdown table and writes
+`test/perf/results/<scenario>.json` (gitignored scratch). Each row carries:
 input/formula cell counts, apply ms, derive ms (active sheet + whole workbook),
-node-2 sync ms, and a correctness flag (the scenario's invariant held).
+node-2 sync ms, and a correctness flag (the scenario's exact invariant held).
 
 ## Scenarios
 
-- **Financial model (P&L)** — `workflow-perf-financial.yml` — line items × months
-  with row/col subtotals and a cross-sheet summary. (First slice.)
-- **Cascading calc (amortization)** — `workflow-perf-amortization.yml` — a deep
-  single-column dependency chain (`A[n]=A[n-1]+step`, integer recurrence for an
-  exact invariant); stresses topological-sort chain depth.
-- **Aggregation dashboard** — `workflow-perf-aggregation.yml` — a column-A data
-  ramp (1..N) plus a 5-cell SUM/AVERAGE/COUNT/MAX/MIN panel over an explicit
-  `A1:A{N}` range; validates all five aggregates against closed forms.
-- **Dense grid** — `workflow-perf-grid.yml` — an R×C table where each cell =
-  up+left-diag+1 (cumulative prefix-sum); bottom-right cell must equal `R*C`;
-  stresses wide fan-out derive across every filled cell (cols capped at 26).
+Each builds a believable sheet stressing one engine dimension, with a cheap
+exact invariant so a wrong answer fails the run.
 
-## Findings (financial model, 2-node, merod 0.11.0-rc.8)
-
-| size | cells | apply | derive (whole workbook) | node-2 sync |
-|---|---|---|---|---|
-| small | 38 | 30 ms | 5 ms | 376 ms |
-| medium | 628 | 966 ms | 27 ms | 348 ms |
-| large | 4036 | **37.6 s** | 163 ms | 680 ms |
-
-**Derive-on-read and p2p sync scale excellently** — 4036 cells derive in 163 ms
-and converge on the peer in 680 ms. **Bulk apply is the bottleneck.**
-
-Root cause: `apply_cell_ops` must be split into commits of ≤~40 ops because the
-node runtime caps per-commit **events** (`max_events` = 100) and **registers**
-(`max_registers` = 100). Each cell op emitted its own event and consumes
-registers, so a big batch overflowed. So a 4036-cell load becomes ~100 separate
-CRDT commits, and each commit's cost grows with total state → roughly O(N²).
-
-- **Fixed (app):** `apply_cell_ops` now emits ONE `CellsChanged` event per batch
-  instead of one per cell (commit `perf(spreadsheet): apply_cell_ops emits one
-  batch event`). Removes the event cap and cuts client refreshes from N to 1.
-- **Still open (node):** `max_registers = 100` still binds batch size at ~90 ops,
-  so `bench.APPLY_CHUNK` stays at 40. Raising the node's `VMLimits`
-  (`max_registers`/`max_events`) — via merod config or core — would let bulk
-  applies use far larger commits and collapse the 37 s. Out of app scope.
-
-## Findings (amortization / deep chain, 2-node)
-
-A single column, `A[n] = A[n-1] + step` — every cell depends on the prior, so
-derive is a `depth`-long topological chain (the worst case for serial recompute).
-
-| depth | apply | derive (active sheet) | node-2 sync |
+| Scenario | Workflow | Stresses | Invariant |
 |---|---|---|---|
-| 100 | 72 ms | 6 ms | 356 ms |
-| 1000 | 2.3 s | 48 ms | 92 ms |
-| 3000 | 27.4 s | **153 ms** | 361 ms |
+| **Financial model (P&L)** | `workflow-perf-financial.yml` | cross-sheet closure + many `SUM` aggregates | summary grand total == Σ all inputs |
+| **Cascading calc (amortization)** | `workflow-perf-amortization.yml` | topological-sort chain depth (`A[n]=A[n-1]+step`) | final cell == `principal + (depth-1)·step` |
+| **Aggregation dashboard** | `workflow-perf-aggregation.yml` | wide range fan-in (`SUM`/`AVERAGE`/`COUNT`/`MAX`/`MIN` over `A1:A{N}`) | all five aggregates == closed forms for inputs 1..N |
+| **Dense grid** | `workflow-perf-grid.yml` | O(N) formula cells + diagonal fan-out (`up+left−diag+1`) | bottom-right cell == `R·C` |
 
-**The topological sort scales beautifully** — a 3000-deep dependency chain derives
-in **153 ms**. Deep chains are not a problem for the derive-on-read engine. Apply
-is again the sole bottleneck (same `APPLY_CHUNK`/commit-count cause as above), so
-the depth sweep is kept ≤3000.
+## Layout
 
-## Findings (aggregation dashboard, 2-node)
+```
+test/perf/
+  lib/
+    generators.py        # pure: build CellOp[] per scenario + expected invariant
+    generators_test.py   # pytest for the generators (pure, no Docker)
+    bench.py             # node client + timed execute, chunked apply, derive, sync-poll, reporter
+    bench_test.py        # pytest for the reporter/helpers
+    driver_<scenario>.py # one per scenario: runs its size sweep, asserts, writes results
+  perf-<scenario>.sh     # /bin/sh entry the workflow's `local` step execs
+  workflow-perf-<scenario>.yml  # 2-node bootstrap + one local script step
+  run-perf.sh            # builds the bundle if missing; dispatches one or all scenarios
+  results/               # <scenario>.json scratch (gitignored)
+  README.md              # this file
+  PERFORMANCE.md         # results + analysis
+```
 
-A column-A ramp (1..N) plus a 5-cell SUM/AVERAGE/COUNT/MAX/MIN panel over an
-explicit `A1:A{N}` range — every aggregate is a wide, single-hop fan-in over the
-whole input range (the opposite shape from amortization's deep chain).
+## How it works
 
-| size | input cells | apply | derive (active sheet) | derive (whole workbook) | node-2 sync |
-|---|---|---|---|---|---|
-| small | 100 | 82.6 ms | 6.3 ms | 9.1 ms | 348.4 ms |
-| medium | 1000 | 2.4 s | 42.8 ms | 44.9 ms | 365.8 ms |
-| large | 3000 | 27.3 s | **143.7 ms** | 154.8 ms | 698.7 ms |
+1. **Bootstrap (workflow YAML).** Each workflow boots 2 merod nodes, installs the
+   `p2p-sheets` bundle on both, creates a namespace + shared context on node 1,
+   and joins node 2 — the same pattern as `test/spec-smoke.workflow.yml`.
+2. **Load + timing (`local` script).** A single `target: local` step runs
+   `perf-<scenario>.sh`, which execs `driver_<scenario>.py` under merobox's own
+   Python. The driver gets an (unauthenticated — these local nodes have no
+   embedded auth) client per node via `bench.node_client`, then for each size:
+   generates the batch from `generators.py`, applies it via `bench.apply_ops`
+   (chunked to `APPLY_CHUNK = 40` to stay under the node's per-commit caps),
+   derives, polls node 2 for convergence, and asserts the invariant.
+3. **Report.** The driver prints a `bench.format_summary` table and writes the
+   per-scenario results JSON; `run-perf.sh` orchestrates which scenarios run.
 
-All three sizes validate exactly against closed forms for all five aggregates
-(e.g. large: sum=4501500, average=1500.5, count=3000, max=3000, min=1).
+`generators.py` is pure and unit-tested — no Docker needed to test the load-shape
+and invariant math:
 
-**Wide-range aggregation derives just as cheaply as the deep chain** — a
-5-cell panel fanning in over 3000 inputs recomputes in **144 ms**, essentially
-the same order of magnitude as amortization's 3000-deep chain (153 ms) despite
-the very different dependency shape (wide fan-in vs. deep chain). Apply remains
-the dominant cost and the sole bottleneck, for the same `APPLY_CHUNK`-driven
-O(N²) commit-count reason documented above.
+```bash
+cd test/perf/lib && python3 -m pytest -v
+```
 
-## Findings (dense grid, 2-node)
+## Adding a scenario
 
-An R×C table where every cell = `up + left-diag + 1` (cumulative prefix-sum);
-each cell has up to two upstream dependencies and the whole grid forms a wide
-diagonal fan-out — the opposite dependency shape from amortization's single
-deep chain and closer to aggregation's wide fan-in, but with O(R×C) formula
-cells instead of a handful of aggregate cells reading a range.
+The four scenarios are deliberately parallel; a new one is a mechanical mirror:
 
-| size | grid | cells | apply | derive (active sheet) | derive (whole workbook) | node-2 sync |
-|---|---|---|---|---|---|---|
-| small | 10×10 | 100 | 67.4 ms | 6.9 ms | 5.4 ms | 360.0 ms |
-| medium | 32×26 | 832 | 1.7 s | 41.8 ms | 44.6 ms | 57.8 ms |
-| large | 120×26 | 3120 | **27.1 s** | 191.2 ms | 212.9 ms | 306.8 ms |
+1. Add a pure generator to `generators.py` (`(ops, expected, coord)`), TDD'd in
+   `generators_test.py`.
+2. Copy `driver_amortization.py` → `driver_<scenario>.py`; swap the generator
+   call and the correctness check.
+3. Copy `perf-amortization.sh` → `perf-<scenario>.sh` (point it at the new
+   driver) and `chmod +x` it.
+4. Copy `workflow-perf-amortization.yml` → `workflow-perf-<scenario>.yml`; change
+   `name`, `description`, the script path, and **the ports** (see below).
+5. Add a `case` to `run-perf.sh` and include it in `all`.
+6. Run the e2e, then add a results section to `PERFORMANCE.md`.
 
-All three sizes validate exactly: bottom-right cell = `rows*cols` (100, 832,
-3120).
+**Port allocation** (each scenario gets its own, 100 apart, to avoid collisions):
 
-**Dense fan-out derive is still cheap** — 3120 filled cells, each depending on
-up to two neighbors, derive the whole workbook in **213 ms**, in the same
-ballpark as amortization's 3000-deep chain (153 ms) and aggregation's 3000-row
-fan-in (155 ms) despite having ~3000 *formula* cells instead of a handful.
-Apply remains the dominant cost by two orders of magnitude, for the same
-`APPLY_CHUNK`/commit-count O(N²) reason documented above — dense grids don't
-introduce a new bottleneck, they just confirm derive-on-read scales with cell
-count regardless of dependency shape.
+| scenario | base_port | base_rpc_port |
+|---|---|---|
+| financial | 13428 | 13528 |
+| amortization | 13628 | 13728 |
+| aggregation | 13828 | 13928 |
+| grid | 14028 | 14128 |
+
+**Engine limits worth knowing** (`logic/crates/recalc/src/formula.rs`): cell refs
+parse **single-letter columns only** (A–Z), and whole-column `A:A` range
+expansion caps at `MAX_ROWS = 1000` — prefer explicit ranges past 1000 rows and
+keep grids ≤ 26 columns.
