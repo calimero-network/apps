@@ -3,7 +3,7 @@ node client with timed calls, chunked apply, derive, sync-poll, and a reporter."
 import json
 import time
 
-from merobox.commands.client import get_client_for_node
+from merobox.commands.client import get_client_for_node, get_client_for_rpc_url
 
 COLUMNS = ["size", "input_cells", "formula_cells", "apply_ms",
            "derive_active_ms", "derive_all_ms", "sync_ms", "correct"]
@@ -14,8 +14,18 @@ def chunked(seq, size):
 
 
 def node_client(node_name):
-    client, _rpc = get_client_for_node(node_name)
-    return client
+    """Return an UNAUTHENTICATED client for a local merobox node.
+
+    These local docker nodes don't enable embedded auth (no /auth/token → 404),
+    so merobox's own steps talk to them with `node_name=None` (no token). A
+    token-bound client (`get_client_for_node(name)`) instead demands a token the
+    node has no way to issue and falls back to interactive auth, which hangs/fails
+    in a non-interactive run. So: resolve the RPC URL (discard the throwaway
+    token-bound client — creating it makes no network call), then build a
+    no-token client with `node_name=None`.
+    """
+    _throwaway, rpc_url = get_client_for_node(node_name)
+    return get_client_for_rpc_url(rpc_url, node_name=None)
 
 
 def _output(res):
