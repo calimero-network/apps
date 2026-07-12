@@ -41,3 +41,25 @@ def test_summary_cross_refs():
     # summary grand total sums the two ref cells and lives at SUMMARY_TOTAL_CELL
     assert formulas[SUMMARY_TOTAL_CELL].startswith("=SUM(")
     assert "A1" in formulas[SUMMARY_TOTAL_CELL] and "A2" in formulas[SUMMARY_TOTAL_CELL]
+
+
+def test_amortization_chain_shape_and_invariant():
+    from generators import amortization_chain
+    ops, final, last = amortization_chain(depth=4, principal=100, step=-10)
+    # first cell is the literal principal; the rest reference the row above
+    assert ops[0] == {"kind": "Set", "row": 0, "col": 0, "raw_value": "100"}
+    assert ops[1]["raw_value"] == "=A1-10"   # A2 = A1 - 10
+    assert ops[2]["raw_value"] == "=A2-10"   # A3 = A2 - 10
+    assert ops[3]["raw_value"] == "=A3-10"   # A4 = A3 - 10
+    assert len(ops) == 4
+    # exact closed form: principal + (depth-1)*step
+    assert final == 100 + 3 * (-10)          # 70
+    assert last == (3, 0)
+
+
+def test_amortization_chain_positive_step_uses_plus():
+    from generators import amortization_chain
+    ops, final, _ = amortization_chain(depth=3, principal=0, step=5)
+    assert ops[1]["raw_value"] == "=A1+5"
+    assert ops[2]["raw_value"] == "=A2+5"
+    assert final == 0 + 2 * 5                 # 10

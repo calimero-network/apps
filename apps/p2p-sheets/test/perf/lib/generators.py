@@ -70,3 +70,22 @@ def financial_summary(entries) -> list:
     ops.append(set_op(SUMMARY_TOTAL_CELL[0], SUMMARY_TOTAL_CELL[1],
                       f"=SUM({first}:{last})"))
     return ops
+
+
+def amortization_chain(depth: int, principal: int = 1_000_000, step: int = -1_000):
+    """A deep single-column dependency chain (stresses topological-sort depth):
+    A1 = principal; A[n] = A[n-1] + step, for n = 1..depth-1.
+
+    Integer recurrence — the invariant is EXACT (no f64 drift over the chain),
+    while still exercising the same chain-depth eval a float amortization would.
+    `step` may be negative (a declining balance). Returns (ops, expected_final,
+    last_cell) where expected_final = principal + (depth-1)*step and last_cell is
+    the (row, col) of the final cell."""
+    ops = [set_op(0, 0, principal)]
+    sign = "+" if step >= 0 else "-"
+    mag = abs(step)
+    for n in range(1, depth):
+        # reference the cell directly above (a1(n-1, 0)) and add/subtract step
+        ops.append(set_op(n, 0, f"={a1(n - 1, 0)}{sign}{mag}"))
+    expected_final = principal + (depth - 1) * step
+    return ops, expected_final, (depth - 1, 0)
