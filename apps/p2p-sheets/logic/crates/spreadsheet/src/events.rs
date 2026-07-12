@@ -14,6 +14,10 @@ pub enum Event<'a> {
     CellUpdated { id: &'a str, sheet_id: &'a str },
     /// A cell was cleared (removed).
     CellCleared { sheet_id: &'a str, row: u32, col: u32 },
+    /// A batch of cells was applied via `apply_cell_ops`. ONE event per batch
+    /// (not one per cell) so a large batch stays under the runtime's per-commit
+    /// event cap (`max_events`); subscribers refresh once for the whole apply.
+    CellsChanged { sheet_id: &'a str, count: u32 },
     /// A collaborator moved their cursor.
     CursorMoved { author: &'a str, sheet_id: &'a str },
     /// A collaborator's cursor was removed.

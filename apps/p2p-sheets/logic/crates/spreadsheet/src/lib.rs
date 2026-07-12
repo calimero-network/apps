@@ -366,33 +366,30 @@ impl Spreadsheet {
 
     // ---- Cells ----
 
-    pub fn set_cell(
-        &mut self,
-        sheet_id: String,
-        row: u32,
-        col: u32,
-        raw_value: String,
-    ) -> app::Result<String> {
-        // Verify the sheet exists.
+    // ── Non-emitting storage helpers ─────────────────────────────────────────
+    // These do the storage-only work (no event). Single-cell methods verify the
+    // sheet + emit their own per-cell event; `apply_cell_ops` verifies once and
+    // emits ONE batch event. Keeping the emit OUT of the storage path is what lets
+    // a bulk apply of N cells stay a single commit under the runtime's per-commit
+    // event cap (`max_events` = 100) instead of overflowing at ~1 event/cell.
+
+    fn require_sheet(&self, sheet_id: &str) -> app::Result<()> {
         if self
             .sheets
-            .get(&sheet_id)
+            .get(sheet_id)
             .map_err(|e| AppError::msg(format!("sheets.get: {e}")))?
             .is_none()
         {
-            return Err(AppError::from(Error::NotFound(sheet_id.clone())));
+            return Err(AppError::from(Error::NotFound(sheet_id.to_string())));
         }
-        let key = Spreadsheet::cell_key(&sheet_id, row, col);
+        Ok(())
+    }
+
+    /// Store a raw value (literal or formula — both stored verbatim; `get_cells`
+    /// derives formulas on read). Preserves any existing format. No event.
+    fn store_value(&mut self, sheet_id: &str, row: u32, col: u32, raw_value: String) -> app::Result<String> {
+        let key = Spreadsheet::cell_key(sheet_id, row, col);
         let now = storage_env::time_now();
-        let data = CellData {
-            id: key.clone(),
-            sheet_id: sheet_id.clone(),
-            row,
-            col,
-            raw_value: raw_value.clone(),
-            format: String::new(),
-            updated_at: now,
-        };
         let exists = self
             .cells
             .get(&key)
@@ -404,95 +401,31 @@ impl Spreadsheet {
                 .get_mut(&key)
                 .map_err(|e| AppError::msg(format!("cells.get_mut: {e}")))?
                 .unwrap();
-            guard.raw_value = data.raw_value;
-            guard.updated_at = data.updated_at;
+            guard.raw_value = raw_value;
+            guard.updated_at = now;
         } else {
             self.cells
-                .insert(key.clone(), data)
+                .insert(
+                    key.clone(),
+                    CellData {
+                        id: key.clone(),
+                        sheet_id: sheet_id.to_string(),
+                        row,
+                        col,
+                        raw_value,
+                        format: String::new(),
+                        updated_at: now,
+                    },
+                )
                 .map_err(|e| AppError::msg(format!("cells.insert: {e}")))?;
         }
-        app::emit!(Event::CellUpdated {
-            id: &key,
-            sheet_id: &sheet_id,
-        });
         Ok(key)
     }
 
-    pub fn set_cell_formula(
-        &mut self,
-        sheet_id: String,
-        row: u32,
-        col: u32,
-        formula: String,
-    ) -> app::Result<String> {
-        // Verify sheet exists.
-        if self
-            .sheets
-            .get(&sheet_id)
-            .map_err(|e| AppError::msg(format!("sheets.get: {e}")))?
-            .is_none()
-        {
-            return Err(AppError::from(Error::NotFound(sheet_id.clone())));
-        }
-        let key = Spreadsheet::cell_key(&sheet_id, row, col);
-        let now = storage_env::time_now();
-        // Store the raw formula; `get_cells` derives its value (and every
-        // dependent) on read, so a single code path handles same- and
-        // cross-sheet refs.
-        let data = CellData {
-            id: key.clone(),
-            sheet_id: sheet_id.clone(),
-            row,
-            col,
-            raw_value: formula,
-            format: String::new(),
-            updated_at: now,
-        };
-        let exists = self
-            .cells
-            .get(&key)
-            .map_err(|e| AppError::msg(format!("cells.get: {e}")))?
-            .is_some();
-        if exists {
-            let mut guard = self
-                .cells
-                .get_mut(&key)
-                .map_err(|e| AppError::msg(format!("cells.get_mut: {e}")))?
-                .unwrap();
-            guard.raw_value = data.raw_value;
-            guard.updated_at = data.updated_at;
-        } else {
-            self.cells
-                .insert(key.clone(), data)
-                .map_err(|e| AppError::msg(format!("cells.insert: {e}")))?;
-        }
-        app::emit!(Event::CellUpdated {
-            id: &key,
-            sheet_id: &sheet_id,
-        });
-        Ok(key)
-    }
-
-    /// Set only the display format of a cell, preserving its value. Creates the
-    /// cell (empty value) if it does not exist yet, so you can format ahead of
-    /// typing. `format` is a keyword like "number"/"currency"/"percent"/"date"
-    /// ("" = Automatic).
-    pub fn set_cell_format(
-        &mut self,
-        sheet_id: String,
-        row: u32,
-        col: u32,
-        format: String,
-    ) -> app::Result<String> {
-        if self
-            .sheets
-            .get(&sheet_id)
-            .map_err(|e| AppError::msg(format!("sheets.get: {e}")))?
-            .is_none()
-        {
-            return Err(AppError::from(Error::NotFound(sheet_id.clone())));
-        }
-        let key = Spreadsheet::cell_key(&sheet_id, row, col);
+    /// Store only the display format, preserving any existing value. Creates the
+    /// cell (empty value) if absent. No event.
+    fn store_format(&mut self, sheet_id: &str, row: u32, col: u32, format: String) -> app::Result<String> {
+        let key = Spreadsheet::cell_key(sheet_id, row, col);
         let now = storage_env::time_now();
         let exists = self
             .cells
@@ -508,34 +441,29 @@ impl Spreadsheet {
             guard.format = format;
             guard.updated_at = now;
         } else {
-            let data = CellData {
-                id: key.clone(),
-                sheet_id: sheet_id.clone(),
-                row,
-                col,
-                raw_value: String::new(),
-                format,
-                updated_at: now,
-            };
             self.cells
-                .insert(key.clone(), data)
+                .insert(
+                    key.clone(),
+                    CellData {
+                        id: key.clone(),
+                        sheet_id: sheet_id.to_string(),
+                        row,
+                        col,
+                        raw_value: String::new(),
+                        format,
+                        updated_at: now,
+                    },
+                )
                 .map_err(|e| AppError::msg(format!("cells.insert: {e}")))?;
         }
-        app::emit!(Event::CellUpdated {
-            id: &key,
-            sheet_id: &sheet_id,
-        });
         Ok(key)
     }
 
-    pub fn clear_cell(&mut self, sheet_id: String, row: u32, col: u32) -> app::Result<()> {
-        let key = Spreadsheet::cell_key(&sheet_id, row, col);
-        // Soft-clear: blank the cell in place rather than removing it. Removing
-        // it tombstones the deterministic CRDT key, and a later write to the same
-        // coordinate (a paste or a re-type) then never re-appears. A fully-blank
-        // cell is treated as absent everywhere — hidden by `get_cells` and read
-        // as 0/empty by the formula engine (`cell_num`) — so this is invisible to
-        // consumers while keeping the coordinate writable again.
+    /// Soft-clear: blank the cell in place rather than removing it (removing
+    /// tombstones the deterministic CRDT key, blocking a later re-write to the
+    /// same coordinate). A fully-blank cell is treated as absent everywhere. No event.
+    fn store_clear(&mut self, sheet_id: &str, row: u32, col: u32) -> app::Result<()> {
+        let key = Spreadsheet::cell_key(sheet_id, row, col);
         if let Some(mut guard) = self
             .cells
             .get_mut(&key)
@@ -545,6 +473,56 @@ impl Spreadsheet {
             guard.format = String::new();
             guard.updated_at = storage_env::time_now();
         }
+        Ok(())
+    }
+
+    pub fn set_cell(
+        &mut self,
+        sheet_id: String,
+        row: u32,
+        col: u32,
+        raw_value: String,
+    ) -> app::Result<String> {
+        self.require_sheet(&sheet_id)?;
+        let key = self.store_value(&sheet_id, row, col, raw_value)?;
+        app::emit!(Event::CellUpdated { id: &key, sheet_id: &sheet_id });
+        Ok(key)
+    }
+
+    pub fn set_cell_formula(
+        &mut self,
+        sheet_id: String,
+        row: u32,
+        col: u32,
+        formula: String,
+    ) -> app::Result<String> {
+        self.require_sheet(&sheet_id)?;
+        // Store the raw formula; `get_cells` derives its value (and every
+        // dependent) on read, so one code path handles same- and cross-sheet refs.
+        let key = self.store_value(&sheet_id, row, col, formula)?;
+        app::emit!(Event::CellUpdated { id: &key, sheet_id: &sheet_id });
+        Ok(key)
+    }
+
+    /// Set only the display format of a cell, preserving its value. Creates the
+    /// cell (empty value) if it does not exist yet, so you can format ahead of
+    /// typing. `format` is a keyword like "number"/"currency"/"percent"/"date"
+    /// ("" = Automatic).
+    pub fn set_cell_format(
+        &mut self,
+        sheet_id: String,
+        row: u32,
+        col: u32,
+        format: String,
+    ) -> app::Result<String> {
+        self.require_sheet(&sheet_id)?;
+        let key = self.store_format(&sheet_id, row, col, format)?;
+        app::emit!(Event::CellUpdated { id: &key, sheet_id: &sheet_id });
+        Ok(key)
+    }
+
+    pub fn clear_cell(&mut self, sheet_id: String, row: u32, col: u32) -> app::Result<()> {
+        self.store_clear(&sheet_id, row, col)?;
         app::emit!(Event::CellCleared {
             sheet_id: &sheet_id,
             row,
@@ -554,33 +532,28 @@ impl Spreadsheet {
     }
 
     /// Apply a batch of cell operations to one sheet in a single mutation. One
-    /// CRDT commit for the whole range op; values are derived on read.
+    /// CRDT commit for the whole range op; values are derived on read. Emits ONE
+    /// `CellsChanged` event for the whole batch (not one per cell) so an arbitrarily
+    /// large batch stays under the runtime's per-commit event cap.
     pub fn apply_cell_ops(&mut self, sheet_id: String, ops: Vec<CellOp>) -> app::Result<()> {
-        if self
-            .sheets
-            .get(&sheet_id)
-            .map_err(|e| AppError::msg(format!("sheets.get: {e}")))?
-            .is_none()
-        {
-            return Err(AppError::from(Error::NotFound(sheet_id.clone())));
-        }
+        self.require_sheet(&sheet_id)?;
+        let count = ops.len() as u32;
         for op in ops {
             match op {
+                // Literal and formula both store the raw string verbatim
+                // (`get_cells` derives formulas on read), so one path handles both.
                 CellOp::Set { row, col, raw_value } => {
-                    if raw_value.trim_start().starts_with('=') {
-                        self.set_cell_formula(sheet_id.clone(), row, col, raw_value)?;
-                    } else {
-                        self.set_cell(sheet_id.clone(), row, col, raw_value)?;
-                    }
+                    self.store_value(&sheet_id, row, col, raw_value)?;
                 }
                 CellOp::Format { row, col, format } => {
-                    self.set_cell_format(sheet_id.clone(), row, col, format)?;
+                    self.store_format(&sheet_id, row, col, format)?;
                 }
                 CellOp::Clear { row, col } => {
-                    self.clear_cell(sheet_id.clone(), row, col)?;
+                    self.store_clear(&sheet_id, row, col)?;
                 }
             }
         }
+        app::emit!(Event::CellsChanged { sheet_id: &sheet_id, count });
         Ok(())
     }
 
@@ -1168,6 +1141,7 @@ mod tests {
         let sid = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
         app.call(|s| s.set_cell(sid.clone(), 5, 5, "old".into()))
             .unwrap();
+        let ev_before = app.events().len();
         app.call(|s| {
             s.apply_cell_ops(
                 sid.clone(),
@@ -1180,6 +1154,9 @@ mod tests {
             )
         })
         .unwrap();
+        // ONE batch event for the whole apply (not one per op) — so a large batch
+        // never trips the runtime's per-commit event cap (max_events = 100).
+        assert_eq!(app.events().len() - ev_before, 1, "one batch event, not one per op");
         let cells = app.view(|s| s.get_cells(sid)).unwrap();
         let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
         let a2 = cells.iter().find(|c| c.row == 1 && c.col == 0).unwrap();
