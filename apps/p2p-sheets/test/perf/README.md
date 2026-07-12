@@ -25,3 +25,28 @@ markdown table. Each row: input/formula cell counts, apply ms, derive ms
 - **Financial model (P&L)** — `workflow-perf-financial.yml` — line items × months
   with row/col subtotals and a cross-sheet summary. (First slice.)
 - Amortization / aggregation / dense-grid — planned, same harness.
+
+## Findings (financial model, 2-node, merod 0.11.0-rc.8)
+
+| size | cells | apply | derive (whole workbook) | node-2 sync |
+|---|---|---|---|---|
+| small | 38 | 30 ms | 5 ms | 376 ms |
+| medium | 628 | 966 ms | 27 ms | 348 ms |
+| large | 4036 | **37.6 s** | 163 ms | 680 ms |
+
+**Derive-on-read and p2p sync scale excellently** — 4036 cells derive in 163 ms
+and converge on the peer in 680 ms. **Bulk apply is the bottleneck.**
+
+Root cause: `apply_cell_ops` must be split into commits of ≤~40 ops because the
+node runtime caps per-commit **events** (`max_events` = 100) and **registers**
+(`max_registers` = 100). Each cell op emitted its own event and consumes
+registers, so a big batch overflowed. So a 4036-cell load becomes ~100 separate
+CRDT commits, and each commit's cost grows with total state → roughly O(N²).
+
+- **Fixed (app):** `apply_cell_ops` now emits ONE `CellsChanged` event per batch
+  instead of one per cell (commit `perf(spreadsheet): apply_cell_ops emits one
+  batch event`). Removes the event cap and cuts client refreshes from N to 1.
+- **Still open (node):** `max_registers = 100` still binds batch size at ~90 ops,
+  so `bench.APPLY_CHUNK` stays at 40. Raising the node's `VMLimits`
+  (`max_registers`/`max_events`) — via merod config or core — would let bulk
+  applies use far larger commits and collapse the 37 s. Out of app scope.
