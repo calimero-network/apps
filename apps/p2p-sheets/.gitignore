@@ -23,3 +23,11 @@ logic/crates/*/res/*.wasm
 logic/crates/*/res/abi.json
 app/test-results/
 app/playwright-report/
+
+# Docs site local Ruby toolchain (bundle install --path vendor/bundle).
+docs/vendor/
+docs/.bundle/
+
+# Python bytecode caches.
+__pycache__/
+**/__pycache__/

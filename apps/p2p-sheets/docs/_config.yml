@@ -5,6 +5,10 @@ baseurl: "/p2p-sheets"
 url: "https://calimero-network.github.io"
 
 remote_theme: just-the-docs/just-the-docs@v0.10.0
+plugins:
+  - jekyll-remote-theme
+  - jekyll-seo-tag
+  - jekyll-include-cache
 color_scheme: light
 
 # Design history lives in-repo but is NOT part of the published site.
