@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build the bundle if missing, then run one or all perf workflows.
-# Usage: run-perf.sh [financial|amortization|all]   (default: all)
+# Usage: run-perf.sh [financial|amortization|aggregation|all]   (default: all)
 # Env:   PERF_SMOKE=1 collapses each sweep to a tiny smoke size.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -23,6 +23,7 @@ run_one() {
 case "$SCENARIO" in
   financial)   run_one workflow-perf-financial.yml ;;
   amortization) run_one workflow-perf-amortization.yml ;;
-  all)         run_one workflow-perf-financial.yml; run_one workflow-perf-amortization.yml ;;
-  *) echo "unknown scenario: $SCENARIO (want financial|amortization|all)" >&2; exit 2 ;;
+  aggregation) run_one workflow-perf-aggregation.yml ;;
+  all)         run_one workflow-perf-financial.yml; run_one workflow-perf-amortization.yml; run_one workflow-perf-aggregation.yml ;;
+  *) echo "unknown scenario: $SCENARIO (want financial|amortization|aggregation|all)" >&2; exit 2 ;;
 esac

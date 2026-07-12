@@ -17,7 +17,8 @@ Requires Docker running and network access to pull the merod image.
     bash test/perf/run-perf.sh amortization    # just one
 
 Each scenario writes its own `test/perf/results/<scenario>.json`
-(`financial.json`, `amortization.json`) and prints a markdown table. Each row:
+(`financial.json`, `amortization.json`, `aggregation.json`) and prints a
+markdown table. Each row:
 input/formula cell counts, apply ms, derive ms (active sheet + whole workbook),
 node-2 sync ms, and a correctness flag (the scenario's invariant held).
 
@@ -28,7 +29,9 @@ node-2 sync ms, and a correctness flag (the scenario's invariant held).
 - **Cascading calc (amortization)** — `workflow-perf-amortization.yml` — a deep
   single-column dependency chain (`A[n]=A[n-1]+step`, integer recurrence for an
   exact invariant); stresses topological-sort chain depth.
-- Aggregation / dense-grid — planned, same harness.
+- **Aggregation dashboard** — `workflow-perf-aggregation.yml` — a column-A data
+  ramp (1..N) plus a 5-cell SUM/AVERAGE/COUNT/MAX/MIN panel over an explicit
+  `A1:A{N}` range; validates all five aggregates against closed forms.
 
 ## Findings (financial model, 2-node, merod 0.11.0-rc.8)
 
@@ -70,3 +73,25 @@ derive is a `depth`-long topological chain (the worst case for serial recompute)
 in **153 ms**. Deep chains are not a problem for the derive-on-read engine. Apply
 is again the sole bottleneck (same `APPLY_CHUNK`/commit-count cause as above), so
 the depth sweep is kept ≤3000.
+
+## Findings (aggregation dashboard, 2-node)
+
+A column-A ramp (1..N) plus a 5-cell SUM/AVERAGE/COUNT/MAX/MIN panel over an
+explicit `A1:A{N}` range — every aggregate is a wide, single-hop fan-in over the
+whole input range (the opposite shape from amortization's deep chain).
+
+| size | input cells | apply | derive (active sheet) | derive (whole workbook) | node-2 sync |
+|---|---|---|---|---|---|
+| small | 100 | 82.6 ms | 6.3 ms | 9.1 ms | 348.4 ms |
+| medium | 1000 | 2.4 s | 42.8 ms | 44.9 ms | 365.8 ms |
+| large | 3000 | 27.3 s | **143.7 ms** | 154.8 ms | 698.7 ms |
+
+All three sizes validate exactly against closed forms for all five aggregates
+(e.g. large: sum=4501500, average=1500.5, count=3000, max=3000, min=1).
+
+**Wide-range aggregation derives just as cheaply as the deep chain** — a
+5-cell panel fanning in over 3000 inputs recomputes in **144 ms**, essentially
+the same order of magnitude as amortization's 3000-deep chain (153 ms) despite
+the very different dependency shape (wide fan-in vs. deep chain). Apply remains
+the dominant cost and the sole bottleneck, for the same `APPLY_CHUNK`-driven
+O(N²) commit-count reason documented above.
