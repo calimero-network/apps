@@ -16,10 +16,10 @@ Requires Docker running and network access to pull the merod image.
     bash test/perf/run-perf.sh                 # all scenarios
     bash test/perf/run-perf.sh amortization    # just one
 
-Results are written to `test/perf/results/financial.json` and printed as a
-markdown table. Each row: input/formula cell counts, apply ms, derive ms
-(active sheet + whole workbook), node-2 sync ms, and a correctness flag
-(summary grand total == sum of inputs).
+Each scenario writes its own `test/perf/results/<scenario>.json`
+(`financial.json`, `amortization.json`) and prints a markdown table. Each row:
+input/formula cell counts, apply ms, derive ms (active sheet + whole workbook),
+node-2 sync ms, and a correctness flag (the scenario's invariant held).
 
 ## Scenarios
 
@@ -54,3 +54,19 @@ CRDT commits, and each commit's cost grows with total state → roughly O(N²).
   so `bench.APPLY_CHUNK` stays at 40. Raising the node's `VMLimits`
   (`max_registers`/`max_events`) — via merod config or core — would let bulk
   applies use far larger commits and collapse the 37 s. Out of app scope.
+
+## Findings (amortization / deep chain, 2-node)
+
+A single column, `A[n] = A[n-1] + step` — every cell depends on the prior, so
+derive is a `depth`-long topological chain (the worst case for serial recompute).
+
+| depth | apply | derive (active sheet) | node-2 sync |
+|---|---|---|---|
+| 100 | 72 ms | 6 ms | 356 ms |
+| 1000 | 2.3 s | 48 ms | 92 ms |
+| 3000 | 27.4 s | **153 ms** | 361 ms |
+
+**The topological sort scales beautifully** — a 3000-deep dependency chain derives
+in **153 ms**. Deep chains are not a problem for the derive-on-read engine. Apply
+is again the sole bottleneck (same `APPLY_CHUNK`/commit-count cause as above), so
+the depth sweep is kept ≤3000.
