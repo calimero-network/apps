@@ -89,3 +89,39 @@ def amortization_chain(depth: int, principal: int = 1_000_000, step: int = -1_00
         ops.append(set_op(n, 0, f"={a1(n - 1, 0)}{sign}{mag}"))
     expected_final = principal + (depth - 1) * step
     return ops, expected_final, (depth - 1, 0)
+
+
+def aggregation_dashboard(size: int):
+    """A single column of `size` numeric inputs (values 1..size in column A, rows
+    0..size-1) plus a 5-cell aggregation panel in column C over the range A1:A{size}:
+    SUM, AVERAGE, COUNT, MAX, MIN.
+
+    Uses an EXPLICIT range (A1:A{size}), not whole-column A:A: the engine caps
+    whole-column expansion at MAX_ROWS=1000, so A:A would silently drop inputs once
+    size>1000. Explicit endpoints keep every aggregate exact at any size.
+
+    Inputs are the exact ramp 1..size so each aggregate has a closed form. Returns
+    (ops, expected, agg_cells): `expected` maps {"sum","average","count","max","min"}
+    to closed-form values, `agg_cells` maps the same keys to (row, col) coords."""
+    ops = [set_op(r, 0, r + 1) for r in range(size)]
+    rng = f"{a1(0, 0)}:{a1(size - 1, 0)}"  # A1:A{size}
+    agg_col = 2  # column C — clear of the column-A data block
+    panel = [
+        ("sum", f"=SUM({rng})"),
+        ("average", f"=AVERAGE({rng})"),
+        ("count", f"=COUNT({rng})"),
+        ("max", f"=MAX({rng})"),
+        ("min", f"=MIN({rng})"),
+    ]
+    agg_cells = {}
+    for i, (key, formula) in enumerate(panel):
+        ops.append(set_op(i, agg_col, formula))
+        agg_cells[key] = (i, agg_col)
+    expected = {
+        "sum": size * (size + 1) // 2,
+        "average": (size + 1) / 2,
+        "count": size,
+        "max": size,
+        "min": 1,
+    }
+    return ops, expected, agg_cells

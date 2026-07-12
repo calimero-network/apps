@@ -63,3 +63,37 @@ def test_amortization_chain_positive_step_uses_plus():
     assert ops[1]["raw_value"] == "=A1+5"
     assert ops[2]["raw_value"] == "=A2+5"
     assert final == 0 + 2 * 5                 # 10
+
+
+def test_aggregation_dashboard_shape_and_invariant():
+    from generators import aggregation_dashboard
+    ops, expected, cells = aggregation_dashboard(size=4)
+    # 4 numeric inputs in column A rows 0..3, values 1..4
+    inputs = [o for o in ops if not o["raw_value"].startswith("=")]
+    assert [o["raw_value"] for o in inputs] == ["1", "2", "3", "4"]
+    assert all(o["col"] == 0 for o in inputs)
+    # 5 aggregation formulas over the EXPLICIT range A1:A4 (never whole-column A:A)
+    formulas = {(o["row"], o["col"]): o["raw_value"] for o in ops if o["raw_value"].startswith("=")}
+    assert formulas[cells["sum"]] == "=SUM(A1:A4)"
+    assert formulas[cells["average"]] == "=AVERAGE(A1:A4)"
+    assert formulas[cells["count"]] == "=COUNT(A1:A4)"
+    assert formulas[cells["max"]] == "=MAX(A1:A4)"
+    assert formulas[cells["min"]] == "=MIN(A1:A4)"
+    assert not any("A:A" in v for v in formulas.values())
+    # closed forms for inputs 1..N
+    assert expected["sum"] == 10        # 4*5/2
+    assert expected["average"] == 2.5   # (4+1)/2
+    assert expected["count"] == 4
+    assert expected["max"] == 4
+    assert expected["min"] == 1
+
+
+def test_aggregation_dashboard_large_uses_explicit_range():
+    from generators import aggregation_dashboard
+    ops, expected, cells = aggregation_dashboard(size=2000)
+    formulas = {(o["row"], o["col"]): o["raw_value"] for o in ops if o["raw_value"].startswith("=")}
+    # explicit endpoints past MAX_ROWS=1000 keep the sum exact
+    assert formulas[cells["sum"]] == "=SUM(A1:A2000)"
+    assert expected["sum"] == 2000 * 2001 // 2
+    # input block + 5 aggregation cells
+    assert len(ops) == 2000 + 5
