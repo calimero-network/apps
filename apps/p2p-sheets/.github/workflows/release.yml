@@ -1,0 +1,116 @@
+name: release (publish bundle)
+
+# Build, prod-sign, and (once wired) publish the .mpk application bundle to the
+# Calimero App Registry. Triggered by a version tag (v*) or manually.
+#
+# Signing uses the PROJECT signing key — a generated Ed25519 key stored as the
+# MERO_SIGN_KEY repo secret (NOT the Studio prod key). Its signerId owns the
+# `com.calimero.mero-sheets` package in the registry.
+#
+# NOTE: the final registry POST is STUBBED. The publish endpoint + auth live in
+# Studio's worker (registryPublish.js), which is not in this repo. Until that
+# contract is wired here (see the last step), this workflow builds + signs +
+# uploads the bundle as an artifact but does not push it to the registry.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build + sign only; skip the (stubbed) registry publish step'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Never run two publishes concurrently — the registry rejects duplicate
+# versions, and build-bundle.sh auto-bumps off the registry's latest.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  # The App Registry this bundle publishes to AND that build-bundle.sh queries
+  # for its version auto-bump. Keep them identical to avoid 409 version
+  # collisions between the bump-lookup and the publish target.
+  CALIMERO_REGISTRY_URL: https://apps.calimero.network
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Rust toolchain (wasm32)
+        run: rustup target add wasm32-unknown-unknown
+
+      # mero-sign is the bundle signer (calimero-network/core/tools/mero-sign).
+      # Installed from source so the release is reproducible; pin with a tag/rev
+      # here if you need a fixed signer version.
+      - name: Install mero-sign
+        run: cargo install --git https://github.com/calimero-network/core mero-sign --locked
+
+      # Materialize the project signing key from the secret into a temp file
+      # (0600), and point build-bundle.sh at it via MERO_SIGN_KEY. The key JSON
+      # is the full output of `mero-sign generate-key`.
+      - name: Materialize signing key
+        env:
+          MERO_SIGN_KEY_JSON: ${{ secrets.MERO_SIGN_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MERO_SIGN_KEY_JSON:-}" ]; then
+            echo "::error::MERO_SIGN_KEY secret is not set. Add the project signing key JSON (from 'mero-sign generate-key') as a repo secret." >&2
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$MERO_SIGN_KEY_JSON" > "$RUNNER_TEMP/mero-sign.key.json"
+          echo "MERO_SIGN_KEY=$RUNNER_TEMP/mero-sign.key.json" >> "$GITHUB_ENV"
+
+      # build-bundle.sh --release: auto-bumps appVersion off the registry,
+      # builds each service's wasm+abi, composes manifest.json, signs it with
+      # $MERO_SIGN_KEY, and tars the signed .mpk into logic/res/.
+      - name: Build + sign bundle (release)
+        env:
+          REGISTRY_URL: ${{ env.CALIMERO_REGISTRY_URL }}
+        run: bash logic/build-bundle.sh --release
+
+      - name: Locate the built bundle
+        id: mpk
+        run: |
+          set -euo pipefail
+          mpk="$(ls -t logic/res/*.mpk | head -n1)"
+          test -n "$mpk"
+          echo "path=$mpk" >> "$GITHUB_OUTPUT"
+          echo "Built signed bundle: $mpk"
+
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-mpk
+          path: ${{ steps.mpk.outputs.path }}
+          if-no-files-found: error
+
+      # ── Registry publish — STUBBED ──────────────────────────────────────────
+      # The POST contract + auth are defined in Studio's worker (registryPublish.js),
+      # which is not part of this repo's workspace. Once we have the endpoint and
+      # a registry publish token (add it as the CALIMERO_REGISTRY_TOKEN secret),
+      # replace the body of this step with the real upload. Expected shape
+      # (exact path/field/auth TBD from registryPublish.js):
+      #
+      #   curl -fsS -X POST "$CALIMERO_REGISTRY_URL/api/v2/bundles" \
+      #     -H "Authorization: Bearer $CALIMERO_REGISTRY_TOKEN" \
+      #     -F "bundle=@${{ steps.mpk.outputs.path }}"
+      #
+      # Until then this step is a no-op warning: the signed .mpk is built and
+      # uploaded as an artifact but NOT pushed to the registry.
+      - name: Registry publish (STUB — needs registryPublish.js contract)
+        if: ${{ !inputs.dry_run }}
+        run: |
+          echo "::warning title=Registry publish stubbed::Signed .mpk built and uploaded as an artifact, but NOT published to ${CALIMERO_REGISTRY_URL}."
+          echo "::warning::Wire the POST once registryPublish.js's endpoint + auth (CALIMERO_REGISTRY_TOKEN secret) are known."
+          echo "Signed bundle ready to publish: ${{ steps.mpk.outputs.path }}"

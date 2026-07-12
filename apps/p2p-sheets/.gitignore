@@ -31,3 +31,7 @@ docs/.bundle/
 # Python bytecode caches.
 __pycache__/
 **/__pycache__/
+
+# signing keys — NEVER commit (project signer lives in the MERO_SIGN_KEY secret)
+*.key.json
+mero-sign*.json
