@@ -1,6 +1,6 @@
 {
-  "name": "chat-root",
-  "version": "0.1.0",
+  "name": "p2p-sheets",
+  "version": "1.0.0",
   "private": true,
   "packageManager": "pnpm@10.14.0",
   "scripts": {
