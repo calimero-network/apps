@@ -251,7 +251,7 @@ def test_format_summary_is_markdown_table_with_rows():
     out = format_summary(rows)
     assert "| size | input_cells |" in out          # header
     assert "| small | 12 |" in out                    # row
-    assert out.count("\n") >= 3                        # header + separator + >=1 row
+    assert len(out.splitlines()) == 3                  # header + separator + 1 row
 ```
 
 - [ ] **Step 2: Run to verify they fail**
@@ -417,7 +417,7 @@ def run():
     sizes = SMOKE if os.environ.get("PERF_SMOKE") == "1" else SIZES
     rows_out = []
     ok = True
-    total_cells_seen = 0
+    cumulative_cells = 0   # non-blank cells written so far (node-2 convergence target)
 
     for spec in sizes:
         apply_ms = 0.0
@@ -444,26 +444,33 @@ def run():
         apply_ms += ms
         formula_cells += len(summary_ops)
 
-        # Derive (node 1)
+        # Derive (node 1). derive_all is timed only; its return is NOT used as the
+        # sync threshold (that would go vacuously 0 if it ever returned a non-list).
         summary_cells, derive_active_ms = b.derive_active(c1, cid, summary_id)
-        all_cells, derive_all_ms = b.derive_all(c1, cid)
-        total_cells_seen = len(all_cells) if isinstance(all_cells, list) else total_cells_seen
+        _all, derive_all_ms = b.derive_all(c1, cid)
+        cumulative_cells += input_cells + formula_cells
 
-        # Sync convergence (node 2 sees the full workbook)
+        # Sync convergence: node 2 must hold every cell node 1 has written so far.
         try:
-            sync_ms = b.wait_converged(c2, cid, min_cells=total_cells_seen)
+            sync_ms = b.wait_converged(c2, cid, min_cells=cumulative_cells)
         except TimeoutError as e:
             print(f"  sync timeout: {e}", file=sys.stderr)
             sync_ms = -1.0
 
-        # Correctness: summary grand total == sum of all data-sheet input sums
+        # Correctness: summary grand total == sum of all data-sheet input sums.
+        # Numeric-tolerant: computed_value is a string ("30"/"30.0"/"#REF!").
         st_r, st_c = g.SUMMARY_TOTAL_CELL
         got = None
         for cell in (summary_cells or []):
             if cell.get("row") == st_r and cell.get("col") == st_c:
                 got = cell.get("computed_value")
                 break
-        correct = (got is not None and str(got) == str(expected))
+        correct = False
+        if got is not None:
+            try:
+                correct = abs(float(got) - float(expected)) < 0.5
+            except (ValueError, TypeError):
+                correct = False
         ok = ok and correct and sync_ms >= 0
 
         rows_out.append({
