@@ -805,10 +805,12 @@ In `test/perf/README.md`: add the dense-grid scenario to the Scenarios list, and
 
 - [ ] **Step 8: Commit**
 
+Do NOT commit `test/perf/results/grid.json` — the `results/` dir's `.gitignore` excludes `*.json`/`*.md` (benchmark output is env-specific scratch; findings live in `README.md`).
+
 ```bash
 git add test/perf/lib/driver_grid.py test/perf/perf-grid.sh \
         test/perf/workflow-perf-grid.yml test/perf/run-perf.sh \
-        test/perf/README.md test/perf/results/grid.json
+        test/perf/README.md
 git commit -m "$(cat <<'EOF'
 feat(perf): dense-grid scenario (prefix-sum table, e2e green)
 
