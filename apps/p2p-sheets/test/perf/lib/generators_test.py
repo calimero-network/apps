@@ -97,3 +97,35 @@ def test_aggregation_dashboard_large_uses_explicit_range():
     assert expected["sum"] == 2000 * 2001 // 2
     # input block + 5 aggregation cells
     assert len(ops) == 2000 + 5
+
+
+def test_dense_grid_shape_and_invariant():
+    from generators import dense_grid
+    ops, expected, last = dense_grid(rows=3, cols=3)
+    by_coord = {(o["row"], o["col"]): o["raw_value"] for o in ops}
+    assert by_coord[(0, 0)] == "1"           # sole literal seed
+    assert by_coord[(0, 1)] == "=A1+1"       # row-0 ramp: left + 1
+    assert by_coord[(0, 2)] == "=B1+1"
+    assert by_coord[(1, 0)] == "=A1+1"       # col-0 ramp: up + 1
+    assert by_coord[(2, 0)] == "=A2+1"
+    assert by_coord[(1, 1)] == "=B1+A2-A1+1"  # up + left - diag + 1
+    assert by_coord[(2, 2)] == "=C2+B3-B2+1"
+    assert len(ops) == 9                      # 3x3, one op per cell
+    # P(r,c) = (r+1)(c+1) -> bottom-right = rows*cols
+    assert expected == 9
+    assert last == (2, 2)
+
+
+def test_dense_grid_rectangular_and_bottom_right():
+    from generators import dense_grid
+    ops, expected, last = dense_grid(rows=5, cols=4)
+    assert len(ops) == 20
+    assert expected == 20      # 5*4
+    assert last == (4, 3)
+
+
+def test_dense_grid_rejects_multiletter_columns():
+    import pytest
+    from generators import dense_grid
+    with pytest.raises(ValueError):
+        dense_grid(rows=3, cols=27)  # col 26 = "AA" — parser can't read it

@@ -125,3 +125,35 @@ def aggregation_dashboard(size: int):
         "min": 1,
     }
     return ops, expected, agg_cells
+
+
+def dense_grid(rows: int, cols: int):
+    """An R×C cumulative prefix-sum table (stresses total formula count + per-cell
+    dependency fan-out in one derive pass). Each interior cell is
+    P(r,c) = up + left - diag + 1 (inclusion-exclusion), row 0 and col 0 are
+    `=neighbor+1` ramps, and P(0,0)=1 is the sole literal. Hence P(r,c)=(r+1)(c+1)
+    exactly and the bottom-right cell = rows*cols.
+
+    Deviations from the spec's pure up+left binomial recurrence: (1) the binomial
+    form C(r+c,r) overflows f64 exact-integer range past ~27 rows, so this
+    prefix-sum keeps the invariant exact at any size (same up/left fan-out + 1 diag
+    ref). (2) cols is capped at 26 — the engine's cell-ref parser only accepts
+    single-letter columns (A..Z); grow rows for larger cell counts.
+
+    Ops are emitted row-major so every precedent precedes its dependant. Returns
+    (ops, expected_bottom_right, last_cell)."""
+    if cols > 26:
+        raise ValueError(f"cols must be <= 26 (single-letter columns), got {cols}")
+    ops = []
+    for r in range(rows):
+        for c in range(cols):
+            if r == 0 and c == 0:
+                ops.append(set_op(0, 0, 1))
+            elif r == 0:
+                ops.append(set_op(0, c, f"={a1(0, c - 1)}+1"))
+            elif c == 0:
+                ops.append(set_op(r, 0, f"={a1(r - 1, 0)}+1"))
+            else:
+                up, left, diag = a1(r - 1, c), a1(r, c - 1), a1(r - 1, c - 1)
+                ops.append(set_op(r, c, f"={up}+{left}-{diag}+1"))
+    return ops, rows * cols, (rows - 1, cols - 1)
