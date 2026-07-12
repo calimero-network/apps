@@ -45,12 +45,24 @@ def timed_execute(client, cid, method, args):
     t0 = time.perf_counter()
     res = client.execute_function(context_id=cid, method=method, args=json.dumps(args))
     ms = (time.perf_counter() - t0) * 1000.0
+    # A node-side failure comes back as a JSON-RPC error envelope, not an
+    # exception. Raise it so a failed apply/derive can never silently produce a
+    # wrong value (e.g. an "events overflow" apply that leaves the sheet empty,
+    # which then reads back as a plausible-but-wrong 0).
+    if isinstance(res, dict) and res.get("error"):
+        raise RuntimeError(f"{method} failed: {res['error']}")
     return _output(res), ms
 
 
-def apply_ops(client, cid, sheet_id, ops, chunk_size=2000):
-    """Apply ops via apply_cell_ops. One call when it fits chunk_size, else split
-    into chunks (each a commit) — total wall-clock summed. Returns (ms, n_chunks)."""
+# The node caps events per commit (core runtime `max_events` = 100; the
+# spreadsheet app emits ~1 event per cell op), so an apply_cell_ops batch larger
+# than that fails with "events overflow". Chunk well under the cap.
+APPLY_CHUNK = 40
+
+
+def apply_ops(client, cid, sheet_id, ops, chunk_size=APPLY_CHUNK):
+    """Apply ops via apply_cell_ops in commits of <= chunk_size (to stay under the
+    node's per-commit event cap). Total wall-clock summed. Returns (ms, n_chunks)."""
     batches = chunked(ops, chunk_size) if chunk_size and len(ops) > chunk_size else [ops]
     total = 0.0
     for batch in batches:
@@ -74,7 +86,10 @@ def wait_converged(client2, cid, min_cells, timeout_s=60.0):
     """Poll node 2's get_all_cells until it reports >= min_cells. Returns ms."""
     t0 = time.perf_counter()
     while True:
-        out, _ = timed_execute(client2, cid, "get_all_cells", {})
+        try:
+            out, _ = timed_execute(client2, cid, "get_all_cells", {})
+        except Exception:
+            out = None  # node 2 may transiently error while catching up — retry
         if isinstance(out, list) and len(out) >= min_cells:
             return (time.perf_counter() - t0) * 1000.0
         if time.perf_counter() - t0 > timeout_s:
