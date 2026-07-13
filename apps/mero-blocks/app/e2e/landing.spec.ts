@@ -2,12 +2,11 @@ import { expect, test } from "@playwright/test";
 import { CTX_ID, freshState, mockNode, NODE_URL, seedSession } from "./helpers";
 
 test.describe("landing page", () => {
-  test("shows hero, how-it-works, features and the play card", async ({ page }) => {
+  test("shows the title screen: panorama, title, controls and the play card", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByTestId("landing")).toBeVisible();
-    await expect(page.locator("h1")).toContainText("Minecraft-style");
-    await expect(page.getByTestId("how-it-works")).toContainText("How it works");
-    await expect(page.getByTestId("features")).toContainText("World = seed + diff");
+    await expect(page.locator("h1")).toContainText("Mero Blocks");
+    await expect(page.getByTestId("panorama")).toBeVisible();
     await expect(page.getByTestId("controls")).toContainText("WASD");
     await expect(page.getByTestId("offline-btn")).toBeVisible();
   });

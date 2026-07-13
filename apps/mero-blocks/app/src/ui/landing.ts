@@ -1,5 +1,8 @@
-// Landing page + launcher. Three auth states:
-//  1. anonymous          → play offline, or connect a node (web login redirect)
+// Landing page — Minecraft-title-screen style: a real generated world spins
+// blurred in the background (ui/panorama.ts); in front there is only the
+// logo, the title, and the play card. Three auth states for the card:
+//  1. anonymous          → play offline, or connect a node (auto-discovered
+//                          via mero-react's discoverLocalNodes + manual URL)
 //  2. authenticated      → pick an existing world or create one (admin API)
 //  3. ready (has context)→ one-click "Enter shared world"
 // Desktop SSO (full hash) never sees this page — main.ts auto-enters.
@@ -8,6 +11,7 @@ import { discoverLocalNodes } from "@calimero-network/mero-react";
 import { createWorld, joinContext, listWorlds, resolveApplicationId } from "../net/admin";
 import { beginWebLogin } from "../net/auth";
 import { clearSession, getSession, hasConnection, isAuthenticated, updateSession } from "../net/session";
+import { Panorama } from "./panorama";
 
 export interface LaunchChoice {
   mode: "offline" | "online";
@@ -17,80 +21,69 @@ export interface LaunchChoice {
 
 const css = `
 #mb-landing { position: fixed; inset: 0; overflow-y: auto; z-index: 20;
-  background: linear-gradient(175deg, #0b0e14 0%, #141c2b 45%, #1d2a1f 100%);
-  color: #fff; font-family: system-ui, -apple-system, sans-serif; }
-.mbl-wrap { max-width: 960px; margin: 0 auto; padding: 32px 24px 64px; }
-.mbl-nav { display: flex; align-items: center; gap: 10px; margin-bottom: 48px; }
-.mbl-logo { width: 34px; height: 34px; display: grid; place-items: center; }
-.mbl-logo svg { width: 100%; height: 100%; }
-.mbl-nav b { font-size: 18px; letter-spacing: 1px; }
-.mbl-nav span { color: #8fa3ba; font-size: 12px; margin-left: auto; }
-.mbl-hero { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 40px; align-items: start; }
-@media (max-width: 760px) { .mbl-hero { grid-template-columns: 1fr; } }
-.mbl-hero h1 { font-size: 44px; margin: 0 0 14px; line-height: 1.1; }
-.mbl-hero h1 em { font-style: normal; color: #58c56b; }
-.mbl-hero p.lead { color: #b8c6d6; font-size: 16px; line-height: 1.6; margin: 0 0 22px; }
-.mbl-badges { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
-.mbl-badge { font-size: 11px; padding: 4px 10px; border-radius: 20px;
-  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14); color: #cdd9e5; }
-.mbl-card { background: rgba(255,255,255,0.055); border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 16px; padding: 26px 28px; }
-.mbl-card h3 { margin: 0 0 16px; font-size: 16px; }
-.mbl-card label { display: block; text-align: left; font-size: 12px; color: #9fb0c3; margin: 12px 0 4px; }
-.mbl-card input { width: 100%; box-sizing: border-box; padding: 10px 11px; border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.32); color: #fff; font-size: 14px; }
-.mbl-btn { width: 100%; margin-top: 14px; padding: 12px; border-radius: 9px; border: none;
-  font-size: 15px; font-weight: 600; cursor: pointer; }
-.mbl-btn.primary { background: #4f8cff; color: #fff; }
-.mbl-btn.green { background: #3f9950; color: #fff; }
-.mbl-btn.ghost { background: rgba(255,255,255,0.1); color: #fff; }
-.mbl-link { display: inline-block; margin-top: 12px; background: none; border: none; color: #8fa3ba;
-  font-size: 12px; cursor: pointer; text-decoration: underline; }
-.mbl-divider { display: flex; align-items: center; gap: 10px; color: #6d7f92; font-size: 11px;
-  margin-top: 18px; text-transform: uppercase; letter-spacing: 1px; }
-.mbl-divider::before, .mbl-divider::after { content: ""; flex: 1; height: 1px; background: rgba(255,255,255,0.12); }
-.mbl-worlds { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto; }
-.mbl-world { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px;
-  background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); }
+  background: #0b0e14; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
+.mbl-shade { position: fixed; inset: 0; z-index: 1; pointer-events: none;
+  background: radial-gradient(ellipse at 50% 42%, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0.55) 100%); }
+.mbl-wrap { position: relative; z-index: 2; min-height: 100%; box-sizing: border-box;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; padding: 40px 16px 28px; }
+.mbl-logo svg { width: 84px; height: 89px; filter: drop-shadow(0 6px 12px rgba(0,0,0,0.5)); }
+.mbl-title { margin: 0; font-size: clamp(40px, 9vw, 68px); font-weight: 900;
+  letter-spacing: 4px; text-transform: uppercase; line-height: 1; text-align: center;
+  color: #fff; text-shadow: 0 4px 0 rgba(0,0,0,0.45), 0 0 28px rgba(0,0,0,0.5); }
+.mbl-title em { font-style: normal; color: #58c56b; }
+.mbl-tag { margin: 0; font-size: 13px; color: #cfe3d6; letter-spacing: 1px;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+.mbl-card { width: min(380px, 94vw); box-sizing: border-box; margin-top: 10px;
+  background: rgba(8,10,14,0.78); border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 10px; padding: 18px 20px 20px; backdrop-filter: blur(3px);
+  box-shadow: 0 12px 44px rgba(0,0,0,0.55); }
+.mbl-card h3 { margin: 0 0 10px; font-size: 15px; text-align: center; }
+.mbl-card label { display: block; text-align: left; font-size: 11px; color: #9fb0c3; margin: 10px 0 4px; }
+.mbl-card input { width: 100%; box-sizing: border-box; padding: 9px 11px; border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.22); background: rgba(0,0,0,0.45); color: #fff; font-size: 14px; }
+.mbl-btn { width: 100%; margin-top: 12px; padding: 12px; border-radius: 5px;
+  border: 2px solid rgba(0,0,0,0.75); font-size: 14px; font-weight: 700; cursor: pointer;
+  color: #fff; text-shadow: 0 1px 0 rgba(0,0,0,0.45);
+  box-shadow: inset 0 2px 0 rgba(255,255,255,0.22), inset 0 -3px 0 rgba(0,0,0,0.3); }
+.mbl-btn:hover { filter: brightness(1.12); }
+.mbl-btn.green { background: #3f9950; }
+.mbl-btn.primary { background: #4f8cff; }
+.mbl-btn.ghost { background: #6e6e6e; }
+.mbl-link { display: block; margin: 10px auto 0; background: none; border: none; color: #9fb0c3;
+  font-size: 11px; cursor: pointer; text-decoration: underline; }
+.mbl-divider { display: flex; align-items: center; gap: 10px; color: #8fa3ba; font-size: 10px;
+  margin-top: 16px; text-transform: uppercase; letter-spacing: 1px; }
+.mbl-divider::before, .mbl-divider::after { content: ""; flex: 1; height: 1px; background: rgba(255,255,255,0.16); }
+.mbl-worlds { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; max-height: 180px; overflow-y: auto; }
+.mbl-world { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 6px;
+  background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.12); }
 .mbl-world code { font-size: 11px; color: #9fb0c3; flex: 1; overflow: hidden; text-overflow: ellipsis; }
-.mbl-world button { padding: 6px 14px; border-radius: 6px; border: none; background: #4f8cff;
-  color: #fff; font-weight: 600; cursor: pointer; }
-.mbl-note { font-size: 12px; color: #8fa3ba; margin-top: 10px; line-height: 1.5; }
-.mbl-error { color: #ff8686; font-size: 12px; margin-top: 10px; min-height: 14px; }
-.mbl-section { margin-top: 64px; }
-.mbl-section h2 { font-size: 24px; margin: 0 0 20px; }
-.mbl-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-@media (max-width: 760px) { .mbl-steps { grid-template-columns: 1fr; } }
-.mbl-step { background: rgba(255,255,255,0.045); border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 12px; padding: 18px; }
-.mbl-step b { display: block; margin-bottom: 6px; font-size: 14px; }
-.mbl-step p { margin: 0; color: #a9b8c8; font-size: 13px; line-height: 1.55; }
-.mbl-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-@media (max-width: 760px) { .mbl-grid { grid-template-columns: 1fr; } }
-.mbl-feat { background: rgba(255,255,255,0.045); border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 12px; padding: 16px 18px; }
-.mbl-feat b { font-size: 13px; }
-.mbl-feat p { margin: 6px 0 0; color: #a9b8c8; font-size: 12px; line-height: 1.5; }
-.mbl-controls { color: #a9b8c8; font-size: 13px; line-height: 2; }
-.mbl-controls kbd { background: rgba(255,255,255,0.12); border-radius: 4px; padding: 1px 7px;
-  font-size: 11px; font-family: monospace; }
-.mbl-footer { margin-top: 64px; color: #6d7f92; font-size: 12px; text-align: center; }
+.mbl-world button { padding: 6px 14px; border-radius: 4px; border: 2px solid rgba(0,0,0,0.75);
+  background: #4f8cff; color: #fff; font-weight: 700; cursor: pointer; }
 .mbl-nodes { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
-.mbl-node-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px;
-  background: rgba(0,0,0,0.3); border: 1px solid rgba(88,197,107,0.35); }
+.mbl-node-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 6px;
+  background: rgba(0,0,0,0.4); border: 1px solid rgba(88,197,107,0.4); }
 .mbl-node-row code { font-size: 12px; color: #cdd9e5; flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .mbl-node-row .mbl-dot { width: 8px; height: 8px; border-radius: 50%; background: #58c56b;
   box-shadow: 0 0 6px #58c56b; flex: none; }
-.mbl-node-row button { padding: 6px 14px; border-radius: 6px; border: none; background: #3f9950;
-  color: #fff; font-weight: 600; cursor: pointer; }
-.mbl-scan { font-size: 12px; color: #8fa3ba; animation: mblpulse 1.2s ease-in-out infinite; }
+.mbl-node-row button { padding: 6px 14px; border-radius: 4px; border: 2px solid rgba(0,0,0,0.75);
+  background: #3f9950; color: #fff; font-weight: 700; cursor: pointer; }
+.mbl-scan { font-size: 12px; color: #9fb0c3; text-align: center; animation: mblpulse 1.2s ease-in-out infinite; }
 @keyframes mblpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
-.mbl-social { display: flex; gap: 20px; justify-content: center; align-items: center;
-  flex-wrap: wrap; margin-top: 20px; }
-.mbl-social a { color: #8fa3ba; text-decoration: none; display: inline-flex; align-items: center;
-  gap: 6px; font-size: 12px; }
+.mbl-note { font-size: 11px; color: #8fa3ba; margin-top: 10px; line-height: 1.5; text-align: center; }
+.mbl-error { color: #ff8686; font-size: 12px; margin-top: 8px; min-height: 14px; text-align: center; }
+.mbl-controls { margin-top: 14px; color: #cfd9e4; font-size: 12px; line-height: 2; text-align: center;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+.mbl-controls kbd { background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 4px; padding: 1px 7px; font-size: 11px; font-family: monospace; }
+.mbl-social { display: flex; gap: 18px; justify-content: center; align-items: center;
+  flex-wrap: wrap; margin-top: 12px; }
+.mbl-social a { color: #b9c6d4; text-decoration: none; display: inline-flex; align-items: center;
+  gap: 6px; font-size: 11px; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
 .mbl-social a:hover { color: #fff; }
-.mbl-social svg { width: 15px; height: 15px; fill: currentColor; }
+.mbl-social svg { width: 14px; height: 14px; fill: currentColor; }
+.mbl-foot { margin-top: 6px; color: #93a2b3; font-size: 10px; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
 `;
 
 export const LOGO_SVG = `
@@ -139,23 +132,9 @@ const SOCIALS: { label: string; href: string; icon: string }[] = [
   },
 ];
 
-const FEATURES: [string, string][] = [
-  ["World = seed + diff", "Terrain regenerates identically on every client; only edits and presence ride the network. Joining a world costs two queries."],
-  ["No game server", "A Calimero context is the world. Block edits are CRDT state replicated peer-to-peer between nodes."],
-  ["Real-time players", "Heartbeat presence with clock-skew-proof reaping; remote avatars interpolate between updates."],
-  ["Real voxel lighting", "Flood-fill sunlight and torch light baked per vertex, with a shared day/night cycle that costs zero traffic."],
-  ["Offline-first", "Play with no node at all — your world persists locally and reconciles with the shared one when you connect."],
-  ["Tiny consensus state", "A world with thousands of edits is a few KB of contract state. Chunks are never uploaded anywhere."],
-];
-
-const STEPS: [string, string][] = [
-  ["1 · Generate", "Every player generates the identical 128×64×128 world from the seed stored in the contract."],
-  ["2 · Diff", "Placing or breaking a block writes one override entry (LWW per block). Batches flush every 150 ms."],
-  ["3 · Sync", "SSE events nudge peers to re-pull the override map; presence heartbeats keep the roster live."],
-];
-
 export class Landing {
   private root: HTMLElement;
+  private panorama: Panorama;
 
   constructor(parent: HTMLElement) {
     const style = document.createElement("style");
@@ -165,11 +144,13 @@ export class Landing {
     this.root.id = "mb-landing";
     this.root.dataset.testid = "landing";
     parent.appendChild(this.root);
+    this.panorama = new Panorama(this.root);
   }
 
   show(defaults: { name: string; seed: number }): Promise<LaunchChoice> {
     return new Promise((resolve) => {
       this.render(defaults, (choice) => {
+        this.panorama.destroy();
         this.root.remove();
         resolve(choice);
       });
@@ -177,51 +158,29 @@ export class Landing {
   }
 
   private render(defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
-    this.root.innerHTML = `
-      <div class="mbl-wrap">
-        <div class="mbl-nav">
-          <div class="mbl-logo">${LOGO_SVG}</div><b>mero-blocks</b>
-          <span>on Calimero · P2P</span>
-        </div>
-        <div class="mbl-hero">
-          <div>
-            <div class="mbl-badges">
-              <span class="mbl-badge">browser voxel sandbox</span>
-              <span class="mbl-badge">no game server</span>
-              <span class="mbl-badge">CRDT world state</span>
-            </div>
-            <h1>A Minecraft-style world that lives on <em>your</em> nodes.</h1>
-            <p class="lead">Build together in real time. The world is a Calimero context:
-            every edit is peer-to-peer replicated state, every player is a heartbeat —
-            and the terrain itself never touches the network.</p>
-            <div class="mbl-controls" data-testid="controls">
-              <kbd>WASD</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>LMB</kbd>/<kbd>Q</kbd> break
-              &nbsp; <kbd>RMB</kbd>/<kbd>E</kbd> place &nbsp; <kbd>1–9</kbd> blocks &nbsp; <kbd>wheel</kbd> select
-              <br><kbd>M</kbd> map &nbsp; <kbd>O</kbd> options &nbsp;
-              <span style="color:#8fa3ba">no mouse buttons needed — trackpad friendly</span>
-            </div>
-          </div>
-          <div class="mbl-card" data-testid="play-card"><div id="mbl-play"></div></div>
-        </div>
-        <div class="mbl-section" data-testid="how-it-works">
-          <h2>How it works</h2>
-          <div class="mbl-steps">${STEPS.map(([t, d]) => `<div class="mbl-step"><b>${t}</b><p>${d}</p></div>`).join("")}</div>
-        </div>
-        <div class="mbl-section" data-testid="features">
-          <h2>Why it's interesting</h2>
-          <div class="mbl-grid">${FEATURES.map(([t, d]) => `<div class="mbl-feat"><b>${t}</b><p>${d}</p></div>`).join("")}</div>
-        </div>
-        <div class="mbl-footer">
-          mero-blocks · a Calimero network showcase · world = f(seed) + overrides
-          <div class="mbl-social" data-testid="social-links">
-            ${SOCIALS.map(
-              (s) =>
-                `<a href="${s.href}" target="_blank" rel="noopener noreferrer">${s.icon}${s.label}</a>`,
-            ).join("")}
-          </div>
-        </div>
+    const shade = document.createElement("div");
+    shade.className = "mbl-shade";
+    this.root.appendChild(shade);
+
+    const wrap = document.createElement("div");
+    wrap.className = "mbl-wrap";
+    wrap.innerHTML = `
+      <div class="mbl-logo">${LOGO_SVG}</div>
+      <h1 class="mbl-title">Mero <em>Blocks</em></h1>
+      <p class="mbl-tag">P2P voxel worlds on Calimero — no game server</p>
+      <div class="mbl-card" data-testid="play-card"><div id="mbl-play"></div></div>
+      <div class="mbl-controls" data-testid="controls">
+        <kbd>WASD</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>LMB</kbd>/<kbd>Q</kbd> break
+        &nbsp; <kbd>RMB</kbd>/<kbd>E</kbd> place &nbsp; <kbd>M</kbd> map &nbsp; <kbd>O</kbd> options
       </div>
+      <div class="mbl-social" data-testid="social-links">
+        ${SOCIALS.map(
+          (s) => `<a href="${s.href}" target="_blank" rel="noopener noreferrer">${s.icon}${s.label}</a>`,
+        ).join("")}
+      </div>
+      <div class="mbl-foot">a Calimero network showcase · world = f(seed) + overrides</div>
     `;
+    this.root.appendChild(wrap);
     this.renderPlayCard(defaults, done);
   }
 
@@ -365,7 +324,6 @@ export class Landing {
   private renderAnonymous(defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
     const el = this.playCardEl();
     el.innerHTML = `
-      <h3>Play now</h3>
       ${this.commonInputs(defaults, true)}
       <button class="mbl-btn green" data-testid="offline-btn">Play offline</button>
       <div class="mbl-divider">multiplayer</div>
@@ -375,8 +333,6 @@ export class Landing {
       <label>or your node url</label>
       <input id="mbl-node" data-testid="node-url-input" placeholder="http://localhost:2428" />
       <button class="mbl-btn primary" data-testid="web-login-btn">Connect a node</button>
-      <div class="mbl-note">You'll authenticate on your node and come straight back.
-      Opening from the Calimero desktop skips this page entirely.</div>
       <div class="mbl-error" data-testid="login-error"></div>
     `;
     const abort = new AbortController();
