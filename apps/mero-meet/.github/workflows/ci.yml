@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   app:
-    name: App (typecheck + unit tests + build)
+    name: App (lint + typecheck + unit tests + build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -28,6 +28,7 @@ jobs:
           cache: pnpm
           cache-dependency-path: app/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
       - run: pnpm exec tsc --noEmit
       - run: pnpm exec vitest run
       - run: pnpm build
