@@ -2,14 +2,24 @@ import { expect, test } from "@playwright/test";
 import { CTX_ID, freshState, mockNode, NODE_URL, seedSession } from "./helpers";
 
 test.describe("landing page", () => {
-  test("shows hero, how-it-works, features and the play card", async ({ page }) => {
+  test("shows the animated world, hero, play card and Calimero links", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByTestId("landing")).toBeVisible();
     await expect(page.locator("h1")).toContainText("Terraria-style");
-    await expect(page.getByTestId("how-it-works")).toContainText("How it works");
-    await expect(page.getByTestId("features")).toContainText("World = seed + diff");
-    await expect(page.getByTestId("controls")).toContainText("A/D");
+    await expect(page.getByTestId("world-anim")).toBeVisible();
     await expect(page.getByTestId("offline-btn")).toBeVisible();
+    const links = page.getByTestId("social-links").locator("a");
+    await expect(links.first()).toHaveAttribute("href", "https://www.calimero.network/");
+    expect(await links.count()).toBeGreaterThanOrEqual(5);
+    // the world animation actually painted terrain onto the background canvas
+    const painted = await page
+      .locator("[data-testid=world-anim]")
+      .evaluate((c: HTMLCanvasElement) => {
+        const ctx = c.getContext("2d")!;
+        const d = ctx.getImageData(0, 0, Math.min(80, c.width), c.height).data;
+        return d.some((v) => v > 0);
+      });
+    expect(painted).toBe(true);
   });
 
   test("anonymous visitors get the web-login form, not the enter button", async ({ page }) => {

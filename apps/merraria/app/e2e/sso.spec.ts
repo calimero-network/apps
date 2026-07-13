@@ -29,6 +29,30 @@ test.describe("desktop SSO auto-enter", () => {
     expect(t).toBe(3);
   });
 
+  test("an expired desktop token is refreshed before entering the world", async ({ page }) => {
+    const state = freshState();
+    await mockNode(page, state);
+    let refreshBody: { access_token?: string; refresh_token?: string } | null = null;
+    await page.route(`${NODE_URL}/auth/refresh`, (route) => {
+      refreshBody = route.request().postDataJSON();
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: { access_token: "fresh-at", refresh_token: "fresh-rt" } }),
+      });
+    });
+    await page.goto(`/${fullHash}&expires_at=${Date.now() - 60_000}`);
+
+    // still lands straight in the online world — the stale token was swapped
+    await page.waitForFunction(() => "__mt" in window);
+    await expect(page.getByTestId("landing")).toHaveCount(0);
+    await expect(page.getByTestId("debug")).toContainText("online");
+    expect(refreshBody!.access_token).toBe("sso-token");
+    expect(refreshBody!.refresh_token).toBe("sso-refresh");
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("mero-tokens")!));
+    expect(stored.access_token).toBe("fresh-at");
+  });
+
   test("a web auth callback (tokens, no context) lands on the world picker", async ({ page }) => {
     const state = freshState();
     await mockNode(page, state);

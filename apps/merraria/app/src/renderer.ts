@@ -58,11 +58,11 @@ export interface RemoteDraw {
 // variants (6×6 texels of 3px). The world picks a variant per position from a
 // hash, so terrain looks textured but stays deterministic across clients.
 
-const VARIANTS = 4;
+export const VARIANTS = 4;
 const TEXEL = 3;
 const TEXELS = TILE_PX / TEXEL; // 6
 
-class TileAtlas {
+export class TileAtlas {
   canvas: HTMLCanvasElement;
 
   constructor() {

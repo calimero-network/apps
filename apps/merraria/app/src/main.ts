@@ -8,7 +8,7 @@ import { generateWorld, spawnPoint } from "./engine/terrain";
 import { AIR, HOTBAR, STARTING_INVENTORY } from "./engine/tiles";
 import { TileStore } from "./engine/world";
 import { GameClient } from "./net/client";
-import { captureSessionFromHash, getSession, hasConnection } from "./net/session";
+import { captureSessionFromHash, ensureFreshToken, getSession, hasConnection } from "./net/session";
 import { RemotePlayer, SyncEngine, Transform } from "./net/sync";
 import { GameRenderer, RemoteDraw } from "./renderer";
 import { loadWorld, saveWorld } from "./state/persistence";
@@ -27,6 +27,8 @@ interface RemoteAvatar {
 
 async function boot(): Promise<void> {
   const captured = captureSessionFromHash();
+  // desktop SSO can hand over an expired token — refresh before going online
+  await ensureFreshToken();
 
   const app = document.getElementById("app")!;
   const canvas = document.createElement("canvas");

@@ -101,6 +101,54 @@ export function updateSession(patch: Partial<Session>): void {
   persist();
 }
 
+/**
+ * mero-chat's desktop lesson: the SSO hash (or a stored session) can carry an
+ * already-expired access token — the desktop may have been idle for hours
+ * before opening the game. Refresh it BEFORE going online so desktop opens
+ * never bounce through auth or silently fall back to offline. Best-effort:
+ * any failure leaves the stored tokens alone and the caller degrades as before.
+ */
+export async function ensureFreshToken(fetchFn: typeof fetch = fetch): Promise<void> {
+  if (!session.nodeUrl) return;
+  let tokens: { access_token?: string; refresh_token?: string; expires_at?: string | number };
+  try {
+    tokens = JSON.parse(localStorage.getItem(TOKENS_KEY) ?? "");
+  } catch {
+    return;
+  }
+  if (!tokens?.access_token || !tokens.refresh_token) return;
+  let exp = Number(tokens.expires_at);
+  if (!Number.isFinite(exp) || exp <= 0) return; // no expiry info — assume valid
+  if (exp < 1e12) exp *= 1000; // tolerate seconds-based stamps
+  if (Date.now() <= exp - 30_000) return; // comfortably valid
+
+  try {
+    const resp = await fetchFn(`${session.nodeUrl}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+      }),
+    });
+    if (!resp.ok) return;
+    const json = await resp.json();
+    const refreshed = json?.data ?? json;
+    if (refreshed?.access_token && refreshed?.refresh_token) {
+      localStorage.setItem(
+        TOKENS_KEY,
+        JSON.stringify({
+          access_token: refreshed.access_token,
+          refresh_token: refreshed.refresh_token,
+          expires_at: refreshed.expires_at ?? Date.now() + 3600_000,
+        }),
+      );
+    }
+  } catch {
+    /* node unreachable — the caller's online path will degrade gracefully */
+  }
+}
+
 export function getAccessToken(): string | null {
   try {
     const raw = localStorage.getItem(TOKENS_KEY);

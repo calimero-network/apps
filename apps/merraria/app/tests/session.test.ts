@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   captureSessionFromHash,
   clearSession,
+  ensureFreshToken,
   getAccessToken,
   getSession,
   hasConnection,
@@ -112,5 +113,67 @@ describe("session lifecycle", () => {
     expect(isAuthenticated()).toBe(false);
     expect(localStorage.getItem("mt-session")).toBeNull();
     expect(localStorage.getItem("mero-tokens")).toBeNull();
+  });
+});
+
+describe("ensureFreshToken (desktop hands over stale tokens — mero-chat lesson)", () => {
+  const seedTokens = (expiresAt: number | string) => {
+    window.location.hash =
+      `#node_url=http://localhost:2660&access_token=old-at&refresh_token=old-rt` +
+      `&context_id=ctx-1&expires_at=${expiresAt}`;
+    captureSessionFromHash();
+  };
+
+  it("refreshes an expired token via {node}/auth/refresh and stores the new pair", async () => {
+    seedTokens(Date.now() - 1000);
+    const fetchFn = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ data: { access_token: "new-at", refresh_token: "new-rt" } }),
+    })) as unknown as typeof fetch;
+    await ensureFreshToken(fetchFn);
+    expect(fetchFn).toHaveBeenCalledWith(
+      "http://localhost:2660/auth/refresh",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(getAccessToken()).toBe("new-at");
+    expect(JSON.parse(localStorage.getItem("mero-tokens")!).refresh_token).toBe("new-rt");
+  });
+
+  it("tolerates seconds-based expiry stamps", async () => {
+    seedTokens(Math.floor(Date.now() / 1000) - 10); // expired, in seconds
+    const fetchFn = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ access_token: "new-at", refresh_token: "new-rt" }), // un-nested shape
+    })) as unknown as typeof fetch;
+    await ensureFreshToken(fetchFn);
+    expect(getAccessToken()).toBe("new-at");
+  });
+
+  it("does nothing when the token is still comfortably valid", async () => {
+    seedTokens(Date.now() + 3600_000);
+    const fetchFn = vi.fn() as unknown as typeof fetch;
+    await ensureFreshToken(fetchFn);
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(getAccessToken()).toBe("old-at");
+  });
+
+  it("keeps the old tokens when the refresh fails or the node is down", async () => {
+    seedTokens(Date.now() - 1000);
+    const failing = vi.fn(async () => ({ ok: false, json: async () => ({}) })) as unknown as typeof fetch;
+    await ensureFreshToken(failing);
+    expect(getAccessToken()).toBe("old-at");
+    const throwing = vi.fn(async () => {
+      throw new Error("ECONNREFUSED");
+    }) as unknown as typeof fetch;
+    await ensureFreshToken(throwing);
+    expect(getAccessToken()).toBe("old-at");
+  });
+
+  it("no-ops without a session or without an expiry stamp", async () => {
+    const fetchFn = vi.fn() as unknown as typeof fetch;
+    await ensureFreshToken(fetchFn); // no session at all
+    seedTokens(""); // desktop sent no expires_at — assume valid
+    await ensureFreshToken(fetchFn);
+    expect(fetchFn).not.toHaveBeenCalled();
   });
 });
