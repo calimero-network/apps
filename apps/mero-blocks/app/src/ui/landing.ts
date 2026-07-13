@@ -12,7 +12,7 @@ import {
   acceptWorldInvite,
   createWorld,
   createWorldInvite,
-  joinContext,
+  joinWorld,
   listWorlds,
   resolveApplicationId,
 } from "../net/admin";
@@ -247,7 +247,7 @@ export class Landing {
         inviteBtn.textContent = "Invite copied — send it to a friend!";
       } catch (e) {
         inviteBtn.textContent = "Invite friends";
-        errEl.textContent = `Could not create invite: ${String(e)}`;
+        errEl.textContent = `Could not create invite: ${errText(e)}`;
       } finally {
         inviteBtn.disabled = false;
       }
@@ -302,7 +302,7 @@ export class Landing {
         await acceptWorldInvite(code);
         done(this.readChoice("online", defaults));
       } catch (e) {
-        errEl.textContent = `Could not join with invite: ${String(e)}`;
+        errEl.textContent = `Could not join with invite: ${errText(e)}`;
       }
     });
 
@@ -323,18 +323,25 @@ export class Landing {
             row.querySelector("button")!.addEventListener("click", async () => {
               errEl.textContent = "";
               try {
-                await joinContext(w.contextId);
-                updateSession({ contextId: w.contextId });
+                const identity = await joinWorld(w.contextId);
+                // switching worlds: the old world's namespace/group must not
+                // leak into this one (invites would target the wrong world)
+                updateSession({
+                  contextId: w.contextId,
+                  namespaceId: null,
+                  groupId: null,
+                  executorPublicKey: identity,
+                });
                 done(this.readChoice("online", defaults));
               } catch (e) {
-                errEl.textContent = `Could not join: ${String(e)}`;
+                errEl.textContent = `Could not join: ${errText(e)}`;
               }
             });
             listEl.appendChild(row);
           });
         }
       } catch (e) {
-        listEl.innerHTML = `<div class="mbl-note">Could not list worlds (${escapeHtml(String(e))}).</div>`;
+        listEl.innerHTML = `<div class="mbl-note">Could not list worlds (${escapeHtml(errText(e))}).</div>`;
       }
 
       el.querySelector("[data-testid=create-world-btn]")!.addEventListener("click", async () => {
@@ -356,7 +363,7 @@ export class Landing {
           });
           done(choice);
         } catch (e) {
-          errEl.textContent = `Could not create world: ${String(e)}`;
+          errEl.textContent = `Could not create world: ${errText(e)}`;
         }
       });
     })();
@@ -426,4 +433,9 @@ export class Landing {
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+}
+
+/** human-readable error text — the message, not "Error: message" */
+function errText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }

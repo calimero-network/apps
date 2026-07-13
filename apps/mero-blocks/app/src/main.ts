@@ -71,7 +71,8 @@ async function boot(): Promise<void> {
       seed = meta.seed;
       createdAt = meta.createdAt || createdAt;
     } catch (err) {
-      hud.toast("Could not reach the shared world — playing offline");
+      const reason = err instanceof Error ? err.message : String(err);
+      hud.toast(`Could not reach the shared world — playing offline (${reason})`);
       client = null;
     }
   }

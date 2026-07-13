@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createWorld,
+  joinWorld,
   listWorlds,
   packageOf,
   parseApplications,
@@ -133,10 +134,9 @@ function mockRoutes(routes: [string, unknown][]) {
   return calls;
 }
 
-describe("createWorld (namespace → subgroup → context)", () => {
-  it("creates namespace + group, then the context with groupId", async () => {
+describe("createWorld (own namespace → open subgroup → context)", () => {
+  it("creates a namespace, an OPEN subgroup, then the context with groupId", async () => {
     const calls = mockRoutes([
-      ["/admin-api/namespaces/for-application/app-1", []],
       ["/admin-api/namespaces", { namespaceId: "ns-1" }],
       ["/admin-api/namespaces/ns-1/groups", { groupId: "grp-1" }],
       ["/admin-api/contexts", { contextId: "ctx-new", memberPublicKey: "pk-new" }],
@@ -149,19 +149,19 @@ describe("createWorld (namespace → subgroup → context)", () => {
       groupId: "grp-1",
     });
 
-    // no flat context creation: the sequence is ns list → ns create → group → context
     expect(calls.map((c) => `${c.method} ${c.url.replace("http://node:2428", "")}`)).toEqual([
-      "GET /admin-api/namespaces/for-application/app-1",
       "POST /admin-api/namespaces",
       "POST /admin-api/namespaces/ns-1/groups",
       "POST /admin-api/contexts",
     ]);
-    const nsBody = calls[1].body as Record<string, unknown>;
+    const nsBody = calls[0].body as Record<string, unknown>;
     expect(nsBody.applicationId).toBe("app-1");
     expect(nsBody.upgradePolicy).toBe("Automatic");
-    const groupBody = calls[2].body as Record<string, unknown>;
-    expect(groupBody.name).toBe("myworld");
-    const ctxBody = calls[3].body as Record<string, unknown>;
+    expect(nsBody.name).toBe("myworld"); // one namespace per world, named after it
+    const groupBody = calls[1].body as Record<string, unknown>;
+    expect(groupBody.groupName).toBe("myworld"); // the node's field is groupName, not name
+    expect(groupBody.visibility).toBe("open"); // invitees self-join via inheritance
+    const ctxBody = calls[2].body as Record<string, unknown>;
     expect(ctxBody.applicationId).toBe("app-1"); // camelCase envelope
     expect(ctxBody.groupId).toBe("grp-1"); // rc.13+ rejects contexts without one
     const params = JSON.parse(
@@ -172,23 +172,27 @@ describe("createWorld (namespace → subgroup → context)", () => {
     expect(typeof params.now).toBe("number"); // init anchors the shared day clock
   });
 
-  it("reuses the app's existing namespace", async () => {
+  it("gives every world its own namespace — no reuse across worlds", async () => {
     const calls = mockRoutes([
-      ["/admin-api/namespaces/for-application/app-1", [{ namespaceId: "ns-old" }]],
-      ["/admin-api/namespaces/ns-old/groups", { groupId: "grp-2" }],
-      ["/admin-api/contexts", { contextId: "ctx-2", memberPublicKey: "pk-2" }],
+      ["/admin-api/namespaces", { namespaceId: "ns-x" }],
+      ["/admin-api/namespaces/ns-x/groups", { groupId: "grp-x" }],
+      ["/admin-api/contexts", { contextId: "ctx-x", memberPublicKey: "pk-x" }],
     ]);
-    const res = await createWorld("app-1", "w2", 1);
-    expect(res.namespaceId).toBe("ns-old");
-    expect(res.groupId).toBe("grp-2");
-    expect(calls.some((c) => c.method === "POST" && c.url.endsWith("/admin-api/namespaces"))).toBe(
-      false,
+    await createWorld("app-1", "first", 1);
+    await createWorld("app-1", "second", 2);
+    const nsCreates = calls.filter(
+      (c) => c.method === "POST" && c.url.endsWith("/admin-api/namespaces"),
     );
+    expect(nsCreates).toHaveLength(2);
+    expect(nsCreates.map((c) => (c.body as Record<string, unknown>).name)).toEqual([
+      "first",
+      "second",
+    ]);
   });
 
   it("tolerates snake_case response fields", async () => {
     mockRoutes([
-      ["/admin-api/namespaces/for-application/a", [{ namespace_id: "ns-s" }]],
+      ["/admin-api/namespaces", { namespace_id: "ns-s" }],
       ["/admin-api/namespaces/ns-s/groups", { group_id: "grp-s" }],
       ["/admin-api/contexts", { id: "ctx-s", member_public_key: "pk-s" }],
     ]);
@@ -198,5 +202,48 @@ describe("createWorld (namespace → subgroup → context)", () => {
       namespaceId: "ns-s",
       groupId: "grp-s",
     });
+  });
+});
+
+describe("admin error parsing", () => {
+  it("surfaces the node's error body instead of a bare HTTP status", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({ error: "identity not eligible for inheritance-based join" }),
+    } as Response);
+    await expect(joinWorld("ctx-x")).rejects.toThrow(
+      "identity not eligible for inheritance-based join",
+    );
+  });
+
+  it("falls back to method + path + status when the body is not JSON", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 502,
+      json: async () => {
+        throw new Error("not json");
+      },
+    } as unknown as Response);
+    await expect(joinWorld("ctx-x")).rejects.toThrow(/POST .*\/join: HTTP 502/);
+  });
+});
+
+describe("joinWorld", () => {
+  it("joins the context and returns the identity the node owns for it", async () => {
+    const calls = mockRoutes([
+      ["/admin-api/contexts/ctx-1/join", {}],
+      ["/admin-api/contexts/ctx-1/identities-owned", ["pk-me"]],
+    ]);
+    expect(await joinWorld("ctx-1")).toBe("pk-me");
+    expect(calls.map((c) => c.method)).toEqual(["POST", "GET"]);
+  });
+
+  it("fails loudly when no identity exists after the join", async () => {
+    mockRoutes([
+      ["/admin-api/contexts/ctx-1/join", {}],
+      ["/admin-api/contexts/ctx-1/identities-owned", []],
+    ]);
+    await expect(joinWorld("ctx-1")).rejects.toThrow(/no identity/);
   });
 });

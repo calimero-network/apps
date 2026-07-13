@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { encodeInvite } from "../src/net/inviteCodec";
+import { decodeInvite, encodeInvite } from "../src/net/inviteCodec";
 import { CTX_ID, freshState, mockNode, NODE_URL, seedSession } from "./helpers";
 
 test.describe("landing page", () => {
@@ -123,31 +123,40 @@ test.describe("world picker (web auth, no context yet)", () => {
       { nodeUrl: NODE_URL },
     );
 
+  /** request bodies captured by mockAdmin for assertions */
+  interface CapturedBodies {
+    namespace?: Record<string, unknown>;
+    group?: Record<string, unknown>;
+    context?: Record<string, unknown>;
+  }
+
   // NOTE: register AFTER mockNode — later routes win, and these must shadow
   // mockNode's generic admin-api handler for /applications and /contexts.
   const mockAdmin = async (
     page: import("@playwright/test").Page,
     contexts: { id: string; applicationId?: string }[],
-    created: { current: unknown },
+    captured: CapturedBodies,
   ) => {
-    // world creation now walks namespace → subgroup → context
+    // world creation walks namespace → open subgroup → context
     await page.route(`${NODE_URL}/admin-api/namespaces/for-application/*`, (route) =>
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: [] }) }),
     );
-    await page.route(`${NODE_URL}/admin-api/namespaces`, (route) =>
-      route.fulfill({
+    await page.route(`${NODE_URL}/admin-api/namespaces`, (route) => {
+      captured.namespace = route.request().postDataJSON();
+      return route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ data: { namespaceId: "ns-e2e" } }),
-      }),
-    );
-    await page.route(`${NODE_URL}/admin-api/namespaces/ns-e2e/groups`, (route) =>
-      route.fulfill({
+      });
+    });
+    await page.route(`${NODE_URL}/admin-api/namespaces/ns-e2e/groups`, (route) => {
+      captured.group = route.request().postDataJSON();
+      return route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ data: { groupId: "grp-e2e" } }),
-      }),
-    );
+      });
+    });
     await page.route(`${NODE_URL}/admin-api/applications`, (route) =>
       route.fulfill({
         status: 200,
@@ -157,7 +166,7 @@ test.describe("world picker (web auth, no context yet)", () => {
     );
     await page.route(`${NODE_URL}/admin-api/contexts`, (route) => {
       if (route.request().method() === "POST") {
-        created.current = route.request().postDataJSON();
+        captured.context = route.request().postDataJSON();
         return route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -176,7 +185,6 @@ test.describe("world picker (web auth, no context yet)", () => {
   };
 
   test("lists this app's worlds and joins one", async ({ page }) => {
-    const created = { current: null as unknown };
     await seedAuthOnly(page);
     // the game itself needs jsonrpc once we join; must register FIRST
     const state = freshState();
@@ -187,7 +195,7 @@ test.describe("world picker (web auth, no context yet)", () => {
         { id: CTX_ID, applicationId: "app-e2e" },
         { id: "ctx-foreign", applicationId: "someone-else" },
       ],
-      created,
+      {},
     );
     await page.goto("/");
 
@@ -203,7 +211,7 @@ test.describe("world picker (web auth, no context yet)", () => {
     await seedAuthOnly(page);
     const state = freshState();
     await mockNode(page, state);
-    await mockAdmin(page, [], { current: null });
+    await mockAdmin(page, [], {});
 
     const joined: string[] = [];
     for (const path of ["namespaces/*/join", "groups/*/join-via-inheritance"]) {
@@ -236,12 +244,12 @@ test.describe("world picker (web auth, no context yet)", () => {
     expect(state.methods).toContain("world_meta"); // actually playing in the invited world
   });
 
-  test("creates a new world through the admin api", async ({ page }) => {
-    const created = { current: null as unknown };
+  test("creates a new world: own namespace, OPEN subgroup, context inside it", async ({ page }) => {
+    const captured: { namespace?: Record<string, unknown>; group?: Record<string, unknown>; context?: Record<string, unknown> } = {};
     await seedAuthOnly(page);
     const state = freshState();
     await mockNode(page, state);
-    await mockAdmin(page, [], created);
+    await mockAdmin(page, [], captured);
     await page.goto("/");
 
     await expect(page.getByTestId("world-list")).toContainText("No worlds");
@@ -250,7 +258,11 @@ test.describe("world picker (web auth, no context yet)", () => {
     await page.getByTestId("create-world-btn").click();
     await page.waitForFunction(() => "__mb" in window);
 
-    const body = created.current as {
+    // the world gets its OWN namespace, named after it
+    expect(captured.namespace?.name).toBe("e2e world");
+    // the subgroup is born open, so invitees can self-join via inheritance
+    expect(captured.group).toEqual({ groupName: "e2e world", visibility: "open" });
+    const body = captured.context as {
       applicationId: string;
       groupId: string;
       initializationParams: number[];
@@ -261,5 +273,160 @@ test.describe("world picker (web auth, no context yet)", () => {
     expect(params.name).toBe("e2e world");
     expect(params.seed).toBe(999);
     await expect(page.getByTestId("debug")).toContainText("online");
+  });
+
+  test("shows the node's reason when the invite's subgroup join is refused", async ({ page }) => {
+    await seedAuthOnly(page);
+    await mockNode(page, freshState());
+    await mockAdmin(page, [], {});
+    await page.route(`${NODE_URL}/admin-api/groups/grp-e2e/join-via-inheritance`, (route) =>
+      route.fulfill({
+        status: 403,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "identity not eligible for inheritance-based join" }),
+      }),
+    );
+
+    await page.goto("/");
+    await page.getByTestId("invite-input").fill(
+      encodeInvite({
+        invitation: {
+          invitation: { inviterIdentity: [1], groupId: [0xab, 0xcd], expirationTimestamp: 9, secretSalt: [2] },
+          inviterSignature: "sig",
+        },
+        contextId: CTX_ID,
+        groupId: "grp-e2e",
+      }),
+    );
+    await page.getByTestId("join-invite-btn").click();
+
+    // a friendly explanation, not "HTTP 403" — and we never enter the world
+    await expect(page.getByTestId("picker-error")).toContainText("not open to invited players");
+    await expect(page.getByTestId("landing")).toBeVisible();
+  });
+
+  test("retries the subgroup join after syncing the namespace", async ({ page }) => {
+    await seedAuthOnly(page);
+    const state = freshState();
+    await mockNode(page, state);
+    await mockAdmin(page, [], {});
+    let attempts = 0;
+    await page.route(`${NODE_URL}/admin-api/groups/grp-e2e/join-via-inheritance`, (route) => {
+      attempts++;
+      if (attempts === 1)
+        return route.fulfill({
+          status: 404,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "group not found" }),
+        });
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: {} }) });
+    });
+
+    await page.goto("/");
+    await page.getByTestId("invite-input").fill(
+      encodeInvite({
+        invitation: {
+          invitation: { inviterIdentity: [1], groupId: [0xab, 0xcd], expirationTimestamp: 9, secretSalt: [2] },
+          inviterSignature: "sig",
+        },
+        contextId: CTX_ID,
+        groupId: "grp-e2e",
+      }),
+    );
+    await page.getByTestId("join-invite-btn").click();
+    await page.waitForFunction(() => "__mb" in window);
+    await expect(page.getByTestId("debug")).toContainText("online");
+    expect(attempts).toBe(2); // failed → namespace sync → succeeded
+  });
+
+  test("refuses to enter a world this node holds no identity for", async ({ page }) => {
+    await seedAuthOnly(page);
+    await mockNode(page, freshState());
+    await mockAdmin(page, [], {});
+    await page.route(`${NODE_URL}/admin-api/groups/grp-e2e/join-via-inheritance`, (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: {} }) }),
+    );
+    await page.route(`${NODE_URL}/admin-api/contexts/*/identities-owned`, (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: [] }) }),
+    );
+
+    await page.goto("/");
+    await page.getByTestId("invite-input").fill(
+      encodeInvite({
+        invitation: {
+          invitation: { inviterIdentity: [1], groupId: [0xab, 0xcd], expirationTimestamp: 9, secretSalt: [2] },
+          inviterSignature: "sig",
+        },
+        contextId: CTX_ID,
+        groupId: "grp-e2e",
+      }),
+    );
+    await page.getByTestId("join-invite-btn").click();
+    await expect(page.getByTestId("picker-error")).toContainText("no identity");
+    await expect(page.getByTestId("landing")).toBeVisible();
+  });
+});
+
+test.describe("minting world invites (connected session)", () => {
+  test("flips a restricted world open and pins its ids into the invite", async ({ page, context }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await seedSession(page);
+    await mockNode(page, freshState());
+    let flipped: Record<string, unknown> | null = null;
+    await page.route(`${NODE_URL}/admin-api/contexts/${CTX_ID}/group`, (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: "grp-e2e" }) }),
+    );
+    await page.route(`${NODE_URL}/admin-api/namespaces/for-application/*`, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: [{ namespaceId: "ns-e2e" }] }),
+      }),
+    );
+    await page.route(`${NODE_URL}/admin-api/namespaces/ns-e2e/groups`, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: [{ groupId: "grp-e2e" }] }),
+      }),
+    );
+    await page.route(`${NODE_URL}/admin-api/groups/grp-e2e`, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: { subgroupVisibility: "restricted" } }),
+      }),
+    );
+    await page.route(`${NODE_URL}/admin-api/groups/grp-e2e/settings/subgroup-visibility`, (route) => {
+      flipped = route.request().postDataJSON();
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: {} }) });
+    });
+    await page.route(`${NODE_URL}/admin-api/namespaces/ns-e2e/invite`, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: {
+            invitation: {
+              invitation: { inviterIdentity: [1], groupId: [0xab, 0xcd], expirationTimestamp: 9, secretSalt: [2] },
+              inviterSignature: "sig",
+            },
+            groupName: "e2e world",
+          },
+        }),
+      }),
+    );
+
+    await page.goto("/");
+    await page.getByTestId("invite-btn").click();
+    await expect(page.getByTestId("invite-btn")).toContainText("Invite copied");
+
+    // legacy restricted world was opened so invitees can actually join
+    expect(flipped).toEqual({ subgroupVisibility: "open" });
+    const code = await page.evaluate(() => navigator.clipboard.readText());
+    const payload = decodeInvite(code)!;
+    expect(payload.contextId).toBe(CTX_ID); // invite pins the exact world
+    expect(payload.groupId).toBe("grp-e2e");
+    expect(payload.groupAlias).toBe("e2e world");
   });
 });
