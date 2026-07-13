@@ -487,7 +487,9 @@ impl MeroMeet {
     /// `leave_call` — in TWO passes. Pass 1: a participant silent for
     /// `REAP_STALE_SECS` of room time gets a `ReapMark`. Pass 2 (a later
     /// invocation): if their presence row is STILL frozen after
-    /// `REAP_GRACE_SECS`, they are reaped; any movement clears the mark.
+    /// `REAP_GRACE_SECS`, they are reaped; any movement invalidates the mark
+    /// (its recorded `row_ts` no longer matches — marks are never *removed*,
+    /// since a CRDT tombstone would shadow all future re-marks for that key).
     /// Single-pass reaping killed live calls whenever a member's wall clock
     /// ran ahead (their heartbeat made everyone else look stale) — the exact
     /// "we're both in a call but can't see each other" failure.
@@ -506,7 +508,13 @@ impl MeroMeet {
                 _ => continue, // no presence row — cannot judge, keep
             };
             if room_now.saturating_sub(row_ts) <= REAP_STALE_SECS {
-                let _ = self.reap_marks.remove(&id); // provably alive
+                // Provably alive. Deliberately do NOT remove the stale mark: a
+                // CRDT remove leaves a tombstone that permanently shadows any
+                // later insert under the same key (the UnorderedSet
+                // insert-after-remove bug applies to map keys too), which made
+                // a once-marked-then-recovered member UNREAPABLE forever. The
+                // `mark_row == row_ts` guard below already invalidates an
+                // outdated mark, so leaving it in place is harmless.
                 continue;
             }
             // Copy the mark out (owned) so the read borrow ends before the
@@ -534,7 +542,9 @@ impl MeroMeet {
             return;
         }
         for id in &reaped {
-            let _ = self.reap_marks.remove(id);
+            // The mark is NOT removed (tombstone-shadowing, see above); the
+            // reap bumps their row below, so `mark_row == row_ts` stops
+            // matching and the stale mark can never re-reap them.
             // Clear the ghost's "in call" presence — this IS the roster
             // removal (the roster is derived from `call_id`). The +1 bump
             // stays on their own timeline (they remain stale — we never forge
@@ -1146,6 +1156,66 @@ mod tests {
         assert!(app.call_as(BOB, |s| s.end_call()).is_err(), "non-host cannot end for everyone");
         app.call(|s| s.end_call()).unwrap(); // creator (admin) can
         assert_eq!(app.view(|s| s.active_call_id()), "");
+    }
+
+    #[test]
+    fn recovered_member_can_be_reaped_when_stale_again() {
+        // THE tombstone regression: mark → recover → go stale again must
+        // re-mark and eventually reap. With the old remove-on-recovery, the
+        // CRDT tombstone shadowed the re-mark and the member was unreapable
+        // forever — a crashed window lingered as a phantom participant and the
+        // call never died.
+        let mut app = new_room();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
+        let _ = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
+        let _ = app.call_as(BOB, |s| s.start_call(1002)).unwrap();
+
+        // Round 1: Alice goes stale (>60s) and gets marked…
+        app.call_as(BOB, |s| s.heartbeat(1070)).unwrap();
+        assert_eq!(app.view(|s| s.get_call_participants()).len(), 2);
+        // …but recovers within the 30s grace — she stays.
+        app.call_as(ALICE, |s| s.heartbeat(1080)).unwrap();
+        app.call_as(BOB, |s| s.heartbeat(1105)).unwrap();
+        assert_eq!(app.view(|s| s.get_call_participants()).len(), 2);
+
+        // Round 2: she crashes for real. Mark again (1150), grace elapses
+        // (1185) — she MUST be reaped this time.
+        app.call_as(BOB, |s| s.heartbeat(1150)).unwrap();
+        assert_eq!(app.view(|s| s.get_call_participants()).len(), 2);
+        app.call_as(BOB, |s| s.heartbeat(1185)).unwrap();
+        assert_eq!(
+            app.view(|s| s.get_call_participants()),
+            vec![id_of(BOB)],
+            "once-recovered member must still be reapable"
+        );
+    }
+
+    #[test]
+    fn reaped_member_reasserts_into_the_running_session() {
+        // A member wrongly dropped by the reaper (suspended timers, skew)
+        // comes back: their idempotent start_call must re-add them to the SAME
+        // call — this is the frontend's self-heal path ("roster lost us →
+        // start_call") — and the leftover mark must not re-reap them.
+        let mut app = new_room();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
+        let call = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
+        let _ = app.call_as(BOB, |s| s.start_call(1002)).unwrap();
+
+        // Alice's window is suspended: Bob marks (1070) then reaps (1105) her.
+        app.call_as(BOB, |s| s.heartbeat(1070)).unwrap();
+        app.call_as(BOB, |s| s.heartbeat(1105)).unwrap();
+        assert_eq!(app.view(|s| s.get_call_participants()), vec![id_of(BOB)]);
+
+        // She wakes up and re-asserts membership.
+        let back = app.call_as(ALICE, |s| s.start_call(1110)).unwrap();
+        assert_eq!(back, call, "re-assert joins the same running session");
+        assert_eq!(app.view(|s| s.get_call_participants()).len(), 2);
+        // The stale mark left in place (never removed) must not re-reap her:
+        // her row moved, so `mark_row == row_ts` no longer matches.
+        app.call_as(BOB, |s| s.heartbeat(1115)).unwrap();
+        assert_eq!(app.view(|s| s.get_call_participants()).len(), 2);
     }
 
     // ── Signaling ──────────────────────────────────────────────────────────────
