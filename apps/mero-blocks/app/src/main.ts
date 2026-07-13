@@ -13,6 +13,7 @@ import { raycast } from "./engine/raycast";
 import { dayFactor, skyColor } from "./engine/sim";
 import { generateWorld, spawnPoint } from "./engine/terrain";
 import { WorldStore, WORLD_CX, WORLD_CY, WORLD_CZ, chunkKey } from "./engine/world";
+import { createWorldInvite } from "./net/admin";
 import { GameClient } from "./net/client";
 import { captureSessionFromHash, getSession, hasConnection } from "./net/session";
 import { RemotePlayer, SyncEngine, Transform } from "./net/sync";
@@ -165,10 +166,14 @@ async function boot(): Promise<void> {
   }
 
   // ---- overlays (O = options, M = map — trackpad-friendly) --------------
-  const options = new OptionsMenu(app, () => {
-    save();
-    void sync?.leave();
-    window.location.reload(); // back to the landing/launcher
+  const options = new OptionsMenu(app, {
+    onLeave: () => {
+      save();
+      void sync?.leave();
+      window.location.reload(); // back to the landing/launcher
+    },
+    // invite friends into this world (online sessions only)
+    onInvite: client ? () => createWorldInvite() : undefined,
   });
   const worldMap = new WorldMap(app, world);
   const uiOpen = () => options.open || worldMap.open;

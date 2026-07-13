@@ -1,7 +1,7 @@
 // Player physics: AABB vs voxel grid, axis-separated sweep at a fixed tick.
 
 import { isSolid, WATER } from "./blocks";
-import { WorldStore, WORLD_SY } from "./world";
+import { WorldStore, WORLD_SX, WORLD_SY, WORLD_SZ } from "./world";
 
 export const PLAYER_HALF = 0.3; // half width (x/z)
 export const PLAYER_HEIGHT = 1.8;
@@ -39,6 +39,8 @@ function collidesAt(store: WorldStore, x: number, y: number, z: number): boolean
     y1 = Math.floor(y + PLAYER_HEIGHT - 1e-7);
   const z0 = Math.floor(z - PLAYER_HALF),
     z1 = Math.floor(z + PLAYER_HALF - 1e-7);
+  // the map edges are invisible walls — never leave the world horizontally
+  if (x0 < 0 || x1 >= WORLD_SX || z0 < 0 || z1 >= WORLD_SZ) return true;
   for (let by = y0; by <= y1; by++)
     for (let bz = z0; bz <= z1; bz++)
       for (let bx = x0; bx <= x1; bx++) {

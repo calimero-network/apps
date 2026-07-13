@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { encodeInvite } from "../src/net/inviteCodec";
 import { CTX_ID, freshState, mockNode, NODE_URL, seedSession } from "./helpers";
 
 test.describe("landing page", () => {
@@ -129,6 +130,24 @@ test.describe("world picker (web auth, no context yet)", () => {
     contexts: { id: string; applicationId?: string }[],
     created: { current: unknown },
   ) => {
+    // world creation now walks namespace → subgroup → context
+    await page.route(`${NODE_URL}/admin-api/namespaces/for-application/*`, (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: [] }) }),
+    );
+    await page.route(`${NODE_URL}/admin-api/namespaces`, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: { namespaceId: "ns-e2e" } }),
+      }),
+    );
+    await page.route(`${NODE_URL}/admin-api/namespaces/ns-e2e/groups`, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: { groupId: "grp-e2e" } }),
+      }),
+    );
     await page.route(`${NODE_URL}/admin-api/applications`, (route) =>
       route.fulfill({
         status: 200,
@@ -180,6 +199,43 @@ test.describe("world picker (web auth, no context yet)", () => {
     expect(state.methods).toContain("world_meta");
   });
 
+  test("joins a friend's world with a pasted invite code", async ({ page }) => {
+    await seedAuthOnly(page);
+    const state = freshState();
+    await mockNode(page, state);
+    await mockAdmin(page, [], { current: null });
+
+    const joined: string[] = [];
+    for (const path of ["namespaces/*/join", "groups/*/join-via-inheritance"]) {
+      await page.route(`${NODE_URL}/admin-api/${path}`, (route) => {
+        joined.push(new URL(route.request().url()).pathname);
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: {} }) });
+      });
+    }
+
+    // the exact string another client would have copied
+    const code = encodeInvite({
+      invitation: {
+        invitation: { inviterIdentity: [1], groupId: [0xab, 0xcd], expirationTimestamp: 9, secretSalt: [2] },
+        inviterSignature: "sig",
+      },
+      groupAlias: "e2e world",
+      contextId: CTX_ID,
+      groupId: "grp-e2e",
+    });
+
+    await page.goto("/");
+    await page.getByTestId("invite-input").fill(code);
+    await page.getByTestId("join-invite-btn").click();
+    await page.waitForFunction(() => "__mb" in window);
+    await expect(page.getByTestId("debug")).toContainText("online");
+    expect(joined).toEqual([
+      "/admin-api/namespaces/abcd/join",
+      "/admin-api/groups/grp-e2e/join-via-inheritance",
+    ]);
+    expect(state.methods).toContain("world_meta"); // actually playing in the invited world
+  });
+
   test("creates a new world through the admin api", async ({ page }) => {
     const created = { current: null as unknown };
     await seedAuthOnly(page);
@@ -194,8 +250,13 @@ test.describe("world picker (web auth, no context yet)", () => {
     await page.getByTestId("create-world-btn").click();
     await page.waitForFunction(() => "__mb" in window);
 
-    const body = created.current as { applicationId: string; initializationParams: number[] };
+    const body = created.current as {
+      applicationId: string;
+      groupId: string;
+      initializationParams: number[];
+    };
     expect(body.applicationId).toBe("app-e2e");
+    expect(body.groupId).toBe("grp-e2e"); // context lives in the world's subgroup
     const params = JSON.parse(new TextDecoder().decode(new Uint8Array(body.initializationParams)));
     expect(params.name).toBe("e2e world");
     expect(params.seed).toBe(999);

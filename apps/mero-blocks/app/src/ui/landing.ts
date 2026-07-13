@@ -8,7 +8,14 @@
 // Desktop SSO (full hash) never sees this page — main.ts auto-enters.
 
 import { discoverLocalNodes } from "@calimero-network/mero-react";
-import { createWorld, joinContext, listWorlds, resolveApplicationId } from "../net/admin";
+import {
+  acceptWorldInvite,
+  createWorld,
+  createWorldInvite,
+  joinContext,
+  listWorlds,
+  resolveApplicationId,
+} from "../net/admin";
 import { beginWebLogin } from "../net/auth";
 import { clearSession, getSession, hasConnection, isAuthenticated, updateSession } from "../net/session";
 import { Panorama } from "./panorama";
@@ -217,15 +224,34 @@ export class Landing {
       <h3>You're connected</h3>
       ${this.commonInputs(defaults, false)}
       <button class="mbl-btn primary" data-testid="connect-btn">Enter shared world</button>
+      <button class="mbl-btn ghost" data-testid="invite-btn">Invite friends</button>
       <div class="mbl-divider">or</div>
       <label>world seed (offline)</label>
       <input id="mbl-seed" data-testid="seed-input" value="${defaults.seed}" />
       <button class="mbl-btn ghost" data-testid="offline-btn">Play offline</button>
       <button class="mbl-link" data-testid="disconnect-btn">Disconnect from node</button>
+      <div class="mbl-error" data-testid="ready-error"></div>
     `;
     el.querySelector("[data-testid=connect-btn]")!.addEventListener("click", () =>
       done(this.readChoice("online", defaults)),
     );
+    const inviteBtn = el.querySelector<HTMLButtonElement>("[data-testid=invite-btn]")!;
+    inviteBtn.addEventListener("click", async () => {
+      const errEl = el.querySelector<HTMLElement>("[data-testid=ready-error]")!;
+      errEl.textContent = "";
+      inviteBtn.disabled = true;
+      inviteBtn.textContent = "Creating invite…";
+      try {
+        const code = await createWorldInvite();
+        await navigator.clipboard.writeText(code);
+        inviteBtn.textContent = "Invite copied — send it to a friend!";
+      } catch (e) {
+        inviteBtn.textContent = "Invite friends";
+        errEl.textContent = `Could not create invite: ${String(e)}`;
+      } finally {
+        inviteBtn.disabled = false;
+      }
+    });
     el.querySelector("[data-testid=offline-btn]")!.addEventListener("click", () =>
       done(this.readChoice("offline", defaults)),
     );
@@ -242,6 +268,9 @@ export class Landing {
       <h3>Choose a world</h3>
       ${this.commonInputs(defaults, false)}
       <div class="mbl-worlds" data-testid="world-list"><div class="mbl-note">Loading worlds…</div></div>
+      <div class="mbl-divider">or join with an invite</div>
+      <input id="mbl-invite" data-testid="invite-input" placeholder="paste an invite code" />
+      <button class="mbl-btn primary" data-testid="join-invite-btn">Join with invite</button>
       <div class="mbl-divider">or create one</div>
       <label>world name</label>
       <input id="mbl-world-name" data-testid="world-name-input" value="overworld" maxlength="24" />
@@ -261,6 +290,20 @@ export class Landing {
     el.querySelector("[data-testid=disconnect-btn]")!.addEventListener("click", () => {
       clearSession();
       this.renderPlayCard(defaults, done);
+    });
+    el.querySelector("[data-testid=join-invite-btn]")!.addEventListener("click", async () => {
+      errEl.textContent = "";
+      const code = el.querySelector<HTMLInputElement>("#mbl-invite")?.value ?? "";
+      if (!code.trim()) {
+        errEl.textContent = "Paste the invite code a friend sent you.";
+        return;
+      }
+      try {
+        await acceptWorldInvite(code);
+        done(this.readChoice("online", defaults));
+      } catch (e) {
+        errEl.textContent = `Could not join with invite: ${String(e)}`;
+      }
     });
 
     void (async () => {
@@ -307,6 +350,8 @@ export class Landing {
           const created = await createWorld(applicationId, worldName, choice.seed);
           updateSession({
             contextId: created.contextId,
+            namespaceId: created.namespaceId,
+            groupId: created.groupId,
             executorPublicKey: created.memberPublicKey || getSession().executorPublicKey,
           });
           done(choice);

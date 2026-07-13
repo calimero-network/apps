@@ -88,12 +88,20 @@ or use the landing page: running local nodes are auto-discovered with
 mero-react's `discoverLocalNodes` (health probe on the well-known dev ports) —
 one click to connect — with a manual node-URL fallback.
 
-## Tests — 174 total, all green
+A world is a **namespace subgroup + context**: creating one provisions the
+app's namespace (once per node), a subgroup named after the world, and the
+context inside it. To play together, mint an invite (**Invite friends** on the
+landing page, or **Copy world invite** in the in-game options menu) — a
+compact base58 string (curb's deflate+base58 format, pinned to the world's
+group and context) — and a friend pastes it into **Join with invite** on their
+own node.
+
+## Tests — 189 total, all green
 
 | suite | count | what it proves |
 |---|---|---|
-| `make unit` (vitest) | 125 | terrain determinism, meshing face counts, lighting flood-fill, raycast, physics, sync batching/echo/reconcile, session/auth/admin parsing |
-| `make e2e` (Playwright, fully mocked node) | 29 | landing + web-login redirect, desktop SSO auto-enter, world picker (list/join/create), live edit round-trips, presence, persistence |
+| `make unit` (vitest) | 139 | terrain determinism, meshing face counts, lighting flood-fill, raycast, physics, sync batching/echo/reconcile, session/auth/admin parsing |
+| `make e2e` (Playwright, fully mocked node) | 30 | landing + web-login redirect, desktop SSO auto-enter, world picker (list/join/create), live edit round-trips, presence, persistence |
 | `make logic-test` (cargo, native mock host) | 20 | LWW convergence, bounds, batch caps, clock-skew reap scenarios, rejoin self-heal |
 
 ## Contract API
@@ -113,10 +121,10 @@ one click to connect — with a manual node-URL fallback.
 Every push and PR runs four gates in GitHub Actions; production only ships
 when all of them are green:
 
-1. **App** — typecheck, 125 vitest tests, production build
+1. **App** — typecheck, 139 vitest tests, production build
 2. **Logic** — 20 contract tests on the native mock host + WASM build (the
    artifact feeds the merobox job)
-3. **E2E mocked** — 29 Playwright tests against a fully mocked node
+3. **E2E mocked** — 30 Playwright tests against a fully mocked node
 4. **E2E merobox** — two real `merod` nodes (rc.13 image) in Docker run the
    full world lifecycle: install app → namespace invite → create world →
    both players join → Alice builds → Bob sees it → Bob breaks a block →

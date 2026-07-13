@@ -40,6 +40,12 @@ function injectStyle(): void {
 
 const SENSITIVITY_KEY = "mb-sensitivity";
 
+export interface OptionsCallbacks {
+  onLeave: () => void;
+  /** mint a copyable invite for the current world (online sessions only) */
+  onInvite?: () => Promise<string>;
+}
+
 export class OptionsMenu {
   open = false;
   private root: HTMLElement;
@@ -47,7 +53,7 @@ export class OptionsMenu {
 
   constructor(
     private parent: HTMLElement,
-    private onLeave: () => void,
+    private callbacks: OptionsCallbacks,
   ) {
     injectStyle();
     this.root = document.createElement("div");
@@ -95,6 +101,7 @@ export class OptionsMenu {
           <span data-testid="sensitivity-value">${this.sensitivity.toFixed(1)}×</span>
         </div>
         <button class="mbo-btn primary" data-testid="resume-btn">Resume</button>
+        ${this.callbacks.onInvite ? `<button class="mbo-btn ghost" data-testid="invite-btn">Copy world invite</button>` : ""}
         <button class="mbo-btn ghost" data-testid="leave-btn">Save &amp; leave world</button>
         <div class="mbo-note">On a trackpad you never need mouse buttons: hold Q to break and
         E to place while looking at a block.</div>
@@ -107,7 +114,25 @@ export class OptionsMenu {
       localStorage.setItem(SENSITIVITY_KEY, slider.value);
     });
     this.root.querySelector("[data-testid=resume-btn]")!.addEventListener("click", () => this.hide());
-    this.root.querySelector("[data-testid=leave-btn]")!.addEventListener("click", () => this.onLeave());
+    this.root.querySelector("[data-testid=leave-btn]")!.addEventListener("click", () =>
+      this.callbacks.onLeave(),
+    );
+    const inviteBtn = this.root.querySelector<HTMLButtonElement>("[data-testid=invite-btn]");
+    if (inviteBtn && this.callbacks.onInvite) {
+      inviteBtn.addEventListener("click", async () => {
+        inviteBtn.disabled = true;
+        inviteBtn.textContent = "Creating invite…";
+        try {
+          const code = await this.callbacks.onInvite!();
+          await navigator.clipboard.writeText(code);
+          inviteBtn.textContent = "Invite copied!";
+        } catch {
+          inviteBtn.textContent = "Invite failed — try again";
+        } finally {
+          inviteBtn.disabled = false;
+        }
+      });
+    }
     this.parent.appendChild(this.root);
   }
 }

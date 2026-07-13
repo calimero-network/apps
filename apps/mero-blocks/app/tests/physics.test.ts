@@ -113,6 +113,20 @@ describe("physics", () => {
     expect(p.y).toBeGreaterThanOrEqual(0.5);
   });
 
+  it("cannot walk off the map edges", () => {
+    const w = makeFloor(10);
+    const p = player(2, 11, 2);
+    run(w, p, { moveX: -1, moveZ: -1, jump: false }, 300);
+    expect(p.x).toBeGreaterThanOrEqual(0.3 - 1e-6); // half-width from the edge
+    expect(p.z).toBeGreaterThanOrEqual(0.3 - 1e-6);
+    expect(p.y).toBeCloseTo(11, 2); // still standing on the floor
+
+    const far = player(126, 11, 126); // no floor out here, but the walls still hold
+    run(w, far, { moveX: 1, moveZ: 1, jump: false }, 300);
+    expect(far.x).toBeLessThanOrEqual(128 - 0.3 + 1e-6);
+    expect(far.z).toBeLessThanOrEqual(128 - 0.3 + 1e-6);
+  });
+
   it("blockIntersectsPlayer prevents placing a block inside yourself", () => {
     const p = player(10.5, 20, 10.5);
     expect(blockIntersectsPlayer(p, 10, 20, 10)).toBe(true);
