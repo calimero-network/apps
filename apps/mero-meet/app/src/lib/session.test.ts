@@ -56,6 +56,30 @@ describe("captureSessionFromHash", () => {
   });
 });
 
+describe("clearActiveRoom", () => {
+  it("forgets the room in memory and in storage", async () => {
+    const s = await freshSession("#app-id=app1&context_id=ctx1&executor_public_key=pk1");
+    s.clearActiveRoom();
+    expect(s.getContextId()).toBeNull();
+    expect(s.getExecutorPublicKey()).toBeNull();
+    // The room must stay gone across a reload — a dead room that resurrects
+    // from the persisted session would boot into an empty lobby again.
+    const reloaded = await freshSession("");
+    expect(reloaded.getContextId()).toBeNull();
+    expect(reloaded.getExecutorPublicKey()).toBeNull();
+    // The app id itself survives — only the room is forgotten.
+    expect(reloaded.getApplicationId()).toBe("app1");
+  });
+
+  it("also clears a room set in-app (the per-app room key)", async () => {
+    const first = await freshSession("#app-id=app1");
+    first.setActiveRoom("room-ctx", "room-pk");
+    first.clearActiveRoom();
+    const s = await freshSession("");
+    expect(s.getContextId()).toBeNull();
+  });
+});
+
 describe("username + room-name caches", () => {
   it("round-trips the username per app", async () => {
     const s = await freshSession("#app-id=app1");

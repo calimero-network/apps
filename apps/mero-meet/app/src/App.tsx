@@ -1,8 +1,8 @@
-import { type ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
 import { APP_ENABLED } from "./lib/tauri";
-import { getContextId } from "./lib/session";
+import { getContextId, clearActiveRoom } from "./lib/session";
 import LandingPage from "./pages/LandingPage";
 import RoomsPage from "./pages/RoomsPage";
 import LobbyPage from "./pages/LobbyPage";
@@ -16,11 +16,46 @@ function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-// A room (Calimero context) is required for the lobby/call. When the desktop
-// opened the app without one, send the user to the room picker instead of a
-// dead empty lobby.
+// Context ids already confirmed to exist on the node during this app load —
+// lets lobby ⇄ call hops skip the admin round-trip (and the blank frame).
+const verifiedRooms = new Set<string>();
+
+// A room (Calimero context) is required for the lobby/call, and it must still
+// EXIST on the node. The session persists the last room across reloads, so
+// after a node reset / room deletion the restored context id points at
+// nothing — without this check the app boots into a dead empty lobby
+// ("Room", no members, invite/call that go nowhere) instead of the picker.
 function RequireRoom({ children }: { children: ReactNode }) {
-  if (!getContextId()) return <Navigate to="/rooms" replace />;
+  const { mero } = useMero();
+  const ctx = getContextId();
+  const [exists, setExists] = useState<boolean | null>(() =>
+    ctx && verifiedRooms.has(ctx) ? true : null,
+  );
+
+  useEffect(() => {
+    if (!ctx || verifiedRooms.has(ctx) || !mero) return;
+    let cancelled = false;
+    mero.admin
+      .getContexts()
+      .then((resp) => {
+        const found = (resp.contexts ?? []).some((c) => c.id === ctx);
+        if (found) verifiedRooms.add(ctx);
+        else clearActiveRoom();
+        if (!cancelled) setExists(found);
+      })
+      .catch(() => {
+        // Couldn't reach the node to verify — let the lobby try rather than
+        // bouncing a live deep-link on one flaky request.
+        if (!cancelled) setExists(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ctx, mero]);
+
+  if (!ctx) return <Navigate to="/rooms" replace />;
+  if (exists === null) return null; // verifying — don't flash a dead lobby
+  if (!exists) return <Navigate to="/rooms" replace />;
   return <>{children}</>;
 }
 

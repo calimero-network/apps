@@ -132,6 +132,23 @@ export function setActiveRoom(ctx: string, executor: string): void {
   persistSession();
 }
 
+/**
+ * Forget the active room, in memory and in storage. Needed when the persisted
+ * room's context no longer exists on the node (node reset, room deleted):
+ * without this every boot restores the dead room and lands in an empty lobby
+ * instead of the room picker.
+ */
+export function clearActiveRoom(): void {
+  contextId = null;
+  executorPublicKey = null;
+  try {
+    localStorage.removeItem(roomStorageKey());
+  } catch {
+    /* ignore blocked storage */
+  }
+  persistSession();
+}
+
 /** Back-compat alias. */
 export function setSession(ctx: string, executor: string): void {
   setActiveRoom(ctx, executor);
