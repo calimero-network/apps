@@ -95,10 +95,22 @@ cat > res/bundle-temp/manifest.json <<EOF
 }
 EOF
 
-# Sign the manifest via core workspace tool
-cargo run --manifest-path ../../core/Cargo.toml -p mero-sign --quiet -- \
-    sign res/bundle-temp/manifest.json \
-    --key ../../core/scripts/test-signing-key/test-key.json
+# ── Signing ─────────────────────────────────────────────────────────────────
+# Key: MERO_SIGN_KEY_FILE env (CI writes the MERO_SIGN_KEY secret to a temp
+# file) → fallback to the core workspace test key for local dev.
+# Tool: mero-sign on PATH (CI installs it from the core repo) → fallback to
+# cargo run against a sibling core checkout.
+SIGN_KEY="${MERO_SIGN_KEY_FILE:-../../core/scripts/test-signing-key/test-key.json}"
+if [ ! -f "$SIGN_KEY" ]; then
+    echo "ERROR: signing key not found: $SIGN_KEY (set MERO_SIGN_KEY_FILE)" >&2
+    exit 1
+fi
+if command -v mero-sign >/dev/null; then
+    mero-sign sign res/bundle-temp/manifest.json --key "$SIGN_KEY"
+else
+    cargo run --manifest-path ../../core/Cargo.toml -p mero-sign --quiet -- \
+        sign res/bundle-temp/manifest.json --key "$SIGN_KEY"
+fi
 
 # Create .mpk bundle (tar.gz archive). Filename derives from APP_VERSION so it
 # never drifts from the manifest appVersion.
