@@ -145,6 +145,19 @@ describe("2D physics (y grows downward)", () => {
     expect(p.vy).toBeGreaterThanOrEqual(0); // no phantom double jump from the ground
   });
 
+  it("cannot walk or jump off the map edges", () => {
+    const w = makeFloor(100);
+    const left = player(2, 100);
+    run(w, left, { move: -1, jump: true }, 300);
+    expect(left.x).toBeGreaterThanOrEqual(0.375 - 1e-6); // half-width from the edge
+    expect(left.y).toBeLessThanOrEqual(100 + 1e-6); // never fell below the floor
+
+    const right = player(398, 100);
+    run(w, right, { move: 1, jump: true }, 300);
+    expect(right.x).toBeLessThanOrEqual(400 - 0.375 + 1e-6);
+    expect(right.y).toBeLessThanOrEqual(100 + 1e-6);
+  });
+
   it("tileIntersectsPlayer blocks placing into your own body", () => {
     const p = player(10.5, 100);
     expect(tileIntersectsPlayer(p, 10, 99)).toBe(true); // legs
