@@ -2,7 +2,7 @@
 // y grows downward (canvas convention), so gravity is +y and jumping is -y.
 
 import { isSolid, WATER } from "./tiles";
-import { TileStore, WORLD_W } from "./world";
+import { TileStore, WORLD_H, WORLD_W } from "./world";
 
 export const PLAYER_HALF_W = 0.375; // half width in tiles
 export const PLAYER_H = 1.9;
@@ -39,8 +39,10 @@ function collidesAt(store: TileStore, x: number, y: number): boolean {
     x1 = Math.floor(x + PLAYER_HALF_W - 1e-7);
   const y0 = Math.floor(y - PLAYER_H),
     y1 = Math.floor(y - 1e-7);
-  // the map edges are invisible walls — never leave the world horizontally
-  if (x0 < 0 || x1 >= WORLD_W) return true;
+  // the map edges are invisible walls, and below the last tile row is solid
+  // ground — the player can never leave the world sideways or fall out the
+  // bottom (even if the bedrock row gets mined away somehow)
+  if (x0 < 0 || x1 >= WORLD_W || y1 >= WORLD_H) return true;
   for (let ty = y0; ty <= y1; ty++)
     for (let tx = x0; tx <= x1; tx++) {
       if (isSolid(store.getTile(tx, ty))) return true;

@@ -42,4 +42,57 @@ test.describe("offline mode", () => {
     expect(overrides["10,20"]).toBe(3);
     expect(overrides["11,20"]).toBe(8);
   });
+
+  test("Reset local world wipes the save and starts fresh", async ({ page }) => {
+    // no save yet → no reset button on the landing
+    await page.goto("/");
+    await expect(page.getByTestId("offline-btn")).toBeVisible();
+    await expect(page.getByTestId("reset-local-btn")).toHaveCount(0);
+
+    // play and edit → the save exists → the button appears after reload
+    await page.getByTestId("offline-btn").click();
+    await page.waitForFunction(() => "__mt" in window);
+    await page.evaluate(() => {
+      const mt = (window as never as { __mt: { editTile: (...a: number[]) => void } }).__mt;
+      mt.editTile(10, 20, 3);
+    });
+    await page.reload();
+    await expect(page.getByTestId("reset-local-btn")).toBeVisible();
+
+    // reset → button disappears, and a fresh offline world has no edits
+    await page.getByTestId("reset-local-btn").click();
+    await expect(page.getByTestId("reset-local-btn")).toHaveCount(0);
+    await page.getByTestId("offline-btn").click();
+    await page.waitForFunction(() => "__mt" in window);
+    const overrides = await page.evaluate(() =>
+      (window as never as { __mt: { getOverrides: () => Record<string, number> } }).__mt.getOverrides(),
+    );
+    expect(Object.keys(overrides)).toHaveLength(0);
+  });
+
+  test("a save from outside the map respawns the player at the surface", async ({ page }) => {
+    // a pre-edge-wall save: the player fell off the map and was saved mid-fall
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        "merraria/local",
+        JSON.stringify({
+          seed: 1337,
+          name: "Faller",
+          overrides: {},
+          inventory: {},
+          player: { x: -40, y: 900, sel: 0, name: "Faller" },
+          savedAt: 1720000000000,
+        }),
+      );
+    });
+    await enterOffline(page);
+    const pos = await page.evaluate(
+      () => (window as never as { __mt: { player: { x: number; y: number } } }).__mt.player,
+    );
+    expect(pos.x).toBeGreaterThanOrEqual(0);
+    expect(pos.x).toBeLessThanOrEqual(400);
+    expect(pos.y).toBeGreaterThan(0);
+    expect(pos.y).toBeLessThanOrEqual(200);
+    await expect(page.locator(".mt-toast")).toContainText("respawned");
+  });
 });

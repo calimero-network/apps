@@ -21,6 +21,10 @@ export interface Session {
   applicationId: string | null;
   executorPublicKey: string | null;
   devMode: boolean;
+  /** governance coordinates of the current world (set on create/invite-join;
+   *  resolved lazily otherwise) — needed to mint invites */
+  namespaceId?: string | null;
+  groupId?: string | null;
 }
 
 export type CaptureResult =

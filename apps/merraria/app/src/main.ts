@@ -11,7 +11,7 @@ import { GameClient } from "./net/client";
 import { captureSessionFromHash, ensureFreshToken, getSession, hasConnection } from "./net/session";
 import { RemotePlayer, SyncEngine, Transform } from "./net/sync";
 import { GameRenderer, RemoteDraw } from "./renderer";
-import { loadWorld, saveWorld } from "./state/persistence";
+import { loadWorld, playerInBounds, saveWorld } from "./state/persistence";
 import { Hud } from "./ui/hud";
 import { Landing, LaunchChoice } from "./ui/landing";
 
@@ -62,8 +62,9 @@ async function boot(): Promise<void> {
       const meta = await client.fetchWorldMeta();
       seed = meta.seed;
       createdAt = meta.createdAt || createdAt;
-    } catch {
-      hud.toast("Could not reach the shared world — playing offline");
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      hud.toast(`Could not reach the shared world — playing offline (${reason})`);
       client = null;
     }
   }
@@ -82,7 +83,14 @@ async function boot(): Promise<void> {
   const renderer = new GameRenderer(canvas);
 
   // ---- player ----------------------------------------------------------
-  const spawn = saved?.player ?? { ...spawnPoint(seed), sel: 0 };
+  // Saves from before the map-edge walls can hold a player who fell out of
+  // the world — restoring that position means falling forever. Rescue them.
+  const savedPlayer = saved?.player ?? null;
+  const keepSel = savedPlayer?.sel ?? 0;
+  const rescued = savedPlayer !== null && !playerInBounds(savedPlayer);
+  const spawn = playerInBounds(savedPlayer)
+    ? savedPlayer
+    : { ...spawnPoint(seed), sel: keepSel };
   const player: PlayerState = {
     x: spawn.x,
     y: spawn.y,
@@ -99,6 +107,8 @@ async function boot(): Promise<void> {
   hud.setHotbarSel(sel);
   hud.updateInventory(inv);
   hud.setPlayers(choice.name, []);
+  // must come after showGameHud — the toast container exists only then
+  if (rescued) hud.toast("You were outside the world — respawned at the surface");
 
   // ---- networking ------------------------------------------------------
   let sync: SyncEngine | null = null;

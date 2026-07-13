@@ -145,6 +145,14 @@ describe("2D physics (y grows downward)", () => {
     expect(p.vy).toBeGreaterThanOrEqual(0); // no phantom double jump from the ground
   });
 
+  it("never falls out of the bottom of the world", () => {
+    const w = new TileStore(); // no floor at all — even bedrock gone
+    const p = player(200, 150);
+    run(w, p, idle, 600);
+    expect(p.y).toBeLessThanOrEqual(200 + 1e-6); // rests on the below-world floor
+    expect(p.onGround).toBe(true);
+  });
+
   it("cannot walk or jump off the map edges", () => {
     const w = makeFloor(100);
     const left = player(2, 100);
