@@ -12,6 +12,22 @@ test.describe("landing page", () => {
     await expect(page.getByTestId("offline-btn")).toBeVisible();
   });
 
+  test("footer links out to the Calimero site, docs, and socials", async ({ page }) => {
+    await page.goto("/");
+    const social = page.getByTestId("social-links");
+    for (const href of [
+      "https://www.calimero.network/",
+      "https://docs.calimero.network",
+      "https://github.com/calimero-network",
+      "https://github.com/calimero-network/mero-blocks",
+      "https://x.com/CalimeroNetwork",
+      "https://discord.gg/wZRC73DVpU",
+      "https://www.linkedin.com/company/calimero-network/",
+    ]) {
+      await expect(social.locator(`a[href="${href}"]`)).toBeVisible();
+    }
+  });
+
   test("anonymous visitors get the web-login form, not the enter button", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByTestId("node-url-input")).toBeVisible();
@@ -42,6 +58,41 @@ test.describe("landing page", () => {
     expect(params.get("package-name")).toBe("com.calimero.meroblocks");
     expect(params.get("callback-url")).toContain("localhost");
     expect(params.get("permissions")).toContain("context:execute");
+  });
+
+  test("auto-discovers a running local node and connects in one click", async ({ page }) => {
+    // pretend a node is alive on 2428; kill the other well-known ports so a
+    // real dev node on this machine can't change the discovered order
+    await page.route("http://localhost:2428/admin-api/health", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: { status: "alive" } }),
+      }),
+    );
+    for (const port of [2429, 2528, 2529])
+      await page.route(`http://localhost:${port}/admin-api/health`, (route) => route.abort());
+    let authUrl: string | null = null;
+    await page.route("http://localhost:2428/auth/login**", (route) => {
+      authUrl = route.request().url();
+      return route.fulfill({ status: 200, contentType: "text/html", body: "<h1>node auth</h1>" });
+    });
+
+    await page.goto("/");
+    await expect(page.getByTestId("discovered-nodes")).toContainText("http://localhost:2428");
+    await page.getByTestId("discovered-node-0").click();
+    await page.waitForURL("http://localhost:2428/auth/login**");
+
+    const params = new URL(authUrl!).searchParams;
+    expect(params.get("mode")).toBe("multi-context");
+    expect(params.get("package-name")).toBe("com.calimero.meroblocks");
+  });
+
+  test("says so when no local node is running", async ({ page }) => {
+    for (const port of [2428, 2429, 2528, 2529])
+      await page.route(`http://localhost:${port}/admin-api/health`, (route) => route.abort());
+    await page.goto("/");
+    await expect(page.getByTestId("discovered-nodes")).toContainText("No local node found");
   });
 
   test("a connected session shows one-click enter + disconnect", async ({ page }) => {

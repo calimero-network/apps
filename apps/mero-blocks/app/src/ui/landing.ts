@@ -4,6 +4,7 @@
 //  3. ready (has context)→ one-click "Enter shared world"
 // Desktop SSO (full hash) never sees this page — main.ts auto-enters.
 
+import { discoverLocalNodes } from "@calimero-network/mero-react";
 import { createWorld, joinContext, listWorlds, resolveApplicationId } from "../net/admin";
 import { beginWebLogin } from "../net/auth";
 import { clearSession, getSession, hasConnection, isAuthenticated, updateSession } from "../net/session";
@@ -20,8 +21,8 @@ const css = `
   color: #fff; font-family: system-ui, -apple-system, sans-serif; }
 .mbl-wrap { max-width: 960px; margin: 0 auto; padding: 32px 24px 64px; }
 .mbl-nav { display: flex; align-items: center; gap: 10px; margin-bottom: 48px; }
-.mbl-logo { width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center;
-  background: linear-gradient(135deg, #4f8cff, #58c56b); font-size: 18px; }
+.mbl-logo { width: 34px; height: 34px; display: grid; place-items: center; }
+.mbl-logo svg { width: 100%; height: 100%; }
 .mbl-nav b { font-size: 18px; letter-spacing: 1px; }
 .mbl-nav span { color: #8fa3ba; font-size: 12px; margin-left: auto; }
 .mbl-hero { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 40px; align-items: start; }
@@ -74,7 +75,69 @@ const css = `
 .mbl-controls kbd { background: rgba(255,255,255,0.12); border-radius: 4px; padding: 1px 7px;
   font-size: 11px; font-family: monospace; }
 .mbl-footer { margin-top: 64px; color: #6d7f92; font-size: 12px; text-align: center; }
+.mbl-nodes { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+.mbl-node-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px;
+  background: rgba(0,0,0,0.3); border: 1px solid rgba(88,197,107,0.35); }
+.mbl-node-row code { font-size: 12px; color: #cdd9e5; flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.mbl-node-row .mbl-dot { width: 8px; height: 8px; border-radius: 50%; background: #58c56b;
+  box-shadow: 0 0 6px #58c56b; flex: none; }
+.mbl-node-row button { padding: 6px 14px; border-radius: 6px; border: none; background: #3f9950;
+  color: #fff; font-weight: 600; cursor: pointer; }
+.mbl-scan { font-size: 12px; color: #8fa3ba; animation: mblpulse 1.2s ease-in-out infinite; }
+@keyframes mblpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+.mbl-social { display: flex; gap: 20px; justify-content: center; align-items: center;
+  flex-wrap: wrap; margin-top: 20px; }
+.mbl-social a { color: #8fa3ba; text-decoration: none; display: inline-flex; align-items: center;
+  gap: 6px; font-size: 12px; }
+.mbl-social a:hover { color: #fff; }
+.mbl-social svg { width: 15px; height: 15px; fill: currentColor; }
 `;
+
+export const LOGO_SVG = `
+<svg viewBox="0 0 64 68" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="mero-blocks logo">
+  <polygon points="32,4 58,19 32,34 6,19" fill="#58c56b"/>
+  <polygon points="32,4 45,11.5 19,26.5 6,19" fill="#6fdd82"/>
+  <polygon points="6,19 32,34 32,64 6,49" fill="#8a5a34"/>
+  <polygon points="58,19 32,34 32,64 58,49" fill="#6e4527"/>
+</svg>`;
+
+const SOCIALS: { label: string; href: string; icon: string }[] = [
+  {
+    label: "calimero.network",
+    href: "https://www.calimero.network/",
+    icon: `<svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm7.93 9h-3.45a15.7 15.7 0 0 0-1.4-6.13A8.02 8.02 0 0 1 19.93 11ZM12 4.06c.9 1.2 2.05 3.6 2.37 6.94H9.63c.32-3.34 1.47-5.74 2.37-6.94ZM4.07 13h3.45a15.7 15.7 0 0 0 1.4 6.13A8.02 8.02 0 0 1 4.07 13Zm3.45-2H4.07a8.02 8.02 0 0 1 4.85-6.13A15.7 15.7 0 0 0 7.52 11ZM12 19.94c-.9-1.2-2.05-3.6-2.37-6.94h4.74c-.32 3.34-1.47 5.74-2.37 6.94Zm3.08-.81a15.7 15.7 0 0 0 1.4-6.13h3.45a8.02 8.02 0 0 1-4.85 6.13Z"/></svg>`,
+  },
+  {
+    label: "Docs",
+    href: "https://docs.calimero.network",
+    icon: `<svg viewBox="0 0 24 24"><path d="M6 2h9a3 3 0 0 1 3 3v14.5a.5.5 0 0 1-.5.5H7a1 1 0 0 0 0 2h10.5a.5.5 0 0 1 0 1H7a3 3 0 0 1-3-3V5a3 3 0 0 1 2-2.83V2Zm2 4h6a1 1 0 1 1 0 2H8a1 1 0 0 1 0-2Z"/></svg>`,
+  },
+  {
+    label: "GitHub",
+    href: "https://github.com/calimero-network",
+    icon: `<svg viewBox="0 0 24 24"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.55v-2.15c-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.7 1.25 3.35.95.1-.74.4-1.25.72-1.53-2.55-.29-5.23-1.28-5.23-5.69 0-1.25.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.78 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.09 0 4.42-2.69 5.4-5.25 5.68.41.36.77 1.05.77 2.13v3.15c0 .3.21.66.8.55A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/></svg>`,
+  },
+  {
+    label: "Source",
+    href: "https://github.com/calimero-network/mero-blocks",
+    icon: `<svg viewBox="0 0 24 24"><path d="M8.7 6.3a1 1 0 0 1 0 1.4L4.42 12l4.3 4.3a1 1 0 1 1-1.42 1.4l-5-5a1 1 0 0 1 0-1.4l5-5a1 1 0 0 1 1.42 0Zm6.6 0a1 1 0 0 1 1.4 0l5 5a1 1 0 0 1 0 1.4l-5 5a1 1 0 1 1-1.4-1.4l4.28-4.3-4.29-4.3a1 1 0 0 1 0-1.4Z"/></svg>`,
+  },
+  {
+    label: "X",
+    href: "https://x.com/CalimeroNetwork",
+    icon: `<svg viewBox="0 0 24 24"><path d="M18.9 1.15h3.68l-8.04 9.19L24 22.85h-7.41l-5.8-7.58-6.64 7.58H.47l8.6-9.83L0 1.15h7.59l5.24 6.93 6.07-6.93Zm-1.29 19.5h2.04L6.49 3.24H4.3l13.31 17.4Z"/></svg>`,
+  },
+  {
+    label: "Discord",
+    href: "https://discord.gg/wZRC73DVpU",
+    icon: `<svg viewBox="0 0 24 24"><path d="M20.32 4.37A19.8 19.8 0 0 0 15.36 2.8a13.6 13.6 0 0 0-.63 1.29 18.3 18.3 0 0 0-5.48 0A13.6 13.6 0 0 0 8.62 2.8 19.8 19.8 0 0 0 3.66 4.37C.53 9.05-.32 13.6.1 18.08a19.9 19.9 0 0 0 6.08 3.11c.49-.67.93-1.38 1.3-2.13a12.9 12.9 0 0 1-2.05-.99c.17-.13.34-.26.5-.39a14.2 14.2 0 0 0 12.12 0c.17.13.33.26.5.39-.65.39-1.34.72-2.05.99.38.75.81 1.46 1.3 2.13a19.8 19.8 0 0 0 6.08-3.11c.5-5.18-.84-9.68-3.56-13.71ZM8.02 15.33c-1.18 0-2.16-1.09-2.16-2.42s.95-2.43 2.16-2.43c1.21 0 2.18 1.1 2.16 2.43 0 1.33-.95 2.42-2.16 2.42Zm7.97 0c-1.18 0-2.15-1.09-2.15-2.42s.95-2.43 2.15-2.43c1.22 0 2.18 1.1 2.16 2.43 0 1.33-.94 2.42-2.16 2.42Z"/></svg>`,
+  },
+  {
+    label: "LinkedIn",
+    href: "https://www.linkedin.com/company/calimero-network/",
+    icon: `<svg viewBox="0 0 24 24"><path d="M20.45 20.45h-3.55v-5.57c0-1.33-.03-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.94v5.67H9.36V9h3.41v1.56h.05a3.74 3.74 0 0 1 3.37-1.85c3.6 0 4.27 2.37 4.27 5.46v6.28ZM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12ZM7.12 20.45H3.55V9h3.57v11.45ZM22.22 0H1.77C.79 0 0 .77 0 1.72v20.55C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.72C24 .77 23.2 0 22.22 0Z"/></svg>`,
+  },
+];
 
 const FEATURES: [string, string][] = [
   ["World = seed + diff", "Terrain regenerates identically on every client; only edits and presence ride the network. Joining a world costs two queries."],
@@ -117,7 +180,7 @@ export class Landing {
     this.root.innerHTML = `
       <div class="mbl-wrap">
         <div class="mbl-nav">
-          <div class="mbl-logo">▦</div><b>mero-blocks</b>
+          <div class="mbl-logo">${LOGO_SVG}</div><b>mero-blocks</b>
           <span>on Calimero · P2P</span>
         </div>
         <div class="mbl-hero">
@@ -132,8 +195,10 @@ export class Landing {
             every edit is peer-to-peer replicated state, every player is a heartbeat —
             and the terrain itself never touches the network.</p>
             <div class="mbl-controls" data-testid="controls">
-              <kbd>WASD</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>LMB</kbd> break
-              &nbsp; <kbd>RMB</kbd> place &nbsp; <kbd>1–9</kbd> blocks &nbsp; <kbd>wheel</kbd> select
+              <kbd>WASD</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>LMB</kbd>/<kbd>Q</kbd> break
+              &nbsp; <kbd>RMB</kbd>/<kbd>E</kbd> place &nbsp; <kbd>1–9</kbd> blocks &nbsp; <kbd>wheel</kbd> select
+              <br><kbd>M</kbd> map &nbsp; <kbd>O</kbd> options &nbsp;
+              <span style="color:#8fa3ba">no mouse buttons needed — trackpad friendly</span>
             </div>
           </div>
           <div class="mbl-card" data-testid="play-card"><div id="mbl-play"></div></div>
@@ -146,7 +211,15 @@ export class Landing {
           <h2>Why it's interesting</h2>
           <div class="mbl-grid">${FEATURES.map(([t, d]) => `<div class="mbl-feat"><b>${t}</b><p>${d}</p></div>`).join("")}</div>
         </div>
-        <div class="mbl-footer">mero-blocks · a Calimero network showcase · world = f(seed) + overrides</div>
+        <div class="mbl-footer">
+          mero-blocks · a Calimero network showcase · world = f(seed) + overrides
+          <div class="mbl-social" data-testid="social-links">
+            ${SOCIALS.map(
+              (s) =>
+                `<a href="${s.href}" target="_blank" rel="noopener noreferrer">${s.icon}${s.label}</a>`,
+            ).join("")}
+          </div>
+        </div>
       </div>
     `;
     this.renderPlayCard(defaults, done);
@@ -285,7 +358,10 @@ export class Landing {
     })();
   }
 
-  // state 1: anonymous — offline play or web login
+  // state 1: anonymous — offline play or web login. Local nodes are
+  // auto-discovered with mero-react's discoverLocalNodes (the same probe the
+  // mero-react LoginModal runs: GET /admin-api/health on the well-known dev
+  // ports), so most players never type a URL — one click on the found node.
   private renderAnonymous(defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
     const el = this.playCardEl();
     el.innerHTML = `
@@ -293,15 +369,23 @@ export class Landing {
       ${this.commonInputs(defaults, true)}
       <button class="mbl-btn green" data-testid="offline-btn">Play offline</button>
       <div class="mbl-divider">multiplayer</div>
-      <label>your node url</label>
+      <div class="mbl-nodes" data-testid="discovered-nodes">
+        <div class="mbl-scan">Scanning for local nodes…</div>
+      </div>
+      <label>or your node url</label>
       <input id="mbl-node" data-testid="node-url-input" placeholder="http://localhost:2428" />
       <button class="mbl-btn primary" data-testid="web-login-btn">Connect a node</button>
       <div class="mbl-note">You'll authenticate on your node and come straight back.
       Opening from the Calimero desktop skips this page entirely.</div>
       <div class="mbl-error" data-testid="login-error"></div>
     `;
+    const abort = new AbortController();
+    const finish = (c: LaunchChoice) => {
+      abort.abort();
+      done(c);
+    };
     el.querySelector("[data-testid=offline-btn]")!.addEventListener("click", () =>
-      done(this.readChoice("offline", defaults)),
+      finish(this.readChoice("offline", defaults)),
     );
     el.querySelector("[data-testid=web-login-btn]")!.addEventListener("click", () => {
       const url = el.querySelector<HTMLInputElement>("#mbl-node")?.value.trim() ?? "";
@@ -312,6 +396,30 @@ export class Landing {
       }
       beginWebLogin(url); // navigates away; the callback hash brings us back
     });
+
+    const nodesEl = el.querySelector<HTMLElement>("[data-testid=discovered-nodes]")!;
+    void discoverLocalNodes({ signal: abort.signal })
+      .then((urls) => {
+        if (abort.signal.aborted) return;
+        if (urls.length === 0) {
+          nodesEl.innerHTML = `<div class="mbl-note">No local node found — enter a URL below,
+            or <a href="https://docs.calimero.network/getting-started/" target="_blank"
+            rel="noopener noreferrer" style="color:#8fa3ba">run one</a>.</div>`;
+          return;
+        }
+        nodesEl.innerHTML = "";
+        urls.forEach((url, i) => {
+          const row = document.createElement("div");
+          row.className = "mbl-node-row";
+          row.innerHTML = `<span class="mbl-dot"></span><code>${escapeHtml(url)}</code>
+            <button data-testid="discovered-node-${i}">Connect</button>`;
+          row.querySelector("button")!.addEventListener("click", () => beginWebLogin(url));
+          nodesEl.appendChild(row);
+        });
+      })
+      .catch(() => {
+        /* discovery never throws in practice; keep the manual path usable */
+      });
   }
 }
 

@@ -1,0 +1,124 @@
+# Builds and publishes the logic bundle to the Calimero App Registry on every
+# merge to main that touches logic/. The bundle version is resolved inside
+# build-bundle.sh: it fetches the latest published appVersion for
+# com.calimero.meroblocks from the registry and bumps the patch.
+#
+# Required repository secrets:
+#   MERO_SIGN_KEY              — full JSON content of a mero-sign key file
+#                                ({private_key, public_key, signer_id}); must
+#                                be the key that signed the previous version,
+#                                OR any key if the package is linked to an org
+#                                the API-key owner is a member of.
+#   CALIMERO_REGISTRY_API_KEY  — API token from the registry Organizations
+#                                page (CLI Access section).
+
+name: Deploy Bundle
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'logic/**'
+  workflow_dispatch:
+
+# Queue deploys instead of cancelling: each run resolves its version from the
+# registry, so concurrent runs could race to the same version number.
+concurrency:
+  group: deploy-bundle
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  # Keep in sync with the calimero-sdk tag in logic/Cargo.toml
+  MERO_SIGN_REF: 0.11.0-rc.13
+
+jobs:
+  deploy:
+    name: Build, sign & publish bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Check required secrets
+        env:
+          MERO_SIGN_KEY: ${{ secrets.MERO_SIGN_KEY }}
+          CALIMERO_REGISTRY_API_KEY: ${{ secrets.CALIMERO_REGISTRY_API_KEY }}
+        run: |
+          missing=0
+          [ -n "$MERO_SIGN_KEY" ] || { echo "::error::MERO_SIGN_KEY secret is not set"; missing=1; }
+          [ -n "$CALIMERO_REGISTRY_API_KEY" ] || { echo "::error::CALIMERO_REGISTRY_API_KEY secret is not set"; missing=1; }
+          exit $missing
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.89.0"
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-deploy-${{ runner.os }}-${{ hashFiles('logic/Cargo.lock') }}
+          restore-keys: cargo-deploy-${{ runner.os }}-
+
+      - name: Install wasm-opt
+        run: sudo apt-get update -q && sudo apt-get install -y -q binaryen
+
+      - name: Cache mero-sign
+        id: cache-mero-sign
+        uses: actions/cache@v6
+        with:
+          path: ~/.cargo/bin/mero-sign
+          key: mero-sign-${{ runner.os }}-${{ env.MERO_SIGN_REF }}
+
+      - name: Install mero-sign
+        if: steps.cache-mero-sign.outputs.cache-hit != 'true'
+        run: |
+          cargo install mero-sign --locked \
+            --git https://github.com/calimero-network/core \
+            --tag "$MERO_SIGN_REF"
+
+      - name: Write signing key
+        env:
+          MERO_SIGN_KEY: ${{ secrets.MERO_SIGN_KEY }}
+        run: printf '%s' "$MERO_SIGN_KEY" > "$RUNNER_TEMP/mero-sign-key.json"
+
+      - name: Build & sign bundle
+        env:
+          MERO_SIGN_KEY_FILE: ${{ runner.temp }}/mero-sign-key.json
+        run: ./logic/build-bundle.sh
+
+      - name: Install calimero-registry CLI
+        run: npm install -g @calimero-network/registry-cli
+
+      - name: Publish to App Registry
+        env:
+          CALIMERO_API_KEY: ${{ secrets.CALIMERO_REGISTRY_API_KEY }}
+          CALIMERO_REGISTRY_URL: https://apps.calimero.network
+        run: |
+          shopt -s nullglob
+          mpks=(logic/res/mero-blocks-*.mpk)
+          if [ ${#mpks[@]} -ne 1 ]; then
+            echo "::error::expected exactly one .mpk in logic/res, found: ${mpks[*]:-none}"
+            exit 1
+          fi
+          echo "Publishing ${mpks[0]}"
+          calimero-registry bundle push "${mpks[0]}" --remote
+
+      - name: Summary
+        run: |
+          mpk=$(basename logic/res/mero-blocks-*.mpk .mpk)
+          version="${mpk#mero-blocks-}"
+          {
+            echo "### Bundle published :rocket:"
+            echo ""
+            echo "- **Package:** \`com.calimero.meroblocks\`"
+            echo "- **Version:** \`${version}\`"
+            echo "- **Registry:** https://apps.calimero.network"
+          } >> "$GITHUB_STEP_SUMMARY"

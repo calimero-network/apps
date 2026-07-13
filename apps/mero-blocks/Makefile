@@ -1,4 +1,4 @@
-.PHONY: setup build dev unit e2e test typecheck logic-build logic-test clean workflows
+.PHONY: setup build dev unit e2e test typecheck logic-build logic-test clean workflows bundle publish
 
 setup: ## install frontend deps
 	cd app && pnpm install
@@ -31,3 +31,9 @@ clean:
 
 workflows: logic-build ## 2-node merobox e2e (needs docker)
 	cd workflows && merobox bootstrap run e2e.yml; merobox stop --all || true
+
+bundle: ## build the signed .mpk registry bundle -> logic/res/mero-blocks-<ver>.mpk
+	cd logic && ./build-bundle.sh
+
+publish: bundle ## build + push the bundle to the Calimero App Registry
+	calimero-registry bundle push logic/res/mero-blocks-*.mpk --remote

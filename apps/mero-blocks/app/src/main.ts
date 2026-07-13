@@ -20,6 +20,7 @@ import { GameRenderer } from "./renderer";
 import { loadWorld, saveWorld } from "./state/persistence";
 import { Hud } from "./ui/hud";
 import { Landing, LaunchChoice } from "./ui/landing";
+import { OptionsMenu, WorldMap } from "./ui/overlays";
 
 const REACH = 6;
 const EDIT_REPEAT_MS = 250;
@@ -30,6 +31,7 @@ interface RemoteAvatar {
   cur: { x: number; y: number; z: number; yaw: number };
   target: { x: number; y: number; z: number; yaw: number };
   name: string;
+  sel: number;
 }
 
 async function boot(): Promise<void> {
@@ -128,8 +130,9 @@ async function boot(): Promise<void> {
       if (existing) {
         existing.target = target;
         existing.name = p.name;
+        existing.sel = p.sel;
       } else {
-        remotes.set(p.id, { cur: { ...target }, target, name: p.name });
+        remotes.set(p.id, { cur: { ...target }, target, name: p.name, sel: p.sel });
         renderer.upsertAvatar(p.id, p.name);
       }
     }
@@ -161,14 +164,54 @@ async function boot(): Promise<void> {
     }
   }
 
+  // ---- overlays (O = options, M = map — trackpad-friendly) --------------
+  const options = new OptionsMenu(app, () => {
+    save();
+    void sync?.leave();
+    window.location.reload(); // back to the landing/launcher
+  });
+  const worldMap = new WorldMap(app, world);
+  const uiOpen = () => options.open || worldMap.open;
+
   // ---- input -----------------------------------------------------------
   const keys = new Set<string>();
   let breakHeld = false;
   let placeHeld = false;
   let editCooldown = 0;
 
+  const openOverlay = (which: "options" | "map"): void => {
+    document.exitPointerLock();
+    keys.clear();
+    breakHeld = false;
+    placeHeld = false;
+    if (which === "options") {
+      worldMap.hide();
+      options.toggle();
+    } else {
+      options.hide();
+      worldMap.toggle();
+    }
+  };
+
   window.addEventListener("keydown", (e) => {
+    if (e.code === "KeyO") return openOverlay("options");
+    if (e.code === "KeyM") return openOverlay("map");
+    if (e.code === "Escape") {
+      options.hide();
+      worldMap.hide();
+      return;
+    }
+    if (uiOpen()) return; // menus swallow gameplay keys
     keys.add(e.code);
+    // keyboard mining/placing — no mouse buttons needed on a trackpad
+    if (e.code === "KeyQ" && !e.repeat) {
+      breakHeld = true;
+      editCooldown = 0;
+    }
+    if (e.code === "KeyE" && !e.repeat) {
+      placeHeld = true;
+      editCooldown = 0;
+    }
     if (e.code.startsWith("Digit")) {
       const n = Number(e.code.slice(5)) - 1;
       if (n >= 0 && n < HOTBAR.length) {
@@ -177,13 +220,19 @@ async function boot(): Promise<void> {
       }
     }
   });
-  window.addEventListener("keyup", (e) => keys.delete(e.code));
+  window.addEventListener("keyup", (e) => {
+    keys.delete(e.code);
+    if (e.code === "KeyQ") breakHeld = false;
+    if (e.code === "KeyE") placeHeld = false;
+  });
   window.addEventListener("wheel", (e) => {
+    if (uiOpen()) return;
     sel = (sel + (e.deltaY > 0 ? 1 : -1) + HOTBAR.length) % HOTBAR.length;
     hud.setHotbarSel(sel);
   });
 
   canvas.addEventListener("click", () => {
+    if (uiOpen()) return;
     if (document.pointerLockElement !== canvas) canvas.requestPointerLock();
   });
   document.addEventListener("pointerlockchange", () =>
@@ -191,8 +240,9 @@ async function boot(): Promise<void> {
   );
   window.addEventListener("mousemove", (e) => {
     if (document.pointerLockElement !== canvas) return;
-    yaw -= e.movementX * 0.0024;
-    pitch = Math.max(-1.55, Math.min(1.55, pitch - e.movementY * 0.0024));
+    const look = 0.0024 * options.getSensitivity();
+    yaw -= e.movementX * look;
+    pitch = Math.max(-1.55, Math.min(1.55, pitch - e.movementY * look));
   });
   window.addEventListener("mousedown", (e) => {
     if (document.pointerLockElement !== canvas) return;
@@ -271,18 +321,22 @@ async function boot(): Promise<void> {
     editCooldown = Math.max(0, editCooldown - dtMs);
     fps = fps * 0.95 + (1000 / Math.max(1, dtMs)) * 0.05;
 
-    // physics at fixed 60Hz
-    const forward = (keys.has("KeyW") ? 1 : 0) - (keys.has("KeyS") ? 1 : 0);
-    const strafe = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
+    // physics at fixed 60Hz (menus freeze movement, not the world)
+    const menusOpen = uiOpen();
+    const forward = menusOpen ? 0 : (keys.has("KeyW") ? 1 : 0) - (keys.has("KeyS") ? 1 : 0);
+    const strafe = menusOpen ? 0 : (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
+    // right vector is forward × up = (cos yaw, 0, -sin yaw) — the strafe Z
+    // term must be NEGATIVE sin, or A/D mirror whenever you face ±X.
     const moveX = -Math.sin(yaw) * forward + Math.cos(yaw) * strafe;
-    const moveZ = -Math.cos(yaw) * forward + Math.sin(yaw) * strafe;
+    const moveZ = -Math.cos(yaw) * forward - Math.sin(yaw) * strafe;
     const moving = forward !== 0 || strafe !== 0;
     while (physicsAcc >= TICK) {
-      stepPlayer(world, player, { moveX, moveZ, jump: keys.has("Space") }, TICK);
+      stepPlayer(world, player, { moveX, moveZ, jump: !menusOpen && keys.has("Space") }, TICK);
       physicsAcc -= TICK;
     }
 
-    tryEdit();
+    if (menusOpen) renderer.setHighlight(null);
+    else tryEdit();
 
     // relight edited columns (full recompute if a big batch arrived)
     if (world.pendingRelights.length > 0) {
@@ -328,6 +382,19 @@ async function boot(): Promise<void> {
       renderer.moveAvatar(id, r.cur.x, r.cur.y, r.cur.z, r.cur.yaw);
     }
 
+    // live map: self + every remote player, interpolated like the avatars
+    worldMap.update(
+      dtMs,
+      { x: player.x, z: player.z, yaw, name: choice.name, sel },
+      [...remotes.values()].map((r) => ({
+        x: r.cur.x,
+        z: r.cur.z,
+        yaw: r.cur.yaw,
+        name: r.name,
+        sel: r.sel,
+      })),
+    );
+
     // day/night from the shared world clock
     const elapsed = Date.now() / 1000 - createdAt;
     renderer.setDay(dayFactor(elapsed), skyColor(elapsed));
@@ -357,6 +424,7 @@ async function boot(): Promise<void> {
     sync,
     editBlock,
     getOverrides: () => world.overridesToJSON(),
+    input: () => ({ breakHeld, placeHeld, uiOpen: uiOpen() }),
   };
 }
 

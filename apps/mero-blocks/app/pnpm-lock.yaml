@@ -11,6 +11,15 @@ importers:
       '@calimero-network/mero-js':
         specifier: ^7.0.0
         version: 7.0.0
+      '@calimero-network/mero-react':
+        specifier: ^4.3.3
+        version: 4.3.3(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      react:
+        specifier: ^19.1.0
+        version: 19.2.7
+      react-dom:
+        specifier: ^19.1.0
+        version: 19.2.7(react@19.2.7)
       three:
         specifier: ^0.170.0
         version: 0.170.0
@@ -60,9 +69,19 @@ packages:
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
     hasBin: true
 
+  '@calimero-network/mero-js@6.1.0':
+    resolution: {integrity: sha512-gYabeP3UfDjmlkHgcVPv9aggFedQDjIhbTbqm54k0CTiEH/1xZEo9yW87av/rxrG7CJg8OXE3VggMluhT6biJg==}
+    engines: {node: '>=18.0.0'}
+
   '@calimero-network/mero-js@7.0.0':
     resolution: {integrity: sha512-t8sQqw7ndbsI1UE/z/6cl8teVCARrJJ7v/WirbYRpIKMsyaSQlU55q/KGyDItKzjp/b1MU2xbs8qcT0HIQWfGQ==}
     engines: {node: '>=18.0.0'}
+
+  '@calimero-network/mero-react@4.3.3':
+    resolution: {integrity: sha512-zQzV9xjusAkzJb99I2kSTJmNzjv5y3rM5KemAabkEEgiRcQalcjVLRozh0RdhYTHsZy/mKsel7bejw7JDDcvFw==}
+    peerDependencies:
+      react: ^18.0.0 || ^19.0.0
+      react-dom: ^18.0.0 || ^19.0.0
 
   '@csstools/color-helpers@6.1.0':
     resolution: {integrity: sha512-064IFJdjTfUqnjpCVpMOdbr8FLQBhinbZj6yRv2An2E41O/pLEXqfFRWqGq/SxlE5PEUYTlvWsG2r8MswAVvkg==}
@@ -620,6 +639,15 @@ packages:
     resolution: {integrity: sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==}
     engines: {node: '>=6'}
 
+  react-dom@19.2.7:
+    resolution: {integrity: sha512-t0BRVXvbiE/o20Hfw669rLbMCDWtYZLvmJigy2f0MxsXF+71pxhR3xOkspmsO8h3ZlNzyibAmtCa3l4lYKk6gQ==}
+    peerDependencies:
+      react: ^19.2.7
+
+  react@19.2.7:
+    resolution: {integrity: sha512-HNe9WslTbXmFK8o8cmwgAeJFSBvt1bPdHCVKtaaV+WlAN36mpT4hcRpwbf3fY56ar2oIXzsBpOAiIRHAdY0OlQ==}
+    engines: {node: '>=0.10.0'}
+
   require-from-string@2.0.2:
     resolution: {integrity: sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw==}
     engines: {node: '>=0.10.0'}
@@ -632,6 +660,9 @@ packages:
   saxes@6.0.0:
     resolution: {integrity: sha512-xAg7SOnEhrm5zI3puOOKyy1OMcMlIJZYNJY7xLBwSze0UjhPLnWfj2GF2EpT0jmzaJKIWKHLsaSSajf35bcYnA==}
     engines: {node: '>=v12.22.7'}
+
+  scheduler@0.27.0:
+    resolution: {integrity: sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q==}
 
   siginfo@2.0.0:
     resolution: {integrity: sha512-ybx0WO1/8bSBLEWXZvEd7gMW3Sn3JFlW3TvX1nREbDLRNQNaeNN8WK0meBwPdAaOI7TtRRRJn/Es1zhrrCHu7g==}
@@ -831,7 +862,15 @@ snapshots:
     dependencies:
       css-tree: 3.2.1
 
+  '@calimero-network/mero-js@6.1.0': {}
+
   '@calimero-network/mero-js@7.0.0': {}
+
+  '@calimero-network/mero-react@4.3.3(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+    dependencies:
+      '@calimero-network/mero-js': 6.1.0
+      react: 19.2.7
+      react-dom: 19.2.7(react@19.2.7)
 
   '@csstools/color-helpers@6.1.0': {}
 
@@ -1270,6 +1309,13 @@ snapshots:
 
   punycode@2.3.1: {}
 
+  react-dom@19.2.7(react@19.2.7):
+    dependencies:
+      react: 19.2.7
+      scheduler: 0.27.0
+
+  react@19.2.7: {}
+
   require-from-string@2.0.2: {}
 
   rollup@4.62.2:
@@ -1306,6 +1352,8 @@ snapshots:
   saxes@6.0.0:
     dependencies:
       xmlchars: 2.2.0
+
+  scheduler@0.27.0: {}
 
   siginfo@2.0.0: {}
 

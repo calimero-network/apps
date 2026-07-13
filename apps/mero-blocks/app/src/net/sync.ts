@@ -8,9 +8,11 @@ import { blockKey, WorldStore, Edit } from "../engine/world";
 import { GameEvent } from "./events";
 
 export const FLUSH_MS = 150;
-export const HEARTBEAT_MOVING_MS = 1000;
-export const HEARTBEAT_IDLE_MS = 3000;
-export const PLAYERS_POLL_MS = 1500;
+// 500 ms while moving so the live map tracks everyone in near-real-time; the
+// contract's 30 s reap grace gives idle players plenty of headroom at 2 s.
+export const HEARTBEAT_MOVING_MS = 500;
+export const HEARTBEAT_IDLE_MS = 2000;
+export const PLAYERS_POLL_MS = 500;
 
 export interface Transform {
   name: string;

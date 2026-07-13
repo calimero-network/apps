@@ -56,3 +56,65 @@ test.describe("offline mode", () => {
     expect(sample1).toBe(sample2);
   });
 });
+
+test.describe("keyboard controls (trackpad-friendly)", () => {
+  const input = (page: import("@playwright/test").Page) =>
+    page.evaluate(() =>
+      (
+        window as never as {
+          __mb: { input: () => { breakHeld: boolean; placeHeld: boolean; uiOpen: boolean } };
+        }
+      ).__mb.input(),
+    );
+
+  test("Q and E drive break/place without any mouse button", async ({ page }) => {
+    await enterOffline(page);
+    await page.keyboard.down("KeyQ");
+    expect((await input(page)).breakHeld).toBe(true);
+    await page.keyboard.up("KeyQ");
+    expect((await input(page)).breakHeld).toBe(false);
+    await page.keyboard.down("KeyE");
+    expect((await input(page)).placeHeld).toBe(true);
+    await page.keyboard.up("KeyE");
+    expect((await input(page)).placeHeld).toBe(false);
+  });
+
+  test("O opens options, M swaps to the map, Esc closes", async ({ page }) => {
+    await enterOffline(page);
+    await page.keyboard.press("KeyO");
+    await expect(page.getByTestId("options-overlay")).toBeVisible();
+    expect((await input(page)).uiOpen).toBe(true);
+
+    await page.keyboard.press("KeyM"); // map replaces options
+    await expect(page.getByTestId("map-overlay")).toBeVisible();
+    await expect(page.getByTestId("options-overlay")).toHaveCount(0);
+    await expect(page.getByTestId("map-players")).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("map-overlay")).toHaveCount(0);
+    expect((await input(page)).uiOpen).toBe(false);
+  });
+
+  test("open menus swallow gameplay keys", async ({ page }) => {
+    await enterOffline(page);
+    await page.keyboard.press("KeyO");
+    await page.keyboard.down("KeyQ");
+    expect((await input(page)).breakHeld).toBe(false);
+    await page.keyboard.up("KeyQ");
+    // hotbar selection is also ignored while a menu is open
+    await page.keyboard.press("Digit5");
+    await expect(page.getByTestId("slot-4")).not.toHaveClass(/sel/);
+    await page.getByTestId("resume-btn").click();
+    expect((await input(page)).uiOpen).toBe(false);
+  });
+
+  test("options menu has a working sensitivity slider", async ({ page }) => {
+    await enterOffline(page);
+    await page.keyboard.press("KeyO");
+    const slider = page.getByTestId("sensitivity-slider");
+    await slider.fill("1.8");
+    await expect(page.getByTestId("sensitivity-value")).toHaveText("1.8×");
+    const stored = await page.evaluate(() => localStorage.getItem("mb-sensitivity"));
+    expect(stored).toBe("1.8");
+  });
+});

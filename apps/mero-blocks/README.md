@@ -53,7 +53,7 @@ See **[PLAN.md](./PLAN.md)** for the full design document.
 │ voxel      │ ────────────▶ │ WASM │ ◀────▶ │ WASM │ ───────────▶ │ re-pull    │
 │ engine     │  (150ms batch)│ ctx  │ gossip │ ctx  │              │ overrides  │
 │ + Three.js │ ◀──────────── └──────┘        └──────┘ ◀─────────── │ + remesh   │
-└────────────┘  get_players / heartbeat (1s/3s, silent)            └────────────┘
+└────────────┘  get_players / heartbeat (0.5s/2s, silent)            └────────────┘
 ```
 
 - **Contract** (`logic/`, Rust on calimero-sdk, pinned to core
@@ -77,18 +77,23 @@ make setup     # pnpm install
 make dev       # http://localhost:5183 → "Play offline" needs no node at all
 ```
 
-**Controls:** click to lock the mouse · WASD + Space · LMB break · RMB place ·
-1–9/wheel select · torches and glowstone are real light sources.
+**Controls:** click to lock the mouse · WASD + Space · LMB **or Q** break ·
+RMB **or E** place · 1–9/wheel select · **M** live world map · **O** options
+(mouse sensitivity, key reference) · torches and glowstone are real light
+sources. Everything works from the keyboard, so a MacBook trackpad never
+needs a right-click.
 
 For multiplayer, either open the app from the Calimero desktop (instant SSO)
-or click **Connect a node** on the landing page and log in on your own node.
+or use the landing page: running local nodes are auto-discovered with
+mero-react's `discoverLocalNodes` (health probe on the well-known dev ports) —
+one click to connect — with a manual node-URL fallback.
 
-## Tests — 167 total, all green
+## Tests — 174 total, all green
 
 | suite | count | what it proves |
 |---|---|---|
 | `make unit` (vitest) | 125 | terrain determinism, meshing face counts, lighting flood-fill, raycast, physics, sync batching/echo/reconcile, session/auth/admin parsing |
-| `make e2e` (Playwright, fully mocked node) | 22 | landing + web-login redirect, desktop SSO auto-enter, world picker (list/join/create), live edit round-trips, presence, persistence |
+| `make e2e` (Playwright, fully mocked node) | 29 | landing + web-login redirect, desktop SSO auto-enter, world picker (list/join/create), live edit round-trips, presence, persistence |
 | `make logic-test` (cargo, native mock host) | 20 | LWW convergence, bounds, batch caps, clock-skew reap scenarios, rejoin self-heal |
 
 ## Contract API
@@ -111,7 +116,7 @@ when all of them are green:
 1. **App** — typecheck, 125 vitest tests, production build
 2. **Logic** — 20 contract tests on the native mock host + WASM build (the
    artifact feeds the merobox job)
-3. **E2E mocked** — 22 Playwright tests against a fully mocked node
+3. **E2E mocked** — 29 Playwright tests against a fully mocked node
 4. **E2E merobox** — two real `merod` nodes (rc.13 image) in Docker run the
    full world lifecycle: install app → namespace invite → create world →
    both players join → Alice builds → Bob sees it → Bob breaks a block →
@@ -120,6 +125,16 @@ when all of them are green:
 
 On `main`, a fifth job then builds and deploys to Vercel
 (**mero-blocks.vercel.app**) via `vercel build && vercel deploy --prebuilt`.
+
+A push to `main` touching `logic/**` also builds, signs, and publishes the
+contract bundle to the [Calimero App Registry](https://apps.calimero.network)
+as `com.calimero.meroblocks` (`.github/workflows/deploy-bundle.yml`; version =
+latest published + patch bump). Locally:
+
+```bash
+make bundle    # logic/build-bundle.sh → logic/res/mero-blocks-<ver>.mpk (signed)
+make publish   # bundle + calimero-registry bundle push --remote
+```
 
 ## Sister project
 

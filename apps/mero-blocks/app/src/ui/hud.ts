@@ -50,7 +50,7 @@ export class Hud {
       <div id="mb-debug" data-testid="debug"></div>
       <div id="mb-players" data-testid="players"></div>
       <div id="mb-toasts"></div>
-      <div id="mb-hint">click to play — WASD move, LMB break, RMB place, 1-9 blocks</div>
+      <div id="mb-hint">click to play — WASD move · LMB/Q break · RMB/E place · 1-9 blocks · M map · O options</div>
     `;
     this.debugEl = this.root.querySelector("#mb-debug")!;
     this.playersEl = this.root.querySelector("#mb-players")!;
