@@ -91,9 +91,18 @@ export class Hud {
     if (this.debugEl) this.debugEl.textContent = text;
   }
 
-  setPlayers(me: string, others: { name: string }[]): void {
+  setPlayers(me: string, others: { name: string; action?: string }[]): void {
     if (!this.playersEl) return;
-    const rows = [`<b>${escapeHtml(me)} (you)</b>`, ...others.map((p) => escapeHtml(p.name))];
+    const rows = [
+      `<b>${escapeHtml(me)} (you)</b>`,
+      ...others.map((p) => {
+        const doing =
+          p.action && p.action !== "idle"
+            ? ` <span style="color:#9fb0c3;font-size:11px">· ${escapeHtml(p.action)}</span>`
+            : "";
+        return `${escapeHtml(p.name)}${doing}`;
+      }),
+    ];
     this.playersEl.innerHTML = rows.join("<br>");
   }
 

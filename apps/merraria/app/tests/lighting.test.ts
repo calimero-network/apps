@@ -45,6 +45,28 @@ describe("2D lighting", () => {
     expect(l.brightness(105, 105, 0.08)).toBeGreaterThan(0.7); // night: torch still bright
   });
 
+  it("solid tiles receive light on their exposed faces (world isn't black)", () => {
+    const w = new TileStore();
+    for (let x = 0; x < 40; x++)
+      for (let y = 100; y < 110; y++) w.setGenerated(x, y, STONE);
+    const l = new LightGrid();
+    l.recompute(w);
+    // the surface tile catches the sky, and light bleeds a few tiles down
+    expect(l.skyAt(10, 100)).toBe(14);
+    expect(l.brightness(10, 100, 1)).toBeGreaterThan(0.8);
+    expect(l.skyAt(10, 101)).toBe(10); // first strata under the grass
+    expect(l.skyAt(10, 103)).toBe(2); // fading out…
+    expect(l.skyAt(10, 105)).toBe(0); // …deep ground is dark
+    // a torch lights the wall it hangs next to
+    const box = new TileStore();
+    for (let x = 95; x <= 115; x++) for (let y = 95; y <= 115; y++) box.setGenerated(x, y, STONE);
+    for (let x = 100; x <= 110; x++) box.setGenerated(x, 105, 0); // carve an air tunnel
+    box.setGenerated(105, 105, TORCH);
+    const lb = new LightGrid();
+    lb.recompute(box);
+    expect(lb.blockAt(104, 104)).toBeGreaterThan(0); // cave wall face is lit
+  });
+
   it("recompute clears the dirty flag", () => {
     const w = new TileStore();
     w.setTile(5, 5, STONE);

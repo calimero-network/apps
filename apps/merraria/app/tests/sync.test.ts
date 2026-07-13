@@ -12,7 +12,7 @@ import {
   Transform,
 } from "../src/net/sync";
 
-const T: Transform = { name: "P", x: 1, y: 2, dir: 1, sel: 0 };
+const T: Transform = { name: "P", x: 1, y: 2, dir: 1, sel: 0, action: "walking" };
 
 function makeSync(overrides: Partial<Record<string, unknown>> = {}) {
   const calls: { method: string; args: Record<string, unknown> }[] = [];
@@ -107,5 +107,13 @@ describe("SyncEngine (merraria)", () => {
 
   it("quantize rounds transform to cm", () => {
     expect(quantize({ ...T, x: 1.2345 }).x).toBe(1.23);
+  });
+
+  it("active heartbeat runs at 500ms and carries the action", () => {
+    expect(HEARTBEAT_MOVING_MS).toBe(500); // "save the location every 500ms"
+    const { sync, exec } = makeSync({ get_players: [] });
+    sync.tick(HEARTBEAT_MOVING_MS, { ...T, action: "mining" }, true);
+    const hb = exec.mock.calls.find((c) => c[0] === "heartbeat")!;
+    expect((hb[1] as { t: Transform }).t.action).toBe("mining");
   });
 });

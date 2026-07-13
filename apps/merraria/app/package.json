@@ -13,7 +13,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@calimero-network/mero-js": "^7.0.0"
+    "@calimero-network/mero-js": "^7.0.0",
+    "@calimero-network/mero-react": "^4.3.3",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0",

@@ -60,6 +60,9 @@ pub struct Player {
     /// facing: -1 | 1
     pub dir: f64,
     pub sel: u8,
+    /// what the player is doing: "idle" | "walking" | "mining" | "building" | "swimming"
+    #[serde(default)]
+    pub action: String,
     pub left: bool,
     pub joined_at: u64,
     pub updated_at: u64,
@@ -128,6 +131,8 @@ pub struct Transform {
     pub y: f64,
     pub dir: f64,
     pub sel: u8,
+    #[serde(default)]
+    pub action: String,
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
@@ -150,6 +155,7 @@ pub struct PlayerView {
     pub y: f64,
     pub dir: f64,
     pub sel: u8,
+    pub action: String,
     pub online: bool,
 }
 
@@ -284,6 +290,7 @@ impl Merraria {
             y,
             dir: 1.0,
             sel: 0,
+            action: "idle".to_owned(),
             left: false,
             joined_at,
             updated_at,
@@ -311,6 +318,7 @@ impl Merraria {
             y: t.y,
             dir: t.dir,
             sel: t.sel,
+            action: if t.action.is_empty() { "idle".to_owned() } else { t.action },
             left: false,
             joined_at,
             updated_at,
@@ -364,6 +372,7 @@ impl Merraria {
             y: p.y,
             dir: p.dir,
             sel: p.sel,
+            action: p.action.clone(),
             online,
         }
     }
@@ -459,6 +468,7 @@ mod tests {
             y: 60.0,
             dir: 1.0,
             sel: 0,
+            action: "walking".to_owned(),
         }
     }
 
@@ -634,12 +644,33 @@ mod tests {
             y: 60.5,
             dir: -1.0,
             sel: 7,
+            action: "mining".to_owned(),
         };
         app.call_as(ALICE, |s| s.heartbeat(tr, 1000)).unwrap();
         let p = &app.view(|s| s.get_players(1001))[0];
         assert_eq!((p.x, p.y), (1.25, 60.5));
         assert_eq!(p.dir, -1.0);
         assert_eq!(p.sel, 7);
+        assert_eq!(p.action, "mining");
+    }
+
+    #[test]
+    fn empty_action_defaults_to_idle_and_join_starts_idle() {
+        let mut app = new_world();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        let p = &app.view(|s| s.get_players(1001))[0];
+        assert_eq!(p.action, "idle");
+        let tr = Transform {
+            name: "Alice".to_owned(),
+            x: 1.0,
+            y: 60.0,
+            dir: 1.0,
+            sel: 0,
+            action: String::new(), // old clients omit the field (serde default)
+        };
+        app.call_as(ALICE, |s| s.heartbeat(tr, 1002)).unwrap();
+        let p = &app.view(|s| s.get_players(1003))[0];
+        assert_eq!(p.action, "idle");
     }
 
     #[test]

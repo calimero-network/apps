@@ -17,6 +17,7 @@ const player = (x: number, y: number): PlayerState => ({
   onGround: false,
   inWater: false,
   facing: 1,
+  airJumps: 0,
 });
 
 const idle = { move: 0, jump: false };
@@ -88,6 +89,60 @@ describe("2D physics (y grows downward)", () => {
     const swimmer = player(50.5, 112);
     run(w, swimmer, { move: 0, jump: true }, 60);
     expect(swimmer.y).toBeLessThan(112); // moved up
+  });
+
+  it("leaps out of a shallow pool instead of getting stuck at the surface", () => {
+    // pool: 2 tiles of water in a basin, solid banks either side
+    const w = makeFloor(102);
+    for (let x = 48; x <= 53; x++) {
+      w.setGenerated(x, 100, WATER);
+      w.setGenerated(x, 101, WATER);
+    }
+    for (let y = 100; y <= 101; y++) {
+      w.setGenerated(47, y, STONE);
+      w.setGenerated(54, y, STONE);
+    }
+    const p = player(50.5, 102); // standing on the pool floor
+    run(w, p, { move: 0, jump: true }, 60);
+    const apex = p.y;
+    expect(102 - apex).toBeGreaterThan(2); // full jump strength, clears the bank
+  });
+
+  it("water-surface jump grants one mid-air (double) jump", () => {
+    const w = makeFloor(120);
+    for (let x = 0; x < 400; x++)
+      for (let y = 100; y < 120; y++) w.setGenerated(x, y, WATER);
+    const p = player(50.5, 100.5); // feet just under the surface
+    // leap out from the surface
+    stepPlayer(w, p, { move: 0, jump: true }, TICK);
+    expect(p.vy).toBeLessThan(-8);
+    expect(p.airJumps).toBe(1);
+    // rise until the leap decays, then double-jump mid-air
+    let minVy = p.vy;
+    for (let i = 0; i < 40; i++) {
+      stepPlayer(w, p, { move: 0, jump: false }, TICK);
+      minVy = Math.min(minVy, p.vy);
+    }
+    const before = p.vy;
+    stepPlayer(w, p, { move: 0, jump: false, jumpPressed: true }, TICK);
+    expect(p.vy).toBeLessThan(before);
+    expect(p.vy).toBeLessThan(0);
+    expect(p.airJumps).toBe(0);
+    // a second press does nothing — the charge is spent
+    const spent = p.vy;
+    stepPlayer(w, p, { move: 0, jump: false, jumpPressed: true }, TICK);
+    expect(p.vy).toBeGreaterThan(spent); // only gravity acted
+  });
+
+  it("mid-air jump charge is cleared on landing", () => {
+    const w = makeFloor(100);
+    const p = player(50.5, 100);
+    p.airJumps = 1;
+    run(w, p, idle, 30); // settle on the ground
+    expect(p.onGround).toBe(true);
+    expect(p.airJumps).toBe(0);
+    stepPlayer(w, p, { move: 0, jump: false, jumpPressed: true }, TICK);
+    expect(p.vy).toBeGreaterThanOrEqual(0); // no phantom double jump from the ground
   });
 
   it("tileIntersectsPlayer blocks placing into your own body", () => {

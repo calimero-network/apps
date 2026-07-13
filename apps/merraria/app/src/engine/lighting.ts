@@ -1,5 +1,8 @@
 // 2D lighting: sky light drops straight down until blocked, then everything
-// spreads with -1 attenuation (4-neighbor BFS). Torches add block light.
+// spreads with a cost-per-edge BFS (4-neighbor). Torches add block light.
+// Costs: through air -1, into/through solids -4 (so the first few tile layers
+// under the surface stay visible, Terraria-style), and light never EXITS a
+// solid back into air — caves under a thin roof are still genuinely dark.
 // The whole grid is 400x200 = 80k cells, so a full recompute is fast enough
 // to run on any edit — no incremental bookkeeping needed at this scale.
 
@@ -30,7 +33,8 @@ export class LightGrid {
     const skyQ: number[] = [];
     const blockQ: number[] = [];
 
-    // columnar sky light
+    // columnar sky light down to the first opaque tile; the BFS then lights
+    // that tile's face and bleeds a few tiles into the ground below it
     for (let x = 0; x < WORLD_W; x++) {
       for (let y = 0; y < WORLD_H; y++) {
         if (isOpaque(store.getTile(x, y))) break;
@@ -51,6 +55,9 @@ export class LightGrid {
     store.lightDirty = false;
   }
 
+  /** attenuation per step into a solid tile (air steps cost 1) */
+  static readonly SOLID_COST = 4;
+
   private bfs(store: TileStore, grid: Uint8Array, queue: number[]): void {
     let head = 0;
     while (head < queue.length) {
@@ -59,15 +66,20 @@ export class LightGrid {
       if (level <= 1) continue;
       const x = i % WORLD_W;
       const y = (i / WORLD_W) | 0;
-      const next = level - 1;
+      const fromOpaque = isOpaque(store.getTile(x, y));
       const tryCell = (nx: number, ny: number) => {
         if (nx < 0 || ny < 0 || nx >= WORLD_W || ny >= WORLD_H) return;
-        if (isOpaque(store.getTile(nx, ny))) return;
+        const toOpaque = isOpaque(store.getTile(nx, ny));
+        // light entering ground fades fast but shows the first strata;
+        // it never comes back OUT of the ground, so caves stay dark
+        if (fromOpaque && !toOpaque) return;
+        const cost = toOpaque && fromOpaque ? LightGrid.SOLID_COST : 1;
+        const next = level - cost;
+        if (next <= 0) return;
         const ni = nx + ny * WORLD_W;
-        if (grid[ni] < next) {
-          grid[ni] = next;
-          queue.push(ni);
-        }
+        if (grid[ni] >= next) return;
+        grid[ni] = next;
+        queue.push(ni);
       };
       tryCell(x + 1, y);
       tryCell(x - 1, y);

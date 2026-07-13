@@ -21,12 +21,17 @@ export interface PlayerState {
   onGround: boolean;
   inWater: boolean;
   facing: number; // -1 | 1
+  /** mid-air jumps left — granted by leaping from the water surface */
+  airJumps: number;
 }
 
 export interface MoveInput {
   /** -1 | 0 | 1 */
   move: number;
+  /** held — ground jumps, swimming and surface leaps */
   jump: boolean;
+  /** edge-triggered this tick — consumes a mid-air jump */
+  jumpPressed?: boolean;
 }
 
 function collidesAt(store: TileStore, x: number, y: number): boolean {
@@ -41,8 +46,18 @@ function collidesAt(store: TileStore, x: number, y: number): boolean {
   return false;
 }
 
+const waterAt = (store: TileStore, x: number, y: number) =>
+  store.getTile(Math.floor(x), Math.floor(y)) === WATER;
+
 export function bodyInWater(store: TileStore, s: PlayerState): boolean {
-  return store.getTile(Math.floor(s.x), Math.floor(s.y - PLAYER_H * 0.5)) === WATER;
+  // feet OR center — sampling only the center made the surface count as "air",
+  // so swimmers bobbed at the top unable to ever jump out.
+  return waterAt(store, s.x, s.y - 0.1) || waterAt(store, s.x, s.y - PLAYER_H * 0.5);
+}
+
+/** in water but with the head above the surface — eligible to leap out */
+export function atWaterSurface(store: TileStore, s: PlayerState): boolean {
+  return bodyInWater(store, s) && !waterAt(store, s.x, s.y - PLAYER_H + 0.2);
 }
 
 function sweepAxis(store: TileStore, s: PlayerState, axis: "x" | "y", delta: number): boolean {
@@ -69,10 +84,25 @@ export function stepPlayer(store: TileStore, s: PlayerState, input: MoveInput, d
 
   if (s.inWater) {
     s.vy += GRAVITY * 0.3 * dt;
-    if (input.jump) s.vy = -SWIM_SPEED; // swim up
+    if (input.jump) {
+      if (atWaterSurface(store, s)) {
+        // head above the surface: leap out at full jump strength, plus one
+        // mid-air jump to clear the bank ("double jump from the water top")
+        s.vy = -JUMP_SPEED;
+        s.airJumps = 1;
+      } else {
+        s.vy = -SWIM_SPEED; // swim up
+      }
+    }
     s.vy *= Math.pow(0.6, dt * 8); // drag
   } else {
-    if (input.jump && s.onGround) s.vy = -JUMP_SPEED;
+    if (input.jump && s.onGround) {
+      s.vy = -JUMP_SPEED;
+      s.airJumps = 0;
+    } else if (input.jumpPressed && !s.onGround && s.airJumps > 0) {
+      s.airJumps -= 1;
+      s.vy = -JUMP_SPEED * 0.85;
+    }
     s.vy += GRAVITY * dt;
   }
   s.vy = Math.min(40, s.vy);
@@ -81,6 +111,7 @@ export function stepPlayer(store: TileStore, s: PlayerState, input: MoveInput, d
   const blockedY = sweepAxis(store, s, "y", s.vy * dt);
   if (blockedY) {
     s.onGround = s.vy > 0; // moving down (+y) into ground
+    if (s.onGround) s.airJumps = 0;
     s.vy = 0;
   } else {
     s.onGround = false;

@@ -16,12 +16,13 @@ import { Hud } from "./ui/hud";
 import { Landing, LaunchChoice } from "./ui/landing";
 
 const SAVE_MS = 5000;
-const MINIMAP_MS = 2000;
+const MINIMAP_MS = 500; // live map: remote miners move on it in near real time
 
 interface RemoteAvatar {
   cur: { x: number; y: number; dir: number };
   target: { x: number; y: number; dir: number };
   name: string;
+  action: string;
 }
 
 async function boot(): Promise<void> {
@@ -88,6 +89,7 @@ async function boot(): Promise<void> {
     onGround: false,
     inWater: false,
     facing: 1,
+    airJumps: 0,
   };
   let sel = spawn.sel ?? 0;
 
@@ -100,7 +102,7 @@ async function boot(): Promise<void> {
   let sync: SyncEngine | null = null;
   let myId: string | null = null;
   const remotes = new Map<string, RemoteAvatar>();
-  let roster: { name: string }[] = [];
+  let roster: { name: string; action: string }[] = [];
 
   const onPlayers = (players: RemotePlayer[]) => {
     const seen = new Set<string>();
@@ -111,12 +113,13 @@ async function boot(): Promise<void> {
       if (existing) {
         existing.target = target;
         existing.name = p.name;
+        existing.action = p.action || "idle";
       } else {
-        remotes.set(p.id, { cur: { ...target }, target, name: p.name });
+        remotes.set(p.id, { cur: { ...target }, target, name: p.name, action: p.action || "idle" });
       }
     }
     for (const id of [...remotes.keys()]) if (!seen.has(id)) remotes.delete(id);
-    roster = players.map((p) => ({ name: p.name }));
+    roster = players.map((p) => ({ name: p.name, action: p.action || "idle" }));
     hud.setPlayers(choice.name, roster);
   };
 
@@ -138,12 +141,16 @@ async function boot(): Promise<void> {
 
   // ---- input -----------------------------------------------------------
   const keys = new Set<string>();
+  let jumpPressed = false; // keydown edge, consumed by the next physics tick
   let digHeld = false;
   let placeHeld = false;
   let mouseX = 0;
   let mouseY = 0;
 
   window.addEventListener("keydown", (e) => {
+    if (!e.repeat && (e.code === "Space" || e.code === "KeyW" || e.code === "ArrowUp")) {
+      jumpPressed = true;
+    }
     keys.add(e.code);
     if (e.code.startsWith("Digit")) {
       const n = Number(e.code.slice(5)) - 1;
@@ -216,7 +223,8 @@ async function boot(): Promise<void> {
       (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0);
     const jump = keys.has("Space") || keys.has("KeyW") || keys.has("ArrowUp");
     while (physicsAcc >= TICK) {
-      stepPlayer(world, player, { move, jump }, TICK);
+      stepPlayer(world, player, { move, jump, jumpPressed }, TICK);
+      jumpPressed = false;
       physicsAcc -= TICK;
     }
 
@@ -255,15 +263,25 @@ async function boot(): Promise<void> {
     // lighting (full recompute when dirty — 80k cells, fast)
     if (world.lightDirty) light.recompute(world);
 
-    // networking
+    // networking — action tells peers what we're doing (roster + map)
+    const action = digHeld && inReach
+      ? "mining"
+      : placeHeld && inReach
+        ? "building"
+        : player.inWater
+          ? "swimming"
+          : move !== 0 || !player.onGround
+            ? "walking"
+            : "idle";
     const transform: Transform = {
       name: choice.name,
       x: player.x,
       y: player.y,
       dir: player.facing,
       sel,
+      action,
     };
-    sync?.tick(dtMs, transform, move !== 0 || !player.onGround);
+    sync?.tick(dtMs, transform, action !== "idle");
 
     // remote lerp
     const lerp = Math.min(1, dtMs / 250);
@@ -272,7 +290,14 @@ async function boot(): Promise<void> {
       r.cur.x += (r.target.x - r.cur.x) * lerp;
       r.cur.y += (r.target.y - r.cur.y) * lerp;
       r.cur.dir = r.target.dir;
-      remoteDraws.push({ id, name: r.name, x: r.cur.x, y: r.cur.y, dir: r.cur.dir });
+      remoteDraws.push({
+        id,
+        name: r.name,
+        x: r.cur.x,
+        y: r.cur.y,
+        dir: r.cur.dir,
+        action: r.action,
+      });
     }
 
     // render
@@ -289,7 +314,7 @@ async function boot(): Promise<void> {
     );
     if (minimapAcc >= MINIMAP_MS) {
       minimapAcc = 0;
-      renderer.drawMinimap(hud.minimap, world, player);
+      renderer.drawMinimap(hud.minimap, world, player, remoteDraws);
     }
 
     hud.setDebug(

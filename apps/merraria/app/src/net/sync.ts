@@ -5,9 +5,12 @@ import { Edit, TileStore, tileKey } from "../engine/world";
 import { GameEvent } from "./events";
 
 export const FLUSH_MS = 150;
-export const HEARTBEAT_MOVING_MS = 1000;
+/** active players save their location every 500ms so the map tracks them live */
+export const HEARTBEAT_MOVING_MS = 500;
 export const HEARTBEAT_IDLE_MS = 3000;
-export const PLAYERS_POLL_MS = 1500;
+export const PLAYERS_POLL_MS = 500;
+
+export type PlayerAction = "idle" | "walking" | "mining" | "building" | "swimming";
 
 export interface Transform {
   name: string;
@@ -15,6 +18,7 @@ export interface Transform {
   y: number;
   dir: number; // -1 | 1 facing
   sel: number;
+  action: PlayerAction;
 }
 
 export interface RemotePlayer extends Transform {
