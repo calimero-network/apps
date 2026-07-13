@@ -358,23 +358,37 @@ export class CallEngine {
       }
 
       // Recovery ladder for degraded connections:
-      //  1. "failed" → immediate ICE restart; "disconnected" often self-heals,
-      //     so it gets a 2.5s fuse before the restart.
-      //  2. If still degraded after REBUILD_AFTER_MS, the pc is presumed wedged
-      //     (a ghost/half-dead transport): rebuild the peer from scratch, which
-      //     runs a brand-new offer/answer handshake.
+      //  1. "failed" → ICE restart; "disconnected" often self-heals, so it
+      //     gets a short fuse before the restart.
+      //  2. If still degraded after the rebuild window, the pc is presumed
+      //     wedged (a ghost/half-dead transport): rebuild the peer from
+      //     scratch, which runs a brand-new offer/answer handshake.
+      //
+      // The ladder is ASYMMETRIC by politeness: the impolite side leads
+      // recovery, the polite side hangs back ~2× as a backstop. Both sides
+      // recovering in lockstep livelocked over our seconds-slow signaling
+      // channel — each side's restart re-offered and invalidated the answer
+      // the other side had just posted, every ~20s, forever ("failed →
+      // restarting ICE" loops on BOTH peers while nothing ever connected).
+      const lead = !state.polite;
       if (st === "failed") {
-        this.diag("peer", `${peerId.slice(0, 8)} failed → restarting ICE`);
-        try { pc.restartIce(); } catch { /* pc may be closing */ }
+        const restart = () => {
+          if (this.peers.get(peerId) !== state || pc.connectionState !== "failed") return;
+          this.diag("peer", `${peerId.slice(0, 8)} failed → restarting ICE${lead ? "" : " (backstop)"}`);
+          try { pc.restartIce(); } catch { /* pc may be closing */ }
+        };
+        if (lead) restart();
+        else setTimeout(restart, 5000);
       } else if (st === "disconnected") {
         setTimeout(() => {
           if (this.peers.get(peerId) === state && pc.connectionState === "disconnected") {
             this.diag("peer", `${peerId.slice(0, 8)} still disconnected → restarting ICE`);
             try { pc.restartIce(); } catch { /* pc may be closing */ }
           }
-        }, 2500);
+        }, lead ? 2500 : 6000);
       }
       if ((st === "failed" || st === "disconnected") && !state.rebuildTimer) {
+        const rebuildAfter = lead ? REBUILD_AFTER_MS : REBUILD_AFTER_MS * 2;
         state.rebuildTimer = setTimeout(() => {
           state.rebuildTimer = null;
           if (this.peers.get(peerId) !== state) return; // already rebuilt/left
@@ -382,12 +396,12 @@ export class CallEngine {
           if (cur !== "failed" && cur !== "disconnected") return; // healed/healing
           this.diag(
             "peer",
-            `${peerId.slice(0, 8)} unreachable for ${REBUILD_AFTER_MS / 1000}s — rebuilding connection from scratch`,
+            `${peerId.slice(0, 8)} unreachable for ${rebuildAfter / 1000}s — rebuilding connection from scratch`,
           );
           // keepStream: leave the last frame on the tile under "reconnecting…".
           this.closePeer(peerId, "rebuilding", true);
           this.addPeer(peerId);
-        }, REBUILD_AFTER_MS);
+        }, rebuildAfter);
       }
     };
 

@@ -307,7 +307,7 @@ describe("ghost-peer reconnection ladder", () => {
     vi.useFakeTimers();
     const { engine, cbs } = makeEngine();
     await engine.start();
-    engine.syncPeers([PEER_POLITE]);
+    engine.syncPeers([PEER_IMPOLITE]); // impolite → we LEAD recovery
     const pc = FakePC.all[0];
 
     pc.setConn("failed");
@@ -320,7 +320,7 @@ describe("ghost-peer reconnection ladder", () => {
     expect(await peerCount(engine)).toBe(1);
     // Rebuild keeps the last frame on the tile ("reconnecting…" overlay) —
     // the stream-cleared callback must NOT fire for a rebuild.
-    expect(cbs.onRemoteStream).not.toHaveBeenCalledWith(PEER_POLITE, null);
+    expect(cbs.onRemoteStream).not.toHaveBeenCalledWith(PEER_IMPOLITE, null);
     // Rebuilt pc published our tracks → fresh offer goes out.
     await vi.advanceTimersByTimeAsync(0);
     const offers = cbs.onSignal.mock.calls.filter(([s]) => (s as OutSignal).kind === "offer");
@@ -343,7 +343,7 @@ describe("ghost-peer reconnection ladder", () => {
   it("disconnected gets the short-fuse ICE restart, then rebuild if still down", async () => {
     vi.useFakeTimers();
     const { engine } = makeEngine();
-    engine.syncPeers([PEER_POLITE]);
+    engine.syncPeers([PEER_IMPOLITE]); // impolite → we LEAD recovery
     const pc = FakePC.all[0];
 
     pc.setConn("disconnected");
@@ -353,6 +353,35 @@ describe("ghost-peer reconnection ladder", () => {
     await vi.advanceTimersByTimeAsync(5500); // 8s total since degradation
     expect(pc.closed).toBe(true);
     expect(FakePC.all.length).toBe(2);
+    expect(await peerCount(engine)).toBe(1);
+  });
+
+  it("POLITE side hangs back (backstop) so the two sides can't duel-restart forever", async () => {
+    // Both sides restarting in lockstep livelocked over the seconds-slow
+    // signaling channel: each restart re-offered and invalidated the answer
+    // the other side had just posted. The polite side must lag the leader.
+    vi.useFakeTimers();
+    const { engine } = makeEngine();
+    await engine.start();
+    engine.syncPeers([PEER_POLITE]); // we are POLITE toward aaa-peer
+    const pc = FakePC.all[0];
+
+    pc.setConn("failed");
+    expect(pc.restartIce).not.toHaveBeenCalled(); // no immediate restart
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(pc.restartIce).toHaveBeenCalledTimes(1); // 5s backstop fuse
+
+    // A restart that lands in time cancels the backstop rebuild…
+    pc.setConn("connected");
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(pc.closed).toBe(false);
+
+    // …and when it doesn't, the rebuild waits 2× the leader's window (16s).
+    pc.setConn("failed");
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(pc.closed).toBe(false); // leader would have rebuilt at 8s
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(pc.closed).toBe(true); // backstop rebuild at 16s
     expect(await peerCount(engine)).toBe(1);
   });
 });
