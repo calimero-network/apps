@@ -63,7 +63,10 @@ export default function DevPanel({ diagnostics, getStats, callId, onClose, effec
     });
 
   const copyLog = async () => {
-    const text = diagnostics.map((d) => `${ts(d.t)} [${d.level}] ${d.msg}`).join("\n");
+    // Stamp the build version so pasted bug reports say which build broke.
+    const text = [`mero-meet v${__APP_VERSION__}`]
+      .concat(diagnostics.map((d) => `${ts(d.t)} [${d.level}] ${d.msg}`))
+      .join("\n");
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -77,7 +80,7 @@ export default function DevPanel({ diagnostics, getStats, callId, onClose, effec
     <div className={styles.panel}>
       <div className={styles.head}>
         <span className={styles.title}>⚙ WebRTC diagnostics</span>
-        <span className={styles.call}>{callId ?? "—"}</span>
+        <span className={styles.call}>v{__APP_VERSION__} · {callId ?? "—"}</span>
         <button className={styles.close} onClick={onClose} title="Hide diagnostics">
           ✕
         </button>

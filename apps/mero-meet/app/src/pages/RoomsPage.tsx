@@ -181,7 +181,9 @@ export default function RoomsPage() {
     <div className={styles.page}>
       <header className={styles.header}>
         <div className={styles.headerRow}>
-          <h1 className={styles.title}>Mero Meet</h1>
+          <h1 className={styles.title}>
+            Mero Meet <span className={styles.version}>v{__APP_VERSION__}</span>
+          </h1>
           <ThemeToggle />
         </div>
         <p className={styles.subtitle}>Pick a room, start a new one, or join with an invite.</p>

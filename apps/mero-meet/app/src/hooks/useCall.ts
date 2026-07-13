@@ -72,6 +72,15 @@ const REASSERT_MS = 5_000;
  */
 export function useCallController(): CallController {
   const meet = useMeroMeet();
+  // Live handle for closures with frozen deps (the engine's onSignal, the
+  // one-shot start/resume effects). On a mid-call page refresh, `active` flips
+  // BEFORE the Mero provider finished re-initializing from storage — the meet
+  // captured at that moment rejected every call with "Not connected", and the
+  // engine kept posting through that dead snapshot FOREVER ("post_signal
+  // failed twice" loops while reads flowed fine). Everything internal calls
+  // meetRef.current so it always reaches the provider's live client.
+  const meetRef = useRef(meet);
+  meetRef.current = meet;
   const selfId = getExecutorPublicKey() ?? "";
 
   const [active, setActive] = useState(false);
@@ -152,18 +161,18 @@ export function useCallController(): CallController {
     (sig: OutSignal) => {
       const label = `${sig.kind}→${sig.to.slice(0, 8)}`;
       void (async () => {
-        const seq = await meet.postSignal(sig.to, sig.kind, sig.payload, callIdRef.current);
+        const seq = await meetRef.current.postSignal(sig.to, sig.kind, sig.payload, callIdRef.current);
         if (seq != null) {
           pushDiag("signal", `posted ${label} (seq ${seq})`);
           return;
         }
         pushDiag("error", `post_signal ${label} failed — retrying once`);
-        const retry = await meet.postSignal(sig.to, sig.kind, sig.payload, callIdRef.current);
+        const retry = await meetRef.current.postSignal(sig.to, sig.kind, sig.payload, callIdRef.current);
         if (retry != null) pushDiag("signal", `posted ${label} on retry (seq ${retry})`);
         else pushDiag("error", `post_signal ${label} failed twice — signal LOST (node down?)`);
       })();
     },
-    [meet, pushDiag],
+    [pushDiag],
   );
 
   // ── Inbound signaling: contract → engine ────────────────────────────────────
@@ -176,7 +185,7 @@ export function useCallController(): CallController {
       // Re-reading a short window and deduping by id costs one cheap local
       // query and never misses a signal.
       const after = Math.max(0, lastSeqRef.current - 16);
-      const signals = await meet.getSignals(after);
+      const signals = await meetRef.current.getSignals(after);
       // Transition-logged RPC health: a dead node otherwise looked identical
       // to an empty mailbox ("no logs change, nothing is going on").
       if (signals == null) {
@@ -215,7 +224,7 @@ export function useCallController(): CallController {
     } finally {
       drainingRef.current = false;
     }
-  }, [meet, pushDiag]);
+  }, [pushDiag]);
 
   // ── Roster reconciliation ───────────────────────────────────────────────────
   const syncRoster = useCallback(async () => {
@@ -229,8 +238,8 @@ export function useCallController(): CallController {
     if (!seededRef.current) return;
     // Pull presence (names + mic/camera + online-ness) and the call roster.
     const [roster, lobby] = await Promise.all([
-      meet.getCallParticipants(),
-      meet.getLobby(),
+      meetRef.current.getCallParticipants(),
+      meetRef.current.getLobby(),
     ]);
     // Transition-logged RPC health (see drainSignals for why).
     if (roster == null || lobby == null) {
@@ -270,12 +279,17 @@ export function useCallController(): CallController {
     // it is idempotent — instead of sitting in a call nobody can see us in.
     // (Previously this only happened on visibilitychange, so a dropped member
     // stayed invisible forever: "we're both in a call but there's no one".)
-    if (seededRef.current && callIdRef.current && !roster.includes(selfId)) {
+    // NOTE: no `callIdRef.current` gate here — when the join-time start_call
+    // failed (provider still initializing: page refresh, or joining the call
+    // right after joining the room), callId stayed "" and the old gate disabled
+    // this self-heal forever: the window sat in the call posting nothing,
+    // invisible to everyone.
+    if (seededRef.current && !roster.includes(selfId)) {
       const nowT = Date.now();
       if (nowT - lastReassertRef.current > REASSERT_MS) {
         lastReassertRef.current = nowT;
         pushDiag("error", "contract roster lost us — re-asserting call membership (start_call)");
-        void meet.startCall().then((id) => {
+        void meetRef.current.startCall().then((id) => {
           if (id) {
             callIdRef.current = id;
             setCallId(id);
@@ -359,7 +373,7 @@ export function useCallController(): CallController {
       }
       return next;
     });
-  }, [meet, selfId, pushDiag]);
+  }, [selfId, pushDiag]);
 
   // ── Start / stop the call machinery when `active` flips ──────────────────────
   useEffect(() => {
@@ -410,8 +424,8 @@ export function useCallController(): CallController {
         const [ice, , id, firstBacklog] = await Promise.all([
           invokeTauri<RTCIceServer[]>("get_ice_servers").catch(() => null),
           engine.start(),
-          meet.startCall(),
-          meet.getSignals(0),
+          meetRef.current.startCall(),
+          meetRef.current.getSignals(0),
         ]);
         if (cancelled) return;
         // The seed read is what stops a fresh call from replaying the whole
@@ -419,7 +433,7 @@ export function useCallController(): CallController {
         // once before accepting a lossy seed.
         let backlog = firstBacklog;
         if (backlog == null) {
-          backlog = await meet.getSignals(0);
+          backlog = await meetRef.current.getSignals(0);
           if (cancelled) return;
           if (backlog == null) {
             pushDiag("error", "mailbox seed failed twice — old signals may replay briefly");
@@ -521,14 +535,14 @@ export function useCallController(): CallController {
       timer = setTimeout(tick, handshaking ? SIGNAL_POLL_FAST_MS : SIGNAL_POLL_MS);
     };
     timer = setTimeout(tick, SIGNAL_POLL_FAST_MS);
-    const hb = setInterval(() => void meet.heartbeat(), HEARTBEAT_MS);
+    const hb = setInterval(() => void meetRef.current.heartbeat(), HEARTBEAT_MS);
     // Best-effort graceful leave if the window is closed/refreshed mid-call
     // (the normal path is the Leave button → leave()). Without this, closing the
     // window leaves your presence.callId set and you linger as a phantom
     // participant for others until your heartbeat goes stale. The contract also
     // reaps a stale call on the next start_call as a backstop.
     const onHide = () => {
-      void meet.leaveCall();
+      void meetRef.current.leaveCall();
     };
     window.addEventListener("pagehide", onHide);
     // When the window becomes visible again: WKWebView throttles/suspends JS
@@ -538,8 +552,8 @@ export function useCallController(): CallController {
     // re-adds us if a server-side reap dropped us while we were suspended).
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
-      void meet.heartbeat();
-      void meet.startCall();
+      void meetRef.current.heartbeat();
+      void meetRef.current.startCall();
       void syncRoster();
       void drainSignals();
     };
@@ -551,26 +565,26 @@ export function useCallController(): CallController {
       window.removeEventListener("pagehide", onHide);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [active, drainSignals, syncRoster, meet]);
+  }, [active, drainSignals, syncRoster]);
 
   // ── Controls ─────────────────────────────────────────────────────────────────
   const toggleMute = useCallback(() => {
     setMuted((m) => {
       const next = !m;
       engineRef.current?.setMuted(next);
-      void meet.setState({ muted: next });
+      void meetRef.current.setState({ muted: next });
       return next;
     });
-  }, [meet]);
+  }, []);
 
   const toggleVideo = useCallback(() => {
     setVideoOn((v) => {
       const next = !v;
       engineRef.current?.setVideo(next);
-      void meet.setState({ video_on: next });
+      void meetRef.current.setState({ video_on: next });
       return next;
     });
-  }, [meet]);
+  }, []);
 
   // ── Background effect (blur) ─────────────────────────────────────────────────
   const setEffect = useCallback((next: BgEffect) => {
@@ -613,7 +627,7 @@ export function useCallController(): CallController {
   const reconnect = useCallback(() => {
     pushDiag("info", "force reconnect requested — re-asserting membership + rebuilding peers");
     lastReassertRef.current = Date.now();
-    void meet
+    void meetRef.current
       .startCall()
       .then((id) => {
         if (id) {
@@ -628,7 +642,7 @@ export function useCallController(): CallController {
         void syncRoster();
         void drainSignals();
       });
-  }, [meet, syncRoster, drainSignals, pushDiag]);
+  }, [syncRoster, drainSignals, pushDiag]);
 
   const leave = useCallback(async () => {
     pushDiag("info", "leaving call");
@@ -636,8 +650,8 @@ export function useCallController(): CallController {
       sessionStorage.removeItem(RESUME_KEY); // explicit leave — do not resume
     } catch { /* blocked storage */ }
     setActive(false); // triggers cleanup effect (engine.stop, processor.close)
-    await meet.leaveCall();
-  }, [meet, pushDiag]);
+    await meetRef.current.leaveCall();
+  }, [pushDiag]);
 
   // ── Refresh persistence ───────────────────────────────────────────────────────
   // Mark the live call in sessionStorage (survives F5, dies with the window).
@@ -665,7 +679,7 @@ export function useCallController(): CallController {
     } catch { /* blocked storage */ }
     if (!ctx || stored !== ctx || !name) return;
     pushDiag("info", "resuming call after page refresh");
-    void meet.join(name).then(() => setActive(true));
+    void meetRef.current.join(name).then(() => setActive(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

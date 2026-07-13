@@ -107,11 +107,17 @@ export function useMeroMeet() {
       postMessage,
       getMessages,
     }),
+    // `loading`/`error` are deliberately NOT deps: they flip on every request,
+    // and having them here changed this object's identity each time — which
+    // tore down and rebuilt every consumer effect keyed on `meet` (the 3s call
+    // heartbeat interval was reset every <3s and effectively NEVER fired; chat
+    // polls restarted per request). The identity now only changes when
+    // `execute` genuinely changes (provider became ready / session moved), at
+    // the cost of the (unused) loading/error fields going stale on the object.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       contextId,
       executorId,
-      loading,
-      error,
       join,
       heartbeat,
       setState,

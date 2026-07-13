@@ -25,6 +25,14 @@
   margin: 0 0 6px;
 }
 
+.version {
+  font-size: 0.85rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--text-dim);
+  vertical-align: middle;
+}
+
 .subtitle {
   margin: 0;
   color: var(--text-dim);
