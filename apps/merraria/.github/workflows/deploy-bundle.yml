@@ -94,6 +94,12 @@ jobs:
           MERO_SIGN_KEY_FILE: ${{ runner.temp }}/mero-sign-key.json
         run: ./logic/build-bundle.sh
 
+      # registry-cli >=1.15 requires node >= 24; the runner default is 20
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
       - name: Install calimero-registry CLI
         run: npm install -g @calimero-network/registry-cli
 
