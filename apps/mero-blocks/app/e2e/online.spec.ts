@@ -116,13 +116,17 @@ test.describe("online mode (mocked node)", () => {
       .toBeGreaterThan(0);
   });
 
-  test("falls back to offline when the node is unreachable", async ({ page }) => {
+  test("an unreachable world is a hard stop — error screen, no offline fallback", async ({ page }) => {
     await seedSession(page);
     await page.route("**/jsonrpc", (route) => route.abort());
     await page.route("**/sse**", (route) => route.abort());
     await page.goto("/");
     await page.getByTestId("connect-btn").click();
-    await page.waitForFunction(() => "__mb" in window);
-    await expect(page.getByTestId("debug")).toContainText("offline");
+    await expect(page.getByTestId("fatal-error")).toBeVisible();
+    await expect(page.getByTestId("fatal-message")).toContainText("Could not reach the shared world");
+    await expect(page.getByTestId("back-to-title-btn")).toBeVisible();
+    // the game never booted
+    const started = await page.evaluate(() => "__mb" in window);
+    expect(started).toBe(false);
   });
 });

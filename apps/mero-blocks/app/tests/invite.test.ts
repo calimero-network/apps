@@ -109,6 +109,7 @@ describe("acceptWorldInvite", () => {
     expect(getSession().contextId).toBe("ctx-77");
     expect(getSession().namespaceId).toBe("abcd01");
     expect(getSession().groupId).toBe("grp-77");
+    expect(getSession().worldName).toBe("overworld"); // alias travels with the invite
     expect(getSession().executorPublicKey).toBe("pk-me"); // rpc executor for the world
   });
 
@@ -254,7 +255,22 @@ describe("createWorldInvite", () => {
     expect(getSession().namespaceId).toBe("ns-77");
   });
 
-  it("refuses when offline", async () => {
+  it("falls back to the session's world name when the node omits groupName", async () => {
+    updateSession({
+      contextId: "ctx-77",
+      namespaceId: "ns-1",
+      groupId: "grp-77",
+      worldName: "myworld",
+    });
+    mockRoutes([
+      ["/admin-api/groups/grp-77", { subgroupVisibility: "open" }],
+      ["/admin-api/namespaces/ns-1/invite", { invitation: SIGNED }], // no groupName echoed
+    ]);
+    const payload = decodeInvite(await createWorldInvite())!;
+    expect(payload.groupAlias).toBe("myworld");
+  });
+
+  it("refuses when not connected to a world", async () => {
     await expect(createWorldInvite()).rejects.toThrow(/not in a shared world/);
   });
 });

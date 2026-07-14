@@ -1,13 +1,20 @@
 // Landing page — Minecraft-title-screen style: a real generated world spins
 // blurred in the background (ui/panorama.ts); in front there is only the
 // logo, the title, and the play card. Three auth states for the card:
-//  1. anonymous          → play offline, or connect a node (auto-discovered
-//                          via mero-react's discoverLocalNodes + manual URL)
+//  1. anonymous          → "Connect a node" opens the connect popup: the
+//                          well-known local endpoints render immediately and
+//                          are pinged live (mero-react probeNodeHealth), plus
+//                          a manual URL field. No node, no game — there is no
+//                          offline mode.
 //  2. authenticated      → pick an existing world or create one (admin API)
 //  3. ready (has context)→ one-click "Enter shared world"
 // Desktop SSO (full hash) never sees this page — main.ts auto-enters.
 
-import { discoverLocalNodes } from "@calimero-network/mero-react";
+import {
+  DEFAULT_LOCAL_NODE_PORTS,
+  localNodeUrl,
+  probeNodeHealth,
+} from "@calimero-network/mero-react";
 import {
   acceptWorldInvite,
   createWorld,
@@ -21,9 +28,7 @@ import { clearSession, getSession, hasConnection, isAuthenticated, updateSession
 import { Panorama } from "./panorama";
 
 export interface LaunchChoice {
-  mode: "offline" | "online";
   name: string;
-  seed: number;
 }
 
 const css = `
@@ -76,6 +81,22 @@ const css = `
   box-shadow: 0 0 6px #58c56b; flex: none; }
 .mbl-node-row button { padding: 6px 14px; border-radius: 4px; border: 2px solid rgba(0,0,0,0.75);
   background: #3f9950; color: #fff; font-weight: 700; cursor: pointer; }
+.mbl-node-row button:disabled { background: #4a4f57; cursor: default; opacity: 0.6; }
+.mbl-node-row.dead { border-color: rgba(255,255,255,0.1); }
+.mbl-node-row.dead .mbl-dot { background: #6b7480; box-shadow: none; }
+.mbl-node-row .mbl-dot.wait { background: #d8b13c; box-shadow: 0 0 6px #d8b13c;
+  animation: mblpulse 1.2s ease-in-out infinite; }
+.mbl-status { font-size: 10px; color: #8fa3ba; flex: none; min-width: 58px; text-align: right; }
+.mbl-modal-shade { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,0.6);
+  display: flex; align-items: center; justify-content: center; padding: 16px; }
+.mbl-modal { width: min(420px, 94vw); box-sizing: border-box; background: rgba(10,13,18,0.97);
+  border: 1px solid rgba(255,255,255,0.18); border-radius: 10px; padding: 18px 20px 20px;
+  box-shadow: 0 16px 60px rgba(0,0,0,0.7); color: #fff; }
+.mbl-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.mbl-modal-head h3 { margin: 0; font-size: 15px; }
+.mbl-modal-close { background: none; border: none; color: #9fb0c3; font-size: 18px;
+  cursor: pointer; padding: 2px 6px; line-height: 1; }
+.mbl-modal-close:hover { color: #fff; }
 .mbl-scan { font-size: 12px; color: #9fb0c3; text-align: center; animation: mblpulse 1.2s ease-in-out infinite; }
 @keyframes mblpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 .mbl-note { font-size: 11px; color: #8fa3ba; margin-top: 10px; line-height: 1.5; text-align: center; }
@@ -174,7 +195,7 @@ export class Landing {
     wrap.innerHTML = `
       <div class="mbl-logo">${LOGO_SVG}</div>
       <h1 class="mbl-title">Mero <em>Blocks</em></h1>
-      <p class="mbl-tag">P2P voxel worlds on Calimero — no game server</p>
+      <p class="mbl-tag">P2P worlds on Calimero — no game server</p>
       <div class="mbl-card" data-testid="play-card"><div id="mbl-play"></div></div>
       <div class="mbl-controls" data-testid="controls">
         <kbd>WASD</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>LMB</kbd>/<kbd>Q</kbd> break
@@ -201,20 +222,21 @@ export class Landing {
     else this.renderAnonymous(defaults, done);
   }
 
-  private commonInputs(defaults: { name: string; seed: number }, withSeed: boolean): string {
+  private commonInputs(defaults: { name: string }): string {
     return `
       <label>player name</label>
       <input id="mbl-name" data-testid="name-input" value="${escapeHtml(defaults.name)}" maxlength="16" />
-      ${withSeed ? `<label>world seed (offline)</label>
-      <input id="mbl-seed" data-testid="seed-input" value="${defaults.seed}" />` : ""}
     `;
   }
 
-  private readChoice(mode: "offline" | "online", defaults: { name: string; seed: number }): LaunchChoice {
+  private readChoice(): LaunchChoice {
     const name = (this.root.querySelector<HTMLInputElement>("#mbl-name")?.value || "Player").trim();
-    const seedRaw = this.root.querySelector<HTMLInputElement>("#mbl-seed")?.value;
-    const seed = Math.abs(Math.floor(Number(seedRaw))) || defaults.seed;
-    return { mode, name, seed };
+    return { name };
+  }
+
+  private readSeed(fallback: number): number {
+    const raw = this.root.querySelector<HTMLInputElement>("#mbl-seed")?.value;
+    return Math.abs(Math.floor(Number(raw))) || fallback;
   }
 
   // state 3: session has node + context — one click to play
@@ -222,18 +244,14 @@ export class Landing {
     const el = this.playCardEl();
     el.innerHTML = `
       <h3>You're connected</h3>
-      ${this.commonInputs(defaults, false)}
+      ${this.commonInputs(defaults)}
       <button class="mbl-btn primary" data-testid="connect-btn">Enter shared world</button>
       <button class="mbl-btn ghost" data-testid="invite-btn">Invite friends</button>
-      <div class="mbl-divider">or</div>
-      <label>world seed (offline)</label>
-      <input id="mbl-seed" data-testid="seed-input" value="${defaults.seed}" />
-      <button class="mbl-btn ghost" data-testid="offline-btn">Play offline</button>
       <button class="mbl-link" data-testid="disconnect-btn">Disconnect from node</button>
       <div class="mbl-error" data-testid="ready-error"></div>
     `;
     el.querySelector("[data-testid=connect-btn]")!.addEventListener("click", () =>
-      done(this.readChoice("online", defaults)),
+      done(this.readChoice()),
     );
     const inviteBtn = el.querySelector<HTMLButtonElement>("[data-testid=invite-btn]")!;
     inviteBtn.addEventListener("click", async () => {
@@ -252,9 +270,6 @@ export class Landing {
         inviteBtn.disabled = false;
       }
     });
-    el.querySelector("[data-testid=offline-btn]")!.addEventListener("click", () =>
-      done(this.readChoice("offline", defaults)),
-    );
     el.querySelector("[data-testid=disconnect-btn]")!.addEventListener("click", () => {
       clearSession();
       this.renderPlayCard(defaults, done);
@@ -266,7 +281,7 @@ export class Landing {
     const el = this.playCardEl();
     el.innerHTML = `
       <h3>Choose a world</h3>
-      ${this.commonInputs(defaults, false)}
+      ${this.commonInputs(defaults)}
       <div class="mbl-worlds" data-testid="world-list"><div class="mbl-note">Loading worlds…</div></div>
       <div class="mbl-divider">or join with an invite</div>
       <input id="mbl-invite" data-testid="invite-input" placeholder="paste an invite code" />
@@ -277,16 +292,12 @@ export class Landing {
       <label>seed</label>
       <input id="mbl-seed" data-testid="seed-input" value="${defaults.seed}" />
       <button class="mbl-btn green" data-testid="create-world-btn">Create world</button>
-      <button class="mbl-btn ghost" data-testid="offline-btn">Play offline</button>
       <button class="mbl-link" data-testid="disconnect-btn">Disconnect from node</button>
       <div class="mbl-error" data-testid="picker-error"></div>
     `;
     const errEl = el.querySelector<HTMLElement>("[data-testid=picker-error]")!;
     const listEl = el.querySelector<HTMLElement>("[data-testid=world-list]")!;
 
-    el.querySelector("[data-testid=offline-btn]")!.addEventListener("click", () =>
-      done(this.readChoice("offline", defaults)),
-    );
     el.querySelector("[data-testid=disconnect-btn]")!.addEventListener("click", () => {
       clearSession();
       this.renderPlayCard(defaults, done);
@@ -300,7 +311,7 @@ export class Landing {
       }
       try {
         await acceptWorldInvite(code);
-        done(this.readChoice("online", defaults));
+        done(this.readChoice());
       } catch (e) {
         errEl.textContent = `Could not join with invite: ${errText(e)}`;
       }
@@ -324,15 +335,16 @@ export class Landing {
               errEl.textContent = "";
               try {
                 const identity = await joinWorld(w.contextId);
-                // switching worlds: the old world's namespace/group must not
-                // leak into this one (invites would target the wrong world)
+                // switching worlds: the old world's namespace/group/name must
+                // not leak into this one (invites would target the wrong world)
                 updateSession({
                   contextId: w.contextId,
                   namespaceId: null,
                   groupId: null,
+                  worldName: null,
                   executorPublicKey: identity,
                 });
-                done(this.readChoice("online", defaults));
+                done(this.readChoice());
               } catch (e) {
                 errEl.textContent = `Could not join: ${errText(e)}`;
               }
@@ -352,13 +364,14 @@ export class Landing {
         }
         const worldName =
           el.querySelector<HTMLInputElement>("#mbl-world-name")?.value.trim() || "overworld";
-        const choice = this.readChoice("online", defaults);
+        const choice = this.readChoice();
         try {
-          const created = await createWorld(applicationId, worldName, choice.seed);
+          const created = await createWorld(applicationId, worldName, this.readSeed(defaults.seed));
           updateSession({
             contextId: created.contextId,
             namespaceId: created.namespaceId,
             groupId: created.groupId,
+            worldName,
             executorPublicKey: created.memberPublicKey || getSession().executorPublicKey,
           });
           done(choice);
@@ -369,65 +382,115 @@ export class Landing {
     })();
   }
 
-  // state 1: anonymous — offline play or web login. Local nodes are
-  // auto-discovered with mero-react's discoverLocalNodes (the same probe the
-  // mero-react LoginModal runs: GET /admin-api/health on the well-known dev
-  // ports), so most players never type a URL — one click on the found node.
-  private renderAnonymous(defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
+  // state 1: anonymous — the game is online-only, so the only path forward is
+  // connecting a node. Nothing is probed on page load (no surprise browser
+  // local-network prompt): the "Connect a node" button opens a popup that
+  // pings the well-known local endpoints on demand.
+  private renderAnonymous(defaults: { name: string; seed: number }, _done: (c: LaunchChoice) => void): void {
     const el = this.playCardEl();
     el.innerHTML = `
-      ${this.commonInputs(defaults, true)}
-      <button class="mbl-btn green" data-testid="offline-btn">Play offline</button>
-      <div class="mbl-divider">multiplayer</div>
-      <div class="mbl-nodes" data-testid="discovered-nodes">
-        <div class="mbl-scan">Scanning for local nodes…</div>
-      </div>
-      <label>or your node url</label>
-      <input id="mbl-node" data-testid="node-url-input" placeholder="http://localhost:2428" />
-      <button class="mbl-btn primary" data-testid="web-login-btn">Connect a node</button>
-      <div class="mbl-error" data-testid="login-error"></div>
+      ${this.commonInputs(defaults)}
+      <button class="mbl-btn green" data-testid="connect-open-btn">Connect a node</button>
+      <div class="mbl-note">Mero Blocks runs on your Calimero node — connect one to play.
+        No node yet? <a href="https://docs.calimero.network/getting-started/" target="_blank"
+        rel="noopener noreferrer" style="color:#8fa3ba">Run one</a>.</div>
     `;
-    const abort = new AbortController();
-    const finish = (c: LaunchChoice) => {
-      abort.abort();
-      done(c);
-    };
-    el.querySelector("[data-testid=offline-btn]")!.addEventListener("click", () =>
-      finish(this.readChoice("offline", defaults)),
+    // the anonymous card can never start the game (_done unused): the only
+    // exit is beginWebLogin's redirect, which re-enters as picker/ready
+    el.querySelector("[data-testid=connect-open-btn]")!.addEventListener("click", () =>
+      this.openConnectModal(),
     );
-    el.querySelector("[data-testid=web-login-btn]")!.addEventListener("click", () => {
-      const url = el.querySelector<HTMLInputElement>("#mbl-node")?.value.trim() ?? "";
-      const errEl = el.querySelector<HTMLElement>("[data-testid=login-error]")!;
+  }
+
+  /**
+   * The connect popup: every well-known local endpoint renders immediately
+   * and is pinged live (yellow = probing, green = alive, grey = unreachable),
+   * so there is nothing to refresh — plus rescan and a manual URL field.
+   */
+  private openConnectModal(): void {
+    const shade = document.createElement("div");
+    shade.className = "mbl-modal-shade";
+    shade.dataset.testid = "connect-modal";
+    shade.innerHTML = `
+      <div class="mbl-modal">
+        <div class="mbl-modal-head">
+          <h3>Connect a node</h3>
+          <button class="mbl-modal-close" data-testid="connect-close" aria-label="Close">✕</button>
+        </div>
+        <div class="mbl-nodes" data-testid="discovered-nodes"></div>
+        <div class="mbl-note" data-testid="scan-note"></div>
+        <button class="mbl-btn ghost" data-testid="rescan-btn">Rescan</button>
+        <div class="mbl-divider">or your node url</div>
+        <input id="mbl-node" data-testid="node-url-input" placeholder="http://localhost:2428" />
+        <button class="mbl-btn primary" data-testid="web-login-btn">Connect</button>
+        <div class="mbl-error" data-testid="login-error"></div>
+      </div>
+    `;
+    this.root.appendChild(shade);
+
+    let abort = new AbortController();
+    const close = () => {
+      abort.abort();
+      shade.remove();
+    };
+    shade.addEventListener("click", (e) => {
+      if (e.target === shade) close();
+    });
+    shade.querySelector("[data-testid=connect-close]")!.addEventListener("click", close);
+
+    const nodesEl = shade.querySelector<HTMLElement>("[data-testid=discovered-nodes]")!;
+    const noteEl = shade.querySelector<HTMLElement>("[data-testid=scan-note]")!;
+
+    const scan = () => {
+      abort.abort();
+      abort = new AbortController();
+      const signal = abort.signal;
+      noteEl.textContent = "";
+      nodesEl.innerHTML = "";
+      const probes = DEFAULT_LOCAL_NODE_PORTS.map((port, i) => {
+        const url = localNodeUrl(port);
+        const row = document.createElement("div");
+        row.className = "mbl-node-row";
+        row.innerHTML = `<span class="mbl-dot wait"></span><code>${escapeHtml(url)}</code>
+          <span class="mbl-status" data-testid="node-status-${i}">pinging…</span>
+          <button data-testid="discovered-node-${i}" disabled>Connect</button>`;
+        nodesEl.appendChild(row);
+        const dot = row.querySelector<HTMLElement>(".mbl-dot")!;
+        const status = row.querySelector<HTMLElement>(".mbl-status")!;
+        const btn = row.querySelector<HTMLButtonElement>("button")!;
+        btn.addEventListener("click", () => beginWebLogin(url));
+        return probeNodeHealth(url, { signal }).then((alive) => {
+          if (signal.aborted) return false;
+          dot.classList.remove("wait");
+          if (alive) {
+            status.textContent = "online";
+            btn.disabled = false;
+          } else {
+            row.classList.add("dead");
+            status.textContent = "unreachable";
+          }
+          return alive;
+        });
+      });
+      void Promise.all(probes).then((alive) => {
+        if (signal.aborted) return;
+        if (!alive.some(Boolean)) {
+          noteEl.textContent = "No local node found — rescan, or enter your node's URL below.";
+        }
+      });
+    };
+    shade.querySelector("[data-testid=rescan-btn]")!.addEventListener("click", scan);
+    scan();
+
+    shade.querySelector("[data-testid=web-login-btn]")!.addEventListener("click", () => {
+      const url = shade.querySelector<HTMLInputElement>("#mbl-node")?.value.trim() ?? "";
+      const errEl = shade.querySelector<HTMLElement>("[data-testid=login-error]")!;
       if (!/^https?:\/\/.+/.test(url)) {
         errEl.textContent = "Enter your node's URL (e.g. http://localhost:2428).";
         return;
       }
       beginWebLogin(url); // navigates away; the callback hash brings us back
     });
-
-    const nodesEl = el.querySelector<HTMLElement>("[data-testid=discovered-nodes]")!;
-    void discoverLocalNodes({ signal: abort.signal })
-      .then((urls) => {
-        if (abort.signal.aborted) return;
-        if (urls.length === 0) {
-          nodesEl.innerHTML = `<div class="mbl-note">No local node found — enter a URL below,
-            or <a href="https://docs.calimero.network/getting-started/" target="_blank"
-            rel="noopener noreferrer" style="color:#8fa3ba">run one</a>.</div>`;
-          return;
-        }
-        nodesEl.innerHTML = "";
-        urls.forEach((url, i) => {
-          const row = document.createElement("div");
-          row.className = "mbl-node-row";
-          row.innerHTML = `<span class="mbl-dot"></span><code>${escapeHtml(url)}</code>
-            <button data-testid="discovered-node-${i}">Connect</button>`;
-          row.querySelector("button")!.addEventListener("click", () => beginWebLogin(url));
-          nodesEl.appendChild(row);
-        });
-      })
-      .catch(() => {
-        /* discovery never throws in practice; keep the manual path usable */
-      });
   }
 }
 

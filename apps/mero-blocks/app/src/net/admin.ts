@@ -182,10 +182,14 @@ export async function createWorld(
       JSON.stringify({ name, seed, now: Math.floor(Date.now() / 1000) }),
     ),
   );
+  // `name` is what current nodes expect; `alias` keeps older nodes working —
+  // the exact pair curb sends. This is the human name that later travels
+  // inside every invite for this world.
   const created = await adminPost<Record<string, unknown>>("/admin-api/namespaces", {
     applicationId,
     upgradePolicy: "Automatic",
     name,
+    alias: name,
   });
   const namespaceId = pick(created, "namespaceId", "namespace_id", "id");
   if (!namespaceId) throw new Error("node did not return a namespace id");
@@ -316,9 +320,16 @@ export async function createWorldInvite(worldName?: string): Promise<string> {
     {},
   );
   const invitation = (res.invitation ?? res) as SignedInvitation;
+  // alias priority: explicit arg > what the node echoes > the name stored at
+  // create/join time — so the world's name always travels with the invite
+  const alias =
+    worldName ??
+    (typeof res.groupName === "string" && res.groupName ? res.groupName : undefined) ??
+    s.worldName ??
+    undefined;
   return encodeInvite({
     invitation,
-    groupAlias: worldName ?? (typeof res.groupName === "string" ? res.groupName : undefined),
+    groupAlias: alias,
     contextId: s.contextId,
     groupId: knownGroupId || undefined,
   });
@@ -392,6 +403,7 @@ export async function acceptWorldInvite(input: string): Promise<string> {
     contextId,
     namespaceId,
     groupId: payload.groupId ?? null,
+    worldName: payload.groupAlias ?? null,
     executorPublicKey: identity,
   });
   return contextId;

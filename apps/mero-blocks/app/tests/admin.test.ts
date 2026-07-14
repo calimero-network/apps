@@ -158,6 +158,7 @@ describe("createWorld (own namespace → open subgroup → context)", () => {
     expect(nsBody.applicationId).toBe("app-1");
     expect(nsBody.upgradePolicy).toBe("Automatic");
     expect(nsBody.name).toBe("myworld"); // one namespace per world, named after it
+    expect(nsBody.alias).toBe("myworld"); // curb compat: older nodes read `alias`
     const groupBody = calls[1].body as Record<string, unknown>;
     expect(groupBody.groupName).toBe("myworld"); // the node's field is groupName, not name
     expect(groupBody.visibility).toBe("open"); // invitees self-join via inheritance

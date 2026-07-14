@@ -1,11 +1,21 @@
 import { expect, test } from "@playwright/test";
-import { enterOffline } from "./helpers";
+import { enterOnline, freshState, mockNode, seedSession } from "./helpers";
 
-test.describe("offline mode", () => {
+// The game is online-only: every spec seeds a connected session against the
+// mocked node and enters through the "Enter shared world" button.
+const enterGame = async (page: import("@playwright/test").Page, seed = 4242) => {
+  const state = freshState({ seed });
+  await seedSession(page);
+  await mockNode(page, state);
+  await enterOnline(page);
+  return state;
+};
+
+test.describe("in-game basics", () => {
   test("boots into a rendered world with HUD", async ({ page }) => {
-    await enterOffline(page);
+    await enterGame(page);
     await expect(page.getByTestId("game-canvas")).toBeVisible();
-    await expect(page.getByTestId("debug")).toContainText("offline");
+    await expect(page.getByTestId("debug")).toContainText("online");
     await expect(page.getByTestId("hotbar")).toBeVisible();
     // 9 hotbar slots, first selected by default
     for (let i = 0; i < 9; i++) await expect(page.getByTestId(`slot-${i}`)).toBeVisible();
@@ -15,7 +25,7 @@ test.describe("offline mode", () => {
   });
 
   test("hotbar selection follows number keys", async ({ page }) => {
-    await enterOffline(page);
+    await enterGame(page);
     await page.keyboard.press("Digit3");
     await expect(page.getByTestId("slot-2")).toHaveClass(/sel/);
     await expect(page.getByTestId("slot-0")).not.toHaveClass(/sel/);
@@ -23,15 +33,15 @@ test.describe("offline mode", () => {
     await expect(page.getByTestId("slot-8")).toHaveClass(/sel/);
   });
 
-  test("block edits persist across a reload (localStorage)", async ({ page }) => {
-    await enterOffline(page);
+  test("block edits persist across a reload (localStorage per world)", async ({ page }) => {
+    await enterGame(page);
     await page.evaluate(() => {
       const mb = (window as never as { __mb: { editBlock: (...a: number[]) => void } }).__mb;
       mb.editBlock(5, 50, 5, 3); // place stone high in the air
       mb.editBlock(6, 50, 5, 12); // and a glowstone
     });
     await page.reload(); // beforeunload saves
-    await page.getByTestId("offline-btn").click();
+    await page.getByTestId("connect-btn").click();
     await page.waitForFunction(() => "__mb" in window);
     const overrides = await page.evaluate(() =>
       (window as never as { __mb: { getOverrides: () => Record<string, number> } }).__mb.getOverrides(),
@@ -41,13 +51,13 @@ test.describe("offline mode", () => {
   });
 
   test("world is deterministic for a fixed seed", async ({ page }) => {
-    await enterOffline(page);
+    await enterGame(page, 777);
     const sample1 = await page.evaluate(() =>
       (window as never as { __mb: { world: { getBlock: (x: number, y: number, z: number) => number } } })
         .__mb.world.getBlock(64, 20, 64),
     );
     await page.reload();
-    await page.getByTestId("offline-btn").click();
+    await page.getByTestId("connect-btn").click();
     await page.waitForFunction(() => "__mb" in window);
     const sample2 = await page.evaluate(() =>
       (window as never as { __mb: { world: { getBlock: (x: number, y: number, z: number) => number } } })
@@ -68,7 +78,7 @@ test.describe("keyboard controls (trackpad-friendly)", () => {
     );
 
   test("Q and E drive break/place without any mouse button", async ({ page }) => {
-    await enterOffline(page);
+    await enterGame(page);
     await page.keyboard.down("KeyQ");
     expect((await input(page)).breakHeld).toBe(true);
     await page.keyboard.up("KeyQ");
@@ -80,7 +90,7 @@ test.describe("keyboard controls (trackpad-friendly)", () => {
   });
 
   test("O opens options, M swaps to the map, Esc closes", async ({ page }) => {
-    await enterOffline(page);
+    await enterGame(page);
     await page.keyboard.press("KeyO");
     await expect(page.getByTestId("options-overlay")).toBeVisible();
     expect((await input(page)).uiOpen).toBe(true);
@@ -96,7 +106,7 @@ test.describe("keyboard controls (trackpad-friendly)", () => {
   });
 
   test("open menus swallow gameplay keys", async ({ page }) => {
-    await enterOffline(page);
+    await enterGame(page);
     await page.keyboard.press("KeyO");
     await page.keyboard.down("KeyQ");
     expect((await input(page)).breakHeld).toBe(false);
@@ -109,7 +119,7 @@ test.describe("keyboard controls (trackpad-friendly)", () => {
   });
 
   test("options menu has a working sensitivity slider", async ({ page }) => {
-    await enterOffline(page);
+    await enterGame(page);
     await page.keyboard.press("KeyO");
     const slider = page.getByTestId("sensitivity-slider");
     await slider.fill("1.8");

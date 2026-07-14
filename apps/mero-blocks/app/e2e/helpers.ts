@@ -125,12 +125,6 @@ export interface MbHandle {
   getOverrides: () => Record<string, number>;
 }
 
-export async function enterOffline(page: Page): Promise<void> {
-  await page.goto("/");
-  await page.getByTestId("offline-btn").click();
-  await page.waitForFunction(() => "__mb" in window);
-}
-
 export async function enterOnline(page: Page): Promise<void> {
   await page.goto("/");
   await page.getByTestId("connect-btn").click();

@@ -9,7 +9,9 @@ test.describe("landing page", () => {
     await expect(page.locator("h1")).toContainText("Mero Blocks");
     await expect(page.getByTestId("panorama")).toBeVisible();
     await expect(page.getByTestId("controls")).toContainText("WASD");
-    await expect(page.getByTestId("offline-btn")).toBeVisible();
+    await expect(page.getByTestId("connect-open-btn")).toBeVisible();
+    // online-only: no offline entry anywhere
+    await expect(page.getByTestId("offline-btn")).toHaveCount(0);
   });
 
   test("footer links out to the Calimero site, docs, and socials", async ({ page }) => {
@@ -28,41 +30,48 @@ test.describe("landing page", () => {
     }
   });
 
-  test("anonymous visitors get the web-login form, not the enter button", async ({ page }) => {
+  test("anonymous visitors get the connect button; nothing is probed on load", async ({ page }) => {
+    const probed: string[] = [];
+    for (const port of [2428, 2429, 2528, 2529])
+      await page.route(`http://localhost:${port}/admin-api/health`, (route) => {
+        probed.push(route.request().url());
+        return route.abort();
+      });
     await page.goto("/");
-    await expect(page.getByTestId("node-url-input")).toBeVisible();
-    await expect(page.getByTestId("web-login-btn")).toBeVisible();
+    await expect(page.getByTestId("connect-open-btn")).toBeVisible();
     await expect(page.getByTestId("connect-btn")).toHaveCount(0);
+    // the popup owns discovery — the landing itself never pings anything
+    await expect(page.getByTestId("connect-modal")).toHaveCount(0);
+    expect(probed).toEqual([]);
   });
 
-  test("web login validates the node url", async ({ page }) => {
+  test("the connect popup pings every well-known endpoint and marks the live one", async ({ page }) => {
+    await page.route("http://localhost:2428/admin-api/health", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: { status: "alive" } }),
+      }),
+    );
+    for (const port of [2429, 2528, 2529])
+      await page.route(`http://localhost:${port}/admin-api/health`, (route) => route.abort());
+
     await page.goto("/");
-    await page.getByTestId("node-url-input").fill("not-a-url");
-    await page.getByTestId("web-login-btn").click();
-    await expect(page.getByTestId("login-error")).toContainText("node's URL");
+    await page.getByTestId("connect-open-btn").click();
+    await expect(page.getByTestId("connect-modal")).toBeVisible();
+    // all four candidates render immediately and get pinged live
+    const nodes = page.getByTestId("discovered-nodes");
+    for (const port of [2428, 2429, 2528, 2529])
+      await expect(nodes).toContainText(`http://localhost:${port}`);
+    await expect(page.getByTestId("node-status-0")).toHaveText("online");
+    await expect(page.getByTestId("discovered-node-0")).toBeEnabled();
+    for (const i of [1, 2, 3]) {
+      await expect(page.getByTestId(`node-status-${i}`)).toHaveText("unreachable");
+      await expect(page.getByTestId(`discovered-node-${i}`)).toBeDisabled();
+    }
   });
 
-  test("web login redirects to the node's auth page with the right params", async ({ page }) => {
-    let authUrl: string | null = null;
-    await page.route(`${NODE_URL}/auth/login**`, (route) => {
-      authUrl = route.request().url();
-      return route.fulfill({ status: 200, contentType: "text/html", body: "<h1>node auth</h1>" });
-    });
-    await page.goto("/");
-    await page.getByTestId("node-url-input").fill(NODE_URL);
-    await page.getByTestId("web-login-btn").click();
-    await page.waitForURL(`${NODE_URL}/auth/login**`);
-
-    const params = new URL(authUrl!).searchParams;
-    expect(params.get("mode")).toBe("multi-context");
-    expect(params.get("package-name")).toBe("com.calimero.meroblocks");
-    expect(params.get("callback-url")).toContain("localhost");
-    expect(params.get("permissions")).toContain("context:execute");
-  });
-
-  test("auto-discovers a running local node and connects in one click", async ({ page }) => {
-    // pretend a node is alive on 2428; kill the other well-known ports so a
-    // real dev node on this machine can't change the discovered order
+  test("connecting to a discovered node goes to its auth page", async ({ page }) => {
     await page.route("http://localhost:2428/admin-api/health", (route) =>
       route.fulfill({
         status: 200,
@@ -79,7 +88,7 @@ test.describe("landing page", () => {
     });
 
     await page.goto("/");
-    await expect(page.getByTestId("discovered-nodes")).toContainText("http://localhost:2428");
+    await page.getByTestId("connect-open-btn").click();
     await page.getByTestId("discovered-node-0").click();
     await page.waitForURL("http://localhost:2428/auth/login**");
 
@@ -88,11 +97,66 @@ test.describe("landing page", () => {
     expect(params.get("package-name")).toBe("com.calimero.meroblocks");
   });
 
-  test("says so when no local node is running", async ({ page }) => {
+  test("manual url: validates, then redirects to the node's auth page", async ({ page }) => {
+    for (const port of [2428, 2429, 2528, 2529])
+      await page.route(`http://localhost:${port}/admin-api/health`, (route) => route.abort());
+    let authUrl: string | null = null;
+    await page.route(`${NODE_URL}/auth/login**`, (route) => {
+      authUrl = route.request().url();
+      return route.fulfill({ status: 200, contentType: "text/html", body: "<h1>node auth</h1>" });
+    });
+    await page.goto("/");
+    await page.getByTestId("connect-open-btn").click();
+
+    await page.getByTestId("node-url-input").fill("not-a-url");
+    await page.getByTestId("web-login-btn").click();
+    await expect(page.getByTestId("login-error")).toContainText("node's URL");
+
+    await page.getByTestId("node-url-input").fill(NODE_URL);
+    await page.getByTestId("web-login-btn").click();
+    await page.waitForURL(`${NODE_URL}/auth/login**`);
+
+    const params = new URL(authUrl!).searchParams;
+    expect(params.get("mode")).toBe("multi-context");
+    expect(params.get("package-name")).toBe("com.calimero.meroblocks");
+    expect(params.get("callback-url")).toContain("localhost");
+    expect(params.get("permissions")).toContain("context:execute");
+  });
+
+  test("says so when no local node is running, and rescan picks up a new one", async ({ page }) => {
+    let alive = false;
+    await page.route("http://localhost:2428/admin-api/health", (route) =>
+      alive
+        ? route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ data: { status: "alive" } }),
+          })
+        : route.abort(),
+    );
+    for (const port of [2429, 2528, 2529])
+      await page.route(`http://localhost:${port}/admin-api/health`, (route) => route.abort());
+
+    await page.goto("/");
+    await page.getByTestId("connect-open-btn").click();
+    await expect(page.getByTestId("scan-note")).toContainText("No local node found");
+
+    alive = true; // the player started a node — no page refresh needed
+    await page.getByTestId("rescan-btn").click();
+    await expect(page.getByTestId("node-status-0")).toHaveText("online");
+    await expect(page.getByTestId("discovered-node-0")).toBeEnabled();
+    await expect(page.getByTestId("scan-note")).not.toContainText("No local node found");
+  });
+
+  test("the connect popup closes without touching the session", async ({ page }) => {
     for (const port of [2428, 2429, 2528, 2529])
       await page.route(`http://localhost:${port}/admin-api/health`, (route) => route.abort());
     await page.goto("/");
-    await expect(page.getByTestId("discovered-nodes")).toContainText("No local node found");
+    await page.getByTestId("connect-open-btn").click();
+    await expect(page.getByTestId("connect-modal")).toBeVisible();
+    await page.getByTestId("connect-close").click();
+    await expect(page.getByTestId("connect-modal")).toHaveCount(0);
+    await expect(page.getByTestId("connect-open-btn")).toBeVisible();
   });
 
   test("a connected session shows one-click enter + disconnect", async ({ page }) => {
@@ -102,7 +166,7 @@ test.describe("landing page", () => {
     await expect(page.getByTestId("connect-btn")).toBeVisible();
     await page.getByTestId("disconnect-btn").click();
     // back to the anonymous card
-    await expect(page.getByTestId("web-login-btn")).toBeVisible();
+    await expect(page.getByTestId("connect-open-btn")).toBeVisible();
     await expect(page.getByTestId("connect-btn")).toHaveCount(0);
   });
 });
@@ -258,8 +322,10 @@ test.describe("world picker (web auth, no context yet)", () => {
     await page.getByTestId("create-world-btn").click();
     await page.waitForFunction(() => "__mb" in window);
 
-    // the world gets its OWN namespace, named after it
+    // the world gets its OWN namespace, named after it — the name doubles as
+    // the alias that travels inside invites (curb pattern)
     expect(captured.namespace?.name).toBe("e2e world");
+    expect(captured.namespace?.alias).toBe("e2e world");
     // the subgroup is born open, so invitees can self-join via inheritance
     expect(captured.group).toEqual({ groupName: "e2e world", visibility: "open" });
     const body = captured.context as {
