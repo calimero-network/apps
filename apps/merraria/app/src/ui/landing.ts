@@ -1,10 +1,18 @@
 // Landing page + launcher. Three auth states:
-//  1. anonymous          → play offline, or connect a node (web login redirect)
+//  1. anonymous          → "Connect a node" opens the connect popup: the
+//                          well-known local endpoints render immediately and
+//                          are pinged live (mero-react probeNodeHealth), plus
+//                          a manual URL field. No node, no game — there is no
+//                          offline mode.
 //  2. authenticated      → pick an existing world or create one (admin API)
 //  3. ready (has context)→ one-click "Enter shared world"
 // Desktop SSO (full hash) never sees this page — main.ts auto-enters.
 
-import { discoverLocalNodes } from "@calimero-network/mero-react";
+import {
+  DEFAULT_LOCAL_NODE_PORTS,
+  localNodeUrl,
+  probeNodeHealth,
+} from "@calimero-network/mero-react";
 import {
   acceptWorldInvite,
   createWorld,
@@ -14,14 +22,11 @@ import {
   resolveApplicationId,
 } from "../net/admin";
 import { beginWebLogin } from "../net/auth";
-import { deleteWorld, hasWorld } from "../state/persistence";
 import { WorldAnim } from "./worldAnim";
 import { clearSession, getSession, hasConnection, isAuthenticated, updateSession } from "../net/session";
 
 export interface LaunchChoice {
-  mode: "offline" | "online";
   name: string;
-  seed: number;
 }
 
 const css = `
@@ -50,8 +55,9 @@ const css = `
   box-shadow: 0 8px 40px rgba(0,0,0,0.45); }
 .mtl-card h3 { margin: 0 0 16px; font-size: 16px; }
 .mtl-card label { display: block; text-align: left; font-size: 12px; color: #9fb0c3; margin: 12px 0 4px; }
-.mtl-card input { width: 100%; box-sizing: border-box; padding: 10px 11px; border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.32); color: #fff; font-size: 14px; }
+.mtl-card input, .mtl-modal input { width: 100%; box-sizing: border-box; padding: 10px 11px;
+  border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.32);
+  color: #fff; font-size: 14px; }
 .mtl-btn { width: 100%; margin-top: 14px; padding: 12px; border-radius: 9px; border: none;
   font-size: 15px; font-weight: 600; cursor: pointer; }
 .mtl-btn.primary { background: #4f8cff; color: #fff; }
@@ -80,6 +86,16 @@ const css = `
   box-shadow: 0 0 6px #58c56b; flex: none; }
 .mtl-node-row button { padding: 6px 14px; border-radius: 6px; border: none; background: #3f9950;
   color: #fff; font-weight: 600; cursor: pointer; }
+.mtl-modal-shade { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,0.6);
+  display: flex; align-items: center; justify-content: center; padding: 16px; }
+.mtl-modal { width: min(420px, 94vw); box-sizing: border-box; background: rgba(10,13,18,0.97);
+  border: 1px solid rgba(255,255,255,0.18); border-radius: 16px; padding: 18px 24px 20px;
+  box-shadow: 0 16px 60px rgba(0,0,0,0.7); color: #fff; }
+.mtl-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.mtl-modal-head h3 { margin: 0; font-size: 16px; }
+.mtl-modal-close { background: none; border: none; color: #9fb0c3; font-size: 18px;
+  cursor: pointer; padding: 2px 6px; line-height: 1; }
+.mtl-modal-close:hover { color: #fff; }
 .mtl-scan { font-size: 12px; color: #8fa3ba; animation: mtlpulse 1.2s ease-in-out infinite; }
 @keyframes mtlpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 .mtl-logo svg { width: 34px; height: 34px; display: block; }
@@ -206,34 +222,21 @@ export class Landing {
     else this.renderAnonymous(defaults, done);
   }
 
-  private commonInputs(defaults: { name: string; seed: number }, withSeed: boolean): string {
+  private commonInputs(defaults: { name: string }): string {
     return `
       <label>player name</label>
       <input id="mtl-name" data-testid="name-input" value="${escapeHtml(defaults.name)}" maxlength="16" />
-      ${withSeed ? `<label>world seed (offline)</label>
-      <input id="mtl-seed" data-testid="seed-input" value="${defaults.seed}" />` : ""}
     `;
   }
 
-  private readChoice(mode: "offline" | "online", defaults: { name: string; seed: number }): LaunchChoice {
+  private readChoice(): LaunchChoice {
     const name = (this.root.querySelector<HTMLInputElement>("#mtl-name")?.value || "Player").trim();
-    const seedRaw = this.root.querySelector<HTMLInputElement>("#mtl-seed")?.value;
-    const seed = Math.abs(Math.floor(Number(seedRaw))) || defaults.seed;
-    return { mode, name, seed };
+    return { name };
   }
 
-  /** "Reset local world" appears wherever offline play does, if a save exists */
-  private resetRowHtml(): string {
-    return hasWorld("local")
-      ? `<button class="mtl-link" data-testid="reset-local-btn">Reset local world</button>`
-      : "";
-  }
-
-  private wireReset(el: HTMLElement, defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
-    el.querySelector("[data-testid=reset-local-btn]")?.addEventListener("click", () => {
-      deleteWorld("local");
-      this.renderPlayCard(defaults, done); // re-render: the button disappears
-    });
+  private readSeed(fallback: number): number {
+    const raw = this.root.querySelector<HTMLInputElement>("#mtl-seed")?.value;
+    return Math.abs(Math.floor(Number(raw))) || fallback;
   }
 
   // state 3: session has node + context — one click to play
@@ -241,19 +244,14 @@ export class Landing {
     const el = this.playCardEl();
     el.innerHTML = `
       <h3>You're connected</h3>
-      ${this.commonInputs(defaults, false)}
+      ${this.commonInputs(defaults)}
       <button class="mtl-btn primary" data-testid="connect-btn">Enter shared world</button>
       <button class="mtl-btn ghost" data-testid="invite-btn">Invite friends</button>
-      <div class="mtl-divider">or</div>
-      <label>world seed (offline)</label>
-      <input id="mtl-seed" data-testid="seed-input" value="${defaults.seed}" />
-      <button class="mtl-btn ghost" data-testid="offline-btn">Play offline</button>
-      ${this.resetRowHtml()}
       <button class="mtl-link" data-testid="disconnect-btn">Disconnect from node</button>
       <div class="mtl-error" data-testid="ready-error"></div>
     `;
     el.querySelector("[data-testid=connect-btn]")!.addEventListener("click", () =>
-      done(this.readChoice("online", defaults)),
+      done(this.readChoice()),
     );
     const inviteBtn = el.querySelector<HTMLButtonElement>("[data-testid=invite-btn]")!;
     inviteBtn.addEventListener("click", async () => {
@@ -272,10 +270,6 @@ export class Landing {
         inviteBtn.disabled = false;
       }
     });
-    el.querySelector("[data-testid=offline-btn]")!.addEventListener("click", () =>
-      done(this.readChoice("offline", defaults)),
-    );
-    this.wireReset(el, defaults, done);
     el.querySelector("[data-testid=disconnect-btn]")!.addEventListener("click", () => {
       clearSession();
       this.renderPlayCard(defaults, done);
@@ -287,7 +281,7 @@ export class Landing {
     const el = this.playCardEl();
     el.innerHTML = `
       <h3>Choose a world</h3>
-      ${this.commonInputs(defaults, false)}
+      ${this.commonInputs(defaults)}
       <div class="mtl-worlds" data-testid="world-list"><div class="mtl-note">Loading worlds…</div></div>
       <div class="mtl-divider">or join with an invite</div>
       <input id="mtl-invite" data-testid="invite-input" placeholder="paste an invite code" />
@@ -298,18 +292,12 @@ export class Landing {
       <label>seed</label>
       <input id="mtl-seed" data-testid="seed-input" value="${defaults.seed}" />
       <button class="mtl-btn green" data-testid="create-world-btn">Create world</button>
-      <button class="mtl-btn ghost" data-testid="offline-btn">Play offline</button>
-      ${this.resetRowHtml()}
       <button class="mtl-link" data-testid="disconnect-btn">Disconnect from node</button>
       <div class="mtl-error" data-testid="picker-error"></div>
     `;
     const errEl = el.querySelector<HTMLElement>("[data-testid=picker-error]")!;
     const listEl = el.querySelector<HTMLElement>("[data-testid=world-list]")!;
 
-    el.querySelector("[data-testid=offline-btn]")!.addEventListener("click", () =>
-      done(this.readChoice("offline", defaults)),
-    );
-    this.wireReset(el, defaults, done);
     el.querySelector("[data-testid=disconnect-btn]")!.addEventListener("click", () => {
       clearSession();
       this.renderPlayCard(defaults, done);
@@ -323,7 +311,7 @@ export class Landing {
       }
       try {
         await acceptWorldInvite(code);
-        done(this.readChoice("online", defaults));
+        done(this.readChoice());
       } catch (e) {
         errEl.textContent = `Could not join with invite: ${errText(e)}`;
       }
@@ -347,15 +335,16 @@ export class Landing {
               errEl.textContent = "";
               try {
                 const identity = await joinWorld(w.contextId);
-                // switching worlds: the old world's namespace/group must not
-                // leak into this one (invites would target the wrong world)
+                // switching worlds: the old world's namespace/group/name must
+                // not leak into this one (invites would target the wrong world)
                 updateSession({
                   contextId: w.contextId,
                   namespaceId: null,
                   groupId: null,
+                  worldName: null,
                   executorPublicKey: identity,
                 });
-                done(this.readChoice("online", defaults));
+                done(this.readChoice());
               } catch (e) {
                 errEl.textContent = `Could not join: ${errText(e)}`;
               }
@@ -375,13 +364,14 @@ export class Landing {
         }
         const worldName =
           el.querySelector<HTMLInputElement>("#mtl-world-name")?.value.trim() || "surface";
-        const choice = this.readChoice("online", defaults);
+        const choice = this.readChoice();
         try {
-          const created = await createWorld(applicationId, worldName, choice.seed);
+          const created = await createWorld(applicationId, worldName, this.readSeed(defaults.seed));
           updateSession({
             contextId: created.contextId,
             namespaceId: created.namespaceId,
             groupId: created.groupId,
+            worldName,
             executorPublicKey: created.memberPublicKey || getSession().executorPublicKey,
           });
           done(choice);
@@ -392,70 +382,110 @@ export class Landing {
     })();
   }
 
-  // state 1: anonymous — offline play or web login. Local nodes are
-  // auto-discovered with mero-react's discoverLocalNodes (the same probe the
-  // mero-react LoginModal runs: GET /admin-api/health on the well-known dev
-  // ports), so most players never type a URL — one click on the found node.
-  private renderAnonymous(defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
+  // state 1: anonymous — the game is online-only, so the only path forward is
+  // connecting a node. Nothing is probed on page load (no surprise browser
+  // local-network prompt): the "Connect a node" button opens a popup that
+  // pings the well-known local endpoints on demand.
+  private renderAnonymous(defaults: { name: string; seed: number }, _done: (c: LaunchChoice) => void): void {
     const el = this.playCardEl();
     el.innerHTML = `
       <h3>Play now</h3>
-      ${this.commonInputs(defaults, true)}
-      <button class="mtl-btn green" data-testid="offline-btn">Play offline</button>
-      ${this.resetRowHtml()}
-      <div class="mtl-divider">multiplayer</div>
-      <div class="mtl-nodes" data-testid="discovered-nodes">
-        <div class="mtl-scan">Scanning for local nodes…</div>
-      </div>
-      <label>or your node url</label>
-      <input id="mtl-node" data-testid="node-url-input" placeholder="http://localhost:2428" />
-      <button class="mtl-btn primary" data-testid="web-login-btn">Connect a node</button>
-      <div class="mtl-note">You'll authenticate on your node and come straight back.
-      Opening from the Calimero desktop skips this page entirely.</div>
-      <div class="mtl-error" data-testid="login-error"></div>
+      ${this.commonInputs(defaults)}
+      <button class="mtl-btn green" data-testid="connect-open-btn">Connect a node</button>
+      <div class="mtl-note">Merraria runs on your Calimero node — connect one to play.
+        You'll authenticate on your node and come straight back; opening from the
+        Calimero desktop skips this page entirely. No node yet?
+        <a href="https://docs.calimero.network/getting-started/" target="_blank"
+        rel="noopener noreferrer" style="color:#8fa3ba">Run one</a>.</div>
     `;
-    const abort = new AbortController();
-    const finish = (c: LaunchChoice) => {
-      abort.abort();
-      done(c);
-    };
-    el.querySelector("[data-testid=offline-btn]")!.addEventListener("click", () =>
-      finish(this.readChoice("offline", defaults)),
+    // the anonymous card can never start the game (_done unused): the only
+    // exit is beginWebLogin's redirect, which re-enters as picker/ready
+    el.querySelector("[data-testid=connect-open-btn]")!.addEventListener("click", () =>
+      this.openConnectModal(),
     );
-    this.wireReset(el, defaults, done);
-    el.querySelector("[data-testid=web-login-btn]")!.addEventListener("click", () => {
-      const url = el.querySelector<HTMLInputElement>("#mtl-node")?.value.trim() ?? "";
-      const errEl = el.querySelector<HTMLElement>("[data-testid=login-error]")!;
-      if (!/^https?:\/\/.+/.test(url)) {
-        errEl.textContent = "Enter your node's URL (e.g. http://localhost:2428).";
-        return;
-      }
-      beginWebLogin(url); // navigates away; the callback hash brings us back
-    });
+  }
 
-    const nodesEl = el.querySelector<HTMLElement>("[data-testid=discovered-nodes]")!;
-    void discoverLocalNodes({ signal: abort.signal })
-      .then((urls) => {
-        if (abort.signal.aborted) return;
-        if (urls.length === 0) {
-          nodesEl.innerHTML = `<div class="mtl-note">No local node found — enter a URL below,
-            or <a href="https://docs.calimero.network/getting-started/" target="_blank"
-            rel="noopener noreferrer" style="color:#8fa3ba">run one</a>.</div>`;
-          return;
-        }
-        nodesEl.innerHTML = "";
-        urls.forEach((url, i) => {
+  /**
+   * The connect popup: the well-known local endpoints are pinged on open and
+   * only the LIVE ones are listed (a dead port is noise, not a choice) — so
+   * there is nothing to refresh. Rescan re-probes; the manual URL field is
+   * always there as the fallback.
+   */
+  private openConnectModal(): void {
+    const shade = document.createElement("div");
+    shade.className = "mtl-modal-shade";
+    shade.dataset.testid = "connect-modal";
+    shade.innerHTML = `
+      <div class="mtl-modal">
+        <div class="mtl-modal-head">
+          <h3>Connect a node</h3>
+          <button class="mtl-modal-close" data-testid="connect-close" aria-label="Close">✕</button>
+        </div>
+        <div class="mtl-nodes" data-testid="discovered-nodes"></div>
+        <div class="mtl-note" data-testid="scan-note"></div>
+        <button class="mtl-btn ghost" data-testid="rescan-btn">Rescan</button>
+        <div class="mtl-divider">or your node url</div>
+        <input id="mtl-node" data-testid="node-url-input" placeholder="http://localhost:2428" />
+        <button class="mtl-btn primary" data-testid="web-login-btn">Connect</button>
+        <div class="mtl-error" data-testid="login-error"></div>
+      </div>
+    `;
+    this.root.appendChild(shade);
+
+    let abort = new AbortController();
+    const close = () => {
+      abort.abort();
+      shade.remove();
+    };
+    shade.addEventListener("click", (e) => {
+      if (e.target === shade) close();
+    });
+    shade.querySelector("[data-testid=connect-close]")!.addEventListener("click", close);
+
+    const nodesEl = shade.querySelector<HTMLElement>("[data-testid=discovered-nodes]")!;
+    const noteEl = shade.querySelector<HTMLElement>("[data-testid=scan-note]")!;
+
+    const scan = () => {
+      abort.abort();
+      abort = new AbortController();
+      const signal = abort.signal;
+      noteEl.textContent = "";
+      nodesEl.innerHTML = `<div class="mtl-scan" data-testid="scan-progress">Scanning for local nodes…</div>`;
+      let found = 0;
+      const probes = DEFAULT_LOCAL_NODE_PORTS.map((port, i) => {
+        const url = localNodeUrl(port);
+        return probeNodeHealth(url, { signal }).then((alive) => {
+          if (signal.aborted || !alive) return false;
+          if (found++ === 0) nodesEl.innerHTML = ""; // first hit clears the scanning note
           const row = document.createElement("div");
           row.className = "mtl-node-row";
           row.innerHTML = `<span class="mtl-dot"></span><code>${escapeHtml(url)}</code>
             <button data-testid="discovered-node-${i}">Connect</button>`;
           row.querySelector("button")!.addEventListener("click", () => beginWebLogin(url));
           nodesEl.appendChild(row);
+          return true;
         });
-      })
-      .catch(() => {
-        /* discovery never throws in practice; keep the manual path usable */
       });
+      void Promise.all(probes).then((alive) => {
+        if (signal.aborted) return;
+        if (!alive.some(Boolean)) {
+          nodesEl.innerHTML = "";
+          noteEl.textContent = "No local nodes found — rescan, or enter your node's URL below.";
+        }
+      });
+    };
+    shade.querySelector("[data-testid=rescan-btn]")!.addEventListener("click", scan);
+    scan();
+
+    shade.querySelector("[data-testid=web-login-btn]")!.addEventListener("click", () => {
+      const url = shade.querySelector<HTMLInputElement>("#mtl-node")?.value.trim() ?? "";
+      const errEl = shade.querySelector<HTMLElement>("[data-testid=login-error]")!;
+      if (!/^https?:\/\/.+/.test(url)) {
+        errEl.textContent = "Enter your node's URL (e.g. http://localhost:2428).";
+        return;
+      }
+      beginWebLogin(url); // navigates away; the callback hash brings us back
+    });
   }
 }
 

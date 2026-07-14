@@ -8,7 +8,9 @@ test.describe("landing page", () => {
     await expect(page.getByTestId("landing")).toBeVisible();
     await expect(page.locator("h1")).toContainText("Terraria-style");
     await expect(page.getByTestId("world-anim")).toBeVisible();
-    await expect(page.getByTestId("offline-btn")).toBeVisible();
+    await expect(page.getByTestId("connect-open-btn")).toBeVisible();
+    // online-only: no offline entry anywhere
+    await expect(page.getByTestId("offline-btn")).toHaveCount(0);
     const links = page.getByTestId("social-links").locator("a");
     await expect(links.first()).toHaveAttribute("href", "https://www.calimero.network/");
     expect(await links.count()).toBeGreaterThanOrEqual(5);
@@ -23,27 +25,85 @@ test.describe("landing page", () => {
     expect(painted).toBe(true);
   });
 
-  test("anonymous visitors get the web-login form, not the enter button", async ({ page }) => {
+  test("anonymous visitors get the connect button; nothing is probed on load", async ({ page }) => {
+    const probed: string[] = [];
+    for (const port of [2428, 2429, 2528, 2529])
+      await page.route(`http://localhost:${port}/admin-api/health`, (route) => {
+        probed.push(route.request().url());
+        return route.abort();
+      });
     await page.goto("/");
-    await expect(page.getByTestId("node-url-input")).toBeVisible();
-    await expect(page.getByTestId("web-login-btn")).toBeVisible();
+    await expect(page.getByTestId("connect-open-btn")).toBeVisible();
     await expect(page.getByTestId("connect-btn")).toHaveCount(0);
+    // the popup owns discovery — the landing itself never pings anything
+    await expect(page.getByTestId("connect-modal")).toHaveCount(0);
+    expect(probed).toEqual([]);
   });
 
-  test("web login validates the node url", async ({ page }) => {
+  test("the connect popup lists only the reachable nodes", async ({ page }) => {
+    await page.route("http://localhost:2428/admin-api/health", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: { status: "alive" } }),
+      }),
+    );
+    for (const port of [2429, 2528, 2529])
+      await page.route(`http://localhost:${port}/admin-api/health`, (route) => route.abort());
+
     await page.goto("/");
-    await page.getByTestId("node-url-input").fill("not-a-url");
-    await page.getByTestId("web-login-btn").click();
-    await expect(page.getByTestId("login-error")).toContainText("node's URL");
+    await page.getByTestId("connect-open-btn").click();
+    await expect(page.getByTestId("connect-modal")).toBeVisible();
+    // only the live node shows up — dead ports are not offered at all
+    const nodes = page.getByTestId("discovered-nodes");
+    await expect(page.getByTestId("discovered-node-0")).toBeVisible();
+    await expect(nodes).toContainText("http://localhost:2428");
+    for (const port of [2429, 2528, 2529]) await expect(nodes).not.toContainText(`${port}`);
+    // manual entry is always offered alongside
+    await expect(page.getByTestId("node-url-input")).toBeVisible();
   });
 
-  test("web login redirects to the node's auth page with the right params", async ({ page }) => {
+  test("connecting to a discovered node goes to its auth page", async ({ page }) => {
+    await page.route("http://localhost:2428/admin-api/health", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: { status: "alive" } }),
+      }),
+    );
+    for (const port of [2429, 2528, 2529])
+      await page.route(`http://localhost:${port}/admin-api/health`, (route) => route.abort());
+    let authUrl: string | null = null;
+    await page.route("http://localhost:2428/auth/login**", (route) => {
+      authUrl = route.request().url();
+      return route.fulfill({ status: 200, contentType: "text/html", body: "<h1>node auth</h1>" });
+    });
+
+    await page.goto("/");
+    await page.getByTestId("connect-open-btn").click();
+    await page.getByTestId("discovered-node-0").click();
+    await page.waitForURL("http://localhost:2428/auth/login**");
+
+    const params = new URL(authUrl!).searchParams;
+    expect(params.get("mode")).toBe("multi-context");
+    expect(params.get("package-name")).toBe("com.calimero.merraria");
+  });
+
+  test("manual url: validates, then redirects to the node's auth page", async ({ page }) => {
+    for (const port of [2428, 2429, 2528, 2529])
+      await page.route(`http://localhost:${port}/admin-api/health`, (route) => route.abort());
     let authUrl: string | null = null;
     await page.route(`${NODE_URL}/auth/login**`, (route) => {
       authUrl = route.request().url();
       return route.fulfill({ status: 200, contentType: "text/html", body: "<h1>node auth</h1>" });
     });
     await page.goto("/");
+    await page.getByTestId("connect-open-btn").click();
+
+    await page.getByTestId("node-url-input").fill("not-a-url");
+    await page.getByTestId("web-login-btn").click();
+    await expect(page.getByTestId("login-error")).toContainText("node's URL");
+
     await page.getByTestId("node-url-input").fill(NODE_URL);
     await page.getByTestId("web-login-btn").click();
     await page.waitForURL(`${NODE_URL}/auth/login**`);
@@ -55,6 +115,43 @@ test.describe("landing page", () => {
     expect(params.get("permissions")).toContain("context:execute");
   });
 
+  test("says so when no local node is running, and rescan picks up a new one", async ({ page }) => {
+    let alive = false;
+    await page.route("http://localhost:2428/admin-api/health", (route) =>
+      alive
+        ? route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ data: { status: "alive" } }),
+          })
+        : route.abort(),
+    );
+    for (const port of [2429, 2528, 2529])
+      await page.route(`http://localhost:${port}/admin-api/health`, (route) => route.abort());
+
+    await page.goto("/");
+    await page.getByTestId("connect-open-btn").click();
+    await expect(page.getByTestId("scan-note")).toContainText("No local nodes found");
+    // the manual URL path stays available even with nothing discovered
+    await expect(page.getByTestId("node-url-input")).toBeVisible();
+
+    alive = true; // the player started a node — no page refresh needed
+    await page.getByTestId("rescan-btn").click();
+    await expect(page.getByTestId("discovered-node-0")).toBeVisible();
+    await expect(page.getByTestId("scan-note")).not.toContainText("No local nodes found");
+  });
+
+  test("the connect popup closes without touching the session", async ({ page }) => {
+    for (const port of [2428, 2429, 2528, 2529])
+      await page.route(`http://localhost:${port}/admin-api/health`, (route) => route.abort());
+    await page.goto("/");
+    await page.getByTestId("connect-open-btn").click();
+    await expect(page.getByTestId("connect-modal")).toBeVisible();
+    await page.getByTestId("connect-close").click();
+    await expect(page.getByTestId("connect-modal")).toHaveCount(0);
+    await expect(page.getByTestId("connect-open-btn")).toBeVisible();
+  });
+
   test("a connected session shows one-click enter + disconnect", async ({ page }) => {
     await seedSession(page);
     await mockNode(page, freshState());
@@ -62,7 +159,7 @@ test.describe("landing page", () => {
     await expect(page.getByTestId("connect-btn")).toBeVisible();
     await page.getByTestId("disconnect-btn").click();
     // back to the anonymous card
-    await expect(page.getByTestId("web-login-btn")).toBeVisible();
+    await expect(page.getByTestId("connect-open-btn")).toBeVisible();
     await expect(page.getByTestId("connect-btn")).toHaveCount(0);
   });
 });
@@ -181,8 +278,10 @@ test.describe("world picker (web auth, no context yet)", () => {
     await page.getByTestId("create-world-btn").click();
     await page.waitForFunction(() => "__mt" in window);
 
-    // the world gets its OWN namespace, named after it
+    // the world gets its OWN namespace, named after it — the name doubles as
+    // the alias that travels inside invites (curb pattern)
     expect(captured.namespace?.name).toBe("e2e world");
+    expect(captured.namespace?.alias).toBe("e2e world");
     // the subgroup is born open, so invitees can self-join via inheritance
     expect(captured.group).toEqual({ groupName: "e2e world", visibility: "open" });
     const body = captured.context as {

@@ -25,6 +25,9 @@ export interface Session {
    *  resolved lazily otherwise) — needed to mint invites */
   namespaceId?: string | null;
   groupId?: string | null;
+  /** human name of the current world — travels inside invites as the
+   *  namespace alias (the curb groupAlias/groupName pattern) */
+  worldName?: string | null;
 }
 
 export type CaptureResult =

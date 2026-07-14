@@ -41,36 +41,36 @@ async function boot(): Promise<void> {
   // already authenticated us — zero clicks, straight into the shared world.
   let choice: LaunchChoice;
   if (captured === "full" && hasConnection()) {
-    choice = { mode: "online", ...defaults };
+    choice = { name: defaults.name };
   } else {
     choice = await new Landing(app).show(defaults);
   }
   localStorage.setItem("mt-name", choice.name);
 
   // ---- world + net bootstrap -----------------------------------------
-  const online = choice.mode === "online" && hasConnection();
+  // The landing only resolves once a node + world are connected; there is no
+  // offline mode, so an unreachable world is a hard stop, not a fallback.
   const session = getSession();
-  const worldId = online ? session.contextId! : "local";
+  if (!hasConnection() || !session.contextId) {
+    showFatal(app, "Lost the node connection — go back and connect again.");
+    return;
+  }
+  const worldId = session.contextId;
 
-  let client: GameClient | null = null;
-  let seed = choice.seed;
+  const client = new GameClient();
+  let seed: number;
   let createdAt = Math.floor(Date.now() / 1000);
-
-  if (online) {
-    client = new GameClient();
-    try {
-      const meta = await client.fetchWorldMeta();
-      seed = meta.seed;
-      createdAt = meta.createdAt || createdAt;
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      hud.toast(`Could not reach the shared world — playing offline (${reason})`);
-      client = null;
-    }
+  try {
+    const meta = await client.fetchWorldMeta();
+    seed = meta.seed;
+    createdAt = meta.createdAt || createdAt;
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    showFatal(app, `Could not reach the shared world (${reason}).`);
+    return;
   }
 
   const saved = loadWorld(worldId);
-  if (!online && saved) seed = saved.seed;
 
   const world = new TileStore();
   generateWorld(world, seed);
@@ -135,20 +135,18 @@ async function boot(): Promise<void> {
     hud.setPlayers(choice.name, roster);
   };
 
-  if (client) {
-    myId = await client.resolveIdentity();
-    sync = new SyncEngine(client.exec, world, () => myId, {
-      onPlayers,
-      onToast: (msg) => hud.toast(msg),
-    });
-    client.subscribe((ev) => sync?.handleEvent(ev));
-    try {
-      await sync.join(choice.name);
-      await sync.reconcile();
-      hud.toast("Connected to shared world");
-    } catch {
-      hud.toast("Sync failed — edits will retry in the background");
-    }
+  myId = await client.resolveIdentity();
+  sync = new SyncEngine(client.exec, world, () => myId, {
+    onPlayers,
+    onToast: (msg) => hud.toast(msg),
+  });
+  client.subscribe((ev) => sync?.handleEvent(ev));
+  try {
+    await sync.join(choice.name);
+    await sync.reconcile();
+    hud.toast("Connected to shared world");
+  } catch {
+    hud.toast("Sync failed — edits will retry in the background");
   }
 
   // ---- input -----------------------------------------------------------
@@ -332,7 +330,7 @@ async function boot(): Promise<void> {
     hud.setDebug(
       `fps ${fps.toFixed(0)}  pos ${player.x.toFixed(1)},${player.y.toFixed(1)}` +
         `  edits ${world.overrides.size}  peers ${remotes.size}\n` +
-        `${online && client ? "online" : "offline"}${sync && sync.pending.size > 0 ? ` (${sync.pending.size} pending)` : ""}`,
+        `online${sync && sync.pending.size > 0 ? ` (${sync.pending.size} pending)` : ""}`,
     );
 
     if (saveAcc >= SAVE_MS) {
@@ -352,6 +350,29 @@ async function boot(): Promise<void> {
     editTile,
     getOverrides: () => world.overridesToJSON(),
   };
+}
+
+/** Online-only dead end: the world is unreachable — say why, offer the title screen. */
+function showFatal(app: HTMLElement, message: string): void {
+  const el = document.createElement("div");
+  el.dataset.testid = "fatal-error";
+  el.style.cssText =
+    "position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;align-items:center;" +
+    "justify-content:center;gap:16px;background:#0b0e14;color:#fff;" +
+    "font-family:system-ui,-apple-system,sans-serif;text-align:center;padding:24px;";
+  const msg = document.createElement("p");
+  msg.dataset.testid = "fatal-message";
+  msg.style.cssText = "margin:0;max-width:480px;font-size:15px;line-height:1.6;color:#cfd9e4;";
+  msg.textContent = message;
+  const btn = document.createElement("button");
+  btn.dataset.testid = "back-to-title-btn";
+  btn.textContent = "Back to title";
+  btn.style.cssText =
+    "padding:12px 28px;border-radius:9px;border:none;font-size:15px;" +
+    "font-weight:600;cursor:pointer;color:#fff;background:#4f8cff;";
+  btn.addEventListener("click", () => window.location.reload());
+  el.append(msg, btn);
+  app.appendChild(el);
 }
 
 void boot();

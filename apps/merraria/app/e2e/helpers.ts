@@ -101,12 +101,6 @@ export const remotePlayer = (id: string, name: string, x = 190) => ({
   online: true,
 });
 
-export async function enterOffline(page: Page): Promise<void> {
-  await page.goto("/");
-  await page.getByTestId("offline-btn").click();
-  await page.waitForFunction(() => "__mt" in window);
-}
-
 export async function enterOnline(page: Page): Promise<void> {
   await page.goto("/");
   await page.getByTestId("connect-btn").click();
