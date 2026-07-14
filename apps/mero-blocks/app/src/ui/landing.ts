@@ -19,12 +19,16 @@ import {
   acceptWorldInvite,
   createWorld,
   createWorldInvite,
+  forgetWorldName,
   joinWorld,
   listWorlds,
+  rememberWorldName,
   resolveApplicationId,
+  worldNameOf,
 } from "../net/admin";
 import { beginWebLogin } from "../net/auth";
 import { clearSession, getSession, hasConnection, isAuthenticated, updateSession } from "../net/session";
+import { deleteWorld } from "../state/persistence";
 import { Panorama } from "./panorama";
 
 export interface LaunchChoice {
@@ -51,7 +55,8 @@ const css = `
   border-radius: 10px; padding: 18px 20px 20px; backdrop-filter: blur(3px);
   box-shadow: 0 12px 44px rgba(0,0,0,0.55); }
 .mbl-card h3 { margin: 0 0 10px; font-size: 15px; text-align: center; }
-.mbl-card label { display: block; text-align: left; font-size: 11px; color: #9fb0c3; margin: 10px 0 4px; }
+.mbl-card label, .mbl-modal label { display: block; text-align: left; font-size: 11px;
+  color: #9fb0c3; margin: 10px 0 4px; }
 .mbl-card input, .mbl-modal input { width: 100%; box-sizing: border-box; padding: 9px 11px;
   border-radius: 6px; border: 1px solid rgba(255,255,255,0.22); background: rgba(0,0,0,0.45);
   color: #fff; font-size: 14px; }
@@ -68,10 +73,39 @@ const css = `
 .mbl-divider { display: flex; align-items: center; gap: 10px; color: #8fa3ba; font-size: 10px;
   margin-top: 16px; text-transform: uppercase; letter-spacing: 1px; }
 .mbl-divider::before, .mbl-divider::after { content: ""; flex: 1; height: 1px; background: rgba(255,255,255,0.16); }
-.mbl-worlds { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; max-height: 180px; overflow-y: auto; }
-.mbl-world { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 6px;
-  background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.12); }
-.mbl-world code { font-size: 11px; color: #9fb0c3; flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.mbl-worlds { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; max-height: 260px;
+  overflow-y: auto; }
+.mbl-world-card { position: relative; height: 78px; border-radius: 8px; overflow: hidden; flex: none;
+  border: 1px solid rgba(255,255,255,0.16); background: #0d1117; }
+.mbl-world-card > canvas { position: absolute; inset: 0; width: 100%; height: 100%;
+  filter: blur(2.5px); transform: scale(1.12); image-rendering: pixelated; }
+.mbl-card-scrim { position: absolute; inset: 0;
+  background: linear-gradient(90deg, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.45) 55%, rgba(0,0,0,0.25) 100%); }
+.mbl-card-body { position: relative; z-index: 1; height: 100%; box-sizing: border-box;
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+.mbl-card-info { min-width: 0; text-align: left; }
+.mbl-card-title { font-size: 13px; font-weight: 700; text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mbl-card-info code { display: block; font-size: 10px; color: #b9c6d4; margin-top: 3px;
+  max-width: 170px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mbl-card-tag { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: #8fe0a0;
+  margin-top: 3px; }
+.mbl-card-actions { margin-left: auto; display: flex; gap: 6px; align-items: center; flex: none; }
+.mbl-card-actions .mbl-join { padding: 8px 16px; border-radius: 4px; border: 2px solid rgba(0,0,0,0.75);
+  background: #3f9950; color: #fff; font-weight: 700; cursor: pointer; }
+.mbl-card-actions .mbl-join.enter { background: #4f8cff; }
+.mbl-card-actions .mbl-join:disabled { background: #4a4f57; cursor: default; opacity: 0.7; }
+.mbl-kebab { width: 30px; padding: 8px 0; border-radius: 4px; border: 2px solid rgba(0,0,0,0.75);
+  background: rgba(0,0,0,0.55); color: #fff; font-weight: 700; cursor: pointer; line-height: 1; }
+.mbl-card-menu { position: absolute; right: 46px; top: 6px; z-index: 3; min-width: 150px;
+  background: #131a26; border: 1px solid rgba(255,255,255,0.18); border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6); display: flex; flex-direction: column; overflow: hidden; }
+.mbl-card-menu[hidden] { display: none; }
+.mbl-card-menu button { background: none; border: none; color: #dfe7ee; padding: 9px 12px;
+  text-align: left; font-size: 12px; cursor: pointer; }
+.mbl-card-menu button:hover { background: rgba(255,255,255,0.08); }
+.mbl-row2 { display: flex; gap: 8px; }
+.mbl-row2 .mbl-btn { flex: 1; }
 .mbl-world button { padding: 6px 14px; border-radius: 4px; border: 2px solid rgba(0,0,0,0.75);
   background: #4f8cff; color: #fff; font-weight: 700; cursor: pointer; }
 .mbl-nodes { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
@@ -212,8 +246,9 @@ export class Landing {
   }
 
   private renderPlayCard(defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
-    if (hasConnection()) this.renderReady(defaults, done);
-    else if (isAuthenticated()) this.renderWorldPicker(defaults, done);
+    // connected and merely-authenticated share ONE screen (the Minecraft
+    // world list) — quitting a world always brings you back to the full list
+    if (hasConnection() || isAuthenticated()) this.renderWorldPicker(defaults, done);
     else this.renderAnonymous(defaults, done);
   }
 
@@ -234,147 +269,298 @@ export class Landing {
     return Math.abs(Math.floor(Number(raw))) || fallback;
   }
 
-  // state 3: session has node + context — one click to play
-  private renderReady(defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
+  // states 2+3: logged into a node — the Minecraft world list. The current
+  // world (if any) renders first, synchronously, with one-click Enter; the
+  // rest of the node's worlds load as cards below it. Create / invite-join
+  // live in popups so the card itself stays clean.
+  private renderWorldPicker(defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
     const el = this.playCardEl();
+    const connected = hasConnection();
     el.innerHTML = `
-      <h3>You're connected</h3>
+      <h3>Choose a world</h3>
       ${this.commonInputs(defaults)}
-      <button class="mbl-btn primary" data-testid="connect-btn">Enter shared world</button>
-      <button class="mbl-btn ghost" data-testid="invite-btn">Invite friends</button>
+      <div class="mbl-worlds" data-testid="world-list"></div>
+      <div class="mbl-error" data-testid="join-error"></div>
+      <div class="mbl-row2">
+        <button class="mbl-btn green" data-testid="create-world-open-btn">Create world</button>
+        <button class="mbl-btn primary" data-testid="join-invite-open-btn">Join with invite</button>
+      </div>
+      ${connected ? `<button class="mbl-btn ghost" data-testid="invite-btn">Invite friends</button>` : ""}
       <button class="mbl-link" data-testid="disconnect-btn">Disconnect from node</button>
-      <div class="mbl-error" data-testid="ready-error"></div>
     `;
-    el.querySelector("[data-testid=connect-btn]")!.addEventListener("click", () =>
-      done(this.readChoice()),
+    const listEl = el.querySelector<HTMLElement>("[data-testid=world-list]")!;
+    const errEl = el.querySelector<HTMLElement>("[data-testid=join-error]")!;
+
+    el.querySelector("[data-testid=disconnect-btn]")!.addEventListener("click", () => {
+      clearSession();
+      this.renderPlayCard(defaults, done);
+    });
+    el.querySelector("[data-testid=create-world-open-btn]")!.addEventListener("click", () =>
+      this.openCreateWorldModal(defaults, done),
     );
-    const inviteBtn = el.querySelector<HTMLButtonElement>("[data-testid=invite-btn]")!;
-    inviteBtn.addEventListener("click", async () => {
-      const errEl = el.querySelector<HTMLElement>("[data-testid=ready-error]")!;
+    el.querySelector("[data-testid=join-invite-open-btn]")!.addEventListener("click", () =>
+      this.openInviteModal(done),
+    );
+
+    const inviteBtn = el.querySelector<HTMLButtonElement>("[data-testid=invite-btn]");
+    inviteBtn?.addEventListener("click", async () => {
       errEl.textContent = "";
       inviteBtn.disabled = true;
       inviteBtn.textContent = "Creating invite…";
       try {
         const code = await createWorldInvite();
         await navigator.clipboard.writeText(code);
-        inviteBtn.textContent = "Invite copied — send it to a friend!";
+        inviteBtn.textContent = "Invite copied!";
       } catch (e) {
-        inviteBtn.textContent = "Invite friends";
         errEl.textContent = `Could not create invite: ${errText(e)}`;
       } finally {
-        inviteBtn.disabled = false;
+        // brief confirmation, then back to normal so more invites can be minted
+        setTimeout(() => {
+          inviteBtn.textContent = "Invite friends";
+          inviteBtn.disabled = false;
+        }, 2500);
       }
     });
-    el.querySelector("[data-testid=disconnect-btn]")!.addEventListener("click", () => {
-      clearSession();
-      this.renderPlayCard(defaults, done);
+
+    // the current world's card renders synchronously — entering it must never
+    // wait on the world-list fetch
+    const current = getSession().contextId;
+    if (current) {
+      listEl.appendChild(
+        this.worldCard(
+          { contextId: current, name: worldNameOf(current, getSession().worldName ?? undefined) },
+          true,
+          -1,
+          done,
+          errEl,
+        ),
+      );
+    }
+    const loading = document.createElement("div");
+    loading.className = "mbl-note";
+    loading.textContent = "Loading worlds…";
+    listEl.appendChild(loading);
+
+    void (async () => {
+      try {
+        const applicationId = await resolveApplicationId();
+        const worlds = await listWorlds(applicationId);
+        loading.remove();
+        const others = worlds.filter((w) => w.contextId !== current);
+        if (!current && others.length === 0) {
+          listEl.innerHTML = `<div class="mbl-note">No worlds on this node yet — create the first one!</div>`;
+          return;
+        }
+        others.forEach((w, i) => listEl.appendChild(this.worldCard(w, false, i, done, errEl)));
+      } catch (e) {
+        loading.textContent = `Could not list worlds (${errText(e)}).`;
+      }
+    })();
+  }
+
+  /** one Minecraft-style world card: blurred terrain thumb, name, Join/Enter, ⋯ menu */
+  private worldCard(
+    w: { contextId: string; name?: string },
+    isCurrent: boolean,
+    index: number,
+    done: (c: LaunchChoice) => void,
+    errEl: HTMLElement,
+  ): HTMLElement {
+    const name = worldNameOf(w.contextId, w.name);
+    const card = document.createElement("div");
+    card.className = "mbl-world-card";
+    card.dataset.testid = isCurrent ? "world-card-current" : `world-card-${index}`;
+    const joinTestId = isCurrent ? "connect-btn" : `join-world-${index}`;
+    const menuTestId = isCurrent ? "world-menu-current" : `world-menu-${index}`;
+    card.innerHTML = `
+      <canvas></canvas>
+      <div class="mbl-card-scrim"></div>
+      <div class="mbl-card-body">
+        <div class="mbl-card-info">
+          <div class="mbl-card-title">${escapeHtml(name || "Unnamed world")}</div>
+          <code>${escapeHtml(w.contextId)}</code>
+          ${isCurrent ? `<div class="mbl-card-tag">last played</div>` : ""}
+        </div>
+        <div class="mbl-card-actions">
+          <button class="mbl-join${isCurrent ? " enter" : ""}" data-testid="${joinTestId}">
+            ${isCurrent ? "Enter" : "Join"}</button>
+          <button class="mbl-kebab" data-testid="${menuTestId}" aria-label="World options">⋯</button>
+        </div>
+      </div>
+      <div class="mbl-card-menu" hidden>
+        <button data-action="copy-id">Copy world ID</button>
+        <button data-action="forget">Forget local data</button>
+      </div>
+    `;
+    drawWorldThumb(card.querySelector("canvas")!, w.contextId);
+
+    const joinBtn = card.querySelector<HTMLButtonElement>(`[data-testid="${joinTestId}"]`)!;
+    joinBtn.addEventListener("click", async () => {
+      if (isCurrent) return done(this.readChoice()); // already a member
+      errEl.textContent = "";
+      joinBtn.disabled = true;
+      joinBtn.textContent = "Joining…";
+      try {
+        const identity = await joinWorld(w.contextId);
+        rememberWorldName(w.contextId, name);
+        // switching worlds: the old world's namespace/group/name must not
+        // leak into this one (invites would target the wrong world)
+        updateSession({
+          contextId: w.contextId,
+          namespaceId: null,
+          groupId: null,
+          worldName: name || null,
+          executorPublicKey: identity,
+        });
+        done(this.readChoice());
+      } catch (e) {
+        joinBtn.disabled = false;
+        joinBtn.textContent = "Join";
+        errEl.textContent = `Could not join: ${errText(e)}`;
+      }
+    });
+
+    const menu = card.querySelector<HTMLElement>(".mbl-card-menu")!;
+    const kebab = card.querySelector<HTMLButtonElement>(`[data-testid="${menuTestId}"]`)!;
+    kebab.addEventListener("click", (e) => {
+      e.stopPropagation();
+      menu.hidden = !menu.hidden;
+    });
+    document.addEventListener("click", () => {
+      menu.hidden = true;
+    });
+    menu.querySelector("[data-action=copy-id]")!.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(w.contextId);
+      } catch {
+        /* clipboard unavailable — nothing sensible to do */
+      }
+      menu.hidden = true;
+    });
+    menu.querySelector("[data-action=forget]")!.addEventListener("click", () => {
+      deleteWorld(w.contextId); // local block edits + player position only
+      forgetWorldName(w.contextId);
+      menu.hidden = true;
+    });
+    return card;
+  }
+
+  /** popup: create a world. Buttons lock while the node works — no double-create. */
+  private openCreateWorldModal(defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
+    const shade = document.createElement("div");
+    shade.className = "mbl-modal-shade";
+    shade.dataset.testid = "create-modal";
+    shade.innerHTML = `
+      <div class="mbl-modal">
+        <div class="mbl-modal-head">
+          <h3>Create world</h3>
+          <button class="mbl-modal-close" data-testid="create-close" aria-label="Close">✕</button>
+        </div>
+        <label>world name</label>
+        <input id="mbl-world-name" data-testid="world-name-input" value="overworld" maxlength="24" />
+        <label>seed</label>
+        <input id="mbl-seed" data-testid="seed-input" value="${defaults.seed}" />
+        <button class="mbl-btn green" data-testid="create-world-btn">Create world</button>
+        <div class="mbl-error" data-testid="create-error"></div>
+      </div>
+    `;
+    this.root.appendChild(shade);
+    let busy = false;
+    const closeBtn = shade.querySelector<HTMLButtonElement>("[data-testid=create-close]")!;
+    const createBtn = shade.querySelector<HTMLButtonElement>("[data-testid=create-world-btn]")!;
+    const errEl = shade.querySelector<HTMLElement>("[data-testid=create-error]")!;
+    shade.addEventListener("click", (e) => {
+      if (e.target === shade && !busy) shade.remove();
+    });
+    closeBtn.addEventListener("click", () => {
+      if (!busy) shade.remove();
+    });
+    createBtn.addEventListener("click", async () => {
+      if (busy) return;
+      errEl.textContent = "";
+      const worldName =
+        shade.querySelector<HTMLInputElement>("#mbl-world-name")?.value.trim() || "overworld";
+      busy = true;
+      createBtn.disabled = true;
+      closeBtn.disabled = true;
+      createBtn.textContent = "Creating…";
+      try {
+        const applicationId = await resolveApplicationId();
+        if (!applicationId) throw new Error("mero-blocks is not installed on this node");
+        const choice = this.readChoice();
+        const created = await createWorld(applicationId, worldName, this.readSeed(defaults.seed));
+        rememberWorldName(created.contextId, worldName);
+        updateSession({
+          contextId: created.contextId,
+          namespaceId: created.namespaceId,
+          groupId: created.groupId,
+          worldName,
+          executorPublicKey: created.memberPublicKey || getSession().executorPublicKey,
+        });
+        shade.remove();
+        done(choice);
+      } catch (e) {
+        errEl.textContent = `Could not create world: ${errText(e)}`;
+        busy = false;
+        createBtn.disabled = false;
+        closeBtn.disabled = false;
+        createBtn.textContent = "Create world";
+      }
     });
   }
 
-  // state 2: logged into a node — pick or create a world
-  private renderWorldPicker(defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
-    const el = this.playCardEl();
-    el.innerHTML = `
-      <h3>Choose a world</h3>
-      ${this.commonInputs(defaults)}
-      <div class="mbl-worlds" data-testid="world-list"><div class="mbl-note">Loading worlds…</div></div>
-      <div class="mbl-divider">or join with an invite</div>
-      <input id="mbl-invite" data-testid="invite-input" placeholder="paste an invite code" />
-      <button class="mbl-btn primary" data-testid="join-invite-btn">Join with invite</button>
-      <div class="mbl-divider">or create one</div>
-      <label>world name</label>
-      <input id="mbl-world-name" data-testid="world-name-input" value="overworld" maxlength="24" />
-      <label>seed</label>
-      <input id="mbl-seed" data-testid="seed-input" value="${defaults.seed}" />
-      <button class="mbl-btn green" data-testid="create-world-btn">Create world</button>
-      <button class="mbl-link" data-testid="disconnect-btn">Disconnect from node</button>
-      <div class="mbl-error" data-testid="picker-error"></div>
+  /** popup: join with a pasted invite. Locks (incl. close) while joining. */
+  private openInviteModal(done: (c: LaunchChoice) => void): void {
+    const shade = document.createElement("div");
+    shade.className = "mbl-modal-shade";
+    shade.dataset.testid = "invite-modal";
+    shade.innerHTML = `
+      <div class="mbl-modal">
+        <div class="mbl-modal-head">
+          <h3>Join with invite</h3>
+          <button class="mbl-modal-close" data-testid="invite-close" aria-label="Close">✕</button>
+        </div>
+        <label>invite code</label>
+        <input id="mbl-invite" data-testid="invite-input" placeholder="paste an invite code" />
+        <button class="mbl-btn primary" data-testid="join-invite-btn">Join world</button>
+        <div class="mbl-error" data-testid="picker-error"></div>
+      </div>
     `;
-    const errEl = el.querySelector<HTMLElement>("[data-testid=picker-error]")!;
-    const listEl = el.querySelector<HTMLElement>("[data-testid=world-list]")!;
-
-    el.querySelector("[data-testid=disconnect-btn]")!.addEventListener("click", () => {
-      clearSession();
-      this.renderPlayCard(defaults, done);
+    this.root.appendChild(shade);
+    let busy = false;
+    const closeBtn = shade.querySelector<HTMLButtonElement>("[data-testid=invite-close]")!;
+    const joinBtn = shade.querySelector<HTMLButtonElement>("[data-testid=join-invite-btn]")!;
+    const errEl = shade.querySelector<HTMLElement>("[data-testid=picker-error]")!;
+    shade.addEventListener("click", (e) => {
+      if (e.target === shade && !busy) shade.remove();
     });
-    el.querySelector("[data-testid=join-invite-btn]")!.addEventListener("click", async () => {
+    closeBtn.addEventListener("click", () => {
+      if (!busy) shade.remove();
+    });
+    joinBtn.addEventListener("click", async () => {
+      if (busy) return;
       errEl.textContent = "";
-      const code = el.querySelector<HTMLInputElement>("#mbl-invite")?.value ?? "";
+      const code = shade.querySelector<HTMLInputElement>("#mbl-invite")?.value ?? "";
       if (!code.trim()) {
         errEl.textContent = "Paste the invite code a friend sent you.";
         return;
       }
+      busy = true;
+      joinBtn.disabled = true;
+      closeBtn.disabled = true;
+      joinBtn.textContent = "Joining…";
       try {
         await acceptWorldInvite(code);
+        shade.remove();
         done(this.readChoice());
       } catch (e) {
         errEl.textContent = `Could not join with invite: ${errText(e)}`;
+        busy = false;
+        joinBtn.disabled = false;
+        closeBtn.disabled = false;
+        joinBtn.textContent = "Join world";
       }
     });
-
-    void (async () => {
-      let applicationId: string | null = null;
-      try {
-        applicationId = await resolveApplicationId();
-        const worlds = await listWorlds(applicationId);
-        if (worlds.length === 0) {
-          listEl.innerHTML = `<div class="mbl-note">No worlds on this node yet — create the first one below.</div>`;
-        } else {
-          listEl.innerHTML = "";
-          worlds.forEach((w, i) => {
-            const row = document.createElement("div");
-            row.className = "mbl-world";
-            row.innerHTML = `<code>${escapeHtml(w.contextId)}</code>
-              <button data-testid="join-world-${i}">Join</button>`;
-            row.querySelector("button")!.addEventListener("click", async () => {
-              errEl.textContent = "";
-              try {
-                const identity = await joinWorld(w.contextId);
-                // switching worlds: the old world's namespace/group/name must
-                // not leak into this one (invites would target the wrong world)
-                updateSession({
-                  contextId: w.contextId,
-                  namespaceId: null,
-                  groupId: null,
-                  worldName: null,
-                  executorPublicKey: identity,
-                });
-                done(this.readChoice());
-              } catch (e) {
-                errEl.textContent = `Could not join: ${errText(e)}`;
-              }
-            });
-            listEl.appendChild(row);
-          });
-        }
-      } catch (e) {
-        listEl.innerHTML = `<div class="mbl-note">Could not list worlds (${escapeHtml(errText(e))}).</div>`;
-      }
-
-      el.querySelector("[data-testid=create-world-btn]")!.addEventListener("click", async () => {
-        errEl.textContent = "";
-        if (!applicationId) {
-          errEl.textContent = "mero-blocks is not installed on this node.";
-          return;
-        }
-        const worldName =
-          el.querySelector<HTMLInputElement>("#mbl-world-name")?.value.trim() || "overworld";
-        const choice = this.readChoice();
-        try {
-          const created = await createWorld(applicationId, worldName, this.readSeed(defaults.seed));
-          updateSession({
-            contextId: created.contextId,
-            namespaceId: created.namespaceId,
-            groupId: created.groupId,
-            worldName,
-            executorPublicKey: created.memberPublicKey || getSession().executorPublicKey,
-          });
-          done(choice);
-        } catch (e) {
-          errEl.textContent = `Could not create world: ${errText(e)}`;
-        }
-      });
-    })();
   }
 
   // state 1: anonymous — the game is online-only, so the only path forward is
@@ -483,6 +669,52 @@ export class Landing {
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+}
+
+/**
+ * Static blocky terrain thumbnail for a world card, deterministic from the
+ * context id (the world's real seed isn't known before joining) — blurred by
+ * CSS into the Minecraft world-list look.
+ */
+function drawWorldThumb(canvas: HTMLCanvasElement, seedStr: string): void {
+  const W = 96;
+  const H = 54;
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+  let h = 2166136261;
+  for (let i = 0; i < seedStr.length; i++) h = Math.imul(h ^ seedStr.charCodeAt(i), 16777619);
+  const rnd = () => ((h = (Math.imul(h, 1664525) + 1013904223) >>> 0) / 4294967296);
+
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, "#6fa9e8");
+  sky.addColorStop(1, "#cfe6ff");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#ffe9a8";
+  ctx.fillRect(8 + Math.floor(rnd() * 60), 4 + Math.floor(rnd() * 8), 7, 7);
+
+  const B = 6; // block size
+  let ground = 22 + rnd() * 12;
+  for (let x = 0; x < W; x += B) {
+    ground = Math.max(16, Math.min(H - 8, ground + (rnd() - 0.5) * 9));
+    const top = Math.floor(ground / B) * B;
+    ctx.fillStyle = `rgb(${70 + rnd() * 25}, ${165 + rnd() * 35}, ${85 + rnd() * 25})`;
+    ctx.fillRect(x, top, B, B);
+    for (let y = top + B; y < H; y += B) {
+      const deep = y > top + 2 * B;
+      ctx.fillStyle = deep
+        ? `rgb(${95 + rnd() * 20}, ${95 + rnd() * 20}, ${100 + rnd() * 20})`
+        : `rgb(${125 + rnd() * 25}, ${86 + rnd() * 18}, ${52 + rnd() * 14})`;
+      ctx.fillRect(x, y, B, B);
+    }
+    if (rnd() < 0.12 && top > 20) {
+      ctx.fillStyle = "#7a5230";
+      ctx.fillRect(x + 2, top - 8, 2, 8);
+      ctx.fillStyle = "#3f8f4f";
+      ctx.fillRect(x - 3, top - 15, 12, 9);
+    }
+  }
 }
 
 /** human-readable error text — the message, not "Error: message" */

@@ -40,6 +40,14 @@ export function loadWorld(worldId: string): SaveData | null {
   }
 }
 
+export function deleteWorld(worldId: string): void {
+  try {
+    localStorage.removeItem(keyFor(worldId));
+  } catch {
+    /* nothing to delete */
+  }
+}
+
 export function listWorlds(): { worldId: string; data: SaveData }[] {
   const out: { worldId: string; data: SaveData }[] = [];
   for (let i = 0; i < localStorage.length; i++) {

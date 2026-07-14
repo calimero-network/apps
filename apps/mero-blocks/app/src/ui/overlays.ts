@@ -144,7 +144,11 @@ export class PauseMenu {
         } catch {
           inviteBtn.textContent = "Invite failed — try again";
         } finally {
-          inviteBtn.disabled = false;
+          // brief confirmation, then back to normal — mint as many as you like
+          setTimeout(() => {
+            inviteBtn.textContent = "Copy world invite";
+            inviteBtn.disabled = false;
+          }, 2500);
         }
       });
     }
