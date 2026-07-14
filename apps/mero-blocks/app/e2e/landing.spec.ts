@@ -45,7 +45,7 @@ test.describe("landing page", () => {
     expect(probed).toEqual([]);
   });
 
-  test("the connect popup pings every well-known endpoint and marks the live one", async ({ page }) => {
+  test("the connect popup lists only the reachable nodes", async ({ page }) => {
     await page.route("http://localhost:2428/admin-api/health", (route) =>
       route.fulfill({
         status: 200,
@@ -59,16 +59,13 @@ test.describe("landing page", () => {
     await page.goto("/");
     await page.getByTestId("connect-open-btn").click();
     await expect(page.getByTestId("connect-modal")).toBeVisible();
-    // all four candidates render immediately and get pinged live
+    // only the live node shows up — dead ports are not offered at all
     const nodes = page.getByTestId("discovered-nodes");
-    for (const port of [2428, 2429, 2528, 2529])
-      await expect(nodes).toContainText(`http://localhost:${port}`);
-    await expect(page.getByTestId("node-status-0")).toHaveText("online");
-    await expect(page.getByTestId("discovered-node-0")).toBeEnabled();
-    for (const i of [1, 2, 3]) {
-      await expect(page.getByTestId(`node-status-${i}`)).toHaveText("unreachable");
-      await expect(page.getByTestId(`discovered-node-${i}`)).toBeDisabled();
-    }
+    await expect(page.getByTestId("discovered-node-0")).toBeVisible();
+    await expect(nodes).toContainText("http://localhost:2428");
+    for (const port of [2429, 2528, 2529]) await expect(nodes).not.toContainText(`${port}`);
+    // manual entry is always offered alongside
+    await expect(page.getByTestId("node-url-input")).toBeVisible();
   });
 
   test("connecting to a discovered node goes to its auth page", async ({ page }) => {
@@ -139,13 +136,14 @@ test.describe("landing page", () => {
 
     await page.goto("/");
     await page.getByTestId("connect-open-btn").click();
-    await expect(page.getByTestId("scan-note")).toContainText("No local node found");
+    await expect(page.getByTestId("scan-note")).toContainText("No local nodes found");
+    // the manual URL path stays available even with nothing discovered
+    await expect(page.getByTestId("node-url-input")).toBeVisible();
 
     alive = true; // the player started a node — no page refresh needed
     await page.getByTestId("rescan-btn").click();
-    await expect(page.getByTestId("node-status-0")).toHaveText("online");
-    await expect(page.getByTestId("discovered-node-0")).toBeEnabled();
-    await expect(page.getByTestId("scan-note")).not.toContainText("No local node found");
+    await expect(page.getByTestId("discovered-node-0")).toBeVisible();
+    await expect(page.getByTestId("scan-note")).not.toContainText("No local nodes found");
   });
 
   test("the connect popup closes without touching the session", async ({ page }) => {

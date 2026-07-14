@@ -52,8 +52,9 @@ const css = `
   box-shadow: 0 12px 44px rgba(0,0,0,0.55); }
 .mbl-card h3 { margin: 0 0 10px; font-size: 15px; text-align: center; }
 .mbl-card label { display: block; text-align: left; font-size: 11px; color: #9fb0c3; margin: 10px 0 4px; }
-.mbl-card input { width: 100%; box-sizing: border-box; padding: 9px 11px; border-radius: 6px;
-  border: 1px solid rgba(255,255,255,0.22); background: rgba(0,0,0,0.45); color: #fff; font-size: 14px; }
+.mbl-card input, .mbl-modal input { width: 100%; box-sizing: border-box; padding: 9px 11px;
+  border-radius: 6px; border: 1px solid rgba(255,255,255,0.22); background: rgba(0,0,0,0.45);
+  color: #fff; font-size: 14px; }
 .mbl-btn { width: 100%; margin-top: 12px; padding: 12px; border-radius: 5px;
   border: 2px solid rgba(0,0,0,0.75); font-size: 14px; font-weight: 700; cursor: pointer;
   color: #fff; text-shadow: 0 1px 0 rgba(0,0,0,0.45);
@@ -81,12 +82,6 @@ const css = `
   box-shadow: 0 0 6px #58c56b; flex: none; }
 .mbl-node-row button { padding: 6px 14px; border-radius: 4px; border: 2px solid rgba(0,0,0,0.75);
   background: #3f9950; color: #fff; font-weight: 700; cursor: pointer; }
-.mbl-node-row button:disabled { background: #4a4f57; cursor: default; opacity: 0.6; }
-.mbl-node-row.dead { border-color: rgba(255,255,255,0.1); }
-.mbl-node-row.dead .mbl-dot { background: #6b7480; box-shadow: none; }
-.mbl-node-row .mbl-dot.wait { background: #d8b13c; box-shadow: 0 0 6px #d8b13c;
-  animation: mblpulse 1.2s ease-in-out infinite; }
-.mbl-status { font-size: 10px; color: #8fa3ba; flex: none; min-width: 58px; text-align: right; }
 .mbl-modal-shade { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,0.6);
   display: flex; align-items: center; justify-content: center; padding: 16px; }
 .mbl-modal { width: min(420px, 94vw); box-sizing: border-box; background: rgba(10,13,18,0.97);
@@ -403,9 +398,10 @@ export class Landing {
   }
 
   /**
-   * The connect popup: every well-known local endpoint renders immediately
-   * and is pinged live (yellow = probing, green = alive, grey = unreachable),
-   * so there is nothing to refresh — plus rescan and a manual URL field.
+   * The connect popup: the well-known local endpoints are pinged on open and
+   * only the LIVE ones are listed (a dead port is noise, not a choice) — so
+   * there is nothing to refresh. Rescan re-probes; the manual URL field is
+   * always there as the fallback.
    */
   private openConnectModal(): void {
     const shade = document.createElement("div");
@@ -446,36 +442,27 @@ export class Landing {
       abort = new AbortController();
       const signal = abort.signal;
       noteEl.textContent = "";
-      nodesEl.innerHTML = "";
+      nodesEl.innerHTML = `<div class="mbl-scan" data-testid="scan-progress">Scanning for local nodes…</div>`;
+      let found = 0;
       const probes = DEFAULT_LOCAL_NODE_PORTS.map((port, i) => {
         const url = localNodeUrl(port);
-        const row = document.createElement("div");
-        row.className = "mbl-node-row";
-        row.innerHTML = `<span class="mbl-dot wait"></span><code>${escapeHtml(url)}</code>
-          <span class="mbl-status" data-testid="node-status-${i}">pinging…</span>
-          <button data-testid="discovered-node-${i}" disabled>Connect</button>`;
-        nodesEl.appendChild(row);
-        const dot = row.querySelector<HTMLElement>(".mbl-dot")!;
-        const status = row.querySelector<HTMLElement>(".mbl-status")!;
-        const btn = row.querySelector<HTMLButtonElement>("button")!;
-        btn.addEventListener("click", () => beginWebLogin(url));
         return probeNodeHealth(url, { signal }).then((alive) => {
-          if (signal.aborted) return false;
-          dot.classList.remove("wait");
-          if (alive) {
-            status.textContent = "online";
-            btn.disabled = false;
-          } else {
-            row.classList.add("dead");
-            status.textContent = "unreachable";
-          }
-          return alive;
+          if (signal.aborted || !alive) return false;
+          if (found++ === 0) nodesEl.innerHTML = ""; // first hit clears the scanning note
+          const row = document.createElement("div");
+          row.className = "mbl-node-row";
+          row.innerHTML = `<span class="mbl-dot"></span><code>${escapeHtml(url)}</code>
+            <button data-testid="discovered-node-${i}">Connect</button>`;
+          row.querySelector("button")!.addEventListener("click", () => beginWebLogin(url));
+          nodesEl.appendChild(row);
+          return true;
         });
       });
       void Promise.all(probes).then((alive) => {
         if (signal.aborted) return;
         if (!alive.some(Boolean)) {
-          noteEl.textContent = "No local node found — rescan, or enter your node's URL below.";
+          nodesEl.innerHTML = "";
+          noteEl.textContent = "No local nodes found — rescan, or enter your node's URL below.";
         }
       });
     };
