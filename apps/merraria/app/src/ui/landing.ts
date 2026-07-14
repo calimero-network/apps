@@ -17,11 +17,15 @@ import {
   acceptWorldInvite,
   createWorld,
   createWorldInvite,
+  forgetWorldName,
   joinWorld,
   listWorlds,
+  rememberWorldName,
   resolveApplicationId,
+  worldNameOf,
 } from "../net/admin";
 import { beginWebLogin } from "../net/auth";
+import { deleteWorld } from "../state/persistence";
 import { WorldAnim } from "./worldAnim";
 import { clearSession, getSession, hasConnection, isAuthenticated, updateSession } from "../net/session";
 
@@ -54,7 +58,8 @@ const css = `
   border: 1px solid rgba(255,255,255,0.14); border-radius: 16px; padding: 18px 24px 20px;
   box-shadow: 0 8px 40px rgba(0,0,0,0.45); }
 .mtl-card h3 { margin: 0 0 16px; font-size: 16px; }
-.mtl-card label { display: block; text-align: left; font-size: 12px; color: #9fb0c3; margin: 12px 0 4px; }
+.mtl-card label, .mtl-modal label { display: block; text-align: left; font-size: 12px;
+  color: #9fb0c3; margin: 12px 0 4px; }
 .mtl-card input, .mtl-modal input { width: 100%; box-sizing: border-box; padding: 10px 11px;
   border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.32);
   color: #fff; font-size: 14px; }
@@ -68,10 +73,39 @@ const css = `
 .mtl-divider { display: flex; align-items: center; gap: 10px; color: #6d7f92; font-size: 11px;
   margin-top: 18px; text-transform: uppercase; letter-spacing: 1px; }
 .mtl-divider::before, .mtl-divider::after { content: ""; flex: 1; height: 1px; background: rgba(255,255,255,0.12); }
-.mtl-worlds { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto; }
-.mtl-world { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px;
-  background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); }
-.mtl-world code { font-size: 11px; color: #9fb0c3; flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.mtl-worlds { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; max-height: 260px;
+  overflow-y: auto; }
+.mtl-world-card { position: relative; height: 78px; border-radius: 10px; overflow: hidden; flex: none;
+  border: 1px solid rgba(255,255,255,0.16); background: #0d1117; }
+.mtl-world-card > canvas { position: absolute; inset: 0; width: 100%; height: 100%;
+  filter: blur(2.5px); transform: scale(1.12); image-rendering: pixelated; }
+.mtl-card-scrim { position: absolute; inset: 0;
+  background: linear-gradient(90deg, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.45) 55%, rgba(0,0,0,0.25) 100%); }
+.mtl-card-body { position: relative; z-index: 1; height: 100%; box-sizing: border-box;
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+.mtl-card-info { min-width: 0; text-align: left; }
+.mtl-card-title { font-size: 13px; font-weight: 700; text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mtl-card-info code { display: block; font-size: 10px; color: #b9c6d4; margin-top: 3px;
+  max-width: 170px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mtl-card-tag { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: #8fe0a0;
+  margin-top: 3px; }
+.mtl-card-actions { margin-left: auto; display: flex; gap: 6px; align-items: center; flex: none; }
+.mtl-card-actions .mtl-join { padding: 8px 16px; border-radius: 6px; border: none;
+  background: #3f9950; color: #fff; font-weight: 600; cursor: pointer; }
+.mtl-card-actions .mtl-join.enter { background: #4f8cff; }
+.mtl-card-actions .mtl-join:disabled { background: #4a4f57; cursor: default; opacity: 0.7; }
+.mtl-kebab { width: 30px; padding: 8px 0; border-radius: 6px; border: none;
+  background: rgba(0,0,0,0.55); color: #fff; font-weight: 700; cursor: pointer; line-height: 1; }
+.mtl-card-menu { position: absolute; right: 46px; top: 6px; z-index: 3; min-width: 150px;
+  background: #131a26; border: 1px solid rgba(255,255,255,0.18); border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6); display: flex; flex-direction: column; overflow: hidden; }
+.mtl-card-menu[hidden] { display: none; }
+.mtl-card-menu button { background: none; border: none; color: #dfe7ee; padding: 9px 12px;
+  text-align: left; font-size: 12px; cursor: pointer; }
+.mtl-card-menu button:hover { background: rgba(255,255,255,0.08); }
+.mtl-row2 { display: flex; gap: 8px; }
+.mtl-row2 .mtl-btn { flex: 1; }
 .mtl-world button { padding: 6px 14px; border-radius: 6px; border: none; background: #4f8cff;
   color: #fff; font-weight: 600; cursor: pointer; }
 .mtl-note { font-size: 12px; color: #8fa3ba; margin-top: 10px; line-height: 1.5; }
@@ -217,8 +251,9 @@ export class Landing {
   }
 
   private renderPlayCard(defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
-    if (hasConnection()) this.renderReady(defaults, done);
-    else if (isAuthenticated()) this.renderWorldPicker(defaults, done);
+    // connected and merely-authenticated share ONE screen (the Minecraft
+    // world list) — quitting a world always brings you back to the full list
+    if (hasConnection() || isAuthenticated()) this.renderWorldPicker(defaults, done);
     else this.renderAnonymous(defaults, done);
   }
 
@@ -239,147 +274,298 @@ export class Landing {
     return Math.abs(Math.floor(Number(raw))) || fallback;
   }
 
-  // state 3: session has node + context — one click to play
-  private renderReady(defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
+  // states 2+3: logged into a node — the Minecraft world list. The current
+  // world (if any) renders first, synchronously, with one-click Enter; the
+  // rest of the node's worlds load as cards below it. Create / invite-join
+  // live in popups so the card itself stays clean.
+  private renderWorldPicker(defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
     const el = this.playCardEl();
+    const connected = hasConnection();
     el.innerHTML = `
-      <h3>You're connected</h3>
+      <h3>Choose a world</h3>
       ${this.commonInputs(defaults)}
-      <button class="mtl-btn primary" data-testid="connect-btn">Enter shared world</button>
-      <button class="mtl-btn ghost" data-testid="invite-btn">Invite friends</button>
+      <div class="mtl-worlds" data-testid="world-list"></div>
+      <div class="mtl-error" data-testid="join-error"></div>
+      <div class="mtl-row2">
+        <button class="mtl-btn green" data-testid="create-world-open-btn">Create world</button>
+        <button class="mtl-btn primary" data-testid="join-invite-open-btn">Join with invite</button>
+      </div>
+      ${connected ? `<button class="mtl-btn ghost" data-testid="invite-btn">Invite friends</button>` : ""}
       <button class="mtl-link" data-testid="disconnect-btn">Disconnect from node</button>
-      <div class="mtl-error" data-testid="ready-error"></div>
     `;
-    el.querySelector("[data-testid=connect-btn]")!.addEventListener("click", () =>
-      done(this.readChoice()),
+    const listEl = el.querySelector<HTMLElement>("[data-testid=world-list]")!;
+    const errEl = el.querySelector<HTMLElement>("[data-testid=join-error]")!;
+
+    el.querySelector("[data-testid=disconnect-btn]")!.addEventListener("click", () => {
+      clearSession();
+      this.renderPlayCard(defaults, done);
+    });
+    el.querySelector("[data-testid=create-world-open-btn]")!.addEventListener("click", () =>
+      this.openCreateWorldModal(defaults, done),
     );
-    const inviteBtn = el.querySelector<HTMLButtonElement>("[data-testid=invite-btn]")!;
-    inviteBtn.addEventListener("click", async () => {
-      const errEl = el.querySelector<HTMLElement>("[data-testid=ready-error]")!;
+    el.querySelector("[data-testid=join-invite-open-btn]")!.addEventListener("click", () =>
+      this.openInviteModal(done),
+    );
+
+    const inviteBtn = el.querySelector<HTMLButtonElement>("[data-testid=invite-btn]");
+    inviteBtn?.addEventListener("click", async () => {
       errEl.textContent = "";
       inviteBtn.disabled = true;
       inviteBtn.textContent = "Creating invite…";
       try {
         const code = await createWorldInvite();
         await navigator.clipboard.writeText(code);
-        inviteBtn.textContent = "Invite copied — send it to a friend!";
+        inviteBtn.textContent = "Invite copied!";
       } catch (e) {
-        inviteBtn.textContent = "Invite friends";
         errEl.textContent = `Could not create invite: ${errText(e)}`;
       } finally {
-        inviteBtn.disabled = false;
+        // brief confirmation, then back to normal so more invites can be minted
+        setTimeout(() => {
+          inviteBtn.textContent = "Invite friends";
+          inviteBtn.disabled = false;
+        }, 2500);
       }
     });
-    el.querySelector("[data-testid=disconnect-btn]")!.addEventListener("click", () => {
-      clearSession();
-      this.renderPlayCard(defaults, done);
+
+    // the current world's card renders synchronously — entering it must never
+    // wait on the world-list fetch
+    const current = getSession().contextId;
+    if (current) {
+      listEl.appendChild(
+        this.worldCard(
+          { contextId: current, name: worldNameOf(current, getSession().worldName ?? undefined) },
+          true,
+          -1,
+          done,
+          errEl,
+        ),
+      );
+    }
+    const loading = document.createElement("div");
+    loading.className = "mtl-note";
+    loading.textContent = "Loading worlds…";
+    listEl.appendChild(loading);
+
+    void (async () => {
+      try {
+        const applicationId = await resolveApplicationId();
+        const worlds = await listWorlds(applicationId);
+        loading.remove();
+        const others = worlds.filter((w) => w.contextId !== current);
+        if (!current && others.length === 0) {
+          listEl.innerHTML = `<div class="mtl-note">No worlds on this node yet — create the first one!</div>`;
+          return;
+        }
+        others.forEach((w, i) => listEl.appendChild(this.worldCard(w, false, i, done, errEl)));
+      } catch (e) {
+        loading.textContent = `Could not list worlds (${errText(e)}).`;
+      }
+    })();
+  }
+
+  /** one Minecraft-style world card: blurred terrain thumb, name, Join/Enter, ⋯ menu */
+  private worldCard(
+    w: { contextId: string; name?: string },
+    isCurrent: boolean,
+    index: number,
+    done: (c: LaunchChoice) => void,
+    errEl: HTMLElement,
+  ): HTMLElement {
+    const name = worldNameOf(w.contextId, w.name);
+    const card = document.createElement("div");
+    card.className = "mtl-world-card";
+    card.dataset.testid = isCurrent ? "world-card-current" : `world-card-${index}`;
+    const joinTestId = isCurrent ? "connect-btn" : `join-world-${index}`;
+    const menuTestId = isCurrent ? "world-menu-current" : `world-menu-${index}`;
+    card.innerHTML = `
+      <canvas></canvas>
+      <div class="mtl-card-scrim"></div>
+      <div class="mtl-card-body">
+        <div class="mtl-card-info">
+          <div class="mtl-card-title">${escapeHtml(name || "Unnamed world")}</div>
+          <code>${escapeHtml(w.contextId)}</code>
+          ${isCurrent ? `<div class="mtl-card-tag">last played</div>` : ""}
+        </div>
+        <div class="mtl-card-actions">
+          <button class="mtl-join${isCurrent ? " enter" : ""}" data-testid="${joinTestId}">
+            ${isCurrent ? "Enter" : "Join"}</button>
+          <button class="mtl-kebab" data-testid="${menuTestId}" aria-label="World options">⋯</button>
+        </div>
+      </div>
+      <div class="mtl-card-menu" hidden>
+        <button data-action="copy-id">Copy world ID</button>
+        <button data-action="forget">Forget local data</button>
+      </div>
+    `;
+    drawWorldThumb(card.querySelector("canvas")!, w.contextId);
+
+    const joinBtn = card.querySelector<HTMLButtonElement>(`[data-testid="${joinTestId}"]`)!;
+    joinBtn.addEventListener("click", async () => {
+      if (isCurrent) return done(this.readChoice()); // already a member
+      errEl.textContent = "";
+      joinBtn.disabled = true;
+      joinBtn.textContent = "Joining…";
+      try {
+        const identity = await joinWorld(w.contextId);
+        rememberWorldName(w.contextId, name);
+        // switching worlds: the old world's namespace/group/name must not
+        // leak into this one (invites would target the wrong world)
+        updateSession({
+          contextId: w.contextId,
+          namespaceId: null,
+          groupId: null,
+          worldName: name || null,
+          executorPublicKey: identity,
+        });
+        done(this.readChoice());
+      } catch (e) {
+        joinBtn.disabled = false;
+        joinBtn.textContent = "Join";
+        errEl.textContent = `Could not join: ${errText(e)}`;
+      }
+    });
+
+    const menu = card.querySelector<HTMLElement>(".mtl-card-menu")!;
+    const kebab = card.querySelector<HTMLButtonElement>(`[data-testid="${menuTestId}"]`)!;
+    kebab.addEventListener("click", (e) => {
+      e.stopPropagation();
+      menu.hidden = !menu.hidden;
+    });
+    document.addEventListener("click", () => {
+      menu.hidden = true;
+    });
+    menu.querySelector("[data-action=copy-id]")!.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(w.contextId);
+      } catch {
+        /* clipboard unavailable — nothing sensible to do */
+      }
+      menu.hidden = true;
+    });
+    menu.querySelector("[data-action=forget]")!.addEventListener("click", () => {
+      deleteWorld(w.contextId); // local tile edits + player position only
+      forgetWorldName(w.contextId);
+      menu.hidden = true;
+    });
+    return card;
+  }
+
+  /** popup: create a world. Buttons lock while the node works — no double-create. */
+  private openCreateWorldModal(defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
+    const shade = document.createElement("div");
+    shade.className = "mtl-modal-shade";
+    shade.dataset.testid = "create-modal";
+    shade.innerHTML = `
+      <div class="mtl-modal">
+        <div class="mtl-modal-head">
+          <h3>Create world</h3>
+          <button class="mtl-modal-close" data-testid="create-close" aria-label="Close">✕</button>
+        </div>
+        <label>world name</label>
+        <input id="mtl-world-name" data-testid="world-name-input" value="surface" maxlength="24" />
+        <label>seed</label>
+        <input id="mtl-seed" data-testid="seed-input" value="${defaults.seed}" />
+        <button class="mtl-btn green" data-testid="create-world-btn">Create world</button>
+        <div class="mtl-error" data-testid="create-error"></div>
+      </div>
+    `;
+    this.root.appendChild(shade);
+    let busy = false;
+    const closeBtn = shade.querySelector<HTMLButtonElement>("[data-testid=create-close]")!;
+    const createBtn = shade.querySelector<HTMLButtonElement>("[data-testid=create-world-btn]")!;
+    const errEl = shade.querySelector<HTMLElement>("[data-testid=create-error]")!;
+    shade.addEventListener("click", (e) => {
+      if (e.target === shade && !busy) shade.remove();
+    });
+    closeBtn.addEventListener("click", () => {
+      if (!busy) shade.remove();
+    });
+    createBtn.addEventListener("click", async () => {
+      if (busy) return;
+      errEl.textContent = "";
+      const worldName =
+        shade.querySelector<HTMLInputElement>("#mtl-world-name")?.value.trim() || "surface";
+      busy = true;
+      createBtn.disabled = true;
+      closeBtn.disabled = true;
+      createBtn.textContent = "Creating…";
+      try {
+        const applicationId = await resolveApplicationId();
+        if (!applicationId) throw new Error("merraria is not installed on this node");
+        const choice = this.readChoice();
+        const created = await createWorld(applicationId, worldName, this.readSeed(defaults.seed));
+        rememberWorldName(created.contextId, worldName);
+        updateSession({
+          contextId: created.contextId,
+          namespaceId: created.namespaceId,
+          groupId: created.groupId,
+          worldName,
+          executorPublicKey: created.memberPublicKey || getSession().executorPublicKey,
+        });
+        shade.remove();
+        done(choice);
+      } catch (e) {
+        errEl.textContent = `Could not create world: ${errText(e)}`;
+        busy = false;
+        createBtn.disabled = false;
+        closeBtn.disabled = false;
+        createBtn.textContent = "Create world";
+      }
     });
   }
 
-  // state 2: logged into a node — pick or create a world
-  private renderWorldPicker(defaults: { name: string; seed: number }, done: (c: LaunchChoice) => void): void {
-    const el = this.playCardEl();
-    el.innerHTML = `
-      <h3>Choose a world</h3>
-      ${this.commonInputs(defaults)}
-      <div class="mtl-worlds" data-testid="world-list"><div class="mtl-note">Loading worlds…</div></div>
-      <div class="mtl-divider">or join with an invite</div>
-      <input id="mtl-invite" data-testid="invite-input" placeholder="paste an invite code" />
-      <button class="mtl-btn primary" data-testid="join-invite-btn">Join with invite</button>
-      <div class="mtl-divider">or create one</div>
-      <label>world name</label>
-      <input id="mtl-world-name" data-testid="world-name-input" value="surface" maxlength="24" />
-      <label>seed</label>
-      <input id="mtl-seed" data-testid="seed-input" value="${defaults.seed}" />
-      <button class="mtl-btn green" data-testid="create-world-btn">Create world</button>
-      <button class="mtl-link" data-testid="disconnect-btn">Disconnect from node</button>
-      <div class="mtl-error" data-testid="picker-error"></div>
+  /** popup: join with a pasted invite. Locks (incl. close) while joining. */
+  private openInviteModal(done: (c: LaunchChoice) => void): void {
+    const shade = document.createElement("div");
+    shade.className = "mtl-modal-shade";
+    shade.dataset.testid = "invite-modal";
+    shade.innerHTML = `
+      <div class="mtl-modal">
+        <div class="mtl-modal-head">
+          <h3>Join with invite</h3>
+          <button class="mtl-modal-close" data-testid="invite-close" aria-label="Close">✕</button>
+        </div>
+        <label>invite code</label>
+        <input id="mtl-invite" data-testid="invite-input" placeholder="paste an invite code" />
+        <button class="mtl-btn primary" data-testid="join-invite-btn">Join world</button>
+        <div class="mtl-error" data-testid="picker-error"></div>
+      </div>
     `;
-    const errEl = el.querySelector<HTMLElement>("[data-testid=picker-error]")!;
-    const listEl = el.querySelector<HTMLElement>("[data-testid=world-list]")!;
-
-    el.querySelector("[data-testid=disconnect-btn]")!.addEventListener("click", () => {
-      clearSession();
-      this.renderPlayCard(defaults, done);
+    this.root.appendChild(shade);
+    let busy = false;
+    const closeBtn = shade.querySelector<HTMLButtonElement>("[data-testid=invite-close]")!;
+    const joinBtn = shade.querySelector<HTMLButtonElement>("[data-testid=join-invite-btn]")!;
+    const errEl = shade.querySelector<HTMLElement>("[data-testid=picker-error]")!;
+    shade.addEventListener("click", (e) => {
+      if (e.target === shade && !busy) shade.remove();
     });
-    el.querySelector("[data-testid=join-invite-btn]")!.addEventListener("click", async () => {
+    closeBtn.addEventListener("click", () => {
+      if (!busy) shade.remove();
+    });
+    joinBtn.addEventListener("click", async () => {
+      if (busy) return;
       errEl.textContent = "";
-      const code = el.querySelector<HTMLInputElement>("#mtl-invite")?.value ?? "";
+      const code = shade.querySelector<HTMLInputElement>("#mtl-invite")?.value ?? "";
       if (!code.trim()) {
         errEl.textContent = "Paste the invite code a friend sent you.";
         return;
       }
+      busy = true;
+      joinBtn.disabled = true;
+      closeBtn.disabled = true;
+      joinBtn.textContent = "Joining…";
       try {
         await acceptWorldInvite(code);
+        shade.remove();
         done(this.readChoice());
       } catch (e) {
         errEl.textContent = `Could not join with invite: ${errText(e)}`;
+        busy = false;
+        joinBtn.disabled = false;
+        closeBtn.disabled = false;
+        joinBtn.textContent = "Join world";
       }
     });
-
-    void (async () => {
-      let applicationId: string | null = null;
-      try {
-        applicationId = await resolveApplicationId();
-        const worlds = await listWorlds(applicationId);
-        if (worlds.length === 0) {
-          listEl.innerHTML = `<div class="mtl-note">No worlds on this node yet — create the first one below.</div>`;
-        } else {
-          listEl.innerHTML = "";
-          worlds.forEach((w, i) => {
-            const row = document.createElement("div");
-            row.className = "mtl-world";
-            row.innerHTML = `<code>${escapeHtml(w.contextId)}</code>
-              <button data-testid="join-world-${i}">Join</button>`;
-            row.querySelector("button")!.addEventListener("click", async () => {
-              errEl.textContent = "";
-              try {
-                const identity = await joinWorld(w.contextId);
-                // switching worlds: the old world's namespace/group/name must
-                // not leak into this one (invites would target the wrong world)
-                updateSession({
-                  contextId: w.contextId,
-                  namespaceId: null,
-                  groupId: null,
-                  worldName: null,
-                  executorPublicKey: identity,
-                });
-                done(this.readChoice());
-              } catch (e) {
-                errEl.textContent = `Could not join: ${errText(e)}`;
-              }
-            });
-            listEl.appendChild(row);
-          });
-        }
-      } catch (e) {
-        listEl.innerHTML = `<div class="mtl-note">Could not list worlds (${escapeHtml(errText(e))}).</div>`;
-      }
-
-      el.querySelector("[data-testid=create-world-btn]")!.addEventListener("click", async () => {
-        errEl.textContent = "";
-        if (!applicationId) {
-          errEl.textContent = "merraria is not installed on this node.";
-          return;
-        }
-        const worldName =
-          el.querySelector<HTMLInputElement>("#mtl-world-name")?.value.trim() || "surface";
-        const choice = this.readChoice();
-        try {
-          const created = await createWorld(applicationId, worldName, this.readSeed(defaults.seed));
-          updateSession({
-            contextId: created.contextId,
-            namespaceId: created.namespaceId,
-            groupId: created.groupId,
-            worldName,
-            executorPublicKey: created.memberPublicKey || getSession().executorPublicKey,
-          });
-          done(choice);
-        } catch (e) {
-          errEl.textContent = `Could not create world: ${errText(e)}`;
-        }
-      });
-    })();
   }
 
   // state 1: anonymous — the game is online-only, so the only path forward is
@@ -491,6 +677,61 @@ export class Landing {
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+}
+
+/**
+ * Static blocky terrain thumbnail for a world card, deterministic from the
+ * context id (the world's real seed isn't known before joining) — blurred by
+ * CSS into the Minecraft world-list look. Merraria flavor: a side-on strip
+ * with dirt, deep stone, and the occasional ore fleck.
+ */
+function drawWorldThumb(canvas: HTMLCanvasElement, seedStr: string): void {
+  const W = 96;
+  const H = 54;
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+  let h = 2166136261;
+  for (let i = 0; i < seedStr.length; i++) h = Math.imul(h ^ seedStr.charCodeAt(i), 16777619);
+  const rnd = () => ((h = (Math.imul(h, 1664525) + 1013904223) >>> 0) / 4294967296);
+
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, "#5f97d8");
+  sky.addColorStop(1, "#bcdcf7");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#ffe9a8";
+  ctx.fillRect(8 + Math.floor(rnd() * 60), 4 + Math.floor(rnd() * 8), 7, 7);
+
+  const B = 6; // tile size
+  let ground = 20 + rnd() * 10;
+  for (let x = 0; x < W; x += B) {
+    ground = Math.max(14, Math.min(H - 10, ground + (rnd() - 0.5) * 8));
+    const top = Math.floor(ground / B) * B;
+    ctx.fillStyle = `rgb(${70 + rnd() * 25}, ${160 + rnd() * 30}, ${80 + rnd() * 25})`;
+    ctx.fillRect(x, top, B, B);
+    for (let y = top + B; y < H; y += B) {
+      const deep = y > top + 2 * B;
+      if (deep) {
+        const ore = rnd();
+        ctx.fillStyle =
+          ore < 0.06
+            ? "#d8b13c" // gold fleck
+            : ore < 0.14
+              ? "#3a3f46" // coal fleck
+              : `rgb(${95 + rnd() * 20}, ${95 + rnd() * 20}, ${100 + rnd() * 20})`;
+      } else {
+        ctx.fillStyle = `rgb(${125 + rnd() * 25}, ${86 + rnd() * 18}, ${52 + rnd() * 14})`;
+      }
+      ctx.fillRect(x, y, B, B);
+    }
+    if (rnd() < 0.12 && top > 20) {
+      ctx.fillStyle = "#7a5230";
+      ctx.fillRect(x + 2, top - 8, 2, 8);
+      ctx.fillStyle = "#3f8f4f";
+      ctx.fillRect(x - 3, top - 15, 12, 9);
+    }
+  }
 }
 
 /** human-readable error text — the message, not "Error: message" */

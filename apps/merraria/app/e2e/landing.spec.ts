@@ -152,11 +152,15 @@ test.describe("landing page", () => {
     await expect(page.getByTestId("connect-open-btn")).toBeVisible();
   });
 
-  test("a connected session shows one-click enter + disconnect", async ({ page }) => {
+  test("a connected session shows the world list with a one-click Enter card", async ({ page }) => {
     await seedSession(page);
     await mockNode(page, freshState());
     await page.goto("/");
+    // the current world renders as the first card, marked and instantly enterable
+    await expect(page.getByTestId("world-card-current")).toBeVisible();
+    await expect(page.getByTestId("world-card-current")).toContainText("last played");
     await expect(page.getByTestId("connect-btn")).toBeVisible();
+    await expect(page.getByTestId("invite-btn")).toBeVisible();
     await page.getByTestId("disconnect-btn").click();
     // back to the anonymous card
     await expect(page.getByTestId("connect-open-btn")).toBeVisible();
@@ -241,7 +245,7 @@ test.describe("world picker (web auth, no context yet)", () => {
     );
   };
 
-  test("lists this app's worlds and joins one", async ({ page }) => {
+  test("lists this app's worlds as named cards and joins one", async ({ page }) => {
     await seedAuthOnly(page);
     // the game itself needs jsonrpc once we join; must register FIRST
     const state = freshState();
@@ -249,7 +253,7 @@ test.describe("world picker (web auth, no context yet)", () => {
     await mockAdmin(
       page,
       [
-        { id: CTX_ID, applicationId: "app-e2e" },
+        { id: CTX_ID, applicationId: "app-e2e", name: "e2e world" },
         { id: "ctx-foreign", applicationId: "someone-else" },
       ],
       {},
@@ -257,7 +261,12 @@ test.describe("world picker (web auth, no context yet)", () => {
     await page.goto("/");
 
     await expect(page.getByTestId("world-list")).toContainText(CTX_ID);
+    await expect(page.getByTestId("world-list")).toContainText("e2e world"); // node's name shown
     await expect(page.getByTestId("world-list")).not.toContainText("ctx-foreign");
+    // the card menu offers per-world actions
+    await page.getByTestId("world-menu-0").click();
+    await expect(page.getByTestId("world-card-0")).toContainText("Copy world ID");
+    await page.getByTestId("name-input").click(); // any outside click closes the menu
     await page.getByTestId("join-world-0").click();
     await page.waitForFunction(() => "__mt" in window);
     await expect(page.getByTestId("debug")).toContainText("online");
@@ -273,6 +282,7 @@ test.describe("world picker (web auth, no context yet)", () => {
     await page.goto("/");
 
     await expect(page.getByTestId("world-list")).toContainText("No worlds");
+    await page.getByTestId("create-world-open-btn").click(); // creation lives in a popup now
     await page.getByTestId("world-name-input").fill("e2e world");
     await page.getByTestId("seed-input").fill("999");
     await page.getByTestId("create-world-btn").click();
@@ -308,23 +318,30 @@ test.describe("world picker (web auth, no context yet)", () => {
       groupId: "grp-e2e",
     });
 
-  test("joins a friend's world with a pasted invite code", async ({ page }) => {
+  test("joins a friend's world with a pasted invite code (popup locks while joining)", async ({ page }) => {
     await seedAuthOnly(page);
     const state = freshState();
     await mockNode(page, state);
     await mockAdmin(page, [], {});
 
     const joined: string[] = [];
-    for (const path of ["namespaces/*/join", "groups/*/join-via-inheritance"]) {
-      await page.route(`${NODE_URL}/admin-api/${path}`, (route) => {
-        joined.push(new URL(route.request().url()).pathname);
-        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: {} }) });
-      });
-    }
+    await page.route(`${NODE_URL}/admin-api/namespaces/*/join`, async (route) => {
+      joined.push(new URL(route.request().url()).pathname);
+      await new Promise((r) => setTimeout(r, 700)); // keep the popup in-flight a moment
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: {} }) });
+    });
+    await page.route(`${NODE_URL}/admin-api/groups/*/join-via-inheritance`, (route) => {
+      joined.push(new URL(route.request().url()).pathname);
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: {} }) });
+    });
 
     await page.goto("/");
+    await page.getByTestId("join-invite-open-btn").click();
     await page.getByTestId("invite-input").fill(inviteCode());
     await page.getByTestId("join-invite-btn").click();
+    // while the join is in flight the popup is locked: no re-click, no close
+    await expect(page.getByTestId("join-invite-btn")).toBeDisabled();
+    await expect(page.getByTestId("invite-close")).toBeDisabled();
     await page.waitForFunction(() => "__mt" in window);
     await expect(page.getByTestId("debug")).toContainText("online");
     expect(joined).toEqual([
@@ -347,6 +364,7 @@ test.describe("world picker (web auth, no context yet)", () => {
     );
 
     await page.goto("/");
+    await page.getByTestId("join-invite-open-btn").click();
     await page.getByTestId("invite-input").fill(inviteCode());
     await page.getByTestId("join-invite-btn").click();
 
@@ -373,6 +391,7 @@ test.describe("world picker (web auth, no context yet)", () => {
     });
 
     await page.goto("/");
+    await page.getByTestId("join-invite-open-btn").click();
     await page.getByTestId("invite-input").fill(inviteCode());
     await page.getByTestId("join-invite-btn").click();
     await page.waitForFunction(() => "__mt" in window);
@@ -392,6 +411,7 @@ test.describe("world picker (web auth, no context yet)", () => {
     );
 
     await page.goto("/");
+    await page.getByTestId("join-invite-open-btn").click();
     await page.getByTestId("invite-input").fill(inviteCode());
     await page.getByTestId("join-invite-btn").click();
     await expect(page.getByTestId("picker-error")).toContainText("no identity");

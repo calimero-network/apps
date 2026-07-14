@@ -15,6 +15,8 @@ import {
 export interface ContextInfo {
   contextId: string;
   applicationId: string;
+  /** human name of the world, when the node's context record carries one */
+  name?: string;
 }
 
 function headers(): Record<string, string> {
@@ -29,7 +31,8 @@ function headers(): Record<string, string> {
  * The node's error responses carry the actual reason in the body —
  * `{"error": "identity not eligible for inheritance-based join"}` or
  * `{"message": …}` / `{"data": {"error": …}}` depending on the handler.
- * Surface that text; a bare "HTTP 403" is useless in the UI.
+ * Surface that text; when the body carries nothing, translate the status
+ * into something a player can act on — a bare "HTTP 403" is useless.
  */
 async function adminError(method: string, path: string, res: Response): Promise<Error> {
   let detail = "";
@@ -47,18 +50,46 @@ async function adminError(method: string, path: string, res: Response): Promise<
       }
     }
   } catch {
-    /* non-JSON error body — fall back to the status line */
+    /* non-JSON error body — fall back to the status text below */
   }
-  return new Error(detail || `${method} ${path}: HTTP ${res.status}`);
+  if (detail) return new Error(detail);
+  const s = res.status;
+  if (s === 401 || s === 403) {
+    return new Error(
+      `the node rejected your session (HTTP ${s}) — disconnect and log in again`,
+    );
+  }
+  if (s === 404) {
+    return new Error(
+      `the node doesn't know this resource (${method} ${path}: HTTP 404) — ` +
+        "it may not have synced yet, or the app isn't installed on it",
+    );
+  }
+  if (s >= 500) {
+    return new Error(
+      `the node hit an internal error (${method} ${path}: HTTP ${s}) — try again in a moment`,
+    );
+  }
+  return new Error(`the node rejected the request (${method} ${path}: HTTP ${s})`);
 }
 
 async function adminSend<T = unknown>(method: string, path: string, payload?: unknown): Promise<T> {
   const { nodeUrl } = getSession();
-  const res = await fetch(`${nodeUrl}${path}`, {
-    method,
-    headers: headers(),
-    ...(payload === undefined ? {} : { body: JSON.stringify(payload) }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${nodeUrl}${path}`, {
+      method,
+      headers: headers(),
+      ...(payload === undefined ? {} : { body: JSON.stringify(payload) }),
+    });
+  } catch {
+    // fetch itself failed (the "HTTP 0" case): the node is down, the URL is
+    // wrong, or the browser blocked the request — say so instead of leaking
+    // a bare TypeError at the player.
+    throw new Error(
+      `can't reach your node at ${nodeUrl} — check that it's running and the URL is right`,
+    );
+  }
   if (!res.ok) throw await adminError(method, path, res);
   const body = await res.json();
   return (body?.data ?? body) as T;
@@ -97,8 +128,50 @@ export function parseContexts(data: unknown): ContextInfo[] {
     .map((c) => ({
       contextId: String(c.contextId ?? c.id ?? ""),
       applicationId: String(c.applicationId ?? c.application_id ?? ""),
+      name: String(c.name ?? c.contextName ?? c.context_name ?? "") || undefined,
     }))
     .filter((c) => c.contextId);
+}
+
+// ---- world names ------------------------------------------------------
+// The node doesn't reliably echo a context's name back on every version, so
+// names learned at create/invite time are remembered locally per world and
+// merged with whatever the node's context record carries.
+
+const WORLD_NAMES_KEY = "mero-world-names";
+
+function readWorldNames(): Record<string, string> {
+  try {
+    return JSON.parse(localStorage.getItem(WORLD_NAMES_KEY) ?? "{}") as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+export function rememberWorldName(contextId: string, name: string | null | undefined): void {
+  if (!contextId || !name) return;
+  try {
+    const names = readWorldNames();
+    names[contextId] = name;
+    localStorage.setItem(WORLD_NAMES_KEY, JSON.stringify(names));
+  } catch {
+    /* storage full — the world just stays unnamed */
+  }
+}
+
+export function forgetWorldName(contextId: string): void {
+  try {
+    const names = readWorldNames();
+    delete names[contextId];
+    localStorage.setItem(WORLD_NAMES_KEY, JSON.stringify(names));
+  } catch {
+    /* nothing to forget */
+  }
+}
+
+/** display name for a world: node record > remembered > "" */
+export function worldNameOf(contextId: string, nodeName?: string): string {
+  return nodeName || readWorldNames()[contextId] || "";
 }
 
 /** the package id of an application record, wherever this node version put it */
@@ -399,6 +472,7 @@ export async function acceptWorldInvite(input: string): Promise<string> {
   if (!contextId) throw new Error("the invite does not reference a world");
 
   const identity = await joinWorld(contextId);
+  rememberWorldName(contextId, payload.groupAlias);
   updateSession({
     contextId,
     namespaceId,
