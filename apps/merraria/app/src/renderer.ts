@@ -76,7 +76,14 @@ export class TileAtlas {
     }
   }
 
-  draw(ctx: CanvasRenderingContext2D, id: number, variant: number, px: number, py: number): void {
+  draw(
+    ctx: CanvasRenderingContext2D,
+    id: number,
+    variant: number,
+    px: number,
+    py: number,
+    size = TILE_PX,
+  ): void {
     ctx.drawImage(
       this.canvas,
       variant * TILE_PX,
@@ -85,8 +92,8 @@ export class TileAtlas {
       TILE_PX,
       px,
       py,
-      TILE_PX + 1,
-      TILE_PX + 1,
+      size + 1,
+      size + 1,
     );
   }
 
@@ -174,6 +181,8 @@ export class GameRenderer {
   private atlas: TileAtlas;
   camX = 0;
   camY = 0;
+  /** on-screen tile size — TILE_PX scaled by the player's zoom choice */
+  private tilePx = TILE_PX;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext("2d")!;
@@ -183,6 +192,11 @@ export class GameRenderer {
     window.addEventListener("resize", () => this.resize());
   }
 
+  /** the 2D stand-in for an FOV slider: zoom out to see more of the world */
+  setZoom(zoom: number): void {
+    this.tilePx = Math.max(6, Math.round(TILE_PX * zoom));
+  }
+
   resize(): void {
     this.canvas.width = window.innerWidth;
     this.canvas.height = window.innerHeight;
@@ -190,16 +204,16 @@ export class GameRenderer {
 
   /** center the camera on (x, y) in tile coords, clamped to world bounds */
   follow(x: number, y: number): void {
-    const vw = this.canvas.width / TILE_PX;
-    const vh = this.canvas.height / TILE_PX;
+    const vw = this.canvas.width / this.tilePx;
+    const vh = this.canvas.height / this.tilePx;
     this.camX = Math.max(0, Math.min(WORLD_W - vw, x - vw / 2));
     this.camY = Math.max(0, Math.min(WORLD_H - vh, y - vh / 2));
   }
 
   screenToTile(sx: number, sy: number): { x: number; y: number } {
     return {
-      x: Math.floor(this.camX + sx / TILE_PX),
-      y: Math.floor(this.camY + sy / TILE_PX),
+      x: Math.floor(this.camX + sx / this.tilePx),
+      y: Math.floor(this.camY + sy / this.tilePx),
     };
   }
 
@@ -233,15 +247,15 @@ export class GameRenderer {
 
     // visible tile window
     const x0 = Math.floor(this.camX),
-      x1 = Math.min(WORLD_W - 1, Math.ceil(this.camX + w / TILE_PX));
+      x1 = Math.min(WORLD_W - 1, Math.ceil(this.camX + w / this.tilePx));
     const y0 = Math.floor(this.camY),
-      y1 = Math.min(WORLD_H - 1, Math.ceil(this.camY + h / TILE_PX));
+      y1 = Math.min(WORLD_H - 1, Math.ceil(this.camY + h / this.tilePx));
 
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
         const id = store.getTile(x, y);
-        const px = (x - this.camX) * TILE_PX;
-        const py = (y - this.camY) * TILE_PX;
+        const px = (x - this.camX) * this.tilePx;
+        const py = (y - this.camY) * this.tilePx;
         // occlusion darkness for see-through cells: unlit cave air/water must
         // not show the sky gradient through the hillside. Uses raw light (not
         // dayFactor) so the open night sky and moon stay untouched.
@@ -249,7 +263,7 @@ export class GameRenderer {
         if (id === AIR) {
           if (occl > 0.02) {
             ctx.fillStyle = `rgba(6,8,14,${(occl * 0.96).toFixed(3)})`;
-            ctx.fillRect(px, py, TILE_PX + 1, TILE_PX + 1);
+            ctx.fillRect(px, py, this.tilePx + 1, this.tilePx + 1);
           }
           continue;
         }
@@ -257,58 +271,58 @@ export class GameRenderer {
         const b = light.brightness(x, y, dayFactor);
         if (id === WATER) {
           const surface = store.getTile(x, y - 1) !== WATER;
-          const top = surface ? TILE_PX * 0.15 : 0;
+          const top = surface ? this.tilePx * 0.15 : 0;
           ctx.fillStyle = shade(def.color, b);
           ctx.globalAlpha = 0.72;
-          ctx.fillRect(px, py + top, TILE_PX + 1, TILE_PX - top + 1);
+          ctx.fillRect(px, py + top, this.tilePx + 1, this.tilePx - top + 1);
           if (surface) {
             ctx.globalAlpha = 0.85;
             ctx.fillStyle = shade(0x9fd4ff, b);
-            ctx.fillRect(px, py + top, TILE_PX + 1, 2);
+            ctx.fillRect(px, py + top, this.tilePx + 1, 2);
           }
           ctx.globalAlpha = 1;
           if (occl > 0.02) {
             ctx.fillStyle = `rgba(6,8,14,${(occl * 0.96).toFixed(3)})`;
-            ctx.fillRect(px, py, TILE_PX + 1, TILE_PX + 1);
+            ctx.fillRect(px, py, this.tilePx + 1, this.tilePx + 1);
           }
           continue;
         }
         if (id === TORCH) {
           ctx.fillStyle = "#6b5233";
-          ctx.fillRect(px + TILE_PX * 0.42, py + TILE_PX * 0.35, TILE_PX * 0.16, TILE_PX * 0.65);
+          ctx.fillRect(px + this.tilePx * 0.42, py + this.tilePx * 0.35, this.tilePx * 0.16, this.tilePx * 0.65);
           ctx.fillStyle = hex(def.color);
           ctx.beginPath();
-          ctx.arc(px + TILE_PX / 2, py + TILE_PX * 0.28, TILE_PX * 0.22, 0, Math.PI * 2);
+          ctx.arc(px + this.tilePx / 2, py + this.tilePx * 0.28, this.tilePx * 0.22, 0, Math.PI * 2);
           ctx.fill();
           continue;
         }
         // textured sprite, then darkness from the light grid on top
         const variant = (hash2(7, x, y) * VARIANTS) | 0;
-        this.atlas.draw(ctx, id, variant, px, py);
+        this.atlas.draw(ctx, id, variant, px, py, this.tilePx);
         const dark = 1 - b;
         if (dark > 0.02) {
           ctx.fillStyle = `rgba(4,6,12,${dark.toFixed(3)})`;
-          ctx.fillRect(px, py, TILE_PX + 1, TILE_PX + 1);
+          ctx.fillRect(px, py, this.tilePx + 1, this.tilePx + 1);
         }
       }
     }
 
     // dig crack overlay
     if (cursor && cursor.progress > 0) {
-      const px = (cursor.x - this.camX) * TILE_PX;
-      const py = (cursor.y - this.camY) * TILE_PX;
+      const px = (cursor.x - this.camX) * this.tilePx;
+      const py = (cursor.y - this.camY) * this.tilePx;
       ctx.fillStyle = `rgba(0,0,0,${0.15 + cursor.progress * 0.5})`;
-      ctx.fillRect(px, py, TILE_PX, TILE_PX);
+      ctx.fillRect(px, py, this.tilePx, this.tilePx);
     }
     // tile cursor outline
     if (cursor) {
       ctx.strokeStyle = "rgba(255,255,255,0.85)";
       ctx.lineWidth = 2;
       ctx.strokeRect(
-        (cursor.x - this.camX) * TILE_PX + 1,
-        (cursor.y - this.camY) * TILE_PX + 1,
-        TILE_PX - 2,
-        TILE_PX - 2,
+        (cursor.x - this.camX) * this.tilePx + 1,
+        (cursor.y - this.camY) * this.tilePx + 1,
+        this.tilePx - 2,
+        this.tilePx - 2,
       );
     }
 
@@ -322,10 +336,10 @@ export class GameRenderer {
       isMe: boolean,
       action?: string,
     ) => {
-      const px = (x - this.camX) * TILE_PX;
-      const py = (y - this.camY) * TILE_PX;
-      const bw = PLAYER_HALF_W * 2 * TILE_PX;
-      const bh = PLAYER_H * TILE_PX;
+      const px = (x - this.camX) * this.tilePx;
+      const py = (y - this.camY) * this.tilePx;
+      const bw = PLAYER_HALF_W * 2 * this.tilePx;
+      const bh = PLAYER_H * this.tilePx;
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.roundRect(px - bw / 2, py - bh, bw, bh, 4);

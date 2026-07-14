@@ -246,3 +246,67 @@ steps:
       - 'contains({{overrides_alice}}, "211")'
       - 'contains({{overrides_alice}}, "210")'
       - 'contains({{overrides_alice}}, "212")'
+
+  # ── Movement: heartbeats carry live transforms across nodes ──────────────
+  # This is what "seeing each other" means in-game: the roster poll returns
+  # the other miner's position/action from THEIR node's heartbeats.
+  # x coords 305/317 are unique comma-free needles (merobox contains() quirk).
+  - name: Alice heartbeats while mining at x=305
+    type: call
+    node: calimero-node-1
+    context_id: "{{world_id}}"
+    method: heartbeat
+    args:
+      t: { name: "Alice", x: 305, y: 66, dir: 1, sel: 0, action: "mining" }
+      now: 1752264030
+    executor_public_key: "{{alice_key}}"
+
+  - name: Bob heartbeats while building at x=317
+    type: call
+    node: calimero-node-2
+    context_id: "{{world_id}}"
+    method: heartbeat
+    args:
+      t: { name: "Bob", x: 317, y: 48, dir: -1, sel: 2, action: "building" }
+      now: 1752264031
+    executor_public_key: "{{bob_key}}"
+
+  - name: Sync heartbeats
+    type: wait_for_sync
+    context_id: "{{world_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Bob polls the roster (as the frontend does every 500ms)
+    type: call
+    node: calimero-node-2
+    context_id: "{{world_id}}"
+    method: get_players
+    args: { now: 1752264035 }
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      roster_bob_moves: result
+
+  - name: Assert Bob sees Alice's live position and action
+    type: assert
+    statements:
+      - 'contains({{roster_bob_moves}}, "305")'
+      - 'contains({{roster_bob_moves}}, "mining")'
+
+  - name: Alice polls the roster
+    type: call
+    node: calimero-node-1
+    context_id: "{{world_id}}"
+    method: get_players
+    args: { now: 1752264036 }
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      roster_alice_moves: result
+
+  - name: Assert Alice sees Bob's live position and action
+    type: assert
+    statements:
+      - 'contains({{roster_alice_moves}}, "317")'
+      - 'contains({{roster_alice_moves}}, "building")'

@@ -7,6 +7,7 @@ import { dayFactor } from "./engine/sim";
 import { generateWorld, spawnPoint } from "./engine/terrain";
 import { AIR, HOTBAR, STARTING_INVENTORY } from "./engine/tiles";
 import { TileStore } from "./engine/world";
+import { createWorldInvite } from "./net/admin";
 import { GameClient } from "./net/client";
 import { captureSessionFromHash, ensureFreshToken, getSession, hasConnection } from "./net/session";
 import { RemotePlayer, SyncEngine, Transform } from "./net/sync";
@@ -14,6 +15,7 @@ import { GameRenderer, RemoteDraw } from "./renderer";
 import { loadWorld, playerInBounds, saveWorld } from "./state/persistence";
 import { Hud } from "./ui/hud";
 import { Landing, LaunchChoice } from "./ui/landing";
+import { PauseMenu } from "./ui/overlays";
 
 const SAVE_MS = 5000;
 const MINIMAP_MS = 500; // live map: remote miners move on it in near real time
@@ -157,7 +159,29 @@ async function boot(): Promise<void> {
   let mouseX = 0;
   let mouseY = 0;
 
+  // ---- pause menu (Esc/O — Minecraft-style game menu with options) -------
+  const menu = new PauseMenu(app, {
+    onLeave: () => {
+      save();
+      void sync?.leave();
+      window.location.reload(); // back to the landing/launcher
+    },
+    onInvite: () => createWorldInvite(),
+    onZoomChange: (zoom) => renderer.setZoom(zoom),
+  });
+  renderer.setZoom(menu.getZoom()); // restore the player's zoom choice
+
+  const toggleMenu = (): void => {
+    keys.clear(); // an open menu swallows gameplay input
+    jumpPressed = false;
+    digHeld = false;
+    placeHeld = false;
+    menu.toggle();
+  };
+
   window.addEventListener("keydown", (e) => {
+    if (e.code === "Escape" || e.code === "KeyO") return toggleMenu();
+    if (menu.open) return; // menu swallows gameplay keys
     if (!e.repeat && (e.code === "Space" || e.code === "KeyW" || e.code === "ArrowUp")) {
       jumpPressed = true;
     }
@@ -172,6 +196,7 @@ async function boot(): Promise<void> {
   });
   window.addEventListener("keyup", (e) => keys.delete(e.code));
   window.addEventListener("wheel", (e) => {
+    if (menu.open) return;
     sel = (sel + (e.deltaY > 0 ? 1 : -1) + HOTBAR.length) % HOTBAR.length;
     hud.setHotbarSel(sel);
   });
@@ -180,6 +205,7 @@ async function boot(): Promise<void> {
     mouseY = e.clientY;
   });
   window.addEventListener("mousedown", (e) => {
+    if (menu.open) return;
     if (e.button === 0) digHeld = true;
     if (e.button === 2) placeHeld = true;
   });
@@ -349,6 +375,7 @@ async function boot(): Promise<void> {
     sync,
     editTile,
     getOverrides: () => world.overridesToJSON(),
+    input: () => ({ digHeld, placeHeld, uiOpen: menu.open }),
   };
 }
 
