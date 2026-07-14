@@ -21,7 +21,7 @@ import { GameRenderer } from "./renderer";
 import { loadWorld, saveWorld } from "./state/persistence";
 import { Hud } from "./ui/hud";
 import { Landing, LaunchChoice } from "./ui/landing";
-import { OptionsMenu, WorldMap } from "./ui/overlays";
+import { PauseMenu, WorldMap } from "./ui/overlays";
 
 const REACH = 6;
 const EDIT_REPEAT_MS = 250;
@@ -164,15 +164,17 @@ async function boot(): Promise<void> {
     hud.toast("Sync failed — edits will retry in the background");
   }
 
-  // ---- overlays (O = options, M = map — trackpad-friendly) --------------
-  const options = new OptionsMenu(app, {
+  // ---- overlays (Esc/O = game menu, M = map — trackpad-friendly) --------
+  const options = new PauseMenu(app, {
     onLeave: () => {
       save();
       void sync?.leave();
       window.location.reload(); // back to the landing/launcher
     },
     onInvite: () => createWorldInvite(),
+    onFovChange: (fov) => renderer.setFov(fov),
   });
+  renderer.setFov(options.getFov()); // restore the player's FOV choice
   const worldMap = new WorldMap(app, world);
   const uiOpen = () => options.open || worldMap.open;
 
@@ -199,10 +201,12 @@ async function boot(): Promise<void> {
   window.addEventListener("keydown", (e) => {
     if (e.code === "KeyO") return openOverlay("options");
     if (e.code === "KeyM") return openOverlay("map");
+    // Esc = Minecraft game menu: closes the map if it's up, otherwise
+    // toggles the pause menu. (While pointer-locked the browser reserves
+    // Esc for unlocking — the pointerlockchange handler below covers that.)
     if (e.code === "Escape") {
-      options.hide();
-      worldMap.hide();
-      return;
+      if (worldMap.open) return worldMap.hide();
+      return openOverlay("options");
     }
     if (uiOpen()) return; // menus swallow gameplay keys
     keys.add(e.code);
@@ -238,9 +242,19 @@ async function boot(): Promise<void> {
     if (uiOpen()) return;
     if (document.pointerLockElement !== canvas) canvas.requestPointerLock();
   });
-  document.addEventListener("pointerlockchange", () =>
-    hud.setHint(document.pointerLockElement !== canvas),
-  );
+  document.addEventListener("pointerlockchange", () => {
+    const unlocked = document.pointerLockElement !== canvas;
+    hud.setHint(unlocked);
+    // Esc while pointer-locked never reaches keydown (the browser reserves it
+    // to unlock) — so losing the lock with no overlay up IS the Esc press:
+    // open the game menu, exactly like Minecraft.
+    if (unlocked && !uiOpen()) {
+      keys.clear();
+      breakHeld = false;
+      placeHeld = false;
+      options.toggle();
+    }
+  });
   window.addEventListener("mousemove", (e) => {
     if (document.pointerLockElement !== canvas) return;
     const look = 0.0024 * options.getSensitivity();

@@ -1,5 +1,6 @@
 // In-game overlays, all keyboard-driven so a MacBook trackpad never needs a
-// right-click: O toggles the options menu, M toggles the live world map.
+// right-click: Esc/O toggle the Minecraft-style pause menu (game menu →
+// options subscreen with FOV + sensitivity), M toggles the live world map.
 
 import { AIR, blockDef, HOTBAR } from "../engine/blocks";
 import { WORLD_SX, WORLD_SY, WORLD_SZ, WorldStore } from "../engine/world";
@@ -22,6 +23,9 @@ const css = `
   font-size: 14px; font-weight: 600; cursor: pointer; }
 .mbo-btn.primary { background: #4f8cff; color: #fff; }
 .mbo-btn.ghost { background: rgba(255,255,255,0.1); color: #fff; }
+.mbo-btn.danger { background: rgba(214,86,86,0.22); color: #ffb3b3; }
+.mbo-btn:hover { filter: brightness(1.15); }
+.mbo-title { text-align: center; }
 .mbo-map-wrap { position: relative; line-height: 0; border: 1px solid rgba(255,255,255,0.18);
   border-radius: 8px; overflow: hidden; }
 .mbo-map-wrap canvas { display: block; }
@@ -39,21 +43,34 @@ function injectStyle(): void {
 }
 
 const SENSITIVITY_KEY = "mb-sensitivity";
+const FOV_KEY = "mb-fov";
+export const FOV_DEFAULT = 75;
+const FOV_MIN = 60;
+const FOV_MAX = 110;
 
-export interface OptionsCallbacks {
+export interface PauseCallbacks {
   onLeave: () => void;
   /** mint a copyable invite for the current world (online sessions only) */
   onInvite?: () => Promise<string>;
+  /** live-apply the FOV slider to the camera */
+  onFovChange?: (fov: number) => void;
 }
 
-export class OptionsMenu {
+/**
+ * Minecraft-style pause menu. Esc (or O) opens the game menu — Back to game /
+ * Options… / invite / leave — and Options… swaps the panel to the settings
+ * screen (FOV, mouse sensitivity, controls reference) with a Done button back.
+ */
+export class PauseMenu {
   open = false;
   private root: HTMLElement;
   private sensitivity: number;
+  private fov: number;
+  private screen: "main" | "options" = "main";
 
   constructor(
     private parent: HTMLElement,
-    private callbacks: OptionsCallbacks,
+    private callbacks: PauseCallbacks,
   ) {
     injectStyle();
     this.root = document.createElement("div");
@@ -61,11 +78,18 @@ export class OptionsMenu {
     this.root.dataset.testid = "options-overlay";
     const stored = Number(localStorage.getItem(SENSITIVITY_KEY));
     this.sensitivity = stored >= 0.4 && stored <= 2 ? stored : 1;
+    const fov = Number(localStorage.getItem(FOV_KEY));
+    this.fov = fov >= FOV_MIN && fov <= FOV_MAX ? fov : FOV_DEFAULT;
   }
 
   /** mouse-look multiplier chosen by the player (0.4×–2×) */
   getSensitivity(): number {
     return this.sensitivity;
+  }
+
+  /** field of view in degrees, restored from the last session */
+  getFov(): number {
+    return this.fov;
   }
 
   toggle(): void {
@@ -81,39 +105,30 @@ export class OptionsMenu {
 
   private show(): void {
     this.open = true;
+    this.screen = "main";
+    this.render();
+    this.parent.appendChild(this.root);
+  }
+
+  private render(): void {
+    if (this.screen === "main") this.renderMain();
+    else this.renderOptions();
+  }
+
+  private renderMain(): void {
     this.root.innerHTML = `
       <div class="mbo-panel">
-        <h3>Options</h3>
-        <div class="mbo-keys">
-          <kbd>WASD</kbd><span>move</span>
-          <kbd>Space</kbd><span>jump</span>
-          <kbd>LMB or Q</kbd><span>break block (hold)</span>
-          <kbd>RMB or E</kbd><span>place block (hold)</span>
-          <kbd>1–9 / wheel</kbd><span>pick block</span>
-          <kbd>M</kbd><span>world map</span>
-          <kbd>O</kbd><span>this menu</span>
-          <kbd>Esc</kbd><span>release the mouse</span>
-        </div>
-        <div class="mbo-row">
-          <span>mouse sensitivity</span>
-          <input type="range" min="0.4" max="2" step="0.1" value="${this.sensitivity}"
-            data-testid="sensitivity-slider" />
-          <span data-testid="sensitivity-value">${this.sensitivity.toFixed(1)}×</span>
-        </div>
-        <button class="mbo-btn primary" data-testid="resume-btn">Resume</button>
+        <h3 class="mbo-title">Game menu</h3>
+        <button class="mbo-btn primary" data-testid="resume-btn">Back to game</button>
+        <button class="mbo-btn ghost" data-testid="options-btn">Options…</button>
         ${this.callbacks.onInvite ? `<button class="mbo-btn ghost" data-testid="invite-btn">Copy world invite</button>` : ""}
-        <button class="mbo-btn ghost" data-testid="leave-btn">Save &amp; leave world</button>
-        <div class="mbo-note">On a trackpad you never need mouse buttons: hold Q to break and
-        E to place while looking at a block.</div>
+        <button class="mbo-btn danger" data-testid="leave-btn">Save &amp; leave world</button>
       </div>`;
-    const slider = this.root.querySelector<HTMLInputElement>("[data-testid=sensitivity-slider]")!;
-    const value = this.root.querySelector<HTMLElement>("[data-testid=sensitivity-value]")!;
-    slider.addEventListener("input", () => {
-      this.sensitivity = Number(slider.value);
-      value.textContent = `${this.sensitivity.toFixed(1)}×`;
-      localStorage.setItem(SENSITIVITY_KEY, slider.value);
-    });
     this.root.querySelector("[data-testid=resume-btn]")!.addEventListener("click", () => this.hide());
+    this.root.querySelector("[data-testid=options-btn]")!.addEventListener("click", () => {
+      this.screen = "options";
+      this.render();
+    });
     this.root.querySelector("[data-testid=leave-btn]")!.addEventListener("click", () =>
       this.callbacks.onLeave(),
     );
@@ -133,8 +148,65 @@ export class OptionsMenu {
         }
       });
     }
-    this.parent.appendChild(this.root);
   }
+
+  private renderOptions(): void {
+    this.root.innerHTML = `
+      <div class="mbo-panel">
+        <h3 class="mbo-title">Options</h3>
+        <div class="mbo-row">
+          <span>FOV</span>
+          <input type="range" min="${FOV_MIN}" max="${FOV_MAX}" step="1" value="${this.fov}"
+            data-testid="fov-slider" />
+          <span data-testid="fov-value">${fovLabel(this.fov)}</span>
+        </div>
+        <div class="mbo-row">
+          <span>mouse sensitivity</span>
+          <input type="range" min="0.4" max="2" step="0.1" value="${this.sensitivity}"
+            data-testid="sensitivity-slider" />
+          <span data-testid="sensitivity-value">${this.sensitivity.toFixed(1)}×</span>
+        </div>
+        <div class="mbo-keys">
+          <kbd>WASD</kbd><span>move</span>
+          <kbd>Space</kbd><span>jump</span>
+          <kbd>LMB or Q</kbd><span>break block (hold)</span>
+          <kbd>RMB or E</kbd><span>place block (hold)</span>
+          <kbd>1–9 / wheel</kbd><span>pick block</span>
+          <kbd>M</kbd><span>world map</span>
+          <kbd>Esc / O</kbd><span>game menu</span>
+        </div>
+        <button class="mbo-btn primary" data-testid="options-done-btn">Done</button>
+        <div class="mbo-note">On a trackpad you never need mouse buttons: hold Q to break and
+        E to place while looking at a block.</div>
+      </div>`;
+    const fovSlider = this.root.querySelector<HTMLInputElement>("[data-testid=fov-slider]")!;
+    const fovValue = this.root.querySelector<HTMLElement>("[data-testid=fov-value]")!;
+    fovSlider.addEventListener("input", () => {
+      this.fov = Number(fovSlider.value);
+      fovValue.textContent = fovLabel(this.fov);
+      localStorage.setItem(FOV_KEY, fovSlider.value);
+      this.callbacks.onFovChange?.(this.fov); // live preview behind the menu
+    });
+    const slider = this.root.querySelector<HTMLInputElement>("[data-testid=sensitivity-slider]")!;
+    const value = this.root.querySelector<HTMLElement>("[data-testid=sensitivity-value]")!;
+    slider.addEventListener("input", () => {
+      this.sensitivity = Number(slider.value);
+      value.textContent = `${this.sensitivity.toFixed(1)}×`;
+      localStorage.setItem(SENSITIVITY_KEY, slider.value);
+    });
+    this.root.querySelector("[data-testid=options-done-btn]")!.addEventListener("click", () => {
+      this.screen = "main";
+      this.render();
+    });
+  }
+}
+
+/** Minecraft names the ends of its FOV range — do the same */
+function fovLabel(fov: number): string {
+  if (fov <= FOV_MIN) return "Zoomed";
+  if (fov >= FOV_MAX) return "Quake Pro";
+  if (fov === FOV_DEFAULT) return "Normal";
+  return `${fov}°`;
 }
 
 export interface MapMarker {

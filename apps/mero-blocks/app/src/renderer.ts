@@ -139,6 +139,12 @@ export class GameRenderer {
     (this.scene.fog as THREE.Fog).color = c;
   }
 
+  /** player-chosen field of view (degrees) — the Minecraft options slider */
+  setFov(fov: number): void {
+    this.camera.fov = fov;
+    this.camera.updateProjectionMatrix();
+  }
+
   setCamera(x: number, y: number, z: number, yaw: number, pitch: number): void {
     this.camera.position.set(x, y + EYE_HEIGHT, z);
     this.camera.rotation.set(0, 0, 0);

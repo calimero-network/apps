@@ -89,19 +89,48 @@ test.describe("keyboard controls (trackpad-friendly)", () => {
     expect((await input(page)).placeHeld).toBe(false);
   });
 
-  test("O opens options, M swaps to the map, Esc closes", async ({ page }) => {
+  test("O opens the game menu, M swaps to the map, Esc closes", async ({ page }) => {
     await enterGame(page);
     await page.keyboard.press("KeyO");
     await expect(page.getByTestId("options-overlay")).toBeVisible();
     expect((await input(page)).uiOpen).toBe(true);
 
-    await page.keyboard.press("KeyM"); // map replaces options
+    await page.keyboard.press("KeyM"); // map replaces the menu
     await expect(page.getByTestId("map-overlay")).toBeVisible();
     await expect(page.getByTestId("options-overlay")).toHaveCount(0);
     await expect(page.getByTestId("map-players")).toBeVisible();
 
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("map-overlay")).toHaveCount(0);
+    expect((await input(page)).uiOpen).toBe(false);
+  });
+
+  test("Esc toggles the Minecraft-style game menu", async ({ page }) => {
+    await enterGame(page);
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("options-overlay")).toBeVisible();
+    await expect(page.getByTestId("resume-btn")).toHaveText("Back to game");
+    await expect(page.getByTestId("options-btn")).toBeVisible();
+    await expect(page.getByTestId("invite-btn")).toBeVisible();
+    await expect(page.getByTestId("leave-btn")).toBeVisible();
+    await page.keyboard.press("Escape"); // toggles back off
+    await expect(page.getByTestId("options-overlay")).toHaveCount(0);
+    expect((await input(page)).uiOpen).toBe(false);
+  });
+
+  test("Options screen: FOV slider applies and persists", async ({ page }) => {
+    await enterGame(page);
+    await page.keyboard.press("Escape");
+    await page.getByTestId("options-btn").click();
+    const fov = page.getByTestId("fov-slider");
+    await expect(fov).toBeVisible();
+    await fov.fill("100");
+    await expect(page.getByTestId("fov-value")).toHaveText("100°");
+    expect(await page.evaluate(() => localStorage.getItem("mb-fov"))).toBe("100");
+    // Done returns to the game menu
+    await page.getByTestId("options-done-btn").click();
+    await expect(page.getByTestId("resume-btn")).toBeVisible();
+    await page.getByTestId("resume-btn").click();
     expect((await input(page)).uiOpen).toBe(false);
   });
 
@@ -121,6 +150,7 @@ test.describe("keyboard controls (trackpad-friendly)", () => {
   test("options menu has a working sensitivity slider", async ({ page }) => {
     await enterGame(page);
     await page.keyboard.press("KeyO");
+    await page.getByTestId("options-btn").click(); // sliders live on the options screen
     const slider = page.getByTestId("sensitivity-slider");
     await slider.fill("1.8");
     await expect(page.getByTestId("sensitivity-value")).toHaveText("1.8×");
