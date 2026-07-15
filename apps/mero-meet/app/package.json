@@ -25,8 +25,8 @@
     "prettier:write": "prettier --write 'src/**/*.{js,jsx,ts,tsx,json}'"
   },
   "dependencies": {
-    "@calimero-network/mero-js": "^7.0.0",
-    "@calimero-network/mero-react": "^4.3.1",
+    "@calimero-network/mero-js": "^6.1.0",
+    "@calimero-network/mero-react": "^4.3.4",
     "@calimero-network/mero-ui": "1.4.0",
     "@mediapipe/tasks-vision": "^0.10.0",
     "react": "^19.2.7",
