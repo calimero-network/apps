@@ -13,14 +13,14 @@ borsh-derive = "1.6.1"
 bs58 = "0.5.1"
 # SDK crates are not on crates.io past rc.5 — must be git tag deps, and all
 # three must share the exact same tag (workspace version at the tag is 0.0.0).
-calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.13" }
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.13" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.13" }
+calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.14" }
+calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.14" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.14" }
 thiserror = "1.0.56"
 
 [dev-dependencies]
 # "testing" enables the native mock host (TestHost) for `cargo test`
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.13", features = ["testing"] }
+calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.14", features = ["testing"] }
 
 [profile.app-release]
 inherits = "release"
