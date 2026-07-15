@@ -14,6 +14,14 @@ const FULL_HASH =
   "#node_url=http://localhost:2660&access_token=at-1&refresh_token=rt-1" +
   "&app-id=app-1&context_id=ctx-1&executor_public_key=pk-1&expires_at=999&dev_mode=1";
 
+/** Build a JWT-shaped access token whose `exp` claim sits at `expMs`. */
+function jwt(expMs: number): string {
+  const payload = btoa(JSON.stringify({ exp: Math.floor(expMs / 1000) }))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+  return `header.${payload}.signature`;
+}
+
 beforeEach(() => {
   localStorage.clear();
   resetSession();
@@ -92,6 +100,59 @@ describe("web auth callback capture", () => {
     window.location.hash = "#access_token=at-3&refresh_token=rt";
     expect(captureSessionFromHash()).toBe("none");
     expect(isAuthenticated()).toBe(false);
+  });
+});
+
+describe("single-use refresh — SSO hash never clobbers a rotated bundle (core#3083)", () => {
+  it("keeps a rotated stored bundle when the desktop re-opens with an older hash (same node)", () => {
+    const future = Date.now() + 3_600_000;
+    // this browser already rotated its refresh token past the desktop's bundle
+    localStorage.setItem(
+      "mb-session",
+      JSON.stringify({ nodeUrl: "http://localhost:2660", contextId: "ctx-1" }),
+    );
+    localStorage.setItem(
+      "mero-tokens",
+      JSON.stringify({ access_token: jwt(future), refresh_token: "rotated-rt", expires_at: future }),
+    );
+
+    // desktop re-opens with its original (older/opaque) bundle
+    window.location.hash = FULL_HASH;
+    captureSessionFromHash();
+
+    const tokens = JSON.parse(localStorage.getItem("mero-tokens")!);
+    expect(tokens.refresh_token).toBe("rotated-rt"); // NOT clobbered by rt-1
+    expect(getAccessToken()).toBe(jwt(future));
+  });
+
+  it("adopts the hash bundle when the node changed (foreign token family)", () => {
+    const future = Date.now() + 3_600_000;
+    localStorage.setItem("mb-session", JSON.stringify({ nodeUrl: "http://oldnode:2428" }));
+    localStorage.setItem(
+      "mero-tokens",
+      JSON.stringify({ access_token: jwt(future), refresh_token: "foreign-rt", expires_at: future }),
+    );
+
+    window.location.hash = FULL_HASH; // node_url=http://localhost:2660 → different node
+    captureSessionFromHash();
+
+    expect(JSON.parse(localStorage.getItem("mero-tokens")!).refresh_token).toBe("rt-1");
+  });
+
+  it("adopts the hash bundle when it is genuinely newer (a fresh login)", () => {
+    const stale = Date.now() + 60_000;
+    const fresh = Date.now() + 3_600_000;
+    localStorage.setItem("mb-session", JSON.stringify({ nodeUrl: "http://localhost:2660" }));
+    localStorage.setItem(
+      "mero-tokens",
+      JSON.stringify({ access_token: jwt(stale), refresh_token: "old-rt", expires_at: stale }),
+    );
+
+    window.location.hash =
+      `#node_url=http://localhost:2660&access_token=${jwt(fresh)}&refresh_token=new-rt&context_id=ctx-1`;
+    captureSessionFromHash();
+
+    expect(JSON.parse(localStorage.getItem("mero-tokens")!).refresh_token).toBe("new-rt");
   });
 });
 

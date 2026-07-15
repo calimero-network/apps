@@ -11,9 +11,9 @@
 // App-id resolution prefers hash > stored > env (the mero-chat SSO-strip lesson).
 
 import { takePendingNodeUrl } from "./auth";
+import { TOKENS_KEY, jwtExpiryMs, readStoredTokens, shouldSeedTokens } from "./authTokens";
 
 const STORE_KEY = "mb-session";
-const TOKENS_KEY = "mero-tokens";
 
 export interface Session {
   nodeUrl: string | null;
@@ -69,7 +69,10 @@ export function captureSessionFromHash(): CaptureResult {
   const accessToken = p.get("access_token");
   if (!accessToken) return "none";
 
-  // node url: hash > the one stashed before the web-login redirect > stored
+  // node url: hash > the one stashed before the web-login redirect > stored.
+  // Capture the node we were last pointed at BEFORE overwriting it — a different
+  // node means the stored token bundle belongs to a foreign token family.
+  const previousNodeUrl = session.nodeUrl;
   const nodeUrl = p.get("node_url") ?? takePendingNodeUrl() ?? session.nodeUrl;
   if (!nodeUrl) return "none";
   session.nodeUrl = nodeUrl;
@@ -84,16 +87,33 @@ export function captureSessionFromHash(): CaptureResult {
   session.devMode = p.get("dev_mode") === "1";
   persist();
 
-  localStorage.setItem(
-    TOKENS_KEY,
-    JSON.stringify({
-      access_token: accessToken,
-      refresh_token: p.get("refresh_token") ?? "",
-      expires_at: p.get("expires_at") ?? "",
-    }),
-  );
+  // Seed mero-js's token store from the hash — but NEVER blindly clobber it.
+  // Refresh tokens are single-use (calimero-network/core#3083): the desktop
+  // re-opens us with the bundle it minted at ITS login, which may be OLDER than
+  // one already rotated in this browser. Overwriting a live bundle with a stale
+  // one gets the whole token family revoked (401 `token_reuse`). The stored
+  // bundle wins unless there's nothing stored, the node changed, or the hash
+  // carries a genuinely newer token — see shouldSeedTokens (authTokens.ts).
+  const refreshToken = p.get("refresh_token") ?? "";
+  const expiresAtParam = p.get("expires_at");
+  const hashExpiresAtMs =
+    jwtExpiryMs(accessToken) ??
+    (expiresAtParam ? parseInt(expiresAtParam, 10) : Date.now() + 3600_000);
+  const nodeChanged = !!previousNodeUrl && previousNodeUrl !== nodeUrl;
 
-  // we own the page (no MeroProvider) — safe to strip
+  if (shouldSeedTokens({ hashExpiresAtMs, stored: readStoredTokens(), nodeChanged })) {
+    localStorage.setItem(
+      TOKENS_KEY,
+      JSON.stringify({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        expires_at: hashExpiresAtMs,
+      }),
+    );
+  }
+
+  // we own the page (no MeroProvider) — strip either way so a later reload can't
+  // re-process the original (possibly stale) hash tokens
   window.history.replaceState({}, "", window.location.pathname + window.location.search);
   return session.contextId ? "full" : "partial";
 }
