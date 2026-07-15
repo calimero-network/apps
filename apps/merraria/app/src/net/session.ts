@@ -108,29 +108,106 @@ export function updateSession(patch: Partial<Session>): void {
   persist();
 }
 
+interface StoredTokens {
+  access_token?: string;
+  refresh_token?: string;
+  expires_at?: string | number;
+}
+
+function readTokens(): StoredTokens | null {
+  try {
+    const raw = localStorage.getItem(TOKENS_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as StoredTokens;
+  } catch {
+    return null;
+  }
+}
+
+/** Stored expiry as an ms epoch, or null when we have no usable stamp. */
+function expiryMs(raw: StoredTokens["expires_at"]): number | null {
+  let exp = Number(raw);
+  if (!Number.isFinite(exp) || exp <= 0) return null;
+  if (exp < 1e12) exp *= 1000; // tolerate seconds-based stamps
+  return exp;
+}
+
 /**
- * mero-chat's desktop lesson: the SSO hash (or a stored session) can carry an
- * already-expired access token — the desktop may have been idle for hours
- * before opening the game. Refresh it BEFORE going online so desktop opens
- * never bounce through auth or silently fall back to offline. Best-effort:
- * any failure leaves the stored tokens alone and the caller degrades as before.
+ * A refresh token was replayed (or the family was already revoked). This is
+ * terminal: the node has torn down every token in the family, so there is
+ * nothing left to refresh and no way back except a fresh login.
+ */
+function onAuthRevoked(reason: string): void {
+  console.warn(`[session] auth revoked (${reason}) — clearing session, re-login required`);
+  clearSession();
+}
+
+/** In-flight refresh, so concurrent callers in THIS tab never double-spend. */
+let refreshInFlight: Promise<void> | null = null;
+
+/**
+ * Serialize across tabs too. Web Locks is the only cross-tab mutex a browser
+ * gives us; where it is missing (jsdom, older browsers) we still have the
+ * in-tab single-flight above, and the re-read inside the critical section keeps
+ * a loser from replaying a consumed token.
+ */
+async function withTokenLock(fn: () => Promise<void>): Promise<void> {
+  const locks = typeof navigator !== "undefined" ? navigator.locks : undefined;
+  if (!locks?.request) return fn();
+  return locks.request("merraria-token-refresh", fn);
+}
+
+/**
+ * The SSO hash (or a stored session) can carry an already-expired access token —
+ * the desktop may have been idle for hours before opening the game. Refresh it
+ * BEFORE going online so desktop opens never bounce through auth or silently
+ * fall back to offline.
+ *
+ * Refresh tokens are SINGLE-USE (core#3083): every POST /auth/refresh consumes
+ * the presented refresh token and mints a new one. Presenting a consumed one is
+ * read as theft — 401 `x-auth-error: token_reuse` — and the node revokes the
+ * ENTIRE token family, logging out every holder. That makes two things fatal
+ * that used to look harmless:
+ *
+ *   - Refreshing "early". The endpoint rejects a still-valid access token
+ *     ("Access token still valid"), so the old 30s skew burned a request for
+ *     nothing. We now refresh only once the token has ACTUALLY expired.
+ *   - Two concurrent refreshes. Two tabs (or two callers) POSTing the same
+ *     refresh token means the second is a reuse. Hence the single-flight +
+ *     Web Lock, and the re-read of the store INSIDE the critical section: a
+ *     caller that lost the race adopts the bundle the winner just stored
+ *     instead of replaying the one it read on the way in.
+ *
+ * Transport failures stay best-effort (tokens untouched, caller degrades to
+ * offline); a reuse/revocation is terminal and forces a re-login.
  */
 export async function ensureFreshToken(fetchFn: typeof fetch = fetch): Promise<void> {
   if (!session.nodeUrl) return;
-  let tokens: { access_token?: string; refresh_token?: string; expires_at?: string | number };
-  try {
-    tokens = JSON.parse(localStorage.getItem(TOKENS_KEY) ?? "");
-  } catch {
-    return;
-  }
-  if (!tokens?.access_token || !tokens.refresh_token) return;
-  let exp = Number(tokens.expires_at);
-  if (!Number.isFinite(exp) || exp <= 0) return; // no expiry info — assume valid
-  if (exp < 1e12) exp *= 1000; // tolerate seconds-based stamps
-  if (Date.now() <= exp - 30_000) return; // comfortably valid
+  if (refreshInFlight) return refreshInFlight;
 
+  const run = withTokenLock(() => refreshIfExpired(fetchFn)).finally(() => {
+    refreshInFlight = null;
+  });
+  refreshInFlight = run;
+  return run;
+}
+
+async function refreshIfExpired(fetchFn: typeof fetch): Promise<void> {
+  if (!session.nodeUrl) return;
+
+  // Re-read INSIDE the guard — another tab (or an earlier caller) may have
+  // rotated the bundle while we were queued on the lock. Acting on the tokens
+  // we read before the lock is exactly how a consumed token gets replayed.
+  const tokens = readTokens();
+  if (!tokens?.access_token || !tokens.refresh_token) return;
+
+  const exp = expiryMs(tokens.expires_at);
+  if (exp === null) return; // no expiry info — assume valid
+  if (Date.now() < exp) return; // still valid — the node rejects an early refresh
+
+  let resp: Response;
   try {
-    const resp = await fetchFn(`${session.nodeUrl}/auth/refresh`, {
+    resp = await fetchFn(`${session.nodeUrl}/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -138,7 +215,26 @@ export async function ensureFreshToken(fetchFn: typeof fetch = fetch): Promise<v
         refresh_token: tokens.refresh_token,
       }),
     });
-    if (!resp.ok) return;
+  } catch {
+    return; /* node unreachable — the caller's online path will degrade gracefully */
+  }
+
+  if (!resp.ok) {
+    const authError = resp.headers?.get?.("x-auth-error") ?? "";
+    // 401 token_reuse: we replayed a consumed refresh token and the node just
+    // revoked the family. 403 token_revoked: the family was already gone.
+    // Either way no token we hold is live — clear them and force a re-login
+    // rather than silently carrying on with credentials that can never work.
+    if (
+      (resp.status === 401 && authError === "token_reuse") ||
+      (resp.status === 403 && authError === "token_revoked")
+    ) {
+      onAuthRevoked(authError);
+    }
+    return;
+  }
+
+  try {
     const json = await resp.json();
     const refreshed = json?.data ?? json;
     if (refreshed?.access_token && refreshed?.refresh_token) {
@@ -152,7 +248,7 @@ export async function ensureFreshToken(fetchFn: typeof fetch = fetch): Promise<v
       );
     }
   } catch {
-    /* node unreachable — the caller's online path will degrade gracefully */
+    /* malformed body — keep the old bundle and let the caller degrade */
   }
 }
 
@@ -201,4 +297,5 @@ export function resetSession(): void {
     executorPublicKey: null,
     devMode: false,
   };
+  refreshInFlight = null;
 }
