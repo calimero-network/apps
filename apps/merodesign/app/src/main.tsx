@@ -4,11 +4,18 @@ import { BrowserRouter } from "react-router-dom";
 import {
   MeroProvider,
   AppMode as MeroAppMode,
+  getNodeUrl,
   setNodeUrl,
   setApplicationId,
 } from "@calimero-network/mero-react";
 import "@calimero-network/mero-ui/styles.css";
 import App from "./App";
+import {
+  TOKENS_KEY,
+  jwtExpiryMs,
+  readStoredTokens,
+  shouldSeedTokens,
+} from "./utils/authTokens";
 import "./index.css";
 
 // ── Tauri desktop SSO: read auth tokens from the URL hash before React mounts ──
@@ -21,8 +28,12 @@ import "./index.css";
 //   merodesign://…#node_url=…&access_token=…&refresh_token=…
 //                 &application_id=…&context_id=…&expires_at=…
 // (older builds use `app-id` instead of `application_id` — we tolerate both).
-// We write those straight into the mero token store so MeroProvider sees an
-// authenticated session on first render, then strip the hash.
+// We seed those into the mero token store so MeroProvider sees an authenticated
+// session on first render, then strip the hash.
+//
+// The stored bundle deliberately WINS over the hash unless the hash is genuinely
+// newer — see `shouldSeedTokens` (utils/authTokens.ts) for why clobbering it gets
+// the whole token family revoked under single-use refresh (core#3083).
 const IS_TAURI = "__TAURI_INTERNALS__" in window;
 
 function persistTauriHashAuth() {
@@ -39,16 +50,33 @@ function persistTauriHashAuth() {
 
   if (!nodeUrl || !accessToken || !refreshToken) return;
 
+  // Read the node we were last pointed at BEFORE setNodeUrl overwrites it — a
+  // different node means the stored bundle belongs to a foreign token family.
+  const previousNodeUrl = getNodeUrl();
+
   setNodeUrl(nodeUrl);
   if (applicationId) setApplicationId(applicationId);
-  localStorage.setItem(
-    "mero-tokens",
-    JSON.stringify({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-      expires_at: expiresAt ? parseInt(expiresAt, 10) : Date.now() + 3600_000,
-    }),
-  );
+
+  const hashExpiresAtMs =
+    jwtExpiryMs(accessToken) ??
+    (expiresAt ? parseInt(expiresAt, 10) : Date.now() + 3600_000);
+
+  const seed = shouldSeedTokens({
+    hashExpiresAtMs,
+    stored: readStoredTokens(),
+    nodeChanged: !!previousNodeUrl && previousNodeUrl.trim() !== nodeUrl,
+  });
+
+  if (seed) {
+    localStorage.setItem(
+      TOKENS_KEY,
+      JSON.stringify({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        expires_at: hashExpiresAtMs,
+      }),
+    );
+  }
 
   // Navigate to the specific canvas if tauri told us which project to open.
   // "t" is a placeholder teamId — CanvasPage only needs projectId; teamId is
