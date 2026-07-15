@@ -1,25 +1,17 @@
-// Lazy MeroJs singleton + a thin RPC wrapper that preserves the old
-// calimero-client `{ result: { output }, error: { code, error: { cause: { info } } } }`
+// Accessor for MeroProvider's MeroJs instance + a thin RPC wrapper that
+// preserves the old calimero-client
+// `{ result: { output }, error: { code, error: { cause: { info } } } }`
 // envelope shape, so dataSource code can keep its existing access patterns
 // without per-callsite refactors.
 
 import {
-  MeroJs,
-  LocalStorageTokenStore,
+  type MeroJs,
   RpcError,
   type Context,
   type ExecuteParams,
 } from "@calimero-network/mero-js";
 import { getNodeUrl } from "@calimero-network/mero-react";
 import type { ResponseData } from "./types";
-
-// MeroProvider (mero-react) instantiates its internal MeroJs with the
-// default `LocalStorageTokenStore()` — which reads/writes a single JSON
-// blob at `mero-tokens`. We mirror that here so our standalone MeroJs
-// instance shares the same auth state.
-function getMeroTokenStore() {
-  return new LocalStorageTokenStore();
-}
 
 // Helper used by raw-fetch wrappers below + by useSseSubscription.
 export function getJwt(): string {
@@ -33,20 +25,26 @@ export function getJwt(): string {
   }
 }
 
+// The ONE MeroJs instance, owned by MeroProvider and handed to us by
+// <MeroJsBridge> (see api/MeroJsBridge.tsx). We deliberately do not construct
+// our own: mero-js's refresh single-flight is per-instance, so a second instance
+// over the same `mero-tokens` bundle can double-spend a single-use refresh token
+// (core#3083) and get the whole token family revoked.
 let _instance: MeroJs | null = null;
-let _baseUrl: string | null = null;
+
+export function setMeroJs(instance: MeroJs | null): void {
+  _instance = instance;
+}
 
 export function getMeroJs(): MeroJs {
-  const baseUrl = getNodeUrl();
-  if (!baseUrl) {
+  if (!_instance) {
+    // MeroProvider hands us the instance as soon as it has a node URL; a null
+    // instance means we are not connected/authenticated yet.
     throw new Error(
-      "Application endpoint key is missing. Please check your configuration.",
+      getNodeUrl()
+        ? "Mero client is not ready yet. Please retry in a moment."
+        : "Application endpoint key is missing. Please check your configuration.",
     );
-  }
-  if (!_instance || _baseUrl !== baseUrl) {
-    _instance?.close();
-    _instance = new MeroJs({ baseUrl, tokenStore: getMeroTokenStore() });
-    _baseUrl = baseUrl;
   }
   return _instance;
 }

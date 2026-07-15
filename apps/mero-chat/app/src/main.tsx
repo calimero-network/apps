@@ -7,8 +7,16 @@ import { decodeInvitationPayload } from "./utils/invitation.ts";
 import {
   MeroProvider,
   AppMode as MeroAppMode,
+  getNodeUrl,
   setNodeUrl,
 } from "@calimero-network/mero-react";
+import MeroJsBridge from "./api/MeroJsBridge.tsx";
+import {
+  TOKENS_KEY,
+  jwtExpiryMs,
+  readStoredTokens,
+  shouldSeedTokens,
+} from "./utils/authTokens.ts";
 import "@calimero-network/mero-ui/styles.css";
 import { ToastProvider } from "@calimero-network/mero-ui";
 import ErrorBoundary from "./components/ErrorBoundary.tsx";
@@ -46,45 +54,65 @@ function clearStaleSessionData() {
   toRemove.forEach((k) => localStorage.removeItem(k));
 }
 
-// Tauri SSO and web-auth callbacks deliver fresh tokens via URL hash.
-// MeroProvider's internal `LocalStorageTokenStore()` reads tokens as a
-// single JSON blob at `mero-tokens`; persist the hash values there before
-// React mounts (effects would be too late).
+// Tauri SSO and web-auth callbacks deliver tokens via URL hash. MeroProvider's
+// internal `LocalStorageTokenStore()` reads tokens as a single JSON blob at
+// `mero-tokens`; seed the hash values there before React mounts (effects would
+// be too late).
 //
-// Also clears stale session navigation keys so the app starts fresh.
-// Returns the parsed hash params so the async boot can refresh if expired.
-function persistAuthHashOnLoad(): { accessToken: string; refreshToken: string; nodeUrl: string; expiresAt: number } | null {
+// The stored bundle deliberately WINS over the hash unless the hash is genuinely
+// newer — see `shouldSeedTokens` (utils/authTokens.ts) for why clobbering it
+// gets the whole token family revoked under single-use refresh (core#3083).
+function persistAuthHashOnLoad(): void {
   const hash = window.location.hash.slice(1);
-  if (!hash) return null;
+  if (!hash) return;
   const p = new URLSearchParams(hash);
   const accessToken = p.get("access_token");
   const refreshToken = p.get("refresh_token");
   const expiresAt = p.get("expires_at");
-  const nodeUrl = p.get("node_url");
-  if (nodeUrl) setNodeUrl(nodeUrl.trim());
-  if (accessToken && refreshToken) {
-    const expiresAtMs = expiresAt ? parseInt(expiresAt, 10) : Date.now() + 3600_000;
+  const nodeUrl = p.get("node_url")?.trim();
+
+  // Read the node we were last pointed at BEFORE setNodeUrl overwrites it —
+  // a different node means the stored bundle belongs to a foreign token family.
+  const previousNodeUrl = getNodeUrl();
+  if (nodeUrl) setNodeUrl(nodeUrl);
+  if (!accessToken || !refreshToken) return;
+
+  const hashExpiresAtMs =
+    jwtExpiryMs(accessToken) ??
+    (expiresAt ? parseInt(expiresAt, 10) : Date.now() + 3600_000);
+
+  const nodeChanged =
+    !!nodeUrl && !!previousNodeUrl && previousNodeUrl.trim() !== nodeUrl;
+
+  const seed = shouldSeedTokens({
+    hashExpiresAtMs,
+    stored: readStoredTokens(),
+    nodeChanged,
+  });
+
+  if (seed) {
     // Clear stale session data before writing new tokens — prevents the app
     // from loading into a stale group/context from a previous SSO session.
+    // Only on a genuinely new session: re-opening the current one must not
+    // nuke the navigation state out from under a live tab.
     clearStaleSessionData();
     localStorage.setItem(
-      "mero-tokens",
+      TOKENS_KEY,
       JSON.stringify({
         access_token: accessToken,
         refresh_token: refreshToken,
-        expires_at: expiresAtMs,
+        expires_at: hashExpiresAtMs,
       }),
     );
-    // Remove the hash so MeroProvider's parseAuthCallback doesn't re-process
-    // the original tokens and overwrite the (possibly refreshed) ones we just wrote.
-    window.history.replaceState(
-      {},
-      "",
-      window.location.pathname + window.location.search,
-    );
-    return { accessToken, refreshToken, nodeUrl: nodeUrl?.trim() ?? "", expiresAt: expiresAtMs };
   }
-  return null;
+
+  // Remove the hash either way, so MeroProvider's parseAuthCallback doesn't
+  // re-process the original tokens and overwrite the (possibly rotated) bundle.
+  window.history.replaceState(
+    {},
+    "",
+    window.location.pathname + window.location.search,
+  );
 }
 
 // Extract ?invitation= from URL before React mounts — React Router's <Navigate>
@@ -150,40 +178,17 @@ if ("serviceWorker" in navigator && !import.meta.env.DEV) {
 
 const AppWrapper = import.meta.env.DEV ? StrictMode : React.Fragment;
 
-async function boot() {
-  // Persist SSO tokens from the URL hash before React reads localStorage.
-  const sso = persistAuthHashOnLoad();
-
-  // If the desktop passed a token that's already expired (or expires within
-  // 30 s), refresh it now so MeroProvider starts with valid credentials.
-  if (sso && sso.nodeUrl && Date.now() > sso.expiresAt - 30_000) {
-    try {
-      const resp = await fetch(`${sso.nodeUrl}/auth/refresh`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          access_token: sso.accessToken,
-          refresh_token: sso.refreshToken,
-        }),
-      });
-      if (resp.ok) {
-        const json = await resp.json();
-        const refreshed = json?.data ?? json;
-        if (refreshed?.access_token && refreshed?.refresh_token) {
-          localStorage.setItem(
-            "mero-tokens",
-            JSON.stringify({
-              access_token: refreshed.access_token,
-              refresh_token: refreshed.refresh_token,
-              expires_at: Date.now() + 3600_000,
-            }),
-          );
-        }
-      }
-    } catch {
-      // Refresh failed — let MeroProvider handle it reactively.
-    }
-  }
+function boot() {
+  // Seed SSO tokens from the URL hash before React reads localStorage.
+  //
+  // There is deliberately NO proactive refresh here. mero-js refreshes
+  // reactively on a 401 + `x-auth-error: token_expired`, behind a single-flight
+  // mutex. A hand-rolled refresh alongside it would (a) be rejected outright
+  // when the access token is still valid ("Access token still valid" — see
+  // core#3083) and (b) race the SDK's own refresh over the same stored bundle,
+  // so one of the two would present an already-consumed, single-use refresh
+  // token → `token_reuse` → the entire token family is revoked.
+  persistAuthHashOnLoad();
 
   createRoot(document.getElementById("root")!).render(
     <AppWrapper>
@@ -197,17 +202,19 @@ async function boot() {
           packageName={import.meta.env.VITE_APPLICATION_PACKAGE}
           registryUrl="https://apps.calimero.network"
         >
-          <BrowserRouter>
-            <WebSocketProvider>
-              <ToastProvider>
-                <App />
-              </ToastProvider>
-            </WebSocketProvider>
-          </BrowserRouter>
+          <MeroJsBridge>
+            <BrowserRouter>
+              <WebSocketProvider>
+                <ToastProvider>
+                  <App />
+                </ToastProvider>
+              </WebSocketProvider>
+            </BrowserRouter>
+          </MeroJsBridge>
         </MeroProvider>
       </ErrorBoundary>
     </AppWrapper>,
   );
 }
 
-void boot();
+boot();
