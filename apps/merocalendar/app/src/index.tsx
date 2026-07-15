@@ -4,12 +4,19 @@ import { BrowserRouter } from "react-router-dom";
 import {
   MeroProvider,
   AppMode as MeroAppMode,
+  getNodeUrl,
   setNodeUrl,
   setApplicationId,
 } from "@calimero-network/mero-react";
 import "@calimero-network/mero-ui/styles.css";
 
 import App from "./App";
+import {
+  TOKENS_KEY,
+  jwtExpiryMs,
+  readStoredTokens,
+  shouldSeedTokens,
+} from "./utils/authTokens";
 import "./styles/theme.css";
 import "./index.module.scss";
 import { Provider as StoreProvider } from "react-redux";
@@ -25,6 +32,10 @@ import { ThemeProvider } from "./providers/ThemeProvider";
 // consumes itself). We must NOT pre-process the hash there or it races
 // MeroProvider. Only the Tauri desktop skips auth: tauri-app opens a window with
 //   merocalendar://…#node_url=…&access_token=…&refresh_token=…&application_id=…
+//
+// The stored bundle deliberately WINS over the hash unless the hash is genuinely
+// newer — see `shouldSeedTokens` (utils/authTokens.ts) for why clobbering it gets
+// the whole token family revoked under single-use refresh (core#3083).
 const IS_TAURI = "__TAURI_INTERNALS__" in window;
 
 function persistTauriHashAuth() {
@@ -41,16 +52,33 @@ function persistTauriHashAuth() {
 
   if (!nodeUrl || !accessToken || !refreshToken) return;
 
+  // Read the node we were last pointed at BEFORE setNodeUrl overwrites it — a
+  // different node means the stored bundle belongs to a foreign token family.
+  const previousNodeUrl = getNodeUrl();
+
   setNodeUrl(nodeUrl);
   if (applicationId) setApplicationId(applicationId);
-  localStorage.setItem(
-    "mero-tokens",
-    JSON.stringify({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-      expires_at: expiresAt ? parseInt(expiresAt, 10) : Date.now() + 3600_000,
-    }),
-  );
+
+  const hashExpiresAtMs =
+    jwtExpiryMs(accessToken) ??
+    (expiresAt ? parseInt(expiresAt, 10) : Date.now() + 3600_000);
+
+  const seed = shouldSeedTokens({
+    hashExpiresAtMs,
+    stored: readStoredTokens(),
+    nodeChanged: !!previousNodeUrl && previousNodeUrl.trim() !== nodeUrl,
+  });
+
+  if (seed) {
+    localStorage.setItem(
+      TOKENS_KEY,
+      JSON.stringify({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        expires_at: hashExpiresAtMs,
+      }),
+    );
+  }
 
   // Deep-link straight into the shared calendar when the desktop told us which
   // context to open (same as mero-design/mero-pixart). "t" is a placeholder
