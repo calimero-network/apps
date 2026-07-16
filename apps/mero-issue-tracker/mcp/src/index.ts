@@ -4,8 +4,22 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { loadConfig, type Config } from './config.ts';
-import { callMethod, createTargetResolver, type ResolvedTarget } from './rpc.ts';
+import {
+  callMethod,
+  createRepoLister,
+  createTargetResolver,
+  resolveExecutor,
+  type NamespaceRepo,
+  type ResolvedTarget,
+} from './rpc.ts';
 import { buildFixPrompt, type IssueForPrompt } from './fixPrompt.ts';
+
+// A repo (context alias) to target within the namespace; defaults to
+// TRACKER_REPO, else the namespace's only repo.
+const repoParam = z
+  .string()
+  .optional()
+  .describe("Repo (context alias) to target; defaults to TRACKER_REPO or the namespace's only repo.");
 
 // ---- Tool input schemas ----
 
@@ -17,31 +31,39 @@ export const createIssueShape = {
   resolution_criteria: z.string().min(1, 'resolution_criteria is required'),
   priority: z.enum(['low', 'medium', 'high', 'urgent']).default('medium'),
   labels: z.array(z.string()).default([]),
+  repo: repoParam,
 };
 
 export const listIssuesShape = {
   status: z.string().optional(),
   assignee: z.string().optional(),
   label: z.string().optional(),
+  repo: repoParam,
 };
 
 export const getIssueShape = {
   id: z.string().min(1, 'id is required'),
+  repo: repoParam,
 };
 
 export const addCommentShape = {
   issue_id: z.string().min(1, 'issue_id is required'),
   body: z.string().min(1, 'body is required'),
+  repo: repoParam,
 };
 
 export const assignIssueShape = {
   issue_id: z.string().min(1, 'issue_id is required'),
   assignee: z.string().min(1, 'assignee is required'),
+  repo: repoParam,
 };
 
 export const getFixPromptShape = {
   id: z.string().min(1, 'id is required'),
+  repo: repoParam,
 };
+
+export const listReposShape = {};
 
 type CreateIssueArgs = z.infer<z.ZodObject<typeof createIssueShape>>;
 type ListIssuesArgs = z.infer<z.ZodObject<typeof listIssuesShape>>;
@@ -53,6 +75,11 @@ type GetFixPromptArgs = z.infer<z.ZodObject<typeof getFixPromptShape>>;
 interface IssueDetail {
   issue: IssueForPrompt & Record<string, unknown>;
   comments: unknown[];
+}
+
+/** The logic app's get_repo_info view. */
+interface RepoInfo {
+  repo_url: string;
 }
 
 // ---- Tool request shaping - pure functions, unit-tested against a mocked fetch ----
@@ -90,8 +117,30 @@ export function assignIssue(cfg: Config, target: ResolvedTarget, args: AssignIss
 }
 
 export async function getFixPrompt(cfg: Config, target: ResolvedTarget, args: GetFixPromptArgs) {
-  const detail = await callMethod<IssueDetail>(cfg, target, 'get_issue', { issue_id: args.id });
-  return buildFixPrompt(detail.issue);
+  const [detail, repoInfo] = await Promise.all([
+    callMethod<IssueDetail>(cfg, target, 'get_issue', { issue_id: args.id }),
+    callMethod<RepoInfo>(cfg, target, 'get_repo_info', {}),
+  ]);
+  return buildFixPrompt({ ...detail.issue, repo_url: repoInfo.repo_url });
+}
+
+/** Lists repos in the namespace with their repo_url, fetched per repo's own context. */
+export async function listRepos(
+  cfg: Config,
+  repos: NamespaceRepo[],
+): Promise<Array<{ name: string; repo_url: string }>> {
+  return Promise.all(
+    repos.map(async (repo) => {
+      const executorPublicKey = await resolveExecutor(cfg, repo.contextId);
+      const info = await callMethod<RepoInfo>(
+        cfg,
+        { contextId: repo.contextId, executorPublicKey },
+        'get_repo_info',
+        {},
+      );
+      return { name: repo.name, repo_url: info.repo_url };
+    }),
+  );
 }
 
 // ---- MCP result helpers ----
@@ -111,8 +160,9 @@ function errorResult(err: unknown) {
 export function createServer(cfg: Config = loadConfig()): McpServer {
   const server = new McpServer({ name: 'issue-tracker-mcp', version: '0.1.0' });
 
-  // Resolved once and reused across every tool call in the process's lifetime.
+  // Resolved per repo and reused across every tool call in the process's lifetime.
   const target = createTargetResolver(cfg);
+  const listReposCache = createRepoLister(cfg);
 
   server.registerTool(
     'create_issue',
@@ -123,7 +173,7 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
     },
     async (args) => {
       try {
-        const id = await createIssue(cfg, await target(), args);
+        const id = await createIssue(cfg, await target(args.repo), args);
         return textResult({ id });
       } catch (err) {
         return errorResult(err);
@@ -136,7 +186,7 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
     { description: 'List issues, optionally filtered by status, assignee, or label.', inputSchema: listIssuesShape },
     async (args) => {
       try {
-        return textResult(await listIssues(cfg, await target(), args));
+        return textResult(await listIssues(cfg, await target(args.repo), args));
       } catch (err) {
         return errorResult(err);
       }
@@ -148,7 +198,7 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
     { description: 'Get an issue and its comments by id.', inputSchema: getIssueShape },
     async (args) => {
       try {
-        return textResult(await getIssue(cfg, await target(), args));
+        return textResult(await getIssue(cfg, await target(args.repo), args));
       } catch (err) {
         return errorResult(err);
       }
@@ -160,7 +210,7 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
     { description: 'Add a comment to an issue.', inputSchema: addCommentShape },
     async (args) => {
       try {
-        const id = await addComment(cfg, await target(), args);
+        const id = await addComment(cfg, await target(args.repo), args);
         return textResult({ id });
       } catch (err) {
         return errorResult(err);
@@ -173,7 +223,7 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
     { description: 'Assign an issue to a member.', inputSchema: assignIssueShape },
     async (args) => {
       try {
-        await assignIssue(cfg, await target(), args);
+        await assignIssue(cfg, await target(args.repo), args);
         return textResult({ ok: true });
       } catch (err) {
         return errorResult(err);
@@ -183,10 +233,25 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
 
   server.registerTool(
     'get_fix_prompt',
-    { description: 'Build a fix prompt for an issue (placeholder until task 7 authors the real template).', inputSchema: getFixPromptShape },
+    {
+      description: 'Build a fix prompt for an issue: title, summary, impact, repro, resolution criteria, and repository URL.',
+      inputSchema: getFixPromptShape,
+    },
     async (args) => {
       try {
-        return textResult(await getFixPrompt(cfg, await target(), args));
+        return textResult(await getFixPrompt(cfg, await target(args.repo), args));
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    'list_repos',
+    { description: 'List repos (contexts) in the namespace, each with its name (alias) and repo_url.', inputSchema: listReposShape },
+    async () => {
+      try {
+        return textResult(await listRepos(cfg, await listReposCache()));
       } catch (err) {
         return errorResult(err);
       }

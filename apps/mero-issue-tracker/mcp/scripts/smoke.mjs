@@ -90,7 +90,7 @@ async function main() {
   const tools = await rpc('tools/list', {});
   const names = tools.tools.map((t) => t.name).sort();
   console.log('tools/list:', names.join(', '));
-  for (const t of ['create_issue', 'list_issues', 'get_issue', 'add_comment', 'assign_issue', 'get_fix_prompt']) {
+  for (const t of ['create_issue', 'list_issues', 'get_issue', 'add_comment', 'assign_issue', 'get_fix_prompt', 'list_repos']) {
     assert(names.includes(t), `tool ${t} missing from tools/list`);
   }
 

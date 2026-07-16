@@ -23,10 +23,28 @@ test('loadConfig reads all env vars and trims a trailing slash off the node URL'
   assert.equal(cfg.executorOverride, 'executor-pubkey');
 });
 
-test('loadConfig throws when TRACKER_CONTEXT is missing', () => {
-  assert.throws(() => loadConfig({}), /TRACKER_CONTEXT/);
+test('loadConfig throws when neither TRACKER_CONTEXT nor TRACKER_NAMESPACE is set', () => {
+  assert.throws(() => loadConfig({}), /TRACKER_NAMESPACE|TRACKER_CONTEXT/);
 });
 
-test('loadConfig throws when TRACKER_CONTEXT is blank', () => {
-  assert.throws(() => loadConfig({ TRACKER_CONTEXT: '   ' }), /TRACKER_CONTEXT/);
+test('loadConfig throws when TRACKER_CONTEXT is blank and TRACKER_NAMESPACE is unset', () => {
+  assert.throws(() => loadConfig({ TRACKER_CONTEXT: '   ' }), /TRACKER_NAMESPACE|TRACKER_CONTEXT/);
+});
+
+test('loadConfig accepts TRACKER_NAMESPACE alone (no TRACKER_CONTEXT)', () => {
+  const cfg = loadConfig({ TRACKER_NAMESPACE: 'my-team' });
+  assert.equal(cfg.namespaceRaw, 'my-team');
+  assert.equal(cfg.contextRaw, undefined);
+  assert.equal(cfg.repoDefault, undefined);
+});
+
+test('loadConfig reads TRACKER_REPO as the default repo', () => {
+  const cfg = loadConfig({ TRACKER_NAMESPACE: 'my-team', TRACKER_REPO: 'frontend' });
+  assert.equal(cfg.repoDefault, 'frontend');
+});
+
+test('loadConfig allows both TRACKER_CONTEXT and TRACKER_NAMESPACE to be set', () => {
+  const cfg = loadConfig({ TRACKER_CONTEXT: 'ctx-abc', TRACKER_NAMESPACE: 'my-team' });
+  assert.equal(cfg.contextRaw, 'ctx-abc');
+  assert.equal(cfg.namespaceRaw, 'my-team');
 });
