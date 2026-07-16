@@ -6,6 +6,11 @@ import { ToastProvider } from '@calimero-network/mero-ui';
 import LandingPage from './pages/landing/LandingPage';
 import LoginPage from './pages/login/LoginPage';
 import AppPage from './pages/app/AppPage';
+import IssuesView from './pages/app/IssuesView';
+import IssueDetailPage from './pages/app/IssueDetailPage';
+import BoardPage from './pages/app/BoardPage';
+import MembersPage from './pages/app/MembersPage';
+import { AppThemeProvider } from './theme';
 import { APP_PACKAGE, APP_ROUTE } from './config';
 
 /**
@@ -49,16 +54,26 @@ export default function App() {
       registryUrl={registryUrl}
     >
       <ToastProvider>
-        <BrowserRouter basename="/">
-          <Routes>
-            {/* Landing is the front door; authenticated users (incl. desktop
-                SSO skip) are redirected straight into the app. */}
-            <Route path="/" element={<RedirectIfAuthed><LandingPage /></RedirectIfAuthed>} />
-            <Route path="/login" element={<RedirectIfAuthed><LoginPage /></RedirectIfAuthed>} />
-            <Route path={APP_ROUTE} element={<RequireAuth><AppPage /></RequireAuth>} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </BrowserRouter>
+        <AppThemeProvider>
+          <BrowserRouter basename="/">
+            <Routes>
+              {/* Landing is the front door; authenticated users (incl. desktop
+                  SSO skip) are redirected straight into the app. */}
+              <Route path="/" element={<RedirectIfAuthed><LandingPage /></RedirectIfAuthed>} />
+              <Route path="/login" element={<RedirectIfAuthed><LoginPage /></RedirectIfAuthed>} />
+              {/* Tracker shell + routed views. The index stays at APP_ROUTE (no
+                  URL redirect) so the "All Issues" list is the default and the
+                  post-auth resting URL is unchanged. */}
+              <Route path={APP_ROUTE} element={<RequireAuth><AppPage /></RequireAuth>}>
+                <Route index element={<IssuesView />} />
+                <Route path="issues/:id" element={<IssueDetailPage />} />
+                <Route path="board" element={<BoardPage />} />
+                <Route path="members" element={<MembersPage />} />
+              </Route>
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </BrowserRouter>
+        </AppThemeProvider>
       </ToastProvider>
     </MeroProvider>
   );
