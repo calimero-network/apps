@@ -33,6 +33,12 @@ export function buildAliasMap(entries: { name: string; value: string }[]): Map<s
   return new Map(entries.map((e) => [e.value, e.name]));
 }
 
+/** The actual `resolve()` logic: alias if known, else a truncated key. Exported so
+ *  tests exercise this directly instead of a parallel re-implementation. */
+export function resolveFromMap(map: Map<string, string>, publicKey: string): string {
+  return map.get(publicKey) ?? truncateKey(publicKey);
+}
+
 const cache = new Map<string, Map<string, string>>();
 
 export function useAliases(contextId: string | null): UseAliasesReturn {
@@ -63,11 +69,15 @@ export function useAliases(contextId: string | null): UseAliasesReturn {
     if (!contextId) { setMap(new Map()); setLoaded(false); return; }
     const cached = cache.get(contextId);
     if (cached) { setMap(cached); setLoaded(true); return; }
+    // Reset synchronously so a context switch never briefly serves the
+    // previous context's aliases while the new fetch is in flight.
+    setMap(new Map());
+    setLoaded(false);
     void load();
   }, [contextId, load]);
 
   const resolve = useCallback(
-    (publicKey: string) => map.get(publicKey) ?? truncateKey(publicKey),
+    (publicKey: string) => resolveFromMap(map, publicKey),
     [map],
   );
   const hasAlias = useCallback((publicKey: string) => map.has(publicKey), [map]);

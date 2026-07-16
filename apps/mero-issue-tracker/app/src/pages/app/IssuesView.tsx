@@ -7,7 +7,7 @@ import { useAppCtx } from './appContext';
 
 /** Default view: filter bar over the status-grouped issue list. */
 export default function IssuesView(): React.ReactElement {
-  const { data, filters } = useAppCtx();
+  const { data, filters, aliases } = useAppCtx();
   const navigate = useNavigate();
 
   // Priority has no server param - apply it client-side over the fetched set.
@@ -18,7 +18,7 @@ export default function IssuesView(): React.ReactElement {
   return (
     <>
       <FilterBar />
-      <IssueList issues={issues} onOpen={(id) => navigate(`${APP_ROUTE}/issues/${id}`)} />
+      <IssueList issues={issues} aliases={aliases} onOpen={(id) => navigate(`${APP_ROUTE}/issues/${id}`)} />
     </>
   );
 }
