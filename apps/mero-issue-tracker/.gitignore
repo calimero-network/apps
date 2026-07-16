@@ -23,3 +23,8 @@ logic/crates/*/res/*.wasm
 logic/crates/*/res/abi.json
 docs/superpowers/
 .superpowers/
+
+# Playwright e2e artifacts (per-run node data, reports, results).
+app/.playwright-data/
+app/test-results/
+app/playwright-report/
