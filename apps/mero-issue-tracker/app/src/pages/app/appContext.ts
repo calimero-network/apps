@@ -1,6 +1,7 @@
 import { useOutletContext } from 'react-router-dom';
 import type { UseIssuesReturn } from '../../hooks/useItems';
 import type { UseWorkspaceReturn } from '../../hooks/useWorkspace';
+import type { UseAliasesReturn } from '../../hooks/useAliases';
 
 export interface Filters {
   status: string;
@@ -14,6 +15,7 @@ export interface AppCtx {
   data: UseIssuesReturn;
   currentUser: string;
   members: string[];
+  aliases: UseAliasesReturn;
   filters: Filters;
   /** True when the `?assignee=me` view is active (filters by current user). */
   myIssues: boolean;

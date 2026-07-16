@@ -33,6 +33,10 @@ const ENV_APPLICATION_ID = import.meta.env.VITE_APPLICATION_ID?.trim() || null;
 // MemberCapabilities bits (CAN_CREATE_CONTEXT | CAN_INVITE_MEMBERS).
 const DEFAULT_CAPABILITIES = 1 | 2; // = 3
 
+// Stable name for this app's one shared context, registered in the node's
+// alias registry so tools (e.g. the MCP server) can resolve it by name.
+const WORKSPACE_ALIAS = 'issue-tracker';
+
 export interface UseWorkspaceReturn {
   /** The shared context's id — null until resolved/created. Feeds useItems. */
   contextId: string | null;
@@ -109,6 +113,29 @@ export function useWorkspace(): UseWorkspaceReturn {
     })();
     return () => { cancelled = true; };
   }, [mero, contextId, executorPublicKey]);
+
+  // Register the well-known `issue-tracker` context alias once a context
+  // exists. Best-effort and one-shot per context: a missing alias (lookup
+  // 404s) gets created; any other failure (network, older node) is swallowed -
+  // the alias is a convenience for external tools, never a requirement.
+  const aliasEnsuredRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!mero || !contextId || aliasEnsuredRef.current === contextId) return;
+    aliasEnsuredRef.current = contextId;
+    (async () => {
+      try {
+        const looked = await mero.admin.lookupContextAlias(WORKSPACE_ALIAS);
+        if (looked?.value) return;
+        await mero.admin.createContextAlias({ alias: WORKSPACE_ALIAS, contextId });
+      } catch {
+        try {
+          await mero.admin.createContextAlias({ alias: WORKSPACE_ALIAS, contextId });
+        } catch {
+          /* alias is a convenience only - never blocks the workspace */
+        }
+      }
+    })();
+  }, [mero, contextId]);
 
   // Resolve the bound context's namespace (its group) so invite() targets it
   // regardless of how many namespaces the node hosts. Falls back to
