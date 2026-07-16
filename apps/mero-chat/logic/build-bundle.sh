@@ -90,7 +90,7 @@ cat > res/bundle-temp/manifest.json <<EOF
   },
   "migrations": [],
   "links": {
-    "frontend": "https://calimero-curb-rs.vercel.app/"
+    "frontend": "https://mero-chat.vercel.app/"
   }
 }
 EOF
