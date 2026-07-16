@@ -399,6 +399,20 @@ export async function loginViaHash(page: Page, nodeIndex = 0) {
 
 const READY = '[data-testid="workspace-ready"], [data-testid="open-invite-btn"]';
 
+/**
+ * The Members view opens a one-shot "set your alias" modal the first time an
+ * identity with no alias lands on it. Its overlay covers the page, so any
+ * click on the Members view (e.g. Invite) must wait it out and dismiss it.
+ * A no-op when the modal never appears (the identity already has an alias).
+ */
+async function dismissAliasNudge(page: Page) {
+  const input = page.getByTestId('alias-input');
+  if (await input.isVisible({ timeout: 3_000 }).catch(() => false)) {
+    await page.keyboard.press('Escape');
+    await input.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => {});
+  }
+}
+
 /** testid-or-text union locator (first match; tolerant of legacy apps). */
 function ctl(page: Page, testid: string, text: string) {
   return page.locator(`[data-testid="${testid}"], button:has-text("${text}")`).first();
@@ -446,6 +460,9 @@ export async function inviteAndJoin(inviterPage: Page, joinerPage: Page): Promis
 
   // open-invite-btn now lives on the Members view, not the shell - route there first.
   await inviterPage.getByTestId('nav-members').click();
+  // First visit to Members auto-opens the "set your alias" nudge, whose
+  // full-screen overlay covers the Invite button; dismiss it before clicking.
+  await dismissAliasNudge(inviterPage);
 
   // Inviter: open Invite, generate, read the code out of the readonly field.
   await ctl(inviterPage, 'open-invite-btn', 'Invite').click();
@@ -473,6 +490,10 @@ export async function inviteAndJoin(inviterPage: Page, joinerPage: Page): Promis
   if (!code) throw new Error(`invite code never populated.${recordedErrorsTail(inviterPage)}`);
   // Close the invite modal (Escape) so it doesn't overlay the joiner flow.
   await inviterPage.keyboard.press('Escape').catch(() => {});
+  // Restore the inviter to the issues list: this helper detoured through the
+  // Members view to reach the Invite button, but callers expect to be back on
+  // the board (where issue cards live) once the invite is sent.
+  await inviterPage.getByRole('link', { name: /All Issues/ }).click().catch(() => {});
 
   // Joiner: if it already auto-discovered the namespace, nothing to do.
   if (await joinerPage.locator(READY).first().isVisible().catch(() => false)) {
