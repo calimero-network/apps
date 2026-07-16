@@ -1,3 +1,5 @@
+// keep in sync with mcp/src/fixPrompt.ts
+
 /** The fields of an issue needed to build a fix prompt. */
 export interface IssueForPrompt {
   id: string;
@@ -8,10 +10,7 @@ export interface IssueForPrompt {
   resolution_criteria: string;
 }
 
-/**
- * Builds the prompt text for `get_fix_prompt`. This is the single source of
- * truth for the template; app/src/utils/fixPrompt.ts duplicates it verbatim.
- */
+/** Builds the "Copy fix prompt" text shown in the Local agent card. */
 export function buildFixPrompt(issue: IssueForPrompt): string {
   return `You are fixing a tracked issue. Work systematically; do not skip validation.
 
