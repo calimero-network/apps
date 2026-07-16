@@ -71,7 +71,7 @@ test.describe(`team member or script: create an issue with a title, the four req
     const card = page.getByTestId('item-issue').filter({ hasText: title });
     await expect(card).toBeVisible({ timeout: 10_000 });
 
-    // Open the detail page — a freshly created issue's status control reads Open.
+    // Open the detail page - a freshly created issue's status control reads Open.
     await card.click();
     await expect(page.getByTestId('action-set_status')).toHaveValue('Open');
   });

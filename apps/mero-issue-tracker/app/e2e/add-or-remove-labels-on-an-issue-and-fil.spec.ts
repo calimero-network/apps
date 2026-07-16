@@ -49,7 +49,7 @@ test.describe(`team member: add or remove labels on an issue and filter the boar
     await pageA.getByTestId('action-add_label').click();
 
     // Exactly one instance of the label's remove control appears in the detail
-    // page's label list (scoped by its unique aria-label, not raw text — the
+    // page's label list (scoped by its unique aria-label, not raw text - the
     // label also renders on cards elsewhere in the app).
     await expect(pageA.getByLabel(`Remove ${label}`)).toHaveCount(1, { timeout: 5_000 });
 

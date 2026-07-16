@@ -310,7 +310,7 @@ export interface NewIssueFields {
 
 /**
  * Open the New-issue modal, fill the title plus the four required sections
- * (summary/impact/repro/resolution criteria — all four are mandatory to
+ * (summary/impact/repro/resolution criteria - all four are mandatory to
  * submit), and create it. Unspecified sections get a unique placeholder so
  * callers that don't care about their content don't have to fill them.
  */
@@ -444,7 +444,7 @@ export async function createWorkspace(page: Page) {
 export async function inviteAndJoin(inviterPage: Page, joinerPage: Page): Promise<string> {
   await createWorkspace(inviterPage);
 
-  // open-invite-btn now lives on the Members view, not the shell — route there first.
+  // open-invite-btn now lives on the Members view, not the shell - route there first.
   await inviterPage.getByTestId('nav-members').click();
 
   // Inviter: open Invite, generate, read the code out of the readonly field.
