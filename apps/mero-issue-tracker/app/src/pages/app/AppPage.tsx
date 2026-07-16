@@ -7,6 +7,7 @@ import { tokens as t } from '../../theme';
 import { APP_DISPLAY_NAME } from '../../config';
 import { useWorkspace } from '../../hooks/useWorkspace';
 import { useIssues } from '../../hooks/useItems';
+import { useAliases } from '../../hooks/useAliases';
 import { describeError } from '../../utils/errors';
 import Shell from '../../components/Shell';
 import NewIssueModal from '../../components/NewIssueModal';
@@ -50,6 +51,8 @@ export default function AppPage(): React.ReactElement {
     executorPublicKey: ws.executorPublicKey,
     filters: hookFilters,
   });
+
+  const aliases = useAliases(ws.contextId);
 
   useEffect(() => {
     if (data.error) toast.show({ variant: 'error', description: describeError(data.error) });
@@ -115,7 +118,7 @@ export default function AppPage(): React.ReactElement {
   );
 
   const ctx: AppCtx = {
-    data, currentUser, members, filters, myIssues,
+    data, currentUser, members, aliases, filters, myIssues,
     setFilter, clearFilters, openNewIssue, openInvite, ws,
   };
 
@@ -150,6 +153,7 @@ export default function AppPage(): React.ReactElement {
       totalIssues={totalIssues}
       membersCount={membersCount}
       currentUser={currentUser}
+      currentUserLabel={currentUser ? aliases.resolve(currentUser) : ''}
       onNewIssue={openNewIssue}
     >
       <Ready data-testid="workspace-ready">

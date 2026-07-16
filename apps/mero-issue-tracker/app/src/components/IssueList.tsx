@@ -2,6 +2,7 @@ import React from 'react';
 import styled from 'styled-components';
 import { tokens as t, STATUSES } from '../theme';
 import type { IssueView } from '../hooks/useItems';
+import type { UseAliasesReturn } from '../hooks/useAliases';
 import { relativeTime } from '../utils/display';
 import PriorityGlyph from './PriorityGlyph';
 import StatusDot from './StatusDot';
@@ -15,9 +16,11 @@ function shortId(id: string): string {
 /** Issue rows grouped by status with live per-group counts. */
 export default function IssueList({
   issues,
+  aliases,
   onOpen,
 }: {
   issues: IssueView[];
+  aliases: UseAliasesReturn;
   onOpen: (id: string) => void;
 }): React.ReactElement {
   const groups = STATUSES
@@ -51,7 +54,12 @@ export default function IssueList({
                 <span className="labels">
                   {issue.labels.slice(0, 2).map((l) => <LabelChip key={l} label={l} />)}
                 </span>
-                <AvatarGlyph seed={issue.assignee} size="sm" keyFallback={!!issue.assignee} />
+                <AvatarGlyph
+                  seed={issue.assignee}
+                  size="sm"
+                  title={issue.assignee ? aliases.resolve(issue.assignee) : undefined}
+                  keyFallback={!!issue.assignee && !aliases.hasAlias(issue.assignee)}
+                />
                 <StatusDot status={issue.status} />
                 <span className="time">{relativeTime(issue.created_at)}</span>
               </span>

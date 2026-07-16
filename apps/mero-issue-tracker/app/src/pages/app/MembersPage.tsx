@@ -1,28 +1,49 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { tokens as t } from '../../theme';
 import { truncateKey } from '../../utils/display';
 import AvatarGlyph from '../../components/AvatarGlyph';
+import SetAliasModal from '../../components/SetAliasModal';
 import { useAppCtx } from './appContext';
 
 /**
- * Workspace members. Rows come from the context identities (public keys only -
- * aliases arrive with Task 6, so the current identity shows "You" and the rest
- * render as truncated keys). Invite opens the existing invitation modal.
+ * Workspace members. Rows come from the context identities (public keys),
+ * rendered by alias when one is set, falling back to a truncated key. The
+ * current identity gets a "Set my alias" action; first-time visitors with no
+ * alias yet are nudged to set one.
  */
 export default function MembersPage(): React.ReactElement {
-  const { members, currentUser, openInvite } = useAppCtx();
+  const { members, currentUser, aliases, openInvite } = useAppCtx();
+  const [showAliasModal, setShowAliasModal] = useState(false);
+  const [firstJoin, setFirstJoin] = useState(false);
 
   // Always include the current identity even before getContextIdentities returns.
   const keys = Array.from(new Set([currentUser, ...members].filter(Boolean)));
+
+  // One-shot nudge: once the alias list has settled, prompt for an alias if
+  // the current identity doesn't have one yet.
+  const promptedRef = useRef(false);
+  useEffect(() => {
+    if (promptedRef.current || !aliases.loaded || !currentUser) return;
+    promptedRef.current = true;
+    if (!aliases.hasAlias(currentUser)) {
+      setFirstJoin(true);
+      setShowAliasModal(true);
+    }
+  }, [aliases, currentUser]);
 
   return (
     <Wrap>
       <Head>
         <h2>Members</h2>
         <div className="actions">
-          {/* TODO(task-6): alias editing - wire to setMemberMetadata once aliases land. */}
-          <button className="secondary" disabled title="Coming soon">Set my alias</button>
+          <button
+            className="secondary"
+            data-testid="set-alias-btn"
+            onClick={() => { setFirstJoin(false); setShowAliasModal(true); }}
+          >
+            Set my alias
+          </button>
           <button className="primary" data-testid="open-invite-btn" onClick={openInvite}>Invite</button>
         </div>
       </Head>
@@ -33,11 +54,17 @@ export default function MembersPage(): React.ReactElement {
         </Row>
         {keys.map((key) => {
           const you = key === currentUser;
+          const hasAlias = aliases.hasAlias(key);
+          const label = you ? 'You' : aliases.resolve(key);
           return (
             <Row key={key}>
               <span className="user">
-                <AvatarGlyph seed={key} size="md" keyFallback={!you} />
-                <span className={`alias${you ? '' : ' faded'}`}>{you ? 'You' : truncateKey(key)}</span>
+                <AvatarGlyph
+                  seed={hasAlias ? aliases.resolve(key) : key}
+                  size="md"
+                  keyFallback={!you && !hasAlias}
+                />
+                <span className={`alias${!you && !hasAlias ? ' faded' : ''}`}>{label}</span>
               </span>
               <span className="key">{truncateKey(key)}</span>
               <span className="date">-</span>
@@ -46,6 +73,14 @@ export default function MembersPage(): React.ReactElement {
           );
         })}
       </Table>
+
+      {showAliasModal && currentUser && (
+        <SetAliasModal
+          firstJoin={firstJoin}
+          onSave={(alias) => aliases.setAlias(alias, currentUser)}
+          onClose={() => setShowAliasModal(false)}
+        />
+      )}
     </Wrap>
   );
 }

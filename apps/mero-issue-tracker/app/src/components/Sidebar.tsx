@@ -3,7 +3,6 @@ import styled from 'styled-components';
 import { NavLink, useLocation } from 'react-router-dom';
 import { tokens as t } from '../theme';
 import { APP_DISPLAY_NAME, APP_ROUTE } from '../config';
-import { truncateKey } from '../utils/display';
 import AvatarGlyph from './AvatarGlyph';
 import {
   LogoMark, ChevronDown, IconAllIssues, IconMyIssues, IconBoard, IconMembers,
@@ -17,10 +16,12 @@ export default function Sidebar({
   totalIssues,
   membersCount,
   currentUser,
+  currentUserLabel,
 }: {
   totalIssues: number;
   membersCount: number;
   currentUser: string;
+  currentUserLabel: string;
 }): React.ReactElement {
   const loc = useLocation();
   const mine = loc.search.includes('assignee=me');
@@ -68,7 +69,7 @@ export default function Sidebar({
           <AvatarGlyph seed={currentUser || 'me'} size="md" />
           <span className="me-meta">
             <span className="me-name">You</span>
-            <span className="me-key">{currentUser ? truncateKey(currentUser) : '-'}</span>
+            <span className="me-key">{currentUserLabel || '-'}</span>
           </span>
         </div>
       </Footer>

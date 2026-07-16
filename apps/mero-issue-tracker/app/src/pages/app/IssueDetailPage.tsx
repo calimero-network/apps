@@ -23,7 +23,7 @@ const ago = (v: number): string => {
 /** Full-page issue view: four section blocks + activity feed, properties rail. */
 export default function IssueDetailPage(): React.ReactElement {
   const { id = '' } = useParams();
-  const { data, currentUser } = useAppCtx();
+  const { data, currentUser, members, aliases } = useAppCtx();
   const toast = useToast();
   const navigate = useNavigate();
 
@@ -47,6 +47,8 @@ export default function IssueDetailPage(): React.ReactElement {
 
   const issue = detail?.issue ?? data.issues.find((i) => i.id === id) ?? null;
   const comments = detail?.comments ?? [];
+  const createdByHasAlias = issue ? aliases.hasAlias(issue.created_by) : false;
+  const createdByLabel = issue ? aliases.resolve(issue.created_by) : '';
 
   useEffect(() => { setAssignee(issue?.assignee ?? ''); }, [issue?.assignee]);
 
@@ -109,9 +111,13 @@ export default function IssueDetailPage(): React.ReactElement {
         <div className="eyebrow activity-title">Activity</div>
         <div className="activity">
           <div className="act-item">
-            <AvatarGlyph seed={issue.created_by} size="sm" keyFallback />
+            <AvatarGlyph
+              seed={createdByHasAlias ? createdByLabel : issue.created_by}
+              size="sm"
+              keyFallback={!createdByHasAlias}
+            />
             <div className="act-body">
-              <div className="act-meta"><b>{truncateKey(issue.created_by)}</b> created this issue <span className="act-time">· {ago(issue.created_at)}</span></div>
+              <div className="act-meta"><b>{createdByLabel}</b> created this issue <span className="act-time">· {ago(issue.created_at)}</span></div>
             </div>
           </div>
 
@@ -173,11 +179,16 @@ export default function IssueDetailPage(): React.ReactElement {
             <input
               data-testid="field-assignee"
               placeholder="Unassigned"
+              list="assignee-suggestions"
               value={assignee}
               onChange={(e) => setAssignee(e.target.value)}
               onBlur={commitAssignee}
               onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
             />
+            {/* Native combobox: suggests members by alias, but a free-text value still saves. */}
+            <datalist id="assignee-suggestions">
+              {members.map((key) => <option key={key} value={aliases.resolve(key)} />)}
+            </datalist>
             <button data-testid="action-set_assignee" type="button" onClick={commitAssignee}>Save</button>
           </span>
         </div>
@@ -203,8 +214,12 @@ export default function IssueDetailPage(): React.ReactElement {
         <div className="prop-row">
           <span className="label">Created by</span>
           <span className="val">
-            <AvatarGlyph seed={issue.created_by} size="sm" keyFallback />
-            <span className="mono">{truncateKey(issue.created_by)}</span>
+            <AvatarGlyph
+              seed={createdByHasAlias ? createdByLabel : issue.created_by}
+              size="sm"
+              keyFallback={!createdByHasAlias}
+            />
+            <span className={createdByHasAlias ? '' : 'mono'}>{createdByLabel}</span>
           </span>
         </div>
         <div className="prop-row">
@@ -241,6 +256,9 @@ function CommentItem({
   onEdit: (body: string) => Promise<void>;
   onDelete: () => Promise<void>;
 }) {
+  const { aliases } = useAppCtx();
+  const authorHasAlias = aliases.hasAlias(comment.author);
+  const authorLabel = aliases.resolve(comment.author);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(comment.body);
   useEffect(() => { setDraft(comment.body); }, [comment.body]);
@@ -254,10 +272,14 @@ function CommentItem({
 
   return (
     <div className="act-item" data-testid="item-comment" data-comment-id={comment.id}>
-      <AvatarGlyph seed={comment.author} size="sm" keyFallback />
+      <AvatarGlyph
+        seed={authorHasAlias ? authorLabel : comment.author}
+        size="sm"
+        keyFallback={!authorHasAlias}
+      />
       <div className="act-body">
         <div className="act-meta">
-          <b>{truncateKey(comment.author)}</b>
+          <b>{authorLabel}</b>
           <span className="act-time"> · {ago(comment.created_at)}</span>
           {mine && (
             <span className="cactions">

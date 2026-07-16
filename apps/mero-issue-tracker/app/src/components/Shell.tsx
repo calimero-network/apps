@@ -9,18 +9,25 @@ export default function Shell({
   totalIssues,
   membersCount,
   currentUser,
+  currentUserLabel,
   onNewIssue,
   children,
 }: {
   totalIssues: number;
   membersCount: number;
   currentUser: string;
+  currentUserLabel: string;
   onNewIssue: () => void;
   children: React.ReactNode;
 }): React.ReactElement {
   return (
     <Grid>
-      <Sidebar totalIssues={totalIssues} membersCount={membersCount} currentUser={currentUser} />
+      <Sidebar
+        totalIssues={totalIssues}
+        membersCount={membersCount}
+        currentUser={currentUser}
+        currentUserLabel={currentUserLabel}
+      />
       <Main>
         <Topbar onNewIssue={onNewIssue} />
         {children}
