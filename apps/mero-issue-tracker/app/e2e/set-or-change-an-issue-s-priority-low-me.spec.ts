@@ -40,12 +40,15 @@ test.describe(`team member: set or change an issue's priority (low, medium, high
     const cardA = pageA.getByTestId('item-issue').filter({ hasText: title });
     await expect(cardA).toBeVisible({ timeout: 10_000 });
     await cardA.click();
-    // Raise the priority to urgent.
-    await pageA.getByTestId('action-set_priority').selectOption('urgent');
+    // Update the assignee to a uniquely-named teammate so the assertion is
+    // scoped to a value this test created (the board persists across the run).
+    const assignee = uniqueName('assignee');
+    await pageA.getByTestId('field-assignee').fill(assignee);
+    await pageA.getByTestId('action-set_assignee').click();
 
-    // Teammate B sees the updated priority on the card within 5s.
+    // Teammate B sees the updated assignee on the card within 5s.
     await expect(
-      pageB.getByTestId('item-issue').filter({ hasText: title }).filter({ hasText: 'urgent' }),
+      pageB.getByTestId('item-issue').filter({ hasText: title }).filter({ hasText: assignee }),
     ).toBeVisible({ timeout: 5_000 });
 
     await ctxA.close();
