@@ -21,4 +21,6 @@ pub enum Event<'a> {
     CommentEdited { id: &'a str },
     /// A comment was deleted by its author.
     CommentDeleted { id: &'a str },
+    /// The repository URL this context tracks was set or changed.
+    RepoUrlChanged { url: &'a str },
 }
