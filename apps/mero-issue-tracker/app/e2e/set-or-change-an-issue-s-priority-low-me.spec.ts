@@ -57,8 +57,10 @@ test.describe(`team member: set or change an issue's priority (low, medium, high
 
   test(`priority can only be one of low, medium, high, urgent; other values are rejected`, async ({ page }) => {
     // The create-issue priority control only offers the four valid values — any
-    // other value is not selectable, so invalid priorities are rejected.
+    // other value is not selectable, so invalid priorities are rejected at the
+    // boundary. Assert the offered set equals exactly the spec's allowed values.
+    const ALLOWED_PRIORITIES = ['low', 'medium', 'high', 'urgent'];
     const options = await page.getByTestId('field-priority').locator('option').allInnerTexts();
-    expect(options.map((o) => o.trim())).toEqual(['low', 'medium', 'high', 'urgent']);
+    expect(options.map((o) => o.trim())).toEqual(ALLOWED_PRIORITIES);
   });
 });

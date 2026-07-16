@@ -1,0 +1,163 @@
+mode = "standard"
+
+[identity]
+peer_id = "12D3KooWHHheMW9Jsh37Y5fMCvhJgX9Yrm5yKi7gWxJ5axzabbQu"
+keypair = "23jhTdq5Scvzn5fza49R4iATXnyrTs4fGEp4z7hNf2VT7URvXwzavWEHf3s9EWnDmTUQCa1fwdPCN6fDoqr35BYMjDJwK"
+
+[swarm]
+listen = [
+    "/ip4/0.0.0.0/tcp/2529",
+    "/ip4/0.0.0.0/udp/2529/quic-v1",
+    "/ip6/::/tcp/2529",
+    "/ip6/::/udp/2529/quic-v1",
+]
+
+[server]
+listen = [
+    "/ip4/127.0.0.1/tcp/2429",
+    "/ip6/::1/tcp/2429",
+]
+auth_mode = "embedded"
+
+[server.admin]
+enabled = true
+
+[server.jsonrpc]
+enabled = true
+
+[server.websocket]
+enabled = true
+ping_interval_secs = 30
+pong_timeout_secs = 10
+
+[server.sse]
+enabled = true
+
+[server.embedded_auth]
+listen_addr = "127.0.0.1:3001"
+
+[server.embedded_auth.jwt]
+issuer = "calimero-auth"
+access_token_expiry = 3600
+refresh_token_expiry = 2592000
+
+[server.embedded_auth.storage]
+type = "rocksdb"
+path = "auth"
+
+[server.embedded_auth.cors]
+allow_all_origins = false
+allowed_origins = []
+allowed_methods = [
+    "GET",
+    "POST",
+    "PUT",
+    "DELETE",
+    "OPTIONS",
+]
+allowed_headers = [
+    "Authorization",
+    "Content-Type",
+    "Accept",
+]
+exposed_headers = []
+
+[server.embedded_auth.security]
+max_body_size = 1048576
+
+[server.embedded_auth.security.headers]
+enabled = true
+hsts_max_age = 31536000
+hsts_include_subdomains = true
+frame_options = "DENY"
+content_type_options = "nosniff"
+referrer_policy = "strict-origin-when-cross-origin"
+
+[server.embedded_auth.security.headers.csp]
+enabled = true
+default_src = ["'self'"]
+script_src = [
+    "'self'",
+    "'unsafe-inline'",
+    "'unsafe-eval'",
+]
+style_src = [
+    "'self'",
+    "'unsafe-inline'",
+]
+connect_src = [
+    "'self'",
+    "http://localhost:*",
+    "http://host.docker.internal:*",
+    "http://*.nip.io:*",
+    "https://*.nip.io:*",
+    "https:",
+    "http:",
+]
+
+[server.embedded_auth.providers]
+user_password = true
+
+[server.embedded_auth.user_password]
+min_password_length = 8
+max_password_length = 128
+
+[server.embedded_auth.development]
+enable_mock_auth = false
+mock_auth_require_header = true
+
+[bootstrap]
+nodes = ["/ip4/127.0.0.1/udp/2528/quic-v1/p2p/12D3KooWFUK2KobQsWMamba39rhFheWf9GVLX5ghihE9EBVfpZVJ","/ip4/127.0.0.1/udp/2530/quic-v1/p2p/12D3KooWExQtKDGaEJqtifobfCdnFaCz4Fn34E3sirxCULpYXGSK"]
+
+[discovery]
+mdns = true
+advertise_address = false
+external_address = []
+
+[discovery.rendezvous]
+namespace = "/calimero/devnet/global"
+discovery_rpm = 0.5
+registrations_limit = 3
+
+[discovery.rendezvous.discovery_interval]
+secs = 15
+nanos = 0
+
+[discovery.relay]
+registrations_limit = 3
+
+[discovery.autonat]
+max_candidates = 5
+
+[discovery.autonat.probe_interval]
+secs = 10
+nanos = 0
+
+[specialized_node]
+invite_topic = "mero_specialized_node_invites"
+accept_mock_tee = false
+
+[sync]
+timeout_ms = 30000
+session_deadline_ms = 30000
+interval_ms = 5000
+frequency_ms = 10000
+
+[datastore]
+path = "data"
+
+[blobstore]
+path = "blobs"
+
+[context]
+migration_v2 = true
+
+[context.config.signer.self.protocols]
+
+[runtime.limits]
+
+[dag_compaction]
+enabled = true
+min_deltas_before_compact = 10000
+retain_recent_count = 1000
+check_interval = 3600
