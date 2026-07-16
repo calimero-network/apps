@@ -114,7 +114,9 @@ mod tests {
 
     #[test]
     fn error_display_includes_detail() {
-        assert!(Error::NotFound("widget-1".into()).to_string().contains("widget-1"));
+        assert!(Error::NotFound("widget-1".into())
+            .to_string()
+            .contains("widget-1"));
     }
 
     #[test]
