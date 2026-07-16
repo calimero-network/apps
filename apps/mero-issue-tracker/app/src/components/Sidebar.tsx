@@ -69,7 +69,7 @@ export default function Sidebar({
           <AvatarGlyph seed={currentUser || 'me'} size="md" />
           <span className="me-meta">
             <span className="me-name">You</span>
-            <span className="me-key">{currentUserLabel || '-'}</span>
+            <span className="me-key" data-testid="current-identity-label">{currentUserLabel || '-'}</span>
           </span>
         </div>
       </Footer>

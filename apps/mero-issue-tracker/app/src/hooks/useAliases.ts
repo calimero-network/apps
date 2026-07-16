@@ -53,8 +53,16 @@ export function useAliases(contextId: string | null): UseAliasesReturn {
     if (!mero || !contextId) return;
     setLoading(true);
     try {
-      const { aliases } = await mero.admin.listContextIdentityAliases(contextId);
-      const next = buildAliasMap(aliases);
+      // The node returns identity aliases as a flat { aliasName: identityKey }
+      // map, though mero-js types it as { aliases: [{ name, value }] }. Accept
+      // both so a future contract alignment keeps working.
+      const res = await mero.admin.listContextIdentityAliases(contextId) as
+        | { aliases?: { name: string; value: string }[] }
+        | Record<string, string>;
+      const entries = Array.isArray((res as { aliases?: unknown }).aliases)
+        ? (res as { aliases: { name: string; value: string }[] }).aliases
+        : Object.entries(res as Record<string, string>).map(([name, value]) => ({ name, value: String(value) }));
+      const next = buildAliasMap(entries);
       cache.set(contextId, next);
       setMap(next);
     } catch {
