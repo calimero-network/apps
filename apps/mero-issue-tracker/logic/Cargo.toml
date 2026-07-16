@@ -1,0 +1,32 @@
+[workspace]
+members = [
+    "crates/types",
+    "crates/issue-tracker"
+]
+resolver = "2"
+
+[workspace.dependencies]
+# OFFLINE FALLBACK ONLY — do not maintain by hand. Every fresh scaffold
+# rewrites these tags to the latest core release (sdkPin.js), and the verify
+# pipeline + worker image derive their merod from whatever tag ends up here,
+# so app and node stay in step automatically. Keep it a real release tag
+# (never `branch = "master"`): it's what builds use when the release lookup
+# is unreachable.
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.15" }
+calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.15" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.15" }
+calimero-wasm-abi = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.15" }
+thiserror = "1.0.56"
+bs58 = "0.4"
+serde_json = "1.0.113"
+serial_test = "3"
+issue-tracker-types = { path = "crates/types" }
+
+[profile.app-release]
+inherits = "release"
+codegen-units = 1
+opt-level = "z"
+lto = true
+debug = false
+panic = "abort"
+overflow-checks = true

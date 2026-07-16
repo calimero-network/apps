@@ -1,0 +1,5 @@
+packages:
+  - "app"
+# approve esbuild's postinstall (pnpm 10 syntax; pnpm 11 renamed it allowBuilds)
+onlyBuiltDependencies:
+  - esbuild
