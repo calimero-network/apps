@@ -38,9 +38,16 @@ export async function resolveContextId(cfg: Config): Promise<string> {
     if (res.ok) {
       const json = (await res.json()) as { data?: { value?: string } };
       if (json?.data?.value) return json.data.value;
+    } else {
+      // stderr only - stdout is reserved for the MCP protocol stream.
+      console.error(
+        `[issue-tracker-mcp] alias lookup for "${cfg.contextRaw}" returned ${res.status}; treating it as a raw context id.`,
+      );
     }
-  } catch {
-    // network error — fall through to the raw value below
+  } catch (err) {
+    console.error(
+      `[issue-tracker-mcp] alias lookup for "${cfg.contextRaw}" failed (${err instanceof Error ? err.message : String(err)}); treating it as a raw context id.`,
+    );
   }
   return cfg.contextRaw;
 }
@@ -64,11 +71,25 @@ export async function resolveExecutor(cfg: Config, contextId: string): Promise<s
   return identities[0];
 }
 
-/** Resolves both the context id and executor identity for a call. Not cached — callers memoize per process. */
+/** Resolves both the context id and executor identity for a call. Not cached - use createTargetResolver to memoize. */
 export async function resolveTarget(cfg: Config): Promise<ResolvedTarget> {
   const contextId = await resolveContextId(cfg);
   const executorPublicKey = await resolveExecutor(cfg, contextId);
   return { contextId, executorPublicKey };
+}
+
+/**
+ * Returns a resolver that caches the resolved target for the process lifetime,
+ * but only on success - a rejected promise must not stick, or one transient
+ * startup failure (node not up yet, network blip) bricks every later call.
+ */
+export function createTargetResolver(cfg: Config): () => Promise<ResolvedTarget> {
+  let cached: Promise<ResolvedTarget> | null = null;
+  return () =>
+    (cached ??= resolveTarget(cfg).catch((err) => {
+      cached = null;
+      throw err;
+    }));
 }
 
 interface JsonRpcResponse {

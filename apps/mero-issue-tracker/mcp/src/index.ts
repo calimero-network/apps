@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { loadConfig, type Config } from './config.ts';
-import { callMethod, resolveTarget, type ResolvedTarget } from './rpc.ts';
+import { callMethod, createTargetResolver, type ResolvedTarget } from './rpc.ts';
 import { buildFixPrompt, type IssueForPrompt } from './fixPrompt.ts';
 
 // ---- Tool input schemas ----
@@ -55,7 +55,7 @@ interface IssueDetail {
   comments: unknown[];
 }
 
-// ---- Tool request shaping — pure functions, unit-tested against a mocked fetch ----
+// ---- Tool request shaping - pure functions, unit-tested against a mocked fetch ----
 
 export function createIssue(cfg: Config, target: ResolvedTarget, args: CreateIssueArgs) {
   return callMethod<string>(cfg, target, 'create_issue', {
@@ -112,8 +112,7 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
   const server = new McpServer({ name: 'issue-tracker-mcp', version: '0.1.0' });
 
   // Resolved once and reused across every tool call in the process's lifetime.
-  let targetPromise: Promise<ResolvedTarget> | null = null;
-  const target = () => (targetPromise ??= resolveTarget(cfg));
+  const target = createTargetResolver(cfg);
 
   server.registerTool(
     'create_issue',

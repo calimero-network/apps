@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Config } from './config.ts';
-import { callMethod, resolveContextId, resolveExecutor, RpcError } from './rpc.ts';
+import { callMethod, createTargetResolver, resolveContextId, resolveExecutor, RpcError } from './rpc.ts';
 
 const baseConfig: Config = {
   nodeUrl: 'http://localhost:2428',
@@ -166,4 +166,30 @@ test('resolveExecutor throws when the node owns no identity for the context', as
       ),
     /No owned identity/,
   );
+});
+
+test('createTargetResolver does not cache a rejected resolution - a later call retries and can succeed', async () => {
+  let identitiesAttempt = 0;
+  const resolver = createTargetResolver(baseConfig);
+
+  await withFetch(
+    (async (url: string | URL) => {
+      if (String(url).includes('alias/lookup')) return new Response('not found', { status: 404 });
+      identitiesAttempt += 1;
+      return new Response('node not up yet', { status: 500 });
+    }) as typeof fetch,
+    () => assert.rejects(() => resolver(), /500/),
+  );
+
+  const target = await withFetch(
+    (async (url: string | URL) => {
+      if (String(url).includes('alias/lookup')) return new Response('not found', { status: 404 });
+      identitiesAttempt += 1;
+      return new Response(JSON.stringify({ data: { identities: ['id-1'] } }), { status: 200 });
+    }) as typeof fetch,
+    () => resolver(),
+  );
+
+  assert.equal(target.executorPublicKey, 'id-1');
+  assert.equal(identitiesAttempt, 2);
 });

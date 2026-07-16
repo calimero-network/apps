@@ -1,7 +1,7 @@
 /** Server config resolved from env vars. See mcp/README.md for the full list. */
 export interface Config {
   nodeUrl: string;
-  /** TRACKER_CONTEXT value as given — a context id or an alias, not yet resolved. */
+  /** TRACKER_CONTEXT value as given - a context id or an alias, not yet resolved. */
   contextRaw: string;
   authToken?: string;
   /** TRACKER_EXECUTOR override; when unset the executor is resolved via admin API. */
