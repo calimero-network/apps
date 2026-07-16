@@ -45,10 +45,13 @@ test.describe(`team member: set or change an issue's priority (low, medium, high
     await pageA.getByTestId('field-assignee').fill(assignee);
     await pageA.getByTestId('action-set_assignee').click();
 
-    // Teammate B sees the updated assignee on the card within 5s.
-    await expect(
-      pageB.getByTestId('item-issue').filter({ hasText: title }).filter({ hasText: assignee }),
-    ).toBeVisible({ timeout: 5_000 });
+    // Teammate B sees the updated assignee within 5s. The board card renders
+    // the assignee as an avatar (not raw text), so open the issue on B and read
+    // the assignee field - the value that must have propagated across nodes.
+    const cardB = pageB.getByTestId('item-issue').filter({ hasText: title });
+    await expect(cardB).toBeVisible({ timeout: 5_000 });
+    await cardB.click();
+    await expect(pageB.getByTestId('field-assignee')).toHaveValue(assignee, { timeout: 5_000 });
 
     await ctxA.close();
     await ctxB.close();
