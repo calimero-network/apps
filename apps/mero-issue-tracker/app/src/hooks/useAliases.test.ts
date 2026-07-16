@@ -26,11 +26,15 @@ describe('resolveFromMap (the actual resolve() logic)', () => {
 
   it('falls back to a truncated key when the identity has no alias', () => {
     const map = buildAliasMap([{ name: 'alice', value: 'pk-1' }]);
-    expect(resolveFromMap(map, '4f8a2c9e1234c2e1')).toBe('4f8a…c2e1');
+    expect(resolveFromMap(map, '4f8a2c9e1234c2e14f8a2c9e1234c2e1')).toBe('4f8a…c2e1');
   });
 
   it('short unaliased keys pass through unchanged (truncateKey no-op)', () => {
     expect(resolveFromMap(new Map(), 'pk-2')).toBe('pk-2');
+  });
+
+  it('an unmapped alias-like string (e.g. a foreign assignee) passes through unmangled', () => {
+    expect(resolveFromMap(new Map(), 'alexander-dev')).toBe('alexander-dev');
   });
 
   it('reflects a refreshed map immediately (same contract `refresh()` relies on)', () => {

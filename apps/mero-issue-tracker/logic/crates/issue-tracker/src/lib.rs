@@ -10,8 +10,9 @@
 //! - `UnorderedMap<String, u64>` — a flat label index keyed `issue_id\u{1}label`
 //!   so concurrent adds of the same label converge to one entry (no duplicates)
 //!   and removes are conflict-free.
-//! - `LwwRegister<T>` for every mutable issue/comment field (title, status,
-//!   priority, assignee, body, edited_at) so concurrent edits converge LWW.
+//! - `LwwRegister<T>` for every mutable issue/comment field (title, summary,
+//!   impact, repro, resolution_criteria, status, priority, assignee, body,
+//!   edited_at) so concurrent edits converge LWW.
 //! - hand-written `Mergeable` + `RekeyTarget` on the CRDT-nesting `Issue` /
 //!   `Comment` map values (#2577 nested-register re-keying).
 //! - `app::emit!`, named-struct returns (no tuples — ABI-safe views).

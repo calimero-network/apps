@@ -75,9 +75,7 @@ the repo root (see `mcp/README.md` for the full env-var reference):
       "args": ["--filter", "issue-tracker-mcp", "start"],
       "env": {
         "CALIMERO_NODE_URL": "http://localhost:2428",
-        "TRACKER_CONTEXT": "issue-tracker",
-        "CALIMERO_AUTH_TOKEN": "",
-        "TRACKER_EXECUTOR": ""
+        "TRACKER_CONTEXT": "issue-tracker"
       }
     }
   }
@@ -85,6 +83,8 @@ the repo root (see `mcp/README.md` for the full env-var reference):
 ```
 
 `TRACKER_CONTEXT` accepts the `issue-tracker` context alias or a raw context id.
+`CALIMERO_AUTH_TOKEN` and `TRACKER_EXECUTOR` are optional env vars, add them
+only if your node needs them (see `mcp/README.md`).
 A live round-trip check is in `mcp/scripts/smoke.mjs`.
 
 ## Tests
