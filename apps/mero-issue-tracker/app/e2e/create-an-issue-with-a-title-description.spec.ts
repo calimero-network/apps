@@ -3,9 +3,9 @@
 // writer subagent enriches `test.skip` lines into real assertions; you can
 // too. Do NOT delete the smoke test (it's the floor the verify gate trusts).
 import { test, expect } from '@playwright/test';
-import { loginViaHash, clearAuth, createWorkspace, inviteAndJoin, uniqueName } from './helpers';
+import { loginViaHash, clearAuth, createWorkspace, createIssue, inviteAndJoin, uniqueName } from './helpers';
 
-test.describe(`team member or script: create an issue with a title, description, priority, and optional labels and get back its id`, () => {
+test.describe(`team member or script: create an issue with a title, the four required sections, priority, and optional labels and get back its id`, () => {
   test.beforeEach(async ({ page }) => {
     await loginViaHash(page, 0);
     await createWorkspace(page);
@@ -35,8 +35,7 @@ test.describe(`team member or script: create an issue with a title, description,
     await inviteAndJoin(pageA, pageB);
 
     const title = uniqueName('issue');
-    await pageA.getByTestId('field-title').fill(title);
-    await pageA.getByTestId('action-create_issue').click();
+    await createIssue(pageA, { title });
 
     // Teammate B sees the new issue on the board within 5s.
     await expect(
@@ -49,8 +48,7 @@ test.describe(`team member or script: create an issue with a title, description,
 
   test(`creating an issue returns a unique issue id that can be used in later calls`, async ({ page }) => {
     const title = uniqueName('issue');
-    await page.getByTestId('field-title').fill(title);
-    await page.getByTestId('action-create_issue').click();
+    await createIssue(page, { title });
 
     const card = page.getByTestId('item-issue').filter({ hasText: title });
     await expect(card).toBeVisible({ timeout: 10_000 });
@@ -59,21 +57,21 @@ test.describe(`team member or script: create an issue with a title, description,
     const id = await card.getAttribute('data-issue-id');
     expect(id).toBeTruthy();
 
-    // ...that is usable in later calls: opening the card reads it back (get_issue).
+    // ...that is usable in later calls: opening the card routes to the detail
+    // page and reads it back (get_issue).
     await card.click();
-    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/issues/${id}$`));
     await expect(page.getByTestId('field-body')).toBeVisible();
   });
 
   test(`a new issue starts in status Open`, async ({ page }) => {
     const title = uniqueName('issue');
-    await page.getByTestId('field-title').fill(title);
-    await page.getByTestId('action-create_issue').click();
+    await createIssue(page, { title });
 
     const card = page.getByTestId('item-issue').filter({ hasText: title });
     await expect(card).toBeVisible({ timeout: 10_000 });
 
-    // Open the detail drawer — a freshly created issue's status control reads Open.
+    // Open the detail page — a freshly created issue's status control reads Open.
     await card.click();
     await expect(page.getByTestId('action-set_status')).toHaveValue('Open');
   });

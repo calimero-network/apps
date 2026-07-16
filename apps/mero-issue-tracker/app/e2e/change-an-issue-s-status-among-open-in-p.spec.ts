@@ -3,7 +3,7 @@
 // writer subagent enriches `test.skip` lines into real assertions; you can
 // too. Do NOT delete the smoke test (it's the floor the verify gate trusts).
 import { test, expect } from '@playwright/test';
-import { loginViaHash, clearAuth, createWorkspace, inviteAndJoin, uniqueName } from './helpers';
+import { loginViaHash, clearAuth, createWorkspace, createIssue, inviteAndJoin, uniqueName } from './helpers';
 
 test.describe(`team member: change an issue's status among Open, In progress, Blocked, and Done`, () => {
   test.beforeEach(async ({ page }) => {
@@ -34,8 +34,7 @@ test.describe(`team member: change an issue's status among Open, In progress, Bl
     await inviteAndJoin(pageA, pageB);
 
     const title = uniqueName('issue');
-    await pageA.getByTestId('field-title').fill(title);
-    await pageA.getByTestId('action-create_issue').click();
+    await createIssue(pageA, { title });
 
     const cardA = pageA.getByTestId('item-issue').filter({ hasText: title });
     await expect(cardA).toBeVisible({ timeout: 10_000 });
@@ -55,8 +54,7 @@ test.describe(`team member: change an issue's status among Open, In progress, Bl
 
   test(`status can only be one of Open, In progress, Blocked, Done; other values are rejected`, async ({ page }) => {
     const title = uniqueName('issue');
-    await page.getByTestId('field-title').fill(title);
-    await page.getByTestId('action-create_issue').click();
+    await createIssue(page, { title });
 
     const card = page.getByTestId('item-issue').filter({ hasText: title });
     await expect(card).toBeVisible({ timeout: 10_000 });

@@ -3,7 +3,7 @@
 // writer subagent enriches `test.skip` lines into real assertions; you can
 // too. Do NOT delete the smoke test (it's the floor the verify gate trusts).
 import { test, expect } from '@playwright/test';
-import { loginViaHash, clearAuth, createWorkspace, uniqueName } from './helpers';
+import { loginViaHash, clearAuth, createWorkspace, createIssue, uniqueName } from './helpers';
 
 test.describe(`anyone on the team: see the board grouped by status with a live count of issues in each column`, () => {
   test.beforeEach(async ({ page }) => {
@@ -25,16 +25,16 @@ test.describe(`anyone on the team: see the board grouped by status with a live c
   });
 
   test(`the board always shows a count per status column that matches the number of issues currently in that status`, async ({ page }) => {
-    // The board persists across the whole run, so assert the DELTA the test
-    // itself causes: a fresh issue starts in Open, so the Open count must rise
-    // by exactly one after we create one.
+    // The Open group header (and its count) only renders once at least one Open
+    // issue exists, so create one first to establish a baseline, then assert
+    // the DELTA a second creation causes: the Open count must rise by exactly one.
+    await createIssue(page, { title: uniqueName('issue') });
     const openCount = page.getByTestId('count-Open');
     await expect(openCount).toBeVisible({ timeout: 10_000 });
     const before = parseInt((await openCount.innerText()).trim(), 10) || 0;
 
     const title = uniqueName('issue');
-    await page.getByTestId('field-title').fill(title);
-    await page.getByTestId('action-create_issue').click();
+    await createIssue(page, { title });
     await expect(page.getByTestId('item-issue').filter({ hasText: title })).toBeVisible({ timeout: 10_000 });
 
     // The Open column's live count reflects the new issue.

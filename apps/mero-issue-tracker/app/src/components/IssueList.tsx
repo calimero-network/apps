@@ -35,7 +35,7 @@ export default function IssueList({
           <GroupHeader>
             <StatusDot status={status} />
             <span className="g-name">{status}</span>
-            <span className="g-count">{rows.length}</span>
+            <span className="g-count" data-testid={`count-${status}`}>{rows.length}</span>
           </GroupHeader>
           {rows.map((issue) => (
             <Row

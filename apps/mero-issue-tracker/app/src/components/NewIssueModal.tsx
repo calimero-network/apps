@@ -4,14 +4,21 @@ import { tokens as t, PRIORITIES } from '../theme';
 import { APP_DISPLAY_NAME } from '../config';
 
 interface Props {
-  onCreate: (title: string, description: string, priority: string, labels: string[]) => Promise<void>;
+  onCreate: (
+    title: string,
+    summary: string,
+    impact: string,
+    repro: string,
+    resolutionCriteria: string,
+    priority: string,
+    labels: string[],
+  ) => Promise<void>;
   onClose: () => void;
 }
 
 /**
  * New-issue modal with the four required sections (Summary / Impact / Repro /
- * Resolution criteria). Until the backend schema splits `description` (Task
- * 4/5) the four sections are concatenated into the single `description` field.
+ * Resolution criteria), each stored as its own field.
  */
 export default function NewIssueModal({ onCreate, onClose }: Props): React.ReactElement {
   const [title, setTitle] = useState('');
@@ -27,18 +34,18 @@ export default function NewIssueModal({ onCreate, onClose }: Props): React.React
 
   const submit = async () => {
     if (!valid || submitting) return;
-    // TODO(phase1-wiring): backend still stores one `description`; concatenate the
-    // four sections until Task 4/5 splits the schema into summary/impact/repro/…
-    const description = [
-      `Summary\n${summary.trim()}`,
-      `Impact\n${impact.trim()}`,
-      `Repro\n${repro.trim()}`,
-      `Resolution criteria\n${resolution.trim()}`,
-    ].join('\n\n');
     const parsedLabels = labels.split(',').map((l) => l.trim()).filter(Boolean);
     setSubmitting(true);
     try {
-      await onCreate(title.trim(), description, priority, parsedLabels);
+      await onCreate(
+        title.trim(),
+        summary.trim(),
+        impact.trim(),
+        repro.trim(),
+        resolution.trim(),
+        priority,
+        parsedLabels,
+      );
       onClose();
     } finally {
       setSubmitting(false);
@@ -77,6 +84,7 @@ export default function NewIssueModal({ onCreate, onClose }: Props): React.React
           <Section eyebrow="Impact" required>
             <textarea
               className="ftext"
+              data-testid="field-impact"
               placeholder="Who/what does it affect, why does severity matter"
               value={impact}
               onChange={(e) => setImpact(e.target.value)}
@@ -85,6 +93,7 @@ export default function NewIssueModal({ onCreate, onClose }: Props): React.React
           <Section eyebrow="Repro" required>
             <textarea
               className="ftext mono-field"
+              data-testid="field-repro"
               placeholder="Numbered steps and/or paste logs"
               value={repro}
               onChange={(e) => setRepro(e.target.value)}
@@ -93,6 +102,7 @@ export default function NewIssueModal({ onCreate, onClose }: Props): React.React
           <Section eyebrow="Resolution criteria" required>
             <textarea
               className="ftext"
+              data-testid="field-resolution_criteria"
               placeholder="What does fixed mean? The agent will validate against this"
               value={resolution}
               onChange={(e) => setResolution(e.target.value)}

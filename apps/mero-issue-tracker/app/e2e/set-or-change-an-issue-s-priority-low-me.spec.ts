@@ -3,7 +3,7 @@
 // writer subagent enriches `test.skip` lines into real assertions; you can
 // too. Do NOT delete the smoke test (it's the floor the verify gate trusts).
 import { test, expect } from '@playwright/test';
-import { loginViaHash, clearAuth, createWorkspace, inviteAndJoin, uniqueName } from './helpers';
+import { loginViaHash, clearAuth, createWorkspace, createIssue, inviteAndJoin, uniqueName } from './helpers';
 
 test.describe(`team member: set or change an issue's priority (low, medium, high, urgent) and its assignee`, () => {
   test.beforeEach(async ({ page }) => {
@@ -34,8 +34,7 @@ test.describe(`team member: set or change an issue's priority (low, medium, high
     await inviteAndJoin(pageA, pageB);
 
     const title = uniqueName('issue');
-    await pageA.getByTestId('field-title').fill(title);
-    await pageA.getByTestId('action-create_issue').click();
+    await createIssue(pageA, { title });
 
     const cardA = pageA.getByTestId('item-issue').filter({ hasText: title });
     await expect(cardA).toBeVisible({ timeout: 10_000 });
@@ -60,6 +59,7 @@ test.describe(`team member: set or change an issue's priority (low, medium, high
     // other value is not selectable, so invalid priorities are rejected at the
     // boundary. Assert the offered set equals exactly the spec's allowed values.
     const ALLOWED_PRIORITIES = ['low', 'medium', 'high', 'urgent'];
+    await page.getByTestId('open-new-issue-btn').click();
     const options = await page.getByTestId('field-priority').locator('option').allInnerTexts();
     expect(options.map((o) => o.trim())).toEqual(ALLOWED_PRIORITIES);
   });

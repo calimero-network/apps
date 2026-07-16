@@ -46,6 +46,10 @@ export interface Event_IssueCreated {
   created_by: string;
 }
 
+export interface Event_IssueEdited {
+  id: string;
+}
+
 export interface Event_IssueLabelsChanged {
   id: string;
 }
@@ -63,7 +67,10 @@ export interface Event_IssueStatusChanged {
 export interface Issue {
   id: string;
   title: string;
-  description: string;
+  summary: string;
+  impact: string;
+  repro: string;
+  resolution_criteria: string;
   status: string;
   priority: string;
   assignee: string;
@@ -85,7 +92,10 @@ export interface IssueTracker {
 export interface IssueView {
   id: string;
   title: string;
-  description: string;
+  summary: string;
+  impact: string;
+  repro: string;
+  resolution_criteria: string;
   status: string;
   priority: string;
   assignee: string | null;
@@ -107,8 +117,10 @@ export interface StatusCount {
 
 
 
+
 export type AbiEvent =
   | { name: "IssueCreated"; payload: Event_IssueCreated }
+  | { name: "IssueEdited"; payload: Event_IssueEdited }
   | { name: "IssueStatusChanged"; payload: Event_IssueStatusChanged }
   | { name: "IssuePriorityChanged"; payload: Event_IssuePriorityChanged }
   | { name: "IssueAssigneeChanged"; payload: Event_IssueAssigneeChanged }
@@ -141,7 +153,7 @@ export class IssueTrackerClient {
   /**
    * create_issue
    */
-  public async createIssue(params: { title: string; description: string; priority: string; labels: string[] }): Promise<string> {
+  public async createIssue(params: { title: string; summary: string; impact: string; repro: string; resolution_criteria: string; priority: string; labels: string[] | null }): Promise<string> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'create_issue', argsJson: params, executorPublicKey: this._executorPublicKey });
     return response as string;
   }
@@ -151,6 +163,38 @@ export class IssueTrackerClient {
    */
   public async setStatus(params: { issue_id: string; status: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_status', argsJson: params, executorPublicKey: this._executorPublicKey });
+    return response as void;
+  }
+
+  /**
+   * set_summary
+   */
+  public async setSummary(params: { issue_id: string; summary: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_summary', argsJson: params, executorPublicKey: this._executorPublicKey });
+    return response as void;
+  }
+
+  /**
+   * set_impact
+   */
+  public async setImpact(params: { issue_id: string; impact: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_impact', argsJson: params, executorPublicKey: this._executorPublicKey });
+    return response as void;
+  }
+
+  /**
+   * set_repro
+   */
+  public async setRepro(params: { issue_id: string; repro: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_repro', argsJson: params, executorPublicKey: this._executorPublicKey });
+    return response as void;
+  }
+
+  /**
+   * set_resolution_criteria
+   */
+  public async setResolutionCriteria(params: { issue_id: string; resolution_criteria: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_resolution_criteria', argsJson: params, executorPublicKey: this._executorPublicKey });
     return response as void;
   }
 
