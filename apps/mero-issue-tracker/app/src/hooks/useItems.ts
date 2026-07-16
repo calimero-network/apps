@@ -42,11 +42,18 @@ export interface UseIssuesReturn {
   refresh: () => Promise<void>;
   createIssue: (
     title: string,
-    description: string,
+    summary: string,
+    impact: string,
+    repro: string,
+    resolutionCriteria: string,
     priority: string,
     labels: string[],
   ) => Promise<void>;
   setStatus: (issueId: string, status: string) => Promise<void>;
+  setSummary: (issueId: string, summary: string) => Promise<void>;
+  setImpact: (issueId: string, impact: string) => Promise<void>;
+  setRepro: (issueId: string, repro: string) => Promise<void>;
+  setResolutionCriteria: (issueId: string, resolutionCriteria: string) => Promise<void>;
   setPriority: (issueId: string, priority: string) => Promise<void>;
   setAssignee: (issueId: string, assignee: string | null) => Promise<void>;
   addLabel: (issueId: string, label: string) => Promise<void>;
@@ -113,9 +120,25 @@ export function useIssues({
   });
 
   const createIssue = useCallback(
-    async (title: string, description: string, priority: string, labels: string[]) => {
+    async (
+      title: string,
+      summary: string,
+      impact: string,
+      repro: string,
+      resolutionCriteria: string,
+      priority: string,
+      labels: string[],
+    ) => {
       if (!client) return;
-      await client.createIssue({ title, description, priority, labels });
+      await client.createIssue({
+        title,
+        summary,
+        impact,
+        repro,
+        resolution_criteria: resolutionCriteria,
+        priority,
+        labels,
+      });
       await refresh();
     },
     [client, refresh],
@@ -125,6 +148,42 @@ export function useIssues({
     async (issueId: string, next: string) => {
       if (!client) return;
       await client.setStatus({ issue_id: issueId, status: next });
+      await refresh();
+    },
+    [client, refresh],
+  );
+
+  const setSummary = useCallback(
+    async (issueId: string, next: string) => {
+      if (!client) return;
+      await client.setSummary({ issue_id: issueId, summary: next });
+      await refresh();
+    },
+    [client, refresh],
+  );
+
+  const setImpact = useCallback(
+    async (issueId: string, next: string) => {
+      if (!client) return;
+      await client.setImpact({ issue_id: issueId, impact: next });
+      await refresh();
+    },
+    [client, refresh],
+  );
+
+  const setRepro = useCallback(
+    async (issueId: string, next: string) => {
+      if (!client) return;
+      await client.setRepro({ issue_id: issueId, repro: next });
+      await refresh();
+    },
+    [client, refresh],
+  );
+
+  const setResolutionCriteria = useCallback(
+    async (issueId: string, next: string) => {
+      if (!client) return;
+      await client.setResolutionCriteria({ issue_id: issueId, resolution_criteria: next });
       await refresh();
     },
     [client, refresh],
@@ -210,6 +269,10 @@ export function useIssues({
     refresh,
     createIssue,
     setStatus,
+    setSummary,
+    setImpact,
+    setRepro,
+    setResolutionCriteria,
     setPriority,
     setAssignee,
     addLabel,

@@ -298,6 +298,34 @@ export function uniqueName(prefix: string): string {
   return `${prefix} ${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
+export interface NewIssueFields {
+  title: string;
+  summary?: string;
+  impact?: string;
+  repro?: string;
+  resolutionCriteria?: string;
+  priority?: string;
+  labels?: string;
+}
+
+/**
+ * Open the New-issue modal, fill the title plus the four required sections
+ * (summary/impact/repro/resolution criteria - all four are mandatory to
+ * submit), and create it. Unspecified sections get a unique placeholder so
+ * callers that don't care about their content don't have to fill them.
+ */
+export async function createIssue(page: Page, fields: NewIssueFields): Promise<void> {
+  await page.getByTestId('open-new-issue-btn').click();
+  await page.getByTestId('field-title').fill(fields.title);
+  await page.getByTestId('field-description').fill(fields.summary ?? uniqueName('summary'));
+  await page.getByTestId('field-impact').fill(fields.impact ?? uniqueName('impact'));
+  await page.getByTestId('field-repro').fill(fields.repro ?? uniqueName('repro'));
+  await page.getByTestId('field-resolution_criteria').fill(fields.resolutionCriteria ?? uniqueName('resolution'));
+  if (fields.priority) await page.getByTestId('field-priority').selectOption(fields.priority);
+  if (fields.labels) await page.getByTestId('field-labels').fill(fields.labels);
+  await page.getByTestId('action-create_issue').click();
+}
+
 /**
  * Navigate to the app with auth tokens in the URL hash for a specific node.
  * MeroProvider's parseAuthCallback picks these up automatically.
@@ -415,6 +443,9 @@ export async function createWorkspace(page: Page) {
  */
 export async function inviteAndJoin(inviterPage: Page, joinerPage: Page): Promise<string> {
   await createWorkspace(inviterPage);
+
+  // open-invite-btn now lives on the Members view, not the shell - route there first.
+  await inviterPage.getByTestId('nav-members').click();
 
   // Inviter: open Invite, generate, read the code out of the readonly field.
   await ctl(inviterPage, 'open-invite-btn', 'Invite').click();

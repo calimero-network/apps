@@ -3,7 +3,7 @@
 // writer subagent enriches `test.skip` lines into real assertions; you can
 // too. Do NOT delete the smoke test (it's the floor the verify gate trusts).
 import { test, expect } from '@playwright/test';
-import { loginViaHash, clearAuth, createWorkspace, uniqueName } from './helpers';
+import { loginViaHash, clearAuth, createWorkspace, createIssue, uniqueName } from './helpers';
 
 test.describe(`team member or script: list issues (optionally filtered by status or assignee) and read a single issue with its comments`, () => {
   test.beforeEach(async ({ page }) => {
@@ -30,23 +30,22 @@ test.describe(`team member or script: list issues (optionally filtered by status
     const assignee = uniqueName('user');
 
     // Issue A — will be assigned to `assignee`.
-    await page.getByTestId('field-title').fill(titleA);
-    await page.getByTestId('action-create_issue').click();
+    await createIssue(page, { title: titleA });
     const cardA = page.getByTestId('item-issue').filter({ hasText: titleA });
     await expect(cardA).toBeVisible({ timeout: 10_000 });
 
     // Issue B — left unassigned.
-    await page.getByTestId('field-title').fill(titleB);
-    await page.getByTestId('action-create_issue').click();
+    await createIssue(page, { title: titleB });
     await expect(page.getByTestId('item-issue').filter({ hasText: titleB })).toBeVisible({ timeout: 10_000 });
 
-    // Assign issue A, then close the drawer.
+    // Assign issue A, then go back to the list.
     await cardA.click();
     await page.getByTestId('field-assignee').fill(assignee);
     await page.getByTestId('action-set_assignee').click();
-    await page.getByRole('button', { name: 'Close' }).click();
+    await page.getByTestId('action-back').click();
 
-    // Filtering by assignee returns only issue A.
+    // Filtering by assignee (via the Assignee filter chip) returns only issue A.
+    await page.getByTestId('filter-chip-assignee').click();
     await page.getByTestId('filter-assignee').fill(assignee);
     await expect(page.getByTestId('item-issue').filter({ hasText: titleA })).toBeVisible({ timeout: 5_000 });
     await expect(page.getByTestId('item-issue').filter({ hasText: titleB })).toHaveCount(0);
@@ -54,20 +53,18 @@ test.describe(`team member or script: list issues (optionally filtered by status
 
   test(`reading a single issue returns its full details plus its comment thread ordered by created_at`, async ({ page }) => {
     const title = uniqueName('issue');
-    const description = uniqueName('desc');
+    const summary = uniqueName('summary');
     const first = uniqueName('first-comment');
     const second = uniqueName('second-comment');
 
-    await page.getByTestId('field-title').fill(title);
-    await page.getByTestId('field-description').fill(description);
-    await page.getByTestId('action-create_issue').click();
+    await createIssue(page, { title, summary });
 
     const card = page.getByTestId('item-issue').filter({ hasText: title });
     await expect(card).toBeVisible({ timeout: 10_000 });
     await card.click();
 
-    // Full details: the description is shown in the drawer.
-    await expect(page.getByRole('dialog').getByText(description)).toBeVisible();
+    // Full details: the summary is shown on the detail page.
+    await expect(page.getByTestId('field-summary')).toHaveText(summary);
 
     // Post two comments in order.
     await page.getByTestId('field-body').fill(first);

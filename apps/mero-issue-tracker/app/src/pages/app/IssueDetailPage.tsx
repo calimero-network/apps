@@ -82,7 +82,7 @@ export default function IssueDetailPage(): React.ReactElement {
   return (
     <Wrap>
       <MainCol>
-        <button className="back" onClick={() => navigate(APP_ROUTE)}><IconBack /> All Issues</button>
+        <button className="back" data-testid="action-back" onClick={() => navigate(APP_ROUTE)}><IconBack /> All Issues</button>
 
         <div className="idrow">
           <span className="id">{truncateKey(issue.id)}</span>
@@ -92,18 +92,16 @@ export default function IssueDetailPage(): React.ReactElement {
         <h1 className="title">{issue.title}</h1>
 
         <Section title="Summary">
-          {/* TODO(phase1-wiring): backend has one `description`; it renders here until
-              Task 4/5 splits it into the four fields below. */}
-          <p>{issue.description || 'No summary provided.'}</p>
+          <p data-testid="field-summary">{issue.summary}</p>
         </Section>
         <Section title="Impact">
-          <p className="muted">Not provided yet.{/* TODO(phase1-wiring) */}</p>
+          <p data-testid="field-impact">{issue.impact}</p>
         </Section>
         <Section title="Repro">
-          <p className="muted">Not provided yet.{/* TODO(phase1-wiring) */}</p>
+          <p data-testid="field-repro">{issue.repro}</p>
         </Section>
         <Section title="Resolution criteria">
-          <p className="muted">Not provided yet.{/* TODO(phase1-wiring) */}</p>
+          <p data-testid="field-resolution_criteria">{issue.resolution_criteria}</p>
         </Section>
 
         <div className="divider" />

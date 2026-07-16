@@ -51,7 +51,7 @@ export default function Sidebar({
           <span className="ico"><IconBoard /></span>
           Board
         </Item>
-        <Item to={`${APP_ROUTE}/members`} $active={onMembers}>
+        <Item to={`${APP_ROUTE}/members`} $active={onMembers} data-testid="nav-members">
           <span className="ico"><IconMembers /></span>
           Members<span className="count">{membersCount}</span>
         </Item>

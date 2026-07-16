@@ -3,7 +3,7 @@
 // writer subagent enriches `test.skip` lines into real assertions; you can
 // too. Do NOT delete the smoke test (it's the floor the verify gate trusts).
 import { test, expect } from '@playwright/test';
-import { loginViaHash, clearAuth, createWorkspace, inviteAndJoin, uniqueName } from './helpers';
+import { loginViaHash, clearAuth, createWorkspace, createIssue, inviteAndJoin, uniqueName } from './helpers';
 
 test.describe(`team member: add or remove labels on an issue and filter the board by status, assignee, or label`, () => {
   test.beforeEach(async ({ page }) => {
@@ -35,8 +35,7 @@ test.describe(`team member: add or remove labels on an issue and filter the boar
 
     const title = uniqueName('issue');
     const label = uniqueName('lbl');
-    await pageA.getByTestId('field-title').fill(title);
-    await pageA.getByTestId('action-create_issue').click();
+    await createIssue(pageA, { title });
 
     const cardA = pageA.getByTestId('item-issue').filter({ hasText: title });
     await expect(cardA).toBeVisible({ timeout: 10_000 });
@@ -49,10 +48,10 @@ test.describe(`team member: add or remove labels on an issue and filter the boar
     await pageA.getByTestId('field-label').fill(label);
     await pageA.getByTestId('action-add_label').click();
 
-    // Exactly one instance of the label appears in the drawer's label list.
-    await expect(pageA.getByRole('dialog').getByText(label, { exact: true })).toHaveCount(1, {
-      timeout: 5_000,
-    });
+    // Exactly one instance of the label's remove control appears in the detail
+    // page's label list (scoped by its unique aria-label, not raw text - the
+    // label also renders on cards elsewhere in the app).
+    await expect(pageA.getByLabel(`Remove ${label}`)).toHaveCount(1, { timeout: 5_000 });
 
     // Teammate B sees the label on the issue within 5s.
     const cardB = pageB.getByTestId('item-issue').filter({ hasText: title });
@@ -70,18 +69,15 @@ test.describe(`team member: add or remove labels on an issue and filter the boar
     const labelB = uniqueName('lb');
 
     // Issue A carries labelA.
-    await page.getByTestId('field-title').fill(titleA);
-    await page.getByTestId('field-labels').fill(labelA);
-    await page.getByTestId('action-create_issue').click();
+    await createIssue(page, { title: titleA, labels: labelA });
     await expect(page.getByTestId('item-issue').filter({ hasText: titleA })).toBeVisible({ timeout: 10_000 });
 
     // Issue B carries labelB.
-    await page.getByTestId('field-title').fill(titleB);
-    await page.getByTestId('field-labels').fill(labelB);
-    await page.getByTestId('action-create_issue').click();
+    await createIssue(page, { title: titleB, labels: labelB });
     await expect(page.getByTestId('item-issue').filter({ hasText: titleB })).toBeVisible({ timeout: 10_000 });
 
-    // Filtering by labelA returns only issue A.
+    // Filtering by labelA (via the Label filter chip) returns only issue A.
+    await page.getByTestId('filter-chip-label').click();
     await page.getByTestId('filter-label').fill(labelA);
     await expect(page.getByTestId('item-issue').filter({ hasText: titleA })).toBeVisible({ timeout: 5_000 });
     await expect(page.getByTestId('item-issue').filter({ hasText: titleB })).toHaveCount(0);

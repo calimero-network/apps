@@ -95,9 +95,17 @@ export default function AppPage(): React.ReactElement {
   }, [showNew, showInvite, showJoin]);
 
   const createIssue = useCallback(
-    async (title: string, description: string, priority: string, labels: string[]) => {
+    async (
+      title: string,
+      summary: string,
+      impact: string,
+      repro: string,
+      resolutionCriteria: string,
+      priority: string,
+      labels: string[],
+    ) => {
       try {
-        await data.createIssue(title, description, priority, labels);
+        await data.createIssue(title, summary, impact, repro, resolutionCriteria, priority, labels);
       } catch (err) {
         toast.show({ variant: 'error', description: describeError(err) });
         throw err;

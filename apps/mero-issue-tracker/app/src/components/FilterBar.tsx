@@ -37,7 +37,7 @@ export default function FilterBar(): React.ReactElement {
 
   return (
     <Bar ref={barRef}>
-      <ChipButton onClick={() => toggle('status')} $active={open === 'status'}>
+      <ChipButton data-testid="filter-chip-status" onClick={() => toggle('status')} $active={open === 'status'}>
         Status <ChevronDown size={9} />
         {open === 'status' && (
           <Menu>
@@ -49,7 +49,7 @@ export default function FilterBar(): React.ReactElement {
         )}
       </ChipButton>
 
-      <ChipButton onClick={() => toggle('priority')} $active={open === 'priority'}>
+      <ChipButton data-testid="filter-chip-priority" onClick={() => toggle('priority')} $active={open === 'priority'}>
         Priority <ChevronDown size={9} />
         {open === 'priority' && (
           <Menu>
@@ -61,7 +61,7 @@ export default function FilterBar(): React.ReactElement {
         )}
       </ChipButton>
 
-      <ChipButton onClick={() => toggle('assignee')} $active={open === 'assignee'}>
+      <ChipButton data-testid="filter-chip-assignee" onClick={() => toggle('assignee')} $active={open === 'assignee'}>
         Assignee <ChevronDown size={9} />
         {open === 'assignee' && (
           <Menu onClick={(e) => e.stopPropagation()}>
@@ -76,7 +76,7 @@ export default function FilterBar(): React.ReactElement {
         )}
       </ChipButton>
 
-      <ChipButton onClick={() => toggle('label')} $active={open === 'label'}>
+      <ChipButton data-testid="filter-chip-label" onClick={() => toggle('label')} $active={open === 'label'}>
         Label <ChevronDown size={9} />
         {open === 'label' && (
           <Menu onClick={(e) => e.stopPropagation()}>

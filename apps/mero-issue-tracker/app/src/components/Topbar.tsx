@@ -35,7 +35,7 @@ export default function Topbar({ onNewIssue }: { onNewIssue: () => void }): Reac
         <input type="text" placeholder="Search issues…" aria-label="Search issues" />
         <span className="kbd">/</span>
       </Search>
-      <NewBtn type="button" onClick={onNewIssue}>New issue <span className="kbd">C</span></NewBtn>
+      <NewBtn type="button" data-testid="open-new-issue-btn" onClick={onNewIssue}>New issue <span className="kbd">C</span></NewBtn>
     </Bar>
   );
 }
