@@ -43,9 +43,7 @@ Add to `.mcp.json` at the repo root:
       "args": ["--filter", "issue-tracker-mcp", "start"],
       "env": {
         "CALIMERO_NODE_URL": "http://localhost:2428",
-        "TRACKER_CONTEXT": "issue-tracker",
-        "CALIMERO_AUTH_TOKEN": "",
-        "TRACKER_EXECUTOR": ""
+        "TRACKER_CONTEXT": "issue-tracker"
       }
     }
   }
@@ -57,8 +55,8 @@ script (`tsx src/index.ts`, using the `tsx` installed in `mcp/`'s
 `node_modules`), so it works from the repo root without a global or
 unpinned `npx` install.
 
-Drop the `CALIMERO_AUTH_TOKEN` / `TRACKER_EXECUTOR` keys entirely if you
-don't need them - both are optional.
+Add `CALIMERO_AUTH_TOKEN` / `TRACKER_EXECUTOR` to `env` only if you need them -
+both are optional (see the table above).
 
 ## Tests
 
