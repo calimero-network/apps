@@ -1,40 +1,70 @@
 /**
- * useItems — neutral CRUD over the single-context `service` registry.
+ * useIssues — data binding for the shared issue board (mero-react v4).
  *
- * The canonical Calimero data-binding pattern (mero-react v4):
- *  - `useWorkspace()` resolves the shared context + the executor identity to
- *    sign RPC calls with (from the auth callback on desktop, or the bootstrapped
- *    context on web).
- *  - a typed generated client (`ServiceClient`) wraps `mero.rpc.execute`.
- *  - `useSubscription([contextId])` re-fetches on every sync event, so changes
- *    from other peers appear live with no polling.
+ * The canonical Calimero pattern:
+ *  - `useWorkspace()` resolves the shared context + executor identity.
+ *  - the generated `IssueTrackerClient` wraps `mero.rpc.execute`.
+ *  - `useSubscription([contextId])` re-fetches on every sync event, so issues,
+ *    counts, and comments from other peers appear live with no polling.
  *
- * The build agent reshapes `Item` + these methods to the spec's entity; the
- * wiring (client memo, subscription refresh, optimistic refetch) stays.
+ * The board reads `issues` (server-filtered via list_issues) + `counts`
+ * (get_status_counts), and every mutation refetches so the UI never lags.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMero, useSubscription } from '@calimero-network/mero-react';
-import { ServiceClient, Item } from '../api/service/ServiceClient';
+import {
+  IssueTrackerClient,
+  IssueView,
+  CommentView,
+  IssueDetail,
+} from '../api/issue-tracker/IssueTrackerClient';
 
-export interface UseItemsArgs {
-  contextId: string | null;
-  executorPublicKey: string | null;
+export type { IssueView, CommentView, IssueDetail };
+
+export interface IssueFilters {
+  status: string;
+  assignee: string;
+  label: string;
 }
 
-export interface UseItemsReturn {
-  items: Item[];
+export interface UseIssuesArgs {
+  contextId: string | null;
+  executorPublicKey: string | null;
+  filters: IssueFilters;
+}
+
+export interface UseIssuesReturn {
+  issues: IssueView[];
+  counts: Record<string, number>;
   loading: boolean;
   error: Error | null;
   ready: boolean;
-  add: (title: string, body: string) => Promise<void>;
-  update: (id: string, title: string, body: string) => Promise<void>;
-  remove: (id: string) => Promise<void>;
   refresh: () => Promise<void>;
+  createIssue: (
+    title: string,
+    description: string,
+    priority: string,
+    labels: string[],
+  ) => Promise<void>;
+  setStatus: (issueId: string, status: string) => Promise<void>;
+  setPriority: (issueId: string, priority: string) => Promise<void>;
+  setAssignee: (issueId: string, assignee: string | null) => Promise<void>;
+  addLabel: (issueId: string, label: string) => Promise<void>;
+  removeLabel: (issueId: string, label: string) => Promise<void>;
+  getIssue: (issueId: string) => Promise<IssueDetail>;
+  addComment: (issueId: string, body: string) => Promise<void>;
+  editComment: (commentId: string, newBody: string) => Promise<void>;
+  deleteComment: (commentId: string) => Promise<void>;
 }
 
-export function useItems({ contextId, executorPublicKey }: UseItemsArgs): UseItemsReturn {
+export function useIssues({
+  contextId,
+  executorPublicKey,
+  filters,
+}: UseIssuesArgs): UseIssuesReturn {
   const { mero } = useMero();
-  const [items, setItems] = useState<Item[]>([]);
+  const [issues, setIssues] = useState<IssueView[]>([]);
+  const [counts, setCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
@@ -42,55 +72,151 @@ export function useItems({ contextId, executorPublicKey }: UseItemsArgs): UseIte
   const client = useMemo(
     () =>
       mero && contextId && executorPublicKey
-        ? new ServiceClient(mero, contextId, executorPublicKey)
+        ? new IssueTrackerClient(mero, contextId, executorPublicKey)
         : null,
     [mero, contextId, executorPublicKey],
   );
+
+  const { status, assignee, label } = filters;
 
   const refresh = useCallback(async () => {
     if (!client) return;
     setLoading(true);
     setError(null);
     try {
-      setItems(await client.list());
+      const [list, statusCounts] = await Promise.all([
+        client.listIssues({
+          status: status || null,
+          assignee: assignee || null,
+          label: label || null,
+        }),
+        client.getStatusCounts(),
+      ]);
+      setIssues(list);
+      setCounts(
+        Object.fromEntries(statusCounts.map((c) => [c.status, c.count])),
+      );
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
     } finally {
       setLoading(false);
     }
-  }, [client]);
+  }, [client, status, assignee, label]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   // Live updates: re-fetch on any sync event for this context (local or remote).
-  useSubscription(contextId ? [contextId] : [], () => { void refresh(); });
+  useSubscription(contextId ? [contextId] : [], () => {
+    void refresh();
+  });
 
-  const add = useCallback(async (title: string, body: string) => {
-    if (!client) return;
-    await client.add({ title, body });
-    await refresh();
-  }, [client, refresh]);
+  const createIssue = useCallback(
+    async (title: string, description: string, priority: string, labels: string[]) => {
+      if (!client) return;
+      await client.createIssue({ title, description, priority, labels });
+      await refresh();
+    },
+    [client, refresh],
+  );
 
-  const update = useCallback(async (id: string, title: string, body: string) => {
-    if (!client) return;
-    await client.update({ id, title, body });
-    await refresh();
-  }, [client, refresh]);
+  const setStatus = useCallback(
+    async (issueId: string, next: string) => {
+      if (!client) return;
+      await client.setStatus({ issue_id: issueId, status: next });
+      await refresh();
+    },
+    [client, refresh],
+  );
 
-  const remove = useCallback(async (id: string) => {
-    if (!client) return;
-    await client.delete({ id });
-    await refresh();
-  }, [client, refresh]);
+  const setPriority = useCallback(
+    async (issueId: string, next: string) => {
+      if (!client) return;
+      await client.setPriority({ issue_id: issueId, priority: next });
+      await refresh();
+    },
+    [client, refresh],
+  );
+
+  const setAssignee = useCallback(
+    async (issueId: string, next: string | null) => {
+      if (!client) return;
+      await client.setAssignee({ issue_id: issueId, assignee: next });
+      await refresh();
+    },
+    [client, refresh],
+  );
+
+  const addLabel = useCallback(
+    async (issueId: string, lbl: string) => {
+      if (!client) return;
+      await client.addLabel({ issue_id: issueId, label: lbl });
+      await refresh();
+    },
+    [client, refresh],
+  );
+
+  const removeLabel = useCallback(
+    async (issueId: string, lbl: string) => {
+      if (!client) return;
+      await client.removeLabel({ issue_id: issueId, label: lbl });
+      await refresh();
+    },
+    [client, refresh],
+  );
+
+  const getIssue = useCallback(
+    async (issueId: string) => {
+      if (!client) throw new Error('Workspace not ready');
+      return client.getIssue({ issue_id: issueId });
+    },
+    [client],
+  );
+
+  const addComment = useCallback(
+    async (issueId: string, body: string) => {
+      if (!client) return;
+      await client.addComment({ issue_id: issueId, body });
+      await refresh();
+    },
+    [client, refresh],
+  );
+
+  const editComment = useCallback(
+    async (commentId: string, newBody: string) => {
+      if (!client) return;
+      await client.editComment({ comment_id: commentId, new_body: newBody });
+      await refresh();
+    },
+    [client, refresh],
+  );
+
+  const deleteComment = useCallback(
+    async (commentId: string) => {
+      if (!client) return;
+      await client.deleteComment({ comment_id: commentId });
+      await refresh();
+    },
+    [client, refresh],
+  );
 
   return {
-    items,
+    issues,
+    counts,
     loading,
     error,
     ready: client !== null,
-    add,
-    update,
-    remove,
     refresh,
+    createIssue,
+    setStatus,
+    setPriority,
+    setAssignee,
+    addLabel,
+    removeLabel,
+    getIssue,
+    addComment,
+    editComment,
+    deleteComment,
   };
 }

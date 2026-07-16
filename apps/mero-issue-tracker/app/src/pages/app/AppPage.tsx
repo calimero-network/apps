@@ -1,9 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import styled from 'styled-components';
 import { useMero } from '@calimero-network/mero-react';
+import { useToast } from '@calimero-network/mero-ui';
 import { C } from '../../theme';
 import { APP_DISPLAY_NAME } from '../../config';
 import { useWorkspace } from '../../hooks/useWorkspace';
+import { useIssues, IssueView, CommentView, UseIssuesReturn } from '../../hooks/useItems';
 import { describeError } from '../../utils/errors';
 import InviteModal from '../../components/InviteModal';
 import JoinModal from '../../components/JoinModal';
@@ -33,33 +35,36 @@ const PRIORITY_COLOR: Record<Priority, string> = {
   urgent: '#dc2626',
 };
 
-export interface Issue {
-  id: string;
-  title: string;
-  description: string;
-  status: string;
-  priority: string;
-  assignee: string | null;
-  labels: string[];
-  created_by: string;
-  created_at: number;
-}
-
-export interface Comment {
-  id: string;
-  issue_id: string;
-  author: string;
-  body: string;
-  created_at: number;
-  edited_at: number | null;
-}
-
 export default function AppPage() {
-  const { logout } = useMero();
+  const { logout, contextIdentity } = useMero();
   const ws = useWorkspace();
+  const toast = useToast();
 
-  // Placeholder data — the IssuetrackerClient hook is wired in a later pass.
-  const issues: Issue[] = useMemo(() => [], []);
+  // Filters (bind to list_issues params).
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterAssignee, setFilterAssignee] = useState('');
+  const [filterLabel, setFilterLabel] = useState('');
+
+  const filters = useMemo(
+    () => ({ status: filterStatus, assignee: filterAssignee, label: filterLabel }),
+    [filterStatus, filterAssignee, filterLabel],
+  );
+
+  const data = useIssues({
+    contextId: ws.contextId,
+    executorPublicKey: ws.executorPublicKey,
+    filters,
+  });
+  const { issues, counts } = data;
+
+  // The identity that signs our RPC calls — used to gate own-comment actions.
+  const currentUser = ws.executorPublicKey ?? contextIdentity ?? '';
+
+  useEffect(() => {
+    if (data.error) {
+      toast.show({ variant: 'error', description: describeError(data.error) });
+    }
+  }, [data.error, toast]);
 
   // Create-issue form.
   const [title, setTitle] = useState('');
@@ -67,37 +72,31 @@ export default function AppPage() {
   const [priority, setPriority] = useState<Priority>('medium');
   const [labels, setLabels] = useState('');
 
-  // Filters (bind to list_issues params).
-  const [filterStatus, setFilterStatus] = useState('');
-  const [filterAssignee, setFilterAssignee] = useState('');
-  const [filterLabel, setFilterLabel] = useState('');
-
   // Detail drawer + collaboration modals.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showInvite, setShowInvite] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
 
-  const visible = useMemo(
-    () =>
-      issues.filter(
-        (i) =>
-          (!filterAssignee || (i.assignee ?? '') === filterAssignee) &&
-          (!filterLabel || i.labels.includes(filterLabel)),
-      ),
-    [issues, filterAssignee, filterLabel],
-  );
-
   const columns = filterStatus ? [filterStatus] : [...STATUSES];
   const selected = issues.find((i) => i.id === selectedId) ?? null;
 
-  const submitIssue = (e: React.FormEvent) => {
+  const submitIssue = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return;
-    // Wiring pass: call create_issue({ title, description, priority, labels }) here.
-    setTitle('');
-    setDescription('');
-    setPriority('medium');
-    setLabels('');
+    const t = title.trim();
+    if (!t) return;
+    const parsedLabels = labels
+      .split(',')
+      .map((l) => l.trim())
+      .filter(Boolean);
+    try {
+      await data.createIssue(t, description.trim(), priority, parsedLabels);
+      setTitle('');
+      setDescription('');
+      setPriority('medium');
+      setLabels('');
+    } catch (err) {
+      toast.show({ variant: 'error', description: describeError(err) });
+    }
   };
 
   // No workspace yet (fresh web session): offer create-or-join.
@@ -191,12 +190,12 @@ export default function AppPage() {
       {/* board */}
       <Board>
         {columns.map((status) => {
-          const cards = visible.filter((i) => i.status === status);
+          const cards = issues.filter((i) => i.status === status);
           return (
             <Column key={status}>
               <ColHead>
                 <span>{status}</span>
-                <b data-testid={`count-${status}`}>{cards.length}</b>
+                <b data-testid={`count-${status}`}>{counts[status] ?? cards.length}</b>
               </ColHead>
               <ColBody>
                 {cards.length === 0 && <ColHint>No issues</ColHint>}
@@ -231,7 +230,12 @@ export default function AppPage() {
       </Board>
 
       {selected && (
-        <IssueDetail issue={selected} onClose={() => setSelectedId(null)} />
+        <IssueDetail
+          issue={selected}
+          data={data}
+          currentUser={currentUser}
+          onClose={() => setSelectedId(null)}
+        />
       )}
 
       {showInvite && (
@@ -247,12 +251,78 @@ export default function AppPage() {
   );
 }
 
-/* ── Issue detail drawer (SHELL: markup + testids; handlers wired later) ──── */
-function IssueDetail({ issue, onClose }: { issue: Issue; onClose: () => void }) {
-  const comments: Comment[] = [];
+/* ── Issue detail drawer ─────────────────────────────────────────────────── */
+function IssueDetail({
+  issue,
+  data,
+  currentUser,
+  onClose,
+}: {
+  issue: IssueView;
+  data: UseIssuesReturn;
+  currentUser: string;
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const [comments, setComments] = useState<CommentView[]>([]);
   const [assignee, setAssignee] = useState(issue.assignee ?? '');
   const [newLabel, setNewLabel] = useState('');
   const [commentBody, setCommentBody] = useState('');
+
+  // Keep the assignee input in sync with the server value (never gate on a
+  // local editing flag — that reverts the optimistic value mid-commit).
+  useEffect(() => {
+    setAssignee(issue.assignee ?? '');
+  }, [issue.assignee]);
+
+  // Load the comment thread (ordered by created_at server-side) and reload it
+  // on every board refresh so remote comments appear live.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const detail = await data.getIssue(issue.id);
+        if (!cancelled) setComments(detail.comments);
+      } catch {
+        /* keep the last known thread on a transient fetch failure */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [issue.id, data.issues, data.getIssue]);
+
+  const run = async (fn: () => Promise<void>) => {
+    try {
+      await fn();
+    } catch (err) {
+      toast.show({ variant: 'error', description: describeError(err) });
+    }
+  };
+
+  const commitAssignee = () => {
+    const next = assignee.trim();
+    if (next === (issue.assignee ?? '')) return;
+    void run(() => data.setAssignee(issue.id, next || null));
+  };
+
+  const submitLabel = () => {
+    const l = newLabel.trim();
+    if (!l) return;
+    void run(async () => {
+      await data.addLabel(issue.id, l);
+      setNewLabel('');
+    });
+  };
+
+  const submitComment = () => {
+    const body = commentBody.trim();
+    if (!body) return;
+    void run(async () => {
+      await data.addComment(issue.id, body);
+      setCommentBody('');
+    });
+  };
 
   return (
     <Overlay onClick={onClose}>
@@ -263,7 +333,11 @@ function IssueDetail({ issue, onClose }: { issue: Issue; onClose: () => void }) 
         <ControlRow>
           <label>
             Status
-            <select data-testid="action-set_status" defaultValue={issue.status}>
+            <select
+              data-testid="action-set_status"
+              value={issue.status}
+              onChange={(e) => run(() => data.setStatus(issue.id, e.target.value))}
+            >
               {STATUSES.map((s) => (
                 <option key={s} value={s}>{s}</option>
               ))}
@@ -271,7 +345,11 @@ function IssueDetail({ issue, onClose }: { issue: Issue; onClose: () => void }) 
           </label>
           <label>
             Priority
-            <select data-testid="action-set_priority" defaultValue={issue.priority}>
+            <select
+              data-testid="action-set_priority"
+              value={issue.priority}
+              onChange={(e) => run(() => data.setPriority(issue.id, e.target.value))}
+            >
               {PRIORITIES.map((p) => (
                 <option key={p} value={p}>{p}</option>
               ))}
@@ -289,8 +367,9 @@ function IssueDetail({ issue, onClose }: { issue: Issue; onClose: () => void }) 
               placeholder="Unassigned"
               value={assignee}
               onChange={(e) => setAssignee(e.target.value)}
+              onBlur={commitAssignee}
             />
-            <Secondary data-testid="action-set_assignee" type="button">Save</Secondary>
+            <Secondary data-testid="action-set_assignee" type="button" onClick={commitAssignee}>Save</Secondary>
           </div>
         </Field>
 
@@ -300,7 +379,11 @@ function IssueDetail({ issue, onClose }: { issue: Issue; onClose: () => void }) 
             {issue.labels.map((l) => (
               <em key={l}>
                 {l}
-                <button data-testid="action-remove_label" aria-label={`Remove ${l}`}>×</button>
+                <button
+                  data-testid="action-remove_label"
+                  aria-label={`Remove ${l}`}
+                  onClick={() => run(() => data.removeLabel(issue.id, l))}
+                >×</button>
               </em>
             ))}
             {issue.labels.length === 0 && <span className="hint">No labels</span>}
@@ -311,8 +394,9 @@ function IssueDetail({ issue, onClose }: { issue: Issue; onClose: () => void }) 
               placeholder="Add a label"
               value={newLabel}
               onChange={(e) => setNewLabel(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitLabel(); } }}
             />
-            <Secondary data-testid="action-add_label" type="button">Add</Secondary>
+            <Secondary data-testid="action-add_label" type="button" onClick={submitLabel}>Add</Secondary>
           </div>
         </Field>
 
@@ -321,16 +405,13 @@ function IssueDetail({ issue, onClose }: { issue: Issue; onClose: () => void }) 
           <Thread>
             {comments.length === 0 && <span className="hint">No comments yet.</span>}
             {comments.map((c) => (
-              <div className="comment" key={c.id} data-testid="item-comment">
-                <div className="chead">
-                  <strong>{c.author}</strong>
-                  <div className="cactions">
-                    <button data-testid="action-edit_comment">Edit</button>
-                    <button data-testid="action-delete_comment">Delete</button>
-                  </div>
-                </div>
-                <p>{c.body}</p>
-              </div>
+              <CommentRow
+                key={c.id}
+                comment={c}
+                mine={c.author === currentUser}
+                onEdit={(body) => run(() => data.editComment(c.id, body))}
+                onDelete={() => run(() => data.deleteComment(c.id))}
+              />
             ))}
           </Thread>
           <div className="inline">
@@ -341,11 +422,74 @@ function IssueDetail({ issue, onClose }: { issue: Issue; onClose: () => void }) 
               value={commentBody}
               onChange={(e) => setCommentBody(e.target.value)}
             />
-            <Primary data-testid="action-add_comment" type="button" disabled={!commentBody.trim()}>Comment</Primary>
+            <Primary data-testid="action-add_comment" type="button" disabled={!commentBody.trim()} onClick={submitComment}>Comment</Primary>
           </div>
         </Field>
       </Drawer>
     </Overlay>
+  );
+}
+
+/* ── A single comment: authorship-gated edit / delete ────────────────────── */
+function CommentRow({
+  comment,
+  mine,
+  onEdit,
+  onDelete,
+}: {
+  comment: CommentView;
+  mine: boolean;
+  onEdit: (body: string) => Promise<void>;
+  onDelete: () => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(comment.body);
+
+  useEffect(() => {
+    setDraft(comment.body);
+  }, [comment.body]);
+
+  const save = async () => {
+    const next = draft.trim();
+    if (!next || next === comment.body) {
+      setEditing(false);
+      return;
+    }
+    await onEdit(next);
+    setEditing(false);
+  };
+
+  return (
+    <div className="comment" data-testid="item-comment" data-comment-id={comment.id}>
+      <div className="chead">
+        <strong>{comment.author}</strong>
+        {mine && (
+          <div className="cactions">
+            {editing ? (
+              <>
+                <button data-testid="action-edit_comment" onClick={save}>Save</button>
+                <button onClick={() => { setEditing(false); setDraft(comment.body); }}>Cancel</button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => setEditing(true)}>Edit</button>
+                <button data-testid="action-delete_comment" onClick={onDelete}>Delete</button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+      {editing ? (
+        <textarea
+          className="cedit"
+          rows={2}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+        />
+      ) : (
+        <p>{comment.body}{comment.edited_at != null && <span className="edited"> (edited)</span>}</p>
+      )}
+    </div>
   );
 }
 
@@ -494,6 +638,13 @@ const Thread = styled.div`
   .cactions { display: flex; gap: 6px; }
   .cactions button { background: none; border: none; cursor: pointer; font-size: 12px; font-weight: 600; color: ${C.muted}; &:hover { color: var(--color-primary); } }
   .comment p { font-size: 13.5px; line-height: 1.5; color: ${C.ink}; }
+  .comment p .edited { color: ${C.mutedSoft}; font-size: 11.5px; }
+  .comment .cedit {
+    width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 13.5px;
+    color: ${C.ink}; background: ${C.paper}; border: 1px solid ${C.line};
+    border-radius: 9px; outline: none; font-family: inherit; resize: vertical;
+    &:focus { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.16); }
+  }
 `;
 
 const ErrLine = styled.p`margin: 8px 0; font-size: 13px; color: ${C.danger};`;
