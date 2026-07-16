@@ -13,8 +13,8 @@ directly (no mero-js dependency).
 - `get_issue` - `id`.
 - `add_comment` - `issue_id`, `body`.
 - `assign_issue` - `issue_id`, `assignee`.
-- `get_fix_prompt` - `id`. Placeholder until task 7 authors the real
-  template (`src/fixPrompt.ts`).
+- `get_fix_prompt` - `id`. Renders a ready-to-paste fix prompt filled with the
+  issue's four sections (`src/fixPrompt.ts`).
 
 ## Config (env vars)
 
@@ -65,4 +65,19 @@ don't need them - both are optional.
 ```bash
 pnpm --filter issue-tracker-mcp test       # node:test, mocked fetch
 pnpm --filter issue-tracker-mcp typecheck
+```
+
+## Live smoke test
+
+`scripts/smoke.mjs` drives the real stdio server against a running node: it
+speaks the MCP protocol (initialize -> tools/list -> tools/call) through the
+full round-trip - create_issue with all four sections, list_issues, get_issue
+(verifies the sections survive), add_comment, get_fix_prompt (verifies the
+filled template). Point it at a node with the tracker context provisioned:
+
+```bash
+CALIMERO_NODE_URL=http://localhost:2428 \
+TRACKER_CONTEXT=issue-tracker \
+CALIMERO_AUTH_TOKEN=<token if the node enforces auth> \
+node scripts/smoke.mjs
 ```
