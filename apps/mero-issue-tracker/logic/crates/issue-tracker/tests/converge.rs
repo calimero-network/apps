@@ -1,67 +1,65 @@
-//! Convergence coverage for the item-registry service.
+//! Convergence coverage for the issue-tracker service.
 //!
-//! `Registry` hand-writes `Mergeable`/`RekeyTarget` on its `Item` map value (it
-//! nests an `LwwRegister`), so this is the #2577 case: without deterministic
-//! re-keying the nested register would be last-writer-wins'd as an opaque blob.
-//! We register the generated re-key thunks (`__calimero_register_rekey()` — the
-//! WASM-load / TestHost-bridge path) so the nested register gets a deterministic
+//! `IssueTracker` hand-writes `Mergeable`/`RekeyTarget` on its `Issue` map value
+//! (it nests several `LwwRegister`s), so this is the #2577 case: without
+//! deterministic re-keying the nested registers would be last-writer-wins'd as
+//! an opaque blob. We register the generated re-key thunks
+//! (`__calimero_register_rekey()`) so each nested register gets a deterministic
 //! id and converges as a child entity, then assert every replica lands on the
 //! same Merkle root.
 //!
-//! Surface under test: the `items: UnorderedMap<String, Item>` field only. The
-//! sibling `owners: AuthoredMap` is `CrdtType::UserStorage`, whose per-entry
-//! merge runs on the *signed* delta path (`Interface::apply_action`) — the bare
-//! `converge_app` harness has no signing identity and cannot reconcile `User`
-//! deltas (see `core/crates/storage/src/testing.rs` Limitations; no
-//! converge-tested core app puts authored/shared/user storage in state). So we
-//! seed items at **genesis** (single identity, snapshotted identically into
-//! every replica — no concurrent owners-merge) and then drive only `update`,
-//! which touches `items` exclusively. That is exactly the nested-register #2577
-//! exercise, isomorphic to the canonical `team-metrics-custom` converge test.
+//! Surface under test: the `issues: UnorderedMap<String, Issue>` field. It (and
+//! the `comments`/`labels` maps) are all plain `UnorderedMap`s — there is no
+//! `AuthoredMap`/`SharedStorage` in state, so the bare `converge_app` harness
+//! (which has no signing identity) can reconcile every field. We still seed the
+//! issue at genesis (single identity) and drive only `set_status`, which touches
+//! the `issues` map, to keep the test focused on the nested-register merge.
 //!
 //! `#[serial]`: `converge_app` clears/repopulates the process-global merge
-//! registry per run (it self-serializes via an internal lock, but `#[serial]`
-//! avoids the contention and matches the canonical core pattern —
-//! `apps/team-metrics-custom/tests/converge.rs`). Own integration binary so it
-//! is isolated from the in-`lib.rs` `TestHost` unit tests.
+//! registry per run. Own integration binary so it is isolated from the
+//! in-`lib.rs` `TestHost` unit tests.
 
 use calimero_storage::testing::converge_app;
-use issue_tracker_issue_tracker::Registry;
+use issue_tracker_issue_tracker::IssueTracker;
 use serial_test::serial;
 
-// One item is seeded at genesis (under the genesis identity, before any
-// concurrent op), so every replica starts from the identical seeded state. Each
-// replica then concurrently `update`s that item's nested `LwwRegister` to the
-// same value, in a per-replica shuffled order. The hand-written `Item` merge +
-// nested-register re-key must converge all replicas to one Merkle root, and the
-// value must survive (LWW, not blob-LWW'd to a stale/empty value).
 #[test]
 #[serial]
-fn registry_updates_converge() {
-    // Register the nested-CRDT-value re-key thunks for `Item` (its `LwwRegister`
-    // field). Without this the value blob is LWW'd and replicas can diverge.
-    Registry::__calimero_register_rekey();
+fn issue_status_updates_converge() {
+    // Register the nested-CRDT-value re-key thunks for `Issue` (its LwwRegister
+    // fields). Without this the value blob is LWW'd and replicas can diverge.
+    IssueTracker::__calimero_register_rekey();
 
     converge_app(|| {
-        // Genesis seed: runs once under the single genesis identity, so the
-        // `owners` AuthoredMap entry is written without any concurrent
-        // User-storage merge, then snapshotted byte-identical into all replicas.
-        let mut r = Registry::init();
-        let _ = r.add("widget".into(), "v0".into());
-        r
+        // Genesis seed: one issue, created under the single genesis identity and
+        // snapshotted byte-identical into every replica.
+        let mut s = IssueTracker::init();
+        let _ = s.create_issue(
+            "seed".into(),
+            "seed description".into(),
+            "low".into(),
+            vec![],
+        );
+        s
     })
     .replicas(3)
-    // Each replica concurrently rewrites the single seeded item's value. `update`
-    // touches `items` only (no `owners` write), so this is the pure nested-
-    // register convergence case.
+    // Each replica concurrently moves the single seeded issue to "Done".
+    // `set_status` touches only the `issues` UnorderedMap's nested register.
     .ops(|s| {
-        if let Some(view) = s.list().ok().and_then(|v| v.into_iter().next()) {
-            let _ = s.update(view.id, "v1".into());
+        if let Some(issue) = s
+            .list_issues(None, None, None)
+            .ok()
+            .and_then(|v| v.into_iter().next())
+        {
+            let _ = s.set_status(issue.id, "Done".into());
         }
     })
-    .invariant("the single seeded item survives and holds the merged value", |s| {
-        let items = s.list().unwrap_or_default();
-        items.len() == 1 && items[0].value == "v1"
-    })
+    .invariant(
+        "the single seeded issue survives and holds the merged status",
+        |s| {
+            let issues = s.list_issues(None, None, None).unwrap_or_default();
+            issues.len() == 1 && issues[0].status == "Done"
+        },
+    )
     .assert_all_replicas_equal();
 }

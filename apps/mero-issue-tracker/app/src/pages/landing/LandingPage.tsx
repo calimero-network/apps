@@ -40,18 +40,18 @@ const C = {
    the theme broke the modal's internal contrast (white-on-green), so leave it. */
 
 const FEATURES = [
-  { icon: '🔒', title: 'Private by design', body: 'Your data lives in a decentralized context you control — no central server, no surveillance.' },
-  { icon: '⚡', title: 'Real-time & shared', body: 'Invite others with a link; everyone sees changes live through Calimero’s CRDT sync.' },
-  { icon: '🧩', title: 'Yours to extend', body: 'Open, composable, and built on the Calimero network — bring your own logic and identities.' },
+  { icon: '🗂️', title: 'Shared board, live', body: 'Create and triage issues together — every status change, priority bump and new comment lands on your teammates’ boards in seconds.' },
+  { icon: '🔒', title: 'Private to your team', body: 'The board lives in a decentralized context your team controls — no SaaS account, no third-party server watching your backlog.' },
+  { icon: '💬', title: 'Discuss in context', body: 'Threaded comments on every issue with clear authorship — anyone can chime in, but you only edit or delete what you wrote.' },
 ];
 
 const FAQS: [string, string][] = [
-  ['What is a node?', 'A node (merod) is the runtime that stores your data and runs the app logic. You run your own — locally or on your own infrastructure — so your keys and data never leave your control.'],
-  ['Where does my data live?', 'On your own node, as CRDT collections that merge conflict-free across peers. There is no central database — nothing about your data is held on a third-party server.'],
-  ['What is a context?', 'A context is a shared, encrypted space that peers join by invitation. Everyone in a context sees the same state in real time, synced directly between nodes.'],
-  ['How do others join?', 'Connect your node, then share an invitation link. Anyone you invite joins the context and starts collaborating instantly — no accounts, no sign-up.'],
-  ['Do I need crypto or a wallet?', 'No. You connect with a node identity. There is no token, no wallet and no gas — just your node and the people you invite.'],
-  ['Is it really decentralized?', 'Yes. State is peer-to-peer CRDT data on the nodes that participate. Take your node offline and your data goes with it; bring it back and it re-syncs.'],
+  ['How does the board work?', 'Create an issue with a title, description, priority and labels — it starts in Open and moves through In progress, Blocked and Done as your team works it. Every change syncs to all teammates within seconds.'],
+  ['Where does our data live?', 'On your own Calimero node, as CRDT collections that merge conflict-free across peers. There is no central database — nothing about your issues is held on a third-party server.'],
+  ['What is a context?', 'A context is a shared, encrypted space your team joins by invitation. Everyone in it sees the same board in real time, synced directly between nodes.'],
+  ['How do teammates join?', 'Connect your node, then share an invitation code. Anyone you invite joins the board and starts triaging instantly — no accounts, no sign-up.'],
+  ['Who can edit comments?', 'Anyone on the team can comment on an issue, but only the author can edit or delete their own comments — authorship is enforced on the backend.'],
+  ['Do we need crypto or a wallet?', 'No. You connect with a node identity. There is no token, no wallet and no gas — just your node and the teammates you invite.'],
 ];
 
 /* ── scroll-reveal hook + wrapper (variants: up / zoom / drop / left) ──────── */
@@ -101,40 +101,33 @@ function R({
 
 const STEPS = [
   { k: '01', t: 'Connect your node', d: 'Point the app at the Calimero node you control. Your identity and keys stay on your machine.' },
-  { k: '02', t: 'Open a context', d: 'Create or join a shared, encrypted space. State is CRDT data that merges across peers automatically.' },
-  { k: '03', t: 'Invite peers', d: 'Share a link. Anyone you invite joins instantly and sees the same live state — no accounts.' },
-  { k: '04', t: 'Own your data', d: 'Everything lives on your node. No central server ever holds your application data.' },
+  { k: '02', t: 'Open the board', d: 'Create or join your team’s shared context. Issues are CRDT data that merges across peers automatically.' },
+  { k: '03', t: 'Invite your team', d: 'Share a code. Teammates join instantly and see the same board — no accounts, no setup.' },
+  { k: '04', t: 'Triage together', d: 'Create, assign, prioritize and discuss issues live. Everything lives on your nodes — no central server.' },
 ];
 
-/* ── animated live preview: peers sync items into a shared context, loops ──── */
-type Item = { id: number; who: string; text: string; me?: boolean };
-const SCRIPT: Item[] = [
-  { id: 1, who: 'A', text: 'joined the context' },
-  { id: 2, who: 'M', text: 'shared an update ✦' },
-  { id: 3, who: 'you', text: 'synced — everyone sees it live', me: true },
-  { id: 4, who: 'J', text: 'added to the shared state' },
+/* ── animated live preview: an issue card moves across the board, loops ──── */
+const COLUMNS = ['Open', 'In progress', 'Done'] as const;
+type Prio = 'urgent' | 'high' | 'med';
+type Card = { t: string; p?: Prio };
+const BASE: Card[][] = [
+  [{ t: 'Login button broken', p: 'high' }, { t: 'Flaky CI on main', p: 'med' }],
+  [{ t: 'Dark-mode contrast', p: 'med' }],
+  [{ t: 'Update onboarding docs' }],
 ];
+const ACTIVE: Card = { t: 'Deploy pipeline fix', p: 'urgent' };
 
 function LivePreview() {
-  const [shown, setShown] = useState<Item[]>([]);
+  const [stage, setStage] = useState(0); // which column the active card sits in
   const [pulse, setPulse] = useState(false);
 
   useEffect(() => {
-    const timers: number[] = [];
-    const at = (ms: number, fn: () => void) => timers.push(window.setTimeout(fn, ms));
-    const run = () => {
-      setShown([]);
-      SCRIPT.forEach((it, i) => {
-        at(500 + i * 1300, () => {
-          setShown((p) => [...p, it]);
-          setPulse(true);
-          at(500 + i * 1300 + 350, () => setPulse(false));
-        });
-      });
-    };
-    run();
-    const loop = window.setInterval(run, SCRIPT.length * 1300 + 2200);
-    return () => { timers.forEach(window.clearTimeout); window.clearInterval(loop); };
+    const loop = window.setInterval(() => {
+      setStage((s) => (s + 1) % COLUMNS.length);
+      setPulse(true);
+      window.setTimeout(() => setPulse(false), 420);
+    }, 1900);
+    return () => window.clearInterval(loop);
   }, []);
 
   return (
@@ -146,18 +139,30 @@ function LivePreview() {
         <span><CalimeroLogo size={13} color={C.green} /> {APP_DISPLAY_NAME.toLowerCase()} · your node</span>
         <em className={pulse ? 'on' : ''}>● {pulse ? 'syncing' : 'live'}</em>
       </div>
-      <div className="body">
-        <div className="peers">
-          <i>A</i><i>M</i><i>J</i><b>+ you</b>
-        </div>
-        <div className="stream">
-          {shown.map((it) => (
-            <div key={it.id} className={`row ${it.me ? 'me' : ''}`}>
-              <span className="av">{it.who === 'you' ? '·' : it.who}</span>
-              <p>{it.text}</p>
+      <div className="board">
+        {COLUMNS.map((col, ci) => {
+          const cards = BASE[ci];
+          const count = cards.length + (ci === stage ? 1 : 0);
+          return (
+            <div className="col" key={col}>
+              <div className="colhead"><span>{col}</span><b>{count}</b></div>
+              <div className="cards">
+                {ci === stage && (
+                  <div className="card active" key={stage}>
+                    <span className={`dot ${ACTIVE.p}`} />
+                    <p>{ACTIVE.t}</p>
+                  </div>
+                )}
+                {cards.map((c) => (
+                  <div className="card" key={c.t}>
+                    {c.p && <span className={`dot ${c.p}`} />}
+                    <p>{c.t}</p>
+                  </div>
+                ))}
+              </div>
             </div>
-          ))}
-        </div>
+          );
+        })}
       </div>
     </Preview>
   );
@@ -340,8 +345,7 @@ export default function LandingPage() {
 const float = keyframes`0%,100%{transform:translate(0,0) scale(1);}50%{transform:translate(14px,-18px) scale(1.05);}`;
 const drift = keyframes`0%,100%{transform:translate(0,0) scale(1);}50%{transform:translate(-22px,14px) scale(1.07);}`;
 const travel = keyframes`0%{left:0;opacity:0;}8%{opacity:1;}92%{opacity:1;}100%{left:100%;opacity:0;}`;
-const rowIn = keyframes`from{opacity:0;transform:translateY(8px) scale(0.97);}to{opacity:1;transform:none;}`;
-const rowInMe = keyframes`from{opacity:0;transform:translateY(8px) translateX(8px) scale(0.97);}to{opacity:1;transform:none;}`;
+const cardIn = keyframes`from{opacity:0;transform:translateY(-8px) scale(0.96);}to{opacity:1;transform:none;}`;
 
 /* ════════════════════════ layout ════════════════════════ */
 const Root = styled.div`
@@ -531,24 +535,22 @@ const Preview = styled.div`
     }
     em.on { color: ${C.green}; }
   }
-  .body { padding: 16px; min-height: 230px; display: flex; flex-direction: column; gap: 14px; }
-  .peers { display: flex; align-items: center; gap: 0; }
-  .peers i {
-    width: 22px; height: 22px; border-radius: 50%;
-    display: grid; place-items: center;
-    font-size: 10px; font-weight: 700; color: ${C.ink};
-    background: linear-gradient(135deg, ${C.green}, #cde88a);
-    border: 1.5px solid ${C.ink};
-    margin-left: -6px;
-  }
-  .peers i:first-child { margin-left: 0; }
-  .peers b { margin-left: 8px; font-size: 11px; font-weight: 600; color: ${C.mutedSoft}; }
-  .stream { display: flex; flex-direction: column; gap: 9px; }
-  .row { display: flex; align-items: flex-start; gap: 8px; animation: ${rowIn} 0.34s cubic-bezier(0.22, 1, 0.36, 1) both; }
-  .row .av { width: 20px; height: 20px; border-radius: 50%; background: ${C.ink2}; color: ${C.green}; font-size: 9px; font-weight: 700; display: grid; place-items: center; flex-shrink: 0; }
-  .row p { font-size: 12px; max-width: 82%; color: #dfe7db; background: rgba(255,255,255,0.05); border: 1px solid ${C.lineDark}; padding: 7px 10px; border-radius: 10px; }
-  .row.me { justify-content: flex-end; animation-name: ${rowInMe}; }
-  .row.me p { color: ${C.ink}; background: ${C.green}; border-color: ${C.green}; font-weight: 500; }
+  .board { padding: 14px; min-height: 230px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; align-items: start; }
+  .col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .colhead { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-bottom: 6px; border-bottom: 1px solid ${C.lineDark}; }
+  .colhead span { font-size: 9.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: ${C.mutedSoft}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .colhead b { flex-shrink: 0; font-size: 10px; font-weight: 700; color: ${C.ink}; background: ${C.green}; border-radius: 999px; min-width: 17px; height: 16px; padding: 0 5px; display: grid; place-items: center; }
+  .cards { display: flex; flex-direction: column; gap: 7px; }
+  .card { display: flex; align-items: flex-start; gap: 6px; padding: 8px; border-radius: 8px; background: rgba(255, 255, 255, 0.05); border: 1px solid ${C.lineDark}; }
+  .card p { font-size: 10.5px; line-height: 1.35; color: #dfe7db; }
+  .card .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; }
+  .card .dot.urgent { background: #ff5f56; }
+  .card .dot.high { background: #ffbd2e; }
+  .card .dot.med { background: ${C.mutedSoft}; }
+  .card.active { background: ${C.green}; border-color: ${C.green}; box-shadow: 0 6px 18px rgba(164, 255, 17, 0.32); animation: ${cardIn} 0.42s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .card.active p { color: ${C.ink}; font-weight: 600; }
+  .card.active .dot { box-shadow: 0 0 0 2px rgba(14, 20, 15, 0.15); }
+  @media (prefers-reduced-motion: reduce) { .card.active { animation: none; } }
 `;
 
 /* sections */
