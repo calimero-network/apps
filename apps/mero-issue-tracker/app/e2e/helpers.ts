@@ -335,10 +335,13 @@ export async function createIssue(page: Page, fields: NewIssueFields): Promise<v
  * gated on the app validating the session against the node, so a bare
  * waitForURL timeout says nothing about WHY (CORS, 401/403, unreachable).
  */
-export async function loginViaHash(page: Page, nodeIndex = 0) {
+export async function loginViaHash(page: Page, nodeIndex = 0, opts: { inject?: boolean } = {}) {
   logAdminApiErrors(page);
   const node = getNode(nodeIndex);
-  const injection = ISOLATION ? await isolatedInjection(nodeIndex) : null;
+  // `inject: false` skips the SSO context injection so the app lands on the
+  // explicit onboarding (empty state) instead of a pre-provisioned repo.
+  const inject = opts.inject !== false;
+  const injection = ISOLATION && inject ? await isolatedInjection(nodeIndex) : null;
   const hash = buildAuthHash(
     {
       accessToken: node.accessToken,
@@ -407,10 +410,16 @@ const READY = '[data-testid="workspace-ready"], [data-testid="open-invite-btn"]'
  */
 async function dismissAliasNudge(page: Page) {
   const input = page.getByTestId('alias-input');
-  if (await input.isVisible({ timeout: 3_000 }).catch(() => false)) {
-    await page.keyboard.press('Escape');
-    await input.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => {});
+  // waitFor actually blocks for the modal to render (isVisible is an immediate
+  // check that would race the on-mount nudge and miss it, leaving its overlay
+  // to intercept the next click).
+  try {
+    await input.waitFor({ state: 'visible', timeout: 5_000 });
+  } catch {
+    return; // no nudge (the identity already has a name)
   }
+  await page.keyboard.press('Escape');
+  await input.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => {});
 }
 
 /** testid-or-text union locator (first match; tolerant of legacy apps). */
@@ -434,18 +443,59 @@ export async function waitForWorkspaceReady(page: Page, timeout = 45_000) {
 }
 
 /**
- * Ensure `page` is inside a workspace, creating one if it's sitting on the
- * create-or-join gate. Idempotent: a no-op when a workspace already exists.
- * Caller must have logged the page in first (loginViaHash).
+ * The blocking alias gate opens on entering a namespace where the current
+ * member has no display name. Its overlay covers the workspace, so tests that
+ * only want the board must skip past it. A no-op when the gate never appears.
+ */
+export async function skipAliasGate(page: Page, timeout = 15_000) {
+  const gate = page.getByTestId('alias-gate');
+  // The gate is gated on the namespace member list loading (a couple of async
+  // admin calls after workspace-ready), so it can appear a beat late. Use
+  // waitFor (which actually blocks) rather than isVisible (an immediate check
+  // that would race the load and miss a gate about to appear).
+  try {
+    await gate.waitFor({ state: 'visible', timeout });
+  } catch {
+    return; // gate never appeared (the member already has a name)
+  }
+  await page.getByTestId('alias-gate-skip').click();
+  await gate.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => {});
+}
+
+/**
+ * Drive the explicit onboarding from the namespace empty state: create a
+ * namespace, skip the alias gate, and add a repo (so the board becomes ready).
+ * Used by createWorkspace as the non-isolated fallback and available to specs.
+ */
+export async function driveOnboarding(page: Page) {
+  await ctl(page, 'ns-create-btn', 'Create workspace').click();
+  await page.getByTestId('ns-create-name').fill(uniqueName('workspace'));
+  await page.getByTestId('ns-create-submit').click();
+  await skipAliasGate(page);
+  await page.getByTestId('repo-add-btn').click();
+  await page.getByTestId('repo-add-name').fill(uniqueName('repo'));
+  await page.getByTestId('repo-add-url').fill(`https://github.com/acme/${Date.now().toString(36)}`);
+  await page.getByTestId('repo-add-submit').click();
+}
+
+/**
+ * Ensure `page` is inside a ready workspace (a repo is selected). Isolated runs
+ * land there directly via the injected SSO context; a non-isolated fresh session
+ * drives the onboarding. Then skips the alias gate so the board is interactive.
+ * Idempotent. Caller must have logged the page in first (loginViaHash).
  */
 export async function createWorkspace(page: Page) {
-  // Already in? done.
-  if (await page.locator(READY).first().isVisible().catch(() => false)) return;
-  const create = ctl(page, 'create-workspace-btn', 'Create workspace');
-  // The gate may take a beat to render after the auth redirect.
-  await create.waitFor({ state: 'visible', timeout: 30_000 });
-  await create.click();
+  const ready = page.locator(READY).first();
+  const emptyState = page.getByTestId('ns-empty-state');
+  await Promise.race([
+    ready.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {}),
+    emptyState.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {}),
+  ]);
+  if (await emptyState.isVisible().catch(() => false)) {
+    await driveOnboarding(page);
+  }
   await waitForWorkspaceReady(page);
+  await skipAliasGate(page);
 }
 
 /**
@@ -495,9 +545,10 @@ export async function inviteAndJoin(inviterPage: Page, joinerPage: Page): Promis
   // the board (where issue cards live) once the invite is sent.
   await inviterPage.getByRole('link', { name: /All Issues/ }).click().catch(() => {});
 
-  // Joiner: if it already auto-discovered the namespace, nothing to do.
+  // Joiner: if it already auto-discovered the namespace (isolated runs inject
+  // the shared context), just clear its alias gate and surface the code.
   if (await joinerPage.locator(READY).first().isVisible().catch(() => false)) {
-    // Still surface the code for callers that assert on it.
+    await skipAliasGate(joinerPage);
     return code;
   }
   await ctl(joinerPage, 'open-join-btn', 'Join').click();
@@ -508,6 +559,7 @@ export async function inviteAndJoin(inviterPage: Page, joinerPage: Page): Promis
   await input.fill(code);
   await ctl(joinerPage, 'join-submit-btn', 'Join workspace').click();
   await waitForWorkspaceReady(joinerPage);
+  await skipAliasGate(joinerPage);
   return code;
 }
 
@@ -526,7 +578,15 @@ export async function clearAuth(page: Page) {
         'mero:node_url', 'mero:application_id', 'mero:context_id',
         'mero:context_identity',
         'pending-invitation',
+        'issue-tracker:activeNs',
       ].forEach((k) => localStorage.removeItem(k));
+      // Per-namespace repo selection + alias-gate markers.
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('issue-tracker:activeRepo:') || k.startsWith('issue-tracker:alias-set:'))) {
+          localStorage.removeItem(k);
+        }
+      }
     });
   } catch { /* page may be closed */ }
 }
