@@ -56,7 +56,10 @@ const LABEL_SEP: char = '\u{1}';
 pub struct Issue {
     pub id: String,
     pub title: LwwRegister<String>,
-    pub description: LwwRegister<String>,
+    pub summary: LwwRegister<String>,
+    pub impact: LwwRegister<String>,
+    pub repro: LwwRegister<String>,
+    pub resolution_criteria: LwwRegister<String>,
     pub status: LwwRegister<String>,
     pub priority: LwwRegister<String>,
     pub assignee: LwwRegister<Option<String>>,
@@ -75,7 +78,10 @@ impl Mergeable for Issue {
         }
         // Nested registers merge by HLC last-writer-wins.
         self.title.merge(&other.title);
-        self.description.merge(&other.description);
+        self.summary.merge(&other.summary);
+        self.impact.merge(&other.impact);
+        self.repro.merge(&other.repro);
+        self.resolution_criteria.merge(&other.resolution_criteria);
         self.status.merge(&other.status);
         self.priority.merge(&other.priority);
         self.assignee.merge(&other.assignee);
@@ -90,8 +96,20 @@ impl RekeyTarget for Issue {
             field_child_id(parent_id, "title")
         );
         calimero_storage::rekey_field_if_supported!(
-            &mut self.description,
-            field_child_id(parent_id, "description")
+            &mut self.summary,
+            field_child_id(parent_id, "summary")
+        );
+        calimero_storage::rekey_field_if_supported!(
+            &mut self.impact,
+            field_child_id(parent_id, "impact")
+        );
+        calimero_storage::rekey_field_if_supported!(
+            &mut self.repro,
+            field_child_id(parent_id, "repro")
+        );
+        calimero_storage::rekey_field_if_supported!(
+            &mut self.resolution_criteria,
+            field_child_id(parent_id, "resolution_criteria")
         );
         calimero_storage::rekey_field_if_supported!(
             &mut self.status,
@@ -159,7 +177,10 @@ impl RekeyTarget for Comment {
 pub struct IssueView {
     pub id: String,
     pub title: String,
-    pub description: String,
+    pub summary: String,
+    pub impact: String,
+    pub repro: String,
+    pub resolution_criteria: String,
     pub status: String,
     pub priority: String,
     pub assignee: Option<String>,
@@ -228,12 +249,20 @@ impl IssueTracker {
     pub fn create_issue(
         &mut self,
         title: String,
-        description: String,
+        summary: String,
+        impact: String,
+        repro: String,
+        resolution_criteria: String,
         priority: String,
-        labels: Vec<String>,
+        labels: Option<Vec<String>>,
     ) -> app::Result<String> {
         validate_label(&title).map_err(AppError::from)?;
+        validate_section("summary", &summary)?;
+        validate_section("impact", &impact)?;
+        validate_section("repro", &repro)?;
+        validate_section("resolution_criteria", &resolution_criteria)?;
         validate_priority(&priority)?;
+        let labels = labels.unwrap_or_default();
         for label in &labels {
             validate_user_label(label)?;
         }
@@ -247,7 +276,10 @@ impl IssueTracker {
         let issue = Issue {
             id: id.clone(),
             title: LwwRegister::new(title),
-            description: LwwRegister::new(description),
+            summary: LwwRegister::new(summary),
+            impact: LwwRegister::new(impact),
+            repro: LwwRegister::new(repro),
+            resolution_criteria: LwwRegister::new(resolution_criteria),
             status: LwwRegister::new(STATUSES[0].to_string()),
             priority: LwwRegister::new(priority),
             assignee: LwwRegister::new(None),
@@ -286,6 +318,70 @@ impl IssueTracker {
             id: &issue_id,
             status: &status,
         });
+        Ok(())
+    }
+
+    /// Update an issue's summary. Rejects an empty value.
+    pub fn set_summary(&mut self, issue_id: String, summary: String) -> app::Result<()> {
+        validate_section("summary", &summary)?;
+        let mut guard = self
+            .issues
+            .get_mut(&issue_id)
+            .map_err(|e| AppError::msg(format!("issues.get_mut: {e}")))?
+            .ok_or_else(|| AppError::from(Error::NotFound(issue_id.clone())))?;
+        guard.summary.set(summary);
+        drop(guard);
+
+        app::emit!(Event::IssueEdited { id: &issue_id });
+        Ok(())
+    }
+
+    /// Update an issue's impact. Rejects an empty value.
+    pub fn set_impact(&mut self, issue_id: String, impact: String) -> app::Result<()> {
+        validate_section("impact", &impact)?;
+        let mut guard = self
+            .issues
+            .get_mut(&issue_id)
+            .map_err(|e| AppError::msg(format!("issues.get_mut: {e}")))?
+            .ok_or_else(|| AppError::from(Error::NotFound(issue_id.clone())))?;
+        guard.impact.set(impact);
+        drop(guard);
+
+        app::emit!(Event::IssueEdited { id: &issue_id });
+        Ok(())
+    }
+
+    /// Update an issue's reproduction steps. Rejects an empty value.
+    pub fn set_repro(&mut self, issue_id: String, repro: String) -> app::Result<()> {
+        validate_section("repro", &repro)?;
+        let mut guard = self
+            .issues
+            .get_mut(&issue_id)
+            .map_err(|e| AppError::msg(format!("issues.get_mut: {e}")))?
+            .ok_or_else(|| AppError::from(Error::NotFound(issue_id.clone())))?;
+        guard.repro.set(repro);
+        drop(guard);
+
+        app::emit!(Event::IssueEdited { id: &issue_id });
+        Ok(())
+    }
+
+    /// Update an issue's resolution criteria. Rejects an empty value.
+    pub fn set_resolution_criteria(
+        &mut self,
+        issue_id: String,
+        resolution_criteria: String,
+    ) -> app::Result<()> {
+        validate_section("resolution_criteria", &resolution_criteria)?;
+        let mut guard = self
+            .issues
+            .get_mut(&issue_id)
+            .map_err(|e| AppError::msg(format!("issues.get_mut: {e}")))?
+            .ok_or_else(|| AppError::from(Error::NotFound(issue_id.clone())))?;
+        guard.resolution_criteria.set(resolution_criteria);
+        drop(guard);
+
+        app::emit!(Event::IssueEdited { id: &issue_id });
         Ok(())
     }
 
@@ -539,7 +635,10 @@ impl IssueTracker {
         Ok(IssueView {
             id,
             title: issue.title.get().clone(),
-            description: issue.description.get().clone(),
+            summary: issue.summary.get().clone(),
+            impact: issue.impact.get().clone(),
+            repro: issue.repro.get().clone(),
+            resolution_criteria: issue.resolution_criteria.get().clone(),
             status: issue.status.get().clone(),
             priority: issue.priority.get().clone(),
             assignee: issue.assignee.get().clone(),
@@ -573,6 +672,16 @@ fn validate_status(status: &str) -> app::Result<()> {
             "status must be one of {STATUSES:?}"
         ))))
     }
+}
+
+/// Validate a required issue text section: non-empty after trim.
+fn validate_section(name: &str, value: &str) -> app::Result<()> {
+    if value.trim().is_empty() {
+        return Err(AppError::from(Error::Invalid(format!(
+            "{name} must not be empty"
+        ))));
+    }
+    Ok(())
 }
 
 fn validate_priority(priority: &str) -> app::Result<()> {
@@ -614,8 +723,11 @@ mod tests {
             s.create_issue(
                 "Login broken".into(),
                 "Clicking login does nothing".into(),
+                "Nobody can sign in".into(),
+                "Click the login button on a fresh session".into(),
+                "Login succeeds and lands on the board".into(),
                 "high".into(),
-                vec!["bug".into()],
+                Some(vec!["bug".into()]),
             )
         })
         .unwrap()
@@ -632,6 +744,17 @@ mod tests {
         assert_eq!(detail.issue.priority, "high");
         assert_eq!(detail.issue.labels, vec!["bug".to_string()]);
         assert_eq!(detail.issue.assignee, None);
+        // All four structured sections round-trip.
+        assert_eq!(detail.issue.summary, "Clicking login does nothing");
+        assert_eq!(detail.issue.impact, "Nobody can sign in");
+        assert_eq!(
+            detail.issue.repro,
+            "Click the login button on a fresh session"
+        );
+        assert_eq!(
+            detail.issue.resolution_criteria,
+            "Login succeeds and lands on the board"
+        );
 
         let all = app.view(|s| s.list_issues(None, None, None)).unwrap();
         assert_eq!(all.len(), 1);
@@ -643,7 +766,73 @@ mod tests {
     fn create_issue_rejects_bad_priority() {
         let mut app = TestHost::new(IssueTracker::init);
         assert!(app
-            .call(|s| s.create_issue("t".into(), "d".into(), "sky-high".into(), vec![]))
+            .call(|s| s.create_issue(
+                "t".into(),
+                "s".into(),
+                "i".into(),
+                "r".into(),
+                "rc".into(),
+                "sky-high".into(),
+                None,
+            ))
+            .is_err());
+    }
+
+    #[test]
+    fn create_issue_rejects_each_empty_section() {
+        let mut app = TestHost::new(IssueTracker::init);
+        // One arg blank per case (whitespace-only also rejected), rest valid.
+        let cases = [
+            ("t", "", "i", "r", "rc"),   // summary
+            ("t", "s", "  ", "r", "rc"), // impact
+            ("t", "s", "i", "", "rc"),   // repro
+            ("t", "s", "i", "r", "\t"),  // resolution_criteria
+        ];
+        for (title, summary, impact, repro, rc) in cases {
+            assert!(
+                app.call(|s| s.create_issue(
+                    title.into(),
+                    summary.into(),
+                    impact.into(),
+                    repro.into(),
+                    rc.into(),
+                    "low".into(),
+                    None,
+                ))
+                .is_err(),
+                "expected rejection for case {summary:?}/{impact:?}/{repro:?}/{rc:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn section_setters_update_and_reject_empty() {
+        let mut app = TestHost::new(IssueTracker::init);
+        let id = new_issue(&mut app);
+
+        app.call(|s| s.set_summary(id.clone(), "New summary".into()))
+            .unwrap();
+        app.call(|s| s.set_impact(id.clone(), "New impact".into()))
+            .unwrap();
+        app.call(|s| s.set_repro(id.clone(), "New repro".into()))
+            .unwrap();
+        app.call(|s| s.set_resolution_criteria(id.clone(), "New criteria".into()))
+            .unwrap();
+
+        let detail = app.view(|s| s.get_issue(id.clone())).unwrap();
+        assert_eq!(detail.issue.summary, "New summary");
+        assert_eq!(detail.issue.impact, "New impact");
+        assert_eq!(detail.issue.repro, "New repro");
+        assert_eq!(detail.issue.resolution_criteria, "New criteria");
+
+        // Each setter rejects a blank value.
+        assert!(app
+            .call(|s| s.set_summary(id.clone(), "  ".into()))
+            .is_err());
+        assert!(app.call(|s| s.set_impact(id.clone(), "".into())).is_err());
+        assert!(app.call(|s| s.set_repro(id.clone(), "\n".into())).is_err());
+        assert!(app
+            .call(|s| s.set_resolution_criteria(id.clone(), "".into()))
             .is_err());
     }
 
@@ -657,7 +846,9 @@ mod tests {
         let detail = app.view(|s| s.get_issue(id.clone())).unwrap();
         assert_eq!(detail.issue.status, "In progress");
 
-        assert!(app.call(|s| s.set_status(id.clone(), "Nope".into())).is_err());
+        assert!(app
+            .call(|s| s.set_status(id.clone(), "Nope".into()))
+            .is_err());
     }
 
     #[test]
@@ -689,7 +880,8 @@ mod tests {
         let labels = app.view(|s| s.get_issue(id.clone())).unwrap().issue.labels;
         assert_eq!(labels, vec!["bug".to_string(), "frontend".to_string()]);
 
-        app.call(|s| s.remove_label(id.clone(), "bug".into())).unwrap();
+        app.call(|s| s.remove_label(id.clone(), "bug".into()))
+            .unwrap();
         let labels = app.view(|s| s.get_issue(id.clone())).unwrap().issue.labels;
         assert_eq!(labels, vec!["frontend".to_string()]);
     }
@@ -699,10 +891,21 @@ mod tests {
         let mut app = TestHost::new(IssueTracker::init);
         let a = new_issue(&mut app);
         let b = app
-            .call(|s| s.create_issue("Other".into(), "d".into(), "low".into(), vec![]))
+            .call(|s| {
+                s.create_issue(
+                    "Other".into(),
+                    "s".into(),
+                    "i".into(),
+                    "r".into(),
+                    "rc".into(),
+                    "low".into(),
+                    None,
+                )
+            })
             .unwrap();
 
-        app.call(|s| s.set_status(a.clone(), "Done".into())).unwrap();
+        app.call(|s| s.set_status(a.clone(), "Done".into()))
+            .unwrap();
         app.call(|s| s.set_assignee(a.clone(), Some("alice".into())))
             .unwrap();
 
@@ -725,7 +928,10 @@ mod tests {
         assert_eq!(bug[0].id, a);
 
         // `b` has no filters matching the above, so the unfiltered list has both.
-        assert_eq!(app.view(|s| s.list_issues(None, None, None)).unwrap().len(), 2);
+        assert_eq!(
+            app.view(|s| s.list_issues(None, None, None)).unwrap().len(),
+            2
+        );
         assert!(b != a);
     }
 
@@ -734,7 +940,17 @@ mod tests {
         let mut app = TestHost::new(IssueTracker::init);
         let a = new_issue(&mut app);
         let _b = app
-            .call(|s| s.create_issue("Other".into(), "d".into(), "low".into(), vec![]))
+            .call(|s| {
+                s.create_issue(
+                    "Other".into(),
+                    "s".into(),
+                    "i".into(),
+                    "r".into(),
+                    "rc".into(),
+                    "low".into(),
+                    None,
+                )
+            })
             .unwrap();
         app.call(|s| s.set_status(a, "Done".into())).unwrap();
 
@@ -768,7 +984,8 @@ mod tests {
             .call(|s| s.add_comment(id.clone(), "first".into()))
             .unwrap();
 
-        app.call(|s| s.edit_comment(c.clone(), "edited".into())).unwrap();
+        app.call(|s| s.edit_comment(c.clone(), "edited".into()))
+            .unwrap();
         let detail = app.view(|s| s.get_issue(id.clone())).unwrap();
         assert_eq!(detail.comments[0].body, "edited");
         assert!(detail.comments[0].edited_at.is_some());

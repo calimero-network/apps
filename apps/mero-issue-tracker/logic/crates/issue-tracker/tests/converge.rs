@@ -36,9 +36,12 @@ fn issue_status_updates_converge() {
         let mut s = IssueTracker::init();
         let _ = s.create_issue(
             "seed".into(),
-            "seed description".into(),
+            "seed summary".into(),
+            "seed impact".into(),
+            "seed repro".into(),
+            "seed resolution".into(),
             "low".into(),
-            vec![],
+            None,
         );
         s
     })
