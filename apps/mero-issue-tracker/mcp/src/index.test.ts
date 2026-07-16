@@ -200,7 +200,7 @@ test('assignIssue calls set_assignee with issue_id and assignee', async () => {
   assert.deepEqual(params.argsJson, { issue_id: 'issue-9', assignee: 'alice.near' });
 });
 
-test('getFixPrompt fetches the issue then builds the placeholder prompt', async () => {
+test('getFixPrompt fetches the issue then builds the filled prompt', async () => {
   const prompt = await withFetch(
     jsonrpcOk({
       issue: {
@@ -215,7 +215,9 @@ test('getFixPrompt fetches the issue then builds the placeholder prompt', async 
     }),
     () => getFixPrompt(cfg, target, { id: 'issue-9' }),
   );
-  assert.equal(prompt, 'FIX_PROMPT_TEMPLATE not yet authored (task 7)');
+  assert.match(prompt, /Issue issue-9: Bug/);
+  assert.match(prompt, /## Summary\nS/);
+  assert.match(prompt, /## Resolution criteria\nC/);
 });
 
 // ---- Server construction ----

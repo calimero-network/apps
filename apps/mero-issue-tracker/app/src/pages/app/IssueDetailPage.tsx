@@ -7,6 +7,7 @@ import { APP_ROUTE } from '../../config';
 import { describeError } from '../../utils/errors';
 import type { IssueDetail, CommentView } from '../../hooks/useItems';
 import { relativeTime, truncateKey } from '../../utils/display';
+import { buildFixPrompt } from '../../utils/fixPrompt';
 import StatusDot from '../../components/StatusDot';
 import PriorityGlyph from '../../components/PriorityGlyph';
 import AvatarGlyph from '../../components/AvatarGlyph';
@@ -79,6 +80,12 @@ export default function IssueDetailPage(): React.ReactElement {
     const body = commentBody.trim();
     if (!body) return;
     void run(async () => { await data.addComment(issue.id, body); setCommentBody(''); });
+  };
+  const copyFixPrompt = () => {
+    void run(async () => {
+      await navigator.clipboard.writeText(buildFixPrompt(issue));
+      toast.show({ variant: 'success', description: 'Prompt copied' });
+    });
   };
 
   return (
@@ -229,8 +236,7 @@ export default function IssueDetailPage(): React.ReactElement {
 
         <AgentCard>
           <span className="eyebrow"><span className="ico"><IconAgent /></span>Local agent</span>
-          {/* TODO(task-7): enable once the fix-prompt generator lands. */}
-          <button className="copy" disabled title="Coming soon"><IconCopy /> Copy fix prompt</button>
+          <button className="copy" data-testid="action-copy_fix_prompt" onClick={copyFixPrompt}><IconCopy /> Copy fix prompt</button>
           <div className="hint">paste into your Claude Code session</div>
         </AgentCard>
       </Props>
@@ -410,8 +416,8 @@ const AgentCard = styled.div`
   .copy {
     width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
     border-radius: ${t.radius}; border: 1px solid ${t.color.border}; background: ${t.color.raised};
-    color: ${t.color.text}; font-size: 12.5px; font-weight: 500; padding: 6px 11px;
-    opacity: 0.55; cursor: default;
+    color: ${t.color.text}; font-size: 12.5px; font-weight: 500; padding: 6px 11px; cursor: pointer;
+    &:hover { border-color: ${t.color.borderStrong}; }
   }
   .hint { margin-top: 8px; font-family: ${t.font.mono}; font-size: 10.5px; color: ${t.color.text3}; text-align: center; }
 `;
