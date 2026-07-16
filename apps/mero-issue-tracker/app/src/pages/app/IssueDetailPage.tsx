@@ -24,7 +24,7 @@ const ago = (v: number): string => {
 /** Full-page issue view: four section blocks + activity feed, properties rail. */
 export default function IssueDetailPage(): React.ReactElement {
   const { id = '' } = useParams();
-  const { data, currentUser, members, aliases } = useAppCtx();
+  const { data, currentUser, members, aliases, repoUrl } = useAppCtx();
   const toast = useToast();
   const navigate = useNavigate();
 
@@ -83,7 +83,7 @@ export default function IssueDetailPage(): React.ReactElement {
   };
   const copyFixPrompt = () => {
     void run(async () => {
-      await navigator.clipboard.writeText(buildFixPrompt(issue));
+      await navigator.clipboard.writeText(buildFixPrompt(issue, repoUrl));
       toast.show({ variant: 'success', description: 'Prompt copied' });
     });
   };

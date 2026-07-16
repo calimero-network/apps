@@ -10,11 +10,13 @@ export interface IssueForPrompt {
   resolution_criteria: string;
 }
 
-/** Builds the "Copy fix prompt" text shown in the Local agent card. */
-export function buildFixPrompt(issue: IssueForPrompt): string {
+/** Builds the "Copy fix prompt" text shown in the Local agent card. `repoUrl`
+ *  is the active repo's GitHub URL; omitted from the prompt when empty. */
+export function buildFixPrompt(issue: IssueForPrompt, repoUrl?: string): string {
+  const repoLine = repoUrl && repoUrl.trim() ? `\nRepository: ${repoUrl.trim()}` : '';
   return `You are fixing a tracked issue. Work systematically; do not skip validation.
 
-Issue ${issue.id}: ${issue.title}
+Issue ${issue.id}: ${issue.title}${repoLine}
 
 ## Summary
 ${issue.summary}

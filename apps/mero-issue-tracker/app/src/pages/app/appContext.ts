@@ -19,6 +19,8 @@ export interface AppCtx {
   filters: Filters;
   /** True when the `?assignee=me` view is active (filters by current user). */
   myIssues: boolean;
+  /** The active repo's GitHub URL (shared state), or '' when unset. */
+  repoUrl: string;
   setFilter: (patch: Partial<Filters>) => void;
   clearFilters: () => void;
   openNewIssue: () => void;

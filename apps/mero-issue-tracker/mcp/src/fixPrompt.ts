@@ -12,10 +12,11 @@ export interface IssueForPrompt {
  * Builds the prompt text for `get_fix_prompt`. This is the single source of
  * truth for the template; app/src/utils/fixPrompt.ts duplicates it verbatim.
  */
-export function buildFixPrompt(issue: IssueForPrompt): string {
+export function buildFixPrompt(issue: IssueForPrompt, repoUrl?: string): string {
+  const repoLine = repoUrl && repoUrl.trim() ? `\nRepository: ${repoUrl.trim()}` : '';
   return `You are fixing a tracked issue. Work systematically; do not skip validation.
 
-Issue ${issue.id}: ${issue.title}
+Issue ${issue.id}: ${issue.title}${repoLine}
 
 ## Summary
 ${issue.summary}
