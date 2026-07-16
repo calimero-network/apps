@@ -44,7 +44,7 @@ export default function Sidebar({
           <span className="ico"><IconAllIssues /></span>
           All Issues<span className="count">{totalIssues}</span>
         </Item>
-        <Item to={{ pathname: APP_ROUTE, search: '?assignee=me' }} $active={mine}>
+        <Item to={{ pathname: APP_ROUTE, search: '?assignee=me' }} $active={mine} data-testid="nav-my-issues">
           <span className="ico"><IconMyIssues /></span>
           My Issues
         </Item>

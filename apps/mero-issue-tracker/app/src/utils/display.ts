@@ -32,9 +32,12 @@ export function initial(seed: string): string {
   return c ? c.toLowerCase() : '?';
 }
 
-/** `4f8a…c2e1`-style truncation for a long public key. Short strings pass through. */
+/** `4f8a…c2e1`-style truncation for a base58 public key. Anything that isn't
+ *  plausibly a key (short, or containing spaces - e.g. an alias) passes through
+ *  unchanged, so aliased display strings never get mangled. */
 export function truncateKey(key: string): string {
-  if (key.length <= 10) return key;
+  const looksLikeKey = key.length >= 32 && !key.includes(' ');
+  if (!looksLikeKey) return key;
   return `${key.slice(0, 4)}…${key.slice(-4)}`;
 }
 

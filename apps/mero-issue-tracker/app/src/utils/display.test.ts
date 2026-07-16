@@ -18,7 +18,11 @@ describe('display helpers', () => {
 
   it('truncateKey keeps short strings and shortens long keys', () => {
     expect(truncateKey('ronit')).toBe('ronit');
-    expect(truncateKey('4f8a2c9e1234c2e1')).toBe('4f8a…c2e1');
+    expect(truncateKey('4f8a2c9e1234c2e14f8a2c9e1234c2e1')).toBe('4f8a…c2e1');
+  });
+
+  it('truncateKey leaves an alias-length display string unchanged', () => {
+    expect(truncateKey('alexander-dev')).toBe('alexander-dev');
   });
 
   it('relativeTime is compact and unit-aware', () => {

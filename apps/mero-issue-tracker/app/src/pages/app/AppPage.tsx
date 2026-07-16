@@ -31,6 +31,7 @@ export default function AppPage(): React.ReactElement {
 
   const currentUser = ws.executorPublicKey ?? contextIdentity ?? '';
   const myIssues = searchParams.get('assignee') === 'me';
+  const aliases = useAliases(ws.contextId);
 
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const setFilter = useCallback((patch: Partial<Filters>) => {
@@ -39,8 +40,10 @@ export default function AppPage(): React.ReactElement {
   const clearFilters = useCallback(() => setFilters(EMPTY_FILTERS), []);
 
   // list_issues filters (server-side): status/assignee/label. `?assignee=me`
-  // narrows to the current identity; priority is filtered client-side downstream.
-  const effectiveAssignee = myIssues ? currentUser : filters.assignee;
+  // narrows to the current identity, but assignments store the display string
+  // (alias) the assignee picker writes, not the raw key - resolve it the same
+  // way to match.
+  const effectiveAssignee = myIssues ? (currentUser ? aliases.resolve(currentUser) : '') : filters.assignee;
   const hookFilters = useMemo(
     () => ({ status: filters.status, assignee: effectiveAssignee, label: filters.label }),
     [filters.status, effectiveAssignee, filters.label],
@@ -51,8 +54,6 @@ export default function AppPage(): React.ReactElement {
     executorPublicKey: ws.executorPublicKey,
     filters: hookFilters,
   });
-
-  const aliases = useAliases(ws.contextId);
 
   useEffect(() => {
     if (data.error) toast.show({ variant: 'error', description: describeError(data.error) });
