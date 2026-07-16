@@ -121,7 +121,7 @@ export default function NewIssueModal({ onCreate, onClose }: Props): React.React
           </Grid2>
         </Body>
         <Foot>
-          <span className="note">All four sections are required — issues filed via MCP follow the same format.</span>
+          <span className="note">All four sections are required - issues filed via MCP follow the same format.</span>
           <span className="spacer" />
           <button className="ghost" onClick={onClose}>Cancel</button>
           <button

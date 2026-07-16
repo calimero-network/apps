@@ -10,7 +10,7 @@ export default function IssuesView(): React.ReactElement {
   const { data, filters } = useAppCtx();
   const navigate = useNavigate();
 
-  // Priority has no server param — apply it client-side over the fetched set.
+  // Priority has no server param - apply it client-side over the fetched set.
   const issues = filters.priority
     ? data.issues.filter((i) => i.priority === filters.priority)
     : data.issues;

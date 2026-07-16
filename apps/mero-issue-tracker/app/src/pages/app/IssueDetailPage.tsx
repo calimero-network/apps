@@ -14,6 +14,12 @@ import LabelChip from '../../components/LabelChip';
 import { IconBack, IconAgent, IconCopy } from '../../components/icons';
 import { useAppCtx } from './appContext';
 
+// "now" already reads as present tense; only older stamps take the " ago" suffix.
+const ago = (v: number): string => {
+  const r = relativeTime(v);
+  return r === 'now' ? 'now' : `${r} ago`;
+};
+
 /** Full-page issue view: four section blocks + activity feed, properties rail. */
 export default function IssueDetailPage(): React.ReactElement {
   const { id = '' } = useParams();
@@ -107,7 +113,7 @@ export default function IssueDetailPage(): React.ReactElement {
           <div className="act-item">
             <AvatarGlyph seed={issue.created_by} size="sm" keyFallback />
             <div className="act-body">
-              <div className="act-meta"><b>{truncateKey(issue.created_by)}</b> created this issue <span className="act-time">· {relativeTime(issue.created_at)} ago</span></div>
+              <div className="act-meta"><b>{truncateKey(issue.created_by)}</b> created this issue <span className="act-time">· {ago(issue.created_at)}</span></div>
             </div>
           </div>
 
@@ -205,7 +211,7 @@ export default function IssueDetailPage(): React.ReactElement {
         </div>
         <div className="prop-row">
           <span className="label">Created</span>
-          <span className="val dim">{relativeTime(issue.created_at)} ago</span>
+          <span className="val dim">{ago(issue.created_at)}</span>
         </div>
 
         <AgentCard>
@@ -254,7 +260,7 @@ function CommentItem({
       <div className="act-body">
         <div className="act-meta">
           <b>{truncateKey(comment.author)}</b>
-          <span className="act-time"> · {relativeTime(comment.created_at)} ago</span>
+          <span className="act-time"> · {ago(comment.created_at)}</span>
           {mine && (
             <span className="cactions">
               {editing ? (

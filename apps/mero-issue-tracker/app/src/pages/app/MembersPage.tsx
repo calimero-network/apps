@@ -6,7 +6,7 @@ import AvatarGlyph from '../../components/AvatarGlyph';
 import { useAppCtx } from './appContext';
 
 /**
- * Workspace members. Rows come from the context identities (public keys only —
+ * Workspace members. Rows come from the context identities (public keys only -
  * aliases arrive with Task 6, so the current identity shows "You" and the rest
  * render as truncated keys). Invite opens the existing invitation modal.
  */
@@ -21,7 +21,7 @@ export default function MembersPage(): React.ReactElement {
       <Head>
         <h2>Members</h2>
         <div className="actions">
-          {/* TODO(task-6): alias editing — wire to setMemberMetadata once aliases land. */}
+          {/* TODO(task-6): alias editing - wire to setMemberMetadata once aliases land. */}
           <button className="secondary" disabled title="Coming soon">Set my alias</button>
           <button className="primary" data-testid="open-invite-btn" onClick={openInvite}>Invite</button>
         </div>
@@ -40,7 +40,7 @@ export default function MembersPage(): React.ReactElement {
                 <span className={`alias${you ? '' : ' faded'}`}>{you ? 'You' : truncateKey(key)}</span>
               </span>
               <span className="key">{truncateKey(key)}</span>
-              <span className="date">—</span>
+              <span className="date">-</span>
               <span>{you && <span className="you-badge">You</span>}</span>
             </Row>
           );

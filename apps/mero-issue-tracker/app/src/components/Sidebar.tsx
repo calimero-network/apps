@@ -24,7 +24,7 @@ export default function Sidebar({
 }): React.ReactElement {
   const loc = useLocation();
   const mine = loc.search.includes('assignee=me');
-  // Detail lives under /issues/:id — keep the All Issues item lit there too.
+  // Detail lives under /issues/:id - keep the All Issues item lit there too.
   const onDetail = loc.pathname.startsWith(`${APP_ROUTE}/issues/`);
   const onIssues = (loc.pathname === APP_ROUTE && !mine) || onDetail;
   const onBoard = loc.pathname === `${APP_ROUTE}/board`;
@@ -32,7 +32,7 @@ export default function Sidebar({
 
   return (
     <Aside>
-      <WsSwitch tabIndex={0} role="button">
+      <WsSwitch>
         <LogoMark />
         <span className="ws-name">{APP_DISPLAY_NAME}</span>
         <span className="ws-chevron"><ChevronDown size={12} /></span>
@@ -68,7 +68,7 @@ export default function Sidebar({
           <AvatarGlyph seed={currentUser || 'me'} size="md" />
           <span className="me-meta">
             <span className="me-name">You</span>
-            <span className="me-key">{currentUser ? truncateKey(currentUser) : '—'}</span>
+            <span className="me-key">{currentUser ? truncateKey(currentUser) : '-'}</span>
           </span>
         </div>
       </Footer>

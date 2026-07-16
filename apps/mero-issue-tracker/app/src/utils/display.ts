@@ -2,7 +2,7 @@
 // avatar/label colours from a seed string, key truncation, and compact relative
 // time. All pure so they are trivially unit-testable.
 
-// Avatar/label swatches — drawn from the mockup plus a few extras for spread.
+// Avatar/label swatches - drawn from the mockup plus a few extras for spread.
 const SWATCHES = [
   '#A5FF3F', '#5FA8D3', '#C77DBB', '#8B9AA8',
   '#6E8BB5', '#E0A04B', '#7FC96B', '#B47FD6',
@@ -59,7 +59,7 @@ export function relativeTime(value: number, now: number = Date.now()): string {
 
 /** Longer created-at rendering (`Apr 2, 2026`). Empty for a missing value. */
 export function formatDate(value: number): string {
-  if (!value) return '—';
+  if (!value) return '-';
   const ms = value < 1e12 ? value * 1000 : value;
   return new Date(ms).toLocaleDateString(undefined, {
     month: 'short', day: 'numeric', year: 'numeric',

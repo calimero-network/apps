@@ -29,7 +29,7 @@ export default function AvatarGlyph({
 }): React.ReactElement {
   const dims = DIMS[size];
   if (!seed) {
-    return <Box $dims={dims} $key title={title ?? 'unassigned'}>—</Box>;
+    return <Box $dims={dims} $key title={title ?? 'unassigned'}>-</Box>;
   }
   if (keyFallback) {
     return (

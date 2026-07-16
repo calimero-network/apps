@@ -31,7 +31,7 @@ describe('display helpers', () => {
   });
 
   it('formatDate handles empty', () => {
-    expect(formatDate(0)).toBe('—');
+    expect(formatDate(0)).toBe('-');
     expect(formatDate(1_700_000_000_000)).toMatch(/\d{4}/);
   });
 });
