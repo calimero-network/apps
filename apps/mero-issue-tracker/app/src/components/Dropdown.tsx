@@ -121,7 +121,10 @@ export function SelectMenu({
   };
 
   const pick = (v: string) => { onChange(v); closeToTrigger(); };
-  const label = value ? (renderValue ? renderValue(value) : value) : <span className="ph">{placeholder}</span>;
+  const selectedOpt = options.find((o) => optValue(o) === value);
+  const label = value
+    ? (renderValue ? renderValue(value) : (selectedOpt ? optLabel(selectedOpt) : value))
+    : <span className="ph">{placeholder}</span>;
 
   return (
     <Root ref={rootRef} className={className}>
