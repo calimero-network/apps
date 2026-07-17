@@ -8,6 +8,15 @@ test('loadConfig defaults nodeUrl and strips trailing slash', () => {
   assert.equal(cfg.contextRaw, 'my-tracker');
   assert.equal(cfg.authToken, undefined);
   assert.equal(cfg.executorOverride, undefined);
+  assert.equal(cfg.serviceName, 'issue-tracker');
+});
+
+test('loadConfig reads TRACKER_SERVICE, defaulting to "issue-tracker"', () => {
+  assert.equal(loadConfig({ TRACKER_CONTEXT: 'ctx' }).serviceName, 'issue-tracker');
+  assert.equal(
+    loadConfig({ TRACKER_CONTEXT: 'ctx', TRACKER_SERVICE: 'custom-service' }).serviceName,
+    'custom-service',
+  );
 });
 
 test('loadConfig reads all env vars and trims a trailing slash off the node URL', () => {

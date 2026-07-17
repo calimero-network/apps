@@ -26,6 +26,11 @@ repo, else it errors listing what's available.
   (`src/fixPrompt.ts`).
 - `list_repos` - no params. Lists every repo (aliased context) in the
   namespace with its name and `repo_url`.
+- `add_repo` - `name`, `github_url`. Onboards a new repo: creates a context
+  in `TRACKER_NAMESPACE`, sets its `repo_url`, and aliases it by name.
+  Requires `TRACKER_NAMESPACE` (errors under the `TRACKER_CONTEXT` direct
+  pin, which has no namespace to create a repo in). Rejects a name that
+  already exists.
 
 ## Config (env vars)
 
@@ -37,6 +42,7 @@ repo, else it errors listing what's available.
 | `TRACKER_CONTEXT` | no | - | Direct pin to a single context id or alias (backward compat). When set, it bypasses namespace/repo resolution entirely and every `repo` param is ignored. |
 | `CALIMERO_AUTH_TOKEN` | no | - | Bearer token sent to both `/admin-api` and `/jsonrpc`. |
 | `TRACKER_EXECUTOR` | no | - | Executor public key for RPC calls. If unset, resolved from the node's first owned identity for the target context (`GET /admin-api/contexts/{id}/identities-owned`), mirroring `useWorkspace.ts`. |
+| `TRACKER_SERVICE` | no | `issue-tracker` | Service name passed to `createContext` by `add_repo`. |
 
 ## Run it
 
