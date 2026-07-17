@@ -68,13 +68,15 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_ENV: production
 
-      # npm-side prerequisite: the trusted publisher for this package must be
-      # configured on npmjs.com to point at this repo and this workflow
-      # filename (publish-mcp.yml) before the first publish will succeed.
+      # OIDC trusted publishing (no token). --provenance is intentionally
+      # omitted: npm's sigstore provenance requires a PUBLIC source repo, and
+      # this repo is private. Re-add --provenance if the repo is made public.
+      # Prereq: the npm trusted publisher for this package must point at this
+      # repo and this workflow filename (publish-mcp.yml).
       - name: Publish to npm with OIDC
         if: steps.semantic.outputs.new_release == 'true'
         working-directory: mcp
-        run: npm publish --provenance --access public
+        run: npm publish --access public
 
       - name: Push release commit and tag
         if: steps.semantic.outputs.new_release == 'true'
