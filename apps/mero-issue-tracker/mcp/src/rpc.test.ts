@@ -5,6 +5,7 @@ import {
   callMethod,
   createRepoLister,
   createTargetResolver,
+  decodeFunctionCallErrorData,
   listNamespaceRepos,
   pickRepo,
   resolveContextId,
@@ -99,6 +100,63 @@ test('callMethod throws RpcError on a jsonrpc-level error', async () => {
       return true;
     },
   );
+});
+
+test('callMethod decodes a FunctionCallError data byte array into the real guest message', async () => {
+  // The guest serializes its error as a JSON string, so the decoded bytes are
+  // themselves JSON-quoted - matches the real node's observed shape.
+  const bytes = JSON.stringify([...Buffer.from('"label must be at most 64 characters"', 'utf8')]);
+  await assert.rejects(
+    () =>
+      withFetch(
+        (async () =>
+          new Response(
+            JSON.stringify({
+              jsonrpc: '2.0',
+              id: 1,
+              error: { type: 'FunctionCallError', data: `the method call returned an error: ${bytes}` },
+            }),
+            { status: 200 },
+          )) as typeof fetch,
+        () => callMethod(baseConfig, { contextId: 'c', executorPublicKey: 'e' }, 'create_issue', {}),
+      ),
+    (err: unknown) => {
+      assert.ok(err instanceof RpcError);
+      assert.equal(err.message, 'label must be at most 64 characters');
+      return true;
+    },
+  );
+});
+
+test('callMethod falls back to the error type when data is not a decodable byte array', async () => {
+  await assert.rejects(
+    () =>
+      withFetch(
+        (async () =>
+          new Response(
+            JSON.stringify({ jsonrpc: '2.0', id: 1, error: { type: 'FunctionCallError', data: 'opaque' } }),
+            { status: 200 },
+          )) as typeof fetch,
+        () => callMethod(baseConfig, { contextId: 'c', executorPublicKey: 'e' }, 'create_issue', {}),
+      ),
+    /FunctionCallError/,
+  );
+});
+
+test('decodeFunctionCallErrorData unwraps a JSON-quoted guest message embedded in a Debug-formatted string', () => {
+  const bytes = [...Buffer.from('"boom"', 'utf8')];
+  assert.equal(decodeFunctionCallErrorData(`the method call returned an error: ${JSON.stringify(bytes)}`), 'boom');
+});
+
+test('decodeFunctionCallErrorData falls back to the raw decoded text when it is not JSON-quoted', () => {
+  const bytes = [...Buffer.from('boom', 'utf8')];
+  assert.equal(decodeFunctionCallErrorData(`the method call returned an error: ${JSON.stringify(bytes)}`), 'boom');
+});
+
+test('decodeFunctionCallErrorData returns undefined for non-string, absent, or non-array data', () => {
+  assert.equal(decodeFunctionCallErrorData(undefined), undefined);
+  assert.equal(decodeFunctionCallErrorData(42), undefined);
+  assert.equal(decodeFunctionCallErrorData('no brackets here'), undefined);
 });
 
 test('callMethod throws on non-2xx HTTP status', async () => {
@@ -261,7 +319,7 @@ test('resolveNamespaceId throws a helpful error listing available namespaces whe
 // ---- listNamespaceRepos ----
 
 function reposFetch(
-  contexts: Array<{ contextId: string }>,
+  contexts: Array<{ contextId: string; name?: string }>,
   aliases: Array<{ name: string; value: string }>,
 ): typeof fetch {
   return (async (url: string | URL) => {
@@ -286,6 +344,56 @@ test('listNamespaceRepos joins contexts with their alias and drops unaliased con
     { contextId: 'ctx-1', name: 'frontend' },
     { contextId: 'ctx-2', name: 'backend' },
   ]);
+});
+
+test('listNamespaceRepos parses the real node flat-map alias shape', async () => {
+  const repos = await withFetch(
+    (async (url: string | URL) => {
+      const u = String(url);
+      if (u.includes('/contexts')) {
+        return new Response(JSON.stringify({ data: [{ contextId: 'ctx-1' }] }), { status: 200 });
+      }
+      if (u.includes('/alias/list/context')) {
+        return new Response(JSON.stringify({ data: { frontend: 'ctx-1' } }), { status: 200 });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }) as typeof fetch,
+    () => listNamespaceRepos(namespaceConfig, 'ns-1'),
+  );
+  assert.deepEqual(repos, [{ contextId: 'ctx-1', name: 'frontend' }]);
+});
+
+test('listNamespaceRepos prefers the group-entry name over the alias when both are present', async () => {
+  const repos = await withFetch(
+    reposFetch(
+      [{ contextId: 'ctx-1', name: 'core' }],
+      [{ name: 'stale-alias', value: 'ctx-1' }],
+    ),
+    () => listNamespaceRepos(namespaceConfig, 'ns-1'),
+  );
+  assert.deepEqual(repos, [{ contextId: 'ctx-1', name: 'core' }]);
+});
+
+test('listNamespaceRepos ignores the legacy issue-tracker bootstrap alias', async () => {
+  const repos = await withFetch(
+    reposFetch(
+      [{ contextId: 'ctx-1' }],
+      [{ name: 'issue-tracker', value: 'ctx-1' }],
+    ),
+    () => listNamespaceRepos(namespaceConfig, 'ns-1'),
+  );
+  assert.deepEqual(repos, []);
+});
+
+test('listNamespaceRepos dedupes when two aliases point at the same context', async () => {
+  const repos = await withFetch(
+    reposFetch(
+      [{ contextId: 'ctx-1' }],
+      [{ name: 'first', value: 'ctx-1' }, { name: 'second', value: 'ctx-1' }],
+    ),
+    () => listNamespaceRepos(namespaceConfig, 'ns-1'),
+  );
+  assert.deepEqual(repos, [{ contextId: 'ctx-1', name: 'first' }]);
 });
 
 test('listNamespaceRepos throws when the contexts fetch fails', async () => {
@@ -471,6 +579,31 @@ test('createTargetResolver rejects with a helpful error when the repo param does
     () => withFetch(fullNamespaceFetch(), () => target('nope')),
     /"nope" not found.*frontend.*backend/s,
   );
+});
+
+test('createTargetResolver resolves a repo param against the real node flat-map alias shape', async () => {
+  const target = createTargetResolver(namespaceConfig);
+  const impl = (async (url: string | URL) => {
+    const u = String(url);
+    if (u.includes('/identities-owned')) {
+      return new Response(JSON.stringify({ data: { identities: ['exec-1'] } }), { status: 200 });
+    }
+    if (u.endsWith('/admin-api/namespaces')) {
+      return new Response(JSON.stringify({ data: [{ namespaceId: 'ns-1', name: 'my-team' }] }), { status: 200 });
+    }
+    if (u.includes('/contexts')) {
+      return new Response(
+        JSON.stringify({ data: [{ contextId: 'ctx-1' }, { contextId: 'ctx-2' }] }),
+        { status: 200 },
+      );
+    }
+    if (u.includes('/alias/list/context')) {
+      return new Response(JSON.stringify({ data: { frontend: 'ctx-1', backend: 'ctx-2' } }), { status: 200 });
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  }) as typeof fetch;
+  const resolved = await withFetch(impl, () => target('backend'));
+  assert.deepEqual(resolved, { contextId: 'ctx-2', executorPublicKey: 'exec-1' });
 });
 
 test('createTargetResolver ignores the repo param when TRACKER_CONTEXT pins a context directly', async () => {

@@ -58,6 +58,18 @@ export const assignIssueShape = {
   repo: repoParam,
 };
 
+export const setStatusShape = {
+  issue_id: z.string().min(1, 'issue_id is required'),
+  status: z.enum(['Open', 'In progress', 'Blocked', 'Done']),
+  repo: repoParam,
+};
+
+export const setPriorityShape = {
+  issue_id: z.string().min(1, 'issue_id is required'),
+  priority: z.enum(['low', 'medium', 'high', 'urgent']),
+  repo: repoParam,
+};
+
 export const getFixPromptShape = {
   id: z.string().min(1, 'id is required'),
   repo: repoParam,
@@ -70,6 +82,8 @@ type ListIssuesArgs = z.infer<z.ZodObject<typeof listIssuesShape>>;
 type GetIssueArgs = z.infer<z.ZodObject<typeof getIssueShape>>;
 type AddCommentArgs = z.infer<z.ZodObject<typeof addCommentShape>>;
 type AssignIssueArgs = z.infer<z.ZodObject<typeof assignIssueShape>>;
+type SetStatusArgs = z.infer<z.ZodObject<typeof setStatusShape>>;
+type SetPriorityArgs = z.infer<z.ZodObject<typeof setPriorityShape>>;
 type GetFixPromptArgs = z.infer<z.ZodObject<typeof getFixPromptShape>>;
 
 interface IssueDetail {
@@ -114,6 +128,14 @@ export function addComment(cfg: Config, target: ResolvedTarget, args: AddComment
 
 export function assignIssue(cfg: Config, target: ResolvedTarget, args: AssignIssueArgs) {
   return callMethod(cfg, target, 'set_assignee', { issue_id: args.issue_id, assignee: args.assignee });
+}
+
+export function setStatus(cfg: Config, target: ResolvedTarget, args: SetStatusArgs) {
+  return callMethod(cfg, target, 'set_status', { issue_id: args.issue_id, status: args.status });
+}
+
+export function setPriority(cfg: Config, target: ResolvedTarget, args: SetPriorityArgs) {
+  return callMethod(cfg, target, 'set_priority', { issue_id: args.issue_id, priority: args.priority });
 }
 
 export async function getFixPrompt(cfg: Config, target: ResolvedTarget, args: GetFixPromptArgs) {
@@ -224,6 +246,32 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
     async (args) => {
       try {
         await assignIssue(cfg, await target(args.repo), args);
+        return textResult({ ok: true });
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    'set_status',
+    { description: 'Set an issue\'s status (Open, In progress, Blocked, or Done).', inputSchema: setStatusShape },
+    async (args) => {
+      try {
+        await setStatus(cfg, await target(args.repo), args);
+        return textResult({ ok: true });
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    'set_priority',
+    { description: 'Set an issue\'s priority (low, medium, high, or urgent).', inputSchema: setPriorityShape },
+    async (args) => {
+      try {
+        await setPriority(cfg, await target(args.repo), args);
         return textResult({ ok: true });
       } catch (err) {
         return errorResult(err);

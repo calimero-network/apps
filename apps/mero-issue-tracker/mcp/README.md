@@ -19,6 +19,8 @@ repo, else it errors listing what's available.
 - `get_issue` - `id`, optional `repo`.
 - `add_comment` - `issue_id`, `body`, optional `repo`.
 - `assign_issue` - `issue_id`, `assignee`, optional `repo`.
+- `set_status` - `issue_id`, `status` (`Open`/`In progress`/`Blocked`/`Done`), optional `repo`.
+- `set_priority` - `issue_id`, `priority` (`low`/`medium`/`high`/`urgent`), optional `repo`.
 - `get_fix_prompt` - `id`, optional `repo`. Renders a ready-to-paste fix
   prompt filled with the issue's sections plus the repo's `Repository:` line
   (`src/fixPrompt.ts`).
@@ -94,7 +96,10 @@ with the tracker context provisioned:
 
 ```bash
 CALIMERO_NODE_URL=http://localhost:2428 \
-TRACKER_CONTEXT=issue-tracker \
+TRACKER_CONTEXT=core \
 CALIMERO_AUTH_TOKEN=<token if the node enforces auth> \
 node scripts/smoke.mjs
 ```
+
+See the root README's "MCP setup (team)" section for a step-by-step guide to
+running this server against your team's node.

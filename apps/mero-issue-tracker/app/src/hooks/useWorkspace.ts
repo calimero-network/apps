@@ -43,10 +43,6 @@ const ENV_APPLICATION_ID = import.meta.env.VITE_APPLICATION_ID?.trim() || null;
 // MemberCapabilities bits (CAN_CREATE_CONTEXT | CAN_INVITE_MEMBERS).
 const DEFAULT_CAPABILITIES = 1 | 2; // = 3
 
-// Well-known context alias resolved by external tools (e.g. the MCP server).
-// Points at the active repo's context.
-const WORKSPACE_ALIAS = 'issue-tracker';
-
 export interface RepoEntry {
   contextId: string;
   /** Display name (context label) or a truncated id fallback. */
@@ -303,27 +299,6 @@ export function useWorkspace(): UseWorkspaceReturn {
     },
     [repoClient],
   );
-
-  // Register the well-known `issue-tracker` context alias for the active repo,
-  // so external tools can resolve it by name. Best-effort, one-shot per repo.
-  const aliasEnsuredRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!mero || !activeRepo || aliasEnsuredRef.current === activeRepo) return;
-    aliasEnsuredRef.current = activeRepo;
-    (async () => {
-      try {
-        const looked = await mero.admin.lookupContextAlias(WORKSPACE_ALIAS);
-        if (looked?.value) return;
-        await mero.admin.createContextAlias({ alias: WORKSPACE_ALIAS, contextId: activeRepo });
-      } catch {
-        try {
-          await mero.admin.createContextAlias({ alias: WORKSPACE_ALIAS, contextId: activeRepo });
-        } catch {
-          /* alias is a convenience only - never blocks the workspace */
-        }
-      }
-    })();
-  }, [mero, activeRepo]);
 
   // --- Mutations: create namespace / add repo / join / invite ---
   const [createNamespaceLoading, setCreateNamespaceLoading] = useState(false);

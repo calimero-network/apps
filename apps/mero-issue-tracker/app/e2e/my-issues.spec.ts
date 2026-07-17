@@ -3,7 +3,7 @@
 // `?assignee=me` filter must resolve the current identity through the same
 // alias map to match - not compare against the raw public key.
 import { test, expect } from '@playwright/test';
-import { loginViaHash, clearAuth, createWorkspace, createIssue, uniqueName } from './helpers';
+import { loginViaHash, clearAuth, createWorkspace, createIssue, uniqueName, openAliasModal } from './helpers';
 
 test.describe('my issues: assignee filter matches on the alias assignments actually store', () => {
   test.beforeEach(async ({ page }) => {
@@ -21,10 +21,7 @@ test.describe('my issues: assignee filter matches on the alias assignments actua
     // Set an alias for the current identity via the UI (the Members "set your
     // alias" flow - same as aliases.spec.ts).
     await page.getByTestId('nav-members').click();
-    const aliasInput = page.getByTestId('alias-input');
-    if (!(await aliasInput.isVisible({ timeout: 3_000 }).catch(() => false))) {
-      await page.getByTestId('set-alias-btn').click();
-    }
+    const aliasInput = await openAliasModal(page);
     await aliasInput.fill(alias);
     await page.getByTestId('alias-save-btn').click();
     await expect(aliasInput).toBeHidden({ timeout: 10_000 });

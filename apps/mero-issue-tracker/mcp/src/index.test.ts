@@ -9,6 +9,8 @@ import {
   getIssueShape,
   addCommentShape,
   assignIssueShape,
+  setStatusShape,
+  setPriorityShape,
   getFixPromptShape,
   listReposShape,
   createIssue,
@@ -16,6 +18,8 @@ import {
   getIssue,
   addComment,
   assignIssue,
+  setStatus,
+  setPriority,
   getFixPrompt,
   listRepos,
   createServer,
@@ -106,6 +110,20 @@ test('assign_issue schema requires issue_id and assignee', () => {
   const schema = z.object(assignIssueShape);
   assert.equal(schema.safeParse({ issue_id: 'i1' }).success, false);
   assert.equal(schema.safeParse({ issue_id: 'i1', assignee: 'bob' }).success, true);
+});
+
+test('set_status schema requires issue_id and an in-enum status', () => {
+  const schema = z.object(setStatusShape);
+  assert.equal(schema.safeParse({ issue_id: 'i1' }).success, false);
+  assert.equal(schema.safeParse({ issue_id: 'i1', status: 'Nope' }).success, false);
+  assert.equal(schema.safeParse({ issue_id: 'i1', status: 'In progress' }).success, true);
+});
+
+test('set_priority schema requires issue_id and an in-enum priority', () => {
+  const schema = z.object(setPriorityShape);
+  assert.equal(schema.safeParse({ issue_id: 'i1' }).success, false);
+  assert.equal(schema.safeParse({ issue_id: 'i1', priority: 'critical' }).success, false);
+  assert.equal(schema.safeParse({ issue_id: 'i1', priority: 'urgent' }).success, true);
 });
 
 test('get_fix_prompt schema requires a non-empty id', () => {
@@ -200,6 +218,32 @@ test('assignIssue calls set_assignee with issue_id and assignee', async () => {
   );
   assert.equal(params.method, 'set_assignee');
   assert.deepEqual(params.argsJson, { issue_id: 'issue-9', assignee: 'alice.near' });
+});
+
+test('setStatus calls set_status with issue_id and status', async () => {
+  let params: any;
+  await withFetch(
+    (async (_url: string | URL, init?: RequestInit) => {
+      params = JSON.parse(String(init?.body)).params;
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), { status: 200 });
+    }) as typeof fetch,
+    () => setStatus(cfg, target, { issue_id: 'issue-9', status: 'In progress' }),
+  );
+  assert.equal(params.method, 'set_status');
+  assert.deepEqual(params.argsJson, { issue_id: 'issue-9', status: 'In progress' });
+});
+
+test('setPriority calls set_priority with issue_id and priority', async () => {
+  let params: any;
+  await withFetch(
+    (async (_url: string | URL, init?: RequestInit) => {
+      params = JSON.parse(String(init?.body)).params;
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), { status: 200 });
+    }) as typeof fetch,
+    () => setPriority(cfg, target, { issue_id: 'issue-9', priority: 'urgent' }),
+  );
+  assert.equal(params.method, 'set_priority');
+  assert.deepEqual(params.argsJson, { issue_id: 'issue-9', priority: 'urgent' });
 });
 
 test('getFixPrompt fetches the issue then builds the filled prompt', async () => {

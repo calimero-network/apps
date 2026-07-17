@@ -59,13 +59,28 @@ pnpm app:codegen      # regenerate the typed client from the ABI (logic/crates/*
    pnpm app:dev        # vite dev server on http://localhost:5173
    ```
 
-3. Open the app, authenticate against your node, and it bootstraps a context
-   (registering the `issue-tracker` context alias) or joins one via an invite.
+3. Open the app, authenticate against your node, create or join a workspace
+   (namespace), then add a repo. Repo names come from "Add repo" - that's
+   the context alias the MCP server resolves by name.
 
-## MCP integration
+## MCP setup (team)
 
-The MCP server lets a coding agent drive the tracker. Add it to `.mcp.json` at
-the repo root (see `mcp/README.md` for the full env-var reference):
+The MCP server (`mcp/`) lets a coding agent (Claude Code) create, list, read,
+comment on, and assign issues, and fetch the fix prompt, by talking directly
+to your local node. This is the quickstart; `mcp/README.md` has the full
+tool and env-var reference.
+
+### Prerequisites
+
+- A local Calimero node running (`merod`), reachable at `CALIMERO_NODE_URL`.
+- The app installed on that node and a workspace (namespace) created or
+  joined through the app - the MCP server resolves repos inside it, it does
+  not create them.
+- At least one repo added via "Add repo" in the app.
+
+### Register the server
+
+Add to `.mcp.json` at the repo root:
 
 ```json
 {
@@ -75,17 +90,84 @@ the repo root (see `mcp/README.md` for the full env-var reference):
       "args": ["--filter", "issue-tracker-mcp", "start"],
       "env": {
         "CALIMERO_NODE_URL": "http://localhost:2428",
-        "TRACKER_CONTEXT": "issue-tracker"
+        "TRACKER_NAMESPACE": "my-team",
+        "TRACKER_REPO": "core"
       }
     }
   }
 }
 ```
 
-`TRACKER_CONTEXT` accepts the `issue-tracker` context alias or a raw context id.
-`CALIMERO_AUTH_TOKEN` and `TRACKER_EXECUTOR` are optional env vars, add them
-only if your node needs them (see `mcp/README.md`).
-A live round-trip check is in `mcp/scripts/smoke.mjs`.
+From another repo, point pnpm at this checkout with `-C`:
+
+```json
+{
+  "mcpServers": {
+    "issue-tracker": {
+      "command": "pnpm",
+      "args": ["-C", "/path/to/issue-tracker", "--filter", "issue-tracker-mcp", "start"],
+      "env": { "CALIMERO_NODE_URL": "http://localhost:2428", "TRACKER_NAMESPACE": "my-team" }
+    }
+  }
+}
+```
+
+Or register it with the CLI instead of hand-editing `.mcp.json`:
+
+```bash
+claude mcp add issue-tracker --scope project \
+  --env CALIMERO_NODE_URL=http://localhost:2428 \
+  --env TRACKER_NAMESPACE=my-team \
+  -- pnpm -C /path/to/issue-tracker --filter issue-tracker-mcp start
+```
+
+### Env vars
+
+| Var | Meaning |
+| --- | --- |
+| `CALIMERO_NODE_URL` | Base URL of your local node (default `http://localhost:2428`). |
+| `CALIMERO_AUTH_TOKEN` | Bearer token for a node with auth enabled. Get it from the app: open devtools console on the app tab and run `JSON.parse(localStorage.getItem('mero-tokens')).access_token`. It expires roughly hourly - re-run the one-liner and update `.mcp.json` when calls start 401ing. |
+| `TRACKER_NAMESPACE` | The workspace name as created/joined in the app (or its namespace id). |
+| `TRACKER_REPO` | Default repo name, used when a tool call omits `repo`. Optional - omit it if the workspace has (or will only ever have) one repo. |
+| `TRACKER_CONTEXT` | Advanced: pins a single context id/alias directly, bypassing namespace/repo resolution. Rarely needed. |
+
+### Tools
+
+- `create_issue` - file a new issue (`title`, `summary`, `impact`, `repro`,
+  `resolution_criteria`, optional `priority`/`labels`/`repo`).
+- `list_issues` - list issues, optionally filtered by `status`/`assignee`/`label`/`repo`.
+- `get_issue` - fetch one issue by `id`, optional `repo`.
+- `add_comment` - comment on `issue_id`, optional `repo`.
+- `assign_issue` - set the assignee on `issue_id`, optional `repo`.
+- `set_status` - move `issue_id` to a status (Open, In progress, Blocked, Done), optional `repo`.
+- `set_priority` - set the priority (low, medium, high, urgent) on `issue_id`, optional `repo`.
+- `get_fix_prompt` - render a ready-to-paste fix prompt for `id`, optional `repo`.
+- `list_repos` - list every repo in the namespace with its name and `repo_url`.
+
+Every tool above takes an optional `repo` param (the repo name). Pass it
+explicitly when managing more than one repo; without it the server falls
+back to `TRACKER_REPO`, then the namespace's only repo, else it errors.
+
+### Example prompts
+
+- "List the repos in the issue tracker."
+- "File an issue in repo core: login fails with a 500 when the session token is expired."
+- "Move ISS-42 to In progress and set its priority to high."
+- "Get the fix prompt for ISS-42."
+- "Show me all open, high-priority issues assigned to me in repo core."
+
+### Troubleshooting
+
+- **401 Unauthorized** - `CALIMERO_AUTH_TOKEN` is stale; re-copy it from
+  `mero-tokens` in the app's localStorage.
+- **"No repos found"** - either no repo has been added in the app yet, or
+  `TRACKER_NAMESPACE` doesn't match a real workspace name; the error lists
+  what repos/namespaces actually exist, use one of those.
+- **Title rejected as too long at 64 characters** - the logic caps issue
+  titles at 64 characters, but the error text says "label must be at most 64
+  characters" (title validation reuses the label validator); shorten the
+  title.
+- A live round-trip check against a real node is in `mcp/scripts/smoke.mjs`.
 
 ## Tests
 
