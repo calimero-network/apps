@@ -5,6 +5,7 @@ import {
   callMethod,
   createRepoLister,
   createTargetResolver,
+  decodeFunctionCallErrorData,
   listNamespaceRepos,
   pickRepo,
   resolveContextId,
@@ -99,6 +100,63 @@ test('callMethod throws RpcError on a jsonrpc-level error', async () => {
       return true;
     },
   );
+});
+
+test('callMethod decodes a FunctionCallError data byte array into the real guest message', async () => {
+  // The guest serializes its error as a JSON string, so the decoded bytes are
+  // themselves JSON-quoted - matches the real node's observed shape.
+  const bytes = JSON.stringify([...Buffer.from('"label must be at most 64 characters"', 'utf8')]);
+  await assert.rejects(
+    () =>
+      withFetch(
+        (async () =>
+          new Response(
+            JSON.stringify({
+              jsonrpc: '2.0',
+              id: 1,
+              error: { type: 'FunctionCallError', data: `the method call returned an error: ${bytes}` },
+            }),
+            { status: 200 },
+          )) as typeof fetch,
+        () => callMethod(baseConfig, { contextId: 'c', executorPublicKey: 'e' }, 'create_issue', {}),
+      ),
+    (err: unknown) => {
+      assert.ok(err instanceof RpcError);
+      assert.equal(err.message, 'label must be at most 64 characters');
+      return true;
+    },
+  );
+});
+
+test('callMethod falls back to the error type when data is not a decodable byte array', async () => {
+  await assert.rejects(
+    () =>
+      withFetch(
+        (async () =>
+          new Response(
+            JSON.stringify({ jsonrpc: '2.0', id: 1, error: { type: 'FunctionCallError', data: 'opaque' } }),
+            { status: 200 },
+          )) as typeof fetch,
+        () => callMethod(baseConfig, { contextId: 'c', executorPublicKey: 'e' }, 'create_issue', {}),
+      ),
+    /FunctionCallError/,
+  );
+});
+
+test('decodeFunctionCallErrorData unwraps a JSON-quoted guest message embedded in a Debug-formatted string', () => {
+  const bytes = [...Buffer.from('"boom"', 'utf8')];
+  assert.equal(decodeFunctionCallErrorData(`the method call returned an error: ${JSON.stringify(bytes)}`), 'boom');
+});
+
+test('decodeFunctionCallErrorData falls back to the raw decoded text when it is not JSON-quoted', () => {
+  const bytes = [...Buffer.from('boom', 'utf8')];
+  assert.equal(decodeFunctionCallErrorData(`the method call returned an error: ${JSON.stringify(bytes)}`), 'boom');
+});
+
+test('decodeFunctionCallErrorData returns undefined for non-string, absent, or non-array data', () => {
+  assert.equal(decodeFunctionCallErrorData(undefined), undefined);
+  assert.equal(decodeFunctionCallErrorData(42), undefined);
+  assert.equal(decodeFunctionCallErrorData('no brackets here'), undefined);
 });
 
 test('callMethod throws on non-2xx HTTP status', async () => {

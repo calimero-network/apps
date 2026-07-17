@@ -19,6 +19,8 @@ repo, else it errors listing what's available.
 - `get_issue` - `id`, optional `repo`.
 - `add_comment` - `issue_id`, `body`, optional `repo`.
 - `assign_issue` - `issue_id`, `assignee`, optional `repo`.
+- `set_status` - `issue_id`, `status` (`Open`/`In progress`/`Blocked`/`Done`), optional `repo`.
+- `set_priority` - `issue_id`, `priority` (`low`/`medium`/`high`/`urgent`), optional `repo`.
 - `get_fix_prompt` - `id`, optional `repo`. Renders a ready-to-paste fix
   prompt filled with the issue's sections plus the repo's `Repository:` line
   (`src/fixPrompt.ts`).

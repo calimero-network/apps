@@ -256,6 +256,38 @@ interface JsonRpcResponse {
   error?: { code?: number; message?: string; type?: string; data?: unknown };
 }
 
+/**
+ * A guest (WASM app) error has no top-level `message` - only `type:
+ * "FunctionCallError"` plus `data`, a Rust Debug-formatted string like
+ * "the method call returned an error: [108, 97, 98, 101, 108, ...]" (the
+ * error text's UTF-8 bytes as a decimal array, not JSON). Recover the real
+ * message so callers see it instead of the opaque "FunctionCallError" type.
+ */
+export function decodeFunctionCallErrorData(data: unknown): string | undefined {
+  if (typeof data !== 'string') return undefined;
+  const match = data.match(/\[[\d,\s]+\]/);
+  if (!match) return undefined;
+  try {
+    const bytes: unknown = JSON.parse(match[0]);
+    if (!Array.isArray(bytes) || bytes.length === 0 || !bytes.every((b) => Number.isInteger(b) && b >= 0 && b <= 255)) {
+      return undefined;
+    }
+    const text = Buffer.from(bytes as number[]).toString('utf8').trim();
+    if (!text) return undefined;
+    // The guest serializes its error as a JSON string, so the decoded bytes
+    // are themselves JSON-quoted (e.g. `"label must be..."`); unwrap it.
+    try {
+      const inner: unknown = JSON.parse(text);
+      if (typeof inner === 'string' && inner.trim()) return inner.trim();
+    } catch {
+      /* not JSON-wrapped - use the raw decoded text below */
+    }
+    return text;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Calls an app method on the node's /jsonrpc endpoint, mirroring the generated client's envelope. */
 export async function callMethod<T = unknown>(
   cfg: Config,
@@ -286,7 +318,8 @@ export async function callMethod<T = unknown>(
 
   const body = (await res.json()) as JsonRpcResponse;
   if (body.error) {
-    throw new RpcError(body.error.message ?? body.error.type ?? 'RPC error', body.error.code, body.error.data);
+    const decoded = body.error.type === 'FunctionCallError' ? decodeFunctionCallErrorData(body.error.data) : undefined;
+    throw new RpcError(decoded ?? body.error.message ?? body.error.type ?? 'RPC error', body.error.code, body.error.data);
   }
   const result = body.result;
   return (result && 'output' in result ? result.output : result) as T;
