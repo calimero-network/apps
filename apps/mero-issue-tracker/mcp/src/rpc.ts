@@ -83,7 +83,27 @@ export async function resolveNamespaceId(cfg: Config): Promise<string> {
   return match.namespaceId;
 }
 
-/** Lists the repos (aliased contexts) inside a namespace: each context's id plus its alias name. */
+// The app's legacy workspace bootstrap alias (removed); ignore leftovers from
+// older nodes so it never surfaces as a repo name.
+const RESERVED_ALIAS_NAMES = new Set(['issue-tracker']);
+
+/**
+ * The alias-list envelope has two shapes in the wild: mero-js's .d.ts type
+ * wraps entries as {data: {aliases: [{name, value}]}}, but the real node
+ * returns a flat map ({data: {aliasName: contextId, ...}}). Accept both.
+ */
+export function parseAliasEntries(json: unknown): Array<{ name: string; value: string }> {
+  const data = (json as { data?: unknown } | undefined)?.data;
+  if (data && typeof data === 'object' && Array.isArray((data as { aliases?: unknown }).aliases)) {
+    return (data as { aliases: Array<{ name: string; value: string }> }).aliases;
+  }
+  if (data && typeof data === 'object') {
+    return Object.entries(data as Record<string, string>).map(([name, value]) => ({ name, value }));
+  }
+  return [];
+}
+
+/** Lists the repos (aliased contexts) inside a namespace: each context's id plus its repo name. */
 export async function listNamespaceRepos(cfg: Config, namespaceId: string): Promise<NamespaceRepo[]> {
   const [contextsRes, aliasesRes] = await Promise.all([
     fetch(`${cfg.nodeUrl}/admin-api/groups/${encodeURIComponent(namespaceId)}/contexts`, { headers: headers(cfg) }),
@@ -95,14 +115,20 @@ export async function listNamespaceRepos(cfg: Config, namespaceId: string): Prom
   if (!aliasesRes.ok) {
     throw new Error(`Failed to list context aliases: admin API returned ${aliasesRes.status}`);
   }
-  const contextsJson = (await contextsRes.json()) as { data?: Array<{ contextId: string }> };
-  const aliasesJson = (await aliasesRes.json()) as { data?: { aliases?: Array<{ name: string; value: string }> } };
+  const contextsJson = (await contextsRes.json()) as { data?: Array<{ contextId: string; name?: string }> };
+  const aliasesJson = await aliasesRes.json();
   const contexts = contextsJson?.data ?? [];
-  const aliasByContextId = new Map((aliasesJson?.data?.aliases ?? []).map((a) => [a.value, a.name]));
+
+  // First non-reserved alias per context id, for contexts the group-entry has no name for.
+  const aliasNameByContextId = new Map<string, string>();
+  for (const a of parseAliasEntries(aliasesJson)) {
+    if (RESERVED_ALIAS_NAMES.has(a.name) || aliasNameByContextId.has(a.value)) continue;
+    aliasNameByContextId.set(a.value, a.name);
+  }
 
   const repos: NamespaceRepo[] = [];
   for (const c of contexts) {
-    const name = aliasByContextId.get(c.contextId);
+    const name = c.name?.trim() || aliasNameByContextId.get(c.contextId);
     if (name) repos.push({ contextId: c.contextId, name });
   }
   return repos;

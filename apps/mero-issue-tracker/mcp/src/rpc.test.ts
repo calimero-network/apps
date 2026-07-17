@@ -261,7 +261,7 @@ test('resolveNamespaceId throws a helpful error listing available namespaces whe
 // ---- listNamespaceRepos ----
 
 function reposFetch(
-  contexts: Array<{ contextId: string }>,
+  contexts: Array<{ contextId: string; name?: string }>,
   aliases: Array<{ name: string; value: string }>,
 ): typeof fetch {
   return (async (url: string | URL) => {
@@ -286,6 +286,56 @@ test('listNamespaceRepos joins contexts with their alias and drops unaliased con
     { contextId: 'ctx-1', name: 'frontend' },
     { contextId: 'ctx-2', name: 'backend' },
   ]);
+});
+
+test('listNamespaceRepos parses the real node flat-map alias shape', async () => {
+  const repos = await withFetch(
+    (async (url: string | URL) => {
+      const u = String(url);
+      if (u.includes('/contexts')) {
+        return new Response(JSON.stringify({ data: [{ contextId: 'ctx-1' }] }), { status: 200 });
+      }
+      if (u.includes('/alias/list/context')) {
+        return new Response(JSON.stringify({ data: { frontend: 'ctx-1' } }), { status: 200 });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }) as typeof fetch,
+    () => listNamespaceRepos(namespaceConfig, 'ns-1'),
+  );
+  assert.deepEqual(repos, [{ contextId: 'ctx-1', name: 'frontend' }]);
+});
+
+test('listNamespaceRepos prefers the group-entry name over the alias when both are present', async () => {
+  const repos = await withFetch(
+    reposFetch(
+      [{ contextId: 'ctx-1', name: 'core' }],
+      [{ name: 'stale-alias', value: 'ctx-1' }],
+    ),
+    () => listNamespaceRepos(namespaceConfig, 'ns-1'),
+  );
+  assert.deepEqual(repos, [{ contextId: 'ctx-1', name: 'core' }]);
+});
+
+test('listNamespaceRepos ignores the legacy issue-tracker bootstrap alias', async () => {
+  const repos = await withFetch(
+    reposFetch(
+      [{ contextId: 'ctx-1' }],
+      [{ name: 'issue-tracker', value: 'ctx-1' }],
+    ),
+    () => listNamespaceRepos(namespaceConfig, 'ns-1'),
+  );
+  assert.deepEqual(repos, []);
+});
+
+test('listNamespaceRepos dedupes when two aliases point at the same context', async () => {
+  const repos = await withFetch(
+    reposFetch(
+      [{ contextId: 'ctx-1' }],
+      [{ name: 'first', value: 'ctx-1' }, { name: 'second', value: 'ctx-1' }],
+    ),
+    () => listNamespaceRepos(namespaceConfig, 'ns-1'),
+  );
+  assert.deepEqual(repos, [{ contextId: 'ctx-1', name: 'first' }]);
 });
 
 test('listNamespaceRepos throws when the contexts fetch fails', async () => {
@@ -471,6 +521,31 @@ test('createTargetResolver rejects with a helpful error when the repo param does
     () => withFetch(fullNamespaceFetch(), () => target('nope')),
     /"nope" not found.*frontend.*backend/s,
   );
+});
+
+test('createTargetResolver resolves a repo param against the real node flat-map alias shape', async () => {
+  const target = createTargetResolver(namespaceConfig);
+  const impl = (async (url: string | URL) => {
+    const u = String(url);
+    if (u.includes('/identities-owned')) {
+      return new Response(JSON.stringify({ data: { identities: ['exec-1'] } }), { status: 200 });
+    }
+    if (u.endsWith('/admin-api/namespaces')) {
+      return new Response(JSON.stringify({ data: [{ namespaceId: 'ns-1', name: 'my-team' }] }), { status: 200 });
+    }
+    if (u.includes('/contexts')) {
+      return new Response(
+        JSON.stringify({ data: [{ contextId: 'ctx-1' }, { contextId: 'ctx-2' }] }),
+        { status: 200 },
+      );
+    }
+    if (u.includes('/alias/list/context')) {
+      return new Response(JSON.stringify({ data: { frontend: 'ctx-1', backend: 'ctx-2' } }), { status: 200 });
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  }) as typeof fetch;
+  const resolved = await withFetch(impl, () => target('backend'));
+  assert.deepEqual(resolved, { contextId: 'ctx-2', executorPublicKey: 'exec-1' });
 });
 
 test('createTargetResolver ignores the repo param when TRACKER_CONTEXT pins a context directly', async () => {

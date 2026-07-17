@@ -94,7 +94,10 @@ with the tracker context provisioned:
 
 ```bash
 CALIMERO_NODE_URL=http://localhost:2428 \
-TRACKER_CONTEXT=issue-tracker \
+TRACKER_CONTEXT=core \
 CALIMERO_AUTH_TOKEN=<token if the node enforces auth> \
 node scripts/smoke.mjs
 ```
+
+See the root README's "MCP setup (team)" section for a step-by-step guide to
+running this server against your team's node.
