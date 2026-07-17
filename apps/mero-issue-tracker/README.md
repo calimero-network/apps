@@ -80,14 +80,36 @@ tool and env-var reference.
 
 ### Register the server
 
-Add to `.mcp.json` at the repo root:
+The easiest way, no clone required - add to `.mcp.json` at the repo root:
+
+```json
+{
+  "mcpServers": {
+    "issue-tracker": {
+      "command": "npx",
+      "args": ["-y", "@calimero-network/mero-issue-tracker-mcp"],
+      "env": {
+        "CALIMERO_NODE_URL": "http://localhost:2428",
+        "TRACKER_NAMESPACE": "my-team",
+        "TRACKER_REPO": "core"
+      }
+    }
+  }
+}
+```
+
+This requires the package to be published to npm; see `mcp/README.md` for
+the publish workflow.
+
+If you're contributing to this repo (or want to run an unpublished build),
+run it from source instead:
 
 ```json
 {
   "mcpServers": {
     "issue-tracker": {
       "command": "pnpm",
-      "args": ["--filter", "issue-tracker-mcp", "start"],
+      "args": ["--filter", "@calimero-network/mero-issue-tracker-mcp", "start"],
       "env": {
         "CALIMERO_NODE_URL": "http://localhost:2428",
         "TRACKER_NAMESPACE": "my-team",
@@ -105,7 +127,7 @@ From another repo, point pnpm at this checkout with `-C`:
   "mcpServers": {
     "issue-tracker": {
       "command": "pnpm",
-      "args": ["-C", "/path/to/issue-tracker", "--filter", "issue-tracker-mcp", "start"],
+      "args": ["-C", "/path/to/issue-tracker", "--filter", "@calimero-network/mero-issue-tracker-mcp", "start"],
       "env": { "CALIMERO_NODE_URL": "http://localhost:2428", "TRACKER_NAMESPACE": "my-team" }
     }
   }
@@ -118,7 +140,7 @@ Or register it with the CLI instead of hand-editing `.mcp.json`:
 claude mcp add issue-tracker --scope project \
   --env CALIMERO_NODE_URL=http://localhost:2428 \
   --env TRACKER_NAMESPACE=my-team \
-  -- pnpm -C /path/to/issue-tracker --filter issue-tracker-mcp start
+  -- pnpm -C /path/to/issue-tracker --filter @calimero-network/mero-issue-tracker-mcp start
 ```
 
 ### Env vars
@@ -172,8 +194,8 @@ back to `TRACKER_REPO`, then the namespace's only repo, else it errors.
 ## Tests
 
 ```bash
-pnpm --filter ./app test               # app unit tests (vitest)
-pnpm --filter issue-tracker-mcp test   # MCP server tests (node:test)
+pnpm --filter ./app test                                          # app unit tests (vitest)
+pnpm --filter @calimero-network/mero-issue-tracker-mcp test       # MCP server tests (node:test)
 ```
 
 End-to-end (Playwright) spins up merod nodes, installs the bundle, and drives
