@@ -23,8 +23,9 @@ const EMPTY_FILTERS: Filters = { status: '', priority: '', assignee: '', label: 
 /**
  * Tracker root: owns workspace resolution (namespace + repo), the issue data
  * hook scoped to the active repo, filter state, and every modal. Onboarding is
- * explicit: no namespaces -> full-pane empty state; a namespace with no repo ->
- * add-repo prompt; a member with no name -> blocking alias gate.
+ * explicit: no active namespace -> full-pane empty state (with a picker if
+ * namespaces exist); a namespace with no repo -> add-repo prompt; a member
+ * with no name -> blocking alias gate.
  */
 export default function AppPage(): React.ReactElement {
   const { contextIdentity } = useMero();
@@ -153,11 +154,14 @@ export default function AppPage(): React.ReactElement {
     </>
   );
 
-  // No namespaces for this app yet (and none arriving via SSO): onboarding.
-  if (ws.namespaces.length === 0 && !ws.activeNs && !ws.loading) {
+  // No active namespace (none yet, or a stale/invalid prior choice): never
+  // silently enter one. Onboarding also offers a picker when namespaces exist.
+  if (!ws.activeNs && !ws.loading) {
     return (
       <>
         <NsEmptyState
+          namespaces={ws.namespaces}
+          onSelect={ws.selectNamespace}
           onCreate={() => setShowCreateNs(true)}
           onJoin={() => setShowJoin(true)}
         />
