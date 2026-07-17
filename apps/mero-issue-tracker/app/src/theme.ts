@@ -106,6 +106,10 @@ export const tokens = {
     low: '#6B707B',
     done: '#7FC96B',
     logBg: '#0A0B0D',
+    // Semantic destructive colour (delete/remove). A muted red, distinct from
+    // the green accent; `dangerBorder` is its translucent hairline variant.
+    danger: '#E5695F',
+    dangerBorder: 'rgba(229,105,95,0.32)',
   },
   radius: '6px',
   radiusSm: '4px',

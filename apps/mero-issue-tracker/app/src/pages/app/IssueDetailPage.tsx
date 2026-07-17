@@ -14,6 +14,7 @@ import AvatarGlyph from '../../components/AvatarGlyph';
 import LabelChip from '../../components/LabelChip';
 import { SelectMenu } from '../../components/Dropdown';
 import { IconBack, IconAgent, IconCopy } from '../../components/icons';
+import { Overlay, Dialog, Close, Actions, SecondaryBtn } from '../../components/modalKit';
 import { useAppCtx } from './appContext';
 
 // "now" already reads as present tense; only older stamps take the " ago" suffix.
@@ -34,6 +35,8 @@ export default function IssueDetailPage(): React.ReactElement {
   const [newLabel, setNewLabel] = useState('');
   const [addingLabel, setAddingLabel] = useState(false);
   const [commentBody, setCommentBody] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Reload the issue + comment thread on mount and on every board refresh so
   // remote edits appear live (mirrors the previous drawer behaviour).
@@ -92,6 +95,21 @@ export default function IssueDetailPage(): React.ReactElement {
       await navigator.clipboard.writeText(buildFixPrompt(issue, repoUrl));
       toast.show({ variant: 'success', description: 'Prompt copied' });
     });
+  };
+  // Only the creator may delete (server enforces it too); mirrors the comment gate.
+  const isCreator = !!currentUser && issue.created_by === currentUser;
+  const runDelete = async () => {
+    setDeleting(true);
+    try {
+      await data.deleteIssue(issue.id);
+      setConfirmDelete(false);
+      navigate(APP_ROUTE);
+      toast.show({ variant: 'success', description: 'Issue deleted' });
+    } catch (err) {
+      toast.show({ variant: 'error', description: describeError(err) });
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -259,7 +277,27 @@ export default function IssueDetailPage(): React.ReactElement {
           <button className="copy" data-testid="action-copy_fix_prompt" onClick={copyFixPrompt}><IconCopy /> Copy fix prompt</button>
           <div className="hint">paste into your Claude Code session</div>
         </AgentCard>
+
+        {isCreator && (
+          <DeleteAction>
+            <button type="button" data-testid="action-delete_issue" onClick={() => setConfirmDelete(true)}>Delete issue</button>
+          </DeleteAction>
+        )}
       </Props>
+
+      {confirmDelete && (
+        <Overlay onClick={() => !deleting && setConfirmDelete(false)}>
+          <Dialog onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="issue-delete-title">
+            <Close onClick={() => !deleting && setConfirmDelete(false)} aria-label="Close">×</Close>
+            <h3 id="issue-delete-title">Delete issue</h3>
+            <p className="sub">Delete "{issue.title}"? This also removes its comments and cannot be undone.</p>
+            <Actions>
+              <SecondaryBtn onClick={() => setConfirmDelete(false)} disabled={deleting}>Cancel</SecondaryBtn>
+              <DangerBtn data-testid="confirm-delete_issue" onClick={runDelete} disabled={deleting}>Delete</DangerBtn>
+            </Actions>
+          </Dialog>
+        </Overlay>
+      )}
     </Wrap>
   );
 }
@@ -446,4 +484,22 @@ const AgentCard = styled.div`
 const Missing = styled.div`
   padding: 40px; color: ${t.color.text2};
   .back { display: inline-flex; align-items: center; gap: 6px; color: ${t.color.text3}; margin-bottom: 20px; }
+`;
+/* Quiet destructive control, pinned to the bottom of the rail behind a hairline. */
+const DeleteAction = styled.div`
+  margin-top: 14px; padding-top: 14px; border-top: 1px solid ${t.color.border};
+  button {
+    width: 100%; border-radius: ${t.radius}; border: 1px solid ${t.color.dangerBorder};
+    background: transparent; color: ${t.color.danger}; font-size: 12.5px; font-weight: 500;
+    padding: 6px 11px; cursor: pointer; transition: background 150ms ease-out, border-color 150ms ease-out;
+    &:hover { background: rgba(229,105,95,0.08); border-color: ${t.color.danger}; }
+  }
+`;
+const DangerBtn = styled.button`
+  min-width: 120px; display: inline-flex; align-items: center; justify-content: center;
+  padding: 10px 18px; font-size: 13px; font-weight: 600; border-radius: ${t.radius}; cursor: pointer;
+  color: #fff; background: ${t.color.danger}; border: 1px solid transparent;
+  transition: background 0.15s, border-color 0.15s;
+  &:hover:not(:disabled) { background: #ef7b72; }
+  &:disabled { opacity: 0.6; cursor: default; }
 `;

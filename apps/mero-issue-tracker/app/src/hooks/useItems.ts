@@ -59,6 +59,7 @@ export interface UseIssuesReturn {
   addLabel: (issueId: string, label: string) => Promise<void>;
   removeLabel: (issueId: string, label: string) => Promise<void>;
   getIssue: (issueId: string) => Promise<IssueDetail>;
+  deleteIssue: (issueId: string) => Promise<void>;
   addComment: (issueId: string, body: string) => Promise<void>;
   editComment: (commentId: string, newBody: string) => Promise<void>;
   deleteComment: (commentId: string) => Promise<void>;
@@ -233,6 +234,15 @@ export function useIssues({
     [client],
   );
 
+  const deleteIssue = useCallback(
+    async (issueId: string) => {
+      if (!client) return;
+      await client.deleteIssue({ issue_id: issueId });
+      await refresh();
+    },
+    [client, refresh],
+  );
+
   const addComment = useCallback(
     async (issueId: string, body: string) => {
       if (!client) return;
@@ -278,6 +288,7 @@ export function useIssues({
     addLabel,
     removeLabel,
     getIssue,
+    deleteIssue,
     addComment,
     editComment,
     deleteComment,
