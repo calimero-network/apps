@@ -4,10 +4,11 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { tokens as t } from '../theme';
 import { APP_ROUTE } from '../config';
 import AvatarGlyph from './AvatarGlyph';
+import { SelectMenu } from './Dropdown';
 import type { RepoEntry } from '../hooks/useWorkspace';
 import type { Namespace } from '@calimero-network/mero-react';
 import {
-  LogoMark, ChevronDown, IconAllIssues, IconMyIssues, IconBoard, IconMembers,
+  IconAllIssues, IconMyIssues, IconBoard, IconMembers,
 } from './icons';
 
 export interface SidebarProps {
@@ -15,6 +16,7 @@ export interface SidebarProps {
   membersCount: number;
   currentUser: string;
   currentUserLabel: string;
+  currentUserHasAlias: boolean;
   namespaces: Namespace[];
   activeNs: string | null;
   onSelectNamespace: (id: string) => void;
@@ -35,6 +37,7 @@ export default function Sidebar({
   membersCount,
   currentUser,
   currentUserLabel,
+  currentUserHasAlias,
   namespaces,
   activeNs,
   onSelectNamespace,
@@ -58,22 +61,16 @@ export default function Sidebar({
     <Aside>
       <Switcher>
         <div className="ns-row">
-          <LogoMark />
-          <select
-            className="ns-select"
-            data-testid="ns-switcher"
-            aria-label="Switch workspace"
+          <AvatarGlyph seed={activeName || 'workspace'} size="md" title={activeName || undefined} />
+          <SelectMenu
+            className="ns-ctl"
+            testId="ns-switcher"
+            ariaLabel="Switch workspace"
+            placeholder="Pick a workspace"
             value={activeNs ?? ''}
-            onChange={(e) => { if (e.target.value) onSelectNamespace(e.target.value); }}
-          >
-            {!activeNs && <option value="" disabled>Pick a workspace</option>}
-            {namespaces.map((n) => (
-              <option key={n.namespaceId} value={n.namespaceId}>
-                {n.name || n.namespaceId.slice(0, 8)}
-              </option>
-            ))}
-          </select>
-          <span className="ns-chevron"><ChevronDown size={12} /></span>
+            options={namespaces.map((n) => ({ value: n.namespaceId, label: n.name || n.namespaceId.slice(0, 8) }))}
+            onChange={(v) => { if (v) onSelectNamespace(v); }}
+          />
         </div>
         <div className="ns-actions">
           <button data-testid="ns-create-btn" onClick={onNewNamespace}>New workspace</button>
@@ -133,7 +130,11 @@ export default function Sidebar({
           <span>{membersCount} {membersCount === 1 ? 'peer' : 'peers'} <span className="mid">·</span> synced</span>
         </div>
         <div className="me-row">
-          <AvatarGlyph seed={currentUser || 'me'} size="md" />
+          <AvatarGlyph
+            seed={currentUserHasAlias ? currentUserLabel : (currentUser || 'me')}
+            size="md"
+            keyFallback={!!currentUser && !currentUserHasAlias}
+          />
           <span className="me-meta">
             <span className="me-name">You</span>
             <span className="me-key" data-testid="current-identity-label">{currentUserLabel || '-'}</span>
@@ -158,15 +159,15 @@ const Switcher = styled.div`
   padding: 10px 10px 8px; margin: 2px 4px 0;
   .ns-row {
     display: flex; align-items: center; gap: 9px;
-    padding: 6px 8px; border-radius: ${t.radius};
-    &:hover { background: rgba(255,255,255,0.04); }
+    padding: 4px 4px; border-radius: ${t.radius};
   }
-  .ns-select {
-    flex: 1 1 auto; min-width: 0; appearance: none; background: transparent; border: none; outline: none;
-    color: ${t.color.text}; font-family: inherit; font-weight: 600; font-size: 13px; letter-spacing: -0.01em; cursor: pointer;
-    option { background: ${t.color.panel}; color: ${t.color.text}; }
+  .ns-ctl { flex: 1 1 auto; min-width: 0; }
+  .ns-ctl > button {
+    background: transparent; border: none; padding: 6px 6px; border-radius: ${t.radius};
+    color: ${t.color.text}; font-weight: 600; font-size: 13px; letter-spacing: -0.01em;
   }
-  .ns-chevron { color: ${t.color.text3}; display: inline-flex; pointer-events: none; }
+  .ns-ctl > button:hover { background: rgba(255,255,255,0.04); }
+  .ns-ctl > button:focus-visible { background: rgba(255,255,255,0.06); }
   .ns-actions { display: flex; gap: 6px; padding: 6px 4px 0; }
   .ns-actions button {
     flex: 1 1 auto; font-size: 11.5px; font-weight: 600; color: ${t.color.text2};

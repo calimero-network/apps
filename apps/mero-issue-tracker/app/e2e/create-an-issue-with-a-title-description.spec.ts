@@ -73,6 +73,6 @@ test.describe(`team member or script: create an issue with a title, the four req
 
     // Open the detail page - a freshly created issue's status control reads Open.
     await card.click();
-    await expect(page.getByTestId('action-set_status')).toHaveValue('Open');
+    await expect(page.getByTestId('action-set_status')).toContainText('Open');
   });
 });

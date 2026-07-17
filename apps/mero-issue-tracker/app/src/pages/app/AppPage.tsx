@@ -124,6 +124,7 @@ export default function AppPage(): React.ReactElement | null {
     membersCount,
     currentUser,
     currentUserLabel: currentUser ? aliases.resolve(currentUser) : '',
+    currentUserHasAlias: currentUser ? aliases.hasAlias(currentUser) : false,
     namespaces: ws.namespaces,
     activeNs: ws.activeNs,
     onSelectNamespace: ws.selectNamespace,

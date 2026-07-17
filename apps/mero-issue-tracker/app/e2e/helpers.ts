@@ -321,7 +321,11 @@ export async function createIssue(page: Page, fields: NewIssueFields): Promise<v
   await page.getByTestId('field-impact').fill(fields.impact ?? uniqueName('impact'));
   await page.getByTestId('field-repro').fill(fields.repro ?? uniqueName('repro'));
   await page.getByTestId('field-resolution_criteria').fill(fields.resolutionCriteria ?? uniqueName('resolution'));
-  if (fields.priority) await page.getByTestId('field-priority').selectOption(fields.priority);
+  if (fields.priority) {
+    await page.getByTestId('field-priority').click();
+    // Case-insensitive: the styled option capitalises its label via CSS.
+    await page.getByRole('listbox').getByRole('option', { name: fields.priority }).click();
+  }
   if (fields.labels) await page.getByTestId('field-labels').fill(fields.labels);
   await page.getByTestId('action-create_issue').click();
 }
