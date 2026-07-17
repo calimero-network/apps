@@ -7,9 +7,9 @@
 import raw from '../../studio.config.json';
 
 export interface ServiceEntry {
-  /** Stable id from the spec. Keys the services map; used by the frontend to
-   *  look up a service's wire name. NOT positionally inferred. */
-  id: string;
+  /** Stable id from the spec, when present. Keys `requireService` lookups for
+   *  multi-service apps; single-service apps address the primary positionally. */
+  id?: string;
   /** Wire name passed to `mero.admin.createContext({ serviceName })` and the
    *  bundle manifest service entry. Must match the Cargo crate's domain
    *  identity. The generated client lives at `src/api/<name>/`. */
@@ -22,6 +22,8 @@ interface StudioConfig {
   appName: string;
   appVersion: string;
   package: string;
+  /** Deployed frontend URL baked into the bundle manifest at build time. */
+  frontendUrl?: string;
   metadata: {
     name: string;
     description: string;
