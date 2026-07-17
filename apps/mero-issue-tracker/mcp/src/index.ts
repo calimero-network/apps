@@ -74,6 +74,11 @@ export const setPriorityShape = {
   repo: repoParam,
 };
 
+export const deleteIssueShape = {
+  issue_id: z.string().min(1, 'issue_id is required'),
+  repo: repoParam,
+};
+
 export const getFixPromptShape = {
   id: z.string().min(1, 'id is required'),
   repo: repoParam,
@@ -96,6 +101,7 @@ type AddCommentArgs = z.infer<z.ZodObject<typeof addCommentShape>>;
 type AssignIssueArgs = z.infer<z.ZodObject<typeof assignIssueShape>>;
 type SetStatusArgs = z.infer<z.ZodObject<typeof setStatusShape>>;
 type SetPriorityArgs = z.infer<z.ZodObject<typeof setPriorityShape>>;
+type DeleteIssueArgs = z.infer<z.ZodObject<typeof deleteIssueShape>>;
 type GetFixPromptArgs = z.infer<z.ZodObject<typeof getFixPromptShape>>;
 type AddRepoArgs = z.infer<z.ZodObject<typeof addRepoShape>>;
 
@@ -149,6 +155,10 @@ export function setStatus(cfg: Config, target: ResolvedTarget, args: SetStatusAr
 
 export function setPriority(cfg: Config, target: ResolvedTarget, args: SetPriorityArgs) {
   return callMethod(cfg, target, 'set_priority', { issue_id: args.issue_id, priority: args.priority });
+}
+
+export function deleteIssue(cfg: Config, target: ResolvedTarget, args: DeleteIssueArgs) {
+  return callMethod(cfg, target, 'delete_issue', { issue_id: args.issue_id });
 }
 
 export async function getFixPrompt(cfg: Config, target: ResolvedTarget, args: GetFixPromptArgs) {
@@ -325,6 +335,23 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
       try {
         await setPriority(cfg, await target(args.repo), args);
         return textResult({ ok: true });
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    'delete_issue',
+    {
+      description:
+        "Delete an issue. Only the issue's author may delete it; cascade-removes its comments and labels.",
+      inputSchema: deleteIssueShape,
+    },
+    async (args) => {
+      try {
+        await deleteIssue(cfg, await target(args.repo), args);
+        return textResult({ deleted: args.issue_id });
       } catch (err) {
         return errorResult(err);
       }
