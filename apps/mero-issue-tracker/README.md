@@ -78,7 +78,36 @@ tool and env-var reference.
   not create them.
 - At least one repo added via "Add repo" in the app.
 
-### Register the server
+### Fastest setup: let Claude Code do it
+
+Paste this prompt into a Claude Code session and it will walk you through the
+token and register the server for you (nothing to clone, nothing to build):
+
+```text
+Set up the mero-issue-tracker MCP server for me.
+
+It is on npm as @calimero-network/mero-issue-tracker-mcp and runs over stdio;
+register it with `claude mcp add issue-tracker --scope user -- npx -y
+@calimero-network/mero-issue-tracker-mcp`, passing these as --env values:
+
+- CALIMERO_NODE_URL: my local node's URL (ask me; it is often
+  http://localhost:2428, but confirm the port).
+- TRACKER_NAMESPACE: my workspace name exactly as it appears in the app's
+  workspace switcher (ask me).
+- TRACKER_REPO: my default repo name (ask me; optional, skip if I only have
+  one repo).
+- CALIMERO_AUTH_TOKEN: my node access token. To get it, tell me to open the
+  app tab, open the browser devtools console, and run:
+  JSON.parse(localStorage.getItem('mero-tokens')).access_token
+  then paste the result back to you. This token expires about hourly; if tools
+  later return 401, re-run `claude mcp add` (or `claude mcp remove issue-tracker
+  -s user` then add again) with a fresh token.
+
+After registering, run `claude mcp get issue-tracker` and confirm it shows
+Connected, then list the repos in the tracker to verify it works end to end.
+```
+
+### Register the server manually
 
 The easiest way, no clone required - add to `.mcp.json` at the repo root:
 
@@ -106,6 +135,7 @@ claude mcp add issue-tracker --scope project \
   --env CALIMERO_NODE_URL=http://localhost:2428 \
   --env TRACKER_NAMESPACE=my-team \
   --env TRACKER_REPO=core \
+  --env CALIMERO_AUTH_TOKEN=<token from the app, see env table below> \
   -- npx -y @calimero-network/mero-issue-tracker-mcp
 ```
 
