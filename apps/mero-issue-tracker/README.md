@@ -1,4 +1,4 @@
-# issue-tracker
+# mero-issue-tracker
 
 A peer-to-peer issue tracker built on [Calimero](https://calimero.network).
 The board and every issue live in a Calimero context and replicate directly
@@ -164,7 +164,7 @@ back to `TRACKER_REPO`, then the namespace's only repo, else it errors.
   `TRACKER_NAMESPACE` doesn't match a real workspace name; the error lists
   what repos/namespaces actually exist, use one of those.
 - **Title rejected as too long at 64 characters** - the logic caps issue
-  titles at 64 characters, but the error text says "label must be at most 64
+  titles at 64 characters, but the error text says "invalid input: label must be at most 64
   characters" (title validation reuses the label validator); shorten the
   title.
 - A live round-trip check against a real node is in `mcp/scripts/smoke.mjs`.
