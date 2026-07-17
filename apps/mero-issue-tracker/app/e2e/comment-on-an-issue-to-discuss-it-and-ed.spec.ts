@@ -76,7 +76,10 @@ test.describe(`team member: comment on an issue to discuss it, and edit or delet
     // Author A sees edit/delete controls on their own comment.
     const commentA = pageA.getByTestId('item-comment').filter({ hasText: body });
     await expect(commentA).toBeVisible({ timeout: 5_000 });
-    await expect(commentA.getByTestId('action-delete_comment')).toBeVisible();
+    // The author's own controls appear once authorship resolves against the
+    // executor identity, which can trail the comment render by a beat - wait it
+    // out rather than snapshot it.
+    await expect(commentA.getByTestId('action-delete_comment')).toBeVisible({ timeout: 15_000 });
 
     // Member B (a different author) sees the comment but NOT the edit/delete
     // controls — authorship gates mutation, so B's attempts are rejected.
