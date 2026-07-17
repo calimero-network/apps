@@ -1,19 +1,40 @@
 {
-  "name": "issue-tracker-mcp",
+  "name": "@calimero-network/mero-issue-tracker-mcp",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
+  "bin": {
+    "mero-issue-tracker-mcp": "dist/index.js"
+  },
+  "files": ["dist"],
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/calimero-network/issue-tracker.git",
+    "directory": "mcp"
+  },
   "scripts": {
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/*.test.ts"
+    "test": "tsx --test src/*.test.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/commit-analyzer": "^13.0.0",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^9.2.6",
+    "@semantic-release/npm": "^12.0.1",
+    "@semantic-release/release-notes-generator": "^12.1.0",
     "@types/node": "^25.6.0",
+    "conventional-changelog-conventionalcommits": "^7.0.0",
+    "semantic-release": "^24.2.9",
     "tsx": "^4.19.2",
     "typescript": "^5.7.0"
   }

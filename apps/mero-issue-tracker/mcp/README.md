@@ -1,4 +1,4 @@
-# issue-tracker-mcp
+# @calimero-network/mero-issue-tracker-mcp
 
 A stdio MCP server that lets Claude Code manage issues in this app's tracker
 by calling the local Calimero node's `/jsonrpc` and `/admin-api` endpoints
@@ -41,19 +41,20 @@ repo, else it errors listing what's available.
 ## Run it
 
 ```bash
-pnpm --filter issue-tracker-mcp start
+pnpm --filter @calimero-network/mero-issue-tracker-mcp start
 ```
 
 ## Wire it into Claude Code
 
-Add to `.mcp.json` at the repo root:
+The primary path is `npx`, no clone required (needs the package published to
+npm - see "Publishing" below):
 
 ```json
 {
   "mcpServers": {
     "issue-tracker": {
-      "command": "pnpm",
-      "args": ["--filter", "issue-tracker-mcp", "start"],
+      "command": "npx",
+      "args": ["-y", "@calimero-network/mero-issue-tracker-mcp"],
       "env": {
         "CALIMERO_NODE_URL": "http://localhost:2428",
         "TRACKER_NAMESPACE": "my-team",
@@ -64,10 +65,28 @@ Add to `.mcp.json` at the repo root:
 }
 ```
 
-`pnpm --filter issue-tracker-mcp start` runs the package's own `start`
-script (`tsx src/index.ts`, using the `tsx` installed in `mcp/`'s
-`node_modules`), so it works from the repo root without a global or
-unpinned `npx` install.
+If you're contributing to this repo, run it from source instead:
+
+```json
+{
+  "mcpServers": {
+    "issue-tracker": {
+      "command": "pnpm",
+      "args": ["--filter", "@calimero-network/mero-issue-tracker-mcp", "start"],
+      "env": {
+        "CALIMERO_NODE_URL": "http://localhost:2428",
+        "TRACKER_NAMESPACE": "my-team",
+        "TRACKER_REPO": "frontend"
+      }
+    }
+  }
+}
+```
+
+`pnpm --filter @calimero-network/mero-issue-tracker-mcp start` runs the
+package's own `start` script (`tsx src/index.ts`, using the `tsx` installed
+in `mcp/`'s `node_modules`), so it works from the repo root without a global
+install.
 
 `TRACKER_REPO` is only a default - pass `repo` on individual tool calls to
 target a different repo in the same namespace without restarting the server.
@@ -80,9 +99,24 @@ both are optional (see the table above).
 ## Tests
 
 ```bash
-pnpm --filter issue-tracker-mcp test       # node:test, mocked fetch
-pnpm --filter issue-tracker-mcp typecheck
+pnpm --filter @calimero-network/mero-issue-tracker-mcp test       # node:test, mocked fetch
+pnpm --filter @calimero-network/mero-issue-tracker-mcp typecheck
 ```
+
+## Publishing
+
+`.github/workflows/publish-mcp.yml` releases this package automatically:
+merging a conventional commit that touches `mcp/` into `main` runs
+semantic-release, which bumps the version, writes `CHANGELOG.md`, tags the
+release (`mero-issue-tracker-mcp-v<version>`), and publishes to npm via
+trusted publishing (GitHub Actions OIDC - no token secret). It can also be
+triggered manually from the Actions tab. Commit types map to release types
+per `mcp/.releaserc.json` (`feat` = minor, `fix`/`chore`/`docs`/`refactor`/
+`perf` = patch, `test`/`build`/`ci` = no release).
+
+This requires the package's trusted publisher to be configured on
+npmjs.com to point at this repo and the `publish-mcp.yml` workflow filename
+before the first publish will work.
 
 ## Live smoke test
 
