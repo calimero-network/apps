@@ -22,6 +22,42 @@ Two extra surfaces make it agent-friendly:
   server that lets an agent create, list, read, comment on, and assign issues,
   and fetch the fix prompt, by talking to a local node.
 
+## Quickstart: use it from Claude Code
+
+Most people just want to file and manage issues from a Claude Code session.
+You need a running Calimero node with the app installed and a workspace joined
+(see the app), then paste this prompt into Claude Code - it gets your token and
+registers the MCP server for you:
+
+```text
+Set up the mero-issue-tracker MCP server for me.
+
+It is on npm as @calimero-network/mero-issue-tracker-mcp and runs over stdio;
+register it with `claude mcp add issue-tracker --scope user -- npx -y
+@calimero-network/mero-issue-tracker-mcp`, passing these as --env values:
+
+- CALIMERO_NODE_URL: my local node's URL (ask me; it is often
+  http://localhost:2428, but confirm the port).
+- TRACKER_NAMESPACE: my workspace name exactly as it appears in the app's
+  workspace switcher (ask me).
+- TRACKER_REPO: my default repo name (ask me; optional, skip if I only have
+  one repo).
+- CALIMERO_AUTH_TOKEN: my node access token. To get it, tell me to open the
+  app tab, open the browser devtools console, and run:
+  JSON.parse(localStorage.getItem('mero-tokens')).access_token
+  then paste the result back to you. This token expires about hourly; if tools
+  later return 401, re-run `claude mcp add` (or `claude mcp remove issue-tracker
+  -s user` then add again) with a fresh token.
+
+After registering, run `claude mcp get issue-tracker` and confirm it shows
+Connected, then list the repos in the tracker to verify it works end to end.
+```
+
+Then just talk to it: "list the repos in the tracker", "file an issue in repo
+core: ...", "move ISS-3 to In progress", "get the fix prompt for ISS-3". Full
+tool and env reference is under [MCP setup](#mcp-setup) below and in
+`mcp/README.md`.
+
 ## Layout
 
 | Path   | What |
@@ -63,7 +99,7 @@ pnpm app:codegen      # regenerate the typed client from the ABI (logic/crates/*
    (namespace), then add a repo. Repo names come from "Add repo" - that's
    the context alias the MCP server resolves by name.
 
-## MCP setup (team)
+## MCP setup
 
 The MCP server (`mcp/`) lets a coding agent (Claude Code) create, list, read,
 comment on, and assign issues, and fetch the fix prompt, by talking directly
@@ -80,32 +116,9 @@ tool and env-var reference.
 
 ### Fastest setup: let Claude Code do it
 
-Paste this prompt into a Claude Code session and it will walk you through the
-token and register the server for you (nothing to clone, nothing to build):
-
-```text
-Set up the mero-issue-tracker MCP server for me.
-
-It is on npm as @calimero-network/mero-issue-tracker-mcp and runs over stdio;
-register it with `claude mcp add issue-tracker --scope user -- npx -y
-@calimero-network/mero-issue-tracker-mcp`, passing these as --env values:
-
-- CALIMERO_NODE_URL: my local node's URL (ask me; it is often
-  http://localhost:2428, but confirm the port).
-- TRACKER_NAMESPACE: my workspace name exactly as it appears in the app's
-  workspace switcher (ask me).
-- TRACKER_REPO: my default repo name (ask me; optional, skip if I only have
-  one repo).
-- CALIMERO_AUTH_TOKEN: my node access token. To get it, tell me to open the
-  app tab, open the browser devtools console, and run:
-  JSON.parse(localStorage.getItem('mero-tokens')).access_token
-  then paste the result back to you. This token expires about hourly; if tools
-  later return 401, re-run `claude mcp add` (or `claude mcp remove issue-tracker
-  -s user` then add again) with a fresh token.
-
-After registering, run `claude mcp get issue-tracker` and confirm it shows
-Connected, then list the repos in the tracker to verify it works end to end.
-```
+Paste the prompt from [Quickstart](#quickstart-use-it-from-claude-code) into a
+Claude Code session; it collects your token and registers the server for you.
+Prefer to do it by hand? See below.
 
 ### Register the server manually
 
