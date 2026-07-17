@@ -422,6 +422,25 @@ async function dismissAliasNudge(page: Page) {
   await input.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => {});
 }
 
+/**
+ * Open the Members "set your alias" modal, whether it auto-opens as a
+ * one-shot nudge or needs the explicit button. Returns its input locator,
+ * already visible. Same `waitFor`-over-`isVisible` reasoning as
+ * dismissAliasNudge: a snapshot check races the on-mount nudge effect.
+ */
+export async function openAliasModal(page: Page) {
+  const input = page.getByTestId('alias-input');
+  const autoOpened = await input
+    .waitFor({ state: 'visible', timeout: 8_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!autoOpened) {
+    await page.getByTestId('set-alias-btn').click();
+    await input.waitFor({ state: 'visible', timeout: 10_000 });
+  }
+  return input;
+}
+
 /** testid-or-text union locator (first match; tolerant of legacy apps). */
 function ctl(page: Page, testid: string, text: string) {
   return page.locator(`[data-testid="${testid}"], button:has-text("${text}")`).first();
