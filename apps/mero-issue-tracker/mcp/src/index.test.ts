@@ -10,12 +10,14 @@ import {
   addCommentShape,
   assignIssueShape,
   getFixPromptShape,
+  listReposShape,
   createIssue,
   listIssues,
   getIssue,
   addComment,
   assignIssue,
   getFixPrompt,
+  listRepos,
   createServer,
 } from './index.ts';
 
@@ -218,6 +220,81 @@ test('getFixPrompt fetches the issue then builds the filled prompt', async () =>
   assert.match(prompt, /Issue issue-9: Bug/);
   assert.match(prompt, /## Summary\nS/);
   assert.match(prompt, /## Resolution criteria\nC/);
+});
+
+test('getFixPrompt includes the Repository line filled from get_repo_info', async () => {
+  const prompt = await withFetch(
+    (async (_url: string | URL, init?: RequestInit) => {
+      const { method, argsJson } = JSON.parse(String(init?.body)).params;
+      if (method === 'get_issue') {
+        return new Response(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            result: {
+              output: {
+                issue: {
+                  id: argsJson.issue_id,
+                  title: 'Bug',
+                  summary: 'S',
+                  impact: 'I',
+                  repro: 'R',
+                  resolution_criteria: 'C',
+                },
+                comments: [],
+              },
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify({ jsonrpc: '2.0', id: 1, result: { output: { repo_url: 'https://github.com/acme/frontend' } } }),
+        { status: 200 },
+      );
+    }) as typeof fetch,
+    () => getFixPrompt(cfg, target, { id: 'issue-9' }),
+  );
+  assert.match(prompt, /Issue issue-9: Bug\nRepository: https:\/\/github\.com\/acme\/frontend\n/);
+});
+
+test('get_issue schema accepts an optional repo param', () => {
+  const schema = z.object(getIssueShape);
+  const result = schema.safeParse({ id: 'issue-1', repo: 'frontend' });
+  assert.equal(result.success, true);
+});
+
+test('list_repos schema accepts an empty object', () => {
+  const schema = z.object(listReposShape);
+  assert.equal(schema.safeParse({}).success, true);
+});
+
+// ---- listRepos (list_repos tool) ----
+
+test('listRepos fetches repo_url per repo via get_repo_info on each repo\'s own context', async () => {
+  const namespaceRepos = [
+    { contextId: 'ctx-1', name: 'frontend' },
+    { contextId: 'ctx-2', name: 'backend' },
+  ];
+  const result = await withFetch(
+    (async (url: string | URL, init?: RequestInit) => {
+      const u = String(url);
+      if (u.includes('/identities-owned')) {
+        const identity = u.includes('ctx-1') ? 'exec-1' : 'exec-2';
+        return new Response(JSON.stringify({ data: { identities: [identity] } }), { status: 200 });
+      }
+      const { contextId } = JSON.parse(String(init?.body)).params;
+      const repoUrl = contextId === 'ctx-1' ? 'https://github.com/acme/frontend' : 'https://github.com/acme/backend';
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { output: { repo_url: repoUrl } } }), {
+        status: 200,
+      });
+    }) as typeof fetch,
+    () => listRepos(cfg, namespaceRepos),
+  );
+  assert.deepEqual(result, [
+    { name: 'frontend', repo_url: 'https://github.com/acme/frontend' },
+    { name: 'backend', repo_url: 'https://github.com/acme/backend' },
+  ]);
 });
 
 // ---- Server construction ----

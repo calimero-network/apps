@@ -1,11 +1,27 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Config } from './config.ts';
-import { callMethod, createTargetResolver, resolveContextId, resolveExecutor, RpcError } from './rpc.ts';
+import {
+  callMethod,
+  createRepoLister,
+  createTargetResolver,
+  listNamespaceRepos,
+  pickRepo,
+  resolveContextId,
+  resolveExecutor,
+  resolveNamespaceId,
+  RpcError,
+  type NamespaceRepo,
+} from './rpc.ts';
 
 const baseConfig: Config = {
   nodeUrl: 'http://localhost:2428',
   contextRaw: 'my-tracker',
+};
+
+const namespaceConfig: Config = {
+  nodeUrl: 'http://localhost:2428',
+  namespaceRaw: 'my-team',
 };
 
 function withFetch<T>(impl: typeof fetch, run: () => Promise<T>): Promise<T> {
@@ -192,4 +208,279 @@ test('createTargetResolver does not cache a rejected resolution - a later call r
 
   assert.equal(target.executorPublicKey, 'id-1');
   assert.equal(identitiesAttempt, 2);
+});
+
+// ---- resolveNamespaceId ----
+
+function namespacesFetch(namespaces: Array<{ namespaceId: string; name?: string }>): typeof fetch {
+  return (async (url: string | URL) => {
+    if (String(url).endsWith('/admin-api/namespaces')) {
+      return new Response(JSON.stringify({ data: namespaces }), { status: 200 });
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  }) as typeof fetch;
+}
+
+test('resolveNamespaceId throws when TRACKER_NAMESPACE is not set', async () => {
+  await assert.rejects(() => resolveNamespaceId(baseConfig), /TRACKER_NAMESPACE/);
+});
+
+test('resolveNamespaceId matches by namespace id', async () => {
+  const nsId = await withFetch(
+    namespacesFetch([{ namespaceId: 'my-team', name: 'Team A' }]),
+    () => resolveNamespaceId({ ...namespaceConfig, namespaceRaw: 'my-team' }),
+  );
+  assert.equal(nsId, 'my-team');
+});
+
+test('resolveNamespaceId matches by name', async () => {
+  const nsId = await withFetch(
+    namespacesFetch([{ namespaceId: 'ns-1', name: 'my-team' }, { namespaceId: 'ns-2', name: 'other' }]),
+    () => resolveNamespaceId(namespaceConfig),
+  );
+  assert.equal(nsId, 'ns-1');
+});
+
+test('resolveNamespaceId throws a helpful error listing available namespaces when not found', async () => {
+  await assert.rejects(
+    () =>
+      withFetch(
+        namespacesFetch([{ namespaceId: 'ns-1', name: 'alpha' }, { namespaceId: 'ns-2', name: 'beta' }]),
+        () => resolveNamespaceId(namespaceConfig),
+      ),
+    (err: unknown) => {
+      assert.ok(err instanceof Error);
+      assert.match(err.message, /"my-team" not found/);
+      assert.match(err.message, /alpha/);
+      assert.match(err.message, /beta/);
+      return true;
+    },
+  );
+});
+
+// ---- listNamespaceRepos ----
+
+function reposFetch(
+  contexts: Array<{ contextId: string }>,
+  aliases: Array<{ name: string; value: string }>,
+): typeof fetch {
+  return (async (url: string | URL) => {
+    const u = String(url);
+    if (u.includes('/contexts')) return new Response(JSON.stringify({ data: contexts }), { status: 200 });
+    if (u.includes('/alias/list/context')) {
+      return new Response(JSON.stringify({ data: { aliases } }), { status: 200 });
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  }) as typeof fetch;
+}
+
+test('listNamespaceRepos joins contexts with their alias and drops unaliased contexts', async () => {
+  const repos = await withFetch(
+    reposFetch(
+      [{ contextId: 'ctx-1' }, { contextId: 'ctx-2' }, { contextId: 'ctx-3' }],
+      [{ name: 'frontend', value: 'ctx-1' }, { name: 'backend', value: 'ctx-2' }],
+    ),
+    () => listNamespaceRepos(namespaceConfig, 'ns-1'),
+  );
+  assert.deepEqual(repos, [
+    { contextId: 'ctx-1', name: 'frontend' },
+    { contextId: 'ctx-2', name: 'backend' },
+  ]);
+});
+
+test('listNamespaceRepos throws when the contexts fetch fails', async () => {
+  await assert.rejects(
+    () =>
+      withFetch(
+        (async (url: string | URL) =>
+          String(url).includes('/contexts')
+            ? new Response('nope', { status: 500 })
+            : new Response(JSON.stringify({ data: { aliases: [] } }), { status: 200 })) as typeof fetch,
+        () => listNamespaceRepos(namespaceConfig, 'ns-1'),
+      ),
+    /500/,
+  );
+});
+
+// ---- pickRepo ----
+
+const repos: NamespaceRepo[] = [
+  { contextId: 'ctx-1', name: 'frontend' },
+  { contextId: 'ctx-2', name: 'backend' },
+];
+
+test('pickRepo returns the named match when wanted is set', () => {
+  assert.deepEqual(pickRepo(repos, 'backend'), { contextId: 'ctx-2', name: 'backend' });
+});
+
+test('pickRepo throws a helpful error listing available repos when the wanted name is not found', () => {
+  assert.throws(() => pickRepo(repos, 'missing'), /"missing" not found.*frontend.*backend/s);
+});
+
+test('pickRepo returns the only repo when none is wanted', () => {
+  assert.deepEqual(pickRepo([repos[0]]), repos[0]);
+});
+
+test('pickRepo throws when multiple repos exist and none is wanted', () => {
+  assert.throws(() => pickRepo(repos), /Multiple repos exist.*frontend.*backend/s);
+});
+
+test('pickRepo throws when no repos exist', () => {
+  assert.throws(() => pickRepo([]), /No repos found/);
+});
+
+// ---- createRepoLister ----
+
+test('createRepoLister caches across calls and does not re-fetch', async () => {
+  let namespaceFetches = 0;
+  let reposFetches = 0;
+  const listRepos = createRepoLister(namespaceConfig);
+
+  const impl = (async (url: string | URL) => {
+    const u = String(url);
+    if (u.endsWith('/admin-api/namespaces')) {
+      namespaceFetches += 1;
+      return new Response(JSON.stringify({ data: [{ namespaceId: 'ns-1', name: 'my-team' }] }), { status: 200 });
+    }
+    if (u.includes('/contexts')) {
+      reposFetches += 1;
+      return new Response(JSON.stringify({ data: [{ contextId: 'ctx-1' }] }), { status: 200 });
+    }
+    if (u.includes('/alias/list/context')) {
+      return new Response(JSON.stringify({ data: { aliases: [{ name: 'frontend', value: 'ctx-1' }] } }), {
+        status: 200,
+      });
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  }) as typeof fetch;
+
+  const first = await withFetch(impl, () => listRepos());
+  const second = await withFetch(impl, () => listRepos());
+
+  assert.deepEqual(first, [{ contextId: 'ctx-1', name: 'frontend' }]);
+  assert.deepEqual(second, first);
+  assert.equal(namespaceFetches, 1);
+  assert.equal(reposFetches, 1);
+});
+
+test('createRepoLister does not cache a rejected resolution', async () => {
+  let attempt = 0;
+  const listRepos = createRepoLister(namespaceConfig);
+
+  await withFetch(
+    (async () => {
+      attempt += 1;
+      return new Response('nope', { status: 500 });
+    }) as typeof fetch,
+    () => assert.rejects(() => listRepos(), /500/),
+  );
+
+  const repos2 = await withFetch(
+    (async (url: string | URL) => {
+      const u = String(url);
+      if (u.endsWith('/admin-api/namespaces')) {
+        return new Response(JSON.stringify({ data: [{ namespaceId: 'ns-1', name: 'my-team' }] }), { status: 200 });
+      }
+      if (u.includes('/contexts')) {
+        return new Response(JSON.stringify({ data: [{ contextId: 'ctx-1' }] }), { status: 200 });
+      }
+      if (u.includes('/alias/list/context')) {
+        return new Response(JSON.stringify({ data: { aliases: [{ name: 'frontend', value: 'ctx-1' }] } }), {
+          status: 200,
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }) as typeof fetch,
+    () => listRepos(),
+  );
+  assert.deepEqual(repos2, [{ contextId: 'ctx-1', name: 'frontend' }]);
+  assert.equal(attempt, 1);
+});
+
+// ---- createTargetResolver (namespace mode) ----
+
+function fullNamespaceFetch(): typeof fetch {
+  return (async (url: string | URL) => {
+    const u = String(url);
+    if (u.includes('/identities-owned')) {
+      const identity = u.includes('ctx-1') ? 'exec-frontend' : 'exec-backend';
+      return new Response(JSON.stringify({ data: { identities: [identity] } }), { status: 200 });
+    }
+    if (u.endsWith('/admin-api/namespaces')) {
+      return new Response(JSON.stringify({ data: [{ namespaceId: 'ns-1', name: 'my-team' }] }), { status: 200 });
+    }
+    if (u.includes('/contexts')) {
+      return new Response(
+        JSON.stringify({ data: [{ contextId: 'ctx-1' }, { contextId: 'ctx-2' }] }),
+        { status: 200 },
+      );
+    }
+    if (u.includes('/alias/list/context')) {
+      return new Response(
+        JSON.stringify({
+          data: { aliases: [{ name: 'frontend', value: 'ctx-1' }, { name: 'backend', value: 'ctx-2' }] },
+        }),
+        { status: 200 },
+      );
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  }) as typeof fetch;
+}
+
+test('createTargetResolver resolves the explicit repo param over TRACKER_REPO', async () => {
+  const cfg: Config = { ...namespaceConfig, repoDefault: 'backend' };
+  const target = createTargetResolver(cfg);
+  const resolved = await withFetch(fullNamespaceFetch(), () => target('frontend'));
+  assert.deepEqual(resolved, { contextId: 'ctx-1', executorPublicKey: 'exec-frontend' });
+});
+
+test('createTargetResolver falls back to TRACKER_REPO when no repo param is given', async () => {
+  const cfg: Config = { ...namespaceConfig, repoDefault: 'backend' };
+  const target = createTargetResolver(cfg);
+  const resolved = await withFetch(fullNamespaceFetch(), () => target());
+  assert.deepEqual(resolved, { contextId: 'ctx-2', executorPublicKey: 'exec-backend' });
+});
+
+test('createTargetResolver infers the single repo when neither repo param nor TRACKER_REPO is set', async () => {
+  const target = createTargetResolver(namespaceConfig);
+  const impl = (async (url: string | URL) => {
+    const u = String(url);
+    if (u.includes('/identities-owned')) {
+      return new Response(JSON.stringify({ data: { identities: ['exec-1'] } }), { status: 200 });
+    }
+    if (u.endsWith('/admin-api/namespaces')) {
+      return new Response(JSON.stringify({ data: [{ namespaceId: 'ns-1', name: 'my-team' }] }), { status: 200 });
+    }
+    if (u.includes('/contexts')) {
+      return new Response(JSON.stringify({ data: [{ contextId: 'ctx-1' }] }), { status: 200 });
+    }
+    if (u.includes('/alias/list/context')) {
+      return new Response(JSON.stringify({ data: { aliases: [{ name: 'frontend', value: 'ctx-1' }] } }), {
+        status: 200,
+      });
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  }) as typeof fetch;
+  const resolved = await withFetch(impl, () => target());
+  assert.deepEqual(resolved, { contextId: 'ctx-1', executorPublicKey: 'exec-1' });
+});
+
+test('createTargetResolver rejects with a helpful error when the repo param does not match', async () => {
+  const target = createTargetResolver(namespaceConfig);
+  await assert.rejects(
+    () => withFetch(fullNamespaceFetch(), () => target('nope')),
+    /"nope" not found.*frontend.*backend/s,
+  );
+});
+
+test('createTargetResolver ignores the repo param when TRACKER_CONTEXT pins a context directly', async () => {
+  const target = createTargetResolver(baseConfig);
+  const resolved = await withFetch(
+    (async (url: string | URL) => {
+      if (String(url).includes('alias/lookup')) return new Response('not found', { status: 404 });
+      return new Response(JSON.stringify({ data: { identities: ['exec-1'] } }), { status: 200 });
+    }) as typeof fetch,
+    () => target('frontend'),
+  );
+  assert.deepEqual(resolved, { contextId: 'my-tracker', executorPublicKey: 'exec-1' });
 });

@@ -33,3 +33,18 @@ test('buildFixPrompt includes the fixed instruction steps', () => {
   assert.match(prompt, /Find the root cause, not the symptom/);
   assert.match(prompt, /Babysit the PR/);
 });
+
+test('buildFixPrompt renders the Repository line under the title when repo_url is set', () => {
+  const prompt = buildFixPrompt({ ...issue, repo_url: 'https://github.com/acme/frontend' });
+  assert.match(prompt, /Issue issue-1: Login fails\nRepository: https:\/\/github\.com\/acme\/frontend\n/);
+});
+
+test('buildFixPrompt omits the Repository line when repo_url is unset', () => {
+  const prompt = buildFixPrompt(issue);
+  assert.doesNotMatch(prompt, /Repository:/);
+});
+
+test('buildFixPrompt omits the Repository line when repo_url is empty', () => {
+  const prompt = buildFixPrompt({ ...issue, repo_url: '' });
+  assert.doesNotMatch(prompt, /Repository:/);
+});

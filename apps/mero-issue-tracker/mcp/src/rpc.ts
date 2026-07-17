@@ -18,6 +18,13 @@ export interface ResolvedTarget {
   executorPublicKey: string;
 }
 
+/** A repo (an aliased context) inside a namespace. */
+export interface NamespaceRepo {
+  contextId: string;
+  /** The context alias - the repo's name. */
+  name: string;
+}
+
 function headers(cfg: Config): Record<string, string> {
   const h: Record<string, string> = { 'Content-Type': 'application/json' };
   if (cfg.authToken) h.Authorization = `Bearer ${cfg.authToken}`;
@@ -30,9 +37,13 @@ function headers(cfg: Config): Record<string, string> {
  * configured value as a raw context id, per the brief's contract.
  */
 export async function resolveContextId(cfg: Config): Promise<string> {
+  const contextRaw = cfg.contextRaw;
+  if (!contextRaw) {
+    throw new Error('TRACKER_CONTEXT is not set.');
+  }
   try {
     const res = await fetch(
-      `${cfg.nodeUrl}/admin-api/alias/lookup/context/${encodeURIComponent(cfg.contextRaw)}`,
+      `${cfg.nodeUrl}/admin-api/alias/lookup/context/${encodeURIComponent(contextRaw)}`,
       { method: 'POST', headers: headers(cfg), body: '{}' },
     );
     if (res.ok) {
@@ -41,15 +52,80 @@ export async function resolveContextId(cfg: Config): Promise<string> {
     } else {
       // stderr only - stdout is reserved for the MCP protocol stream.
       console.error(
-        `[issue-tracker-mcp] alias lookup for "${cfg.contextRaw}" returned ${res.status}; treating it as a raw context id.`,
+        `[issue-tracker-mcp] alias lookup for "${contextRaw}" returned ${res.status}; treating it as a raw context id.`,
       );
     }
   } catch (err) {
     console.error(
-      `[issue-tracker-mcp] alias lookup for "${cfg.contextRaw}" failed (${err instanceof Error ? err.message : String(err)}); treating it as a raw context id.`,
+      `[issue-tracker-mcp] alias lookup for "${contextRaw}" failed (${err instanceof Error ? err.message : String(err)}); treating it as a raw context id.`,
     );
   }
-  return cfg.contextRaw;
+  return contextRaw;
+}
+
+/** Resolves TRACKER_NAMESPACE (a namespace id or name) to a namespace id via the admin API's namespace list. */
+export async function resolveNamespaceId(cfg: Config): Promise<string> {
+  const namespaceRaw = cfg.namespaceRaw;
+  if (!namespaceRaw) {
+    throw new Error('TRACKER_NAMESPACE is not set.');
+  }
+  const res = await fetch(`${cfg.nodeUrl}/admin-api/namespaces`, { headers: headers(cfg) });
+  if (!res.ok) {
+    throw new Error(`Failed to list namespaces: admin API returned ${res.status}`);
+  }
+  const json = (await res.json()) as { data?: Array<{ namespaceId: string; name?: string }> };
+  const namespaces = json?.data ?? [];
+  const match = namespaces.find((n) => n.namespaceId === namespaceRaw || n.name === namespaceRaw);
+  if (!match) {
+    const available = namespaces.map((n) => n.name ?? n.namespaceId).join(', ') || '(none)';
+    throw new Error(`Namespace "${namespaceRaw}" not found. Available namespaces: ${available}`);
+  }
+  return match.namespaceId;
+}
+
+/** Lists the repos (aliased contexts) inside a namespace: each context's id plus its alias name. */
+export async function listNamespaceRepos(cfg: Config, namespaceId: string): Promise<NamespaceRepo[]> {
+  const [contextsRes, aliasesRes] = await Promise.all([
+    fetch(`${cfg.nodeUrl}/admin-api/groups/${encodeURIComponent(namespaceId)}/contexts`, { headers: headers(cfg) }),
+    fetch(`${cfg.nodeUrl}/admin-api/alias/list/context`, { headers: headers(cfg) }),
+  ]);
+  if (!contextsRes.ok) {
+    throw new Error(`Failed to list contexts for namespace ${namespaceId}: admin API returned ${contextsRes.status}`);
+  }
+  if (!aliasesRes.ok) {
+    throw new Error(`Failed to list context aliases: admin API returned ${aliasesRes.status}`);
+  }
+  const contextsJson = (await contextsRes.json()) as { data?: Array<{ contextId: string }> };
+  const aliasesJson = (await aliasesRes.json()) as { data?: { aliases?: Array<{ name: string; value: string }> } };
+  const contexts = contextsJson?.data ?? [];
+  const aliasByContextId = new Map((aliasesJson?.data?.aliases ?? []).map((a) => [a.value, a.name]));
+
+  const repos: NamespaceRepo[] = [];
+  for (const c of contexts) {
+    const name = aliasByContextId.get(c.contextId);
+    if (name) repos.push({ contextId: c.contextId, name });
+  }
+  return repos;
+}
+
+/**
+ * Picks a repo from a namespace's repo list per the resolution order: an
+ * explicit `wanted` name (repo param or TRACKER_REPO), else the namespace's
+ * only repo, else a helpful error listing what's available.
+ */
+export function pickRepo(repos: NamespaceRepo[], wanted?: string): NamespaceRepo {
+  if (wanted) {
+    const match = repos.find((r) => r.name === wanted);
+    if (match) return match;
+    const available = repos.map((r) => r.name).join(', ') || '(none)';
+    throw new Error(`Repo "${wanted}" not found. Available repos: ${available}`);
+  }
+  if (repos.length === 1) return repos[0];
+  if (repos.length === 0) {
+    throw new Error('No repos found in this namespace. Create a context and alias it to use as a repo.');
+  }
+  const available = repos.map((r) => r.name).join(', ');
+  throw new Error(`Multiple repos exist; pass "repo" or set TRACKER_REPO. Available repos: ${available}`);
 }
 
 /** Resolves the executor identity: TRACKER_EXECUTOR if set, else the node's first owned identity for the context. */
@@ -71,7 +147,7 @@ export async function resolveExecutor(cfg: Config, contextId: string): Promise<s
   return identities[0];
 }
 
-/** Resolves both the context id and executor identity for a call. Not cached - use createTargetResolver to memoize. */
+/** Resolves both the context id and executor identity for the TRACKER_CONTEXT direct pin. Not cached. */
 export async function resolveTarget(cfg: Config): Promise<ResolvedTarget> {
   const contextId = await resolveContextId(cfg);
   const executorPublicKey = await resolveExecutor(cfg, contextId);
@@ -79,17 +155,72 @@ export async function resolveTarget(cfg: Config): Promise<ResolvedTarget> {
 }
 
 /**
- * Returns a resolver that caches the resolved target for the process lifetime,
- * but only on success - a rejected promise must not stick, or one transient
- * startup failure (node not up yet, network blip) bricks every later call.
+ * Returns a resolver that caches namespace + repo-list lookups for the process
+ * lifetime, but only on success - a rejected promise must not stick, or one
+ * transient startup failure (node not up yet, network blip) bricks every
+ * later call.
  */
-export function createTargetResolver(cfg: Config): () => Promise<ResolvedTarget> {
-  let cached: Promise<ResolvedTarget> | null = null;
-  return () =>
-    (cached ??= resolveTarget(cfg).catch((err) => {
-      cached = null;
+export function createRepoLister(cfg: Config): () => Promise<NamespaceRepo[]> {
+  let namespaceCached: Promise<string> | null = null;
+  const resolveNamespace = () =>
+    (namespaceCached ??= resolveNamespaceId(cfg).catch((err) => {
+      namespaceCached = null;
       throw err;
     }));
+
+  let reposCached: Promise<NamespaceRepo[]> | null = null;
+  return () =>
+    (reposCached ??= resolveNamespace()
+      .then((namespaceId) => listNamespaceRepos(cfg, namespaceId))
+      .catch((err) => {
+        reposCached = null;
+        throw err;
+      }));
+}
+
+/**
+ * Returns a per-call target resolver. When TRACKER_CONTEXT is set it pins a
+ * single context directly (backward compat, repo param ignored). Otherwise it
+ * resolves `repoParam` against the TRACKER_NAMESPACE's repos, per pickRepo's
+ * order. Caches per resolved repo name for the process lifetime, only on
+ * success (see createRepoLister).
+ */
+export function createTargetResolver(cfg: Config): (repoParam?: string) => Promise<ResolvedTarget> {
+  if (cfg.contextRaw) {
+    let cached: Promise<ResolvedTarget> | null = null;
+    return (repoParam) => {
+      if (repoParam) {
+        // stderr only - stdout is reserved for the MCP protocol stream.
+        console.error(
+          `[issue-tracker-mcp] repo "${repoParam}" ignored - TRACKER_CONTEXT pins a single context directly.`,
+        );
+      }
+      return (cached ??= resolveTarget(cfg).catch((err) => {
+        cached = null;
+        throw err;
+      }));
+    };
+  }
+
+  const listRepos = createRepoLister(cfg);
+  const targetCache = new Map<string, Promise<ResolvedTarget>>();
+  return (repoParam) => {
+    const key = repoParam ?? '';
+    let cached = targetCache.get(key);
+    if (!cached) {
+      cached = (async () => {
+        const repos = await listRepos();
+        const repo = pickRepo(repos, repoParam?.trim() || cfg.repoDefault);
+        const executorPublicKey = await resolveExecutor(cfg, repo.contextId);
+        return { contextId: repo.contextId, executorPublicKey };
+      })().catch((err) => {
+        targetCache.delete(key);
+        throw err;
+      });
+      targetCache.set(key, cached);
+    }
+    return cached;
+  };
 }
 
 interface JsonRpcResponse {

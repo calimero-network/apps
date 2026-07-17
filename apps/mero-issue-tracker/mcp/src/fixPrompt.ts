@@ -6,14 +6,16 @@ export interface IssueForPrompt {
   impact: string;
   repro: string;
   resolution_criteria: string;
+  /** The repo's URL, omitted from the prompt when empty/unknown. */
+  repo_url?: string;
 }
 
 /**
  * Builds the prompt text for `get_fix_prompt`. This is the single source of
  * truth for the template; app/src/utils/fixPrompt.ts duplicates it verbatim.
  */
-export function buildFixPrompt(issue: IssueForPrompt, repoUrl?: string): string {
-  const repoLine = repoUrl && repoUrl.trim() ? `\nRepository: ${repoUrl.trim()}` : '';
+export function buildFixPrompt(issue: IssueForPrompt): string {
+  const repoLine = issue.repo_url && issue.repo_url.trim() ? `\nRepository: ${issue.repo_url.trim()}` : '';
   return `You are fixing a tracked issue. Work systematically; do not skip validation.
 
 Issue ${issue.id}: ${issue.title}${repoLine}
