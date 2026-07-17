@@ -1,3 +1,12 @@
+## 0.3.0 (2026-07-17)
+
+* Merge delete issue UI (app) ([ef76bab](https://github.com/calimero-network/mero-issue-tracker/commit/ef76bab))
+* Merge delete_issue logic ([020ea0c](https://github.com/calimero-network/mero-issue-tracker/commit/020ea0c))
+* Merge delete_issue MCP tool ([876e502](https://github.com/calimero-network/mero-issue-tracker/commit/876e502))
+* feat(app): delete issue with confirm, author-gated ([a0bc68e](https://github.com/calimero-network/mero-issue-tracker/commit/a0bc68e))
+* feat(logic): delete_issue with cascade cleanup, author-gated ([78119c7](https://github.com/calimero-network/mero-issue-tracker/commit/78119c7))
+* feat(mcp): delete_issue tool ([6a205dd](https://github.com/calimero-network/mero-issue-tracker/commit/6a205dd))
+
 ## 0.2.0 (2026-07-17)
 
 * ci: enable mcp auto-publish now that npm trusted publisher is configured ([2c8bf12](https://github.com/calimero-network/mero-issue-tracker/commit/2c8bf12))
