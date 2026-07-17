@@ -164,6 +164,7 @@ claude mcp add issue-tracker --scope project \
 - `assign_issue` - set the assignee on `issue_id`, optional `repo`.
 - `set_status` - move `issue_id` to a status (Open, In progress, Blocked, Done), optional `repo`.
 - `set_priority` - set the priority (low, medium, high, urgent) on `issue_id`, optional `repo`.
+- `delete_issue` - delete `issue_id`, optional `repo`. Author-gated (only the issue's creator may delete it) and cascade-deletes its comments and labels.
 - `get_fix_prompt` - render a ready-to-paste fix prompt for `id`, optional `repo`.
 - `list_repos` - list every repo in the namespace with its name and `repo_url`.
 - `add_repo` - onboard a new repo (`name`, `github_url`): creates a context

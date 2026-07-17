@@ -11,6 +11,7 @@ import {
   assignIssueShape,
   setStatusShape,
   setPriorityShape,
+  deleteIssueShape,
   getFixPromptShape,
   listReposShape,
   addRepoShape,
@@ -21,6 +22,7 @@ import {
   assignIssue,
   setStatus,
   setPriority,
+  deleteIssue,
   getFixPrompt,
   listRepos,
   addRepo,
@@ -126,6 +128,19 @@ test('set_priority schema requires issue_id and an in-enum priority', () => {
   assert.equal(schema.safeParse({ issue_id: 'i1' }).success, false);
   assert.equal(schema.safeParse({ issue_id: 'i1', priority: 'critical' }).success, false);
   assert.equal(schema.safeParse({ issue_id: 'i1', priority: 'urgent' }).success, true);
+});
+
+test('delete_issue schema requires a non-empty issue_id', () => {
+  const schema = z.object(deleteIssueShape);
+  assert.equal(schema.safeParse({}).success, false);
+  assert.equal(schema.safeParse({ issue_id: '' }).success, false);
+  assert.equal(schema.safeParse({ issue_id: 'issue-1' }).success, true);
+});
+
+test('delete_issue schema accepts an optional repo param', () => {
+  const schema = z.object(deleteIssueShape);
+  const result = schema.safeParse({ issue_id: 'issue-1', repo: 'some-other-repo' });
+  assert.equal(result.success, true);
 });
 
 test('get_fix_prompt schema requires a non-empty id', () => {
@@ -246,6 +261,33 @@ test('setPriority calls set_priority with issue_id and priority', async () => {
   );
   assert.equal(params.method, 'set_priority');
   assert.deepEqual(params.argsJson, { issue_id: 'issue-9', priority: 'urgent' });
+});
+
+test('deleteIssue calls delete_issue with issue_id', async () => {
+  let params: any;
+  await withFetch(
+    (async (_url: string | URL, init?: RequestInit) => {
+      params = JSON.parse(String(init?.body)).params;
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), { status: 200 });
+    }) as typeof fetch,
+    () => deleteIssue(cfg, target, { issue_id: 'issue-9' }),
+  );
+  assert.equal(params.method, 'delete_issue');
+  assert.deepEqual(params.argsJson, { issue_id: 'issue-9' });
+});
+
+test('deleteIssue resolves against the repo passed in target (repo override)', async () => {
+  let params: any;
+  const otherTarget: ResolvedTarget = { contextId: 'ctx-2', executorPublicKey: 'exec-2' };
+  await withFetch(
+    (async (_url: string | URL, init?: RequestInit) => {
+      params = JSON.parse(String(init?.body)).params;
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), { status: 200 });
+    }) as typeof fetch,
+    () => deleteIssue(cfg, otherTarget, { issue_id: 'issue-9' }),
+  );
+  assert.equal(params.contextId, 'ctx-2');
+  assert.equal(params.executorPublicKey, 'exec-2');
 });
 
 test('getFixPrompt fetches the issue then builds the filled prompt', async () => {
