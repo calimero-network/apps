@@ -61,7 +61,6 @@ export default function Sidebar({
     <Aside>
       <Switcher>
         <div className="ns-row">
-          <AvatarGlyph seed={activeName || 'workspace'} size="md" title={activeName || undefined} />
           <SelectMenu
             className="ns-ctl"
             testId="ns-switcher"
