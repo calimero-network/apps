@@ -60,7 +60,7 @@ export default function Topbar({
         <input type="text" placeholder="Search issues…" aria-label="Search issues" />
         <span className="kbd">/</span>
       </Search>
-      <NewBtn type="button" data-testid="open-new-issue-btn" onClick={onNewIssue}>New issue <span className="kbd">C</span></NewBtn>
+      <NewBtn type="button" data-testid="open-new-issue-btn" onClick={onNewIssue}>New issue</NewBtn>
     </Bar>
   );
 }
@@ -114,9 +114,4 @@ const NewBtn = styled.button`
   font-size: 12.5px; font-weight: 600; padding: 6px 11px;
   transition: background 150ms ease-out;
   &:hover { background: #b6ff5e; }
-  .kbd {
-    font-family: ${t.font.mono}; font-size: 10.5px;
-    background: rgba(0,0,0,0.18); border: 1px solid rgba(0,0,0,0.16);
-    color: #24350f; border-radius: 4px; padding: 1px 5px; line-height: 1.4;
-  }
 `;
