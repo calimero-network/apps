@@ -7,6 +7,8 @@ pub enum Event<'a> {
     IssueCreated { id: &'a str, created_by: &'a str },
     /// One of an issue's text sections changed (summary/impact/repro/resolution).
     IssueEdited { id: &'a str },
+    /// An issue was deleted, along with its comments and labels.
+    IssueDeleted { id: &'a str },
     /// An issue's status changed (moved columns).
     IssueStatusChanged { id: &'a str, status: &'a str },
     /// An issue's priority changed.

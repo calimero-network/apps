@@ -628,6 +628,59 @@ impl IssueTracker {
         app::emit!(Event::CommentDeleted { id: &comment_id });
         Ok(())
     }
+
+    /// Delete an issue and cascade-remove its comments and labels. Only the
+    /// issue's creator may delete it. Deletion is a CRDT tombstone: it is
+    /// last-writer-wins against a concurrent edit, so a delete racing an edit on
+    /// another replica resolves by HLC (no custom resurrection logic).
+    pub fn delete_issue(&mut self, issue_id: String) -> app::Result<()> {
+        let caller = self.caller();
+        let created_by = self
+            .issues
+            .get(&issue_id)
+            .map_err(|e| AppError::msg(format!("issues.get: {e}")))?
+            .map(|i| i.created_by.clone())
+            .ok_or_else(|| AppError::from(Error::NotFound(issue_id.clone())))?;
+        if created_by != caller {
+            app::bail!(Error::Forbidden(
+                "only the creator may delete this issue".into()
+            ));
+        }
+
+        // Collect matching keys before removing - do not mutate while iterating.
+        let comment_ids: Vec<String> = self
+            .comments
+            .entries()
+            .map_err(|e| AppError::msg(format!("comments.entries: {e}")))?
+            .filter(|(_, c)| c.issue_id == issue_id)
+            .map(|(id, _)| id)
+            .collect();
+        let label_prefix = format!("{issue_id}{LABEL_SEP}");
+        let label_keys: Vec<String> = self
+            .labels
+            .entries()
+            .map_err(|e| AppError::msg(format!("labels.entries: {e}")))?
+            .filter(|(key, _)| key.starts_with(label_prefix.as_str()))
+            .map(|(key, _)| key)
+            .collect();
+
+        self.issues
+            .remove(&issue_id)
+            .map_err(|e| AppError::msg(format!("issues.remove: {e}")))?;
+        for id in comment_ids {
+            self.comments
+                .remove(&id)
+                .map_err(|e| AppError::msg(format!("comments.remove: {e}")))?;
+        }
+        for key in label_keys {
+            self.labels
+                .remove(&key)
+                .map_err(|e| AppError::msg(format!("labels.remove: {e}")))?;
+        }
+
+        app::emit!(Event::IssueDeleted { id: &issue_id });
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1093,5 +1146,48 @@ mod tests {
         assert!(app.call_as(OTHER, |s| s.delete_comment(c.clone())).is_err());
         // The comment survives the rejected attempts.
         assert_eq!(app.view(|s| s.get_issue(id)).unwrap().comments.len(), 1);
+    }
+
+    #[test]
+    fn creator_deletes_issue_and_cascades_comments_and_labels() {
+        let mut app = TestHost::new(IssueTracker::init);
+        let id = new_issue(&mut app); // has label "bug"
+        app.call(|s| s.add_label(id.clone(), "frontend".into()))
+            .unwrap();
+        let c = app
+            .call(|s| s.add_comment(id.clone(), "repro confirmed".into()))
+            .unwrap();
+
+        app.call(|s| s.delete_issue(id.clone())).unwrap();
+
+        // Gone from every read path.
+        assert!(app.view(|s| s.get_issue(id.clone())).is_err());
+        assert!(app
+            .view(|s| s.list_issues(None, None, None))
+            .unwrap()
+            .is_empty());
+        let counts = app.view(|s| s.get_status_counts()).unwrap();
+        assert!(counts.iter().all(|c| c.count == 0));
+
+        // Cascade: comment and both label-index entries removed.
+        assert!(!app.view(|s| s.comments.contains(&c).unwrap()));
+        assert!(!app.view(|s| s.labels.contains(&label_key(&id, "bug")).unwrap()));
+        assert!(!app.view(|s| s.labels.contains(&label_key(&id, "frontend")).unwrap()));
+    }
+
+    #[test]
+    fn non_creator_cannot_delete_issue() {
+        let mut app = TestHost::new(IssueTracker::init);
+        let id = new_issue(&mut app);
+
+        assert!(app.call_as(OTHER, |s| s.delete_issue(id.clone())).is_err());
+        // Issue survives the rejected attempt.
+        assert_eq!(app.view(|s| s.get_issue(id)).unwrap().issue.status, "Open");
+    }
+
+    #[test]
+    fn delete_missing_issue_errors() {
+        let mut app = TestHost::new(IssueTracker::init);
+        assert!(app.call(|s| s.delete_issue("issue-nope".into())).is_err());
     }
 }
