@@ -27,7 +27,7 @@ Two extra surfaces make it agent-friendly:
 | Path   | What |
 | ------ | ---- |
 | `logic/` | Rust WASM backend: the issue schema, statuses, priorities, labels, comments, and `list_issues` filters. Built into a signed `.mpk` bundle. |
-| `app/`   | React (Vite) frontend: a dark, Linear-style board with list, board, filters, routed issue detail, members, and aliases. |
+| `app/`   | React (Vite) frontend: a fast dark-themed board with list, board, filters, routed issue detail, members, and aliases. |
 | `mcp/`   | The stdio MCP server (see `mcp/README.md`). |
 
 ## Prerequisites

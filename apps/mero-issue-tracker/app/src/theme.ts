@@ -79,7 +79,7 @@ export function MoonIcon({ filled, size = 17 }: { filled: boolean; size?: number
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
- * Issue-tracker design tokens (Linear-grade, dark-only).
+ * Issue-tracker design tokens (dark-only).
  *
  * These are the exact values from docs/superpowers/design/mockup.html and are
  * hard-coded dark: the tracker views do NOT follow the light/dark toggle above
