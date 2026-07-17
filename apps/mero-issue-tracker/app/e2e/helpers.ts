@@ -74,7 +74,7 @@ export function getNode(index: number): NodeState {
 // own owned identity, so an isolated board is deterministic across nodes,
 // which is what makes workers > 1 safe.
 
-interface Injection { contextId: string; contextIdentity: string; }
+interface Injection { contextId: string; contextIdentity: string; namespaceId: string; }
 interface IsoWorkspace {
   nsId: string;
   contextId: string;
@@ -145,7 +145,11 @@ async function provisionBase(): Promise<IsoWorkspace> {
     contextId: ctx.contextId,
     joined: new Map(),
   };
-  ws.joined.set(0, Promise.resolve({ contextId: ctx.contextId, contextIdentity: ctx.memberPublicKey }));
+  ws.joined.set(0, Promise.resolve({
+    contextId: ctx.contextId,
+    contextIdentity: ctx.memberPublicKey,
+    namespaceId: ns.namespaceId,
+  }));
   return ws;
 }
 
@@ -176,7 +180,7 @@ async function joinNodeIntoWorkspace(ws: IsoWorkspace, nodeIndex: number): Promi
   if (!identityLive) {
     throw new Error(`identity for context ${ws.contextId} never became owned on node ${nodeIndex} after 15s`);
   }
-  return { contextId: ws.contextId, contextIdentity: joinRes.memberIdentity };
+  return { contextId: ws.contextId, contextIdentity: joinRes.memberIdentity, namespaceId: ws.nsId };
 }
 
 // Resolve (provisioning/joining as needed) the injection for a node in this
@@ -383,6 +387,48 @@ export async function loginViaHash(page: Page, nodeIndex = 0, opts: { inject?: b
     page.off('requestfailed', onRequestFailed);
     page.off('response', onResponse);
   }
+  if (injection) await pinInjectedNamespace(page, injection.namespaceId);
+}
+
+/**
+ * Pin the app to the injected SSO context's namespace. The app auto-enters the
+ * first namespace on load and resolves the callback context's namespace
+ * asynchronously; across a run the node accumulates namespaces from every spec
+ * file, so under load the app can settle on (or briefly resolve to) a LEFTOVER
+ * namespace. That splits activeNs - which drives the member identity used by the
+ * authorship gates and the peer/member views - from the injected context that
+ * drives the board and executor, so a member fails to see teammates' items and
+ * their own edit/delete controls disappear.
+ *
+ * Selecting a namespace via the switcher is an explicit user pick that the app
+ * honours, so poll-and-select until the switcher settles on the injected
+ * namespace (re-selecting if a late async resolve knocks it off, and waiting for
+ * the option to appear if the namespace list is still loading).
+ */
+async function pinInjectedNamespace(page: Page, namespaceId: string) {
+  const want = namespaceId.slice(0, 8); // unnamed isolated namespaces render as their id prefix
+  const switcher = page.getByTestId('ns-switcher');
+  await Promise.race([
+    switcher.waitFor({ state: 'visible', timeout: 20_000 }).catch(() => {}),
+    page.getByTestId('ns-empty-state').waitFor({ state: 'visible', timeout: 20_000 }).catch(() => {}),
+  ]);
+  const onInjected = async () =>
+    (await switcher.isVisible().catch(() => false)) &&
+    (((await switcher.textContent().catch(() => '')) ?? '').includes(want));
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline) {
+    if (await onInjected()) return; // settled on the injected namespace
+    if (!(await switcher.isVisible().catch(() => false))) return; // empty state; onboarding handles it
+    await skipAliasGate(page, 2_000); // a leftover-namespace gate can cover the switcher
+    await switcher.click().catch(() => {});
+    const option = page.getByRole('option', { name: want, exact: true }).first();
+    if (await option.isVisible().catch(() => false)) {
+      await option.click().catch(() => {});
+    } else {
+      await page.keyboard.press('Escape').catch(() => {}); // not offered yet - close and retry
+    }
+    await page.waitForTimeout(400);
+  }
 }
 
 // ── Shared workspace / invite-join flow ────────────────────────────────
@@ -482,7 +528,25 @@ export async function skipAliasGate(page: Page, timeout = 15_000) {
     return; // gate never appeared (the member already has a name)
   }
   await page.getByTestId('alias-gate-skip').click();
-  await gate.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => {});
+  // Wait for the gate to fully DETACH (it unmounts on skip), not just go
+  // invisible - a lingering overlay still intercepts the next ns-* click.
+  await gate.waitFor({ state: 'detached', timeout: 5_000 }).catch(() => {});
+}
+
+/**
+ * Click an onboarding/switcher control (New workspace / Join) that the blocking
+ * alias gate can overlay. The app now auto-enters the first namespace on load
+ * when one exists (intended UX), so a helper that lands mid-onboarding can find
+ * the shell up with the gate covering these buttons. If the click is
+ * intercepted, dismiss the gate (waiting for it to detach) and retry.
+ */
+async function clickPastAliasGate(page: Page, locator: ReturnType<Page['locator']>) {
+  try {
+    await locator.click({ timeout: 5_000 });
+  } catch {
+    await skipAliasGate(page, 5_000);
+    await locator.click({ timeout: 10_000 });
+  }
 }
 
 /**
@@ -491,7 +555,7 @@ export async function skipAliasGate(page: Page, timeout = 15_000) {
  * Used by createWorkspace as the non-isolated fallback and available to specs.
  */
 export async function driveOnboarding(page: Page) {
-  await ctl(page, 'ns-create-btn', 'Create workspace').click();
+  await clickPastAliasGate(page, ctl(page, 'ns-create-btn', 'Create workspace'));
   await page.getByTestId('ns-create-name').fill(uniqueName('workspace'));
   await page.getByTestId('ns-create-submit').click();
   await skipAliasGate(page);
@@ -514,8 +578,17 @@ export async function createWorkspace(page: Page) {
     ready.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {}),
     emptyState.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {}),
   ]);
-  if (await emptyState.isVisible().catch(() => false)) {
-    await driveOnboarding(page);
+  // The empty state can flash briefly while the injected SSO context (or an
+  // auto-selected namespace) resolves into a live workspace. Prefer the live
+  // workspace: onboarding a NEW namespace here while a callback context is
+  // still binding leaves activeNs/activeRepo split across two namespaces, so
+  // only drive onboarding when no workspace materialises and the empty state
+  // is the stable landing.
+  if (!(await ready.isVisible().catch(() => false))) {
+    await ready.waitFor({ state: 'visible', timeout: 8_000 }).catch(() => {});
+    if (await emptyState.isVisible().catch(() => false)) {
+      await driveOnboarding(page);
+    }
   }
   await waitForWorkspaceReady(page);
   await skipAliasGate(page);
@@ -568,13 +641,18 @@ export async function inviteAndJoin(inviterPage: Page, joinerPage: Page): Promis
   // the board (where issue cards live) once the invite is sent.
   await inviterPage.getByRole('link', { name: /All Issues/ }).click().catch(() => {});
 
-  // Joiner: if it already auto-discovered the namespace (isolated runs inject
-  // the shared context), just clear its alias gate and surface the code.
-  if (await joinerPage.locator(READY).first().isVisible().catch(() => false)) {
+  // Joiner: isolated runs inject the shared context, so the joiner lands in the
+  // workspace on its own. Wait for it to settle into a ready workspace (rather
+  // than snapshotting a state that may still be resolving, which would race
+  // into a redundant explicit join onto the wrong namespace), then just clear
+  // its alias gate. Only fall back to an explicit join if none materialises.
+  const joinerReady = joinerPage.locator(READY).first();
+  await joinerReady.waitFor({ state: 'visible', timeout: 8_000 }).catch(() => {});
+  if (await joinerReady.isVisible().catch(() => false)) {
     await skipAliasGate(joinerPage);
     return code;
   }
-  await ctl(joinerPage, 'open-join-btn', 'Join').click();
+  await clickPastAliasGate(joinerPage, ctl(joinerPage, 'open-join-btn', 'Join'));
   const input = joinerPage
     .locator('[data-testid="join-code-input"], #join-code, textarea')
     .first();
