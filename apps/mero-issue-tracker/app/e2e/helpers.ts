@@ -579,6 +579,7 @@ export async function clearAuth(page: Page) {
         'mero:context_identity',
         'pending-invitation',
         'issue-tracker:activeNs',
+        'issue-tracker:activeNs:v2',
       ].forEach((k) => localStorage.removeItem(k));
       // Per-namespace repo selection + alias-gate markers.
       for (let i = localStorage.length - 1; i >= 0; i--) {
