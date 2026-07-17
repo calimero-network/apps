@@ -1,10 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
 import { tokens as t, STATUSES, PRIORITIES } from '../theme';
 import { APP_ROUTE } from '../config';
 import { useAppCtx } from '../pages/app/appContext';
 import { ChevronDown } from './icons';
+import { Popover, MenuItem, MenuInput } from './Dropdown';
 
 /**
  * Status / Priority / Assignee / Label filter chips with dropdowns, active-filter
@@ -14,81 +15,72 @@ import { ChevronDown } from './icons';
 export default function FilterBar(): React.ReactElement {
   const { filters, setFilter, clearFilters, myIssues } = useAppCtx();
   const navigate = useNavigate();
-  const [open, setOpen] = useState<string | null>(null);
-  const barRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (barRef.current && !barRef.current.contains(e.target as Node)) setOpen(null);
-    };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(null); };
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
-
-  const toggle = (id: string) => setOpen((cur) => (cur === id ? null : id));
-  const setMine = () => { setOpen(null); navigate({ pathname: APP_ROUTE, search: '?assignee=me' }); };
+  const setMine = () => navigate({ pathname: APP_ROUTE, search: '?assignee=me' });
   const clearMine = () => navigate(APP_ROUTE);
 
   return (
-    <Bar ref={barRef}>
-      <ChipButton data-testid="filter-chip-status" onClick={() => toggle('status')} $active={open === 'status'}>
-        Status <ChevronDown size={9} />
-        {open === 'status' && (
-          <Menu>
-            <MenuItem onClick={() => setFilter({ status: '' })}>All statuses</MenuItem>
+    <Bar>
+      <Popover trigger={({ open, toggle }) => (
+        <ChipButton data-testid="filter-chip-status" onClick={toggle} $active={open}>
+          Status <ChevronDown size={9} />
+        </ChipButton>
+      )}>
+        {({ close }) => (
+          <>
+            <MenuItem onClick={() => { setFilter({ status: '' }); close(); }}>All statuses</MenuItem>
             {STATUSES.map((s) => (
-              <MenuItem key={s} onClick={() => setFilter({ status: s })}>{s}</MenuItem>
+              <MenuItem key={s} onClick={() => { setFilter({ status: s }); close(); }}>{s}</MenuItem>
             ))}
-          </Menu>
+          </>
         )}
-      </ChipButton>
+      </Popover>
 
-      <ChipButton data-testid="filter-chip-priority" onClick={() => toggle('priority')} $active={open === 'priority'}>
-        Priority <ChevronDown size={9} />
-        {open === 'priority' && (
-          <Menu>
-            <MenuItem onClick={() => setFilter({ priority: '' })}>All priorities</MenuItem>
+      <Popover trigger={({ open, toggle }) => (
+        <ChipButton data-testid="filter-chip-priority" onClick={toggle} $active={open}>
+          Priority <ChevronDown size={9} />
+        </ChipButton>
+      )}>
+        {({ close }) => (
+          <>
+            <MenuItem onClick={() => { setFilter({ priority: '' }); close(); }}>All priorities</MenuItem>
             {PRIORITIES.map((p) => (
-              <MenuItem key={p} style={{ textTransform: 'capitalize' }} onClick={() => setFilter({ priority: p })}>{p}</MenuItem>
+              <MenuItem key={p} style={{ textTransform: 'capitalize' }} onClick={() => { setFilter({ priority: p }); close(); }}>{p}</MenuItem>
             ))}
-          </Menu>
+          </>
         )}
-      </ChipButton>
+      </Popover>
 
-      <ChipButton data-testid="filter-chip-assignee" onClick={() => toggle('assignee')} $active={open === 'assignee'}>
-        Assignee <ChevronDown size={9} />
-        {open === 'assignee' && (
-          <Menu onClick={(e) => e.stopPropagation()}>
-            <MenuItem onClick={setMine}>Me</MenuItem>
+      <Popover stopMenuClick trigger={({ open, toggle }) => (
+        <ChipButton data-testid="filter-chip-assignee" onClick={toggle} $active={open}>
+          Assignee <ChevronDown size={9} />
+        </ChipButton>
+      )}>
+        {({ close }) => (
+          <>
+            <MenuItem onClick={() => { setMine(); close(); }}>Me</MenuItem>
             <MenuInput
               data-testid="filter-assignee"
               placeholder="Filter by assignee…"
               value={filters.assignee}
               onChange={(e) => setFilter({ assignee: e.target.value })}
             />
-          </Menu>
+          </>
         )}
-      </ChipButton>
+      </Popover>
 
-      <ChipButton data-testid="filter-chip-label" onClick={() => toggle('label')} $active={open === 'label'}>
-        Label <ChevronDown size={9} />
-        {open === 'label' && (
-          <Menu onClick={(e) => e.stopPropagation()}>
-            <MenuInput
-              data-testid="filter-label"
-              placeholder="Filter by label…"
-              value={filters.label}
-              onChange={(e) => setFilter({ label: e.target.value })}
-            />
-          </Menu>
-        )}
-      </ChipButton>
+      <Popover stopMenuClick trigger={({ open, toggle }) => (
+        <ChipButton data-testid="filter-chip-label" onClick={toggle} $active={open}>
+          Label <ChevronDown size={9} />
+        </ChipButton>
+      )}>
+        <MenuInput
+          data-testid="filter-label"
+          placeholder="Filter by label…"
+          value={filters.label}
+          onChange={(e) => setFilter({ label: e.target.value })}
+        />
+      </Popover>
 
       {myIssues && <ActiveChip>Assignee: Me <X onClick={clearMine}>×</X></ActiveChip>}
       {filters.status && <ActiveChip>Status: {filters.status} <X onClick={() => setFilter({ status: '' })}>×</X></ActiveChip>}
@@ -115,7 +107,6 @@ const baseChip = `
 `;
 const ChipButton = styled.button<{ $active?: boolean }>`
   ${baseChip}
-  position: relative;
   color: ${t.color.text2};
   background: ${({ $active }) => ($active ? t.color.raised2 : t.color.raised)};
   border: 1px solid ${t.color.border};
@@ -135,26 +126,4 @@ const X = styled.span`
 const Clear = styled.button`
   font-size: 12px; color: ${t.color.text3}; background: none; border: none; padding: 4px 6px;
   &:hover { color: ${t.color.text}; }
-`;
-const Menu = styled.div`
-  position: absolute; top: calc(100% + 5px); left: 0; z-index: 20;
-  min-width: 172px; padding: 5px;
-  background: ${t.color.raised}; border: 1px solid ${t.color.borderStrong};
-  border-radius: ${t.radius}; box-shadow: 0 12px 30px rgba(0,0,0,0.5);
-  display: flex; flex-direction: column; gap: 1px;
-  text-align: left;
-`;
-const MenuItem = styled.button`
-  display: block; width: 100%; text-align: left;
-  font-size: 12.5px; color: ${t.color.text2};
-  background: none; border: none; border-radius: 4px; padding: 6px 8px;
-  &:hover { background: rgba(255,255,255,0.05); color: ${t.color.text}; }
-`;
-const MenuInput = styled.input`
-  margin-top: 2px; width: 100%;
-  background: ${t.color.bg}; border: 1px solid ${t.color.border};
-  border-radius: 4px; padding: 6px 8px; color: ${t.color.text};
-  font-family: inherit; font-size: 12.5px; outline: none;
-  &::placeholder { color: ${t.color.text3}; }
-  &:focus { border-color: ${t.color.borderStrong}; }
 `;

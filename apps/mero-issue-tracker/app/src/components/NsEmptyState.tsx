@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import type { Namespace } from '@calimero-network/mero-react';
 import { tokens as t } from '../theme';
 import { APP_DISPLAY_NAME } from '../config';
+import { SelectMenu } from './Dropdown';
 import { LogoMark } from './icons';
 
 interface Props {
@@ -26,20 +27,15 @@ export default function NsEmptyState({ namespaces, onSelect, onCreate, onJoin }:
         {hasNamespaces ? (
           <>
             <p>Select a workspace to continue, create a new one, or join one you were invited to.</p>
-            <select
+            <SelectMenu
               className="pick"
-              data-testid="ns-empty-select"
-              aria-label="Select a workspace"
-              defaultValue=""
-              onChange={(e) => { if (e.target.value) onSelect(e.target.value); }}
-            >
-              <option value="" disabled>Select a workspace</option>
-              {namespaces.map((n) => (
-                <option key={n.namespaceId} value={n.namespaceId}>
-                  {n.name || n.namespaceId.slice(0, 8)}
-                </option>
-              ))}
-            </select>
+              testId="ns-empty-select"
+              ariaLabel="Select a workspace"
+              placeholder="Select a workspace"
+              value=""
+              options={namespaces.map((n) => ({ value: n.namespaceId, label: n.name || n.namespaceId.slice(0, 8) }))}
+              onChange={(v) => { if (v) onSelect(v); }}
+            />
           </>
         ) : (
           <p>Create a team workspace to start tracking repositories and issues, or join one you were invited to.</p>
@@ -68,12 +64,9 @@ const Panel = styled.div`
   }
   h1 { font-size: 21px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 10px; }
   p { font-size: 13.5px; color: ${t.color.text2}; margin: 0 0 26px; line-height: 1.6; }
-  .pick {
-    width: 100%; margin: -12px 0 26px; padding: 10px 12px; border-radius: ${t.radius};
-    background: ${t.color.raised}; border: 1px solid ${t.color.border}; color: ${t.color.text};
-    font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
-    option { background: ${t.color.panel}; color: ${t.color.text}; }
-  }
+  .pick { display: flex; width: 100%; margin: -12px 0 26px; }
+  .pick > button { width: 100%; padding: 10px 12px; border-radius: ${t.radius}; font-size: 13px; font-weight: 600; }
+  .pick [role="listbox"] { text-align: left; font-weight: 500; }
   .row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
   button { border-radius: ${t.radius}; font-size: 13px; font-weight: 600; padding: 11px 18px; cursor: pointer; }
   .primary { background: ${t.color.accent}; color: ${t.color.onAccent}; border: 1px solid transparent; &:hover { background: #b6ff5e; } }

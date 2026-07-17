@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import { tokens as t, PRIORITIES } from '../theme';
+import { SelectMenu } from './Dropdown';
 import { APP_DISPLAY_NAME } from '../config';
 
 interface Props {
@@ -110,14 +111,14 @@ export default function NewIssueModal({ onCreate, onClose }: Props): React.React
           </Section>
           <Grid2>
             <Section eyebrow="Priority">
-              <select
-                className="finput"
-                data-testid="field-priority"
+              <SelectMenu
+                className="ctl cap"
+                testId="field-priority"
+                ariaLabel="Priority"
                 value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-              >
-                {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
+                options={PRIORITIES}
+                onChange={setPriority}
+              />
             </Section>
             <Section eyebrow="Labels">
               <input
@@ -202,7 +203,9 @@ const FieldWrap = styled.div`
   }
   .ftext { min-height: 62px; line-height: 1.5; }
   .mono-field { font-family: ${t.font.mono}; font-size: 12px; min-height: 92px; }
-  select.finput { cursor: pointer; text-transform: capitalize; }
+  .ctl { display: flex; width: 100%; }
+  .ctl > button { padding: 9px 11px; font-size: 13px; border-radius: ${t.radius}; }
+  .cap .tv, .cap [role="option"] { text-transform: capitalize; }
 `;
 const Field = styled(FieldWrap)`
   .title-input {

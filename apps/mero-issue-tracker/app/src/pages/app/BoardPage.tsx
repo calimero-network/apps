@@ -46,7 +46,7 @@ export default function BoardPage(): React.ReactElement {
                     {issue.labels.slice(0, 2).map((l) => <LabelChip key={l} label={l} />)}
                   </span>
                   <AvatarGlyph
-                    seed={issue.assignee}
+                    seed={issue.assignee && aliases.hasAlias(issue.assignee) ? aliases.resolve(issue.assignee) : issue.assignee}
                     size="sm"
                     title={issue.assignee ? aliases.resolve(issue.assignee) : undefined}
                     keyFallback={!!issue.assignee && !aliases.hasAlias(issue.assignee)}

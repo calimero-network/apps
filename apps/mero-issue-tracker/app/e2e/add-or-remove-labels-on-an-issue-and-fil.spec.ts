@@ -41,12 +41,14 @@ test.describe(`team member: add or remove labels on an issue and filter the boar
     await expect(cardA).toBeVisible({ timeout: 10_000 });
     await cardA.click();
 
-    // Add the same label twice — UnorderedSet semantics dedupe it (stands in for
-    // the concurrent-add case, which resolves to a single set member).
-    await pageA.getByTestId('field-label').fill(label);
+    // Add the same label twice - UnorderedSet semantics dedupe it (stands in for
+    // the concurrent-add case, which resolves to a single set member). The "+ Add"
+    // affordance reveals the inline input; Enter commits and keeps it open.
     await pageA.getByTestId('action-add_label').click();
     await pageA.getByTestId('field-label').fill(label);
-    await pageA.getByTestId('action-add_label').click();
+    await pageA.getByTestId('field-label').press('Enter');
+    await pageA.getByTestId('field-label').fill(label);
+    await pageA.getByTestId('field-label').press('Enter');
 
     // Exactly one instance of the label's remove control appears in the detail
     // page's label list (scoped by its unique aria-label, not raw text - the

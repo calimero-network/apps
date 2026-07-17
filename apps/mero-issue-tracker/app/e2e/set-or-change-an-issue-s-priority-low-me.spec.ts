@@ -63,7 +63,8 @@ test.describe(`team member: set or change an issue's priority (low, medium, high
     // boundary. Assert the offered set equals exactly the spec's allowed values.
     const ALLOWED_PRIORITIES = ['low', 'medium', 'high', 'urgent'];
     await page.getByTestId('open-new-issue-btn').click();
-    const options = await page.getByTestId('field-priority').locator('option').allInnerTexts();
-    expect(options.map((o) => o.trim())).toEqual(ALLOWED_PRIORITIES);
+    await page.getByTestId('field-priority').click();
+    const options = await page.getByRole('listbox').getByRole('option').allInnerTexts();
+    expect(options.map((o) => o.trim().toLowerCase())).toEqual(ALLOWED_PRIORITIES);
   });
 });

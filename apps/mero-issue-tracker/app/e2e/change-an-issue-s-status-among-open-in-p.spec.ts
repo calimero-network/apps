@@ -39,14 +39,15 @@ test.describe(`team member: change an issue's status among Open, In progress, Bl
     const cardA = pageA.getByTestId('item-issue').filter({ hasText: title });
     await expect(cardA).toBeVisible({ timeout: 10_000 });
     await cardA.click();
-    // Move the issue from Open → In progress.
-    await pageA.getByTestId('action-set_status').selectOption('In progress');
+    // Move the issue from Open → In progress via the styled status dropdown.
+    await pageA.getByTestId('action-set_status').click();
+    await pageA.getByRole('listbox').getByRole('option', { name: 'In progress', exact: true }).click();
 
     // Teammate B sees the issue and, when opened, it now sits in In progress.
     const cardB = pageB.getByTestId('item-issue').filter({ hasText: title });
     await expect(cardB).toBeVisible({ timeout: 5_000 });
     await cardB.click();
-    await expect(pageB.getByTestId('action-set_status')).toHaveValue('In progress', { timeout: 5_000 });
+    await expect(pageB.getByTestId('action-set_status')).toContainText('In progress', { timeout: 5_000 });
 
     await ctxA.close();
     await ctxB.close();
@@ -62,7 +63,8 @@ test.describe(`team member: change an issue's status among Open, In progress, Bl
 
     // The status control only offers the four valid values — any other value is
     // not selectable, so invalid statuses are rejected at the boundary.
-    const options = await page.getByTestId('action-set_status').locator('option').allInnerTexts();
+    await page.getByTestId('action-set_status').click();
+    const options = await page.getByRole('listbox').getByRole('option').allInnerTexts();
     expect(options.map((o) => o.trim())).toEqual(['Open', 'In progress', 'Blocked', 'Done']);
   });
 });

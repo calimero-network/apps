@@ -12,6 +12,7 @@ import StatusDot from '../../components/StatusDot';
 import PriorityGlyph from '../../components/PriorityGlyph';
 import AvatarGlyph from '../../components/AvatarGlyph';
 import LabelChip from '../../components/LabelChip';
+import { SelectMenu } from '../../components/Dropdown';
 import { IconBack, IconAgent, IconCopy } from '../../components/icons';
 import { useAppCtx } from './appContext';
 
@@ -31,6 +32,7 @@ export default function IssueDetailPage(): React.ReactElement {
   const [detail, setDetail] = useState<IssueDetail | null>(null);
   const [assignee, setAssignee] = useState('');
   const [newLabel, setNewLabel] = useState('');
+  const [addingLabel, setAddingLabel] = useState(false);
   const [commentBody, setCommentBody] = useState('');
 
   // Reload the issue + comment thread on mount and on every board refresh so
@@ -50,6 +52,10 @@ export default function IssueDetailPage(): React.ReactElement {
   const comments = detail?.comments ?? [];
   const createdByHasAlias = issue ? aliases.hasAlias(issue.created_by) : false;
   const createdByLabel = issue ? aliases.resolve(issue.created_by) : '';
+  // Seed the composer avatar with the SAME resolved identity the comment list
+  // uses, not the raw public key (which produced a mismatched glyph/colour).
+  const meHasAlias = currentUser ? aliases.hasAlias(currentUser) : false;
+  const meLabel = currentUser ? aliases.resolve(currentUser) : '';
 
   useEffect(() => { setAssignee(issue?.assignee ?? ''); }, [issue?.assignee]);
 
@@ -139,7 +145,11 @@ export default function IssueDetailPage(): React.ReactElement {
           ))}
 
           <div className="composer">
-            <AvatarGlyph seed={currentUser || 'me'} size="sm" />
+            <AvatarGlyph
+              seed={meHasAlias ? meLabel : (currentUser || 'me')}
+              size="sm"
+              keyFallback={!!currentUser && !meHasAlias}
+            />
             <input
               data-testid="field-body"
               placeholder="Leave a comment…"
@@ -156,29 +166,29 @@ export default function IssueDetailPage(): React.ReactElement {
       <Props>
         <div className="prop-row">
           <span className="label">Status</span>
-          <span className="val">
-            <StatusDot status={issue.status} />
-            <Select
-              data-testid="action-set_status"
-              value={issue.status}
-              onChange={(e) => run(() => data.setStatus(issue.id, e.target.value))}
-            >
-              {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </Select>
-          </span>
+          <SelectMenu
+            className="ctl"
+            testId="action-set_status"
+            ariaLabel="Status"
+            value={issue.status}
+            options={STATUSES}
+            onChange={(v) => run(() => data.setStatus(issue.id, v))}
+            renderValue={(v) => <><StatusDot status={v} />{v}</>}
+            renderOption={(o) => <><StatusDot status={String(o)} />{String(o)}</>}
+          />
         </div>
         <div className="prop-row">
           <span className="label">Priority</span>
-          <span className="val">
-            <PriorityGlyph priority={issue.priority} boxSize={14} />
-            <Select
-              data-testid="action-set_priority"
-              value={issue.priority}
-              onChange={(e) => run(() => data.setPriority(issue.id, e.target.value))}
-            >
-              {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
-            </Select>
-          </span>
+          <SelectMenu
+            className="ctl cap"
+            testId="action-set_priority"
+            ariaLabel="Priority"
+            value={issue.priority}
+            options={PRIORITIES}
+            onChange={(v) => run(() => data.setPriority(issue.id, v))}
+            renderValue={(v) => <><PriorityGlyph priority={v} boxSize={14} />{v}</>}
+            renderOption={(o) => <><PriorityGlyph priority={String(o)} boxSize={14} />{String(o)}</>}
+          />
         </div>
         <div className="prop-row">
           <span className="label">Assignee</span>
@@ -205,14 +215,24 @@ export default function IssueDetailPage(): React.ReactElement {
             {issue.labels.map((l) => (
               <LabelChip key={l} label={l} onRemove={() => run(() => data.removeLabel(issue.id, l))} />
             ))}
-            <input
-              data-testid="field-label"
-              placeholder="Add label"
-              value={newLabel}
-              onChange={(e) => setNewLabel(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitLabel(); } }}
-            />
-            <button data-testid="action-add_label" type="button" onClick={submitLabel}>Add</button>
+            {addingLabel ? (
+              <input
+                className="label-input"
+                data-testid="field-label"
+                placeholder="Label name…"
+                aria-label="Label name"
+                autoFocus
+                value={newLabel}
+                onChange={(e) => setNewLabel(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); submitLabel(); }
+                  else if (e.key === 'Escape') { setNewLabel(''); setAddingLabel(false); }
+                }}
+                onBlur={() => { if (!newLabel.trim()) setAddingLabel(false); }}
+              />
+            ) : (
+              <button className="add-label" data-testid="action-add_label" type="button" onClick={() => setAddingLabel(true)}>+ Add</button>
+            )}
           </span>
         </div>
 
@@ -314,7 +334,7 @@ function CommentItem({
 }
 
 const Wrap = styled.div`
-  display: grid; grid-template-columns: 1fr 260px; gap: 0;
+  display: grid; grid-template-columns: 1fr 308px; gap: 0;
   flex: 1 1 auto; min-height: 0; overflow-y: auto;
   @media (max-width: 940px) { grid-template-columns: 1fr; }
 `;
@@ -373,37 +393,39 @@ const MainCol = styled.div`
   }
 `;
 const Props = styled.aside`
-  border-left: 1px solid ${t.color.border}; padding: 22px 18px; background: ${t.color.panel};
+  border-left: 1px solid ${t.color.border}; padding: 20px 16px; background: ${t.color.panel};
   display: flex; flex-direction: column; gap: 2px;
-  .prop-row { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: ${t.radius}; min-height: 34px; }
+  .prop-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: ${t.radius}; min-height: 32px; }
   .prop-row.labels-row { align-items: flex-start; }
-  .label { font-size: 12px; color: ${t.color.text3}; width: 78px; flex: 0 0 auto; }
+  .label { font-size: 12px; color: ${t.color.text3}; width: 76px; flex: 0 0 auto; }
   .val { font-size: 12.5px; color: ${t.color.text}; display: flex; align-items: center; gap: 7px; flex: 1 1 auto; min-width: 0; }
   .val.dim { color: ${t.color.text2}; }
   .val .mono { font-size: 11px; color: ${t.color.text2}; font-family: ${t.font.mono}; }
+  /* Shared control column: selects + assignee input line up at one width. */
+  .ctl { flex: 1 1 auto; min-width: 0; }
+  .cap .tv, .cap [role="option"] { text-transform: capitalize; }
   .val.assignee { gap: 6px; }
   .val.assignee input {
     flex: 1 1 auto; min-width: 0; background: ${t.color.raised}; border: 1px solid ${t.color.border};
-    border-radius: ${t.radiusSm}; padding: 5px 7px; color: ${t.color.text}; font-family: inherit; font-size: 12px; outline: none;
-    &:focus { border-color: ${t.color.borderStrong}; }
+    border-radius: ${t.radiusSm}; padding: 5px 7px; color: ${t.color.text}; font-family: inherit; font-size: 12.5px; outline: none;
+    &:focus { border-color: ${t.color.accentBorder}; }
   }
-  .val.assignee button, .val.labels button {
+  .val.assignee button {
     background: ${t.color.raised2}; border: 1px solid ${t.color.border}; border-radius: ${t.radiusSm};
-    color: ${t.color.text2}; font-size: 11px; padding: 4px 7px; cursor: pointer; &:hover { color: ${t.color.text}; }
+    color: ${t.color.text2}; font-size: 11px; padding: 5px 8px; cursor: pointer; &:hover { color: ${t.color.text}; }
   }
-  .val.labels { flex-wrap: wrap; gap: 5px; }
-  .val.labels input {
+  .val.labels { flex-wrap: wrap; gap: 6px; }
+  .val.labels .label-input {
     background: ${t.color.raised}; border: 1px solid ${t.color.border}; border-radius: ${t.radiusSm};
-    padding: 4px 7px; color: ${t.color.text}; font-family: inherit; font-size: 11.5px; outline: none; width: 90px;
-    &:focus { border-color: ${t.color.borderStrong}; }
+    padding: 4px 8px; color: ${t.color.text}; font-family: inherit; font-size: 11.5px; outline: none; width: 100px;
+    &:focus { border-color: ${t.color.accentBorder}; }
   }
-  .divider { height: 1px; background: ${t.color.border}; margin: 14px 0; }
-`;
-const Select = styled.select`
-  flex: 1 1 auto; min-width: 0; background: ${t.color.raised}; border: 1px solid ${t.color.border};
-  border-radius: ${t.radiusSm}; padding: 5px 7px; color: ${t.color.text};
-  font-family: inherit; font-size: 12.5px; outline: none; cursor: pointer;
-  &:focus { border-color: ${t.color.borderStrong}; }
+  .val.labels .add-label {
+    display: inline-flex; align-items: center; background: none; border: 1px dashed ${t.color.border};
+    border-radius: 20px; color: ${t.color.text3}; font-size: 11px; padding: 2px 9px; cursor: pointer;
+    &:hover { color: ${t.color.text}; border-color: ${t.color.borderStrong}; }
+  }
+  .divider { height: 1px; background: ${t.color.border}; margin: 16px 0; }
 `;
 const AgentCard = styled.div`
   margin-top: 8px; background: ${t.color.raised}; border: 1px solid ${t.color.border};
