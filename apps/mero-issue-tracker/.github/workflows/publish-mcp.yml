@@ -78,8 +78,10 @@ jobs:
         working-directory: mcp
         run: npm publish --access public
 
+      # success() guard so a failed npm publish never pushes a half-release
+      # (release commit + tag) with nothing on npm behind it.
       - name: Push release commit and tag
-        if: steps.semantic.outputs.new_release == 'true'
+        if: success() && steps.semantic.outputs.new_release == 'true'
         run: |
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
           git push origin HEAD:main --follow-tags || true
