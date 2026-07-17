@@ -152,6 +152,7 @@ claude mcp add issue-tracker --scope project \
 | `TRACKER_NAMESPACE` | The workspace name as created/joined in the app (or its namespace id). |
 | `TRACKER_REPO` | Default repo name, used when a tool call omits `repo`. Optional - omit it if the workspace has (or will only ever have) one repo. |
 | `TRACKER_CONTEXT` | Advanced: pins a single context id/alias directly, bypassing namespace/repo resolution. Rarely needed. |
+| `TRACKER_SERVICE` | Service name passed to `createContext` by `add_repo` (default `issue-tracker`). |
 
 ### Tools
 
@@ -165,10 +166,14 @@ claude mcp add issue-tracker --scope project \
 - `set_priority` - set the priority (low, medium, high, urgent) on `issue_id`, optional `repo`.
 - `get_fix_prompt` - render a ready-to-paste fix prompt for `id`, optional `repo`.
 - `list_repos` - list every repo in the namespace with its name and `repo_url`.
+- `add_repo` - onboard a new repo (`name`, `github_url`): creates a context
+  in `TRACKER_NAMESPACE`, sets its `repo_url`, and aliases it by name.
+  Requires `TRACKER_NAMESPACE`; rejects a name that already exists.
 
-Every tool above takes an optional `repo` param (the repo name). Pass it
-explicitly when managing more than one repo; without it the server falls
-back to `TRACKER_REPO`, then the namespace's only repo, else it errors.
+Every tool above except `add_repo` takes an optional `repo` param (the repo
+name). Pass it explicitly when managing more than one repo; without it the
+server falls back to `TRACKER_REPO`, then the namespace's only repo, else it
+errors.
 
 ### Example prompts
 

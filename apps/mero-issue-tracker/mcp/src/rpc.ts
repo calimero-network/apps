@@ -63,8 +63,14 @@ export async function resolveContextId(cfg: Config): Promise<string> {
   return contextRaw;
 }
 
-/** Resolves TRACKER_NAMESPACE (a namespace id or name) to a namespace id via the admin API's namespace list. */
-export async function resolveNamespaceId(cfg: Config): Promise<string> {
+interface NamespaceRecord {
+  namespaceId: string;
+  name?: string;
+  targetApplicationId?: string;
+}
+
+/** Shared lookup behind resolveNamespaceId/resolveNamespaceApp - one list fetch, one match rule. */
+async function findNamespace(cfg: Config): Promise<NamespaceRecord> {
   const namespaceRaw = cfg.namespaceRaw;
   if (!namespaceRaw) {
     throw new Error('TRACKER_NAMESPACE is not set.');
@@ -73,14 +79,28 @@ export async function resolveNamespaceId(cfg: Config): Promise<string> {
   if (!res.ok) {
     throw new Error(`Failed to list namespaces: admin API returned ${res.status}`);
   }
-  const json = (await res.json()) as { data?: Array<{ namespaceId: string; name?: string }> };
+  const json = (await res.json()) as { data?: NamespaceRecord[] };
   const namespaces = json?.data ?? [];
   const match = namespaces.find((n) => n.namespaceId === namespaceRaw || n.name === namespaceRaw);
   if (!match) {
     const available = namespaces.map((n) => n.name ?? n.namespaceId).join(', ') || '(none)';
     throw new Error(`Namespace "${namespaceRaw}" not found. Available namespaces: ${available}`);
   }
-  return match.namespaceId;
+  return match;
+}
+
+/** Resolves TRACKER_NAMESPACE (a namespace id or name) to a namespace id via the admin API's namespace list. */
+export async function resolveNamespaceId(cfg: Config): Promise<string> {
+  return (await findNamespace(cfg)).namespaceId;
+}
+
+/** Resolves TRACKER_NAMESPACE to both its id and the application it targets, for add_repo's createContext call. */
+export async function resolveNamespaceApp(cfg: Config): Promise<{ namespaceId: string; applicationId: string }> {
+  const match = await findNamespace(cfg);
+  if (!match.targetApplicationId) {
+    throw new Error(`Namespace "${cfg.namespaceRaw}" has no targetApplicationId.`);
+  }
+  return { namespaceId: match.namespaceId, applicationId: match.targetApplicationId };
 }
 
 // The app's legacy workspace bootstrap alias (removed); ignore leftovers from
@@ -152,6 +172,46 @@ export function pickRepo(repos: NamespaceRepo[], wanted?: string): NamespaceRepo
   }
   const available = repos.map((r) => r.name).join(', ');
   throw new Error(`Multiple repos exist; pass "repo" or set TRACKER_REPO. Available repos: ${available}`);
+}
+
+/** A newly created context, per mero-js's CreateContextResponseData (POST /admin-api/contexts). */
+export interface CreatedContext {
+  contextId: string;
+  memberPublicKey: string;
+}
+
+/** Creates a context in a namespace, mirroring useWorkspace.ts's addRepo -> mero.admin.createContext. */
+export async function createContext(
+  cfg: Config,
+  params: { applicationId: string; groupId: string; serviceName: string; name: string },
+): Promise<CreatedContext> {
+  const res = await fetch(`${cfg.nodeUrl}/admin-api/contexts`, {
+    method: 'POST',
+    headers: headers(cfg),
+    body: JSON.stringify({ ...params, initializationParams: [] }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Failed to create context: admin API returned ${res.status}: ${text.slice(0, 300)}`);
+  }
+  const json = (await res.json()) as { data?: CreatedContext };
+  if (!json?.data?.contextId || !json?.data?.memberPublicKey) {
+    throw new Error('createContext returned no contextId/memberPublicKey');
+  }
+  return json.data;
+}
+
+/** Aliases a context to a name, mirroring useWorkspace.ts's best-effort mero.admin.createContextAlias. */
+export async function createContextAlias(cfg: Config, alias: string, contextId: string): Promise<void> {
+  const res = await fetch(`${cfg.nodeUrl}/admin-api/alias/create/context`, {
+    method: 'POST',
+    headers: headers(cfg),
+    body: JSON.stringify({ alias, contextId }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Failed to create context alias: admin API returned ${res.status}: ${text.slice(0, 300)}`);
+  }
 }
 
 /** Resolves the executor identity: TRACKER_EXECUTOR if set, else the node's first owned identity for the context. */
