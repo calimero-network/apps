@@ -98,50 +98,22 @@ The easiest way, no clone required - add to `.mcp.json` at the repo root:
 }
 ```
 
-This requires the package to be published to npm; see `mcp/README.md` for
-the publish workflow.
-
-If you're contributing to this repo (or want to run an unpublished build),
-run it from source instead:
-
-```json
-{
-  "mcpServers": {
-    "issue-tracker": {
-      "command": "pnpm",
-      "args": ["--filter", "@calimero-network/mero-issue-tracker-mcp", "start"],
-      "env": {
-        "CALIMERO_NODE_URL": "http://localhost:2428",
-        "TRACKER_NAMESPACE": "my-team",
-        "TRACKER_REPO": "core"
-      }
-    }
-  }
-}
-```
-
-From another repo, point pnpm at this checkout with `-C`:
-
-```json
-{
-  "mcpServers": {
-    "issue-tracker": {
-      "command": "pnpm",
-      "args": ["-C", "/path/to/issue-tracker", "--filter", "@calimero-network/mero-issue-tracker-mcp", "start"],
-      "env": { "CALIMERO_NODE_URL": "http://localhost:2428", "TRACKER_NAMESPACE": "my-team" }
-    }
-  }
-}
-```
-
-Or register it with the CLI instead of hand-editing `.mcp.json`:
+The package is published to npm, so `npx` fetches and runs it - no clone, no
+build. Or register it with the CLI instead of hand-editing `.mcp.json`:
 
 ```bash
 claude mcp add issue-tracker --scope project \
   --env CALIMERO_NODE_URL=http://localhost:2428 \
   --env TRACKER_NAMESPACE=my-team \
-  -- pnpm -C /path/to/issue-tracker --filter @calimero-network/mero-issue-tracker-mcp start
+  --env TRACKER_REPO=core \
+  -- npx -y @calimero-network/mero-issue-tracker-mcp
 ```
+
+Contributors only (running an unpublished local build): clone the repo,
+`pnpm install`, `pnpm --filter @calimero-network/mero-issue-tracker-mcp build`,
+and set the command to `node /abs/path/to/issue-tracker/mcp/dist/index.js`
+(a bare `npx`/global bin may not resolve if your MCP client launches with a
+restricted PATH, e.g. some GUI launchers).
 
 ### Env vars
 
