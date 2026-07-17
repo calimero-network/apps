@@ -152,14 +152,19 @@ export function useWorkspace(): UseWorkspaceReturn {
     return () => { cancelled = true; };
   }, [mero, callbackContextId]);
 
-  // Invalidate a persisted selection that no longer matches a real namespace.
-  // No other fallback - a stale or absent selection leaves activeNs null so
-  // the empty state / switcher decides. Never auto-enter an unchosen workspace.
+  // Pick a workspace to show on load. A valid persisted/current selection wins;
+  // otherwise default to the first namespace (the list is already scoped to this
+  // app, so this is a friendly cold-start default, not a stale cross-app entry).
+  // The default is in-memory only - explicit switcher picks are what persist.
   useEffect(() => {
     if (userSelectedNs.current || resolvingCallback) return;
-    if (namespaces.length === 0) return;
+    if (namespaces.length === 0) {
+      if (activeNs) { setActiveNs(null); writeActiveNs(null); }
+      return;
+    }
     if (activeNs && namespaces.some((n) => n.namespaceId === activeNs)) return;
-    if (activeNs) { setActiveNs(null); writeActiveNs(null); }
+    if (activeNs) writeActiveNs(null); // drop a stale persisted id before defaulting
+    setActiveNs(namespaces[0].namespaceId);
   }, [namespaces, activeNs, resolvingCallback]);
 
   const selectNamespace = useCallback((id: string) => {
