@@ -1,6 +1,6 @@
 {
   "name": "@calimero-network/mero-issue-tracker-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Stdio MCP server for managing issues in a Calimero-backed issue tracker",
   "license": "MIT",
   "type": "module",
@@ -10,7 +10,10 @@
   "bin": {
     "mero-issue-tracker-mcp": "dist/index.js"
   },
-  "files": ["dist", "LICENSE"],
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=20"
   },
