@@ -1,6 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { tokens as t } from '../theme';
 import { APP_ROUTE } from '../config';
 import { truncateKey } from '../utils/display';
@@ -24,7 +24,7 @@ export default function Topbar({
   if (detailMatch) {
     title = (
       <>
-        All Issues <span className="sep">›</span>{' '}
+        <Link className="crumb-link" to={APP_ROUTE}>All Issues</Link> <span className="sep">›</span>{' '}
         <span className="crumb mono">{truncateKey(decodeURIComponent(detailMatch[1]))}</span>
       </>
     );
@@ -75,6 +75,7 @@ const ViewTitle = styled.div`
   font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em;
   display: flex; align-items: center; gap: 8px;
   .sep { color: ${t.color.text3}; font-weight: 400; }
+  .crumb-link { color: inherit; text-decoration: none; &:hover { color: #fff; } }
   .crumb { color: ${t.color.text2}; font-weight: 500; font-size: 12px; }
   .mono { font-family: ${t.font.mono}; }
 `;
