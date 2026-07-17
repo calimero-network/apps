@@ -148,10 +148,10 @@ for i in $(seq 0 $((SERVICE_COUNT - 1))); do
 done
 
 # Compose bundle manifest.json.
-# links.frontend = the deployed app URL. The deploy step exports
-# STUDIO_FRONTEND_URL (the deterministic Vercel git-branch alias) before
-# calling this; plain local builds fall back to the dev server.
-FRONTEND_URL="${STUDIO_FRONTEND_URL:-http://localhost:5173/}"
+# links.frontend = the deployed app URL. Resolution order: STUDIO_FRONTEND_URL
+# (deploy step override), then config's frontendUrl (the checked-in deployment),
+# then the local dev server for plain local builds.
+FRONTEND_URL="${STUDIO_FRONTEND_URL:-$(jq -r '.frontendUrl // "http://localhost:5173/"' "$CONFIG")}"
 # metadata.author = shown as "Author" on the registry. Studio-built apps default
 # to "Calimero Studio" (otherwise the registry shows no/unknown author). The
 # deploy step exports STUDIO_AUTHOR (wins); standalone builds fall back to the
