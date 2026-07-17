@@ -46,6 +46,10 @@ export interface Event_IssueCreated {
   created_by: string;
 }
 
+export interface Event_IssueDeleted {
+  id: string;
+}
+
 export interface Event_IssueEdited {
   id: string;
 }
@@ -128,9 +132,11 @@ export interface StatusCount {
 
 
 
+
 export type AbiEvent =
   | { name: "IssueCreated"; payload: Event_IssueCreated }
   | { name: "IssueEdited"; payload: Event_IssueEdited }
+  | { name: "IssueDeleted"; payload: Event_IssueDeleted }
   | { name: "IssueStatusChanged"; payload: Event_IssueStatusChanged }
   | { name: "IssuePriorityChanged"; payload: Event_IssuePriorityChanged }
   | { name: "IssueAssigneeChanged"; payload: Event_IssueAssigneeChanged }
@@ -302,6 +308,14 @@ export class IssueTrackerClient {
    */
   public async deleteComment(params: { comment_id: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_comment', argsJson: params, executorPublicKey: this._executorPublicKey });
+    return response as void;
+  }
+
+  /**
+   * delete_issue
+   */
+  public async deleteIssue(params: { issue_id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_issue', argsJson: params, executorPublicKey: this._executorPublicKey });
     return response as void;
   }
 
