@@ -28,3 +28,7 @@ docs/superpowers/
 app/.playwright-data/
 app/test-results/
 app/playwright-report/
+
+# local env overrides
+*.env.local
+.env.local
