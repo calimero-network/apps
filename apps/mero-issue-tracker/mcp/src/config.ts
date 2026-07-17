@@ -14,9 +14,12 @@ export interface Config {
   authToken?: string;
   /** TRACKER_EXECUTOR override; when unset the executor is resolved via admin API. */
   executorOverride?: string;
+  /** TRACKER_SERVICE - the app service name used by add_repo's createContext call. */
+  serviceName: string;
 }
 
 const DEFAULT_NODE_URL = 'http://localhost:2428';
+const DEFAULT_SERVICE_NAME = 'issue-tracker';
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const contextRaw = env.TRACKER_CONTEXT?.trim() || undefined;
@@ -34,5 +37,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     repoDefault: env.TRACKER_REPO?.trim() || undefined,
     authToken: env.CALIMERO_AUTH_TOKEN?.trim() || undefined,
     executorOverride: env.TRACKER_EXECUTOR?.trim() || undefined,
+    serviceName: env.TRACKER_SERVICE?.trim() || DEFAULT_SERVICE_NAME,
   };
 }

@@ -13,6 +13,7 @@ import {
   setPriorityShape,
   getFixPromptShape,
   listReposShape,
+  addRepoShape,
   createIssue,
   listIssues,
   getIssue,
@@ -22,10 +23,11 @@ import {
   setPriority,
   getFixPrompt,
   listRepos,
+  addRepo,
   createServer,
 } from './index.ts';
 
-const cfg: Config = { nodeUrl: 'http://localhost:2428', contextRaw: 'ctx' };
+const cfg: Config = { nodeUrl: 'http://localhost:2428', contextRaw: 'ctx', serviceName: 'issue-tracker' };
 const target: ResolvedTarget = { contextId: 'ctx-1', executorPublicKey: 'exec-1' };
 
 function withFetch<T>(impl: typeof fetch, run: () => Promise<T>): Promise<T> {
@@ -313,6 +315,15 @@ test('list_repos schema accepts an empty object', () => {
   assert.equal(schema.safeParse({}).success, true);
 });
 
+test('add_repo schema requires name and an http(s) github_url', () => {
+  const schema = z.object(addRepoShape);
+  assert.equal(schema.safeParse({ name: 'frontend' }).success, false);
+  assert.equal(schema.safeParse({ name: 'frontend', github_url: '' }).success, false);
+  assert.equal(schema.safeParse({ name: 'frontend', github_url: 'ftp://acme/frontend' }).success, false);
+  assert.equal(schema.safeParse({ name: 'frontend', github_url: 'not-a-url' }).success, false);
+  assert.equal(schema.safeParse({ name: 'frontend', github_url: 'https://github.com/acme/frontend' }).success, true);
+});
+
 // ---- listRepos (list_repos tool) ----
 
 test('listRepos fetches repo_url per repo via get_repo_info on each repo\'s own context', async () => {
@@ -339,6 +350,105 @@ test('listRepos fetches repo_url per repo via get_repo_info on each repo\'s own 
     { name: 'frontend', repo_url: 'https://github.com/acme/frontend' },
     { name: 'backend', repo_url: 'https://github.com/acme/backend' },
   ]);
+});
+
+// ---- addRepo (add_repo tool) ----
+
+const nsCfg: Config = { nodeUrl: 'http://localhost:2428', namespaceRaw: 'my-team', serviceName: 'issue-tracker' };
+
+/** A mock fetch covering add_repo's full call graph; `existingContexts` seeds the duplicate check. */
+function addRepoFetch(
+  existingContexts: Array<{ contextId: string; name?: string }> = [],
+  opts: { aliasFails?: boolean } = {},
+): { impl: typeof fetch; calls: string[] } {
+  const calls: string[] = [];
+  const impl = (async (url: string | URL, init?: RequestInit) => {
+    const u = String(url);
+    calls.push(`${init?.method ?? 'GET'} ${u}`);
+    if (u.endsWith('/admin-api/namespaces')) {
+      return new Response(
+        JSON.stringify({ data: [{ namespaceId: 'ns-1', name: 'my-team', targetApplicationId: 'app-1' }] }),
+        { status: 200 },
+      );
+    }
+    if (u.includes('/contexts') && u.includes('/admin-api/groups/')) {
+      return new Response(JSON.stringify({ data: existingContexts }), { status: 200 });
+    }
+    if (u.includes('/alias/list/context')) {
+      return new Response(JSON.stringify({ data: { aliases: [] } }), { status: 200 });
+    }
+    if (u.endsWith('/admin-api/contexts') && init?.method === 'POST') {
+      return new Response(
+        JSON.stringify({ data: { contextId: 'ctx-new', memberPublicKey: 'member-key' } }),
+        { status: 200 },
+      );
+    }
+    if (u.endsWith('/jsonrpc')) {
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }), { status: 200 });
+    }
+    if (u.endsWith('/admin-api/alias/create/context')) {
+      return opts.aliasFails
+        ? new Response('boom', { status: 500 })
+        : new Response(JSON.stringify({ data: {} }), { status: 200 });
+    }
+    throw new Error(`unexpected fetch: ${u}`);
+  }) as typeof fetch;
+  return { impl, calls };
+}
+
+test('addRepo creates the context, sets repo_url as the returned memberPublicKey, aliases it, and returns the new repo', async () => {
+  const { impl, calls } = addRepoFetch();
+  let setRepoUrlParams: any;
+  const wrapped = (async (url: string | URL, init?: RequestInit) => {
+    if (String(url).endsWith('/jsonrpc')) setRepoUrlParams = JSON.parse(String(init?.body)).params;
+    return impl(url, init);
+  }) as typeof fetch;
+
+  const result = await withFetch(wrapped, () =>
+    addRepo(nsCfg, { name: 'frontend', github_url: 'https://github.com/acme/frontend' }),
+  );
+
+  assert.deepEqual(result, { contextId: 'ctx-new', name: 'frontend', url: 'https://github.com/acme/frontend' });
+  assert.equal(setRepoUrlParams.method, 'set_repo_url');
+  assert.deepEqual(setRepoUrlParams.argsJson, { url: 'https://github.com/acme/frontend' });
+  assert.equal(setRepoUrlParams.contextId, 'ctx-new');
+  assert.equal(setRepoUrlParams.executorPublicKey, 'member-key');
+  assert.ok(calls.some((c) => c === 'POST http://localhost:2428/admin-api/contexts'));
+  assert.ok(calls.some((c) => c.endsWith('/admin-api/alias/create/context')));
+});
+
+test('addRepo rejects a duplicate repo name without calling createContext', async () => {
+  const { impl, calls } = addRepoFetch([{ contextId: 'ctx-1', name: 'frontend' }]);
+  await assert.rejects(
+    () => withFetch(impl, () => addRepo(nsCfg, { name: 'frontend', github_url: 'https://github.com/acme/frontend' })),
+    /"frontend" already exists/,
+  );
+  assert.ok(!calls.some((c) => c.endsWith('/admin-api/contexts') && c.startsWith('POST')));
+});
+
+test('addRepo rejects when TRACKER_NAMESPACE is unset (context-pin mode)', async () => {
+  const pinCfg: Config = { nodeUrl: 'http://localhost:2428', contextRaw: 'ctx', serviceName: 'issue-tracker' };
+  let fetchCalled = false;
+  await assert.rejects(
+    () =>
+      withFetch(
+        (async () => {
+          fetchCalled = true;
+          throw new Error('should not be called');
+        }) as typeof fetch,
+        () => addRepo(pinCfg, { name: 'frontend', github_url: 'https://github.com/acme/frontend' }),
+      ),
+    /TRACKER_NAMESPACE/,
+  );
+  assert.equal(fetchCalled, false);
+});
+
+test('addRepo succeeds even when alias creation fails (best-effort)', async () => {
+  const { impl } = addRepoFetch([], { aliasFails: true });
+  const result = await withFetch(impl, () =>
+    addRepo(nsCfg, { name: 'frontend', github_url: 'https://github.com/acme/frontend' }),
+  );
+  assert.deepEqual(result, { contextId: 'ctx-new', name: 'frontend', url: 'https://github.com/acme/frontend' });
 });
 
 // ---- Server construction ----

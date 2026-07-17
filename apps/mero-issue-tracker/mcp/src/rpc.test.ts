@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import type { Config } from './config.ts';
 import {
   callMethod,
+  createContext,
+  createContextAlias,
   createRepoLister,
   createTargetResolver,
   decodeFunctionCallErrorData,
@@ -10,6 +12,7 @@ import {
   pickRepo,
   resolveContextId,
   resolveExecutor,
+  resolveNamespaceApp,
   resolveNamespaceId,
   RpcError,
   type NamespaceRepo,
@@ -18,11 +21,13 @@ import {
 const baseConfig: Config = {
   nodeUrl: 'http://localhost:2428',
   contextRaw: 'my-tracker',
+  serviceName: 'issue-tracker',
 };
 
 const namespaceConfig: Config = {
   nodeUrl: 'http://localhost:2428',
   namespaceRaw: 'my-team',
+  serviceName: 'issue-tracker',
 };
 
 function withFetch<T>(impl: typeof fetch, run: () => Promise<T>): Promise<T> {
@@ -270,7 +275,9 @@ test('createTargetResolver does not cache a rejected resolution - a later call r
 
 // ---- resolveNamespaceId ----
 
-function namespacesFetch(namespaces: Array<{ namespaceId: string; name?: string }>): typeof fetch {
+function namespacesFetch(
+  namespaces: Array<{ namespaceId: string; name?: string; targetApplicationId?: string }>,
+): typeof fetch {
   return (async (url: string | URL) => {
     if (String(url).endsWith('/admin-api/namespaces')) {
       return new Response(JSON.stringify({ data: namespaces }), { status: 200 });
@@ -313,6 +320,120 @@ test('resolveNamespaceId throws a helpful error listing available namespaces whe
       assert.match(err.message, /beta/);
       return true;
     },
+  );
+});
+
+// ---- resolveNamespaceApp ----
+
+test('resolveNamespaceApp resolves namespaceId and targetApplicationId together', async () => {
+  const result = await withFetch(
+    namespacesFetch([{ namespaceId: 'ns-1', name: 'my-team', targetApplicationId: 'app-1' }]),
+    () => resolveNamespaceApp(namespaceConfig),
+  );
+  assert.deepEqual(result, { namespaceId: 'ns-1', applicationId: 'app-1' });
+});
+
+test('resolveNamespaceApp throws when the matched namespace has no targetApplicationId', async () => {
+  await assert.rejects(
+    () =>
+      withFetch(
+        namespacesFetch([{ namespaceId: 'ns-1', name: 'my-team' }]),
+        () => resolveNamespaceApp(namespaceConfig),
+      ),
+    /targetApplicationId/,
+  );
+});
+
+// ---- createContext / createContextAlias ----
+
+test('createContext posts applicationId/groupId/serviceName/name/initializationParams and returns contextId+memberPublicKey', async () => {
+  let capturedUrl = '';
+  let capturedBody: unknown;
+  const result = await withFetch(
+    (async (url: string | URL, init?: RequestInit) => {
+      capturedUrl = String(url);
+      capturedBody = JSON.parse(String(init?.body));
+      return new Response(
+        JSON.stringify({ data: { contextId: 'ctx-new', memberPublicKey: 'member-key' } }),
+        { status: 200 },
+      );
+    }) as typeof fetch,
+    () =>
+      createContext(namespaceConfig, {
+        applicationId: 'app-1',
+        groupId: 'ns-1',
+        serviceName: 'issue-tracker',
+        name: 'frontend',
+      }),
+  );
+  assert.equal(capturedUrl, 'http://localhost:2428/admin-api/contexts');
+  assert.deepEqual(capturedBody, {
+    applicationId: 'app-1',
+    groupId: 'ns-1',
+    serviceName: 'issue-tracker',
+    name: 'frontend',
+    initializationParams: [],
+  });
+  assert.deepEqual(result, { contextId: 'ctx-new', memberPublicKey: 'member-key' });
+});
+
+test('createContext throws when the response has no contextId/memberPublicKey', async () => {
+  await assert.rejects(
+    () =>
+      withFetch(
+        (async () => new Response(JSON.stringify({ data: {} }), { status: 200 })) as typeof fetch,
+        () =>
+          createContext(namespaceConfig, {
+            applicationId: 'app-1',
+            groupId: 'ns-1',
+            serviceName: 'issue-tracker',
+            name: 'frontend',
+          }),
+      ),
+    /no contextId\/memberPublicKey/,
+  );
+});
+
+test('createContext throws on non-2xx HTTP status', async () => {
+  await assert.rejects(
+    () =>
+      withFetch(
+        (async () => new Response('boom', { status: 500 })) as typeof fetch,
+        () =>
+          createContext(namespaceConfig, {
+            applicationId: 'app-1',
+            groupId: 'ns-1',
+            serviceName: 'issue-tracker',
+            name: 'frontend',
+          }),
+      ),
+    /500/,
+  );
+});
+
+test('createContextAlias posts alias+contextId to alias/create/context', async () => {
+  let capturedUrl = '';
+  let capturedBody: unknown;
+  await withFetch(
+    (async (url: string | URL, init?: RequestInit) => {
+      capturedUrl = String(url);
+      capturedBody = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({ data: {} }), { status: 200 });
+    }) as typeof fetch,
+    () => createContextAlias(namespaceConfig, 'frontend', 'ctx-new'),
+  );
+  assert.equal(capturedUrl, 'http://localhost:2428/admin-api/alias/create/context');
+  assert.deepEqual(capturedBody, { alias: 'frontend', contextId: 'ctx-new' });
+});
+
+test('createContextAlias throws on non-2xx HTTP status', async () => {
+  await assert.rejects(
+    () =>
+      withFetch(
+        (async () => new Response('boom', { status: 500 })) as typeof fetch,
+        () => createContextAlias(namespaceConfig, 'frontend', 'ctx-new'),
+      ),
+    /500/,
   );
 });
 

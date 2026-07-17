@@ -6,9 +6,13 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { loadConfig, type Config } from './config.ts';
 import {
   callMethod,
+  createContext,
+  createContextAlias,
   createRepoLister,
   createTargetResolver,
+  listNamespaceRepos,
   resolveExecutor,
+  resolveNamespaceApp,
   type NamespaceRepo,
   type ResolvedTarget,
 } from './rpc.ts';
@@ -77,6 +81,14 @@ export const getFixPromptShape = {
 
 export const listReposShape = {};
 
+export const addRepoShape = {
+  name: z.string().min(1, 'name is required'),
+  github_url: z
+    .string()
+    .min(1, 'github_url is required')
+    .refine((u) => /^https?:\/\//.test(u.trim()), 'github_url must start with http:// or https://'),
+};
+
 type CreateIssueArgs = z.infer<z.ZodObject<typeof createIssueShape>>;
 type ListIssuesArgs = z.infer<z.ZodObject<typeof listIssuesShape>>;
 type GetIssueArgs = z.infer<z.ZodObject<typeof getIssueShape>>;
@@ -85,6 +97,7 @@ type AssignIssueArgs = z.infer<z.ZodObject<typeof assignIssueShape>>;
 type SetStatusArgs = z.infer<z.ZodObject<typeof setStatusShape>>;
 type SetPriorityArgs = z.infer<z.ZodObject<typeof setPriorityShape>>;
 type GetFixPromptArgs = z.infer<z.ZodObject<typeof getFixPromptShape>>;
+type AddRepoArgs = z.infer<z.ZodObject<typeof addRepoShape>>;
 
 interface IssueDetail {
   issue: IssueForPrompt & Record<string, unknown>;
@@ -163,6 +176,45 @@ export async function listRepos(
       return { name: repo.name, repo_url: info.repo_url };
     }),
   );
+}
+
+/** Onboards a new repo: creates its context in the namespace, sets repo_url, and aliases it. Mirrors useWorkspace.ts's addRepo. */
+export async function addRepo(
+  cfg: Config,
+  args: AddRepoArgs,
+): Promise<{ contextId: string; name: string; url: string }> {
+  if (!cfg.namespaceRaw) {
+    throw new Error('add_repo requires TRACKER_NAMESPACE (TRACKER_CONTEXT pins a single context directly with no namespace to create a repo in).');
+  }
+  const name = args.name.trim();
+  const url = args.github_url.trim();
+
+  const { namespaceId, applicationId } = await resolveNamespaceApp(cfg);
+  const existing = await listNamespaceRepos(cfg, namespaceId);
+  if (existing.some((r) => r.name === name)) {
+    throw new Error(`Repo "${name}" already exists.`);
+  }
+
+  const { contextId, memberPublicKey } = await createContext(cfg, {
+    applicationId,
+    groupId: namespaceId,
+    serviceName: cfg.serviceName,
+    name,
+  });
+  // The new context's owner is the returned memberPublicKey, not any repo's
+  // existing executor - it must be used as-is for this one call.
+  await callMethod(cfg, { contextId, executorPublicKey: memberPublicKey }, 'set_repo_url', { url });
+
+  try {
+    await createContextAlias(cfg, name, contextId);
+  } catch (err) {
+    // stderr only - stdout is reserved for the MCP protocol stream.
+    console.error(
+      `[issue-tracker-mcp] alias creation for "${name}" failed (${err instanceof Error ? err.message : String(err)}); repo created without an alias.`,
+    );
+  }
+
+  return { contextId, name, url };
 }
 
 // ---- MCP result helpers ----
@@ -300,6 +352,22 @@ export function createServer(cfg: Config = loadConfig()): McpServer {
     async () => {
       try {
         return textResult(await listRepos(cfg, await listReposCache()));
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    'add_repo',
+    {
+      description:
+        'Onboard a new repo: creates a context in TRACKER_NAMESPACE, sets its repo_url, and aliases it by name.',
+      inputSchema: addRepoShape,
+    },
+    async (args) => {
+      try {
+        return textResult(await addRepo(cfg, args));
       } catch (err) {
         return errorResult(err);
       }
