@@ -146,8 +146,9 @@ export function useWorkspace(): UseWorkspaceReturn {
     return () => { cancelled = true; };
   }, [mero, callbackContextId]);
 
-  // Auto-select: prefer the callback namespace, else a valid persisted one,
-  // else the first discovered namespace. Never auto-create.
+  // Auto-select: prefer the callback namespace, else a valid persisted one.
+  // No other fallback - a stale or absent selection leaves activeNs null so
+  // the empty state / switcher decides. Never auto-enter an unchosen workspace.
   useEffect(() => {
     if (nsFromCallback && nsFromCallback !== activeNs) {
       setActiveNs(nsFromCallback);
@@ -156,7 +157,7 @@ export function useWorkspace(): UseWorkspaceReturn {
     if (userSelectedNs.current) return;
     if (namespaces.length === 0) return;
     if (activeNs && namespaces.some((n) => n.namespaceId === activeNs)) return;
-    setActiveNs(namespaces[0].namespaceId);
+    if (activeNs) setActiveNs(null);
   }, [namespaces, nsFromCallback, activeNs]);
 
   useEffect(() => { writeLs(ACTIVE_NS_KEY, activeNs); }, [activeNs]);
