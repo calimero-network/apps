@@ -15,15 +15,15 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 base64 = "0.22.1"
 bs58 = "0.5.1"
-calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.14" }
-calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.14" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.14" }
+calimero-sdk = { git = "https://github.com/calimero-network/core", branch = "master" }
+calimero-storage = { git = "https://github.com/calimero-network/core", branch = "master" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core", branch = "master" }
 thiserror = "1.0.56"
 
 [dev-dependencies]
 # Enables register_crdt_merge + the native mock host so TestHost can drive
 # CRDT state under `cargo test`.
-calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.14", features = ["testing"] }
+calimero-storage = { git = "https://github.com/calimero-network/core", branch = "master", features = ["testing"] }
 
 [profile.app-release]
 inherits = "release"
