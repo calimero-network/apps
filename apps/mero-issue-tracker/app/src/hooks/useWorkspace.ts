@@ -28,6 +28,14 @@ import { PRIMARY_SERVICE } from '../config';
 import { decodeInvitation } from '../utils/invitation';
 import { IssueTrackerClient } from '../api/issue-tracker/IssueTrackerClient';
 import { buildAliasMap } from './useAliases';
+import {
+  readActiveNs,
+  writeActiveNs,
+  dropLegacyActiveNs,
+  readActiveRepo,
+  writeActiveRepo,
+  clearPersistedWorkspace,
+} from './workspacePersistence';
 
 const ENV_APPLICATION_ID = import.meta.env.VITE_APPLICATION_ID?.trim() || null;
 
@@ -38,9 +46,6 @@ const DEFAULT_CAPABILITIES = 1 | 2; // = 3
 // Well-known context alias resolved by external tools (e.g. the MCP server).
 // Points at the active repo's context.
 const WORKSPACE_ALIAS = 'issue-tracker';
-
-const ACTIVE_NS_KEY = 'issue-tracker:activeNs';
-const activeRepoKey = (nsId: string) => `issue-tracker:activeRepo:${nsId}`;
 
 export interface RepoEntry {
   contextId: string;
@@ -54,6 +59,10 @@ export interface UseWorkspaceReturn {
   // namespaces
   namespaces: Namespace[];
   activeNs: string | null;
+  /** True while an SSO-callback context's namespace is being resolved (a
+   *  desktop handoff in flight) - the caller should hold off on onboarding
+   *  UI until this settles, to avoid a flash into the picker. */
+  resolvingCallback: boolean;
   selectNamespace: (id: string) => void;
   createNamespace: (name: string) => Promise<string | null>;
   createNamespaceLoading: boolean;
@@ -94,22 +103,6 @@ export interface UseWorkspaceReturn {
   clearPersisted: () => void;
 }
 
-function readLs(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-function writeLs(key: string, value: string | null): void {
-  try {
-    if (value === null) localStorage.removeItem(key);
-    else localStorage.setItem(key, value);
-  } catch {
-    /* storage unavailable - selection just isn't persisted */
-  }
-}
-
 export function useWorkspace(): UseWorkspaceReturn {
   const {
     mero,
@@ -125,46 +118,58 @@ export function useWorkspace(): UseWorkspaceReturn {
   const { joinNamespace, loading: joinLoading } = useJoinNamespace();
   const { setMemberMetadata } = useSetMemberMetadata();
 
+  // Drop the pre-versioning key on load; it is never read for a value, only
+  // ever explicit selections (below) populate the versioned one.
+  useEffect(() => { dropLegacyActiveNs(); }, []);
+
   // --- Active namespace (persisted; SSO callback context resolves its own) ---
-  const [activeNs, setActiveNs] = useState<string | null>(() => readLs(ACTIVE_NS_KEY));
-  const [nsFromCallback, setNsFromCallback] = useState<string | null>(null);
+  const [activeNs, setActiveNs] = useState<string | null>(() => readActiveNs());
+  // True while an SSO-callback context is present but its namespace hasn't
+  // resolved yet - the caller holds off on the empty-state picker during this
+  // window so it doesn't flash in right before the desktop handoff lands.
+  const [resolvingCallback, setResolvingCallback] = useState(() => !!callbackContextId);
   const userSelectedNs = useRef(false);
 
   // Resolve the namespace of the SSO callback context (a context's group IS
-  // its namespace) so the desktop path skips the picker.
+  // its namespace) so the desktop path skips the picker, and set it directly
+  // - a separate "apply the resolved id" effect would let resolvingCallback
+  // clear a render before activeNs catches up, flashing the empty state.
   useEffect(() => {
-    if (!mero || !callbackContextId) { setNsFromCallback(null); return; }
+    if (!callbackContextId) { setResolvingCallback(false); return; }
+    if (!mero) { setResolvingCallback(true); return; }
     let cancelled = false;
+    setResolvingCallback(true);
     (async () => {
       try {
         const gid = await mero.admin.getContextGroup(callbackContextId);
-        if (!cancelled && gid) setNsFromCallback(gid);
+        if (!cancelled && gid) {
+          // Explicit external handoff - persist it like any other selection.
+          setActiveNs(gid);
+          writeActiveNs(gid);
+        }
       } catch {
         /* fall back to the discovered namespace list */
+      } finally {
+        if (!cancelled) setResolvingCallback(false);
       }
     })();
     return () => { cancelled = true; };
   }, [mero, callbackContextId]);
 
-  // Auto-select: prefer the callback namespace, else a valid persisted one.
+  // Invalidate a persisted selection that no longer matches a real namespace.
   // No other fallback - a stale or absent selection leaves activeNs null so
   // the empty state / switcher decides. Never auto-enter an unchosen workspace.
   useEffect(() => {
-    if (nsFromCallback && nsFromCallback !== activeNs) {
-      setActiveNs(nsFromCallback);
-      return;
-    }
-    if (userSelectedNs.current) return;
+    if (userSelectedNs.current || resolvingCallback) return;
     if (namespaces.length === 0) return;
     if (activeNs && namespaces.some((n) => n.namespaceId === activeNs)) return;
-    if (activeNs) setActiveNs(null);
-  }, [namespaces, nsFromCallback, activeNs]);
-
-  useEffect(() => { writeLs(ACTIVE_NS_KEY, activeNs); }, [activeNs]);
+    if (activeNs) { setActiveNs(null); writeActiveNs(null); }
+  }, [namespaces, activeNs, resolvingCallback]);
 
   const selectNamespace = useCallback((id: string) => {
     userSelectedNs.current = true;
     setActiveNs(id);
+    writeActiveNs(id);
   }, []);
 
   // --- Contexts (repos) in the active namespace ---
@@ -196,7 +201,7 @@ export function useWorkspace(): UseWorkspaceReturn {
     if (userSelectedRepo.current && activeRepo && repos.some((r) => r.contextId === activeRepo)) {
       return;
     }
-    const persisted = readLs(activeRepoKey(activeNs));
+    const persisted = readActiveRepo(activeNs);
     if (persisted && repos.some((r) => r.contextId === persisted)) {
       setActiveRepo(persisted);
       return;
@@ -205,14 +210,11 @@ export function useWorkspace(): UseWorkspaceReturn {
     setActiveRepo(repos[0]?.contextId ?? null);
   }, [callbackContextId, activeNs, repos, activeRepo]);
 
-  useEffect(() => {
-    if (activeNs && activeRepo) writeLs(activeRepoKey(activeNs), activeRepo);
-  }, [activeNs, activeRepo]);
-
   const selectRepo = useCallback((contextId: string) => {
     userSelectedRepo.current = true;
     setActiveRepo(contextId);
-  }, []);
+    if (activeNs) writeActiveRepo(activeNs, contextId);
+  }, [activeNs]);
 
   // --- Executor identity for the active repo context (for RPC) ---
   const [executorPublicKey, setExecutorPublicKey] = useState<string | null>(
@@ -437,22 +439,13 @@ export function useWorkspace(): UseWorkspaceReturn {
     await refetchContexts();
   }, [joinNamespace, refetchNamespaces, refetchContexts, selectNamespace]);
 
-  const clearPersisted = useCallback(() => {
-    writeLs(ACTIVE_NS_KEY, null);
-    try {
-      for (let i = localStorage.length - 1; i >= 0; i--) {
-        const k = localStorage.key(i);
-        if (k && (k.startsWith('issue-tracker:activeRepo:') || k.startsWith('issue-tracker:alias-set:'))) {
-          localStorage.removeItem(k);
-        }
-      }
-    } catch { /* storage unavailable */ }
-  }, []);
+  const clearPersisted = useCallback(() => clearPersistedWorkspace(), []);
 
   return {
     applicationId,
     namespaces,
     activeNs,
+    resolvingCallback,
     selectNamespace,
     createNamespace,
     createNamespaceLoading,

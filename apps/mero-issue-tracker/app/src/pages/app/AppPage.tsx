@@ -27,7 +27,7 @@ const EMPTY_FILTERS: Filters = { status: '', priority: '', assignee: '', label: 
  * namespaces exist); a namespace with no repo -> add-repo prompt; a member
  * with no name -> blocking alias gate.
  */
-export default function AppPage(): React.ReactElement {
+export default function AppPage(): React.ReactElement | null {
   const { contextIdentity } = useMero();
   const ws = useWorkspace();
   const toast = useToast();
@@ -154,9 +154,16 @@ export default function AppPage(): React.ReactElement {
     </>
   );
 
+  // An SSO callback context is still resolving its namespace: hold off
+  // (mirrors App.tsx's isLoading guard) rather than flash the picker right
+  // before the desktop handoff lands.
+  if (!ws.activeNs && ws.resolvingCallback) return null;
+
   // No active namespace (none yet, or a stale/invalid prior choice): never
-  // silently enter one. Onboarding also offers a picker when namespaces exist.
-  if (!ws.activeNs && !ws.loading) {
+  // silently enter one, and never fall through to the Shell either - that
+  // flashed the repo UI over an empty workspace. Onboarding also offers a
+  // picker when namespaces exist.
+  if (!ws.activeNs) {
     return (
       <>
         <NsEmptyState
