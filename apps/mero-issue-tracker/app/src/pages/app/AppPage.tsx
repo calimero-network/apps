@@ -33,7 +33,11 @@ export default function AppPage(): React.ReactElement | null {
   const toast = useToast();
   const [searchParams] = useSearchParams();
 
-  const currentUser = ws.selfIdentity ?? ws.executorPublicKey ?? contextIdentity ?? '';
+  // Authorship + "me" gates must use the identity writes execute as: the backend
+  // stamps created_by/author with the executor key and enforces delete/edit
+  // against it. selfIdentity (the namespace-member key) can diverge from it under
+  // namespace drift, so it is only a display fallback while the executor resolves.
+  const currentUser = ws.executorPublicKey ?? ws.selfIdentity ?? contextIdentity ?? '';
   const myIssues = searchParams.get('assignee') === 'me';
 
   const aliases = useMemo(
