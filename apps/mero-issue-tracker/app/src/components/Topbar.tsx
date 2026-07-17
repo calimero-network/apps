@@ -6,8 +6,17 @@ import { APP_ROUTE } from '../config';
 import { truncateKey } from '../utils/display';
 import { IconSearch } from './icons';
 
-/** Sticky top bar: contextual view title, disabled search, New-issue button. */
-export default function Topbar({ onNewIssue }: { onNewIssue: () => void }): React.ReactElement {
+/** Sticky top bar: contextual view title, the active repo's GitHub link,
+ *  disabled search, New-issue button. */
+export default function Topbar({
+  onNewIssue,
+  repoName,
+  repoUrl,
+}: {
+  onNewIssue: () => void;
+  repoName: string | null;
+  repoUrl: string;
+}): React.ReactElement {
   const loc = useLocation();
   const detailMatch = loc.pathname.match(new RegExp(`${APP_ROUTE}/issues/(.+)$`));
 
@@ -30,6 +39,22 @@ export default function Topbar({ onNewIssue }: { onNewIssue: () => void }): Reac
   return (
     <Bar>
       <ViewTitle>{title}</ViewTitle>
+      {repoName && (
+        <RepoLink>
+          <span className="repo-name" data-testid="repo-header-name">{repoName}</span>
+          {repoUrl && (
+            <a
+              className="repo-gh"
+              data-testid="repo-header-link"
+              href={repoUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              {repoUrl.replace(/^https?:\/\//, '')}
+            </a>
+          )}
+        </RepoLink>
+      )}
       <Search>
         <span aria-hidden="true"><IconSearch /></span>
         <input type="text" placeholder="Search issues…" aria-label="Search issues" />
@@ -52,6 +77,17 @@ const ViewTitle = styled.div`
   .sep { color: ${t.color.text3}; font-weight: 400; }
   .crumb { color: ${t.color.text2}; font-weight: 500; font-size: 12px; }
   .mono { font-family: ${t.font.mono}; }
+`;
+const RepoLink = styled.div`
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+  padding-left: 12px; margin-left: 2px; border-left: 1px solid ${t.color.border};
+  .repo-name { font-size: 12.5px; font-weight: 600; color: ${t.color.text2}; white-space: nowrap; }
+  .repo-gh {
+    font-size: 11.5px; color: ${t.color.text3}; font-family: ${t.font.mono};
+    max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    &:hover { color: ${t.color.accent}; text-decoration: underline; }
+  }
+  @media (max-width: 940px) { .repo-gh { display: none; } }
 `;
 const Search = styled.div`
   margin-left: auto; display: flex; align-items: center; gap: 8px;

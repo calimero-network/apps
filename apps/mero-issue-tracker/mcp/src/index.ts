@@ -91,7 +91,14 @@ export function assignIssue(cfg: Config, target: ResolvedTarget, args: AssignIss
 
 export async function getFixPrompt(cfg: Config, target: ResolvedTarget, args: GetFixPromptArgs) {
   const detail = await callMethod<IssueDetail>(cfg, target, 'get_issue', { issue_id: args.id });
-  return buildFixPrompt(detail.issue);
+  let repoUrl = '';
+  try {
+    const info = await callMethod<{ repo_url: string }>(cfg, target, 'get_repo_info', {});
+    repoUrl = info?.repo_url ?? '';
+  } catch {
+    /* repo url is optional context - the prompt still builds without it */
+  }
+  return buildFixPrompt(detail.issue, repoUrl);
 }
 
 // ---- MCP result helpers ----

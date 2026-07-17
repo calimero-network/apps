@@ -218,6 +218,13 @@ pub struct StatusCount {
     pub count: u64,
 }
 
+/// This context's repository metadata. `repo_url` is empty until `set_repo_url`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct RepoInfo {
+    pub repo_url: String,
+}
+
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
@@ -233,6 +240,9 @@ pub struct IssueTracker {
     /// removal is a conflict-free key delete. The value is a `LwwRegister` so the
     /// map holds a CRDT value (a bare `u64` is not replicable).
     labels: UnorderedMap<String, LwwRegister<u64>>,
+    /// The GitHub repository URL this context (repo) tracks. Empty until set;
+    /// LWW so concurrent edits from teammates converge last-writer-wins.
+    repo_url: LwwRegister<String>,
 }
 
 #[app::logic]
@@ -243,7 +253,25 @@ impl IssueTracker {
             issues: UnorderedMap::new_with_field_name("issue_tracker:issues"),
             comments: UnorderedMap::new_with_field_name("issue_tracker:comments"),
             labels: UnorderedMap::new_with_field_name("issue_tracker:labels"),
+            repo_url: LwwRegister::new(String::new()),
         }
+    }
+
+    /// Set (or change) the GitHub repository URL this context tracks. Rejects an
+    /// empty value or one that is not an `http(s)://` URL.
+    pub fn set_repo_url(&mut self, url: String) -> app::Result<()> {
+        validate_repo_url(&url)?;
+        self.repo_url.set(url.clone());
+
+        app::emit!(Event::RepoUrlChanged { url: &url });
+        Ok(())
+    }
+
+    /// Read this context's repository metadata (empty `repo_url` until set).
+    pub fn get_repo_info(&self) -> app::Result<RepoInfo> {
+        Ok(RepoInfo {
+            repo_url: self.repo_url.get().clone(),
+        })
     }
 
     /// Create an issue. Returns its generated id. Starts in status `Open`.
@@ -695,6 +723,22 @@ fn validate_priority(priority: &str) -> app::Result<()> {
     }
 }
 
+/// Validate a repository URL: non-empty after trim and an `http(s)://` URL.
+fn validate_repo_url(url: &str) -> app::Result<()> {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::from(Error::Invalid(
+            "repo_url must not be empty".into(),
+        )));
+    }
+    if !(trimmed.starts_with("http://") || trimmed.starts_with("https://")) {
+        return Err(AppError::from(Error::Invalid(
+            "repo_url must start with http:// or https://".into(),
+        )));
+    }
+    Ok(())
+}
+
 /// Validate a user-supplied label: non-empty, length-bounded, and free of the
 /// reserved index separator.
 fn validate_user_label(label: &str) -> app::Result<()> {
@@ -993,6 +1037,45 @@ mod tests {
 
         app.call(|s| s.delete_comment(c.clone())).unwrap();
         assert!(app.view(|s| s.get_issue(id)).unwrap().comments.is_empty());
+    }
+
+    #[test]
+    fn repo_url_starts_empty_sets_and_rejects_bad_values() {
+        let mut app = TestHost::new(IssueTracker::init);
+
+        // Empty until set.
+        assert_eq!(app.view(|s| s.get_repo_info()).unwrap().repo_url, "");
+
+        app.call(|s| s.set_repo_url("https://github.com/acme/tracker".into()))
+            .unwrap();
+        assert_eq!(
+            app.view(|s| s.get_repo_info()).unwrap().repo_url,
+            "https://github.com/acme/tracker"
+        );
+        // set_repo_url emits exactly one event.
+        assert_eq!(app.events().len(), 1);
+
+        // http:// is also accepted; last write wins.
+        app.call(|s| s.set_repo_url("http://example.com/repo".into()))
+            .unwrap();
+        assert_eq!(
+            app.view(|s| s.get_repo_info()).unwrap().repo_url,
+            "http://example.com/repo"
+        );
+
+        // Empty and non-http values are rejected, leaving the value intact.
+        assert!(app.call(|s| s.set_repo_url("".into())).is_err());
+        assert!(app.call(|s| s.set_repo_url("  ".into())).is_err());
+        assert!(app
+            .call(|s| s.set_repo_url("github.com/acme/tracker".into()))
+            .is_err());
+        assert!(app
+            .call(|s| s.set_repo_url("ftp://example.com/repo".into()))
+            .is_err());
+        assert_eq!(
+            app.view(|s| s.get_repo_info()).unwrap().repo_url,
+            "http://example.com/repo"
+        );
     }
 
     #[test]

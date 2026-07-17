@@ -2,42 +2,109 @@ import React from 'react';
 import styled from 'styled-components';
 import { NavLink, useLocation } from 'react-router-dom';
 import { tokens as t } from '../theme';
-import { APP_DISPLAY_NAME, APP_ROUTE } from '../config';
+import { APP_ROUTE } from '../config';
 import AvatarGlyph from './AvatarGlyph';
+import type { RepoEntry } from '../hooks/useWorkspace';
+import type { Namespace } from '@calimero-network/mero-react';
 import {
   LogoMark, ChevronDown, IconAllIssues, IconMyIssues, IconBoard, IconMembers,
 } from './icons';
 
+export interface SidebarProps {
+  totalIssues: number;
+  membersCount: number;
+  currentUser: string;
+  currentUserLabel: string;
+  namespaces: Namespace[];
+  activeNs: string | null;
+  onSelectNamespace: (id: string) => void;
+  onNewNamespace: () => void;
+  onJoinNamespace: () => void;
+  repos: RepoEntry[];
+  activeRepo: string | null;
+  onSelectRepo: (id: string) => void;
+  onAddRepo: () => void;
+}
+
 /**
- * Fixed left rail: workspace switcher, primary nav with live counts, and a
- * footer with the peer-sync indicator + the current identity.
+ * Fixed left rail: namespace switcher, repos in the active namespace, primary
+ * nav with live counts, and a footer with the peer-sync indicator + identity.
  */
 export default function Sidebar({
   totalIssues,
   membersCount,
   currentUser,
   currentUserLabel,
-}: {
-  totalIssues: number;
-  membersCount: number;
-  currentUser: string;
-  currentUserLabel: string;
-}): React.ReactElement {
+  namespaces,
+  activeNs,
+  onSelectNamespace,
+  onNewNamespace,
+  onJoinNamespace,
+  repos,
+  activeRepo,
+  onSelectRepo,
+  onAddRepo,
+}: SidebarProps): React.ReactElement {
   const loc = useLocation();
   const mine = loc.search.includes('assignee=me');
-  // Detail lives under /issues/:id - keep the All Issues item lit there too.
   const onDetail = loc.pathname.startsWith(`${APP_ROUTE}/issues/`);
   const onIssues = (loc.pathname === APP_ROUTE && !mine) || onDetail;
   const onBoard = loc.pathname === `${APP_ROUTE}/board`;
   const onMembers = loc.pathname === `${APP_ROUTE}/members`;
 
+  const activeName = namespaces.find((n) => n.namespaceId === activeNs)?.name;
+
   return (
     <Aside>
-      <WsSwitch>
-        <LogoMark />
-        <span className="ws-name">{APP_DISPLAY_NAME}</span>
-        <span className="ws-chevron"><ChevronDown size={12} /></span>
-      </WsSwitch>
+      <Switcher>
+        <div className="ns-row">
+          <LogoMark />
+          <select
+            className="ns-select"
+            data-testid="ns-switcher"
+            aria-label="Switch workspace"
+            value={activeNs ?? ''}
+            onChange={(e) => { if (e.target.value) onSelectNamespace(e.target.value); }}
+          >
+            {!activeNs && <option value="" disabled>Pick a workspace</option>}
+            {namespaces.map((n) => (
+              <option key={n.namespaceId} value={n.namespaceId}>
+                {n.name || n.namespaceId.slice(0, 8)}
+              </option>
+            ))}
+          </select>
+          <span className="ns-chevron"><ChevronDown size={12} /></span>
+        </div>
+        <div className="ns-actions">
+          <button data-testid="ns-create-btn" onClick={onNewNamespace}>New workspace</button>
+          <button data-testid="ns-join-btn" onClick={onJoinNamespace}>Join</button>
+        </div>
+      </Switcher>
+
+      <Repos>
+        <div className="repos-head">
+          <span className="repos-title" title={activeName || undefined}>Repositories</span>
+          <button className="repo-add" data-testid="repo-add-btn" aria-label="Add repository" onClick={onAddRepo}>+</button>
+        </div>
+        <div className="repos-list">
+          {repos.length === 0 ? (
+            <span className="repos-empty">No repos yet</span>
+          ) : (
+            repos.map((r) => (
+              <button
+                key={r.contextId}
+                data-testid="repo-list-item"
+                className={`repo-item${r.contextId === activeRepo ? ' active' : ''}`}
+                onClick={() => onSelectRepo(r.contextId)}
+                title={r.name}
+              >
+                <span className="repo-dot" aria-hidden="true" />
+                <span className="repo-name">{r.name}</span>
+              </button>
+            ))
+          )}
+        </div>
+      </Repos>
 
       <Nav>
         <Item to={APP_ROUTE} end $active={onIssues}>
@@ -87,14 +154,48 @@ const Aside = styled.aside`
   top: 0;
   @media (max-width: 940px) { display: none; }
 `;
-const WsSwitch = styled.div`
-  display: flex; align-items: center; gap: 9px;
-  padding: 13px 12px; margin: 4px 6px;
-  border-radius: ${t.radius}; cursor: pointer;
-  transition: background 150ms ease-out;
-  &:hover { background: rgba(255,255,255,0.04); }
-  .ws-name { font-weight: 600; font-size: 13px; letter-spacing: -0.01em; }
-  .ws-chevron { margin-left: auto; color: ${t.color.text3}; display: inline-flex; }
+const Switcher = styled.div`
+  padding: 10px 10px 8px; margin: 2px 4px 0;
+  .ns-row {
+    display: flex; align-items: center; gap: 9px;
+    padding: 6px 8px; border-radius: ${t.radius};
+    &:hover { background: rgba(255,255,255,0.04); }
+  }
+  .ns-select {
+    flex: 1 1 auto; min-width: 0; appearance: none; background: transparent; border: none; outline: none;
+    color: ${t.color.text}; font-family: inherit; font-weight: 600; font-size: 13px; letter-spacing: -0.01em; cursor: pointer;
+    option { background: ${t.color.panel}; color: ${t.color.text}; }
+  }
+  .ns-chevron { color: ${t.color.text3}; display: inline-flex; pointer-events: none; }
+  .ns-actions { display: flex; gap: 6px; padding: 6px 4px 0; }
+  .ns-actions button {
+    flex: 1 1 auto; font-size: 11.5px; font-weight: 600; color: ${t.color.text2};
+    background: ${t.color.raised}; border: 1px solid ${t.color.border}; border-radius: ${t.radiusSm};
+    padding: 5px 8px; cursor: pointer;
+    &:hover { color: ${t.color.text}; background: ${t.color.raised2}; }
+  }
+`;
+const Repos = styled.div`
+  margin: 8px 6px 2px; padding: 4px 4px 0; border-top: 1px solid ${t.color.border};
+  .repos-head { display: flex; align-items: center; padding: 8px 6px 4px; }
+  .repos-title { font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: ${t.color.text3}; font-weight: 600; }
+  .repo-add {
+    margin-left: auto; width: 20px; height: 20px; display: grid; place-items: center; line-height: 1;
+    font-size: 15px; color: ${t.color.text3}; background: transparent; border: none; border-radius: 4px; cursor: pointer;
+    &:hover { background: rgba(255,255,255,0.05); color: ${t.color.text}; }
+  }
+  .repos-list { display: flex; flex-direction: column; gap: 1px; max-height: 168px; overflow-y: auto; }
+  .repos-empty { padding: 4px 8px 8px; font-size: 12px; color: ${t.color.text3}; }
+  .repo-item {
+    display: flex; align-items: center; gap: 8px; text-align: left; width: 100%;
+    padding: 6px 8px; border: none; background: transparent; border-radius: ${t.radiusSm};
+    color: ${t.color.text2}; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer;
+    &:hover { background: rgba(255,255,255,0.04); color: ${t.color.text}; }
+  }
+  .repo-item.active { background: ${t.color.accentDim}; color: ${t.color.text}; }
+  .repo-item.active .repo-dot { background: ${t.color.accent}; }
+  .repo-dot { width: 6px; height: 6px; border-radius: 50%; background: ${t.color.text3}; flex: 0 0 auto; }
+  .repo-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 `;
 const Nav = styled.nav`padding: 6px; display: flex; flex-direction: column; gap: 1px;`;
 const Item = styled(NavLink)<{ $active?: boolean }>`

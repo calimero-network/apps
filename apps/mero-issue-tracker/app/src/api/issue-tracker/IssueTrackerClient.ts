@@ -64,6 +64,10 @@ export interface Event_IssueStatusChanged {
   status: string;
 }
 
+export interface Event_RepoUrlChanged {
+  url: string;
+}
+
 export interface Issue {
   id: string;
   title: string;
@@ -87,6 +91,7 @@ export interface IssueTracker {
   issues: Record<string, Issue>;
   comments: Record<string, Comment>;
   labels: Record<string, number>;
+  repo_url: string;
 }
 
 export interface IssueView {
@@ -104,10 +109,15 @@ export interface IssueView {
   created_at: number;
 }
 
+export interface RepoInfo {
+  repo_url: string;
+}
+
 export interface StatusCount {
   status: string;
   count: number;
 }
+
 
 
 
@@ -128,6 +138,7 @@ export type AbiEvent =
   | { name: "CommentAdded"; payload: Event_CommentAdded }
   | { name: "CommentEdited"; payload: Event_CommentEdited }
   | { name: "CommentDeleted"; payload: Event_CommentDeleted }
+  | { name: "RepoUrlChanged"; payload: Event_RepoUrlChanged }
 ;
 
 
@@ -148,6 +159,22 @@ export class IssueTrackerClient {
   public async init(): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: {}, executorPublicKey: this._executorPublicKey });
     return response as void;
+  }
+
+  /**
+   * set_repo_url
+   */
+  public async setRepoUrl(params: { url: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_repo_url', argsJson: params, executorPublicKey: this._executorPublicKey });
+    return response as void;
+  }
+
+  /**
+   * get_repo_info
+   */
+  public async getRepoInfo(): Promise<RepoInfo> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_repo_info', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    return response as RepoInfo;
   }
 
   /**

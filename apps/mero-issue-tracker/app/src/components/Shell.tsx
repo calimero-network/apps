@@ -1,35 +1,28 @@
 import React from 'react';
 import styled from 'styled-components';
 import { tokens as t } from '../theme';
-import Sidebar from './Sidebar';
+import Sidebar, { type SidebarProps } from './Sidebar';
 import Topbar from './Topbar';
 
 /** App frame: sidebar rail + main column (topbar over the routed view). */
 export default function Shell({
-  totalIssues,
-  membersCount,
-  currentUser,
-  currentUserLabel,
+  sidebar,
+  repoName,
+  repoUrl,
   onNewIssue,
   children,
 }: {
-  totalIssues: number;
-  membersCount: number;
-  currentUser: string;
-  currentUserLabel: string;
+  sidebar: SidebarProps;
+  repoName: string | null;
+  repoUrl: string;
   onNewIssue: () => void;
   children: React.ReactNode;
 }): React.ReactElement {
   return (
     <Grid>
-      <Sidebar
-        totalIssues={totalIssues}
-        membersCount={membersCount}
-        currentUser={currentUser}
-        currentUserLabel={currentUserLabel}
-      />
+      <Sidebar {...sidebar} />
       <Main>
-        <Topbar onNewIssue={onNewIssue} />
+        <Topbar onNewIssue={onNewIssue} repoName={repoName} repoUrl={repoUrl} />
         {children}
       </Main>
     </Grid>
