@@ -88,7 +88,9 @@ export function SelectMenu({
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const close = useCallback(() => setOpen(false), []);
+  const closeToTrigger = useCallback(() => { setOpen(false); triggerRef.current?.focus(); }, []);
   useDismiss(open, close, rootRef);
 
   const focusOption = (i: number) => {
@@ -115,14 +117,16 @@ export function SelectMenu({
     else if (e.key === 'ArrowUp') { e.preventDefault(); focusOption((cur - 1 + items.length) % items.length); }
     else if (e.key === 'Home') { e.preventDefault(); focusOption(0); }
     else if (e.key === 'End') { e.preventDefault(); focusOption(items.length - 1); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeToTrigger(); }
   };
 
-  const pick = (v: string) => { onChange(v); setOpen(false); };
+  const pick = (v: string) => { onChange(v); closeToTrigger(); };
   const label = value ? (renderValue ? renderValue(value) : value) : <span className="ph">{placeholder}</span>;
 
   return (
     <Root ref={rootRef} className={className}>
       <Trigger
+        ref={triggerRef}
         type="button"
         data-testid={testId}
         aria-haspopup="listbox"
