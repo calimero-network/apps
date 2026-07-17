@@ -1,9 +1,12 @@
 name: publish-mcp
 
 on:
-  # Auto-release on mcp/** pushes is disabled until the npm trusted publisher
-  # for @calimero-network/mero-issue-tracker-mcp exists; restore the push
-  # trigger (branches: [main], paths: mcp/** + this file) once it does.
+  push:
+    branches:
+      - main
+    paths:
+      - 'mcp/**'
+      - '.github/workflows/publish-mcp.yml'
   workflow_dispatch:
 
 jobs:
