@@ -1,0 +1,5 @@
+[toolchain]
+channel = "1.89.0"
+# ^~~ keep this in sync with mero-chat / the merod build toolchain
+components = ["cargo", "clippy"]
+targets = ["wasm32-unknown-unknown"]
