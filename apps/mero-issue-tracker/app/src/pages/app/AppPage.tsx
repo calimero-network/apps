@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, useSearchParams } from 'react-router-dom';
 import styled from 'styled-components';
 import { useMero } from '@calimero-network/mero-react';
@@ -51,6 +51,9 @@ export default function AppPage(): React.ReactElement | null {
   }, []);
   const clearFilters = useCallback(() => setFilters(EMPTY_FILTERS), []);
 
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
   const effectiveAssignee = myIssues ? (currentUser ? aliases.resolve(currentUser) : '') : filters.assignee;
   const hookFilters = useMemo(
     () => ({ status: filters.status, assignee: effectiveAssignee, label: filters.label }),
@@ -76,18 +79,21 @@ export default function AppPage(): React.ReactElement | null {
   const openNewIssue = useCallback(() => setShowNew(true), []);
   const openInvite = useCallback(() => setShowInvite(true), []);
 
-  // `C` opens New issue; `Esc` closes an open New-issue modal. Ignore while
-  // typing or when any other modal/gate is open.
+  // `C` opens New issue; `/` focuses search. `Esc` closes an open New-issue
+  // modal. Ignore while typing or when any other modal/gate is open.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const anyModal = showNew || showInvite || showJoin || showCreateNs || showAddRepo;
       if (e.key === 'Escape' && showNew) { setShowNew(false); return; }
-      if ((e.key === 'c' || e.key === 'C') && !anyModal) {
-        const tag = (e.target as HTMLElement)?.tagName;
-        if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
-          e.preventDefault();
-          setShowNew(true);
-        }
+      const tag = (e.target as HTMLElement)?.tagName;
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+      if ((e.key === 'c' || e.key === 'C') && !anyModal && !typing) {
+        e.preventDefault();
+        setShowNew(true);
+      }
+      if (e.key === '/' && !anyModal && !typing) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
       }
     };
     document.addEventListener('keydown', onKey);
@@ -120,7 +126,7 @@ export default function AppPage(): React.ReactElement | null {
 
   const ctx: AppCtx = {
     data, currentUser, members: ws.members, aliases, filters, myIssues, repoUrl: ws.repoUrl,
-    setFilter, clearFilters, openNewIssue, openInvite, ws,
+    searchQuery, setSearchQuery, setFilter, clearFilters, openNewIssue, openInvite, ws,
   };
 
   const sidebar = {
@@ -193,7 +199,15 @@ export default function AppPage(): React.ReactElement | null {
   );
 
   return (
-    <Shell sidebar={sidebar} repoName={activeRepoName} repoUrl={ws.repoUrl} onNewIssue={openNewIssue}>
+    <Shell
+      sidebar={sidebar}
+      repoName={activeRepoName}
+      repoUrl={ws.repoUrl}
+      onNewIssue={openNewIssue}
+      searchQuery={searchQuery}
+      onSearchChange={setSearchQuery}
+      searchInputRef={searchInputRef}
+    >
       {ws.activeRepo ? (
         <Ready data-testid="workspace-ready">
           <Outlet context={ctx} />

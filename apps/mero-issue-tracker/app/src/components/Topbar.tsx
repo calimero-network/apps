@@ -7,15 +7,21 @@ import { truncateKey } from '../utils/display';
 import { IconSearch } from './icons';
 
 /** Sticky top bar: contextual view title, the active repo's GitHub link,
- *  disabled search, New-issue button. */
+ *  client-side issue search, New-issue button. */
 export default function Topbar({
   onNewIssue,
   repoName,
   repoUrl,
+  searchQuery,
+  onSearchChange,
+  searchInputRef,
 }: {
   onNewIssue: () => void;
   repoName: string | null;
   repoUrl: string;
+  searchQuery: string;
+  onSearchChange: (query: string) => void;
+  searchInputRef: React.RefObject<HTMLInputElement | null>;
 }): React.ReactElement {
   const loc = useLocation();
   const detailMatch = loc.pathname.match(new RegExp(`${APP_ROUTE}/issues/(.+)$`));
@@ -57,8 +63,22 @@ export default function Topbar({
       )}
       <Search>
         <span aria-hidden="true"><IconSearch /></span>
-        <input type="text" placeholder="Search issues…" aria-label="Search issues" />
-        <span className="kbd">/</span>
+        <input
+          ref={searchInputRef}
+          type="text"
+          placeholder="Search issues…"
+          aria-label="Search issues"
+          data-testid="search-input"
+          value={searchQuery}
+          onChange={(e) => onSearchChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              onSearchChange('');
+              e.currentTarget.blur();
+            }
+          }}
+        />
+        {!searchQuery && <span className="kbd">/</span>}
       </Search>
       <NewBtn type="button" data-testid="open-new-issue-btn" onClick={onNewIssue}>New issue</NewBtn>
     </Bar>

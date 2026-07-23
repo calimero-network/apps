@@ -21,6 +21,9 @@ export interface AppCtx {
   myIssues: boolean;
   /** The active repo's GitHub URL (shared state), or '' when unset. */
   repoUrl: string;
+  /** Free-text search query (client-side only, composed with `filters`). */
+  searchQuery: string;
+  setSearchQuery: (query: string) => void;
   setFilter: (patch: Partial<Filters>) => void;
   clearFilters: () => void;
   openNewIssue: () => void;

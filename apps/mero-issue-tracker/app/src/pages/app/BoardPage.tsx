@@ -7,6 +7,7 @@ import PriorityGlyph from '../../components/PriorityGlyph';
 import StatusDot from '../../components/StatusDot';
 import AvatarGlyph from '../../components/AvatarGlyph';
 import LabelChip from '../../components/LabelChip';
+import { matchesQuery } from '../../utils/search';
 import { useAppCtx } from './appContext';
 
 function shortId(id: string): string {
@@ -15,13 +16,19 @@ function shortId(id: string): string {
 
 /** Kanban board grouped by status, secondary to the list view. */
 export default function BoardPage(): React.ReactElement {
-  const { data, aliases } = useAppCtx();
+  const { data, aliases, searchQuery } = useAppCtx();
   const navigate = useNavigate();
+
+  const issues = data.issues.filter((i) => matchesQuery(i, searchQuery));
+
+  if (searchQuery.trim() && issues.length === 0) {
+    return <Empty>No issues match "{searchQuery.trim()}".</Empty>;
+  }
 
   return (
     <Wrap>
       {STATUSES.map((status) => {
-        const cards = data.issues.filter((i) => i.status === status);
+        const cards = issues.filter((i) => i.status === status);
         return (
           <Col key={status}>
             <ColHead>
@@ -70,6 +77,10 @@ const ColHead = styled.div`
   display: flex; align-items: center; gap: 8px; padding: 4px 4px 2px;
   .g-name { font-size: 12.5px; font-weight: 600; }
   .g-count { font-size: 11.5px; color: ${t.color.text3}; font-variant-numeric: tabular-nums; }
+`;
+const Empty = styled.div`
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  color: ${t.color.text3}; font-size: 13px; padding: 60px 20px;
 `;
 const Card = styled.div`
   background: ${t.color.panel}; border: 1px solid ${t.color.border};

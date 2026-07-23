@@ -17,10 +17,13 @@ function shortId(id: string): string {
 export default function IssueList({
   issues,
   aliases,
+  query,
   onOpen,
 }: {
   issues: IssueView[];
   aliases: UseAliasesReturn;
+  /** Active search query, only used to word the empty state. */
+  query?: string;
   onOpen: (id: string) => void;
 }): React.ReactElement {
   const groups = STATUSES
@@ -28,7 +31,11 @@ export default function IssueList({
     .filter((g) => g.rows.length > 0);
 
   if (issues.length === 0) {
-    return <Empty>No issues match these filters.</Empty>;
+    return (
+      <Empty>
+        {query?.trim() ? `No issues match "${query.trim()}".` : 'No issues match these filters.'}
+      </Empty>
+    );
   }
 
   return (

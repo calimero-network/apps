@@ -10,19 +10,32 @@ export default function Shell({
   repoName,
   repoUrl,
   onNewIssue,
+  searchQuery,
+  onSearchChange,
+  searchInputRef,
   children,
 }: {
   sidebar: SidebarProps;
   repoName: string | null;
   repoUrl: string;
   onNewIssue: () => void;
+  searchQuery: string;
+  onSearchChange: (query: string) => void;
+  searchInputRef: React.RefObject<HTMLInputElement | null>;
   children: React.ReactNode;
 }): React.ReactElement {
   return (
     <Grid>
       <Sidebar {...sidebar} />
       <Main>
-        <Topbar onNewIssue={onNewIssue} repoName={repoName} repoUrl={repoUrl} />
+        <Topbar
+          onNewIssue={onNewIssue}
+          repoName={repoName}
+          repoUrl={repoUrl}
+          searchQuery={searchQuery}
+          onSearchChange={onSearchChange}
+          searchInputRef={searchInputRef}
+        />
         {children}
       </Main>
     </Grid>
