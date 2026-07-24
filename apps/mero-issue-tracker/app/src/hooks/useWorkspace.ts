@@ -24,6 +24,7 @@ import {
   useSetMemberMetadata,
   type Namespace,
 } from '@calimero-network/mero-react';
+import { useSubscription } from '@calimero-network/mero-react';
 import { PRIMARY_SERVICE } from '../config';
 import { decodeInvitation } from '../utils/invitation';
 import { IssueTrackerClient } from '../api/issue-tracker/IssueTrackerClient';
@@ -257,6 +258,14 @@ export function useWorkspace(): UseWorkspaceReturn {
   useEffect(() => {
     if (!membersLoading) setMembersLoaded(true);
   }, [membersLoading]);
+
+  // Live member list: the node emits a GroupMembership event on the namespace
+  // group id when someone joins/leaves, so refetch instead of making the user
+  // reload. Group events carry `groupId` (context events carry `contextId`).
+  useSubscription(
+    { groupIds: activeNs ? [activeNs] : [] },
+    (ev) => { if ('groupId' in ev && ev.groupId) void refetchMembers(); },
+  );
 
   const members = useMemo(() => nsMembers.map((m) => m.identity), [nsMembers]);
   const memberNames = useMemo(
