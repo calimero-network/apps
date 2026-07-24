@@ -35,11 +35,36 @@ cp crates/docs/res/docs.wasm         res/bundle-temp/services/
 cp crates/registry/res/abi.json      res/bundle-temp/services/registry-abi.json
 cp crates/docs/res/abi.json          res/bundle-temp/services/docs-abi.json
 
+# Embed each service's state schema as the `calimero_abi_v1` wasm section: core
+# resolves the migration plan ONLY from that section, so a bundle without it
+# swaps bytecode code-only and panics on first read. `mero-abi state` reads the
+# SIBLING crates/<svc>/res/abi.json (not the wasm), so it must run against the
+# crate res dir; `embed` then writes the section into the bundle-temp copy in
+# place. Must precede size() below, since embedding grows the file.
+if [ -n "${MERO_ABI_TOOL:-}" ]; then
+    for svc in registry docs; do
+        SCHEMA=$(mktemp)
+        "$MERO_ABI_TOOL" state "crates/${svc}/res/${svc}.wasm" -o "$SCHEMA"
+        "$MERO_ABI_TOOL" embed "res/bundle-temp/services/${svc}.wasm" "$SCHEMA"
+        rm -f "$SCHEMA"
+    done
+elif [ "${ALLOW_UNEMBEDDED_BUNDLE:-}" = "1" ]; then
+    echo "warning: MERO_ABI_TOOL not set - bundle will LACK the embedded calimero_abi_v1 section; migrations will NOT run"
+else
+    echo "error: MERO_ABI_TOOL is not set. A bundle without the embedded calimero_abi_v1" >&2
+    echo "  section cannot migrate: upgrades swap bytecode code-only and panic on first read." >&2
+    echo "  Point MERO_ABI_TOOL at core's mero-abi binary (cargo build -p mero-abi --release)," >&2
+    echo "  or set ALLOW_UNEMBEDDED_BUNDLE=1 for a throwaway bundle that will never migrate." >&2
+    exit 1
+fi
+
 size() {
     stat -f%z "$1" 2>/dev/null || stat -c%s "$1"
 }
-REG_WASM_SIZE=$(size crates/registry/res/registry.wasm)
-DOC_WASM_SIZE=$(size crates/docs/res/docs.wasm)
+# Measure the bundle-temp wasm copies: embedding above grew them, and the
+# manifest must not record stale (pre-embed) sizes.
+REG_WASM_SIZE=$(size res/bundle-temp/services/registry.wasm)
+DOC_WASM_SIZE=$(size res/bundle-temp/services/docs.wasm)
 REG_ABI_SIZE=$(size crates/registry/res/abi.json)
 DOC_ABI_SIZE=$(size crates/docs/res/abi.json)
 
@@ -75,11 +100,12 @@ EOF
 
 # Sign the manifest via the sibling core workspace's mero-sign tool. The
 # path is relative to this repo sitting next to core/ in the parent dir,
-# same layout battleships uses.
+# same layout battleships uses. --dev signs with the well-known development
+# key (core removed the committed test key); dev-signed bundles cannot be
+# published to the registry, which is fine for local/e2e installs.
 if [ -d "../../core" ]; then
     cargo run --manifest-path ../../core/Cargo.toml -p mero-sign --quiet -- \
-        sign res/bundle-temp/manifest.json \
-        --key ../../core/scripts/test-signing-key/test-key.json
+        sign res/bundle-temp/manifest.json --dev
 else
     echo "warning: ../../core not found — bundle will be UNSIGNED (dev use only)"
 fi
@@ -94,7 +120,8 @@ mkdir -p dist
 # PACKAGE_OVERRIDE for a distinct name.)
 BUNDLE="dist/${PACKAGE}.mpk"
 cd res/bundle-temp
-tar -czf "../../${BUNDLE}" \
+# COPYFILE_DISABLE stops macOS tar from injecting AppleDouble `._*` entries.
+COPYFILE_DISABLE=1 tar -czf "../../${BUNDLE}" \
     manifest.json \
     services/registry.wasm services/registry-abi.json \
     services/docs.wasm     services/docs-abi.json

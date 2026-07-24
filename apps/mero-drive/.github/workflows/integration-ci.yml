@@ -27,6 +27,7 @@ on:
       - "logic/**"
       - "e2e/workflow-mero-drive-playwright-fast-setup.yml"
       - "e2e/workflow-mero-drive-playwright-two-node-setup.yml"
+      - "e2e/workflow-mero-drive-comments-migration.yml"
       - ".github/workflows/integration-ci.yml"
   pull_request:
     branches: [master]
@@ -35,6 +36,7 @@ on:
       - "logic/**"
       - "e2e/workflow-mero-drive-playwright-fast-setup.yml"
       - "e2e/workflow-mero-drive-playwright-two-node-setup.yml"
+      - "e2e/workflow-mero-drive-comments-migration.yml"
       - ".github/workflows/integration-ci.yml"
   workflow_dispatch:
 
@@ -80,7 +82,8 @@ jobs:
 
       - name: Build mero-drive bundle
         working-directory: logic
-        run: ./build-bundle.sh
+        # No migration crosses these bundles; the migration-e2e job embeds via MERO_ABI_TOOL.
+        run: ALLOW_UNEMBEDDED_BUNDLE=1 ./build-bundle.sh
 
       - name: Install merobox
         run: |
@@ -338,7 +341,8 @@ jobs:
 
       - name: Build mero-drive bundle
         working-directory: logic
-        run: ./build-bundle.sh
+        # No migration crosses these bundles; the migration-e2e job embeds via MERO_ABI_TOOL.
+        run: ALLOW_UNEMBEDDED_BUNDLE=1 ./build-bundle.sh
 
       - name: Install merobox
         run: |
@@ -562,6 +566,107 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: integration-docker-logs-two-node-${{ env.SHA }}
+          path: docker-logs/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # Headless migration e2e (no browser): builds the v1 (9.3.0) + v2 (9.4.0)
+  # bundles via APP_VERSION_OVERRIDE and runs the authored-comments migration
+  # workflow to completion against a real merod:edge node. The bundles must
+  # carry the embedded calimero_abi_v1 wasm section, which the mero-abi CLI
+  # embeds during the build. All `run:` blocks reference only
+  # workflow-controlled values (no event payloads).
+  migration-e2e:
+    name: Authored comments migration (v1 -> v2)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MIGRATION_WORKFLOW: workflow-mero-drive-comments-migration.yml
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache mero-abi
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/mero-abi
+          # Keep the key suffix in lockstep with MERO_ABI_REV below: bump both
+          # together to pick up a newer mero-abi.
+          key: mero-abi-${{ runner.os }}-b366e147
+
+      - name: Install mero-abi
+        env:
+          # Pinned core revision so the tool that writes bundle contents cannot
+          # drift or be swapped under us by upstream branch movement.
+          MERO_ABI_REV: b366e147421c2740b8b3bc43cffdf58a3f61471e
+        run: |
+          if ! command -v mero-abi >/dev/null; then
+            cargo install --git https://github.com/calimero-network/core \
+              --rev "$MERO_ABI_REV" mero-abi --locked
+          fi
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            logic/target
+          key: migration-${{ runner.os }}-${{ hashFiles('logic/Cargo.toml', 'logic/crates/*/Cargo.toml') }}
+          restore-keys: migration-${{ runner.os }}-
+
+      - name: Build v1 + v2 migration bundles
+        working-directory: logic
+        run: |
+          # Fail before building: build-bundle.sh only warns when the tool is
+          # missing, and an unembedded bundle would fail the e2e much later.
+          export MERO_ABI_TOOL="$HOME/.cargo/bin/mero-abi"
+          test -x "$MERO_ABI_TOOL"
+          APP_VERSION_OVERRIDE=9.3.0 ./build-bundle.sh
+          # Distinct package so the v2 bundle installs as a separate application
+          # (dev install dedups by package name).
+          APP_VERSION_OVERRIDE=9.4.0 DOCS_FEATURES=schema_v2 \
+            PACKAGE_OVERRIDE=com.calimero.mero-drive-docs-v2 ./build-bundle.sh
+          ls -la dist/
+
+      - name: Install merobox
+        run: |
+          python3 -m pip install --user --upgrade pip
+          # >= 0.6.37 required: it drops migrate_method from upgrade_group to
+          # match calimero-client-py 0.6.19 (core resolves migrations from the
+          # embedded ABIs); 0.6.36 crashes calling the newer client binding.
+          python3 -m pip install --user "merobox==0.6.39"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/merobox" --version
+
+      - name: Run migration workflow
+        working-directory: e2e
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/docker-logs"
+          merobox stop --all 2>/dev/null || true
+          merobox nuke --force 2>/dev/null || true
+          set -o pipefail
+          merobox bootstrap run "$MIGRATION_WORKFLOW" --verbose 2>&1 \
+            | tee "$GITHUB_WORKSPACE/docker-logs/migration.log"
+
+      - name: Collect container logs
+        if: always()
+        working-directory: e2e
+        run: |
+          for f in data/container-logs/*.log; do
+            [ -e "$f" ] || continue
+            cp -f "$f" "$GITHUB_WORKSPACE/docker-logs/"
+          done || true
+
+      - name: Upload migration logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-e2e-logs-${{ github.sha }}
           path: docker-logs/
           retention-days: 7
           if-no-files-found: ignore

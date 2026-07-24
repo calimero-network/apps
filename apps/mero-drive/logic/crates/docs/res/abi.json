@@ -231,17 +231,6 @@
             "fields": [],
             "crdt_type": "counter"
           }
-        },
-        {
-          "name": "default_sort_order",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "string"
-            }
-          }
         }
       ]
     },
@@ -338,23 +327,6 @@
       "fields": [
         {
           "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_Migrated": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "from_version",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "to_version",
           "type": {
             "kind": "string"
           }
@@ -744,20 +716,8 @@
       "payload": {
         "$ref": "Event_CommentDeleted"
       }
-    },
-    {
-      "name": "Migrated",
-      "payload": {
-        "$ref": "Event_Migrated"
-      }
     }
   ],
   "state_root": "DocsState",
-  "state_version": 2,
-  "migrations": [
-    {
-      "method": "migrate_v1_to_v2",
-      "fromVersion": 1
-    }
-  ]
+  "state_version": 1
 }
