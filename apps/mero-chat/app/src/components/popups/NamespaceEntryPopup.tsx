@@ -32,6 +32,7 @@ import {
   clearInvitationFromStorage,
   parseGroupInvitationPayload,
   parseInvitationInput,
+  isTerminalInvitationError,
 } from "../../utils/invitation";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -434,6 +435,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
 
     const parsed = parseGroupInvitationPayload(payload);
     if (!parsed) {
+      clearInvitationFromStorage(); // unparseable → will never succeed
       setError("Invalid invitation payload.");
       setStep("error");
       return;
@@ -482,8 +484,12 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
 
       setStep("enter-name");
     } catch (err) {
-      clearInvitationFromStorage();
-      setError(err instanceof Error ? err.message : "Failed to process invitation");
+      const msg = err instanceof Error ? err.message : "Failed to process invitation";
+      // Keep the pending invitation on transient failures (node unreachable, no
+      // online member, timeout) so it retries next load; only forget it when the
+      // invitation itself is terminally bad.
+      if (isTerminalInvitationError(msg)) clearInvitationFromStorage();
+      setError(msg);
       setStep("error");
     }
   }, [enterChat]);
