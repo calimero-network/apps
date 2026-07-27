@@ -38,3 +38,34 @@ describe("invitation utilities", () => {
     });
   });
 });
+
+import { isTerminalInvitationError } from "./invitation";
+
+describe("isTerminalInvitationError", () => {
+  it("is terminal for bad/expired/invalid invitations (safe to forget)", () => {
+    for (const m of [
+      "invitation expired",
+      "Invalid invitation payload.",
+      "invalid signature",
+      "malformed invitation",
+      "GroupCreated rejected: signer not admin",
+    ]) {
+      expect(isTerminalInvitationError(m)).toBe(true);
+    }
+  });
+
+  it("is NOT terminal for transient/unknown errors (keep for retry)", () => {
+    for (const m of [
+      "no online member to sync from",
+      "request timed out",
+      "network error",
+      "Failed to fetch",
+      "Failed to join namespace", // generic fallback — not clearly terminal
+      "",
+      undefined,
+      null,
+    ]) {
+      expect(isTerminalInvitationError(m as string)).toBe(false);
+    }
+  });
+});

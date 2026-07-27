@@ -7,7 +7,7 @@ import type { SignedGroupOpenInvitation } from "../api/groupApi";
  * Uses base64url encoding for compact, URL-safe invitation links.
  */
 
-const INVITATION_STORAGE_KEY = "curb-invitation-payload";
+export const INVITATION_STORAGE_KEY = "curb-invitation-payload";
 
 export interface GroupInvitationPayload {
   invitation: SignedGroupOpenInvitation;
@@ -199,6 +199,28 @@ export function clearInvitationFromStorage(): void {
   } catch (error) {
     console.error("Failed to clear invitation from localStorage:", error);
   }
+}
+
+/**
+ * True when a join error means the invitation itself is bad and will never
+ * succeed (expired / invalid / malformed / bad signature) — safe to forget the
+ * stored invitation. False for transient or unrecognized errors (network,
+ * timeout, "no online member", or anything we don't recognize), so the pending
+ * invitation is KEPT and retried on the next load. Errs toward keeping.
+ */
+export function isTerminalInvitationError(message: string | undefined | null): boolean {
+  if (!message) return false;
+  const m = message.toLowerCase();
+  const TERMINAL = [
+    "expired",
+    "invalid",
+    "malformed",
+    "signature",
+    "not admin",
+    "revoked",
+    "already a member",
+  ];
+  return TERMINAL.some((t) => m.includes(t));
 }
 
 /** Deep link for Calimero Desktop App: calimero://curb/join?invitation={encoded} */

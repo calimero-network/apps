@@ -1,6 +1,7 @@
 import React from "react";
 import { useMero, ConnectButton } from "@calimero-network/mero-react";
 import { clearStoredSession, clearSessionActivity, clearNamespaceReady } from "../../utils/session";
+import { INVITATION_STORAGE_KEY } from "../../utils/invitation";
 import { useNavigate } from "react-router-dom";
 import LandingPage from "./LandingPage";
 import NamespaceEntryPopup from "../../components/popups/NamespaceEntryPopup";
@@ -17,20 +18,21 @@ interface LoginProps {
 }
 
 // Keys that survive a fresh Connect — node URL, display name, per-identity
-// name cache, app id, and workspace alias cache. Everything else (tokens,
-// group selection, sessions, invitations, etc.) is wiped so the auth flow
-// starts from a clean slate.
-const CONNECT_PRESERVE_EXACT = new Set([
+// name cache, app id, workspace alias cache, and the PENDING INVITATION (so a
+// deep-link invite isn't lost when the user logs in on the web). Everything
+// else (tokens, group selection, sessions) is wiped to start auth clean.
+export const CONNECT_PRESERVE_EXACT = new Set([
   "mero:node_url",
   "chat-username",
   "calimero-application-id",
   "calimero_group_aliases",
+  INVITATION_STORAGE_KEY,
 ]);
 // No prefix-based preservation: per-identity username rows were retired
 // in favor of the single global `chat-username` (preserved exactly above).
 const CONNECT_PRESERVE_PREFIX: string[] = [];
 
-function clearStorageForConnect(): void {
+export function clearStorageForConnect(): void {
   try {
     const keep: Record<string, string> = {};
     for (let i = 0; i < localStorage.length; i++) {

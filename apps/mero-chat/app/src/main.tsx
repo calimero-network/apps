@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.tsx";
 import { BrowserRouter } from "react-router-dom";
-import { decodeInvitationPayload } from "./utils/invitation.ts";
+import { decodeInvitationPayload, INVITATION_STORAGE_KEY } from "./utils/invitation.ts";
 import {
   MeroProvider,
   AppMode as MeroAppMode,
@@ -126,7 +126,7 @@ function persistAuthHashOnLoad(): void {
     const raw = params.get("invitation");
     if (!raw) return;
     const decoded = decodeInvitationPayload(raw);
-    if (decoded) localStorage.setItem("curb-invitation-payload", decoded);
+    if (decoded) localStorage.setItem(INVITATION_STORAGE_KEY, decoded);
     params.delete("invitation");
     const qs = params.toString();
     window.history.replaceState(
