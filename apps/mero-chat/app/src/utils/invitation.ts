@@ -7,7 +7,7 @@ import type { SignedGroupOpenInvitation } from "../api/groupApi";
  * Uses base64url encoding for compact, URL-safe invitation links.
  */
 
-const INVITATION_STORAGE_KEY = "curb-invitation-payload";
+export const INVITATION_STORAGE_KEY = "curb-invitation-payload";
 
 export interface GroupInvitationPayload {
   invitation: SignedGroupOpenInvitation;
