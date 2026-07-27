@@ -66,6 +66,20 @@ fi
 WASM_SIZE=$(stat -f%z res/curb.wasm 2>/dev/null || stat -c%s res/curb.wasm 2>/dev/null || echo 0)
 ABI_SIZE=$(stat -f%z res/abi.json 2>/dev/null || stat -c%s res/abi.json 2>/dev/null || echo 0)
 
+# Launcher icon: embed the 512px PWA icon as a data URI so the desktop can render
+# a real per-app launcher icon offline (metadata.icon, a sibling of name/author).
+# Recomputed from the file each build so it never drifts. `base64 < file` reads
+# stdin (portable macOS/Linux); `tr -d '\n'` strips the wrap GNU base64 adds so
+# the URI stays valid inside the JSON string. Bundle app-id = hash(package,
+# signer) — NOT metadata — so this does not change the app id.
+ICON_SRC="../app/public/icons/icon-512x512.png"
+if [ -f "$ICON_SRC" ]; then
+    ICON_DATA_URI="data:image/png;base64,$(base64 < "$ICON_SRC" | tr -d '\n')"
+else
+    echo "WARN: launcher icon not found: $ICON_SRC (bundling without metadata.icon)" >&2
+    ICON_DATA_URI=""
+fi
+
 # Create manifest.json (metadata.name/description/author used by registry UI)
 cat > res/bundle-temp/manifest.json <<EOF
 {
@@ -76,7 +90,8 @@ cat > res/bundle-temp/manifest.json <<EOF
   "metadata": {
     "name": "Mero Chat",
     "description": "Mero Chat v2 — group-based context management. Each context is one channel or DM.",
-    "author": "Calimero"
+    "author": "Calimero",
+    "icon": "${ICON_DATA_URI}"
   },
   "wasm": {
     "path": "app.wasm",
