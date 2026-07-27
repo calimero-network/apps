@@ -46,6 +46,7 @@ export function useAppNotifications(currentChatId?: string) {
         playSound: shouldPlaySound = true,
       } = notification;
 
+
       // Determine variant based on notification type
       const notificationVariant = type === "mention" ? "warning" : "info";
       const priority =
@@ -68,6 +69,31 @@ export function useAppNotifications(currentChatId?: string) {
         status: "unread",
         category: type === "dm" ? "user" : "system",
       });
+
+      // Native OS banner. In the desktop launcher the shell polyfill routes
+      // window.Notification -> NSUserNotification (per-app dock identity). In a
+      // plain browser without notification permission this is a silent no-op;
+      // try/catch guards the constructor throw when permission is "denied".
+      //
+      // Only banner when it's worth interrupting: the app doesn't have focus
+      // (user isn't already looking at it), OR it's a mention/DM (always worth a
+      // banner). When focused on a regular message the in-app toast is enough —
+      // banner-ing what you're already reading is just noise.
+      // Native OS banner (delivered by the host over the shell→host socket).
+      // Only interrupt when the app isn't focused, or it's a mention/DM — the
+      // in-app toast covers the focused case.
+      const hasFocus =
+        typeof document !== "undefined" &&
+        typeof document.hasFocus === "function" &&
+        document.hasFocus();
+      const isDirected = type === "mention" || type === "dm";
+      if (!hasFocus || isDirected) {
+        try {
+          new Notification(title, { body: message });
+        } catch {
+          /* no notification support / permission — ignore */
+        }
+      }
 
       // Play sound if enabled
       if (shouldPlaySound && soundEnabled) {

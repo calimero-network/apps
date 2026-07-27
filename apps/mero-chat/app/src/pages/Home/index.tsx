@@ -52,6 +52,7 @@ import { useCurrentGroupPermissions } from "../../hooks/useCurrentGroupPermissio
 import { useNamespaceMembershipWatch } from "../../hooks/useNamespaceMembershipWatch";
 import { buildDmMemberOptions } from "../../utils/dmMemberOptions";
 import { useUnreadCounts } from "../../hooks/useUnreadCounts";
+import { useAppBadge } from "../../hooks/useAppBadge";
 
 export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   const { mero: app } = useCalimero();
@@ -121,6 +122,9 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   const groupMembersHook = useGroupMembers();
   const currentGroupPermissions = useCurrentGroupPermissions(currentGroupId);
   const { counts: unreadCounts, loadAll: loadAllUnread, refreshOne: refreshUnread, clearOne: clearUnread } = useUnreadCounts();
+
+  // Reflect total unread on the native dock badge (Calimero desktop launcher).
+  useAppBadge(unreadCounts);
 
   const addOptimisticMessage = mainMessages.addOptimistic;
   const addOptimisticThreadMessage = threadMessages.addOptimistic;
