@@ -1,5 +1,6 @@
 import bs58 from "bs58";
 import { deflateSync, inflateSync } from "fflate";
+import { createLink } from "@calimero-network/mero-platform";
 import type { SignedGroupOpenInvitation } from "../api/groupApi";
 
 /**
@@ -8,6 +9,12 @@ import type { SignedGroupOpenInvitation } from "../api/groupApi";
  */
 
 export const INVITATION_STORAGE_KEY = "curb-invitation-payload";
+
+/**
+ * App slug used for deep links. The desktop launcher resolves links by
+ * `Application.package`, so the slug IS the package id (not a friendly name).
+ */
+export const CURB_APP_SLUG = "com.calimero.curb";
 
 export interface GroupInvitationPayload {
   invitation: SignedGroupOpenInvitation;
@@ -176,31 +183,6 @@ export function parseInvitationInput(input: string): string | null {
   }
 }
 
-export function saveInvitationToStorage(invitationPayload: string): void {
-  try {
-    localStorage.setItem(INVITATION_STORAGE_KEY, invitationPayload);
-  } catch (error) {
-    console.error("Failed to save invitation to localStorage:", error);
-  }
-}
-
-export function getInvitationFromStorage(): string | null {
-  try {
-    return localStorage.getItem(INVITATION_STORAGE_KEY);
-  } catch (error) {
-    console.error("Failed to retrieve invitation from localStorage:", error);
-    return null;
-  }
-}
-
-export function clearInvitationFromStorage(): void {
-  try {
-    localStorage.removeItem(INVITATION_STORAGE_KEY);
-  } catch (error) {
-    console.error("Failed to clear invitation from localStorage:", error);
-  }
-}
-
 /**
  * True when a join error means the invitation itself is bad and will never
  * succeed (expired / invalid / malformed / bad signature) — safe to forget the
@@ -223,8 +205,15 @@ export function isTerminalInvitationError(message: string | undefined | null): b
   return TERMINAL.some((t) => m.includes(t));
 }
 
-/** Deep link for Calimero Desktop App: calimero://curb/join?invitation={encoded} */
-export const CALIMERO_CURB_JOIN_DEEP_LINK = "calimero://curb/join";
+/**
+ * Device-local deep link (`calimero://com.calimero.curb/join?invitation=…`).
+ *
+ * The platform SDK is HTTPS-only by design (the `calimero://` scheme is a
+ * device transport, not a shareable link), so this thin helper stays local for
+ * the "copy desktop link" affordance. The primary shareable link is HTTPS via
+ * {@link generateInvitationUrl}. Slug is the app package for launcher parity.
+ */
+export const CALIMERO_CURB_JOIN_DEEP_LINK = `calimero://${CURB_APP_SLUG}/join`;
 
 export function generateInvitationDeepLink(invitationPayload: string): string {
   const encoded = encodeInvitationPayload(invitationPayload);
@@ -232,39 +221,15 @@ export function generateInvitationDeepLink(invitationPayload: string): string {
 }
 
 /**
- * Web invitation URL (https). Same behavior when opened: browser decodes param and app uses it.
+ * Canonical shareable invitation link (HTTPS), built by the platform SDK:
+ * `https://links.calimero.network/com.calimero.curb/join?invitation=…`.
+ *
+ * An HTTPS link works everywhere: it opens the web/PWA app directly, and on a
+ * device with the desktop installed hands off to the launcher.
  */
 export function generateInvitationUrl(invitationPayload: string): string {
-  const base = typeof window !== "undefined" ? window.location.origin : "";
-  const encoded = encodeInvitationPayload(invitationPayload);
-  return `${base}/?invitation=${encoded}`;
+  return createLink(CURB_APP_SLUG, "join", {
+    invitation: encodeInvitationPayload(invitationPayload),
+  });
 }
 
-/**
- * Extract invitation payload from current page URL query (e.g. after opening web invite link).
- * Decodes base64url first, then app uses the payload as usual.
- */
-export function extractInvitationFromUrl(): string | null {
-  try {
-    const urlParams = new URLSearchParams(window.location.search);
-    const invitation = urlParams.get("invitation");
-    return invitation ? decodeInvitationPayload(invitation) : null;
-  } catch (error) {
-    console.error("Failed to extract invitation from URL:", error);
-    return null;
-  }
-}
-
-export function extractInvitationFromCalimeroUrl(url: string): string | null {
-  try {
-    const parsed = new URL(url);
-    const invitation = parsed.searchParams.get("invitation");
-    return invitation ? decodeInvitationPayload(invitation) : null;
-  } catch {
-    return null;
-  }
-}
-
-export function hasPendingInvitation(): boolean {
-  return !!(extractInvitationFromUrl() || getInvitationFromStorage());
-}

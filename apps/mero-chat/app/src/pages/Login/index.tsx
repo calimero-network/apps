@@ -17,16 +17,26 @@ interface LoginProps {
   isConfigSet: boolean;
 }
 
+// The platform SDK's durable pending-intent store (PendingIntentStore) — a
+// captured deep-link invitation lives here now, and MUST survive the Connect
+// wipe so it can be replayed after the auth reload. Kept in sync with the
+// STORAGE_KEY in @calimero-network/mero-platform's pending-intent module.
+export const PLATFORM_PENDING_INTENTS_KEY = "calimero.platform.pendingIntents";
+
 // Keys that survive a fresh Connect — node URL, display name, per-identity
 // name cache, app id, workspace alias cache, and the PENDING INVITATION (so a
 // deep-link invite isn't lost when the user logs in on the web). Everything
 // else (tokens, group selection, sessions) is wiped to start auth clean.
+//
+// INVITATION_STORAGE_KEY is the retired hand-rolled buffer; kept here so any
+// in-flight invite from a pre-migration session isn't dropped mid-upgrade.
 export const CONNECT_PRESERVE_EXACT = new Set([
   "mero:node_url",
   "chat-username",
   "calimero-application-id",
   "calimero_group_aliases",
   INVITATION_STORAGE_KEY,
+  PLATFORM_PENDING_INTENTS_KEY,
 ]);
 // No prefix-based preservation: per-identity username rows were retired
 // in favor of the single global `chat-username` (preserved exactly above).

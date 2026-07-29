@@ -26,14 +26,12 @@ import {
 import { clearStoredSession, setNamespaceReady } from "../../utils/session";
 import { DEFAULT_MEMBER_CAPABILITIES } from "../../utils/groupCapabilities";
 import {
-  extractInvitationFromUrl,
-  getInvitationFromStorage,
-  saveInvitationToStorage,
-  clearInvitationFromStorage,
+  decodeInvitationPayload,
   parseGroupInvitationPayload,
   parseInvitationInput,
   isTerminalInvitationError,
 } from "../../utils/invitation";
+import { useDeepLink } from "@calimero-network/mero-platform-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -331,6 +329,20 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
   const navigate = useNavigate();
   const api = useRef(new GroupApiDataSource());
 
+  // The pending deep-link invitation: the decoded JSON payload plus the SDK's
+  // ack callback. Sourced from `useDeepLink` below — the platform SDK's durable
+  // pending-intent store replaces the retired localStorage buffer. `resolve()`
+  // is called only on success or a terminal error, so a transient failure keeps
+  // the intent buffered for the next load (mirrors the old clear-on-success /
+  // clear-on-terminal behavior).
+  const pendingRef = useRef<{ decoded: string; resolve: () => void } | null>(null);
+  const groupsLoadedRef = useRef(false);
+
+  const resolvePending = useCallback(() => {
+    pendingRef.current?.resolve();
+    pendingRef.current = null;
+  }, []);
+
   const [step, setStep] = useState<Step>("loading");
   const [namespaces, setNamespaces] = useState<GroupSummary[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -435,7 +447,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
 
     const parsed = parseGroupInvitationPayload(payload);
     if (!parsed) {
-      clearInvitationFromStorage(); // unparseable → will never succeed
+      resolvePending(); // unparseable → will never succeed
       setError("Invalid invitation payload.");
       setStep("error");
       return;
@@ -458,7 +470,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
       setInviteStatus("Syncing…");
       await api.current.syncGroup(groupId).catch(() => {});
 
-      clearInvitationFromStorage();
+      resolvePending();
 
       // After joining, show the enter-name step for this namespace
       setSelectedId(groupId);
@@ -488,11 +500,43 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
       // Keep the pending invitation on transient failures (node unreachable, no
       // online member, timeout) so it retries next load; only forget it when the
       // invitation itself is terminally bad.
-      if (isTerminalInvitationError(msg)) clearInvitationFromStorage();
+      if (isTerminalInvitationError(msg)) resolvePending();
       setError(msg);
       setStep("error");
     }
-  }, [enterChat]);
+  }, [enterChat, resolvePending]);
+
+  // Decide what to do with a pending deep-link invitation against the loaded
+  // namespaces. Returns true when it takes over the flow (kicks off a join),
+  // false when there is nothing to process (no pending, or already a member).
+  const evaluatePending = useCallback((groups: GroupSummary[]): boolean => {
+    const pending = pendingRef.current;
+    if (!pending) return false;
+
+    // No namespaces yet — the invitation is the only way in.
+    if (groups.length === 0) {
+      void processInvitation(pending.decoded);
+      return true;
+    }
+
+    // Only process an invitation for a namespace we're not already in.
+    const parsed = parseGroupInvitationPayload(pending.decoded);
+    if (parsed) {
+      const inv = parsed.invitation.invitation as unknown as Record<string, unknown>;
+      const rawId = inv.group_id ?? inv.groupId;
+      const invNsId = Array.isArray(rawId)
+        ? (rawId as number[]).map((b) => b.toString(16).padStart(2, "0")).join("")
+        : String(rawId ?? "");
+      if (invNsId && !groups.find((g) => g.groupId === invNsId)) {
+        void processInvitation(pending.decoded);
+        return true;
+      }
+    }
+
+    // Already a member (or an unparseable but present intent) — drop it.
+    resolvePending();
+    return false;
+  }, [processInvitation, resolvePending]);
 
   // Initial load
   const loadNamespaces = useCallback(async () => {
@@ -500,10 +544,6 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
 
     setStep("loading");
     setError("");
-
-    // Save invitation from URL to storage before anything else
-    const urlInvite = extractInvitationFromUrl();
-    if (urlInvite) saveInvitationToStorage(urlInvite);
 
     let groups: GroupSummary[] = [];
     try {
@@ -519,42 +559,42 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
     }
 
     setNamespaces(groups);
+    groupsLoadedRef.current = true;
 
-    // Check for a pending invitation
-    const pendingInvite = getInvitationFromStorage();
+    // A pending deep-link invitation takes over the flow (join → enter name).
+    if (evaluatePending(groups)) return;
 
     if (groups.length === 0) {
-      if (pendingInvite) {
-        // No namespace yet but we have an invitation — join via it
-        void processInvitation(pendingInvite);
-        return;
-      }
       setStep("no-workspace");
       return;
-    }
-
-    // If there's an invitation for a namespace we're not in yet, process it
-    if (pendingInvite) {
-      const parsed = parseGroupInvitationPayload(pendingInvite);
-      if (parsed) {
-        const inv = parsed.invitation.invitation as unknown as Record<string, unknown>;
-        const rawId = inv.group_id ?? inv.groupId;
-        const invNsId = Array.isArray(rawId)
-          ? (rawId as number[]).map((b) => b.toString(16).padStart(2, "0")).join("")
-          : String(rawId ?? "");
-        if (invNsId && !groups.find((g) => g.groupId === invNsId)) {
-          void processInvitation(pendingInvite);
-          return;
-        }
-      }
-      clearInvitationFromStorage();
     }
 
     const storedId = getGroupId();
     const preferred = groups.find((g) => g.groupId === storedId) ?? groups[0];
     setSelectedId(preferred.groupId);
     setStep("select");
-  }, [checkNamespace, processInvitation]);
+  }, [evaluatePending]);
+
+  // Capture inbound deep-link invitations via the platform SDK. Fires for an
+  // intent buffered before mount (the cold-open invite that survived the
+  // auth/Connect reload in the SDK's pending-intent store) and for warm
+  // deliveries while the app is open. Declared BEFORE the load effect below so
+  // its synchronous replay populates `pendingRef` before `loadNamespaces` runs.
+  useDeepLink((intent) => {
+    const encoded = intent.params.invitation;
+    if (!encoded) {
+      intent.resolve(); // not an invitation intent — ack so it never replays
+      return;
+    }
+    const decoded = decodeInvitationPayload(encoded);
+    if (!decoded) {
+      intent.resolve(); // undecodable → terminally bad, drop it
+      return;
+    }
+    pendingRef.current = { decoded, resolve: intent.resolve };
+    // Warm delivery: if the initial load already ran, act on it immediately.
+    if (groupsLoadedRef.current) evaluatePending(namespaces);
+  });
 
   useEffect(() => {
     if (isAuthenticated || isConfigSet) {
@@ -659,7 +699,10 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
       setError("Could not parse invitation. Paste the full link or the raw encoded code.");
       return;
     }
-    saveInvitationToStorage(payload);
+    // A user-pasted invite isn't a deep-link intent, so there's no SDK entry to
+    // ack — give processInvitation a no-op resolve so its success/terminal paths
+    // (which clear the pending invite) stay uniform.
+    pendingRef.current = { decoded: payload, resolve: () => {} };
     await processInvitation(payload);
   }, [joinInviteInput, processInvitation]);
 

@@ -3,7 +3,12 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.tsx";
 import { BrowserRouter } from "react-router-dom";
-import { decodeInvitationPayload, INVITATION_STORAGE_KEY } from "./utils/invitation.ts";
+import {
+  DeepLinkController,
+  PendingIntentStore,
+  getBridge,
+} from "@calimero-network/mero-platform";
+import { __setDeepLinkController } from "@calimero-network/mero-platform-react";
 import {
   MeroProvider,
   AppMode as MeroAppMode,
@@ -115,26 +120,44 @@ function persistAuthHashOnLoad(): void {
   );
 }
 
-// Extract ?invitation= from URL before React mounts — React Router's <Navigate>
-// runs its useEffect before parent component effects (children fire first), so
-// the URL is already changed to /login before App.tsx can read it.
-// Uses decodeInvitationPayload which handles deflate-compressed base58 (new),
-// uncompressed base58, base64url, and percent-encoded JSON (all legacy).
-(function extractInvitationOnLoad() {
+// Capture any inbound deep-link intent (e.g. `?invitation=…`) into the platform
+// SDK's durable pending-intent store BEFORE React mounts. This must happen here,
+// not in a component effect, because React Router's <Navigate> replaces the URL
+// with /login (children effects fire before parents), wiping the query before
+// any component could read it — and on a cold invite open the user isn't
+// authenticated yet, so the consuming <NamespaceEntryPopup> (and its
+// `useDeepLink`) doesn't even mount until after the Connect/auth reload.
+//
+// We pre-construct the singleton DeepLinkController and inject it so the
+// consumer's `useDeepLink` reuses it. The intent is persisted to
+// `calimero.platform.pendingIntents` (preserved across the Connect wipe — see
+// CONNECT_PRESERVE_EXACT in pages/Login) and replayed once the popup mounts.
+(function primeDeepLinkCapture() {
   try {
+    const store = new PendingIntentStore(window.localStorage);
+    const controller = new DeepLinkController(store, {
+      location: window.location,
+      bridge: getBridge(),
+      launchQueue:
+        (window as unknown as { launchQueue?: unknown }).launchQueue ?? null,
+    } as ConstructorParameters<typeof DeepLinkController>[1]);
+    __setDeepLinkController(controller);
+
+    // The intent is now durably captured; strip `?invitation=` from the address
+    // bar for a clean URL (parity with the previous hand-rolled behavior).
     const params = new URLSearchParams(window.location.search);
-    const raw = params.get("invitation");
-    if (!raw) return;
-    const decoded = decodeInvitationPayload(raw);
-    if (decoded) localStorage.setItem(INVITATION_STORAGE_KEY, decoded);
-    params.delete("invitation");
-    const qs = params.toString();
-    window.history.replaceState(
-      {},
-      "",
-      window.location.pathname + (qs ? "?" + qs : "") + window.location.hash,
-    );
-  } catch { /* ignore */ }
+    if (params.has("invitation")) {
+      params.delete("invitation");
+      const qs = params.toString();
+      window.history.replaceState(
+        {},
+        "",
+        window.location.pathname + (qs ? "?" + qs : "") + window.location.hash,
+      );
+    }
+  } catch {
+    /* ignore — storage/URL may be unavailable */
+  }
 })();
 
 const CALIMERO_APP_ID_KEY = "calimero-application-id";

@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
 import { useEffect, useState, lazy, Suspense } from "react";
 import { LoadingSpinner } from "./components/LoadingSpinner";
@@ -9,7 +9,6 @@ import {
 } from "./utils/session";
 import { ToastProvider, useToast } from "./contexts/ToastContext";
 import { ToastManager } from "./components/common/ToastManager";
-import { extractInvitationFromUrl, saveInvitationToStorage } from "./utils/invitation";
 
 const Login = lazy(() => import("./pages/Login"));
 const Home = lazy(() => import("./pages/Home"));
@@ -22,7 +21,6 @@ function ToastDisplay() {
 
 function App() {
   const { isAuthenticated, isLoading, logout } = useMero();
-  const location = useLocation();
   const [providerTimedOut, setProviderTimedOut] = useState(false);
 
   useEffect(() => {
@@ -33,17 +31,6 @@ function App() {
     const id = setTimeout(() => setProviderTimedOut(true), 8000);
     return () => clearTimeout(id);
   }, [isLoading]);
-
-  // Clean up invitation URL parameter and save to storage
-  useEffect(() => {
-    const invitation = extractInvitationFromUrl();
-    if (invitation) {
-      saveInvitationToStorage(invitation);
-      const url = new URL(window.location.href);
-      url.searchParams.delete("invitation");
-      window.history.replaceState({}, "", url.toString());
-    }
-  }, [location.pathname]);
 
   // Session expiry check and activity tracking
   useEffect(() => {
