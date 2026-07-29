@@ -95,9 +95,26 @@ Bump `appVersion` in `studio.config.json` before publishing: the registry reject
 a version it already has, and `pnpm logic:build` passes that value straight
 through to the manifest.
 
-`pnpm logic:build:release` signs with a production key instead of the well-known
-dev key, and needs `MERO_SIGN_KEY` pointing at it. The registry refuses
-dev-signed bundles.
+### Signing keys
+
+The registry decides who may publish a new version from the bundle's `signerId`,
+not from who is logged in, so every build of this app has to be signed with the
+same key that published it.
+
+`pnpm logic:build` signs with `$STUDIO_DEV_SIGNING_KEY`, falling back to
+`~/.calimero-studio/studio-dev-signing.key.json`. Create that key once and keep
+it - losing it means the registry will no longer accept your versions of this
+package:
+
+```bash
+cargo mero key generate --output ~/.calimero-studio/studio-dev-signing.key.json
+```
+
+`pnpm logic:build:release` uses `$MERO_SIGN_KEY` instead, for the production key.
+
+Do not build a bundle you intend to publish with `cargo mero bundle --dev`. That
+flag signs with a well-known key shared by every developer, so the registry sees
+an identity that does not own the package and refuses the upload.
 
 ## Run the app
 
