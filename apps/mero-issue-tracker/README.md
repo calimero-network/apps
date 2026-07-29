@@ -70,7 +70,7 @@ tool and env reference is under [MCP setup](#mcp-setup) below and in
 
 - Node 22 (`.nvmrc`) and `pnpm`.
 - Rust with the `wasm32-unknown-unknown` target (`rustup target add wasm32-unknown-unknown`).
-- `jq` and `mero-sign` (from `calimero-network/core`) on `PATH`, for the bundle build.
+- `cargo mero` (from `calimero-network/core`, `cargo install --path tools/cargo-mero`) on `PATH`, for the bundle build.
 - A Calimero node. For local runs a `merod` binary or [`merobox`](https://github.com/calimero-network/merobox) (Docker) works; the e2e harness provisions its own nodes (see below).
 
 ## Setup
@@ -81,8 +81,23 @@ pnpm logic:build      # compile the wasm + ABI and sign the .mpk bundle
 pnpm app:codegen      # regenerate the typed client from the ABI (logic/crates/*/res/abi.json)
 ```
 
-`pnpm logic:build` writes `logic/res/issue-tracker-<version>.mpk`. Re-run
-`pnpm app:codegen` whenever the logic's public methods change.
+`pnpm logic:build` runs `cargo mero bundle`, which compiles each service, embeds
+its ABI, records a SHA-256 per artifact, and signs the manifest.
+It writes `logic/dist/network.calimero.mero-issue-tracker.mpk` - named after the
+package, with the version inside the manifest.
+Re-run `pnpm app:codegen` whenever the logic's public methods change.
+
+A node verifies the manifest signature and then checks each artifact against the
+digest the manifest records, so a bundle whose bytes changed after signing is
+refused at install.
+
+Bump `appVersion` in `studio.config.json` before publishing: the registry rejects
+a version it already has, and `pnpm logic:build` passes that value straight
+through to the manifest.
+
+`pnpm logic:build:release` signs with a production key instead of the well-known
+dev key, and needs `MERO_SIGN_KEY` pointing at it. The registry refuses
+dev-signed bundles.
 
 ## Run the app
 
