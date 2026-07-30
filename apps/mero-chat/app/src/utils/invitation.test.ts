@@ -75,11 +75,18 @@ import {
   generateInvitationDeepLink,
   decodeInvitationPayload,
   parseInvitationInput,
-  CURB_APP_SLUG,
+  APP_SLUG,
 } from "./invitation";
 
 describe("shareable invitation links (platform SDK)", () => {
   const payload = JSON.stringify(signedInvitation);
+
+  it("uses the com.calimero.chat package as the deep-link slug", () => {
+    // The desktop resolves links by Application.package; this must match the
+    // .mpk manifest `package` and the deeplinks resolver FRONTENDS key.
+    expect(APP_SLUG).toBe("com.calimero.chat");
+    expect(new URL(generateInvitationUrl(payload)).pathname).toBe("/com.calimero.chat/join");
+  });
 
   it("generateInvitationUrl builds a canonical HTTPS links.calimero.network URL via createLink", () => {
     const url = generateInvitationUrl(payload);
@@ -87,7 +94,7 @@ describe("shareable invitation links (platform SDK)", () => {
 
     expect(parsed.protocol).toBe("https:");
     expect(parsed.host).toBe("links.calimero.network");
-    expect(parsed.pathname).toBe(`/${CURB_APP_SLUG}/join`);
+    expect(parsed.pathname).toBe(`/${APP_SLUG}/join`);
 
     // The invitation param round-trips back to the original payload.
     const enc = parsed.searchParams.get("invitation");
@@ -97,7 +104,7 @@ describe("shareable invitation links (platform SDK)", () => {
 
   it("generateInvitationDeepLink builds a calimero:// device link with the package slug", () => {
     const link = generateInvitationDeepLink(payload);
-    expect(link.startsWith(`calimero://${CURB_APP_SLUG}/join?invitation=`)).toBe(true);
+    expect(link.startsWith(`calimero://${APP_SLUG}/join?invitation=`)).toBe(true);
 
     const enc = link.split("invitation=")[1];
     expect(decodeInvitationPayload(enc)).toBe(payload);

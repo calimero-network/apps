@@ -12,8 +12,13 @@ TARGET="${CARGO_TARGET_DIR:-../../target}"
 #   1. APP_VERSION_OVERRIDE env  — explicit pin (e.g. a migration bundle)
 #   2. <latest published version> + patch bump
 #   3. FALLBACK_VERSION          — registry unreachable / package not yet published
-PACKAGE="com.calimero.curb"
-FALLBACK_VERSION="7.0.3"   # offline floor only; the registry path is authoritative
+# This fork's app identity (Option B). It IS the com.calimero.chat app, so the
+# package and frontend URL are fixed constants — not env knobs. Only the version
+# stays dynamic (APP_VERSION_OVERRIDE, set from the git tag in CI).
+PACKAGE="com.calimero.chat"
+FRONTEND_URL="https://mero-chat-pwa.vercel.app/"   # the fork's deployed production alias
+PKG_SHORT="${PACKAGE##*.}"   # last dotted segment → .mpk filename prefix
+FALLBACK_VERSION="${FALLBACK_VERSION:-0.1.0}"   # offline floor only; registry path is authoritative
 REGISTRY_URL="${REGISTRY_URL:-https://apps.calimero.network}"
 
 resolve_app_version() {
@@ -105,7 +110,7 @@ cat > res/bundle-temp/manifest.json <<EOF
   },
   "migrations": [],
   "links": {
-    "frontend": "https://mero-chat.vercel.app/"
+    "frontend": "${FRONTEND_URL}"
   }
 }
 EOF
@@ -130,8 +135,8 @@ fi
 # Create .mpk bundle (tar.gz archive). Filename derives from APP_VERSION so it
 # never drifts from the manifest appVersion.
 cd res/bundle-temp
-MPK="../curb-${APP_VERSION}.mpk"
+MPK="../${PKG_SHORT}-${APP_VERSION}.mpk"
 tar -czf "$MPK" manifest.json app.wasm abi.json 2>/dev/null || \
 tar -czf "$MPK" manifest.json app.wasm 2>/dev/null
 
-echo "Bundle created: res/curb-${APP_VERSION}.mpk"
+echo "Bundle created: res/${PKG_SHORT}-${APP_VERSION}.mpk"

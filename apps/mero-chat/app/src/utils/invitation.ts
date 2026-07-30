@@ -13,8 +13,9 @@ export const INVITATION_STORAGE_KEY = "curb-invitation-payload";
 /**
  * App slug used for deep links. The desktop launcher resolves links by
  * `Application.package`, so the slug IS the package id (not a friendly name).
+ * This fork publishes as `com.calimero.chat` (its .mpk manifest `package`).
  */
-export const CURB_APP_SLUG = "com.calimero.curb";
+export const APP_SLUG = "com.calimero.chat";
 
 export interface GroupInvitationPayload {
   invitation: SignedGroupOpenInvitation;
@@ -206,29 +207,29 @@ export function isTerminalInvitationError(message: string | undefined | null): b
 }
 
 /**
- * Device-local deep link (`calimero://com.calimero.curb/join?invitation=…`).
+ * Device-local deep link (`calimero://com.calimero.chat/join?invitation=…`).
  *
  * The platform SDK is HTTPS-only by design (the `calimero://` scheme is a
  * device transport, not a shareable link), so this thin helper stays local for
  * the "copy desktop link" affordance. The primary shareable link is HTTPS via
  * {@link generateInvitationUrl}. Slug is the app package for launcher parity.
  */
-export const CALIMERO_CURB_JOIN_DEEP_LINK = `calimero://${CURB_APP_SLUG}/join`;
+export const CALIMERO_JOIN_DEEP_LINK = `calimero://${APP_SLUG}/join`;
 
 export function generateInvitationDeepLink(invitationPayload: string): string {
   const encoded = encodeInvitationPayload(invitationPayload);
-  return `${CALIMERO_CURB_JOIN_DEEP_LINK}?invitation=${encoded}`;
+  return `${CALIMERO_JOIN_DEEP_LINK}?invitation=${encoded}`;
 }
 
 /**
  * Canonical shareable invitation link (HTTPS), built by the platform SDK:
- * `https://links.calimero.network/com.calimero.curb/join?invitation=…`.
+ * `https://links.calimero.network/com.calimero.chat/join?invitation=…`.
  *
  * An HTTPS link works everywhere: it opens the web/PWA app directly, and on a
  * device with the desktop installed hands off to the launcher.
  */
 export function generateInvitationUrl(invitationPayload: string): string {
-  return createLink(CURB_APP_SLUG, "join", {
+  return createLink(APP_SLUG, "join", {
     invitation: encodeInvitationPayload(invitationPayload),
   });
 }
