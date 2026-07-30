@@ -70,7 +70,7 @@ tool and env reference is under [MCP setup](#mcp-setup) below and in
 
 - Node 22 (`.nvmrc`) and `pnpm`.
 - Rust with the `wasm32-unknown-unknown` target (`rustup target add wasm32-unknown-unknown`).
-- `cargo mero` on `PATH`, for the bundle build: `cargo install --git https://github.com/calimero-network/core --tag 0.11.0-rc.19 cargo-mero --locked`.
+- `cargo mero` on `PATH`, for the bundle build. Grab the prebuilt binary from a [core release](https://github.com/calimero-network/core/releases) (`cargo-mero_<target>.tar.gz`, 0.11.0-rc.19 or later) and put it on `PATH`, or `cargo install --path tools/cargo-mero` from a core checkout.
 - A Calimero node. For local runs a `merod` binary or [`merobox`](https://github.com/calimero-network/merobox) (Docker) works; the e2e harness provisions its own nodes (see below).
 
 ## Setup

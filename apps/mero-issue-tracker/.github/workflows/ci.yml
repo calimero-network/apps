@@ -17,6 +17,9 @@ env:
   # corepack's download prompt aborts in a non-interactive runner.
   COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
 
+  # cargo-mero first ships in this tag; it cannot follow the SDK pin.
+  CARGO_MERO_VERSION: 0.11.0-rc.19
+
 jobs:
   # ── LOGIC ── Rust workspace: fmt, clippy, tests, wasm build + codegen drift. ──
   logic:
@@ -71,10 +74,26 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # cargo mero builds the bundle (embeds each ABI, records a per-artifact
-      # digest, signs). Pinned: the tool first ships in rc.19, after the SDK tag
-      # this app builds against.
+      # digest, signs). Released as a prebuilt binary, so download it rather
+      # than compiling core's dependency tree. Pinned: the tool first ships in
+      # rc.19, later than the SDK tag the merod download follows.
       - name: Install cargo-mero
-        run: cargo install --git https://github.com/calimero-network/core --tag 0.11.0-rc.19 cargo-mero --locked
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+          url="https://github.com/calimero-network/core/releases/download/${CARGO_MERO_VERSION}/cargo-mero_x86_64-unknown-linux-gnu.tar.gz"
+          echo "Downloading $url"
+          curl -fsSL --retry 3 --retry-all-errors "$url" -o /tmp/cargo-mero.tgz
+          tar -xzf /tmp/cargo-mero.tgz -C "$HOME/.local/bin"
+          target="$HOME/.local/bin/cargo-mero"
+          if [ ! -f "$target" ]; then
+            nested="$(find "$HOME/.local/bin" -type f -name cargo-mero | head -n1)"
+            test -n "$nested"
+            mv "$nested" "$target"
+          fi
+          chmod +x "$target"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$target" mero --version || true
 
       - name: Build wasm + bundle (regenerates ABI)
         run: pnpm logic:build
@@ -178,10 +197,26 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # cargo mero builds the bundle (embeds each ABI, records a per-artifact
-      # digest, signs). Pinned: the tool first ships in rc.19, after the SDK tag
-      # this app builds against.
+      # digest, signs). Released as a prebuilt binary, so download it rather
+      # than compiling core's dependency tree. Pinned: the tool first ships in
+      # rc.19, later than the SDK tag the merod download follows.
       - name: Install cargo-mero
-        run: cargo install --git https://github.com/calimero-network/core --tag 0.11.0-rc.19 cargo-mero --locked
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+          url="https://github.com/calimero-network/core/releases/download/${CARGO_MERO_VERSION}/cargo-mero_x86_64-unknown-linux-gnu.tar.gz"
+          echo "Downloading $url"
+          curl -fsSL --retry 3 --retry-all-errors "$url" -o /tmp/cargo-mero.tgz
+          tar -xzf /tmp/cargo-mero.tgz -C "$HOME/.local/bin"
+          target="$HOME/.local/bin/cargo-mero"
+          if [ ! -f "$target" ]; then
+            nested="$(find "$HOME/.local/bin" -type f -name cargo-mero | head -n1)"
+            test -n "$nested"
+            mv "$nested" "$target"
+          fi
+          chmod +x "$target"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$target" mero --version || true
 
       - name: Build wasm + bundle
         run: pnpm logic:build
