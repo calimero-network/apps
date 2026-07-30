@@ -58,15 +58,18 @@ impl PublicKey {
 /// Maximum length (Unicode scalar values) of a user-supplied label/name.
 pub const MAX_LABEL_LEN: usize = 64;
 
-/// Validate a short, user-supplied label (item name, title, …). Pure (no host
-/// calls) so it is unit-testable on the host and reusable across services.
-pub fn validate_label(label: &str) -> Result<(), Error> {
+/// Validate a short, user-supplied label (item name, title, …). `field` names
+/// the value in the error message (e.g. `"title"`, `"label"`) so callers that
+/// reuse this for different fields don't misattribute the error. Pure (no
+/// host calls) so it is unit-testable on the host and reusable across
+/// services.
+pub fn validate_label(field: &str, label: &str) -> Result<(), Error> {
     if label.trim().is_empty() {
-        return Err(Error::Invalid("label must not be empty".into()));
+        return Err(Error::Invalid(format!("{field} must not be empty")));
     }
     if label.chars().count() > MAX_LABEL_LEN {
         return Err(Error::Invalid(format!(
-            "label must be at most {MAX_LABEL_LEN} characters"
+            "{field} must be at most {MAX_LABEL_LEN} characters"
         )));
     }
     Ok(())
@@ -121,13 +124,16 @@ mod tests {
 
     #[test]
     fn validate_label_accepts_normal() {
-        assert!(validate_label("My Widget").is_ok());
+        assert!(validate_label("title", "My Widget").is_ok());
     }
 
     #[test]
     fn validate_label_rejects_empty_and_long() {
-        assert!(validate_label("   ").is_err());
-        assert!(validate_label(&"a".repeat(MAX_LABEL_LEN + 1)).is_err());
+        let empty_err = validate_label("title", "   ").unwrap_err();
+        assert!(empty_err.to_string().contains("title"));
+
+        let long_err = validate_label("label", &"a".repeat(MAX_LABEL_LEN + 1)).unwrap_err();
+        assert!(long_err.to_string().contains("label"));
     }
 
     #[test]

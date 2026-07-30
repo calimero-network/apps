@@ -110,7 +110,7 @@ test('callMethod throws RpcError on a jsonrpc-level error', async () => {
 test('callMethod decodes a FunctionCallError data byte array into the real guest message', async () => {
   // The guest serializes its error as a JSON string, so the decoded bytes are
   // themselves JSON-quoted - matches the real node's observed shape.
-  const bytes = JSON.stringify([...Buffer.from('"label must be at most 64 characters"', 'utf8')]);
+  const bytes = JSON.stringify([...Buffer.from('"title must be at most 64 characters"', 'utf8')]);
   await assert.rejects(
     () =>
       withFetch(
@@ -127,7 +127,7 @@ test('callMethod decodes a FunctionCallError data byte array into the real guest
       ),
     (err: unknown) => {
       assert.ok(err instanceof RpcError);
-      assert.equal(err.message, 'label must be at most 64 characters');
+      assert.equal(err.message, 'title must be at most 64 characters');
       return true;
     },
   );

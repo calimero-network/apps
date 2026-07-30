@@ -239,9 +239,8 @@ errors.
   `TRACKER_NAMESPACE` doesn't match a real workspace name; the error lists
   what repos/namespaces actually exist, use one of those.
 - **Title rejected as too long at 64 characters** - the logic caps issue
-  titles at 64 characters, but the error text says "invalid input: label must be at most 64
-  characters" (title validation reuses the label validator); shorten the
-  title.
+  titles at 64 characters; the error text is "invalid input: title must be at
+  most 64 characters"; shorten the title.
 - A live round-trip check against a real node is in `mcp/scripts/smoke.mjs`.
 
 ## Tests
