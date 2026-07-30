@@ -70,6 +70,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # cargo mero builds the bundle (embeds each ABI, records a per-artifact
+      # digest, signs). Pinned: the tool first ships in rc.19, after the SDK tag
+      # this app builds against.
+      - name: Install cargo-mero
+        run: cargo install --git https://github.com/calimero-network/core --tag 0.11.0-rc.19 cargo-mero --locked
+
       - name: Build wasm + bundle (regenerates ABI)
         run: pnpm logic:build
 
@@ -170,6 +176,12 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # cargo mero builds the bundle (embeds each ABI, records a per-artifact
+      # digest, signs). Pinned: the tool first ships in rc.19, after the SDK tag
+      # this app builds against.
+      - name: Install cargo-mero
+        run: cargo install --git https://github.com/calimero-network/core --tag 0.11.0-rc.19 cargo-mero --locked
 
       - name: Build wasm + bundle
         run: pnpm logic:build
