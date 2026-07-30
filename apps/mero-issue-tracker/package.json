@@ -4,8 +4,8 @@
   "private": true,
   "packageManager": "pnpm@10.14.0",
   "scripts": {
-    "logic:build": "bash logic/build-bundle.sh",
-    "logic:build:release": "bash logic/build-bundle.sh --release",
+    "logic:build": "cargo mero bundle --manifest-path logic/Cargo.toml --key \"${STUDIO_DEV_SIGNING_KEY:-$HOME/.calimero-studio/studio-dev-signing.key.json}\" --app-version $(node -p \"require('./studio.config.json').appVersion\")",
+    "logic:build:release": "cargo mero bundle --manifest-path logic/Cargo.toml --key \"$MERO_SIGN_KEY\" --app-version $(node -p \"require('./studio.config.json').appVersion\")",
     "app:dev": "pnpm --filter ./app dev",
     "app:build": "pnpm --filter ./app build",
     "app:codegen": "pnpm --filter ./app codegen",

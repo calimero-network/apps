@@ -21,6 +21,7 @@ logic/res/bundle-temp/
 logic/res/*.mpk
 logic/crates/*/res/*.wasm
 logic/crates/*/res/abi.json
+logic/crates/*/res/state-schema.json
 docs/superpowers/
 .superpowers/
 

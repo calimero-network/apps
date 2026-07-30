@@ -36,14 +36,14 @@ function resolveMerodBinary(): string {
 
 // App-agnostic: the .mpk name is derived from studio.config.json so this
 // infra file is identical across the foundation and every generated app.
-// logic/build-bundle.sh auto-bumps the version from the registry, so the
-// config can lag behind the file the build produced — prefer the exact
-// config-derived name, fall back to the newest .mpk in logic/res.
+// `cargo mero bundle` names the file after the package and keeps the version
+// in the manifest, so the exact name is stable; the newest-file fallback
+// covers a bundle built before this layout.
 function resolveMpkPath(): string {
   const cfgPath = path.resolve(__dirname, '..', '..', 'studio.config.json');
   const cfg = JSON.parse(readFileSync(cfgPath, 'utf-8'));
-  const resDir = path.resolve(__dirname, '..', '..', 'logic', 'res');
-  const exact = path.resolve(resDir, `${cfg.appName}-${cfg.appVersion}.mpk`);
+  const resDir = path.resolve(__dirname, '..', '..', 'logic', 'dist');
+  const exact = path.resolve(resDir, `${cfg.package}.mpk`);
   if (existsSync(exact)) return exact;
   const newest = existsSync(resDir)
     ? readdirSync(resDir)
@@ -203,7 +203,7 @@ export default async function globalSetup() {
     throw new Error(`merod not found at ${MEROD_BINARY}. Set MEROD_BINARY env var.`);
   }
   if (!existsSync(MPK_PATH)) {
-    throw new Error(`chat .mpk not found at ${MPK_PATH}. Run: cd logic && ./build-bundle.sh`);
+    throw new Error(`.mpk not found at ${MPK_PATH}. Run: pnpm logic:build`);
   }
 
   // Check if nodes are already running (dev mode) — reuse them.

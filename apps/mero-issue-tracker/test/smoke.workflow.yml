@@ -11,8 +11,9 @@
 # Usage (run from the chat project root, after a dev bundle has been built):
 #   merobox bootstrap run test/smoke.workflow.yml
 #
-# Pre-flight: `bash logic/build-bundle.sh` must have produced
-# `logic/res/issue-tracker-1.0.0.mpk` (appName/appVersion from studio.config.json).
+# Pre-flight: `pnpm logic:build` must have produced
+# `logic/dist/network.calimero.mero-issue-tracker.mpk` (named after the package;
+# the version lives in the manifest).
 
 name: issue-tracker spec smoke
 description: Verify the issue-tracker service replicates issues/comments and gates comment edits across two nodes.
@@ -39,7 +40,7 @@ steps:
     name: Install issue-tracker bundle on node 1
     node: app-node-1
     dev: true
-    path: ./logic/res/issue-tracker-1.0.0.mpk
+    path: ./logic/dist/network.calimero.mero-issue-tracker.mpk
     outputs:
       app_id: applicationId
 
@@ -47,7 +48,7 @@ steps:
     name: Install issue-tracker bundle on node 2
     node: app-node-2
     dev: true
-    path: ./logic/res/issue-tracker-1.0.0.mpk
+    path: ./logic/dist/network.calimero.mero-issue-tracker.mpk
 
   - type: create_namespace
     name: Create namespace on node 1
