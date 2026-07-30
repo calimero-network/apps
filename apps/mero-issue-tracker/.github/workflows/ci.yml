@@ -94,6 +94,13 @@ jobs:
           chmod +x "$target"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$target" mero --version || true
+          # build-bundle.sh generated this key when absent. CI never publishes,
+          # so any valid key signs the bundle the e2e installs.
+          key="$HOME/.calimero-studio/studio-dev-signing.key.json"
+          if [ ! -f "$key" ]; then
+            mkdir -p "$(dirname "$key")"
+            "$target" mero key generate --output "$key"
+          fi
 
       - name: Build wasm + bundle (regenerates ABI)
         run: pnpm logic:build
@@ -217,6 +224,13 @@ jobs:
           chmod +x "$target"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$target" mero --version || true
+          # build-bundle.sh generated this key when absent. CI never publishes,
+          # so any valid key signs the bundle the e2e installs.
+          key="$HOME/.calimero-studio/studio-dev-signing.key.json"
+          if [ ! -f "$key" ]; then
+            mkdir -p "$(dirname "$key")"
+            "$target" mero key generate --output "$key"
+          fi
 
       - name: Build wasm + bundle
         run: pnpm logic:build
