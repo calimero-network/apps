@@ -1,28 +1,33 @@
-# Builds and publishes the logic bundle to the Calimero App Registry on every
-# merge to master that touches logic/. The bundle version is resolved inside
-# build-bundle.sh: it fetches the latest published appVersion for
-# com.calimero.curb from the registry and bumps the patch.
+# Builds, signs, and publishes the com.calimero.chat logic bundle to the
+# Calimero App Registry — triggered by pushing a release tag `vX.Y.Z`. The
+# version comes FROM THE TAG (new tag → new version); there is no registry
+# auto-bump. Manual runs via workflow_dispatch take an explicit `version` input.
 #
-# Required repository secrets:
-#   MERO_SIGN_KEY              — full JSON content of a mero-sign key file
-#                                ({private_key, public_key, signer_id}); must
-#                                be the key that signed the previous version,
-#                                OR any key if the package is linked to an org
-#                                the API-key owner is a member of.
-#   CALIMERO_REGISTRY_API_KEY  — API token from the registry Organizations
-#                                page (CLI Access section).
+# Signing uses a PRODUCTION mero-sign key held in ORGANIZATION secrets (never a
+# dev key). Required org (or repo) secrets:
+#   MERO_SIGN_KEY              — full JSON of the production mero-sign key file
+#                                ({private_key, public_key, signer_id}). Must be
+#                                the key that signed com.calimero.chat's first
+#                                version — the signer is pinned per package — or
+#                                any key linked to the owning org in the registry.
+#   CALIMERO_REGISTRY_API_KEY  — API token from the registry Organizations page
+#                                (CLI Access), whose owner is in the package's org.
 
 name: Deploy Bundle
 
 on:
   push:
-    branches: [master]
-    paths:
-      - 'logic/**'
+    tags:
+      - 'v*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Bundle version to publish, e.g. 0.1.1 (no leading v)'
+        required: true
+        type: string
 
-# Queue deploys instead of cancelling: each run resolves its version from the
-# registry, so concurrent runs could race to the same version number.
+# Serialize releases: the registry rejects a duplicate version, and two tags
+# publishing at once shouldn't interleave.
 concurrency:
   group: deploy-bundle
   cancel-in-progress: false
@@ -94,9 +99,25 @@ jobs:
           umask 077
           printf '%s' "$MERO_SIGN_KEY" > "$RUNNER_TEMP/mero-sign-key.json"
 
+      - name: Resolve version (from tag or dispatch input)
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            v="${{ github.event.inputs.version }}"
+          else
+            v="${GITHUB_REF_NAME#v}"   # tag vX.Y.Z -> X.Y.Z
+          fi
+          case "$v" in
+            [0-9]*.[0-9]*.[0-9]*) : ;;
+            *) echo "::error::version must be X.Y.Z (got '$v' from ref '$GITHUB_REF_NAME')"; exit 1 ;;
+          esac
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Publishing version $v"
+
       - name: Build & sign bundle
         env:
           MERO_SIGN_KEY_FILE: ${{ runner.temp }}/mero-sign-key.json
+          APP_VERSION_OVERRIDE: ${{ steps.ver.outputs.version }}
         run: ./logic/build-bundle.sh
 
       - name: Remove signing key
@@ -111,26 +132,19 @@ jobs:
           CALIMERO_API_KEY: ${{ secrets.CALIMERO_REGISTRY_API_KEY }}
           CALIMERO_REGISTRY_URL: https://apps.calimero.network
         run: |
-          shopt -s nullglob
-          mpks=(logic/res/curb-*.mpk)
-          if [ ${#mpks[@]} -ne 1 ]; then
-            echo "::error::expected exactly one .mpk in logic/res, found: ${mpks[*]:-none}"
-            exit 1
+          mpk="logic/res/chat-${{ steps.ver.outputs.version }}.mpk"
+          if [ ! -f "$mpk" ]; then
+            echo "::error::expected bundle not found: $mpk"; ls -la logic/res || true; exit 1
           fi
-          echo "Publishing ${mpks[0]}"
-          calimero-registry bundle push "${mpks[0]}" --remote
+          echo "Publishing $mpk"
+          calimero-registry bundle push "$mpk" --remote
 
       - name: Summary
         run: |
-          shopt -s nullglob
-          mpks=(logic/res/curb-*.mpk)
-          [ ${#mpks[@]} -eq 1 ] || exit 0
-          version="$(basename "${mpks[0]}" .mpk)"
-          version="${version#curb-}"
           {
             echo "### Bundle published :rocket:"
             echo ""
-            echo "- **Package:** \`com.calimero.curb\`"
-            echo "- **Version:** \`${version}\`"
+            echo "- **Package:** \`com.calimero.chat\`"
+            echo "- **Version:** \`${{ steps.ver.outputs.version }}\`"
             echo "- **Registry:** https://apps.calimero.network"
           } >> "$GITHUB_STEP_SUMMARY"
