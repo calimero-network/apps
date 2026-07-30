@@ -285,7 +285,7 @@ impl IssueTracker {
         priority: String,
         labels: Option<Vec<String>>,
     ) -> app::Result<String> {
-        validate_label(&title).map_err(AppError::from)?;
+        validate_label("title", &title).map_err(AppError::from)?;
         validate_section("summary", &summary)?;
         validate_section("impact", &impact)?;
         validate_section("repro", &repro)?;
@@ -795,7 +795,7 @@ fn validate_repo_url(url: &str) -> app::Result<()> {
 /// Validate a user-supplied label: non-empty, length-bounded, and free of the
 /// reserved index separator.
 fn validate_user_label(label: &str) -> app::Result<()> {
-    validate_label(label).map_err(AppError::from)?;
+    validate_label("label", label).map_err(AppError::from)?;
     if label.contains(LABEL_SEP) {
         return Err(AppError::from(Error::Invalid(
             "label contains a reserved character".into(),
