@@ -1,6 +1,6 @@
 {
   "appName": "mero-issue-tracker",
-  "appVersion": "0.1.7",
+  "appVersion": "0.1.8",
   "package": "network.calimero.mero-issue-tracker",
   "frontendUrl": "https://mero-issue-tracker-app.vercel.app/",
   "metadata": {
