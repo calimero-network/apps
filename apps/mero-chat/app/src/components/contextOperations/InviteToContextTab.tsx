@@ -11,7 +11,6 @@ import {
 } from "../../api/meroJsClient";
 import {
   generateInvitationUrl,
-  generateInvitationDeepLink,
 } from "../../utils/invitation";
 
 // ─── Animations ────────────────────────────────────────────────────────────────
@@ -256,9 +255,7 @@ export default function InviteToContextTab() {
   });
   const [invitation, setInvitation] = useState<string | null>(null);
   const [invitationWebUrl, setInvitationWebUrl] = useState<string | null>(null);
-  const [invitationDesktopLink, setInvitationDesktopLink] = useState<string | null>(null);
   const [copiedWeb, setCopiedWeb] = useState(false);
-  const [copiedDesktop, setCopiedDesktop] = useState(false);
 
   useEffect(() => {
     const storedContextId = getContextId();
@@ -289,7 +286,6 @@ export default function InviteToContextTab() {
         const payload = JSON.stringify(response.data);
         setInvitation(payload);
         setInvitationWebUrl(generateInvitationUrl(payload));
-        setInvitationDesktopLink(generateInvitationDeepLink(payload));
       }
     } catch {
       setError("An error occurred while generating invitation");
@@ -298,16 +294,11 @@ export default function InviteToContextTab() {
     }
   };
 
-  const copy = async (text: string, which: "web" | "desktop") => {
+  const copy = async (text: string, _which: "web") => {
     try {
       await navigator.clipboard.writeText(text);
-      if (which === "web") {
-        setCopiedWeb(true);
-        setTimeout(() => setCopiedWeb(false), 2000);
-      } else {
-        setCopiedDesktop(true);
-        setTimeout(() => setCopiedDesktop(false), 2000);
-      }
+      setCopiedWeb(true);
+      setTimeout(() => setCopiedWeb(false), 2000);
     } catch {
       // ignore
     }
@@ -333,7 +324,7 @@ export default function InviteToContextTab() {
       </InfoCard>
 
       {/* Invitation result */}
-      {invitation && invitationWebUrl && invitationDesktopLink ? (
+      {invitation && invitationWebUrl ? (
         <SuccessCard>
           <SuccessHeader>
             <CheckIcon>
@@ -345,31 +336,11 @@ export default function InviteToContextTab() {
           </SuccessHeader>
 
           <LinkBlock>
-            <LinkLabel>Web link</LinkLabel>
+            <LinkLabel>Invite link</LinkLabel>
             <LinkRow>
               <LinkInput readOnly value={invitationWebUrl} />
               <CopyButton $copied={copiedWeb} onClick={() => copy(invitationWebUrl, "web")}>
                 {copiedWeb ? (
-                  <>
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
-                    Copied
-                  </>
-                ) : (
-                  <>
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                    Copy
-                  </>
-                )}
-              </CopyButton>
-            </LinkRow>
-          </LinkBlock>
-
-          <LinkBlock>
-            <LinkLabel>Desktop link</LinkLabel>
-            <LinkRow>
-              <LinkInput readOnly value={invitationDesktopLink} />
-              <CopyButton $copied={copiedDesktop} onClick={() => copy(invitationDesktopLink, "desktop")}>
-                {copiedDesktop ? (
                   <>
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
                     Copied

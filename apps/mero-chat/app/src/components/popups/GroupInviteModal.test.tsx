@@ -24,7 +24,6 @@ vi.mock("../../api/dataSource/groupApiDataSource", () => ({
 }));
 
 vi.mock("../../utils/invitation", () => ({
-  generateInvitationDeepLink: (payload: string) => `desktop:${payload}`,
   generateInvitationUrl: (payload: string) => `https://example.com/${payload}`,
   serializeGroupInvitationPayload: mockSerializeGroupInvitationPayload,
 }));
@@ -35,7 +34,7 @@ describe("GroupInviteModal", () => {
     mockSerializeGroupInvitationPayload.mockReset();
   });
 
-  it("renders the modal title and copy buttons when given an initial payload", () => {
+  it("renders the modal title and the single invite-link button", () => {
     render(
       <GroupInviteModal
         groupId="12738d49b49b73f5fa471deb839a70c8a939778d3c0e5a2171203f965232a4a4"
@@ -46,8 +45,9 @@ describe("GroupInviteModal", () => {
     );
 
     expect(screen.getByText(/invite to workspace/i)).toBeInTheDocument();
-    expect(screen.getByText(/copy web link/i)).toBeInTheDocument();
-    expect(screen.getByText(/copy desktop link/i)).toBeInTheDocument();
+    expect(screen.getByText(/copy invite link/i)).toBeInTheDocument();
+    // The legacy calimero:// "desktop link" is gone — the HTTPS link handles both.
+    expect(screen.queryByText(/copy desktop link/i)).not.toBeInTheDocument();
   });
 
   it("serializes the wrapped invitation payload when it loads an invite", async () => {

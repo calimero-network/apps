@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { styled, keyframes } from "styled-components";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import {
-  generateInvitationDeepLink,
   generateInvitationUrl,
   serializeGroupInvitationPayload,
 } from "../../utils/invitation";
@@ -246,24 +245,22 @@ export default function GroupInviteModal({
     return () => { cancelled = true; };
   }, [groupId, initialInvitationPayload, isOpen]);
 
+  // One shareable link: the HTTPS universal link works everywhere — it opens the
+  // web/PWA app directly, and on a device with the desktop installed + associated
+  // hands off to the launcher. The old calimero:// "desktop link" is redundant.
   const webUrl = useMemo(
     () => (invitationPayload ? generateInvitationUrl(invitationPayload) : ""),
     [invitationPayload],
   );
-  const desktopUrl = useMemo(
-    () => (invitationPayload ? generateInvitationDeepLink(invitationPayload) : ""),
-    [invitationPayload],
-  );
 
-  const handleCopy = async (target: "web" | "desktop") => {
-    const value = target === "web" ? webUrl : desktopUrl;
-    if (!value) return;
+  const handleCopy = async () => {
+    if (!webUrl) return;
     try {
-      await navigator.clipboard.writeText(value);
-      setCopiedTarget(target);
+      await navigator.clipboard.writeText(webUrl);
+      setCopiedTarget("web");
       setTimeout(() => setCopiedTarget(""), 2000);
     } catch {
-      prompt("Copy this invite link:", value);
+      prompt("Copy this invite link:", webUrl);
     }
   };
 
@@ -310,15 +307,9 @@ export default function GroupInviteModal({
           )}
 
           {!loading && invitationPayload && (
-            <>
-              <CopyBtn $copied={copiedTarget === "web"} onClick={() => void handleCopy("web")}>
-                {copiedTarget === "web" ? "✓ Copied!" : "Copy web link"}
-              </CopyBtn>
-
-              <CopyBtn $copied={copiedTarget === "desktop"} onClick={() => void handleCopy("desktop")}>
-                {copiedTarget === "desktop" ? "✓ Copied!" : "Copy desktop link"}
-              </CopyBtn>
-            </>
+            <CopyBtn $copied={copiedTarget === "web"} onClick={() => void handleCopy()}>
+              {copiedTarget === "web" ? "✓ Copied!" : "Copy invite link"}
+            </CopyBtn>
           )}
 
           <DoneBtn onClick={onClose}>{doneLabel}</DoneBtn>
