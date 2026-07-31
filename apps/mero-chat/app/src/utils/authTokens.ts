@@ -53,6 +53,22 @@ export function tokenExpiryMs(tokens: StoredTokens): number {
 }
 
 /**
+ * True when a non-expired access token is in storage — i.e. a real session,
+ * even during the brief window right after a fresh connect where mero-react's
+ * reactive `isAuthenticated` still lags `false` (its `/auth/validate` can
+ * cold-start 503). The route gate ORs this in so a client-side navigate into a
+ * workspace doesn't bounce back to the picker and force a manual page reload.
+ * A valid unexpired JWT is genuine auth, and entry still separately requires
+ * explicit namespace selection (`isNamespaceReady`), so this does not widen the
+ * gate — it only stops it flapping while the reactive flag catches up.
+ */
+export function hasLiveSession(): boolean {
+  const tokens = readStoredTokens();
+  if (!tokens) return false;
+  return tokenExpiryMs(tokens) > Date.now();
+}
+
+/**
  * Should the bundle carried in the SSO hash replace what's already stored?
  *
  * Refresh tokens are SINGLE-USE (core#3083): every `/auth/refresh` consumes the

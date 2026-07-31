@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   TOKENS_KEY,
+  hasLiveSession,
   jwtExpiryMs,
   readStoredTokens,
   shouldSeedTokens,
@@ -139,5 +140,36 @@ describe("shouldSeedTokens (single-use refresh — core#3083)", () => {
         nodeChanged: true,
       }),
     ).toBe(true);
+  });
+});
+
+describe("hasLiveSession", () => {
+  const HOUR = 3600_000;
+
+  it("is false when nothing is stored", () => {
+    expect(hasLiveSession()).toBe(false);
+  });
+
+  it("is true for a stored, non-expired access token (auth flag may still lag)", () => {
+    store({
+      access_token: jwt(Date.now() + HOUR),
+      refresh_token: jwt(Date.now() + 24 * HOUR),
+      expires_at: Date.now() + HOUR,
+    });
+    expect(hasLiveSession()).toBe(true);
+  });
+
+  it("is false once the access token has expired", () => {
+    store({
+      access_token: jwt(Date.now() - HOUR),
+      refresh_token: jwt(Date.now() + HOUR),
+      expires_at: Date.now() - HOUR,
+    });
+    expect(hasLiveSession()).toBe(false);
+  });
+
+  it("is false when the bundle is missing a token (readStoredTokens rejects it)", () => {
+    localStorage.setItem(TOKENS_KEY, JSON.stringify({ access_token: jwt(Date.now() + HOUR) }));
+    expect(hasLiveSession()).toBe(false);
   });
 });

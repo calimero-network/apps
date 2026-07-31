@@ -7,6 +7,7 @@ import {
   updateSessionActivity,
   isNamespaceReady,
 } from "./utils/session";
+import { hasLiveSession } from "./utils/authTokens";
 import { ToastProvider, useToast } from "./contexts/ToastContext";
 import { ToastManager } from "./components/common/ToastManager";
 
@@ -47,7 +48,13 @@ function App() {
   // canEnterApp requires both a valid auth session AND explicit namespace selection
   // in this browser session (sessionStorage flag). This prevents the app from
   // jumping straight to Home after a fresh login using stale localStorage values.
-  const canEnterApp = isAuthenticated && isNamespaceReady();
+  //
+  // `isAuthenticated` is reactive from mero-react but lags `false` for a beat
+  // right after a fresh connect (its `/auth/validate` can cold-start 503). The
+  // client-side navigate that workspace entry does would then bounce back to the
+  // picker (fixed only by a manual reload). Treat a stored, non-expired token as
+  // a valid session so entry doesn't flap — namespace selection is still required.
+  const canEnterApp = (isAuthenticated || hasLiveSession()) && isNamespaceReady();
 
   if (isLoading && !providerTimedOut) {
     return <LoadingSpinner />;
