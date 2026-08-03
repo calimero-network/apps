@@ -23,6 +23,12 @@ nodes:
   # Keep in step with logic/Cargo.toml's calimero-* tag.
   image: ghcr.io/calimero-network/merod:0.11.0-rc.19
   prefix: calimero-node
+  # merobox defaults nodes to RUST_LOG=debug, which produced ~12 MB of logs per
+  # node in two minutes here and is real CPU on a 2-vCPU CI runner hosting both
+  # nodes. `info` still keeps every WARN this scenario is diagnosed from (sync
+  # timeouts, delta-worker budget overruns). Use debug when you need
+  # `artifact_len` — that delta-size marker is debug-only.
+  log_level: info
   # Distinct from e2e.yml's 2760/2660 so the two scenarios can run concurrently.
   base_port: 2780
   base_rpc_port: 2680
@@ -83,7 +89,25 @@ steps:
   # identity. The same frame content each time is fine here: this scenario is
   # about key lifecycle, not compression. (The load generator varies content —
   # a constant frame would make its compression numbers meaningless.)
-  - name: Alice streams 40 frames
+  # PACED, not bursted — and the reason is itself a Task-3 data point worth
+  # keeping in the results write-up.
+  #
+  # The first version of this step fired all 40 mutations as fast as RPC would
+  # accept them. That reproducibly failed to converge within 120 s on a CI runner,
+  # and the node logs name why: "StateDelta worker over soft budget", "SyncSession
+  # responder exceeded timeout — dropping", "Sync timed out, applying exponential
+  # backoff". So an unpaced burst of 40 small mutations is enough to saturate the
+  # delta pipeline and push sync into backoff — which is exactly the kind of
+  # ceiling Task 3 exists to find, but makes a terrible CI gate.
+  #
+  # 1 s between frames keeps it near the app's real cadence (the capture loop
+  # starts at 2–5 fps) and lets the pipeline drain. The C3 property being proven
+  # is rate-independent: what matters is that 40 > FRAME_WINDOW (30), so the
+  # reaper runs and emits tombstones either way.
+  #
+  # `seconds` must be a positive integer in merobox, so 1 s is the finest pacing
+  # available; that puts ~40 s on this leg.
+  - name: Alice streams 40 frames, paced
     type: repeat
     count: 40
     steps:
@@ -99,12 +123,17 @@ steps:
           track: 0
           now: 1751955010000
         executor_public_key: "{{member_public_key}}"
+      - name: pace the stream
+        type: wait
+        seconds: 1
 
   - name: Sync the whole burst to node 2
     type: wait_for_sync
     context_id: "{{context_id}}"
     nodes: [calimero-node-1, calimero-node-2]
-    timeout: 120
+    # Generous headroom: sync backoff is exponential, so once a session has timed
+    # out under load the retry cadence slows and a tight budget compounds it.
+    timeout: 240
     check_interval: 2
     trigger_sync: true
 

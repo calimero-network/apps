@@ -19,6 +19,11 @@ nodes:
   # to agree. Bump both together.
   image: ghcr.io/calimero-network/merod:0.11.0-rc.19
   prefix: calimero-node
+  # merobox defaults to RUST_LOG=debug, which is ~12 MB of logs per node per
+  # couple of minutes and real CPU on a 2-vCPU runner hosting every node. `info`
+  # keeps the WARN lines these scenarios get diagnosed from. Switch to debug when
+  # you need the `artifact_len` delta-size marker, which is debug-only.
+  log_level: info
   # Off the default 2428/2528 and off mero-meet's 2740 to avoid collisions.
   base_port: 2760
   base_rpc_port: 2660
