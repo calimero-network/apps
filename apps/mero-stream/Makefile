@@ -61,6 +61,7 @@ dev: app-install
 dev-nodes:
 	@bash scripts/dev-node.sh
 	@bash scripts/dev-node2.sh
+	@bash scripts/dev-invite.sh
 
 dev-stop:
 	@bash scripts/dev-node2.sh --clean || true

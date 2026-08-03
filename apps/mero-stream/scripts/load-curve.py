@@ -56,7 +56,15 @@ ACHIEVED_FPS_FLOOR = 0.5   # achieved < 50% of target ⇒ cannot sustain
 ERROR_RATE_CEILING = 0.10  # >10% of mutations rejected ⇒ backpressure
 
 
-def rpc(url: str, context_id: str, executor: str, method: str, args: dict, timeout: float):
+def rpc(
+    url: str,
+    context_id: str,
+    executor: str,
+    method: str,
+    args: dict,
+    timeout: float,
+    token: str | None = None,
+):
     """One JSON-RPC `execute`. Returns (output, error_string, elapsed_ms).
 
     Never raises for a call-level failure: at the top of the ramp failures ARE
@@ -76,9 +84,15 @@ def rpc(url: str, context_id: str, executor: str, method: str, args: dict, timeo
             },
         }
     ).encode()
-    req = urllib.request.Request(
-        f"{url}/jsonrpc", data=payload, headers={"Content-Type": "application/json"}
-    )
+    headers = {"Content-Type": "application/json"}
+    # merobox nodes run with auth effectively open, but a node initialised with
+    # `--auth-mode embedded` (which is what scripts/dev-node*.sh produce) rejects
+    # an unauthenticated /jsonrpc with 401. Without this the ramp reports
+    # "achieved 0.0 fps - sender cannot sustain", which reads like a capacity
+    # finding and is actually a missing header.
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(f"{url}/jsonrpc", data=payload, headers=headers)
     started = time.monotonic()
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -162,6 +176,7 @@ def run_step(args, width: int, height: int, target_fps: float) -> dict:
                 "track": 0, "now": int(time.time() * 1000),
             },
             args.timeout,
+            token=args.token,
         )
         sent += 1
         if err is not None or output is None:
@@ -182,7 +197,8 @@ def run_step(args, width: int, height: int, target_fps: float) -> dict:
     achieved_fps = ok / wall if wall > 0 else 0.0
 
     stats, stats_err, _ = rpc(
-        args.node_url, args.context_id, args.executor_key, "get_stats", {}, args.timeout
+        args.node_url, args.context_id, args.executor_key, "get_stats", {}, args.timeout,
+        token=args.token,
     )
     stats = stats if isinstance(stats, dict) else {}
 
@@ -192,7 +208,8 @@ def run_step(args, width: int, height: int, target_fps: float) -> dict:
     peer_live = peer_next_seq = None
     if args.peer_url and args.peer_executor_key:
         peer_stats, _, _ = rpc(
-            args.peer_url, args.context_id, args.peer_executor_key, "get_stats", {}, args.timeout
+            args.peer_url, args.context_id, args.peer_executor_key, "get_stats", {}, args.timeout,
+            token=args.peer_token or args.token,
         )
         if isinstance(peer_stats, dict):
             peer_live = peer_stats.get("liveFragments")
@@ -245,6 +262,10 @@ def main() -> int:
     ap.add_argument("--peer-url", help="Receiving node RPC base (adds receive-side columns)")
     ap.add_argument("--peer-executor-key", help="Peer's context member public key")
     ap.add_argument("--peer-container", help="Docker container name of a node, for RocksDB size sampling")
+    ap.add_argument("--token", help="Bearer token for the sending node. Required against a node "
+                                   "initialised with --auth-mode embedded (see scripts/dev-node.sh, "
+                                   "which writes DEV_ACCESS_TOKEN); merobox nodes need none.")
+    ap.add_argument("--peer-token", help="Bearer token for the peer node, if different from --token")
     ap.add_argument("--geometries", default="64x48,96x72,128x96",
                     help="Comma-separated WxH ladder (default: 64x48,96x72,128x96)")
     ap.add_argument("--fps", default="1,2,5,10,15",
@@ -258,6 +279,27 @@ def main() -> int:
 
     geometries = parse_geometries(args.geometries)
     fps_ladder = [float(f) for f in args.fps.split(",")]
+
+    # encode_frame is membership-gated, and a fresh context has nobody joined —
+    # the merobox scenarios call `join` explicitly, so a generator that assumed
+    # membership failed every mutation and reported it as "sender cannot sustain",
+    # i.e. a capacity finding that was really a setup error. join is idempotent, so
+    # doing it unconditionally is safe on a warm context too.
+    for label, url, key, tok in (
+        ("sender", args.node_url, args.executor_key, args.token),
+        ("peer", args.peer_url, args.peer_executor_key, args.peer_token or args.token),
+    ):
+        if not url or not key:
+            continue
+        _, err, _ = rpc(
+            url, args.context_id, key, "join",
+            {"username": f"load-{label}", "now": int(time.time())},
+            args.timeout, token=tok,
+        )
+        if err:
+            print(f"  ! could not join as {label}: {err}", file=sys.stderr)
+        else:
+            print(f"  joined context as {label}")
 
     rows: list[dict] = []
     print(f"Ramping {len(geometries)} geometries x {len(fps_ladder)} fps steps "

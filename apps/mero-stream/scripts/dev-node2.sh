@@ -84,11 +84,18 @@ green "Clean slate ready"
 [ -f "$WASM_PATH" ] || { red "WASM not found at $WASM_PATH — run ./scripts/dev-node.sh first"; exit 1; }
 
 step "Initialising node2 at $NODE_HOME"
+# `--auth-mode embedded` REQUIRES admin credentials at init since core rc.14
+# (the setup-code cutover): the admin account must exist before the node ever
+# listens, so there is no window where an unprovisioned node is reachable. Without
+# these two flags init aborts outright. The same credentials are reused below to
+# mint the browser session token, so there is one source of truth.
 merod --node "$NODE_NAME" --home "$NODE_HOME" init \
   --server-host 127.0.0.1 \
   --server-port "$NODE_PORT" \
   --swarm-port  "$NODE_P2P_PORT" \
-  --auth-mode embedded
+  --auth-mode embedded \
+  --admin-user "$ADMIN_USER" \
+  --admin-password-stdin <<<"$ADMIN_PASS"
 green "Node2 initialised"
 
 CONFIG_FILE="$NODE_HOME/${NODE_NAME}/config.toml"
