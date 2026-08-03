@@ -67,12 +67,27 @@ export default function App() {
     <Routes>
       <Route
         path="/"
-        element={<Navigate to={getContextId() ? "/stream" : "/streams"} replace />}
+        element={
+          <Navigate to={getContextId() ? "/stream" : "/streams"} replace />
+        }
       />
-      <Route path="/streams" element={<RequireAuth><StreamsPage /></RequireAuth>} />
+      <Route
+        path="/streams"
+        element={
+          <RequireAuth>
+            <StreamsPage />
+          </RequireAuth>
+        }
+      />
       <Route
         path="/stream"
-        element={<RequireAuth><RequireStream><StreamPage /></RequireStream></RequireAuth>}
+        element={
+          <RequireAuth>
+            <RequireStream>
+              <StreamPage />
+            </RequireStream>
+          </RequireAuth>
+        }
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

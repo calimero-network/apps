@@ -66,10 +66,14 @@ dev-stop:
 	@bash scripts/dev-node2.sh --clean || true
 	@bash scripts/dev-node.sh --clean || true
 
-# P2: 2-node fragment round-trip over merobox. Requires Docker + merobox>=0.6.49.
-# Runs in CI too (.github/workflows/ci.yml).
+# P2: all three e2e scenarios over merobox. Requires Docker + merobox>=0.6.49.
+# Each runs as its own CI matrix leg (.github/workflows/ci.yml). Run sequentially
+# here so a laptop isn't hosting seven nodes at once; the port bases differ
+# (2760/2780/2800) so they would not clash if you do parallelize them.
 workflows: logic-build
 	cd workflows && merobox bootstrap run e2e.yml
+	cd workflows && merobox bootstrap run e2e-tombstones.yml
+	cd workflows && merobox bootstrap run e2e-fanout.yml
 
 # P3: the load curve. Needs a running context — `make workflows` leaves two nodes
 # up and prints the context id + both member keys, or use `make dev-nodes`.

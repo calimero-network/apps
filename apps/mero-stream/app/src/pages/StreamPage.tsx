@@ -67,11 +67,15 @@ export default function StreamPage() {
     <div className={styles.page}>
       <header className={styles.header}>
         <div>
-          <button className={styles.switchBtn} onClick={() => navigate("/streams")}>
+          <button
+            className={styles.switchBtn}
+            onClick={() => navigate("/streams")}
+          >
             ← All streams
           </button>
           <h1 className={styles.title}>
-            {stats?.name || "Stream"} <span className={styles.version}>v{__APP_VERSION__}</span>
+            {stats?.name || "Stream"}{" "}
+            <span className={styles.version}>v{__APP_VERSION__}</span>
           </h1>
           <p className={styles.devTag}>
             Diagnostic route · media rides the contract (no WebRTC) ·{" "}
@@ -87,7 +91,10 @@ export default function StreamPage() {
             maxLength={40}
             placeholder="Your name"
           />
-          <button className={styles.joinBtn} onClick={() => void join(username)}>
+          <button
+            className={styles.joinBtn}
+            onClick={() => void join(username)}
+          >
             {joined ? "Rejoin" : "Join"}
           </button>
         </div>
@@ -120,9 +127,7 @@ export default function StreamPage() {
           {s.running ? "Stop capture" : "Start capture"}
         </button>
         <label className={styles.fps}>
-          <span>
-            {s.fps} fps
-          </span>
+          <span>{s.fps} fps</span>
           <input
             type="range"
             min={1}
@@ -140,17 +145,25 @@ export default function StreamPage() {
           <Metric label="Live fragments" value={stats?.liveFragments} />
           <Metric label="Next seq (frames sent)" value={stats?.nextSeq} />
           <Metric label="Oldest live seq" value={stats?.oldestLiveSeq} />
-          <Metric label="Pruned frames (tombstones)" value={stats?.prunedFrames} />
+          <Metric
+            label="Pruned frames (tombstones)"
+            value={stats?.prunedFrames}
+          />
           <Metric label="Members" value={stats?.memberCount} />
           <Metric
             label="Last encoded bytes"
             value={s.lastEncodedBytes ?? undefined}
           />
-          <Metric label={`Compression (of ${RAW_BYTES} B raw)`} value={ratio} suffix="×" />
+          <Metric
+            label={`Compression (of ${RAW_BYTES} B raw)`}
+            value={ratio}
+            suffix="×"
+          />
         </div>
         <p className={styles.note}>
-          Tombstone growth (pruned frames) and live-fragment count are the primary
-          Task-3 ceiling signals — watch them climb under sustained capture.
+          Tombstone growth (pruned frames) and live-fragment count are the
+          primary Task-3 ceiling signals — watch them climb under sustained
+          capture.
         </p>
       </section>
 
@@ -169,30 +182,64 @@ export default function StreamPage() {
           </div>
         </div>
         <div className={styles.grid}>
-          <Metric label="Send rate (accepted)" value={fmt(p.sendFps, 2)} suffix=" fps" />
-          <Metric label="Render rate (peer)" value={fmt(p.renderFps, 2)} suffix=" fps" />
-          <Metric label="Ingest (compressed)" value={fmt(kib(p.encodedBytesPerSec), 2)} suffix=" KiB/s" />
-          <Metric label="Latency p50" value={fmt(p.latencyMsP50, 0)} suffix=" ms" />
-          <Metric label="Latency p95" value={fmt(p.latencyMsP95, 0)} suffix=" ms" />
-          <Metric label="Latency max" value={fmt(p.latencyMsMax, 0)} suffix=" ms" />
-          <Metric label="Encode RTT p50" value={fmt(p.encodeMsP50, 0)} suffix=" ms" />
-          <Metric label="Encode RTT p95" value={fmt(p.encodeMsP95, 0)} suffix=" ms" />
+          <Metric
+            label="Send rate (accepted)"
+            value={fmt(p.sendFps, 2)}
+            suffix=" fps"
+          />
+          <Metric
+            label="Render rate (peer)"
+            value={fmt(p.renderFps, 2)}
+            suffix=" fps"
+          />
+          <Metric
+            label="Ingest (compressed)"
+            value={fmt(kib(p.encodedBytesPerSec), 2)}
+            suffix=" KiB/s"
+          />
+          <Metric
+            label="Latency p50"
+            value={fmt(p.latencyMsP50, 0)}
+            suffix=" ms"
+          />
+          <Metric
+            label="Latency p95"
+            value={fmt(p.latencyMsP95, 0)}
+            suffix=" ms"
+          />
+          <Metric
+            label="Latency max"
+            value={fmt(p.latencyMsMax, 0)}
+            suffix=" ms"
+          />
+          <Metric
+            label="Encode RTT p50"
+            value={fmt(p.encodeMsP50, 0)}
+            suffix=" ms"
+          />
+          <Metric
+            label="Encode RTT p95"
+            value={fmt(p.encodeMsP95, 0)}
+            suffix=" ms"
+          />
           <Metric label="Seq gaps (drop proxy)" value={p.seqGaps} />
           <Metric label="Encode errors" value={p.encodeErrors} />
         </div>
         <p className={styles.note}>
-          <strong>Latency</strong> spans two clocks (sender <code>createdAt</code> →
-          this node&apos;s render), so it is only trustworthy where both nodes share
-          a host clock — the solo two-node harness. <strong>Encode RTT</strong> is
-          measured on one clock and is an upper bound on in-WASM encode cost: it
-          also contains JSON serialization, transport, the storage commit and the
-          delta seal. Per-fragment WASM CPU, sealed delta size and RocksDB growth
-          are node-side and are not visible from here — see the PR notes.
+          <strong>Latency</strong> spans two clocks (sender{" "}
+          <code>createdAt</code> → this node&apos;s render), so it is only
+          trustworthy where both nodes share a host clock — the solo two-node
+          harness. <strong>Encode RTT</strong> is measured on one clock and is
+          an upper bound on in-WASM encode cost: it also contains JSON
+          serialization, transport, the storage commit and the delta seal.
+          Per-fragment WASM CPU, sealed delta size and RocksDB growth are
+          node-side and are not visible from here — see the PR notes.
           {s.csvTruncated && (
             <>
               {" "}
-              <strong>CSV retention cap reached — later frames are NOT in the
-              export.</strong>
+              <strong>
+                CSV retention cap reached — later frames are NOT in the export.
+              </strong>
             </>
           )}
         </p>
@@ -207,8 +254,12 @@ function kib(bytes: number): number {
 }
 
 /** Render a possibly-absent measurement without inventing a zero. */
-function fmt(value: number | null | undefined, digits: number): string | undefined {
-  if (value === null || value === undefined || !Number.isFinite(value)) return undefined;
+function fmt(
+  value: number | null | undefined,
+  digits: number,
+): string | undefined {
+  if (value === null || value === undefined || !Number.isFinite(value))
+    return undefined;
   return value.toFixed(digits);
 }
 

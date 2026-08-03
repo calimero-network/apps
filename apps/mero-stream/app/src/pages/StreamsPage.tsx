@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
-import { getApplicationId, setActiveRoom, getRoomName, setRoomName } from "../lib/session";
+import {
+  getApplicationId,
+  setActiveRoom,
+  getRoomName,
+  setRoomName,
+} from "../lib/session";
 import styles from "./StreamsPage.module.css";
 
 interface StreamEntry {
@@ -55,7 +60,10 @@ export default function StreamsPage() {
       const list = (ctxResp.contexts ?? []).map((c) => {
         const cached = getRoomName(c.id);
         const ns = nsName.get(c.groupId ?? "") ?? "";
-        return { contextId: c.id, name: cached || ns || `Stream ${c.id.slice(0, 6)}` };
+        return {
+          contextId: c.id,
+          name: cached || ns || `Stream ${c.id.slice(0, 6)}`,
+        };
       });
       setStreams(list);
     } catch (e) {
@@ -95,7 +103,9 @@ export default function StreamsPage() {
     const streamName = name.trim();
     if (!streamName || !mero) return;
     if (!appId) {
-      setError("Missing application id — reopen Mero Stream from the desktop app.");
+      setError(
+        "Missing application id — reopen Mero Stream from the desktop app.",
+      );
       return;
     }
     setBusy(true);
@@ -156,7 +166,11 @@ export default function StreamsPage() {
           maxLength={60}
           disabled={busy}
         />
-        <button className={styles.createBtn} onClick={createStream} disabled={busy || !name.trim()}>
+        <button
+          className={styles.createBtn}
+          onClick={createStream}
+          disabled={busy || !name.trim()}
+        >
           {busy ? "Working…" : "Create stream"}
         </button>
       </section>
@@ -167,7 +181,9 @@ export default function StreamsPage() {
         <h2 className={styles.listTitle}>Your streams</h2>
         {listing && <p className={styles.muted}>Loading streams…</p>}
         {!listing && streams.length === 0 && (
-          <p className={styles.muted}>No streams yet. Create one above to get started.</p>
+          <p className={styles.muted}>
+            No streams yet. Create one above to get started.
+          </p>
         )}
         {streams.map((s) => (
           <button
@@ -176,7 +192,9 @@ export default function StreamsPage() {
             onClick={() => enterStream(s.contextId)}
             disabled={busy}
           >
-            <span className={styles.streamAvatar}>{s.name.slice(0, 2).toUpperCase()}</span>
+            <span className={styles.streamAvatar}>
+              {s.name.slice(0, 2).toUpperCase()}
+            </span>
             <span className={styles.streamId}>{s.name}</span>
             <span className={styles.enter}>Open →</span>
           </button>

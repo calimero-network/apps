@@ -101,7 +101,9 @@ export function useStream(enabled: boolean): StreamController {
   const [fps, setFps] = useState(3);
   const [stats, setStats] = useState<StreamStats | null>(null);
   const [lastEncodedBytes, setLastEncodedBytes] = useState<number | null>(null);
-  const [probe, setProbe] = useState<ProbeSnapshot>(() => probeRef.current.snapshot());
+  const [probe, setProbe] = useState<ProbeSnapshot>(() =>
+    probeRef.current.snapshot(),
+  );
   const [csvTruncated, setCsvTruncated] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -150,7 +152,12 @@ export function useStream(enabled: boolean): StreamController {
     if (encodingRef.current) return; // don't queue behind a slow encode
     encodingRef.current = true;
     try {
-      const luma = captureFrameLuma(video, scratch, CAPTURE_WIDTH, CAPTURE_HEIGHT);
+      const luma = captureFrameLuma(
+        video,
+        scratch,
+        CAPTURE_WIDTH,
+        CAPTURE_HEIGHT,
+      );
       // Mirror the exact bytes we send to the LOCAL preview canvas, so the
       // operator sees precisely what the contract receives (not the raw webcam).
       const preview = localCanvasRef.current;
@@ -169,10 +176,19 @@ export function useStream(enabled: boolean): StreamController {
       const startedAt = Date.now();
       let ok = false;
       try {
-        await streamRef.current.encodeFrame(luma, CAPTURE_WIDTH, CAPTURE_HEIGHT, TRACK_VIDEO_LUMA);
+        await streamRef.current.encodeFrame(
+          luma,
+          CAPTURE_WIDTH,
+          CAPTURE_HEIGHT,
+          TRACK_VIDEO_LUMA,
+        );
         ok = true;
       } finally {
-        probeRef.current.recordEncode({ startedAt, durationMs: Date.now() - startedAt, ok });
+        probeRef.current.recordEncode({
+          startedAt,
+          durationMs: Date.now() - startedAt,
+          ok,
+        });
       }
       // Poll stats on the same cadence — cheap, and keeps the metrics live.
       const s = await streamRef.current.getStats();
@@ -192,7 +208,9 @@ export function useStream(enabled: boolean): StreamController {
 
     (async () => {
       try {
-        const media = await navigator.mediaDevices.getUserMedia({ video: true });
+        const media = await navigator.mediaDevices.getUserMedia({
+          video: true,
+        });
         if (cancelled) {
           media.getTracks().forEach((t) => t.stop());
           return;
@@ -207,7 +225,8 @@ export function useStream(enabled: boolean): StreamController {
         videoRef.current = video;
         scratchRef.current = document.createElement("canvas");
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "camera unavailable");
+        if (!cancelled)
+          setError(e instanceof Error ? e.message : "camera unavailable");
       }
     })();
 
@@ -246,7 +265,10 @@ export function useStream(enabled: boolean): StreamController {
     },
     [drain],
   );
-  useSubscription(enabled && stream.contextId ? [stream.contextId] : [], onEvent);
+  useSubscription(
+    enabled && stream.contextId ? [stream.contextId] : [],
+    onEvent,
+  );
 
   // Poll fallback for the receive side + an initial drain when enabled.
   useEffect(() => {

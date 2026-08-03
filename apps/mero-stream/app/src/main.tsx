@@ -1,7 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-import { MeroProvider, AppMode as MeroAppMode } from "@calimero-network/mero-react";
+import {
+  MeroProvider,
+  AppMode as MeroAppMode,
+} from "@calimero-network/mero-react";
 import "@calimero-network/mero-ui/styles.css";
 import App from "./App";
 import { APP_ENABLED } from "./lib/tauri";
@@ -39,7 +42,9 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <MeroProvider
       mode={MeroAppMode.MultiContext}
-      packageName={import.meta.env.VITE_APPLICATION_PACKAGE ?? "com.calimero.merostream"}
+      packageName={
+        import.meta.env.VITE_APPLICATION_PACKAGE ?? "com.calimero.merostream"
+      }
       registryUrl="https://apps.calimero.network"
       allowedNodeUrls={hashNodeUrl ? [hashNodeUrl] : undefined}
     >

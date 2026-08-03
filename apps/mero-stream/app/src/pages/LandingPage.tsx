@@ -11,7 +11,12 @@ export default function LandingPage() {
     <div className={styles.page}>
       <header className={styles.nav}>
         <span className={styles.logo}>◉ Mero Stream</span>
-        <a className={styles.navCta} href="https://calimero.network" target="_blank" rel="noreferrer">
+        <a
+          className={styles.navCta}
+          href="https://calimero.network"
+          target="_blank"
+          rel="noreferrer"
+        >
           calimero.network
         </a>
       </header>
@@ -25,24 +30,34 @@ export default function LandingPage() {
         </h1>
         <p className={styles.subtitle}>
           Mero Stream is a diagnostic that pushes downscaled webcam frames
-          <em> over the Calimero contract</em> — the WASM logic encodes each frame,
-          the delta gossips, and a peer decodes it back to pixels. No WebRTC. It
-          exists to measure the node's ceiling, not to ship video. It runs inside
-          the Calimero desktop app.
+          <em> over the Calimero contract</em> — the WASM logic encodes each
+          frame, the delta gossips, and a peer decodes it back to pixels. No
+          WebRTC. It exists to measure the node's ceiling, not to ship video. It
+          runs inside the Calimero desktop app.
         </p>
 
         <div className={styles.actions}>
-          <a className={styles.primary} href="https://calimero.network/download" target="_blank" rel="noreferrer">
+          <a
+            className={styles.primary}
+            href="https://calimero.network/download"
+            target="_blank"
+            rel="noreferrer"
+          >
             Get Calimero Desktop
           </a>
-          <a className={styles.secondary} href="https://calimero.network" target="_blank" rel="noreferrer">
+          <a
+            className={styles.secondary}
+            href="https://calimero.network"
+            target="_blank"
+            rel="noreferrer"
+          >
             Learn more
           </a>
         </div>
 
         <p className={styles.hint}>
-          Already have the desktop app? Open <strong>Mero Stream</strong> from your
-          installed apps and pick a stream to start the probe.
+          Already have the desktop app? Open <strong>Mero Stream</strong> from
+          your installed apps and pick a stream to start the probe.
         </p>
       </main>
 

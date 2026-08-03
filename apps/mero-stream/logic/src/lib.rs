@@ -295,7 +295,10 @@ impl MeroStream {
     }
 
     fn stream_name_str(&self) -> String {
-        self.stream_name.get().map(|r| r.get().clone()).unwrap_or_default()
+        self.stream_name
+            .get()
+            .map(|r| r.get().clone())
+            .unwrap_or_default()
     }
 
     fn require_member(&self) -> app::Result<String> {
@@ -431,11 +434,7 @@ impl MeroStream {
         let mut frags: Vec<Fragment> = self
             .fragments
             .entries()
-            .map(|e| {
-                e.map(|(_, f)| f)
-                    .filter(|f| f.seq > after_seq)
-                    .collect()
-            })
+            .map(|e| e.map(|(_, f)| f).filter(|f| f.seq > after_seq).collect())
             .unwrap_or_default();
         // Deterministic order: by seq, then sender, then chunk.
         frags.sort_by(|a, b| {
@@ -559,7 +558,10 @@ impl MeroStream {
             let _ = self.fragments.remove(&key);
         }
         self.oldest_live_seq.set(before_seq);
-        let total = self.pruned_frames.get().saturating_add(pruned_seqs.len() as u64);
+        let total = self
+            .pruned_frames
+            .get()
+            .saturating_add(pruned_seqs.len() as u64);
         self.pruned_frames.set(total);
         app::emit!(Event::FramesPruned(before_seq));
     }
@@ -692,7 +694,9 @@ mod codec {
 mod tests {
     use calimero_sdk::testing::TestHost;
 
-    use super::{codec, MeroStream, DecodedFrame, FRAME_WINDOW, MAX_CHUNK_BYTES, TRACK_VIDEO_LUMA};
+    use super::{
+        codec, DecodedFrame, MeroStream, FRAME_WINDOW, MAX_CHUNK_BYTES, MAX_DIM, TRACK_VIDEO_LUMA,
+    };
 
     const ALICE: [u8; 32] = [0x11; 32];
     const BOB: [u8; 32] = [0x22; 32];
@@ -724,7 +728,10 @@ mod tests {
         let frame = quant_aligned_frame(64, 48);
         let encoded = codec::encode_quant_rle(&frame);
         let decoded = codec::decode_quant_rle(&encoded, frame.len());
-        assert_eq!(decoded, frame, "quant-aligned frame must round-trip identically (C1)");
+        assert_eq!(
+            decoded, frame,
+            "quant-aligned frame must round-trip identically (C1)"
+        );
     }
 
     #[test]
@@ -744,7 +751,10 @@ mod tests {
         let frame: Vec<u8> = (0..64 * 48).map(|i| (i * 7 % 256) as u8).collect();
         let once = codec::decode_quant_rle(&codec::encode_quant_rle(&frame), frame.len());
         let twice = codec::decode_quant_rle(&codec::encode_quant_rle(&once), once.len());
-        assert_eq!(once, twice, "decode∘encode must be idempotent (deterministic convergence)");
+        assert_eq!(
+            once, twice,
+            "decode∘encode must be idempotent (deterministic convergence)"
+        );
     }
 
     // ── encode_frame → get_frame round-trip through the contract ──────────────────
@@ -752,11 +762,14 @@ mod tests {
     #[test]
     fn encode_then_get_frame_reconstructs_the_frame() {
         let mut app = new_stream();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
 
         let frame = quant_aligned_frame(64, 48);
         let seq = app
-            .call_as(ALICE, |s| s.encode_frame(frame.clone(), 64, 48, TRACK_VIDEO_LUMA, 1001))
+            .call_as(ALICE, |s| {
+                s.encode_frame(frame.clone(), 64, 48, TRACK_VIDEO_LUMA, 1001)
+            })
             .unwrap();
         assert_eq!(seq, 1, "first frame gets base seq 1");
 
@@ -766,16 +779,24 @@ mod tests {
         assert_eq!(frames[0].from, id_of(ALICE));
         assert_eq!(frames[0].width, 64);
         assert_eq!(frames[0].height, 48);
-        assert_eq!(frames[0].pixels, frame, "decoded pixels match the aligned input (C1)");
+        assert_eq!(
+            frames[0].pixels, frame,
+            "decoded pixels match the aligned input (C1)"
+        );
     }
 
     #[test]
     fn get_frame_cursor_only_returns_new_frames() {
         let mut app = new_stream();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
         let f = quant_aligned_frame(16, 16);
-        let s1 = app.call_as(ALICE, |s| s.encode_frame(f.clone(), 16, 16, 0, 1001)).unwrap();
-        let s2 = app.call_as(ALICE, |s| s.encode_frame(f.clone(), 16, 16, 0, 1002)).unwrap();
+        let s1 = app
+            .call_as(ALICE, |s| s.encode_frame(f.clone(), 16, 16, 0, 1001))
+            .unwrap();
+        let s2 = app
+            .call_as(ALICE, |s| s.encode_frame(f.clone(), 16, 16, 0, 1002))
+            .unwrap();
         assert!(s2 > s1);
         // Cursor at s1 → only the second frame comes back.
         let newer = app.view(move |s| s.get_frame(s1));
@@ -788,7 +809,8 @@ mod tests {
     #[test]
     fn large_frame_is_chunked_and_reassembles() {
         let mut app = new_stream();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
 
         // A worst-case incompressible frame: every adjacent pair differs in its
         // quantized value, so RLE emits a 2-byte pair per pixel and the encoded
@@ -801,7 +823,9 @@ mod tests {
             })
             .collect();
         let seq = app
-            .call_as(ALICE, |s| s.encode_frame(frame.clone(), w as u16, h as u16, 0, 1001))
+            .call_as(ALICE, |s| {
+                s.encode_frame(frame.clone(), w as u16, h as u16, 0, 1001)
+            })
             .unwrap();
 
         // The frame must have been split into >1 fragment (C2).
@@ -815,7 +839,10 @@ mod tests {
         // …and still reassemble to the exact input.
         let frames = app.view(move |s| s.get_frame(seq - 1));
         assert_eq!(frames.len(), 1);
-        assert_eq!(frames[0].pixels, frame, "chunked frame reassembles bit-identically");
+        assert_eq!(
+            frames[0].pixels, frame,
+            "chunked frame reassembles bit-identically"
+        );
         // No single chunk exceeds the cap.
         assert!(frames[0].encoded_bytes as usize <= w * h * 2 + 2);
     }
@@ -825,7 +852,8 @@ mod tests {
     #[test]
     fn frame_keys_are_never_reused_across_prune() {
         let mut app = new_stream();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
         let f = quant_aligned_frame(8, 8);
 
         // Send enough frames to force pruning of the earliest ones.
@@ -860,10 +888,13 @@ mod tests {
     #[test]
     fn checksum_is_stable_and_matches_the_decoded_pixels() {
         let mut app = new_stream();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
         let frame = quant_aligned_frame(16, 16);
         let seq = app
-            .call_as(ALICE, |s| s.encode_frame(frame.clone(), 16, 16, TRACK_VIDEO_LUMA, 1_751_955_010_123))
+            .call_as(ALICE, |s| {
+                s.encode_frame(frame.clone(), 16, 16, TRACK_VIDEO_LUMA, 1_751_955_010_123)
+            })
             .unwrap();
 
         let checksum = app.view(|s| s.frame_checksum(seq)).expect("frame is live");
@@ -888,23 +919,38 @@ mod tests {
         let base = quant_aligned_frame(8, 8);
         let mut perturbed = base.clone();
         perturbed[40] = perturbed[40].wrapping_add(16);
-        let q = |v: &[u8]| codec::fnv1a64(&codec::decode_quant_rle(&codec::encode_quant_rle(v), v.len()));
-        assert_ne!(q(&base), q(&perturbed), "a one-bucket pixel change must change the checksum");
+        let q = |v: &[u8]| {
+            codec::fnv1a64(&codec::decode_quant_rle(
+                &codec::encode_quant_rle(v),
+                v.len(),
+            ))
+        };
+        assert_ne!(
+            q(&base),
+            q(&perturbed),
+            "a one-bucket pixel change must change the checksum"
+        );
     }
 
     #[test]
     fn checksum_is_none_for_a_frame_that_is_not_live() {
         let mut app = new_stream();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
         // Never sent.
         assert_eq!(app.view(|s| s.frame_checksum(1)), None);
         // Sent, then pruned away — absent is not an error, so the e2e can
         // distinguish "not there yet" from "decoded differently".
         let f = quant_aligned_frame(8, 8);
         for k in 0..FRAME_WINDOW + 5 {
-            app.call_as(ALICE, |s| s.encode_frame(f.clone(), 8, 8, 0, 1001 + k)).unwrap();
+            app.call_as(ALICE, |s| s.encode_frame(f.clone(), 8, 8, 0, 1001 + k))
+                .unwrap();
         }
-        assert_eq!(app.view(|s| s.frame_checksum(1)), None, "a pruned frame reports absent");
+        assert_eq!(
+            app.view(|s| s.frame_checksum(1)),
+            None,
+            "a pruned frame reports absent"
+        );
     }
 
     // ── Guards ────────────────────────────────────────────────────────────────
@@ -912,7 +958,8 @@ mod tests {
     #[test]
     fn non_member_cannot_encode() {
         let mut app = new_stream();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
         let f = quant_aligned_frame(8, 8);
         // BOB never joined.
         let res = app.call_as(BOB, |s| s.encode_frame(f, 8, 8, 0, 1001));
@@ -922,7 +969,8 @@ mod tests {
     #[test]
     fn mismatched_geometry_is_rejected() {
         let mut app = new_stream();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
         // Claim 16x16 but send only 8x8 worth of bytes.
         let res = app.call_as(ALICE, |s| s.encode_frame(vec![0u8; 64], 16, 16, 0, 1001));
         assert!(res.is_err(), "raw length must match width*height");
@@ -934,6 +982,296 @@ mod tests {
         // handful of bytes, so it is always one chunk well under the cap.
         let frame = vec![0xFFu8; 200 * 200];
         let encoded = codec::encode_quant_rle(&frame);
-        assert!(encoded.len() <= MAX_CHUNK_BYTES, "flat frame is tiny after RLE");
+        assert!(
+            encoded.len() <= MAX_CHUNK_BYTES,
+            "flat frame is tiny after RLE"
+        );
+    }
+
+    #[test]
+    fn zero_and_oversize_geometry_are_rejected() {
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+
+        // Zero dimensions: `expected` would be 0 and a 0-byte "frame" would be
+        // accepted as valid, quietly polluting the seq series with empty frames.
+        assert!(app
+            .call_as(ALICE, |s| s.encode_frame(vec![], 0, 48, 0, 1001))
+            .is_err());
+        assert!(app
+            .call_as(ALICE, |s| s.encode_frame(vec![], 64, 0, 0, 1001))
+            .is_err());
+
+        // Past MAX_DIM. Checked before the length check, so a caller cannot get
+        // an oversize geometry accepted by matching raw.len() to it.
+        // A 1-pixel-tall strip that is one pixel too wide, with raw.len() matching
+        // it exactly — so only the MAX_DIM check can reject this.
+        let over = MAX_DIM as usize + 1;
+        assert!(app
+            .call_as(ALICE, |s| s.encode_frame(
+                vec![0u8; over],
+                over as u16,
+                1,
+                0,
+                1001
+            ))
+            .is_err());
+    }
+
+    #[test]
+    fn a_rejected_frame_does_not_consume_a_seq() {
+        // Guards must run BEFORE the seq is allocated. If a rejected frame burned
+        // a seq, a receiver's gap counter would report phantom drops for frames
+        // that were never sent — corrupting the §4 drop metric with sender-side
+        // validation failures.
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        let before = app.view(|s| s.get_stats()).next_seq;
+        assert!(app
+            .call_as(ALICE, |s| s.encode_frame(vec![0u8; 10], 64, 48, 0, 1001))
+            .is_err());
+        assert_eq!(
+            app.view(|s| s.get_stats()).next_seq,
+            before,
+            "a rejected frame must not advance the monotone seq"
+        );
+    }
+
+    #[test]
+    fn non_member_cannot_prune() {
+        // prune_frames is membership-gated like encode_frame — otherwise any
+        // caller could delete a stream's live window, and every removal is a
+        // replicated tombstone (C3) that can never be taken back.
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        let f = quant_aligned_frame(8, 8);
+        app.call_as(ALICE, |s| s.encode_frame(f, 8, 8, 0, 1001))
+            .unwrap();
+        assert!(app.call_as(BOB, |s| s.prune_frames(1)).is_err());
+        // Alice (a member) can.
+        assert!(app.call_as(ALICE, |s| s.prune_frames(1)).is_ok());
+    }
+
+    // ── Codec edges ───────────────────────────────────────────────────────────────
+
+    #[test]
+    fn codec_splits_runs_longer_than_255() {
+        // The run length is a u8, so a flat region longer than 255 must split into
+        // several (run, value) pairs. Getting this wrong truncates a flat frame,
+        // and a flat frame is exactly what a webcam produces against a blank wall.
+        let frame = vec![0x77u8; 1000];
+        let encoded = codec::encode_quant_rle(&frame);
+        assert_eq!(encoded.len() % 2, 0, "output is (run, value) pairs");
+        // ceil(1000/255) = 4 pairs.
+        assert_eq!(encoded.len(), 8);
+        assert_eq!(codec::decode_quant_rle(&encoded, frame.len()), frame);
+    }
+
+    #[test]
+    fn codec_handles_degenerate_sizes() {
+        // Empty input must not produce a phantom pair, and a single pixel must
+        // round-trip — both hit the `while idx < raw.len()` boundary.
+        assert!(codec::encode_quant_rle(&[]).is_empty());
+        assert_eq!(codec::decode_quant_rle(&[], 0), Vec::<u8>::new());
+        let one = vec![0x33u8];
+        assert_eq!(
+            codec::decode_quant_rle(&codec::encode_quant_rle(&one), 1),
+            one
+        );
+    }
+
+    #[test]
+    fn decode_pads_a_truncated_stream_instead_of_panicking() {
+        // A partially-gossiped fragment must never panic a view — get_frame is
+        // called on every SSE nudge, and a panic there would take out the whole
+        // read path rather than just skipping one frame.
+        let frame = quant_aligned_frame(16, 16);
+        let encoded = codec::encode_quant_rle(&frame);
+        let truncated = &encoded[..encoded.len() / 2];
+        let decoded = codec::decode_quant_rle(truncated, frame.len());
+        assert_eq!(decoded.len(), frame.len(), "geometry stays valid");
+        // An odd-length stream (a pair cut in half) is also safe.
+        assert_eq!(
+            codec::decode_quant_rle(&encoded[..1], frame.len()).len(),
+            frame.len()
+        );
+    }
+
+    #[test]
+    fn decode_clamps_a_stream_that_claims_more_pixels_than_expected() {
+        // Defensive against a crafted/oversized fragment: the decoder must fill
+        // exactly `expected` and stop, never grow past the frame geometry.
+        let oversized = vec![255u8, 0x0f]; // one run of 255 pixels
+        assert_eq!(codec::decode_quant_rle(&oversized, 10).len(), 10);
+    }
+
+    #[test]
+    fn quantization_discards_only_the_low_nibble() {
+        // The codec's lossiness is a documented 4-bit quantization. Pin it, so a
+        // future codec change that silently alters fidelity fails here rather
+        // than quietly changing what every recorded measurement means.
+        let raw: Vec<u8> = (0..=255u8).collect();
+        let decoded = codec::decode_quant_rle(&codec::encode_quant_rle(&raw), raw.len());
+        for (i, (r, d)) in raw.iter().zip(decoded.iter()).enumerate() {
+            let q = r >> 4;
+            assert_eq!(
+                *d,
+                (q << 4) | q,
+                "pixel {i}: value {r} must reconstruct from its 4-bit bucket"
+            );
+        }
+    }
+
+    // ── Multi-sender + partial frames (the get_frame grouping logic) ──────────────
+
+    #[test]
+    fn frames_from_two_senders_stay_separate() {
+        // Fragments are grouped by (seq, from). Two members encoding concurrently
+        // must not have their chunks merged into one corrupt frame.
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
+            .unwrap();
+
+        let a_frame = quant_aligned_frame(8, 8);
+        let b_frame: Vec<u8> = a_frame.iter().map(|p| p ^ 0xFF).collect();
+        app.call_as(ALICE, |s| s.encode_frame(a_frame.clone(), 8, 8, 0, 1001))
+            .unwrap();
+        app.call_as(BOB, |s| s.encode_frame(b_frame.clone(), 8, 8, 0, 1002))
+            .unwrap();
+
+        let frames = app.view(|s| s.get_frame(0));
+        assert_eq!(frames.len(), 2, "one frame per sender");
+        let alice_id = id_of(ALICE);
+        let from_alice = frames.iter().find(|f| f.from == alice_id).unwrap();
+        let from_bob = frames.iter().find(|f| f.from != alice_id).unwrap();
+        assert_eq!(from_alice.pixels, a_frame);
+        assert_eq!(from_bob.pixels, b_frame);
+    }
+
+    #[test]
+    fn get_frame_returns_frames_in_ascending_seq_order() {
+        // The renderer advances a cursor to the highest seq it has seen, so
+        // out-of-order delivery here would make it skip frames permanently.
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        let f = quant_aligned_frame(4, 4);
+        for k in 0..5 {
+            app.call_as(ALICE, |s| s.encode_frame(f.clone(), 4, 4, 0, 1001 + k))
+                .unwrap();
+        }
+        let seqs: Vec<u64> = app.view(|s| s.get_frame(0)).iter().map(|f| f.seq).collect();
+        let mut sorted = seqs.clone();
+        sorted.sort_unstable();
+        assert_eq!(seqs, sorted, "frames must come back oldest-first");
+    }
+
+    #[test]
+    fn a_multi_chunk_frame_checksums_the_same_as_its_pixels() {
+        // Ties chunking (C2) to the checksum the e2e asserts on: a frame big
+        // enough to split must reassemble before hashing, or a chunked frame
+        // would report a different checksum on every node that received a
+        // different chunk subset.
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        // High-entropy so RLE cannot compress it under the chunk cap.
+        let w = 256usize;
+        let h = 200usize;
+        let frame: Vec<u8> = (0..w * h).map(|i| ((i * 37) % 256) as u8).collect();
+        let seq = app
+            .call_as(ALICE, |s| {
+                s.encode_frame(frame.clone(), w as u16, h as u16, 0, 1001)
+            })
+            .unwrap();
+
+        let stats = app.view(|s| s.get_stats());
+        assert!(
+            stats.live_fragments > 1,
+            "frame must actually have split into multiple chunks (got {})",
+            stats.live_fragments
+        );
+
+        let decoded = app.view(|s| s.get_frame(seq - 1));
+        let f = decoded.iter().find(|f| f.seq == seq).unwrap();
+        assert_eq!(f.pixels.len(), w * h, "reassembled to full geometry");
+        assert_eq!(
+            app.view(|s| s.frame_checksum(seq)).unwrap(),
+            codec::fnv1a64(&f.pixels)
+        );
+    }
+
+    // ── Stats + admin ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn stats_track_the_live_window_and_the_tombstone_count() {
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        let fresh = app.view(|s| s.get_stats());
+        assert_eq!(fresh.next_seq, 0);
+        assert_eq!(fresh.live_fragments, 0);
+        assert_eq!(fresh.pruned_frames, 0);
+        assert_eq!(fresh.member_count, 1);
+
+        let f = quant_aligned_frame(4, 4);
+        for k in 0..3 {
+            app.call_as(ALICE, |s| s.encode_frame(f.clone(), 4, 4, 0, 1001 + k))
+                .unwrap();
+        }
+        let after = app.view(|s| s.get_stats());
+        assert_eq!(after.next_seq, 3, "one seq per frame");
+        assert_eq!(after.live_fragments, 3, "small frames are one chunk each");
+        assert_eq!(after.pruned_frames, 0, "still inside FRAME_WINDOW");
+        assert_eq!(after.name, "probe");
+    }
+
+    #[test]
+    fn explicit_prune_removes_only_below_the_watermark() {
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        let f = quant_aligned_frame(4, 4);
+        for k in 0..5 {
+            app.call_as(ALICE, |s| s.encode_frame(f.clone(), 4, 4, 0, 1001 + k))
+                .unwrap();
+        }
+        app.call_as(ALICE, |s| s.prune_frames(4)).unwrap();
+        let seqs: Vec<u64> = app.view(|s| s.get_frame(0)).iter().map(|f| f.seq).collect();
+        assert_eq!(seqs, vec![4, 5], "frames below the watermark are gone");
+        // prune_frames(0) is a documented no-op — an off-by-one there would wipe
+        // the whole window on a caller passing a default 0.
+        app.call_as(ALICE, |s| s.prune_frames(0)).unwrap();
+        assert_eq!(app.view(|s| s.get_frame(0)).len(), 2);
+    }
+
+    #[test]
+    fn membership_is_idempotent_and_updates_the_name() {
+        // The frontend auto-joins on every mount, so a second join must not
+        // duplicate the member or reset the roster.
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(ALICE, |s| s.join("Alice Renamed".to_owned(), 2000))
+            .unwrap();
+        let members = app.view(|s| s.get_members());
+        assert_eq!(members.len(), 1, "re-joining must not duplicate a member");
+        assert_eq!(members[0].username, "Alice Renamed");
+    }
+
+    #[test]
+    fn a_non_member_cannot_rename_the_stream() {
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        assert!(app
+            .call_as(BOB, |s| s.rename_stream("hijacked".to_owned()))
+            .is_err());
+        assert_eq!(app.view(|s| s.get_stats()).name, "probe");
     }
 }

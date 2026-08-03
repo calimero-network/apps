@@ -23,3 +23,7 @@ workflows/**/.pids/
 logic/calimero.json
 logic/key.json
 logic/signing-key.json
+
+# Python bytecode from the load generator (scripts/) and its CI compile check.
+__pycache__/
+*.py[cod]

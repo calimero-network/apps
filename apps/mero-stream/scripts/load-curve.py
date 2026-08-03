@@ -121,9 +121,12 @@ def store_bytes(container: str) -> int | None:
     """
     for path in ("/app/data", "/data", "/root/.calimero"):
         try:
+            # check=False is explicit: a container without this path is the normal
+            # case (we probe three candidates), so a non-zero exit is data, not an
+            # error to raise on.
             out = subprocess.run(
                 ["docker", "exec", container, "du", "-sb", path],
-                capture_output=True, text=True, timeout=30,
+                capture_output=True, text=True, timeout=30, check=False,
             )
             if out.returncode == 0 and out.stdout.strip():
                 return int(out.stdout.split()[0])

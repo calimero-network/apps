@@ -39,7 +39,9 @@ function hasDevSession(): boolean {
   if (!import.meta.env.DEV) return false;
   try {
     const p = new URLSearchParams(window.location.hash.slice(1));
-    return Boolean((p.get("node_url") ?? p.get("nodeUrl")) && p.get("access_token"));
+    return Boolean(
+      (p.get("node_url") ?? p.get("nodeUrl")) && p.get("access_token"),
+    );
   } catch {
     return false;
   }

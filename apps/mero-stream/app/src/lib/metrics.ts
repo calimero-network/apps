@@ -13,11 +13,18 @@
 //   ✅ encode round-trip             wall time around the encode_frame mutation
 //   ✅ seq gaps                      frames the receiver never saw (drop proxy)
 //   ✅ encode failures               the backpressure/rejection signal
-//   ❌ per-fragment WASM CPU         node-side; needs core's execution_duration
-//                                    histogram, whose buckets start at 1s and so
-//                                    cannot resolve a ~ms encode (see the PR)
+//   ❌ per-mutation server-side cost node-side, but AVAILABLE today: scrape
+//                                    core's /metrics and divide
+//                                    execution_duration_seconds_sum by _count for
+//                                    the mean per method. (The histogram buckets
+//                                    are 1s..512s, so only the mean is usable —
+//                                    not percentiles.)
 //   ❌ sealed delta size             node-side; core logs `artifact_len` at debug
 //   ❌ RocksDB growth                node-side; `du` the store
+//
+// Measured at 64x48: 9.93 ms mean server-side vs 19.69 ms client-observed RTT
+// p50 — i.e. about half of `encodeMs` below is serialization + transport, not the
+// node. Keep that ratio in mind before reading encodeMs as an encode cost.
 //
 // The two latency caveats, stated up front because a number without them is a
 // lie:
@@ -94,11 +101,17 @@ export interface ProbeSnapshot {
  * small windows the probe runs, interpolation invents values between real
  * measurements.
  */
-export function percentile(values: readonly number[], q: number): number | null {
+export function percentile(
+  values: readonly number[],
+  q: number,
+): number | null {
   if (values.length === 0) return null;
   const sorted = [...values].sort((a, b) => a - b);
   // Rank is 1-based: ceil(q*n) clamped into [1, n], then to a 0-based index.
-  const rank = Math.min(sorted.length, Math.max(1, Math.ceil(q * sorted.length)));
+  const rank = Math.min(
+    sorted.length,
+    Math.max(1, Math.ceil(q * sorted.length)),
+  );
   return sorted[rank - 1];
 }
 
@@ -186,7 +199,9 @@ export class ProbeRecorder {
 
     // Span the receive-side window covers, by the receiver's own clock.
     const renderSpan =
-      frames.length > 1 ? frames[frames.length - 1].renderedAt - frames[0].renderedAt : 0;
+      frames.length > 1
+        ? frames[frames.length - 1].renderedAt - frames[0].renderedAt
+        : 0;
     // Span the send-side window covers, by the sender's own clock.
     const sendSpan =
       okEncodes.length > 1
@@ -231,10 +246,17 @@ export class ProbeRecorder {
       "seq,created_at_ms,rendered_at_ms,latency_ms,encoded_bytes,raw_bytes,compression_ratio";
     const rows = this.csvRows.map((f) => {
       const latency = f.renderedAt - f.createdAt;
-      const ratio = f.encodedBytes > 0 ? (f.rawBytes / f.encodedBytes).toFixed(4) : "";
-      return [f.seq, f.createdAt, f.renderedAt, latency, f.encodedBytes, f.rawBytes, ratio].join(
-        ",",
-      );
+      const ratio =
+        f.encodedBytes > 0 ? (f.rawBytes / f.encodedBytes).toFixed(4) : "";
+      return [
+        f.seq,
+        f.createdAt,
+        f.renderedAt,
+        latency,
+        f.encodedBytes,
+        f.rawBytes,
+        ratio,
+      ].join(",");
     });
     return [header, ...rows].join("\n");
   }

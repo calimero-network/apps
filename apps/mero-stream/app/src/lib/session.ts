@@ -70,9 +70,14 @@ export function captureSessionFromHash(): void {
     const p = new URLSearchParams(hash);
     contextId = p.get("context_id") ?? p.get("contextId") ?? contextId;
     executorPublicKey =
-      p.get("executor_public_key") ?? p.get("executorPublicKey") ?? executorPublicKey;
+      p.get("executor_public_key") ??
+      p.get("executorPublicKey") ??
+      executorPublicKey;
     applicationId =
-      p.get("app-id") ?? p.get("application_id") ?? p.get("applicationId") ?? applicationId;
+      p.get("app-id") ??
+      p.get("application_id") ??
+      p.get("applicationId") ??
+      applicationId;
     // The desktop app forwards its developer-mode setting here.
     if (p.has("dev_mode")) devMode = p.get("dev_mode") === "1";
   }

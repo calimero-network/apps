@@ -89,26 +89,50 @@ Already available — no core change needed:
   `delta_cascade_size`, `dag_heads_count`, `delta_missing_parents_total` cover
   apply health.
 
-Actual remaining gaps:
+Actual remaining gaps. **Verified by scraping a live rc.19 node, not by reading
+code** — an earlier revision of this section overstated the first one:
 
-- **2a′. The histogram cannot resolve our encode.** Buckets are
+- **2a′. Percentiles, not the mean.** The histogram's buckets are
   `exponential_buckets(1.0, 2.0, 10)` (`crates/governance-store/src/metrics.rs:154`)
-  → 1 s … 512 s. Measured `encode_frame` RTT is ~20 ms at 64×48, so every
-  observation lands in the first bucket. **This is the one core PR worth filing:
-  finer buckets.** Until then the frontend/load-generator RTT is the best
-  available figure (an upper bound, since it includes transport).
-- **2c. Gossip publish drops / backpressure — MISSING.**
-  `crates/network/src/handlers/commands/publish.rs` is ~20 lines with no
-  instrumentation; a `PublishError` (InsufficientPeers / MessageTooLarge)
-  propagates uncounted. Nothing to reuse.
+  → 1 s … 512 s, so every observation lands in the first bucket and the bucket
+  series is useless. **But `_sum` and `_count` are exported**, so
+  `sum/count` gives the exact mean per method today — measured at 9.93 ms for
+  `encode_frame` over 60 calls at 64×48. What is missing is tail shape (p95/p99),
+  not the number itself. Downgrades "the one core PR worth filing" to a
+  nice-to-have.
+- **2c. Gossip publish drops / backpressure — MISSING, and confirmed on a live
+  node.** The only gossipsub series core exposes is
+  `libp2p_gossipsub_messages_total` (a *received* count) — that is the whole of
+  `libp2p-metrics`' gossipsub module, one counter. Core *does* feed libp2p's
+  recorder (`crates/network/src/handlers/stream/swarm/gossipsub.rs:10`), so the
+  gap is not a missing `record()` call. The rich suite —
+  `publish_messages_dropped_per_topic`, `forward_messages_dropped_per_topic`,
+  `timedout_messages_dropped_per_topic`, `priority_queue_size` /
+  `non_priority_queue_size` (backpressure, directly), `topic_msg_sent_bytes`,
+  `mesh_peer_counts` — lives in `libp2p-gossipsub`'s own metrics behind
+  `Behaviour::with_metrics(registry, config)`. Core builds the behaviour with
+  plain `gossipsub::Behaviour::new(` (`crates/network/src/behaviour.rs:258`).
+  Note the `libp2p` meta-crate's `gossipsub` feature enables
+  `libp2p-metrics?/gossipsub` but **nothing enables `libp2p-gossipsub/metrics`**,
+  so this needs a feature/dep change too, not just a builder call.
 - **2d′. RocksDB on-disk size — MISSING as a metric.** Core's only process gauges
   are `#[cfg(target_os = "linux")]` RSS/threads/FDs. **Worked around in this
   repo**: `scripts/load-curve.py` samples it with `docker exec … du -sb`, so the
   C3 tombstone slope is measurable today without touching core.
 
 Acceptance: a 30–60 min sustained run emits enough signal to produce the
-load-curve CSV and name the first bottleneck. **Reachable now** for everything
-except isolated per-fragment WASM CPU.
+load-curve CSV and name the first bottleneck. **Reachable now, with no core
+change.** The two gaps above sharpen attribution (which part of the 10 ms, and
+whether a missing frame was dropped by gossip or never sent); neither blocks the
+deliverable.
+
+> **Why no core PR has been filed yet.** Both gaps are instrumentation for
+> questions the run has not yet asked. More decisively: a core change only reaches
+> this probe via a tagged release and a published merod image, so it cannot serve
+> the run that is the actual deliverable. The sequence that makes sense is run
+> first, then file a targeted core PR *if* the run points at gossip or needs the
+> latency tail — instrumentation aimed at a real finding rather than a speculative
+> one.
 
 ---
 

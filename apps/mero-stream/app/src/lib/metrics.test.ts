@@ -121,9 +121,15 @@ describe("ProbeRecorder", () => {
   it("computes ingest rate and compression over the window span", () => {
     const r = new ProbeRecorder();
     // Three frames spanning exactly 2s → 1.5 frames/s.
-    r.recordFrame(frame({ seq: 1, renderedAt: 1_000, encodedBytes: 300, rawBytes: 3000 }));
-    r.recordFrame(frame({ seq: 2, renderedAt: 2_000, encodedBytes: 300, rawBytes: 3000 }));
-    r.recordFrame(frame({ seq: 3, renderedAt: 3_000, encodedBytes: 300, rawBytes: 3000 }));
+    r.recordFrame(
+      frame({ seq: 1, renderedAt: 1_000, encodedBytes: 300, rawBytes: 3000 }),
+    );
+    r.recordFrame(
+      frame({ seq: 2, renderedAt: 2_000, encodedBytes: 300, rawBytes: 3000 }),
+    );
+    r.recordFrame(
+      frame({ seq: 3, renderedAt: 3_000, encodedBytes: 300, rawBytes: 3000 }),
+    );
     const snap = r.snapshot();
     expect(snap.renderFps).toBeCloseTo(1.5, 5);
     expect(snap.encodedBytesPerSec).toBeCloseTo(450, 5); // 900 bytes / 2s
@@ -155,7 +161,15 @@ describe("ProbeRecorder", () => {
 
   it("emits one CSV row per frame with a header, unaffected by the window", () => {
     const r = new ProbeRecorder(2); // window smaller than the sample count
-    r.recordFrame(frame({ seq: 1, createdAt: 1_000, renderedAt: 1_600, encodedBytes: 300, rawBytes: 3000 }));
+    r.recordFrame(
+      frame({
+        seq: 1,
+        createdAt: 1_000,
+        renderedAt: 1_600,
+        encodedBytes: 300,
+        rawBytes: 3000,
+      }),
+    );
     r.recordFrame(frame({ seq: 2, createdAt: 2_000, renderedAt: 2_500 }));
     r.recordFrame(frame({ seq: 3, createdAt: 3_000, renderedAt: 3_100 }));
     const lines = r.toCsv().split("\n");

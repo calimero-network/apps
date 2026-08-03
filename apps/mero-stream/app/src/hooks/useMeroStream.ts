@@ -1,6 +1,11 @@
 import { useCallback, useMemo } from "react";
 import { useExecute } from "@calimero-network/mero-react";
-import { getContextId, getExecutorPublicKey, nowMillis, nowSecs } from "../lib/session";
+import {
+  getContextId,
+  getExecutorPublicKey,
+  nowMillis,
+  nowSecs,
+} from "../lib/session";
 import type { DecodedFrame, Member, StreamStats } from "../types";
 
 /**
@@ -29,7 +34,12 @@ export function useMeroStream() {
   );
 
   const encodeFrame = useCallback(
-    (raw: number[] | Uint8Array, width: number, height: number, track: number) =>
+    (
+      raw: number[] | Uint8Array,
+      width: number,
+      height: number,
+      track: number,
+    ) =>
       // The contract signature is encode_frame(raw, width, height, track, now).
       // Pass `raw` as a plain array so it serializes to a JSON byte list.
       //
@@ -48,7 +58,8 @@ export function useMeroStream() {
   );
 
   const getFrame = useCallback(
-    (afterSeq: number) => execute<DecodedFrame[]>("get_frame", { after_seq: afterSeq }),
+    (afterSeq: number) =>
+      execute<DecodedFrame[]>("get_frame", { after_seq: afterSeq }),
     [execute],
   );
 
@@ -89,6 +100,16 @@ export function useMeroStream() {
     // session moved), at the cost of the (unused) loading/error fields going
     // stale on the object. Same discipline as mero-meet's useMeroMeet.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [contextId, executorId, join, getMembers, encodeFrame, getFrame, pruneFrames, getStats, renameStream],
+    [
+      contextId,
+      executorId,
+      join,
+      getMembers,
+      encodeFrame,
+      getFrame,
+      pruneFrames,
+      getStats,
+      renameStream,
+    ],
   );
 }

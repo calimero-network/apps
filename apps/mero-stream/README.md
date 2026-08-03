@@ -70,17 +70,23 @@ Events (SSE): `Initialized`, `MemberJoined`, `FramePosted(seq)`, `FramesPruned(b
 ## Status (phased — see the task doc §7)
 
 - **P0 — Contract skeleton + determinism proof — ✅ DONE.** `Fragment` state,
-  `encode_frame` / `get_frame` / `prune_frames`, codec #1. 13 unit tests green,
+  `encode_frame` / `get_frame` / `prune_frames`, codec #1. **28 unit tests**,
   incl. bit-identical round-trip (C1), chunk split/reassemble (C2), the
-  no-key-reuse-across-prune regression (C3), and the `frame_checksum` properties
-  the e2e leans on. WASM build passes.
+  no-key-reuse-across-prune regression (C3), the `frame_checksum` properties the
+  e2e leans on, codec edges (>255 runs, truncated/oversized streams, the 4-bit
+  quantization contract), the geometry guards, and multi-sender frame grouping.
 - **P1 — Frontend dev route — ✅ DONE.** Capture → `encode_frame`;
   `FramePosted` SSE → `get_frame` → render, with a slow poll behind it.
-  Desktop/dev-gated, off any call path.
-- **P2 — 2-node e2e — ✅ DONE.** `workflows/e2e.yml` bootstraps two nodes with
-  `create_mesh`, encodes a frame in WASM on node 1 and proves node 2's
-  independent in-WASM decode is bit-identical via `frame_checksum` equality.
-  Runs in CI (validated against merod `0.11.0-rc.19`).
+  Desktop/dev-gated, off any call path. **54 unit tests** across the luma path,
+  the §4 metric arithmetic, and session bootstrap.
+- **P2 — e2e — ✅ DONE.** Three merobox scenarios, all in CI against merod
+  `0.11.0-rc.19`:
+
+  | Scenario | Nodes | Proves |
+  |---|---|---|
+  | `e2e.yml` | 2 | C1 across the wire — the peer's independent in-WASM decode is bit-identical (`frame_checksum` equality) |
+  | `e2e-tombstones.yml` | 2 | C3 across the wire — after 40 frames force pruning, both nodes agree on the exact bounded window, and a *post-prune* frame is not shadowed by prune tombstones |
+  | `e2e-fanout.yml` | 3 | gossip fan-out at K=2 — one sender, **both** peers decode to the same checksum |
 - **P3 — Load curve — 🚧 TOOLING READY, RUN PENDING.** `scripts/load-curve.py`
   ramps fps × geometry and emits the CSV (achieved fps, encode RTT p50/p95,
   errors, live/pruned fragments, peer-side counters, RocksDB growth). The
@@ -96,9 +102,24 @@ Events (SSE): `Initialized`, `MemberJoined`, `FramePosted(seq)`, `FramesPruned(b
 | Encode round-trip (upper bound on WASM CPU) | frontend + load generator | ✅ |
 | Seq gaps / drop proxy | frontend | ✅ |
 | Tombstone growth | `get_stats().prunedFrames` + RocksDB `du` | ✅ (load generator) |
-| **Per-fragment WASM CPU, isolated** | core `execution_duration_seconds` | ⚠️ exists but its buckets start at 1 s — cannot resolve a ~20 ms encode |
+| Server-side cost per mutation (mean) | core `/metrics`, `execution_duration_seconds_{sum,count}` by method | ✅ measured: **9.93 ms** mean for `encode_frame` at 64×48 |
+| Server-side cost **percentiles** | same histogram's buckets | ⚠️ buckets are 1 s…512 s, so every observation lands in the first one — mean is exact, tail shape is not available |
 | **Sealed delta size** | core logs `artifact_len` at `debug` | ⚠️ log-grep only, no histogram |
-| **Gossip publish drops / backpressure** | — | ❌ core has no counter on the publish path |
+| **Gossip publish drops / backpressure** | — | ❌ `libp2p_gossipsub_messages_total` (received count) is the *only* gossipsub series core exposes |
+
+`/metrics` is served unauthenticated on the RPC port (`crates/server/src/metrics.rs`),
+so a run can scrape it directly:
+
+```bash
+curl -s http://localhost:2660/metrics \
+  | grep -E 'execution_duration_seconds_(sum|count).*encode_frame'
+# mean server-side ms = sum/count*1000
+```
+
+Worth knowing what that 9.93 ms means: client-observed encode RTT at the same
+geometry was 19.69 ms p50, so **roughly half the cost is JSON serialization,
+transport and RPC rather than the node**. At 4×4 the node figure was 1.81 ms, so
+the server side scales with geometry while the client overhead is close to fixed.
 
 ## Build & test
 
@@ -109,9 +130,15 @@ make app-build      # frontend bundle (tsc + vite)
 make app-test       # frontend unit tests (incl. the §4 metric arithmetic)
 make dev            # vite dev server (the /stream dev route)
 make dev-nodes      # two local nodes + install + a stream context (solo testing)
-make workflows      # 2-node e2e over merobox (Docker + merobox>=0.6.49)
+make workflows      # ALL three e2e scenarios over merobox (Docker + merobox>=0.6.49)
 make load-curve     # P3 load generator usage
 ```
+
+CI gates: `cargo fmt --check`, `cargo clippy -D warnings`, contract tests, WASM
+build · eslint, prettier, `tsc --noEmit`, vitest, vite build · ruff +
+byte-compile on `scripts/` · the three e2e scenarios as parallel matrix legs.
+The e2e files use distinct port bases (2760/2780/2800) so they can also run
+concurrently on one host.
 
 Toolchain: Rust `1.89.0` (pinned in `logic/rust-toolchain.toml`), pnpm for the
 frontend. The contract pins `calimero-*` to the core release **tag**
