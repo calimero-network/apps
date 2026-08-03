@@ -107,6 +107,8 @@ jobs:
             file: e2e-tombstones.yml
           - name: 3-node gossip fan-out
             file: e2e-fanout.yml
+          - name: approach 2 opaque chunks
+            file: e2e-live-chunks.yml
     steps:
       - uses: actions/checkout@v4
 

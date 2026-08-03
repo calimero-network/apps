@@ -27,6 +27,7 @@ crate-type = ["cdylib", "rlib"]
 #
 # Bumping = edit these four tags + the e2e image together, then `cargo update`.
 [dependencies]
+base64 = "0.22"
 borsh = "1.6.1"
 borsh-derive = "1.6.1"
 bs58 = "0.5.1"

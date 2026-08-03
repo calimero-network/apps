@@ -6,7 +6,13 @@ import {
   nowMillis,
   nowSecs,
 } from "../lib/session";
-import type { DecodedFrame, Member, StreamStats } from "../types";
+import type {
+  ChunkView,
+  DecodedFrame,
+  LiveStats,
+  Member,
+  StreamStats,
+} from "../types";
 
 /**
  * Typed wrapper over the Mero Stream contract RPC (mirrors mero-meet's
@@ -73,6 +79,53 @@ export function useMeroStream() {
     [execute],
   );
 
+  // ── Approach 2: opaque chunks from a real browser codec ────────────────────
+  // `now` is MILLISECONDS here too (see nowMillis) — chunk timestamps feed the
+  // same §4 latency arithmetic as approach 3's fragments.
+  const postChunk = useCallback(
+    (c: {
+      dataB64: string;
+      track: number;
+      isKeyframe: boolean;
+      codec: string;
+      width: number;
+      height: number;
+      timestampUs: number;
+    }) =>
+      execute<number>("post_chunk", {
+        data_b64: c.dataB64,
+        track: c.track,
+        is_keyframe: c.isKeyframe,
+        codec: c.codec,
+        width: c.width,
+        height: c.height,
+        timestamp_us: c.timestampUs,
+        now: nowMillis(),
+      }),
+    [execute],
+  );
+
+  const getChunks = useCallback(
+    (afterSeq: number) =>
+      execute<ChunkView[]>("get_chunks", { after_seq: afterSeq }),
+    [execute],
+  );
+
+  /**
+   * Where a joining peer must start draining. Feeding a decoder a delta frame
+   * with no preceding keyframe throws, so the receive loop asks for this before
+   * its first read rather than starting at whatever is newest.
+   */
+  const keyframeCursor = useCallback(
+    () => execute<number | null>("keyframe_cursor", {}),
+    [execute],
+  );
+
+  const getLiveStats = useCallback(
+    () => execute<LiveStats>("get_live_stats", {}),
+    [execute],
+  );
+
   const renameStream = useCallback(
     (name: string) => execute("rename_stream", { name }),
     [execute],
@@ -91,6 +144,10 @@ export function useMeroStream() {
       pruneFrames,
       getStats,
       renameStream,
+      postChunk,
+      getChunks,
+      keyframeCursor,
+      getLiveStats,
     }),
     // `loading`/`error` are deliberately NOT deps: they flip on every request,
     // and having them here would change this object's identity each time —
@@ -110,6 +167,10 @@ export function useMeroStream() {
       pruneFrames,
       getStats,
       renameStream,
+      postChunk,
+      getChunks,
+      keyframeCursor,
+      getLiveStats,
     ],
   );
 }

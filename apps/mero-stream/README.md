@@ -67,6 +67,32 @@ fragment propagates.
 
 Events (SSE): `Initialized`, `MemberJoined`, `FramePosted(seq)`, `FramesPruned(beforeSeq)`.
 
+## Two approaches, both live in this app
+
+The task doc lists three ways to move media through Calimero. This repo now
+implements two of them, on separate routes, because they fail for opposite
+reasons and the contrast IS the finding:
+
+| | `/stream` — approach 3 | `/live` — approach 2 |
+|---|---|---|
+| Where the codec runs | **inside the WASM app** | **in the browser** (WebCodecs) |
+| Codec | toy: 4-bit quantize + RLE | real: hardware H.264 |
+| Resolution | 64×48 greyscale | **640×480** |
+| Why it's capped there | every node must compute bit-identical bytes (C1), and real codecs are float-heavy → non-deterministic | not capped by determinism — the app never computes the media, so a float codec is fine |
+| Node CPU per frame | ~9.93 ms measured | ~0 (a memcpy; no codec work) |
+| New state at 480p30 | ~4.6 MB/s (≈230× chat) | ~188 KB/s (≈9× chat) |
+| Compression | ~2–10× | ~60× |
+| Remaining risk | WASM CPU **and** replication | replication + tombstones only |
+
+Approach 2 needs a **keyframe-clamped reaper**: a delta frame is undecodable
+without the keyframe it references, so pruning past the newest keyframe leaves a
+stream that replicates happily and shows nothing. That clamp is the one piece of
+media awareness the app has, and it's unit- and e2e-tested.
+
+**Neither is shippable media.** Approach 2 removes the CPU wall; whether
+replication can carry 188 KB/s of permanently-stored, tombstone-generating state
+is exactly what the P3 run is for.
+
 ## Status (phased — see the task doc §7)
 
 - **P0 — Contract skeleton + determinism proof — ✅ DONE.** `Fragment` state,
@@ -87,6 +113,7 @@ Events (SSE): `Initialized`, `MemberJoined`, `FramePosted(seq)`, `FramesPruned(b
   | `e2e.yml` | 2 | C1 across the wire — the peer's independent in-WASM decode is bit-identical (`frame_checksum` equality) |
   | `e2e-tombstones.yml` | 2 | C3 across the wire — after 40 frames force pruning, both nodes agree on the exact bounded window, and a *post-prune* frame is not shadowed by prune tombstones |
   | `e2e-fanout.yml` | 3 | gossip fan-out at K=2 — one sender, **both** peers decode to the same checksum |
+| `e2e-live-chunks.yml` | 2 | **approach 2** — opaque codec bytes cross byte-identically, and `prune_chunks(everything)` still leaves the peer a decodable keyframe |
 - **P3 — Load curve — 🚧 TOOLING READY, RUN PENDING.** `scripts/load-curve.py`
   ramps fps × geometry and emits the CSV (achieved fps, encode RTT p50/p95,
   errors, live/pruned fragments, peer-side counters, RocksDB growth). The

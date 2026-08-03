@@ -6,6 +6,7 @@ import { getContextId, clearActiveRoom } from "./lib/session";
 import LandingPage from "./pages/LandingPage";
 import StreamsPage from "./pages/StreamsPage";
 import StreamPage from "./pages/StreamPage";
+import LivePage from "./pages/LivePage";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useMero();
@@ -85,6 +86,19 @@ export default function App() {
           <RequireAuth>
             <RequireStream>
               <StreamPage />
+            </RequireStream>
+          </RequireAuth>
+        }
+      />
+      {/* Approach 2: 480p H.264 encoded in the browser, app stores opaque bytes.
+          Same auth + stream requirements as /stream; a separate route so the
+          measured approach-3 baseline stays reachable and untouched. */}
+      <Route
+        path="/live"
+        element={
+          <RequireAuth>
+            <RequireStream>
+              <LivePage />
             </RequireStream>
           </RequireAuth>
         }

@@ -44,3 +44,35 @@ export interface StreamStats {
   /** How many frames have been pruned (each pruned fragment is a tombstone). */
   prunedFrames: number;
 }
+
+// ── Approach 2: opaque chunks from a real browser codec ──────────────────────
+
+/**
+ * One WebCodecs-encoded chunk as the WASM app stores and returns it. `dataB64`
+ * is an H.264 access unit (annex-B) that only a real decoder understands — the
+ * app never interprets it, which is what makes a hardware codec legal here.
+ */
+export interface ChunkView {
+  seq: number;
+  from: string;
+  track: number;
+  isKeyframe: boolean;
+  /** Feed this straight into VideoDecoder.configure — it must match the encoder. */
+  codec: string;
+  width: number;
+  height: number;
+  timestampUs: number;
+  dataB64: string;
+  createdAt: number;
+}
+
+/** Approach-2 instrumentation snapshot. */
+export interface LiveStats {
+  liveChunks: number;
+  nextChunkSeq: number;
+  oldestLiveChunk: number;
+  prunedChunks: number;
+  lastKeyframeSeq: number;
+  /** Summed encoded bytes currently live — the real state footprint. */
+  liveBytes: number;
+}

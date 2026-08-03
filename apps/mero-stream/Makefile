@@ -74,6 +74,7 @@ workflows: logic-build
 	cd workflows && merobox bootstrap run e2e.yml
 	cd workflows && merobox bootstrap run e2e-tombstones.yml
 	cd workflows && merobox bootstrap run e2e-fanout.yml
+	cd workflows && merobox bootstrap run e2e-live-chunks.yml
 
 # P3: the load curve. Needs a running context — `make workflows` leaves two nodes
 # up and prints the context id + both member keys, or use `make dev-nodes`.

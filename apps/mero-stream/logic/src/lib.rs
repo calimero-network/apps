@@ -40,6 +40,8 @@
 
 use std::str::FromStr;
 
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine as _;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, env as sdk_env, PublicKey};
@@ -80,6 +82,27 @@ const MAX_DIM: u16 = 256;
 /// removed fragment. Small live window (good) traded for monotone tombstone
 /// growth (the thing most likely to kill a sustained run).
 const FRAME_WINDOW: u64 = 30;
+
+/// Approach 2: how many of the most recent opaque chunks to keep live.
+///
+/// Larger than FRAME_WINDOW because a real codec emits several chunks per second
+/// per track and the window must comfortably span the keyframe interval — if the
+/// window is shorter than the gap between keyframes, the reaper's keyframe clamp
+/// ends up pinning nearly everything and the window stops bounding anything.
+const CHUNK_WINDOW: u64 = 120;
+
+/// Approach 2: per-chunk ceiling for opaque codec output.
+///
+/// Deliberately much larger than `MAX_CHUNK_BYTES`. That 16 KiB figure is
+/// approach 3's *design point* — the 4-32 KiB band the task doc picked to study
+/// small fragments. Approach 2 does not get to choose: a chunk is whatever the
+/// hardware encoder emitted, and a 480p keyframe is legitimately 30-60 KB even at
+/// a modest bitrate. Capping those at 16 KiB would force sub-frame splitting and
+/// reassembly-before-decode in the browser for no benefit.
+///
+/// 256 KiB keeps a single chunk ~4x under the 1 MiB gossip/delta cap, so one
+/// chunk is still always one deliverable delta.
+const MAX_MEDIA_CHUNK_BYTES: usize = 256 * 1024;
 
 // ── Fragment (the only thing that gossips) ─────────────────────────────────────
 
@@ -147,6 +170,105 @@ impl MergeableTrait for Fragment {
 // to satisfy the `Mergeable: RekeyTarget` supertrait bound.
 impl RekeyTarget for Fragment {
     fn rekey_relative_to(&mut self, _parent_id: Id) {}
+}
+
+// ── Approach 2: an opaque chunk from a real browser codec ──────────────────────
+
+/// One encoded chunk produced by **WebCodecs in the browser**, stored verbatim.
+///
+/// The whole point: this app cannot decode `data` and never tries. It is an
+/// H.264/VP8 access unit (or a fragment of one) that only a real decoder
+/// understands. We are a replicated ring buffer with metadata, nothing more.
+///
+/// Consequences of not interpreting it:
+/// - **No determinism constraint.** Nodes store an identical blob without any
+///   node computing it, so a float-heavy hardware codec is fine here.
+/// - **We cannot validate it.** A member can store arbitrary bytes and the peer's
+///   decoder is what rejects them. Membership is the only gate; that is the same
+///   trust model as `post_signal` in mero-meet.
+/// - **`is_keyframe` is sender-asserted.** We cannot verify it by parsing, and
+///   pruning depends on it (see `last_keyframe_seq`). A member lying about it
+///   degrades their own stream's recoverability, which is why it is acceptable —
+///   but it is asserted, not proven.
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+#[serde(rename_all = "camelCase")]
+pub struct MediaChunk {
+    /// Global monotone sequence; key `chunk-{seq}`, NEVER reused (C3).
+    pub seq: u64,
+    pub from: MemberId,
+    /// 0 = video, 1 = audio. Both ride the same ring, interleaved by seq.
+    pub track: u8,
+    /// Sender-asserted: this chunk is independently decodable.
+    pub is_keyframe: bool,
+    /// Codec string the browser used, e.g. "avc1.42001f" or "opus". The peer
+    /// feeds this straight back into its decoder config, so it must round-trip
+    /// verbatim — a decoder configured differently from the encoder produces
+    /// garbage or throws.
+    pub codec: String,
+    /// Decode geometry (video only; 0 for audio).
+    pub width: u16,
+    pub height: u16,
+    /// Presentation timestamp in microseconds, as WebCodecs reports it. Distinct
+    /// from `created_at`: this is the media clock the decoder needs, not a
+    /// wall clock for latency arithmetic.
+    pub timestamp_us: u64,
+    /// The encoded bytes. Opaque.
+    pub data: Vec<u8>,
+    /// Sender's wall clock in unix MILLISECONDS (same convention as
+    /// `Fragment::created_at` — §4 latency needs sub-second resolution).
+    pub created_at: u64,
+}
+
+impl MergeableTrait for MediaChunk {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // Immutable once posted and keyed by a globally unique seq, so a merge of
+        // "the same" chunk is a no-op. Newer wins defensively.
+        if other.created_at > self.created_at {
+            *self = other.clone();
+        }
+        Ok(())
+    }
+}
+
+impl RekeyTarget for MediaChunk {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
+}
+
+/// Read model for the receive side: what a peer needs to drive its decoder.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(crate = "calimero_sdk::serde")]
+#[serde(rename_all = "camelCase")]
+pub struct ChunkView {
+    pub seq: u64,
+    pub from: MemberId,
+    pub track: u8,
+    pub is_keyframe: bool,
+    pub codec: String,
+    pub width: u16,
+    pub height: u16,
+    pub timestamp_us: u64,
+    /// Base64 — the RPC layer is JSON, and a raw `Vec<u8>` serializes as a JSON
+    /// array of numbers (~3 bytes of text per byte of payload). Base64 is ~1.37x
+    /// instead, so a 22 KB keyframe travels as ~30 KB of JSON rather than ~80 KB.
+    pub data_b64: String,
+    pub created_at: u64,
+}
+
+/// Approach-2 instrumentation snapshot.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(crate = "calimero_sdk::serde")]
+#[serde(rename_all = "camelCase")]
+pub struct LiveStats {
+    pub live_chunks: u32,
+    pub next_chunk_seq: u64,
+    pub oldest_live_chunk: u64,
+    pub pruned_chunks: u64,
+    pub last_keyframe_seq: u64,
+    /// Summed `data` bytes currently live — the real "how much state is this
+    /// stream holding" figure.
+    pub live_bytes: u64,
 }
 
 // ── Membership (lightweight — just enough to reject non-members) ────────────────
@@ -231,6 +353,9 @@ pub enum Event {
     FramePosted(u64),
     /// Frames below this seq were pruned (tombstones emitted, C3).
     FramesPruned(u64),
+    /// Approach 2: an opaque WebCodecs chunk was stored. Payload is its seq; a
+    /// peer calls `get_chunks(after_seq)` to drain and feed its decoder.
+    ChunkPosted(u64),
 }
 
 // ── State ───────────────────────────────────────────────────────────────────
@@ -257,6 +382,36 @@ pub struct MeroStream {
     pruned_frames: LwwRegister<u64>,
     /// Role registry: the creator is the sole initial admin.
     roles: AccessControl,
+
+    // ── Approach 2: opaque chunks encoded by a REAL codec in the browser ──────
+    //
+    // Everything above is approach 3 (toy codec runs in WASM). These fields are
+    // the parallel approach-2 path and are deliberately separate state, so the
+    // measured approach-3 baseline keeps working untouched.
+    //
+    // The difference that matters: this app never looks inside `data`. The
+    // browser encodes with WebCodecs (hardware H.264/VP8) and hands us bytes we
+    // only store and replicate. Because we never interpret them, the C1
+    // determinism constraint does not apply — every node stores the identical
+    // blob without any node having to *compute* it. That is precisely what makes
+    // a real codec (and therefore a realistic resolution) legal here and illegal
+    // in approach 3.
+    /// Opaque encoded chunks, keyed `chunk-{seq}`.
+    chunks: UnorderedMap<String, MediaChunk>,
+    /// Global monotone chunk sequence. Never reused (C3).
+    next_chunk_seq: LwwRegister<u64>,
+    /// Lowest chunk seq still retained.
+    oldest_live_chunk: LwwRegister<u64>,
+    /// Chunks pruned so far (tombstone pressure).
+    pruned_chunks: LwwRegister<u64>,
+    /// Seq of the newest keyframe we have accepted.
+    ///
+    /// Load-bearing for pruning, not bookkeeping. A delta frame is meaningless
+    /// without the keyframe it refs, so the reaper must never prune past the
+    /// newest keyframe — do that and a peer joining mid-stream (or any peer that
+    /// fell behind) has nothing decodable to start from and shows a grey canvas
+    /// until the *next* keyframe, which may be seconds away.
+    last_keyframe_seq: LwwRegister<u64>,
 }
 
 // ── Logic ─────────────────────────────────────────────────────────────────────
@@ -276,6 +431,11 @@ impl MeroStream {
             oldest_live_seq: LwwRegister::new(0),
             pruned_frames: LwwRegister::new(0),
             roles: AccessControl::new(me),
+            chunks: UnorderedMap::new(),
+            next_chunk_seq: LwwRegister::new(0),
+            oldest_live_chunk: LwwRegister::new(0),
+            pruned_chunks: LwwRegister::new(0),
+            last_keyframe_seq: LwwRegister::new(0),
         }
     }
 
@@ -507,6 +667,214 @@ impl MeroStream {
             .map(|f| codec::fnv1a64(&f.pixels))
     }
 
+    // ── Approach 2: store/serve opaque chunks from a real browser codec ─────────
+
+    /// Store one WebCodecs-encoded chunk. **The approach-2 core.**
+    ///
+    /// `data_b64` is base64 because the RPC layer is JSON (see `ChunkView`).
+    /// `now` is unix MILLISECONDS, like `encode_frame`.
+    ///
+    /// No codec work happens here — that is the entire design. We decode base64
+    /// to bytes, store them, advance the window, and emit an event. Compare
+    /// `encode_frame`, which burns ~10 ms of WASM on a 3 KB frame; this is a
+    /// memcpy, so a realistic resolution stops being CPU-bound on the node.
+    /// Nine parameters is past clippy's threshold, and deliberate: these arrive as
+    /// NAMED fields in a JSON-RPC `argsJson` object, so the flat list *is* the wire
+    /// contract. Grouping them into a struct would nest the JSON one level and
+    /// break every caller for a purely cosmetic win.
+    #[allow(clippy::too_many_arguments)]
+    pub fn post_chunk(
+        &mut self,
+        data_b64: String,
+        track: u8,
+        is_keyframe: bool,
+        codec: String,
+        width: u16,
+        height: u16,
+        timestamp_us: u64,
+        now: u64,
+    ) -> app::Result<u64> {
+        let from = self.require_member()?;
+
+        let data = BASE64
+            .decode(data_b64.as_bytes())
+            .map_err(|_| app::err!("data_b64 is not valid base64"))?;
+        if data.is_empty() {
+            app::bail!("chunk is empty");
+        }
+        // C2: one chunk is one replicated delta. The browser is told to keep
+        // chunks small, but a client is not trusted to obey — a single oversize
+        // chunk would be silently undeliverable (it exceeds the gossip transmit
+        // size), so reject it here where the sender still sees the error.
+        if data.len() > MAX_MEDIA_CHUNK_BYTES {
+            app::bail!("chunk exceeds MAX_MEDIA_CHUNK_BYTES; lower the bitrate or resolution");
+        }
+        // A decoder must be configured with the exact codec string the encoder
+        // used, so an empty one is unusable downstream.
+        if codec.is_empty() {
+            app::bail!("codec string is required");
+        }
+
+        let seq = self.next_chunk_seq.get().saturating_add(1);
+        self.next_chunk_seq.set(seq);
+        if is_keyframe {
+            self.last_keyframe_seq.set(seq);
+        }
+
+        let chunk = MediaChunk {
+            seq,
+            from,
+            track,
+            is_keyframe,
+            codec,
+            width,
+            height,
+            timestamp_us,
+            data,
+            created_at: now,
+        };
+        self.chunks.insert(Self::chunk_key(seq), chunk)?;
+
+        self.prune_chunks_internal(seq);
+        app::emit!(Event::ChunkPosted(seq));
+        Ok(seq)
+    }
+
+    /// Chunk storage key. Monotone and NEVER reused (C3).
+    fn chunk_key(seq: u64) -> String {
+        format!("chunk-{}", seq)
+    }
+
+    /// Every live chunk with `seq > after_seq`, oldest first (view, no delta).
+    ///
+    /// The peer passes back the highest seq it has fed its decoder. Returns
+    /// base64 so the JSON transport stays ~1.37x rather than ~3x.
+    pub fn get_chunks(&self, after_seq: u64) -> Vec<ChunkView> {
+        let mut out: Vec<ChunkView> = self
+            .chunks
+            .entries()
+            .map(|e| {
+                e.map(|(_, c)| c)
+                    .filter(|c| c.seq > after_seq)
+                    .map(|c| ChunkView {
+                        seq: c.seq,
+                        from: c.from.clone(),
+                        track: c.track,
+                        is_keyframe: c.is_keyframe,
+                        codec: c.codec.clone(),
+                        width: c.width,
+                        height: c.height,
+                        timestamp_us: c.timestamp_us,
+                        data_b64: BASE64.encode(&c.data),
+                        created_at: c.created_at,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        // Decoders are order-sensitive: a delta frame fed before its reference
+        // produces garbage or throws.
+        out.sort_by_key(|c| c.seq);
+        out
+    }
+
+    /// The newest keyframe still live, or `None`.
+    ///
+    /// A peer joining mid-stream calls this first: feeding a decoder a delta
+    /// frame with no preceding keyframe cannot produce a picture, so the join
+    /// path is "find the keyframe, start there", not "start at whatever is
+    /// newest".
+    pub fn keyframe_cursor(&self) -> Option<u64> {
+        let seq = *self.last_keyframe_seq.get();
+        if seq == 0 {
+            return None;
+        }
+        // Confirm it is still live rather than trusting the register — the
+        // reaper protects it, but a peer that has not synced yet may legitimately
+        // not hold it.
+        match self.chunks.get(&Self::chunk_key(seq)) {
+            Ok(Some(_)) => Some(seq),
+            _ => None,
+        }
+    }
+
+    pub fn get_live_stats(&self) -> LiveStats {
+        let live_bytes = self
+            .chunks
+            .entries()
+            .map(|e| e.map(|(_, c)| c.data.len() as u64).sum::<u64>())
+            .unwrap_or(0);
+        LiveStats {
+            live_chunks: self.chunks.len().unwrap_or(0) as u32,
+            next_chunk_seq: *self.next_chunk_seq.get(),
+            oldest_live_chunk: *self.oldest_live_chunk.get(),
+            pruned_chunks: *self.pruned_chunks.get(),
+            last_keyframe_seq: *self.last_keyframe_seq.get(),
+            live_bytes,
+        }
+    }
+
+    /// Keyframe-safe reaper. Keeps a rolling window, but **never prunes the
+    /// newest keyframe or anything after it**.
+    ///
+    /// Without that clamp the window boundary eventually lands past the last
+    /// keyframe and every remaining chunk is a delta with no reference — the
+    /// stream is live, replicating, and undecodable, which is the worst failure
+    /// mode available because nothing looks broken from the sender's side.
+    fn prune_chunks_internal(&mut self, latest_seq: u64) {
+        let window_floor = latest_seq.saturating_sub(CHUNK_WINDOW);
+        let keyframe = *self.last_keyframe_seq.get();
+        // Never step past the newest keyframe.
+        let threshold = if keyframe == 0 {
+            window_floor
+        } else {
+            window_floor.min(keyframe)
+        };
+        if threshold > *self.oldest_live_chunk.get() {
+            self.prune_chunks_below(threshold);
+        }
+    }
+
+    /// Explicit reaper (membership-gated). Still honours the keyframe clamp —
+    /// an operator cannot ask for an undecodable stream.
+    pub fn prune_chunks(&mut self, before_seq: u64) -> app::Result<()> {
+        self.require_member()?;
+        let keyframe = *self.last_keyframe_seq.get();
+        let clamped = if keyframe == 0 {
+            before_seq
+        } else {
+            before_seq.min(keyframe)
+        };
+        self.prune_chunks_below(clamped);
+        Ok(())
+    }
+
+    /// Remove every chunk with `seq < before_seq`. Each removal is a replicated
+    /// tombstone (C3) — the cost this whole task exists to measure.
+    fn prune_chunks_below(&mut self, before_seq: u64) {
+        if before_seq == 0 {
+            return;
+        }
+        let start = *self.oldest_live_chunk.get().max(&1);
+        let mut removed = 0u64;
+        for seq in start..before_seq {
+            if self
+                .chunks
+                .remove(&Self::chunk_key(seq))
+                .unwrap_or(None)
+                .is_some()
+            {
+                removed += 1;
+            }
+        }
+        if removed > 0 {
+            let total = self.pruned_chunks.get().saturating_add(removed);
+            self.pruned_chunks.set(total);
+        }
+        if before_seq > *self.oldest_live_chunk.get() {
+            self.oldest_live_chunk.set(before_seq);
+        }
+    }
+
     // ── Prune (explicit reaper; every removal is a tombstone — C3) ────────────────
 
     /// Remove all fragments belonging to frames with `seq < before_seq`.
@@ -695,8 +1063,11 @@ mod tests {
     use calimero_sdk::testing::TestHost;
 
     use super::{
-        codec, DecodedFrame, MeroStream, FRAME_WINDOW, MAX_CHUNK_BYTES, MAX_DIM, TRACK_VIDEO_LUMA,
+        codec, DecodedFrame, MeroStream, BASE64, CHUNK_WINDOW, FRAME_WINDOW, MAX_CHUNK_BYTES,
+        MAX_DIM, MAX_MEDIA_CHUNK_BYTES, TRACK_VIDEO_LUMA,
     };
+    use base64::Engine as _;
+    use calimero_sdk::app;
 
     const ALICE: [u8; 32] = [0x11; 32];
     const BOB: [u8; 32] = [0x22; 32];
@@ -1262,6 +1633,294 @@ mod tests {
         let members = app.view(|s| s.get_members());
         assert_eq!(members.len(), 1, "re-joining must not duplicate a member");
         assert_eq!(members[0].username, "Alice Renamed");
+    }
+
+    // ── Approach 2: opaque chunks from a real browser codec ───────────────────────
+
+    fn b64(bytes: &[u8]) -> String {
+        BASE64.encode(bytes)
+    }
+
+    /// Post one chunk with the boilerplate filled in.
+    fn post(
+        app: &mut TestHost<MeroStream>,
+        who: [u8; 32],
+        data: &[u8],
+        keyframe: bool,
+        now: u64,
+    ) -> app::Result<u64> {
+        app.call_as(who, |s| {
+            s.post_chunk(
+                b64(data),
+                0,
+                keyframe,
+                "avc1.42001f".to_owned(),
+                640,
+                480,
+                now * 1000,
+                now,
+            )
+        })
+    }
+
+    #[test]
+    fn a_chunk_round_trips_byte_for_byte_without_being_interpreted() {
+        // The approach-2 claim: arbitrary encoded bytes come back exactly as sent.
+        // Deliberately NOT valid H.264 — this app must not care, and a test using
+        // a real access unit would hide it if we ever started parsing.
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        let payload: Vec<u8> = (0..500).map(|i| ((i * 31) % 256) as u8).collect();
+        let seq = post(&mut app, ALICE, &payload, true, 1_751_955_010).unwrap();
+
+        let got = app.view(|s| s.get_chunks(seq - 1));
+        assert_eq!(got.len(), 1);
+        assert_eq!(BASE64.decode(got[0].data_b64.as_bytes()).unwrap(), payload);
+        // The decoder config must survive verbatim, or the peer decodes garbage.
+        assert_eq!(got[0].codec, "avc1.42001f");
+        assert_eq!((got[0].width, got[0].height), (640, 480));
+        assert!(got[0].is_keyframe);
+    }
+
+    #[test]
+    fn chunks_come_back_in_seq_order() {
+        // Decoders are order-sensitive: a delta frame before its reference throws.
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        post(&mut app, ALICE, b"key", true, 1000).unwrap();
+        for k in 1..6 {
+            post(&mut app, ALICE, b"delta", false, 1000 + k).unwrap();
+        }
+        let seqs: Vec<u64> = app
+            .view(|s| s.get_chunks(0))
+            .iter()
+            .map(|c| c.seq)
+            .collect();
+        let mut sorted = seqs.clone();
+        sorted.sort_unstable();
+        assert_eq!(seqs, sorted);
+    }
+
+    #[test]
+    fn the_reaper_never_prunes_past_the_newest_keyframe() {
+        // THE approach-2 regression. If the rolling window is allowed to advance
+        // past the last keyframe, every surviving chunk is a delta with no
+        // reference: the stream keeps replicating and is silently undecodable.
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+
+        // One keyframe, then far more deltas than CHUNK_WINDOW.
+        let kf = post(&mut app, ALICE, b"keyframe", true, 1000).unwrap();
+        for k in 0..(CHUNK_WINDOW + 50) {
+            post(&mut app, ALICE, b"delta", false, 1001 + k).unwrap();
+        }
+
+        let stats = app.view(|s| s.get_live_stats());
+        assert_eq!(stats.last_keyframe_seq, kf);
+        // The window wanted to prune well past `kf`; the clamp held it back.
+        assert!(
+            stats.oldest_live_chunk <= kf,
+            "window advanced past the keyframe: oldest={} kf={}",
+            stats.oldest_live_chunk,
+            kf
+        );
+        // And the keyframe is genuinely still readable, so a joiner can start.
+        assert_eq!(app.view(|s| s.keyframe_cursor()), Some(kf));
+        assert!(app
+            .view(|s| s.get_chunks(kf - 1))
+            .iter()
+            .any(|c| c.seq == kf && c.is_keyframe));
+    }
+
+    #[test]
+    fn a_newer_keyframe_releases_the_older_one_for_pruning() {
+        // The clamp must not be a permanent leak: once a NEWER keyframe exists,
+        // everything before it becomes prunable, otherwise live state grows
+        // forever and the window bounds nothing.
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        let first_kf = post(&mut app, ALICE, b"kf1", true, 1000).unwrap();
+        for k in 0..10 {
+            post(&mut app, ALICE, b"delta", false, 1001 + k).unwrap();
+        }
+        // A second keyframe, then enough traffic to push the window past kf1.
+        let second_kf = post(&mut app, ALICE, b"kf2", true, 2000).unwrap();
+        for k in 0..(CHUNK_WINDOW + 20) {
+            post(&mut app, ALICE, b"delta", false, 2001 + k).unwrap();
+        }
+
+        let stats = app.view(|s| s.get_live_stats());
+        assert_eq!(stats.last_keyframe_seq, second_kf);
+        assert!(
+            stats.oldest_live_chunk > first_kf,
+            "the superseded keyframe should have been released (oldest={} first_kf={})",
+            stats.oldest_live_chunk,
+            first_kf
+        );
+        assert!(stats.pruned_chunks > 0);
+        // The CURRENT keyframe still survives — a joiner is never left stranded.
+        assert_eq!(app.view(|s| s.keyframe_cursor()), Some(second_kf));
+    }
+
+    #[test]
+    fn explicit_prune_cannot_strand_the_stream_either() {
+        // prune_chunks is membership-gated AND clamped: an operator asking to wipe
+        // everything must not be able to produce an undecodable live stream.
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        let kf = post(&mut app, ALICE, b"kf", true, 1000).unwrap();
+        for k in 0..5 {
+            post(&mut app, ALICE, b"delta", false, 1001 + k).unwrap();
+        }
+        assert!(app.call_as(BOB, |s| s.prune_chunks(9999)).is_err());
+        app.call_as(ALICE, |s| s.prune_chunks(9999)).unwrap();
+        assert_eq!(
+            app.view(|s| s.keyframe_cursor()),
+            Some(kf),
+            "even prune(everything) must leave the keyframe"
+        );
+    }
+
+    #[test]
+    fn keyframe_cursor_is_none_before_any_keyframe() {
+        // A joiner must be able to tell "nothing decodable yet" from "start here",
+        // including the case where only delta frames have been posted.
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        assert_eq!(app.view(|s| s.keyframe_cursor()), None);
+        post(&mut app, ALICE, b"delta-only", false, 1000).unwrap();
+        assert_eq!(app.view(|s| s.keyframe_cursor()), None);
+    }
+
+    #[test]
+    fn chunk_guards_reject_what_the_wire_cannot_carry() {
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+
+        // Not base64.
+        assert!(app
+            .call_as(ALICE, |s| s.post_chunk(
+                "!!!not base64!!!".to_owned(),
+                0,
+                true,
+                "avc1".to_owned(),
+                640,
+                480,
+                0,
+                1000
+            ))
+            .is_err());
+        // Empty payload.
+        assert!(post(&mut app, ALICE, b"", true, 1000).is_err());
+        // Over the per-delta cap — rejected here so the sender sees it, rather
+        // than becoming a silently undeliverable gossip message.
+        let too_big = vec![7u8; MAX_MEDIA_CHUNK_BYTES + 1];
+        assert!(post(&mut app, ALICE, &too_big, true, 1000).is_err());
+        // Missing codec string: the peer could not configure a decoder.
+        assert!(app
+            .call_as(ALICE, |s| s.post_chunk(
+                b64(b"x"),
+                0,
+                true,
+                String::new(),
+                640,
+                480,
+                0,
+                1000
+            ))
+            .is_err());
+        // None of the rejects may consume a seq.
+        assert_eq!(app.view(|s| s.get_live_stats()).next_chunk_seq, 0);
+    }
+
+    #[test]
+    fn a_non_member_cannot_post_chunks() {
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        assert!(post(&mut app, BOB, b"payload", true, 1000).is_err());
+    }
+
+    #[test]
+    fn live_stats_track_bytes_and_the_keyframe() {
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        let fresh = app.view(|s| s.get_live_stats());
+        assert_eq!(
+            (fresh.live_chunks, fresh.live_bytes, fresh.next_chunk_seq),
+            (0, 0, 0)
+        );
+
+        post(&mut app, ALICE, &[1u8; 100], true, 1000).unwrap();
+        post(&mut app, ALICE, &[2u8; 250], false, 1001).unwrap();
+        let stats = app.view(|s| s.get_live_stats());
+        assert_eq!(stats.live_chunks, 2);
+        assert_eq!(
+            stats.live_bytes, 350,
+            "live_bytes is the real state footprint"
+        );
+        assert_eq!(stats.next_chunk_seq, 2);
+        assert_eq!(stats.last_keyframe_seq, 1);
+    }
+
+    #[test]
+    fn audio_and_video_share_one_ring_and_stay_distinguishable() {
+        // Approach 2 gets audio for free: it is just another opaque codec output.
+        // Both tracks ride the same seq series, and `track` is what separates them
+        // on the receive side.
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(ALICE, |s| {
+            s.post_chunk(
+                b64(b"video"),
+                0,
+                true,
+                "avc1.42001f".to_owned(),
+                640,
+                480,
+                0,
+                1000,
+            )
+        })
+        .unwrap();
+        app.call_as(ALICE, |s| {
+            s.post_chunk(b64(b"audio"), 1, true, "opus".to_owned(), 0, 0, 0, 1001)
+        })
+        .unwrap();
+
+        let all = app.view(|s| s.get_chunks(0));
+        assert_eq!(all.len(), 2);
+        let video = all.iter().find(|c| c.track == 0).unwrap();
+        let audio = all.iter().find(|c| c.track == 1).unwrap();
+        assert_eq!(video.codec, "avc1.42001f");
+        assert_eq!(audio.codec, "opus");
+        assert_eq!(BASE64.decode(audio.data_b64.as_bytes()).unwrap(), b"audio");
+    }
+
+    #[test]
+    fn approach_3_state_is_untouched_by_approach_2() {
+        // The two paths must not interfere — approach 3 is the measured baseline.
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        post(&mut app, ALICE, b"opaque", true, 1000).unwrap();
+        let frame = quant_aligned_frame(8, 8);
+        app.call_as(ALICE, |s| s.encode_frame(frame, 8, 8, 0, 1001))
+            .unwrap();
+
+        assert_eq!(app.view(|s| s.get_stats()).next_seq, 1);
+        assert_eq!(app.view(|s| s.get_live_stats()).next_chunk_seq, 1);
+        assert_eq!(app.view(|s| s.get_frame(0)).len(), 1);
+        assert_eq!(app.view(|s| s.get_chunks(0)).len(), 1);
     }
 
     #[test]

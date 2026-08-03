@@ -1,0 +1,237 @@
+name: Mero Stream — approach 2, opaque codec chunks across the wire
+description: >
+  Approach 2: the browser encodes with a REAL codec (hardware H.264 via
+  WebCodecs) and the WASM app stores bytes it never interprets. This scenario
+  proves the replication half of that on two real nodes, without a browser:
+  arbitrary opaque bytes posted on node 1 come back byte-identical on node 2, and
+  the keyframe-clamped reaper still leaves a joining peer something decodable.
+
+  Payloads here are deliberately NOT valid H.264. The whole approach-2 claim is
+  that the app does not care what the bytes mean — a scenario built on real access
+  units would hide a regression where we started parsing them.
+
+  What this scenario CANNOT cover: the actual encode/decode. That needs a real
+  browser with a camera (`/live` route, Chrome). This covers everything between.
+
+force_pull_image: true
+
+nodes:
+  chain_id: testnet-1
+  count: 2
+  # Keep in step with logic/Cargo.toml's calimero-* tag.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.19
+  prefix: calimero-node
+  # info, not merobox's debug default — see the other scenarios.
+  log_level: info
+  # Distinct from e2e.yml (2760/2660), tombstones (2780/2680), fanout (2800/2700).
+  base_port: 2820
+  base_rpc_port: 2720
+
+steps:
+  - name: Install application on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: "../logic/res/mero_stream.wasm"
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Create the stream mesh
+    type: create_mesh
+    context_node: calimero-node-1
+    application_id: "{{app_id}}"
+    path: "../logic/res/mero_stream.wasm"
+    nodes:
+      - calimero-node-2
+    capability: member
+    params: '{"name": "live"}'
+
+  - name: Wait for the context on both nodes
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Alice joins
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    method: join
+    args: { username: "Alice", now: 1751955000 }
+    executor_public_key: "{{member_public_key}}"
+
+  - name: Bob joins
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: join
+    args: { username: "Bob", now: 1751955001 }
+    executor_public_key: "{{public_key}}"
+
+  - name: Sync membership
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # ── Post a "keyframe" ───────────────────────────────────────────────────────
+  # base64 of the bytes 00 00 00 01 67 FF FE 80 — an annex-B start code followed
+  # by arbitrary binary, including 0xFF and 0x00. Chosen so a transport that
+  # mangles non-text bytes fails here rather than silently downstream.
+  - name: Alice posts an opaque keyframe chunk
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    method: post_chunk
+    args:
+      data_b64: "AAAAAWf//oA="
+      track: 0
+      is_keyframe: true
+      codec: "avc1.42001f"
+      width: 640
+      height: 480
+      timestamp_us: 0
+      now: 1751955010000
+    executor_public_key: "{{member_public_key}}"
+    outputs:
+      kf_seq: result.output
+
+  - name: Alice posts a delta chunk
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    method: post_chunk
+    args:
+      data_b64: "AAAAAUHAgA=="
+      track: 0
+      is_keyframe: false
+      codec: "avc1.42001f"
+      width: 640
+      height: 480
+      timestamp_us: 33333
+      now: 1751955010033
+    executor_public_key: "{{member_public_key}}"
+
+  - name: Sync the chunks to node 2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 120
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Bob reads the chunks
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: get_chunks
+    args: { after_seq: 0 }
+    executor_public_key: "{{public_key}}"
+    outputs:
+      bob_chunks: result
+
+  # `contains`, not `json_subset`. json_subset compares list ELEMENTS by exact
+  # dict equality — it does not recurse into a dict nested inside a list — so a
+  # partial `{"seq": 1, "dataB64": ...}` can never match a full chunk record that
+  # also carries `from` and `createdAt`.
+  #
+  # `contains` normally can't assert a payload either, because it splits its
+  # arguments on every comma. Base64 saves us: its alphabet is [A-Za-z0-9+/=],
+  # which contains no comma, so the encoded payload is directly assertable as a
+  # substring. Approach 3 needed an in-WASM checksum to get an assertable scalar;
+  # here the bytes travel as a comma-free string, which is a small side benefit of
+  # the app never transforming them.
+  - name: Assert the opaque bytes crossed EXACTLY, with their decoder config
+    type: assert
+    statements:
+      # Byte-identical keyframe payload on the far node. Includes 0x00 and 0xFF,
+      # so any transport that mangles non-text bytes fails right here.
+      - "contains({{bob_chunks}}, AAAAAWf//oA=)"
+      # And the delta chunk.
+      - "contains({{bob_chunks}}, AAAAAUHAgA==)"
+      # The decoder config must survive verbatim — a decoder configured
+      # differently from the encoder produces garbage or throws.
+      - "contains({{bob_chunks}}, avc1.42001f)"
+      # Both chunks arrived, and the keyframe flag survived (pruning depends on it).
+      - "contains({{bob_chunks}}, 'seq': 1)"
+      - "contains({{bob_chunks}}, 'seq': 2)"
+      - "contains({{bob_chunks}}, 'isKeyframe': True)"
+      - "contains({{bob_chunks}}, 'isKeyframe': False)"
+      # The media timestamp a decoder needs to order frames.
+      - "contains({{bob_chunks}}, 'timestampUs': 33333)"
+
+  - name: Bob asks where a joining peer should start
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: keyframe_cursor
+    args: {}
+    executor_public_key: "{{public_key}}"
+    outputs:
+      bob_kf_cursor: result.output
+
+  - name: Assert the peer is told to start at the keyframe, not the newest chunk
+    type: assert
+    statements:
+      # is_set first: a null cursor means "nothing decodable", and the comparison
+      # below stringifies, so null vs null would pass and prove nothing.
+      - "is_set({{bob_kf_cursor}})"
+      - "{{bob_kf_cursor}} == {{kf_seq}}"
+
+  - name: Bob reads the approach-2 stats
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: get_live_stats
+    args: {}
+    executor_public_key: "{{public_key}}"
+    outputs:
+      bob_live: result
+
+  - name: Assert the receiving node accounts for the live bytes it holds
+    type: json_assert
+    statements:
+      # 8 + 7 = 15 payload bytes across the two chunks. live_bytes must be the
+      # DECODED byte count, not the base64 length the wire carried (which is 20) —
+      # this assertion is what catches that confusion.
+      - 'json_subset({{bob_live}}, {"output": {"liveChunks": 2, "nextChunkSeq": 2, "lastKeyframeSeq": 1, "prunedChunks": 0, "liveBytes": 15}})'
+
+  # ── The keyframe clamp, after replication ───────────────────────────────────
+  - name: Alice asks to prune everything
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    method: prune_chunks
+    args: { before_seq: 9999 }
+    executor_public_key: "{{member_public_key}}"
+
+  - name: Sync the prune
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 120
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Bob checks he still has a decodable starting point
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: keyframe_cursor
+    args: {}
+    executor_public_key: "{{public_key}}"
+    outputs:
+      bob_kf_after_prune: result.output
+
+  - name: Assert prune(everything) still cannot strand the receiving peer
+    type: assert
+    statements:
+      # The failure this guards is the nastiest available: a stream that keeps
+      # replicating, reports healthy, and is undecodable because the reaper walked
+      # past the last keyframe and every surviving chunk is a reference-less delta.
+      - "is_set({{bob_kf_after_prune}})"
+      - "{{bob_kf_after_prune}} == {{kf_seq}}"
