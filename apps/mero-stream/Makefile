@@ -1,4 +1,4 @@
-.PHONY: help setup build bundle logic-build logic-test logic-bundle app-install app-build app-typecheck app-test dev dev-nodes dev-stop workflows clean
+.PHONY: help setup build bundle logic-build logic-test logic-bundle app-install app-build app-typecheck app-test dev dev-nodes dev-stop workflows load-curve clean
 
 help:
 	@echo ""
@@ -20,7 +20,8 @@ help:
 	@echo "    dev-stop       Stop both dev nodes"
 	@echo "  See DEV-TESTING.md."
 	@echo ""
-	@echo "  workflows      merobox 2-node e2e (P2 — needs Docker + merobox; DRAFT)"
+	@echo "  workflows      merobox 2-node e2e (P2 — needs Docker + merobox>=0.6.49)"
+	@echo "  load-curve     P3 load generator usage (drives encode_frame → CSV)"
 	@echo "  clean          Remove build artifacts"
 	@echo ""
 
@@ -65,9 +66,21 @@ dev-stop:
 	@bash scripts/dev-node2.sh --clean || true
 	@bash scripts/dev-node.sh --clean || true
 
-# P2 (DRAFT): 2-node fragment round-trip over merobox. Requires Docker + merobox.
+# P2: 2-node fragment round-trip over merobox. Requires Docker + merobox>=0.6.49.
+# Runs in CI too (.github/workflows/ci.yml).
 workflows: logic-build
 	cd workflows && merobox bootstrap run e2e.yml
+
+# P3: the load curve. Needs a running context — `make workflows` leaves two nodes
+# up and prints the context id + both member keys, or use `make dev-nodes`.
+# Stdlib python3 only; see the script's --help for the full flag set.
+load-curve:
+	@echo "Usage: python3 scripts/load-curve.py --node-url http://localhost:2660 \\"
+	@echo "         --context-id <ctx> --executor-key <sender-pk> \\"
+	@echo "         --peer-url http://localhost:2661 --peer-executor-key <peer-pk> \\"
+	@echo "         --peer-container calimero-node-2 --out load-curve.csv"
+	@echo ""
+	@python3 scripts/load-curve.py --help
 
 clean:
 	cd logic && rm -rf res target

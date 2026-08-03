@@ -206,3 +206,15 @@ export function setUsername(name: string): void {
 export function nowSecs(): number {
   return Math.floor(Date.now() / 1000);
 }
+
+/**
+ * Unix milliseconds — the clock `encode_frame` expects, and ONLY that method.
+ *
+ * Fragments carry millis while members carry seconds, because §4's headline
+ * metric is end-to-end fragment latency (capture → peer render). That is
+ * expected to land in the hundreds-of-ms-to-seconds band, which quantizes to
+ * "0 or 1" at second resolution. See `Fragment::created_at` in logic/src/lib.rs.
+ */
+export function nowMillis(): number {
+  return Date.now();
+}

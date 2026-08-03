@@ -50,13 +50,49 @@ jobs:
       - name: WASM build
         run: ./build.sh
 
-  # NOTE: the merobox 2-node fragment-streaming e2e is Phase P2 and lives in
-  # workflows/e2e.yml as a DRAFT. It is intentionally NOT wired into CI yet —
-  # it needs the frontend load path and the §4 instrumentation asserts finished
-  # first. Enable this job once workflows/e2e.yml is validated locally.
-  #
-  # e2e:
-  #   name: E2E (2-node fragment round-trip over merobox)
-  #   runs-on: ubuntu-latest
-  #   needs: logic
-  #   steps: ...
+  # P2: the fragment actually crosses the gossip layer between two real nodes,
+  # and the far node's in-WASM decode is proven bit-identical to the input.
+  # Validated locally against merod 0.11.0-rc.19 before being enabled here.
+  e2e:
+    name: E2E (2-node fragment round-trip over merobox)
+    runs-on: ubuntu-latest
+    needs: logic
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: logic
+      # The workflow installs logic/res/mero_stream.wasm into both nodes, so the
+      # wasm has to exist before merobox runs.
+      - name: Build the contract WASM
+        working-directory: logic
+        run: ./build.sh
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # Floor, not an exact pin: e2e.yml relies on `create_mesh` publishing its
+      # default {{context_id}}/{{member_public_key}}/{{public_key}} names and on
+      # `result.output` dotted-path extraction. 0.6.49 is the version the
+      # scenario was validated against.
+      - name: Install merobox
+        run: pip install "merobox>=0.6.49"
+
+      - name: 2-node fragment round-trip
+        working-directory: workflows
+        run: merobox bootstrap run e2e.yml
+
+      # merobox dumps each container's log here on failure; without them a red
+      # run tells you only which step failed, not why the node rejected it.
+      - name: Upload node logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: merobox-node-logs
+          path: workflows/data/container-logs/
+          if-no-files-found: ignore
+
+      - name: Stop nodes
+        if: always()
+        run: merobox stop --all || true

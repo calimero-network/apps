@@ -1,10 +1,14 @@
 # Cross-repo plan — making streaming-over-Calimero actually run
 
 Mero Stream's **app side is self-contained and done** (P0 contract + tests, P1
-frontend dev route). This document is the PLAN for the changes needed in *other*
-repos to (a) run the app end-to-end and (b) capture the measurements that are the
-real deliverable. **Nothing here is implemented yet** — it is a scoped to-do so
-the work can be approved/sequenced before anyone touches `tauri-app` or `core`.
+frontend dev route, P2 2-node e2e, P3 tooling). This document is the PLAN for the
+changes needed in *other* repos to (a) run the app end-to-end and (b) capture the
+measurements that are the real deliverable.
+
+**Status 2026-08-03:** §2 (core) has been audited against `master` @ rc.19 and
+mostly already exists — see the rewritten section below. §3 (merobox/e2e) is
+**done**. §1 (tauri) and §4 (registry) remain untouched and remain optional for
+the deliverable.
 
 Legend: **[run]** = needed to run the app at all · **[measure]** = needed for the
 §4 numbers (the deliverable) · **[dist]** = needed only for registry distribution.
@@ -64,40 +68,74 @@ mutation, `get_frame` an ordinary view; fragments already fit under the 1 MiB
 delta / gossip caps). Core work is only about **capturing the §4 metrics** —
 without it the app "works" but produces no failure curve.
 
-Instrumentation to expose (log markers and/or metrics endpoint), per §4:
+**AUDITED against core `master` @ rc.19 (2026-08-03).** The "audit first, add only
+the gaps" instruction below has now been carried out, and most of this section was
+already built. **The log-markers-vs-metrics-endpoint decision is moot: core has a
+Prometheus registry and unconditionally mounts `/metrics`** (`crates/server/src/metrics.rs:142`).
 
-- **2a. Per-mutation WASM execution time** — wall-time around the wasmer call for
-  a mutation, tagged by method, so `encode_frame` CPU cost is isolatable. *(This
-  is the Task-3-specific number nobody has.)*
-- **2b. Sealed delta size per mutation** — bytes of the state delta before
-  gossip; needed to chart the size knee vs. the 1 MiB cap (C2).
-- **2c. Gossip drop / backpressure counters** — where fan-out saturates across K
-  peers.
-- **2d. RocksDB on-disk growth over time** — sampled store size, to watch the
-  tombstone-accumulation slope (C3) over a sustained run, plus delta-apply
-  latency at minute 1 vs minute 30.
+Already available — no core change needed:
 
-Acceptance: a 30–60 min sustained run emits enough signal (logs or a metrics
-scrape) to produce the load-curve CSV and name the first bottleneck. Prefer
-reusing whatever perf counters core already has (see the core perf-audit work)
-before adding new ones — audit first, add only the gaps.
+- **2a. Per-mutation execution time — EXISTS.**
+  `context_runtime_execution_duration_seconds{context_id,method,status}`, observed
+  at `crates/context/src/handlers/execute/mod.rs:912`. Labelled by method, so
+  `encode_frame` is isolatable. Two caveats: it wraps all of `internal_execute`
+  (wasm + storage commit + seal), so it is mutation wall time rather than pure
+  WASM CPU; and see the gap below.
+- **2b. Sealed delta size — EXISTS as a log marker.** `artifact_len` is logged
+  with the method at `execute/mod.rs:971` and `:1987`. Run the node at `debug`
+  and grep. No histogram, but sufficient for a probe.
+- **2d. Delta-apply latency drift — EXISTS.** `crates/node/src/delta_store.rs:509`
+  and `:640` log per-apply `wasm_ms` / `total_ms`; metrics `delta_outcomes_total`,
+  `delta_cascade_size`, `dag_heads_count`, `delta_missing_parents_total` cover
+  apply health.
 
-> Decision needed: log-markers (cheap, greppable, good enough for a probe) vs. a
-> proper metrics endpoint (reusable). Recommend log-markers first.
+Actual remaining gaps:
+
+- **2a′. The histogram cannot resolve our encode.** Buckets are
+  `exponential_buckets(1.0, 2.0, 10)` (`crates/governance-store/src/metrics.rs:154`)
+  → 1 s … 512 s. Measured `encode_frame` RTT is ~20 ms at 64×48, so every
+  observation lands in the first bucket. **This is the one core PR worth filing:
+  finer buckets.** Until then the frontend/load-generator RTT is the best
+  available figure (an upper bound, since it includes transport).
+- **2c. Gossip publish drops / backpressure — MISSING.**
+  `crates/network/src/handlers/commands/publish.rs` is ~20 lines with no
+  instrumentation; a `PublishError` (InsufficientPeers / MessageTooLarge)
+  propagates uncounted. Nothing to reuse.
+- **2d′. RocksDB on-disk size — MISSING as a metric.** Core's only process gauges
+  are `#[cfg(target_os = "linux")]` RSS/threads/FDs. **Worked around in this
+  repo**: `scripts/load-curve.py` samples it with `docker exec … du -sb`, so the
+  C3 tombstone slope is measurable today without touching core.
+
+Acceptance: a 30–60 min sustained run emits enough signal to produce the
+load-curve CSV and name the first bottleneck. **Reachable now** for everything
+except isolated per-fragment WASM CPU.
 
 ---
 
 ## 3. `merobox` + this repo's `workflows/e2e.yml` — **[measure]** (P2)
 
-- **3a.** Bump the `merod` image pin in `workflows/e2e.yml` (currently
-  `0.11.0-rc.9`, copied from Meet) to the current rc, matching the core the
-  metrics land in.
-- **3b.** Confirm the pinned merobox supports the array-valued `raw` arg and the
-  `assert` statements used in the draft; adjust step syntax if not.
-- **3c.** Once green locally, uncomment the `e2e` job in `.github/workflows/ci.yml`.
-- **3d. (P3) Load generator** (lives here, `scripts/`): drive `encode_frame` at
-  rising fps/geometry until a metric breaks; emit CSV. No merobox change, but
-  depends on §2 for the numbers.
+- **3a. ✅ DONE.** Image pinned to `0.11.0-rc.19`, matching `logic/Cargo.toml`.
+- **3b. ✅ DONE — no merobox change needed**, but three syntax traps were found
+  and worked around, worth recording:
+  - The `call` step returns the **raw JSON-RPC envelope** (`{id, jsonrpc, result}`),
+    so a scalar return is extracted with the dotted path `result.output`, not
+    `output`. `outputs: x: output` silently warns "Export failed" and leaves the
+    placeholder **unresolved**, which then reaches the contract as the literal
+    string `"{{x}}"` and panics the guest on deserialization.
+  - `assert`'s `contains(...)` / `regex(...)` split their arguments on **every**
+    comma, so no comma-bearing literal (i.e. any pixel array) can be asserted.
+    `json_assert`'s `json_subset` splits only on the first comma but does not
+    recurse into dicts nested inside a list. Hence `frame_checksum`: a scalar the
+    DSL can compare.
+  - `is_set` guards before comparing two checksums are load-bearing — the
+    operator comparison stringifies, so `null == null` passes.
+- **3c. ✅ DONE.** The `e2e` job is enabled in `.github/workflows/ci.yml`, with
+  node-log artifact upload on failure and a merobox floor of `>=0.6.49`.
+- **3d. (P3) Load generator — ✅ BUILT** (`scripts/load-curve.py`, stdlib only).
+  Ramps geometry × fps, stops on a named break condition, emits the CSV. Covers
+  sender RTT, achieved fps, error rate, live/pruned fragments, peer-side counters
+  and RocksDB growth — i.e. it does **not** depend on the §2 core work except for
+  isolated WASM CPU. Smoke-tested against two rc.19 nodes.
 
 ---
 

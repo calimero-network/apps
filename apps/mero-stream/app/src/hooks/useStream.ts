@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSubscription } from "@calimero-network/mero-react";
 import { useMeroStream } from "./useMeroStream";
 import { captureFrameLuma, paintLuma } from "../lib/luma";
+import { ProbeRecorder, type ProbeSnapshot } from "../lib/metrics";
 import type { StreamStats } from "../types";
 
 // Capture geometry — the send side downscales the webcam to exactly this before
@@ -17,6 +18,12 @@ const TRACK_VIDEO_LUMA = 0;
 // missed. SSE carries the urgency; this just keeps the decoded canvas honest.
 const RECEIVE_POLL_MS = 2000;
 
+// How often the aggregated §4 snapshot is recomputed for the panel. Decoupled
+// from the capture cadence on purpose: the recorder ingests every sample, and
+// re-rendering the metrics grid at 15 fps would have the measurement apparatus
+// competing with the thing it measures.
+const PROBE_REFRESH_MS = 1000;
+
 export interface StreamController {
   /** Attach to the local capture PREVIEW canvas (shows the tiny luma we send). */
   localCanvasRef: React.RefObject<HTMLCanvasElement | null>;
@@ -30,6 +37,14 @@ export interface StreamController {
   stats: StreamStats | null;
   /** Encoded byte size of the most recently rendered remote frame. */
   lastEncodedBytes: number | null;
+  /** Aggregated §4 measurements — latency, ingest rate, encode cost, drops. */
+  probe: ProbeSnapshot;
+  /** Download the per-frame CSV (the P3 load-curve artifact). */
+  downloadCsv: () => void;
+  /** Drop every sample — use before starting a measured run. */
+  resetProbe: () => void;
+  /** True once the CSV log hit its retention cap and stopped recording. */
+  csvTruncated: boolean;
   error: string | null;
 }
 
@@ -47,6 +62,12 @@ export interface StreamController {
  *
  * We also poll `get_stats` each capture tick so the metrics panel charts the
  * failure curve live.
+ *
+ * MEASURE: every send and every render feeds a `ProbeRecorder` (lib/metrics.ts),
+ * which is where the §4 deliverable numbers come from — end-to-end latency,
+ * ingest rate, encode round-trip, seq gaps — plus the per-frame CSV that P3's
+ * load curve is plotted from. The recorder is the reason this route exists: the
+ * app "working" was never the goal, the numbers are.
  *
  * Effect-dep discipline follows mero-meet's useCall: the memoized `stream` object
  * is held in a ref so the capture interval and drain closures always reach the
@@ -71,10 +92,17 @@ export function useStream(enabled: boolean): StreamController {
   // Highest frame seq we've already rendered. We drain everything strictly newer.
   const cursorRef = useRef(0);
 
+  // The §4 recorder. A ref, not state: it is written on every frame from inside
+  // interval/SSE closures, and putting it in state would re-render the tree per
+  // sample. The aggregated snapshot below is the only part React sees.
+  const probeRef = useRef(new ProbeRecorder());
+
   const [running, setRunning] = useState(false);
   const [fps, setFps] = useState(3);
   const [stats, setStats] = useState<StreamStats | null>(null);
   const [lastEncodedBytes, setLastEncodedBytes] = useState<number | null>(null);
+  const [probe, setProbe] = useState<ProbeSnapshot>(() => probeRef.current.snapshot());
+  const [csvTruncated, setCsvTruncated] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // ── RECEIVE: drain + paint decoded frames ───────────────────────────────────
@@ -95,6 +123,17 @@ export function useStream(enabled: boolean): StreamController {
           if (canvas.height !== f.height) canvas.height = f.height;
           paintLuma(ctx, f.width, f.height, f.pixels);
         }
+        // §4 end-to-end latency: sampled AFTER the paint above, so the figure
+        // covers capture → gossip → apply → decode → render, which is the span
+        // the task doc asks about. `createdAt` is the sender's clock (millis),
+        // so this carries any host clock skew — see lib/metrics.ts.
+        probeRef.current.recordFrame({
+          seq: f.seq,
+          createdAt: f.createdAt,
+          renderedAt: Date.now(),
+          encodedBytes: f.encodedBytes,
+          rawBytes: f.width * f.height,
+        });
       }
     } catch {
       /* transient RPC error — the poll / next SSE nudge retries */
@@ -121,7 +160,20 @@ export function useStream(enabled: boolean): StreamController {
         if (preview.height !== CAPTURE_HEIGHT) preview.height = CAPTURE_HEIGHT;
         paintLuma(pctx, CAPTURE_WIDTH, CAPTURE_HEIGHT, luma);
       }
-      await streamRef.current.encodeFrame(luma, CAPTURE_WIDTH, CAPTURE_HEIGHT, TRACK_VIDEO_LUMA);
+      // Time the mutation round-trip. This is the only §4 figure measured on a
+      // single clock, so it is the skew-proof "can the sender keep up" signal.
+      // It is an UPPER BOUND on WASM encode cost — it also contains JSON
+      // serialization of the raw frame, transport, the storage commit and the
+      // delta seal. Isolating the wasmer call itself needs core's
+      // execution_duration histogram (whose buckets start at 1s today).
+      const startedAt = Date.now();
+      let ok = false;
+      try {
+        await streamRef.current.encodeFrame(luma, CAPTURE_WIDTH, CAPTURE_HEIGHT, TRACK_VIDEO_LUMA);
+        ok = true;
+      } finally {
+        probeRef.current.recordEncode({ startedAt, durationMs: Date.now() - startedAt, ok });
+      }
       // Poll stats on the same cadence — cheap, and keeps the metrics live.
       const s = await streamRef.current.getStats();
       if (s) setStats(s);
@@ -204,6 +256,35 @@ export function useStream(enabled: boolean): StreamController {
     return () => clearInterval(id);
   }, [enabled, drain]);
 
+  // Recompute the aggregated §4 snapshot on a slow, fixed cadence — see
+  // PROBE_REFRESH_MS. Runs whenever the route is enabled (not only while
+  // capturing) so a receive-only node still charts what it is being sent.
+  useEffect(() => {
+    if (!enabled) return;
+    const id = setInterval(() => {
+      setProbe(probeRef.current.snapshot());
+      setCsvTruncated(probeRef.current.csvTruncated());
+    }, PROBE_REFRESH_MS);
+    return () => clearInterval(id);
+  }, [enabled]);
+
+  const downloadCsv = useCallback(() => {
+    const csv = probeRef.current.toCsv();
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    // Timestamped so successive runs on the same ramp step don't overwrite.
+    a.download = `mero-stream-frames-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const resetProbe = useCallback(() => {
+    probeRef.current.reset();
+    setProbe(probeRef.current.snapshot());
+    setCsvTruncated(false);
+  }, []);
+
   const start = useCallback(() => setRunning(true), []);
   const stop = useCallback(() => setRunning(false), []);
 
@@ -217,6 +298,10 @@ export function useStream(enabled: boolean): StreamController {
     stop,
     stats,
     lastEncodedBytes,
+    probe,
+    downloadCsv,
+    resetProbe,
+    csvTruncated,
     error,
   };
 }

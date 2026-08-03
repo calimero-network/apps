@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { useExecute } from "@calimero-network/mero-react";
-import { getContextId, getExecutorPublicKey, nowSecs } from "../lib/session";
+import { getContextId, getExecutorPublicKey, nowMillis, nowSecs } from "../lib/session";
 import type { DecodedFrame, Member, StreamStats } from "../types";
 
 /**
@@ -32,12 +32,17 @@ export function useMeroStream() {
     (raw: number[] | Uint8Array, width: number, height: number, track: number) =>
       // The contract signature is encode_frame(raw, width, height, track, now).
       // Pass `raw` as a plain array so it serializes to a JSON byte list.
+      //
+      // `now` is MILLISECONDS here, unlike every other method's `nowSecs()`.
+      // Fragments are the one thing whose timestamp gets subtracted from a
+      // receiver's clock (§4 end-to-end latency), and that measurement is
+      // meaningless quantized to whole seconds. See lib/session.ts#nowMillis.
       execute<number>("encode_frame", {
         raw: Array.from(raw),
         width,
         height,
         track,
-        now: nowSecs(),
+        now: nowMillis(),
       }),
     [execute],
   );

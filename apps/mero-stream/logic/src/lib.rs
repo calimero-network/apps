@@ -110,6 +110,24 @@ pub struct Fragment {
     pub codec: u8,
     /// Compressed bytes for this chunk — the only thing that gossips.
     pub data: Vec<u8>,
+    /// Sender-supplied capture timestamp, unix **MILLISECONDS**.
+    ///
+    /// Deliberately a different unit from `Member::joined_at`/`updated_at`
+    /// (which are unix *seconds*). §4's headline metric is end-to-end fragment
+    /// latency — capture → apply on a peer → render — and the whole point of the
+    /// probe is that this lands in the hundreds-of-ms-to-seconds range. At
+    /// second resolution the measurement quantizes to 0 s or 1 s and tells us
+    /// nothing, so fragments carry millis.
+    ///
+    /// The contract never interprets this value (pruning is by `seq`, not time);
+    /// it is opaque payload, so the unit is purely a producer/consumer contract
+    /// between `encodeFrame` in the frontend and the latency sampler. It IS used
+    /// for defensive newer-wins in `merge`, which only needs monotonicity.
+    ///
+    /// Cross-machine caveat: this is the SENDER's clock, so a latency computed
+    /// against the receiver's clock includes any skew between them (mero-meet
+    /// hit exactly this and had to normalize on a room clock). Trustworthy on
+    /// the solo two-node harness, where both nodes share one host clock.
     pub created_at: u64,
 }
 
@@ -175,6 +193,8 @@ pub struct DecodedFrame {
     pub height: u16,
     /// Raw luma, `width * height` bytes.
     pub pixels: Vec<u8>,
+    /// Capture timestamp in unix **milliseconds** (see `Fragment::created_at`) —
+    /// the receive side subtracts it from its own clock to get §4 latency.
     pub created_at: u64,
     /// Sum of the stored (compressed) chunk bytes for this frame — lets the
     /// frontend log compression ratio without a second call.
@@ -327,6 +347,9 @@ impl MeroStream {
     ///
     /// Guards: caller must be a member; `raw` must match the geometry and stay
     /// within `MAX_RAW_BYTES`; dimensions within `MAX_DIM`.
+    /// `now` is the capture time in unix **milliseconds** — not seconds, unlike
+    /// every other `now` arg in this contract. See `Fragment::created_at`: §4's
+    /// end-to-end latency metric is unmeasurable at second resolution.
     pub fn encode_frame(
         &mut self,
         raw: Vec<u8>,
@@ -458,6 +481,31 @@ impl MeroStream {
             });
         }
         out
+    }
+
+    /// Checksum of frame `seq`'s DECODED pixels, computed in WASM (view).
+    ///
+    /// Exists to make C1 — "the in-WASM codec is bit-identical on every node" —
+    /// assertable across the wire. Two nodes that received the same fragments
+    /// independently decode and hash them; equal checksums mean equal pixels.
+    ///
+    /// The alternative was comparing whole pixel arrays in the e2e, which
+    /// merobox's assertion DSL cannot express: `contains(...)`/`regex(...)` split
+    /// their arguments on every comma, and `json_subset` does not recurse into
+    /// dicts nested in a list. Asserting a substring like "255" instead — which
+    /// is what the draft workflow did — passes on any response that merely
+    /// contains those digits anywhere, including a width or a byte count, so it
+    /// proved nothing. A `u64` compares as a scalar.
+    ///
+    /// Returns `None` for a seq with no live, fully-present frame (pruned, never
+    /// sent, or still missing chunks) — an absent frame is not an error.
+    pub fn frame_checksum(&self, seq: u64) -> Option<u64> {
+        // Reuse the one decode path so the checksum can never drift from what
+        // `get_frame` actually hands the renderer.
+        self.get_frame(seq.saturating_sub(1))
+            .into_iter()
+            .find(|f| f.seq == seq)
+            .map(|f| codec::fnv1a64(&f.pixels))
     }
 
     // ── Prune (explicit reaper; every removal is a tombstone — C3) ────────────────
@@ -617,6 +665,24 @@ mod codec {
             out.push(0);
         }
         out
+    }
+
+    /// FNV-1a 64 over a byte slice. Integer-only and endianness-free (it consumes
+    /// one byte at a time), so it is as deterministic as the codec itself (C1) —
+    /// which is the whole reason it exists rather than a `DefaultHasher`, whose
+    /// output Rust explicitly does not guarantee across builds.
+    ///
+    /// Not a security primitive; a collision-resistance argument is not needed
+    /// for "did these two nodes decode the same pixels".
+    pub fn fnv1a64(bytes: &[u8]) -> u64 {
+        const OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+        const PRIME: u64 = 0x0000_0100_0000_01b3;
+        let mut hash = OFFSET_BASIS;
+        for b in bytes {
+            hash ^= *b as u64;
+            hash = hash.wrapping_mul(PRIME);
+        }
+        hash
     }
 }
 
@@ -787,6 +853,58 @@ mod tests {
         );
         // Every live seq is above the pruned watermark.
         assert!(frames.iter().all(|fr| fr.seq >= stats.oldest_live_seq));
+    }
+
+    // ── frame_checksum: the scalar C1 proof the 2-node e2e asserts on ─────────────
+
+    #[test]
+    fn checksum_is_stable_and_matches_the_decoded_pixels() {
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        let frame = quant_aligned_frame(16, 16);
+        let seq = app
+            .call_as(ALICE, |s| s.encode_frame(frame.clone(), 16, 16, TRACK_VIDEO_LUMA, 1_751_955_010_123))
+            .unwrap();
+
+        let checksum = app.view(|s| s.frame_checksum(seq)).expect("frame is live");
+        // Repeated views must agree — a view is a pure function of state (C1).
+        assert_eq!(checksum, app.view(|s| s.frame_checksum(seq)).unwrap());
+        // And it must be the hash of exactly what get_frame hands the renderer,
+        // so the e2e's checksum equality really is a pixel-equality claim.
+        let decoded = app.view(|s| s.get_frame(seq - 1));
+        let pixels = &decoded.iter().find(|f| f.seq == seq).unwrap().pixels;
+        assert_eq!(checksum, codec::fnv1a64(pixels));
+        // The frame was quant-aligned, so the pixels are the ORIGINAL input and
+        // the checksum is the checksum of what the camera produced.
+        assert_eq!(checksum, codec::fnv1a64(&frame));
+    }
+
+    #[test]
+    fn checksum_separates_frames_that_differ_by_one_pixel() {
+        // The property the e2e leans on: if the far node decoded anything other
+        // than these exact pixels, the scalar must not match. A quantized codec
+        // makes this subtle — a difference inside one 4-bit bucket is *supposed*
+        // to vanish, so perturb by a full bucket (+16) to get a real difference.
+        let base = quant_aligned_frame(8, 8);
+        let mut perturbed = base.clone();
+        perturbed[40] = perturbed[40].wrapping_add(16);
+        let q = |v: &[u8]| codec::fnv1a64(&codec::decode_quant_rle(&codec::encode_quant_rle(v), v.len()));
+        assert_ne!(q(&base), q(&perturbed), "a one-bucket pixel change must change the checksum");
+    }
+
+    #[test]
+    fn checksum_is_none_for_a_frame_that_is_not_live() {
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        // Never sent.
+        assert_eq!(app.view(|s| s.frame_checksum(1)), None);
+        // Sent, then pruned away — absent is not an error, so the e2e can
+        // distinguish "not there yet" from "decoded differently".
+        let f = quant_aligned_frame(8, 8);
+        for k in 0..FRAME_WINDOW + 5 {
+            app.call_as(ALICE, |s| s.encode_frame(f.clone(), 8, 8, 0, 1001 + k)).unwrap();
+        }
+        assert_eq!(app.view(|s| s.frame_checksum(1)), None, "a pruned frame reports absent");
     }
 
     // ── Guards ────────────────────────────────────────────────────────────────

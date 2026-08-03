@@ -182,6 +182,41 @@
   margin: 0 0 14px;
 }
 
+/* Title + export controls on one row. `wrap` so a long CSV button label (it
+   carries the frame count) drops below the title on a narrow window instead of
+   squeezing the heading. */
+.metricsHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.metricsActions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.csvBtn,
+.resetBtn {
+  font-family: inherit;
+  font-size: 0.78rem;
+  padding: 7px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.csvBtn:hover,
+.resetBtn:hover {
+  color: var(--text);
+  border-color: var(--text-faint);
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
