@@ -15,7 +15,6 @@
   "// packageManager": "Pinned to the version that generated pnpm-lock.yaml (lockfileVersion 9.0). Vercel otherwise picks a pnpm major from the project creation date — its build log says so explicitly — which is a silent version drift waiting to break --frozen-lockfile.",
   "packageManager": "pnpm@9.6.0",
   "engines": {
-    "node": ">=20",
     "pnpm": ">=9"
   },
   "scripts": {
