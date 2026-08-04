@@ -38,7 +38,12 @@ min-runtime-version = "0.11.0-rc.19"
 # Only ONE origin can be declared, so Vercel PREVIEW deployments (unique URLs per
 # build) will never satisfy this — hosted login only works on the declared origin.
 # Changing this requires re-publishing the bundle before it takes effect.
-frontend = "https://mero-stream-neon.vercel.app"
+#
+# The `/streams` path is the app's real entry point (the stream picker). Carrying it
+# is safe for the trust check, which compares `frontend.origin` and so ignores the
+# path entirely, and it means a launcher opening this link lands on the picker
+# directly rather than on `/` and redirecting.
+frontend = "https://mero-stream-neon.vercel.app/streams"
 
 # Core is pinned to an explicit RELEASE TAG, matched to the merod image the e2e
 # runs (`workflows/e2e.yml`) so contract and node always agree.
