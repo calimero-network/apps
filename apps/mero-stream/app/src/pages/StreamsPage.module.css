@@ -164,3 +164,13 @@
   font-size: 0.85rem;
   font-weight: 500;
 }
+
+/* Row + its Invite action. The invite button must live outside the row <button>. */
+.rowWrap {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+.rowWrap .row {
+  flex: 1;
+}

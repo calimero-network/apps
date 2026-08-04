@@ -313,8 +313,8 @@ hosted-callback rejection).
 | §1 route → 480p | ✅ done, verified |
 | §2 per-sender demux | ✅ done, verified two-way |
 | §3 contract per-sender keyframes | ⏭️ **not needed** — solved in the frontend with a per-peer keyframe gate, so no state-layout change and no republish. Remains an optimisation. |
-| §4 rooms as subgroups | ⚠️ **proven at the API level** by the suite (S3/S4); the UI still creates namespace + context with no subgroup |
-| §5 invite/join UI | ❌ not built — pairing still needs `dev-invite.sh` or the suite |
+| §4 rooms as subgroups | ⚠️ proven at API level (S3/S4); UI creates namespace + context and sets it **open**, but does not yet expose multiple rooms per namespace |
+| §5 invite/join UI | ✅ done — Invite mints a code, Join accepts one, same format as mero-chat/mero-blocks |
 | §6 two-way call | ✅ done, verified |
 | §6b 25 fps + latency | ✅ done — p50 505 ms → ~135 ms, decode 3.17/s → 25/s |
 | §7 two-sender tests | ✅ done, plus a 4-scenario 2-node suite |
@@ -336,19 +336,29 @@ Two real findings, both predicted by §4 and both now pinned by tests:
    A good error, but mero-js types it as a bare `string`, so nothing catches the
    casing at compile time.
 
-### ⚠️ Known flake on the invite-built room
+### The flake — root-caused and fixed
 
-One run in three, one direction stalls shortly after the call starts: decode rate
-drops to 0 and that peer's picture freezes, while the other direction keeps going.
-Fully reproducible-green on re-run (2/3 passes), and never seen on the context
-`dev-invite.sh` builds — only on a room node2 entered via
-`join-via-inheritance`.
+Was: roughly 1 run in 3, one direction stalled shortly after the call started on an
+invite-built room — decode rate to 0, that peer's picture frozen, the other
+direction fine.
 
-Most likely the key-delivery timing on self-admit (core's open-subgroup KeyDelivery
-op): a member that admits itself needs the group key before it can apply subsequent
-state, and until it arrives that peer sees nothing new. **Not diagnosed** — do not
-treat this as confirmed. Worth a focused look before anyone calls the room path
-production-ready; the shared-context path is unaffected.
+**It was not key delivery.** `lib/webcodecs.ts` wired the decoder's `error:`
+callback to `onError`, and the hook only did `setError(message)`. But a
+`VideoDecoder` that fires its error callback transitions to **`closed`**, and every
+later `decode()` throws `InvalidStateError` — so a SINGLE decode error froze that
+peer's tile permanently, with nothing to recover it.
+
+A missing reference frame is entirely expected here (the reaper can prune a keyframe
+during a join, gossip can reorder), so the fix is to rebuild rather than give up: on
+a decoder error, close it, clear that peer's `started` flag, and let the per-peer
+keyframe gate re-arm on the sender's next keyframe — bounded by
+`KEYFRAME_INTERVAL_MS`. `push()` is also wrapped, because `decode()` throws
+synchronously on a closed decoder and one bad peer must not stall the shared read
+loop.
+
+3/3 consecutive runs green afterwards (25.3–25.5/s decode, 130–135 ms p50), against
+2/3 before. Consistent with the fix, though three runs is not proof for something
+that was already intermittent — worth watching.
 
 ---
 

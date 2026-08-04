@@ -282,20 +282,46 @@ export function useLiveStream(enabled: boolean): LiveController {
         // Configure with the codec string THIS SENDER recorded, not an assumed one
         // or another peer's — the app round-trips it verbatim, and two senders can
         // legitimately negotiate different profiles.
+        const owner = peer;
         peer.decoder = createDecoder({
           canvas,
           codec: c.codec,
-          onError: (e) => setError(e.message),
+          // SELF-HEAL. A VideoDecoder that fires its error callback transitions to
+          // `closed`, and every later decode() throws InvalidStateError — so before
+          // this, ONE decode error froze that peer's tile permanently: decode rate
+          // to 0, picture stuck, the other direction unaffected. That was the ~1-in-3
+          // stall on a freshly-joined room, and it was not key delivery as suspected.
+          //
+          // A single missing reference frame is entirely expected here (the reaper
+          // can prune a keyframe during a join, gossip can reorder), so the honest
+          // response is to rebuild rather than to give up: drop the decoder and clear
+          // `started`, and the gate above re-arms on this sender's next keyframe —
+          // bounded by KEYFRAME_INTERVAL_MS.
+          onError: (e) => {
+            setError(e.message);
+            owner.decoder?.close();
+            owner.decoder = null;
+            owner.started = false;
+          },
         });
       }
       if (!peer.decoder) continue; // tile not mounted yet; wait for the next keyframe
 
-      peer.decoder.push({
-        dataB64: c.dataB64,
-        isKeyframe: c.isKeyframe,
-        timestampUs: c.timestampUs,
-      });
-      peer.framesDecoded += 1;
+      try {
+        peer.decoder.push({
+          dataB64: c.dataB64,
+          isKeyframe: c.isKeyframe,
+          timestampUs: c.timestampUs,
+        });
+        peer.framesDecoded += 1;
+      } catch (e) {
+        // `decode()` throws synchronously on a closed decoder. Recover the same way
+        // and keep draining — one bad peer must not stall the shared read loop.
+        setError(e instanceof Error ? e.message : "decode failed");
+        peer.decoder?.close();
+        peer.decoder = null;
+        peer.started = false;
+      }
 
       // §4 latency, same two-clock caveat as approach 3: createdAt is the sender's
       // wall clock. rawBytes is the UNCOMPRESSED frame the codec consumed, so
