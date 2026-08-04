@@ -29,20 +29,52 @@ own choosing.
 
 ### Project setup
 
-Repo root carries `vercel.json` with `installCommand` / `buildCommand` /
-`outputDirectory` pointing into `app/`, so **Root Directory can stay at the repo
-root** — no dashboard configuration needed. (`app/vercel.json` is retained for the
-alternative layout where Root Directory is set to `app`; only one is ever read.)
+**Root Directory must be `app`.** That is the only setting required, and it is not
+optional: `pnpm-lock.yaml` lives in `app/` and there is no lockfile at the repo
+root, so a build rooted at the repo root has no dependency graph to install from.
 
-- Framework preset: **Vite** (declared in the file)
-- Build: `cd app && pnpm build` → `app/dist`
-- SPA rewrite: all paths → `/index.html`, which is required — `/live` and
-  `/stream` are client-side routes and would 404 on a hard refresh without it.
-- Immutable caching on `/assets/*` (content-hashed), `no-cache` on everything
-  else so `index.html` is never served stale.
+Config is `app/vercel.json`, and it needs no commands — `framework: "vite"` lets
+Vercel derive install (`pnpm install`), build (`pnpm build`) and output (`dist`)
+on its own.
 
-No environment variables are required. `VITE_APPLICATION_PACKAGE` is optional and
-defaults to `com.calimero.merostream`.
+- SPA rewrite: all paths → `/index.html`. **Required**: `/live` and `/stream` are
+  client-side routes and would 404 on a hard refresh or a direct link without it.
+- Immutable caching on `/assets/*` (content-hashed filenames), `no-cache` on
+  everything else so `index.html` is never served stale.
+
+> A repo-root `vercel.json` with `cd app && …` commands **does not work here** and
+> was tried and removed. With Root Directory set to `app`, Vercel reads that root
+> config but executes the commands with the working directory already inside
+> `app/`, so `cd app` fails with `sh: line 1: cd: app: No such file or directory`.
+> Keep the config in `app/vercel.json`.
+
+**pnpm version.** `app/package.json` pins `packageManager: "pnpm@9.6.0"`, the
+version that generated the lockfile (`lockfileVersion: 9.0`). Without a pin,
+Vercel's build log reports it is choosing a pnpm major *from the project creation
+date* — drift that eventually breaks `--frozen-lockfile` for reasons unrelated to
+any change you made. If Vercel ignores the field, opt in explicitly with
+`ENABLE_EXPERIMENTAL_COREPACK=1`.
+
+### Environment variables
+
+**None are required.** Leave the Vercel env config empty.
+
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `VITE_APPLICATION_PACKAGE` | No | `com.calimero.merostream` | Registry package id passed to `MeroProvider` |
+
+Set it only when publishing under a different package id (e.g. a staging bundle).
+
+Two things are deliberately *not* configurable. `registryUrl` is hardcoded to
+`https://apps.calimero.network` in `main.tsx`. And the node URL arrives per-user in
+the URL hash and becomes mero-react's `allowedNodeUrls` trust anchor — making it an
+env var would break that trust model, since every user runs their own node.
+
+Nothing sensitive can reach the bundle: Vite only exposes `VITE_`-prefixed vars to
+the client, and every key in `app/.env.dev-call` is `DEV_*`. That file is also not
+one of the names Vite auto-loads (`.env`, `.env.local`, `.env.<mode>`,
+`.env.<mode>.local`), and it is gitignored and untracked. Verified — the built
+bundle contains zero JWTs.
 
 ### How a user reaches a working page
 
