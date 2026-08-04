@@ -23,7 +23,22 @@ name = "Mero Stream"
 description = "Capacity probe: streaming media OVER Calimero. /stream runs a toy codec inside the WASM app (approach 3); /live stores opaque browser-encoded H.264 (approach 2). Experimental; not shippable media."
 author = "Calimero"
 min-runtime-version = "0.11.0-rc.19"
-frontend = "https://mero-stream.vercel.app/"
+# MUST be the exact origin the frontend is deployed on. This is not cosmetic
+# metadata: the embedded auth frontend uses it as the registered-redirect-URI
+# equivalent. `callbackUrl.ts` compares `frontend.origin === callbackOrigin`, and a
+# mismatch fails the login with "Login callback destination is not allowed" AFTER
+# credentials are accepted — because the token pair is deliberately withheld rather
+# than handed to an origin the package never declared.
+#
+# A wrong value here therefore breaks hosted login completely while local/desktop
+# login keeps working (loopback is always trusted), which is exactly how it went
+# unnoticed: `https://mero-stream.vercel.app` was a guess and the real deployment
+# is `-neon`.
+#
+# Only ONE origin can be declared, so Vercel PREVIEW deployments (unique URLs per
+# build) will never satisfy this — hosted login only works on the declared origin.
+# Changing this requires re-publishing the bundle before it takes effect.
+frontend = "https://mero-stream-neon.vercel.app"
 
 # Core is pinned to an explicit RELEASE TAG, matched to the merod image the e2e
 # runs (`workflows/e2e.yml`) so contract and node always agree.
