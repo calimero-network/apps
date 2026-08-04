@@ -1,8 +1,8 @@
 // ── Tauri desktop detection ───────────────────────────────────────────────────
 //
-// Mero Stream is desktop-only. The Calimero node and auth/SSO are provided by
-// tauri-app. On the plain web none of that exists, so we render an "open in the
-// desktop app" landing page instead of the capture/diagnostic UI.
+// Detects the desktop shell, which supplies a node + auth/SSO implicitly. It is
+// one of two ways the app can get a session — see `hasHashSession` below for the
+// other — and NOT a requirement for the app to run.
 //
 // tauri-app is built on **Tauri v1** (1.8): its webview injects
 // `window.__TAURI_INVOKE__` / `window.__TAURI_IPC__` — NOT the v2-only
@@ -26,17 +26,27 @@ export const IS_TAURI =
   "__TAURI__" in window || // withGlobalTauri builds
   "__TAURI_INTERNALS__" in window; // Tauri v2 (forward-compat)
 
-// ── Dev-only browser harness ──────────────────────────────────────────────────
+// ── Hash-handed browser session ───────────────────────────────────────────────
 //
-// Mero Stream is desktop-only in production, but exercising the probe needs at
-// least TWO context members (a sender and a receiver) — which a single desktop
-// instance can't provide on one laptop. For solo testing we run two local nodes
-// and point two browser profiles at them. The desktop normally hands the node +
-// auth + stream in via the URL hash; the harness builds the same hash by hand,
-// so when one is present we let the full app run in a plain browser. Gated on
-// import.meta.env.DEV so it can NEVER be true in a prod build.
-function hasDevSession(): boolean {
-  if (!import.meta.env.DEV) return false;
+// A session (node URL + access token) can arrive in the URL hash rather than from
+// the Tauri shell. Whoever opens the app supplies it: tauri-app's
+// `openAppFrontend`, the apps-registry launcher, or `scripts/dev-invite.sh` for
+// local two-node testing — all three build the SAME hash.
+//
+// This USED to be gated on `import.meta.env.DEV`, which meant a production build
+// rendered the app ONLY inside Tauri. That made the deployed web build a dead
+// landing page for every visitor, including one arriving from the desktop with a
+// perfectly good hash. The gate predated the finding (PR #5) that web-only is
+// sound for this app: node traffic is direct HTTP + SSE from the browser, there is
+// no Tauri Rust proxy on any path, and auth is an ordinary bearer token. The
+// desktop shell was never load-bearing, so the DEV restriction was gating on the
+// wrong thing.
+//
+// It is still a real gate, not an open door: no hash means no node and no token,
+// which renders the landing page. And mero-react only trusts the node_url handed
+// in via this same hash (`allowedNodeUrls` in main.tsx), so an arbitrary origin
+// cannot point the app at a node of its choosing.
+function hasHashSession(): boolean {
   try {
     const p = new URLSearchParams(window.location.hash.slice(1));
     return Boolean(
@@ -49,14 +59,13 @@ function hasDevSession(): boolean {
 
 /**
  * Whether the full Mero Stream UI (capture/diagnostics) is allowed to render.
- * True inside the Tauri desktop shell, or in a dev browser session (see
- * {@link hasDevSession}). Everywhere else we show the "open in the desktop app"
- * landing page.
+ * True inside the Tauri desktop shell, or whenever a session arrived in the URL
+ * hash (see {@link hasHashSession}). With neither, we show the landing page.
  *
- * Evaluated once at module load — before MeroProvider parses and strips the
- * auth hash — so the dev-session detection still sees the hash.
+ * Evaluated once at module load — before MeroProvider parses and strips the auth
+ * hash — so the detection still sees the hash.
  */
-export const APP_ENABLED = IS_TAURI || hasDevSession();
+export const APP_ENABLED = IS_TAURI || hasHashSession();
 
 /**
  * Invoke a Tauri Rust command if running inside the desktop shell. When the

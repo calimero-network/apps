@@ -18,8 +18,9 @@
     "lint": "eslint .",
     "test": "vitest run",
     "preview": "vite preview",
-    "prettier": "prettier --check 'src/**/*.{js,jsx,ts,tsx,json}'",
-    "prettier:write": "prettier --write 'src/**/*.{js,jsx,ts,tsx,json}'"
+    "e2e:call": "node e2e/browser-call.mjs",
+    "prettier": "prettier --check 'src/**/*.{js,jsx,ts,tsx,json}' 'e2e/**/*.mjs'",
+    "prettier:write": "prettier --write 'src/**/*.{js,jsx,ts,tsx,json}' 'e2e/**/*.mjs'"
   },
   "dependencies": {
     "@calimero-network/mero-js": "^7.1.0",

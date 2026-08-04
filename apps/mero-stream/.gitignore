@@ -1,6 +1,12 @@
 # Rust / WASM
 logic/target/
 logic/res/
+# `cargo mero bundle` output (rc.19). The version lives in the manifest, not the
+# filename, so this is a single stable path rather than a per-version artifact.
+logic/dist/
+
+# Live admin JWTs, rewritten by scripts/dev-node*.sh on every run.
+app/.env.dev-call
 
 # Frontend
 app/node_modules/

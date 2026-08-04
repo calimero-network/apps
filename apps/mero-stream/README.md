@@ -114,6 +114,14 @@ is exactly what the P3 run is for.
   | `e2e-tombstones.yml` | 2 | C3 across the wire — after 40 frames force pruning, both nodes agree on the exact bounded window, and a *post-prune* frame is not shadowed by prune tombstones |
   | `e2e-fanout.yml` | 3 | gossip fan-out at K=2 — one sender, **both** peers decode to the same checksum |
 | `e2e-live-chunks.yml` | 2 | **approach 2** — opaque codec bytes cross byte-identically, and `prune_chunks(everything)` still leaves the peer a decodable keyframe |
+- **Browser leg — ✅ AUTOMATED.** `make e2e-call` runs the whole two-node 480p
+  call unattended: `cargo mero build` → both nodes → app install → namespace,
+  context and open invitation → vite → two Chrome contexts → sender encodes,
+  receiver decodes → teardown. It asserts what the merobox scenarios structurally
+  cannot: that the receiver's canvas holds real 640×480 pixels *and that they
+  change*, with the state read from the receiver's own node. Needs real Google
+  Chrome — Playwright's bundled Chromium has no proprietary codecs, so no H.264.
+  See DEV-TESTING.md.
 - **P3 — Load curve — 🚧 TOOLING READY, RUN PENDING.** `scripts/load-curve.py`
   ramps fps × geometry and emits the CSV (achieved fps, encode RTT p50/p95,
   errors, live/pruned fragments, peer-side counters, RocksDB growth). The
@@ -152,14 +160,39 @@ the server side scales with geometry while the client overhead is close to fixed
 
 ```bash
 make logic-test     # contract unit tests (native TestHost) — C1..C3
-make logic-build    # compile → logic/res/mero_stream.wasm
+make logic-build    # cargo mero build → logic/res/mero_stream.wasm (ABI embedded)
+make logic-bundle   # cargo mero bundle → logic/dist/com.calimero.merostream.mpk
 make app-build      # frontend bundle (tsc + vite)
 make app-test       # frontend unit tests (incl. the §4 metric arithmetic)
 make dev            # vite dev server (the /stream dev route)
 make dev-nodes      # two local nodes + install + a stream context (solo testing)
-make workflows      # ALL three e2e scenarios over merobox (Docker + merobox>=0.6.49)
+make e2e-call       # FULLY AUTOMATED two-node 480p call in real Chrome
+make workflows      # ALL four e2e scenarios over merobox (Docker + merobox>=0.6.49)
 make load-curve     # P3 load generator usage
 ```
+
+### The rc.19 toolchain
+
+Both build scripts go through **`cargo mero`** (core `tools/cargo-mero`), pinned by
+`scripts/ensure-cargo-mero.sh` to the same release as the four `calimero-*` git
+tags in `logic/Cargo.toml`. The pin is not cosmetic: the ABI emitter is versioned
+with core, so a tool and an SDK from different releases can embed a schema the node
+doesn't share.
+
+`cargo mero build` emits the ABI from `src/*.rs` (no `build.rs` anywhere — core
+#3319 deleted all 60 of them), compiles to wasm32, size-optimizes with a
+**built-in** `wasm-opt` (reproducible; the old script silently skipped optimization
+when `wasm-opt` wasn't on `PATH`, so identical source produced different bytes per
+machine), and embeds the ABI as the `calimero_abi_v1` custom section.
+
+`cargo mero bundle` derives `manifest.json` from `[package.metadata.calimero]` in
+`Cargo.toml` and the node's own canonical `BundleManifest` type. That replaces a
+hand-written heredoc which shipped `"hash": null` — **a bundle the node rejects as
+malformed before it even checks the signature** — plus unwritable `license` /
+`tags` / `links` slots the registry renders. `build-bundle.sh` re-verifies both
+properties on the packaged `.mpk` rather than trusting the tool.
+
+Bundle metadata now lives in `Cargo.toml`, not in the script.
 
 CI gates: `cargo fmt --check`, `cargo clippy -D warnings`, contract tests, WASM
 build · eslint, prettier, `tsc --noEmit`, vitest, vite build · ruff +

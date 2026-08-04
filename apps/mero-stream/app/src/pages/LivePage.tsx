@@ -63,7 +63,7 @@ export default function LivePage() {
           <h1 className={styles.title}>
             Live 480p <span className={styles.version}>H.264 · approach 2</span>
           </h1>
-          <p className={styles.devTag}>
+          <p className={styles.devTag} data-testid="join-state">
             Browser encodes · the WASM app stores opaque bytes ·{" "}
             {joined ? "joined" : "joining…"}
           </p>
@@ -87,14 +87,18 @@ export default function LivePage() {
       </header>
 
       {s.supported === false && (
-        <p className={styles.error}>
+        <p className={styles.error} data-testid="unsupported">
           This browser has no WebCodecs <code>VideoEncoder</code>. Chrome or
           Edge works; Safari needs 16.4+. The Calimero desktop shell is
           WKWebView, so use Chrome for measurement runs until desktop camera
           permissions are wired.
         </p>
       )}
-      {s.error && <p className={styles.error}>{s.error}</p>}
+      {s.error && (
+        <p className={styles.error} data-testid="live-error">
+          {s.error}
+        </p>
+      )}
 
       <section className={styles.canvases}>
         <figure className={styles.canvasCard}>
@@ -105,6 +109,7 @@ export default function LivePage() {
           <video
             ref={s.localVideoRef}
             className={styles.canvas}
+            data-testid="local-video"
             muted
             playsInline
           />
@@ -113,13 +118,19 @@ export default function LivePage() {
           <figcaption className={styles.canvasLabel}>
             Remote decoded (get_chunks → VideoDecoder)
           </figcaption>
-          <canvas ref={s.remoteCanvasRef} className={styles.canvas} />
+          <canvas
+            ref={s.remoteCanvasRef}
+            className={styles.canvas}
+            data-testid="remote-canvas"
+          />
         </figure>
       </section>
 
       <section className={styles.controls}>
         <button
           className={s.running ? styles.stopBtn : styles.startBtn}
+          data-testid="capture-toggle"
+          data-running={s.running}
           onClick={() => (s.running ? s.stop() : s.start())}
           disabled={(!joined && !s.running) || s.supported === false}
           title={!joined ? "Join the stream first" : undefined}
@@ -153,16 +164,37 @@ export default function LivePage() {
       <section className={styles.metrics}>
         <h2 className={styles.metricsTitle}>Replicated state (approach 2)</h2>
         <div className={styles.grid}>
-          <Metric label="Live chunks" value={st?.liveChunks} />
+          <Metric
+            label="Live chunks"
+            value={st?.liveChunks}
+            testId="live-chunks"
+          />
           <Metric
             label="Live bytes"
             value={st ? (st.liveBytes / 1024).toFixed(0) : undefined}
             suffix=" KiB"
+            testId="live-bytes-kib"
           />
-          <Metric label="Chunks posted" value={st?.nextChunkSeq} />
-          <Metric label="Pruned (tombstones)" value={st?.prunedChunks} />
-          <Metric label="Last keyframe seq" value={st?.lastKeyframeSeq} />
-          <Metric label="Oldest live chunk" value={st?.oldestLiveChunk} />
+          <Metric
+            label="Chunks posted"
+            value={st?.nextChunkSeq}
+            testId="chunks-posted"
+          />
+          <Metric
+            label="Pruned (tombstones)"
+            value={st?.prunedChunks}
+            testId="pruned-chunks"
+          />
+          <Metric
+            label="Last keyframe seq"
+            value={st?.lastKeyframeSeq}
+            testId="last-keyframe-seq"
+          />
+          <Metric
+            label="Oldest live chunk"
+            value={st?.oldestLiveChunk}
+            testId="oldest-live-chunk"
+          />
         </div>
         <p className={styles.note}>
           The reaper never prunes past the newest keyframe — a delta frame
@@ -180,45 +212,64 @@ export default function LivePage() {
             <button className={styles.csvBtn} onClick={s.downloadCsv}>
               Download CSV ({p.framesRenderedTotal} chunks)
             </button>
-            <button className={styles.resetBtn} onClick={s.resetProbe}>
+            <button
+              className={styles.resetBtn}
+              data-testid="reset-probe"
+              onClick={s.resetProbe}
+            >
               Reset
             </button>
           </div>
         </div>
         <div className={styles.grid}>
-          <Metric label="Post rate" value={fmt(p.sendFps, 2)} suffix=" /s" />
+          <Metric
+            label="Post rate"
+            value={fmt(p.sendFps, 2)}
+            suffix=" /s"
+            testId="post-rate"
+          />
           <Metric
             label="Decode rate"
             value={fmt(p.renderFps, 2)}
             suffix=" /s"
+            testId="decode-rate"
           />
           <Metric
             label="Ingest (encoded)"
             value={fmt(p.encodedBytesPerSec / 1024, 1)}
             suffix=" KiB/s"
+            testId="ingest-kib-s"
           />
           <Metric
             label={`Compression (of ${(RAW_FRAME_BYTES / 1024).toFixed(0)} KiB/frame)`}
             value={fmt(p.compressionRatio, 1)}
             suffix="×"
+            testId="compression-ratio"
           />
           <Metric
             label="Latency p50"
             value={fmt(p.latencyMsP50, 0)}
             suffix=" ms"
+            testId="latency-p50"
           />
           <Metric
             label="Latency p95"
             value={fmt(p.latencyMsP95, 0)}
             suffix=" ms"
+            testId="latency-p95"
           />
           <Metric
             label="Post RTT p50"
             value={fmt(p.encodeMsP50, 0)}
             suffix=" ms"
+            testId="post-rtt-p50"
           />
-          <Metric label="Seq gaps" value={p.seqGaps} />
-          <Metric label="Post errors" value={p.encodeErrors} />
+          <Metric label="Seq gaps" value={p.seqGaps} testId="seq-gaps" />
+          <Metric
+            label="Post errors"
+            value={p.encodeErrors}
+            testId="post-errors"
+          />
         </div>
         <p className={styles.note}>
           Same two-clock caveat as approach 3: <strong>latency</strong> spans
@@ -242,18 +293,31 @@ function fmt(
   return value.toFixed(digits);
 }
 
+/**
+ * `testId` / `data-value` exist for the automated browser run
+ * (`app/e2e/browser-call.mjs`). The rendered text carries a unit suffix and an
+ * em-dash placeholder, and the class names are CSS-module hashes that change on
+ * every build — so scraping either would give a test that breaks for reasons
+ * unrelated to the app. `data-value` is the raw number, or "" when absent.
+ */
 function Metric({
   label,
   value,
   suffix,
+  testId,
 }: {
   label: string;
   value: number | string | undefined;
   suffix?: string;
+  testId?: string;
 }) {
   return (
     <div className={styles.metric}>
-      <span className={styles.metricValue}>
+      <span
+        className={styles.metricValue}
+        data-testid={testId}
+        data-value={value ?? ""}
+      >
         {value ?? "—"}
         {value !== undefined && suffix ? suffix : ""}
       </span>

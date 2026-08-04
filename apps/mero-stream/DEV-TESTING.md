@@ -21,7 +21,54 @@ that is not a workaround — it is how the app reaches the node anyway:
 The single desktop-only gap is **camera permission in WKWebView**, which is why
 measurement runs should use Chrome for now.
 
-## One-shot two-node stack
+## Fully automated: one command, no hands
+
+```bash
+make e2e-call              # headed Chrome (default)
+make e2e-call-headless
+make e2e-call-keep         # leave the stack up afterwards to poke at
+```
+
+That chains the whole thing: `cargo mero build` → node1 (install app, namespace,
+context) → node2 (install app) → open invitation + namespace/context join → vite
+→ two Chrome contexts → sender encodes 480p H.264, receiver decodes → teardown.
+Nodes and vite are torn down on every exit path including failure, so a failed run
+never leaves ports 2660/2662/5173 held.
+
+**Real Google Chrome is required, not Playwright's bundled Chromium.** Chromium
+ships without proprietary codecs, so H.264 encode/decode is simply absent and the
+page takes its "no VideoEncoder" branch. The script checks for Chrome and fails
+fast with that explanation rather than reporting a confusing decode failure.
+
+No webcam needed: Chrome runs with `--use-fake-device-for-media-stream`, which
+supplies a *moving* synthetic pattern — that motion is what makes "the picture
+changed between samples" a real assertion.
+
+What it actually proves, beyond what the merobox e2e can:
+
+1. both peers authenticate off the URL hash and join the context;
+2. H.264 annex-B 640×480 encode is genuinely supported (asked of `VideoEncoder`
+   directly, not just inferred from the page);
+3. the sender posts chunks with zero post errors;
+4. **state crosses nodes** — the receiver's *own* node reports the live chunks,
+   read from node2's API, not node1's;
+5. **the receiver decodes real pixels** — the canvas is 640×480, has non-uniform
+   content (not a flat fill), and *changes* between two samples. Blank and frozen
+   both fail, which matters because a stream that replicates happily and shows
+   nothing is the exact failure the keyframe clamp exists to prevent and it looks
+   healthy from every other angle;
+6. the reaper stayed keyframe-clamped (`oldest live chunk` ≤ `last keyframe seq`).
+
+Artifacts land in `data/browser-call/`: screenshots of both peers, per-page
+console logs, and `result.json` with every metric. On failure it also writes
+`*-failure.png`.
+
+The merobox scenarios stay the byte-level authority — they use deliberately
+**invalid** H.264, because the approach-2 claim is that the app never interprets
+the bytes, and a scenario built on real access units would hide a regression where
+it started. This script covers the codec ends; those cover everything between.
+
+## One-shot two-node stack (manual)
 
 ```bash
 make dev-nodes      # node1 + node2 + join + print the two browser URLs

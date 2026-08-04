@@ -54,7 +54,16 @@ use calimero_storage::collections::{
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
-type MemberId = String;
+// A member id is the executor's public key, bs58-encoded — i.e. a plain `String`,
+// which is why it is spelled out at every use site rather than aliased.
+//
+// There used to be an alias here. It cannot come back as-is: rc.19's ABI emitter
+// resolves a NEWTYPE struct into an ABI alias, but it has no `visit_item_type`, so
+// a plain `type Foo = String;` is never registered as a local type and the whole
+// ABI emit fails with "type path error: unknown type: Foo" for every field that
+// mentions it. A newtype WOULD satisfy the emitter, but it changes the borsh shape
+// and therefore the on-disk state layout — not a trade worth making to recover a
+// name. Revisit if core teaches the emitter to follow type aliases.
 
 /// Codec id stored on each fragment (C4 ladder). 1 = quantize-4bit + RLE.
 const CODEC_QUANT_RLE: u8 = 1;
@@ -119,7 +128,7 @@ const MAX_MEDIA_CHUNK_BYTES: usize = 256 * 1024;
 pub struct Fragment {
     /// Global monotone frame sequence; key `frag-{seq}-{chunk}`, NEVER reused (C3).
     pub seq: u64,
-    pub from: MemberId,
+    pub from: String,
     /// 0 = video luma, 1 = audio (future).
     pub track: u8,
     /// Sub-frame chunk index within this frame (C2).
@@ -197,7 +206,7 @@ impl RekeyTarget for Fragment {
 pub struct MediaChunk {
     /// Global monotone sequence; key `chunk-{seq}`, NEVER reused (C3).
     pub seq: u64,
-    pub from: MemberId,
+    pub from: String,
     /// 0 = video, 1 = audio. Both ride the same ring, interleaved by seq.
     pub track: u8,
     /// Sender-asserted: this chunk is independently decodable.
@@ -242,7 +251,7 @@ impl RekeyTarget for MediaChunk {
 #[serde(rename_all = "camelCase")]
 pub struct ChunkView {
     pub seq: u64,
-    pub from: MemberId,
+    pub from: String,
     pub track: u8,
     pub is_keyframe: bool,
     pub codec: String,
@@ -280,7 +289,7 @@ pub struct LiveStats {
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct Member {
-    pub member_id: MemberId,
+    pub member_id: String,
     pub username: String,
     pub joined_at: u64,
     pub updated_at: u64,
@@ -309,7 +318,7 @@ impl RekeyTarget for Member {
 #[serde(rename_all = "camelCase")]
 pub struct DecodedFrame {
     pub seq: u64,
-    pub from: MemberId,
+    pub from: String,
     pub track: u8,
     pub width: u16,
     pub height: u16,
@@ -347,7 +356,7 @@ pub struct StreamStats {
 pub enum Event {
     Initialized(),
     /// A member joined the stream context.
-    MemberJoined(MemberId),
+    MemberJoined(String),
     /// A frame's fragments were stored. Payload is the frame's base seq; a peer
     /// calls `get_frame(after_seq)` to drain and render.
     FramePosted(u64),
@@ -365,7 +374,7 @@ pub struct MeroStream {
     /// Stream/room name; `Ownable` so only the owner's rename converges.
     stream_name: Ownable<LwwRegister<String>>,
     /// Context members, by identity. Membership gates `encode_frame`.
-    members: UnorderedMap<MemberId, Member>,
+    members: UnorderedMap<String, Member>,
     /// The media buffer. Keyed `frag-{seq}-{chunk}`; all chunks of a frame share
     /// `seq`. Pruned to a rolling `FRAME_WINDOW` of the most recent frames.
     fragments: UnorderedMap<String, Fragment>,
@@ -958,7 +967,7 @@ impl MeroStream {
         Ok(())
     }
 
-    pub fn is_member_admin(&self, member: MemberId) -> bool {
+    pub fn is_member_admin(&self, member: String) -> bool {
         match Self::parse_pk(&member) {
             Ok(pk) => self.roles.is_admin(&pk),
             Err(_) => false,

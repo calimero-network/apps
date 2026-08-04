@@ -7,6 +7,24 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+# Consumed by `cargo mero build` / `cargo mero bundle` (core rc.19
+# `tools/cargo-mero`). This table is what lets the tool derive manifest.json from
+# the node's own canonical `BundleManifest` type instead of us hand-writing JSON
+# that mirrors it — which is how the old build-bundle.sh shipped `"hash": null`
+# and unwritable `license` / `tags` / `links` slots.
+#
+# The table is parsed with `deny_unknown_fields` and kebab-case keys, so a
+# snake_case typo is a loud error rather than a silently-ignored field. `package`
+# is the only required key; it must be a reverse-DNS id and is validated as
+# path-safe because it becomes `dist/<package>.mpk`.
+[package.metadata.calimero]
+package = "com.calimero.merostream"
+name = "Mero Stream"
+description = "Capacity probe: streaming media OVER Calimero. /stream runs a toy codec inside the WASM app (approach 3); /live stores opaque browser-encoded H.264 (approach 2). Experimental; not shippable media."
+author = "Calimero"
+min-runtime-version = "0.11.0-rc.19"
+frontend = "https://mero-stream.vercel.app/"
+
 # Core is pinned to an explicit RELEASE TAG, matched to the merod image the e2e
 # runs (`workflows/e2e.yml`) so contract and node always agree.
 #
@@ -36,16 +54,15 @@ calimero-storage = { git = "https://github.com/calimero-network/core.git", tag =
 calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.19" }
 thiserror = "1.0.56"
 
-# NOTE: there is deliberately no `[build-dependencies]` section. This crate has
-# no build.rs, so the `calimero-wasm-abi` + `serde_json` build-deps that used to
-# sit here were dead weight — they compiled on every build and emitted nothing.
-# Core has since moved ABI emission out of per-app build scripts entirely
+# NOTE: there is deliberately no `[build-dependencies]` section, and this crate
+# has no build.rs. Core moved ABI emission out of per-app build scripts entirely
 # (#3319 deleted all 60 of them; #3364 derives the ABI from the type system), so
-# the replacement is `cargo mero build`, which embeds the `calimero_abi_v1`
-# section for us. That migration is a tracked follow-up, not this change: a
-# module with no ABI section installs fine (the identity-downgrade gate
-# fail-opens, and only fires on migration upgrades anyway), we just don't get
-# meroctl/devtools introspection until then.
+# the emitter now lives in `cargo mero build` — it reads this crate's `src/*.rs`
+# directly, writes `res/abi.json` + `res/state-schema.json`, and embeds the
+# canonicalized ABI as the wasm `calimero_abi_v1` section. That migration is DONE
+# here (see build.sh / build-bundle.sh); the ABI section is what gives
+# meroctl/devtools introspection and what the identity-downgrade gate reads on a
+# migration upgrade.
 
 [dev-dependencies]
 # Enables the native mock host so TestHost can drive contract state under
@@ -58,5 +75,18 @@ codegen-units = 1
 opt-level = "z"
 lto = true
 debug = false
+panic = "abort"
+overflow-checks = true
+
+# `cargo mero build --profiling` / `cargo mero bundle --profiling` select this
+# profile instead, and the tool errors if it is absent. Keeps debug info and skips
+# wasm-opt, which is what you want when reading a flamegraph of `encode_frame`
+# rather than shipping — the approach-3 WASM-CPU numbers came from a build like
+# this. Note core gates app wasm size in CI (#3370), so a profiling build is for
+# local measurement, not for install-on-a-shared-node.
+[profile.app-profiling]
+inherits = "release"
+debug = true
+strip = false
 panic = "abort"
 overflow-checks = true

@@ -1,4 +1,4 @@
-.PHONY: help setup build bundle logic-build logic-test logic-bundle app-install app-build app-typecheck app-test dev dev-nodes dev-stop workflows load-curve clean
+.PHONY: help setup build bundle logic-build logic-test logic-bundle app-install app-build app-typecheck app-test dev dev-nodes dev-stop workflows load-curve clean cargo-mero e2e-call e2e-call-headless e2e-call-keep e2e-call-prod
 
 help:
 	@echo ""
@@ -9,7 +9,7 @@ help:
 	@echo "  bundle         Build WASM + create signed .mpk release bundle"
 	@echo "  logic-build    Compile logic/src → logic/res/mero_stream.wasm"
 	@echo "  logic-test     Contract unit tests (native TestHost — determinism/C1..C3)"
-	@echo "  logic-bundle   Build WASM + sign + package logic/res/mero-stream-<ver>.mpk"
+	@echo "  logic-bundle   cargo mero bundle → logic/dist/com.calimero.merostream.mpk"
 	@echo "  app-build      Bundle frontend (app/dist)"
 	@echo "  app-typecheck  tsc --noEmit on the frontend"
 	@echo "  app-test       Frontend unit tests (vitest)"
@@ -20,6 +20,13 @@ help:
 	@echo "    dev-stop       Stop both dev nodes"
 	@echo "  See DEV-TESTING.md."
 	@echo ""
+	@echo "  Fully automated 480p call (nodes + install + invite + 2 browsers):"
+	@echo "    e2e-call            Everything, headed Chrome, torn down after"
+	@echo "    e2e-call-headless   Same, headless"
+	@echo "    e2e-call-keep       Same, but leave the stack up to poke at"
+	@echo "    e2e-call-prod       Against app/dist — the artifact Vercel serves"
+	@echo "    cargo-mero          Install/verify cargo-mero pinned to rc.19"
+	@echo ""
 	@echo "  workflows      merobox 2-node e2e (P2 — needs Docker + merobox>=0.6.49)"
 	@echo "  load-curve     P3 load generator usage (drives encode_frame → CSV)"
 	@echo "  clean          Remove build artifacts"
@@ -27,7 +34,13 @@ help:
 
 setup: logic-build app-install
 
-logic-build:
+# `cargo mero` is the rc.19 app toolchain (core tools/cargo-mero): ABI emit,
+# wasm32 build, built-in wasm-opt, ABI section embed, and signed .mpk packaging.
+# Pinned to the same release as the SDK git tags in logic/Cargo.toml.
+cargo-mero:
+	@bash scripts/ensure-cargo-mero.sh
+
+logic-build: cargo-mero
 	cd logic && ./build.sh
 
 logic-test:
@@ -66,6 +79,29 @@ dev-nodes:
 dev-stop:
 	@bash scripts/dev-node2.sh --clean || true
 	@bash scripts/dev-node.sh --clean || true
+
+# ── Fully automated two-node 480p call ────────────────────────────────────────
+# The one thing the merobox e2e cannot cover: those scenarios use deliberately
+# non-H.264 payloads (the app must never parse the bytes, and real access units
+# would hide a regression where it started). So the codec ends were untested.
+# This drives real Chrome — REQUIRED, since Playwright's bundled Chromium has no
+# proprietary codecs and therefore no H.264 at all.
+e2e-call:
+	@bash scripts/e2e-live-call.sh
+
+e2e-call-headless:
+	@bash scripts/e2e-live-call.sh --headless
+
+e2e-call-keep:
+	@bash scripts/e2e-live-call.sh --keep
+
+# Runs the same call against app/dist served by `vite preview` — i.e. the exact
+# artifact Vercel serves. Worth its own target because the session gate behaves
+# differently in a production build: it used to hard-disable the entire UI outside
+# Tauri whenever import.meta.env.DEV was false, which would ship a dead page to
+# Vercel while every dev-server test stayed green.
+e2e-call-prod:
+	@bash scripts/e2e-live-call.sh --prod --headless
 
 # P2: all three e2e scenarios over merobox. Requires Docker + merobox>=0.6.49.
 # Each runs as its own CI matrix leg (.github/workflows/ci.yml). Run sequentially
