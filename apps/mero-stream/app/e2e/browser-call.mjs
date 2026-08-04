@@ -19,12 +19,13 @@
  *
  *   1. Both pages authenticate off the URL hash and join the context.
  *   2. WebCodecs H.264 is really available (not the "use Chrome" fallback).
- *   3. The SENDER encodes: chunks posted climbs, no post errors.
- *   4. State CROSSES NODES: the receiver's own node reports live chunks. This is
- *      the Calimero claim — node2 reads it from node2, not from node1's API.
- *   5. The RECEIVER decodes real video: its canvas has non-uniform pixels AND
- *      those pixels CHANGE between samples. A still frame or a blank canvas both
- *      fail. This is the assertion that a byte-level e2e can't make.
+ *   3. BOTH peers encode: chunks posted climbs, no post errors.
+ *   4. State CROSSES NODES: each peer's OWN node reports live chunks. This is the
+ *      Calimero claim — node2 reads it from node2, not from node1's API.
+ *   5. EACH peer decodes the OTHER's real video: exactly one remote tile, 640x480,
+ *      non-uniform pixels that CHANGE between samples. Blank and frozen both fail.
+ *      Running this for BOTH sides is what catches a single-shared-decoder
+ *      implementation, which looks perfectly correct with one sender.
  *   6. The reaper stays keyframe-clamped: oldest live chunk never runs past last
  *      keyframe seq, so the window can't strand an undecodable delta.
  *
@@ -57,7 +58,7 @@ const URLS_FILE = argOf("--urls") ?? "/tmp/mero-stream-dev-urls.txt";
 const ARTIFACTS = resolve(REPO, "data/browser-call");
 const HEADLESS = process.env.HEADLESS === "1";
 const CALL_SECONDS = Number(process.env.CALL_SECONDS ?? 20);
-const FPS = Number(process.env.CALL_FPS ?? 15);
+const FPS = Number(process.env.CALL_FPS ?? 25);
 
 function argOf(flag) {
   const i = process.argv.indexOf(flag);
@@ -175,8 +176,10 @@ async function main() {
     return { name, ctx, page, logs };
   };
 
-  const sender = await mk("sender", senderUrl);
-  const receiver = await mk("receiver", receiverUrl);
+  // Both are senders AND receivers — this is a two-way call. The variable names are
+  // kept for continuity; the labels say peerA/peerB so output is not misleading.
+  const sender = await mk("peerA", senderUrl);
+  const receiver = await mk("peerB", receiverUrl);
 
   try {
     // ── 0. Is this even the right app? ───────────────────────────────────────
@@ -247,28 +250,33 @@ async function main() {
       `H.264 annex-B 640x480 encode config supported ${encodeSupported.reason}`,
     );
 
-    // ── 3. Sender encodes ────────────────────────────────────────────────────
-    c.step(`Starting capture on the sender at ${FPS} fps`);
-    // Set fps via the range input so the run is reproducible regardless of the
-    // component's default.
-    const fpsSlider = sender.page.locator('input[type="range"]').first();
-    if ((await fpsSlider.count()) > 0) await fpsSlider.fill(String(FPS));
+    // ── 3. BOTH peers encode ─────────────────────────────────────────────────
+    // Two-way is the point. A one-sender test cannot catch the defect this suite
+    // missed for weeks: the receive loop kept ONE decoder for ALL senders and
+    // filtered only on `track`, never on `from`. Two senders are two independent
+    // H.264 bitstreams, so interleaving them into a single decoder produces an
+    // error or a smear — invisible until somebody actually starts both sides.
+    c.step(`Starting capture on BOTH peers at ${FPS} fps`);
+    const startCapture = async (p) => {
+      const fpsSlider = p.page.locator('input[type="range"]').first();
+      if ((await fpsSlider.count()) > 0) await fpsSlider.fill(String(FPS));
 
-    const toggle = sender.page.locator('[data-testid="capture-toggle"]');
-    await toggle.waitFor({ state: "visible", timeout: 15_000 });
-    // Playwright waits for the button to be enabled (it is disabled until the
-    // join lands), so no separate join gate is needed here.
-    await toggle.click();
-    // Then WAIT for the flag rather than reading it immediately. `data-running`
-    // is driven by React state, so it updates on the next render, not
-    // synchronously with the click — reading it inline is a race that passes on a
-    // fast machine and fails on a loaded one.
-    let running = false;
-    for (let i = 0; i < 40 && !running; i++) {
-      running = (await toggle.getAttribute("data-running")) === "true";
-      if (!running) await sleep(250);
+      const toggle = p.page.locator('[data-testid="capture-toggle"]');
+      await toggle.waitFor({ state: "visible", timeout: 15_000 });
+      // Playwright waits for the button to be enabled (disabled until join lands).
+      await toggle.click();
+      // WAIT for the flag rather than reading it inline: `data-running` is React
+      // state, so it lands on the next render, not synchronously with the click.
+      for (let i = 0; i < 40; i++) {
+        if ((await toggle.getAttribute("data-running")) === "true") return true;
+        await sleep(250);
+      }
+      return false;
+    };
+
+    for (const p of [sender, receiver]) {
+      check(await startCapture(p), `capture is running on ${p.name}`);
     }
-    check(running, "capture is running on the sender");
 
     const posted = await waitForMetric(
       sender.page,
@@ -291,22 +299,33 @@ async function main() {
       `receiver's node holds replicated chunks (liveChunks=${rxLive})`,
     );
 
-    // ── 5. Receiver decodes REAL video ───────────────────────────────────────
-    c.step("Verifying the receiver decodes actual pixels");
-    const decodeRate = await waitForMetric(
-      receiver.page,
-      "decode-rate",
-      (v) => v > 0,
-      45_000,
-    );
-    check((decodeRate ?? 0) > 0, `receiver decode rate ${decodeRate}/s`);
+    // ── 5. EACH peer decodes the OTHER's real video ──────────────────────────
+    c.step("Verifying BOTH peers decode actual pixels from each other");
+    for (const p of [sender, receiver]) {
+      const rate = await waitForMetric(
+        p.page,
+        "decode-rate",
+        (v) => v > 0,
+        45_000,
+      );
+      check((rate ?? 0) > 0, `${p.name} decode rate ${rate}/s`);
+
+      // Exactly one remote tile each: two participants means one OTHER person.
+      // A self-tile here would mean the receive loop is decoding our own stream,
+      // which wastes a decoder and is a real regression (`from === me` is skipped).
+      const tiles = await p.page.locator('[data-testid="peer-tile"]').count();
+      check(
+        tiles === 1,
+        `${p.name} shows exactly 1 remote tile (got ${tiles})`,
+      );
+    }
 
     // Sample the canvas twice. Blank OR frozen both fail: a stream that
     // replicates happily and shows nothing is the exact failure mode the
     // keyframe clamp exists to prevent, and it looks healthy from every other
     // angle.
-    const sampleCanvas = () =>
-      receiver.page.evaluate(() => {
+    const sampleCanvas = (p) =>
+      p.page.evaluate(() => {
         const cv = document.querySelector('[data-testid="remote-canvas"]');
         if (!(cv instanceof HTMLCanvasElement)) return null;
         if (!cv.width || !cv.height)
@@ -341,42 +360,42 @@ async function main() {
     // rate means chunks were pulled and pushed into the decoder, NOT that a frame
     // has been painted yet — VideoDecoder output is async and the canvas can still
     // be 0x0 for a moment. A one-shot sample here is a race.
-    let first = null;
-    const paintDeadline = Date.now() + 30_000;
-    while (Date.now() < paintDeadline) {
-      first = await sampleCanvas();
-      if (first && !first.blank && first.variance > 5) break;
-      await sleep(500);
-    }
+    //
+    // Run it for BOTH peers: each must be decoding the other. Checking one side
+    // only is what let a single-decoder implementation look correct.
+    for (const p of [sender, receiver]) {
+      let first = null;
+      const paintDeadline = Date.now() + 30_000;
+      while (Date.now() < paintDeadline) {
+        first = await sampleCanvas(p);
+        if (first && !first.blank && first.variance > 5) break;
+        await sleep(500);
+      }
 
-    check(
-      first && !first.blank,
-      `remote canvas has dimensions ${first?.w}x${first?.h}`,
-    );
-    check(
-      (first?.variance ?? 0) > 5,
-      `decoded frame is a real picture, not a flat fill (variance ${first?.variance?.toFixed(1)})`,
-    );
-    check(
-      first?.w === 640 && first?.h === 480,
-      `decoded at 640x480 (got ${first?.w}x${first?.h})`,
-    );
+      check(
+        first && !first.blank,
+        `${p.name}: remote canvas has dimensions ${first?.w}x${first?.h}`,
+      );
+      check(
+        (first?.variance ?? 0) > 5,
+        `${p.name}: real picture, not a flat fill (variance ${first?.variance?.toFixed(1)})`,
+      );
+      check(
+        first?.w === 640 && first?.h === 480,
+        `${p.name}: decoded at 640x480 (got ${first?.w}x${first?.h})`,
+      );
 
-    // Then confirm it MOVES. Poll for a differing signature instead of comparing a
-    // single pair: at low fps two samples can legitimately land on the same
-    // decoded frame, which would fail a strict one-shot comparison for no reason.
-    let second = null;
-    let moved = false;
-    const moveDeadline = Date.now() + 15_000;
-    while (Date.now() < moveDeadline && !moved) {
-      await sleep(500);
-      second = await sampleCanvas();
-      moved = !!(first && second && first.sig !== second.sig);
+      // Then confirm it MOVES. Poll for a differing signature rather than compare a
+      // single pair: two samples can legitimately land on the same decoded frame.
+      let moved = false;
+      const moveDeadline = Date.now() + 15_000;
+      while (Date.now() < moveDeadline && !moved) {
+        await sleep(500);
+        const second = await sampleCanvas(p);
+        moved = !!(first && second && first.sig !== second.sig);
+      }
+      check(moved, `${p.name}: picture advances (video, not a stuck frame)`);
     }
-    check(
-      moved,
-      "decoded picture advances between samples (video, not a stuck frame)",
-    );
 
     // ── 6. Sustain, then read the numbers ────────────────────────────────────
     //

@@ -244,6 +244,47 @@ answer it.
 
 ---
 
+## 6b. Frame rate and the "slow receiver"
+
+**25 fps.** Default is 15 (`useLiveStream.ts:85`), slider range 1–30. Raise the
+default to 25 and keep 30 reachable. Note this does *not* change the state rate:
+bitrate is the knob (fixed 1.5 Mbps), so 15→25 fps buys smoothness at roughly the
+same ~188 KB/s. Per-frame bytes drop, so expect slightly *worse* per-frame quality
+at the same bitrate — raise bitrate with fps if that matters.
+
+**The receiver is slow for a specific, fixable reason — and it is not the codec.**
+The decoder already sets `optimizeForLatency: true` and the encoder
+`latencyMode: "realtime"` (`lib/webcodecs.ts:194`, `:118`), so neither buffers.
+
+The cause is in `drain()`:
+
+```js
+const drain = useCallback(async () => {
+  if (drainingRef.current) return;   // ← DROPS the event, does not queue it
+```
+
+While a drain is in flight, every arriving `ChunkPosted` is **discarded**. Nothing
+re-runs the fetch, so the next one waits for the 1 s fallback poll
+(`RECEIVE_POLL_MS = 1000`). Latency therefore lands roughly uniformly in 0–1000 ms.
+
+That predicts mean ≈ 500 ms and p95 ≈ 950 ms. Measured: **p50 505 ms, p95 960 ms**
+across four runs. The distribution is the poll interval, not the network and not the
+codec.
+
+**Fix:**
+
+- **Coalesce instead of drop**: if a drain is already running, set `pendingRef` and
+  re-drain once it finishes. One extra pass, never a missed notification.
+- Drop `RECEIVE_POLL_MS` to ~250 ms. It becomes a genuine safety net rather than the
+  thing that sets latency.
+- Expect latency to fall to about SSE delivery + one RPC (tens of ms). Re-measure
+  and put the real number in the write-up — this invalidates the latency figures
+  recorded so far, which measured the poll interval.
+- Keep the two-clock caveat: latency still spans sender `createdAt` → receiver
+  render, so it is only meaningful when both nodes share a host clock.
+
+---
+
 ## 7. Test plan
 
 The existing automation is good but structurally blind to all of the above: it drives

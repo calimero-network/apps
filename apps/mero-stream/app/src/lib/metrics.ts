@@ -11,7 +11,11 @@
 //   ✅ end-to-end fragment latency   capture (sender clock) → peer render
 //   ✅ ingest rate                   accepted frames/s and compressed KiB/s
 //   ✅ encode round-trip             wall time around the encode_frame mutation
-//   ✅ seq gaps                      frames the receiver never saw (drop proxy)
+//   ⚠️  seq gaps                      frames the receiver never saw (drop proxy) —
+//                                    ONE SENDER ONLY. Seqs come from a shared
+//                                    space, so with two senders each sender's own
+//                                    seqs are non-contiguous and any span count is
+//                                    fiction. Reported as null past one sender.
 //   ✅ encode failures               the backpressure/rejection signal
 //   ❌ per-mutation server-side cost node-side, but AVAILABLE today: scrape
 //                                    core's /metrics and divide
@@ -52,6 +56,14 @@ export interface FrameSample {
   encodedBytes: number;
   /** Raw luma bytes handed to the encoder (width * height). */
   rawBytes: number;
+  /**
+   * Sender member id, when known. Required for meaningful gap counting once more
+   * than one peer streams: the contract allocates seqs from ONE shared space, so a
+   * receiver decoding only the other peer's chunks sees 1,3,5,…. Used to decide
+   * whether a gap count is computable at all (see `seqGapsForSamples`). Undefined
+   * on the approach-3 path, which is single-sender by construction.
+   */
+  from?: string;
 }
 
 /** One `encode_frame` mutation observed on the SEND side. */
@@ -82,8 +94,12 @@ export interface ProbeSnapshot {
   latencyMsP95: number | null;
   /** Worst latency in the window — the "is this remotely usable" headline. */
   latencyMsMax: number | null;
-  /** Frames the receiver never observed (gaps in an otherwise monotone seq). */
-  seqGaps: number;
+  /**
+   * Frames the receiver never observed (gaps in an otherwise monotone seq), or
+   * `null` when more than one sender is streaming — see `seqGapsForSamples` for
+   * why the number is not computable in that case.
+   */
+  seqGaps: number | null;
   /** encode_frame calls that threw. */
   encodeErrors: number;
   /** Samples currently in the rolling window (receive side). */
@@ -142,6 +158,36 @@ export function countSeqGaps(seqs: readonly number[]): number {
   }
   // Everything between the lowest and highest seq we saw, minus what we saw.
   return max - min + 1 - distinct.size;
+}
+
+/**
+ * Seq-gap count, or `null` when the metric cannot mean anything.
+ *
+ * **A numeric gap count is only valid with ONE sender.** The contract allocates
+ * seqs from a single shared space, so with two senders posting concurrently each
+ * sender's own seqs are inherently non-contiguous: A takes 2,4,6,8 while B takes
+ * 1,3,5,7. Nothing is lost, yet every span-based count books the other sender's
+ * seqs as losses — a real two-sender run at 25 fps reported **301 gaps** with zero
+ * actual loss.
+ *
+ * Grouping by sender does NOT rescue it, which is worth stating because it is the
+ * obvious first fix and it is wrong: B's series `1,3,5,7` has the same span
+ * deficit whether or not A's samples are in the array. Detecting loss per sender
+ * needs a per-sender monotone frame index, which the contract does not carry
+ * today (`post_chunk` takes no such field).
+ *
+ * So: exact count for one sender, and `null` — rendered as "—" — for more than
+ * one. Reporting a fabricated number would corrupt a §4 figure that is part of
+ * the deliverable, and "unavailable" is the truth.
+ */
+export function seqGapsForSamples(
+  samples: readonly { seq: number; from?: string }[],
+): number | null {
+  if (samples.length === 0) return 0;
+  const senders = new Set<string>();
+  for (const s of samples) senders.add(s.from ?? "");
+  if (senders.size > 1) return null;
+  return countSeqGaps(samples.map((s) => s.seq));
 }
 
 /**
@@ -224,7 +270,7 @@ export class ProbeRecorder {
       latencyMsP50: percentile(latencies, 0.5),
       latencyMsP95: percentile(latencies, 0.95),
       latencyMsMax: latencies.length > 0 ? Math.max(...latencies) : null,
-      seqGaps: countSeqGaps(frames.map((f) => f.seq)),
+      seqGaps: seqGapsForSamples(frames),
       encodeErrors: this.encodeErrors,
       frameSamples: frames.length,
       framesRenderedTotal: this.framesRenderedTotal,

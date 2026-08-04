@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ProbeRecorder,
   countSeqGaps,
+  seqGapsForSamples,
   percentile,
   ratePerSecond,
   type FrameSample,
@@ -208,5 +209,48 @@ describe("ProbeRecorder", () => {
     expect(snap.encodeErrors).toBe(0);
     expect(snap.latencyMsP50).toBeNull();
     expect(r.toCsv().split("\n")).toHaveLength(1); // header only
+  });
+});
+
+// ── Seq gaps with more than one sender ────────────────────────────────────────
+//
+// Guards a metric that actively lied once a second peer streamed. Seqs come from
+// ONE shared space, so with two senders each sender's own seqs are non-contiguous
+// (A takes 2,4,6,8 while B takes 1,3,5,7) and a span-based count books the other
+// sender's seqs as losses: a real two-sender run at 25 fps reported 301 gaps with
+// nothing lost. Grouping by sender does NOT fix it — B's 1,3,5,7 has the same span
+// deficit either way — so the honest answer is "unavailable".
+describe("seqGapsForSamples", () => {
+  it("returns null with two senders, rather than a fabricated count", () => {
+    const samples = [
+      { seq: 1, from: "A" },
+      { seq: 2, from: "B" },
+      { seq: 3, from: "A" },
+      { seq: 4, from: "B" },
+    ];
+    expect(seqGapsForSamples(samples)).toBeNull();
+  });
+
+  it("does not paper over the problem by grouping per sender", () => {
+    // B alone, as seen in a two-sender run: contiguous for B, but the span count
+    // still shows a deficit. This is exactly why grouping is not the fix.
+    const bOnly = [1, 3, 5, 7, 9];
+    expect(countSeqGaps(bOnly)).toBe(4);
+  });
+
+  it("counts exactly with a single sender", () => {
+    const samples = [1, 2, 4, 5].map((seq) => ({ seq, from: "A" })); // 3 missing
+    expect(seqGapsForSamples(samples)).toBe(1);
+  });
+
+  it("treats absent `from` as one sender (approach-3 path unchanged)", () => {
+    const seqs = [1, 2, 4, 5];
+    expect(seqGapsForSamples(seqs.map((seq) => ({ seq })))).toBe(
+      countSeqGaps(seqs),
+    );
+  });
+
+  it("returns 0 for no samples", () => {
+    expect(seqGapsForSamples([])).toBe(0);
   });
 });

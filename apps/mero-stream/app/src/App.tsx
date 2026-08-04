@@ -72,10 +72,15 @@ export default function App() {
   // before — they just aren't the only options.
   return (
     <Routes>
+      {/* Default to /live (480p H.264), not /stream (64x48 in-WASM toy codec).
+          Both this and StreamsPage used to send you to /stream, so every entry and
+          every reload landed on the 64x48 route and 480p was unreachable without
+          hand-editing the URL. /stream stays as an explicit comparison route — the
+          approach-3 baseline is a measured Task-3 result, not dead weight. */}
       <Route
         path="/"
         element={
-          <Navigate to={getContextId() ? "/stream" : "/streams"} replace />
+          <Navigate to={getContextId() ? "/live" : "/streams"} replace />
         }
       />
       <Route

@@ -135,7 +135,12 @@ export default function StreamsPage() {
       setRoomName(ctx.contextId, streamName);
       setActiveRoom(ctx.contextId, ctx.memberPublicKey);
       setName("");
-      navigate("/stream");
+      // /live (approach 2, 640x480 H.264), NOT /stream (approach 3, 64x48 toy codec
+      // in WASM). This used to navigate to /stream, which is the entire reason the
+      // app appeared to be "64x48, not 480p": the 480p route was only reachable by
+      // editing the URL by hand — which is exactly what the e2e did, so the suite
+      // passed at 480p while the product showed 64x48.
+      navigate("/live");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not create the stream.");
       void loadStreams();

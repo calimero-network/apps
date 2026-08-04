@@ -50,6 +50,24 @@ export default function LivePage() {
   const p = s.probe;
   const st = s.stats;
 
+  // One stable ref callback per peer, cached by member id, so React does not
+  // detach/reattach the canvas on every render. See the comment at the call site.
+  const refCache = useRef(
+    new Map<string, (el: HTMLCanvasElement | null) => void>(),
+  );
+  // Read `attachPeerCanvas` through a ref so the cached closures never capture a
+  // stale one, which also keeps this callback's identity stable for all peers.
+  const attachRef = useRef(s.attachPeerCanvas);
+  attachRef.current = s.attachPeerCanvas;
+  const peerCanvasRef = useCallback((from: string) => {
+    let fn = refCache.current.get(from);
+    if (!fn) {
+      fn = (el: HTMLCanvasElement | null) => attachRef.current(from, el);
+      refCache.current.set(from, fn);
+    }
+    return fn;
+  }, []);
+
   return (
     <div className={styles.page}>
       <header className={styles.header}>
@@ -114,16 +132,45 @@ export default function LivePage() {
             playsInline
           />
         </figure>
-        <figure className={styles.canvasCard}>
-          <figcaption className={styles.canvasLabel}>
-            Remote decoded (get_chunks → VideoDecoder)
-          </figcaption>
-          <canvas
-            ref={s.remoteCanvasRef}
-            className={styles.canvas}
-            data-testid="remote-canvas"
-          />
-        </figure>
+        {/* One tile PER REMOTE SENDER. There used to be a single canvas fed by a
+            single decoder, which cannot work beyond one sender: each is an
+            independent H.264 bitstream and interleaving them into one decoder
+            produces an error or a smear. */}
+        {s.remotePeers.length === 0 && (
+          <figure className={styles.canvasCard}>
+            <figcaption className={styles.canvasLabel}>
+              Waiting for someone else to start
+            </figcaption>
+            <div className={styles.canvas} data-testid="no-peers" />
+          </figure>
+        )}
+        {s.remotePeers.map((peer) => (
+          <figure
+            key={peer.from}
+            className={styles.canvasCard}
+            data-testid="peer-tile"
+            data-peer={peer.from}
+          >
+            <figcaption className={styles.canvasLabel}>
+              {peer.from.slice(0, 8)}… · {peer.width}×{peer.height}
+              {peer.decoding ? "" : " · waiting for keyframe"}
+            </figcaption>
+            {/* STABLE ref callback, memoized per peer. An inline
+                `ref={(el) => attach(peer.from, el)}` is a NEW function on every
+                render, so React detaches (null) and reattaches on each one — and
+                the detach path closes that peer's decoder. Since the stats tick
+                re-renders every second, the decoder was destroyed every second and
+                each peer only ever decoded the keyframe after it: decode rate
+                collapsed to ~3/s against 25/s posted, with 571 seq gaps, and the
+                picture never advanced. */}
+            <canvas
+              ref={peerCanvasRef(peer.from)}
+              className={styles.canvas}
+              data-testid="remote-canvas"
+              data-peer={peer.from}
+            />
+          </figure>
+        ))}
       </section>
 
       <section className={styles.controls}>
