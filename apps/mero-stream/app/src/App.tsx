@@ -1,7 +1,6 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
-import { APP_ENABLED } from "./lib/tauri";
 import { getContextId, clearActiveRoom } from "./lib/session";
 import LandingPage from "./pages/LandingPage";
 import StreamsPage from "./pages/StreamsPage";
@@ -59,11 +58,18 @@ function RequireStream({ children }: { children: ReactNode }) {
 }
 
 export default function App() {
-  // Web is blocked: Mero Stream needs the desktop app's node + SSO. Outside the
-  // desktop shell (or a dev browser session) we only ever render the landing
-  // page. See APP_ENABLED in lib/tauri.ts.
-  if (!APP_ENABLED) return <LandingPage />;
-
+  // No APP_ENABLED short-circuit here any more.
+  //
+  // It used to be `if (!APP_ENABLED) return <LandingPage />`, which made the web
+  // a dead end: without a session in the URL hash the router never mounted, so
+  // `RequireAuth` never ran, so mero-react's login was unreachable. The page told
+  // visitors to install the desktop app because that was genuinely the only way
+  // in — there was no login to reach.
+  //
+  // Auth is now decided where it belongs: `RequireAuth` renders the landing page
+  // (which carries a real ConnectButton) when unauthenticated, and the app when
+  // authenticated. The desktop shell and the URL hash still work exactly as
+  // before — they just aren't the only options.
   return (
     <Routes>
       <Route
