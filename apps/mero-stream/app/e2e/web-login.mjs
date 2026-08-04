@@ -148,13 +148,76 @@ try {
         .click()
         .catch(() => page.keyboard.press("Enter"));
 
+      // After credentials, mero-react resolves the app from the REGISTRY and
+      // offers to install it on this node ("Mero Stream v0.1.0 … Install &
+      // Continue"). It is a real step, not a splash: a freshly-initialised node
+      // does not have the app yet, and this is what puts it there. Skipping the
+      // click leaves you parked on the dialog, which looks like a failed login.
+      const install = page.getByRole("button", {
+        name: /install & continue|install and continue|install/i,
+      });
+      if (
+        await install
+          .first()
+          .waitFor({ state: "visible", timeout: 45_000 })
+          .then(() => true)
+          .catch(() => false)
+      ) {
+        c.ok("registry resolved the app and offered to install it");
+        await install.first().click();
+      }
+
+      // Then a permission-consent screen ("Review Permissions" — list/create
+      // contexts, execute contracts, namespace/group/blob scopes). The approve
+      // button sits below a long scrolling list, so scroll it into view rather
+      // than assuming it is on screen.
+      const approve = page
+        .getByRole("button", { name: /approve|allow|grant|accept|continue/i })
+        .last();
+      if (
+        await approve
+          .waitFor({ state: "visible", timeout: 30_000 })
+          .then(() => true)
+          .catch(() => false)
+      ) {
+        c.ok("node asked for permission consent");
+        await approve.scrollIntoViewIfNeeded().catch(() => {});
+        await approve.click();
+      }
+
+      // Final step: the node shows the resolved Application ID and the granted
+      // scopes, then mints the token pair. This is the click that actually hands
+      // the session back to the app.
+      const mint = page.getByRole("button", {
+        name: /generate token|create token|finish|done/i,
+      });
+      if (
+        await mint
+          .first()
+          .waitFor({ state: "visible", timeout: 30_000 })
+          .then(() => true)
+          .catch(() => false)
+      ) {
+        c.ok("node resolved the application id and offered to mint a token");
+        await mint.first().click();
+      }
+
       // Authenticated means the app itself renders — the stream picker or a
       // stream page — rather than the landing page's Connect control.
       const landed = await page
-        .locator('[data-testid="capture-toggle"], [class*="createBar"]')
+        .locator(
+          '[data-testid="capture-toggle"], [data-testid="connect-actions"] , [class*="createBar"]',
+        )
         .first()
-        .waitFor({ state: "visible", timeout: 45_000 })
-        .then(() => true)
+        .waitFor({ state: "visible", timeout: 60_000 })
+        .then(async () => {
+          // Distinguish "reached the app" from "bounced back to the landing
+          // page", which also matches a loose selector.
+          const stillLanding = await page
+            .locator('[data-testid="connect-actions"]')
+            .count();
+          return stillLanding === 0;
+        })
         .catch(() => false);
       check(landed, "signed in and reached the app (not the landing page)");
     }

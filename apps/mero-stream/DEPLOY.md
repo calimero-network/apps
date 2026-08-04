@@ -78,15 +78,44 @@ bundle contains zero JWTs.
 
 ### How a user reaches a working page
 
-The deployed origin needs a session handed in via the URL hash — the same shape
-tauri-app's `openAppFrontend` builds and `scripts/dev-invite.sh` prints:
+**Two ways in. Neither requires the desktop app.**
+
+**1. Log in from the page itself.** The landing page carries mero-react's
+`ConnectButton` — same pattern as mero-chat's Login page. The full flow, verified
+end to end against a real merod rc.19 (`app/e2e/web-login.mjs --node …`):
+
+1. **Connect a node** — the modal probes the well-known local Calimero ports and
+   also accepts a URL typed by hand.
+2. **Choose an authentication method** on the node's embedded auth frontend —
+   `user_password` for a standard node.
+3. **Username / password.**
+4. **Install & Continue** — mero-react resolves the app from the registry
+   (`com.calimero.merostream`) and installs it on the node. Expected on a fresh
+   node, and skipped once installed.
+5. **Review Permissions** → **Generate Token** — the node shows the resolved
+   Application ID and the granted scopes (`context:list/create/execute`,
+   `application:list`, `namespace`, `group`, `blob`, `context:alias`), then mints
+   the token pair and hands the session back.
+
+You land on the stream picker, where **Create stream** makes the namespace +
+context. Watching a frame cross still needs a *second* node — one context member
+cannot observe replication.
+
+This path depends on the app being published: step 4 resolves from the registry,
+and before publication it failed with `No versions found for package
+'com.calimero.merostream'`. It is published now, so it works.
+
+**2. Arrive with a session in the URL hash** — what tauri-app's `openAppFrontend`
+builds and `scripts/dev-invite.sh` prints:
 
 ```
 https://<deployment>/live#node_url=…&access_token=…&refresh_token=…
   &app-id=…&context_id=…&executor_public_key=…&dev_mode=1
 ```
 
-Launching from the desktop app or the apps registry produces this automatically.
+This skips all five steps, and skips registry resolution too because `app-id` is
+supplied directly — which is why the two-node e2e worked while web login was still
+broken.
 
 ### ⚠️ One thing to verify on the real deployment
 
@@ -124,10 +153,26 @@ Metadata lives in `logic/Cargo.toml` under `[package.metadata.calimero]`, not in
 the script.
 
 `--dev` (the default when no `--key` is given) signs with cargo-mero's well-known
-development key. Fine for `meroctl app install` locally; **the registry refuses
-it**. Also note a node derives the ApplicationId from **(package, signer)**, so a
+development key. A node derives the ApplicationId from **(package, signer)**, so a
 dev-signed and a prod-signed build of byte-identical wasm install as *different*
-applications.
+applications — republishing under a real key changes the app id.
+
+⚠️ **cargo-mero's help says a dev-signed bundle is "REFUSED by the registry". That
+is not what happens.** The bundle currently published at
+`apps.calimero.network/apps/com.calimero.merostream` (appVersion 0.1.0) carries
+`signerId: did:key:z6MknF3p5L5FDHJQ7FREUapuX4Wmp4MtF6WrHYaXS2B3eZQd` — the dev key
+— and the registry reports `verified: true`. So the tool's documented guarantee
+does not hold; don't rely on the registry to stop a dev-signed publish.
+
+That matters because **the dev key is well-known by design**: anyone can sign a
+bundle that produces the same `signerId`, and therefore the same ApplicationId for
+this package. The currently-published 0.1.0 should be re-published under a real key
+before anyone treats it as trustworthy:
+
+```bash
+cargo mero key generate --output mero-stream-key.json   # keep OUT of git
+cd logic && ./build-bundle.sh --key ../mero-stream-key.json
+```
 
 ### What the manifest contains
 
