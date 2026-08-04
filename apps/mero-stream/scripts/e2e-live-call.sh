@@ -21,6 +21,8 @@
 #   ./scripts/e2e-live-call.sh --seconds 60
 #   ./scripts/e2e-live-call.sh --skip-build     # reuse logic/res/mero_stream.wasm
 #   ./scripts/e2e-live-call.sh --prod           # test the PRODUCTION bundle (what Vercel serves)
+#   ./scripts/e2e-live-call.sh --via-invite     # run the 4-scenario 2-node suite first, then
+#                                              # stream on the ROOM it builds via an invitation
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -42,6 +44,7 @@ KEEP=false
 HEADLESS_ENV=""
 SKIP_BUILD=false
 PROD=false
+VIA_INVITE=false
 CALL_SECONDS="${CALL_SECONDS:-20}"
 
 while [ $# -gt 0 ]; do
@@ -50,6 +53,7 @@ while [ $# -gt 0 ]; do
     --headless) HEADLESS_ENV="1"; shift ;;
     --skip-build) SKIP_BUILD=true; shift ;;
     --prod) PROD=true; shift ;;
+    --via-invite) VIA_INVITE=true; shift ;;
     --seconds) CALL_SECONDS="$2"; shift 2 ;;
     --help|-h) sed -n '2,30p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) printf 'unknown flag: %s\n' "$1" >&2; exit 2 ;;
@@ -205,6 +209,19 @@ fi
 green "vite up, serving '$SERVED_TITLE' (pid $VITE_PID, log: $VITE_LOG)"
 
 # ── 6. The browser call ───────────────────────────────────────────────────────
+URLS_FILE=/tmp/mero-stream-dev-urls.txt
+if $VIA_INVITE; then
+  step "Two-node suite: namespace -> invitation -> join -> room -> context"
+  # Proves how a SECOND PERSON actually gets in, which the browser test never
+  # covered: dev-invite.sh did all of it with curl before Chrome ever opened. On
+  # success it emits /live URLs for the room it just built, so the stream below runs
+  # on a context created THROUGH the invite path rather than one pre-baked by a script.
+  (cd app && VITE_URL="$VITE_URL" node e2e/two-node-suite.mjs --emit-urls /tmp/mero-stream-room-urls.txt) \
+    || { red "two-node suite failed"; exit 1; }
+  URLS_FILE=/tmp/mero-stream-room-urls.txt
+  green "streaming on the invite-built room"
+fi
+
 step "Driving the call in Chrome"
 # `set -e` would abort before the report below, and we want the failure summary
 # and the artifact hint either way.
@@ -212,7 +229,7 @@ CALL_CODE=0
 (
   cd app
   HEADLESS="$HEADLESS_ENV" CALL_SECONDS="$CALL_SECONDS" \
-    node e2e/browser-call.mjs --urls /tmp/mero-stream-dev-urls.txt
+    node e2e/browser-call.mjs --urls "$URLS_FILE"
 ) || CALL_CODE=$?
 
 if [ $CALL_CODE -eq 0 ]; then

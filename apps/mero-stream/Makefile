@@ -1,4 +1,4 @@
-.PHONY: help setup build bundle logic-build logic-test logic-bundle app-install app-build app-typecheck app-test dev dev-nodes dev-stop workflows load-curve clean cargo-mero e2e-call e2e-call-headless e2e-call-keep e2e-call-prod
+.PHONY: help setup build bundle logic-build logic-test logic-bundle app-install app-build app-typecheck app-test dev dev-nodes dev-stop workflows load-curve clean cargo-mero e2e-call e2e-call-headless e2e-call-keep e2e-call-prod e2e-suite
 
 help:
 	@echo ""
@@ -25,6 +25,7 @@ help:
 	@echo "    e2e-call-headless   Same, headless"
 	@echo "    e2e-call-keep       Same, but leave the stack up to poke at"
 	@echo "    e2e-call-prod       Against app/dist — the artifact Vercel serves"
+	@echo "    e2e-suite           4-scenario 2-node suite (namespace/invite/room) + stream"
 	@echo "    cargo-mero          Install/verify cargo-mero pinned to rc.19"
 	@echo ""
 	@echo "  workflows      merobox 2-node e2e (P2 — needs Docker + merobox>=0.6.49)"
@@ -100,6 +101,13 @@ e2e-call-keep:
 # differently in a production build: it used to hard-disable the entire UI outside
 # Tauri whenever import.meta.env.DEV was false, which would ship a dead page to
 # Vercel while every dev-server test stayed green.
+# The 4-scenario 2-node suite over the admin API: baseline, namespace invitation +
+# join, room as a subgroup with its own context, and node2 self-admitting into it.
+# Then streams on the room it built, so the call is proven on a context created
+# through the invite path.
+e2e-suite:
+	@bash scripts/e2e-live-call.sh --via-invite --headless
+
 e2e-call-prod:
 	@bash scripts/e2e-live-call.sh --prod --headless
 

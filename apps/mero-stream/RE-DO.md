@@ -306,6 +306,52 @@ hosted-callback rejection).
 
 ---
 
+## Status (updated after execution)
+
+| Item | State |
+|---|---|
+| §1 route → 480p | ✅ done, verified |
+| §2 per-sender demux | ✅ done, verified two-way |
+| §3 contract per-sender keyframes | ⏭️ **not needed** — solved in the frontend with a per-peer keyframe gate, so no state-layout change and no republish. Remains an optimisation. |
+| §4 rooms as subgroups | ⚠️ **proven at the API level** by the suite (S3/S4); the UI still creates namespace + context with no subgroup |
+| §5 invite/join UI | ❌ not built — pairing still needs `dev-invite.sh` or the suite |
+| §6 two-way call | ✅ done, verified |
+| §6b 25 fps + latency | ✅ done — p50 505 ms → ~135 ms, decode 3.17/s → 25/s |
+| §7 two-sender tests | ✅ done, plus a 4-scenario 2-node suite |
+
+### What the suite found
+
+`app/e2e/two-node-suite.mjs` (run it with `make e2e-suite`) asserts each stage
+separately: baseline → namespace + invitation + join → room as a subgroup with its
+own context → node2 self-admitting into it → then streams on the room it built.
+
+Two real findings, both predicted by §4 and both now pinned by tests:
+
+1. **Joining a namespace does NOT put you in its rooms.** `join-via-inheritance`
+   returned **403** until the room's subgroup was made open. `VisibilityMode`
+   defaults to **restricted**, so a room created with defaults is unreachable by the
+   namespace members who were just invited.
+2. **The wire value is lowercase.** `"Open"` is rejected —
+   `Field 'subgroup_visibility' has invalid format: must be 'open' or 'restricted'`.
+   A good error, but mero-js types it as a bare `string`, so nothing catches the
+   casing at compile time.
+
+### ⚠️ Known flake on the invite-built room
+
+One run in three, one direction stalls shortly after the call starts: decode rate
+drops to 0 and that peer's picture freezes, while the other direction keeps going.
+Fully reproducible-green on re-run (2/3 passes), and never seen on the context
+`dev-invite.sh` builds — only on a room node2 entered via
+`join-via-inheritance`.
+
+Most likely the key-delivery timing on self-admit (core's open-subgroup KeyDelivery
+op): a member that admits itself needs the group key before it can apply subsequent
+state, and until it arrives that peer sees nothing new. **Not diagnosed** — do not
+treat this as confirmed. Worth a focused look before anyone calls the room path
+production-ready; the shared-context path is unaffected.
+
+---
+
 ## Suggested order
 
 1. **§1 route fix** — 3 lines, and you immediately see 480p. Do it alone and confirm.
