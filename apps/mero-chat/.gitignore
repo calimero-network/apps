@@ -8,3 +8,4 @@ data/
 **/build/
 **/node_modules/
 calimero.json
+.local-signing-key.json
