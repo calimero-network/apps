@@ -53,9 +53,9 @@ cd logic
 # Add the WebAssembly target
 rustup target add wasm32-unknown-unknown
 
-# Build the contract
-chmod +x ./build.sh
-./build.sh
+# Install cargo-mero (pre-release pin — see logic/Cargo.toml) and build the contract
+cargo install cargo-mero --locked --git https://github.com/calimero-network/core --rev 04be9e4150925e9a7eb5b8dc0f06ba299eaef3ff
+cargo mero build
 ```
 
 The compiled `.wasm` file will be placed in the `res/` directory.

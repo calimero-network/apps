@@ -58,7 +58,7 @@ install: app-install
 # ── Build ──────────────────────────────────────────────────────────────────────
 
 logic-build:
-	cd logic && ./build.sh
+	cd logic && cargo mero build
 
 app-install:
 	cd app && pnpm install

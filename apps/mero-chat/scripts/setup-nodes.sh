@@ -230,6 +230,7 @@ else
 fi
 check_cmd jq
 check_cmd curl
+check_cmd cargo-mero
 green "All tools found"
 
 # ── Build WASM if needed ──────────────────────────────────────────────────────
@@ -237,7 +238,7 @@ green "All tools found"
 step "Checking WASM build"
 if [ ! -f "$WASM_PATH" ]; then
   yellow "curb.wasm not found — building (first run is slow)…"
-  (cd "$REPO_ROOT/logic" && bash build.sh)
+  (cd "$REPO_ROOT/logic" && cargo mero build)
   green "curb.wasm built: $WASM_PATH"
 else
   green "WASM already exists: $WASM_PATH"

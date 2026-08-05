@@ -42,3 +42,11 @@ debug = false
 panic = "abort"
 overflow-checks = true
 
+[package.metadata.calimero]
+package     = "com.calimero.chat"
+name        = "Mero Chat"
+description = "Mero Chat v2 - group-based context management. Each context is one channel or DM."
+author      = "Calimero"
+icon        = "../app/public/icons/icon-512x512.png"
+frontend    = "https://mero-chat-pwa.vercel.app/"
+slug        = "com.calimero.chat"

@@ -6,6 +6,7 @@ data/
 **/target/
 **/res/
 **/build/
+**/dist/
 **/node_modules/
 calimero.json
 .local-signing-key.json
