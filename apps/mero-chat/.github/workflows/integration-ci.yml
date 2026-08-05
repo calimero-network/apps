@@ -58,6 +58,24 @@ jobs:
           mkdir -p res
           cp target/wasm32-unknown-unknown/app-release/curb.wasm res/
 
+      - name: Cache cargo-mero
+        id: cache-cargo-mero
+        uses: actions/cache@v6
+        with:
+          path: ~/.cargo/bin/cargo-mero
+          key: cargo-mero-${{ runner.os }}-04be9e4150925e9a7eb5b8dc0f06ba299eaef3ff
+
+      - name: Install cargo-mero
+        if: steps.cache-cargo-mero.outputs.cache-hit != 'true'
+        run: |
+          cargo install cargo-mero --locked \
+            --git https://github.com/calimero-network/core \
+            --rev 04be9e4150925e9a7eb5b8dc0f06ba299eaef3ff
+
+      - name: Smoke-test the bundle path
+        working-directory: logic
+        run: cargo mero bundle --dev
+
       # ── Install merobox ───────────────────────────────────────────────────────
 
       - name: Install merobox
