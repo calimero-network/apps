@@ -34,11 +34,9 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  # Commit the 0.11.0-rc.13 tag points to in calimero-network/core — pinned to
-  # the SHA (not the tag) so a moved tag can't change what gets compiled.
-  # Keep in sync with the calimero-sdk tag in logic/Cargo.toml.
-  MERO_SIGN_REV: 64c17161102cc68c226c5c051315802b95583143
-  REGISTRY_CLI_VERSION: 1.15.2
+  # Pinned to core#3374's branch tip, not a tag: the bundle tool this workflow
+  # needs hasn't shipped in a release yet. Re-pin to a tag once it does.
+  CARGO_MERO_REV: 04be9e4150925e9a7eb5b8dc0f06ba299eaef3ff
 
 jobs:
   deploy:
@@ -78,26 +76,27 @@ jobs:
       - name: Install wasm-opt
         run: sudo apt-get update -q && sudo apt-get install -y -q binaryen
 
-      - name: Cache mero-sign
-        id: cache-mero-sign
+      - name: Cache cargo-mero
+        id: cache-cargo-mero
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.0.1
         with:
-          path: ~/.cargo/bin/mero-sign
-          key: mero-sign-${{ runner.os }}-${{ env.MERO_SIGN_REV }}
+          path: ~/.cargo/bin/cargo-mero
+          key: cargo-mero-${{ runner.os }}-${{ env.CARGO_MERO_REV }}
 
-      - name: Install mero-sign
-        if: steps.cache-mero-sign.outputs.cache-hit != 'true'
+      - name: Install cargo-mero
+        if: steps.cache-cargo-mero.outputs.cache-hit != 'true'
         run: |
-          cargo install mero-sign --locked \
+          cargo install cargo-mero --locked \
             --git https://github.com/calimero-network/core \
-            --rev "$MERO_SIGN_REV"
+            --rev "$CARGO_MERO_REV"
 
       - name: Write signing key
         env:
-          MERO_SIGN_KEY: ${{ secrets.MERO_SIGN_KEY }}
+          MERO_SIGN_KEY_CONTENTS: ${{ secrets.MERO_SIGN_KEY }}
         run: |
           umask 077
-          printf '%s' "$MERO_SIGN_KEY" > "$RUNNER_TEMP/mero-sign-key.json"
+          printf '%s' "$MERO_SIGN_KEY_CONTENTS" > "$RUNNER_TEMP/mero-sign-key.json"
+          echo "MERO_SIGN_KEY=$RUNNER_TEMP/mero-sign-key.json" >> "$GITHUB_ENV"
 
       - name: Resolve version (from tag or dispatch input)
         id: ver
@@ -112,32 +111,24 @@ jobs:
             *) echo "::error::version must be X.Y.Z (got '$v' from ref '$GITHUB_REF_NAME')"; exit 1 ;;
           esac
           echo "version=$v" >> "$GITHUB_OUTPUT"
-          echo "Publishing version $v"
 
       - name: Build & sign bundle
-        env:
-          MERO_SIGN_KEY_FILE: ${{ runner.temp }}/mero-sign-key.json
-          APP_VERSION_OVERRIDE: ${{ steps.ver.outputs.version }}
-        run: ./logic/build-bundle.sh
+        id: bundle
+        working-directory: logic
+        run: |
+          MPK="$(cargo mero bundle --key "$MERO_SIGN_KEY" --app-version "${{ steps.ver.outputs.version }}" --print-output-path | tail -1)"
+          echo "mpk=$MPK" >> "$GITHUB_OUTPUT"
 
       - name: Remove signing key
         if: always()
         run: rm -f "$RUNNER_TEMP/mero-sign-key.json"
 
-      - name: Install calimero-registry CLI
-        run: npm install -g --ignore-scripts "@calimero-network/registry-cli@$REGISTRY_CLI_VERSION"
-
       - name: Publish to App Registry
+        working-directory: logic
         env:
           CALIMERO_API_KEY: ${{ secrets.CALIMERO_REGISTRY_API_KEY }}
           CALIMERO_REGISTRY_URL: https://apps.calimero.network
-        run: |
-          mpk="logic/res/chat-${{ steps.ver.outputs.version }}.mpk"
-          if [ ! -f "$mpk" ]; then
-            echo "::error::expected bundle not found: $mpk"; ls -la logic/res || true; exit 1
-          fi
-          echo "Publishing $mpk"
-          calimero-registry bundle push "$mpk" --remote
+        run: cargo mero publish "${{ steps.bundle.outputs.mpk }}"
 
       - name: Summary
         run: |
