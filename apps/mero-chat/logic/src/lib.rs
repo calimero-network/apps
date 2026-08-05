@@ -1,6 +1,7 @@
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::{app, env, BlobId, PublicKey};
+use calimero_sdk::abi::AbiType;
+use calimero_sdk::{app, env, AccountId, BlobId};
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::rekey::RekeyTarget;
 use calimero_storage::collections::{
@@ -24,14 +25,14 @@ fn draft_key(user_base58: &str, channel: &str) -> String {
     format!("{user_base58}:{channel}")
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct MessageSentEvent {
     pub message_id: String,
 }
 
-#[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+#[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Attachment {
@@ -69,7 +70,7 @@ impl Attachment {
     }
 }
 
-#[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+#[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct AttachmentPublic {
@@ -80,7 +81,7 @@ pub struct AttachmentPublic {
     pub uploaded_at: u64,
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct AttachmentInput {
@@ -103,7 +104,7 @@ pub enum Event {
 }
 
 /// "channel" or "dm" — stored in app state so it's mutable (supports renames).
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, PartialEq, Eq, Clone)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, PartialEq, Eq, Clone, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub enum ContextType {
@@ -121,7 +122,7 @@ pub enum ContextType {
 /// - `Admin`    can change anyone's role; creator starts here
 /// - `Banned`   cannot perform any state-mutating action
 #[derive(Debug, Clone, Copy, PartialEq, Eq,
-    BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+    BorshDeserialize, BorshSerialize, Serialize, Deserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub enum Role {
@@ -142,7 +143,7 @@ impl Default for Role {
 /// named role the registry stores.
 const ROLE_MOD: &str = "mod";
 
-#[derive(BorshDeserialize, BorshSerialize)]
+#[derive(BorshDeserialize, BorshSerialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct Message {
     pub timestamp: LwwRegister<u64>,
@@ -331,7 +332,7 @@ impl Serialize for Message {
     }
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct MessageWithReactions {
@@ -388,7 +389,7 @@ fn attachment_inputs_to_vector(
     Ok(vector)
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct FullMessageResponse {
     pub total_count: u32,
@@ -397,7 +398,7 @@ pub struct FullMessageResponse {
 }
 
 /// Per-context metadata returned by `get_info` / `get_channel_info`.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct ContextInfo {
     pub name: String,
@@ -408,7 +409,7 @@ pub struct ContextInfo {
 }
 
 /// Per-context user profile returned by `get_profiles`.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct UserProfile {
     pub identity: UserId,
@@ -417,7 +418,7 @@ pub struct UserProfile {
 }
 
 /// Per-context profile stored in CRDT state.
-#[derive(BorshDeserialize, BorshSerialize)]
+#[derive(BorshDeserialize, BorshSerialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct StoredProfile {
     pub username: LwwRegister<String>,
@@ -509,7 +510,7 @@ impl MeroChat {
 
         // The context creator is the sole initial admin (the writer set). Other
         // admins/mods are granted at runtime by an existing admin.
-        let roles = AccessControl::new(env::executor_id().into());
+        let roles = AccessControl::new(env::account_id().into());
 
         // Pre-seed the creator's profile so get_profiles returns their name
         // immediately after context state gossip, without waiting for an
@@ -517,7 +518,7 @@ impl MeroChat {
         let mut profiles = AuthoredMap::new();
         if !creator_username.trim().is_empty() {
             let _ = profiles.insert(
-                UserId::new(env::executor_id()),
+                UserId::new(env::account_id()),
                 StoredProfile {
                     username: LwwRegister::new(creator_username),
                     avatar: None,
@@ -842,13 +843,13 @@ impl MeroChat {
                 if *flag.get() && !ids.contains(&id) { ids.push(id); }
             }
         }
-        for pk in self.roles.admins() {
-            let id = UserId::new(*pk);
+        for who in self.roles.admins() {
+            let id = UserId::new(*who.as_bytes());
             if !ids.contains(&id) { ids.push(id); }
         }
         if let Ok(mods) = self.roles.members_of(ROLE_MOD) {
-            for pk in mods {
-                let id = UserId::new(*pk);
+            for who in mods {
+                let id = UserId::new(*who.as_bytes());
                 if !ids.contains(&id) { ids.push(id); }
             }
         }
@@ -884,7 +885,7 @@ impl MeroChat {
             app::bail!("You don't have permission to change this member's role");
         }
 
-        let pk = Self::to_pk(&target);
+        let who = Self::to_account(&target);
         let actor_is_admin = actor_role == Role::Admin;
         // Strip grants based on the target's *actual* writer-set / registry
         // membership, NOT the display role — `role_of` reports `Banned` whenever
@@ -892,34 +893,34 @@ impl MeroChat {
         // underlying admin/mod grant if the ban map and `AccessControl` diverged
         // across a merge. Only an admin may revoke; a moderator's sole permitted
         // transition is User<->Banned on a plain User, which holds no grants.
-        let has_mod   = self.roles.has_role(ROLE_MOD, &pk).unwrap_or(false);
-        let has_admin = self.roles.is_admin(&pk);
+        let has_mod   = self.roles.has_role(ROLE_MOD, &who).unwrap_or(false);
+        let has_admin = self.roles.is_admin(&who);
         match role {
             Role::Admin => {
-                if has_mod { self.revoke_mod(&pk)?; }
+                if has_mod { self.revoke_mod(&who)?; }
                 self.set_banned(&target, false);
                 self.roles
-                    .grant_admin(pk)
+                    .grant_admin(who)
                     .map_err(|e| app::err!("grant admin failed: {e}"))?;
             }
             Role::Mod => {
-                if has_admin { self.revoke_admin_member(&pk)?; }
+                if has_admin { self.revoke_admin_member(&who)?; }
                 self.set_banned(&target, false);
                 self.roles
-                    .grant(ROLE_MOD, pk)
+                    .grant(ROLE_MOD, who)
                     .map_err(|e| app::err!("grant mod failed: {e}"))?;
             }
             Role::Banned => {
                 if actor_is_admin {
-                    if has_mod   { self.revoke_mod(&pk)?; }
-                    if has_admin { self.revoke_admin_member(&pk)?; }
+                    if has_mod   { self.revoke_mod(&who)?; }
+                    if has_admin { self.revoke_admin_member(&who)?; }
                 }
                 self.set_banned(&target, true);
             }
             Role::User => {
                 if actor_is_admin {
-                    if has_mod   { self.revoke_mod(&pk)?; }
-                    if has_admin { self.revoke_admin_member(&pk)?; }
+                    if has_mod   { self.revoke_mod(&who)?; }
+                    if has_admin { self.revoke_admin_member(&who)?; }
                 }
                 self.set_banned(&target, false);
             }
@@ -933,10 +934,10 @@ impl MeroChat {
         if self.is_banned(user) {
             return Role::Banned;
         }
-        let pk = Self::to_pk(user);
-        if self.roles.is_admin(&pk) {
+        let who = Self::to_account(user);
+        if self.roles.is_admin(&who) {
             Role::Admin
-        } else if self.roles.has_role(ROLE_MOD, &pk).unwrap_or(false) {
+        } else if self.roles.has_role(ROLE_MOD, &who).unwrap_or(false) {
             Role::Mod
         } else {
             Role::User
@@ -951,27 +952,27 @@ impl MeroChat {
         let _ = self.banned.insert(*user, LwwRegister::new(banned));
     }
 
-    fn revoke_mod(&mut self, pk: &PublicKey) -> app::Result<()> {
+    fn revoke_mod(&mut self, who: &AccountId) -> app::Result<()> {
         self.roles
-            .revoke(ROLE_MOD, pk)
+            .revoke(ROLE_MOD, who)
             .map_err(|e| app::err!("revoke mod failed: {e}"))?;
         Ok(())
     }
 
-    fn revoke_admin_member(&mut self, pk: &PublicKey) -> app::Result<()> {
+    fn revoke_admin_member(&mut self, who: &AccountId) -> app::Result<()> {
         self.roles
-            .revoke_admin(pk)
+            .revoke_admin(who)
             .map_err(|e| app::err!("revoke admin failed: {e}"))?;
         Ok(())
     }
 
-    /// Map a curb `UserId` (32-byte key) to the storage-layer `PublicKey` the
-    /// access-control components key on.
-    fn to_pk(user: &UserId) -> PublicKey {
+    /// Map a curb `UserId` (32-byte key) to the `AccountId` the access-control
+    /// components key on.
+    fn to_account(user: &UserId) -> AccountId {
         let slice: &[u8] = user.as_ref();
         let mut arr = [0u8; 32];
         arr.copy_from_slice(slice);
-        PublicKey::from(arr)
+        AccountId::from(arr)
     }
 
     fn require_not_banned(&self) -> app::Result<()> {
@@ -993,7 +994,7 @@ impl MeroChat {
     }
 
     fn executor_id() -> UserId {
-        UserId::new(env::executor_id())
+        UserId::new(env::account_id())
     }
 
     fn get_message_id(
@@ -1528,7 +1529,7 @@ mod tests {
         // authoritative writer-set check rejects a forged grant delta at merge.
         let mut app = new_chat();
         let target = UserId::new(USER);
-        let denied = app.call_as(MODR, |s| s.set_member_role(target, Role::Admin));
+        let denied = app.call_as_account(MODR, MODR, |s| s.set_member_role(target, Role::Admin));
         assert!(denied.is_err());
         assert_eq!(app.view(|s| s.get_member_role(target)), Role::User);
     }
@@ -1544,14 +1545,14 @@ mod tests {
         assert_eq!(app.view(|s| s.get_member_role(modr)), Role::Mod);
 
         // The moderator may ban a user (separate exclusion set, no admin grant).
-        app.call_as(MODR, |s| s.set_member_role(user, Role::Banned)).unwrap();
+        app.call_as_account(MODR, MODR, |s| s.set_member_role(user, Role::Banned)).unwrap();
         assert_eq!(app.view(|s| s.get_member_role(user)), Role::Banned);
 
         // …but may not escalate a user to Admin.
-        assert!(app.call_as(MODR, |s| s.set_member_role(user, Role::Admin)).is_err());
+        assert!(app.call_as_account(MODR, MODR, |s| s.set_member_role(user, Role::Admin)).is_err());
 
         // …and may unban (Banned → User).
-        app.call_as(MODR, |s| s.set_member_role(user, Role::User)).unwrap();
+        app.call_as_account(MODR, MODR, |s| s.set_member_role(user, Role::User)).unwrap();
         assert_eq!(app.view(|s| s.get_member_role(user)), Role::User);
     }
 
@@ -1561,7 +1562,7 @@ mod tests {
         let user = UserId::new(USER);
         app.call(|s| s.set_member_role(user, Role::Banned)).unwrap();
         // A banned caller's state-mutating action is rejected by the ban gate.
-        let r = app.call_as(USER, |s| s.save_draft("general".to_owned(), "hi".to_owned()));
+        let r = app.call_as_account(USER, USER, |s| s.save_draft("general".to_owned(), "hi".to_owned()));
         assert!(r.is_err());
     }
 
