@@ -7,23 +7,40 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+# Read by `cargo mero bundle` (core #3374): every field the node and the
+# registry render now has a producer here, so nothing hand-writes a
+# manifest.json. `appVersion` is deliberately absent — the deploy workflow
+# resolves it from the registry with `--bump patch`.
+[package.metadata.calimero]
+package = "com.calimero.merodesign"
+name = "MeroDesign"
+description = "Collaborative design tool on the Calimero p2p network. Figma-style canvas, your data on your nodes."
+author = "Calimero"
+# The desktop resolves a deep link (calimero://<slug>/… and
+# https://links.calimero.network/<slug>/…) by Application.package, so the slug
+# IS the package id.
+slug = "com.calimero.merodesign"
+tags = ["design", "collaboration", "canvas"]
+github = "https://github.com/calimero-network/mero-design"
+min-runtime-version = "0.1.0"
+frontend = "https://mero-design.vercel.app/"
+
 [dependencies]
 borsh = "0.10.3"
 borsh-derive = "0.10.3"
-calimero-sdk = { git = "https://github.com/calimero-network/core", branch = "master" }
-calimero-storage = { git = "https://github.com/calimero-network/core", branch = "master" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core", branch = "master" }
+# Pin a real release tag, never `branch = "master"`: master rides unreleased
+# protocol work against nodes that run the release. All SDK crates must share
+# the exact same tag (the workspace version at a tag is 0.0.0).
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.20" }
+calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.20" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.20" }
 thiserror = "1.0.56"
-serde_json = "1.0.113"
-
-[build-dependencies]
-calimero-wasm-abi = { git = "https://github.com/calimero-network/core", branch = "master" }
 serde_json = "1.0.113"
 
 [dev-dependencies]
 # Enables register_crdt_merge + the native mock host so TestHost can drive
 # CRDT state (incl. the permissioned components) under `cargo test`.
-calimero-storage = { git = "https://github.com/calimero-network/core", branch = "master", features = ["testing"] }
+calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.20", features = ["testing"] }
 
 [profile.app-release]
 inherits = "release"

@@ -1,3 +1,5 @@
+import { createLink } from "@calimero-network/mero-platform";
+
 export function encodeInvitation(raw: string): string {
   // btoa only accepts Latin1 (code points 0-255) and throws on anything else, so
   // UTF-8-encode to bytes first — otherwise a team name with an emoji or accented
@@ -29,4 +31,32 @@ export function encodeInvitationObject(obj: unknown): string {
 /** Decode a token produced by {@link encodeInvitationObject} back to its object. */
 export function decodeInvitationObject<T = Record<string, unknown>>(encoded: string): T {
   return JSON.parse(decodeInvitation(encoded)) as T;
+}
+
+/**
+ * The app's deep-link slug. The desktop resolves a link by
+ * `Application.package`, and links.calimero.network resolves the web build by
+ * asking the registry for that same package — so the slug IS the package id.
+ * Keep equal to `slug`/`package` in `logic/Cargo.toml`.
+ */
+export const APP_SLUG = "com.calimero.merodesign";
+
+/**
+ * The shareable form of an invitation token: a canonical HTTPS link that opens
+ * the desktop app where it is installed and the published web build otherwise.
+ * {@link invitationTokenFrom} reads it back, so a bare token still works.
+ */
+export function invitationLink(token: string): string {
+  return createLink(APP_SLUG, "join", { invitation: token });
+}
+
+/** The token carried by an invitation link, or the input unchanged if it isn't one. */
+export function invitationTokenFrom(input: string): string {
+  const trimmed = input.trim();
+  if (!/^(https?|calimero):\/\//i.test(trimmed)) return trimmed;
+  try {
+    return new URL(trimmed).searchParams.get("invitation") ?? trimmed;
+  } catch {
+    return trimmed;
+  }
 }

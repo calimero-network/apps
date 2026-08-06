@@ -1,0 +1,159 @@
+# Builds, signs and publishes the logic bundle to the Calimero App Registry on
+# every merge to master that touches logic/.
+#
+# The whole build is `cargo mero bundle` (core #3374): it compiles each service,
+# embeds the ABI, hashes every artifact, renders manifest.json from
+# [package.metadata.calimero] in logic/Cargo.toml, and signs it. Nothing here
+# hand-writes a manifest any more — a hand-written one is how a bundle ends up
+# with a null artifact hash the node refuses at install.
+#
+# The version is resolved by `--bump patch`: the tool asks the registry for the
+# highest published version of com.calimero.merodesign and increments it, so a
+# merge never has to bump a number by hand and never collides with a published
+# version.
+#
+# Required secrets (organization-level is fine, that's where the prod key lives):
+#   MERO_SIGN_KEY              — full JSON of the production signing key file
+#                                ({private_key, public_key, signer_id}). MUST be
+#                                the key that published the previous version:
+#                                the registry authorizes a push by the bundle's
+#                                signerId, and the node derives the
+#                                ApplicationId from (package, signer) — a
+#                                different key publishes a DIFFERENT app.
+#   CALIMERO_REGISTRY_API_KEY  — organization API token (JWT) from the registry
+#                                Organizations page → CLI Access. Sent as
+#                                `Authorization: Bearer` by the registry CLI.
+
+name: Deploy Bundle
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'logic/**'
+      - '.github/workflows/deploy-bundle.yml'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Explicit version to publish, e.g. 0.2.0 (default: patch-bump the registry''s highest)'
+        required: false
+        type: string
+
+# Queue deploys instead of cancelling: each run resolves its version from the
+# registry, so concurrent runs could race to the same version number.
+concurrency:
+  group: deploy-bundle
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  # Keep equal to the calimero-sdk tag in logic/Cargo.toml: the ABI emitter is
+  # versioned with core, so a mismatched tool can embed a schema the node the
+  # app runs on does not share.
+  CARGO_MERO_VERSION: 0.11.0-rc.20
+  REGISTRY_CLI_VERSION: 1.15.2
+
+jobs:
+  deploy:
+    name: Build, sign & publish bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Check required secrets
+        env:
+          MERO_SIGN_KEY: ${{ secrets.MERO_SIGN_KEY }}
+          CALIMERO_REGISTRY_API_KEY: ${{ secrets.CALIMERO_REGISTRY_API_KEY }}
+        run: |
+          missing=0
+          [ -n "$MERO_SIGN_KEY" ] || { echo "::error::MERO_SIGN_KEY secret is not set"; missing=1; }
+          [ -n "$CALIMERO_REGISTRY_API_KEY" ] || { echo "::error::CALIMERO_REGISTRY_API_KEY secret is not set"; missing=1; }
+          exit $missing
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust (wasm32)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-deploy-${{ runner.os }}-${{ hashFiles('logic/Cargo.lock') }}
+          restore-keys: cargo-deploy-${{ runner.os }}-
+
+      - name: Install cargo-mero
+        uses: ./.github/actions/install-cargo-mero
+        with:
+          version: ${{ env.CARGO_MERO_VERSION }}
+
+      - name: Write signing key
+        env:
+          MERO_SIGN_KEY: ${{ secrets.MERO_SIGN_KEY }}
+        run: |
+          umask 077
+          printf '%s' "$MERO_SIGN_KEY" > "$RUNNER_TEMP/mero-sign-key.json"
+
+      # --print-output-path makes the tool name the file it wrote, so the
+      # publish step never reconstructs a versioned filename (and never
+      # publishes a stale .mpk left over from an earlier build).
+      - name: Build, hash & sign the bundle
+        id: bundle
+        working-directory: logic
+        env:
+          VERSION_INPUT: ${{ github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -n "$VERSION_INPUT" ]; then
+            version_arg=(--app-version "$VERSION_INPUT")
+          else
+            version_arg=(--bump patch)
+          fi
+          # The tool prints an ABSOLUTE path as its last line; use it verbatim.
+          # --no-icon: the app ships no PNG mark; the desktop discovers the PWA
+          # icon at the manifest's `frontend` URL instead.
+          mpk="$(cargo mero bundle \
+            --key "$RUNNER_TEMP/mero-sign-key.json" \
+            "${version_arg[@]}" \
+            --no-icon --no-logo --print-output-path | tail -n1)"
+          test -f "$mpk"
+          echo "mpk=$mpk" >> "$GITHUB_OUTPUT"
+          # The filename is <package>-<version>.mpk and a version never contains
+          # a dash, so the last dash separates the two.
+          name="$(basename "$mpk" .mpk)"
+          echo "version=${name##*-}" >> "$GITHUB_OUTPUT"
+
+      - name: Remove signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/mero-sign-key.json"
+
+      # registry-cli >= 1.15 requires node >= 24; the runner default is older.
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install calimero-registry CLI
+        run: npm install -g --ignore-scripts "@calimero-network/registry-cli@$REGISTRY_CLI_VERSION"
+
+      - name: Publish to App Registry
+        env:
+          CALIMERO_API_KEY: ${{ secrets.CALIMERO_REGISTRY_API_KEY }}
+          CALIMERO_REGISTRY_URL: https://apps.calimero.network
+        run: calimero-registry bundle push "${{ steps.bundle.outputs.mpk }}" --remote
+
+      - name: Summary
+        run: |
+          {
+            echo "### Bundle published :rocket:"
+            echo ""
+            echo "- **Package:** \`com.calimero.merodesign\`"
+            echo "- **Version:** \`${{ steps.bundle.outputs.version }}\`"
+            echo "- **Bundle:** \`${{ steps.bundle.outputs.mpk }}\`"
+            echo "- **Registry:** https://apps.calimero.network"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,6 +1,9 @@
 # Rust / WASM
 logic/target/
-logic/res/*.wasm
+# `cargo mero build` output (wasm + emitted ABI/state schema)
+logic/res/
+# `cargo mero bundle` output (signed .mpk)
+logic/dist/
 *.wasm
 
 # Node

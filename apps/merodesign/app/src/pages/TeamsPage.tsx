@@ -7,7 +7,7 @@ import Logo from "../components/Logo";
 import SettingsModal from "../components/SettingsModal";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
-import { decodeInvitationObject } from "../utils/invitation";
+import { decodeInvitationObject, invitationTokenFrom } from "../utils/invitation";
 import { setStoredTeamName, teamLabel } from "../utils/teamName";
 import type { Team } from "../types";
 import styles from "./TeamsPage.module.css";
@@ -116,7 +116,8 @@ export default function TeamsPage() {
   }
 
   async function joinTeam() {
-    const raw = joinCode.trim();
+    // Accept either a shared invitation link or the bare token inside it.
+    const raw = invitationTokenFrom(joinCode);
     if (!raw) return;
     setJoining(true);
     setJoinError("");

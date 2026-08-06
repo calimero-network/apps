@@ -1,9 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
+  APP_SLUG,
   encodeInvitation,
   decodeInvitation,
   encodeInvitationObject,
   decodeInvitationObject,
+  invitationLink,
+  invitationTokenFrom,
 } from "./invitation";
 
 describe("encodeInvitation", () => {
@@ -95,5 +98,23 @@ describe("UTF-8 / Unicode safety", () => {
     const token = encodeInvitationObject(obj);
     expect(token).toMatch(/^[A-Za-z0-9_-]+$/);
     expect(decodeInvitationObject(token)).toEqual(obj);
+  });
+});
+
+describe("shareable invitation links", () => {
+  it("wraps a token in a links.calimero.network URL keyed by the package slug", () => {
+    const token = encodeInvitationObject({ invitation: { group_id: "g1" } });
+    const url = new URL(invitationLink(token));
+    expect(url.host).toBe("links.calimero.network");
+    // The slug IS the bundle's package id — the desktop resolves the app by it,
+    // and the landing page asks the registry for that package's frontend.
+    expect(url.pathname).toBe(`/${APP_SLUG}/join`);
+    expect(url.searchParams.get("invitation")).toBe(token);
+  });
+
+  it("reads the token back out of a link, and leaves a bare token alone", () => {
+    const token = encodeInvitationObject({ invitation: { group_id: "g1" } });
+    expect(invitationTokenFrom(invitationLink(token))).toBe(token);
+    expect(invitationTokenFrom(`  ${token}  `)).toBe(token);
   });
 });
