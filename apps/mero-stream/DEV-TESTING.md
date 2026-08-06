@@ -70,6 +70,58 @@ The merobox scenarios stay the byte-level authority — they use deliberately
 the bytes, and a scenario built on real access units would hide a regression where
 it started. This script covers the codec ends; those cover everything between.
 
+## Rooms and invitations: what the node forces
+
+The model — vocabulary kept straight deliberately, a "group" is a **subgroup**
+inside a namespace and never the namespace itself:
+
+```
+Namespace  = the stream        ← /streams,  invite people here
+  └── Subgroup ("room") + Context   ← /streams/:namespaceId, one video call
+  └── Subgroup ("room") + Context
+```
+
+Five behaviours were established against a live rc.19 node and are the reason
+`lib/groups.ts` looks the way it does. None is visible from the API surface, and
+each cost a debugging cycle:
+
+1. **Joining a namespace does NOT put you in its rooms.** `VisibilityMode` defaults
+   to **restricted**, and a restricted subgroup answers `join-via-inheritance` with
+   **403** — so the members you just invited can see the stream and never reach the
+   call. Every room this app creates is set **open**, and that call is deliberately
+   *not* error-swallowed.
+2. **The visibility wire value is lowercase.** Core rejects `"Open"` with
+   `Field 'subgroup_visibility' has invalid format: must be 'open' or 'restricted'`.
+   mero-js types it as a bare `string`, so nothing catches the casing at compile
+   time.
+3. **`createGroupInNamespace({name})` does not persist the name.** The subgroup
+   listing comes back as a bare `{groupId}` and the group's metadata record is
+   `null`. Names go through `setGroupMetadata` / `getGroupMetadata`, or every room
+   renders as "Room 69aab2".
+4. **`createGroupInvitation(roomId, {recursive: true})` ignores `recursive`** and
+   returns a single invitation, so the obvious "invitation to the whole chain" does
+   not exist yet. A bare subgroup invitation is then useless to a stranger, who is
+   refused for not holding the parent — room access is **inherited**.
+5. **Therefore a room invite code grants the NAMESPACE**, carrying the room and
+   context only as unsigned routing hints; the join is `joinNamespace` then
+   `joinSubgroupInheritance`. The consequence is stated in the UI rather than
+   papered over: a room code is **not** narrower than a stream code, it just lands
+   the joiner in that call. A genuinely room-scoped invite is not expressible while
+   rooms must be open — and per (1) they must. `acceptInvite` still walks a real
+   invitation chain, so a node that starts minting one needs no change.
+
+Every id acted on during a join is re-read from **inside the signed invitation**,
+so a tampered wrapper cannot redirect it.
+
+## ⚠️ `tsc --noEmit` in `app/` checks NOTHING
+
+`app/tsconfig.json` is a solution file — `"files": []` plus references to
+`tsconfig.app.json` / `tsconfig.node.json`. `tsc --noEmit` resolves it, finds no
+files, and exits 0. The named typecheck gate in CI was green for three commits
+while `pnpm build` (which runs `tsc -b`) failed on two real type errors. Use
+**`tsc -b`**, which is what `make app-typecheck` and CI now run; both referenced
+projects set `noEmit: true`, so build mode writes only `.tsbuildinfo`.
+
 ## `make e2e-ui` — the second person's whole path, clicked
 
 `e2e-call` and `e2e-suite` between them leave one gap, and it is the gap that
