@@ -269,14 +269,16 @@ function Metric({
   suffix,
 }: {
   label: string;
-  value: number | string | undefined;
+  // `null` means "not computable", not "missing": `seqGaps` goes null with more
+  // than one sender, because the contract allocates seqs from a shared space.
+  value: number | string | null | undefined;
   suffix?: string;
 }) {
   return (
     <div className={styles.metric}>
       <span className={styles.metricValue}>
         {value ?? "—"}
-        {value !== undefined && suffix ? suffix : ""}
+        {value !== undefined && value !== null && suffix ? suffix : ""}
       </span>
       <span className={styles.metricLabel}>{label}</span>
     </div>

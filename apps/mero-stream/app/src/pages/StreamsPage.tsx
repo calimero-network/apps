@@ -1,112 +1,110 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
+import { getApplicationId, setActiveRoom, setRoomName } from "../lib/session";
+import { decodeInvite } from "../lib/inviteCodec";
 import {
-  getApplicationId,
-  setActiveRoom,
-  getRoomName,
-  setRoomName,
-} from "../lib/session";
-import {
-  decodeInvite,
-  encodeInvite,
-  namespaceIdOfInvite,
-} from "../lib/inviteCodec";
+  acceptInvite,
+  createStreamNamespace,
+  enterRoomContext,
+  listStreamNamespaces,
+  mintNamespaceInvite,
+  type NamespaceRow,
+} from "../lib/groups";
+import { ActionButton, InviteBox, StatusNote, Spinner } from "../components/ui";
 import styles from "./StreamsPage.module.css";
 
-interface StreamEntry {
-  contextId: string;
-  name: string;
-}
-
 /**
- * Stream picker / creator — shown when the desktop opened Mero Stream without a
- * specific stream (no `context_id` in the hash). A "stream" is a Calimero
- * context, living inside a namespace.
+ * Streams = NAMESPACES. One level up from where this page used to sit.
  *
- * This is a MINIMAL picker (adapted from mero-meet's RoomsPage): it lists the
- * streams for this app and creates new ones. Creating one mirrors the proven
- * setup sequence: create namespace → set member capabilities → create the
- * context (init(name)), then enter it.
+ * It used to list contexts and call each one a "stream", which collapsed two
+ * distinct things into one and left no room for rooms: creating a stream made a
+ * namespace plus a context and nothing could ever add a second call to it. The
+ * model that actually matches Calimero, and what the two-node suite proves:
  *
- * Invite / join use the SAME code format as mero-chat and mero-blocks —
- * base58(deflate(JSON)) via lib/inviteCodec — so a code minted by any of them works
- * here. Invitations are OPEN and issued at the NAMESPACE level, so a joiner gets the
- * whole stream rather than one room.
+ *   Namespace ("stream")  ← you invite people HERE
+ *     └── Subgroup ("room") + Context   ← one video call   → /streams/:id
+ *
+ * So: this page creates namespaces, invites to namespaces, and accepts any invite
+ * code. Rooms live on RoomsPage.
+ *
+ * Invite codes are the SAME format mero-chat and mero-blocks use — one base58
+ * token of deflated JSON (lib/inviteCodec) — so a code minted by any of them
+ * decodes here, and a code from here pastes into a chat window without being
+ * mangled.
  */
 export default function StreamsPage() {
   const navigate = useNavigate();
   const { mero, applicationId: providerAppId } = useMero();
   const appId = getApplicationId() ?? providerAppId ?? "";
 
-  const [streams, setStreams] = useState<StreamEntry[]>([]);
+  const [namespaces, setNamespaces] = useState<NamespaceRow[]>([]);
   const [listing, setListing] = useState(true);
   const [name, setName] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [joinCode, setJoinCode] = useState("");
 
-  // Build the stream list: every context for this app, named by its namespace
-  // alias (or our locally-cached name), falling back to a short id.
-  const loadStreams = useCallback(async () => {
-    if (!mero || !appId) {
-      setListing(false);
-      return;
-    }
-    try {
-      const [ctxResp, namespaces] = await Promise.all([
-        mero.admin.getContextsForApplication(appId),
-        mero.admin.listNamespacesForApplication(appId).catch(() => []),
-      ]);
-      const nsName = new Map<string, string>();
-      for (const n of namespaces) {
-        const nm = (n.name ?? (n as { alias?: string }).alias ?? "").trim();
-        if (nm) nsName.set(n.namespaceId, nm);
-      }
-      const list = (ctxResp.contexts ?? []).map((c) => {
-        const cached = getRoomName(c.id);
-        const ns = nsName.get(c.groupId ?? "") ?? "";
-        return {
-          contextId: c.id,
-          name: cached || ns || `Stream ${c.id.slice(0, 6)}`,
-        };
-      });
-      setStreams(list);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load streams.");
-    } finally {
-      setListing(false);
-    }
-  }, [mero, appId]);
+  // One key names the action in flight ("create", "join", `invite:<id>`), instead
+  // of a single `busy` boolean. With a boolean, clicking Invite disabled Create,
+  // Join and every row, and all of them read "Working…" — indistinguishable from
+  // the page having locked up.
+  const [pending, setPending] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const [invite, setInvite] = useState<{ id: string; code: string } | null>(
+    null,
+  );
+  const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    void loadStreams();
-  }, [loadStreams]);
-
-  const enterStream = useCallback(
-    async (contextId: string) => {
-      if (!mero) return;
-      setBusy(true);
+  /**
+   * Run one action under its own key, with step status wired to `onStatus`.
+   * Clears the previous outcome first: leaving a stale "Joined ✓" above a fresh
+   * spinner reads as if the new action had already finished.
+   */
+  const run = useCallback(
+    async (
+      key: string,
+      fn: (onStatus: (m: string) => void) => Promise<void>,
+    ) => {
+      setPending(key);
       setError(null);
+      setDone(null);
+      setStatus(null);
       try {
-        const owned = await mero.admin.getContextIdentitiesOwned(contextId);
-        const identity = owned.identities?.[0];
-        if (!identity) {
-          throw new Error("You have no member identity in this stream yet.");
-        }
-        setActiveRoom(contextId, identity);
-        navigate("/live"); // 480p H.264, not the 64x48 comparison route
+        await fn(setStatus);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Could not open the stream.");
+        setError(e instanceof Error ? e.message : String(e));
       } finally {
-        setBusy(false);
+        setPending(null);
+        setStatus(null);
       }
     },
-    [mero, navigate],
+    [],
   );
 
-  const createStream = useCallback(async () => {
+  const load = useCallback(
+    async (showSpinner = true) => {
+      if (!mero || !appId) {
+        setListing(false);
+        return;
+      }
+      if (showSpinner) setListing(true);
+      try {
+        setNamespaces(await listStreamNamespaces(mero.admin, appId));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not load streams.");
+      } finally {
+        setListing(false);
+      }
+    },
+    [mero, appId],
+  );
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const create = useCallback(() => {
     const streamName = name.trim();
     if (!streamName || !mero) return;
     if (!appId) {
@@ -115,128 +113,89 @@ export default function StreamsPage() {
       );
       return;
     }
-    setBusy(true);
-    setError(null);
-    try {
-      // 1. Namespace to hold the stream.
-      const ns = await mero.admin.createNamespace({
-        applicationId: appId,
-        upgradePolicy: "LazyOnAccess",
-        name: streamName,
-      });
-      // 2. Let members do everything in this namespace (15 = all base caps).
-      await mero.admin
-        .setDefaultCapabilities(ns.namespaceId, { defaultCapabilities: 15 })
-        .catch(() => {
-          /* non-fatal: creator already has full caps */
-        });
-      // 2b. Rooms are PUBLIC from the start: `VisibilityMode` defaults to
-      //     `restricted`, and a restricted subgroup is unreachable by the very
-      //     members you just invited — join-via-inheritance returns 403. The wire
-      //     value is lowercase; core rejects "Open".
-      await mero.admin
-        .setSubgroupVisibility(ns.namespaceId, { subgroupVisibility: "open" })
-        .catch(() => {
-          /* non-fatal on a namespace root; rooms created under it set their own */
-        });
-      // 3. The stream context. init(name) → JSON, as bytes (see contract `init`).
-      const initializationParams = Array.from(
-        new TextEncoder().encode(JSON.stringify({ name: streamName })),
+    void run("create", async (onStatus) => {
+      const { namespaceId } = await createStreamNamespace(
+        mero.admin,
+        { applicationId: appId, name: streamName },
+        onStatus,
       );
-      const ctx = await mero.admin.createContext({
-        applicationId: appId,
-        groupId: ns.namespaceId,
-        initializationParams,
-      });
-      setRoomName(ctx.contextId, streamName);
-      setActiveRoom(ctx.contextId, ctx.memberPublicKey);
       setName("");
-      // /live (approach 2, 640x480 H.264), NOT /stream (approach 3, 64x48 toy codec
-      // in WASM). This used to navigate to /stream, which is the entire reason the
-      // app appeared to be "64x48, not 480p": the 480p route was only reachable by
-      // editing the URL by hand — which is exactly what the e2e did, so the suite
-      // passed at 480p while the product showed 64x48.
-      navigate("/live");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not create the stream.");
-      void loadStreams();
-    } finally {
-      setBusy(false);
-    }
-  }, [name, mero, appId, navigate, loadStreams]);
+      onStatus("Refreshing your streams…");
+      await load(false);
+      // Straight into the new namespace: it has no rooms yet, and making one is
+      // the only useful next step.
+      navigate(`/streams/${namespaceId}`);
+    });
+  }, [name, mero, appId, run, load, navigate]);
 
-  // Mint an OPEN namespace invitation and encode it into one pasteable code.
-  // Same wire format as mero-chat and mero-blocks — base58(deflate(JSON)) — so a
-  // code from any of them decodes here.
-  const invite = useCallback(
-    async (contextId: string) => {
+  const mintInvite = useCallback(
+    (ns: NamespaceRow) => {
       if (!mero) return;
-      setBusy(true);
-      setError(null);
-      setInviteCode(null);
-      try {
-        // The namespace is the group the CONTEXT belongs to; invite at that level so
-        // the joiner gets the whole stream, not one room.
-        const group = await mero.admin.getContextGroup(contextId);
-        const namespaceId =
-          (group as { groupId?: string }).groupId ??
-          (group as unknown as string);
-        const res = await mero.admin.createNamespaceInvitation(
-          String(namespaceId),
-          {},
+      void run(`invite:${ns.namespaceId}`, async (onStatus) => {
+        const code = await mintNamespaceInvite(
+          mero.admin,
+          { namespaceId: ns.namespaceId, namespaceName: ns.name },
+          onStatus,
         );
-        // An OPEN invitation carries no invitee key: anyone holding the code can
-        // join. Deliberately do NOT pass inviteePublicKey — it is silently ignored
-        // and misleads the next reader.
-        const invitation = (res as { invitation?: unknown }).invitation ?? res;
-        setInviteCode(
-          encodeInvite({
-            invitation: invitation as never,
-            groupAlias: streams.find((x) => x.contextId === contextId)?.name,
-            contextId,
-            groupId: String(namespaceId),
-          }),
-        );
-      } catch (e) {
-        setError(
-          e instanceof Error ? e.message : "Could not create an invite.",
-        );
-      } finally {
-        setBusy(false);
-      }
+        setInvite({ id: ns.namespaceId, code });
+        setCopied(false);
+        setDone(`Invite code ready for “${ns.name}”.`);
+      });
     },
-    [mero, streams],
+    [mero, run],
   );
 
-  // Join from a pasted code. The namespace id is read out of the SIGNED invitation
-  // rather than from the wrapper, so a tampered code cannot redirect the join.
-  const join = useCallback(async () => {
+  /**
+   * Accept any code: a namespace invite, or a room invite (which carries the
+   * namespace invitation too, so someone with no prior membership gets both joins
+   * from one paste). A room code that names its context takes you into the call.
+   */
+  const join = useCallback(() => {
     if (!mero) return;
     const payload = decodeInvite(joinCode);
     if (!payload) {
-      setError("That invite code is not valid.");
+      setError(
+        "That invite code is not valid. Paste the whole code — it is one long line with no spaces.",
+      );
       return;
     }
-    const namespaceId = namespaceIdOfInvite(payload);
-    if (!namespaceId) {
-      setError("The invite code carries no namespace id.");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      await mero.admin.joinNamespace(namespaceId, {
-        invitation: payload.invitation as never,
-      });
+    void run("join", async (onStatus) => {
+      const accepted = await acceptInvite(mero.admin, payload, onStatus);
       setJoinCode("");
-      // Contexts arrive by replication, so the list may lag the join by a moment.
-      await loadStreams();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not join.");
-    } finally {
-      setBusy(false);
+      onStatus("Refreshing your streams…");
+      await load(false);
+
+      if (accepted.roomId && accepted.contextId) {
+        const identity = await enterRoomContext(
+          mero.admin,
+          { roomId: accepted.roomId, contextId: accepted.contextId },
+          onStatus,
+        );
+        if (accepted.roomName)
+          setRoomName(accepted.contextId, accepted.roomName);
+        setActiveRoom(accepted.contextId, identity);
+        navigate("/live");
+        return;
+      }
+      if (accepted.namespaceId) {
+        navigate(`/streams/${accepted.namespaceId}`);
+        return;
+      }
+      setDone("Joined. Your streams are listed below.");
+    });
+  }, [mero, joinCode, run, load, navigate]);
+
+  const copy = useCallback(async () => {
+    if (!invite) return;
+    try {
+      await navigator.clipboard.writeText(invite.code);
+      setCopied(true);
+    } catch {
+      // Clipboard access can be denied (insecure context, permissions). The code
+      // is in a selectable input, so say that instead of failing silently.
+      setError("Could not reach the clipboard — select the code and copy it.");
     }
-  }, [mero, joinCode, loadStreams]);
+  }, [invite]);
 
   return (
     <div className={styles.page}>
@@ -245,8 +204,9 @@ export default function StreamsPage() {
           Mero Stream <span className={styles.version}>v{__APP_VERSION__}</span>
         </h1>
         <p className={styles.subtitle}>
-          Pick a stream context or create one. This is a Task-3 capacity probe —
-          media rides the contract, not WebRTC.
+          A <strong>stream</strong> is a namespace you invite people to. Inside
+          it, each <strong>room</strong> is one video call. This is a Task-3
+          capacity probe — media rides the contract, not WebRTC.
         </p>
       </header>
 
@@ -256,98 +216,130 @@ export default function StreamsPage() {
           placeholder="New stream name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && createStream()}
+          onKeyDown={(e) => e.key === "Enter" && create()}
           maxLength={60}
-          disabled={busy}
+          disabled={pending === "create"}
+          data-testid="stream-name-input"
         />
-        <button
-          className={styles.createBtn}
-          onClick={createStream}
-          disabled={busy || !name.trim()}
+        <ActionButton
+          onClick={create}
+          pending={pending === "create"}
+          pendingLabel="Creating…"
+          disabled={!name.trim() || !mero}
+          testId="create-stream"
         >
-          {busy ? "Working…" : "Create stream"}
-        </button>
+          Create stream
+        </ActionButton>
       </section>
 
-      {/* Join by invite code. Same format mero-chat and mero-blocks mint. */}
       <section className={styles.createBar}>
         <input
           className={styles.input}
-          placeholder="Paste an invite code to join a stream"
+          placeholder="Paste an invite code — for a stream or a room"
           value={joinCode}
           onChange={(e) => setJoinCode(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && void join()}
-          disabled={busy}
+          onKeyDown={(e) => e.key === "Enter" && join()}
+          disabled={pending === "join"}
           data-testid="join-code-input"
         />
-        <button
-          className={styles.createBtn}
-          onClick={() => void join()}
-          disabled={busy || !joinCode.trim()}
-          data-testid="join-submit"
+        <ActionButton
+          onClick={join}
+          pending={pending === "join"}
+          pendingLabel="Joining…"
+          disabled={!joinCode.trim() || !mero}
+          testId="join-submit"
         >
-          {busy ? "Working…" : "Join"}
-        </button>
+          Join
+        </ActionButton>
       </section>
 
-      {inviteCode && (
-        <section className={styles.createBar}>
-          <input
-            className={styles.input}
-            value={inviteCode}
-            readOnly
-            onFocus={(e) => e.currentTarget.select()}
-            data-testid="invite-code"
-          />
-          <button
-            className={styles.createBtn}
-            onClick={() => void navigator.clipboard?.writeText(inviteCode)}
-            data-testid="invite-copy"
-          >
-            Copy
-          </button>
-        </section>
+      {/* Step-level status: these flows are 3-6 round-trips deep, and naming the
+          step is what separates "loading" from "hung". */}
+      {status && (
+        <StatusNote tone="pending" testId="streams-status">
+          {status}
+        </StatusNote>
       )}
-
+      {!status && done && (
+        <StatusNote tone="ok" testId="streams-done">
+          {done}
+        </StatusNote>
+      )}
       {error && (
-        <p className={styles.error} data-testid="streams-error">
+        <StatusNote tone="error" testId="streams-error">
           {error}
-        </p>
+        </StatusNote>
       )}
 
       <section className={styles.list}>
-        <h2 className={styles.listTitle}>Your streams</h2>
-        {listing && <p className={styles.muted}>Loading streams…</p>}
-        {!listing && streams.length === 0 && (
+        <h2 className={styles.listTitle}>
+          Your streams
+          {listing && (
+            <span className={styles.listLoading}>
+              <Spinner label="Loading streams" /> loading…
+            </span>
+          )}
+        </h2>
+
+        {!listing && namespaces.length === 0 && (
           <p className={styles.muted}>
-            No streams yet. Create one above to get started.
+            No streams yet. Create one above, or paste an invite code to join
+            someone else&apos;s.
           </p>
         )}
-        {streams.map((s) => (
-          <div key={s.contextId} className={styles.rowWrap}>
-            <button
-              className={styles.row}
-              onClick={() => enterStream(s.contextId)}
-              disabled={busy}
-              data-testid="stream-row"
-            >
-              <span className={styles.streamAvatar}>
-                {s.name.slice(0, 2).toUpperCase()}
-              </span>
-              <span className={styles.streamId}>{s.name}</span>
-              <span className={styles.enter}>Open →</span>
-            </button>
-            {/* Outside the row button on purpose: nested interactive elements are
-                invalid HTML and the inner click does not reliably fire. */}
-            <button
-              className={styles.createBtn}
-              onClick={() => void invite(s.contextId)}
-              disabled={busy}
-              data-testid="invite-btn"
-              title="Mint an invite code for this stream's namespace"
-            >
-              Invite
-            </button>
+
+        {namespaces.map((ns) => (
+          <div key={ns.namespaceId}>
+            <div className={styles.rowWrap}>
+              <button
+                className={styles.row}
+                onClick={() => navigate(`/streams/${ns.namespaceId}`)}
+                data-testid="stream-row"
+                data-namespace={ns.namespaceId}
+              >
+                <span className={styles.streamAvatar}>
+                  {ns.name.slice(0, 2).toUpperCase()}
+                </span>
+                <span className={styles.rowText}>
+                  <span className={styles.rowName}>{ns.name}</span>
+                  <span className={styles.rowMeta}>
+                    {ns.roomCount} room{ns.roomCount === 1 ? "" : "s"} ·{" "}
+                    {ns.memberCount} member{ns.memberCount === 1 ? "" : "s"}
+                  </span>
+                </span>
+                <span className={styles.enter}>Open →</span>
+              </button>
+              {/* Outside the row <button> on purpose: nested interactive elements
+                  are invalid HTML and the inner click does not reliably fire. */}
+              <ActionButton
+                onClick={() => mintInvite(ns)}
+                pending={pending === `invite:${ns.namespaceId}`}
+                pendingLabel="Minting…"
+                variant="secondary"
+                testId="invite-btn"
+                title="Mint a code that invites someone to this whole stream"
+              >
+                Invite
+              </ActionButton>
+            </div>
+
+            {invite?.id === ns.namespaceId && (
+              <InviteBox
+                code={invite.code}
+                scope={`Whole stream · ${ns.name}`}
+                copied={copied}
+                onCopy={() => void copy()}
+                hint={
+                  <>
+                    Anyone with this code can join <strong>{ns.name}</strong>{" "}
+                    and every room in it. They paste it into{" "}
+                    <em>Paste an invite code</em> above and land on the room
+                    list. To drop someone straight into one call, open the
+                    stream and use <strong>Invite</strong> on that room.
+                  </>
+                }
+              />
+            )}
           </div>
         ))}
       </section>

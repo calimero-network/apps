@@ -122,6 +122,13 @@ is exactly what the P3 run is for.
   change*, with the state read from the receiver's own node. Needs real Google
   Chrome — Playwright's bundled Chromium has no proprietary codecs, so no H.264.
   See DEV-TESTING.md.
+- **Two people getting into a call — ✅ IN THE UI, AND CLICKED IN A TEST.**
+  `/streams` lists **namespaces** (a "stream"), `/streams/:namespaceId` lists that
+  stream's **rooms** — a room being a subgroup plus the context that is the call.
+  Invite mints a code at either scope; Join accepts either. `make e2e-ui` drives
+  exactly that by clicking — create stream → create room → mint code → paste on
+  **node2** → both peers see each other at 640×480 — which is the one path
+  `e2e-call` (types `/live` directly) and `e2e-suite` (curl) both structurally miss.
 - **P3 — Load curve — 🚧 TOOLING READY, RUN PENDING.** `scripts/load-curve.py`
   ramps fps × geometry and emits the CSV (achieved fps, encode RTT p50/p95,
   errors, live/pruned fragments, peer-side counters, RocksDB growth). The
@@ -167,6 +174,7 @@ make app-test       # frontend unit tests (incl. the §4 metric arithmetic)
 make dev            # vite dev server (the /stream dev route)
 make dev-nodes      # two local nodes + install + a stream context (solo testing)
 make e2e-call       # FULLY AUTOMATED two-node 480p call in real Chrome
+make e2e-ui         # the same call, but reached by CLICKING: stream → room → invite → join
 make workflows      # ALL four e2e scenarios over merobox (Docker + merobox>=0.6.49)
 make load-curve     # P3 load generator usage
 ```

@@ -28,6 +28,10 @@ export default function LivePage() {
   const [username, setUsernameInput] = useState(getUsername() || "prober");
   const [joined, setJoined] = useState(false);
   const joinAttempted = useRef(false);
+  // memberId → display name, so a tile says WHO it is showing. The contract already
+  // stores the name each peer joined with; without this a tile is labelled with a
+  // truncated public key, which identifies nobody.
+  const [names, setNames] = useState<Record<string, string>>({});
 
   const join = useCallback(
     async (name: string) => {
@@ -46,6 +50,32 @@ export default function LivePage() {
     void join(getUsername() || "prober");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Refresh names when the participant set changes, plus a slow tick for someone
+  // who renames themselves. Keyed on peer COUNT rather than "is any name missing":
+  // the latter flips back as soon as the fetch lands, re-running this effect and
+  // tearing down the interval for nothing.
+  const peerCount = s.remotePeers.length;
+  useEffect(() => {
+    if (!joined) return;
+    let cancelled = false;
+    const refresh = () =>
+      stream
+        .getMembers()
+        .then((ms) => {
+          if (cancelled || !ms) return;
+          setNames(Object.fromEntries(ms.map((m) => [m.memberId, m.username])));
+        })
+        .catch(() => {
+          /* transient RPC error — the next tick retries */
+        });
+    void refresh();
+    const id = setInterval(refresh, 10_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [joined, peerCount, stream]);
 
   const p = s.probe;
   const st = s.stats;
@@ -94,10 +124,12 @@ export default function LivePage() {
             onKeyDown={(e) => e.key === "Enter" && void join(username)}
             maxLength={40}
             placeholder="Your name"
+            data-testid="username-input"
           />
           <button
             className={styles.joinBtn}
             onClick={() => void join(username)}
+            data-testid="username-submit"
           >
             {joined ? "Rejoin" : "Join"}
           </button>
@@ -152,7 +184,8 @@ export default function LivePage() {
             data-peer={peer.from}
           >
             <figcaption className={styles.canvasLabel}>
-              {peer.from.slice(0, 8)}… · {peer.width}×{peer.height}
+              {names[peer.from] ?? `${peer.from.slice(0, 8)}…`} · {peer.width}×
+              {peer.height}
               {peer.decoding ? "" : " · waiting for keyframe"}
             </figcaption>
             {/* STABLE ref callback, memoized per peer. An inline
@@ -354,7 +387,10 @@ function Metric({
   testId,
 }: {
   label: string;
-  value: number | string | undefined;
+  // `null` is a distinct, meaningful state and not an oversight: `seqGaps` becomes
+  // null once a second sender exists, because seqs come from a shared space and a
+  // span-based gap count is then pure fiction. Both render as "—".
+  value: number | string | null | undefined;
   suffix?: string;
   testId?: string;
 }) {
@@ -366,7 +402,7 @@ function Metric({
         data-value={value ?? ""}
       >
         {value ?? "—"}
-        {value !== undefined && suffix ? suffix : ""}
+        {value !== undefined && value !== null && suffix ? suffix : ""}
       </span>
       <span className={styles.metricLabel}>{label}</span>
     </div>

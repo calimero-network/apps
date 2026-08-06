@@ -313,11 +313,11 @@ hosted-callback rejection).
 | §1 route → 480p | ✅ done, verified |
 | §2 per-sender demux | ✅ done, verified two-way |
 | §3 contract per-sender keyframes | ⏭️ **not needed** — solved in the frontend with a per-peer keyframe gate, so no state-layout change and no republish. Remains an optimisation. |
-| §4 rooms as subgroups | ⚠️ proven at API level (S3/S4); UI creates namespace + context and sets it **open**, but does not yet expose multiple rooms per namespace |
-| §5 invite/join UI | ✅ done — Invite mints a code, Join accepts one, same format as mero-chat/mero-blocks |
+| §4 rooms as subgroups | ✅ **done in the UI** — `/streams` is now namespaces, `/streams/:namespaceId` is that stream's rooms. Create room = subgroup → name → **open** → its own context. See "Rooms in the UI" below. |
+| §5 invite/join UI | ✅ done — Invite mints a code at **either** scope (stream or room), Join accepts either, same base58 format as mero-chat/mero-blocks |
 | §6 two-way call | ✅ done, verified |
 | §6b 25 fps + latency | ✅ done — p50 505 ms → ~135 ms, decode 3.17/s → 25/s |
-| §7 two-sender tests | ✅ done, plus a 4-scenario 2-node suite |
+| §7 two-sender tests | ✅ done, plus a 4-scenario 2-node suite **and** `make e2e-ui`, which clicks the whole second-person path instead of setting it up with curl |
 
 ### What the suite found
 
@@ -335,6 +335,59 @@ Two real findings, both predicted by §4 and both now pinned by tests:
    `Field 'subgroup_visibility' has invalid format: must be 'open' or 'restricted'`.
    A good error, but mero-js types it as a bare `string`, so nothing catches the
    casing at compile time.
+
+### Rooms in the UI — what §4 actually needed
+
+`/streams` was a list of CONTEXTS calling each one a "stream", which collapsed
+namespace and room into one thing and made a second call in the same stream
+impossible to express. It is now two routes: `/streams` (namespaces) and
+`/streams/:namespaceId` (that stream's rooms). `lib/groups.ts` holds the sequences,
+`app/e2e/ui-invite-call.mjs` clicks them.
+
+Four things the node forced, none of them guessable from the API surface:
+
+1. **`createGroupInNamespace({name})` does not persist the name.** The subgroup
+   listing comes back as a bare `{groupId}` and the group's metadata record is
+   `null` — verified against a live rc.19 node. The name has to be written with
+   `setGroupMetadata` and read back with `getGroupMetadata`, or every room renders
+   as "Room 69aab2".
+2. **`createGroupInvitation(roomId, {recursive: true})` ignores `recursive` on
+   rc.19** and returns a single invitation. So the obvious "invitation to the whole
+   chain" does not exist yet. `acceptInvite` still understands a real chain, so a
+   node that starts minting one needs no change here.
+3. **A bare subgroup invitation is useless to a stranger** — they are refused for
+   not holding the parent. Room access is INHERITED.
+4. Therefore **a room code grants the NAMESPACE** and carries the room + context
+   only as unsigned routing hints; the join is `joinNamespace` then
+   `joinSubgroupInheritance`, which is the S4-proven path. The consequence is
+   stated in the UI rather than papered over: a room code is *not* narrower than a
+   stream code, it just lands you in that call. A genuinely room-scoped invite is
+   not expressible while rooms must be open — and they must, per finding #1.
+
+Every id acted on during a join is re-read from **inside the signed invitation**,
+so a tampered wrapper cannot redirect it; the room/context hints steer navigation
+only, and the node still decides admission.
+
+### Loading states
+
+Both pages had a single `busy` boolean, so clicking Invite disabled Create, Join
+and every row and all of them read "Working…" — indistinguishable from the page
+having locked up. Now one `pending` KEY names the in-flight action
+(`invite:<id>`), only that control spins, and each flow reports its own steps
+through an `onStatus` callback threaded down into `lib/groups.ts`. `make e2e-ui`
+asserts this rather than trusting it: a `MutationObserver` installed before each
+click, and the run fails unless the clicked button reported `aria-busy` and a named
+step status appeared.
+
+### ⚠️ `tsc --noEmit` here checks NOTHING
+
+`app/tsconfig.json` is a solution file — `"files": []` plus references to
+`tsconfig.app.json` / `tsconfig.node.json`. So `tsc --noEmit` resolves it, finds no
+files, and exits 0. `make app-typecheck` and CI's `pnpm exec tsc --noEmit` step were
+both passing while `pnpm build` (`tsc -b`) failed on two real type errors, and CI
+had been RED on `main` for three commits because of it. Both were `Metric`'s `value`
+prop rejecting `null`, which `seqGaps` legitimately becomes with two senders.
+`app-typecheck` now runs `tsc -b --force`.
 
 ### The flake — root-caused and fixed
 

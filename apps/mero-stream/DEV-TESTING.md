@@ -27,6 +27,8 @@ measurement runs should use Chrome for now.
 make e2e-call              # headed Chrome (default)
 make e2e-call-headless
 make e2e-call-keep         # leave the stack up afterwards to poke at
+make e2e-suite             # + the 4-scenario admin-API suite, streams on the room it builds
+make e2e-ui                # the SAME two people, but every step CLICKED (see below)
 ```
 
 That chains the whole thing: `cargo mero build` → node1 (install app, namespace,
@@ -67,6 +69,43 @@ The merobox scenarios stay the byte-level authority — they use deliberately
 **invalid** H.264, because the approach-2 claim is that the app never interprets
 the bytes, and a scenario built on real access units would hide a regression where
 it started. This script covers the codec ends; those cover everything between.
+
+## `make e2e-ui` — the second person's whole path, clicked
+
+`e2e-call` and `e2e-suite` between them leave one gap, and it is the gap that
+matters most to a real user: **neither exercises the UI that gets two people into
+the same room.** `e2e-suite` does that setup over raw HTTP with curl-shaped
+`fetch`, and `e2e-call` navigates straight to `/live` with a pre-built context in
+the URL hash — a test that types `/live` cannot catch a picker that never gets you
+there, which is exactly the bug that once left the product on 64×48 while the
+suite passed at 480p.
+
+`make e2e-ui` (`app/e2e/ui-invite-call.mjs`) drives the real thing:
+
+1. node1 lands on the picker with **no context in the hash**, types a name, clicks
+   **Create stream** — and must land on that stream's **room list**, not in a call.
+   Namespace and room are different things and the route has to say so.
+2. node1 types a room name, clicks **Create room** — must land on `/live`, joined.
+3. node1 goes back, clicks **Invite** on the room, and the code must be **one
+   pasteable base58 token**: no JSON, no whitespace, none of base64's `+/=`. The
+   UI must also state what the code opens, and **Copy** must confirm.
+4. node2 — a *different node*, its own tokens — pastes that code and clicks
+   **Join**. One paste must carry it through the namespace join, the room, and the
+   context, landing in the call.
+5. Both start capture. Each must show **exactly one** remote tile, 640×480, with
+   non-uniform pixels that *advance*, **labelled with the other person's name**.
+
+It also asserts the **loading states are real**, which is otherwise untestable by
+eye: a `MutationObserver` is installed *before* each click (these states are
+transient and sampling after the fact is a race) and the run fails unless the
+clicked button reported `aria-busy` and a *named* step status appeared —
+"Creating the room…", "Opening the room to namespace members…", "Joining the
+namespace …". A single "Working…" would not pass.
+
+Artifacts in `data/ui-invite-call/`: both call screenshots, the room list with the
+invite box open, the empty picker, console logs, `result.json`. On a thrown timeout
+the driver dumps each page's visible status line and URL — "waiting for
+capture-toggle" on its own says nothing about why a join stalled.
 
 ## One-shot two-node stack (manual)
 

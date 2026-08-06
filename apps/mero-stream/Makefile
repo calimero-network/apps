@@ -1,4 +1,4 @@
-.PHONY: help setup build bundle logic-build logic-test logic-bundle app-install app-build app-typecheck app-test dev dev-nodes dev-stop workflows load-curve clean cargo-mero e2e-call e2e-call-headless e2e-call-keep e2e-call-prod e2e-suite
+.PHONY: help setup build bundle logic-build logic-test logic-bundle app-install app-build app-typecheck app-test dev dev-nodes dev-stop workflows load-curve clean cargo-mero e2e-call e2e-call-headless e2e-call-keep e2e-call-prod e2e-suite e2e-ui e2e-ui-headed
 
 help:
 	@echo ""
@@ -26,6 +26,7 @@ help:
 	@echo "    e2e-call-keep       Same, but leave the stack up to poke at"
 	@echo "    e2e-call-prod       Against app/dist — the artifact Vercel serves"
 	@echo "    e2e-suite           4-scenario 2-node suite (namespace/invite/room) + stream"
+	@echo "    e2e-ui              stream -> room -> invite code -> join on node2, ALL clicked"
 	@echo "    cargo-mero          Install/verify cargo-mero pinned to rc.19"
 	@echo ""
 	@echo "  workflows      merobox 2-node e2e (P2 — needs Docker + merobox>=0.6.49)"
@@ -58,8 +59,14 @@ app-install:
 app-build: app-install
 	cd app && pnpm build
 
+# `tsc -b`, NOT `tsc --noEmit`. app/tsconfig.json is a solution file: `"files": []`
+# plus references to tsconfig.app.json / tsconfig.node.json. So `tsc --noEmit`
+# resolves that root config, finds no files, and exits 0 having checked NOTHING —
+# this gate passed while `pnpm build` (which runs `tsc -b`) was failing on two real
+# type errors. Both referenced projects already set `noEmit: true`, so build mode
+# writes nothing but .tsbuildinfo.
 app-typecheck:
-	cd app && pnpm exec tsc --noEmit
+	cd app && pnpm exec tsc -b --force
 
 app-test: app-install
 	cd app && pnpm test
@@ -107,6 +114,16 @@ e2e-call-keep:
 # through the invite path.
 e2e-suite:
 	@bash scripts/e2e-live-call.sh --via-invite --headless
+
+# The same two people, but every step CLICKED: create a stream, create a room in
+# it, mint an invite code, paste it on node2, then assert the two-way call. The
+# other two drivers cannot cover this — one does the setup with curl, the other
+# types /live directly — so the picker and the invite UI had no coverage at all.
+e2e-ui:
+	@bash scripts/e2e-live-call.sh --ui-flow --headless
+
+e2e-ui-headed:
+	@bash scripts/e2e-live-call.sh --ui-flow
 
 e2e-call-prod:
 	@bash scripts/e2e-live-call.sh --prod --headless

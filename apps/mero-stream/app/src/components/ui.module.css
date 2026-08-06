@@ -1,0 +1,185 @@
+/* Shared loader / status primitives. Kept in one module because they are always
+   used together: a pending action needs a spinner in its button AND a line of
+   text saying which of its several round-trips is in flight. */
+
+/* ── Spinner ───────────────────────────────────────────────────────────────── */
+.spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  flex: none;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+  vertical-align: -0.15em;
+  /* The ring is the same colour as the text it sits with, so it reads as part of
+     the label rather than a separate decoration. */
+  opacity: 0.85;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Respect a reduced-motion preference: a pulse still says "busy" without spinning. */
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    50% {
+      opacity: 0.3;
+    }
+  }
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--accent-grad);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 13px 22px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: var(--shadow-glow);
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease,
+    opacity 0.12s ease;
+}
+.btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+  transform: none;
+  box-shadow: none;
+}
+/* Pending is NOT the same as disabled-because-invalid: it stays full-strength so
+   the spinner is clearly "this is happening", not "this is unavailable". */
+.btn[aria-busy="true"] {
+  opacity: 0.9;
+  cursor: progress;
+}
+
+.secondary {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  box-shadow: none;
+}
+.secondary:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.small {
+  padding: 9px 14px;
+  font-size: 0.85rem;
+  border-radius: 10px;
+}
+
+/* ── Status lines ──────────────────────────────────────────────────────────── */
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 14px;
+  font-size: 0.88rem;
+  border-radius: 10px;
+  padding: 9px 13px;
+  line-height: 1.45;
+}
+
+.statusPending {
+  color: var(--text-dim);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.statusOk {
+  color: var(--green);
+  background: rgba(67, 209, 127, 0.08);
+  border: 1px solid rgba(67, 209, 127, 0.25);
+}
+
+.statusError {
+  color: #ff8088;
+  background: rgba(255, 83, 101, 0.08);
+  border: 1px solid rgba(255, 83, 101, 0.25);
+}
+
+.statusInfo {
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+}
+
+/* ── Invite box ────────────────────────────────────────────────────────────── */
+.inviteBox {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin: 6px 0 16px;
+}
+
+.inviteHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.inviteTitle {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-faint);
+  margin: 0;
+}
+
+.inviteScope {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+}
+
+.inviteRow {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+/* The code is one long base58 token. It must not wrap the layout, and it must be
+   selectable in full — hence a readonly input rather than a <code> block. */
+.inviteCode {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 11px 13px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+}
+
+.inviteHint {
+  margin: 10px 0 0;
+  font-size: 0.82rem;
+  color: var(--text-faint);
+  line-height: 1.5;
+}

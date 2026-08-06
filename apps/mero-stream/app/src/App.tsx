@@ -4,6 +4,7 @@ import { useMero } from "@calimero-network/mero-react";
 import { getContextId, clearActiveRoom } from "./lib/session";
 import LandingPage from "./pages/LandingPage";
 import StreamsPage from "./pages/StreamsPage";
+import RoomsPage from "./pages/RoomsPage";
 import StreamPage from "./pages/StreamPage";
 import LivePage from "./pages/LivePage";
 
@@ -88,6 +89,18 @@ export default function App() {
         element={
           <RequireAuth>
             <StreamsPage />
+          </RequireAuth>
+        }
+      />
+      {/* Rooms inside one stream. A namespace holds many rooms and each room is
+          one call, so the room list needs its own route — the picker used to
+          create a namespace and a single context together and could never show a
+          second call in the same stream. */}
+      <Route
+        path="/streams/:namespaceId"
+        element={
+          <RequireAuth>
+            <RoomsPage />
           </RequireAuth>
         }
       />

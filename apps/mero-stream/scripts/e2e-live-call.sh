@@ -23,6 +23,9 @@
 #   ./scripts/e2e-live-call.sh --prod           # test the PRODUCTION bundle (what Vercel serves)
 #   ./scripts/e2e-live-call.sh --via-invite     # run the 4-scenario 2-node suite first, then
 #                                              # stream on the ROOM it builds via an invitation
+#   ./scripts/e2e-live-call.sh --ui-flow        # drive the WHOLE thing through the UI:
+#                                              # create stream -> create room -> mint code ->
+#                                              # paste on node2 -> two-way call
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -45,6 +48,7 @@ HEADLESS_ENV=""
 SKIP_BUILD=false
 PROD=false
 VIA_INVITE=false
+UI_FLOW=false
 CALL_SECONDS="${CALL_SECONDS:-20}"
 
 while [ $# -gt 0 ]; do
@@ -54,6 +58,7 @@ while [ $# -gt 0 ]; do
     --skip-build) SKIP_BUILD=true; shift ;;
     --prod) PROD=true; shift ;;
     --via-invite) VIA_INVITE=true; shift ;;
+    --ui-flow) UI_FLOW=true; shift ;;
     --seconds) CALL_SECONDS="$2"; shift 2 ;;
     --help|-h) sed -n '2,30p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) printf 'unknown flag: %s\n' "$1" >&2; exit 2 ;;
@@ -209,6 +214,30 @@ fi
 green "vite up, serving '$SERVED_TITLE' (pid $VITE_PID, log: $VITE_LOG)"
 
 # ── 6. The browser call ───────────────────────────────────────────────────────
+#
+# --ui-flow takes a different route entirely: instead of handing pre-built /live
+# URLs to the call driver, it drives the PICKER — create a stream, create a room in
+# it, mint an invite code, paste that code on node2 — and only then asserts the
+# two-way video. That is the path a second person actually walks, and neither of the
+# other drivers touches it (one uses curl, the other types /live directly).
+if $UI_FLOW; then
+  step "Driving stream -> room -> invite -> join -> two-way call through the UI"
+  UI_CODE=0
+  (
+    cd app
+    HEADLESS="$HEADLESS_ENV" CALL_SECONDS="$CALL_SECONDS" VITE_URL="$VITE_URL" \
+      node e2e/ui-invite-call.mjs
+  ) || UI_CODE=$?
+  if [ $UI_CODE -eq 0 ]; then
+    step "PASS"
+    green "invite + two-way 480p call verified entirely through the UI"
+  else
+    step "FAIL"
+    red "see data/ui-invite-call/ for screenshots and console logs"
+  fi
+  exit $UI_CODE
+fi
+
 URLS_FILE=/tmp/mero-stream-dev-urls.txt
 if $VIA_INVITE; then
   step "Two-node suite: namespace -> invitation -> join -> room -> context"

@@ -47,7 +47,9 @@
   padding: 13px 16px;
   color: var(--text);
   font-size: 0.95rem;
-  transition: border-color 0.12s ease, background 0.12s ease;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
 }
 .input::placeholder {
   color: var(--text-faint);
@@ -69,7 +71,9 @@
   cursor: pointer;
   white-space: nowrap;
   box-shadow: var(--shadow-glow);
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease;
 }
 .createBtn:hover {
   transform: translateY(-2px);
@@ -96,11 +100,54 @@
 }
 
 .listTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--text-faint);
   margin: 0 0 14px;
+}
+
+/* Loading indicator inline in the section heading rather than replacing the list.
+   Replacing it makes every refresh flash the rows away, which reads as data loss;
+   here the rows stay put and the heading says a refresh is in flight. */
+.listLoading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+}
+
+/* Secondary actions that are not tied to one row (invite to stream, refresh). */
+.actionBar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.backBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0 0 10px;
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+.backBtn:hover {
+  color: var(--text);
+}
+
+.muteInline {
+  color: var(--text-faint);
 }
 
 .muted {
@@ -126,7 +173,10 @@
   cursor: pointer;
   color: inherit;
   text-align: left;
-  transition: background 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    transform 0.12s ease;
 }
 .row:hover {
   background: var(--surface-hover);
@@ -159,10 +209,39 @@
   color: var(--text);
 }
 
+/* Two lines per row: the name, and a status line under it (rooms/members, whether
+   you are joined, whether the context has replicated yet). `min-width: 0` so a
+   long name ellipsizes instead of pushing the action off the row. */
+.rowText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.rowName {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowMeta {
+  font-size: 0.8rem;
+  color: var(--text-faint);
+}
+
 .enter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--text-dim);
   font-size: 0.85rem;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 /* Row + its Invite action. The invite button must live outside the row <button>. */

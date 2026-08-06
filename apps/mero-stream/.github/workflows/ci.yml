@@ -35,7 +35,13 @@ jobs:
       - run: pnpm lint
       - name: Formatting (prettier)
         run: pnpm prettier
-      - run: pnpm exec tsc --noEmit
+      # `tsc -b`, NOT `tsc --noEmit`. app/tsconfig.json is a solution file
+      # (`"files": []` + references), so `--noEmit` resolves it, finds no files and
+      # exits 0 having checked NOTHING — this step passed green for three commits
+      # while `pnpm build` below failed on two real type errors. Both referenced
+      # projects set `noEmit: true`, so build mode writes only .tsbuildinfo.
+      - name: Typecheck
+        run: pnpm exec tsc -b --force
       - run: pnpm exec vitest run
       - run: pnpm build
 
