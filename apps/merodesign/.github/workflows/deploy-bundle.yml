@@ -1,15 +1,18 @@
 # Builds, signs, and publishes the com.calimero.merodesign bundle to the Calimero App
-# Registry.
+# Registry on every default-branch merge that touches logic/.
 #
-# The version is single-sourced from logic/Cargo.toml's [package]
-# version, so bumping it on master IS the release: this runs when that file
-# lands and the registry does not already have the version. workflow_dispatch
-# still allows a manual run, where the input is validated against Cargo.toml
-# rather than overriding it.
+# THE REGISTRY OWNS THE VERSION. The check job asks it for the highest published
+# appVersion and increments the patch; an empty registry starts at 0.0.1. So a
+# release never has to bump a number by hand and can never collide with a
+# published version.
 #
-# The REGISTRY, not the git history, decides whether a version is new. That holds
-# up under re-runs, reverts and squashed merges, where a diff against the
-# previous commit does not.
+# That is why logic/Cargo.toml's `version` is NOT the release version — cargo
+# needs a version field, but this workflow ignores it. Do not read a released
+# version out of the tree; read it from the registry or this workflow's summary.
+#
+# Trade-off, stated plainly: there is no idempotency. Re-running this job, or a
+# second push touching logic/, mints ANOTHER version of the same content. That
+# is the cost of not hand-maintaining the number.
 #
 # Signing uses a PRODUCTION mero-sign key held in ORGANIZATION secrets (never the
 # dev key — the registry refuses dev signatures). Required secrets:
@@ -21,7 +24,8 @@
 #                                ApplicationId from (package, signer), so a
 #                                different key publishes a DIFFERENT app.
 #   CALIMERO_REGISTRY_API_KEY  - API token from the registry Organizations page
-#                                (CLI Access).
+#                                (CLI Access). Read by cargo-mero as
+#                                CALIMERO_API_KEY.
 
 name: Deploy Bundle
 
@@ -30,12 +34,12 @@ on:
     branches:
       - master
     paths:
-      - "logic/Cargo.toml"
+      - "logic/**"
   workflow_dispatch:
     inputs:
       version:
-        description: "Bundle version to publish, e.g. 0.2.0 (no leading v). Must equal logic/Cargo.toml."
-        required: true
+        description: "Override the version to publish, e.g. 1.2.3 (no leading v). Leave blank to let the registry decide."
+        required: false
         type: string
       core_rev:
         description: "Require the SDK deps to resolve to this core commit (leave blank to accept whatever the pinned tag resolves to)"
@@ -53,10 +57,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Cheap gate: reads Cargo.toml and asks the registry, so an unrelated edit to
-  # that file does not pay for a Rust build before deciding to do nothing.
+  # Cheap gate: resolves the version from the registry, so an unrelated edit does
+  # not pay for a Rust build before deciding what to release.
   check:
-    name: Decide whether to publish
+    name: Resolve the next version
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -81,58 +85,83 @@ jobs:
           echo "package=$package" >> "$GITHUB_OUTPUT"
           echo "Package: $package"
 
-      - name: Resolve and validate version
+      - name: Resolve the next version from the registry
         id: ver
         env:
           # Through the environment, never inlined: a template expression is
           # substituted into the script before the shell sees it, so a crafted
           # input would run as code.
-          EVENT_NAME: ${{ github.event_name }}
           INPUT_VERSION: ${{ github.event.inputs.version }}
+          PACKAGE: ${{ steps.pkg.outputs.package }}
         run: |
-          # logic/Cargo.toml is the single source of truth. A dispatch input is
-          # an intent cross-check, not an override.
-          crate_version=$(awk '/^\[package\]/{f=1; next} /^\[/{f=0} f && /^version/{gsub(/version *= *"|"/,""); print; exit}' logic/Cargo.toml)
+          set -euo pipefail
 
-          # A regex, not a case glob: in a glob `*` spans dots too, so
-          # `[0-9]*.[0-9]*.[0-9]*` accepts 1.2.3.4 and anything trailing,
-          # including a newline that would forge a second GITHUB_OUTPUT entry.
-          if [[ ! "$crate_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::logic/Cargo.toml [package] version must be exactly X.Y.Z (got '$crate_version')"
+          if [ -n "$INPUT_VERSION" ]; then
+            # An explicit dispatch override wins, but must still be well formed.
+            if [[ ! "$INPUT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::version override must be exactly X.Y.Z (got '$INPUT_VERSION')"
+              exit 1
+            fi
+            echo "version=$INPUT_VERSION" >> "$GITHUB_OUTPUT"
+            echo "::notice::publishing $PACKAGE $INPUT_VERSION (explicit override)"
+            exit 0
+          fi
+
+          # An unreachable registry must not read as "nothing published" — that
+          # would reset the lineage to the floor and sign BELOW what is already
+          # out there. Only a well-formed answer is allowed to decide.
+          if ! response=$(curl -fsS --retry 3 --retry-delay 2 --max-time 30 \
+              "https://apps.calimero.network/api/v2/bundles?package=$PACKAGE"); then
+            echo "::error::could not reach the registry to resolve the next version"
+            exit 1
+          fi
+          if ! jq -e 'type == "array"' >/dev/null <<<"$response"; then
+            echo "::error::registry response is not a bundle list (expected a JSON array): $response"
             exit 1
           fi
 
-          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$INPUT_VERSION" != "$crate_version" ]; then
-            echo "::error::input version ($INPUT_VERSION) does not match logic/Cargo.toml ($crate_version) — bump logic/Cargo.toml first"
-            exit 1
+          count=$(jq -r 'length' <<<"$response")
+          if [ "$count" = "0" ]; then
+            # First publish. 0.0.1, not cargo-mero's built-in 0.1.0 floor — the
+            # registry was reset and the whole fleet restarts from the same place.
+            version="0.0.1"
+            echo "::notice::nothing published for $PACKAGE yet — starting at $version"
+          else
+            # Highest readable appVersion, patch+1. A listing with entries but no
+            # parseable version is an unrecognized scheme: fail rather than
+            # default, which would sign below what is published.
+            version=$(jq -r '
+              [ .[].appVersion // empty
+                | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))
+                | split(".") | map(tonumber) ]
+              | sort
+              | if length == 0 then "" else (last | "\(.[0]).\(.[1]).\(.[2]+1)") end
+            ' <<<"$response")
+            if [ -z "$version" ]; then
+              echo "::error::registry listed $count bundle(s) for $PACKAGE but none had a readable X.Y.Z appVersion"
+              exit 1
+            fi
+            echo "::notice::highest published is $(jq -r '[.[].appVersion // empty]|join(", ")' <<<"$response") — releasing $version"
           fi
 
-          echo "version=$crate_version" >> "$GITHUB_OUTPUT"
-          echo "Version: $crate_version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Has this version already been published?
+      - name: Confirm that version is actually free
         id: decide
         env:
           PACKAGE: ${{ steps.pkg.outputs.package }}
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          # An unreachable registry must not read as "not published" — that would
-          # republish blind. Only a definite 404 means new.
+          # Belt and braces. The resolved version should be unpublished by
+          # construction, so a 200 here means the resolution logic is wrong (or a
+          # concurrent release landed) — either way, stop rather than fail deep in
+          # the publish step after signing.
           code=$(curl -s -o /dev/null -w '%{http_code}' --retry 3 --retry-delay 2 --max-time 30 \
             "https://apps.calimero.network/api/v2/bundles/$PACKAGE/$VERSION" || echo "000")
           case "$code" in
-            404)
-              echo "publish=true" >> "$GITHUB_OUTPUT"
-              echo "::notice::$PACKAGE $VERSION is not published yet — releasing"
-              ;;
-            200)
-              echo "publish=false" >> "$GITHUB_OUTPUT"
-              echo "::notice::$PACKAGE $VERSION is already published — nothing to do"
-              ;;
-            *)
-              echo "::error::registry returned $code asking about $PACKAGE $VERSION — refusing to decide blind"
-              exit 1
-              ;;
+            404) echo "publish=true" >> "$GITHUB_OUTPUT" ;;
+            200) echo "::error::$PACKAGE $VERSION is already published — version resolution disagrees with the registry"; exit 1 ;;
+            *)   echo "::error::registry returned $code asking about $PACKAGE $VERSION — refusing to publish blind"; exit 1 ;;
           esac
 
   deploy:
@@ -249,7 +278,12 @@ jobs:
         working-directory: logic
         env:
           PACKAGE: ${{ needs.check.outputs.package }}
-        run: cargo mero bundle --key "$RUNNER_TEMP/mero-sign-key.json" --no-icon --output "dist/$PACKAGE.mpk"
+          VERSION: ${{ needs.check.outputs.version }}
+        # --app-version, not --bump: the check job already resolved the number
+        # against the registry, and cargo-mero's own --bump floors an empty
+        # registry at 0.1.0 rather than the 0.0.1 this fleet restarts from. (The
+        # two flags are mutually exclusive anyway.)
+        run: cargo mero bundle --key "$RUNNER_TEMP/mero-sign-key.json" --app-version "$VERSION" --no-icon --output "dist/$PACKAGE.mpk"
 
       - name: Remove signing key
         if: always()

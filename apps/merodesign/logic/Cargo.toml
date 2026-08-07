@@ -1,10 +1,12 @@
 [package]
 name = "merodesign"
 description = "MeroDesign — collaborative design tool on Calimero"
-# THIS IS THE RELEASE VERSION. `cargo mero bundle` stamps it into the manifest
-# and `.github/workflows/deploy-bundle.yml` publishes on any default-branch merge
-# that changes this file and whose version the registry does not already have.
-# Bumping it here IS the release; nothing else needs touching.
+# NOT the release version. cargo requires a version field, but
+# .github/workflows/deploy-bundle.yml ignores it: the registry owns the number —
+# the check job takes the highest published appVersion and increments the patch
+# (0.0.1 when nothing is published yet). Bumping this changes nothing about what
+# gets released, so do not read a shipped version out of the tree; read it from
+# the registry or the workflow's run summary.
 version = "0.0.1"
 edition = "2021"
 
