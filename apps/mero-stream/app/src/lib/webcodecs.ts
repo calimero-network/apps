@@ -195,8 +195,8 @@ export function createDecoder(opts: {
 
   // A decoder fed a delta frame before any keyframe throws rather than producing
   // a grey picture, so drop deltas until the first keyframe has been seen. The
-  // app's keyframe_cursor() is what normally prevents this; this is the local
-  // belt-and-braces for a peer that started draining mid-GOP anyway.
+  // app's per-sender keyframe cursor is what normally prevents this; this is the
+  // local belt-and-braces for a peer that started draining mid-GOP anyway.
   let sawKeyframe = false;
 
   return {

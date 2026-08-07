@@ -11,6 +11,7 @@ import type {
   DecodedFrame,
   LiveStats,
   Member,
+  SenderCursor,
   StreamStats,
 } from "../types";
 
@@ -105,19 +106,28 @@ export function useMeroStream() {
     [execute],
   );
 
+  /**
+   * Drain every sender past the caller's own per-sender cursor.
+   *
+   * A sender absent from `cursors` is served from that sender's newest live
+   * keyframe, so a joining peer simply passes `[]` — feeding a decoder a delta
+   * frame with no preceding keyframe throws, and each sender is an independent
+   * bitstream, so the entry point has to be chosen per sender. That absorbs what
+   * used to be a separate `keyframe_cursor()` round-trip.
+   */
   const getChunks = useCallback(
-    (afterSeq: number) =>
-      execute<ChunkView[]>("get_chunks", { after_seq: afterSeq }),
+    (cursors: SenderCursor[]) =>
+      execute<ChunkView[]>("get_chunks", { cursors }),
     [execute],
   );
 
   /**
-   * Where a joining peer must start draining. Feeding a decoder a delta frame
-   * with no preceding keyframe throws, so the receive loop asks for this before
-   * its first read rather than starting at whatever is newest.
+   * Newest live keyframe per sender. The receive path no longer needs this —
+   * `getChunks([])` already starts a joiner correctly — but it stays available
+   * for diagnostics.
    */
-  const keyframeCursor = useCallback(
-    () => execute<number | null>("keyframe_cursor", {}),
+  const keyframeCursors = useCallback(
+    () => execute<SenderCursor[]>("keyframe_cursors", {}),
     [execute],
   );
 
@@ -146,7 +156,7 @@ export function useMeroStream() {
       renameStream,
       postChunk,
       getChunks,
-      keyframeCursor,
+      keyframeCursors,
       getLiveStats,
     }),
     // `loading`/`error` are deliberately NOT deps: they flip on every request,
@@ -169,7 +179,7 @@ export function useMeroStream() {
       renameStream,
       postChunk,
       getChunks,
-      keyframeCursor,
+      keyframeCursors,
       getLiveStats,
     ],
   );

@@ -19,7 +19,7 @@ nodes:
   chain_id: testnet-1
   count: 2
   # Keep in step with logic/Cargo.toml's calimero-* tag.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.19
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.20
   prefix: calimero-node
   # info, not merobox's debug default — see the other scenarios.
   log_level: info
@@ -129,7 +129,10 @@ steps:
     node: calimero-node-2
     context_id: "{{context_id}}"
     method: get_chunks
-    args: { after_seq: 0 }
+    # An empty cursor set is exactly what a joining peer sends: the contract
+    # starts every sender it does not recognise at that sender's own newest live
+    # keyframe. So this also covers the join path, not just the drain path.
+    args: { cursors: [] }
     executor_public_key: "{{public_key}}"
     outputs:
       bob_chunks: result
@@ -168,19 +171,23 @@ steps:
     type: call
     node: calimero-node-2
     context_id: "{{context_id}}"
-    method: keyframe_cursor
+    method: keyframe_cursors
     args: {}
     executor_public_key: "{{public_key}}"
     outputs:
-      bob_kf_cursor: result.output
+      bob_kf_cursors: result.output
 
   - name: Assert the peer is told to start at the keyframe, not the newest chunk
     type: assert
     statements:
-      # is_set first: a null cursor means "nothing decodable", and the comparison
-      # below stringifies, so null vs null would pass and prove nothing.
-      - "is_set({{bob_kf_cursor}})"
-      - "{{bob_kf_cursor}} == {{kf_seq}}"
+      # is_set first: an EMPTY list means "nothing decodable anywhere", and the
+      # substring checks below would vacuously pass against a stringified `[]`.
+      - "is_set({{bob_kf_cursors}})"
+      # One entry, pointing at Alice's keyframe. `contains` rather than equality
+      # because the cursor is now a list of records and assert splits its
+      # arguments on every comma (see the note above the chunk assertions).
+      - "contains({{bob_kf_cursors}}, 'afterSeq': {{kf_seq}})"
+      - "contains({{bob_kf_cursors}}, {{member_public_key}})"
 
   - name: Bob reads the approach-2 stats
     type: call
@@ -198,7 +205,24 @@ steps:
       # 8 + 7 = 15 payload bytes across the two chunks. live_bytes must be the
       # DECODED byte count, not the base64 length the wire carried (which is 20) —
       # this assertion is what catches that confusion.
-      - 'json_subset({{bob_live}}, {"output": {"liveChunks": 2, "nextChunkSeq": 2, "lastKeyframeSeq": 1, "prunedChunks": 0, "liveBytes": 15}})'
+      #
+      # The flat nextChunkSeq/lastKeyframeSeq fields are gone: sequence and
+      # keyframe state are per sender now, so a single global number would be a
+      # lie. They moved into `senders`, asserted below — json_subset compares list
+      # elements by exact dict equality and cannot recurse into a dict nested in a
+      # list, so a partial match on a sender row is not expressible here.
+      - 'json_subset({{bob_live}}, {"output": {"liveChunks": 2, "prunedChunks": 0, "liveBytes": 15}})'
+
+  - name: Assert the per-sender breakdown attributes both chunks to Alice
+    type: assert
+    statements:
+      # One row, Alice's, carrying her own sequence and keyframe. Under the old
+      # global counters two senders shared these numbers and silently overwrote
+      # each other's chunks — that is what this row exists to pin down.
+      - "contains({{bob_live}}, {{member_public_key}})"
+      - "contains({{bob_live}}, 'nextSeq': 2)"
+      - "contains({{bob_live}}, 'lastKeyframe': 1)"
+      - "contains({{bob_live}}, 'liveChunks': 2)"
 
   # ── The keyframe clamp, after replication ───────────────────────────────────
   - name: Alice asks to prune everything
@@ -221,7 +245,7 @@ steps:
     type: call
     node: calimero-node-2
     context_id: "{{context_id}}"
-    method: keyframe_cursor
+    method: keyframe_cursors
     args: {}
     executor_public_key: "{{public_key}}"
     outputs:
@@ -234,4 +258,4 @@ steps:
       # replicating, reports healthy, and is undecodable because the reaper walked
       # past the last keyframe and every surviving chunk is a reference-less delta.
       - "is_set({{bob_kf_after_prune}})"
-      - "{{bob_kf_after_prune}} == {{kf_seq}}"
+      - "contains({{bob_kf_after_prune}}, 'afterSeq': {{kf_seq}})"

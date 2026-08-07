@@ -1,0 +1,16 @@
+name: Setup cargo-mero
+description: >-
+  Put `cargo mero` (the Calimero app toolchain: wasm build, ABI embed, signed
+  .mpk bundle) on PATH, pinned to a core release.
+
+# A thin wrapper over scripts/ensure-cargo-mero.sh rather than a second copy of
+# the install logic. That script is also what `logic/build.sh` and the Makefile
+# call, so the pin lives in exactly ONE place — next to the calimero-sdk tag in
+# logic/Cargo.toml that it has to match. The wrapper exists so the workflow reads
+# `uses:` like every other mero app's deploy-bundle.yml.
+runs:
+  using: composite
+  steps:
+    - name: Install cargo-mero
+      shell: bash
+      run: bash scripts/ensure-cargo-mero.sh

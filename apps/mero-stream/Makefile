@@ -27,7 +27,7 @@ help:
 	@echo "    e2e-call-prod       Against app/dist — the artifact Vercel serves"
 	@echo "    e2e-suite           4-scenario 2-node suite (namespace/invite/room) + stream"
 	@echo "    e2e-ui              stream -> room -> invite code -> join on node2, ALL clicked"
-	@echo "    cargo-mero          Install/verify cargo-mero pinned to rc.19"
+	@echo "    cargo-mero          Install/verify cargo-mero pinned to rc.20"
 	@echo ""
 	@echo "  workflows      merobox 2-node e2e (P2 — needs Docker + merobox>=0.6.49)"
 	@echo "  load-curve     P3 load generator usage (drives encode_frame → CSV)"
@@ -36,7 +36,7 @@ help:
 
 setup: logic-build app-install
 
-# `cargo mero` is the rc.19 app toolchain (core tools/cargo-mero): ABI emit,
+# `cargo mero` is the rc.20 app toolchain (core tools/cargo-mero): ABI emit,
 # wasm32 build, built-in wasm-opt, ABI section embed, and signed .mpk packaging.
 # Pinned to the same release as the SDK git tags in logic/Cargo.toml.
 cargo-mero:

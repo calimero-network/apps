@@ -42,9 +42,10 @@ use std::str::FromStr;
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
+use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::{app, env as sdk_env, PublicKey};
+use calimero_sdk::{app, env as sdk_env, AccountId, PublicKey};
 use calimero_storage::address::Id;
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::rekey::RekeyTarget;
@@ -92,13 +93,46 @@ const MAX_DIM: u16 = 256;
 /// growth (the thing most likely to kill a sustained run).
 const FRAME_WINDOW: u64 = 30;
 
-/// Approach 2: how many of the most recent opaque chunks to keep live.
+/// Approach 2: how long a sender's chunks stay live, in milliseconds.
 ///
-/// Larger than FRAME_WINDOW because a real codec emits several chunks per second
-/// per track and the window must comfortably span the keyframe interval — if the
-/// window is shorter than the gap between keyframes, the reaper's keyframe clamp
-/// ends up pinning nearly everything and the window stops bounding anything.
-const CHUNK_WINDOW: u64 = 120;
+/// This used to be a count (`CHUNK_WINDOW = 120` entries) shared across every
+/// sender, and that is what broke the first cross-network call (see
+/// `retro/review.md`). A count-based window shrinks in *wall-clock* terms as
+/// senders are added — 120 entries is ~4.8 s with one sender at 25 fps but only
+/// ~2.4 s with two — so the more peers in the call, the less latency the window
+/// can absorb. Over a relayed path where sync latency ran to seconds, a remote
+/// peer's chunks arrived already below the local prune floor and were reaped on
+/// arrival: the stream looked alive to the sender and was invisible to everyone
+/// else.
+///
+/// Time is the honest unit. The window must exceed worst-case sync latency, and
+/// it must not depend on how many people are in the call. 6 s is ~3x the
+/// keyframe interval, so a joiner always has a decodable entry point, and it is
+/// comfortably longer than the multi-second relay delays observed in the retro.
+const LIVE_WINDOW_MS: u64 = 6_000;
+
+/// Hard ceiling on live chunks per sender, independent of `LIVE_WINDOW_MS`.
+///
+/// The time window is driven by a client-supplied `now`, so a client with a
+/// broken or hostile clock could otherwise pin state forever. 600 is ~24 s at
+/// 25 fps — far above the time window in any healthy run, so this only ever
+/// bites when the clock is wrong.
+const MAX_LIVE_CHUNKS_PER_SENDER: u64 = 600;
+
+/// Reap a sender's entire buffer once they have posted nothing for this long.
+///
+/// A sender only prunes its OWN chunks on the hot path (that is what removes the
+/// cross-sender insert-vs-tombstone race). The cost of that isolation is that a
+/// peer who closes the tab leaves their last window pinned forever, so somebody
+/// else has to collect it. This is deliberately much larger than
+/// `LIVE_WINDOW_MS`: by the time it fires, the departed sender has not written
+/// for half a minute, so a cross-sender delete cannot realistically race a live
+/// insert.
+const STALE_SENDER_MS: u64 = 30_000;
+
+/// Cap on how many chunks a single `post_chunk` may reap, so one call can never
+/// walk an unbounded range. Anything left over is collected by the next call.
+const MAX_PRUNE_PER_CALL: u64 = 256;
 
 /// Approach 2: per-chunk ceiling for opaque codec output.
 ///
@@ -121,7 +155,7 @@ const MAX_MEDIA_CHUNK_BYTES: usize = 256 * 1024;
 ///
 /// `data` is the ONLY field that meaningfully crosses the wire — the raw input
 /// never leaves the sender (C1/approach-3 property).
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -199,7 +233,7 @@ impl RekeyTarget for Fragment {
 ///   pruning depends on it (see `last_keyframe_seq`). A member lying about it
 ///   degrades their own stream's recoverability, which is why it is acceptable —
 ///   but it is asserted, not proven.
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -245,8 +279,86 @@ impl RekeyTarget for MediaChunk {
     fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
+/// Per-sender chunk bookkeeping — one row per sender, in `chunk_cursors`.
+///
+/// **Every field is monotone and merges by `max`.** That is the whole point of
+/// this type. The previous design held these as four *global* `LwwRegister`s
+/// shared by every sender, which meant two peers posting concurrently
+/// read-modify-wrote the same counter, minted the same `seq`, and then wrote the
+/// same `chunk-{seq}` key — last-writer-wins silently destroyed one sender's
+/// video. Splitting per sender means a row is written only by the sender it
+/// belongs to on the hot path, and `max`-merge is commutative, associative and
+/// idempotent, so it converges regardless of delivery order. There is no
+/// last-writer to lose to.
+#[derive(
+    AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, Default,
+)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+#[serde(rename_all = "camelCase")]
+pub struct ChunkCursor {
+    /// Highest seq this sender has minted. Never reused (C3).
+    pub next_seq: u64,
+    /// Lowest seq of theirs still live; everything below was pruned.
+    pub oldest_live: u64,
+    /// Seq of this sender's newest keyframe. Per-sender because each sender is
+    /// an independent H.264 bitstream — a delta is only decodable against a
+    /// keyframe from the SAME sender, so a global pointer let the reaper drop
+    /// one sender's only keyframe while protecting another's.
+    pub last_keyframe: u64,
+    /// `created_at` of their newest chunk — drives the stale-sender sweep.
+    pub newest_at: u64,
+    /// How many of their chunks have been reaped (tombstone pressure, C3).
+    pub pruned: u64,
+}
+
+impl MergeableTrait for ChunkCursor {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // Monotone max on every field: order-independent by construction.
+        self.next_seq = self.next_seq.max(other.next_seq);
+        self.oldest_live = self.oldest_live.max(other.oldest_live);
+        self.last_keyframe = self.last_keyframe.max(other.last_keyframe);
+        self.newest_at = self.newest_at.max(other.newest_at);
+        self.pruned = self.pruned.max(other.pruned);
+        Ok(())
+    }
+}
+
+impl RekeyTarget for ChunkCursor {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
+}
+
+/// One sender's read cursor, both as input to `get_chunks` and as output from
+/// `keyframe_cursors`.
+///
+/// Seq spaces are per sender now, so a single global "after_seq" is meaningless:
+/// seq 40 from Alice and seq 40 from Bob are unrelated positions in unrelated
+/// bitstreams.
+#[derive(AbiType, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(crate = "calimero_sdk::serde")]
+#[serde(rename_all = "camelCase")]
+pub struct SenderCursor {
+    pub from: String,
+    pub after_seq: u64,
+}
+
+/// Per-sender slice of `get_live_stats`.
+#[derive(AbiType, Serialize, Deserialize, Clone, Debug)]
+#[serde(crate = "calimero_sdk::serde")]
+#[serde(rename_all = "camelCase")]
+pub struct SenderStats {
+    pub from: String,
+    pub next_seq: u64,
+    pub oldest_live: u64,
+    pub last_keyframe: u64,
+    pub newest_at: u64,
+    pub pruned: u64,
+    pub live_chunks: u32,
+    pub live_bytes: u64,
+}
+
 /// Read model for the receive side: what a peer needs to drive its decoder.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(AbiType, Serialize, Deserialize, Clone, Debug)]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct ChunkView {
@@ -266,25 +378,28 @@ pub struct ChunkView {
 }
 
 /// Approach-2 instrumentation snapshot.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(AbiType, Serialize, Deserialize, Clone, Debug)]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct LiveStats {
     pub live_chunks: u32,
-    pub next_chunk_seq: u64,
-    pub oldest_live_chunk: u64,
-    pub pruned_chunks: u64,
-    pub last_keyframe_seq: u64,
     /// Summed `data` bytes currently live — the real "how much state is this
     /// stream holding" figure.
     pub live_bytes: u64,
+    /// Total chunks reaped across every sender.
+    pub pruned_chunks: u64,
+    /// Per-sender breakdown. The flat `nextChunkSeq` / `oldestLiveChunk` /
+    /// `lastKeyframeSeq` fields this replaced were only meaningful while a
+    /// single global seq space existed; with per-sender spaces a single number
+    /// would be a lie.
+    pub senders: Vec<SenderStats>,
 }
 
 // ── Membership (lightweight — just enough to reject non-members) ────────────────
 
 /// A member of the stream context. Membership gates `encode_frame` (the probe
 /// still requires an authenticated context member — never trust a client id).
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -313,7 +428,7 @@ impl RekeyTarget for Member {
 /// A frame reconstructed in-WASM by the decoder. `pixels` is raw luma
 /// (1 byte/pixel, row-major, `width * height` long) — the frontend paints it to
 /// a canvas. This is the second half of "decode straight from WASM logic".
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(AbiType, Serialize, Deserialize, Clone, Debug)]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct DecodedFrame {
@@ -334,7 +449,7 @@ pub struct DecodedFrame {
 
 /// Instrumentation snapshot (§4 metrics — the deliverable). Cheap counters a
 /// load generator / e2e can poll to chart the failure curve.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(AbiType, Serialize, Deserialize, Clone, Debug)]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct StreamStats {
@@ -372,7 +487,28 @@ pub enum Event {
 #[app::state(emits = Event)]
 pub struct MeroStream {
     /// Stream/room name; `Ownable` so only the owner's rename converges.
+    ///
+    /// Empty until the first rename — see [`Self::initial_name`] for why, and
+    /// read through [`Self::stream_name_str`] rather than touching either
+    /// directly.
     stream_name: Ownable<LwwRegister<String>>,
+    /// The name `init` was called with.
+    ///
+    /// **`Ownable::insert` cannot be used inside `init` on core rc.20.** The cell
+    /// is still detached from the state tree at that point: the writer set is
+    /// carried through by the constructor, but the inserted VALUE is silently
+    /// dropped — `insert` returns `Ok`, and a later read returns `Ok("")`. Core's
+    /// own tests only ever insert into an already-rooted cell
+    /// (`Root::new(...)` then `.insert(...)`), and `apps/components-demo`
+    /// constructs its `Ownable` without seeding it, so nothing upstream exercises
+    /// the seed-at-init path. mero-meet has the identical `let _ =
+    /// room_name.insert(...)` in its `init` and is equally affected; no test
+    /// there reads the name back, so it goes unnoticed.
+    ///
+    /// So the init name lives here, in a plain register that persists normally,
+    /// and `stream_name` takes over from the first owner rename onwards. Written
+    /// once at init and never again.
+    initial_name: LwwRegister<String>,
     /// Context members, by identity. Membership gates `encode_frame`.
     members: UnorderedMap<String, Member>,
     /// The media buffer. Keyed `frag-{seq}-{chunk}`; all chunks of a frame share
@@ -391,6 +527,15 @@ pub struct MeroStream {
     pruned_frames: LwwRegister<u64>,
     /// Role registry: the creator is the sole initial admin.
     roles: AccessControl,
+    /// member key → the account that device speaks for, self-registered on join.
+    ///
+    /// `AccessControl` and `Ownable` are keyed by `AccountId` since core rc.20
+    /// (one person, many devices — the gate is the person), while member ids and
+    /// everything the frontend compares are device keys. Nothing on the wire maps
+    /// one to the other, and a device can only ever assert its OWN pairing (both
+    /// halves come from the host), so this is a self-registration rather than an
+    /// admin-maintained table.
+    accounts: UnorderedMap<String, LwwRegister<AccountId>>,
 
     // ── Approach 2: opaque chunks encoded by a REAL codec in the browser ──────
     //
@@ -405,22 +550,18 @@ pub struct MeroStream {
     // blob without any node having to *compute* it. That is precisely what makes
     // a real codec (and therefore a realistic resolution) legal here and illegal
     // in approach 3.
-    /// Opaque encoded chunks, keyed `chunk-{seq}`.
-    chunks: UnorderedMap<String, MediaChunk>,
-    /// Global monotone chunk sequence. Never reused (C3).
-    next_chunk_seq: LwwRegister<u64>,
-    /// Lowest chunk seq still retained.
-    oldest_live_chunk: LwwRegister<u64>,
-    /// Chunks pruned so far (tombstone pressure).
-    pruned_chunks: LwwRegister<u64>,
-    /// Seq of the newest keyframe we have accepted.
+    /// Opaque encoded chunks, keyed `chunk-{from}-{seq}`.
     ///
-    /// Load-bearing for pruning, not bookkeeping. A delta frame is meaningless
-    /// without the keyframe it refs, so the reaper must never prune past the
-    /// newest keyframe — do that and a peer joining mid-stream (or any peer that
-    /// fell behind) has nothing decodable to start from and shows a grey canvas
-    /// until the *next* keyframe, which may be seconds away.
-    last_keyframe_seq: LwwRegister<u64>,
+    /// `from` is in the key on purpose. Without it, two senders that minted the
+    /// same seq collided on one key and last-writer-wins destroyed one of them —
+    /// the defect behind the one-directional video in `retro/review.md`. Sender
+    /// ids are bs58 public keys, which never contain `-`, so the delimiter is
+    /// unambiguous.
+    chunks: UnorderedMap<String, MediaChunk>,
+    /// Per-sender sequence / keyframe / pruning state. See [`ChunkCursor`] for
+    /// why this is per sender and merges by `max` rather than being a handful of
+    /// shared `LwwRegister`s.
+    chunk_cursors: UnorderedMap<String, ChunkCursor>,
 }
 
 // ── Logic ─────────────────────────────────────────────────────────────────────
@@ -429,11 +570,18 @@ pub struct MeroStream {
 impl MeroStream {
     #[app::init]
     pub fn init(name: String) -> MeroStream {
-        let me = Self::caller();
-        let mut stream_name = Ownable::new_owned_by(me);
-        let _ = stream_name.insert(LwwRegister::new(name));
+        // Ownership and the admin tier are ACCOUNT-scoped since rc.20; member ids
+        // stay device-scoped (see the `accounts` field).
+        let me = Self::caller_account();
+        // Deliberately NOT `stream_name.insert(name)` — see `initial_name`. The
+        // value would be silently dropped here and the stream would come up
+        // nameless.
+        let stream_name = Ownable::new_owned_by(me);
+        let mut accounts = UnorderedMap::new();
+        let _ = accounts.insert(Self::caller_id(), LwwRegister::new(me));
         MeroStream {
             stream_name,
+            initial_name: LwwRegister::new(name),
             members: UnorderedMap::new(),
             fragments: UnorderedMap::new(),
             next_seq: LwwRegister::new(0),
@@ -441,18 +589,48 @@ impl MeroStream {
             pruned_frames: LwwRegister::new(0),
             roles: AccessControl::new(me),
             chunks: UnorderedMap::new(),
-            next_chunk_seq: LwwRegister::new(0),
-            oldest_live_chunk: LwwRegister::new(0),
-            pruned_chunks: LwwRegister::new(0),
-            last_keyframe_seq: LwwRegister::new(0),
+            chunk_cursors: UnorderedMap::new(),
+            accounts,
         }
     }
 
     // ── Identity helpers ───────────────────────────────────────────────────────
 
     /// The real signer of this invocation. Never trust a client-supplied id.
+    ///
+    /// `device_id()` is the rc.20 successor of `executor_id()` (core #3320 split
+    /// identity into account + device). Same bytes, so member ids — and the
+    /// identities the frontend reads from `identities-owned` — keep matching.
+    /// Authorization gates on [`Self::caller_account`]; see the `accounts` field.
     fn caller() -> PublicKey {
-        sdk_env::executor_id().into()
+        sdk_env::device_id().into()
+    }
+
+    /// The account this call is authorized as — what `AccessControl` and
+    /// `Ownable` gate on. Two devices belonging to one person report the same
+    /// account.
+    fn caller_account() -> AccountId {
+        AccountId::from(sdk_env::account_id())
+    }
+
+    /// Record the caller's device→account pairing. Idempotent: an unchanged
+    /// pairing writes nothing, so the hot post path adds no CRDT delta.
+    fn remember_account(&mut self) {
+        let me = Self::caller_id();
+        let account = Self::caller_account();
+        if matches!(self.accounts.get(&me), Ok(Some(known)) if *known.get() == account) {
+            return;
+        }
+        let _ = self.accounts.insert(me, LwwRegister::new(account));
+    }
+
+    /// The account a member's device speaks for, if that member has ever
+    /// written to this stream.
+    fn account_of(&self, member: &str) -> Option<AccountId> {
+        match self.accounts.get(member) {
+            Ok(Some(reg)) => Some(*reg.get()),
+            _ => None,
+        }
     }
 
     fn caller_id() -> String {
@@ -463,11 +641,22 @@ impl MeroStream {
         PublicKey::from_str(value).map_err(|_| app::err!("invalid member public key"))
     }
 
+    /// The stream's display name.
+    ///
+    /// The owner-gated cell wins once it holds anything; before the first rename
+    /// it is empty and the name `init` was given is the answer. See
+    /// [`Self::initial_name`].
     fn stream_name_str(&self) -> String {
-        self.stream_name
+        let renamed = self
+            .stream_name
             .get()
             .map(|r| r.get().clone())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        if renamed.is_empty() {
+            self.initial_name.get().clone()
+        } else {
+            renamed
+        }
     }
 
     fn require_member(&self) -> app::Result<String> {
@@ -496,6 +685,9 @@ impl MeroStream {
             updated_at: now,
         };
         self.members.insert(id.clone(), member.clone())?;
+        // Self-register the device→account pairing, so a later admin check on
+        // this member can resolve the account `AccessControl` actually gates on.
+        self.remember_account();
         app::emit!(Event::MemberJoined(id));
         Ok(member)
     }
@@ -724,15 +916,26 @@ impl MeroStream {
             app::bail!("codec string is required");
         }
 
-        let seq = self.next_chunk_seq.get().saturating_add(1);
-        self.next_chunk_seq.set(seq);
+        // Mint from OUR OWN counter. Nothing another sender does can move it, so
+        // two peers posting at the same instant can no longer mint the same seq.
+        let mut cursor = self
+            .chunk_cursors
+            .get(&from)?
+            .map(|c| (*c).clone())
+            .unwrap_or_default();
+        let seq = cursor.next_seq.saturating_add(1);
+        cursor.next_seq = seq;
         if is_keyframe {
-            self.last_keyframe_seq.set(seq);
+            cursor.last_keyframe = seq;
+        }
+        cursor.newest_at = cursor.newest_at.max(now);
+        if cursor.oldest_live == 0 {
+            cursor.oldest_live = seq;
         }
 
         let chunk = MediaChunk {
             seq,
-            from,
+            from: from.clone(),
             track,
             is_keyframe,
             codec,
@@ -742,29 +945,53 @@ impl MeroStream {
             data,
             created_at: now,
         };
-        self.chunks.insert(Self::chunk_key(seq), chunk)?;
+        self.chunks.insert(Self::chunk_key(&from, seq), chunk)?;
+        self.chunk_cursors.insert(from.clone(), cursor)?;
 
-        self.prune_chunks_internal(seq);
+        // Reap our own trailing chunks, then collect anyone who has gone away.
+        self.prune_own_chunks(&from, now)?;
+        self.sweep_stale_senders(&from, now)?;
         app::emit!(Event::ChunkPosted(seq));
         Ok(seq)
     }
 
-    /// Chunk storage key. Monotone and NEVER reused (C3).
-    fn chunk_key(seq: u64) -> String {
-        format!("chunk-{}", seq)
+    /// Chunk storage key. Per sender, monotone within that sender, NEVER reused
+    /// (C3). See the `chunks` field for why `from` is part of the key.
+    fn chunk_key(from: &str, seq: u64) -> String {
+        format!("chunk-{}-{}", from, seq)
     }
 
-    /// Every live chunk with `seq > after_seq`, oldest first (view, no delta).
+    /// Every live chunk newer than the caller's per-sender cursor, oldest first
+    /// (view, no delta).
     ///
-    /// The peer passes back the highest seq it has fed its decoder. Returns
-    /// base64 so the JSON transport stays ~1.37x rather than ~3x.
-    pub fn get_chunks(&self, after_seq: u64) -> Vec<ChunkView> {
+    /// `cursors` carries one `after_seq` per sender the caller is already
+    /// decoding. **A sender the caller has never seen is served from that
+    /// sender's own newest live keyframe**, which is what makes joining
+    /// mid-call work: feeding a decoder a delta frame with no preceding
+    /// keyframe cannot produce a picture, and each sender is an independent
+    /// bitstream, so "newest keyframe" only means anything per sender.
+    ///
+    /// That folds in the old `keyframe_cursor()` round-trip — joining is now one
+    /// call instead of "ask for the cursor, then ask for chunks".
+    ///
+    /// Returns base64 so the JSON transport stays ~1.37x rather than ~3x.
+    pub fn get_chunks(&self, cursors: Vec<SenderCursor>) -> Vec<ChunkView> {
         let mut out: Vec<ChunkView> = self
             .chunks
             .entries()
             .map(|e| {
                 e.map(|(_, c)| c)
-                    .filter(|c| c.seq > after_seq)
+                    .filter(|c| match cursors.iter().find(|k| k.from == c.from) {
+                        Some(k) => c.seq > k.after_seq,
+                        // Unknown sender: start at their newest live keyframe.
+                        // A zero floor means they have no live keyframe at all,
+                        // so there is nothing decodable to hand over yet — send
+                        // none of it rather than deltas the decoder will throw on.
+                        None => {
+                            let floor = self.live_keyframe_of(&c.from);
+                            floor != 0 && c.seq >= floor
+                        }
+                    })
                     .map(|c| ChunkView {
                         seq: c.seq,
                         from: c.from.clone(),
@@ -781,29 +1008,53 @@ impl MeroStream {
             })
             .unwrap_or_default();
         // Decoders are order-sensitive: a delta frame fed before its reference
-        // produces garbage or throws.
-        out.sort_by_key(|c| c.seq);
+        // produces garbage or throws. Group by sender, ascending within each, so
+        // the caller can feed every decoder straight through.
+        out.sort_by(|a, b| a.from.cmp(&b.from).then(a.seq.cmp(&b.seq)));
         out
     }
 
-    /// The newest keyframe still live, or `None`.
-    ///
-    /// A peer joining mid-stream calls this first: feeding a decoder a delta
-    /// frame with no preceding keyframe cannot produce a picture, so the join
-    /// path is "find the keyframe, start there", not "start at whatever is
-    /// newest".
-    pub fn keyframe_cursor(&self) -> Option<u64> {
-        let seq = *self.last_keyframe_seq.get();
+    /// That sender's newest keyframe seq if it is still live, else 0.
+    fn live_keyframe_of(&self, from: &str) -> u64 {
+        let seq = match self.chunk_cursors.get(from) {
+            Ok(Some(c)) => c.last_keyframe,
+            _ => return 0,
+        };
         if seq == 0 {
-            return None;
+            return 0;
         }
-        // Confirm it is still live rather than trusting the register — the
-        // reaper protects it, but a peer that has not synced yet may legitimately
-        // not hold it.
-        match self.chunks.get(&Self::chunk_key(seq)) {
-            Ok(Some(_)) => Some(seq),
-            _ => None,
+        // Confirm it is still live rather than trusting the cursor — the reaper
+        // protects it, but a peer that has not synced yet may legitimately not
+        // hold it.
+        match self.chunks.get(&Self::chunk_key(from, seq)) {
+            Ok(Some(_)) => seq,
+            _ => 0,
         }
+    }
+
+    /// Newest live keyframe per sender — one entry for each sender that
+    /// currently offers a decodable entry point.
+    ///
+    /// `get_chunks` already defaults unknown senders to this, so the receive
+    /// path no longer needs to call it. Kept for diagnostics and e2e assertions.
+    pub fn keyframe_cursors(&self) -> Vec<SenderCursor> {
+        let mut out: Vec<SenderCursor> = self
+            .chunk_cursors
+            .entries()
+            .map(|e| {
+                e.map(|(from, _)| from)
+                    .filter_map(|from| {
+                        let seq = self.live_keyframe_of(&from);
+                        (seq != 0).then_some(SenderCursor {
+                            from,
+                            after_seq: seq,
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        out.sort_by(|a, b| a.from.cmp(&b.from));
+        out
     }
 
     pub fn get_live_stats(&self) -> LiveStats {
@@ -812,76 +1063,198 @@ impl MeroStream {
             .entries()
             .map(|e| e.map(|(_, c)| c.data.len() as u64).sum::<u64>())
             .unwrap_or(0);
+
+        let mut senders: Vec<SenderStats> = self
+            .chunk_cursors
+            .entries()
+            .map(|e| {
+                e.map(|(from, cur)| {
+                    let (live_chunks, sender_bytes) = self.live_totals_of(&from);
+                    SenderStats {
+                        from,
+                        next_seq: cur.next_seq,
+                        oldest_live: cur.oldest_live,
+                        last_keyframe: cur.last_keyframe,
+                        newest_at: cur.newest_at,
+                        pruned: cur.pruned,
+                        live_chunks,
+                        live_bytes: sender_bytes,
+                    }
+                })
+                .collect()
+            })
+            .unwrap_or_default();
+        senders.sort_by(|a, b| a.from.cmp(&b.from));
+
         LiveStats {
             live_chunks: self.chunks.len().unwrap_or(0) as u32,
-            next_chunk_seq: *self.next_chunk_seq.get(),
-            oldest_live_chunk: *self.oldest_live_chunk.get(),
-            pruned_chunks: *self.pruned_chunks.get(),
-            last_keyframe_seq: *self.last_keyframe_seq.get(),
             live_bytes,
+            pruned_chunks: senders.iter().map(|s| s.pruned).sum(),
+            senders,
         }
     }
 
-    /// Keyframe-safe reaper. Keeps a rolling window, but **never prunes the
-    /// newest keyframe or anything after it**.
+    /// `(count, bytes)` of one sender's live chunks.
+    fn live_totals_of(&self, from: &str) -> (u32, u64) {
+        self.chunks
+            .entries()
+            .map(|e| {
+                e.map(|(_, c)| c)
+                    .filter(|c| c.from == from)
+                    .fold((0u32, 0u64), |(n, bytes), c| {
+                        (n + 1, bytes.saturating_add(c.data.len() as u64))
+                    })
+            })
+            .unwrap_or((0, 0))
+    }
+
+    /// Age out **our own** trailing chunks. Time-based, keyframe-safe.
     ///
-    /// Without that clamp the window boundary eventually lands past the last
-    /// keyframe and every remaining chunk is a delta with no reference — the
-    /// stream is live, replicating, and undecodable, which is the worst failure
-    /// mode available because nothing looks broken from the sender's side.
-    fn prune_chunks_internal(&mut self, latest_seq: u64) {
-        let window_floor = latest_seq.saturating_sub(CHUNK_WINDOW);
-        let keyframe = *self.last_keyframe_seq.get();
-        // Never step past the newest keyframe.
-        let threshold = if keyframe == 0 {
-            window_floor
-        } else {
-            window_floor.min(keyframe)
+    /// Two properties matter here, and the old reaper had neither:
+    ///
+    /// 1. **A sender only ever reaps its own chunks on this path.** Concurrent
+    ///    `insert` of `chunk-X` on one node and `remove` of `chunk-X` on another
+    ///    is the insert-races-tombstone pattern that does not converge; keeping
+    ///    deletes owned by the writer removes the race entirely rather than
+    ///    hoping it stays rare.
+    /// 2. **The window is wall-clock, not a row count**, so it does not shrink
+    ///    as senders join and it can be sized against real sync latency.
+    ///
+    /// The keyframe clamp is unchanged in spirit but now per sender: never drop
+    /// our newest keyframe or anything after it. Without it the window boundary
+    /// eventually lands past the last keyframe and every remaining chunk is a
+    /// delta with no reference — live, replicating, and undecodable, which is the
+    /// worst failure mode available because nothing looks broken from the
+    /// sender's side.
+    fn prune_own_chunks(&mut self, from: &str, now: u64) -> app::Result<()> {
+        let mut cursor = match self.chunk_cursors.get(from)? {
+            Some(c) => (*c).clone(),
+            None => return Ok(()),
         };
-        if threshold > *self.oldest_live_chunk.get() {
-            self.prune_chunks_below(threshold);
-        }
-    }
 
-    /// Explicit reaper (membership-gated). Still honours the keyframe clamp —
-    /// an operator cannot ask for an undecodable stream.
-    pub fn prune_chunks(&mut self, before_seq: u64) -> app::Result<()> {
-        self.require_member()?;
-        let keyframe = *self.last_keyframe_seq.get();
-        let clamped = if keyframe == 0 {
-            before_seq
-        } else {
-            before_seq.min(keyframe)
-        };
-        self.prune_chunks_below(clamped);
+        let cutoff = now.saturating_sub(LIVE_WINDOW_MS);
+        // Backstop for a broken/hostile clock: if the time window is not
+        // retiring anything, still refuse to hold more than this many.
+        let count_floor = cursor
+            .next_seq
+            .saturating_sub(MAX_LIVE_CHUNKS_PER_SENDER)
+            .saturating_add(1);
+
+        let start = cursor.oldest_live.max(1);
+        let mut removed = 0u64;
+        let mut seq = start;
+        while seq < cursor.next_seq && removed < MAX_PRUNE_PER_CALL {
+            let over_count = seq < count_floor;
+            // Never step on or past our own newest keyframe — *unless* the count
+            // backstop demands it.
+            //
+            // The clamp normally wins, because dropping the keyframe leaves every
+            // surviving chunk an undecodable delta. But a sender that stops
+            // emitting keyframes would then pin its buffer forever, and the clamp
+            // would have converted "briefly undecodable" into "unbounded state".
+            // An undecodable window self-heals on the next keyframe
+            // (KEYFRAME_INTERVAL_MS, ~2 s); an unbounded buffer never does. So
+            // past the hard ceiling the backstop takes precedence.
+            if !over_count && cursor.last_keyframe != 0 && seq >= cursor.last_keyframe {
+                break;
+            }
+            let key = Self::chunk_key(from, seq);
+            let too_old = match self.chunks.get(&key)? {
+                Some(c) => c.created_at < cutoff,
+                // Already gone — advance over the hole.
+                None => {
+                    seq += 1;
+                    continue;
+                }
+            };
+            if !(too_old || over_count) {
+                break;
+            }
+            if self.chunks.remove(&key)?.is_some() {
+                removed += 1;
+            }
+            seq += 1;
+        }
+
+        if removed > 0 || seq > cursor.oldest_live {
+            cursor.oldest_live = seq;
+            cursor.pruned = cursor.pruned.saturating_add(removed);
+            self.chunk_cursors.insert(from.to_owned(), cursor)?;
+        }
         Ok(())
     }
 
-    /// Remove every chunk with `seq < before_seq`. Each removal is a replicated
-    /// tombstone (C3) — the cost this whole task exists to measure.
-    fn prune_chunks_below(&mut self, before_seq: u64) {
-        if before_seq == 0 {
-            return;
+    /// Collect the buffer of any sender that has stopped posting.
+    ///
+    /// Self-pruning bounds a *live* sender, but a peer who closes the tab leaves
+    /// their last window pinned forever, so someone else has to collect it. This
+    /// is the one place a node touches another sender's chunks, and it is safe
+    /// because `STALE_SENDER_MS` (30 s) is five times the live window: by the
+    /// time it fires the owner has not written for half a minute, so the delete
+    /// cannot realistically race a live insert.
+    fn sweep_stale_senders(&mut self, me: &str, now: u64) -> app::Result<()> {
+        let cutoff = now.saturating_sub(STALE_SENDER_MS);
+        let stale: Vec<(String, ChunkCursor)> = self
+            .chunk_cursors
+            .entries()
+            .map(|e| {
+                e.filter(|(from, cur)| {
+                    from != me && cur.newest_at < cutoff && cur.oldest_live < cur.next_seq
+                })
+                .collect()
+            })
+            .unwrap_or_default();
+
+        for (from, mut cursor) in stale {
+            let start = cursor.oldest_live.max(1);
+            let mut removed = 0u64;
+            let mut seq = start;
+            // No keyframe clamp: the sender is gone, so there is no stream left
+            // to keep decodable.
+            while seq <= cursor.next_seq && removed < MAX_PRUNE_PER_CALL {
+                if self.chunks.remove(&Self::chunk_key(&from, seq))?.is_some() {
+                    removed += 1;
+                }
+                seq += 1;
+            }
+            cursor.oldest_live = seq;
+            cursor.pruned = cursor.pruned.saturating_add(removed);
+            self.chunk_cursors.insert(from, cursor)?;
         }
-        let start = *self.oldest_live_chunk.get().max(&1);
+        Ok(())
+    }
+
+    /// Explicit reaper (membership-gated). Prunes **only the caller's own**
+    /// chunks, and still honours their keyframe clamp — an operator cannot ask
+    /// for an undecodable stream, nor reach into someone else's buffer.
+    pub fn prune_chunks(&mut self, before_seq: u64) -> app::Result<()> {
+        let me = self.require_member()?;
+        let mut cursor = match self.chunk_cursors.get(&me)? {
+            Some(c) => (*c).clone(),
+            None => return Ok(()),
+        };
+        let clamped = if cursor.last_keyframe == 0 {
+            before_seq
+        } else {
+            before_seq.min(cursor.last_keyframe)
+        };
+        if clamped == 0 {
+            return Ok(());
+        }
+
+        let start = cursor.oldest_live.max(1);
         let mut removed = 0u64;
-        for seq in start..before_seq {
-            if self
-                .chunks
-                .remove(&Self::chunk_key(seq))
-                .unwrap_or(None)
-                .is_some()
-            {
+        for seq in start..clamped {
+            if self.chunks.remove(&Self::chunk_key(&me, seq))?.is_some() {
                 removed += 1;
             }
         }
-        if removed > 0 {
-            let total = self.pruned_chunks.get().saturating_add(removed);
-            self.pruned_chunks.set(total);
+        if clamped > cursor.oldest_live {
+            cursor.oldest_live = clamped;
         }
-        if before_seq > *self.oldest_live_chunk.get() {
-            self.oldest_live_chunk.set(before_seq);
-        }
+        cursor.pruned = cursor.pruned.saturating_add(removed);
+        self.chunk_cursors.insert(me, cursor)?;
+        Ok(())
     }
 
     // ── Prune (explicit reaper; every removal is a tombstone — C3) ────────────────
@@ -967,10 +1340,19 @@ impl MeroStream {
         Ok(())
     }
 
+    /// Whether the given MEMBER key's owner is an admin.
+    ///
+    /// Takes a device key (what the frontend has) but resolves it through
+    /// `accounts` to the `AccountId` that `AccessControl` is keyed by since
+    /// rc.20. A member who has never joined has no known account, so this is
+    /// `false` rather than an error — the caller asked a yes/no question.
     pub fn is_member_admin(&self, member: String) -> bool {
-        match Self::parse_pk(&member) {
-            Ok(pk) => self.roles.is_admin(&pk),
-            Err(_) => false,
+        if Self::parse_pk(&member).is_err() {
+            return false;
+        }
+        match self.account_of(&member) {
+            Some(account) => self.roles.is_admin(&account),
+            None => false,
         }
     }
 }
@@ -1072,17 +1454,51 @@ mod tests {
     use calimero_sdk::testing::TestHost;
 
     use super::{
-        codec, DecodedFrame, MeroStream, BASE64, CHUNK_WINDOW, FRAME_WINDOW, MAX_CHUNK_BYTES,
-        MAX_DIM, MAX_MEDIA_CHUNK_BYTES, TRACK_VIDEO_LUMA,
+        codec, ChunkCursor, DecodedFrame, MergeableTrait as _, MeroStream, SenderCursor, BASE64,
+        FRAME_WINDOW, LIVE_WINDOW_MS, MAX_CHUNK_BYTES, MAX_DIM, MAX_LIVE_CHUNKS_PER_SENDER,
+        MAX_MEDIA_CHUNK_BYTES, STALE_SENDER_MS, TRACK_VIDEO_LUMA,
     };
     use base64::Engine as _;
     use calimero_sdk::app;
 
     const ALICE: [u8; 32] = [0x11; 32];
     const BOB: [u8; 32] = [0x22; 32];
+    /// `AccessControl` and `Ownable` are keyed by ACCOUNT since rc.20, and
+    /// `call_as` keeps the caller's account on purpose (two devices, one person).
+    /// A test peer that must NOT inherit the creator's rights needs its own.
+    const BOB_ACCOUNT: [u8; 32] = [0xB0; 32];
 
     fn id_of(bytes: [u8; 32]) -> String {
         bs58::encode(bytes).into_string()
+    }
+
+    /// "Give me everything from these senders" — the cursor set that the old
+    /// global `get_chunks(0)` used to mean.
+    fn from_zero(who: &[[u8; 32]]) -> Vec<SenderCursor> {
+        who.iter()
+            .map(|w| SenderCursor {
+                from: id_of(*w),
+                after_seq: 0,
+            })
+            .collect()
+    }
+
+    /// A single sender's cursor.
+    fn at(who: [u8; 32], after_seq: u64) -> Vec<SenderCursor> {
+        vec![SenderCursor {
+            from: id_of(who),
+            after_seq,
+        }]
+    }
+
+    /// That sender's slice of `get_live_stats`.
+    fn sender_stats(app: &mut TestHost<MeroStream>, who: [u8; 32]) -> super::SenderStats {
+        let want = id_of(who);
+        app.view(|s| s.get_live_stats())
+            .senders
+            .into_iter()
+            .find(|s| s.from == want)
+            .unwrap_or_else(|| panic!("no stats for sender {want}"))
     }
 
     fn new_stream() -> TestHost<MeroStream> {
@@ -1683,7 +2099,7 @@ mod tests {
         let payload: Vec<u8> = (0..500).map(|i| ((i * 31) % 256) as u8).collect();
         let seq = post(&mut app, ALICE, &payload, true, 1_751_955_010).unwrap();
 
-        let got = app.view(|s| s.get_chunks(seq - 1));
+        let got = app.view(|s| s.get_chunks(at(ALICE, seq - 1)));
         assert_eq!(got.len(), 1);
         assert_eq!(BASE64.decode(got[0].data_b64.as_bytes()).unwrap(), payload);
         // The decoder config must survive verbatim, or the peer decodes garbage.
@@ -1703,7 +2119,7 @@ mod tests {
             post(&mut app, ALICE, b"delta", false, 1000 + k).unwrap();
         }
         let seqs: Vec<u64> = app
-            .view(|s| s.get_chunks(0))
+            .view(|s| s.get_chunks(from_zero(&[ALICE])))
             .iter()
             .map(|c| c.seq)
             .collect();
@@ -1721,25 +2137,32 @@ mod tests {
         app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
             .unwrap();
 
-        // One keyframe, then far more deltas than CHUNK_WINDOW.
+        // One keyframe, then deltas spanning several times the live window.
         let kf = post(&mut app, ALICE, b"keyframe", true, 1000).unwrap();
-        for k in 0..(CHUNK_WINDOW + 50) {
-            post(&mut app, ALICE, b"delta", false, 1001 + k).unwrap();
+        let span = LIVE_WINDOW_MS * 4;
+        for k in 1..=100u64 {
+            post(&mut app, ALICE, b"delta", false, 1000 + k * (span / 100)).unwrap();
         }
 
-        let stats = app.view(|s| s.get_live_stats());
-        assert_eq!(stats.last_keyframe_seq, kf);
+        let st = sender_stats(&mut app, ALICE);
+        assert_eq!(st.last_keyframe, kf);
         // The window wanted to prune well past `kf`; the clamp held it back.
         assert!(
-            stats.oldest_live_chunk <= kf,
+            st.oldest_live <= kf,
             "window advanced past the keyframe: oldest={} kf={}",
-            stats.oldest_live_chunk,
+            st.oldest_live,
             kf
         );
         // And the keyframe is genuinely still readable, so a joiner can start.
-        assert_eq!(app.view(|s| s.keyframe_cursor()), Some(kf));
+        assert_eq!(
+            app.view(|s| s.keyframe_cursors()),
+            vec![SenderCursor {
+                from: id_of(ALICE),
+                after_seq: kf
+            }]
+        );
         assert!(app
-            .view(|s| s.get_chunks(kf - 1))
+            .view(|s| s.get_chunks(at(ALICE, kf - 1)))
             .iter()
             .any(|c| c.seq == kf && c.is_keyframe));
     }
@@ -1753,26 +2176,35 @@ mod tests {
         app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
             .unwrap();
         let first_kf = post(&mut app, ALICE, b"kf1", true, 1000).unwrap();
-        for k in 0..10 {
-            post(&mut app, ALICE, b"delta", false, 1001 + k).unwrap();
+        for k in 1..=10u64 {
+            post(&mut app, ALICE, b"delta", false, 1000 + k * 100).unwrap();
         }
-        // A second keyframe, then enough traffic to push the window past kf1.
-        let second_kf = post(&mut app, ALICE, b"kf2", true, 2000).unwrap();
-        for k in 0..(CHUNK_WINDOW + 20) {
-            post(&mut app, ALICE, b"delta", false, 2001 + k).unwrap();
+        // A second keyframe far enough ahead that kf1's era falls out of the
+        // window, then more traffic so the reaper actually runs.
+        let base = 1000 + LIVE_WINDOW_MS * 3;
+        let second_kf = post(&mut app, ALICE, b"kf2", true, base).unwrap();
+        for k in 1..=10u64 {
+            post(&mut app, ALICE, b"delta", false, base + k * 100).unwrap();
         }
 
-        let stats = app.view(|s| s.get_live_stats());
-        assert_eq!(stats.last_keyframe_seq, second_kf);
+        let st = sender_stats(&mut app, ALICE);
+        assert_eq!(st.last_keyframe, second_kf);
         assert!(
-            stats.oldest_live_chunk > first_kf,
+            st.oldest_live > first_kf,
             "the superseded keyframe should have been released (oldest={} first_kf={})",
-            stats.oldest_live_chunk,
+            st.oldest_live,
             first_kf
         );
-        assert!(stats.pruned_chunks > 0);
+        assert!(st.pruned > 0);
+        assert!(app.view(|s| s.get_live_stats()).pruned_chunks > 0);
         // The CURRENT keyframe still survives — a joiner is never left stranded.
-        assert_eq!(app.view(|s| s.keyframe_cursor()), Some(second_kf));
+        assert_eq!(
+            app.view(|s| s.keyframe_cursors()),
+            vec![SenderCursor {
+                from: id_of(ALICE),
+                after_seq: second_kf
+            }]
+        );
     }
 
     #[test]
@@ -1789,22 +2221,53 @@ mod tests {
         assert!(app.call_as(BOB, |s| s.prune_chunks(9999)).is_err());
         app.call_as(ALICE, |s| s.prune_chunks(9999)).unwrap();
         assert_eq!(
-            app.view(|s| s.keyframe_cursor()),
-            Some(kf),
+            app.view(|s| s.keyframe_cursors()),
+            vec![SenderCursor {
+                from: id_of(ALICE),
+                after_seq: kf
+            }],
             "even prune(everything) must leave the keyframe"
         );
     }
 
     #[test]
-    fn keyframe_cursor_is_none_before_any_keyframe() {
+    fn explicit_prune_cannot_reach_another_senders_buffer() {
+        // prune_chunks is scoped to the caller. Letting one member reap another
+        // member's chunks reintroduces exactly the cross-sender delete that the
+        // per-sender split exists to remove.
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
+            .unwrap();
+        post(&mut app, ALICE, b"a-kf", true, 1000).unwrap();
+        for k in 1..=4u64 {
+            post(&mut app, ALICE, b"a-delta", false, 1000 + k).unwrap();
+        }
+        let before = sender_stats(&mut app, ALICE).live_chunks;
+
+        // Bob asks to wipe everything. Only Bob's (empty) buffer is in scope.
+        app.call_as(BOB, |s| s.prune_chunks(u64::MAX)).unwrap();
+
+        assert_eq!(
+            sender_stats(&mut app, ALICE).live_chunks,
+            before,
+            "Bob's prune must not touch Alice's chunks"
+        );
+    }
+
+    #[test]
+    fn keyframe_cursors_is_empty_before_any_keyframe() {
         // A joiner must be able to tell "nothing decodable yet" from "start here",
         // including the case where only delta frames have been posted.
         let mut app = new_stream();
         app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
             .unwrap();
-        assert_eq!(app.view(|s| s.keyframe_cursor()), None);
+        assert!(app.view(|s| s.keyframe_cursors()).is_empty());
         post(&mut app, ALICE, b"delta-only", false, 1000).unwrap();
-        assert_eq!(app.view(|s| s.keyframe_cursor()), None);
+        assert!(app.view(|s| s.keyframe_cursors()).is_empty());
+        // And a fresh joiner is handed nothing rather than undecodable deltas.
+        assert!(app.view(|s| s.get_chunks(vec![])).is_empty());
     }
 
     #[test]
@@ -1845,8 +2308,8 @@ mod tests {
                 1000
             ))
             .is_err());
-        // None of the rejects may consume a seq.
-        assert_eq!(app.view(|s| s.get_live_stats()).next_chunk_seq, 0);
+        // None of the rejects may consume a seq — no cursor row at all yet.
+        assert!(app.view(|s| s.get_live_stats()).senders.is_empty());
     }
 
     #[test]
@@ -1863,10 +2326,8 @@ mod tests {
         app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
             .unwrap();
         let fresh = app.view(|s| s.get_live_stats());
-        assert_eq!(
-            (fresh.live_chunks, fresh.live_bytes, fresh.next_chunk_seq),
-            (0, 0, 0)
-        );
+        assert_eq!((fresh.live_chunks, fresh.live_bytes), (0, 0));
+        assert!(fresh.senders.is_empty());
 
         post(&mut app, ALICE, &[1u8; 100], true, 1000).unwrap();
         post(&mut app, ALICE, &[2u8; 250], false, 1001).unwrap();
@@ -1876,8 +2337,10 @@ mod tests {
             stats.live_bytes, 350,
             "live_bytes is the real state footprint"
         );
-        assert_eq!(stats.next_chunk_seq, 2);
-        assert_eq!(stats.last_keyframe_seq, 1);
+        let st = sender_stats(&mut app, ALICE);
+        assert_eq!(st.next_seq, 2);
+        assert_eq!(st.last_keyframe, 1);
+        assert_eq!((st.live_chunks, st.live_bytes), (2, 350));
     }
 
     #[test]
@@ -1906,7 +2369,7 @@ mod tests {
         })
         .unwrap();
 
-        let all = app.view(|s| s.get_chunks(0));
+        let all = app.view(|s| s.get_chunks(from_zero(&[ALICE])));
         assert_eq!(all.len(), 2);
         let video = all.iter().find(|c| c.track == 0).unwrap();
         let audio = all.iter().find(|c| c.track == 1).unwrap();
@@ -1927,19 +2390,303 @@ mod tests {
             .unwrap();
 
         assert_eq!(app.view(|s| s.get_stats()).next_seq, 1);
-        assert_eq!(app.view(|s| s.get_live_stats()).next_chunk_seq, 1);
+        assert_eq!(sender_stats(&mut app, ALICE).next_seq, 1);
         assert_eq!(app.view(|s| s.get_frame(0)).len(), 1);
-        assert_eq!(app.view(|s| s.get_chunks(0)).len(), 1);
+        assert_eq!(app.view(|s| s.get_chunks(from_zero(&[ALICE]))).len(), 1);
     }
 
+    // ── Cross-network regressions (see retro/review.md) ──────────────────────
+
     #[test]
-    fn a_non_member_cannot_rename_the_stream() {
+    fn two_senders_posting_the_same_seq_do_not_overwrite_each_other() {
+        // THE regression behind the one-directional call. Both senders mint
+        // seq 1, 2, 3... from their own counters — under the old shared
+        // LwwRegister they collided on one `chunk-{seq}` key and last-writer-wins
+        // silently destroyed one side's video.
         let mut app = new_stream();
         app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
             .unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
+            .unwrap();
+
+        // Interleaved, exactly as two peers in a call behave.
+        for k in 0..5u64 {
+            let a = post(&mut app, ALICE, b"alice-frame", k == 0, 1000 + k).unwrap();
+            let b = post(&mut app, BOB, b"bob-frame", k == 0, 1000 + k).unwrap();
+            // Both really do mint the same numbers — that is the point.
+            assert_eq!((a, b), (k + 1, k + 1));
+        }
+
+        let all = app.view(|s| s.get_chunks(from_zero(&[ALICE, BOB])));
+        assert_eq!(all.len(), 10, "no chunk may be lost to a key collision");
+
+        // And each side's bytes are intact, not the other's.
+        for c in &all {
+            let want: &[u8] = if c.from == id_of(ALICE) {
+                b"alice-frame"
+            } else {
+                b"bob-frame"
+            };
+            assert_eq!(BASE64.decode(c.data_b64.as_bytes()).unwrap(), want);
+        }
+        assert_eq!(all.iter().filter(|c| c.from == id_of(ALICE)).count(), 5);
+        assert_eq!(all.iter().filter(|c| c.from == id_of(BOB)).count(), 5);
+    }
+
+    #[test]
+    fn one_senders_traffic_does_not_reap_anothers_chunks() {
+        // The second half of the same bug: the old reaper ran on every post from
+        // ANY sender against one global window, so a fast sender's writes pushed
+        // a slower/laggier sender's chunks below the prune floor and deleted them
+        // on arrival. A sender must only ever reap its own.
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
+            .unwrap();
+
+        // Alice posts a keyframe and goes quiet.
+        post(&mut app, ALICE, b"alice-kf", true, 1000).unwrap();
+        let alice_live = sender_stats(&mut app, ALICE).live_chunks;
+        assert_eq!(alice_live, 1);
+
+        // Bob then floods — well past the old 120-entry window, but still inside
+        // STALE_SENDER_MS so Alice has not been collected as departed.
+        for k in 1..=200u64 {
+            post(&mut app, BOB, b"bob-delta", k == 1, 1000 + k).unwrap();
+        }
+
+        assert_eq!(
+            sender_stats(&mut app, ALICE).live_chunks,
+            1,
+            "Bob's traffic must not reap Alice's keyframe"
+        );
+        // Alice is still joinable — the thing that was actually broken.
         assert!(app
-            .call_as(BOB, |s| s.rename_stream("hijacked".to_owned()))
+            .view(|s| s.keyframe_cursors())
+            .iter()
+            .any(|c| c.from == id_of(ALICE)));
+    }
+
+    #[test]
+    fn the_live_window_is_wall_clock_not_a_row_count() {
+        // A count-based window shrank in wall-clock terms as senders were added
+        // (120 entries is ~4.8 s with one sender at 25 fps, ~2.4 s with two), so
+        // the more peers in the call the less latency it could absorb. Time is
+        // the unit that does not move.
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+
+        // A dense burst: 300 chunks inside one second. Far more rows than the old
+        // 120-entry window, but all of it well within LIVE_WINDOW_MS, so none of
+        // it may be reaped.
+        for k in 0..300u64 {
+            post(&mut app, ALICE, b"x", k == 0, 1000 + k / 300).unwrap();
+        }
+        assert_eq!(
+            sender_stats(&mut app, ALICE).live_chunks,
+            300,
+            "a dense burst inside the time window must survive in full"
+        );
+
+        // Now jump past the window with a fresh keyframe, releasing the old era.
+        let t = 1000 + LIVE_WINDOW_MS * 2;
+        post(&mut app, ALICE, b"new-kf", true, t).unwrap();
+        post(&mut app, ALICE, b"after", false, t + 1).unwrap();
+        let st = sender_stats(&mut app, ALICE);
+        assert!(
+            st.live_chunks < 300,
+            "chunks older than the window should have been released (live={})",
+            st.live_chunks
+        );
+        assert!(st.pruned > 0);
+    }
+
+    #[test]
+    fn a_broken_clock_cannot_pin_state_forever() {
+        // `now` is client-supplied, so the time window alone is not a bound. The
+        // count backstop is what stops a stuck or hostile clock from holding
+        // unbounded state.
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        // Time never advances, so the time window retires nothing.
+        post(&mut app, ALICE, b"kf", true, 1000).unwrap();
+        for _ in 0..(MAX_LIVE_CHUNKS_PER_SENDER + 200) {
+            post(&mut app, ALICE, b"delta", false, 1000).unwrap();
+        }
+        let st = sender_stats(&mut app, ALICE);
+        assert!(
+            u64::from(st.live_chunks) <= MAX_LIVE_CHUNKS_PER_SENDER + 1,
+            "count backstop did not bound a frozen clock (live={})",
+            st.live_chunks
+        );
+    }
+
+    #[test]
+    fn a_departed_senders_buffer_is_eventually_collected() {
+        // Self-pruning bounds a live sender but cannot collect one who closed the
+        // tab — their last window would otherwise stay pinned forever.
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
+            .unwrap();
+
+        for k in 0..5u64 {
+            post(&mut app, ALICE, b"alice", k == 0, 1000 + k).unwrap();
+        }
+        assert_eq!(sender_stats(&mut app, ALICE).live_chunks, 5);
+
+        // Alice goes away. Bob keeps posting until well past the stale horizon.
+        let t = 1000 + STALE_SENDER_MS + 1000;
+        post(&mut app, BOB, b"bob", true, t).unwrap();
+
+        assert_eq!(
+            sender_stats(&mut app, ALICE).live_chunks,
+            0,
+            "a departed sender's buffer must be collected"
+        );
+        // Bob, who is still live, is untouched.
+        assert_eq!(sender_stats(&mut app, BOB).live_chunks, 1);
+    }
+
+    #[test]
+    fn a_live_sender_is_never_swept_as_stale() {
+        // The sweep is the one place a node deletes someone else's chunks, so it
+        // must not fire while they are still posting.
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
+            .unwrap();
+
+        // Both post steadily across a span longer than STALE_SENDER_MS.
+        let step = STALE_SENDER_MS / 4;
+        for k in 0..6u64 {
+            let t = 1000 + k * step;
+            post(&mut app, ALICE, b"alice", true, t).unwrap();
+            post(&mut app, BOB, b"bob", true, t).unwrap();
+        }
+        assert!(sender_stats(&mut app, ALICE).live_chunks > 0);
+        assert!(sender_stats(&mut app, BOB).live_chunks > 0);
+    }
+
+    #[test]
+    fn a_joiner_starts_at_each_senders_own_keyframe() {
+        // The old global keyframe pointer meant a joiner's cursor landed mid-GOP
+        // for every sender except whoever keyframed last. Per sender, everyone
+        // gets a decodable entry point.
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
+            .unwrap();
+
+        post(&mut app, ALICE, b"a-kf", true, 1000).unwrap();
+        post(&mut app, ALICE, b"a-d1", false, 1001).unwrap();
+        post(&mut app, BOB, b"b-kf", true, 1002).unwrap();
+        post(&mut app, BOB, b"b-d1", false, 1003).unwrap();
+        // Alice keyframes again; Bob does not.
+        post(&mut app, ALICE, b"a-kf2", true, 1004).unwrap();
+        post(&mut app, ALICE, b"a-d2", false, 1005).unwrap();
+
+        // A joiner passes no cursors at all.
+        let got = app.view(|s| s.get_chunks(vec![]));
+
+        // Every sender's slice must begin on one of their own keyframes.
+        for who in [ALICE, BOB] {
+            let first = got
+                .iter()
+                .find(|c| c.from == id_of(who))
+                .unwrap_or_else(|| panic!("joiner got nothing from {}", id_of(who)));
+            assert!(
+                first.is_keyframe,
+                "joiner's first chunk from {} is not a keyframe",
+                id_of(who)
+            );
+        }
+    }
+
+    #[test]
+    fn chunk_cursor_merges_the_same_regardless_of_order() {
+        // The whole reason for max-merge instead of LwwRegister: concurrent
+        // updates must converge whatever order they arrive in.
+        let a = ChunkCursor {
+            next_seq: 10,
+            oldest_live: 3,
+            last_keyframe: 8,
+            newest_at: 5_000,
+            pruned: 2,
+        };
+        let b = ChunkCursor {
+            next_seq: 7,
+            oldest_live: 5,
+            last_keyframe: 6,
+            newest_at: 9_000,
+            pruned: 4,
+        };
+
+        let mut ab = a.clone();
+        ab.merge(&b).unwrap();
+        let mut ba = b.clone();
+        ba.merge(&a).unwrap();
+
+        // Commutative.
+        assert_eq!(
+            (
+                ab.next_seq,
+                ab.oldest_live,
+                ab.last_keyframe,
+                ab.newest_at,
+                ab.pruned
+            ),
+            (
+                ba.next_seq,
+                ba.oldest_live,
+                ba.last_keyframe,
+                ba.newest_at,
+                ba.pruned
+            )
+        );
+        assert_eq!((ab.next_seq, ab.oldest_live), (10, 5));
+        assert_eq!((ab.last_keyframe, ab.newest_at, ab.pruned), (8, 9_000, 4));
+
+        // Idempotent — re-delivering the same update changes nothing.
+        let mut again = ab.clone();
+        again.merge(&b).unwrap();
+        assert_eq!(again.next_seq, ab.next_seq);
+        assert_eq!(again.pruned, ab.pruned);
+    }
+
+    #[test]
+    fn a_non_owner_cannot_rename_the_stream() {
+        let mut app = new_stream();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        // `call_as_account`, not `call_as`: ownership is keyed by ACCOUNT since
+        // rc.20, and `call_as` deliberately keeps the caller's account (two
+        // devices of one person). A peer that must not inherit the creator's
+        // rights needs an account of its own — under plain `call_as`, Bob is
+        // simply another of the creator's devices and the rename SUCCEEDS.
+        assert!(app
+            .call_as_account(BOB_ACCOUNT, BOB, |s| s.rename_stream("hijacked".to_owned()))
             .is_err());
         assert_eq!(app.view(|s| s.get_stats()).name, "probe");
+    }
+
+    #[test]
+    fn the_owner_can_rename_and_the_new_name_sticks() {
+        // The other half of the gate, and the regression guard for the init-time
+        // seed: `get_stats().name` must be the init name before any rename and
+        // the new one after. `Ownable::insert` inside `init` is silently dropped
+        // on rc.20 (see the `initial_name` field), so a stream that reported ""
+        // here would look "renamed to nothing" rather than broken.
+        let mut app = new_stream();
+        assert_eq!(app.view(|s| s.get_stats()).name, "probe");
+        app.call_as(ALICE, |s| s.rename_stream("renamed".to_owned()))
+            .unwrap();
+        assert_eq!(app.view(|s| s.get_stats()).name, "renamed");
     }
 }

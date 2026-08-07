@@ -1,5 +1,5 @@
 #!/bin/bash
-# logic/build.sh — compile the contract to wasm via `cargo mero build` (rc.19).
+# logic/build.sh — compile the contract to wasm via `cargo mero build` (rc.20).
 #
 # This used to be a hand-rolled `cargo build --target wasm32-unknown-unknown` plus
 # a `cp` and an optional `wasm-opt`. `cargo mero build` does all of that AND the

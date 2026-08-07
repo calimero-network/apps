@@ -252,3 +252,33 @@
   font-size: 0.82rem;
   line-height: 1.5;
 }
+
+/* Per-sender breakdown under the approach-2 metrics. Scrolls on its own so a
+   long member list never makes the page scroll sideways. */
+.senderTable {
+  width: 100%;
+  margin-top: 14px;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  display: block;
+  overflow-x: auto;
+}
+
+.senderTable th,
+.senderTable td {
+  padding: 6px 10px;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border, rgba(128, 128, 128, 0.2));
+}
+
+.senderTable th:first-child,
+.senderTable td:first-child {
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+
+.senderTable th {
+  color: var(--text-faint);
+  font-weight: 500;
+}

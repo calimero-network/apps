@@ -66,13 +66,38 @@ export interface ChunkView {
   createdAt: number;
 }
 
+/**
+ * One sender's read position. Seq spaces are per sender, so a single global
+ * cursor is meaningless: seq 40 from Alice and seq 40 from Bob are unrelated
+ * positions in unrelated bitstreams.
+ */
+export interface SenderCursor {
+  from: string;
+  afterSeq: number;
+}
+
+/** One sender's slice of {@link LiveStats}. */
+export interface SenderStats {
+  from: string;
+  nextSeq: number;
+  oldestLive: number;
+  lastKeyframe: number;
+  newestAt: number;
+  pruned: number;
+  liveChunks: number;
+  liveBytes: number;
+}
+
 /** Approach-2 instrumentation snapshot. */
 export interface LiveStats {
   liveChunks: number;
-  nextChunkSeq: number;
-  oldestLiveChunk: number;
-  prunedChunks: number;
-  lastKeyframeSeq: number;
   /** Summed encoded bytes currently live — the real state footprint. */
   liveBytes: number;
+  prunedChunks: number;
+  /**
+   * Per-sender breakdown. The flat `nextChunkSeq` / `oldestLiveChunk` /
+   * `lastKeyframeSeq` fields this replaced only meant anything while one global
+   * seq space existed.
+   */
+  senders: SenderStats[];
 }

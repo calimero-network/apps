@@ -9,7 +9,8 @@ import {
   type EncoderHandle,
 } from "../lib/webcodecs";
 import { ProbeRecorder, type ProbeSnapshot } from "../lib/metrics";
-import type { LiveStats } from "../types";
+import { initialCongestion, nextBitrate, recordPost } from "../lib/congestion";
+import type { LiveStats, SenderCursor } from "../types";
 
 // 480p — the resolution approach 3 could never reach. Its toy in-WASM codec was
 // pinned at 64x48 because the app had to produce bit-identical bytes on every
@@ -85,8 +86,15 @@ export interface LiveController {
   stop: () => void;
   fps: number;
   setFps: (n: number) => void;
+  /** The user's requested ceiling. */
   bitrate: number;
   setBitrate: (n: number) => void;
+  /**
+   * What the encoder is actually running at. Below `bitrate` means congestion
+   * control has backed off — worth surfacing, because a silently degraded
+   * picture with no explanation is how the retro's call felt from the inside.
+   */
+  effectiveBitrate: number;
   stats: LiveStats | null;
   probe: ProbeSnapshot;
   downloadCsv: () => void;
@@ -103,8 +111,9 @@ export interface LiveController {
  * post_chunk. The app stores the bytes without understanding them.
  *
  * RECEIVE: on ChunkPosted (SSE) -> get_chunks(cursor) -> VideoDecoder -> canvas.
- * The first read starts at keyframe_cursor(), not at the newest seq: a decoder
- * fed a delta frame with no reference throws rather than degrading.
+ * A joiner sends an empty cursor set and the contract starts each sender at that
+ * sender's own newest keyframe: a decoder fed a delta frame with no reference
+ * throws rather than degrading.
  */
 export function useLiveStream(enabled: boolean): LiveController {
   const stream = useMeroStream();
@@ -132,20 +141,44 @@ export function useLiveStream(enabled: boolean): LiveController {
   // Set when a notification arrives while a drain is already running, so the drain
   // repeats instead of the notification being lost. See `drain`.
   const drainPendingRef = useRef(false);
-  // Every sender observed in the RAW chunk stream, including ourselves. Seq gaps
-  // are only computable while this holds one entry: the contract allocates seqs from
-  // a shared space, so a second poster makes any single sender's seqs non-contiguous
-  // and a span-based count pure fiction (297 "gaps" in a run that lost nothing).
-  // Note the probe's own samples cannot detect this — they exclude our own chunks,
-  // so they always look single-sender.
+  // Every sender observed in the RAW chunk stream, including ourselves.
+  //
+  // This used to carry a caveat that seq gaps were only computable with a single
+  // sender, because the contract allocated seqs from ONE shared space and a
+  // second poster made any single sender's seqs non-contiguous (297 "gaps" in a
+  // run that lost nothing). Seq spaces are per sender now, so each sender's seqs
+  // ARE contiguous and a span-based gap count is meaningful again regardless of
+  // how many people are in the call.
   const sendersSeenRef = useRef<Set<string>>(new Set());
-  const cursorRef = useRef(0);
-  const cursorInitialisedRef = useRef(false);
+  // Read position per sender — see `drainOnce`. A sender absent from this map
+  // has never been seen, and the contract starts them at their own newest
+  // keyframe.
+  const cursorsRef = useRef<Map<string, number>>(new Map());
   const probeRef = useRef(new ProbeRecorder());
 
   const [running, setRunning] = useState(false);
   const [fps, setFps] = useState(DEFAULT_FPS);
   const [bitrate, setBitrate] = useState(DEFAULT_BITRATE);
+  // What the encoder is ACTUALLY running at. `bitrate` is the user's ceiling;
+  // congestion control only ever moves this below it. See lib/congestion.ts.
+  const [effectiveBitrate, setEffectiveBitrate] = useState(DEFAULT_BITRATE);
+  const congestionRef = useRef(initialCongestion(DEFAULT_BITRATE));
+  // Mirrors `bitrate` for `onEncodedChunk`, which is intentionally dep-free so
+  // its identity never changes (see the useMeroStream note on object identity).
+  const bitrateRef = useRef(DEFAULT_BITRATE);
+
+  // The slider is authoritative. A manual change takes effect at once and resets
+  // the controller's baseline — being walked back up in 1.25x steps after
+  // dragging the slider would read as the app ignoring you.
+  useEffect(() => {
+    bitrateRef.current = bitrate;
+    congestionRef.current = {
+      ...congestionRef.current,
+      current: bitrate,
+      lastAdjustedAt: Date.now(),
+    };
+    setEffectiveBitrate(bitrate);
+  }, [bitrate]);
   const [stats, setStats] = useState<LiveStats | null>(null);
   const [probe, setProbe] = useState<ProbeSnapshot>(() =>
     probeRef.current.snapshot(),
@@ -156,14 +189,23 @@ export function useLiveStream(enabled: boolean): LiveController {
 
   useEffect(() => setSupported(webCodecsAvailable()), []);
 
-  // Blank out seqGaps once a second sender exists. Kept here rather than inside
-  // ProbeRecorder so that module stays pure and framework-free: only the receive
-  // loop knows how many members are actually posting.
-  const withGapValidity = useCallback(
-    (snap: ProbeSnapshot): ProbeSnapshot =>
-      sendersSeenRef.current.size > 1 ? { ...snap, seqGaps: null } : snap,
-    [],
-  );
+  // Blank out seqGaps once a second REMOTE sender exists. Kept here rather than
+  // inside ProbeRecorder so that module stays pure and framework-free: only the
+  // receive loop knows how many members are actually posting.
+  //
+  // The threshold used to be "more than one sender at all", counting ourselves,
+  // because every sender drew from one shared seq space — so the moment anyone
+  // else posted, our own seqs went non-contiguous and the metric was fiction.
+  // Seq spaces are per sender now and the probe already excludes our own chunks,
+  // so a single remote sender's samples are contiguous and the gap count is real
+  // again. That covers the ordinary two-person call, which is the case actually
+  // being measured. Two or more remote senders still interleave in one sample
+  // list, so the metric stays blanked there.
+  const withGapValidity = useCallback((snap: ProbeSnapshot): ProbeSnapshot => {
+    const me = streamRef.current.executorId;
+    const remotes = [...sendersSeenRef.current].filter((s) => s !== me).length;
+    return remotes > 1 ? { ...snap, seqGaps: null } : snap;
+  }, []);
 
   // Mirror the peer map into React state. Sorted by member id so tiles keep a
   // stable order across renders instead of shuffling as chunks arrive.
@@ -218,24 +260,28 @@ export function useLiveStream(enabled: boolean): LiveController {
   // once. Bounded — one extra pass per burst, no unbounded recursion — and no
   // notification is lost.
   const drainOnce = useCallback(async () => {
-    // ONE fetch cursor for everybody. get_chunks(after_seq) already returns every
-    // sender's chunks from a shared seq space, so a per-peer cursor would mean N
-    // round-trips for the same data. Demux happens below, per `from`.
-    if (!cursorInitialisedRef.current) {
-      const kf = await streamRef.current.keyframeCursor();
-      if (kf === null || kf === undefined) return; // nothing decodable yet
-      cursorRef.current = kf - 1;
-      cursorInitialisedRef.current = true;
-    }
+    // ONE cursor PER SENDER. Seq spaces are per sender in the contract, so a
+    // single global cursor cannot express "I am at 40 in Alice's stream and 12
+    // in Bob's" — and the shared counter it used to read from is exactly what
+    // made two senders overwrite each other (see retro/review.md).
+    //
+    // Still one round-trip: `get_chunks` takes the whole cursor set at once.
+    // Senders we have never seen are omitted, and the contract starts those at
+    // their own newest keyframe — which is what the separate `keyframeCursor()`
+    // call used to do, badly, with a single global pointer.
+    const cursors: SenderCursor[] = [...cursorsRef.current].map(
+      ([from, afterSeq]) => ({ from, afterSeq }),
+    );
 
-    const chunks = await streamRef.current.getChunks(cursorRef.current);
+    const chunks = await streamRef.current.getChunks(cursors);
     if (!chunks || chunks.length === 0) return;
 
     const me = streamRef.current.executorId;
     let sawNewPeer = false;
 
     for (const c of chunks) {
-      if (c.seq > cursorRef.current) cursorRef.current = c.seq;
+      const seen = cursorsRef.current.get(c.from) ?? 0;
+      if (c.seq > seen) cursorsRef.current.set(c.from, c.seq);
       if (c.track !== 0) continue; // video only for now; audio rides track 1
       sendersSeenRef.current.add(c.from); // BEFORE the self-skip below
 
@@ -261,17 +307,19 @@ export function useLiveStream(enabled: boolean): LiveController {
       peer.lastSeenAt = Date.now();
 
       // PER-PEER KEYFRAME GATE. Each sender is an independent H.264 bitstream, so
-      // a delta is only decodable against a keyframe FROM THE SAME SENDER. The
-      // contract's `keyframe_cursor()` is a single global pointer (whoever
-      // keyframed last), so the initial cursor is mid-GOP for every other sender —
-      // and the reaper, which clamps to that same global pointer, can prune one
-      // sender's only keyframe while protecting another's.
+      // a delta is only decodable against a keyframe FROM THE SAME SENDER.
       //
-      // Gating here instead of tracking keyframes per sender in contract state
-      // makes both harmless without changing the state layout (which would break
-      // existing contexts and force a republish): we simply skip a sender's deltas
-      // until their next keyframe arrives, which is bounded by
-      // KEYFRAME_INTERVAL_MS. Cost is up to that much black tile for a late joiner.
+      // This used to be the ONLY protection: the contract had one global keyframe
+      // pointer (whoever keyframed last), so a joiner's cursor landed mid-GOP for
+      // every other sender, and the reaper — clamping to that same global pointer
+      // — could prune one sender's only keyframe while protecting another's. Both
+      // are fixed in the contract now (per-sender keyframes, per-sender reaper),
+      // so this is defence in depth rather than the load-bearing fix.
+      //
+      // It still earns its place: a sender's keyframe can legitimately be missing
+      // on a peer that has not finished syncing, and re-arming on their next
+      // keyframe (bounded by KEYFRAME_INTERVAL_MS) is cheaper than throwing in the
+      // decoder.
       if (!peer.started) {
         if (!c.isKeyframe) continue;
         peer.started = true;
@@ -384,11 +432,19 @@ export function useLiveStream(enabled: boolean): LiveController {
       } catch (e) {
         setError(e instanceof Error ? e.message : "post_chunk failed");
       } finally {
-        probeRef.current.recordEncode({
-          startedAt,
-          durationMs: Date.now() - startedAt,
-          ok,
-        });
+        const durationMs = Date.now() - startedAt;
+        probeRef.current.recordEncode({ startedAt, durationMs, ok });
+
+        // Feed the send-side congestion controller. How long post_chunk takes is
+        // the only view the browser has of whether the node can absorb what we
+        // are producing — libp2p transport state (relayed vs direct) is not
+        // exposed to the app. In the retro's failed call the sender kept encoding
+        // at a fixed 1.5 Mbps into a pipe that had stopped moving.
+        const now = Date.now();
+        const folded = recordPost(congestionRef.current, { durationMs, ok });
+        const next = nextBitrate(folded, bitrateRef.current, now);
+        congestionRef.current = next;
+        if (next.current !== folded.current) setEffectiveBitrate(next.current);
       }
     },
     [],
@@ -424,19 +480,9 @@ export function useLiveStream(enabled: boolean): LiveController {
           video.muted = true;
           await video.play().catch(() => {});
         }
-        encoderRef.current = await createEncoder({
-          width: LIVE_WIDTH,
-          height: LIVE_HEIGHT,
-          framerate: fps,
-          bitrate,
-          onChunk: (c) => void onEncodedChunk(c),
-          onError: (e) => setError(e.message),
-        });
       } catch (e) {
         if (!cancelled)
-          setError(
-            e instanceof Error ? e.message : "camera/encoder unavailable",
-          );
+          setError(e instanceof Error ? e.message : "camera unavailable");
       }
     })();
 
@@ -446,13 +492,54 @@ export function useLiveStream(enabled: boolean): LiveController {
         clearInterval(captureTimerRef.current);
         captureTimerRef.current = null;
       }
-      encoderRef.current?.close();
-      encoderRef.current = null;
       mediaRef.current?.getTracks().forEach((t) => t.stop());
       mediaRef.current = null;
       if (videoEl) videoEl.srcObject = null;
     };
-  }, [running, fps, bitrate, onEncodedChunk]);
+    // Deliberately NOT keyed on bitrate — see the encoder effect below.
+  }, [running, fps]);
+
+  // The encoder is a SEPARATE effect from the camera on purpose.
+  //
+  // Congestion control steps `effectiveBitrate` while a call is running, and
+  // WebCodecs has no reconfigure-in-place for a live VideoEncoder, so a step
+  // means building a new one. When the camera and encoder shared one effect,
+  // that also tore down `getUserMedia` — visibly dropping and re-acquiring the
+  // webcam on every adjustment, which is unacceptable for a control loop meant
+  // to run several times a minute on a congested link.
+  useEffect(() => {
+    if (!running) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const enc = await createEncoder({
+          width: LIVE_WIDTH,
+          height: LIVE_HEIGHT,
+          framerate: fps,
+          bitrate: effectiveBitrate,
+          onChunk: (c) => void onEncodedChunk(c),
+          onError: (e) => setError(e.message),
+        });
+        if (cancelled) {
+          enc.close();
+          return;
+        }
+        encoderRef.current = enc;
+        // A fresh encoder starts a new bitstream, so every receiver needs a
+        // keyframe before it can decode again. Force one on the next capture
+        // tick rather than making peers wait out KEYFRAME_INTERVAL_MS.
+        lastKeyframeAtRef.current = 0;
+      } catch (e) {
+        if (!cancelled)
+          setError(e instanceof Error ? e.message : "encoder unavailable");
+      }
+    })();
+    return () => {
+      cancelled = true;
+      encoderRef.current?.close();
+      encoderRef.current = null;
+    };
+  }, [running, fps, effectiveBitrate, onEncodedChunk]);
 
   // Feed the encoder on a fixed cadence.
   useEffect(() => {
@@ -513,6 +600,12 @@ export function useLiveStream(enabled: boolean): LiveController {
         peer.decoder?.close();
         peersRef.current.delete(from);
         peerCanvasRef.current.delete(from);
+        // Drop their cursor too, so if they come back they are treated as a
+        // fresh sender and the contract starts them at their own newest
+        // keyframe. Keeping the stale cursor would replay whatever backlog
+        // accumulated while they were gone, oldest-first, before reaching
+        // anything current.
+        cursorsRef.current.delete(from);
         reaped = true;
       }
       // Republish every tick so framesDecoded/decoding stay live in the UI.
@@ -527,6 +620,8 @@ export function useLiveStream(enabled: boolean): LiveController {
       for (const peer of peersRef.current.values()) peer.decoder?.close();
       peersRef.current.clear();
       peerCanvasRef.current.clear();
+      cursorsRef.current.clear();
+      sendersSeenRef.current.clear();
     },
     [],
   );
@@ -558,6 +653,7 @@ export function useLiveStream(enabled: boolean): LiveController {
     setFps,
     bitrate,
     setBitrate,
+    effectiveBitrate,
     stats,
     probe,
     downloadCsv,

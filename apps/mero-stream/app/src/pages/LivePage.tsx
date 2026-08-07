@@ -257,7 +257,7 @@ export default function LivePage() {
           />
           <Metric
             label="Chunks posted"
-            value={st?.nextChunkSeq}
+            value={st?.senders.reduce((n, s) => n + s.nextSeq, 0)}
             testId="chunks-posted"
           />
           <Metric
@@ -266,22 +266,57 @@ export default function LivePage() {
             testId="pruned-chunks"
           />
           <Metric
-            label="Last keyframe seq"
-            value={st?.lastKeyframeSeq}
-            testId="last-keyframe-seq"
+            label="Senders"
+            value={st?.senders.length}
+            testId="sender-count"
           />
           <Metric
-            label="Oldest live chunk"
-            value={st?.oldestLiveChunk}
-            testId="oldest-live-chunk"
+            label="Encoding at"
+            value={(s.effectiveBitrate / 1000).toFixed(0)}
+            suffix=" kbps"
+            testId="effective-bitrate"
           />
         </div>
+        {st && st.senders.length > 0 && (
+          <table className={styles.senderTable} data-testid="sender-table">
+            <thead>
+              <tr>
+                <th>Sender</th>
+                <th>Posted</th>
+                <th>Live</th>
+                <th>Oldest</th>
+                <th>Keyframe</th>
+                <th>Pruned</th>
+              </tr>
+            </thead>
+            <tbody>
+              {st.senders.map((s) => (
+                <tr key={s.from} data-testid={`sender-row-${s.from}`}>
+                  <td title={s.from}>{s.from.slice(0, 8)}…</td>
+                  <td>{s.nextSeq}</td>
+                  <td>{s.liveChunks}</td>
+                  <td>{s.oldestLive}</td>
+                  <td>{s.lastKeyframe}</td>
+                  <td>{s.pruned}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
         <p className={styles.note}>
-          The reaper never prunes past the newest keyframe — a delta frame
-          without its reference is undecodable, so an unclamped window would
-          leave a stream that replicates happily and shows nothing. That clamp
-          is why <strong>oldest live chunk</strong> tracks{" "}
-          <strong>last keyframe seq</strong> rather than the window edge.
+          Every counter here is <strong>per sender</strong>. Chunks used to
+          share one global sequence and one global keyframe pointer, which meant
+          two people posting at once minted the same seq, collided on one
+          storage key, and silently overwrote each other — and the reaper,
+          clamped to that same global pointer, could drop one sender&apos;s only
+          keyframe while protecting another&apos;s. Each sender now owns its own
+          sequence, its own keyframe, and its own reaper.
+        </p>
+        <p className={styles.note}>
+          <strong>Encoding at</strong> can sit below the bitrate slider: the
+          slider is a ceiling, and send-side congestion control backs off when{" "}
+          <code>post_chunk</code> starts queueing. The browser cannot see
+          whether the node is relayed, so post latency is the signal.
         </p>
       </section>
 

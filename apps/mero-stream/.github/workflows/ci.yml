@@ -92,7 +92,7 @@ jobs:
 
   # P2: the fragment actually crosses the gossip layer between real nodes, and the
   # far node's in-WASM decode is proven bit-identical to the input. Every scenario
-  # here was validated locally against merod 0.11.0-rc.19 before being enabled.
+  # here was validated locally against merod 0.11.0-rc.20 before being enabled.
   #
   # Separate jobs rather than one long workflow: each scenario gets its own
   # runner, so a fan-out failure and a tombstone failure are distinguishable at a

@@ -1,13 +1,19 @@
 [package]
 name = "mero-stream"
 description = "Streaming media over Calimero — in-WASM codec capacity probe (Task 3)"
-version = "0.1.0"
+# NOT the release version. cargo requires a version field, but
+# .github/workflows/deploy-bundle.yml ignores it: the registry owns the number —
+# the check job takes the highest published appVersion and increments the patch
+# (0.0.1 when nothing is published yet). Bumping this changes nothing about what
+# gets released, so do not read a shipped version out of the tree; read it from
+# the registry or the workflow's run summary.
+version = "0.0.1"
 edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-# Consumed by `cargo mero build` / `cargo mero bundle` (core rc.19
+# Consumed by `cargo mero build` / `cargo mero bundle` (core rc.20
 # `tools/cargo-mero`). This table is what lets the tool derive manifest.json from
 # the node's own canonical `BundleManifest` type instead of us hand-writing JSON
 # that mirrors it — which is how the old build-bundle.sh shipped `"hash": null`
@@ -22,7 +28,14 @@ package = "com.calimero.merostream"
 name = "Mero Stream"
 description = "Capacity probe: streaming media OVER Calimero. /stream runs a toy codec inside the WASM app (approach 3); /live stores opaque browser-encoded H.264 (approach 2). Experimental; not shippable media."
 author = "Calimero"
-min-runtime-version = "0.11.0-rc.19"
+# The desktop resolves a deep link (calimero://<slug>/…) by Application.package,
+# so the slug IS the package id.
+slug = "com.calimero.merostream"
+tags = ["streaming", "video", "webcodecs", "capacity-probe"]
+github = "https://github.com/calimero-network/mero-stream"
+# rc.20 is where `device_id()` replaced `executor_id()` and AccessControl/Ownable
+# became account-keyed, so an older node cannot run this build.
+min-runtime-version = "0.11.0-rc.20"
 # MUST be the exact origin the frontend is deployed on. This is not cosmetic
 # metadata: the embedded auth frontend uses it as the registered-redirect-URI
 # equivalent. `callbackUrl.ts` compares `frontend.origin === callbackOrigin`, and a
@@ -69,9 +82,9 @@ base64 = "0.22"
 borsh = "1.6.1"
 borsh-derive = "1.6.1"
 bs58 = "0.5.1"
-calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.19" }
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.19" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.19" }
+calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.20" }
+calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.20" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.20" }
 thiserror = "1.0.56"
 
 # NOTE: there is deliberately no `[build-dependencies]` section, and this crate
@@ -87,7 +100,7 @@ thiserror = "1.0.56"
 [dev-dependencies]
 # Enables the native mock host so TestHost can drive contract state under
 # `cargo test` (same as mero-meet).
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.19", features = ["testing"] }
+calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.20", features = ["testing"] }
 
 [profile.app-release]
 inherits = "release"

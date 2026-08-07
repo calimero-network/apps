@@ -2,7 +2,7 @@
 # scripts/ensure-cargo-mero.sh — make `cargo mero` available, pinned to the same
 # core release the contract compiles against.
 #
-# `cargo mero` (core `tools/cargo-mero`) is the rc.19 replacement for the
+# `cargo mero` (core `tools/cargo-mero`) is the rc.20 replacement for the
 # hand-written build.sh / build-bundle.sh every app used to carry. It:
 #   - emits the ABI from the crate's own sources (no build.rs anywhere),
 #   - compiles to wasm32-unknown-unknown under the `app-release` profile,
@@ -26,7 +26,7 @@ set -euo pipefail
 # Keep in lockstep with the four git tags in logic/Cargo.toml and the merod image
 # in workflows/*.yml. See reference: core has NO moving `latest` tag, so an
 # explicit rc is the only honest pin.
-CARGO_MERO_TAG="${CARGO_MERO_TAG:-0.11.0-rc.19}"
+CARGO_MERO_TAG="${CARGO_MERO_TAG:-0.11.0-rc.20}"
 CORE_GIT="${CARGO_MERO_CORE_GIT:-https://github.com/calimero-network/core}"
 
 green() { printf '\033[32m  ✓  %s\033[0m\n' "$*"; }
