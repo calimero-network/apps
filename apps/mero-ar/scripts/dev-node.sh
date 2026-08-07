@@ -84,7 +84,7 @@ if $SKIP_BUILD; then
   yellow "Skipping WASM build"
 else
   step "Building WASM"
-  (cd "$REPO_ROOT/logic" && bash build.sh)
+  (cd "$REPO_ROOT/logic" && cargo mero build)
   green "mero_ar.wasm built"
 fi
 
