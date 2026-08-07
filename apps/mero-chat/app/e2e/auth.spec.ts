@@ -6,7 +6,7 @@
  * Calimero node is required.
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { injectMeroAuthTokens, clearAuth } from "./helpers/auth";
 
 const MOCK_NODE_URL = "http://localhost:2428";
@@ -230,12 +230,23 @@ test.describe("Invitation URL parameter", () => {
     });
   });
 
-  test("?invitation= parameter is saved to localStorage and removed from URL", async ({
+  // Kept as a literal rather than imported from src/pages/Login: importing a
+  // .tsx page into an e2e spec drags React in. clearStorageForConnect.test.ts
+  // asserts the exported constant equals this string, so the two cannot drift.
+  const PENDING_INTENTS_KEY = "calimero.platform.pendingIntents";
+
+  /** Deep-link intents the platform SDK has durably captured. */
+  const capturedIntents = (page: Page) =>
+    page.evaluate((key) => {
+      const raw = localStorage.getItem(key);
+      return raw ? (JSON.parse(raw) as { raw: string }[]) : [];
+    }, PENDING_INTENTS_KEY);
+
+  test("?invitation= is captured as a pending intent and removed from the URL", async ({
     page,
   }) => {
     // base58-encoded '{"invitation":{"test":"data"},"inviterSignature":"test-sig"}'
     const BASE58_PAYLOAD = "Npc3sGjF3dgRqEWTAd99AGgu7EA54vdyUyVoaamw3G9GLDJnnA8gxfGbU9yTyW4YCpFMjTpXXo8iC8L2ZJ";
-    const DECODED_JSON = '{"invitation":{"test":"data"},"inviterSignature":"test-sig"}';
 
     await page.goto(`/?invitation=${BASE58_PAYLOAD}`);
 
@@ -247,26 +258,17 @@ test.describe("Invitation URL parameter", () => {
 
     await expect(page).not.toHaveURL(/invitation=/);
 
-    // Invitation must be persisted as decoded JSON in localStorage
-    const allKeys = await page.evaluate(() => Object.keys(localStorage));
-    const invitationKey = allKeys.find(
-      (k) =>
-        k.toLowerCase().includes("invitation") ||
-        k.toLowerCase().includes("invite"),
-    );
-    expect(invitationKey).toBeTruthy();
-    const savedValue = await page.evaluate(
-      (k) => localStorage.getItem(k),
-      invitationKey!,
-    );
-    // The stored value should be the decoded JSON, not the raw base58 string
-    expect(savedValue).toBe(DECODED_JSON);
+    // Stripping the URL must not lose the invite: it has to survive in the
+    // durable store, because the popup that consumes it only mounts after
+    // the auth round-trip.
+    const intents = await capturedIntents(page);
+    expect(intents).toHaveLength(1);
+    expect(intents[0].raw).toContain(BASE58_PAYLOAD);
   });
 
-  test("legacy base64url invitation is still accepted", async ({ page }) => {
+  test("legacy base64url invitation is still captured", async ({ page }) => {
     // base64url of '{"invitation":{"legacy":"true"},"inviterSignature":"old"}'
     const B64URL_PAYLOAD = "eyJpbnZpdGF0aW9uIjp7ImxlZ2FjeSI6InRydWUifSwiaW52aXRlclNpZ25hdHVyZSI6Im9sZCJ9";
-    const LEGACY_JSON = '{"invitation":{"legacy":"true"},"inviterSignature":"old"}';
 
     await page.goto(`/?invitation=${B64URL_PAYLOAD}`);
 
@@ -277,18 +279,9 @@ test.describe("Invitation URL parameter", () => {
 
     await expect(page).not.toHaveURL(/invitation=/);
 
-    const allKeys = await page.evaluate(() => Object.keys(localStorage));
-    const invitationKey = allKeys.find(
-      (k) =>
-        k.toLowerCase().includes("invitation") ||
-        k.toLowerCase().includes("invite"),
-    );
-    expect(invitationKey).toBeTruthy();
-    const savedValue = await page.evaluate(
-      (k) => localStorage.getItem(k),
-      invitationKey!,
-    );
-    expect(savedValue).toBe(LEGACY_JSON);
+    const intents = await capturedIntents(page);
+    expect(intents).toHaveLength(1);
+    expect(intents[0].raw).toContain(B64URL_PAYLOAD);
   });
 });
 
