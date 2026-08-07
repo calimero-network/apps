@@ -28,7 +28,7 @@ cleanup() {
 trap cleanup EXIT
 
 # Ensure the WASM exists.
-[ -f "$REPO_ROOT/logic/res/mero_ar.wasm" ] || (cd "$REPO_ROOT/logic" && bash build.sh)
+[ -f "$REPO_ROOT/logic/res/mero_ar.wasm" ] || (cd "$REPO_ROOT/logic" && cargo mero build)
 
 FILES=("$@")
 [ ${#FILES[@]} -eq 0 ] && FILES=("logic-test.yml")

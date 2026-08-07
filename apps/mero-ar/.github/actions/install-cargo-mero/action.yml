@@ -1,0 +1,60 @@
+name: Install cargo-mero
+description: >-
+  Put `cargo mero` (the Calimero app toolchain: wasm build, ABI embed, signed
+  .mpk bundle) on PATH, pinned to a core release. Prefers the prebuilt release
+  binary and falls back to building from the tag, so a release whose binaries
+  are still uploading does not break the build.
+
+inputs:
+  version:
+    description: core release tag the tool is pinned to; keep equal to the calimero-sdk tag in logic/Cargo.toml
+    required: false
+    default: 0.11.0-rc.20
+
+runs:
+  using: composite
+  steps:
+    - name: Cache cargo-mero
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.local/bin/cargo-mero
+        key: cargo-mero-${{ inputs.version }}-${{ runner.os }}-${{ runner.arch }}
+
+    - name: Download (or build) cargo-mero
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        CARGO_MERO_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$HOME/.local/bin"
+        url="https://github.com/calimero-network/core/releases/download/${CARGO_MERO_VERSION}/cargo-mero_x86_64-unknown-linux-gnu.tar.gz"
+        if curl -fsSL --retry 3 --retry-all-errors "$url" -o /tmp/cargo-mero.tgz; then
+          tar -xzf /tmp/cargo-mero.tgz -C "$HOME/.local/bin"
+          # The asset lands either at the canonical path or one dir deeper,
+          # depending on how it was packed; normalize both to one location.
+          if [ ! -f "$HOME/.local/bin/cargo-mero" ]; then
+            nested="$(find "$HOME/.local/bin" -type f -name cargo-mero | head -n1)"
+            test -n "$nested"
+            mv "$nested" "$HOME/.local/bin/cargo-mero"
+          fi
+          chmod +x "$HOME/.local/bin/cargo-mero"
+        else
+          # No prebuilt asset for this tag (a freshly cut release uploads them
+          # minutes after the tag exists). Building from the tag is slow but
+          # produces the identical tool, so CI is never blocked on the upload.
+          echo "::warning::no cargo-mero asset for ${CARGO_MERO_VERSION}; building from the tag"
+          cargo install --git https://github.com/calimero-network/core \
+            --tag "$CARGO_MERO_VERSION" cargo-mero --locked --root "$HOME/.local"
+        fi
+
+    - name: Put cargo-mero on PATH
+      shell: bash
+      run: |
+        chmod +x "$HOME/.local/bin/cargo-mero"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+    - name: Ensure the wasm32 target
+      shell: bash
+      run: rustup target add wasm32-unknown-unknown

@@ -27,7 +27,7 @@ rustup target list --installed | grep -q wasm32-unknown-unknown \
   || { rustup target add wasm32-unknown-unknown && ok "wasm32-unknown-unknown added"; }
 
 step "Building WASM contract…"
-(cd "$REPO_ROOT/logic" && bash build.sh)
+(cd "$REPO_ROOT/logic" && cargo mero build)
 ok "logic/res/mero_ar.wasm built"
 
 step "Optional tooling…"

@@ -49,7 +49,7 @@ setup:
 
 # ── Contract ───────────────────────────────────────────────────────────────────
 logic-build:
-	cd logic && bash build.sh
+	cd logic && cargo mero build
 
 logic-test:
 	cd logic && cargo test
