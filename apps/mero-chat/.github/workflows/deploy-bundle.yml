@@ -34,9 +34,6 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  # Pinned to core#3374's branch tip, not a tag: the bundle tool this workflow
-  # needs hasn't shipped in a release yet. Re-pin to a tag once it does.
-  CARGO_MERO_REV: 04be9e4150925e9a7eb5b8dc0f06ba299eaef3ff
 
 jobs:
   deploy:
@@ -76,19 +73,13 @@ jobs:
       - name: Install wasm-opt
         run: sudo apt-get update -q && sudo apt-get install -y -q binaryen
 
-      - name: Cache cargo-mero
-        id: cache-cargo-mero
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.0.1
-        with:
-          path: ~/.cargo/bin/cargo-mero
-          key: cargo-mero-${{ runner.os }}-${{ env.CARGO_MERO_REV }}
-
+      # Not cached: the tool tracks master like the SDK does, and a cache key
+      # over a moving branch would pin a stale binary indefinitely.
       - name: Install cargo-mero
-        if: steps.cache-cargo-mero.outputs.cache-hit != 'true'
         run: |
           cargo install cargo-mero --locked \
             --git https://github.com/calimero-network/core \
-            --rev "$CARGO_MERO_REV"
+            --branch master
 
       - name: Write signing key
         env:

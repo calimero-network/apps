@@ -84,7 +84,7 @@ fi
 step "Building Rust WASM logic…"
 if ! command -v cargo-mero >/dev/null; then
   info "Installing cargo-mero (pre-release pin — see logic/Cargo.toml)…"
-  cargo install cargo-mero --locked --git https://github.com/calimero-network/core --rev 04be9e4150925e9a7eb5b8dc0f06ba299eaef3ff
+  cargo install cargo-mero --locked --git https://github.com/calimero-network/core --branch master
 fi
 info "Running cargo mero build — this may take a few minutes on a cold build"
 cd "$REPO_ROOT/logic"
