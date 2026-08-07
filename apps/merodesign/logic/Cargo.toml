@@ -1,7 +1,11 @@
 [package]
 name = "merodesign"
 description = "MeroDesign — collaborative design tool on Calimero"
-version = "0.1.0"
+# THIS IS THE RELEASE VERSION. `cargo mero bundle` stamps it into the manifest
+# and `.github/workflows/deploy-bundle.yml` publishes on any default-branch merge
+# that changes this file and whose version the registry does not already have.
+# Bumping it here IS the release; nothing else needs touching.
+version = "0.0.1"
 edition = "2021"
 
 [lib]

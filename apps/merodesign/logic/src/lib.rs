@@ -231,8 +231,29 @@ pub struct MeroDesign {
     // Board metadata lives inside `Ownable` so a rename only converges from the
     // owner — a forged board-name delta from a non-owner is rejected at merge,
     // not merely by the fail-fast API guard.
+    //
+    // Both are EMPTY until the first owner edit; read them through
+    // `board_name_str` / `board_description_str`, never directly. See
+    // `initial_name` below.
     board_name:        Ownable<LwwRegister<String>>,
     board_description: Ownable<LwwRegister<String>>,
+    // What `init` was called with.
+    //
+    // **`Ownable::insert` cannot be used inside `init` on core rc.20.** The cell
+    // is still detached from the state tree there: the writer set is carried
+    // through by the constructor, but the inserted VALUE is silently dropped —
+    // `insert` returns `Ok`, and a later read returns `Ok("")`. Core's own tests
+    // only insert into an already-rooted cell (`Root::new(...)` then
+    // `.insert(...)`), and `apps/components-demo` constructs its `Ownable`
+    // without seeding it, so nothing upstream exercises seed-at-init. A plain
+    // `UnorderedMap`/`LwwRegister` write at init is unaffected — this is specific
+    // to the permissioned cell's writer-set guard.
+    //
+    // So the init values live here, in plain registers that persist normally, and
+    // the `Ownable` cells take over from the first owner edit onwards. Written
+    // once at init and never again.
+    initial_name:        LwwRegister<String>,
+    initial_description: LwwRegister<String>,
     elements:          UnorderedMap<ElementId, Element>,
     members:           UnorderedMap<MemberId, Member>,
     comments:          UnorderedMap<CommentId, Comment>,
@@ -261,15 +282,18 @@ impl MeroDesign {
         // Ownership and the admin tier are ACCOUNT-scoped; the board's member
         // ids stay device-scoped (see `accounts`).
         let me = Self::caller_account();
-        let mut board_name = Ownable::new_owned_by(me);
-        let _ = board_name.insert(LwwRegister::new(name));
-        let mut board_description = Ownable::new_owned_by(me);
-        let _ = board_description.insert(LwwRegister::new(description));
+        // Deliberately NOT seeding the `Ownable` cells here — see `initial_name`.
+        // The values would be silently dropped and the board would come up with
+        // no name and no description.
+        let board_name = Ownable::new_owned_by(me);
+        let board_description = Ownable::new_owned_by(me);
         let mut accounts = UnorderedMap::new();
         let _ = accounts.insert(Self::caller_id(), LwwRegister::new(me));
         MeroDesign {
             board_name,
             board_description,
+            initial_name:        LwwRegister::new(name),
+            initial_description: LwwRegister::new(description),
             elements:          UnorderedMap::new(),
             members:           UnorderedMap::new(),
             comments:          UnorderedMap::new(),
@@ -378,10 +402,32 @@ impl MeroDesign {
 
     // ── Board ─────────────────────────────────────────────────────────────────
 
+    /// The board's name. The owner-gated cell wins once it holds anything;
+    /// before the first owner edit it is empty and what `init` was given is the
+    /// answer. See `initial_name`.
+    fn board_name_str(&self) -> String {
+        let edited = self
+            .board_name
+            .get()
+            .map(|r| r.get().clone())
+            .unwrap_or_default();
+        if edited.is_empty() { self.initial_name.get().clone() } else { edited }
+    }
+
+    /// As [`Self::board_name_str`], for the description.
+    fn board_description_str(&self) -> String {
+        let edited = self
+            .board_description
+            .get()
+            .map(|r| r.get().clone())
+            .unwrap_or_default();
+        if edited.is_empty() { self.initial_description.get().clone() } else { edited }
+    }
+
     pub fn get_board(&self) -> BoardInfo {
         BoardInfo {
-            name:          self.board_name.get().map(|r| r.get().clone()).unwrap_or_default(),
-            description:   self.board_description.get().map(|r| r.get().clone()).unwrap_or_default(),
+            name:          self.board_name_str(),
+            description:   self.board_description_str(),
             element_count: self.elements.len().unwrap_or(0) as u32,
             member_count:  self.members.len().unwrap_or(0) as u32,
             // The owner is an account; report it as the member id clients
@@ -897,5 +943,52 @@ mod tests {
         assert_eq!(app.view(|s| s.get_role(other)), "admin");
         assert_eq!(app.view(|s| s.my_role()), "viewer");
         assert!(!app.view(|s| s.can_edit()));
+    }
+
+    /// Regression: the board must report the name and description it was created
+    /// with.
+    ///
+    /// `Ownable::insert` inside `init` is silently dropped on rc.20 (see
+    /// `initial_name`), so before this test nothing here read either value back
+    /// and every board since the rc.20 bump has been reporting `""` for both.
+    #[test]
+    fn the_board_reports_its_name_and_description_before_and_after_an_update() {
+        let mut app = new_board();
+        let fresh = app.view(|s| s.get_board());
+        assert_eq!(
+            (fresh.name.as_str(), fresh.description.as_str()),
+            ("Board", "desc"),
+            "a freshly created board must report what init was given"
+        );
+
+        // A partial update must move only the field it names — the other keeps
+        // falling back to its init value rather than going blank.
+        app.call(|s| s.update_board(Some("Renamed".to_owned()), None))
+            .unwrap();
+        let after = app.view(|s| s.get_board());
+        assert_eq!(
+            (after.name.as_str(), after.description.as_str()),
+            ("Renamed", "desc")
+        );
+
+        app.call(|s| s.update_board(None, Some("new desc".to_owned())))
+            .unwrap();
+        let both = app.view(|s| s.get_board());
+        assert_eq!(
+            (both.name.as_str(), both.description.as_str()),
+            ("Renamed", "new desc")
+        );
+    }
+
+    /// The owner gate still holds. Ownership is keyed by ACCOUNT since rc.20 and
+    /// `call_as` keeps the caller's account, so a second PERSON needs their own.
+    #[test]
+    fn a_non_owner_cannot_update_the_board() {
+        let mut app = new_board();
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s
+                .update_board(Some("hijacked".to_owned()), None))
+            .is_err());
+        assert_eq!(app.view(|s| s.get_board()).name, "Board");
     }
 }
