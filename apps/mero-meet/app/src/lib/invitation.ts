@@ -1,3 +1,5 @@
+import { createLink } from "@calimero-network/mero-platform";
+
 // ── Room invitations ──────────────────────────────────────────────────────────
 //
 // A Mero Meet room == a Calimero context inside a namespace. Sharing a room with
@@ -36,6 +38,34 @@ export function encodeInvitationObject(obj: unknown): string {
 /** Decode a token from {@link encodeInvitationObject} back to its object. */
 export function decodeInvitationObject<T = Record<string, unknown>>(encoded: string): T {
   return JSON.parse(decodeInvitation(encoded)) as T;
+}
+
+/**
+ * The app's deep-link slug. The desktop resolves a link by
+ * `Application.package`, and links.calimero.network resolves the web build by
+ * asking the registry for that same package — so the slug IS the package id.
+ * Keep equal to `slug`/`package` in `logic/Cargo.toml`.
+ */
+export const APP_SLUG = "com.calimero.meromeet";
+
+/**
+ * The shareable form of a room token: a canonical HTTPS link that opens the
+ * desktop app where it is installed and the published web build otherwise.
+ * {@link invitationTokenFrom} reads it back, so a bare token still works.
+ */
+export function invitationLink(token: string): string {
+  return createLink(APP_SLUG, "join", { invitation: token });
+}
+
+/** The token carried by an invitation link, or the input unchanged if it isn't one. */
+export function invitationTokenFrom(input: string): string {
+  const trimmed = input.trim();
+  if (!/^(https?|calimero):\/\//i.test(trimmed)) return trimmed;
+  try {
+    return new URL(trimmed).searchParams.get("invitation") ?? trimmed;
+  } catch {
+    return trimmed;
+  }
 }
 
 type Dict = Record<string, unknown>;

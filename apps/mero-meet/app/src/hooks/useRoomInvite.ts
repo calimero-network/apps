@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { useMero } from "@calimero-network/mero-react";
 import { useMeroMeet } from "./useMeroMeet";
-import { encodeInvitationObject } from "../lib/invitation";
+import { encodeInvitationObject, invitationLink } from "../lib/invitation";
 
 /**
  * The room-invite flow, shared by the lobby and the in-call invite button.
@@ -31,7 +31,10 @@ export function useRoomInvite(roomName?: string) {
       setCode(token);
       setCopied(false);
       try {
-        await navigator.clipboard.writeText(token);
+        // Share the link, not the bare token: it opens the desktop app where
+        // installed and the published web build otherwise, and the join box
+        // still accepts either form.
+        await navigator.clipboard.writeText(invitationLink(token));
         setCopied(true);
       } catch {
         /* clipboard blocked — user can still copy from the box */
@@ -45,7 +48,7 @@ export function useRoomInvite(roomName?: string) {
 
   const copy = useCallback(() => {
     if (!code) return;
-    void navigator.clipboard.writeText(code);
+    void navigator.clipboard.writeText(invitationLink(code));
     setCopied(true);
   }, [code]);
 

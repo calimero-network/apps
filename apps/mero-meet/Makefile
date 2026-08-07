@@ -8,7 +8,7 @@ help:
 	@echo "  build          Build Rust WASM logic + frontend bundle"
 	@echo "  bundle         Build WASM + create signed .mpk release bundle"
 	@echo "  logic-build    Compile logic/src → logic/res/mero_meet.wasm"
-	@echo "  logic-bundle   Build WASM + sign + package logic/res/mero-meet-<ver>.mpk"
+	@echo "  logic-bundle   Build WASM + sign + package logic/dist/com.calimero.meromeet-<ver>.mpk"
 	@echo "  app-build      Bundle frontend (app/dist)"
 	@echo "  app-typecheck  tsc --noEmit on the frontend"
 	@echo "  dev            Vite dev server (desktop opens this in a window)"
@@ -29,10 +29,15 @@ help:
 setup: logic-build app-install
 
 logic-build:
-	cd logic && ./build.sh
+	cd logic && cargo mero build
 
+# --no-icon: the app ships no PNG mark, and the desktop finds the PWA icon at
+# the manifest's `frontend` URL, which beats a generic one.
 logic-bundle:
-	cd logic && ./build-bundle.sh
+	cd logic && cargo mero bundle --dev --no-icon
+
+logic-bundle-release: ## publishable .mpk signed with $$MERO_SIGN_KEY_FILE, version bumped off the registry
+	cd logic && cargo mero bundle --key "$$MERO_SIGN_KEY_FILE" --no-icon --bump patch
 
 bundle: logic-bundle
 

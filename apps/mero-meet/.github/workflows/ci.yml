@@ -45,10 +45,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: logic
+      - name: Install cargo-mero
+        uses: ./.github/actions/install-cargo-mero
       - name: Contract unit tests (native, TestHost)
         run: cargo test
-      - name: WASM build
-        run: ./build.sh
+      # `cargo mero build` also emits + embeds the ABI, so a public type missing
+      # an `AbiType` impl fails here rather than at bundle time.
+      - name: WASM build (+ ABI embed)
+        run: cargo mero build
 
   e2e:
     name: E2E (2-node signaling over merobox)
@@ -59,9 +63,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: logic
+      - name: Install cargo-mero
+        uses: ./.github/actions/install-cargo-mero
       - name: Build contract WASM
         working-directory: logic
-        run: ./build.sh
+        run: cargo mero build
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

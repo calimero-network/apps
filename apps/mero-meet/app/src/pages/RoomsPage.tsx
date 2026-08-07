@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
 import { getApplicationId, setActiveRoom, getRoomName, setRoomName } from "../lib/session";
-import { parseRoomInvitation } from "../lib/invitation";
+import { invitationTokenFrom, parseRoomInvitation } from "../lib/invitation";
 import ThemeToggle from "../components/ThemeToggle";
 import styles from "./RoomsPage.module.css";
 
@@ -134,7 +134,8 @@ export default function RoomsPage() {
   }, [name, mero, appId, navigate, loadRooms]);
 
   const joinByCode = useCallback(async () => {
-    const code = joinCode.trim();
+    // Accept either a shared invitation link or the bare token inside it.
+    const code = invitationTokenFrom(joinCode);
     if (!code || !mero) return;
     if (!appId) {
       setError("Missing application id — reopen Mero Meet from the desktop app.");

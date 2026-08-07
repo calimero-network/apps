@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  APP_SLUG,
   decodeInvitation,
   decodeInvitationObject,
   encodeInvitation,
   encodeInvitationObject,
+  invitationLink,
+  invitationTokenFrom,
   parseRoomInvitation,
 } from "./invitation";
 
@@ -48,5 +51,23 @@ describe("parseRoomInvitation", () => {
       invitation: { invitation: { group_id: "deadbeef" }, inviterSignature: "s" },
     });
     expect(parseRoomInvitation(token).namespaceId).toBe("deadbeef");
+  });
+});
+
+describe("shareable invitation links", () => {
+  it("wraps a token in a links.calimero.network URL keyed by the package slug", () => {
+    const token = encodeInvitationObject({ invitation: { group_id: "g1" } });
+    const url = new URL(invitationLink(token));
+    expect(url.host).toBe("links.calimero.network");
+    // The slug IS the bundle's package id — the desktop resolves the app by it,
+    // and the landing page asks the registry for that package's frontend.
+    expect(url.pathname).toBe(`/${APP_SLUG}/join`);
+    expect(url.searchParams.get("invitation")).toBe(token);
+  });
+
+  it("reads the token back out of a link, and leaves a bare token alone", () => {
+    const token = encodeInvitationObject({ invitation: { group_id: "g1" } });
+    expect(invitationTokenFrom(invitationLink(token))).toBe(token);
+    expect(invitationTokenFrom(`  ${token}  `)).toBe(token);
   });
 });

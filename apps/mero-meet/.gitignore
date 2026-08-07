@@ -1,6 +1,8 @@
 # Rust / WASM
 logic/target/
 logic/res/
+# `cargo mero bundle` output (signed .mpk)
+logic/dist/
 
 # Frontend
 app/node_modules/

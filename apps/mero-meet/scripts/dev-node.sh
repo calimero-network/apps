@@ -96,7 +96,7 @@ green "Clean slate ready"
 # ── Build WASM ────────────────────────────────────────────────────────────────
 
 step "Building WASM"
-(cd "$REPO_ROOT/logic" && bash build.sh)
+(cd "$REPO_ROOT/logic" && cargo mero build)
 [ -f "$WASM_PATH" ] || { red "WASM not built at $WASM_PATH"; exit 1; }
 green "mero_meet.wasm built"
 
