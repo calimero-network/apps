@@ -37,6 +37,10 @@ on:
         description: "Bundle version to publish, e.g. 0.2.0 (no leading v). Must equal logic/Cargo.toml."
         required: true
         type: string
+      core_rev:
+        description: "Require the SDK deps to resolve to this core commit (leave blank to accept whatever the pinned tag resolves to)"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -69,7 +73,7 @@ jobs:
         # there must not leave this workflow verifying and publishing against
         # the old id.
         run: |
-          package=$(awk '/^\[package.metadata.calimero\]/{f=1; next} /^\[/{f=0} f && /^package/{gsub(/package *= *"|"/,""); print; exit}' logic/Cargo.toml)
+          package=$(awk '/^\[package\.metadata\.calimero\]/{f=1; next} /^\[/{f=0} f && /^package/{gsub(/package *= *"|"/,""); print; exit}' logic/Cargo.toml)
           case "$package" in
             "" ) echo "::error::could not read package from logic/Cargo.toml [package.metadata.calimero]"; exit 1 ;;
             *[!a-zA-Z0-9.-]* ) echo "::error::unexpected characters in package id '$package'"; exit 1 ;;
@@ -163,10 +167,14 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             logic/target
-          key: deploy-${{ runner.os }}-${{ hashFiles('logic/Cargo.toml') }}
-          restore-keys: deploy-${{ runner.os }}-
+          key: logic-${{ runner.os }}-${{ hashFiles('logic/Cargo.toml') }}
+          restore-keys: logic-${{ runner.os }}-
 
-      - name: Install cargo-mero
+      # Named to match mero-drive's step; the action DIRECTORY keeps this repo's
+      # existing name (install-cargo-mero) rather than being renamed for cosmetic
+      # parity — it already pins rc.20, caches, and falls back to building from
+      # the tag.
+      - name: Setup cargo-mero
         uses: ./.github/actions/install-cargo-mero
 
       - name: Write signing key
@@ -213,15 +221,22 @@ jobs:
 
       # The SDK deps are pinned to an explicit core release tag, so the revision
       # is already determined — this records WHICH commit that tag resolved to, so
-      # a signed release is never traceable only to a moving name.
-      - name: Record the core revision
+      # a signed release is never traceable only to a moving name, and lets a
+      # release optionally require a specific one.
+      - name: Resolve and record the core revision
         id: core
         working-directory: logic
+        env:
+          EXPECTED_CORE_REV: ${{ github.event.inputs.core_rev }}
         run: |
           cargo generate-lockfile --quiet
           rev=$(awk -F'#' '/^source = "git\+https:\/\/github.com\/calimero-network\/core/{print $2; exit}' Cargo.lock | tr -d '"')
           if [ -z "$rev" ]; then
             echo "::error::could not determine which core revision the SDK deps resolved to"
+            exit 1
+          fi
+          if [ -n "$EXPECTED_CORE_REV" ] && [ "$rev" != "$EXPECTED_CORE_REV" ]; then
+            echo "::error::core resolved to $rev but this release requested $EXPECTED_CORE_REV"
             exit 1
           fi
           echo "rev=$rev" >> "$GITHUB_OUTPUT"
