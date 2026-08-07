@@ -27,6 +27,7 @@ import {
   worldNameOf,
 } from "../net/admin";
 import { beginWebLogin } from "../net/auth";
+import { inviteLink } from "../net/inviteLink";
 import { clearSession, getSession, hasConnection, isAuthenticated, updateSession } from "../net/session";
 import { deleteWorld } from "../state/persistence";
 import { Panorama } from "./panorama";
@@ -308,8 +309,11 @@ export class Landing {
       inviteBtn.disabled = true;
       inviteBtn.textContent = "Creating invite…";
       try {
+        // Share the link, not the bare code: it opens the desktop app where
+        // installed and the published web build otherwise, and the paste box
+        // still accepts either form.
         const code = await createWorldInvite();
-        await navigator.clipboard.writeText(code);
+        await navigator.clipboard.writeText(inviteLink(code));
         inviteBtn.textContent = "Invite copied!";
       } catch (e) {
         errEl.textContent = `Could not create invite: ${errText(e)}`;

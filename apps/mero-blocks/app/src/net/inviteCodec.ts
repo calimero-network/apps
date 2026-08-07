@@ -61,12 +61,23 @@ export function encodeInvite(payload: WorldInvitePayload): string {
   return bs58.encode(deflateSync(bytes, { level: 9 }));
 }
 
+/** The invite code carried by a link, or the input unchanged if it isn't one. */
+function codeFromLink(input: string): string {
+  if (!/^(https?|calimero):\/\//i.test(input)) return input;
+  try {
+    return new URL(input).searchParams.get("invitation") ?? input;
+  } catch {
+    return input;
+  }
+}
+
 /**
- * Decode pasted input: base58(deflate(JSON)) — also tolerates uncompressed
- * base58 and raw JSON, so curb-era invites and debugging paste-ins work.
+ * Decode pasted input: an invite link, or the bare base58(deflate(JSON)) code —
+ * also tolerating uncompressed base58 and raw JSON, so curb-era invites and
+ * debugging paste-ins work.
  */
 export function decodeInvite(input: string): WorldInvitePayload | null {
-  const trimmed = input.trim();
+  const trimmed = codeFromLink(input.trim()).trim();
   if (!trimmed) return null;
   if (trimmed.startsWith("{")) return parsePayload(trimmed);
   try {

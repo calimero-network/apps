@@ -13,21 +13,22 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@calimero-network/mero-js": "^6.1.0",
-    "@calimero-network/mero-react": "^4.3.4",
+    "@calimero-network/mero-js": "^7.3.2",
+    "@calimero-network/mero-platform": "^0.1.0",
+    "@calimero-network/mero-react": "^4.6.1",
     "bs58": "^6.0.0",
     "fflate": "^0.8.3",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "three": "^0.170.0"
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "three": "^0.185.1"
   },
   "devDependencies": {
-    "@playwright/test": "^1.52.0",
-    "@types/node": "^24.0.0",
-    "@types/three": "^0.170.0",
-    "jsdom": "^28.1.0",
-    "typescript": "~5.8.3",
-    "vite": "^6.4.3",
-    "vitest": "^4.0.18"
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^26.1.2",
+    "@types/three": "^0.185.4",
+    "jsdom": "^30.0.1",
+    "typescript": "~7.0.2",
+    "vite": "^8.2.0",
+    "vitest": "^4.1.10"
   }
 }

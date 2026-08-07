@@ -5,6 +5,7 @@ import {
   namespaceIdOfInvite,
   WorldInvitePayload,
 } from "../src/net/inviteCodec";
+import { APP_SLUG, inviteLink } from "../src/net/inviteLink";
 import { acceptWorldInvite, createWorldInvite } from "../src/net/admin";
 import { getSession, resetSession, updateSession } from "../src/net/session";
 
@@ -272,5 +273,25 @@ describe("createWorldInvite", () => {
 
   it("refuses when not connected to a world", async () => {
     await expect(createWorldInvite()).rejects.toThrow(/not in a shared world/);
+  });
+});
+
+describe("shareable invite links", () => {
+  const payload = {
+    invitation: { invitation: { group_id: "g1" }, inviterSignature: "sig" },
+    groupAlias: "My World",
+  };
+
+  it("wraps a code in a links.calimero.network URL keyed by the package slug", () => {
+    const url = new URL(inviteLink(encodeInvite(payload as never)));
+    expect(url.host).toBe("links.calimero.network");
+    // The slug IS the bundle's package id — the desktop resolves the app by it,
+    // and the landing page asks the registry for that package's frontend.
+    expect(url.pathname).toBe(`/${APP_SLUG}/join`);
+  });
+
+  it("decodes an invite pasted as a link, not just as a bare code", () => {
+    const link = inviteLink(encodeInvite(payload as never));
+    expect(decodeInvite(link)).toEqual(decodeInvite(encodeInvite(payload as never)));
   });
 });

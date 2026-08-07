@@ -13,6 +13,7 @@
 //! Lighting and chunk data are client-derived from (seed, overrides) and cost
 //! zero network traffic.
 
+use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, env as sdk_env, PublicKey};
@@ -44,7 +45,7 @@ const REAP_GRACE_SECS: u64 = 30;
 // ── Stored records ───────────────────────────────────────────────────────────
 
 /// One block override: `b` is the block id (0 = air / broken).
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -67,7 +68,7 @@ impl RekeyTarget for BlockOverride {
 }
 
 /// A player row: identity-keyed presence + last known transform.
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -102,7 +103,7 @@ impl RekeyTarget for Player {
 
 /// Two-pass reap bookkeeping (see mero-meet): pass 1 marks, pass 2 reaps only
 /// if the row stayed frozen through the grace window.
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -125,7 +126,7 @@ impl RekeyTarget for ReapMark {
 
 // ── Views / args ─────────────────────────────────────────────────────────────
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -136,7 +137,7 @@ pub struct WorldMeta {
 }
 
 /// One edit in a `set_blocks` batch.
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Edit {
@@ -147,7 +148,7 @@ pub struct Edit {
 }
 
 /// Incoming transform for `heartbeat`.
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Transform {
@@ -160,7 +161,7 @@ pub struct Transform {
     pub sel: u8,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -169,7 +170,7 @@ pub struct BlockEntry {
     pub b: u8,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -228,8 +229,14 @@ impl MeroBlocks {
     }
 
     /// The real signer of this invocation. Never trust a client-supplied id.
+    ///
+    /// `device_id()` is the rc.20 successor of `executor_id()`: same bytes (the
+    /// executing key), so stored player ids and the identities the frontend
+    /// compares against group membership keep matching. `account_id()` is a
+    /// DIFFERENT value — a hash of the key for an unenrolled node — so switching
+    /// to it would orphan every existing world's player rows.
     fn caller() -> PublicKey {
-        sdk_env::executor_id().into()
+        sdk_env::device_id().into()
     }
 
     fn caller_id() -> MemberId {

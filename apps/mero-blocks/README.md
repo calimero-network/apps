@@ -140,9 +140,19 @@ as `com.calimero.meroblocks` (`.github/workflows/deploy-bundle.yml`; version =
 latest published + patch bump). Locally:
 
 ```bash
-make bundle    # logic/build-bundle.sh → logic/res/mero-blocks-<ver>.mpk (signed)
-make publish   # bundle + calimero-registry bundle push --remote
+make bundle          # cargo mero bundle --dev → logic/dist/com.calimero.meroblocks-<ver>.mpk
+make bundle-release  # signed with $MERO_SIGN_KEY_FILE, version bumped off the registry
+make publish         # calimero-registry bundle push --remote (needs $CALIMERO_API_KEY)
 ```
+
+The bundle is built by [`cargo mero`](https://github.com/calimero-network/core/tree/master/tools/cargo-mero)
+(install it from the core release that matches the SDK tag in
+`logic/Cargo.toml`: `cargo install --git https://github.com/calimero-network/core --tag 0.11.0-rc.20 cargo-mero`).
+It compiles the wasm, embeds the ABI, hashes every artifact and renders the
+manifest from `[package.metadata.calimero]` — the app's name, description,
+author, icon, tags, links and deep-link `slug` all live there, not in a script.
+A `--dev` bundle is signed with a well-known key and is refused by the registry
+on purpose; only `bundle-release` produces something publishable.
 
 ## Sister project
 
