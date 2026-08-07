@@ -48,14 +48,13 @@ calimero-chat/
 The Rust logic compiles to WebAssembly for execution on the Calimero network.
 
 ```bash
-cd logic
-
 # Add the WebAssembly target
 rustup target add wasm32-unknown-unknown
 
-# Build the contract
-chmod +x ./build.sh
-./build.sh
+# Install the pinned cargo-mero release, then build the contract
+./scripts/setup-cargo-mero.sh
+cd logic
+cargo mero build
 ```
 
 The compiled `.wasm` file will be placed in the `res/` directory.

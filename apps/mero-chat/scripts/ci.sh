@@ -63,7 +63,8 @@ trap cleanup EXIT
 
 if $BUILD; then
   step "Building WASM"
-  (cd "$REPO_ROOT/logic" && bash build.sh)
+  command -v cargo-mero >/dev/null || { red "cargo-mero not found — run scripts/setup.sh first"; exit 1; }
+  (cd "$REPO_ROOT/logic" && cargo mero build)
   green "WASM built"
 else
   yellow "Skipping WASM build (--no-build)"

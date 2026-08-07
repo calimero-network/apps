@@ -30,7 +30,8 @@ trap 'red "✗ FAILED at: $CURRENT_STEP"; exit 1' ERR
 CURRENT_STEP="logic build (cargo → wasm32)"
 step "$CURRENT_STEP"
 cd "$LOGIC_DIR"
-bash build.sh
+command -v cargo-mero >/dev/null || { red "cargo-mero not found — run scripts/setup.sh first"; exit 1; }
+cargo mero build
 green "✓ logic/res/curb.wasm built"
 
 # ── 2. Frontend deps ────────────────────────────────────────────────────────

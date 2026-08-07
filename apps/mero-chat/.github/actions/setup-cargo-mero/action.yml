@@ -1,0 +1,16 @@
+name: Setup cargo-mero
+description: Install the pinned cargo-mero release binary from core.
+
+runs:
+  using: composite
+  steps:
+    # No cache: the script downloads a ~4 MB released binary and verifies its
+    # checksum, which beats a cache round-trip and never serves a stale build.
+    # The bin dir goes first on PATH so another cargo-mero already on the
+    # image cannot answer instead of the pinned one.
+    - name: Install cargo-mero
+      shell: bash
+      run: |
+        BIN_DIR="${CARGO_HOME:-$HOME/.cargo}/bin"
+        echo "$BIN_DIR" >> "$GITHUB_PATH"
+        PATH="$BIN_DIR:$PATH" ./scripts/setup-cargo-mero.sh

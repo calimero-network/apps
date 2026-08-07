@@ -51,12 +51,14 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('logic/Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
 
-      - name: Build curb WASM
-        run: |
-          cd logic
-          cargo build --target wasm32-unknown-unknown --profile app-release
-          mkdir -p res
-          cp target/wasm32-unknown-unknown/app-release/curb.wasm res/
+      - name: Install cargo-mero
+        uses: ./.github/actions/setup-cargo-mero
+
+      # Builds res/curb.wasm (ABI embedded, wasm-opt'd) AND the .mpk, so the
+      # nodes below run the same artifact a release publishes.
+      - name: Build curb WASM and bundle
+        working-directory: logic
+        run: cargo mero bundle --dev
 
       # ── Install merobox ───────────────────────────────────────────────────────
 

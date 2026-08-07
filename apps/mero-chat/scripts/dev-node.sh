@@ -101,7 +101,7 @@ fi
 
 # ── Prerequisites ─────────────────────────────────────────────────────────────
 
-for cmd in merod jq curl; do
+for cmd in merod jq curl cargo-mero; do
   command -v "$cmd" &>/dev/null || { red "'$cmd' not found in PATH"; exit 1; }
 done
 
@@ -114,7 +114,7 @@ green "Clean slate ready"
 # ── Build WASM (always, so dev node picks up latest logic changes) ────────────
 
 step "Building WASM"
-(cd "$REPO_ROOT/logic" && bash build.sh)
+(cd "$REPO_ROOT/logic" && cargo mero build)
 green "curb.wasm built"
 
 # ── Init node (idempotent) ────────────────────────────────────────────────────

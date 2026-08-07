@@ -82,9 +82,11 @@ fi
 
 # ── 4. Build Rust WASM logic ──────────────────────────────────────────────────
 step "Building Rust WASM logic…"
-info "Running logic/build.sh — this may take a few minutes on a cold build"
+info "Installing the pinned cargo-mero release…"
+bash "$REPO_ROOT/scripts/setup-cargo-mero.sh"
+info "Running cargo mero build — this may take a few minutes on a cold build"
 cd "$REPO_ROOT/logic"
-bash build.sh
+cargo mero build
 ok "logic/res/curb.wasm built"
 
 # ── 5. Install frontend dependencies ─────────────────────────────────────────

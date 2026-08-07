@@ -163,6 +163,9 @@ macro_rules! define {
         #[repr(transparent)]
         $($vis)* struct $name($crate::types::id::Id< $len $(, $str)? >);
 
+        #[cfg(not(target_arch = "wasm32"))]
+        ::calimero_wasm_abi::impl_bytes32_abi!($name);
+
         impl $name {
             pub const fn new(id: [u8; $len]) -> Self {
                 Self::from_id($crate::types::id::Id::new(id))
