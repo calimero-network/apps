@@ -52,7 +52,7 @@ jobs:
           restore-keys: cargo-${{ runner.os }}-
 
       - name: Install cargo-mero
-        run: scripts/install-cargo-mero.sh
+        uses: ./.github/actions/setup-cargo-mero
 
       # Builds res/curb.wasm (ABI embedded, wasm-opt'd) AND the .mpk, so the
       # nodes below run the same artifact a release publishes.

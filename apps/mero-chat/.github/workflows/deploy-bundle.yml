@@ -1,7 +1,8 @@
 # Builds, signs, and publishes the com.calimero.chat logic bundle to the
-# Calimero App Registry — triggered by pushing a release tag `vX.Y.Z`. The
-# version comes FROM THE TAG (new tag → new version); there is no registry
-# auto-bump. Manual runs via workflow_dispatch take an explicit `version` input.
+# Calimero App Registry. The release trigger is `[package] version` in
+# logic/Cargo.toml: bump it on master and that version publishes. Any other
+# edit to that file is a no-op, and workflow_dispatch republishes whatever
+# the manifest currently says.
 #
 # Signing uses a PRODUCTION mero-sign key held in ORGANIZATION secrets (never a
 # dev key). Required org (or repo) secrets:
@@ -17,17 +18,13 @@ name: Deploy Bundle
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [master]
+    paths:
+      - 'logic/Cargo.toml'
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Bundle version to publish, e.g. 0.1.1 (no leading v)'
-        required: true
-        type: string
 
-# Serialize releases: the registry rejects a duplicate version, and two tags
-# publishing at once shouldn't interleave.
+# Serialize releases: the registry rejects a duplicate version, and two
+# publishes at once shouldn't interleave.
 concurrency:
   group: deploy-bundle
   cancel-in-progress: false
@@ -36,8 +33,56 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Gate the release on the version having actually moved: this workflow also
+  # wakes for a dependency bump or a metadata edit in the same file.
+  check:
+    name: Version changed?
+    runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.ver.outputs.publish }}
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.1
+        with:
+          fetch-depth: 2
+
+      - name: Compare manifest version against the previous commit
+        id: ver
+        run: |
+          pkg_version() {
+            awk '/^\[/ { p = ($0 == "[package]") }
+                 p && /^version[[:space:]]*=/ {
+                   match($0, /"[^"]*"/)
+                   print substr($0, RSTART + 1, RLENGTH - 2); exit }'
+          }
+
+          v="$(pkg_version < logic/Cargo.toml)"
+          case "$v" in
+            [0-9]*.[0-9]*.[0-9]*) : ;;
+            *) echo "::error::logic/Cargo.toml [package] version must be X.Y.Z (got '$v')"; exit 1 ;;
+          esac
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "manual run — publishing $v"
+            exit 0
+          fi
+
+          prev="$(git show HEAD^:logic/Cargo.toml 2>/dev/null | pkg_version || true)"
+          if [ "$v" = "$prev" ]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "version unchanged at $v — nothing to publish"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "version ${prev:-none} -> $v — publishing"
+          fi
+
   deploy:
     name: Build, sign & publish bundle
+    needs: check
+    if: needs.check.outputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
 
@@ -74,7 +119,7 @@ jobs:
         run: sudo apt-get update -q && sudo apt-get install -y -q binaryen
 
       - name: Install cargo-mero
-        run: scripts/install-cargo-mero.sh
+        uses: ./.github/actions/setup-cargo-mero
 
       - name: Write signing key
         env:
@@ -84,25 +129,13 @@ jobs:
           printf '%s' "$MERO_SIGN_KEY_CONTENTS" > "$RUNNER_TEMP/mero-sign-key.json"
           echo "MERO_SIGN_KEY=$RUNNER_TEMP/mero-sign-key.json" >> "$GITHUB_ENV"
 
-      - name: Resolve version (from tag or dispatch input)
-        id: ver
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            v="${{ github.event.inputs.version }}"
-          else
-            v="${GITHUB_REF_NAME#v}"   # tag vX.Y.Z -> X.Y.Z
-          fi
-          case "$v" in
-            [0-9]*.[0-9]*.[0-9]*) : ;;
-            *) echo "::error::version must be X.Y.Z (got '$v' from ref '$GITHUB_REF_NAME')"; exit 1 ;;
-          esac
-          echo "version=$v" >> "$GITHUB_OUTPUT"
-
+      # No --app-version: the tool reads `[package] version`, which is the same
+      # value the gate compared, so the two cannot drift.
       - name: Build & sign bundle
         id: bundle
         working-directory: logic
         run: |
-          MPK="$(cargo mero bundle --key "$MERO_SIGN_KEY" --app-version "${{ steps.ver.outputs.version }}" --print-output-path | tail -1)"
+          MPK="$(cargo mero bundle --key "$MERO_SIGN_KEY" --print-output-path | tail -1)"
           echo "mpk=$MPK" >> "$GITHUB_OUTPUT"
 
       - name: Remove signing key
@@ -122,6 +155,6 @@ jobs:
             echo "### Bundle published :rocket:"
             echo ""
             echo "- **Package:** \`com.calimero.chat\`"
-            echo "- **Version:** \`${{ steps.ver.outputs.version }}\`"
+            echo "- **Version:** \`${{ needs.check.outputs.version }}\`"
             echo "- **Registry:** https://apps.calimero.network"
           } >> "$GITHUB_STEP_SUMMARY"

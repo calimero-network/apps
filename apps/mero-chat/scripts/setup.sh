@@ -82,8 +82,8 @@ fi
 
 # ── 4. Build Rust WASM logic ──────────────────────────────────────────────────
 step "Building Rust WASM logic…"
-info "Installing cargo-mero from the newest core release…"
-bash "$REPO_ROOT/scripts/install-cargo-mero.sh"
+info "Installing the pinned cargo-mero release…"
+bash "$REPO_ROOT/scripts/setup-cargo-mero.sh"
 info "Running cargo mero build — this may take a few minutes on a cold build"
 cd "$REPO_ROOT/logic"
 cargo mero build

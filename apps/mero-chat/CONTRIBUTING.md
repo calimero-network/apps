@@ -51,8 +51,8 @@ The Rust logic compiles to WebAssembly for execution on the Calimero network.
 # Add the WebAssembly target
 rustup target add wasm32-unknown-unknown
 
-# Install cargo-mero from the newest core release, then build the contract
-./scripts/install-cargo-mero.sh
+# Install the pinned cargo-mero release, then build the contract
+./scripts/setup-cargo-mero.sh
 cd logic
 cargo mero build
 ```
