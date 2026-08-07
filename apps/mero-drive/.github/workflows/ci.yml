@@ -150,9 +150,11 @@ jobs:
   # ============================================================
   # Job 3: Bundle — Build the multi-service .mpk against current core master
   # ============================================================
-  # Produces the bundle `com.calimero.mero-drive-docs.mpk` (version-free
-  # filename; the version lives in the manifest, from logic/Cargo.toml) from
-  # the two wasm artifacts. Uploaded as a build artifact so the e2e job below
+  # cargo mero bundle builds both services, embeds each ABI, records
+  # per-artifact digests, and signs with the dev key (fine for e2e; the
+  # registry refuses dev signatures). `--output` keeps the version-free
+  # filename (`com.calimero.mero-drive-docs.mpk`) so e2e paths never churn
+  # across version bumps. Uploaded as a build artifact so the e2e job below
   # can consume it without rebuilding, and so PR reviewers can download
   # and inspect the actual artifact that would ship.
   #
@@ -166,12 +168,6 @@ jobs:
   # The committed `logic/dist/*.mpk` is for local dev convenience — CI
   # does not consume it. The artifact uploaded here is what the e2e
   # matrix downloads and installs on the merod nodes.
-  #
-  # Signing: the build-bundle.sh script signs against the sibling
-  # `../../core/scripts/test-signing-key/test-key.json`. In CI there's
-  # no sibling core checkout, so `mero-sign` isn't available — the
-  # script prints a warning and produces an unsigned bundle, which is
-  # fine for dev / e2e usage (`merobox install --dev` accepts unsigned).
   bundle:
     name: Bundle (.mpk)
     runs-on: ubuntu-latest
@@ -198,10 +194,12 @@ jobs:
           key: logic-${{ runner.os }}-${{ hashFiles('logic/Cargo.toml', 'logic/crates/*/Cargo.toml') }}
           restore-keys: logic-${{ runner.os }}-
 
+      - name: Setup cargo-mero
+        uses: ./.github/actions/setup-cargo-mero
+
       - name: Build bundle
         working-directory: logic
-        # No migration crosses these bundles; the migration-e2e job embeds via MERO_ABI_TOOL.
-        run: ALLOW_UNEMBEDDED_BUNDLE=1 ./build-bundle.sh
+        run: cargo mero bundle --dev --output dist/com.calimero.mero-drive-docs.mpk
 
       - name: Upload bundle artifact
         uses: actions/upload-artifact@v4

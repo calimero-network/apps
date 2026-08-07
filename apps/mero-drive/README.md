@@ -36,7 +36,7 @@ pnpm install
 pnpm --dir app install
 
 # 2. Build the WASM bundle (.mpk)
-pnpm run logic:build            # builds both crates + packages logic/dist/com.calimero.mero-drive-docs-9.1.0.mpk
+pnpm run logic:build            # builds both crates + packages logic/dist/com.calimero.mero-drive-docs.mpk
 
 # 3. Bootstrap a local node + install the bundle
 pnpm run network:bootstrap
@@ -55,9 +55,8 @@ Open the browser, connect to your local node, create a namespace, and you're in.
 ```
 mero-drive/
 ├── logic/
-│   ├── Cargo.toml                  # workspace root
-│   ├── manifest.json               # multi-service bundle manifest
-│   ├── build-bundle.sh             # .mpk build + signing
+│   ├── Cargo.toml                  # workspace root; [workspace.metadata.calimero] drives `cargo mero bundle`
+│   ├── assets/                     # bundle icon (keep in sync with app/public/icons/)
 │   └── crates/
 │       ├── types/                  # FolderId, ContextId, Visibility, DriveError
 │       ├── registry/               # per-namespace folder registry

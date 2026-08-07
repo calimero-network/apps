@@ -12,8 +12,19 @@ import { CAPABILITIES } from '@calimero-network/mero-js';
 export const ENV_APPLICATION_ID: string =
   (import.meta.env.VITE_APPLICATION_ID as string | undefined)?.trim() || '';
 
+/** The app's reverse-DNS package id — the single source for both the
+ *  MeroProvider registry lookup and invite deep links (the deep-link
+ *  slug IS the package). */
+export const PACKAGE_NAME: string =
+  (import.meta.env.VITE_PACKAGE_NAME as string | undefined)?.trim() || '';
+
+// Canonical deep-link host. links.calimero.network resolves the app by
+// package: desktop installs via Application.package, web forwards the
+// full query string to the registry-published frontend.
+export const DEEP_LINK_BASE = 'https://links.calimero.network';
+
 // Service ids inside the multi-service bundle. Must match the
-// `services[].name` fields written by `logic/build-bundle.sh`.
+// `services[].name` fields in logic/Cargo.toml [workspace.metadata.calimero].
 export const REGISTRY_SERVICE_ID = 'registry';
 export const DOCS_SERVICE_ID = 'docs';
 

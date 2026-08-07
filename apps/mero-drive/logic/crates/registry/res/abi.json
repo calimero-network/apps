@@ -177,8 +177,7 @@
         {
           "name": "context_id",
           "type": {
-            "kind": "bytes",
-            "size": 32
+            "$ref": "ContextId"
           },
           "nullable": true
         },
@@ -293,8 +292,7 @@
               "kind": "string"
             },
             "value": {
-              "kind": "bytes",
-              "size": 32
+              "$ref": "ContextId"
             },
             "crdt_type": "unordered_map"
           }
@@ -397,8 +395,208 @@
   },
   "methods": [
     {
+      "name": "add_manager",
+      "params": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "bind_folder_context",
+      "params": [
+        {
+          "name": "folder_id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "context_id",
+          "type": {
+            "$ref": "ContextId"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "claim_owner",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "clear_folder_role",
+      "params": [
+        {
+          "name": "folder_id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "get_folder",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FolderDto"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_folder_context",
+      "params": [
+        {
+          "name": "folder_id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "ContextId"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_folder_role",
+      "params": [
+        {
+          "name": "folder_id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "Role"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_folders",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "FolderDto"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_owner",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_sort_order",
+      "params": [
+        {
+          "name": "parent_id",
+          "type": {
+            "$ref": "FolderId"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "FolderId"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "init",
       "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "list_folder_roles",
+      "params": [
+        {
+          "name": "folder_id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "FolderRoleEntry"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_managers",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "move_folder",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "new_parent",
+          "type": {
+            "$ref": "FolderId"
+          },
+          "nullable": true
+        }
+      ],
       "returns": {
         "kind": "unit"
       }
@@ -439,12 +637,12 @@
       }
     },
     {
-      "name": "unregister_folder",
+      "name": "remove_manager",
       "params": [
         {
-          "name": "id",
+          "name": "member",
           "type": {
-            "$ref": "FolderId"
+            "kind": "string"
           }
         }
       ],
@@ -453,67 +651,28 @@
       }
     },
     {
-      "name": "get_folder",
+      "name": "reorder",
       "params": [
         {
-          "name": "id",
+          "name": "parent_id",
           "type": {
             "$ref": "FolderId"
-          }
-        }
-      ],
-      "returns": {
-        "$ref": "FolderDto"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "get_folders",
-      "params": [],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "$ref": "FolderDto"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "bind_folder_context",
-      "params": [
-        {
-          "name": "folder_id",
-          "type": {
-            "$ref": "FolderId"
-          }
+          },
+          "nullable": true
         },
         {
-          "name": "context_id",
+          "name": "folder_ids",
           "type": {
-            "kind": "bytes",
-            "size": 32
+            "kind": "list",
+            "items": {
+              "$ref": "FolderId"
+            }
           }
         }
       ],
       "returns": {
         "kind": "unit"
       }
-    },
-    {
-      "name": "get_folder_context",
-      "params": [
-        {
-          "name": "folder_id",
-          "type": {
-            "$ref": "FolderId"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "bytes",
-        "size": 32
-      },
-      "intent": "read_only"
     },
     {
       "name": "set_color",
@@ -556,144 +715,6 @@
       }
     },
     {
-      "name": "set_visibility",
-      "params": [
-        {
-          "name": "id",
-          "type": {
-            "$ref": "FolderId"
-          }
-        },
-        {
-          "name": "visibility",
-          "type": {
-            "$ref": "Visibility"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      }
-    },
-    {
-      "name": "move_folder",
-      "params": [
-        {
-          "name": "id",
-          "type": {
-            "$ref": "FolderId"
-          }
-        },
-        {
-          "name": "new_parent",
-          "type": {
-            "$ref": "FolderId"
-          },
-          "nullable": true
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      }
-    },
-    {
-      "name": "reorder",
-      "params": [
-        {
-          "name": "parent_id",
-          "type": {
-            "$ref": "FolderId"
-          },
-          "nullable": true
-        },
-        {
-          "name": "folder_ids",
-          "type": {
-            "kind": "list",
-            "items": {
-              "$ref": "FolderId"
-            }
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      }
-    },
-    {
-      "name": "get_sort_order",
-      "params": [
-        {
-          "name": "parent_id",
-          "type": {
-            "$ref": "FolderId"
-          },
-          "nullable": true
-        }
-      ],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "$ref": "FolderId"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "claim_owner",
-      "params": [],
-      "returns": {
-        "kind": "unit"
-      }
-    },
-    {
-      "name": "get_owner",
-      "params": [],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "add_manager",
-      "params": [
-        {
-          "name": "member",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      }
-    },
-    {
-      "name": "remove_manager",
-      "params": [
-        {
-          "name": "member",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      }
-    },
-    {
-      "name": "list_managers",
-      "params": [],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "kind": "string"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
       "name": "set_folder_role",
       "params": [
         {
@@ -720,18 +741,18 @@
       }
     },
     {
-      "name": "clear_folder_role",
+      "name": "set_visibility",
       "params": [
         {
-          "name": "folder_id",
+          "name": "id",
           "type": {
             "$ref": "FolderId"
           }
         },
         {
-          "name": "member",
+          "name": "visibility",
           "type": {
-            "kind": "string"
+            "$ref": "Visibility"
           }
         }
       ],
@@ -740,62 +761,25 @@
       }
     },
     {
-      "name": "get_folder_role",
+      "name": "unregister_folder",
       "params": [
         {
-          "name": "folder_id",
-          "type": {
-            "$ref": "FolderId"
-          }
-        },
-        {
-          "name": "member",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "$ref": "Role"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "list_folder_roles",
-      "params": [
-        {
-          "name": "folder_id",
+          "name": "id",
           "type": {
             "$ref": "FolderId"
           }
         }
       ],
       "returns": {
-        "kind": "list",
-        "items": {
-          "$ref": "FolderRoleEntry"
-        }
-      },
-      "intent": "read_only"
+        "kind": "unit"
+      }
     }
   ],
   "events": [
     {
-      "name": "FolderRegistered",
+      "name": "FolderAliasChanged",
       "payload": {
-        "$ref": "Event_FolderRegistered"
-      }
-    },
-    {
-      "name": "FolderUnregistered",
-      "payload": {
-        "$ref": "Event_FolderUnregistered"
-      }
-    },
-    {
-      "name": "FolderContextBound",
-      "payload": {
-        "$ref": "Event_FolderContextBound"
+        "$ref": "Event_FolderAliasChanged"
       }
     },
     {
@@ -805,9 +789,9 @@
       }
     },
     {
-      "name": "FolderAliasChanged",
+      "name": "FolderContextBound",
       "payload": {
-        "$ref": "Event_FolderAliasChanged"
+        "$ref": "Event_FolderContextBound"
       }
     },
     {
@@ -817,21 +801,33 @@
       }
     },
     {
+      "name": "FolderRegistered",
+      "payload": {
+        "$ref": "Event_FolderRegistered"
+      }
+    },
+    {
+      "name": "FolderRoleChanged",
+      "payload": {
+        "$ref": "Event_FolderRoleChanged"
+      }
+    },
+    {
       "name": "FolderSortOrderChanged",
       "payload": {
         "$ref": "Event_FolderSortOrderChanged"
       }
     },
     {
-      "name": "FolderVisibilityChanged",
+      "name": "FolderUnregistered",
       "payload": {
-        "$ref": "Event_FolderVisibilityChanged"
+        "$ref": "Event_FolderUnregistered"
       }
     },
     {
-      "name": "OwnerClaimed",
+      "name": "FolderVisibilityChanged",
       "payload": {
-        "$ref": "Event_OwnerClaimed"
+        "$ref": "Event_FolderVisibilityChanged"
       }
     },
     {
@@ -847,9 +843,9 @@
       }
     },
     {
-      "name": "FolderRoleChanged",
+      "name": "OwnerClaimed",
       "payload": {
-        "$ref": "Event_FolderRoleChanged"
+        "$ref": "Event_OwnerClaimed"
       }
     }
   ],

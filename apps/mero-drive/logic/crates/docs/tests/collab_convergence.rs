@@ -164,11 +164,13 @@ fn env_for(s: &Store, ex: [u8; 32]) -> RuntimeEnv {
         Rc::new(move |k: Key, v: &[u8]| w.borrow_mut().insert(k.to_bytes(), v.to_vec()).is_some());
     let rm = s.clone();
     let remover = Rc::new(move |k: &Key| rm.borrow_mut().remove(&k.to_bytes()).is_some());
-    RuntimeEnv::new(reader, writer, remover, [7u8; 32], ex)
+    // Each replica models one device of its own account, so `ex` serves as
+    // both device_id and account_id.
+    RuntimeEnv::new(reader, writer, remover, [7u8; 32], ex, ex)
 }
 
 /// Two replicas independently create the SAME doc and each append ONE distinct
-/// blob under its own executor id, exchange deltas, and we read back each
+/// blob under its own account id, exchange deltas, and we read back each
 /// replica's update set (sorted) + root hash. Returns `(updates_a, updates_b,
 /// converged)`.
 fn drive<T: DocsApp>(blob_a: Vec<u8>, blob_b: Vec<u8>) -> (Vec<Vec<u8>>, Vec<Vec<u8>>, bool) {

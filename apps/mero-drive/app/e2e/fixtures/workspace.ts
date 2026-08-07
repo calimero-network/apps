@@ -131,15 +131,15 @@ export class WorkspaceDriver {
       .selectOption({ label: name });
   }
 
-  // Navigate to the invite URL, click "Accept & join", land on /app.
-  // The invite URL is /join?kind=...&id=...&invite=...; with auth
-  // tokens already injected by the fixture, the page renders the
-  // accept CTA directly (no ConnectButton detour).
+  // Open the invite like the deep-link landing does, accept, land on
+  // /app. Invite URLs are links.calimero.network deep links; the landing
+  // forwards the full query string to the frontend ROOT, where
+  // InviteRedirect funnels it to /join. We reproduce that hand-off
+  // against the local dev server (auth tokens are already injected, so
+  // the page renders the accept CTA directly, no ConnectButton detour).
   async joinNamespace(inviteUrl: string): Promise<void> {
-    // Extract the relative path so we hit the local Vite dev server,
-    // not the (different-origin) URL Alice's tab generated.
     const parsed = new URL(inviteUrl, 'http://placeholder');
-    await this.page.goto(`${parsed.pathname}${parsed.search}`);
+    await this.page.goto(`/${parsed.search}`);
     await this.page
       .getByRole('button', { name: /Accept & join/i })
       .click();

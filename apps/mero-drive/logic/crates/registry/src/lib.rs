@@ -23,13 +23,12 @@
 //!
 //! ## ABI boundary types
 //!
-//! The `calimero-wasm-abi` emitter only parses `lib.rs` + `events.rs` when
-//! generating the client SDK, so every type used in a public method
-//! signature must be declared here — we cannot reach into a shared
-//! `mero-drive-types` crate for them. `FolderId` and `ContextId` are
-//! therefore re-declared locally. `DriveError` stays internal-only
-//! (converted to `AppError` at the boundary), so it can still live in
-//! the shared types crate and be imported.
+//! `FolderId` / `ContextId` are local copies of the `mero_drive_types`
+//! definitions (same shape, same bytes; keep them in sync). The ABI is now
+//! derived from the type system, so they could be unified with the shared
+//! crate; they stay local to keep this crate's ABI unchanged. `DriveError`
+//! stays internal-only (converted to `AppError` at the boundary), so it is
+//! imported from the shared crate.
 //!
 //! ## Subgroup visibility
 //!
@@ -38,6 +37,7 @@
 //! it to drive parent-walk membership inheritance. The frontend reads it
 //! via the admin API and writes it via `mero.admin.setSubgroupVisibility`.
 
+use calimero_sdk::abi::AbiType;
 use calimero_sdk::app;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
@@ -51,19 +51,22 @@ pub mod permissions;
 use events::Event;
 
 // ---------------------------------------------------------------------------
-// ABI-boundary types (must live in lib.rs/events.rs to be picked up by the
-// calimero-wasm-abi emitter).
+// ABI-boundary types (local copies of mero_drive_types; keep in sync).
 // ---------------------------------------------------------------------------
 
 /// Wrapper around a folder / group id string. Newtype so the generated TS
 /// client surfaces `FolderId` instead of a bare `string`.
-#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType,
+)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct FolderId(pub String);
 
 /// Wrapper around a Calimero context id. Same rationale as `FolderId`.
-#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType,
+)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct ContextId(pub String);
@@ -74,7 +77,16 @@ pub struct ContextId(pub String);
 /// is stored in the registry so clients can read it without a per-folder
 /// admin-API call.
 #[derive(
-    Debug, Clone, Default, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Eq,
+    BorshSerialize,
+    BorshDeserialize,
+    Serialize,
+    Deserialize,
+    AbiType,
 )]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -84,10 +96,8 @@ pub enum Visibility {
     Restricted,
 }
 
-/// Per-folder collaborator role. **Re-declared here** — it also lives in
-/// `mero_drive_types::Role` — because the `calimero-wasm-abi` emitter only
-/// parses this crate's `lib.rs` + `events.rs` (same reason `FolderId` /
-/// `Visibility` are duplicated). Keep the two definitions in sync.
+/// Per-folder collaborator role. Local copy of `mero_drive_types::Role`
+/// (same variants, same bytes); keep the two definitions in sync.
 #[derive(
     Debug,
     Default,
@@ -99,6 +109,7 @@ pub enum Visibility {
     BorshDeserialize,
     Serialize,
     Deserialize,
+    AbiType,
 )]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -111,7 +122,7 @@ pub enum Role {
 
 /// One explicit per-member role row for a folder (what `list_folder_roles`
 /// returns). Members not present have the implicit `Editor` role.
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct FolderRoleEntry {
@@ -133,7 +144,7 @@ pub struct FolderRoleEntry {
 /// resolution picks the inherent one from the derive expansion, which then
 /// fails the macro's `?` — same workaround battleships uses on
 /// `MatchSummary`.
-#[derive(Clone, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, BorshSerialize, BorshDeserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct FolderRecord {
     /// Parent folder id, or None for top-level folders. Stored as an
@@ -187,7 +198,7 @@ impl FolderRecord {
 }
 
 /// Flat, serde-friendly projection of a `FolderRecord` for list/get APIs.
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct FolderDto {

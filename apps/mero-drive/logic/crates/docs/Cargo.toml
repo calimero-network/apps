@@ -18,13 +18,6 @@ calimero-sdk = { workspace = true }
 calimero-storage = { workspace = true }
 calimero-storage-macros = { workspace = true }
 
-[build-dependencies]
-calimero-wasm-abi = { workspace = true }
-serde_json = { workspace = true }
-# cfg-filter the source before emitting the manifest (see build.rs).
-syn = { version = "2", features = ["full"] }
-quote = "1"
-
 [dev-dependencies]
 # The cross-replica convergence integration test (`tests/collab_convergence.rs`)
 # drives the real two-replica `Root::sync` harness, which needs core's storage

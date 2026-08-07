@@ -31,6 +31,7 @@
 //! about the folder tree, color, or visibility — those live in the registry
 //! context, which the client queries separately and joins on the folder id.
 
+use calimero_sdk::abi::AbiType;
 use calimero_sdk::app;
 use calimero_sdk::borsh::io::{Error as BorshIoError, ErrorKind as BorshErrorKind, Read};
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
@@ -105,7 +106,7 @@ use events::Event;
 /// record in place through `docs.get_mut(...)` (write-back-on-drop) rather than
 /// the old clone-mutate-reinsert pattern (which the LWW-only `FolderRecord`
 /// still uses, as it has no nested collection).
-#[derive(BorshSerialize)]
+#[derive(BorshSerialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct DocRecord {
     pub title: LwwRegister<String>,
@@ -258,7 +259,7 @@ impl calimero_storage::collections::rekey::RekeyTarget for DocRecord {
 }
 
 /// Flat projection of a `DocRecord` for list / get APIs.
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct DocDto {
@@ -295,7 +296,7 @@ fn project(id: &str, rec: &DocRecord) -> Result<DocDto, DriveError> {
 /// migration bumps the *state* schema and adds a top-level marker, never a
 /// field inside `Comment` (changing an authored value type is a content
 /// rewrite, a different and harder migration class).
-#[derive(Clone, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, BorshSerialize, BorshDeserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct Comment {
     /// Which doc this annotates. Immutable after create.
@@ -322,7 +323,7 @@ impl calimero_storage::collections::rekey::RekeyTarget for Comment {
 }
 
 /// Flat projection of a `Comment` for list / get APIs.
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct CommentDto {

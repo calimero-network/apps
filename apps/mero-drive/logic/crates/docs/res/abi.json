@@ -332,15 +332,122 @@
           }
         }
       ]
+    },
+    "Event_Migrated": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "from_version",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "to_version",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
     }
   },
   "methods": [
     {
-      "name": "init",
-      "params": [],
+      "name": "add_comment",
+      "params": [
+        {
+          "name": "doc_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "add_tag",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "tag",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
       "returns": {
         "kind": "unit"
       }
+    },
+    {
+      "name": "append_doc_update",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "update",
+          "type": {
+            "kind": "bytes"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "archive_doc",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "comment_count",
+      "params": [],
+      "returns": {
+        "kind": "u64"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "comment_schema_version",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "u32"
+      },
+      "intent": "read_only"
     },
     {
       "name": "create_doc",
@@ -363,7 +470,15 @@
       }
     },
     {
-      "name": "get_doc",
+      "name": "default_sort_order",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "delete_comment",
       "params": [
         {
           "name": "id",
@@ -373,27 +488,42 @@
         }
       ],
       "returns": {
-        "$ref": "DocDto"
-      },
-      "intent": "read_only"
+        "kind": "unit"
+      }
     },
     {
-      "name": "list_docs",
+      "name": "delete_doc",
       "params": [
         {
-          "name": "include_archived",
+          "name": "id",
           "type": {
-            "kind": "bool"
+            "kind": "string"
           }
         }
       ],
       "returns": {
-        "kind": "list",
-        "items": {
-          "$ref": "DocDto"
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "edit_comment",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "string"
+          }
         }
-      },
-      "intent": "read_only"
+      ],
+      "returns": {
+        "kind": "unit"
+      }
     },
     {
       "name": "edit_doc",
@@ -424,24 +554,34 @@
       }
     },
     {
-      "name": "append_doc_update",
+      "name": "get_comment",
       "params": [
         {
           "name": "id",
           "type": {
             "kind": "string"
           }
-        },
+        }
+      ],
+      "returns": {
+        "$ref": "CommentDto"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_doc",
+      "params": [
         {
-          "name": "update",
+          "name": "id",
           "type": {
-            "kind": "bytes"
+            "kind": "string"
           }
         }
       ],
       "returns": {
-        "kind": "unit"
-      }
+        "$ref": "DocDto"
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_doc_updates",
@@ -462,66 +602,47 @@
       "intent": "read_only"
     },
     {
-      "name": "archive_doc",
-      "params": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
+      "name": "init",
+      "params": [],
       "returns": {
         "kind": "unit"
       }
     },
     {
-      "name": "unarchive_doc",
+      "name": "list_comments",
       "params": [
         {
-          "name": "id",
+          "name": "doc_id",
           "type": {
             "kind": "string"
           }
         }
       ],
       "returns": {
-        "kind": "unit"
-      }
+        "kind": "list",
+        "items": {
+          "$ref": "CommentDto"
+        }
+      },
+      "intent": "read_only"
     },
     {
-      "name": "delete_doc",
+      "name": "list_docs",
       "params": [
         {
-          "name": "id",
+          "name": "include_archived",
           "type": {
-            "kind": "string"
+            "kind": "bool"
           }
         }
       ],
       "returns": {
-        "kind": "unit"
-      }
-    },
-    {
-      "name": "add_tag",
-      "params": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "tag",
-          "type": {
-            "kind": "string"
-          }
+        "kind": "list",
+        "items": {
+          "$ref": "DocDto"
         }
-      ],
-      "returns": {
-        "kind": "unit"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "remove_tag",
@@ -544,103 +665,7 @@
       }
     },
     {
-      "name": "add_comment",
-      "params": [
-        {
-          "name": "doc_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "body",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      }
-    },
-    {
-      "name": "list_comments",
-      "params": [
-        {
-          "name": "doc_id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "$ref": "CommentDto"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "get_comment",
-      "params": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "$ref": "CommentDto"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "comment_count",
-      "params": [],
-      "returns": {
-        "kind": "u64"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "comment_schema_version",
-      "params": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "u32"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "edit_comment",
-      "params": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "body",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      }
-    },
-    {
-      "name": "delete_comment",
+      "name": "unarchive_doc",
       "params": [
         {
           "name": "id",
@@ -652,57 +677,19 @@
       "returns": {
         "kind": "unit"
       }
-    },
-    {
-      "name": "default_sort_order",
-      "params": [],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
     }
   ],
   "events": [
     {
-      "name": "DocCreated",
-      "payload": {
-        "$ref": "Event_DocCreated"
-      }
-    },
-    {
-      "name": "DocEdited",
-      "payload": {
-        "$ref": "Event_DocEdited"
-      }
-    },
-    {
-      "name": "DocArchived",
-      "payload": {
-        "$ref": "Event_DocArchived"
-      }
-    },
-    {
-      "name": "DocUnarchived",
-      "payload": {
-        "$ref": "Event_DocUnarchived"
-      }
-    },
-    {
-      "name": "DocDeleted",
-      "payload": {
-        "$ref": "Event_DocDeleted"
-      }
-    },
-    {
-      "name": "DocTagsChanged",
-      "payload": {
-        "$ref": "Event_DocTagsChanged"
-      }
-    },
-    {
       "name": "CommentAdded",
       "payload": {
         "$ref": "Event_CommentAdded"
+      }
+    },
+    {
+      "name": "CommentDeleted",
+      "payload": {
+        "$ref": "Event_CommentDeleted"
       }
     },
     {
@@ -712,9 +699,45 @@
       }
     },
     {
-      "name": "CommentDeleted",
+      "name": "DocArchived",
       "payload": {
-        "$ref": "Event_CommentDeleted"
+        "$ref": "Event_DocArchived"
+      }
+    },
+    {
+      "name": "DocCreated",
+      "payload": {
+        "$ref": "Event_DocCreated"
+      }
+    },
+    {
+      "name": "DocDeleted",
+      "payload": {
+        "$ref": "Event_DocDeleted"
+      }
+    },
+    {
+      "name": "DocEdited",
+      "payload": {
+        "$ref": "Event_DocEdited"
+      }
+    },
+    {
+      "name": "DocTagsChanged",
+      "payload": {
+        "$ref": "Event_DocTagsChanged"
+      }
+    },
+    {
+      "name": "DocUnarchived",
+      "payload": {
+        "$ref": "Event_DocUnarchived"
+      }
+    },
+    {
+      "name": "Migrated",
+      "payload": {
+        "$ref": "Event_Migrated"
       }
     }
   ],

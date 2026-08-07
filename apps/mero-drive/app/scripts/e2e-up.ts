@@ -64,7 +64,7 @@ function ensureMpkBuilt(): void {
   }
   console.log('mpk missing — building bundle…');
   // Root package.json exposes the bundle build as `logic:build`
-  // (→ logic/build-bundle.sh). There is no `build:mpk` script.
+  // (→ cargo mero bundle). There is no `build:mpk` script.
   run('pnpm', ['logic:build'], { cwd: REPO_ROOT });
 }
 
@@ -79,6 +79,13 @@ async function bootMerobox(): Promise<void> {
   const proc: ChildProcess = spawn('merobox', ['bootstrap', 'run', WORKFLOW], {
     cwd: E2E_DIR,
     stdio: ['ignore', 'pipe', 'pipe'],
+    env: {
+      ...process.env,
+      // mero-auth:edge ships no default account; merobox >=0.6.43 forwards
+      // these so the auth service mints the admin root key at startup.
+      MERO_AUTH_ADMIN_USER: ADMIN_USER,
+      MERO_AUTH_ADMIN_PASSWORD: ADMIN_PASS,
+    },
   });
   const target = 'Workflow completed successfully';
 

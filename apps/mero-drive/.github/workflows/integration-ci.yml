@@ -80,23 +80,30 @@ jobs:
           key: integration-${{ runner.os }}-${{ hashFiles('logic/Cargo.toml', 'logic/crates/*/Cargo.toml') }}
           restore-keys: integration-${{ runner.os }}-
 
+      - name: Setup cargo-mero
+        uses: ./.github/actions/setup-cargo-mero
+
       - name: Build mero-drive bundle
         working-directory: logic
-        # No migration crosses these bundles; the migration-e2e job embeds via MERO_ABI_TOOL.
-        run: ALLOW_UNEMBEDDED_BUNDLE=1 ./build-bundle.sh
+        run: cargo mero bundle --dev --output dist/com.calimero.mero-drive-docs.mpk
 
       - name: Install merobox
         run: |
           python3 -m pip install --user --upgrade pip
-          # >=0.6.14 ships JoinSubgroupInheritanceStep (mero-drive
-          # workflows now use `join_subgroup_inheritance` against
-          # core#2360's endpoint, via calimero-client-py >= 0.6.12).
-          python3 -m pip install --user "merobox==0.6.14"
+          # >=0.6.14 for JoinSubgroupInheritanceStep; >=0.6.43 to forward
+          # MERO_AUTH_ADMIN_* to the auth service (mero-auth:edge ships no
+          # default account, so unforwarded creds mean token mints 401).
+          python3 -m pip install --user "merobox==0.6.43"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/merobox" --version
 
       - name: Run merobox setup workflow
         working-directory: e2e
+        env:
+          # Provisioned into the auth service at startup (merobox forwards
+          # them); the same throwaway values the mint step below uses.
+          MERO_AUTH_ADMIN_USER: admin
+          MERO_AUTH_ADMIN_PASSWORD: calimero1234
         run: |
           mkdir -p "$GITHUB_WORKSPACE/docker-logs"
           LOGDIR="$GITHUB_WORKSPACE/docker-logs"
@@ -166,15 +173,13 @@ jobs:
           fi
 
       - name: Bootstrap auth and write env file
-        # ADMIN_USER / ADMIN_PASS are the public, well-known merod
-        # default test credentials baked into the
-        # ghcr.io/calimero-network/merod:edge image's local auth
-        # provider. They authenticate ONLY against the throwaway
-        # docker stack merobox boots inside this job (containers are
-        # destroyed at job end); they do not match any production or
-        # cloud system. Same values used by battleships' integration
-        # CI and every merobox e2e workflow in this repo. Do NOT
-        # promote to secrets — it would imply they're sensitive.
+        # ADMIN_USER / ADMIN_PASS are the public, well-known merobox test
+        # credentials, provisioned into the auth service by the setup step
+        # above (MERO_AUTH_ADMIN_*). They authenticate ONLY against the
+        # throwaway docker stack merobox boots inside this job (containers
+        # are destroyed at job end); they do not match any production or
+        # cloud system. Do NOT promote to secrets — it would imply they're
+        # sensitive.
         env:
           NODE_1_URL: http://node1.127.0.0.1.nip.io
           ADMIN_USER: admin
@@ -339,23 +344,30 @@ jobs:
           key: integration-${{ runner.os }}-${{ hashFiles('logic/Cargo.toml', 'logic/crates/*/Cargo.toml') }}
           restore-keys: integration-${{ runner.os }}-
 
+      - name: Setup cargo-mero
+        uses: ./.github/actions/setup-cargo-mero
+
       - name: Build mero-drive bundle
         working-directory: logic
-        # No migration crosses these bundles; the migration-e2e job embeds via MERO_ABI_TOOL.
-        run: ALLOW_UNEMBEDDED_BUNDLE=1 ./build-bundle.sh
+        run: cargo mero bundle --dev --output dist/com.calimero.mero-drive-docs.mpk
 
       - name: Install merobox
         run: |
           python3 -m pip install --user --upgrade pip
-          # >=0.6.14 ships JoinSubgroupInheritanceStep (mero-drive
-          # workflows now use `join_subgroup_inheritance` against
-          # core#2360's endpoint, via calimero-client-py >= 0.6.12).
-          python3 -m pip install --user "merobox==0.6.14"
+          # >=0.6.14 for JoinSubgroupInheritanceStep; >=0.6.43 to forward
+          # MERO_AUTH_ADMIN_* to the auth service (mero-auth:edge ships no
+          # default account, so unforwarded creds mean token mints 401).
+          python3 -m pip install --user "merobox==0.6.43"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/merobox" --version
 
       - name: Run merobox setup workflow
         working-directory: e2e
+        env:
+          # Provisioned into the auth service at startup (merobox forwards
+          # them); the same throwaway values the mint step below uses.
+          MERO_AUTH_ADMIN_USER: admin
+          MERO_AUTH_ADMIN_PASSWORD: calimero1234
         run: |
           mkdir -p "$GITHUB_WORKSPACE/docker-logs"
           LOGDIR="$GITHUB_WORKSPACE/docker-logs"
@@ -573,9 +585,9 @@ jobs:
   # Headless migration e2e (no browser): builds the v1 (9.3.0) + v2 (9.4.0)
   # bundles via APP_VERSION_OVERRIDE and runs the authored-comments migration
   # workflow to completion against a real merod:edge node. The bundles must
-  # carry the embedded calimero_abi_v1 wasm section, which the mero-abi CLI
-  # embeds during the build. All `run:` blocks reference only
-  # workflow-controlled values (no event payloads).
+  # carry the embedded calimero_abi_v1 wasm section, which cargo mero embeds
+  # during the build. All `run:` blocks reference only workflow-controlled
+  # values (no event payloads).
   migration-e2e:
     name: Authored comments migration (v1 -> v2)
     runs-on: ubuntu-latest
@@ -590,24 +602,8 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
-      - name: Cache mero-abi
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin/mero-abi
-          # Keep the key suffix in lockstep with MERO_ABI_REV below: bump both
-          # together to pick up a newer mero-abi.
-          key: mero-abi-${{ runner.os }}-b366e147
-
-      - name: Install mero-abi
-        env:
-          # Pinned core revision so the tool that writes bundle contents cannot
-          # drift or be swapped under us by upstream branch movement.
-          MERO_ABI_REV: b366e147421c2740b8b3bc43cffdf58a3f61471e
-        run: |
-          if ! command -v mero-abi >/dev/null; then
-            cargo install --git https://github.com/calimero-network/core \
-              --rev "$MERO_ABI_REV" mero-abi --locked
-          fi
+      - name: Setup cargo-mero
+        uses: ./.github/actions/setup-cargo-mero
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -622,15 +618,12 @@ jobs:
       - name: Build v1 + v2 migration bundles
         working-directory: logic
         run: |
-          # Fail before building: build-bundle.sh only warns when the tool is
-          # missing, and an unembedded bundle would fail the e2e much later.
-          export MERO_ABI_TOOL="$HOME/.cargo/bin/mero-abi"
-          test -x "$MERO_ABI_TOOL"
-          APP_VERSION_OVERRIDE=9.3.0 ./build-bundle.sh
+          cargo mero bundle --dev --app-version 9.3.0
           # Distinct package so the v2 bundle installs as a separate application
           # (dev install dedups by package name).
-          APP_VERSION_OVERRIDE=9.4.0 DOCS_FEATURES=schema_v2 \
-            PACKAGE_OVERRIDE=com.calimero.mero-drive-docs-v2 ./build-bundle.sh
+          cargo mero bundle --dev --app-version 9.4.0 \
+            --features schema_v2 \
+            --package com.calimero.mero-drive-docs-v2
           ls -la dist/
 
       - name: Install merobox

@@ -1,13 +1,19 @@
 // Shared body for the invite-acceptance UI. Both the `/join` route
-// (entered via a pasted-into-browser invite URL) and the in-app
+// (entered via a deep link or a pasted invite URL) and the in-app
 // `NamespaceJoinDialog` (paste-into-textarea flow) render this so the
 // preview + accept experience stays single-source.
 
 import React, { useState } from 'react';
-import { ConnectButton, useMero } from '@calimero-network/mero-react';
+import {
+  ConnectButton,
+  useMero,
+  useNamespacesForApplication,
+} from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
 import {
   type ParsedInvite,
+  classifyJoinError,
+  isInviteExpired,
   useJoinFolderByInvite,
   useJoinNamespaceByInvite,
 } from '@/hooks/useNamespaceInvitation';
@@ -26,13 +32,30 @@ interface Props {
 }
 
 export function JoinInviteCard({ parsed, onJoined, secondaryAction }: Props) {
-  const { isAuthenticated, isLoading } = useMero();
+  const { isAuthenticated, isLoading, applicationId } = useMero();
   const { join: joinNs } = useJoinNamespaceByInvite();
   const { join: joinGroup } = useJoinFolderByInvite();
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Server-detected duplicates land here too (the join call rejecting
+  // with an "already a member" message), not just the pre-check below.
+  const [alreadyMember, setAlreadyMember] = useState(false);
+  const [expiredByServer, setExpiredByServer] = useState(false);
 
   const scopeLabel = parsed.kind === 'namespace' ? 'workspace' : 'folder';
+  const expired = isInviteExpired(parsed.invitation);
+
+  // Pre-check namespace invites against the user's own namespace list so
+  // "already a member" is an explicit state, not a server error. Folder
+  // invites have no cheap client-side membership source; the join call's
+  // error mapping covers them.
+  const { namespaces } = useNamespacesForApplication(
+    isAuthenticated && parsed.kind === 'namespace' ? applicationId : null,
+  );
+  const isMember =
+    alreadyMember ||
+    (parsed.kind === 'namespace' &&
+      (namespaces ?? []).some((n) => n.namespaceId === parsed.targetId));
 
   const onJoinClick = async () => {
     setJoining(true);
@@ -59,10 +82,26 @@ export function JoinInviteCard({ parsed, onJoined, secondaryAction }: Props) {
       }
       await onJoined();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      switch (classifyJoinError(message)) {
+        case 'already-member':
+          setAlreadyMember(true);
+          break;
+        case 'expired':
+          setError(null);
+          setExpiredByServer(true);
+          break;
+        default:
+          setError(message);
+      }
+    } finally {
+      // Also on success: onJoined usually navigates away, but a caller that
+      // only closes a dialog would leave the button stuck on "Joining…".
       setJoining(false);
     }
   };
+
+  const showExpired = expired || expiredByServer;
 
   return (
     <>
@@ -87,7 +126,15 @@ export function JoinInviteCard({ parsed, onJoined, secondaryAction }: Props) {
         )}
       </p>
 
-      {isLoading ? (
+      {showExpired ? (
+        <div
+          role="alert"
+          className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400"
+        >
+          This invitation has expired. Ask the person who invited you for
+          a new link.
+        </div>
+      ) : isLoading ? (
         <div className="text-sm text-muted-foreground">
           Checking your session…
         </div>
@@ -97,6 +144,15 @@ export function JoinInviteCard({ parsed, onJoined, secondaryAction }: Props) {
             Sign in with your Calimero identity to accept the invitation.
           </p>
           <ConnectButton />
+        </div>
+      ) : isMember ? (
+        <div className="space-y-3">
+          <p className="text-sm" role="status">
+            You're already a member of this {scopeLabel}.
+          </p>
+          <Button className="w-full" onClick={() => void onJoined()}>
+            Open workspace
+          </Button>
         </div>
       ) : (
         <Button className="w-full" disabled={joining} onClick={onJoinClick}>

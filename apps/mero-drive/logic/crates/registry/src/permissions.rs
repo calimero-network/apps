@@ -1,7 +1,7 @@
 //! Permissions layer for the registry service: owner / managers bootstrap and
 //! per-(folder, member) `Role` storage. The public `#[app::logic]` wrappers
-//! that call these live in `lib.rs` (ABI-emitter constraint); the gating,
-//! key encoding, and `_inner` mutators live here.
+//! that call these live in `lib.rs`; the gating, key encoding, and `_inner`
+//! mutators live here.
 
 use calimero_storage::collections::LwwRegister;
 use mero_drive_types::DriveError;
@@ -20,11 +20,13 @@ pub(crate) fn role_key_prefix(folder_id: &str) -> String {
     format!("{folder_id}\u{1f}")
 }
 
-/// base58 public key of the caller (the context executor).
+/// base58 device public key of the caller. Deliberately NOT `account_id()`:
+/// the admin API only exposes members as device public keys, and role rows
+/// must match what clients pass in. Switch when core exposes member accounts.
 pub(crate) fn caller_b58() -> Result<String, DriveError> {
-    let id = calimero_sdk::env::executor_id();
+    let id = calimero_sdk::env::device_id();
     if id.len() != 32 {
-        return Err(DriveError::Invalid("executor id length".into()));
+        return Err(DriveError::Invalid("device id length".into()));
     }
     Ok(bs58::encode(&id).into_string())
 }
