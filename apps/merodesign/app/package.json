@@ -2,7 +2,7 @@
   "name": "merodesign",
   "private": true,
   "version": "0.1.0",
-  "description": "MeroDesign — collaborative design tool on Calimero",
+  "description": "MeroDesign \u2014 collaborative design tool on Calimero",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@calimero-network/mero-js": "^7.0.2",
+    "@calimero-network/mero-platform": "^0.1.0",
     "@calimero-network/mero-react": "^4.4.1",
     "@calimero-network/mero-ui": "1.4.0",
     "axios": "^1.18.0",

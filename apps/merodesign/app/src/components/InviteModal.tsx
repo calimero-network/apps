@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { adminPost } from "../api/rpc";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
-import { encodeInvitationObject } from "../utils/invitation";
+import { encodeInvitationObject, invitationLink } from "../utils/invitation";
 import { truncateMiddle } from "../utils/format";
 import { getStoredTeamName } from "../utils/teamName";
 import styles from "./InviteModal.module.css";
@@ -46,7 +46,10 @@ export default function InviteModal({ teamId, onClose }: Props) {
 
   async function copy() {
     if (!invitation || copying) return;
-    await navigator.clipboard.writeText(invitation);
+    // Share the link, not the bare token: it opens the desktop app where
+    // installed and the published web build otherwise, and the join box still
+    // accepts either form.
+    await navigator.clipboard.writeText(invitationLink(invitation));
     showToast("Invitation copied to clipboard.", "success");
     // Brief loader, then reset to the "generate" state so each share is fresh.
     setCopying(true);

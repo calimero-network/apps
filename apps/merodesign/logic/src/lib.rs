@@ -2,7 +2,8 @@ use std::str::FromStr;
 
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::{app, env as sdk_env, BlobId, PublicKey};
+use calimero_sdk::abi::AbiType;
+use calimero_sdk::{app, env as sdk_env, AccountId, BlobId, PublicKey};
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{
     AccessControl, LwwRegister, Mergeable as MergeableTrait, Ownable, UnorderedMap,
@@ -21,7 +22,7 @@ const ROLE_EDITOR: &str = "editor";
 
 // ── Element data ──────────────────────────────────────────────────────────────
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "lowercase")]
@@ -65,7 +66,7 @@ pub enum ElementData {
 
 // ── Element ───────────────────────────────────────────────────────────────────
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -98,7 +99,7 @@ calimero_storage::impl_atomic_lww_leaf!(Element, updated_at);
 
 // ── Member ────────────────────────────────────────────────────────────────────
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -136,7 +137,7 @@ impl calimero_storage::collections::rekey::RekeyTarget for Member {
 
 // ── Board info ────────────────────────────────────────────────────────────────
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(AbiType, Serialize, Deserialize, Clone, Debug)]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct BoardInfo {
@@ -148,7 +149,7 @@ pub struct BoardInfo {
 }
 
 /// A member paired with their effective role, for the settings/members UI.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(AbiType, Serialize, Deserialize, Clone, Debug)]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct MemberRole {
@@ -158,7 +159,7 @@ pub struct MemberRole {
 
 // ── Comments ──────────────────────────────────────────────────────────────────
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -169,7 +170,7 @@ pub struct CommentReply {
     pub created_at: u64,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -189,7 +190,7 @@ calimero_storage::impl_atomic_lww_leaf!(Comment, created_at);
 
 // ── Cursor state (ephemeral — last known position per identity) ────────────────
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -230,8 +231,29 @@ pub struct MeroDesign {
     // Board metadata lives inside `Ownable` so a rename only converges from the
     // owner — a forged board-name delta from a non-owner is rejected at merge,
     // not merely by the fail-fast API guard.
+    //
+    // Both are EMPTY until the first owner edit; read them through
+    // `board_name_str` / `board_description_str`, never directly. See
+    // `initial_name` below.
     board_name:        Ownable<LwwRegister<String>>,
     board_description: Ownable<LwwRegister<String>>,
+    // What `init` was called with.
+    //
+    // **`Ownable::insert` cannot be used inside `init` on core rc.20.** The cell
+    // is still detached from the state tree there: the writer set is carried
+    // through by the constructor, but the inserted VALUE is silently dropped —
+    // `insert` returns `Ok`, and a later read returns `Ok("")`. Core's own tests
+    // only insert into an already-rooted cell (`Root::new(...)` then
+    // `.insert(...)`), and `apps/components-demo` constructs its `Ownable`
+    // without seeding it, so nothing upstream exercises seed-at-init. A plain
+    // `UnorderedMap`/`LwwRegister` write at init is unaffected — this is specific
+    // to the permissioned cell's writer-set guard.
+    //
+    // So the init values live here, in plain registers that persist normally, and
+    // the `Ownable` cells take over from the first owner edit onwards. Written
+    // once at init and never again.
+    initial_name:        LwwRegister<String>,
+    initial_description: LwwRegister<String>,
     elements:          UnorderedMap<ElementId, Element>,
     members:           UnorderedMap<MemberId, Member>,
     comments:          UnorderedMap<CommentId, Comment>,
@@ -239,6 +261,16 @@ pub struct MeroDesign {
     // Role registry whose admin tier is a signed writer set. Grants/revokes are
     // admin-gated at merge; the creator is the sole initial admin.
     roles:             AccessControl,
+    /// member key → the account that device speaks for, self-registered on join
+    /// and on every cursor move.
+    ///
+    /// `AccessControl` and `Ownable` are keyed by `AccountId` since core rc.20
+    /// (one person, many devices — the gate is the person), while the ids this
+    /// board shows and the frontend passes are device keys. Nothing on the wire
+    /// maps one to the other, and a device can only ever assert its OWN pairing
+    /// (both halves come from the host), so this is a self-registration rather
+    /// than an admin-maintained table.
+    accounts:          UnorderedMap<MemberId, LwwRegister<AccountId>>,
 }
 
 // ── Logic ─────────────────────────────────────────────────────────────────────
@@ -247,27 +279,94 @@ pub struct MeroDesign {
 impl MeroDesign {
     #[app::init]
     pub fn init(name: String, description: String) -> MeroDesign {
-        let me = Self::caller();
-        let mut board_name = Ownable::new_owned_by(me);
-        let _ = board_name.insert(LwwRegister::new(name));
-        let mut board_description = Ownable::new_owned_by(me);
-        let _ = board_description.insert(LwwRegister::new(description));
+        // Ownership and the admin tier are ACCOUNT-scoped; the board's member
+        // ids stay device-scoped (see `accounts`).
+        let me = Self::caller_account();
+        // Deliberately NOT seeding the `Ownable` cells here — see `initial_name`.
+        // The values would be silently dropped and the board would come up with
+        // no name and no description.
+        let board_name = Ownable::new_owned_by(me);
+        let board_description = Ownable::new_owned_by(me);
+        let mut accounts = UnorderedMap::new();
+        let _ = accounts.insert(Self::caller_id(), LwwRegister::new(me));
         MeroDesign {
             board_name,
             board_description,
+            initial_name:        LwwRegister::new(name),
+            initial_description: LwwRegister::new(description),
             elements:          UnorderedMap::new(),
             members:           UnorderedMap::new(),
             comments:          UnorderedMap::new(),
             cursors:           UnorderedMap::new(),
             roles:             AccessControl::new(me),
+            accounts,
         }
     }
 
     // ── Identity & authorization helpers ────────────────────────────────────────
 
     /// The real signer of this invocation. Never trust a client-supplied id.
+    ///
+    /// `device_id()` is the rc.20 successor of `executor_id()` — the same bytes,
+    /// so member ids and the identities the frontend reads from
+    /// `identities-owned` keep matching. Authorization uses
+    /// [`Self::caller_account`] instead; see `accounts`.
     fn caller() -> PublicKey {
-        sdk_env::executor_id().into()
+        sdk_env::device_id().into()
+    }
+
+    /// The account this call is authorized as — what `AccessControl` and
+    /// `Ownable` gate on. Distinct from [`Self::caller`]: two devices of one
+    /// person report the same account and different device keys.
+    fn caller_account() -> AccountId {
+        AccountId::from(sdk_env::account_id())
+    }
+
+    /// A member id belonging to `account`, or the account's own string form when
+    /// none is known. Reverse of [`Self::account_of`].
+    fn member_of(&self, account: &AccountId) -> String {
+        if let Ok(entries) = self.accounts.entries() {
+            for (id, known) in entries {
+                if known.get() == account {
+                    return id;
+                }
+            }
+        }
+        account.to_string()
+    }
+
+    /// The account a member's device speaks for, if that member has ever
+    /// written to this board.
+    fn account_of(&self, member: &str) -> Option<AccountId> {
+        match self.accounts.get(member) {
+            Ok(Some(reg)) => Some(*reg.get()),
+            _ => None,
+        }
+    }
+
+    /// Resolve a client-supplied member key to the account a grant can name.
+    fn require_account(&self, member: &str) -> app::Result<AccountId> {
+        // Validate the key shape first, so a typo reads as "invalid key" rather
+        // than "hasn't opened the board".
+        let _ = Self::parse_pk(member)?;
+        match self.account_of(member) {
+            Some(account) => Ok(account),
+            None => app::bail!(
+                "that member hasn't opened this board yet, so their account is unknown — \
+                 ask them to open it once, then set the role"
+            ),
+        }
+    }
+
+    /// Record the caller's device→account pairing. Idempotent: an unchanged
+    /// pairing writes nothing, so the hot paths add no CRDT delta.
+    fn remember_account(&mut self) {
+        let me = Self::caller_id();
+        let account = Self::caller_account();
+        if matches!(self.accounts.get(&me), Ok(Some(known)) if *known.get() == account) {
+            return;
+        }
+        let _ = self.accounts.insert(me, LwwRegister::new(account));
     }
 
     /// Base58 string form of the caller — matches the identity the frontend
@@ -277,13 +376,13 @@ impl MeroDesign {
     }
 
     /// True if `who` may mutate the canvas (admin or explicit editor).
-    fn is_editor(&self, who: &PublicKey) -> bool {
+    fn is_editor(&self, who: &AccountId) -> bool {
         self.roles.is_admin(who) || self.roles.has_role(ROLE_EDITOR, who).unwrap_or(false)
     }
 
     /// Gate a canvas mutation. Viewers (no admin/editor role) are read-only.
     fn require_editor(&self) -> app::Result<()> {
-        if self.is_editor(&Self::caller()) {
+        if self.is_editor(&Self::caller_account()) {
             return Ok(());
         }
         app::bail!("view-only: editor or admin access is required to modify this board");
@@ -291,7 +390,7 @@ impl MeroDesign {
 
     /// Gate a board-level / destructive operation on admin.
     fn require_admin(&self) -> app::Result<()> {
-        if self.roles.is_admin(&Self::caller()) {
+        if self.roles.is_admin(&Self::caller_account()) {
             return Ok(());
         }
         app::bail!("admin access is required for this operation");
@@ -303,13 +402,38 @@ impl MeroDesign {
 
     // ── Board ─────────────────────────────────────────────────────────────────
 
+    /// The board's name. The owner-gated cell wins once it holds anything;
+    /// before the first owner edit it is empty and what `init` was given is the
+    /// answer. See `initial_name`.
+    fn board_name_str(&self) -> String {
+        let edited = self
+            .board_name
+            .get()
+            .map(|r| r.get().clone())
+            .unwrap_or_default();
+        if edited.is_empty() { self.initial_name.get().clone() } else { edited }
+    }
+
+    /// As [`Self::board_name_str`], for the description.
+    fn board_description_str(&self) -> String {
+        let edited = self
+            .board_description
+            .get()
+            .map(|r| r.get().clone())
+            .unwrap_or_default();
+        if edited.is_empty() { self.initial_description.get().clone() } else { edited }
+    }
+
     pub fn get_board(&self) -> BoardInfo {
         BoardInfo {
-            name:          self.board_name.get().map(|r| r.get().clone()).unwrap_or_default(),
-            description:   self.board_description.get().map(|r| r.get().clone()).unwrap_or_default(),
+            name:          self.board_name_str(),
+            description:   self.board_description_str(),
             element_count: self.elements.len().unwrap_or(0) as u32,
             member_count:  self.members.len().unwrap_or(0) as u32,
-            owner:         self.board_name.owner().map(String::from),
+            // The owner is an account; report it as the member id clients
+            // already know, falling back to the account's own string when no
+            // device of that account has written here yet.
+            owner:         self.board_name.owner().map(|a| self.member_of(&a)),
         }
     }
 
@@ -325,10 +449,10 @@ impl MeroDesign {
 
     /// Hand the board (and its owner-gated config) to another member. Owner-only.
     pub fn transfer_ownership(&mut self, new_owner: String) -> app::Result<()> {
-        let owner = Self::parse_pk(&new_owner)?;
+        let owner = self.require_account(&new_owner)?;
         // Only the current owner can pass the `Ownable` transfer guards below,
         // so the caller IS the previous owner.
-        let previous = Self::caller();
+        let previous = Self::caller_account();
         self.board_name.transfer_ownership(owner)?;
         self.board_description.transfer_ownership(owner)?;
         // The new owner becomes administratively able to manage roles…
@@ -350,7 +474,7 @@ impl MeroDesign {
 
     /// Grant a member the editor role. Admin-only (enforced at merge).
     pub fn grant_editor(&mut self, member: String) -> app::Result<()> {
-        let who = Self::parse_pk(&member)?;
+        let who = self.require_account(&member)?;
         self.roles.grant(ROLE_EDITOR, who)?;
         app::emit!(Event::RoleUpdated(member));
         Ok(())
@@ -358,7 +482,7 @@ impl MeroDesign {
 
     /// Revoke a member's editor role (downgrade to viewer). Admin-only.
     pub fn revoke_editor(&mut self, member: String) -> app::Result<()> {
-        let who = Self::parse_pk(&member)?;
+        let who = self.require_account(&member)?;
         self.roles.revoke(ROLE_EDITOR, &who)?;
         app::emit!(Event::RoleUpdated(member));
         Ok(())
@@ -366,20 +490,21 @@ impl MeroDesign {
 
     /// Effective role of a member: "admin", "editor", or "viewer".
     pub fn get_role(&self, member: String) -> String {
-        match Self::parse_pk(&member) {
-            Ok(pk) => self.role_label(&pk),
-            Err(_) => "viewer".to_string(),
+        // Unknown account = no grant can name them = viewer.
+        match self.account_of(&member) {
+            Some(account) => self.role_label(&account),
+            None => "viewer".to_string(),
         }
     }
 
     /// Effective role of the caller — convenience for the frontend's edit gate.
     pub fn my_role(&self) -> String {
-        self.role_label(&Self::caller())
+        self.role_label(&Self::caller_account())
     }
 
     /// Whether the caller may edit the canvas.
     pub fn can_edit(&self) -> bool {
-        self.is_editor(&Self::caller())
+        self.is_editor(&Self::caller_account())
     }
 
     /// Every member with their effective role, for the members/settings UI.
@@ -387,9 +512,9 @@ impl MeroDesign {
         let mut out = Vec::new();
         if let Ok(entries) = self.members.entries() {
             for (id, _) in entries {
-                let role = match Self::parse_pk(&id) {
-                    Ok(pk) => self.role_label(&pk),
-                    Err(_) => "viewer".to_string(),
+                let role = match self.account_of(&id) {
+                    Some(account) => self.role_label(&account),
+                    None => "viewer".to_string(),
                 };
                 out.push(MemberRole { member: id, role });
             }
@@ -397,7 +522,7 @@ impl MeroDesign {
         out
     }
 
-    fn role_label(&self, who: &PublicKey) -> String {
+    fn role_label(&self, who: &AccountId) -> String {
         if self.roles.is_admin(who) {
             "admin".to_string()
         } else if self.roles.has_role(ROLE_EDITOR, who).unwrap_or(false) {
@@ -410,6 +535,9 @@ impl MeroDesign {
     // ── Members ───────────────────────────────────────────────────────────────
 
     pub fn join(&mut self, username: String, avatar: Option<String>, timestamp: u64) {
+        // Register the pairing even for a repeat join: it is what lets an admin
+        // name this member in a grant at all.
+        self.remember_account();
         let member_id = Self::caller_id();
         if self.members.contains(&member_id).unwrap_or(false) { return; }
         let m = Member {
@@ -666,6 +794,9 @@ impl MeroDesign {
     /// Broadcast the caller's cursor. Presence is open to all members
     /// (including viewers); the identity is the real signer, not client-supplied.
     pub fn update_cursor(&mut self, x: i64, y: i64, updated_at: u64) {
+        // Every client moves its cursor, so this is where a member's
+        // device→account pairing reliably becomes known to the rest of the board.
+        self.remember_account();
         let identity = Self::caller_id();
         let cs = CursorState { identity: identity.clone(), x, y, updated_at };
         let _ = self.cursors.insert(identity.clone(), cs);
@@ -686,6 +817,11 @@ mod tests {
     use super::*;
 
     const OTHER: [u8; 32] = [0x22; 32];
+
+    // Roles and ownership are keyed by ACCOUNT since rc.20, and `call_as` keeps
+    // the caller's account on purpose (two devices of one person). A second
+    // PERSON therefore needs their own account.
+    const OTHER_ACCOUNT: [u8; 32] = [0xA2; 32];
 
     fn new_board() -> TestHost<MeroDesign> {
         TestHost::new(|| MeroDesign::init("Board".to_owned(), "desc".to_owned()))
@@ -727,21 +863,26 @@ mod tests {
     #[test]
     fn viewer_cannot_edit_editor_can() {
         let mut app = new_board();
-        // A second identity joins; with no grant it is a viewer and is refused.
-        app.call_as(OTHER, |s| s.join("bob".to_owned(), None, 1));
-        assert!(app.call_as(OTHER, |s| s.add_element(sample_element("e1"))).is_err());
+        // A second person joins; with no grant they are a viewer and are refused.
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s.join("bob".to_owned(), None, 1));
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.add_element(sample_element("e1")))
+            .is_err());
         assert_eq!(app.view(|s| s.get_elements()).len(), 0);
 
         // Admin grants editor → now the same identity may add elements.
         let bob = String::from(PublicKey::from(OTHER));
         app.call(|s| s.grant_editor(bob.clone())).unwrap();
         assert_eq!(app.view(|s| s.get_role(bob.clone())), "editor");
-        app.call_as(OTHER, |s| s.add_element(sample_element("e1"))).unwrap();
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s.add_element(sample_element("e1")))
+            .unwrap();
         assert_eq!(app.view(|s| s.get_elements()).len(), 1);
 
         // Revoke → back to viewer, refused again.
         app.call(|s| s.revoke_editor(bob.clone())).unwrap();
-        assert!(app.call_as(OTHER, |s| s.delete_element("e1".to_owned())).is_err());
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.delete_element("e1".to_owned()))
+            .is_err());
     }
 
     #[test]
@@ -750,7 +891,9 @@ mod tests {
         let third = String::from(PublicKey::from([0x33u8; 32]));
         // OTHER is not an admin → the fail-fast guard refuses (and a forged
         // grant delta would be rejected at merge).
-        assert!(app.call_as(OTHER, |s| s.grant_editor(third)).is_err());
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.grant_editor(third))
+            .is_err());
     }
 
     #[test]
@@ -759,7 +902,10 @@ mod tests {
         app.call(|s| s.update_board(Some("Renamed".to_owned()), None)).unwrap();
         assert_eq!(app.view(|s| s.get_board()).name, "Renamed");
         // A non-owner rename is refused.
-        assert!(app.call_as(OTHER, |s| s.update_board(Some("Hijacked".to_owned()), None)).is_err());
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s
+                .update_board(Some("Hijacked".to_owned()), None))
+            .is_err());
         assert_eq!(app.view(|s| s.get_board()).name, "Renamed");
     }
 
@@ -783,15 +929,66 @@ mod tests {
     fn ownership_transfer_moves_control() {
         let mut app = new_board();
         let other = String::from(PublicKey::from(OTHER));
+        // The board must know which account that member key speaks for before it
+        // can hand ownership over — joining is what records the pairing.
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s.join("bob".to_owned(), None, 1));
         app.call(|s| s.transfer_ownership(other.clone())).unwrap();
         assert_eq!(app.view(|s| s.get_board()).owner, Some(other.clone()));
         // The new owner can rename; the old owner can no longer.
-        app.call_as(OTHER, |s| s.update_board(Some("Owned".to_owned()), None)).unwrap();
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s.update_board(Some("Owned".to_owned()), None))
+            .unwrap();
         assert_eq!(app.view(|s| s.get_board()).name, "Owned");
         assert!(app.call(|s| s.update_board(Some("nope".to_owned()), None)).is_err());
         // The new owner is admin; the former owner relinquished admin entirely.
         assert_eq!(app.view(|s| s.get_role(other)), "admin");
         assert_eq!(app.view(|s| s.my_role()), "viewer");
         assert!(!app.view(|s| s.can_edit()));
+    }
+
+    /// Regression: the board must report the name and description it was created
+    /// with.
+    ///
+    /// `Ownable::insert` inside `init` is silently dropped on rc.20 (see
+    /// `initial_name`), so before this test nothing here read either value back
+    /// and every board since the rc.20 bump has been reporting `""` for both.
+    #[test]
+    fn the_board_reports_its_name_and_description_before_and_after_an_update() {
+        let mut app = new_board();
+        let fresh = app.view(|s| s.get_board());
+        assert_eq!(
+            (fresh.name.as_str(), fresh.description.as_str()),
+            ("Board", "desc"),
+            "a freshly created board must report what init was given"
+        );
+
+        // A partial update must move only the field it names — the other keeps
+        // falling back to its init value rather than going blank.
+        app.call(|s| s.update_board(Some("Renamed".to_owned()), None))
+            .unwrap();
+        let after = app.view(|s| s.get_board());
+        assert_eq!(
+            (after.name.as_str(), after.description.as_str()),
+            ("Renamed", "desc")
+        );
+
+        app.call(|s| s.update_board(None, Some("new desc".to_owned())))
+            .unwrap();
+        let both = app.view(|s| s.get_board());
+        assert_eq!(
+            (both.name.as_str(), both.description.as_str()),
+            ("Renamed", "new desc")
+        );
+    }
+
+    /// The owner gate still holds. Ownership is keyed by ACCOUNT since rc.20 and
+    /// `call_as` keeps the caller's account, so a second PERSON needs their own.
+    #[test]
+    fn a_non_owner_cannot_update_the_board() {
+        let mut app = new_board();
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s
+                .update_board(Some("hijacked".to_owned()), None))
+            .is_err());
+        assert_eq!(app.view(|s| s.get_board()).name, "Board");
     }
 }

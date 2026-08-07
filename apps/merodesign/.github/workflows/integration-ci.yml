@@ -45,12 +45,13 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('logic/Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
 
-      - name: Build WASM
+      - name: Install cargo-mero
+        uses: ./.github/actions/install-cargo-mero
+
+      - name: Build WASM (+ embedded ABI)
         run: |
           cd logic
-          cargo build --target wasm32-unknown-unknown --profile app-release
-          mkdir -p res
-          cp target/wasm32-unknown-unknown/app-release/merodesign.wasm res/
+          cargo mero build
 
       - name: Install merobox
         run: pip install merobox==0.6.24 && merobox --version
