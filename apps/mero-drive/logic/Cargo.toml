@@ -8,7 +8,7 @@ resolver = "2"
 # hardcoded version). (app/package.json carries the frontend's own npm
 # version separately — different ecosystem.)
 [workspace.package]
-version = "10.1.2"
+version = "10.1.3"
 
 # Read by `cargo mero bundle`, which builds each service, embeds its ABI as the
 # calimero_abi_v1 section, records a digest per artifact and signs the manifest.

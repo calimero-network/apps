@@ -1,36 +1,16 @@
 name: Setup cargo-mero
-description: Install the pinned cargo-mero bundling tool, cached across runs.
+description: Install the pinned cargo-mero release binary from core.
 
 runs:
   using: composite
   steps:
-    - name: Read pinned rev
-      id: rev
-      shell: bash
-      # The script owns the pin and reports it; an empty answer would yield a
-      # constant cache key, quietly restoring one rev's binary for another, so
-      # it fails the step instead.
-      run: |
-        REV=$(./scripts/setup-cargo-mero.sh --print-rev)
-        if [ -z "$REV" ]; then
-          echo "::error::scripts/setup-cargo-mero.sh --print-rev returned nothing"
-          exit 1
-        fi
-        echo "rev=$REV" >> "$GITHUB_OUTPUT"
-        # Resolved the same way the script does, so a job that overrides
-        # CARGO_HOME caches the files the script actually writes.
-        echo "cargo_home=${CARGO_HOME:-$HOME/.cargo}" >> "$GITHUB_OUTPUT"
-
-    - name: Cache cargo-mero
-      uses: actions/cache@v4
-      with:
-        # The stamp rides along with the binary: restoring one without the
-        # other would make the script rebuild on every cache hit.
-        path: |
-          ${{ steps.rev.outputs.cargo_home }}/bin/cargo-mero
-          ${{ steps.rev.outputs.cargo_home }}/.cargo-mero-rev
-        key: cargo-mero-${{ runner.os }}-${{ steps.rev.outputs.rev }}
-
+    # No cache: the script downloads a ~4 MB released binary and verifies its
+    # checksum, which beats a cache round-trip and never serves a stale build.
+    # The bin dir goes first on PATH so another cargo-mero already on the
+    # image cannot answer instead of the pinned one.
     - name: Install cargo-mero
       shell: bash
-      run: ./scripts/setup-cargo-mero.sh
+      run: |
+        BIN_DIR="${CARGO_HOME:-$HOME/.cargo}/bin"
+        echo "$BIN_DIR" >> "$GITHUB_PATH"
+        PATH="$BIN_DIR:$PATH" ./scripts/setup-cargo-mero.sh

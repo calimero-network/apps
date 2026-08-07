@@ -283,14 +283,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install merobox (pip)
-        # The gh-pages apt repo was replaced by the merobox docs site (no
-        # Release file), so apt installs 404. pip matches the other workflows.
-        run: |
-          python3 -m pip install --user --upgrade pip
-          python3 -m pip install --user "merobox==0.6.39"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          "$HOME/.local/bin/merobox" --version
+      - name: Install merobox
+        uses: ./.github/actions/setup-merobox
 
       - name: Download bundle artifact
         uses: actions/download-artifact@v4

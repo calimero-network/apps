@@ -1,0 +1,20 @@
+name: Setup merobox
+description: Install the pinned merobox CLI and put it on PATH.
+
+# One pin for every job. It was previously spelled at four call sites and had
+# already drifted to two different versions, each with its own rationale.
+#   >=0.6.14  JoinSubgroupInheritanceStep
+#   >=0.6.37  drops migrate_method from upgrade_group (0.6.36 crashes against
+#             the newer calimero-client-py binding)
+#   >=0.6.43  forwards MERO_AUTH_ADMIN_* to the auth service; without it
+#             mero-auth:edge has no account and every token mint 401s
+runs:
+  using: composite
+  steps:
+    - name: Install merobox
+      shell: bash
+      run: |
+        python3 -m pip install --user --upgrade pip
+        python3 -m pip install --user "merobox==0.6.43"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        "$HOME/.local/bin/merobox" --version

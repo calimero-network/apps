@@ -88,14 +88,7 @@ jobs:
         run: cargo mero bundle --dev --output dist/com.calimero.mero-drive-docs.mpk
 
       - name: Install merobox
-        run: |
-          python3 -m pip install --user --upgrade pip
-          # >=0.6.14 for JoinSubgroupInheritanceStep; >=0.6.43 to forward
-          # MERO_AUTH_ADMIN_* to the auth service (mero-auth:edge ships no
-          # default account, so unforwarded creds mean token mints 401).
-          python3 -m pip install --user "merobox==0.6.43"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          "$HOME/.local/bin/merobox" --version
+        uses: ./.github/actions/setup-merobox
 
       - name: Run merobox setup workflow
         working-directory: e2e
@@ -352,14 +345,7 @@ jobs:
         run: cargo mero bundle --dev --output dist/com.calimero.mero-drive-docs.mpk
 
       - name: Install merobox
-        run: |
-          python3 -m pip install --user --upgrade pip
-          # >=0.6.14 for JoinSubgroupInheritanceStep; >=0.6.43 to forward
-          # MERO_AUTH_ADMIN_* to the auth service (mero-auth:edge ships no
-          # default account, so unforwarded creds mean token mints 401).
-          python3 -m pip install --user "merobox==0.6.43"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          "$HOME/.local/bin/merobox" --version
+        uses: ./.github/actions/setup-merobox
 
       - name: Run merobox setup workflow
         working-directory: e2e
@@ -627,14 +613,7 @@ jobs:
           ls -la dist/
 
       - name: Install merobox
-        run: |
-          python3 -m pip install --user --upgrade pip
-          # >= 0.6.37 required: it drops migrate_method from upgrade_group to
-          # match calimero-client-py 0.6.19 (core resolves migrations from the
-          # embedded ABIs); 0.6.36 crashes calling the newer client binding.
-          python3 -m pip install --user "merobox==0.6.39"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          "$HOME/.local/bin/merobox" --version
+        uses: ./.github/actions/setup-merobox
 
       - name: Run migration workflow
         working-directory: e2e
