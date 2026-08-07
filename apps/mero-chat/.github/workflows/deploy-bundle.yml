@@ -73,13 +73,8 @@ jobs:
       - name: Install wasm-opt
         run: sudo apt-get update -q && sudo apt-get install -y -q binaryen
 
-      # Not cached: the tool tracks master like the SDK does, and a cache key
-      # over a moving branch would pin a stale binary indefinitely.
       - name: Install cargo-mero
-        run: |
-          cargo install cargo-mero --locked \
-            --git https://github.com/calimero-network/core \
-            --branch master
+        run: scripts/install-cargo-mero.sh
 
       - name: Write signing key
         env:

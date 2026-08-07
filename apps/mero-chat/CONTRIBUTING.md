@@ -48,13 +48,12 @@ calimero-chat/
 The Rust logic compiles to WebAssembly for execution on the Calimero network.
 
 ```bash
-cd logic
-
 # Add the WebAssembly target
 rustup target add wasm32-unknown-unknown
 
-# Install cargo-mero (pre-release pin — see logic/Cargo.toml) and build the contract
-cargo install cargo-mero --locked --git https://github.com/calimero-network/core --branch master
+# Install cargo-mero from the newest core release, then build the contract
+./scripts/install-cargo-mero.sh
+cd logic
 cargo mero build
 ```
 

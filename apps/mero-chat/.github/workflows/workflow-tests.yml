@@ -50,13 +50,8 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('logic/Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
 
-      # Not cached: the tool tracks master like the SDK does, and a cache key
-      # over a moving branch would pin a stale binary indefinitely.
       - name: Install cargo-mero
-        run: |
-          cargo install cargo-mero --locked \
-            --git https://github.com/calimero-network/core \
-            --branch master
+        run: scripts/install-cargo-mero.sh
 
       # Builds res/curb.wasm (ABI embedded, wasm-opt'd) AND the .mpk, so the
       # nodes below run the same artifact a release publishes.

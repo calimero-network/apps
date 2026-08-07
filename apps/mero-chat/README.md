@@ -17,8 +17,8 @@ A chat application built on the Calimero Network, enabling private, decentralize
 
 ```bash
 # Build the logic (Rust WASM)
+./scripts/install-cargo-mero.sh
 cd logic
-cargo install cargo-mero --locked --git https://github.com/calimero-network/core --branch master
 cargo mero build
 
 # Start the app
@@ -36,7 +36,7 @@ cd logic
 ```
 
 ```bash title="Terminal"
-cargo install cargo-mero --locked --git https://github.com/calimero-network/core --branch master
+./scripts/install-cargo-mero.sh
 ```
 
 ```bash title="Terminal"
