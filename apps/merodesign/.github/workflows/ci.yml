@@ -37,9 +37,12 @@ jobs:
         working-directory: app
         run: pnpm test
 
+      # `tsc -b`, not `tsc --noEmit`: app/tsconfig.json is a SOLUTION file
+      # (`"files": []`, references only), so `--noEmit` type-checks NOTHING and
+      # passes genuinely broken code. `-b` walks the referenced projects.
       - name: Type check
         working-directory: app
-        run: pnpm exec tsc --noEmit
+        run: pnpm exec tsc -b
 
       - name: Lint
         working-directory: app
