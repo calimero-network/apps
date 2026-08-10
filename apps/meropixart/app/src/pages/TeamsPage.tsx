@@ -36,8 +36,9 @@ export default function TeamsPage() {
   const menuRef = useRef<HTMLDivElement>(null);
 
   // MeroPixArt's own application id, resolved once per mount.
-  // resolveApplicationId is authoritative — explicit VITE_APPLICATION_ID, else
-  // the installed app whose package is com.calimero.meropixart. We prefer it over
+  // resolveApplicationId is authoritative — the pinned production id when this
+  // node has it, else the installed app whose package is
+  // com.calimero.meropixart (a dev install). We prefer it over
   // a possibly-stale/wrong id from persisted auth or the Tauri hash, and only fall
   // back to that id if resolution fails. Shared by list/create/join so namespaces
   // are always scoped to (and created under) the right app.
