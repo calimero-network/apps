@@ -55,8 +55,8 @@ export default function ProjectsPage() {
   const inviteResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Resolve MeroDesign's own application id (mirrors TeamsPage's ensureAppId).
-  // resolveApplicationId is authoritative: explicit VITE_APPLICATION_ID (set in
-  // the Vercel env) wins, else the installed app whose package is
+  // resolveApplicationId is authoritative: the pinned production id when the node
+  // has it, else the installed app whose package is
   // com.calimero.merodesign. The desktop deep-links straight to this page
   // (bypassing TeamsPage), so we must resolve here too rather than trust a
   // possibly-empty useMero().applicationId — otherwise createProject would POST

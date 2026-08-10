@@ -1,13 +1,19 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
-import { pickApplicationId, resolveApplicationId } from "./appId";
+import {
+  PRODUCTION_APPLICATION_ID,
+  pickApplicationId,
+  resolveApplicationId,
+} from "./appId";
 import { adminGet } from "./rpc";
 
 vi.mock("./rpc", () => ({ adminGet: vi.fn() }));
 
 const mockAdminGet = vi.mocked(adminGet);
 
-// Note: VITE_APPLICATION_ID is unset in the test env, so the env override is
-// inactive and resolution falls to package matching / apps[0].
+// The production id is pinned in source, so it wins whenever the node has it;
+// otherwise resolution falls to package matching / apps[0]. VITE_APPLICATION_ID is
+// no longer read at all — a stale hosting-project value must not be able to
+// outrank what the node actually has.
 
 describe("pickApplicationId", () => {
   it("matches the app whose package is com.calimero.merodesign", () => {
@@ -42,6 +48,24 @@ describe("pickApplicationId", () => {
 
   it("returns empty string for an empty list", () => {
     expect(pickApplicationId([])).toBe("");
+  });
+
+  it("prefers the pinned production id when the node has it", () => {
+    const apps = [
+      { id: "curb-app", package: "com.calimero.curb" },
+      { id: PRODUCTION_APPLICATION_ID, package: "com.calimero.merodesign" },
+    ];
+    expect(pickApplicationId(apps)).toBe(PRODUCTION_APPLICATION_ID);
+  });
+
+  // The reason the constant is a preference and not an override: a dev-signed
+  // build has a DIFFERENT id for the same code and must still resolve.
+  it("falls back to the package match for a dev install with another id", () => {
+    const apps = [
+      { id: "curb-app", package: "com.calimero.curb" },
+      { id: "dev-signed-id", package: "com.calimero.merodesign" },
+    ];
+    expect(pickApplicationId(apps)).toBe("dev-signed-id");
   });
 });
 

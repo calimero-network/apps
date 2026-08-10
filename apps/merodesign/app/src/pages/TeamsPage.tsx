@@ -36,7 +36,7 @@ export default function TeamsPage() {
   const menuRef = useRef<HTMLDivElement>(null);
 
   // MeroDesign's own application id, resolved once per mount.
-  // resolveApplicationId is authoritative — explicit VITE_APPLICATION_ID, else
+  // resolveApplicationId is authoritative — the pinned production id when the node has it, else
   // the installed app whose package is com.calimero.merodesign. We prefer it
   // over a possibly-stale/wrong id from persisted auth or the Tauri hash, and
   // only fall back to that id if resolution fails. Shared by list/create/join
