@@ -37,9 +37,13 @@ jobs:
         working-directory: app
         run: pnpm test
 
+      # `tsc -b`, not `tsc --noEmit`: this app's tsconfig.json is a SOLUTION file
+      # (only `references`, no `files`/`include`), so `--noEmit` type-checks
+      # NOTHING and passes on genuinely broken code. `-b` walks the referenced
+      # projects. The mero-js 7 SSE union break was invisible to `--noEmit`.
       - name: Type check
         working-directory: app
-        run: pnpm exec tsc --noEmit
+        run: pnpm exec tsc -b
 
       - name: Lint
         working-directory: app
