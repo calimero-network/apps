@@ -119,7 +119,7 @@ if $SKIP_BUILD; then
   [ -f "$WASM_PATH" ] || { red "WASM not found at $WASM_PATH — run without --skip-build first"; exit 1; }
 else
   step "Building WASM"
-  (cd "$REPO_ROOT/logic" && bash build.sh)
+  (cd "$REPO_ROOT/logic" && cargo mero build)
   green "meropixart.wasm built"
 fi
 

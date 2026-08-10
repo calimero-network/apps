@@ -61,10 +61,15 @@ install: app-install
 # ── Build ──────────────────────────────────────────────────────────────────────
 
 logic-build:
-	cd logic && ./build.sh
+	cd logic && cargo mero build
 
+# --no-icon: the app ships no PNG mark, and the desktop finds the PWA icon at
+# the manifest's `frontend` URL, which beats a generic one.
 logic-bundle:
-	cd logic && ./build-bundle.sh
+	cd logic && cargo mero bundle --dev --no-icon
+
+logic-bundle-release: ## publishable .mpk signed with $$MERO_SIGN_KEY_FILE, version bumped off the registry
+	cd logic && cargo mero bundle --key "$$MERO_SIGN_KEY_FILE" --no-icon --bump patch
 
 bundle: logic-bundle
 

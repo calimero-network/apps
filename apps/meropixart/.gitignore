@@ -1,7 +1,9 @@
 # Rust / WASM
 logic/target/
-logic/res/*.wasm
+logic/res/
+logic/dist/
 logic/res/*.mpk
+logic/res/bundle-temp/
 *.wasm
 
 # Node

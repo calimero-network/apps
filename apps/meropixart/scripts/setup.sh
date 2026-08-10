@@ -31,7 +31,7 @@ rustup target list --installed | grep -q "wasm32-unknown-unknown" \
   || { rustup target add wasm32-unknown-unknown && ok "wasm32-unknown-unknown added"; }
 
 step "Building Rust WASM logic…"
-cd "$REPO_ROOT/logic" && bash build.sh
+cd "$REPO_ROOT/logic" && cargo mero build
 ok "logic/res/meropixart.wasm built"
 
 step "Installing frontend dependencies…"

@@ -110,6 +110,16 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('logic/Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
 
-      - name: Check Rust (no wasm build for speed)
+      - name: Install cargo-mero
+        uses: ./.github/actions/install-cargo-mero
+
+      # Full `cargo mero build` rather than a bare `cargo check`: the ABI is
+      # emitted by a HOST build of the app, so a type that reaches the public API
+      # without an `AbiType` impl only fails here — a wasm-only check passes.
+      - name: Build Rust (+ ABI emit)
         working-directory: logic
-        run: cargo check --target wasm32-unknown-unknown
+        run: cargo mero build
+
+      - name: Contract tests
+        working-directory: logic
+        run: cargo test
