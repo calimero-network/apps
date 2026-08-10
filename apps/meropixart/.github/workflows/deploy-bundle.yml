@@ -32,7 +32,10 @@ name: Deploy Bundle
 on:
   push:
     branches:
-      - master
+      # This repo's default branch is `main` (mero-design, where this workflow
+      # pattern comes from, uses `master`) — a mismatch here means the publish
+      # silently never runs.
+      - main
     paths:
       - "logic/**"
   workflow_dispatch:

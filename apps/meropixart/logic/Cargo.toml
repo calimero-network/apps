@@ -29,7 +29,12 @@ author = "Calimero"
 slug = "com.calimero.meropixart"
 tags = ["image-editing", "collaboration", "layers"]
 github = "https://github.com/calimero-network/mero-pixart"
-min-runtime-version = "0.1.0"
+# The release this contract is BUILT for, not a floor inherited from an older
+# template. An rc.20 build imports host functions (e.g. storage_index_meta_clear)
+# that earlier merod has no implementation for: claiming 0.1.0 lets such a node
+# install the bundle happily and then fail at context creation with "unknown
+# import". Keep this equal to the calimero-sdk tag above.
+min-runtime-version = "0.11.0-rc.20"
 frontend = "https://mero-pixart.vercel.app/"
 
 [dependencies]
