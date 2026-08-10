@@ -205,7 +205,23 @@ export default function EditorPage() {
       const ms = await rpcCall<Member[]>(ctxId, "get_members", {}).catch(() => [] as Member[]);
       if (!cancelled && Array.isArray(ms)) {
         setMembers(ms);
-        if (!ms.some((m) => m.id === myId.current)) setNeedName(true);
+        const alreadyMember = ms.some((m) => m.id === myId.current);
+        const storedName = localStorage.getItem("mp-username") ?? "";
+        if (!alreadyMember) {
+          setNeedName(true);
+        } else if (storedName) {
+          // Re-announce even as an existing member. `join` records this device's
+          // device→account pairing before its early return, and that pairing is
+          // the ONLY thing that lets an admin name us in a role grant — the
+          // members list an admin sees comes from the node's group membership,
+          // which knows nothing about accounts. A member whose row predates the
+          // account-keyed contract (or who has never moved a cursor) is otherwise
+          // permanently un-grantable: the grant fails with "that member hasn't
+          // opened this document yet". Idempotent — an unchanged pairing writes
+          // no CRDT delta.
+          rpcCall(ctxId, "join", { username: storedName, avatar: null, timestamp: ts() })
+            .catch(() => {});
+        }
       }
 
       const cs = await rpcCall<CursorState[]>(ctxId, "get_cursors", {}).catch(() => [] as CursorState[]);

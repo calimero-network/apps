@@ -294,10 +294,20 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
                 const contractRole = contractRoles[m.identity];
                 const isEditor = contractRole === "admin" || contractRole === "editor";
                 const isOwner = contractRole === "admin";
+                // This list is the NODE's group membership, which knows nothing
+                // about the document. A role grant names an account, and the
+                // contract only learns a member's device→account pairing once
+                // that member has opened the document — so granting someone who
+                // never has fails with "that member hasn't opened this document
+                // yet". `list_roles` only reports members the document knows, so
+                // an absent entry is exactly that case: don't offer the action.
+                const knownToDocument = contractRole !== undefined;
                 const canSetEditor =
-                  type === "project" && myContractRole === "admin" && !isSelf && !isOwner;
+                  type === "project" && myContractRole === "admin" && !isSelf && !isOwner && knownToDocument;
                 const canTransfer =
-                  type === "project" && myContractRole === "admin" && !isSelf && !isOwner;
+                  type === "project" && myContractRole === "admin" && !isSelf && !isOwner && knownToDocument;
+                const showNotOpenedHint =
+                  type === "project" && myContractRole === "admin" && !isSelf && !knownToDocument;
                 const editorBusy = pendingEditor === m.identity;
                 const transferBusy = pendingTransfer === m.identity;
                 return (
@@ -361,6 +371,18 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
                       >
                         {transferBusy ? "…" : "Make owner"}
                       </button>
+                    )}
+                    {showNotOpenedHint && (
+                      <span
+                        className={`${styles.roleBadge} ${styles.roleMember}`}
+                        title={
+                          "Roles are granted to a person, and this member's node has not opened " +
+                          "the document yet, so the document does not know which account their " +
+                          "device speaks for. Ask them to open it once, then set the role."
+                        }
+                      >
+                        Not opened yet
+                      </span>
                     )}
                   </div>
                 );

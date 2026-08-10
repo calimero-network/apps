@@ -38,6 +38,35 @@ axios.interceptors.response.use(
   },
 );
 
+/**
+ * A contract abort (`app::bail!`) comes back as
+ *   `the method call returned an error: [34, 116, 104, …]`
+ * — the message as a JSON-encoded UTF-8 byte array. The success path below
+ * already decodes byte arrays; without the same treatment here a user is shown
+ * a wall of numbers instead of "that member hasn't opened this document yet…".
+ * Exported for tests.
+ */
+export function decodeContractError(msg: string): string {
+  const m = /\[((?:\s*\d+\s*,)*\s*\d+\s*)\]/.exec(msg);
+  if (!m) return msg;
+  const bytes = m[1].split(",").map((n) => Number(n.trim()));
+  if (!bytes.length || bytes.some((b) => !Number.isInteger(b) || b < 0 || b > 255)) return msg;
+  try {
+    const text = new TextDecoder().decode(new Uint8Array(bytes));
+    // The message is a JSON string, so it arrives wrapped in quotes (byte 34).
+    let decoded = text;
+    try {
+      const parsed = JSON.parse(text);
+      if (typeof parsed === "string") decoded = parsed;
+    } catch {
+      /* not JSON — use the raw decode */
+    }
+    return decoded.trim() || msg;
+  } catch {
+    return msg;
+  }
+}
+
 export async function rpcCall<T>(
   contextId: string,
   method: string,
@@ -68,7 +97,7 @@ export async function rpcCall<T>(
       : (typeof body.error.data === "string" && body.error.data
           ? body.error.data
           : (body.error.message ?? JSON.stringify(body.error)));
-    throw new Error(msg);
+    throw new Error(decodeContractError(msg));
   }
   const result = body.result;
   // Calimero execute returns { output: <varies>, logs: [] }.
