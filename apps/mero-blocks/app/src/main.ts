@@ -183,6 +183,8 @@ async function boot(): Promise<void> {
   const keys = new Set<string>();
   let breakHeld = false;
   let placeHeld = false;
+  /** One-shot edit from a drag-to-look tap, consumed by the next frame. */
+  let tap: "break" | "place" | null = null;
   let editCooldown = 0;
 
   const openOverlay = (which: "options" | "map"): void => {
@@ -190,6 +192,7 @@ async function boot(): Promise<void> {
     keys.clear();
     breakHeld = false;
     placeHeld = false;
+    tap = null;
     if (which === "options") {
       worldMap.hide();
       options.toggle();
@@ -239,12 +242,85 @@ async function boot(): Promise<void> {
     hud.setHotbarSel(sel);
   });
 
+  // ---- looking around ----------------------------------------------------
+  // Pointer lock is the good path and the only one the web build ever takes.
+  // The desktop is a Tauri WKWebView, where requestPointerLock is a silent
+  // no-op — no lock, no error, so `movementX` never arrives and the camera was
+  // simply dead there, trackpad or mouse. So: notice that the lock never showed
+  // up and fall back to drag-to-look.
+  //
+  // This cannot change the web build. The fallback only arms after a request
+  // has demonstrably failed (rejected promise, `pointerlockerror`, or no lock
+  // within the grace window), and a lock that succeeds later disarms it again.
+  const LOCK_GRACE_MS = 500;
+  const DRAG_SLOP = 4; // px of travel before a press is a look, not a click
+  let dragLook = false;
+  let dragId: number | null = null;
+  let dragAt = { x: 0, y: 0 };
+  let dragDist = 0;
+
+  const turn = (dx: number, dy: number): void => {
+    const look = 0.0024 * options.getSensitivity();
+    yaw -= dx * look;
+    pitch = Math.max(-1.55, Math.min(1.55, pitch - dy * look));
+  };
+
+  const armDragLook = (): void => {
+    if (dragLook) return;
+    dragLook = true;
+    hud.setLookMode("drag");
+    hud.setHint(true);
+  };
+
   canvas.addEventListener("click", () => {
-    if (uiOpen()) return;
-    if (document.pointerLockElement !== canvas) canvas.requestPointerLock();
+    if (uiOpen() || dragLook) return;
+    if (document.pointerLockElement === canvas) return;
+    const lock: unknown = canvas.requestPointerLock();
+    if (lock instanceof Promise) lock.catch(armDragLook);
+    window.setTimeout(() => {
+      if (document.pointerLockElement !== canvas) armDragLook();
+    }, LOCK_GRACE_MS);
   });
+  document.addEventListener("pointerlockerror", armDragLook);
+
+  canvas.addEventListener("pointerdown", (e) => {
+    if (!dragLook || uiOpen()) return;
+    e.preventDefault();
+    dragId = e.pointerId;
+    dragAt = { x: e.clientX, y: e.clientY };
+    dragDist = 0;
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (dragId !== e.pointerId) return;
+    const dx = e.clientX - dragAt.x;
+    const dy = e.clientY - dragAt.y;
+    dragAt = { x: e.clientX, y: e.clientY };
+    dragDist += Math.abs(dx) + Math.abs(dy);
+    if (dragDist < DRAG_SLOP) return;
+    hud.setHint(false);
+    turn(dx, dy);
+  });
+  const endDrag = (e: PointerEvent): void => {
+    if (dragId !== e.pointerId) return;
+    dragId = null;
+    if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+    // A press that never travelled is a click, not a look: one break (left) or
+    // one place (right) — the same thing the buttons do under pointer lock.
+    if (dragDist >= DRAG_SLOP || uiOpen()) return;
+    tap = e.button === 2 ? "place" : "break";
+    editCooldown = 0;
+  };
+  canvas.addEventListener("pointerup", endDrag);
+  canvas.addEventListener("pointercancel", endDrag);
+
   document.addEventListener("pointerlockchange", () => {
     const unlocked = document.pointerLockElement !== canvas;
+    if (!unlocked) {
+      // The lock works after all — retire the fallback and its wording.
+      dragLook = false;
+      hud.setLookMode("lock");
+    }
     hud.setHint(unlocked);
     // Esc while pointer-locked never reaches keydown (the browser reserves it
     // to unlock) — so losing the lock with no overlay up IS the Esc press:
@@ -258,9 +334,7 @@ async function boot(): Promise<void> {
   });
   window.addEventListener("mousemove", (e) => {
     if (document.pointerLockElement !== canvas) return;
-    const look = 0.0024 * options.getSensitivity();
-    yaw -= e.movementX * look;
-    pitch = Math.max(-1.55, Math.min(1.55, pitch - e.movementY * look));
+    turn(e.movementX, e.movementY);
   });
   window.addEventListener("mousedown", (e) => {
     if (document.pointerLockElement !== canvas) return;
@@ -292,11 +366,16 @@ async function boot(): Promise<void> {
     const eye = 1.62;
     const hit = raycast(world, player.x, player.y + eye, player.z, dx, dy, dz, REACH);
     renderer.setHighlight(hit);
+    // A drag-look tap is one edit, consumed by the frame it lands in; a held
+    // mouse button keeps repeating on the cooldown instead.
+    const wantBreak = breakHeld || tap === "break";
+    const wantPlace = placeHeld || tap === "place";
+    tap = null;
     if (!hit || editCooldown > 0) return;
-    if (breakHeld) {
+    if (wantBreak) {
       editBlock(hit.x, hit.y, hit.z, AIR);
       editCooldown = EDIT_REPEAT_MS;
-    } else if (placeHeld) {
+    } else if (wantPlace) {
       const px = hit.x + hit.face[0],
         py = hit.y + hit.face[1],
         pz = hit.z + hit.face[2];
@@ -443,6 +522,7 @@ async function boot(): Promise<void> {
     editBlock,
     getOverrides: () => world.overridesToJSON(),
     input: () => ({ breakHeld, placeHeld, uiOpen: uiOpen() }),
+    camera: () => ({ yaw, pitch, dragLook }),
   };
 }
 

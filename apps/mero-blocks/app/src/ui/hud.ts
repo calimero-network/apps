@@ -26,6 +26,14 @@ const css = `
   font-size: 12px; color: rgba(255,255,255,0.75); text-shadow: 0 0 3px #000; }
 `;
 
+// The controls line has to name the look control actually in use: main.ts falls
+// back to drag-to-look wherever pointer lock is unavailable (the desktop
+// webview), and "click to play" is then simply a lie.
+const HINTS = {
+  lock: "click to play — WASD move · LMB/Q break · RMB/E place · 1-9 blocks · M map · O options",
+  drag: "drag to look — WASD move · LMB/Q break · RMB/E place · 1-9 blocks · M map · O options",
+};
+
 export class Hud {
   root: HTMLElement;
   private debugEl!: HTMLElement;
@@ -50,7 +58,7 @@ export class Hud {
       <div id="mb-debug" data-testid="debug"></div>
       <div id="mb-players" data-testid="players"></div>
       <div id="mb-toasts"></div>
-      <div id="mb-hint">click to play — WASD move · LMB/Q break · RMB/E place · 1-9 blocks · M map · O options</div>
+      <div id="mb-hint" data-testid="hint">${HINTS.lock}</div>
     `;
     this.debugEl = this.root.querySelector("#mb-debug")!;
     this.playersEl = this.root.querySelector("#mb-players")!;
@@ -80,6 +88,10 @@ export class Hud {
 
   setHint(visible: boolean): void {
     if (this.hintEl) this.hintEl.style.display = visible ? "" : "none";
+  }
+
+  setLookMode(mode: keyof typeof HINTS): void {
+    if (this.hintEl) this.hintEl.textContent = HINTS[mode];
   }
 
   setPlayers(me: string, others: { name: string }[]): void {

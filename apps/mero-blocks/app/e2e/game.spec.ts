@@ -147,6 +147,99 @@ test.describe("keyboard controls (trackpad-friendly)", () => {
     expect((await input(page)).uiOpen).toBe(false);
   });
 
+  // The desktop runs the app in a Tauri WKWebView, where requestPointerLock is
+  // a silent no-op: it neither locks nor errors, so `movementX` never arrives
+  // and the camera used to be completely dead there. These two lock down the
+  // fallback and, just as importantly, that the web path is untouched.
+  const camera = (page: import("@playwright/test").Page) =>
+    page.evaluate(() =>
+      (
+        window as never as {
+          __mb: { camera: () => { yaw: number; pitch: number; dragLook: boolean } };
+        }
+      ).__mb.camera(),
+    );
+
+  /** Reproduce the desktop webview: requestPointerLock does nothing at all. */
+  const breakPointerLock = (page: import("@playwright/test").Page) =>
+    page.addInitScript(() => {
+      Element.prototype.requestPointerLock = function () {
+        return undefined as unknown as void;
+      };
+    });
+
+  test("with no pointer lock, dragging turns the camera", async ({ page }) => {
+    await breakPointerLock(page);
+    await enterGame(page);
+
+    const canvas = page.getByTestId("game-canvas");
+    const box = (await canvas.boundingBox())!;
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+
+    // First click is the probe: the lock never arrives, so the fallback arms
+    // and the HUD stops claiming "click to play".
+    await page.mouse.click(cx, cy);
+    await expect(page.getByTestId("hint")).toContainText("drag to look");
+    expect((await camera(page)).dragLook).toBe(true);
+
+    // Drag right and well down — down far enough that the crosshair ends up on
+    // the ground, which the tap assertion below needs.
+    const before = await camera(page);
+    await page.mouse.move(cx, cy - 200);
+    await page.mouse.down();
+    await page.mouse.move(cx + 180, cy + 200, { steps: 12 });
+    await page.mouse.up();
+    const after = await camera(page);
+    expect(after.yaw).not.toBeCloseTo(before.yaw, 3);
+    expect(after.pitch).toBeLessThan(before.pitch - 0.5); // looking at the floor
+
+    // A press that never travels is a click, not a look: it mines instead.
+    const overrides = () =>
+      page.evaluate(() =>
+        Object.keys(
+          (window as never as { __mb: { getOverrides: () => Record<string, number> } })
+            .__mb.getOverrides(),
+        ).length,
+      );
+    const edits = await overrides();
+    await page.mouse.click(cx, cy);
+    await expect.poll(overrides).toBeGreaterThan(edits);
+  });
+
+  // Headless Chromium does not grant pointer lock either, so the happy path
+  // cannot be exercised here directly — what matters instead is that a lock
+  // arriving late puts the game straight back on the pointer-lock path, which
+  // is what keeps a transient failure in a real browser from being permanent.
+  test("a pointer lock that does arrive retires the fallback", async ({ page }) => {
+    await page.addInitScript(() => {
+      let locked: Element | null = null;
+      Object.defineProperty(document, "pointerLockElement", {
+        get: () => locked,
+        configurable: true,
+      });
+      Element.prototype.requestPointerLock = function () {
+        return undefined as unknown as void;
+      };
+      (window as never as { __grantLock: (el: Element) => void }).__grantLock = (el) => {
+        locked = el;
+        document.dispatchEvent(new Event("pointerlockchange"));
+      };
+    });
+    await enterGame(page);
+
+    await page.getByTestId("game-canvas").click();
+    await expect.poll(async () => (await camera(page)).dragLook).toBe(true);
+
+    await page.evaluate(() =>
+      (window as never as { __grantLock: (el: Element) => void }).__grantLock(
+        document.querySelector("canvas")!,
+      ),
+    );
+    expect((await camera(page)).dragLook).toBe(false);
+    await expect(page.getByTestId("hint")).toContainText("click to play");
+  });
+
   test("options menu has a working sensitivity slider", async ({ page }) => {
     await enterGame(page);
     await page.keyboard.press("KeyO");
