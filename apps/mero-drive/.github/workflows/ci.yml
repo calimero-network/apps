@@ -11,8 +11,10 @@ on:
       - "pnpm-lock.yaml"
       - ".github/workflows/ci.yml"
 
+  # No `branches:` filter. A base-branch filter silently skips CI for any PR
+  # in a stack (whose base is another PR's branch), so those land unlinted and
+  # untested. Every pull request gets the same gates regardless of base.
   pull_request:
-    branches: [master]
     paths:
       - "app/**"
       - "logic/**"
