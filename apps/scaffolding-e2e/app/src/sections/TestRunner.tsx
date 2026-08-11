@@ -71,6 +71,11 @@ function contains(haystack: string, needle: string): void {
     throw new Error(`"${haystack}" does not contain "${needle}"`);
 }
 
+function matches(val: string, re: RegExp, what: string): void {
+  if (typeof val !== "string" || !re.test(val))
+    throw new Error(`expected ${what}, got ${JSON.stringify(val)}`);
+}
+
 
 type Status = "idle" | "running" | "pass" | "fail";
 
@@ -82,6 +87,32 @@ interface TestCase {
 }
 
 const TESTS: TestCase[] = [
+  {
+    id: "whoami-shape",
+    name: "whoami returns a base58 device id and a 64-hex account id",
+    group: "Identity",
+    fn: async () => {
+      const me = out<api.Identity>(await api.whoami());
+      // The two ids are different encodings of different things; asserting the
+      // shapes is what catches a regression that returns one where the other
+      // belongs, which would otherwise only show up as a silent permission
+      // failure in the Shared Storage group.
+      matches(me.device_id, /^[1-9A-HJ-NP-Za-km-z]+$/, "a base58 device id");
+      matches(me.account_id, /^[0-9a-f]{64}$/, "a 64-hex account id");
+    },
+  },
+  {
+    id: "whoami-stable",
+    name: "whoami is stable across calls",
+    group: "Identity",
+    fn: async () => {
+      const a = out<api.Identity>(await api.whoami());
+      const b = out<api.Identity>(await api.whoami());
+      eq(a.device_id, b.device_id);
+      eq(a.account_id, b.account_id);
+    },
+  },
+
   {
     id: "kv-set-get",
     name: "set + get round-trip",
@@ -1033,20 +1064,24 @@ const TESTS: TestCase[] = [
   },
   {
     id: "shared-is-writer-self",
-    name: "shared_is_writer for our own executor key → true (after a successful set)",
+    name: "shared_is_writer for our own account → true (after a successful set)",
     group: "Shared Storage",
     fn: async (r) => {
-      const me = getExecutorPublicKey() ?? "";
+      // Our ACCOUNT id, not getExecutorPublicKey(): core 0.11 keys the writer
+      // set by account, and the device key names an account nobody holds.
+      const me = out<api.Identity>(await api.whoami()).account_id;
       noErr(await api.sharedSet(`iw_${r}`));
       eq(out<boolean>(await api.sharedIsWriter(me)), true);
     },
   },
   {
     id: "shared-is-writer-unknown",
-    name: "shared_is_writer for unknown key → false",
+    name: "shared_is_writer for unknown account → false",
     group: "Shared Storage",
     fn: async () => {
-      eq(out<boolean>(await api.sharedIsWriter("11111111111111111111111111111111")), false);
+      // A well-formed account id (64 hex chars) that nobody holds — a
+      // malformed one would be rejected as a parse error, testing nothing.
+      eq(out<boolean>(await api.sharedIsWriter("00".repeat(32))), false);
     },
   },
   {

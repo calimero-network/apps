@@ -19,6 +19,17 @@ function call<A extends Record<string, unknown>, R>(method: string, argsJson: A)
   );
 }
 
+/** Both halves of the caller's identity — see the contract's `whoami`. */
+export interface Identity {
+  /** This installation, base58. What `authored_*` reports as an owner. */
+  device_id: string;
+  /** The person, 64 hex chars. What the `shared_*` writer set is keyed by. */
+  account_id: string;
+}
+
+export const whoami = () =>
+  call<Record<string, never>, Identity>("whoami", {});
+
 export const kvSet = (key: string, value: string) =>
   call("set", { key, value });
 
@@ -342,11 +353,14 @@ export const sharedGet = () =>
 export const sharedGetWriters = () =>
   call<Record<string, never>, string[]>("shared_get_writers", {});
 
-export const sharedAddWriter = (writer_bs58: string) =>
-  call<{ writer_bs58: string }, void>("shared_add_writer", { writer_bs58 });
+// The writer set is keyed by ACCOUNT id (64 hex chars), not by the base58
+// device key the rest of this API uses — core 0.11 made the account the only
+// authorization subject. Get yours from whoami().
+export const sharedAddWriter = (account_hex: string) =>
+  call<{ account_hex: string }, void>("shared_add_writer", { account_hex });
 
-export const sharedIsWriter = (key_bs58: string) =>
-  call<{ key_bs58: string }, boolean>("shared_is_writer", { key_bs58 });
+export const sharedIsWriter = (account_hex: string) =>
+  call<{ account_hex: string }, boolean>("shared_is_writer", { account_hex });
 
 export const sharedIsFrozen = () =>
   call<Record<string, never>, boolean>("shared_is_frozen", {});

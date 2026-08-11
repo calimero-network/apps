@@ -85,9 +85,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 
 [[package]]
+name = "calimero-account"
+version = "0.0.0"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.20#35799596325b33f2acf7b1e54eb79b1b0c2d5b8f"
+dependencies = [
+ "borsh",
+ "calimero-primitives",
+ "calimero-wasm-abi",
+ "hex",
+ "serde",
+ "sha2",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "calimero-prelude"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?branch=master#1a418f46ad1bd2eba3df5c54f0318a64bf263823"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.20#35799596325b33f2acf7b1e54eb79b1b0c2d5b8f"
 dependencies = [
  "borsh",
  "calimero-primitives",
@@ -98,12 +112,14 @@ dependencies = [
 [[package]]
 name = "calimero-primitives"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?branch=master#1a418f46ad1bd2eba3df5c54f0318a64bf263823"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.20#35799596325b33f2acf7b1e54eb79b1b0c2d5b8f"
 dependencies = [
  "borsh",
  "bs58",
+ "calimero-wasm-abi",
  "ed25519-dalek",
  "eyre",
+ "hex",
  "multiaddr",
  "serde",
  "serde_json",
@@ -116,9 +132,10 @@ dependencies = [
 [[package]]
 name = "calimero-sdk"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?branch=master#1a418f46ad1bd2eba3df5c54f0318a64bf263823"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.20#35799596325b33f2acf7b1e54eb79b1b0c2d5b8f"
 dependencies = [
  "borsh",
+ "calimero-account",
  "calimero-prelude",
  "calimero-primitives",
  "calimero-sdk-macros",
@@ -132,7 +149,7 @@ dependencies = [
 [[package]]
 name = "calimero-sdk-macros"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?branch=master#1a418f46ad1bd2eba3df5c54f0318a64bf263823"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.20#35799596325b33f2acf7b1e54eb79b1b0c2d5b8f"
 dependencies = [
  "prettyplease",
  "proc-macro2",
@@ -145,13 +162,15 @@ dependencies = [
 [[package]]
 name = "calimero-storage"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?branch=master#1a418f46ad1bd2eba3df5c54f0318a64bf263823"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.20#35799596325b33f2acf7b1e54eb79b1b0c2d5b8f"
 dependencies = [
  "borsh",
+ "calimero-account",
  "calimero-prelude",
  "calimero-primitives",
  "calimero-sdk",
  "calimero-storage-macros",
+ "calimero-wasm-abi",
  "ed25519-dalek",
  "eyre",
  "fixedstr",
@@ -167,7 +186,7 @@ dependencies = [
 [[package]]
 name = "calimero-storage-macros"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?branch=master#1a418f46ad1bd2eba3df5c54f0318a64bf263823"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.20#35799596325b33f2acf7b1e54eb79b1b0c2d5b8f"
 dependencies = [
  "quote",
  "syn",
@@ -176,7 +195,7 @@ dependencies = [
 [[package]]
 name = "calimero-sys"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?branch=master#1a418f46ad1bd2eba3df5c54f0318a64bf263823"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.20#35799596325b33f2acf7b1e54eb79b1b0c2d5b8f"
 dependencies = [
  "cfg-if",
 ]
@@ -184,13 +203,13 @@ dependencies = [
 [[package]]
 name = "calimero-wasm-abi"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?branch=master#1a418f46ad1bd2eba3df5c54f0318a64bf263823"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.20#35799596325b33f2acf7b1e54eb79b1b0c2d5b8f"
 dependencies = [
- "proc-macro2",
+ "indexmap",
  "serde",
  "serde_json",
- "syn",
  "thiserror 1.0.69",
+ "wasmparser",
 ]
 
 [[package]]
@@ -778,15 +797,13 @@ dependencies = [
 
 [[package]]
 name = "scaffolding-e2e"
-version = "0.10.1-rc.35"
+version = "0.0.1"
 dependencies = [
  "bs58",
  "calimero-sdk",
  "calimero-storage",
  "calimero-storage-macros",
- "calimero-wasm-abi",
  "hex",
- "serde_json",
  "sha2",
  "thiserror 1.0.69",
 ]
@@ -1092,6 +1109,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b"
 
 [[package]]
+name = "wasmparser"
+version = "0.118.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77f1154f1ab868e2a01d9834a805faca7bf8b50d041b4ca714d005d0dab1c50c"
+dependencies = [
+ "indexmap",
+ "semver",
+]
+
+[[package]]
 name = "winnow"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1175,6 +1202,20 @@ name = "zeroize"
 version = "1.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b97154e67e32c85465826e8bcc1c59429aaaf107c1e4a9e53c8d8ccd5eff88d0"
+dependencies = [
+ "zeroize_derive",
+]
+
+[[package]]
+name = "zeroize_derive"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c50655cbb0fe3fc43170059e702f1ce5e19b84cec58dc87b037a09935c2f328"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "zerotrie"

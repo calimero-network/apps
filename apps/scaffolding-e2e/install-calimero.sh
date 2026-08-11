@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="0.10.1-rc.29"
+VERSION="0.11.0-rc.20"
 REPO="calimero-network/core"
 INSTALL_DIR="/usr/local/bin"
 TMP_DIR="$(mktemp -d)"

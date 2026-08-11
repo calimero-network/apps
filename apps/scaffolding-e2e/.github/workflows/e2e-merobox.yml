@@ -2,7 +2,7 @@ name: E2E - Merobox Workflows
 
 # Runs all merobox workflow tests against the scaffolding-e2e WASM app.
 # Build: WASM compiled from Rust source, then all workflows run in parallel.
-# Uses ghcr.io/calimero-network/merod:0.10.1-rc.35 — pinned RC for reproducibility.
+# Uses ghcr.io/calimero-network/merod:0.11.0-rc.20 — pinned RC for reproducibility.
 
 permissions:
   contents: read
@@ -50,6 +50,11 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: logic -> logic/target
+
+      # build.sh is a wrapper around `cargo mero build` now — it also emits the
+      # ABI, which used to come from a build.rs that re-parsed the source.
+      - name: Setup cargo-mero
+        uses: ./.github/actions/install-cargo-mero
 
       - name: Build WASM
         run: |
@@ -121,18 +126,22 @@ jobs:
           name: scaffolding-e2e-wasm
           path: logic/res
 
-      - name: Install merobox (apt)
-        run: |
-          curl -fsSL https://calimero-network.github.io/merobox/gpg.key \
-            | sudo tee /usr/share/keyrings/merobox.gpg > /dev/null
-          echo "deb [signed-by=/usr/share/keyrings/merobox.gpg] https://calimero-network.github.io/merobox stable main" \
-            | sudo tee /etc/apt/sources.list.d/merobox.list
-          sudo apt-get update
-          sudo apt-get install -y merobox
-          merobox --version
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # merobox comes from PyPI, like every other Calimero app repo installs it.
+      # It used to be an apt repo at calimero-network.github.io/merobox, which
+      # stopped serving a Release file and took every job in this matrix down
+      # with a 404 from `apt-get update` — before any of them reached a test.
+      #
+      # A floor rather than an exact pin: these workflows rely on `result.output`
+      # dotted-path extraction, which older releases do not do.
+      - name: Install merobox
+        run: pip install "merobox>=0.6.49" && merobox --version
 
       - name: Pull merod image
-        run: docker pull ghcr.io/calimero-network/merod:0.10.1-rc.35
+        run: docker pull ghcr.io/calimero-network/merod:0.11.0-rc.20
 
       - name: Run ${{ matrix.workflow }}
         run: |

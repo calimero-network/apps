@@ -289,11 +289,11 @@ const GLOSSARY_ITEMS: {
       "Organizational layer above contexts. A namespace owns groups; groups own contexts. Joining a namespace grants eligibility to join any context inside it, removing the need for per-context invitations. Used for access control and discovery.",
   },
   {
-    term: "Identity / Executor",
+    term: "Device / Account",
     tag: "Auth",
     tagColor: "#f59e0b",
     definition:
-      "An Ed25519 keypair. Each context membership is tied to an identity. Shown as a base58-encoded 32-byte public key. There are no usernames or passwords — your key is your identity. env::executor_id() returns the caller's public key inside app methods.",
+      "Two different identities, and app code has to know which it holds. A device is one installation: an Ed25519 keypair, shown base58, what a context membership is tied to and what the CRDT layer uses as a replica id — env::device_id(). An account is the person, shown as 64 hex characters, and is the only thing that authorizes anything (the SharedStorage writer set is keyed by it) — env::account_id(). One account can have several devices. env::executor_id() used to be both and no longer exists. Call whoami to see both of yours.",
   },
   {
     term: "CRDT",

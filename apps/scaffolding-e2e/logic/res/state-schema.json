@@ -298,9 +298,14 @@
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
-              "kind": "string"
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
             }
           }
         }
@@ -380,5 +385,6 @@
   },
   "methods": [],
   "events": [],
-  "state_root": "E2eKvStore"
+  "state_root": "E2eKvStore",
+  "state_version": 1
 }

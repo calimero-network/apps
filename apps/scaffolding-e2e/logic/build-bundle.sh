@@ -1,60 +1,43 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+# Builds the signed .mpk you install with `meroctl app install`.
+#
+# A thin wrapper around `cargo mero bundle`, kept because setup.sh and the docs
+# call it by name. Everything it used to do by hand — assemble a bundle-temp
+# directory, hand-write manifest.json, stat file sizes, mero-sign, tar — is now
+# the tool's job, and the manifest fields come from [package.metadata.calimero]
+# in Cargo.toml (including the icon).
+#
+# THE SIGNING KEY IS GENERATED, NOT COMMITTED. A key file used to live at
+# res/my-key.json in git, which meant anyone could sign a bundle that the
+# registry and every node would accept as this package. That key is gone and
+# revoked by deletion; this script mints a local one on first run and .gitignore
+# keeps it out. Whoever signs a package's first published version owns it: the
+# node derives ApplicationId from (package, signer), so a different key is a
+# different app, not an upgrade. CI signs with the organization's MERO_SIGN_KEY
+# secret instead — see .github/workflows/deploy-bundle.yml.
+set -euo pipefail
 
-cd "$(dirname $0)"
+cd "$(dirname "$0")"
 
-TARGET="${CARGO_TARGET_DIR:-./target}"
+# CI points this at the secret it wrote to a temp file; locally it defaults to
+# the gitignored dev key.
+KEY="${MERO_SIGN_KEY_FILE:-res/my-key.json}"
 
-# First build the WASM file
-# Note: wasm-opt validation errors are non-fatal - the WASM file is still created
-./build.sh 2>&1 | grep -v "wasm-validator error" || true
-
-# Create bundle directory
-mkdir -p res/bundle-temp
-
-# Copy WASM file
-cp res/scaffolding_e2e.wasm res/bundle-temp/app.wasm
-
-# Copy ABI file if it exists
-if [ -f res/abi.json ]; then
-    cp res/abi.json res/bundle-temp/abi.json
+if [ ! -f "$KEY" ]; then
+    if [ -n "${MERO_SIGN_KEY_FILE:-}" ]; then
+        # An explicit path that does not exist is a configuration error, not an
+        # invitation to mint a key CI would then publish under.
+        echo "ERROR: MERO_SIGN_KEY_FILE points at a missing file: $KEY" >&2
+        exit 1
+    fi
+    echo "==> no signing key at $KEY — generating a local dev key (gitignored)"
+    cargo mero key generate --output "$KEY"
 fi
 
-# Get file sizes for manifest
-WASM_SIZE=$(stat -f%z res/scaffolding_e2e.wasm 2>/dev/null || stat -c%s res/scaffolding_e2e.wasm 2>/dev/null || echo 0)
-ABI_SIZE=$(stat -f%z res/abi.json 2>/dev/null || stat -c%s res/abi.json 2>/dev/null || echo 0)
+# Local builds do not ask the registry for a number: this is the offline
+# onboarding path, and the version of a bundle you install by hand is
+# irrelevant. Releases go through deploy-bundle.yml, which resolves the real
+# version from the registry and passes it as --app-version.
+APP_VERSION="${APP_VERSION:-0.0.1}"
 
-# Create manifest.json
-cat > res/bundle-temp/manifest.json <<EOF
-{
-  "version": "1.0",
-  "package": "com.calimero.scaffolding-e2e",
-  "appVersion": "1.0.0",
-  "minRuntimeVersion": "0.10.0",
-  "wasm": {
-    "path": "app.wasm",
-    "size": ${WASM_SIZE},
-    "hash": null
-  },
-  "abi": {
-    "path": "abi.json",
-    "size": ${ABI_SIZE},
-    "hash": null
-  },
-  "migrations": []
-}
-EOF
-
-mero-sign sign res/bundle-temp/manifest.json \
-    --key res/my-key.json
-
-# Create .mpk bundle (tar.gz archive)
-cd res/bundle-temp
-tar -czf ../scaffolding-e2e-1.0.0.mpk manifest.json app.wasm abi.json 2>/dev/null || \
-tar -czf ../scaffolding-e2e-1.0.0.mpk manifest.json app.wasm 2>/dev/null
-
-# Cleanup
-cd ..
-rm -rf bundle-temp
-
-echo "Bundle created: res/scaffolding-e2e-1.0.0.mpk"
+cargo mero bundle --key "$KEY" --app-version "$APP_VERSION" --print-output-path

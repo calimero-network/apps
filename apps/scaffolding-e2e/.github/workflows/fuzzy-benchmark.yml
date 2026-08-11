@@ -52,6 +52,11 @@ jobs:
         with:
           workspaces: logic -> logic/target
 
+      # build.sh is a wrapper around `cargo mero build` now — it also emits the
+      # ABI, which used to come from a build.rs that re-parsed the source.
+      - name: Setup cargo-mero
+        uses: ./.github/actions/install-cargo-mero
+
       - name: Build WASM
         run: |
           cd logic
@@ -81,18 +86,17 @@ jobs:
           name: fuzzy-benchmark-wasm
           path: logic/res
 
-      - name: Install merobox (apt)
-        run: |
-          curl -fsSL https://calimero-network.github.io/merobox/gpg.key \
-            | sudo tee /usr/share/keyrings/merobox.gpg > /dev/null
-          echo "deb [signed-by=/usr/share/keyrings/merobox.gpg] https://calimero-network.github.io/merobox stable main" \
-            | sudo tee /etc/apt/sources.list.d/merobox.list
-          sudo apt-get update
-          sudo apt-get install -y merobox
-          merobox --version
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # From PyPI — the old apt repo at calimero-network.github.io/merobox no
+      # longer serves a Release file. See e2e-merobox.yml.
+      - name: Install merobox
+        run: pip install "merobox>=0.6.49" && merobox --version
 
       - name: Pull merod image
-        run: docker pull ghcr.io/calimero-network/merod:0.10.1-rc.35
+        run: docker pull ghcr.io/calimero-network/merod:0.11.0-rc.20
 
       - name: Override test duration
         run: |

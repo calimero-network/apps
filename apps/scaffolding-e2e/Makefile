@@ -60,8 +60,8 @@ ci-frontend: ci-wasm
 # Runs every workflow YAML against a 3-node Docker mesh. Requires Docker.
 
 ci-merobox: ci-wasm
-	@echo "==> [merobox] docker pull merod:0.10.1-rc.35"
-	docker pull ghcr.io/calimero-network/merod:0.10.1-rc.35
+	@echo "==> [merobox] docker pull merod:0.11.0-rc.20"
+	docker pull ghcr.io/calimero-network/merod:0.11.0-rc.20
 	@echo "==> [merobox] running all workflows"
 	@cd logic && set -e; \
 	failed=""; \

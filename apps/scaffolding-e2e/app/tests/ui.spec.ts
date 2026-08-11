@@ -22,7 +22,14 @@ test.use({ storageState: { cookies: [], origins: [] } });
 
 // ── RPC mock table ────────────────────────────────────────────────────────────
 
+// A 64-hex account id, the shape `whoami` and the shared_* writer API use.
+// Distinct from FAKE_IDENTITY, which is a base58 device key — the two are
+// different identities and the UI copy now says so.
+const FAKE_ACCOUNT = "a".repeat(64);
+
 const RPC_RESULTS: Record<string, unknown> = {
+  // Identity
+  whoami: { device_id: FAKE_IDENTITY, account_id: FAKE_ACCOUNT },
   // KV
   set: null,
   get: "hello-world",
@@ -877,13 +884,13 @@ test.describe("Shared Storage", () => {
     await expect(setCard.locator("button", { hasText: "Execute" })).toBeVisible();
   });
 
-  test("shared_add_writer card has key input with FieldHelp", async ({ page }) => {
+  test("shared_add_writer card has account input with FieldHelp", async ({ page }) => {
     await navigateTo(page, "Shared Storage");
     const writerCard = page
-      .locator(".method-card", { hasText: "shared_add_writer(writer_bs58)" })
+      .locator(".method-card", { hasText: "shared_add_writer(account_hex)" })
       .first();
     await expect(
-      writerCard.locator("input[placeholder='base58 public key']"),
+      writerCard.locator("input[placeholder='64-hex account id']"),
     ).toBeVisible();
   });
 

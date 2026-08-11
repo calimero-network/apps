@@ -81,6 +81,11 @@ jobs:
         with:
           workspaces: logic -> logic/target
 
+      # build.sh is a wrapper around `cargo mero build` now — it also emits the
+      # ABI, which used to come from a build.rs that re-parsed the source.
+      - name: Setup cargo-mero
+        uses: ./.github/actions/install-cargo-mero
+
       - name: Build WASM
         run: cd logic && ./build.sh
 

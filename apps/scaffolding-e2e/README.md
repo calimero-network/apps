@@ -51,13 +51,28 @@ meroctl --node node1 node identity
 
 ## 3. Build the app bundle
 
+Install the Calimero app toolchain once (pinned to the same core release as the
+SDK in `logic/Cargo.toml` — the ABI emitter is versioned with core):
+
+```bash
+cargo install --git https://github.com/calimero-network/core \
+  --tag 0.11.0-rc.20 cargo-mero --locked
+```
+
+Then build:
+
 ```bash
 cd logic
 ./build-bundle.sh
 cd ..
 ```
 
-Output: `logic/res/scaffolding-e2e-1.0.0.mpk`
+Output: `logic/dist/com.calimero.scaffolding-e2e-0.0.1.mpk`
+
+The first run also generates a signing key at `logic/res/my-key.json` and tells
+you so. It is gitignored — do not commit it. Whoever signs a package's first
+published version owns it, because the node derives the ApplicationId from
+(package, signer), so a different key is a different app rather than an upgrade.
 
 First build takes a few minutes (Rust + WASM). Subsequent builds are fast.
 
@@ -66,7 +81,7 @@ First build takes a few minutes (Rust + WASM). Subsequent builds are fast.
 ## 4. Install the app on the node
 
 ```bash
-meroctl --node node1 app install --path logic/res/scaffolding-e2e-1.0.0.mpk
+meroctl --node node1 app install --path logic/dist/com.calimero.scaffolding-e2e-0.0.1.mpk
 ```
 
 The output includes an `applicationId`. Copy it — you need it in the next steps.
@@ -150,7 +165,7 @@ meroctl node add node2 ~/.calimero/node2
 Install the same app on node2:
 
 ```bash
-meroctl --node node2 app install --path logic/res/scaffolding-e2e-1.0.0.mpk
+meroctl --node node2 app install --path logic/dist/com.calimero.scaffolding-e2e-0.0.1.mpk
 ```
 
 Invite node2 to the namespace from node1:
@@ -193,25 +208,68 @@ Methods exposed:
 
 ### SharedStorage
 
-A **single-value** store with an explicit writer set. Only nodes whose Ed25519 public key is in the writer set can call `shared_set`. The writer set is managed via `rotate_writers` (exposed as `shared_add_writer` in this app). Any context member can read.
+A **single-value** store with an explicit writer set. Only callers whose **account** is in the writer set can call `shared_set`. The writer set is managed via `rotate_writers` (exposed as `shared_add_writer` in this app). Any context member can read.
 
-The writer set is a `BTreeSet<PublicKey>`. The context creator (node1) is the initial writer. Use `shared_add_writer` with a base58 public key to authorize additional nodes before they attempt to write.
+The writer set is a `BTreeSet<AccountId>` — an account id, not the base58 device key the rest of this app reports. Core 0.11 split one identity into a device (the installation, the CRDT replica id, what `authored_get_owner` returns) and an account (the person, the only authorization subject), and only the account authorizes. `AccountId` is `From<[u8; 32]>`, so passing a device key where an account belongs still compiles and still "succeeds" — it just grants an account nobody holds, and the grantee stays unable to write. Nothing on the wire maps a device key to an account, so a peer has to tell you theirs: `whoami`.
+
+The context creator (node1) is the initial writer. Use `shared_add_writer` with a 64-hex account id to authorize additional accounts before they attempt to write.
 
 Frontend: **Storage → Shared Storage**
 
 Methods exposed:
+- `whoami()` — the caller's own `{ device_id, account_id }`
 - `shared_set(value)` — set the shared value (writers only)
 - `shared_get()` — read the current value
-- `shared_get_writers()` — list authorized writer keys (base58)
-- `shared_add_writer(writer_bs58)` — add a writer by base58 public key
-- `shared_is_writer(key_bs58)` — check if a key is authorized
+- `shared_get_writers()` — list authorized writer accounts (64-hex)
+- `shared_add_writer(account_hex)` — add a writer by account id
+- `shared_is_writer(account_hex)` — check if an account is authorized
 - `shared_is_frozen()` — whether the storage was locked at construction
+
+---
+
+## Publishing to the App Registry
+
+`.github/workflows/deploy-bundle.yml` builds, signs and publishes
+`com.calimero.scaffolding-e2e` to [apps.calimero.network](https://apps.calimero.network)
+on every merge to `master` that touches `logic/**`, and on manual dispatch.
+
+**The registry owns the version.** The workflow asks it for the highest
+published `appVersion` and increments the patch (starting at `0.0.1` when
+nothing is published). `logic/Cargo.toml`'s `version` field is not the release
+version and bumping it changes nothing — read a shipped version from the
+registry or the workflow's run summary, never from the tree. The trade-off is
+that there is no idempotency: a re-run mints another version of the same
+content.
+
+Everything the registry and the node render — name, description, author,
+license, tags, links, icon, `minRuntimeVersion` — comes from
+`[package.metadata.calimero]` in `logic/Cargo.toml`. No manifest is written by
+hand. `min-runtime-version` must stay equal to the `calimero-sdk` tag: this
+build imports host functions that only exist from that release on, and a node
+older than that installs the bundle happily and then fails at context creation
+with `link error: unknown import`.
+
+Two organization secrets are required:
+
+| Secret | What it is |
+| --- | --- |
+| `MERO_SIGN_KEY` | Full JSON of the production signing key. Must be the key that signed the package's first published version — the node derives the ApplicationId from (package, signer), so a different key publishes a *different app*, not an upgrade. |
+| `CALIMERO_REGISTRY_API_KEY` | API token from the registry's Organizations page (CLI Access). |
+
+⚠️ Set these at **organization** level. A repo-level secret of the same name
+shadows the org one, which is how a sibling app ended up published under an
+individual's account instead of `calimero-network`. The workflow's last step
+detects it — but only after the bundle is already on the registry.
+
+To change the icon, edit `logic/res/icon.svg` and run `logic/gen-icon.sh`.
 
 ---
 
 ## Troubleshooting
 
 **`merod` / `meroctl` not found** — run `./install-calimero.sh` and restart your terminal.
+
+**`cargo mero` not found** — `cargo install --git https://github.com/calimero-network/core --tag 0.11.0-rc.20 cargo-mero --locked`.
 
 **`app install` fails** — run `./logic/build-bundle.sh` first.
 

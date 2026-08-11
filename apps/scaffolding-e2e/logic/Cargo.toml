@@ -1,27 +1,69 @@
 [package]
 name = "scaffolding-e2e"
-version = "0.10.1-rc.35"
+# NOT the release version. cargo requires a version field, but
+# .github/workflows/deploy-bundle.yml ignores it: the registry owns the number —
+# the check job takes the highest published appVersion and increments the patch
+# (0.0.1 when nothing is published yet). Bumping this changes nothing about what
+# gets released, so do not read a shipped version out of the tree; read it from
+# the registry or the workflow's run summary.
+version = "0.0.1"
 authors = ["Calimero Limited <info@calimero.network>"]
 edition = "2021"
-repository = "https://github.com/calimero-network/core"
+repository = "https://github.com/calimero-network/scaffolding-e2e-application"
 license = "MIT OR Apache-2.0"
 publish = false
 
 [lib]
 crate-type = ["cdylib"]
 
+# Read by `cargo mero bundle` (core #3374): every field the node and the registry
+# render has a producer here, so nothing hand-writes a manifest.json any more.
+# `appVersion` is deliberately absent — deploy-bundle.yml resolves it from the
+# registry and passes it as --app-version.
+[package.metadata.calimero]
+package = "com.calimero.scaffolding-e2e"
+name = "Scaffolding E2E"
+description = "Calimero full-stack scaffold — KV, CRDTs, blobs, private storage, and namespace management with an interactive test suite."
+author = "Calimero"
+license = "MIT OR Apache-2.0"
+# Defaults to the package id anyway; spelled out because the desktop and
+# links.calimero.network resolve a deep link by Application.package, so the two
+# must never drift apart.
+slug = "com.calimero.scaffolding-e2e"
+# `cargo mero bundle` REQUIRES an icon decision at rc.20 — a path, "default", or
+# --no-icon. This is the frontend's own favicon rasterized to 512x512 (the
+# 32x32 favicon.png is too small), embedded into the manifest as a data: URI.
+# Regenerate with `logic/gen-icon.sh`.
+icon = "res/icon-512.png"
+tags = ["scaffold", "example", "crdt", "testing"]
+github = "https://github.com/calimero-network/scaffolding-e2e-application"
+# Keep this equal to the calimero-sdk tag below. It is NOT decoration: this
+# build imports host functions that only exist from that release on, so a node
+# older than this installs the bundle happily and then dies at context creation
+# with `link error: unknown import`.
+min-runtime-version = "0.11.0-rc.20"
+# No `frontend` key on purpose: the scaffold's UI is meant to be run locally
+# (`cd frontend && pnpm dev`), so there is no hosted URL for a deep link to
+# forward to. Add one here if this app is ever deployed.
+
 [dependencies]
-calimero-sdk            = { git = "https://github.com/calimero-network/core", branch = "master" }
-calimero-storage        = { git = "https://github.com/calimero-network/core", branch = "master" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core", branch = "master" }
+# Pin a real release tag, never `branch = "master"`: master rides unreleased
+# protocol work against nodes that run the release. All SDK crates must share
+# the exact same tag (the workspace version at a tag is 0.0.0, so version
+# strings cannot express this).
+calimero-sdk            = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.20" }
+calimero-storage        = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.20" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.20" }
 thiserror = "1.0.56"
 sha2      = "0.10.8"
 hex       = "0.4.3"
 bs58      = "0.5.0"
 
-[build-dependencies]
-calimero-wasm-abi = { git = "https://github.com/calimero-network/core", branch = "master" }
-serde_json        = "1.0.113"
+# No [build-dependencies] / build.rs any more: the old build.rs re-parsed
+# src/lib.rs with calimero-wasm-abi's syn emitter to produce res/abi.json.
+# `cargo mero build` emits res/abi.json and res/state-schema.json itself, from
+# the compiler-resolved `__calimero_abi()` — which is why type aliases and
+# re-exports now resolve correctly instead of silently dropping types.
 
 [profile.app-release]
 inherits          = "release"

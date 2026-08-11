@@ -6,7 +6,7 @@ Everything you need to do before opening the frontend for the first time.
 
 ## Prerequisites
 
-Install `merod` and `meroctl` (v0.10.1-rc.20):
+Install `merod` and `meroctl` (v0.11.0-rc.20):
 
 ```bash
 ./install-calimero.sh
@@ -65,13 +65,24 @@ meroctl --node node1 node identity
 
 ## 4. Build the app bundle
 
+Install the app toolchain once, pinned to the same core release as the SDK in
+`logic/Cargo.toml`:
+
+```bash
+cargo install --git https://github.com/calimero-network/core \
+  --tag 0.11.0-rc.20 cargo-mero --locked
+```
+
 ```bash
 cd logic
 ./build-bundle.sh
 cd ..
 ```
 
-This produces `logic/res/scaffolding-e2e-1.0.0.mpk`.
+This produces `logic/dist/com.calimero.scaffolding-e2e-0.0.1.mpk`, and on the
+first run also generates a gitignored signing key at `logic/res/my-key.json`.
+Never commit that key: whoever signs a package's first published version owns
+it on the registry.
 
 > First run takes a few minutes (Rust + WASM compilation). Subsequent builds are fast.
 
@@ -81,7 +92,7 @@ This produces `logic/res/scaffolding-e2e-1.0.0.mpk`.
 
 ```bash
 APP_ID=$(meroctl --node node1 --output-format json app install \
-  --path logic/res/scaffolding-e2e-1.0.0.mpk \
+  --path logic/dist/com.calimero.scaffolding-e2e-0.0.1.mpk \
   | jq -r '.applicationId')
 
 echo "APP_ID=$APP_ID"
@@ -196,7 +207,7 @@ meroctl node use node1
 cd logic && ./build-bundle.sh && cd ..
 
 APP_ID=$(meroctl --node node1 --output-format json app install \
-  --path logic/res/scaffolding-e2e-1.0.0.mpk | jq -r '.applicationId')
+  --path logic/dist/com.calimero.scaffolding-e2e-0.0.1.mpk | jq -r '.applicationId')
 
 NS_ID=$(meroctl --node node1 --output-format json namespace create \
   --application-id $APP_ID | jq -r '.namespaceId')
@@ -233,7 +244,7 @@ merod --home ~/.calimero/node2 init --server-host 127.0.0.1 --server-port 2529 -
 meroctl node add node2 ~/.calimero/node2
 
 # Install same app on node2
-meroctl --node node2 app install --path logic/res/scaffolding-e2e-1.0.0.mpk
+meroctl --node node2 app install --path logic/dist/com.calimero.scaffolding-e2e-0.0.1.mpk
 
 # node1 generates an invitation for the namespace
 INVITE=$(meroctl --node node1 --output-format json namespace invite $NS_ID)

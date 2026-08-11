@@ -36,11 +36,19 @@ export function SharedStorage() {
       <div className="section-header">
         <h2 className="section-title">Shared Storage</h2>
         <p className="section-desc">
-          Single-value storage with an explicit writer set. Only nodes whose
-          public key is in the writer set can call <code>shared_set</code>.
-          The writer set is rotatable. The node that initialized the context is
-          the first writer; additional writers must be added via{" "}
-          <code>shared_add_writer</code> before they can write.
+          Single-value storage with an explicit writer set. Only callers whose{" "}
+          <strong>account</strong> is in the writer set can call{" "}
+          <code>shared_set</code>. The writer set is rotatable. The node that
+          initialized the context is the first writer; additional writers must
+          be added via <code>shared_add_writer</code> before they can write.
+        </p>
+        <p className="section-desc">
+          Note the identity: this set is keyed by <strong>account id</strong>{" "}
+          (64 hex characters), not by the base58 device key shown in the context
+          bar and reported by the <code>authored_*</code> methods. Core 0.11
+          split the two, and only the account authorizes. Call{" "}
+          <code>whoami</code> to get yours — nothing on the wire maps a device
+          key to an account, so a peer has to hand you theirs.
         </p>
       </div>
 
@@ -100,21 +108,21 @@ export function SharedStorage() {
         </div>
 
         <div className="method-card">
-          <div className="method-name">shared_add_writer(writer_bs58)</div>
+          <div className="method-name">shared_add_writer(account_hex)</div>
           <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 10 }}>
-            Add a new writer by base58 public key. Only existing writers can
-            expand the writer set.
+            Add a new writer by account id. Only existing writers can expand the
+            writer set.
           </p>
           <div className="method-inputs">
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <input
                 className="form-control"
                 style={{ flex: 1 }}
-                placeholder="base58 public key"
+                placeholder="64-hex account id"
                 value={addWriterKey}
                 onChange={(e) => setAddWriterKey(e.target.value)}
               />
-              <FieldHelp text="Get the public key from shared_get_writers (for a known writer) or from the node's context bar (executor key). It's the Ed25519 public key encoded in base58." />
+              <FieldHelp text="An account id: 64 hex characters. Get it from shared_get_writers (for an existing writer) or from whoami (for yourself). NOT the base58 executor key in the context bar — that is the device id, and granting it silently authorizes nobody." />
             </div>
           </div>
           <button
@@ -128,14 +136,14 @@ export function SharedStorage() {
         </div>
 
         <div className="method-card">
-          <div className="method-name">shared_is_writer(key_bs58)</div>
+          <div className="method-name">shared_is_writer(account_hex)</div>
           <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 10 }}>
-            Check whether a given public key is an authorized writer.
+            Check whether a given account is an authorized writer.
           </p>
           <div className="method-inputs">
             <input
               className="form-control"
-              placeholder="base58 public key"
+              placeholder="64-hex account id"
               value={isWriterKey}
               onChange={(e) => setIsWriterKey(e.target.value)}
             />

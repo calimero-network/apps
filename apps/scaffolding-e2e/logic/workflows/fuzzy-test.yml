@@ -9,7 +9,7 @@ nuke_on_end: false
 nodes:
   chain_id: calimero-testnet
   count: 4
-  image: ghcr.io/calimero-network/merod:0.10.1-rc.35
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.20
   prefix: fuzzy-e2e-node
   use_image_entrypoint: false
 
@@ -148,7 +148,41 @@ steps:
       key: "authored_seed_4"
       value: "authored_val_4"
 
-  # Add all nodes as SharedStorage writers so any node can write during the fuzzy test
+  # Add all nodes as SharedStorage writers so any node can write during the fuzzy
+  # test. The writer set is keyed by ACCOUNT (core 0.11) and merobox only knows
+  # each node's DEVICE key, so every node has to report its own account id first
+  # — see whoami. Granting the device key instead would still "succeed" and
+  # leave all three unable to write.
+  - name: node-2 reports its own account id
+    type: call
+    node: fuzzy-e2e-node-2
+    context_id: "{{e2e_context_id}}"
+    executor_public_key: "{{public_key_fuzzy-e2e-node-2}}"
+    method: whoami
+    args: {}
+    outputs:
+      n2_account: result.output.account_id
+
+  - name: node-3 reports its own account id
+    type: call
+    node: fuzzy-e2e-node-3
+    context_id: "{{e2e_context_id}}"
+    executor_public_key: "{{public_key_fuzzy-e2e-node-3}}"
+    method: whoami
+    args: {}
+    outputs:
+      n3_account: result.output.account_id
+
+  - name: node-4 reports its own account id
+    type: call
+    node: fuzzy-e2e-node-4
+    context_id: "{{e2e_context_id}}"
+    executor_public_key: "{{public_key_fuzzy-e2e-node-4}}"
+    method: whoami
+    args: {}
+    outputs:
+      n4_account: result.output.account_id
+
   - name: Add node-2 as shared writer
     type: call
     node: fuzzy-e2e-node-1
@@ -156,7 +190,7 @@ steps:
     executor_public_key: "{{node1_key}}"
     method: shared_add_writer
     args:
-      writer_bs58: "{{public_key_fuzzy-e2e-node-2}}"
+      account_hex: "{{n2_account}}"
 
   - name: Add node-3 as shared writer
     type: call
@@ -165,7 +199,7 @@ steps:
     executor_public_key: "{{node1_key}}"
     method: shared_add_writer
     args:
-      writer_bs58: "{{public_key_fuzzy-e2e-node-3}}"
+      account_hex: "{{n3_account}}"
 
   - name: Add node-4 as shared writer
     type: call
@@ -174,7 +208,7 @@ steps:
     executor_public_key: "{{node1_key}}"
     method: shared_add_writer
     args:
-      writer_bs58: "{{public_key_fuzzy-e2e-node-4}}"
+      account_hex: "{{n4_account}}"
 
   # Seed an initial SharedStorage value so shared_get always returns something
   - name: Seed initial shared storage value

@@ -25,7 +25,10 @@ NODE_A_P2P_PORT="${CALIMERO_P2P_PORT_A:-2628}"
 NODE_B_P2P_PORT="${CALIMERO_P2P_PORT_B:-2629}"
 ADMIN_USER="${CALIMERO_ADMIN_USER:-admin}"
 ADMIN_PASS="${CALIMERO_ADMIN_PASS:-calimero1234}"  # min 8 chars
-LOGIC_MPK="logic/res/scaffolding-e2e-1.0.0.mpk"
+# `cargo mero bundle` writes dist/<package>-<appVersion>.mpk. build-bundle.sh
+# defaults APP_VERSION to 0.0.1 for local builds (releases get their number from
+# the registry, in .github/workflows/deploy-bundle.yml), so this path is stable.
+LOGIC_MPK="logic/dist/com.calimero.scaffolding-e2e-0.0.1.mpk"
 ENV_FILE="frontend/.env"
 ENV_EXAMPLE="frontend/.env.example"
 
@@ -262,6 +265,10 @@ else
 fi
 check_cmd jq
 check_cmd python3
+# The bundle is built by `cargo mero`, which build-bundle.sh wraps. Checked here
+# so a missing toolchain fails in the prerequisites step with the install line,
+# rather than several minutes later mid-build.
+check_cmd cargo
 green "All tools found"
 
 # ── Build the app bundle ──────────────────────────────────────────────────────

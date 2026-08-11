@@ -7,7 +7,7 @@ nuke_on_start: true
 nodes:
   chain_id: testnet-1
   count: 3
-  image: ghcr.io/calimero-network/merod:0.10.1-rc.35
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.20
   prefix: e2e-node
 
 steps:
@@ -274,6 +274,22 @@ steps:
     statements:
       - 'json_equal({{n3_shared_get}}, {"output": "v1_from_node1"})'
 
+  # The writer set is keyed by ACCOUNT (core 0.11), and nothing on the wire maps
+  # a node's public key to its account id — merobox only exposes
+  # public_key_<node>, which is the DEVICE key. So node-2 has to tell us its own
+  # account id, which is what whoami is for. Passing the base58 device key here
+  # does not fail loudly; it just names an account nobody holds, so every
+  # is_writer check would answer false and the test would prove nothing.
+  - name: node-2 reports its own account id
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: whoami
+    args: {}
+    outputs:
+      n2_account: result.output.account_id
+
   - name: node-2 checks shared_is_writer for itself (should be false)
     type: call
     node: e2e-node-2
@@ -281,7 +297,7 @@ steps:
     executor_public_key: "{{public_key_e2e-node-2}}"
     method: shared_is_writer
     args:
-      key_bs58: "{{public_key_e2e-node-2}}"
+      account_hex: "{{n2_account}}"
     outputs:
       n2_is_writer_pre: result
 
@@ -298,7 +314,7 @@ steps:
     executor_public_key: "{{node1_key}}"
     method: shared_add_writer
     args:
-      writer_bs58: "{{public_key_e2e-node-2}}"
+      account_hex: "{{n2_account}}"
 
   - name: Wait for sync after shared_add_writer
     type: wait_for_sync
@@ -318,7 +334,7 @@ steps:
     executor_public_key: "{{public_key_e2e-node-2}}"
     method: shared_is_writer
     args:
-      key_bs58: "{{public_key_e2e-node-2}}"
+      account_hex: "{{n2_account}}"
     outputs:
       n2_is_writer_post: result
 
