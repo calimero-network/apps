@@ -207,11 +207,16 @@ jobs:
         uses: ./.github/actions/install-cargo-mero
 
       - name: Write signing key
+        id: signkey
         env:
           MERO_SIGN_KEY: ${{ secrets.MERO_SIGN_KEY }}
         run: |
           umask 077
           printf '%s' "$MERO_SIGN_KEY" > "$RUNNER_TEMP/mero-sign-key.json"
+          # Published as an output (the signerId is a public key, not a secret) so
+          # the post-publish check can confirm the registry recorded THIS signer.
+          signer=$(jq -r '.signer_id // ""' "$RUNNER_TEMP/mero-sign-key.json")
+          echo "signer_id=$signer" >> "$GITHUB_OUTPUT"
 
       - name: Verify signer matches the published package
         env:
@@ -296,6 +301,58 @@ jobs:
           CALIMERO_REGISTRY_URL: https://apps.calimero.network
           PACKAGE: ${{ needs.check.outputs.package }}
         run: cargo mero publish "dist/$PACKAGE.mpk"
+
+      # The registry attributes a publish to whatever account owns the API key it
+      # was made with, and stamps `metadata.author` with that account's username —
+      # it does NOT use the `author` field from Cargo.toml. So a personal API key
+      # silently publishes an org app under a personal name, with nothing in the
+      # run log to show it.
+      #
+      # That is exactly what happened here: a repo-level CALIMERO_REGISTRY_API_KEY
+      # shadowed the organization secret (repo secrets win), and this package went
+      # out as author "frand". mero-ar, which has no repo-level secrets and so uses
+      # the org key, published correctly as "calimero-network".
+      #
+      # This step fails the run if the registry did not record the expected
+      # publisher, so the same mistake can never ship quietly again.
+      - name: Verify the registry recorded the expected publisher and signer
+        env:
+          PACKAGE: ${{ needs.check.outputs.package }}
+          VERSION: ${{ needs.check.outputs.version }}
+          EXPECTED_AUTHOR: ${{ vars.EXPECTED_REGISTRY_AUTHOR || 'calimero-network' }}
+          EXPECTED_SIGNER: ${{ steps.signkey.outputs.signer_id }}
+        run: |
+          set -euo pipefail
+          url="https://apps.calimero.network/api/v2/bundles/$PACKAGE/$VERSION"
+          # The publish is not necessarily readable the instant it returns.
+          for attempt in 1 2 3 4 5; do
+            manifest=$(curl -sf "$url") && break
+            echo "manifest not readable yet (attempt $attempt)"
+            sleep 5
+          done
+          if [ -z "${manifest:-}" ]; then
+            echo "::error::published $PACKAGE $VERSION but could not read it back from the registry"
+            exit 1
+          fi
+
+          author=$(printf '%s' "$manifest" | jq -r '.metadata.author // ""')
+          signer=$(printf '%s' "$manifest" | jq -r '.signerId // ""')
+          echo "registry recorded author=$author signerId=$signer"
+
+          if [ "$author" != "$EXPECTED_AUTHOR" ]; then
+            echo "::error::published as \"$author\" but expected \"$EXPECTED_AUTHOR\". The API key used is not the organization's. Remove any repo-level CALIMERO_REGISTRY_API_KEY secret so the organization secret applies (a repo secret shadows an org secret of the same name)."
+            exit 1
+          fi
+
+          # Guards the more dangerous half: the node derives ApplicationId from
+          # (package, signer), so a changed signer silently ships a DIFFERENT app
+          # and orphans every installed instance and invite link.
+          if [ -n "$EXPECTED_SIGNER" ] && [ "$signer" != "$EXPECTED_SIGNER" ]; then
+            echo "::error::registry recorded signer $signer but this run signed with $EXPECTED_SIGNER"
+            exit 1
+          fi
+
+          echo "::notice::$PACKAGE $VERSION published as $author (signer $signer)"
 
       - name: Summary
         env:
