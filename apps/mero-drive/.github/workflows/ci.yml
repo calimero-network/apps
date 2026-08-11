@@ -229,10 +229,10 @@ jobs:
   # Each merobox workflow runs in its own matrix cell so they execute
   # in parallel instead of sequentially. Mirrors the structure in
   # calimero-network/core's e2e-rust-apps.yml. Wall-clock time drops
-  # roughly 5x on green CI runs because the main + reconciliation +
-  # three Phase-9 workflows no longer serialize behind each other.
+  # roughly 5x on green CI runs because the main + Phase-9 workflows no
+  # longer serialize behind each other.
   # fail-fast: false keeps a single workflow failure from hiding
-  # regressions in the other four.
+  # regressions in the others.
   #
   # merobox is installed from the official apt repo
   # (https://calimero-network.github.io/merobox) — a signed binary
@@ -258,10 +258,6 @@ jobs:
           # across two nodes, cross-node sync assertions.
           - name: main
             file: workflow-mero-drive-e2e.yml
-          # Reconciliation: the three drift scenarios from the design
-          # spec, single node.
-          - name: reconciliation
-            file: workflow-mero-drive-reconciliation.yml
           # Phase 9 — docs lifecycle. Every DocsClient method + tag
           # flow + archive flow across two nodes.
           - name: docs-lifecycle

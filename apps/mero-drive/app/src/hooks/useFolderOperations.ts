@@ -88,9 +88,9 @@ export function useFolderOperations(
       // what we successfully did and reverse it in the catch. The
       // registry side is reversible via unregisterFolder, the admin
       // side via deleteGroup, and the context side via deleteContext.
-      // What useReconcile can't easily recover on its own is a leaked
-      // docs context with no registry entry — so rolling back the
-      // context on later failures is the most valuable of the three.
+      // A leaked docs context with no registry entry is the artifact
+      // nothing else can recover, so rolling back the context on later
+      // failures is the most valuable of the three.
       let createdGroupId: string | null = null;
       let createdContextId: string | null = null;
       let registryEntryCreated = false;

@@ -1,4 +1,4 @@
-// Namespace-admin settings surface. Two sections:
+// Namespace-admin settings surface. One section:
 //
 //   1. Registry owner & managers — the fail-closed authorization roots
 //      for the per-folder Role API (set_folder_role / add_manager all
@@ -7,28 +7,16 @@
 //      registry is unclaimed (a namespace seeded before `claim_owner`
 //      was wired in), any namespace-admin can "Claim ownership".
 //
-//   2. Reconcile registry — an idempotent diff+apply that brings the
-//      folder registry in line with admin-side groups. Safe to run at
-//      any time; acts only on drifted entries.
-//
-// Both are admin-only — the panel returns null for non-admins so the
-// settings surface doesn't advertise actions the caller can't take.
-//
-// TODO: extend Reconcile's summary to also report registry-permission
-// drift (owner/managers vs core namespace-admins out of sync) + an
-// "Add core admins as managers" action. Today it only reports folder
-// register/unregister/move drift. (Per the plan: shipped Step 1 only;
-// the reconcile-permission-drift extension is a follow-up.)
+// Admin-only — the panel returns null for non-admins so the settings
+// surface doesn't advertise actions the caller can't take.
 
 import React, { useState } from 'react';
-import { RefreshCw, Crown, ShieldCheck, UserPlus } from 'lucide-react';
-import { useSubgroups } from '@calimero-network/mero-react';
+import { Crown, ShieldCheck, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { useRegistryAdmin } from '@/hooks/useRegistryAdmin';
-import { useReconcile } from '@/hooks/useReconcile';
 import { MemberLabel } from '@/components/common/MemberLabel';
 import { MemberPicker } from '@/components/common/MemberPicker';
 import { looksLikeMemberIdentity } from '@/utils/validation';
@@ -39,12 +27,6 @@ export function WorkspaceSettingsPanel() {
   // registry context id) — display names are per-namespace, the same
   // scope as core's MemberMetadata.
   const perms = useNamespacePermissions(namespaceId ?? '', rootGroupId ?? '');
-  const { subgroups } = useSubgroups(rootGroupId);
-  const { run, running, last, error } = useReconcile(
-    rootGroupId,
-    registryClient,
-    subgroups,
-  );
   const reg = useRegistryAdmin();
   const confirm = useConfirm();
 
@@ -303,46 +285,6 @@ export function WorkspaceSettingsPanel() {
         )}
       </div>
 
-      {/* --- Reconcile registry --- */}
-      <div className="flex items-start justify-between gap-3 px-4 py-3">
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium text-foreground">
-            Reconcile registry
-          </div>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Bring the folder registry in line with admin-side groups.
-            Safe to run any time; acts only on drifted entries.
-          </p>
-          {last && (
-            <p
-              className="mt-1 text-xs text-muted-foreground"
-              data-testid="reconcile-result"
-            >
-              Last run: registered {last.registered}, unregistered{' '}
-              {last.unregistered}, moved {last.moved}
-            </p>
-          )}
-          {error && (
-            <p className="mt-1 text-xs text-destructive" role="alert">
-              Reconcile failed: {error.message}
-            </p>
-          )}
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1"
-          disabled={running}
-          onClick={() => {
-            void run();
-          }}
-        >
-          <RefreshCw
-            className={`h-3.5 w-3.5 ${running ? 'animate-spin' : ''}`}
-          />
-          {running ? 'Running…' : 'Reconcile'}
-        </Button>
-      </div>
     </section>
   );
 }

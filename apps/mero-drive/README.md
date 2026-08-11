@@ -78,7 +78,6 @@ mero-drive/
 │       └── constants/              # app-id, service ids, capability bits
 └── e2e/
     ├── workflow-mero-drive-e2e.yml                  # main registry+docs integration
-    ├── workflow-mero-drive-reconciliation.yml       # drift scenarios
     ├── workflow-mero-drive-docs-lifecycle.yml       # DocsClient full coverage
     ├── workflow-mero-drive-members.yml              # member lifecycle + bitmask roundtrips
     └── workflow-mero-drive-namespace-lifecycle.yml  # rename / delete / multi-ns isolation

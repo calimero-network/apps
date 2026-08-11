@@ -90,14 +90,6 @@ vi.mock('@/hooks/useRegistryAdmin', () => ({
     refetch: vi.fn(),
   }),
 }));
-vi.mock('@/hooks/useReconcile', () => ({
-  useReconcile: () => ({
-    run: vi.fn(),
-    running: false,
-    last: null,
-    error: null,
-  }),
-}));
 // Single useDriveWorkspace mock replaces the old WorkspaceContext +
 // RegistryContext mocks. Fields match useDriveWorkspace's return
 // shape; each test overrides only what it cares about.
@@ -348,16 +340,15 @@ describe('permission-gating', () => {
   it('WorkspaceSettingsPanel renders nothing without canManageNamespace', () => {
     (useNamespacePermissions as ReturnType<typeof vi.fn>).mockReturnValue(noNsPerms);
     render(<WorkspaceSettingsPanel />);
-    expect(screen.queryByText('Reconcile registry')).toBeNull();
+    expect(screen.queryByText(/Registry owner/i)).toBeNull();
   });
 
-  it('WorkspaceSettingsPanel renders the reconcile + owner/managers sections when canManageNamespace', () => {
+  it('WorkspaceSettingsPanel renders the owner/managers section when canManageNamespace', () => {
     (useNamespacePermissions as ReturnType<typeof vi.fn>).mockReturnValue({
       ...noNsPerms,
       canManageNamespace: true,
     });
     render(<WorkspaceSettingsPanel />);
-    expect(screen.getByText('Reconcile registry')).toBeTruthy();
     expect(screen.getByText(/Registry owner/i)).toBeTruthy();
   });
 

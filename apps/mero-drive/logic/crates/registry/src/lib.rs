@@ -10,10 +10,10 @@
 //! struct, replicated across every member of the root group.
 //!
 //! `parent_id` is stored here too, as an **index** — admin-API remains
-//! authoritative for the tree shape. The client reconciles drift from admin
-//! onto this registry on load (leaf-first unregister, root-first register,
-//! parent-fix moves), so any divergence resolves idempotently without a
-//! cross-system transaction.
+//! authoritative for the tree shape, because it does not return a subgroup's
+//! parent. The client writes both sides in the same operation and rolls back
+//! on failure; there is no cross-system transaction and no repair pass, so a
+//! double failure (write and rollback) can leave an orphaned group.
 //!
 //! ## Merge semantics
 //!
