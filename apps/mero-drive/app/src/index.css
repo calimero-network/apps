@@ -1,4 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+/* Self-hosted, not fetched from fonts.googleapis.com. A remote stylesheet
+   @import blocks rendering until it resolves, which for a local-first app
+   means the UI stalls on every offline load — the one condition this app is
+   built for. It also disclosed every viewer's IP to a third party.
+   Variable builds: one file per family covers all weights we use. */
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
 
 @tailwind base;
 @tailwind components;
@@ -137,7 +143,7 @@
 
   body {
     @apply bg-background text-foreground font-sans antialiased;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'Inter Variable', 'Inter', system-ui, sans-serif;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -187,7 +193,7 @@
   }
 
   .editor-content {
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'Inter Variable', 'Inter', system-ui, sans-serif;
     @apply text-foreground;
   }
 }
@@ -218,7 +224,7 @@ html .bn-container[data-color-scheme='dark'] {
   --bn-colors-border: hsl(var(--border));
   --bn-colors-side-menu: hsl(var(--muted-foreground));
   --bn-border-radius: 0.5rem;
-  --bn-font-family: 'Inter', system-ui, sans-serif;
+  --bn-font-family: 'Inter Variable', 'Inter', system-ui, sans-serif;
 }
 
 /* The editor sits inside the shell's own padded, centered column. */
