@@ -27,6 +27,12 @@ author = "Calimero"
 # https://links.calimero.network/<slug>/…) by Application.package, so the slug
 # IS the package id.
 slug = "com.calimero.meropixart"
+# Embedded into the manifest as a data: URI, which is what gives the app a real
+# icon in the registry and — via tauri-app's `ensure_app_launcher_icon` — in the
+# macOS Dock. The bundled icon is preferred over fetching the frontend's PWA
+# manifest because it is deterministic and works offline. Regenerate with
+# `node app/scripts/gen-icons.mjs`.
+icon = "../app/public/icon-512.png"
 tags = ["image-editing", "collaboration", "layers"]
 github = "https://github.com/calimero-network/mero-pixart"
 # The release this contract is BUILT for, not a floor inherited from an older

@@ -286,7 +286,7 @@ jobs:
         # against the registry, and cargo-mero's own --bump floors an empty
         # registry at 0.1.0 rather than the 0.0.1 this fleet restarts from. (The
         # two flags are mutually exclusive anyway.)
-        run: cargo mero bundle --key "$RUNNER_TEMP/mero-sign-key.json" --app-version "$VERSION" --no-icon --output "dist/$PACKAGE.mpk"
+        run: cargo mero bundle --key "$RUNNER_TEMP/mero-sign-key.json" --app-version "$VERSION" --output "dist/$PACKAGE.mpk"
 
       - name: Remove signing key
         if: always()

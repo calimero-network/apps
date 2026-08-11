@@ -63,13 +63,15 @@ install: app-install
 logic-build:
 	cd logic && cargo mero build
 
-# --no-icon: the app ships no PNG mark, and the desktop finds the PWA icon at
-# the manifest's `frontend` URL, which beats a generic one.
+# The manifest's `icon` (logic/Cargo.toml) is embedded as a data: URI, so the
+# bundle carries its own mark — deterministic and offline, unlike letting the
+# desktop scrape the frontend's PWA manifest. Regenerate the PNGs it points at
+# with `node app/scripts/gen-icons.mjs`.
 logic-bundle:
-	cd logic && cargo mero bundle --dev --no-icon
+	cd logic && cargo mero bundle --dev
 
 logic-bundle-release: ## publishable .mpk signed with $$MERO_SIGN_KEY_FILE, version bumped off the registry
-	cd logic && cargo mero bundle --key "$$MERO_SIGN_KEY_FILE" --no-icon --bump patch
+	cd logic && cargo mero bundle --key "$$MERO_SIGN_KEY_FILE" --bump patch
 
 bundle: logic-bundle
 
