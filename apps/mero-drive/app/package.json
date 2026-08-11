@@ -67,6 +67,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "check:bundle": "node scripts/check-bundle-budget.mjs",
     "test": "vitest run",
     "lint": "pnpm lint:check",
     "lint:check": "pnpm lint:src",
