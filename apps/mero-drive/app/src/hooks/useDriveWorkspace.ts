@@ -542,7 +542,15 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   // this, creating / renaming / deleting a folder mutates the registry
   // WASM but the local cache stays stale and the UI doesn't reflect
   // the change until the page is reloaded.
+  // Bumped per call so a slow response can't land after a newer one.
+  // Without it, switching namespaces mid-flight lets the old namespace's
+  // folders populate under the new one, from where they feed the
+  // getGroupInfo fan-out and useFolderOperations' delete cascade.
+  const regSeqRef = useRef(0);
+
   const loadRegFolders = useCallback(async () => {
+    const seq = ++regSeqRef.current;
+    const stale = () => regSeqRef.current !== seq;
     if (!registryClient) {
       setRegFolders([]);
       setRegLoading(false);
@@ -552,6 +560,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     setRegError(null);
     try {
       const fs = await registryClient.getFolders();
+      if (stale()) return;
       const mapped = fs.map((f) => ({
         id: f.id,
         parent_id: f.parent_id ?? null,
@@ -561,30 +570,23 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       // Keep the previous array identity when the fetched content is
       // byte-identical, so the `folders`/`allFolderNodes` memos (and the
       // whole folder tree) don't get a fresh identity on every refetch.
-      // ponytail: JSON compare is fine for these small flat rows; if the
-      // folder set grows large, switch to a shallow per-field compare.
+      // JSON compare is fine for these small flat rows; if the folder set
+      // grows large, switch to a shallow per-field compare.
       setRegFolders((prev) =>
         JSON.stringify(prev) === JSON.stringify(mapped) ? prev : mapped,
       );
     } catch (e: unknown) {
+      if (stale()) return;
       setRegError(e instanceof Error ? e : new Error(String(e)));
     } finally {
-      setRegLoading(false);
+      if (!stale()) setRegLoading(false);
     }
   }, [registryClient]);
 
   useEffect(() => {
-    let alive = true;
-    void loadRegFolders().catch(() => {
-      // errors are already captured into regError by loadRegFolders;
-      // the alive guard is for the setState inside loadRegFolders,
-      // but since we can't cancel the in-flight promise, we just
-      // ignore stale rejections here.
-      void alive;
-    });
-    return () => {
-      alive = false;
-    };
+    // Cancellation is handled by regSeqRef inside loadRegFolders: the next
+    // call bumps the sequence, so this one's writes are dropped.
+    void loadRegFolders();
   }, [loadRegFolders]);
 
   // --- Alias lookup (per-folder getGroupInfo) ---
