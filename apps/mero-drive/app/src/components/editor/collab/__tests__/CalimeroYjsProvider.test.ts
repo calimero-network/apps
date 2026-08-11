@@ -536,3 +536,196 @@ describe('CalimeroYjsProvider — two-client convergence', () => {
     }
   });
 });
+
+describe('CalimeroYjsProvider — a malformed remote blob', () => {
+  // Produce a log holding two genuine updates plus one blob Y.applyUpdate
+  // rejects. Order matters: the bad blob sits between the good ones so an
+  // abort mid-batch cannot be mistaken for "nothing was applied".
+  function logWithPoison() {
+    const author = new Y.Doc();
+    author.getText('t').insert(0, 'alpha');
+    const first = Y.encodeStateAsUpdate(author);
+    author.getText('t').insert(5, '-beta');
+    const second = Y.encodeStateAsUpdate(author);
+    // Not a decodable Yjs update.
+    const bad = new Uint8Array([0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
+    return [first, bad, second];
+  }
+
+  it('applies the good updates in the same batch instead of discarding them', async () => {
+    const transport = new FakeTransport();
+    transport.log = logWithPoison();
+    const doc = new Y.Doc();
+    const prov = new CalimeroYjsProvider(doc, transport, fastOpts);
+
+    await prov.pullRemote();
+
+    // The whole point: the legitimate peer edits survived a poisoned sibling.
+    expect(doc.getText('t').toString()).toBe('alpha-beta');
+    expect(prov.rejectedUpdateCount).toBe(1);
+    prov.destroy();
+  });
+
+  it('does not retry the bad blob on later pulls, and still takes new ones', async () => {
+    const transport = new FakeTransport();
+    transport.log = logWithPoison();
+    const doc = new Y.Doc();
+    const prov = new CalimeroYjsProvider(doc, transport, fastOpts);
+
+    await prov.pullRemote();
+    expect(prov.rejectedUpdateCount).toBe(1);
+
+    // The log is add-only, so the bad blob is delivered again. It must be
+    // skipped without being counted twice.
+    await prov.pullRemote();
+    expect(prov.rejectedUpdateCount).toBe(1);
+
+    // A later legitimate edit from a peer still lands.
+    const peer = new Y.Doc();
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
+    peer.getText('t').insert(10, '!');
+    transport.log.push(Y.encodeStateAsUpdate(peer));
+
+    await prov.pullRemote();
+    expect(doc.getText('t').toString()).toBe('alpha-beta!');
+    prov.destroy();
+  });
+
+  it('leaves a clean batch on the single-transaction fast path', async () => {
+    const transport = new FakeTransport();
+    const author = new Y.Doc();
+    author.getText('t').insert(0, 'ok');
+    transport.log = [Y.encodeStateAsUpdate(author)];
+    const doc = new Y.Doc();
+    const prov = new CalimeroYjsProvider(doc, transport, fastOpts);
+
+    let transactions = 0;
+    doc.on('afterTransaction', () => {
+      transactions += 1;
+    });
+    await prov.pullRemote();
+
+    expect(doc.getText('t').toString()).toBe('ok');
+    expect(prov.rejectedUpdateCount).toBe(0);
+    // One transaction for the batch, so a large initial pull does not fire the
+    // editor's observers once per blob.
+    expect(transactions).toBe(1);
+    prov.destroy();
+  });
+});
+
+describe('CalimeroYjsProvider — a throwing document observer', () => {
+  it('reports a batch failure that no single blob explains', async () => {
+    const transport = new FakeTransport();
+    const author = new Y.Doc();
+    author.getText('t').insert(0, 'hello');
+    transport.log = [Y.encodeStateAsUpdate(author)];
+
+    const doc = new Y.Doc();
+    const prov = new CalimeroYjsProvider(doc, transport, fastOpts);
+
+    // Yjs fires observers inside the transaction, so this throw surfaces from
+    // doc.transact exactly as a malformed blob would. It fires only once,
+    // standing in for an observer that chokes on first sight of the content.
+    let thrown = false;
+    const observer = () => {
+      if (thrown) return;
+      thrown = true;
+      throw new Error('observer exploded');
+    };
+    doc.getText('t').observe(observer);
+
+    await prov.pullRemote();
+
+    // The update itself was fine, so nothing is poisoned and the doc is right.
+    expect(prov.rejectedUpdateCount).toBe(0);
+    expect(doc.getText('t').toString()).toBe('hello');
+    // But the failure must not be silent: without this the doc is correct while
+    // the view that threw is stale, and nothing says so.
+    const logged = (console.error as unknown as { mock: { calls: unknown[][] } })
+      .mock.calls.flat()
+      .map(String)
+      .join(' ');
+    expect(logged).toContain('batch apply failed');
+    expect(logged).toContain('not caused by an update');
+
+    doc.getText('t').unobserve(observer);
+    prov.destroy();
+  });
+});
+
+describe('CalimeroYjsProvider — remembering what already applied', () => {
+  it('does no work on a second pull of an unchanged log', async () => {
+    const transport = new FakeTransport();
+    const author = new Y.Doc();
+    author.getText('t').insert(0, 'one');
+    transport.log = [Y.encodeStateAsUpdate(author)];
+    author.getText('t').insert(3, '-two');
+    transport.log.push(Y.encodeStateAsUpdate(author));
+
+    const doc = new Y.Doc();
+    const prov = new CalimeroYjsProvider(doc, transport, fastOpts);
+    await prov.pullRemote();
+    expect(doc.getText('t').toString()).toBe('one-two');
+
+    // Re-applying is a content no-op, so correctness alone cannot reveal a
+    // failure to record. Count transactions instead: the log is unchanged, so
+    // a correctly-recorded batch does nothing at all here. Without recording,
+    // every pull re-applies the entire history — unbounded work on the one path
+    // that is already the slowest.
+    let transactions = 0;
+    doc.on('afterTransaction', () => {
+      transactions += 1;
+    });
+    await prov.pullRemote();
+
+    expect(transactions).toBe(0);
+    expect(doc.getText('t').toString()).toBe('one-two');
+    prov.destroy();
+  });
+
+  it('isolates a bad blob sitting first in the batch', async () => {
+    const transport = new FakeTransport();
+    const author = new Y.Doc();
+    author.getText('t').insert(0, 'x');
+    const first = Y.encodeStateAsUpdate(author);
+    author.getText('t').insert(1, 'y');
+    const second = Y.encodeStateAsUpdate(author);
+    // Leading position: the batch throws before anything integrates, which is a
+    // different partial state from the bad blob being in the middle.
+    transport.log = [new Uint8Array([0xff, 0xff, 0xff, 0xff]), first, second];
+
+    const doc = new Y.Doc();
+    const prov = new CalimeroYjsProvider(doc, transport, fastOpts);
+    await prov.pullRemote();
+
+    expect(doc.getText('t').toString()).toBe('xy');
+    expect(prov.rejectedUpdateCount).toBe(1);
+    prov.destroy();
+  });
+
+  it('counts multiple bad blobs and does not blame an observer', async () => {
+    const transport = new FakeTransport();
+    const author = new Y.Doc();
+    author.getText('t').insert(0, 'ok');
+    transport.log = [
+      new Uint8Array([0xff, 0xfe, 0xfd]),
+      Y.encodeStateAsUpdate(author),
+      new Uint8Array([0xfc, 0xfb, 0xfa]),
+    ];
+
+    const doc = new Y.Doc();
+    const prov = new CalimeroYjsProvider(doc, transport, fastOpts);
+    await prov.pullRemote();
+
+    expect(doc.getText('t').toString()).toBe('ok');
+    expect(prov.rejectedUpdateCount).toBe(2);
+    // Blobs explain this failure, so the observer-blaming message must NOT fire.
+    const logged = (console.error as unknown as { mock: { calls: unknown[][] } })
+      .mock.calls.flat()
+      .map(String)
+      .join(' ');
+    expect(logged).not.toContain('not caused by an update');
+    prov.destroy();
+  });
+});

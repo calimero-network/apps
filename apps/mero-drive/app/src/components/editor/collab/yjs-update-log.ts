@@ -82,18 +82,33 @@ export class SeenUpdates {
 }
 
 /**
- * Return only the NEW blobs from a fetched batch (marking them seen), skipping
- * already-seen blobs and intra-batch duplicates. The single decision point the
- * provider calls on a remote refresh before `Y.applyUpdate`.
+ * Return the candidate blobs from a fetched batch: those not already seen, not
+ * known-bad, and not intra-batch duplicates.
+ *
+ * Deliberately does NOT record anything as seen. Selection and commitment are
+ * separate because `Y.applyUpdate` can throw on a malformed blob: marking a
+ * batch seen up front meant one bad blob aborted the batch while every blob in
+ * it was already recorded, so the good updates were never selected again and
+ * those peer edits were lost for good. The caller records each blob only once
+ * it has actually applied.
+ *
+ * `poisoned` holds blobs that previously failed to apply. They are excluded so
+ * a permanently bad blob — the log is add-only, so it never goes away — is not
+ * retried on every pull, without being conflated with successfully applied ones.
  */
-export function selectNewUpdates(
+export function selectUnseenUpdates(
   fetched: readonly Uint8Array[],
   seen: SeenUpdates,
+  poisoned?: SeenUpdates,
 ): Uint8Array[] {
   const out: Uint8Array[] = [];
+  const batch = new SeenUpdates(fetched.length > 0 ? fetched.length : 1);
   for (const blob of fetched) {
     if (blob.length === 0) continue; // the WASM rejects empty; skip defensively
-    if (seen.add(blob)) out.push(blob);
+    if (seen.has(blob)) continue;
+    if (poisoned?.has(blob)) continue;
+    if (!batch.add(blob)) continue; // intra-batch duplicate
+    out.push(blob);
   }
   return out;
 }

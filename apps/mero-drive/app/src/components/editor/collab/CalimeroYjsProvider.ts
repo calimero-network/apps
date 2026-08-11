@@ -15,7 +15,7 @@
 
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
-import { SeenUpdates, selectNewUpdates } from './yjs-update-log';
+import { SeenUpdates, selectUnseenUpdates } from './yjs-update-log';
 
 export interface CalimeroYjsTransport {
   /** Append one opaque Yjs update blob to the doc's add-only log. Idempotent. */
@@ -53,6 +53,10 @@ export class CalimeroYjsProvider {
 
   private readonly transport: CalimeroYjsTransport;
   private readonly seen = new SeenUpdates();
+  // Blobs that threw from Y.applyUpdate. Held apart from `seen` because the log
+  // is add-only: a bad blob is re-delivered on every pull forever, so it has to
+  // be skippable without being recorded as successfully applied.
+  private readonly poisoned = new SeenUpdates();
   private readonly flushDebounceMs: number;
   private readonly maxFlushRetries: number;
   private readonly retryBackoffMs: number;
@@ -92,6 +96,15 @@ export class CalimeroYjsProvider {
    */
   get hasPendingWork(): boolean {
     return this.pendingLocal.length > 0 || this.flushInFlight !== null;
+  }
+
+  /**
+   * Count of remote blobs that failed to apply and are being skipped. Non-zero
+   * means this replica is missing peer edits it cannot recover, so it is worth
+   * surfacing rather than leaving in the console.
+   */
+  get rejectedUpdateCount(): number {
+    return this.poisoned.size;
   }
 
   private handleLocalUpdate = (update: Uint8Array, origin: unknown): void => {
@@ -237,6 +250,75 @@ export class CalimeroYjsProvider {
    * re-delivery a no-op. Overlapping calls collapse to one pull plus a single
    * follow-up if more arrived meanwhile.
    */
+  /**
+   * Apply a batch of remote blobs, recording each as seen only once it lands.
+   *
+   * Fast path is one transaction for the whole batch: an initial pull can be
+   * thousands of blobs, and per-blob transactions would fire the editor's
+   * observers once each. If any blob throws, the batch is retried one at a
+   * time to isolate it — `Y.applyUpdate` is idempotent, so re-applying the
+   * ones that already landed before the throw is free.
+   *
+   * The transaction is tagged with this provider as origin so the update
+   * handler's origin guard skips re-appending, which is what stops an applied
+   * remote update echoing back out as a "local" change.
+   */
+  private applyRemote(fresh: Uint8Array[]): void {
+    try {
+      this.doc.transact(() => {
+        for (const blob of fresh) Y.applyUpdate(this.doc, blob, this);
+      }, this);
+      for (const blob of fresh) this.seen.add(blob);
+      return;
+    } catch (e) {
+      // Not necessarily a bad blob: Yjs fires observers inside the transaction,
+      // so a throw from a downstream observer (y-prosemirror / BlockNote on an
+      // unfamiliar block type) lands here too. Log before isolating, because in
+      // that case the isolation pass below re-applies everything as no-ops,
+      // fires no observer, rejects nothing, and would otherwise say nothing at
+      // all — leaving the doc correct but the editor view silently stale.
+      console.error(
+        '[CalimeroYjsProvider] batch apply failed; retrying blob-by-blob',
+        e,
+      );
+    }
+
+    let rejected = 0;
+    for (const blob of fresh) {
+      try {
+        this.doc.transact(() => {
+          Y.applyUpdate(this.doc, blob, this);
+        }, this);
+        this.seen.add(blob);
+      } catch (e) {
+        rejected += 1;
+        // Remember it as bad, NOT as seen: the log is add-only so this blob is
+        // delivered on every pull forever, and it must not be mistaken for one
+        // that applied.
+        this.poisoned.add(blob);
+        console.error(
+          '[CalimeroYjsProvider] skipped an update that failed to apply',
+          e,
+        );
+      }
+    }
+    if (rejected > 0) {
+      console.error(
+        `[CalimeroYjsProvider] ${rejected} update(s) could not be applied; ` +
+          `${fresh.length - rejected} of this batch applied cleanly`,
+      );
+    } else {
+      // Every blob applied on its own, so the batch failure came from something
+      // other than the blobs — most likely an observer. Worth naming: it means
+      // the document is right but whatever renders it may not be.
+      console.error(
+        `[CalimeroYjsProvider] all ${fresh.length} update(s) applied ` +
+          `individually, so the batch failure was not caused by an update. ` +
+          `A document observer likely threw; the view may be stale.`,
+      );
+    }
+  }
+
   async pullRemote(): Promise<void> {
     if (this.destroyed) return;
     if (this.pulling) {
@@ -247,17 +329,8 @@ export class CalimeroYjsProvider {
     try {
       const fetched = await this.transport.getDocUpdates();
       if (this.destroyed) return;
-      const fresh = selectNewUpdates(fetched, this.seen);
-      if (fresh.length > 0) {
-        // Tag the transaction with this provider as origin so the update
-        // handler's origin guard skips re-appending — this is what stops an
-        // applied-remote update from echoing back out as a "local" change.
-        this.doc.transact(() => {
-          for (const blob of fresh) {
-            Y.applyUpdate(this.doc, blob, this);
-          }
-        }, this);
-      }
+      const fresh = selectUnseenUpdates(fetched, this.seen, this.poisoned);
+      if (fresh.length > 0) this.applyRemote(fresh);
     } finally {
       this.pulling = false;
       if (this.pullQueued && !this.destroyed) {

@@ -12,7 +12,7 @@ import * as Y from 'yjs';
 import {
   hashUpdate,
   SeenUpdates,
-  selectNewUpdates,
+  selectUnseenUpdates,
   DEFAULT_SEEN_CAPACITY,
 } from '../yjs-update-log';
 
@@ -46,8 +46,12 @@ function connect(doc: Y.Doc, log: FakeUpdateLog) {
     log.append(update);
   });
   const sync = () => {
-    for (const blob of selectNewUpdates(log.all(), seen)) {
+    // Selection no longer marks blobs seen; the caller records each one only
+    // after it applies, which is what keeps a throwing blob from discarding the
+    // rest of its batch.
+    for (const blob of selectUnseenUpdates(log.all(), seen)) {
       Y.applyUpdate(doc, blob, LOG_ORIGIN);
+      seen.add(blob);
     }
   };
   return { seen, sync };
@@ -142,9 +146,9 @@ describe('SeenUpdates', () => {
     seen.add(a); // a
     seen.add(new Uint8Array([2])); // a, 2
     seen.add(new Uint8Array([3])); // 2, 3 — a evicted
-    // `a` was evicted, so selectNewUpdates re-selects it. That's intentional and
-    // safe: Y.applyUpdate is idempotent, so re-applying converges.
-    expect(selectNewUpdates([a], seen)).toEqual([a]);
+    // `a` was evicted, so it is re-selected. Intentional and safe:
+    // Y.applyUpdate is idempotent, so re-applying converges.
+    expect(selectUnseenUpdates([a], seen)).toEqual([a]);
   });
 
   it('defaults to a sane capacity', () => {
@@ -157,21 +161,39 @@ describe('SeenUpdates', () => {
   });
 });
 
-describe('selectNewUpdates', () => {
-  it('returns only unseen blobs and marks them seen', () => {
+describe('selectUnseenUpdates', () => {
+  it('returns only unseen blobs, deduped within the batch', () => {
     const seen = new SeenUpdates();
     const a = new Uint8Array([1]);
     const b = new Uint8Array([2]);
     seen.add(a);
-    const fresh = selectNewUpdates([a, b, b], seen); // a seen, b new (once)
+    const fresh = selectUnseenUpdates([a, b, b], seen); // a seen, b new (once)
     expect(fresh.map(hashUpdate)).toEqual([hashUpdate(b)]);
-    // Re-running yields nothing new.
-    expect(selectNewUpdates([a, b], seen)).toEqual([]);
+  });
+
+  // The property the previous version got wrong. Selecting must not commit:
+  // if the caller throws while applying, the blob has to come back next pull.
+  it('does not mark anything seen', () => {
+    const seen = new SeenUpdates();
+    const b = new Uint8Array([2]);
+    expect(selectUnseenUpdates([b], seen)).toEqual([b]);
+    expect(seen.size).toBe(0);
+    // Still selected, because the caller never recorded it.
+    expect(selectUnseenUpdates([b], seen)).toEqual([b]);
+  });
+
+  it('excludes blobs the caller has marked poisoned', () => {
+    const seen = new SeenUpdates();
+    const poisoned = new SeenUpdates();
+    const good = new Uint8Array([1]);
+    const bad = new Uint8Array([9]);
+    poisoned.add(bad);
+    expect(selectUnseenUpdates([good, bad], seen, poisoned)).toEqual([good]);
   });
 
   it('skips empty blobs defensively', () => {
     const seen = new SeenUpdates();
-    expect(selectNewUpdates([new Uint8Array([])], seen)).toEqual([]);
+    expect(selectUnseenUpdates([new Uint8Array([])], seen)).toEqual([]);
   });
 });
 
