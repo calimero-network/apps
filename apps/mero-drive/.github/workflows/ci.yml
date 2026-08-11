@@ -234,9 +234,9 @@ jobs:
   # fail-fast: false keeps a single workflow failure from hiding
   # regressions in the others.
   #
-  # merobox is installed from the official apt repo
-  # (https://calimero-network.github.io/merobox) — a signed binary
-  # release that bundles calimero-client-py internally.
+  # merobox comes from its GitHub release binary, checksum-verified by
+  # .github/actions/setup-merobox. There is no apt repo, despite what this
+  # comment used to claim.
   #
   # The earlier cold-start sync race on subgroup-owned contexts (the
   # "warmup probe" workaround) was fixed upstream in
