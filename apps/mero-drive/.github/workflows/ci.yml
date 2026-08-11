@@ -51,6 +51,7 @@ jobs:
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -98,6 +99,7 @@ jobs:
   logic:
     name: Logic (Rust)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -174,6 +176,7 @@ jobs:
     name: Bundle (.mpk)
     runs-on: ubuntu-latest
     needs: [logic]
+    timeout-minutes: 20
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -235,6 +238,9 @@ jobs:
     name: E2E (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs: [bundle]
+    # Each cell orchestrates Docker containers behind a 2-attempt retry
+    # loop, so a wedged merod would otherwise sit on the 6h default.
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
