@@ -20,7 +20,7 @@ interface Props {
 }
 
 export default function PropertiesPanel({ contextId, readOnly = false }: Props) {
-  const { selectedElementId, selectedElementIds, elements, elementLabels, upsertElement, removeElement, selectElement, selectElements, setElementLabel } = useCanvasStore();
+  const { selectedElementId, selectedElementIds, elements, elementLabels, imageCache, upsertElement, removeElement, selectElement, selectElements, setElementLabel } = useCanvasStore();
   const el = elements.find((e) => e.id === selectedElementId);
   const rpcDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [tab, setTab] = useState<PanelTab>("properties");
@@ -43,7 +43,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
         id: el.id,
         x: null, y: null, width: null, height: null,
         rotation: null, fill: null, stroke: null,
-        stroke_width: null, opacity: null,
+        stroke_width: null, opacity: null, corner_radius: null,
         updated_at: updated.updatedAt,
         ...Object.fromEntries(
           Object.entries(patch).map(([k, v]) => [toSnake(k), v]),
@@ -128,7 +128,12 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     const aboveIdx = above.layerIndex;
     upsertElement({ ...targetEl, layerIndex: aboveIdx, updatedAt: Date.now() });
     upsertElement({ ...above, layerIndex: nowIdx, updatedAt: Date.now() });
-    await rpcCall(contextId, "bring_to_front", { id: targetEl.id }).catch(() => {});
+    // set_layer_index, not bring_to_front: the old call jumped the element to the
+    // top in contract state, and the next sync overwrote this one-step swap.
+    const upIndex = sorted.findIndex((e) => e.id === above.id);
+    await rpcCall(contextId, "set_layer_index", {
+      id: targetEl.id, index: upIndex, updated_at: Date.now(),
+    }).catch(() => {});
   }
 
   async function handleMoveDown(targetEl: Element) {
@@ -141,7 +146,10 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     const belowIdx = below.layerIndex;
     upsertElement({ ...targetEl, layerIndex: belowIdx, updatedAt: Date.now() });
     upsertElement({ ...below, layerIndex: nowIdx, updatedAt: Date.now() });
-    await rpcCall(contextId, "send_to_back", { id: targetEl.id }).catch(() => {});
+    const downIndex = sorted.findIndex((e) => e.id === below.id);
+    await rpcCall(contextId, "set_layer_index", {
+      id: targetEl.id, index: downIndex, updated_at: Date.now(),
+    }).catch(() => {});
   }
 
   function startLabelEdit(e: Element) {
@@ -166,7 +174,12 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     return map[kind] ?? "?";
   }
 
-  function buildPrototypeHtml(e: Element): string {
+  /**
+   * `offset` shifts the export so the top-left of the content sits at 0,0 — a
+   * board with negative coordinates otherwise exports off-screen inside a
+   * zero-sized wrapper.
+   */
+  function buildPrototypeHtml(e: Element, offset = { x: 0, y: 0 }): string {
     const opacity = (e.opacity / 100).toFixed(2);
     const rotation = e.rotation ? ` rotate(${e.rotation}deg)` : "";
     const fill = escapeCss(e.fill && e.fill !== "transparent" ? e.fill : "transparent");
@@ -176,7 +189,26 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     const shadow = (e.shadowBlur ?? 0) > 0
       ? `box-shadow: ${e.shadowOffsetX ?? 0}px ${e.shadowOffsetY ?? 4}px ${e.shadowBlur}px ${shadowColor};`
       : "";
-    const base = `position: absolute; left: ${e.x}px; top: ${e.y}px; width: ${e.width}px; height: ${e.height}px; opacity: ${opacity}; transform:${rotation || "none"}; background: ${fill}; border: ${border}; ${shadow}`;
+    const left = e.x - offset.x;
+    const top = e.y - offset.y;
+    const radius = e.cornerRadius ? ` border-radius: ${Math.round(e.cornerRadius)}px;` : "";
+    const base = `position: absolute; left: ${left}px; top: ${top}px; width: ${e.width}px; height: ${e.height}px; opacity: ${opacity}; transform:${rotation || "none"}; background: ${fill}; border: ${border};${radius} ${shadow}`;
+
+    // A line or arrow is a stroke, not a filled box: exporting it as a div gave a
+    // solid rectangle. Emit real SVG instead.
+    if (e.data.kind === "line" || e.data.kind === "arrow") {
+      const colour = escapeCss(strokeColor || "#111111");
+      const w = Math.max(1, e.strokeWidth || 2);
+      const raw = (e.data.points ?? "").trim().split(/[\s,]+/).map(Number);
+      const [x1, y1, x2, y2] = raw.length >= 4 && raw.every((n) => Number.isFinite(n))
+        ? raw
+        : [0, 0, e.width, e.height];
+      const pad = w + (e.data.kind === "arrow" ? 12 : 0);
+      const head = e.data.kind === "arrow"
+        ? `<polygon points="${x2},${y2} ${x2 - 10},${y2 - 5} ${x2 - 10},${y2 + 5}" fill="${colour}" transform="rotate(${(Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI} ${x2} ${y2})" />`
+        : "";
+      return `<svg style="position: absolute; left: ${left - pad}px; top: ${top - pad}px; opacity: ${opacity}; overflow: visible;" width="${Math.abs(e.width) + pad * 2}" height="${Math.abs(e.height) + pad * 2}" viewBox="${-pad} ${-pad} ${Math.abs(e.width) + pad * 2} ${Math.abs(e.height) + pad * 2}"><line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${colour}" stroke-width="${w}" stroke-linecap="round" />${head}</svg>`;
+    }
 
     if (e.data.kind === "text") {
       const fw = e.data.bold ? "bold" : "normal";
@@ -186,21 +218,42 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
       const ta = e.data.text_align ?? "left";
       const va = e.data.vertical_align ?? "top";
       const justify = va === "middle" ? "center" : va === "bottom" ? "flex-end" : "flex-start";
-      return `<div style="${base} font-family: ${ff}; font-size: ${e.data.fontSize ?? 24}px; font-weight: ${fw}; font-style: ${fi}; color: ${fill}; display: flex; flex-direction: column; justify-content: ${justify}; text-align: ${ta};"><span>${content}</span></div>`;
+      // The text colour is `fill`; `base` also puts `fill` in `background`, so the
+      // old export painted every glyph in its own background colour. Text has no
+      // box fill — drop it — and keep the outline as -webkit-text-stroke.
+      const outline = strokeColor
+        ? ` -webkit-text-stroke: ${e.strokeWidth ?? 1}px ${strokeColor};`
+        : "";
+      const boxless = base.replace(`background: ${fill};`, "background: transparent;").replace(`border: ${border};`, "border: none;");
+      return `<div style="${boxless} font-family: ${ff}; font-size: ${e.data.fontSize ?? 24}px; font-weight: ${fw}; font-style: ${fi}; color: ${fill}; white-space: pre-wrap;${outline} display: flex; flex-direction: column; justify-content: ${justify}; text-align: ${ta};"><span>${content}</span></div>`;
     }
     if (e.data.kind === "circle") {
       return `<div style="${base} border-radius: 50%;"></div>`;
     }
     if (e.data.kind === "image" || e.data.kind === "svg") {
-      return `<img style="${base}" src="" alt="image" />`;
+      // The src was hardcoded empty, so every exported image was a broken box.
+      // imageCache holds a blob/data URL for anything already on the canvas.
+      const src = escapeCss(imageCache[e.id] ?? "");
+      const label = escapeHtml(e.label ?? "image");
+      return `<img style="${base}" src="${src}" alt="${label}" />`;
     }
     return `<div style="${base}"></div>`;
   }
 
   function buildAllHtml(): string {
     const sorted = [...elements].sort((a, b) => a.layerIndex - b.layerIndex);
-    const inner = sorted.map((e) => "  " + buildPrototypeHtml(e)).join("\n");
-    return `<div style="position: relative;">\n${inner}\n</div>`;
+    if (!sorted.length) return `<div style="position: relative; width: 0; height: 0;"></div>`;
+    // A `position: relative` wrapper with no size collapses to nothing, and
+    // negative coordinates then render above the page. Shift to the origin and
+    // state the size.
+    const offset = {
+      x: Math.min(...sorted.map((e) => e.x)),
+      y: Math.min(...sorted.map((e) => e.y)),
+    };
+    const width = Math.max(...sorted.map((e) => e.x + e.width)) - offset.x;
+    const height = Math.max(...sorted.map((e) => e.y + e.height)) - offset.y;
+    const inner = sorted.map((e) => "  " + buildPrototypeHtml(e, offset)).join("\n");
+    return `<div style="position: relative; width: ${width}px; height: ${height}px;">\n${inner}\n</div>`;
   }
 
   // ── LAYERS TAB ────────────────────────────────────────────────────────────────
@@ -243,11 +296,13 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
             <button
               className={styles.layerOrderBtn}
               title="Move up"
+              data-testid={`layer-up-${e.id}`}
               onClick={(ev) => { ev.stopPropagation(); handleMoveUp(e); }}
             >↑</button>
             <button
               className={styles.layerOrderBtn}
               title="Move down"
+              data-testid={`layer-down-${e.id}`}
               onClick={(ev) => { ev.stopPropagation(); handleMoveDown(e); }}
             >↓</button>
             <button
@@ -328,8 +383,8 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
       <div className={styles.kindRow}>
         <span className={styles.kindBadge}>{el.data.kind}</span>
         <div className={styles.layerBtns}>
-          <button className={styles.layerBtn} title="Bring to Front" onClick={() => handleBringToFront()}>↑ Front</button>
-          <button className={styles.layerBtn} title="Send to Back" onClick={() => handleSendToBack()}>↓ Back</button>
+          <button className={styles.layerBtn} title="Bring to Front" data-testid="bring-to-front" onClick={() => handleBringToFront()}>↑ Front</button>
+          <button className={styles.layerBtn} title="Send to Back" data-testid="send-to-back" onClick={() => handleSendToBack()}>↓ Back</button>
         </div>
       </div>
 
@@ -362,6 +417,28 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
             <input type="number" className={styles.field}
               value={el.rotation} onChange={(e) => update({ rotation: Number(e.target.value) })} />
           </div>
+          {/* item 14: corner radius, clamped so a large value cannot invert the shape */}
+          {el.data.kind === "rect" && (
+            <div className={styles.fieldWrap} style={{ gridColumn: "span 2" }}>
+              <label className={styles.fieldLabel}>Corner radius</label>
+              <input
+                type="number"
+                className={styles.field}
+                min={0}
+                max={Math.floor(Math.min(el.width, el.height) / 2)}
+                data-testid="prop-corner-radius"
+                value={el.cornerRadius ?? 0}
+                onChange={(e) =>
+                  update({
+                    cornerRadius: Math.max(
+                      0,
+                      Math.min(Number(e.target.value) || 0, Math.floor(Math.min(el.width, el.height) / 2)),
+                    ),
+                  })
+                }
+              />
+            </div>
+          )}
         </div>
       </div>
 

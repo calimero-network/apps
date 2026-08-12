@@ -7,7 +7,10 @@
   padding: 0 12px;
   gap: 6px;
   flex-shrink: 0;
-  z-index: 10;
+  /* Above the comments overlay (100-120). The dropdowns inside this element are
+     trapped in its stacking context, so their own z-index cannot rescue them —
+     the bar itself has to outrank the overlay. */
+  z-index: 300;
   user-select: none;
 }
 

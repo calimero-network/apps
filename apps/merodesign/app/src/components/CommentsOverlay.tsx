@@ -2,7 +2,8 @@ import { useState } from "react";
 import { v4 as uuid } from "uuid";
 import { rpcCall } from "../api/rpc";
 import { clampText, MAX_COMMENT_LEN, MAX_REPLY_LEN } from "../utils/sanitize";
-import type { CanvasComment } from "../types";
+import type { Member, CanvasComment } from "../types";
+import { resolveName } from "../hooks/useMemberNames";
 import styles from "./CommentsOverlay.module.css";
 
 const CommentIcon = ({ size = 18, color = "currentColor" }: { size?: number; color?: string }) => (
@@ -15,6 +16,8 @@ interface Props {
   contextId: string;
   comments: CanvasComment[];
   myIdentity: string;
+  /** Used to show usernames instead of identity ids (items 8 and 12). */
+  members?: Member[];
   addingComment: boolean;
   onCommentAdded: (c: CanvasComment) => void;
   onCommentDeleted: (id: string) => void;
@@ -27,7 +30,7 @@ interface Props {
 }
 
 export default function CommentsOverlay({
-  contextId, comments, myIdentity, addingComment,
+  contextId, comments, myIdentity, members = [], addingComment,
   onCommentAdded, onCommentDeleted, onReplyAdded, onReplyDeleted,
   onCancelAdd, viewport, readOnly = false,
 }: Props) {
@@ -98,8 +101,9 @@ export default function CommentsOverlay({
     await rpcCall(contextId, "delete_reply", { comment_id: commentId, reply_id: replyId }).catch(() => {});
   }
 
-  function shortId(id: string) {
-    return id.slice(0, 6) + "…" + id.slice(-4);
+  /** Username when we know it, a short id when we do not. */
+  function displayName(identity: string) {
+    return resolveName(members, identity);
   }
 
   return (
@@ -136,14 +140,14 @@ export default function CommentsOverlay({
             onClick={(e) => e.stopPropagation()}
           >
             <div className={styles.popupHeader}>
-              <span className={styles.popupAuthor}>{shortId(c.author)}</span>
+              <span className={styles.popupAuthor}>{displayName(c.author)}</span>
               <button className={styles.popupClose} onClick={() => setOpenId(null)}>✕</button>
             </div>
             <p className={styles.popupContent}>{c.content}</p>
 
             {c.replies.map((r) => (
               <div key={r.id} className={styles.reply}>
-                <span className={styles.replyAuthor}>{shortId(r.author)}</span>
+                <span className={styles.replyAuthor}>{displayName(r.author)}</span>
                 <span className={styles.replyContent}>{r.content}</span>
                 {!readOnly && r.author === myIdentity && (
                   <button className={styles.replyDelete} onClick={() => deleteReply(c.id, r.id)} title="Delete reply">×</button>

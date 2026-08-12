@@ -21,6 +21,7 @@ export interface ElementData {
   // eslint-disable-next-line camelcase
   vertical_align?: "top" | "middle" | "bottom";
   // fontSize/fontFamily/naturalWidth/naturalHeight: WASM renames to camelCase via #[serde(rename)]
+  /** "x1,y1 x2,y2" in element-local space — line/arrow endpoints, and path data. */
   points?: string;
   blobId?: string;
   naturalWidth?: number;
@@ -43,6 +44,15 @@ export interface Element {
   createdBy: string;
   createdAt: number;
   updatedAt: number;
+  /**
+   * The contract's `label` field (`update_element_label`). The layers panel keeps
+   * its own local label store, so nothing in the UI reads this yet — but
+   * `add_element` sends the whole element, so it round-trips, and the bundled
+   * starter project uses it to name its parts.
+   */
+  label?: string | null;
+  /** Corner radius in px; clamped to min(width, height) / 2 when applied. */
+  cornerRadius?: number | null;
   shadowColor?: string | null;
   shadowOffsetX?: number | null;
   shadowOffsetY?: number | null;

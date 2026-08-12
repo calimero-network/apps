@@ -6,6 +6,7 @@ import {
   useState,
 } from "react";
 import {
+  ActiveSelection,
   Canvas,
   Point,
   Rect,
@@ -15,6 +16,8 @@ import {
   FabricImage,
   Path,
   Pattern,
+  PencilBrush,
+  Polygon,
   Shadow,
   Group,
   Text as FabricText,
@@ -22,10 +25,15 @@ import {
 } from "fabric";
 import { v4 as uuid } from "uuid";
 import { rpcCall } from "../api/rpc";
+import { applyTopLeftOrigin } from "../utils/fabricDefaults";
+import { isPaintable } from "../utils/color";
 import { useCanvasStore } from "../store/canvasStore";
-import { downloadDataUrl } from "../utils/export";
+import { saveDataUrl, saveText } from "../utils/saveFile";
 import type { Element } from "../types";
 import styles from "./FabricCanvas.module.css";
+
+// Must run before any Fabric object is constructed — see fabricDefaults.ts.
+applyTopLeftOrigin();
 
 export interface FabricCanvasHandle {
   exportPng: () => Promise<void>;
@@ -118,11 +126,11 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
     useImperativeHandle(ref, () => ({
       async exportPng() {
         const url = withSolidBgData(() => fabricRef.current!.toDataURL({ format: "png", multiplier: 2 }));
-        await downloadDataUrl(url, "merodesign-export.png");
+        await saveDataUrl(url, "merodesign-export.png");
       },
       async exportSvg() {
         const svg = withSolidBgData(() => fabricRef.current!.toSVG());
-        await downloadDataUrl(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, "merodesign-export.svg");
+        await saveText(svg, "merodesign-export.svg", "image/svg+xml");
       },
       async exportSelectedPng() {
         const fc = fabricRef.current;
@@ -135,7 +143,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           }
           return fc.toDataURL({ format: "png", multiplier: 2 });
         });
-        await downloadDataUrl(url, "merodesign-selection.png");
+        await saveDataUrl(url, "merodesign-selection.png");
       },
       async exportSelectedSvg() {
         const fc = fabricRef.current;
@@ -150,10 +158,10 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           const svg = fc.toSVG();
           hidden.forEach((o) => { o.visible = true; });
           fc.renderAll();
-          await downloadDataUrl(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, "merodesign-selection.svg");
+          await saveText(svg, "merodesign-selection.svg", "image/svg+xml");
         } else {
           const svg = fc.toSVG();
-          await downloadDataUrl(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, "merodesign-export.svg");
+          await saveText(svg, "merodesign-export.svg", "image/svg+xml");
         }
       },
     }));
@@ -260,6 +268,9 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       if (!fc) return;
       const activeObj = fc.getActiveObject() as (IText & { isEditing?: boolean }) | null;
       if (activeObj?.isEditing) return;
+      // A rebuild would destroy a live multi-selection: fc.clear() drops the
+      // ActiveSelection and the user's drag target vanishes under the cursor.
+      if (fc.getActiveObject() instanceof ActiveSelection) return;
 
       const prevSelectedId = useCanvasStore.getState().selectedElementId;
 
@@ -273,12 +284,20 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           const cached = imageCache[el.id];
           if (cached) {
             FabricImage.fromURL(cached).then((img) => {
+              const sx = el.width / (img.width || el.width);
+              const sy = el.height / (img.height || el.height);
               img.set({
                 left: el.x, top: el.y,
-                scaleX: el.width / (img.width || el.width),
-                scaleY: el.height / (img.height || el.height),
+                scaleX: sx,
+                scaleY: sy,
                 angle: el.rotation,
                 opacity: el.opacity / 100,
+                // A border on an image: paint the stroke first so it sits outside
+                // the bitmap, and divide by the scale so a strokeWidth of 4 is 4
+                // screen pixels rather than 4 * scale.
+                stroke: isPaintable(el.stroke) ? el.stroke : undefined,
+                strokeWidth: isPaintable(el.stroke) ? el.strokeWidth / Math.max(sx, sy, 0.0001) : 0,
+                paintFirst: "stroke",
                 data: el,
                 selectable: !readOnlyRef.current,
                 evented: !readOnlyRef.current,
@@ -292,9 +311,11 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
             const hasBlobId = !!(el.data as { blobId?: string }).blobId;
             const bg = new Rect({
               width: el.width, height: el.height,
-              fill: hasBlobId ? "#e8e8e8" : "#fce8e8",
-              stroke: hasBlobId ? "#ccc" : "#e09090",
-              strokeWidth: 1,
+              // An explicit fill wins over the placeholder tint, so a blob image
+              // still shows its own colour while the bytes are in flight.
+              fill: isPaintable(el.fill) ? el.fill : hasBlobId ? "#e8e8e8" : "#fce8e8",
+              stroke: isPaintable(el.stroke) ? el.stroke : hasBlobId ? "#ccc" : "#e09090",
+              strokeWidth: isPaintable(el.stroke) ? el.strokeWidth || 1 : 1,
             });
             const label = new FabricText(hasBlobId ? "Loading…" : "Image unavailable", {
               fontSize: Math.max(10, Math.min(14, el.width / 12)),
@@ -358,6 +379,11 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       const fc = fabricRef.current;
       if (!fc) return;
 
+      // Fabric 7 does not create a default freeDrawingBrush, so isDrawingMode alone
+      // draws nothing. Build one and keep it in sync with the current stroke.
+      if (!fc.freeDrawingBrush) fc.freeDrawingBrush = new PencilBrush(fc);
+      fc.freeDrawingBrush.color = LINE_STROKE;
+      fc.freeDrawingBrush.width = LINE_WIDTH;
       fc.isDrawingMode = activeTool === "path" && !readOnly;
       fc.selection = activeTool === "select" && !readOnly;
 
@@ -396,7 +422,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
             x: Math.round(p.x), y: Math.round(p.y),
             width: 200, height: 36,
             rotation: 0, fill: "#111111", stroke: "transparent", strokeWidth: 0, opacity: 100,
-            layerIndex: elements.length,
+            layerIndex: nextLayerIndex(elements),
             createdBy: "", createdAt: Date.now(), updatedAt: Date.now(),
           };
           const itext = new IText("Text", {
@@ -494,8 +520,10 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         }
 
         const p = fc.getScenePoint(e);
-        const w = Math.max(Math.abs(p.x - startX), 20);
-        const h = Math.max(Math.abs(p.y - startY), 20);
+        const segment = activeTool === "line" || activeTool === "arrow";
+        // A horizontal line is legitimately 0 tall — only area shapes get a floor.
+        const w = segment ? Math.abs(p.x - startX) : Math.max(Math.abs(p.x - startX), 20);
+        const h = segment ? Math.abs(p.y - startY) : Math.max(Math.abs(p.y - startY), 20);
         const x = Math.min(p.x, startX);
         const y = Math.min(p.y, startY);
 
@@ -505,12 +533,25 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           activeTool === "arrow"  ? "arrow"  as const :
           "rect" as const;
 
+        const isSegment = kind === "line" || kind === "arrow";
+        // item 2: a segment's stroke is the shape, and the bounding box loses which
+        // way it was dragged — so keep the endpoints, element-local.
+        const points = isSegment
+          ? `${Math.round(startX - x)},${Math.round(startY - y)} ${Math.round(p.x - x)},${Math.round(p.y - y)}`
+          : undefined;
+
         const el: Element = {
-          id: uuid(), data: { kind },
+          id: uuid(),
+          data: points ? { kind, points } : { kind },
           x: Math.round(x), y: Math.round(y),
-          width: Math.round(w), height: Math.round(h),
-          rotation: 0, fill: "#4F8EF7", stroke: "transparent", strokeWidth: 0, opacity: 100,
-          layerIndex: elements.length,
+          width: Math.round(isSegment ? Math.abs(p.x - startX) : w),
+          height: Math.round(isSegment ? Math.abs(p.y - startY) : h),
+          rotation: 0,
+          fill: isSegment ? "transparent" : "#4F8EF7",
+          stroke: isSegment ? LINE_STROKE : "transparent",
+          strokeWidth: isSegment ? LINE_WIDTH : 0,
+          opacity: 100,
+          layerIndex: nextLayerIndex(elements),
           createdBy: "", createdAt: Date.now(), updatedAt: Date.now(),
         };
         snapshot();
@@ -518,11 +559,41 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         await rpcCall(contextId, "add_element", { element: el }).catch(() => {});
       };
 
-      const onObjectModified = async (opt: { target?: FabricObject & { data?: Element } }) => {
+      /** A finished pen stroke: persist it as a `path` element. */
+      const onPathCreated = async (opt: { path?: Path }) => {
         if (readOnlyRef.current) return;
-        const obj = opt.target;
-        if (!obj?.data?.id) return;
+        const path = opt.path;
+        if (!path) return;
+        // Fabric's Path keeps its commands as arrays; join them back into path data.
+        const commands = (path as unknown as { path?: (string | number)[][] }).path ?? [];
+        const points = commands.map((c) => c.join(" ")).join(" ");
+        if (!points) return;
+
+        const el: Element = {
+          id: uuid(),
+          data: { kind: "path", points },
+          x: Math.round(path.left ?? 0),
+          y: Math.round(path.top ?? 0),
+          width: Math.round(path.getScaledWidth?.() ?? 1),
+          height: Math.round(path.getScaledHeight?.() ?? 1),
+          rotation: 0,
+          fill: "transparent",
+          stroke: LINE_STROKE,
+          strokeWidth: LINE_WIDTH,
+          opacity: 100,
+          layerIndex: nextLayerIndex(useCanvasStore.getState().elements),
+          createdBy: "", createdAt: Date.now(), updatedAt: Date.now(),
+        };
+        path.set({ data: el });
+        snapshot();
+        upsertElement(el);
+        await rpcCall(contextId, "add_element", { element: el }).catch(() => {});
+      };
+
+      /** Persist one object's geometry from its current absolute position. */
+      const persistGeometry = async (obj: FabricObject & { data?: Element }) => {
         const el = obj.data;
+        if (!el?.id) return;
         const updatedEl: Element = {
           ...el,
           x: Math.round(obj.left ?? el.x),
@@ -533,13 +604,78 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           updatedAt: Date.now(),
         };
         obj.data = updatedEl;
-        snapshot();
         upsertElement(updatedEl);
         await rpcCall(contextId, "update_element", {
           id: updatedEl.id, x: updatedEl.x, y: updatedEl.y,
           width: updatedEl.width, height: updatedEl.height, rotation: updatedEl.rotation,
-          fill: null, stroke: null, stroke_width: null, opacity: null, updated_at: updatedEl.updatedAt,
+          fill: null, stroke: null, stroke_width: null, opacity: null,
+          corner_radius: null, updated_at: updatedEl.updatedAt,
         }).catch(() => {});
+      };
+
+      const onObjectModified = async (opt: { target?: FabricObject & { data?: Element } }) => {
+        if (readOnlyRef.current) return;
+        const obj = opt.target;
+
+        // item 1: dragging a marquee selection hands us an ActiveSelection, which
+        // carries no `.data` — the old guard returned here and nothing was saved.
+        // Children hold group-relative coords, so discard the selection first to
+        // get absolute ones back, persist, then restore it.
+        // Duck-typed rather than `instanceof ActiveSelection`: a multi-selection is
+        // the object that has children and no element of its own. (An arrow is a
+        // Group *with* data, so it correctly takes the single-object path below.)
+        const asGroup = obj as (FabricObject & { data?: Element; getObjects?: () => FabricObject[] });
+        if (obj && !obj.data && typeof asGroup.getObjects === "function") {
+          const children = asGroup.getObjects!() as (FabricObject & { data?: Element })[];
+          fc.discardActiveObject();
+          snapshot();
+          for (const child of children) await persistGeometry(child);
+          const restored = new ActiveSelection(children, { canvas: fc });
+          fc.setActiveObject(restored);
+          fc.requestRenderAll();
+          return;
+        }
+
+        if (!obj?.data?.id) return;
+
+        if (obj.data.data?.kind === "text") {
+          const text = obj as IText & { data?: Element };
+          const sy = text.scaleY ?? 1;
+          const sx = text.scaleX ?? 1;
+          if (Math.abs(sy - 1) > 0.001 || Math.abs(sx - 1) > 0.001) {
+            const el = text.data!;
+            const nextSize = Math.max(4, Math.round((el.data.fontSize ?? 24) * sy));
+            const nextWidth = Math.max(20, Math.round((text.width ?? el.width) * sx));
+            text.set({ fontSize: nextSize, width: nextWidth, scaleX: 1, scaleY: 1 });
+            const updated: Element = {
+              ...el,
+              data: { ...el.data, fontSize: nextSize },
+              width: nextWidth,
+              height: Math.round(text.getScaledHeight?.() ?? el.height),
+              x: Math.round(text.left ?? el.x),
+              y: Math.round(text.top ?? el.y),
+              updatedAt: Date.now(),
+            };
+            text.data = updated;
+            snapshot();
+            upsertElement(updated);
+            fc.requestRenderAll();
+            await rpcCall(contextId, "update_text_style", {
+              id: updated.id, content: null, font_family: null, font_size: nextSize,
+              bold: null, italic: null, updated_at: updated.updatedAt,
+            }).catch(() => {});
+            await rpcCall(contextId, "update_element", {
+              id: updated.id, x: updated.x, y: updated.y,
+              width: updated.width, height: updated.height, rotation: updated.rotation,
+              fill: null, stroke: null, stroke_width: null, opacity: null,
+              corner_radius: null, updated_at: updated.updatedAt,
+            }).catch(() => {});
+            return;
+          }
+        }
+
+        snapshot();
+        await persistGeometry(obj);
       };
 
       const onTextEditingExited = async (opt: { target?: (IText & { data?: Element }) }) => {
@@ -665,6 +801,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       fc.on("mouse:move", onMouseMove as (e: unknown) => void);
       fc.on("mouse:up", onMouseUp as (e: unknown) => void);
       fc.on("object:modified", onObjectModified as (e: unknown) => void);
+      fc.on("path:created", onPathCreated as (e: unknown) => void);
       fc.on("text:editing:exited", onTextEditingExited as (e: unknown) => void);
       fc.on("selection:created", onSelectionCreated as (e: unknown) => void);
       fc.on("selection:updated", onSelectionCreated as (e: unknown) => void);
@@ -675,6 +812,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       return () => {
         fc.off("mouse:down"); fc.off("mouse:move"); fc.off("mouse:up");
         fc.off("object:modified");
+        fc.off("path:created");
         fc.off("text:editing:exited"); fc.off("selection:created");
         fc.off("selection:updated"); fc.off("selection:cleared");
         window.removeEventListener("keydown", onKeyDown);
@@ -732,6 +870,51 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
 FabricCanvas.displayName = "FabricCanvas";
 export default FabricCanvas;
 
+/** Default paint for a line/arrow: without it the stroke *is* the shape and there
+ *  is nothing to see. */
+/**
+ * One past the highest layer in use. `elements.length` collides after a delete —
+ * two elements then share an index and paint order becomes sort-dependent.
+ */
+function nextLayerIndex(elements: Element[]): number {
+  return elements.reduce((max, e) => Math.max(max, e.layerIndex + 1), 0);
+}
+
+const LINE_STROKE = "#111111";
+const LINE_WIDTH = 2;
+
+/**
+ * Line/arrow endpoints, absolute. `points` is "x1,y1 x2,y2" in element-local
+ * space; elements created before that field existed fall back to the bounding
+ * box diagonal, which is all the information they ever had.
+ */
+function endpoints(el: Element): [number, number, number, number] {
+  const raw = el.data.points?.trim();
+  if (raw) {
+    const nums = raw.split(/[\s,]+/).map(Number);
+    if (nums.length >= 4 && nums.every((n) => Number.isFinite(n))) {
+      return [el.x + nums[0], el.y + nums[1], el.x + nums[2], el.y + nums[3]];
+    }
+  }
+  return [el.x, el.y, el.x + el.width, el.y + el.height];
+}
+
+/** An arrowhead as a triangle at (x2,y2), pointing along the segment. */
+function arrowHead(x1: number, y1: number, x2: number, y2: number, width: number, colour: string): Polygon {
+  const size = Math.max(8, width * 3.5);
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const p = (len: number, spread: number) => ({
+    x: x2 - len * Math.cos(angle) + spread * Math.cos(angle + Math.PI / 2),
+    y: y2 - len * Math.sin(angle) + spread * Math.sin(angle + Math.PI / 2),
+  });
+  return new Polygon([{ x: x2, y: y2 }, p(size, size * 0.42), p(size, -size * 0.42)], {
+    fill: colour,
+    stroke: colour,
+    strokeWidth: 1,
+    objectCaching: false,
+  });
+}
+
 function buildFabricObject(el: Element): FabricObject | null {
   const shadow =
     el.shadowBlur != null && el.shadowBlur > 0
@@ -755,25 +938,54 @@ function buildFabricObject(el: Element): FabricObject | null {
   };
 
   switch (el.data.kind) {
-    case "rect":   return new Rect(base);
+    case "rect": {
+      // item 14: rounded corners, clamped so a big radius cannot invert the shape
+      const r = Math.max(0, Math.min(el.cornerRadius ?? 0, Math.min(el.width, el.height) / 2));
+      return new Rect({ ...base, rx: r, ry: r });
+    }
     case "circle": return new Circle({ ...base, radius: el.width / 2 });
     case "line":
-    case "arrow":
-      return new Line([el.x, el.y, el.x + el.width, el.y + el.height], {
-        stroke: el.stroke || "#000", strokeWidth: el.strokeWidth, shadow, data: el,
+    case "arrow": {
+      // item 2: a line's stroke IS the shape, so "transparent"/0 makes it vanish.
+      const colour = isPaintable(el.stroke) ? el.stroke : LINE_STROKE;
+      const width = Math.max(1, el.strokeWidth || LINE_WIDTH);
+      const [x1, y1, x2, y2] = endpoints(el);
+      const line = new Line([x1, y1, x2, y2], {
+        stroke: colour, strokeWidth: width, strokeLineCap: "round", shadow,
       });
-    case "text":
-      return new IText(el.data.content ?? "Text", {
+      if (el.data.kind === "line") {
+        line.set({ data: el });
+        return line;
+      }
+      const group = new Group([line, arrowHead(x1, y1, x2, y2, width, colour)], {
+        opacity: el.opacity / 100,
+        subTargetCheck: false,
+      });
+      group.set({ data: el });
+      return group;
+    }
+    case "text": {
+      const text = new IText(el.data.content ?? "Text", {
         left: el.x, top: el.y,
         fontSize: el.data.fontSize ?? 24,
         fontFamily: el.data.fontFamily ?? "sans-serif",
-        fill: el.fill || "#111",
+        fill: isPaintable(el.fill) ? el.fill : "#111",
         fontWeight: el.data.bold ? "bold" : "normal",
         fontStyle: el.data.italic ? "italic" : "normal",
         textAlign: el.data.text_align ?? "left",
         opacity: el.opacity / 100,
+        // Outlined text: stroke under the fill, so the outline grows outward and
+        // the glyph stays readable.
+        stroke: isPaintable(el.stroke) ? el.stroke : undefined,
+        strokeWidth: isPaintable(el.stroke) ? el.strokeWidth : 0,
+        paintFirst: "stroke",
         shadow, data: el,
       });
+      // item 5: the vertical handles. Present in Fabric 7, stated here so a future
+      // default cannot quietly remove them again.
+      text.setControlsVisibility({ mt: true, mb: true });
+      return text;
+    }
     case "path":
       return new Path(el.data.points ?? "", { ...base, fill: "transparent" });
     default:

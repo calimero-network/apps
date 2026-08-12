@@ -7,6 +7,12 @@ import { truncateMiddle } from "../utils/format";
 import styles from "./SettingsModal.module.css";
 
 /** Contract-level role for a member: "admin" | "editor" | "viewer". */
+/** The contract's member record: the username someone chose on joining. */
+interface CanvasMember {
+  id: string;
+  username: string;
+}
+
 interface ContractRole {
   member: string;
   role: string;
@@ -50,6 +56,8 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
   const [pendingRole, setPendingRole] = useState<string | null>(null);
   // Contract-level (merge-enforced) canvas roles, project boards only.
   const [contractRoles, setContractRoles] = useState<Record<string, string>>({});
+  /** Board roster from the contract, so rows show the username someone picked. */
+  const [canvasMembers, setCanvasMembers] = useState<CanvasMember[]>([]);
   const [myContractRole, setMyContractRole] = useState<string>("");
   const [pendingEditor, setPendingEditor] = useState<string | null>(null);
 
@@ -59,12 +67,14 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
     Promise.all([
       rpcCall<ContractRole[]>(id, "list_roles", {}).catch(() => [] as ContractRole[]),
       rpcCall<string>(id, "my_role", {}).catch(() => ""),
-    ]).then(([roles, mine]) => {
+      rpcCall<CanvasMember[]>(id, "get_members", {}).catch(() => [] as CanvasMember[]),
+    ]).then(([roles, mine, canvasMembers]) => {
       if (cancelled) return;
       const map: Record<string, string> = {};
       (Array.isArray(roles) ? roles : []).forEach((r) => { if (r?.member) map[r.member] = r.role; });
       setContractRoles(map);
       setMyContractRole(mine || "");
+      setCanvasMembers(Array.isArray(canvasMembers) ? canvasMembers : []);
     });
     return () => { cancelled = true; };
   }, [type, id]);
@@ -194,7 +204,10 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
               {members.map((m) => {
                 const isAdmin = m.role === "Admin";
                 const isSelf = m.identity === selfIdentity;
-                const initial = (m.name?.[0] ?? m.identity[0] ?? "?").toUpperCase();
+                // item 12: prefer the username from the contract over the raw id.
+                const canvasName = canvasMembers.find((c) => c.id === m.identity)?.username?.trim();
+                const shownName = canvasName || m.name;
+                const initial = (shownName?.[0] ?? m.identity[0] ?? "?").toUpperCase();
                 const canModerate = type === "team" && selfIsAdmin && !isSelf;
                 const busy = pendingRole === m.identity;
                 // Contract canvas role (project boards). Admins are implicitly
@@ -209,7 +222,7 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
                   <div key={m.identity} className={styles.member}>
                     <span className={styles.memberAvatar}>{initial}</span>
                     <div className={styles.memberInfo}>
-                      {m.name && <span className={styles.memberLabel}>{m.name}{isSelf ? " (you)" : ""}</span>}
+                      {shownName && <span className={styles.memberLabel}>{shownName}{isSelf ? " (you)" : ""}</span>}
                       <div className={styles.memberIdRow}>
                         <code className={styles.memberId} title={m.identity}>
                           {truncateMiddle(m.identity, 10, 6)}
@@ -222,7 +235,7 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
                         >
                           {copied === m.identity ? "✓" : "⧉"}
                         </button>
-                        {!m.name && isSelf && <span className={styles.youTag}>you</span>}
+                        {!shownName && isSelf && <span className={styles.youTag}>you</span>}
                       </div>
                     </div>
                     <span className={`${styles.roleBadge} ${isAdmin ? styles.roleAdmin : styles.roleMember}`}>

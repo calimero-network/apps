@@ -27,6 +27,15 @@ export default defineConfig({
       testIgnore: "**/integration/**",
     },
     {
+      // The same specs again, with the Tauri bridge stubbed. tauri-app opens this
+      // very build in a window and only main.tsx tells the two apart, so a fix
+      // that is silently browser-only fails here.
+      name: "tauri",
+      use: { ...devices["Desktop Chrome"] },
+      testMatch: "**/*.spec.ts",
+      testIgnore: "**/integration/**",
+    },
+    {
       name: "integration",
       use: { ...devices["Desktop Chrome"] },
       testMatch: "**/integration/**/*.spec.ts",

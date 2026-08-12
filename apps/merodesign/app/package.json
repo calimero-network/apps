@@ -10,9 +10,13 @@
     "lint": "eslint .",
     "test": "vitest run",
     "preview": "vite preview",
-    "e2e": "playwright test --project=mocked",
+    "e2e": "playwright test --project=mocked --project=tauri",
     "e2e:ui": "playwright test --ui --project=mocked",
-    "test:all": "vitest run && playwright test --project=mocked"
+    "test:all": "vitest run && node scripts/task-status.mjs --check && playwright test --project=mocked --project=tauri",
+    "e2e:web": "playwright test --project=mocked",
+    "e2e:tauri": "playwright test --project=tauri",
+    "starter": "node scripts/build-starter.mjs",
+    "tasks": "node scripts/task-status.mjs"
   },
   "dependencies": {
     "@calimero-network/mero-js": "^7.3.2",

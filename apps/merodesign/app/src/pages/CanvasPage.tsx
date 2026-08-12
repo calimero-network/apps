@@ -13,8 +13,9 @@ import PropertiesPanel from "../components/PropertiesPanel";
 import CommentsOverlay from "../components/CommentsOverlay";
 import CursorsOverlay from "../components/CursorsOverlay";
 import UsernameModal from "../components/UsernameModal";
-import { exportProject, importProject, type ProjectSnapshot } from "../utils/projectFile";
+import { exportProject, importProject, validateSnapshot, type ProjectSnapshot } from "../utils/projectFile";
 import { extractErrorMessage } from "../utils/errorMessage";
+import { useToast } from "../contexts/ToastContext";
 import styles from "./CanvasPage.module.css";
 
 function normalizeCursor(c: CursorState): CursorState {
@@ -26,6 +27,7 @@ export default function CanvasPage() {
   const navigate = useNavigate();
   const { logout } = useMero();
   const { setElements, upsertElement, removeElement, cacheImage, elements, imageCache, previewMode, setPreviewMode } = useCanvasStore();
+  const { showToast } = useToast();
   const { getUsername, setUsername } = useUsernameStore();
 
   const canvasRef = useRef<FabricCanvasHandle>(null);
@@ -419,6 +421,31 @@ export default function CanvasPage() {
       .catch(() => {});
   }
 
+  /**
+   * Loads the bundled starter project and persists it into contract state: the
+   * same path as Open (.merodesign), so every element lands in WASM via
+   * add_element and reaches every other member, rather than living in local
+   * canvas state. The JSON is imported dynamically so its ~170 kB stays out of
+   * the initial bundle, and validated before use so a bad asset cannot wipe a
+   * board and leave nothing behind.
+   */
+  async function handleOpenStarter() {
+    if (!projectId || !isAdmin) return;
+    try {
+      const raw = (await import("../starter/starter-project.json?raw")).default;
+      const snapshot: unknown = JSON.parse(raw);
+      if (!validateSnapshot(snapshot)) {
+        showToast("Starter project is malformed — nothing was changed", "error");
+        return;
+      }
+      showToast(`Loading ${snapshot.elements.length} elements…`, "info");
+      await handleImportProject(snapshot);
+      showToast("Starter project loaded", "success");
+    } catch (e) {
+      showToast(extractErrorMessage(e, "Could not load the starter project"), "error");
+    }
+  }
+
   async function handleImageUpload(
     file: File, dataUrl: string, naturalWidth: number, naturalHeight: number,
   ) {
@@ -519,6 +546,9 @@ export default function CanvasPage() {
         onImportProject={handleImportProject}
         readOnly={!canEdit}
         canImport={isAdmin}
+        memberList={members}
+        onOpenStarter={handleOpenStarter}
+        boardHasContent={elements.length > 0}
       />
       <div className={styles.workspace}>
         <div className={styles.canvasWrap} onMouseMove={handleCanvasMouseMove}>
@@ -531,6 +561,7 @@ export default function CanvasPage() {
           />
           <CursorsOverlay cursors={cursors} myIdentity={myIdentity} members={members} viewport={viewport} />
           <CommentsOverlay
+            members={members}
             contextId={projectId ?? ""}
             comments={comments}
             myIdentity={myIdentity}

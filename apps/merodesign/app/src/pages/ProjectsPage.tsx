@@ -313,7 +313,7 @@ export default function ProjectsPage() {
                     >⋯</button>
                     {menuOpenId === p.contextId && (
                       <div className={styles.dropdown}>
-                        <button className={styles.dropdownItem} onClick={() => { setMenuOpenId(null); setSettingsProject(p); }}>
+                        <button className={styles.dropdownItem} data-testid={`project-settings-${p.contextId}`} onClick={() => { setMenuOpenId(null); setSettingsProject(p); }}>
                           Settings
                         </button>
                         <button className={`${styles.dropdownItem} ${styles.dropdownDanger}`} onClick={() => deleteProject(p.contextId)}>

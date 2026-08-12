@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import { resolveName } from "../hooks/useMemberNames";
 import { useCanvasStore, type Background } from "../store/canvasStore";
 import { fileToDataUrl } from "../utils/export";
 import { getImageDimensions } from "../utils/image";
 import Logo from "./Logo";
 import styles from "./Toolbar.module.css";
-import type { CursorState } from "../types";
+import type { Member, CursorState } from "../types";
 import type { ProjectSnapshot } from "../utils/projectFile";
 
 /* ── SVG tool icons ────────────────────────────────────────────── */
@@ -97,11 +98,6 @@ function colorForIdentity(id: string): string {
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
   return CURSOR_COLORS[Math.abs(h) % CURSOR_COLORS.length];
 }
-function shortLabel(id: string) {
-  if (id.length <= 10) return id;
-  return id.slice(0, 4) + "…" + id.slice(-4);
-}
-
 interface Props {
   contextId: string;
   onBack: () => void;
@@ -113,8 +109,14 @@ interface Props {
   onToggleComment?: () => void;
   onImageUpload: (file: File, dataUrl: string, width: number, height: number) => void;
   members?: CursorState[];
+  /** Board roster, for resolving identities to usernames (item 8). */
+  memberList?: Member[];
   onSaveProject?: () => void;
   onImportProject?: (snapshot: ProjectSnapshot) => void;
+  /** Loads the bundled starter project into this board and persists it. */
+  onOpenStarter?: () => void | Promise<void>;
+  /** Drives the confirm step: replacing a board that already has work needs one. */
+  boardHasContent?: boolean;
   /** Viewer (no editor/admin role): hide creation tools + commenting. */
   readOnly?: boolean;
   /** Project import replaces the whole board (admin-gated clear + add), so it
@@ -131,12 +133,19 @@ export default function Toolbar({
   addingComment = false,
   onToggleComment,
   members = [],
+  memberList = [],
   onSaveProject,
   onImportProject,
   readOnly = false,
   canImport = false,
+  onOpenStarter,
+  boardHasContent = false,
 }: Props) {
   const { activeTool, setTool, background, setBackground, undo, redo, undoStack, redoStack } = useCanvasStore();
+  // Loading the starter clears the board, so an occupied board asks once. Kept as
+  // in-menu state rather than window.confirm: a native dialog cannot be driven in
+  // the Tauri webview e2e project.
+  const [starterArmed, setStarterArmed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importFileInputRef = useRef<HTMLInputElement>(null);
   const optionsRef = useRef<HTMLDivElement>(null);
@@ -263,6 +272,23 @@ export default function Toolbar({
                 {canImport && (
                   <button className={styles.optionsItem} onClick={() => { importFileInputRef.current?.click(); setOptionsOpen(false); }} data-testid="open-project">Open (.merodesign)</button>
                 )}
+                {canImport && onOpenStarter && (
+                  <button
+                    className={styles.optionsItem}
+                    data-testid={starterArmed ? "open-starter-confirm" : "open-starter"}
+                    onClick={() => {
+                      if (boardHasContent && !starterArmed) {
+                        setStarterArmed(true);
+                        return;
+                      }
+                      setStarterArmed(false);
+                      setOptionsOpen(false);
+                      void onOpenStarter();
+                    }}
+                  >
+                    {starterArmed ? "Replace board — confirm" : "Open starter project"}
+                  </button>
+                )}
               </>
             )}
             <div className={styles.optionsDivider} />
@@ -310,7 +336,7 @@ export default function Toolbar({
                     className={styles.memberDot}
                     style={{ background: colorForIdentity(m.identity) }}
                   />
-                  <span className={styles.memberLabel}>{shortLabel(m.identity)}</span>
+                  <span className={styles.memberLabel}>{resolveName(memberList, m.identity)}</span>
                 </div>
               ))
             )}

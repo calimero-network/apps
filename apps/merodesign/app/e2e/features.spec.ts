@@ -1140,12 +1140,18 @@ test.describe("T20 – Prototype panel HTML output", () => {
     await expect(pre).toBeVisible({ timeout: 3000 });
   });
 
-  test("Proto HTML includes position for rect element", async ({ page }) => {
+  test("Proto HTML normalises the whole-board export to its own origin", async ({ page }) => {
     await gotoCanvas(page); // RECT_EL at x:50, y:60
     await page.getByText("Proto").click();
     const code = page.locator('[class*="protoCode"]').first();
-    const text = await code.textContent();
-    expect(text).toContain("left: 50px");
-    expect(text).toContain("top: 60px");
+    const text = (await code.textContent()) ?? "";
+    // IMPORTANT.md item 11: the export used to emit absolute board coordinates
+    // inside a `position: relative` wrapper with no size, so anything at a negative
+    // coordinate rendered above the page and the wrapper contributed nothing. The
+    // whole-board export now shifts to the content origin and states its size.
+    expect(text).toContain("left: 0px");
+    expect(text).toContain("top: 0px");
+    expect(text).toMatch(/width: \d+px; height: \d+px/);
+    expect(text).not.toMatch(/left: -\d/);
   });
 });

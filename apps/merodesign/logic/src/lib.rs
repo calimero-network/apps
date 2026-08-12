@@ -30,8 +30,18 @@ const ROLE_EDITOR: &str = "editor";
 pub enum ElementData {
     Rect,
     Circle,
-    Line,
-    Arrow,
+    /// `points` is "x1,y1 x2,y2" in element-local space. A bounding box cannot
+    /// express which way a line was drawn, so a line drawn bottom-left to
+    /// top-right came back mirrored. Defaulted so pre-existing elements and older
+    /// clients that send a bare `{"kind":"line"}` still deserialize.
+    Line {
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        points: String,
+    },
+    Arrow {
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        points: String,
+    },
     Path { points: String },
     Text {
         content: String,
@@ -91,6 +101,9 @@ pub struct Element {
     pub shadow_offset_y: Option<i32>,
     pub shadow_blur:    Option<u32>,
     pub label:          Option<String>,
+    /// Corner radius in px, clamped by the client to min(width, height) / 2.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub corner_radius:  Option<u32>,
 }
 
 // Whole-record LWW by the monotonic `updated_at`; a leaf value with no nested
@@ -595,6 +608,7 @@ impl MeroDesign {
         rotation: Option<i32>,
         fill: Option<String>, stroke: Option<String>,
         stroke_width: Option<u32>, opacity: Option<u8>,
+        corner_radius: Option<u32>,
         updated_at: u64,
     ) -> app::Result<()> {
         self.require_editor()?;
@@ -608,6 +622,8 @@ impl MeroDesign {
             if let Some(v) = stroke       { el.stroke       = v; }
             if let Some(v) = stroke_width { el.stroke_width = v; }
             if let Some(v) = opacity      { el.opacity      = v; }
+            // None means "leave alone"; 0 means "square corners".
+            if let Some(v) = corner_radius { el.corner_radius = Some(v); }
             el.updated_at = updated_at;
             drop(el);
             app::emit!(Event::ElementUpdated(id));
@@ -717,6 +733,43 @@ impl MeroDesign {
     }
 
     // ── Layer order ───────────────────────────────────────────────────────────
+
+    /// Moves one element to an explicit position in the layer order and renumbers
+    /// the rest densely, so "up one" and "down one" survive a sync.
+    /// `bring_to_front` / `send_to_back` remain the all-the-way jumps.
+    pub fn set_layer_index(&mut self, id: String, index: u32, updated_at: u64) -> app::Result<()> {
+        self.require_editor()?;
+
+        let mut order: Vec<(String, u32)> = self
+            .elements
+            .entries()
+            .unwrap()
+            .map(|(k, v)| (k, v.layer_index))
+            .collect();
+        if !order.iter().any(|(k, _)| *k == id) {
+            return Ok(());
+        }
+        order.sort_by_key(|(_, layer)| *layer);
+
+        let ids: Vec<String> = order.into_iter().map(|(k, _)| k).collect();
+        let from = ids.iter().position(|k| *k == id).unwrap();
+        let to = (index as usize).min(ids.len().saturating_sub(1));
+
+        let mut next = ids;
+        let moved = next.remove(from);
+        next.insert(to, moved);
+
+        for (i, key) in next.iter().enumerate() {
+            if let Ok(Some(mut el)) = self.elements.get_mut(key) {
+                el.layer_index = i as u32;
+                if *key == id {
+                    el.updated_at = updated_at;
+                }
+            }
+        }
+        app::emit!(Event::LayerReordered());
+        Ok(())
+    }
 
     pub fn bring_to_front(&mut self, id: String) -> app::Result<()> {
         self.require_editor()?;
@@ -836,7 +889,7 @@ mod tests {
             stroke_width: 1, opacity: 100, layer_index: 0,
             created_by: "creator".to_owned(), created_at: 1, updated_at: 1,
             shadow_color: None, shadow_offset_x: None, shadow_offset_y: None,
-            shadow_blur: None, label: None,
+            shadow_blur: None, label: None, corner_radius: None,
         }
     }
 
@@ -991,4 +1044,116 @@ mod tests {
             .is_err());
         assert_eq!(app.view(|s| s.get_board()).name, "Board");
     }
+    // ── item 4: one-step layer moves must survive a sync ──────────────────────
+
+    fn seed(app: &mut TestHost<MeroDesign>, ids: &[&str]) {
+        for (i, id) in ids.iter().enumerate() {
+            let mut el = sample_element(id);
+            el.layer_index = i as u32;
+            app.call(|s| s.add_element(el.clone())).unwrap();
+        }
+    }
+
+    fn order(app: &TestHost<MeroDesign>) -> Vec<String> {
+        let mut got: Vec<(String, u32)> =
+            app.view(|s| s.get_elements()).into_iter().map(|e| (e.id, e.layer_index)).collect();
+        got.sort_by_key(|(_, l)| *l);
+        got.into_iter().map(|(id, _)| id).collect()
+    }
+
+    #[test]
+    fn set_layer_index_moves_one_step_and_renumbers_densely() {
+        let mut app = new_board();
+        seed(&mut app, &["a", "b", "c"]);
+        app.call(|s| s.set_layer_index("b".to_owned(), 2, 99)).unwrap();
+        assert_eq!(order(&app), vec!["a", "c", "b"], "one step up");
+        let layers: Vec<u32> =
+            app.view(|s| s.get_elements()).into_iter().map(|e| e.layer_index).collect();
+        let mut sorted = layers.clone();
+        sorted.sort_unstable();
+        assert_eq!(sorted, vec![0, 1, 2], "indices stay dense — no duplicates");
+    }
+
+    #[test]
+    fn set_layer_index_clamps_past_the_end() {
+        let mut app = new_board();
+        seed(&mut app, &["a", "b"]);
+        app.call(|s| s.set_layer_index("a".to_owned(), 99, 1)).unwrap();
+        assert_eq!(order(&app), vec!["b", "a"], "clamped to the last slot");
+    }
+
+    #[test]
+    fn set_layer_index_ignores_an_unknown_id() {
+        let mut app = new_board();
+        seed(&mut app, &["a", "b"]);
+        app.call(|s| s.set_layer_index("nope".to_owned(), 0, 1)).unwrap();
+        assert_eq!(order(&app), vec!["a", "b"], "unchanged, and no panic");
+    }
+
+    #[test]
+    fn set_layer_index_at_the_bottom_is_a_noop() {
+        let mut app = new_board();
+        seed(&mut app, &["a", "b", "c"]);
+        app.call(|s| s.set_layer_index("a".to_owned(), 0, 1)).unwrap();
+        assert_eq!(order(&app), vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn set_layer_index_is_refused_for_viewers() {
+        let mut app = new_board();
+        seed(&mut app, &["a", "b"]);
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s.join("bob".to_owned(), None, 1));
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.set_layer_index("a".to_owned(), 1, 2))
+            .is_err());
+        assert_eq!(order(&app), vec!["a", "b"]);
+    }
+
+    // ── item 14: corner radius ───────────────────────────────────────────────
+
+    #[test]
+    fn corner_radius_round_trips_and_zero_is_a_real_value() {
+        let mut app = new_board();
+        app.call(|s| s.add_element(sample_element("a"))).unwrap();
+        assert_eq!(app.view(|s| s.get_element("a".to_owned())).unwrap().corner_radius, None);
+
+        app.call(|s| s.update_element("a".to_owned(), None, None, None, None, None, None, None, None, None, Some(12), 2)).unwrap();
+        assert_eq!(app.view(|s| s.get_element("a".to_owned())).unwrap().corner_radius, Some(12));
+
+        // 0 means square corners, not "leave alone"
+        app.call(|s| s.update_element("a".to_owned(), None, None, None, None, None, None, None, None, None, Some(0), 3)).unwrap();
+        assert_eq!(app.view(|s| s.get_element("a".to_owned())).unwrap().corner_radius, Some(0));
+
+        // None leaves it untouched while other fields change
+        app.call(|s| s.update_element("a".to_owned(), Some(5), None, None, None, None, None, None, None, None, None, 4)).unwrap();
+        let el = app.view(|s| s.get_element("a".to_owned())).unwrap();
+        assert_eq!(el.corner_radius, Some(0));
+        assert_eq!(el.x, 5);
+    }
+
+    // ── item 2: lines carry their endpoints ──────────────────────────────────
+
+    #[test]
+    fn line_points_round_trip() {
+        let mut app = new_board();
+        let mut el = sample_element("l");
+        el.data = ElementData::Line { points: "0,40 60,0".to_owned() };
+        app.call(|s| s.add_element(el.clone())).unwrap();
+        match app.view(|s| s.get_element("l".to_owned())).unwrap().data {
+            ElementData::Line { points } => assert_eq!(points, "0,40 60,0"),
+            other => panic!("expected a line, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_line_with_no_points_still_deserializes() {
+        // Older clients send a bare {"kind":"line"}; serde(default) keeps them working.
+        let json = r#"{"kind":"line"}"#;
+        let data: ElementData = calimero_sdk::serde_json::from_str(json).unwrap();
+        match data {
+            ElementData::Line { points } => assert!(points.is_empty()),
+            other => panic!("expected a line, got {other:?}"),
+        }
+    }
+
 }

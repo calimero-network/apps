@@ -1,4 +1,5 @@
 import { rpcCall } from "../api/rpc";
+import { saveText } from "./saveFile";
 import type { CanvasComment, Element } from "../types";
 
 export interface ProjectSnapshot {
@@ -35,16 +36,13 @@ export async function exportProject(contextId: string): Promise<void> {
     comments: Array.isArray(comments) ? comments : [],
   };
 
-  const json = JSON.stringify(snapshot, null, 2);
-  const blob = new Blob([json], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${snapshot.boardName || "merodesign"}.merodesign`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  // Goes through the shared save seam: this used to build its own anchor, which
+  // the Tauri webview ignores (item 9).
+  await saveText(
+    JSON.stringify(snapshot, null, 2),
+    `${snapshot.boardName || "merodesign"}.merodesign`,
+    "application/json",
+  );
 }
 
 export async function importProject(
