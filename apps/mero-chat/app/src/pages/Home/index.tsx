@@ -766,9 +766,15 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   // Learn this node's ACCOUNT id for the workspace. The contract stamps
   // `sender` with the account id, while everything else the app holds is a
   // device id — without this, no message can ever be recognised as our own.
+  // It also decides which slot of a DM's participant metadata is "the other
+  // person" (info.creator is an account id). The first DM fetch can win the
+  // race against this async load, which would render our own name as the DM
+  // title, so refresh the DM list once the account id is registered.
   useEffect(() => {
     if (!currentGroupId) return;
-    void loadSelfAccountIdentity(currentGroupId);
+    void loadSelfAccountIdentity(currentGroupId).then(() => {
+      void fetchDmsRef.current();
+    });
   }, [currentGroupId]);
 
   useWebSocketEvents(useCallback(async (event: WebSocketEvent) => {

@@ -10,6 +10,7 @@ import {
 } from "../api/meroJsClient";
 import { getGroupMemberIdentity, setGroupMemberIdentity } from "../constants/config";
 import { resolveSharedDmDiscovery } from "../utils/dmContext";
+import { isSelfSender } from "../utils/selfIdentity";
 
 export interface DMContextInfo extends GroupContextChannel {
   otherUsername: string;
@@ -161,14 +162,23 @@ export function useDMs() {
             : "";
 
           // Primary: description encodes { c: creatorName, o: otherName } at
-          // DM creation time. Compare info.creator to our own joined identity
-          // to know which slot is ours. This works as soon as get_info works
-          // (context joined + WASM state gossiped) — no set_profile needed.
+          // DM creation time. Work out which slot is ours by asking whether
+          // info.creator is one of OUR identities. This works as soon as
+          // get_info works (context joined + WASM state gossiped) — no
+          // set_profile needed.
+          //
+          // `creator` is stamped `UserId::new(env::account_id())` in the
+          // contract — an ACCOUNT id — while `joinedIdentity` comes from
+          // `contexts/{id}/identities`, which returns DEVICE keys. A direct
+          // `===` between the two never matches, so the creator fell through
+          // to slot "c" and saw their OWN name as the DM title. isSelfSender
+          // compares against every identity this node owns, account ids
+          // included.
           if (joinedIdentity && info?.description) {
             try {
               const meta = JSON.parse(info.description) as { c?: string; o?: string };
               if (meta && (meta.c || meta.o)) {
-                const isCreator = info.creator === joinedIdentity;
+                const isCreator = isSelfSender(info.creator, ctxId, joinedIdentity);
                 otherUsername = (isCreator ? meta.o : meta.c)?.trim() || "";
               }
             } catch {

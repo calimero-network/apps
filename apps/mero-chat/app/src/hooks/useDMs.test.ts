@@ -1,6 +1,10 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useDMs } from "./useDMs";
+import {
+  clearRegisteredContextIdentities,
+  registerAccountIdentity,
+} from "../utils/selfIdentity";
 
 const {
   mockListGroupContexts,
@@ -49,6 +53,10 @@ vi.mock("../api/meroJsClient", () => ({
 vi.mock("../constants/config", () => ({
   getGroupMemberIdentity: mockGetGroupMemberIdentity,
   setGroupMemberIdentity: mockSetGroupMemberIdentity,
+  // selfIdentity reads these too — the module-namespace access throws if the
+  // mock omits them, which would swallow the self-check inside useDMs.
+  getContextMemberIdentity: () => "",
+  getGroupId: () => "",
 }));
 
 describe("useDMs (1-group-per-context)", () => {
@@ -62,6 +70,7 @@ describe("useDMs (1-group-per-context)", () => {
     mockFetchContextIdentities.mockReset();
     mockGetGroupMemberIdentity.mockReset();
     mockSetGroupMemberIdentity.mockReset();
+    clearRegisteredContextIdentities();
 
     mockGetGroupMemberIdentity.mockReturnValue("member-me");
     mockListMembers.mockResolvedValue({
@@ -343,6 +352,49 @@ describe("useDMs (1-group-per-context)", () => {
     expect(dms[0].otherUsername).toBe("Bob");
     // get_profiles not called since description already provided the name
     expect(mockGetProfiles).not.toHaveBeenCalled();
+  });
+
+  it("treats the creator's ACCOUNT id as self when the node's context identity is a device key", async () => {
+    // Real nodes: `info.creator` is stamped `UserId::new(env::account_id())`,
+    // while `contexts/{id}/identities` returns DEVICE keys. Comparing the two
+    // never matches, so the creator used to read slot "c" — their OWN name —
+    // and the DM they started with Bob rendered as a DM with themselves.
+    registerAccountIdentity("account-me");
+
+    mockListSubgroups.mockResolvedValue({
+      data: [{ groupId: "dm-sg-1", alias: "DM_CONTEXT_member-me_member-you" }],
+      error: null,
+    });
+    mockListGroupContexts.mockImplementation(async (id: string) =>
+      id === "dm-sg-1"
+        ? {
+            data: [{ contextId: "ctx-1", alias: "DM_CONTEXT_member-me_member-you" }],
+            error: null,
+          }
+        : { data: [], error: null },
+    );
+    mockFetchContextIdentities.mockResolvedValue({
+      data: { data: { identities: ["device-me"] } },
+    });
+    mockGetContextInfo.mockResolvedValue({
+      data: {
+        name: "DM: Bob",
+        context_type: "Dm",
+        creator: "account-me",
+        description: JSON.stringify({ c: "Alice", o: "Bob" }),
+      },
+      error: null,
+    });
+    mockGetProfiles.mockResolvedValue({ data: [], error: null });
+
+    const { result } = renderHook(() => useDMs());
+    let dms: Awaited<ReturnType<typeof result.current.fetchDms>> = [];
+    await act(async () => {
+      dms = await result.current.fetchDms("namespace-1");
+    });
+
+    expect(dms).toHaveLength(1);
+    expect(dms[0].otherUsername).toBe("Bob");
   });
 
   it("reads otherUsername from description when current user is the recipient", async () => {
