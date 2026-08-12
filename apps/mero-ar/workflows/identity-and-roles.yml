@@ -1,0 +1,562 @@
+name: Mero AR Identity And Roles
+description: >
+  Two-node test of the rc.20 identity model — the half that a single node cannot
+  prove, because it needs two distinct ACCOUNTS.
+
+  Node 1 creates the room (so it is owner + sole admin). Node 2 joins by
+  invitation and is therefore a viewer: its writes must be rejected by
+  `require_editor`, not merely hidden by the app. Node 1 then grants it the editor
+  role, node 2 places an object that is attributed to node 2's own device key,
+  the advisory lock is shown to hold across identities, an admin is shown to be
+  able to break someone else's lock, and a revoke puts node 2 back to read-only.
+
+  `grant_editor` can only name a member whose device→account pairing the contract
+  has seen, which is what node 2's `join` registers — that bridge is the reason
+  the `accounts` map exists.
+
+  Note how Bob's member id is obtained: from the contract's own roster, not from
+  a `create_identity` call. In a namespace-backed context the member identity is
+  the one the join materialises from group membership, so a freshly generated key
+  is NOT what `env::device_id()` reports — an earlier version of this workflow
+  granted to that key and the grant correctly refused to name an unknown account.
+
+stop_all_nodes: true
+restart: false
+wait_timeout: 120
+
+nodes:
+  chain_id: testnet-1
+  count: 2
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.20
+  prefix: calimero-node
+
+steps:
+  # ── Bootstrap both nodes ──────────────────────────────────────────────────
+  - name: Install Application on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: "../logic/res/mero_ar.wasm"
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install Application on Node 2
+    type: install_application
+    node: calimero-node-2
+    path: "../logic/res/mero_ar.wasm"
+    dev: true
+
+  - name: Create Namespace
+    type: create_group
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Create Room Context
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    params: '{"name": "Shared Studio"}'
+    outputs:
+      context_id: contextId
+      member_public_key: memberPublicKey
+
+  - name: Invite Node 2
+    type: create_group_invitation
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    outputs:
+      invitation_2: invitation
+
+  - name: Node 2 Joins Namespace
+    type: join_group
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+    invitation: "{{invitation_2}}"
+
+  - name: Node 2 Joins Context
+    type: join_context
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+
+  - name: Sync After Join
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # ── Node 2 enters the room, registering its device→account pairing ────────
+  - name: Node 2 Joins As Bob
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: join
+    args:
+      username: "Bob"
+      avatar: null
+      timestamp: 1000000
+
+  - name: Sync After Bob Joins
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # `wait_for_sync` compares `contextStateHash`, and it reported converged 160ms
+  # after Bob's write — before that delta could have reached node 1. So give
+  # propagation real time rather than trusting the hash comparison.
+  - name: Let Bob's Join Reach Node 1
+    type: wait
+    seconds: 20
+    message: "waiting for Bob's join (and his device→account pairing) to reach node 1"
+
+  - name: Node 1 Reads The Members
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_members
+    args: {}
+    outputs:
+      members_on_node_1: result
+      # Bob's member id as the CONTRACT recorded it — `env::device_id()` of
+      # whatever identity node 2 signed with. Node 1 never joins here, so the
+      # roster is exactly one entry. This is also how the app names a member in a
+      # grant: it reads the id out of `list_roles`, never a key it made up.
+      bob_member_id: result.output.0.id
+
+  # A gate that localizes the next failure. `join` writes the member entry and
+  # the device→account pairing in ONE call, so node 1 seeing Bob here means it can
+  # also name him in a grant. If this assertion is what fails, the problem is
+  # state propagation between the nodes — not the role logic below.
+  - name: Assert Node 1 Sees Bob
+    type: assert
+    statements:
+      - "contains({{members_on_node_1}}, 'Bob')"
+      - "is_set({{bob_member_id}})"
+
+  # Node 1 enters the room as well, so the roster at the end has both people and
+  # both roles. Deliberately after the read above, which relies on Bob being the
+  # only member so far.
+  - name: Node 1 Joins As Alice
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: join
+    args:
+      username: "Alice"
+      avatar: null
+      timestamp: 1000001
+
+  - name: Bob's Role Before Any Grant
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: my_role
+    args: {}
+    outputs:
+      bob_role: result
+
+  - name: Assert Bob Starts As Viewer
+    type: assert
+    statements:
+      - "contains({{bob_role}}, 'viewer')"
+
+  # ── A viewer's write is REJECTED by the contract ──────────────────────────
+  - name: Bob Tries To Place An Object (should be rejected)
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: add_object
+    expected_failure: true
+    args:
+      object:
+        id: "bob-denied"
+        data: { kind: "cube" }
+        transform:
+          position: { x: 1.0, y: 1.0, z: 1.0 }
+          rotation: { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
+          scale: { x: 1.0, y: 1.0, z: 1.0 }
+        color: "FF0000"
+        lockedBy: null
+        createdBy: "bob"
+        createdAt: 1000001
+        updatedAt: 1000001
+        version: 0
+
+  - name: Objects After Rejected Write
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: get_objects
+    args: {}
+    outputs:
+      after_denied: result
+
+  - name: Assert Viewer Wrote Nothing
+    type: assert
+    statements:
+      - "not_contains({{after_denied}}, 'bob-denied')"
+
+  # ── Admin grants the editor role ──────────────────────────────────────────
+  # `AccessControl::grant` calls `only_admin()` internally, so this is refused by
+  # the role registry itself — not by an app-level guard. Bob's account IS known
+  # here (his join registered it), so the refusal is about authority, not identity.
+  - name: Bob Tries To Promote Himself (should be rejected)
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: grant_editor
+    expected_failure: true
+    args:
+      member: "{{bob_member_id}}"
+
+  - name: Node 1 Grants Bob Editor
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: grant_editor
+    args:
+      member: "{{bob_member_id}}"
+
+  - name: Sync After Grant
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Settle (Sync After Grant)
+    type: wait
+    seconds: 12
+    message: "waiting for the editor grant to reach node 2"
+
+  - name: Bob's Role After Grant
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: my_role
+    args: {}
+    outputs:
+      bob_role_after: result
+
+  - name: Assert Bob Is Editor
+    type: assert
+    statements:
+      - "contains({{bob_role_after}}, 'editor')"
+
+  - name: Bob Places An Object
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: add_object
+    args:
+      object:
+        id: "bob-cube"
+        data: { kind: "cube" }
+        transform:
+          position: { x: 2.0, y: 0.0, z: -1.0 }
+          rotation: { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
+          scale: { x: 1.0, y: 1.0, z: 1.0 }
+        color: "00FF88"
+        lockedBy: null
+        createdBy: "impersonatingalice"
+        createdAt: 2000000
+        updatedAt: 2000000
+        version: 0
+
+  - name: Sync After Bob's Object
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Settle (Sync After Bob's Object)
+    type: wait
+    seconds: 12
+    message: "waiting for Bob's object to reach node 1"
+
+  - name: Node 1 Reads Bob's Object
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_objects
+    args: {}
+    outputs:
+      synced_objects: result
+
+  # Attribution follows the SIGNER across nodes: Bob's device key, never the
+  # name he claimed.
+  - name: Assert Object Synced And Attributed To Bob's Device
+    type: assert
+    statements:
+      - "contains({{synced_objects}}, 'bob-cube')"
+      - "contains({{synced_objects}}, '{{bob_member_id}}')"
+      - "not_contains({{synced_objects}}, 'impersonatingalice')"
+
+  # ── The advisory lock holds across identities ─────────────────────────────
+  - name: Node 1 Locks Bob's Object
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: lock_object
+    args:
+      id: "bob-cube"
+
+  - name: Sync After Lock
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Settle (Sync After Lock)
+    type: wait
+    seconds: 12
+    message: "waiting for node 1's lock to reach node 2"
+
+  # Not an authorization failure — Bob is a legitimate editor — so the call
+  # succeeds and the edit is dropped. The proof is that nothing moved.
+  - name: Bob Tries To Move The Locked Object
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: update_transform
+    args:
+      id: "bob-cube"
+      transform:
+        position: { x: 999.0, y: 0.0, z: 0.0 }
+        rotation: { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
+        scale: { x: 1.0, y: 1.0, z: 1.0 }
+      updated_at: 3000000
+
+  - name: Read Locked Object
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: get_object
+    args:
+      id: "bob-cube"
+    outputs:
+      lock_held: result
+
+  - name: Assert Non-Holder Edit Dropped
+    type: assert
+    statements:
+      - "not_contains({{lock_held}}, '999')"
+      - "contains({{lock_held}}, '{{member_public_key}}')"
+
+  # An admin can break a lock somebody else holds — otherwise a member who
+  # leaves mid-edit wedges the object for good.
+  - name: Bob Locks His Own Object After Admin Releases
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: unlock_object
+    args:
+      id: "bob-cube"
+
+  - name: Sync After Admin Unlock
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Settle (Sync After Admin Unlock)
+    type: wait
+    seconds: 12
+    message: "waiting for the unlock to reach node 2"
+
+  - name: Bob Takes The Lock
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: lock_object
+    args:
+      id: "bob-cube"
+
+  - name: Sync After Bob's Lock
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Settle (Sync After Bob's Lock)
+    type: wait
+    seconds: 12
+    message: "waiting for Bob's lock to reach node 1"
+
+  - name: Admin Breaks Bob's Lock
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: unlock_object
+    args:
+      id: "bob-cube"
+
+  # Asserted by behaviour, not by the shape of an empty field: if the break had
+  # failed, Bob would still hold the lock and this move would be dropped.
+  - name: Admin Moves The Freed Object
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: update_transform
+    args:
+      id: "bob-cube"
+      transform:
+        position: { x: 777.0, y: 0.0, z: 0.0 }
+        rotation: { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
+        scale: { x: 1.0, y: 1.0, z: 1.0 }
+      updated_at: 4500000
+
+  - name: Read Object After Admin Break
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_object
+    args:
+      id: "bob-cube"
+    outputs:
+      lock_broken: result
+
+  - name: Assert Admin Broke The Lock
+    type: assert
+    statements:
+      - "contains({{lock_broken}}, '777')"
+
+  # ── Revoke puts Bob back to read-only ─────────────────────────────────────
+  - name: Node 1 Revokes Bob's Editor Role
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: revoke_editor
+    args:
+      member: "{{bob_member_id}}"
+
+  - name: Sync After Revoke
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Settle (Sync After Revoke)
+    type: wait
+    seconds: 12
+    message: "waiting for the revoke to reach node 2"
+
+  - name: Bob's Role After Revoke
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: my_role
+    args: {}
+    outputs:
+      bob_role_revoked: result
+
+  - name: Assert Bob Is A Viewer Again
+    type: assert
+    statements:
+      - "contains({{bob_role_revoked}}, 'viewer')"
+
+  - name: Bob Tries To Place Again (should be rejected)
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: add_object
+    expected_failure: true
+    args:
+      object:
+        id: "bob-denied-again"
+        data: { kind: "sphere" }
+        transform:
+          position: { x: 0.0, y: 0.0, z: 0.0 }
+          rotation: { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
+          scale: { x: 1.0, y: 1.0, z: 1.0 }
+        color: "FF0000"
+        lockedBy: null
+        createdBy: "bob"
+        createdAt: 4000000
+        updatedAt: 4000000
+        version: 0
+
+  # ── A viewer can still be present in the room ─────────────────────────────
+  - name: Bob Publishes His Camera Pose
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: update_presence
+    args:
+      camera_position: { x: 0.0, y: 1.6, z: 0.0 }
+      camera_rotation: { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
+      updated_at: 5000000
+
+  - name: Sync After Presence
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Settle (Sync After Presence)
+    type: wait
+    seconds: 12
+    message: "waiting for Bob's presence to reach node 1"
+
+  - name: Node 1 Reads Presence
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_presence
+    args: {}
+    outputs:
+      presence: result
+
+  - name: Assert Viewer Is Present
+    type: assert
+    statements:
+      - "contains({{presence}}, '{{bob_member_id}}')"
+
+  - name: Node 1 Reads The Roster
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: list_roles
+    args: {}
+    outputs:
+      roster: result
+
+  - name: Assert Roster Has Both Members
+    type: assert
+    statements:
+      - "contains({{roster}}, '{{member_public_key}}')"
+      - "contains({{roster}}, '{{bob_member_id}}')"
+      - "contains({{roster}}, 'admin')"
+      - "contains({{roster}}, 'viewer')"

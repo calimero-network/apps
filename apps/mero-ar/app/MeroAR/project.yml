@@ -7,9 +7,17 @@ options:
     iOS: "17.0"
   createIntermediateGroups: true
 
+# MeroKit is the shared Calimero Swift SDK (calimero-network/swift-sdk) — this
+# app no longer vendors its own copy.
+#
+# Pinned by commit, not by version: the SDK has no release tags yet, and a
+# `branch: master` pin would make every clean build (and every CI run) resolve
+# to whatever landed upstream that morning. Bump this SHA deliberately, then run
+# `make app-gen && make app-test`.
 packages:
   MeroKit:
-    path: ../MeroKit
+    url: https://github.com/calimero-network/swift-sdk
+    revision: 2c7798fbdea45dd5565485e4a86d687be57b7ed1
 
 targets:
   MeroAR:
@@ -52,6 +60,10 @@ targets:
       - path: Tests
     dependencies:
       - target: MeroAR
+      # The tests build fixtures out of the SDK's `JSONValue`, so they link the
+      # package directly rather than relying on the app target's copy.
+      - package: MeroKit
+        product: MeroKit
 
   MeroARUITests:
     type: bundle.ui-testing

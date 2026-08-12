@@ -63,8 +63,10 @@ for cmd in merod jq curl python3; do command -v "$cmd" &>/dev/null || { red "'$c
 step "Clean slate (node2)"; nuke_node; rm -rf "$NODE_HOME"; green "Ready"
 
 step "Initialising node2 at $NODE_HOME"
-merod --node "$NODE_NAME" --home "$NODE_HOME" init \
-  --server-host 127.0.0.1 --server-port "$NODE_PORT" --swarm-port "$NODE_P2P_PORT" --auth-mode embedded
+# Admin credentials at init, not first login — see the note in dev-node.sh.
+printf '%s' "$ADMIN_PASS" | merod --node "$NODE_NAME" --home "$NODE_HOME" init \
+  --server-host 127.0.0.1 --server-port "$NODE_PORT" --swarm-port "$NODE_P2P_PORT" --auth-mode embedded \
+  --admin-user "$ADMIN_USER" --admin-password-stdin
 green "Node2 initialised"
 
 # Inject node1's loopback multiaddr so the two nodes peer reliably (mDNS races

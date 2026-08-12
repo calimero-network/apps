@@ -2,9 +2,18 @@ name: Mero AR Logic Test
 description: >
   Comprehensive merobox test of the Mero AR scene-graph WASM against a real merod
   node: room init, member join, object add with nested 3D transform, transform
-  updates with version LWW, advisory lock enforcement (non-holder rejected,
-  holder allowed), presence, spatial comments, and delete. Verifies the WASM
-  serializes the nested Transform/Vec3/Quat types correctly across calls.
+  updates with version LWW, advisory lock enforcement, presence, spatial
+  comments, roles, and delete. Verifies the WASM serializes the nested
+  Transform/Vec3/Quat types correctly across calls.
+
+  Since core rc.20 the contract takes NO caller-supplied identity: member ids,
+  object attribution, lock holders, comment authors, and presence keys all come
+  from `env::device_id()`. So the assertions here check against
+  `{{member_public_key}}` — the node's own context identity — and prove that a
+  spoofed `createdBy` on the way in is overwritten.
+
+  Cross-identity behaviour (a viewer being rejected, an admin breaking someone
+  else's lock) needs two accounts and lives in identity-and-roles.yml.
 
 stop_all_nodes: true
 restart: false
@@ -53,12 +62,68 @@ steps:
     outputs:
       room: result
 
+  # The name comes from `initial_name`, because `Ownable::insert` at init is
+  # silently dropped on rc.20 — if this ever returns an empty name, that trap
+  # has been re-introduced.
   - name: Assert Room Name
     type: assert
     statements:
       - "contains({{room}}, 'Test Room')"
 
+  # ── Roles: the creator is admin + owner ───────────────────────────────────
+  - name: My Role
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: my_role
+    args: {}
+    outputs:
+      role: result
+
+  - name: Assert Creator Is Admin
+    type: assert
+    statements:
+      - "contains({{role}}, 'admin')"
+
+  - name: Can Edit
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: can_edit
+    args: {}
+    outputs:
+      editable: result
+
+  # A bool comes back through merobox as a Python value, so `contains` would be
+  # comparing against "True". Match case-insensitively instead of betting on the
+  # repr.
+  - name: Assert Creator Can Edit
+    type: assert
+    statements:
+      - "regex({{editable}}, '(?i)true')"
+
+  # A key nobody has ever written with has no account mapping, so no grant can
+  # name it — it must read as viewer rather than erroring.
+  - name: Role Of Unknown Member
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_role
+    args:
+      member: "11111111111111111111111111111111"
+    outputs:
+      stranger_role: result
+
+  - name: Assert Unknown Member Is Viewer
+    type: assert
+    statements:
+      - "contains({{stranger_role}}, 'viewer')"
+
   # ── Members ────────────────────────────────────────────────────────────────
+  # `join` takes only a display name now; the id is the signer.
   - name: Join as Alice
     type: call
     node: calimero-node-1
@@ -66,7 +131,6 @@ steps:
     executor_public_key: "{{member_public_key}}"
     method: join
     args:
-      member_id: "alice"
       username: "Alice"
       avatar: null
       timestamp: 1000000
@@ -81,12 +145,31 @@ steps:
     outputs:
       members: result
 
-  - name: Assert Alice is Member
+  - name: Assert Member Is The Signer
     type: assert
     statements:
       - "contains({{members}}, 'Alice')"
+      - "contains({{members}}, '{{member_public_key}}')"
+
+  - name: List Roles
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: list_roles
+    args: {}
+    outputs:
+      roster: result
+
+  - name: Assert Roster Shows Admin
+    type: assert
+    statements:
+      - "contains({{roster}}, 'admin')"
+      - "contains({{roster}}, '{{member_public_key}}')"
 
   # ── Add object with nested transform ──────────────────────────────────────
+  # `createdBy` is deliberately a lie here: the contract must overwrite it with
+  # the signer, and `lockedBy` must not be honoured on the way in.
   - name: Add Cube
     type: call
     node: calimero-node-1
@@ -102,8 +185,8 @@ steps:
           rotation: { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
           scale: { x: 1.0, y: 1.0, z: 1.0 }
         color: "3A86FF"
-        lockedBy: null
-        createdBy: "alice"
+        lockedBy: "spoofedholder"
+        createdBy: "spoofedauthor"
         createdAt: 1000001
         updatedAt: 1000001
         version: 0
@@ -118,11 +201,14 @@ steps:
     outputs:
       objects: result
 
-  - name: Assert Cube Added
+  - name: Assert Cube Added And Attributed To The Signer
     type: assert
     statements:
       - "contains({{objects}}, 'o1')"
       - "contains({{objects}}, 'cube')"
+      - "contains({{objects}}, '{{member_public_key}}')"
+      - "not_contains({{objects}}, 'spoofedauthor')"
+      - "not_contains({{objects}}, 'spoofedholder')"
 
   # ── Transform update (version LWW) ─────────────────────────────────────────
   - name: Move Cube To 111
@@ -137,7 +223,6 @@ steps:
         position: { x: 111.0, y: 1.0, z: -3.0 }
         rotation: { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
         scale: { x: 1.0, y: 1.0, z: 1.0 }
-      editor: "alice"
       updated_at: 2000000
 
   - name: Get Object After Move
@@ -156,8 +241,8 @@ steps:
     statements:
       - "contains({{moved}}, '111')"
 
-  # ── Lock enforcement ───────────────────────────────────────────────────────
-  - name: Lock Cube As Bob
+  # ── Lock: taken in the caller's own name ───────────────────────────────────
+  - name: Lock Cube
     type: call
     node: calimero-node-1
     context_id: "{{context_id}}"
@@ -165,24 +250,8 @@ steps:
     method: lock_object
     args:
       id: "o1"
-      by: "bob"
 
-  - name: Alice Tries To Move To 999 (should be rejected)
-    type: call
-    node: calimero-node-1
-    context_id: "{{context_id}}"
-    executor_public_key: "{{member_public_key}}"
-    method: update_transform
-    args:
-      id: "o1"
-      transform:
-        position: { x: 999.0, y: 1.0, z: -3.0 }
-        rotation: { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
-        scale: { x: 1.0, y: 1.0, z: 1.0 }
-      editor: "alice"
-      updated_at: 3000000
-
-  - name: Get Object After Locked Edit
+  - name: Get Object After Lock
     type: call
     node: calimero-node-1
     context_id: "{{context_id}}"
@@ -193,14 +262,12 @@ steps:
     outputs:
       locked: result
 
-  - name: Assert Edit Rejected And Locked By Bob
+  - name: Assert Locked By The Signer
     type: assert
     statements:
-      - "not_contains({{locked}}, '999')"
-      - "contains({{locked}}, '111')"
-      - "contains({{locked}}, 'bob')"
+      - "contains({{locked}}, '{{member_public_key}}')"
 
-  - name: Bob (lock holder) Moves To 222
+  - name: Holder Moves To 222
     type: call
     node: calimero-node-1
     context_id: "{{context_id}}"
@@ -212,7 +279,6 @@ steps:
         position: { x: 222.0, y: 1.0, z: -3.0 }
         rotation: { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
         scale: { x: 1.0, y: 1.0, z: 1.0 }
-      editor: "bob"
       updated_at: 4000000
 
   - name: Get Object After Holder Move
@@ -231,6 +297,34 @@ steps:
     statements:
       - "contains({{holder_moved}}, '222')"
 
+  # Colour now honours the same lock as the transform.
+  - name: Holder Recolours
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: update_color
+    args:
+      id: "o1"
+      color: "FF00AA"
+      updated_at: 4500000
+
+  - name: Get Object After Recolour
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_object
+    args:
+      id: "o1"
+    outputs:
+      recoloured: result
+
+  - name: Assert Recoloured
+    type: assert
+    statements:
+      - "contains({{recoloured}}, 'FF00AA')"
+
   - name: Unlock Cube
     type: call
     node: calimero-node-1
@@ -239,9 +333,8 @@ steps:
     method: unlock_object
     args:
       id: "o1"
-      by: "bob"
 
-  - name: Alice Moves To 333 After Unlock
+  - name: Move To 333 After Unlock
     type: call
     node: calimero-node-1
     context_id: "{{context_id}}"
@@ -253,7 +346,6 @@ steps:
         position: { x: 333.0, y: 1.0, z: -3.0 }
         rotation: { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
         scale: { x: 1.0, y: 1.0, z: 1.0 }
-      editor: "alice"
       updated_at: 5000000
 
   - name: Get Object After Unlock Move
@@ -267,12 +359,12 @@ steps:
     outputs:
       unlocked_moved: result
 
-  - name: Assert Alice Could Move After Unlock
+  - name: Assert Could Move After Unlock
     type: assert
     statements:
       - "contains({{unlocked_moved}}, '333')"
 
-  # ── Presence ─────────────────────────────────────────────────────────────
+  # ── Presence: keyed by the signer, no identity argument ────────────────────
   - name: Update Presence
     type: call
     node: calimero-node-1
@@ -280,7 +372,6 @@ steps:
     executor_public_key: "{{member_public_key}}"
     method: update_presence
     args:
-      identity: "alice"
       camera_position: { x: 0.0, y: 1.6, z: 0.0 }
       camera_rotation: { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
       updated_at: 6000000
@@ -295,12 +386,12 @@ steps:
     outputs:
       presence: result
 
-  - name: Assert Presence Recorded
+  - name: Assert Presence Keyed By Signer
     type: assert
     statements:
-      - "contains({{presence}}, 'alice')"
+      - "contains({{presence}}, '{{member_public_key}}')"
 
-  # ── Spatial comment ────────────────────────────────────────────────────────
+  # ── Spatial comment: author is the signer ─────────────────────────────────
   - name: Add Comment
     type: call
     node: calimero-node-1
@@ -311,7 +402,6 @@ steps:
       id: "c1"
       text: "spatialnote"
       position: { x: 1.0, y: 1.0, z: 1.0 }
-      author: "alice"
       created_at: 7000000
 
   - name: Get Comments
@@ -324,10 +414,73 @@ steps:
     outputs:
       comments: result
 
-  - name: Assert Comment Stored
+  - name: Assert Comment Stored And Attributed
     type: assert
     statements:
       - "contains({{comments}}, 'spatialnote')"
+      - "contains({{comments}}, '{{member_public_key}}')"
+
+  - name: Delete Own Comment
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: delete_comment
+    args:
+      id: "c1"
+
+  - name: Get Comments After Delete
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_comments
+    args: {}
+    outputs:
+      comments_after: result
+
+  - name: Assert Comment Deleted
+    type: assert
+    statements:
+      - "not_contains({{comments_after}}, 'spatialnote')"
+
+  # ── Room metadata: owner-gated rename + world map ─────────────────────────
+  - name: Rename Room
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: rename_room
+    args:
+      name: "Renamed Studio"
+
+  - name: Set World Map
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: set_world_map
+    args:
+      blob_id: "worldmapblobref"
+
+  - name: Get Room After Updates
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_room
+    args: {}
+    outputs:
+      room_after: result
+
+  # The owner-gated cell now holds a value, so it wins over `initial_name`, and
+  # `owner` resolves the owning ACCOUNT back to the member id clients know.
+  - name: Assert Rename And World Map Landed
+    type: assert
+    statements:
+      - "contains({{room_after}}, 'Renamed Studio')"
+      - "contains({{room_after}}, 'worldmapblobref')"
+      - "contains({{room_after}}, '{{member_public_key}}')"
 
   # ── Delete ────────────────────────────────────────────────────────────────
   - name: Delete Object
@@ -353,3 +506,48 @@ steps:
     type: assert
     statements:
       - "not_contains({{final_objects}}, 'o1')"
+
+  # ── Admin-only clear ──────────────────────────────────────────────────────
+  - name: Add Cube To Clear
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: add_object
+    args:
+      object:
+        id: "o2"
+        data: { kind: "sphere" }
+        transform:
+          position: { x: 0.0, y: 0.0, z: 0.0 }
+          rotation: { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
+          scale: { x: 1.0, y: 1.0, z: 1.0 }
+        color: "3A86FF"
+        lockedBy: null
+        createdBy: "ignored"
+        createdAt: 8000000
+        updatedAt: 8000000
+        version: 0
+
+  - name: Clear Objects
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: clear_objects
+    args: {}
+
+  - name: Get Objects After Clear
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_objects
+    args: {}
+    outputs:
+      cleared_objects: result
+
+  - name: Assert Scene Cleared
+    type: assert
+    statements:
+      - "not_contains({{cleared_objects}}, 'o2')"

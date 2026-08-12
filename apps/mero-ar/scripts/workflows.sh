@@ -31,7 +31,10 @@ trap cleanup EXIT
 [ -f "$REPO_ROOT/logic/res/mero_ar.wasm" ] || (cd "$REPO_ROOT/logic" && cargo mero build)
 
 FILES=("$@")
-[ ${#FILES[@]} -eq 0 ] && FILES=("logic-test.yml")
+# identity-and-roles.yml boots TWO nodes and takes noticeably longer than
+# logic-test.yml; both run by default because the identity model is only half
+# testable with one account.
+[ ${#FILES[@]} -eq 0 ] && FILES=("logic-test.yml" "identity-and-roles.yml")
 
 FAIL=0
 for f in "${FILES[@]}"; do
