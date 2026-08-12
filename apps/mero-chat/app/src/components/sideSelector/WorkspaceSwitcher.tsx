@@ -3,6 +3,7 @@ import styled from "styled-components";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import type { GroupSummary } from "../../api/groupApi";
 import { getGroupId, setGroupId, getStoredGroupAlias } from "../../constants/config";
+import { clearStoredSession } from "../../utils/session";
 
 interface WorkspaceSwitcherProps {
   isCollapsed: boolean;
@@ -146,6 +147,14 @@ export default function WorkspaceSwitcher({ isCollapsed }: WorkspaceSwitcherProp
   const handleSelect = useCallback((groupId: string) => {
     if (groupId === currentGroupId) { setIsOpen(false); return; }
     setGroupId(groupId);
+    // The stored session chat belongs to the workspace we're leaving. Home
+    // restores it verbatim on mount — subscribing SSE to its contextId and
+    // selecting it — and ActiveChat carries no group id, so nothing
+    // downstream can tell it is stale. Carrying it across a switch lands the
+    // user on a channel from the old workspace, on a context the new one
+    // doesn't have. NamespaceEntryPopup.enterChat clears it for this reason;
+    // this path did not.
+    clearStoredSession();
     window.location.href = "/";
   }, [currentGroupId]);
 

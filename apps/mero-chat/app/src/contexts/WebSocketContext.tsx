@@ -7,13 +7,27 @@ import React, {
   useState,
 } from "react";
 import { useSubscription } from "@calimero-network/mero-react";
-import type { SseEventData } from "@calimero-network/mero-react";
-import type { WebSocketEvent, StateMutationData } from "../types/WebSocketTypes";
+import type {
+  GroupMembershipEventData,
+  SubscriptionEventData,
+} from "@calimero-network/mero-react";
+import type {
+  WebSocketEvent,
+  StateMutationData,
+  GroupMembershipData,
+} from "../types/WebSocketTypes";
 import { log } from "../utils/logger";
+
+function isGroupMembershipEvent(
+  event: SubscriptionEventData,
+): event is GroupMembershipEventData {
+  return typeof (event as GroupMembershipEventData).groupId === "string";
+}
 
 interface WebSocketContextValue {
   subscribeToContexts: (contextIds: string[]) => void;
   subscribeToContext: (contextId: string) => void;
+  subscribeToGroup: (groupId: string) => void;
   unsubscribeFromContext: (contextId: string) => void;
   unsubscribeAll: () => void;
   getSubscribedContexts: () => string[];
@@ -36,15 +50,35 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
   const subscribedContextIdsRef = useRef<string[]>([]);
   subscribedContextIdsRef.current = subscribedContextIds;
 
+  const [subscribedGroupIds, setSubscribedGroupIds] = useState<string[]>([]);
+
   const eventListenersRef = useRef<Set<WebSocketEventListener>>(new Set());
 
-  const eventCallbackFn = useCallback((event: SseEventData) => {
-    log.info("WebSocketContext", `[SSE] event received contextId=${event.contextId}`, event.data);
-    const wsEvent: WebSocketEvent = {
-      contextId: event.contextId,
-      type: "StateMutation",
-      data: event.data as StateMutationData,
-    };
+  const eventCallbackFn = useCallback((event: SubscriptionEventData) => {
+    // Group-membership events are a separate id-space: keyed by `groupId`,
+    // no `contextId`, no `data.events`. Coercing everything to
+    // "StateMutation" (as this did) made them indistinguishable from a
+    // context event with no execution events, so every listener dropped them.
+    const wsEvent: WebSocketEvent = isGroupMembershipEvent(event)
+      ? {
+          contextId: "",
+          type: "GroupMembership",
+          groupId: event.groupId,
+          membershipKind: event.type,
+          membership: event.data as GroupMembershipData,
+        }
+      : {
+          contextId: event.contextId,
+          type: "StateMutation",
+          data: event.data as StateMutationData,
+        };
+
+    log.info(
+      "WebSocketContext",
+      `[SSE] ${wsEvent.type} received ${wsEvent.groupId ? `groupId=${wsEvent.groupId}` : `contextId=${wsEvent.contextId}`}`,
+      wsEvent.membership ?? wsEvent.data,
+    );
+
     eventListenersRef.current.forEach((listener) => {
       try {
         listener(wsEvent);
@@ -54,7 +88,13 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
     });
   }, []);
 
-  useSubscription(subscribedContextIds, eventCallbackFn);
+  // Object form so group ids ride along; core routes the two id-spaces
+  // independently and drops a membership event unless its group is subscribed.
+  const subscriptionInput = useMemo(
+    () => ({ contextIds: subscribedContextIds, groupIds: subscribedGroupIds }),
+    [subscribedContextIds, subscribedGroupIds],
+  );
+  useSubscription(subscriptionInput, eventCallbackFn);
 
   const subscribeToContexts = useCallback((contextIds: string[]) => {
     const valid = contextIds.filter(Boolean);
@@ -66,6 +106,13 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
     if (!contextId) return;
     setSubscribedContextIds((prev) =>
       prev.includes(contextId) ? prev : [...prev, contextId],
+    );
+  }, []);
+
+  const subscribeToGroup = useCallback((groupId: string) => {
+    if (!groupId) return;
+    setSubscribedGroupIds((prev) =>
+      prev.includes(groupId) ? prev : [...prev, groupId],
     );
   }, []);
 
@@ -114,6 +161,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
     () => ({
       subscribeToContexts,
       subscribeToContext,
+      subscribeToGroup,
       unsubscribeFromContext,
       unsubscribeAll,
       getSubscribedContexts,
@@ -125,6 +173,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
     [
       subscribeToContexts,
       subscribeToContext,
+      subscribeToGroup,
       unsubscribeFromContext,
       unsubscribeAll,
       getSubscribedContexts,

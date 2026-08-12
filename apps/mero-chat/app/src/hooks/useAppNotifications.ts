@@ -3,6 +3,7 @@ import { useNotifications } from "@calimero-network/mero-ui";
 import { useNotificationSound } from "./useNotificationSound";
 import type { NotificationType } from "../utils/notificationSound";
 import { useToast } from "../contexts/ToastContext";
+import { notificationPreview } from "../utils/plainText";
 
 export interface AppNotification {
   title: string;
@@ -118,9 +119,9 @@ export function useAppNotifications(currentChatId?: string) {
         ? `${sender} mentioned you`
         : `New message from ${sender}`;
 
-      // Truncate long messages
-      const truncatedText =
-        text.length > 100 ? `${text.substring(0, 100)}...` : text;
+      // Flatten the rich-editor HTML first: OS banners render the body
+      // verbatim, so raw markup shows tags, and truncating first cuts mid-tag.
+      const truncatedText = notificationPreview(text);
 
       notify({
         title,
@@ -139,8 +140,7 @@ export function useAppNotifications(currentChatId?: string) {
    */
   const notifyDM = useCallback(
     (messageId: string, sender: string, text: string) => {
-      const truncatedText =
-        text.length > 100 ? `${text.substring(0, 100)}...` : text;
+      const truncatedText = notificationPreview(text);
 
       notify({
         title: `New DM from ${sender}`,
@@ -158,8 +158,7 @@ export function useAppNotifications(currentChatId?: string) {
    */
   const notifyChannel = useCallback(
     (messageId: string, channelName: string, sender: string, text: string) => {
-      const truncatedText =
-        text.length > 100 ? `${text.substring(0, 100)}...` : text;
+      const truncatedText = notificationPreview(text);
 
       notify({
         title: `${sender} in #${channelName}`,
@@ -177,8 +176,7 @@ export function useAppNotifications(currentChatId?: string) {
    */
   const notifyThread = useCallback(
     (messageId: string, channelName: string, sender: string, text: string) => {
-      const truncatedText =
-        text.length > 100 ? `${text.substring(0, 100)}...` : text;
+      const truncatedText = notificationPreview(text);
 
       notify({
         title: `New reply from ${sender} in #${channelName}`,

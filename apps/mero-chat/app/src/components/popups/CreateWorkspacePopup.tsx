@@ -1,9 +1,6 @@
 import { useState, useCallback } from "react";
 import { styled } from "styled-components";
 import { Button, Input } from "@calimero-network/mero-ui";
-import axios from "axios";
-import { getNodeUrl as getAppEndpointKey } from "@calimero-network/mero-react";
-import { getAuthConfig } from "../../api/meroJsClient";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import {
   getApplicationId,
@@ -11,6 +8,11 @@ import {
   setGroupMemberIdentity,
 } from "../../constants/config";
 import { DEFAULT_MEMBER_CAPABILITIES } from "../../utils/groupCapabilities";
+import {
+  AppNotInstalledError,
+  installConfiguredApp,
+  resolveInstalledAppId,
+} from "../../utils/installedApps";
 
 const Overlay = styled.div`
   position: fixed;
@@ -106,50 +108,11 @@ const ButtonGroup = styled.div`
   margin-top: 1rem;
 `;
 
-type Step = "form" | "creating" | "error";
+type Step = "form" | "creating" | "not-installed" | "installing" | "error";
 
 interface CreateWorkspacePopupProps {
   onSuccess: (groupId: string) => void;
   onCancel: () => void;
-}
-
-const DEFAULT_NODE_ENDPOINT = "http://localhost:2428";
-
-function getAuthHeaders(): Record<string, string> {
-  const authConfig = getAuthConfig();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (authConfig?.jwtToken) {
-    headers.Authorization = `Bearer ${authConfig.jwtToken}`;
-  }
-  return headers;
-}
-
-async function resolveApplicationId(preferredId: string): Promise<string> {
-  const nodeEndpoint = getAppEndpointKey() || DEFAULT_NODE_ENDPOINT;
-  const response = await axios.get(`${nodeEndpoint}/admin-api/applications`, {
-    headers: getAuthHeaders(),
-  });
-
-  const apps = response.data?.data?.apps;
-  if (!Array.isArray(apps) || apps.length === 0) {
-    throw new Error("No installed applications found on this node.");
-  }
-
-  const appIds = apps
-    .map((app: unknown) => {
-      if (!app || typeof app !== "object") return "";
-      const typedApp = app as { id?: string; applicationId?: string };
-      return typedApp.id || typedApp.applicationId || "";
-    })
-    .filter((id: string) => id.length > 0);
-
-  if (appIds.includes(preferredId)) {
-    return preferredId;
-  }
-
-  return appIds[0];
 }
 
 export default function CreateWorkspacePopup({
@@ -163,43 +126,79 @@ export default function CreateWorkspacePopup({
   const canCreateWorkspace = trimmedWorkspaceName.length > 0;
   const stepsCompleted = step === "form" ? 0 : step === "creating" ? 1 : 0;
 
+  // Throws AppNotInstalledError when the configured app is absent, so both
+  // entry points below can branch to the install step instead of creating a
+  // workspace against some other app that happens to be on the node.
+  const runCreate = useCallback(async () => {
+    const groupApi = new GroupApiDataSource();
+    const applicationId = await resolveInstalledAppId(getApplicationId());
+
+    const groupResult = await groupApi.createGroup({
+      applicationId,
+      upgradePolicy: "Automatic",
+      alias: trimmedWorkspaceName,
+    });
+    if (groupResult.error || !groupResult.data) {
+      throw new Error(groupResult.error?.message || "Failed to create group");
+    }
+    const groupId = groupResult.data.groupId;
+    setGroupId(groupId);
+
+    await groupApi.setDefaultCapabilities(groupId, { defaultCapabilities: DEFAULT_MEMBER_CAPABILITIES });
+
+    const identityResult = await groupApi.resolveCurrentMemberIdentity(groupId);
+    if (identityResult.data?.memberIdentity) {
+      setGroupMemberIdentity(groupId, identityResult.data.memberIdentity);
+    }
+
+    onSuccess(groupId);
+  }, [trimmedWorkspaceName, onSuccess]);
+
   const createWorkspace = useCallback(async () => {
     setStep("creating");
     setErrorMessage("");
-
-    const groupApi = new GroupApiDataSource();
-    const configuredApplicationId = getApplicationId();
-
     try {
-      const applicationId = await resolveApplicationId(configuredApplicationId);
-      const groupResult = await groupApi.createGroup({
-        applicationId,
-        upgradePolicy: "Automatic",
-        alias: trimmedWorkspaceName,
-      });
-      if (groupResult.error || !groupResult.data) {
-        throw new Error(groupResult.error?.message || "Failed to create group");
-      }
-      const groupId = groupResult.data.groupId;
-      setGroupId(groupId);
-
-      await groupApi.setDefaultCapabilities(groupId, { defaultCapabilities: DEFAULT_MEMBER_CAPABILITIES });
-
-      const identityResult = await groupApi.resolveCurrentMemberIdentity(groupId);
-      if (identityResult.data?.memberIdentity) {
-        setGroupMemberIdentity(groupId, identityResult.data.memberIdentity);
-      }
-
-      onSuccess(groupId);
-      return;
+      await runCreate();
     } catch (error) {
+      if (error instanceof AppNotInstalledError) {
+        setStep("not-installed");
+        return;
+      }
       console.error("Create workspace failed:", error);
       setErrorMessage(
         error instanceof Error ? error.message : "An unexpected error occurred",
       );
       setStep("error");
     }
-  }, [trimmedWorkspaceName]);
+  }, [runCreate]);
+
+  const installAndCreate = useCallback(async () => {
+    setStep("installing");
+    setErrorMessage("");
+    try {
+      const installedId = await installConfiguredApp();
+      const expectedId = getApplicationId();
+      // The node derives the id from the wasm bytes AND their metadata, so a
+      // successful install can still yield a different app. Say so plainly
+      // rather than looping back to "not installed".
+      if (installedId !== expectedId) {
+        setErrorMessage(
+          `Installed ${installedId}, but this build expects ${expectedId}. ` +
+            `The published WASM or its metadata differs from what this build was made against.`,
+        );
+        setStep("error");
+        return;
+      }
+      setStep("creating");
+      await runCreate();
+    } catch (error) {
+      console.error("Install application failed:", error);
+      setErrorMessage(
+        error instanceof Error ? error.message : "Failed to install the application",
+      );
+      setStep("error");
+    }
+  }, [runCreate]);
 
   return (
     <Overlay>
@@ -249,6 +248,33 @@ export default function CreateWorkspacePopup({
             <Title>Creating namespace…</Title>
             <Message $type="info">
               Setting up your namespace. You'll be taken in automatically.
+            </Message>
+          </>
+        )}
+
+        {step === "not-installed" && (
+          <>
+            <Title>Chat isn't installed yet</Title>
+            <Message $type="info">
+              This node doesn't have the chat application installed. Install it
+              to create your workspace.
+            </Message>
+            <ButtonGroup>
+              <Button onClick={installAndCreate} variant="primary" style={{ flex: 1 }}>
+                Install
+              </Button>
+              <Button onClick={onCancel} variant="secondary" style={{ flex: 1 }}>
+                Cancel
+              </Button>
+            </ButtonGroup>
+          </>
+        )}
+
+        {step === "installing" && (
+          <>
+            <Title>Installing chat…</Title>
+            <Message $type="info">
+              Downloading the application onto your node. This can take a moment.
             </Message>
           </>
         )}

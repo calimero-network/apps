@@ -47,6 +47,9 @@ vi.mock("../utils/session", () => ({
 
 vi.mock("../utils/messengerName", () => ({
   getMessengerDisplayName: vi.fn().mockReturnValue("TestUser"),
+  // Used by utils/selfIdentity. Omitting it made the self-check throw, which
+  // the notification path's try/catch swallowed — every toast silently lost.
+  getStoredExecutorIdentity: vi.fn().mockReturnValue(""),
 }));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -361,6 +364,74 @@ describe("useChatHandlers — message events", () => {
     // Not a channel/DM list refresh
     expect(mocks.fetchChannels).not.toHaveBeenCalled();
     expect(mocks.fetchDMs).not.toHaveBeenCalled();
+  });
+
+  it("does not toast the user's own message in a context whose identity is not the global one", async () => {
+    const { refs, mocks } = makeRefs();
+    const chat = makeActiveChat("ctx-active");
+    activeChatRef.current = chat;
+
+    // Identity is per context. The global getContextIdentity() is mocked to
+    // "my-identity"; in THIS channel we are "ctx-active-identity". Comparing
+    // against the global value alone made our own message look like someone
+    // else's and toasted it.
+    refs.contextIdentityMap.current.set("ctx-active", "ctx-active-identity");
+    chat.contextIdentity = "ctx-active-identity";
+
+    refs.mainMessages.current.checkForNewMessages.mockResolvedValue([
+      {
+        id: "m-1",
+        sender: "ctx-active-identity",
+        senderUsername: "me",
+        text: "hello from me",
+        group: "general",
+      },
+    ]);
+
+    const { result } = renderHook(() =>
+      useChatHandlers(activeChatRef as RefObject<ActiveChat | null>, chat, refs),
+    );
+
+    await act(async () => {
+      result.current.handleExecutionEvents("ctx-active", [
+        ev("MessageSent", {}),
+      ]);
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    expect(mocks.notifyChannel).not.toHaveBeenCalled();
+  });
+
+  it("still toasts another user's message in that same context", async () => {
+    const { refs, mocks } = makeRefs();
+    const chat = makeActiveChat("ctx-active");
+    activeChatRef.current = chat;
+
+    refs.contextIdentityMap.current.set("ctx-active", "ctx-active-identity");
+    chat.contextIdentity = "ctx-active-identity";
+
+    refs.mainMessages.current.checkForNewMessages.mockResolvedValue([
+      {
+        id: "m-2",
+        sender: "someone-else",
+        senderUsername: "them",
+        text: "hello from them",
+        group: "general",
+      },
+    ]);
+
+    const { result } = renderHook(() =>
+      useChatHandlers(activeChatRef as RefObject<ActiveChat | null>, chat, refs),
+    );
+
+    await act(async () => {
+      result.current.handleExecutionEvents("ctx-active", [
+        ev("MessageSent", {}),
+      ]);
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    expect(mocks.notifyChannel).toHaveBeenCalledTimes(1);
   });
 
   it("MessageSent on a background context with no identity map entry: no crash", async () => {

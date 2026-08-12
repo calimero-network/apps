@@ -9,9 +9,9 @@ import type {
   WebSocketEvent,
   ExecutionEventData,
 } from "../types/WebSocketTypes";
-import { getContextIdentity } from "@calimero-network/mero-react";
 import { bytesParser } from "../utils/bytesParser";
 import { getMessengerDisplayName } from "../utils/messengerName";
+import { isSelfSender } from "../utils/selfIdentity";
 
 /**
  * Custom hook for handling chat-related events (messages, DMs, channels)
@@ -158,10 +158,20 @@ export function useChatHandlers(
 
           // Always show notifications for all messages (even if not in active chat)
           const lastMessage = newMessages[newMessages.length - 1];
-          const currentUserId = getContextIdentity();
+          // Identity is PER CONTEXT and recorded in several places that do
+          // not always agree; compare against all of them. See
+          // utils/selfIdentity — comparing against a single source is why the
+          // user's own messages were toasted.
+          const mine = (sender: string | null | undefined) =>
+            isSelfSender(
+              sender,
+              contextId,
+              refs.contextIdentityMap.current.get(contextId),
+              activeChatRef.current?.contextIdentity,
+            );
 
           if (!useDM) {
-            const isFromCurrentUser = lastMessage.sender === currentUserId;
+            const isFromCurrentUser = mine(lastMessage.sender);
 
             // Show notification for ALL channel messages (not just active chat)
             if (
@@ -181,11 +191,7 @@ export function useChatHandlers(
               }
             }
           } else {
-            const currentDMIdentity = activeChatRef.current?.contextIdentity;
-            const isFromCurrentUser =
-              lastMessage &&
-              (lastMessage.sender === currentUserId ||
-                lastMessage.sender === currentDMIdentity);
+            const isFromCurrentUser = lastMessage && mine(lastMessage.sender);
 
             // Show notification for DM messages from other users
             if (
@@ -316,7 +322,7 @@ export function useChatHandlers(
           // Also skip messages the current user sent from their display name
           // (secondary check via messengerDisplayName for old-style DMs).
           const isMine =
-            msg.sender === contextIdentity ||
+            isSelfSender(msg.sender, contextId, contextIdentity) ||
             msg.sender_username === getMessengerDisplayName();
 
           if (!isMine && msg.text && !msg.deleted) {
@@ -378,7 +384,7 @@ export function useChatHandlers(
         const msg = msgs && msgs.length > 0 ? msgs[msgs.length - 1] : null;
         const isMine =
           msg &&
-          (msg.sender === contextIdentity ||
+          (isSelfSender(msg.sender, contextId, contextIdentity) ||
             msg.sender_username === getMessengerDisplayName());
 
         if (!isMine) {

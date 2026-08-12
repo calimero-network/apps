@@ -4,6 +4,7 @@ import CreateWorkspacePopup from "./CreateWorkspacePopup";
 
 const {
   mockAxiosGet,
+  mockAxiosPost,
   mockCreateGroup,
   mockResolveCurrentMemberIdentity,
   mockSetDefaultCapabilities,
@@ -14,6 +15,7 @@ const {
   mockSerializeGroupInvitationPayload,
 } = vi.hoisted(() => ({
   mockAxiosGet: vi.fn(),
+  mockAxiosPost: vi.fn(),
   mockCreateGroup: vi.fn(),
   mockResolveCurrentMemberIdentity: vi.fn(),
   mockSetDefaultCapabilities: vi.fn(),
@@ -27,6 +29,7 @@ const {
 vi.mock("axios", () => ({
   default: {
     get: mockAxiosGet,
+    post: mockAxiosPost,
   },
 }));
 
@@ -76,6 +79,7 @@ vi.mock("../../api/dataSource/nodeApiDataSource", () => ({
 
 vi.mock("../../constants/config", () => ({
   getApplicationId: () => "app-1",
+  getApplicationPath: () => "https://example.test/chat.wasm",
   setGroupId: mockSetGroupId,
   setGroupMemberIdentity: mockSetGroupMemberIdentity,
 }));
@@ -108,6 +112,7 @@ vi.mock("./GroupInviteModal", () => ({
 describe("CreateWorkspacePopup", () => {
   beforeEach(() => {
     mockAxiosGet.mockReset();
+    mockAxiosPost.mockReset();
     mockCreateGroup.mockReset();
     mockResolveCurrentMemberIdentity.mockReset();
     mockSetDefaultCapabilities.mockReset();
@@ -194,5 +199,79 @@ describe("CreateWorkspacePopup", () => {
     await waitFor(() => {
       expect(onSuccess).toHaveBeenCalledWith("group-1");
     });
+  });
+
+  it("offers to install instead of falling back to another installed app", async () => {
+    // Node has a different app installed. The old code returned appIds[0]
+    // here and created the workspace against mero-meet et al.
+    mockAxiosGet.mockResolvedValue({
+      data: { data: { apps: [{ id: "some-other-app" }] } },
+    });
+
+    render(<CreateWorkspacePopup onSuccess={vi.fn()} onCancel={vi.fn()} />);
+    fireEvent.change(screen.getByRole("textbox", { name: /namespace name/i }), {
+      target: { value: "Team Space" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^install$/i })).toBeInTheDocument();
+    });
+    expect(mockCreateGroup).not.toHaveBeenCalled();
+  });
+
+  it("installs the configured app and then creates the workspace", async () => {
+    mockAxiosGet
+      .mockResolvedValueOnce({ data: { data: { apps: [] } } })
+      .mockResolvedValue({ data: { data: { apps: [{ id: "app-1" }] } } });
+    mockAxiosPost.mockResolvedValue({
+      data: { data: { applicationId: "app-1" } },
+    });
+
+    const onSuccess = vi.fn();
+    render(<CreateWorkspacePopup onSuccess={onSuccess} onCancel={vi.fn()} />);
+    fireEvent.change(screen.getByRole("textbox", { name: /namespace name/i }), {
+      target: { value: "Team Space" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^install$/i })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^install$/i }));
+
+    await waitFor(() => {
+      expect(mockAxiosPost).toHaveBeenCalledWith(
+        "http://localhost:2428/admin-api/install-application",
+        { url: "https://example.test/chat.wasm", metadata: [] },
+        expect.anything(),
+      );
+    });
+    await waitFor(() => {
+      expect(onSuccess).toHaveBeenCalledWith("group-1");
+    });
+  });
+
+  it("reports a mismatch when the installed app id is not the configured one", async () => {
+    mockAxiosGet.mockResolvedValue({ data: { data: { apps: [] } } });
+    mockAxiosPost.mockResolvedValue({
+      data: { data: { applicationId: "different-app" } },
+    });
+
+    render(<CreateWorkspacePopup onSuccess={vi.fn()} onCancel={vi.fn()} />);
+    fireEvent.change(screen.getByRole("textbox", { name: /namespace name/i }), {
+      target: { value: "Team Space" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^install$/i })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^install$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/expects app-1/i)).toBeInTheDocument();
+    });
+    expect(mockCreateGroup).not.toHaveBeenCalled();
   });
 });

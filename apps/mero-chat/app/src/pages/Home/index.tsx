@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import AppContainer from "../../components/common/AppContainer";
 import { clearNamespaceReady } from "../../utils/session";
 import {
@@ -43,6 +42,7 @@ import {
   setContextMemberIdentity,
 } from "../../constants/config";
 import { getAppEntryState } from "../../utils/appEntry";
+import { loadSelfAccountIdentity } from "../../utils/accountIdentity";
 import { getMessengerDisplayName, getIdentityDisplayName, getStoredExecutorIdentity } from "../../utils/messengerName";
 import {
   createDmContextInGroup,
@@ -56,19 +56,37 @@ import { useAppBadge } from "../../hooks/useAppBadge";
 
 export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   const { mero: app } = useCalimero();
-  const navigate = useNavigate();
   const currentGroupId = getGroupId();
 
   // Hard guard: if no namespace/group is actually selected, bounce back to
   // /login so the NamespaceEntryPopup picks one. Belt-and-braces with the
   // isNamespaceReady() check in App.tsx — that's a sessionStorage flag and
   // can fall out of sync with the real group selection.
+  //
+  // This MUST be a real navigation, not a client-side one. App.tsx gates the
+  // two routes on `canEnterApp`, read once per render: "/" renders
+  // <Navigate to="/login" replace> when it is false and "/login" renders
+  // <Navigate to="/" replace> when it is true. A client-side bounce from here
+  // can therefore ping-pong against that gate, and because both sides use
+  // `replace` the browser kills it — "Attempt to use history.replaceState()
+  // more than 100 times per 10 seconds" — taking the whole view down.
+  // A location change re-reads the flag and the tokens from storage on a
+  // fresh render tree, so there is no state to disagree about.
+  const bouncedRef = useRef(false);
   useEffect(() => {
-    if (!currentGroupId) {
-      clearNamespaceReady();
-      navigate("/login", { replace: true });
-    }
-  }, [currentGroupId, navigate]);
+    if (currentGroupId || bouncedRef.current) return;
+    bouncedRef.current = true;
+
+    log.warn("Home", "no group selected — returning to workspace picker", {
+      groupSession: sessionStorage.getItem("calimero_group_id"),
+      groupLocal: localStorage.getItem("calimero_group_id"),
+      nsReady: sessionStorage.getItem("curb_ns_ready"),
+      path: window.location.pathname,
+    });
+
+    clearNamespaceReady();
+    window.location.replace("/login");
+  }, [currentGroupId]);
 
   // Poll for admin-initiated removal: if the server has cascaded us out of
   // the namespace, redirect to /login. Without this, the user's stale
@@ -738,8 +756,33 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     handleStateMutation,
   } = useChatHandlers(activeChatRef, activeChat, chatHandlersRefs);
 
+  // Subscribe to the workspace group so membership changes arrive live
+  // instead of waiting on the 30s channel/member polls below.
+  useEffect(() => {
+    if (!currentGroupId) return;
+    webSocket.subscribeToGroup(currentGroupId);
+  }, [currentGroupId, webSocket]);
+
+  // Learn this node's ACCOUNT id for the workspace. The contract stamps
+  // `sender` with the account id, while everything else the app holds is a
+  // device id — without this, no message can ever be recognised as our own.
+  useEffect(() => {
+    if (!currentGroupId) return;
+    void loadSelfAccountIdentity(currentGroupId);
+  }, [currentGroupId]);
+
   useWebSocketEvents(useCallback(async (event: WebSocketEvent) => {
     try {
+      // Membership events carry no `data.events`, so handleStateMutation
+      // would drop them. A join/add/remove changes who is in the workspace
+      // and which channels we can see — refresh both.
+      if (event.type === "GroupMembership") {
+        log.info("Home", `[SSE] membership ${event.membershipKind} on ${event.groupId}`);
+        void fetchChannelsRef.current();
+        void fetchMembersRef.current();
+        return;
+      }
+
       await handleStateMutation(event);
 
       if (openThread) {

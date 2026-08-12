@@ -168,18 +168,47 @@ class MessageStore<
     return { addedCount: messagesToAdd.length, updatedCount };
   }
 
+  /**
+   * Drop the message at `globalIndex` and re-index everything after it.
+   *
+   * `messageMap` stores GLOBAL indices and `endOffset` tracks one past the
+   * last message, so both have to be maintained or every later lookup points
+   * at the wrong row.
+   */
+  private _removeAt(globalIndex: number, id: string): void {
+    const localIndex = globalIndex - this.startOffset;
+    if (localIndex < 0 || localIndex >= this.messages.length) return;
+
+    this.messages.splice(localIndex, 1);
+    this.messageMap.delete(id);
+    this.endOffset -= 1;
+
+    for (const [key, index] of this.messageMap) {
+      if (index > globalIndex) this.messageMap.set(key, index - 1);
+    }
+  }
+
   _update(oldId: string, updatedFields: Partial<T>): void {
     const globalIndex = this.messageMap.get(oldId);
     if (globalIndex == undefined) return;
     const localIndex = globalIndex - this.startOffset;
+
+    // The optimistic message is being renamed into a real id that is ALREADY
+    // present: a refetch inserted the server's copy before this reconcile ran.
+    // Both rows describe the same message, so merge into the real one and drop
+    // the redundant temp. This used to throw, which crashed the chat view on a
+    // routine send/refetch race.
     if (
       updatedFields.id &&
       updatedFields.id !== oldId &&
       this.messageMap.has(updatedFields.id)
     ) {
-      throw new Error(
-        `A message with ID "${updatedFields.id}" already exists.`,
-      );
+      const { id: _renamed, ...withoutId } = updatedFields as Partial<T> & {
+        id?: string;
+      };
+      this._updateWithoutVersion(updatedFields.id, withoutId as Partial<T>);
+      this._removeAt(globalIndex, oldId);
+      return;
     }
     const existingMessage = this.messages[localIndex];
 

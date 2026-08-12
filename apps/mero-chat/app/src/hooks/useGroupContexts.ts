@@ -9,6 +9,7 @@ import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import type { GroupContextChannel } from "../types/Common";
 import type { SubgroupEntry } from "../api/groupApi";
 import { log } from "../utils/logger";
+import { registerContextIdentities } from "../utils/selfIdentity";
 import { DM_CONTEXT_ALIAS_PREFIX } from "../utils/dmContext";
 import { getMessengerDisplayName } from "../utils/messengerName";
 
@@ -78,6 +79,11 @@ export function useGroupContexts() {
                 await apiClientNode.fetchContextIdentities(ctxId);
               const list = resp.data?.data?.identities;
               if (list && list.length > 0) idMap[ctxId] = list[0];
+              // idMap keeps [0] as the executor, but a node can own SEVERAL
+              // identities here and any of them may have signed a message.
+              // Record the full set so the self-check recognises our own
+              // messages regardless of which one sent them.
+              registerContextIdentities(ctxId, list);
             } catch {
               log.debug("useGroupContexts", `No identity for context ${ctxId}`);
             }
@@ -122,6 +128,7 @@ export function useGroupContexts() {
                 const key = joinResp.data?.memberPublicKey;
                 if (!key) return;
                 idMap[ctxId] = key;
+                registerContextIdentities(ctxId, [key]);
                 // Freeze the user's name in this context at join time
                 // via WASM `set_profile`. The contract treats username
                 // as write-once, so later local edits won't overwrite

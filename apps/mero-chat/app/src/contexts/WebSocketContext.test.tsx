@@ -6,9 +6,12 @@ import type { WebSocketEvent } from "../types/WebSocketTypes";
 
 // Capture the event-callback passed to useSubscription so tests can fire events directly.
 let capturedEventCallback: ((event: WebSocketEvent) => void) | null = null;
+// Capture the ids argument so tests can assert group subscriptions ride along.
+let capturedSubscriptionInput: unknown = null;
 
 vi.mock("@calimero-network/mero-react", () => ({
-  useSubscription: vi.fn((_contextIds: unknown, callback: unknown) => {
+  useSubscription: vi.fn((input: unknown, callback: unknown) => {
+    capturedSubscriptionInput = input;
     capturedEventCallback = callback as (event: WebSocketEvent) => void;
   }),
 }));
@@ -16,6 +19,7 @@ vi.mock("@calimero-network/mero-react", () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   capturedEventCallback = null;
+  capturedSubscriptionInput = null;
 });
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -142,6 +146,39 @@ describe("useWebSocketEvents", () => {
     await fireEvent(makeEvent());
 
     expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("passes group ids to useSubscription so membership events are routed", () => {
+    const { result } = renderHook(() => useWebSocket(), { wrapper });
+
+    act(() => result.current.subscribeToGroup("group-1"));
+
+    // core drops a GroupMembership event unless its group id was subscribed
+    expect(capturedSubscriptionInput).toEqual(
+      expect.objectContaining({ groupIds: ["group-1"] }),
+    );
+  });
+
+  it("delivers group-membership events as GroupMembership, not StateMutation", async () => {
+    const listener = vi.fn();
+    renderHook(() => useWebSocketEvents(listener), { wrapper });
+
+    // Shape of core's untagged NodeEvent group variant: no contextId, no
+    // data.events. Previously coerced to StateMutation and silently dropped.
+    await fireEvent({
+      groupId: "group-1",
+      type: "MemberJoined",
+      data: { member: "member-1", role: "User" },
+    } as unknown as WebSocketEvent);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "GroupMembership",
+        groupId: "group-1",
+        membershipKind: "MemberJoined",
+      }),
+    );
   });
 
   it("uses the latest listener reference when callback prop changes", async () => {

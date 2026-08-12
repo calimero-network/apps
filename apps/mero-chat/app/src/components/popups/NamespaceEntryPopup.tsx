@@ -1,10 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useNavigate } from "react-router-dom";
 import { styled, keyframes } from "styled-components";
 import { Button, Input } from "@calimero-network/mero-ui";
 import { getNodeUrl } from "@calimero-network/mero-react";
-import { getAuthConfig } from "../../api/meroJsClient";
-import axios from "axios";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 import type { GroupSummary } from "../../api/groupApi";
@@ -26,6 +23,12 @@ import {
 import { clearStoredSession, setNamespaceReady } from "../../utils/session";
 import { DEFAULT_MEMBER_CAPABILITIES } from "../../utils/groupCapabilities";
 import {
+  AppNotInstalledError,
+  installConfiguredApp,
+  resolveInstalledAppId,
+} from "../../utils/installedApps";
+import { ensureNotificationPermission } from "../../utils/notificationPermission";
+import {
   decodeInvitationPayload,
   parseGroupInvitationPayload,
   parseInvitationInput,
@@ -46,6 +49,8 @@ type Step =
   | "join-invitation"  // manual invitation paste
   | "create"           // show create workspace form
   | "creating"         // creating namespace
+  | "not-installed"    // configured app missing on the node: offer install
+  | "installing"       // installing the configured app
   | "error";
 
 // ─── Styled components ────────────────────────────────────────────────────────
@@ -279,29 +284,6 @@ const LogoutBtn = styled.button`
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const DEFAULT_ENDPOINT = "http://localhost:2428";
-
-function authHeaders(): Record<string, string> {
-  const cfg = getAuthConfig();
-  const h: Record<string, string> = { "Content-Type": "application/json" };
-  if (cfg?.jwtToken) h.Authorization = `Bearer ${cfg.jwtToken}`;
-  return h;
-}
-
-async function resolveAppId(preferred: string): Promise<string> {
-  const base = getNodeUrl() || DEFAULT_ENDPOINT;
-  const res = await axios.get(`${base}/admin-api/applications`, { headers: authHeaders() });
-  const apps: unknown[] = res.data?.data?.apps ?? [];
-  const ids = apps
-    .map((a) => {
-      if (!a || typeof a !== "object") return "";
-      const t = a as { id?: string; applicationId?: string };
-      return t.id ?? t.applicationId ?? "";
-    })
-    .filter(Boolean);
-  if (!ids.length) throw new Error("No applications installed on this node.");
-  return ids.includes(preferred) ? preferred : ids[0];
-}
 
 // When the alias is missing the user gets shown an ID slice. That's
 // the "weird ID instead of name" complaint from the explainer — the
@@ -326,7 +308,6 @@ interface Props {
 }
 
 export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLogout }: Props) {
-  const navigate = useNavigate();
   const api = useRef(new GroupApiDataSource());
 
   // The pending deep-link invitation: the decoded JSON payload plus the SDK's
@@ -377,8 +358,26 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
     }
     clearStoredSession();
     setNamespaceReady();
-    navigate("/");
-  }, [navigate]);
+    // Ask for OS notification permission once, here: entry is a real user
+    // gesture (Safari requires one) and it covers desktop/browser users who
+    // never trigger the PWA `appinstalled` event. Deliberately not awaited —
+    // entry must not block on the browser prompt.
+    void ensureNotificationPermission();
+    // Hard load, not navigate("/"). App.tsx gates "/" on
+    //   canEnterApp = (isAuthenticated || hasLiveSession()) && isNamespaceReady()
+    // which is read ONCE during render. A client-side navigate can land in the
+    // window where that is still false (mero-react's `isAuthenticated` lags
+    // after a fresh connect), and "/" then renders <Navigate to="/login"> —
+    // bouncing straight back to this picker. Symptom: "Continue" appears to do
+    // nothing and the user has to reload by hand, after which entry works
+    // because the flag and tokens are both readable at first paint.
+    //
+    // A reload re-reads both from storage, so the gate is satisfied on the
+    // first render. WorkspaceSwitcher already enters this way for the same
+    // reason. The real fix is to make the gate reactive rather than
+    // read-once — until then, do what the working path does.
+    window.location.href = "/";
+  }, []);
 
   // Check whether this node already has identity + username for a namespace.
   // Recovery order: server alias (node) → per-identity cache → WASM profiles → enter-name.
@@ -647,7 +646,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
     setError("");
 
     try {
-      const appId = await resolveAppId(getApplicationId());
+      const appId = await resolveInstalledAppId(getApplicationId());
       const createRes = await api.current.createGroup({
         applicationId: appId,
         upgradePolicy: "Automatic",
@@ -685,10 +684,38 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
 
       setStep("enter-name");
     } catch (err) {
+      if (err instanceof AppNotInstalledError) {
+        setStep("not-installed");
+        return;
+      }
       setError(err instanceof Error ? err.message : "Failed to create namespace");
       setStep("create");
     }
   }, [nsNameInput, namespaces, enterChat]);
+
+  // Install the configured app, then resume the create the user asked for.
+  const handleInstallApp = useCallback(async () => {
+    setStep("installing");
+    setError("");
+    try {
+      const installedId = await installConfiguredApp();
+      const expectedId = getApplicationId();
+      // The id is a hash over the wasm AND its metadata, so a successful
+      // install can still produce a different app than this build targets.
+      if (installedId !== expectedId) {
+        setError(
+          `Installed ${installedId}, but this build expects ${expectedId}. ` +
+            `The published WASM or its metadata differs from what this build was made against.`,
+        );
+        setStep("error");
+        return;
+      }
+      setStep("create");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to install the application");
+      setStep("error");
+    }
+  }, []);
 
   const handleJoinFromCode = useCallback(async () => {
     const raw = joinInviteInput.trim();
@@ -944,6 +971,42 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
             </Button>
             <Divider />
             <LogoutBtn onClick={onLogout} disabled={step === "creating"}>Disconnect node</LogoutBtn>
+          </>
+        )}
+
+        {/* Configured app missing on the node */}
+        {(step === "not-installed" || step === "installing") && (
+          <>
+            <Header>
+              <Title>Chat isn't installed yet</Title>
+            </Header>
+            <Sub>
+              This node doesn't have the chat application installed. Install it
+              to create your workspace.
+            </Sub>
+            <Button
+              type="button"
+              variant="primary"
+              style={{ width: "100%" }}
+              onClick={handleInstallApp}
+              disabled={step === "installing"}
+            >
+              {step === "installing" ? (
+                <>
+                  <BtnSpinner />
+                  Installing…
+                </>
+              ) : "Install"}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              style={{ width: "100%", marginTop: "0.5rem" }}
+              onClick={() => { setError(""); setStep(namespaces.length > 0 ? "select" : "no-workspace"); }}
+              disabled={step === "installing"}
+            >
+              ← Back
+            </Button>
           </>
         )}
 

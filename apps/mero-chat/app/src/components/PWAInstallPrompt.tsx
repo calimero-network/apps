@@ -1,5 +1,6 @@
 import React, { useState, useEffect, memo } from "react";
 import { Button, Modal } from "react-bootstrap";
+import { ensureNotificationPermission } from "../utils/notificationPermission";
 
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms: string[];
@@ -54,6 +55,10 @@ const PWAInstallPrompt = memo(function PWAInstallPrompt() {
       setIsInstalled(true);
       setShowInstallModal(false);
       setDeferredPrompt(null);
+      // A freshly installed PWA should be able to banner without the user
+      // hunting through browser settings. Fires right after the install
+      // gesture, so the prompt has interaction context.
+      void ensureNotificationPermission();
     };
 
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);

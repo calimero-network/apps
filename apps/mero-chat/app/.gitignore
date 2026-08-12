@@ -16,6 +16,11 @@ dist-ssr
 e2e/.auth/
 .env.integration
 
+# Local dev env written by scripts/dev-node.sh (VITE_APPLICATION_ID is the id
+# of YOUR locally built bundle — machine-specific, never commit). .env.example
+# stays tracked; this pattern matches only a bare `.env`.
+.env
+
 # dev-only overlay produced by scripts/dev-invite.sh — populated per-run, never commit.
 public/dev-overlay.json
 

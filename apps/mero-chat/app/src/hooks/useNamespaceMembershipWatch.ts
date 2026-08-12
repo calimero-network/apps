@@ -1,9 +1,9 @@
 import { useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
 import { GroupApiDataSource } from "../api/dataSource/groupApiDataSource";
 import { clearWorkspaceSelection, getGroupId } from "../constants/config";
 import { clearNamespaceReady } from "../utils/session";
 import { useToast } from "../contexts/ToastContext";
+import { log } from "../utils/logger";
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -27,7 +27,6 @@ const POLL_INTERVAL_MS = 30_000;
  * tick than redirect on a flaky network.
  */
 export function useNamespaceMembershipWatch(): void {
-  const navigate = useNavigate();
   const { addToast } = useToast();
   const everHadIdentity = useRef(false);
   const removedRef = useRef(false);
@@ -48,9 +47,19 @@ export function useNamespaceMembershipWatch(): void {
         type: "channel",
         duration: 5000,
       });
+      // Hard navigation, not navigate(): this clears the group id, and App.tsx
+      // reads its route gate once per render — a client-side bounce can
+      // ping-pong with <Navigate> until the browser kills it ("replaceState
+      // more than 100 times per 10 seconds"). A location change starts from a
+      // clean render tree with storage as the single source of truth.
+      log.warn(
+        "NamespaceMembershipWatch",
+        "identity no longer resolves — treating as removed from workspace",
+        { groupId },
+      );
       clearWorkspaceSelection();
       clearNamespaceReady();
-      navigate("/login");
+      window.location.replace("/login");
     };
 
     const check = async () => {
@@ -73,5 +82,5 @@ export function useNamespaceMembershipWatch(): void {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [navigate, addToast]);
+  }, [addToast]);
 }
