@@ -17,7 +17,12 @@ public final class ARSessionManager: NSObject, ObservableObject, ARSessionDelega
     private let rootAnchor = AnchorEntity(world: .zero)
     private var entities: [String: ModelEntity] = [:]
 
-    /// Throttle presence to ~10 Hz.
+    /// Throttle presence to ~2 Hz. Each pose is a contract mutation that the node
+    /// stores and fans out over SSE to every peer, so the old 10 Hz meant ten
+    /// state writes per second per device — enough to drown a room in CRDT
+    /// deltas. Nothing renders other people's poses yet, and 2 Hz is plenty for
+    /// the "who's here" count.
+    private static let poseInterval: TimeInterval = 0.5
     private var lastPoseSentAt: TimeInterval = 0
     public var onCameraPose: ((Vec3, Quat) -> Void)?
 
@@ -130,7 +135,7 @@ public final class ARSessionManager: NSObject, ObservableObject, ARSessionDelega
 
     public func session(_ session: ARSession, didUpdate frame: ARFrame) {
         let now = frame.timestamp
-        guard now - lastPoseSentAt > 0.1 else { return } // ~10 Hz
+        guard now - lastPoseSentAt > Self.poseInterval else { return }
         lastPoseSentAt = now
         let t = frame.camera.transform
         let pos = SIMD3(t.columns.3.x, t.columns.3.y, t.columns.3.z)

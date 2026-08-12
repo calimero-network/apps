@@ -30,7 +30,11 @@ author = "Calimero"
 slug = "com.calimero.mero-ar"
 tags = ["ar", "spatial", "collaboration"]
 github = "https://github.com/calimero-network/mero-ar"
-min-runtime-version = "0.1.0"
+# The oldest node that can run this bundle. It must name a real runtime: the
+# contract calls `env::device_id()`/`env::account_id()` and stores an
+# `AccessControl`/`Ownable`, none of which exist before 0.11.0-rc.20, so an
+# older node must be told to refuse the install rather than fail at first call.
+min-runtime-version = "0.11.0-rc.20"
 
 [dependencies]
 borsh = "0.10.3"

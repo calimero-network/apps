@@ -28,17 +28,10 @@ jobs:
       - name: Build WASM (+ ABI embed)
         run: cargo mero build
 
-  merokit:
-    name: MeroKit (Swift)
-    runs-on: macos-15
-    defaults:
-      run:
-        working-directory: app/MeroKit
-    steps:
-      - uses: actions/checkout@v4
-      - run: swift run merokit-verify   # no-Xcode pure-logic smoke test
-      - run: swift test                 # full XCTest suite (Xcode on the runner)
-
+  # There is no MeroKit job any more: the Swift client is the shared SDK
+  # (calimero-network/swift-sdk), tested in its own repo. This app's job is to
+  # prove it still builds and passes its tests against the pinned SDK revision
+  # in app/MeroAR/project.yml.
   app:
     name: iOS app build
     runs-on: macos-15
@@ -47,11 +40,38 @@ jobs:
       - run: brew install xcodegen
       - working-directory: app/MeroAR
         run: xcodegen generate
-      - working-directory: app/MeroAR
-        name: Build + run app unit tests
+      # Pin the toolchain rather than inherit the image's default: the runtimes
+      # installed differ per Xcode (26.x runtimes only exist for 26.x), and a
+      # default bump would silently change which simulators exist.
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app
+
+      # On a cold runner CoreSimulator often isn't up yet, so xcodebuild's device
+      # list comes back EMPTY and it fails after a 60s search with "no available
+      # devices matched" — even though the image ships plenty. Touching simctl
+      # starts the service; then wait for a real device and address it by UDID,
+      # which also survives the image renaming its iPhone models.
+      - name: Wait for a simulator, then run app tests
+        working-directory: app/MeroAR
         run: |
+          set -euo pipefail
+          udid=""
+          for attempt in $(seq 1 20); do
+            udid=$(xcrun simctl list devices available -j \
+              | python3 -c 'import json,sys;d=json.load(sys.stdin)["devices"];print(next((x["udid"] for rt in d for x in d[rt] if "iPhone" in x["name"]), ""))')
+            [ -n "$udid" ] && break
+            echo "attempt $attempt: no iPhone simulator yet, waiting…"
+            sleep 5
+          done
+          if [ -z "$udid" ]; then
+            echo "::error::no iOS simulator became available — tests did NOT run"
+            xcrun simctl list devices
+            exit 1
+          fi
+          echo "using simulator $udid"
+          xcrun simctl boot "$udid" || true
           xcodebuild test -project MeroAR.xcodeproj -scheme MeroAR \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -destination "platform=iOS Simulator,id=$udid" \
             -derivedDataPath .build -only-testing:MeroARTests \
             CODE_SIGNING_ALLOWED=NO
 
@@ -70,5 +90,14 @@ jobs:
         run: cd logic && cargo mero build
       - name: Install merobox
         run: pipx install merobox || pip install merobox
+      # Schema-check first: a typo in a step name/field otherwise only shows up
+      # after several minutes of node boot.
+      - name: Validate workflow schemas
+        run: |
+          cd workflows
+          merobox bootstrap validate logic-test.yml
+          merobox bootstrap validate identity-and-roles.yml
+      # logic-test.yml covers the single-identity surface; identity-and-roles.yml
+      # needs two accounts (viewer rejection, cross-identity locks, admin break).
       - name: Run merobox workflows (boots merod in Docker)
-        run: bash scripts/workflows.sh
+        run: bash scripts/workflows.sh logic-test.yml identity-and-roles.yml

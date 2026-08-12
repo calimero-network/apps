@@ -1,9 +1,8 @@
-.PHONY: help setup logic-build logic-test logic-e2e workflows kit-verify kit-test \
+.PHONY: help setup logic-build logic-test logic-e2e workflows \
         node node2 invite stop dev \
         app-gen app-build app-run app-test test clean
 
 APP_DIR    := app/MeroAR
-KIT_DIR    := app/MeroKit
 XCODEPROJ  := $(APP_DIR)/MeroAR.xcodeproj
 SCHEME     := MeroAR
 SIMULATOR  ?= iPhone 17
@@ -23,14 +22,11 @@ help:
 	@echo "    stop         Stop all dev nodes and free ports"
 	@echo ""
 	@echo "  Contract (Rust)"
-	@echo "    logic-build  Compile logic/src → logic/res/mero_tag.wasm"
+	@echo "    logic-build  Compile logic/src → logic/res/mero_ar.wasm"
 	@echo "    logic-test   cargo test (pure helpers)"
 	@echo "    workflows    merobox WASM logic tests (real merod in Docker)"
+	@echo "                 logic-test.yml (1 node) + identity-and-roles.yml (2 nodes)"
 	@echo "    logic-e2e    curl-based node integration test"
-	@echo ""
-	@echo "  MeroKit (Swift client)"
-	@echo "    kit-verify   Smoke-test pure logic (Command Line Tools only — no Xcode)"
-	@echo "    kit-test     Full XCTest suite (needs full Xcode)"
 	@echo ""
 	@echo "  iOS app (needs full Xcode + 'brew install xcodegen')"
 	@echo "    app-gen      Generate MeroAR.xcodeproj from project.yml"
@@ -39,7 +35,7 @@ help:
 	@echo "    app-test     Run the UI test suite"
 	@echo ""
 	@echo "  Aggregate"
-	@echo "    test         logic-test + kit-verify"
+	@echo "    test         logic-test + app-test"
 	@echo "    clean        Remove build artifacts"
 	@echo ""
 
@@ -87,13 +83,6 @@ stop:
 	@rm -f /tmp/meroar-dev-node.pid /tmp/meroar-dev-node2.pid
 	@printf '\033[32m  ✓  dev nodes stopped & cleaned\033[0m\n'
 
-# ── MeroKit ────────────────────────────────────────────────────────────────────
-kit-verify:
-	cd $(KIT_DIR) && swift run merokit-verify
-
-kit-test:
-	cd $(KIT_DIR) && swift test
-
 # ── iOS app ─────────────────────────────────────────────────────────────────────
 app-gen:
 	@command -v xcodegen >/dev/null 2>&1 || { echo "xcodegen not found — run: brew install xcodegen"; exit 1; }
@@ -118,9 +107,11 @@ app-test: app-gen
 	  -derivedDataPath $(APP_DIR)/.build test
 
 # ── Aggregate ──────────────────────────────────────────────────────────────────
-test: logic-test kit-verify
+# The Swift client itself is the shared SDK (calimero-network/swift-sdk, pinned
+# by revision in app/MeroAR/project.yml) and is tested in its own repo; what this
+# repo tests is the contract plus this app against that pin.
+test: logic-test app-test
 
 clean:
 	cd logic && rm -rf res target
-	cd $(KIT_DIR) && rm -rf .build
 	rm -rf $(APP_DIR)/.build $(XCODEPROJ)

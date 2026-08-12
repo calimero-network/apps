@@ -1,4 +1,5 @@
 import Foundation
+import MeroKit
 import simd
 
 // Decodable mirrors of the WASM contract types (serde `camelCase`).
@@ -110,34 +111,119 @@ public struct RoomInfo: Codable, Equatable {
     public var memberCount: Int
     public var worldMapBlob: String
     public var version: UInt64
+    /// Room owner as a member id, or nil before the first owner edit.
+    public var owner: String?
 }
 
-/// Contract event over SSE — `{ "VariantName": "payload" }`.
-public enum ARSceneEvent {
+/// A member with their effective role — `list_roles` on the contract.
+public struct MemberRole: Codable, Identifiable, Equatable {
+    public var member: String
+    /// "admin" | "editor" | "viewer"
+    public var role: String
+
+    public var id: String { member }
+    public var isAdmin: Bool { role == "admin" }
+    public var canEdit: Bool { role == "admin" || role == "editor" }
+}
+
+/// A contract event, decoded out of the node's SSE envelope.
+public enum ARSceneEvent: Equatable {
     case objectAdded(String), objectUpdated(String), objectDeleted(String)
     case objectLocked(String), objectUnlocked(String)
     case commentAdded(String), commentDeleted(String)
     case presenceUpdated(String), memberJoined(String)
+    case roleUpdated(String), ownerTransferred(String)
     case anchorsUpdated, roomUpdated
     case other(String, String)
 
+    /// Build from a variant name and its decoded payload.
+    public init(kind: String, id: String) {
+        switch kind {
+        case "ObjectAdded":      self = .objectAdded(id)
+        case "ObjectUpdated":    self = .objectUpdated(id)
+        case "ObjectDeleted":    self = .objectDeleted(id)
+        case "ObjectLocked":     self = .objectLocked(id)
+        case "ObjectUnlocked":   self = .objectUnlocked(id)
+        case "CommentAdded":     self = .commentAdded(id)
+        case "CommentDeleted":   self = .commentDeleted(id)
+        case "PresenceUpdated":  self = .presenceUpdated(id)
+        case "MemberJoined":     self = .memberJoined(id)
+        case "RoleUpdated":      self = .roleUpdated(id)
+        case "OwnerTransferred": self = .ownerTransferred(id)
+        case "AnchorsUpdated":   self = .anchorsUpdated
+        case "RoomUpdated":      self = .roomUpdated
+        default:                 self = .other(kind, id)
+        }
+    }
+
+    /// Legacy/self-describing form — a single `{ "VariantName": "payload" }`
+    /// object. Kept because the node's *mock* and older cores emit events this
+    /// way, and because it is the shape a hand-written fixture takes.
     public init?(data: Data) {
         guard let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               let (key, value) = obj.first else { return nil }
-        let id = (value as? String) ?? ""
-        switch key {
-        case "ObjectAdded":     self = .objectAdded(id)
-        case "ObjectUpdated":   self = .objectUpdated(id)
-        case "ObjectDeleted":   self = .objectDeleted(id)
-        case "ObjectLocked":    self = .objectLocked(id)
-        case "ObjectUnlocked":  self = .objectUnlocked(id)
-        case "CommentAdded":    self = .commentAdded(id)
-        case "CommentDeleted":  self = .commentDeleted(id)
-        case "PresenceUpdated": self = .presenceUpdated(id)
-        case "MemberJoined":    self = .memberJoined(id)
-        case "AnchorsUpdated":  self = .anchorsUpdated
-        case "RoomUpdated":     self = .roomUpdated
-        default:                self = .other(key, id)
+        self.init(kind: key, id: (value as? String) ?? "")
+    }
+
+    /// Flatten one SSE `ContextEvent` into the contract events it carries.
+    ///
+    /// A rc.20 node wraps emissions in a `StateMutation`:
+    /// `{ contextId, type, data: { newRoot, events: [{ kind, data: [u8], handler }] } }`
+    /// where each `data` byte array is the JSON-encoded payload of that variant
+    /// (for Mero AR, a string id). One mutation can carry several events, so this
+    /// returns an array — and reading only the envelope's own keys, as this app
+    /// used to, finds `newRoot`/`events` and never a variant name at all.
+    public static func from(_ event: ContextEvent) -> [ARSceneEvent] {
+        from(payload: event.payload)
+    }
+
+    /// The envelope-decoding half of ``from(_:)``, split out because
+    /// `ContextEvent` has no public initializer to build a fixture with.
+    public static func from(payload: JSONValue) -> [ARSceneEvent] {
+        let inner = payload["data"] ?? payload
+
+        if let events = inner["events"]?.arrayValue {
+            return events.compactMap { entry in
+                guard let kind = entry["kind"]?.stringValue else { return nil }
+                return ARSceneEvent(kind: kind, id: payloadString(entry["data"]))
+            }
         }
+
+        // Legacy single-object payload, possibly still byte-encoded.
+        if let bytes = byteArray(inner), let decoded = ARSceneEvent(data: bytes) {
+            return [decoded]
+        }
+        // A bare `{ "VariantName": payload }` emission. Gated on the shape of a
+        // Rust enum variant — one entry, PascalCase key — so an envelope we don't
+        // recognise (`{ contextId: … }`) isn't mistaken for an event named
+        // "contextId".
+        if let object = inner.objectValue, object.count == 1,
+           let (key, value) = object.first, key.first?.isUppercase == true {
+            return [ARSceneEvent(kind: key, id: value.stringValue ?? "")]
+        }
+        return []
+    }
+
+    /// A variant's payload as the id string the UI keys on. The bytes hold JSON,
+    /// so a string payload arrives quoted (`"o1"`) and needs decoding, not just
+    /// UTF-8 conversion.
+    private static func payloadString(_ value: JSONValue?) -> String {
+        guard let value else { return "" }
+        if let text = value.stringValue { return text }
+        guard let bytes = byteArray(value), !bytes.isEmpty else { return "" }
+        if let decoded = try? JSONDecoder().decode(String.self, from: bytes) { return decoded }
+        return String(data: bytes, encoding: .utf8) ?? ""
+    }
+
+    /// Interpret a JSON array of numbers as raw bytes (core's `[u8]` encoding).
+    private static func byteArray(_ value: JSONValue?) -> Data? {
+        guard let elements = value?.arrayValue, !elements.isEmpty else { return nil }
+        var bytes = [UInt8]()
+        bytes.reserveCapacity(elements.count)
+        for element in elements {
+            guard let number = element.doubleValue, number >= 0, number <= 255 else { return nil }
+            bytes.append(UInt8(number))
+        }
+        return Data(bytes)
     }
 }

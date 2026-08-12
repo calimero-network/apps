@@ -89,11 +89,18 @@ else
 fi
 
 step "Initialising node at $NODE_HOME"
-merod --node "$NODE_NAME" --home "$NODE_HOME" init \
+# The admin account is created HERE, not on first login: since core rc.20
+# `--auth-mode embedded` refuses to initialise without credentials (it wants the
+# admin to exist before the node ever listens), so a plain `init` fails with
+# "requires admin credentials". Passing the password on stdin keeps it out of the
+# process list.
+printf '%s' "$ADMIN_PASS" | merod --node "$NODE_NAME" --home "$NODE_HOME" init \
   --server-host 127.0.0.1 \
   --server-port "$NODE_PORT" \
   --swarm-port  "$NODE_P2P_PORT" \
-  --auth-mode embedded
+  --auth-mode embedded \
+  --admin-user "$ADMIN_USER" \
+  --admin-password-stdin
 green "Node initialised"
 
 CONFIG_FILE="$NODE_HOME/${NODE_NAME}/config.toml"
@@ -172,7 +179,7 @@ if [ -n "$NAMESPACE_ID" ]; then
       -H "Authorization: Bearer ${ACCESS_TOKEN}" -H "Content-Type: application/json" \
       -d '{"subgroupVisibility":"open"}' &>/dev/null || true
 
-    # MeroTag.init(name)
+    # MeroAR.init(name)
     INIT_JSON='{"name":"Room"}'
     INIT_BYTES=$(printf '%s' "$INIT_JSON" | python3 -c \
       "import sys; d=sys.stdin.buffer.read(); print('['+','.join(str(b) for b in d)+']')")
@@ -210,6 +217,6 @@ printf '  Username:              \033[1m%s\033[0m\n' "$ADMIN_USER"
 printf '  Password:              \033[1m%s\033[0m\n' "$ADMIN_PASS"
 printf '  Context ID:            \033[1m%s\033[0m\n' "${CONTEXT_ID:-<create from app>}"
 printf '  Logs:                  /tmp/meroar-dev-node.log\n\n'
-printf '  Next:  \033[36mmake app-run\033[0m  (simulator)  or open MeroTag.xcodeproj\n'
+printf '  Next:  \033[36mmake app-run\033[0m  (simulator)  or open MeroAR.xcodeproj\n'
 printf '  Two-node P2P:  \033[36mmake node2\033[0m  then  \033[36mmake invite\033[0m\n'
 printf '  Stop:  \033[36mmake stop\033[0m\n\n'

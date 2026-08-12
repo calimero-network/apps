@@ -40,6 +40,6 @@ command -v wasm-opt >/dev/null 2>&1 && ok "wasm-opt found" || warn "wasm-opt not
 printf "\n${GREEN}${BOLD}✓  Setup complete!${RESET}\n\n"
 printf "  Next:\n"
 printf "    ${CYAN}make node${RESET}      → start the dev node + create a room\n"
-printf "    ${CYAN}make kit-verify${RESET} → smoke-test MeroKit (no Xcode needed)\n"
-printf "    ${CYAN}make app-gen${RESET}   → generate MeroTag.xcodeproj (needs xcodegen + Xcode)\n\n"
+printf "    ${CYAN}make workflows${RESET} → run the merobox suites (needs Docker, no Xcode)\n"
+printf "    ${CYAN}make app-gen${RESET}   → generate MeroAR.xcodeproj (needs xcodegen + Xcode)\n\n"
 printf "  See ${BOLD}requirements.md${RESET} for the full Mac / iPhone walkthrough.\n\n"
