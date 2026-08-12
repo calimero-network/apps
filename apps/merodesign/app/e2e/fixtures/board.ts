@@ -39,6 +39,11 @@ export interface BoardOptions {
   tauri?: boolean;
   /** Serve a real 8x8 PNG for any blob fetch, so image elements decode. */
   serveBlob?: boolean;
+  /**
+   * Make chosen contract methods fail, to simulate a board whose context runs an
+   * older bundle: `{ set_layer_index: "Method not found" }`.
+   */
+  failMethods?: Record<string, string>;
 }
 
 export async function openBoard(page: Page, opts: BoardOptions = {}): Promise<Board> {
@@ -95,6 +100,19 @@ export async function openBoard(page: Page, opts: BoardOptions = {}): Promise<Bo
     };
     const method = body?.params?.method ?? "";
     calls.push({ method, args: body?.params?.argsJson ?? {} });
+
+    const failure = opts.failMethods?.[method];
+    if (failure) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: body?.id ?? 1,
+          error: { code: -32601, message: failure, data: failure },
+        }),
+      });
+    }
 
     let value: unknown;
     switch (method) {

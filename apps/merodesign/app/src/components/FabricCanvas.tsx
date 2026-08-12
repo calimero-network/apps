@@ -27,6 +27,8 @@ import { v4 as uuid } from "uuid";
 import { rpcCall } from "../api/rpc";
 import { applyTopLeftOrigin } from "../utils/fabricDefaults";
 import { isPaintable } from "../utils/color";
+import { createMutationReporter } from "../utils/mutationErrors";
+import { useToast } from "../contexts/ToastContext";
 import { useCanvasStore } from "../store/canvasStore";
 import { saveDataUrl, saveText } from "../utils/saveFile";
 import type { Element } from "../types";
@@ -86,6 +88,11 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
     const handPanningRef = useRef(false);
     const handPanLastRef = useRef({ x: 0, y: 0 });
     const [zoom, setZoom] = useState(1);
+    const { showToast } = useToast();
+    // See utils/mutationErrors: these used to be `.catch(() => {})`, so a failed
+    // save left the canvas looking correct until the next sync silently undid it.
+    const reportFailure = useRef(createMutationReporter((m) => showToast(m, "error")));
+    reportFailure.current = createMutationReporter((m) => showToast(m, "error"));
 
     const {
       activeTool,
@@ -436,7 +443,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           itext.enterEditing();
           itext.selectAll();
           fc.renderAll();
-          await rpcCall(contextId, "add_element", { element: el }).catch(() => {});
+          await rpcCall(contextId, "add_element", { element: el }).catch((e) => reportFailure.current("add_element", e));
           return;
         }
 
@@ -556,7 +563,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         };
         snapshot();
         upsertElement(el);
-        await rpcCall(contextId, "add_element", { element: el }).catch(() => {});
+        await rpcCall(contextId, "add_element", { element: el }).catch((e) => reportFailure.current("add_element", e));
       };
 
       /** A finished pen stroke: persist it as a `path` element. */
@@ -587,7 +594,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         path.set({ data: el });
         snapshot();
         upsertElement(el);
-        await rpcCall(contextId, "add_element", { element: el }).catch(() => {});
+        await rpcCall(contextId, "add_element", { element: el }).catch((e) => reportFailure.current("add_element", e));
       };
 
       /** Persist one object's geometry from its current absolute position. */
@@ -610,7 +617,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           width: updatedEl.width, height: updatedEl.height, rotation: updatedEl.rotation,
           fill: null, stroke: null, stroke_width: null, opacity: null,
           corner_radius: null, updated_at: updatedEl.updatedAt,
-        }).catch(() => {});
+        }).catch((e) => reportFailure.current("update_element", e));
       };
 
       const onObjectModified = async (opt: { target?: FabricObject & { data?: Element } }) => {
@@ -663,13 +670,13 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
             await rpcCall(contextId, "update_text_style", {
               id: updated.id, content: null, font_family: null, font_size: nextSize,
               bold: null, italic: null, updated_at: updated.updatedAt,
-            }).catch(() => {});
+            }).catch((e) => reportFailure.current("update_text_style", e));
             await rpcCall(contextId, "update_element", {
               id: updated.id, x: updated.x, y: updated.y,
               width: updated.width, height: updated.height, rotation: updated.rotation,
               fill: null, stroke: null, stroke_width: null, opacity: null,
               corner_radius: null, updated_at: updated.updatedAt,
-            }).catch(() => {});
+            }).catch((e) => reportFailure.current("update_element", e));
             return;
           }
         }
@@ -691,7 +698,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         await rpcCall(contextId, "update_text_style", {
           id: el.id, content: newContent, font_family: null, font_size: null,
           bold: null, italic: null, updated_at: updatedEl.updatedAt,
-        }).catch(() => {});
+        }).catch((e) => reportFailure.current("update_text_style", e));
       };
 
       const onSelectionCreated = (opt: { selected?: (FabricObject & { data?: Element })[] }) => {
@@ -733,7 +740,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           if (newEl) {
             upsertElement(newEl);
             snapshot();
-            await rpcCall(contextId, "add_element", { element: newEl }).catch(() => {});
+            await rpcCall(contextId, "add_element", { element: newEl }).catch((e) => reportFailure.current("add_element", e));
           }
           return;
         }
@@ -787,7 +794,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         fc.renderAll();
         snapshot();
         removeElement(active.data.id);
-        await rpcCall(contextId, "delete_element", { id: active.data.id }).catch(() => {});
+        await rpcCall(contextId, "delete_element", { id: active.data.id }).catch((e) => reportFailure.current("delete_element", e));
       };
 
       const onKeyUp = (e: KeyboardEvent) => {

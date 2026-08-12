@@ -1,6 +1,8 @@
 import { useRef, useState } from "react";
 import { rpcCall } from "../api/rpc";
 import { useCanvasStore } from "../store/canvasStore";
+import { useToast } from "../contexts/ToastContext";
+import { createMutationReporter } from "../utils/mutationErrors";
 import { escapeHtml, escapeCss } from "../utils/sanitize";
 import type { Element } from "../types";
 import styles from "./PropertiesPanel.module.css";
@@ -22,6 +24,12 @@ interface Props {
 export default function PropertiesPanel({ contextId, readOnly = false }: Props) {
   const { selectedElementId, selectedElementIds, elements, elementLabels, imageCache, upsertElement, removeElement, selectElement, selectElements, setElementLabel } = useCanvasStore();
   const el = elements.find((e) => e.id === selectedElementId);
+  const { showToast } = useToast();
+  // Contract mutations used to be `.catch(() => {})`. On a board running an older
+  // bundle every layer move and corner-radius change failed silently, which is
+  // indistinguishable from a UI bug. Report once per distinct failure.
+  const reportFailure = useRef(createMutationReporter((m) => showToast(m, "error")));
+  reportFailure.current = createMutationReporter((m) => showToast(m, "error"));
   const rpcDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [tab, setTab] = useState<PanelTab>("properties");
   const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
@@ -48,7 +56,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
         ...Object.fromEntries(
           Object.entries(patch).map(([k, v]) => [toSnake(k), v]),
         ),
-      }).catch(() => {}),
+      }).catch((e) => reportFailure.current("update_element", e)),
     );
   }
 
@@ -87,7 +95,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
         text_align:     patch.text_align     ?? null,
         vertical_align: patch.vertical_align ?? null,
         updated_at:     updated.updatedAt,
-      }).catch(() => {}),
+      }).catch((e) => reportFailure.current("update_text_style", e)),
     );
   }
 
@@ -96,7 +104,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     const id = targetId ?? el?.id;
     if (!id) return;
     removeElement(id);
-    await rpcCall(contextId, "delete_element", { id }).catch(() => {});
+    await rpcCall(contextId, "delete_element", { id }).catch((e) => reportFailure.current("delete_element", e));
   }
 
   async function handleBringToFront(targetEl?: Element) {
@@ -105,7 +113,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     if (!target) return;
     const maxLayer = Math.max(0, ...elements.map((e) => e.layerIndex));
     upsertElement({ ...target, layerIndex: maxLayer + 1, updatedAt: Date.now() });
-    await rpcCall(contextId, "bring_to_front", { id: target.id }).catch(() => {});
+    await rpcCall(contextId, "bring_to_front", { id: target.id }).catch((e) => reportFailure.current("bring_to_front", e));
   }
 
   async function handleSendToBack(targetEl?: Element) {
@@ -115,7 +123,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     elements.forEach((e) =>
       upsertElement({ ...e, layerIndex: e.id === target.id ? 0 : e.layerIndex + 1 })
     );
-    await rpcCall(contextId, "send_to_back", { id: target.id }).catch(() => {});
+    await rpcCall(contextId, "send_to_back", { id: target.id }).catch((e) => reportFailure.current("send_to_back", e));
   }
 
   async function handleMoveUp(targetEl: Element) {
@@ -133,7 +141,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     const upIndex = sorted.findIndex((e) => e.id === above.id);
     await rpcCall(contextId, "set_layer_index", {
       id: targetEl.id, index: upIndex, updated_at: Date.now(),
-    }).catch(() => {});
+    }).catch((e) => reportFailure.current("set_layer_index", e));
   }
 
   async function handleMoveDown(targetEl: Element) {
@@ -149,7 +157,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     const downIndex = sorted.findIndex((e) => e.id === below.id);
     await rpcCall(contextId, "set_layer_index", {
       id: targetEl.id, index: downIndex, updated_at: Date.now(),
-    }).catch(() => {});
+    }).catch((e) => reportFailure.current("set_layer_index", e));
   }
 
   function startLabelEdit(e: Element) {
@@ -595,10 +603,10 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
               const updatedAt = Date.now();
               if (e.target.checked) {
                 upsertElement({ ...el, shadowColor: "rgba(0,0,0,0.3)", shadowOffsetX: 0, shadowOffsetY: 4, shadowBlur: 12, updatedAt });
-                rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: "rgba(0,0,0,0.3)", shadow_offset_x: 0, shadow_offset_y: 4, shadow_blur: 12, updated_at: updatedAt }).catch(() => {});
+                rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: "rgba(0,0,0,0.3)", shadow_offset_x: 0, shadow_offset_y: 4, shadow_blur: 12, updated_at: updatedAt }).catch((e) => reportFailure.current("update_shadow", e));
               } else {
                 upsertElement({ ...el, shadowColor: null, shadowOffsetX: null, shadowOffsetY: null, shadowBlur: null, updatedAt });
-                rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: null, shadow_offset_x: null, shadow_offset_y: null, shadow_blur: null, updated_at: updatedAt }).catch(() => {});
+                rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: null, shadow_offset_x: null, shadow_offset_y: null, shadow_blur: null, updated_at: updatedAt }).catch((e) => reportFailure.current("update_shadow", e));
               }
             }} />
         </div>
@@ -613,7 +621,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
                 onChange={(e) => {
                   const updatedAt = Date.now();
                   upsertElement({ ...el, shadowColor: e.target.value, updatedAt });
-                  rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: e.target.value, shadow_offset_x: el.shadowOffsetX ?? null, shadow_offset_y: el.shadowOffsetY ?? null, shadow_blur: el.shadowBlur ?? null, updated_at: updatedAt }).catch(() => {});
+                  rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: e.target.value, shadow_offset_x: el.shadowOffsetX ?? null, shadow_offset_y: el.shadowOffsetY ?? null, shadow_blur: el.shadowBlur ?? null, updated_at: updatedAt }).catch((e) => reportFailure.current("update_shadow", e));
                 }} />
             </div>
             <div className={styles.fieldWrap}>
@@ -624,7 +632,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
                 onChange={(e) => {
                   const updatedAt = Date.now();
                   upsertElement({ ...el, shadowBlur: Number(e.target.value), updatedAt });
-                  rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: el.shadowColor ?? null, shadow_offset_x: el.shadowOffsetX ?? null, shadow_offset_y: el.shadowOffsetY ?? null, shadow_blur: Number(e.target.value), updated_at: updatedAt }).catch(() => {});
+                  rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: el.shadowColor ?? null, shadow_offset_x: el.shadowOffsetX ?? null, shadow_offset_y: el.shadowOffsetY ?? null, shadow_blur: Number(e.target.value), updated_at: updatedAt }).catch((e) => reportFailure.current("update_shadow", e));
                 }} />
             </div>
             <div className={styles.fieldWrap}>
@@ -635,7 +643,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
                 onChange={(e) => {
                   const updatedAt = Date.now();
                   upsertElement({ ...el, shadowOffsetX: Number(e.target.value), updatedAt });
-                  rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: el.shadowColor ?? null, shadow_offset_x: Number(e.target.value), shadow_offset_y: el.shadowOffsetY ?? null, shadow_blur: el.shadowBlur ?? null, updated_at: updatedAt }).catch(() => {});
+                  rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: el.shadowColor ?? null, shadow_offset_x: Number(e.target.value), shadow_offset_y: el.shadowOffsetY ?? null, shadow_blur: el.shadowBlur ?? null, updated_at: updatedAt }).catch((e) => reportFailure.current("update_shadow", e));
                 }} />
             </div>
             <div className={styles.fieldWrap}>
@@ -646,7 +654,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
                 onChange={(e) => {
                   const updatedAt = Date.now();
                   upsertElement({ ...el, shadowOffsetY: Number(e.target.value), updatedAt });
-                  rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: el.shadowColor ?? null, shadow_offset_x: el.shadowOffsetX ?? null, shadow_offset_y: Number(e.target.value), shadow_blur: el.shadowBlur ?? null, updated_at: updatedAt }).catch(() => {});
+                  rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: el.shadowColor ?? null, shadow_offset_x: el.shadowOffsetX ?? null, shadow_offset_y: Number(e.target.value), shadow_blur: el.shadowBlur ?? null, updated_at: updatedAt }).catch((e) => reportFailure.current("update_shadow", e));
                 }} />
             </div>
           </div>
