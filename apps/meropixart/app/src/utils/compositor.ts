@@ -9,6 +9,7 @@
 
 import type { Layer } from "../types";
 import { adjustmentsToFilter, blendOp, createCanvas, ctx2d, renderTextLayer } from "./raster";
+import { drawWarped, layerMatrix, parseWarp } from "./transform";
 import { peekLayerCanvas, peekMaskCanvas } from "../store/layerCanvases";
 
 function byId(layers: Layer[]): Map<string, Layer> {
@@ -41,15 +42,20 @@ function effectiveOpacity(layer: Layer, map: Map<string, Layer>): number {
   return o;
 }
 
+/** Where a layer's pixels come from. Defaults to the editor's canvas registry;
+ *  the showcase previews pass their own so they can render off to the side
+ *  without registering anything. */
+export type PixelSource = (layerId: string) => HTMLCanvasElement | null | undefined;
+
 /** The pixel source for a layer (raster/image canvas, rendered text, or fill). */
-function sourceFor(layer: Layer): HTMLCanvasElement | null {
+function sourceFor(layer: Layer, peek: PixelSource): HTMLCanvasElement | null {
   if (layer.kind === "group" || layer.kind === "adjustment") return null;
   if (layer.kind === "text") return renderTextLayer(layer);
   if (layer.kind === "fill") {
     // Once a fill layer has been painted on (brush/eraser/bucket-in-selection),
     // it carries a pixel buffer — prefer it so strokes are visible. Otherwise
     // it's still a procedural solid generated from `fill`.
-    const painted = peekLayerCanvas(layer.id);
+    const painted = peek(layer.id);
     if (painted) return painted;
     const c = createCanvas(layer.width, layer.height);
     const ctx = ctx2d(c);
@@ -58,7 +64,7 @@ function sourceFor(layer: Layer): HTMLCanvasElement | null {
     return c;
   }
   // raster / image
-  return peekLayerCanvas(layer.id) ?? null;
+  return peek(layer.id) ?? null;
 }
 
 /** Convert a grayscale mask canvas to an alpha mask (alpha = luminance). */
@@ -82,6 +88,10 @@ export interface CompositeOptions {
   background?: string;
   /** skip a layer id (e.g. while dragging a live preview elsewhere) */
   skipId?: string;
+  /** override where layer pixels come from (default: the editor's registry) */
+  sources?: PixelSource;
+  /** override where layer masks come from (default: the editor's registry) */
+  masks?: PixelSource;
 }
 
 export function composite(
@@ -93,6 +103,8 @@ export function composite(
   const out = createCanvas(width, height);
   const ctx = ctx2d(out);
   const map = byId(layers);
+  const peek = opts.sources ?? peekLayerCanvas;
+  const peekMask = opts.masks ?? peekMaskCanvas;
 
   if (opts.background && opts.background !== "#00000000") {
     ctx.fillStyle = opts.background;
@@ -104,7 +116,7 @@ export function composite(
   for (const layer of ordered) {
     if (opts.skipId === layer.id) continue;
     if (!effectiveVisible(layer, map)) continue;
-    const src = sourceFor(layer);
+    const src = sourceFor(layer, peek);
     if (!src) continue;
 
     const alpha = effectiveOpacity(layer, map);
@@ -112,7 +124,7 @@ export function composite(
 
     // Build the (optionally masked) layer image at its own resolution.
     let img: HTMLCanvasElement = src;
-    const maskCanvas = layer.maskBlobId ? peekMaskCanvas(layer.id) : undefined;
+    const maskCanvas = layer.maskBlobId ? peekMask(layer.id) : undefined;
     if (maskCanvas) {
       const masked = createCanvas(src.width, src.height);
       const mctx = ctx2d(masked);
@@ -128,15 +140,14 @@ export function composite(
     ctx.globalCompositeOperation = blendOp(layer.blendMode);
     ctx.filter = adjustmentsToFilter(layer.adjustments);
 
-    // transform: position at (x,y), rotate around the layer centre, scale.
-    const sx = (layer.scaleX || 100) / 100;
-    const sy = (layer.scaleY || 100) / 100;
-    const cx = layer.x + (img.width * sx) / 2;
-    const cy = layer.y + (img.height * sy) / 2;
-    ctx.translate(cx, cy);
-    if (layer.rotation) ctx.rotate((layer.rotation * Math.PI) / 180);
-    ctx.scale(sx, sy);
-    ctx.drawImage(img, -img.width / 2, -img.height / 2);
+    // Transform: one matrix for position / mirror / shear / scale / rotation
+    // (see utils/transform — the gizmo and hit-testing read the same one), then
+    // the corner-pin warp as a triangle mesh on top of it.
+    const m = layerMatrix(layer);
+    ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
+    const warp = parseWarp(layer.warp);
+    if (warp) drawWarped(ctx, img, img.width, img.height, warp);
+    else ctx.drawImage(img, 0, 0);
     ctx.restore();
   }
 

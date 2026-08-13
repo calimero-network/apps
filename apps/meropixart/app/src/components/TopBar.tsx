@@ -20,6 +20,8 @@ interface Props {
   onDuplicateLayer: (id: string) => void;
   onDeleteLayer: (id: string) => void;
   onGroupSelected: () => void;
+  onUngroup: (id: string) => void;
+  onOpenShowcase: () => void;
   onToggleMask: (id: string) => void;
   onRasterize: () => void;
   onMergeDown: () => void;
@@ -48,13 +50,15 @@ function check(on: boolean): string {
 export default function TopBar({
   docName, members, role, onBack, onImportImage, onImportSvg, onExport,
   onApplyFilter, onSelectAll, onDeselect, onAddLayer, onDuplicateLayer,
-  onDeleteLayer, onGroupSelected, onToggleMask, onRasterize, onMergeDown,
-  onMergeVisible, onFlatten, onOpenInvite, onOpenSettings, saving,
+  onDeleteLayer, onGroupSelected, onUngroup, onOpenShowcase, onToggleMask,
+  onRasterize, onMergeDown, onMergeVisible, onFlatten, onOpenInvite,
+  onOpenSettings, saving,
 }: Props) {
   const {
     zoom, setZoom, setPan, undo, redo, undoStack, redoStack, selection,
-    layers, selectedLayerId, doc, showRulers, toggleRulers, setTool,
+    layers, selectedLayerId, selectedLayerIds, doc, showRulers, toggleRulers, setTool,
     view, setView, guides, clearGuides, panels, togglePanel, setSelection,
+    setTransformMode, setAllGroupsCollapsed, panelCollapsed, togglePanelCollapsed,
   } = useEditorStore();
   const imgRef = useRef<HTMLInputElement>(null);
   const svgRef = useRef<HTMLInputElement>(null);
@@ -63,8 +67,14 @@ export default function TopBar({
   const zoomPct = Math.round(zoom * 100);
   const canUndo = undoStack.length > 0;
   const canRedo = redoStack.length > 0;
-  const hasSel = !!selectedLayerId && layers.some((l) => l.id === selectedLayerId);
+  const sel = layers.find((l) => l.id === selectedLayerId);
+  const hasSel = !!sel;
   const close = () => setMenu(null);
+  // The folder ⌘⇧G would dissolve: the selected folder, else the one it sits in.
+  const ungroupTarget = sel?.kind === "group"
+    ? sel
+    : layers.find((l) => l.id === sel?.parentId && l.kind === "group");
+  const groupCount = layers.filter((l) => l.kind === "group").length;
 
   const fitScreen = () => {
     if (!doc) return;
@@ -86,6 +96,10 @@ export default function TopBar({
 
         <nav className={styles.menus}>
           <Menu id="file" label="File" open={menu === "file"} anyOpen={menu !== null} onToggle={setMenu}>
+            <button data-testid="menu-open-showcase" onClick={() => { onOpenShowcase(); close(); }}>
+              Open Showcase Project…
+            </button>
+            <hr />
             <button onClick={() => { imgRef.current?.click(); close(); }}>Place Image…</button>
             <button onClick={() => { svgRef.current?.click(); close(); }}>Place SVG…</button>
             <hr />
@@ -104,7 +118,24 @@ export default function TopBar({
             <button disabled={!selection} onClick={() => { fireClipboard("c"); close(); }}>Copy<kbd>⌘C</kbd></button>
             <button onClick={() => { fireClipboard("v"); close(); }}>Paste<kbd>⌘V</kbd></button>
             <hr />
-            <button onClick={() => { setTool("transform"); close(); }}>Free Transform<kbd>⌘T</kbd></button>
+            <button data-testid="menu-free-transform"
+              onClick={() => { setTransformMode("free"); setTool("transform"); close(); }}>
+              Free Transform<kbd>⌘T</kbd>
+            </button>
+            <button data-testid="menu-warp"
+              onClick={() => { setTransformMode("warp"); setTool("transform"); close(); }}>
+              Warp
+            </button>
+            <button data-testid="menu-show-transform-panel"
+              onClick={() => {
+                // Show it AND open it: the panel ships collapsed, so toggling
+                // visibility alone would leave the user staring at its header.
+                if (!panels.transform) togglePanel("transform");
+                if (panelCollapsed.transform) togglePanelCollapsed("transform");
+                close();
+              }}>
+              Transform Numerically…
+            </button>
           </Menu>
 
           <Menu id="image" label="Image" open={menu === "image"} anyOpen={menu !== null} onToggle={setMenu}>
@@ -118,12 +149,23 @@ export default function TopBar({
             <button onClick={() => { onAddLayer("raster"); close(); }}>New Raster Layer</button>
             <button onClick={() => { onAddLayer("text"); close(); }}>New Text Layer</button>
             <button onClick={() => { onAddLayer("fill"); close(); }}>New Fill Layer</button>
-            <button onClick={() => { onAddLayer("group"); close(); }}>New Group</button>
+            <button onClick={() => { onAddLayer("group"); close(); }}>New Folder</button>
             <hr />
             <button disabled={!hasSel} onClick={() => { if (selectedLayerId) onDuplicateLayer(selectedLayerId); close(); }}>Duplicate Layer</button>
             <button disabled={!hasSel} onClick={() => { if (selectedLayerId) onDeleteLayer(selectedLayerId); close(); }}>Delete Layer</button>
             <hr />
-            <button disabled={!hasSel} onClick={() => { onGroupSelected(); close(); }}>Group Layer</button>
+            <button disabled={!hasSel} data-testid="menu-group" onClick={() => { onGroupSelected(); close(); }}>
+              {selectedLayerIds.length > 1 ? "Group Layers" : "Group Layer"}<kbd>⌘G</kbd>
+            </button>
+            <button disabled={!ungroupTarget} data-testid="menu-ungroup"
+              onClick={() => { if (ungroupTarget) onUngroup(ungroupTarget.id); close(); }}>
+              Ungroup<kbd>⌘⇧G</kbd>
+            </button>
+            <button disabled={groupCount === 0} data-testid="menu-collapse-folders"
+              onClick={() => { setAllGroupsCollapsed(true); close(); }}>Collapse All Folders</button>
+            <button disabled={groupCount === 0} data-testid="menu-expand-folders"
+              onClick={() => { setAllGroupsCollapsed(false); close(); }}>Expand All Folders</button>
+            <hr />
             <button disabled={!hasSel} onClick={() => { if (selectedLayerId) onToggleMask(selectedLayerId); close(); }}>Add / Remove Mask</button>
             <hr />
             <button disabled={!hasSel} onClick={() => { onRasterize(); close(); }}>Rasterize Layer</button>
@@ -182,7 +224,7 @@ export default function TopBar({
             <span className={styles.menuHeading}>Panels</span>
             {([
               ["navigator", "Navigator"], ["adjustments", "Adjustments"],
-              ["history", "History"], ["layers", "Layers"],
+              ["transform", "Transform"], ["history", "History"], ["layers", "Layers"],
             ] as [PanelId, string][]).map(([id, label]) => (
               <button key={id} onClick={() => togglePanel(id)}>{check(panels[id])}{label}</button>
             ))}

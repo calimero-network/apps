@@ -18,15 +18,21 @@ import {
 import { composite } from "../utils/compositor";
 import { applyFilter } from "../utils/filters";
 import { invertSelection, selectionPathLocal } from "../utils/geometry";
+import { bakeTransform, unionBounds } from "../utils/transform";
+import { commonParentId, nextGroupName, topmostSelected } from "../utils/layerTree";
 import {
   NEUTRAL_ADJUSTMENTS, type Adjustments, type CursorState, type DocumentInfo,
   type FilterKind, type Layer, type LayerKind, type Member, type Role, type TextProps,
 } from "../types";
+import { buildShowcase } from "../showcase/build";
+import { findShowcase } from "../showcase";
+import type { ShowcaseProject } from "../showcase/types";
 import Toolbar from "../components/Toolbar";
 import OptionsBar from "../components/OptionsBar";
 import CanvasStage from "../components/CanvasStage";
 import LayersPanel from "../components/LayersPanel";
 import AdjustmentsPanel from "../components/AdjustmentsPanel";
+import TransformPanel from "../components/TransformPanel";
 import HistoryPanel from "../components/HistoryPanel";
 import Navigator from "../components/Navigator";
 import TopBar from "../components/TopBar";
@@ -35,6 +41,7 @@ import StatusBar from "../components/StatusBar";
 import CursorsOverlay from "../components/CursorsOverlay";
 import InviteModal from "../components/InviteModal";
 import SettingsModal from "../components/SettingsModal";
+import ShowcasePicker from "../components/ShowcasePicker";
 import UsernameModal from "../components/UsernameModal";
 import styles from "./EditorPage.module.css";
 
@@ -64,6 +71,9 @@ export default function EditorPage() {
   const [needName, setNeedName] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showShowcase, setShowShowcase] = useState(false);
+  /** id of the showcase currently being written to the node ("" = none) */
+  const [loadingShowcase, setLoadingShowcase] = useState("");
   const [saving, setSaving] = useState(false);
   const [ready, setReady] = useState(false);
   const [fatal, setFatal] = useState("");
@@ -344,6 +354,34 @@ export default function EditorPage() {
     } catch (e) { showToast(errMsg(e), "error"); }
   }, [ctxId, showToast]);
 
+  /**
+   * Persist a free-transform patch via `update_transform`.
+   *
+   * Kept apart from `commitMeta` so the two never fight: position/props go
+   * through `update_layer`, rotate/scale/skew/flip/warp through here. Both are
+   * applied locally first so the canvas never waits on the network.
+   */
+  const onTransform = useCallback((id: string, patch: Partial<Layer>) => {
+    const l = useEditorStore.getState().layers.find((x) => x.id === id);
+    if (!l || !canEdit()) return;
+    const now = ts();
+    upsertLayer({ ...l, ...patch, updatedAt: now });
+    bumpRender();
+    const ri = (v: number | undefined) => (v == null ? null : Math.round(v));
+    rpcCall(ctxId, "update_transform", {
+      id,
+      rotation: ri(patch.rotation),
+      scale_x: ri(patch.scaleX),
+      scale_y: ri(patch.scaleY),
+      skew_x: ri(patch.skewX),
+      skew_y: ri(patch.skewY),
+      flip_h: patch.flipH ?? null,
+      flip_v: patch.flipV ?? null,
+      warp: patch.warp ?? null,
+      updated_at: now,
+    }).catch((e) => showToast(errMsg(e), "error"));
+  }, [ctxId, canEdit, upsertLayer, bumpRender, showToast]);
+
   const onUpdateMeta = useCallback((id: string, patch: Partial<Layer>) => {
     const l = useEditorStore.getState().layers.find((x) => x.id === id);
     if (!l) return;
@@ -377,6 +415,7 @@ export default function EditorPage() {
       opacity: 100,
       blendMode: "normal",
       x: 0, y: 0, width: w, height: h, rotation: 0, scaleX: 100, scaleY: 100,
+      skewX: 0, skewY: 0, flipH: false, flipV: false, warp: "",
       blobId: "",
       maskBlobId: null,
       fill: kind === "fill" ? useEditorStore.getState().primaryColor : "",
@@ -394,6 +433,10 @@ export default function EditorPage() {
     if (!canEdit() || !doc) return;
     useEditorStore.getState().pushHistory([], "Add Layer"); // so the new layer is undoable
     const layer = makeLayer(kind);
+    // Folders are referred to by name in conversation ("drag it into Header"), so
+    // a new one gets the first free number rather than a third layer called
+    // "Group" — the same helper ⌘G uses.
+    if (kind === "group") layer.name = nextGroupName(useEditorStore.getState().layers);
     if (kind === "raster") getLayerCanvas(layer.id, layer.width, layer.height); // blank transparent
     upsertLayer(layer);
     selectLayer(layer.id);
@@ -403,13 +446,18 @@ export default function EditorPage() {
   }, [ctxId, doc, canEdit, upsertLayer, selectLayer, bumpRender, showToast]);
 
   const onDelete = useCallback(async (id: string) => {
+    // Deleting a folder lifts its children to the top level rather than taking
+    // them with it — the same rule `delete_layer` applies on the node, mirrored
+    // locally so the panel does not flash a dangling parent while the RPC flies.
+    const children = useEditorStore.getState().layers.filter((l) => l.parentId === id);
+    for (const c of children) upsertLayer({ ...c, parentId: null, updatedAt: ts() });
     removeLayer(id);
     dropLayerCanvas(id);
     dropMaskCanvas(id);
     bumpRender();
     try { await rpcCall(ctxId, "delete_layer", { id }); }
     catch (e) { showToast(errMsg(e), "error"); }
-  }, [ctxId, removeLayer, bumpRender, showToast]);
+  }, [ctxId, removeLayer, upsertLayer, bumpRender, showToast]);
 
   const onDuplicate = useCallback(async (id: string) => {
     const src = useEditorStore.getState().layers.find((l) => l.id === id);
@@ -445,18 +493,127 @@ export default function EditorPage() {
     catch (e) { showToast(errMsg(e), "error"); }
   }, [ctxId, setLayers, bumpRender, showToast]);
 
+  /**
+   * Wrap the whole selection in a new folder — the Cmd/Ctrl-G every editor has.
+   *
+   * Three details that make it behave like a folder rather than a tag:
+   *   • members are the TOPMOST selected layers, so a layer already inside a
+   *     selected folder is not yanked out of it;
+   *   • the new folder is created inside the folder the members already share,
+   *     so grouping inside "Header" nests rather than escaping to the root;
+   *   • the folder takes the frontmost member's index and its position covers
+   *     the members' bounds, so its own x/y is meaningful when you drag it.
+   */
   const onGroupSelected = useCallback(async () => {
-    const sel = useEditorStore.getState().selectedLayer();
-    if (!sel || !canEdit()) return;
+    const st = useEditorStore.getState();
+    if (!canEdit()) return;
+    const ids = topmostSelected(st.layers, st.selectedLayerIds.length > 0
+      ? st.selectedLayerIds
+      : st.selectedLayerId ? [st.selectedLayerId] : []);
+    const members = st.layers.filter((l) => ids.includes(l.id));
+    if (members.length === 0) return;
+
+    st.pushHistory([], members.length > 1 ? "Group Layers" : "Group Layer");
     const group = makeLayer("group");
-    group.name = "Group";
-    group.layerIndex = sel.layerIndex; // sit near the grouped layer
+    group.name = nextGroupName(st.layers);
+    group.parentId = commonParentId(st.layers, ids);
+    group.layerIndex = Math.max(...members.map((l) => l.layerIndex));
+    // Cover the members, so dragging the folder row reads as one object.
+    const box = groupBox(members);
+    group.x = box.x; group.y = box.y; group.width = box.w; group.height = box.h;
+
+    const now = ts();
     upsertLayer(group);
+    for (const m of members) upsertLayer({ ...m, parentId: group.id, updatedAt: now });
+    useEditorStore.getState().setGroupCollapsed(group.id, false);
+    useEditorStore.getState().selectLayer(group.id);
+    bumpRender();
+
     try {
       await rpcCall(ctxId, "add_layer", { layer: group });
-      onUpdateMeta(sel.id, { parentId: group.id });
+      // One RPC for the whole selection: the contract's move_layers also refuses
+      // any pair that would close a cycle.
+      await rpcCall(ctxId, "move_layers", {
+        moves: members.map((m) => [m.id, group.id]),
+        updated_at: now,
+      });
     } catch (e) { showToast(errMsg(e), "error"); }
-  }, [ctxId, canEdit, upsertLayer, onUpdateMeta, showToast]);
+  }, [ctxId, canEdit, upsertLayer, bumpRender, showToast]);
+
+  /** Dissolve a folder: its children move up to the folder's own parent, and the
+   *  now-empty folder layer is deleted. Contents keep their pixels and order. */
+  const onUngroup = useCallback(async (id: string) => {
+    const st = useEditorStore.getState();
+    if (!canEdit()) return;
+    const group = st.layers.find((l) => l.id === id);
+    if (!group || group.kind !== "group") return;
+    const children = st.layers.filter((l) => l.parentId === id);
+    const grandparent = group.parentId ?? null;
+
+    st.pushHistory([], "Ungroup");
+    const now = ts();
+    for (const c of children) upsertLayer({ ...c, parentId: grandparent, updatedAt: now });
+    removeLayer(id);
+    dropLayerCanvas(id);
+    dropMaskCanvas(id);
+    useEditorStore.getState().setSelectedLayers(children.map((c) => c.id));
+    bumpRender();
+
+    try {
+      if (children.length > 0) {
+        await rpcCall(ctxId, "move_layers", {
+          moves: children.map((c) => [c.id, grandparent]),
+          updated_at: now,
+        });
+      }
+      await rpcCall(ctxId, "delete_layer", { id });
+    } catch (e) { showToast(errMsg(e), "error"); }
+  }, [ctxId, canEdit, upsertLayer, removeLayer, bumpRender, showToast]);
+
+  /**
+   * Bake a layer's live transform into its pixels: render it through its own
+   * matrix + warp, then store the result as an upright layer at the transformed
+   * bounds. Painting on a rotated/warped layer works in its local space, so at
+   * some point you want the transform frozen — this is that point.
+   */
+  const onApplyTransform = useCallback(async (id: string) => {
+    const st = useEditorStore.getState();
+    const l = st.layers.find((x) => x.id === id);
+    if (!l || !canEdit()) return;
+    if (l.kind !== "raster") { showToast("Only raster layers can be baked — rasterize it first.", "error"); return; }
+    const src = peekLayerCanvas(id);
+    if (!src) { showToast("This layer has no pixels yet.", "error"); return; }
+    const neutral = l.rotation === 0 && l.scaleX === 100 && l.scaleY === 100
+      && l.skewX === 0 && l.skewY === 0 && !l.flipH && !l.flipV && !l.warp;
+    if (neutral) { showToast("Nothing to apply — this layer has no transform.", "error"); return; }
+
+    st.pushHistory([id], "Apply Transform");
+    const { canvas, x, y } = bakeTransform(l, src);
+    const target = getLayerCanvas(id, canvas.width, canvas.height);
+    target.width = canvas.width;
+    target.height = canvas.height;
+    const cx = ctx2d(target);
+    cx.clearRect(0, 0, target.width, target.height);
+    cx.drawImage(canvas, 0, 0);
+    setLayerCanvas(id, target);
+
+    const now = ts();
+    const flat: Layer = {
+      ...l, x, y, width: canvas.width, height: canvas.height,
+      rotation: 0, scaleX: 100, scaleY: 100, skewX: 0, skewY: 0,
+      flipH: false, flipV: false, warp: "", updatedAt: now,
+    };
+    upsertLayer(flat);
+    bumpRender();
+    try {
+      await commitPixels(id);
+      await commitMeta(id, { x, y, width: canvas.width, height: canvas.height });
+      await rpcCall(ctxId, "update_transform", {
+        id, rotation: 0, scale_x: 100, scale_y: 100, skew_x: 0, skew_y: 0,
+        flip_h: false, flip_v: false, warp: "", updated_at: now,
+      });
+    } catch (e) { showToast(errMsg(e), "error"); }
+  }, [ctxId, canEdit, upsertLayer, bumpRender, commitPixels, commitMeta, showToast]);
 
   // ── Merge / flatten / rasterize ─────────────────────────────────────────────
   // Composite `sources` (bottom→top) into one doc-sized raster layer, replace
@@ -770,6 +927,125 @@ export default function EditorPage() {
   }, [setSelection]);
   const onDeselect = useCallback(() => setSelection(null), [setSelection]);
 
+  // ── Showcase projects ─────────────────────────────────────────────────────
+  /**
+   * Load a bundled showcase into this document.
+   *
+   * It goes through the same contract calls a person would make by hand —
+   * `update_document`, `add_layer`, `update_layer_content`, `move_layers` — so
+   * every layer lands in WASM and reaches every other member, rather than living
+   * in local canvas state that vanishes on reload.
+   *
+   * Order matters: folders must exist on the node before their children name
+   * them, and pixels are uploaded per layer, so this is deliberately sequential
+   * and reports progress instead of firing forty requests at once.
+   */
+  const loadShowcase = useCallback(async (project: ShowcaseProject) => {
+    if (!canEdit()) { showToast("You need editor access to load a project.", "error"); return; }
+    setLoadingShowcase(project.id);
+    try {
+      const built = buildShowcase(project, { author: myId.current, now: ts() });
+      if (built.warnings.length > 0) {
+        // A recipe naming a folder that does not exist is an authoring bug, not a
+        // user error — load anyway (those layers land at the top level) but say so.
+        console.warn("[MeroPixArt] showcase warnings:", built.warnings);
+      }
+
+      // 1. Clear what is there. One delete per layer rather than `clear_layers`,
+      //    which is admin-only — an editor may load a showcase too.
+      const existing = useEditorStore.getState().layers;
+      for (const l of existing) {
+        removeLayer(l.id);
+        dropLayerCanvas(l.id);
+        dropMaskCanvas(l.id);
+      }
+      for (const l of existing) {
+        await rpcCall(ctxId, "delete_layer", { id: l.id }).catch(() => {});
+      }
+
+      // 2. Resize the document to the project's canvas.
+      setDoc({
+        ...(doc ?? { name: project.name, description: "", layerCount: 0, memberCount: 1, owner: null }),
+        width: project.width,
+        height: project.height,
+        background: project.background,
+      } as DocumentInfo);
+      await rpcCall(ctxId, "update_document", {
+        width: project.width, height: project.height, background: project.background,
+      }).catch((e) => showToast(errMsg(e), "error"));
+      setZoom(Math.min(1, 900 / project.width));
+      setPan(40, 40);
+
+      // 3. Register pixels locally first, so the canvas fills in as it goes.
+      for (const [id, canvas] of built.canvases) {
+        const target = getLayerCanvas(id, canvas.width, canvas.height);
+        ctx2d(target).drawImage(canvas, 0, 0);
+        setLayerCanvas(id, target);
+      }
+      for (const [id, mask] of built.masks) {
+        const layer = built.layers.find((l) => l.id === id)!;
+        const target = getMaskCanvas(id, layer.width, layer.height);
+        const mctx = ctx2d(target);
+        mctx.clearRect(0, 0, target.width, target.height);
+        mctx.drawImage(mask, 0, 0);
+      }
+      // Folders start expanded so the structure is the first thing you see.
+      for (const l of built.layers) {
+        if (l.kind === "group") useEditorStore.getState().setGroupCollapsed(l.id, false);
+      }
+      setLayers(built.layers);
+      clearHistory();
+      selectLayer(null);
+      bumpRender();
+
+      // 4. Persist. Parents before children, so `move_layers` never names a
+      //    folder the node has not seen yet.
+      const ordered = [...built.layers].sort((a, b) => Number(b.kind === "group") - Number(a.kind === "group"));
+      for (const layer of ordered) {
+        // parentId is applied in a single move_layers call afterwards
+        await rpcCall(ctxId, "add_layer", { layer: { ...layer, parentId: null } });
+        if (built.canvases.has(layer.id)) await commitPixels(layer.id);
+        if (built.masks.has(layer.id)) await commitMaskPixels(layer.id);
+      }
+      const moves = built.layers
+        .filter((l) => l.parentId)
+        .map((l) => [l.id, l.parentId]);
+      if (moves.length > 0) {
+        await rpcCall(ctxId, "move_layers", { moves, updated_at: ts() });
+      }
+
+      setShowShowcase(false);
+      showToast(`Loaded “${project.name}” — ${built.layers.length} layers.`, "success");
+    } catch (e) {
+      showToast(errMsg(e), "error");
+    } finally {
+      setLoadingShowcase("");
+    }
+  }, [
+    ctxId, doc, canEdit, setDoc, setLayers, selectLayer, clearHistory, removeLayer,
+    setZoom, setPan, bumpRender, commitPixels, commitMaskPixels, showToast,
+  ]);
+
+  // A deep link (`?showcase=aurora`) opens straight into a populated document —
+  // that is what the "start from a showcase" option on the projects page uses.
+  const autoLoaded = useRef(false);
+  useEffect(() => {
+    if (!ready || autoLoaded.current) return;
+    const wanted = new URLSearchParams(window.location.search).get("showcase");
+    if (!wanted) return;
+    autoLoaded.current = true;
+    const project = findShowcase(wanted);
+    // Only into an empty document: a deep link must never wipe someone's work.
+    if (!project) { showToast(`Unknown showcase “${wanted}”.`, "error"); return; }
+    if (useEditorStore.getState().layers.length > 0) {
+      showToast("This project already has layers — open a showcase from the File menu to replace them.");
+      return;
+    }
+    if (!canEdit()) return;
+    loadShowcase(project);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
+
   // ── Export ───────────────────────────────────────────────────────────────
   const onExport = useCallback((format: "png" | "jpeg" | "svg") => {
     if (!doc) return;
@@ -833,6 +1109,21 @@ export default function EditorPage() {
         st.setSelection(null);
         return;
       }
+      // ⌘G groups the selection, ⌘⇧G ungroups the folder it is in (or is).
+      if (mod && e.key.toLowerCase() === "g") {
+        e.preventDefault();
+        if (!st.canEdit()) return;
+        if (e.shiftKey) {
+          const primary = st.selectedLayer();
+          const target = primary?.kind === "group"
+            ? primary
+            : st.layers.find((l) => l.id === primary?.parentId && l.kind === "group");
+          if (target) onUngroup(target.id);
+        } else {
+          onGroupSelected();
+        }
+        return;
+      }
       if (mod && e.shiftKey && e.key.toLowerCase() === "i") {
         e.preventDefault();
         if (st.selection) st.setSelection(invertSelection(st.selection));
@@ -887,7 +1178,7 @@ export default function EditorPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onDelete, commitPixels, bumpRender]);
+  }, [onDelete, commitPixels, bumpRender, onGroupSelected, onUngroup]);
 
   // ── Remote cursors transformed to screen space ─────────────────────────────
   const screenCursors = useMemo(() => {
@@ -932,10 +1223,12 @@ export default function EditorPage() {
         onMergeDown={onMergeDown}
         onMergeVisible={onMergeVisible}
         onFlatten={onFlatten}
+        onUngroup={onUngroup}
+        onOpenShowcase={() => setShowShowcase(true)}
         onOpenInvite={() => setShowInvite(true)}
         onOpenSettings={() => setShowSettings(true)}
       />
-      <OptionsBar onUpdateText={onUpdateText} />
+      <OptionsBar onUpdateText={onUpdateText} onTransform={onTransform} />
 
       <div className={styles.body}>
         <Toolbar />
@@ -952,6 +1245,7 @@ export default function EditorPage() {
               commitPixels={commitPixels}
               commitMaskPixels={commitMaskPixels}
               commitMeta={commitMeta}
+              commitTransform={onTransform}
               onCreateRasterLayer={onCreateRasterLayer}
               onCreateTextLayer={onCreateTextLayer}
               onCommitText={onCommitText}
@@ -977,6 +1271,17 @@ export default function EditorPage() {
               />
             </section>
           )}
+          {panels.transform && (
+            <section className={styles.dockSection}>
+              <TransformPanel
+                layer={selLayer}
+                onTransform={onTransform}
+                onMove={(id, x, y) => onUpdateMeta(id, { x: Math.round(x), y: Math.round(y) })}
+                onApplyTransform={onApplyTransform}
+                disabled={!canEdit()}
+              />
+            </section>
+          )}
           {panels.history && (
             <section className={styles.dockSection}>
               <HistoryPanel />
@@ -992,6 +1297,7 @@ export default function EditorPage() {
                 onUpdateText={onUpdateText}
                 onReorder={onReorder}
                 onGroupSelected={onGroupSelected}
+                onUngroup={onUngroup}
                 onToggleMask={onToggleMask}
               />
             </section>
@@ -1009,6 +1315,14 @@ export default function EditorPage() {
       )}
 
       {!ready && !fatal && <div className={styles.loading}>Loading project…</div>}
+      {showShowcase && (
+        <ShowcasePicker
+          hasContent={layers.length > 0}
+          busy={loadingShowcase}
+          onPick={loadShowcase}
+          onClose={() => setShowShowcase(false)}
+        />
+      )}
       {needName && <UsernameModal onSubmit={handleJoin} initialValue={localStorage.getItem("mp-username") ?? ""} />}
       {showInvite && teamId && <InviteModal teamId={teamId} onClose={() => setShowInvite(false)} />}
       {showSettings && (
@@ -1027,4 +1341,16 @@ export default function EditorPage() {
 function errMsg(e: unknown): string {
   if (e instanceof Error) return e.message;
   return String(e);
+}
+
+/** Integer box covering several layers, used to give a new folder a real
+ *  position/size instead of a document-sized placeholder. */
+function groupBox(members: Layer[]): { x: number; y: number; w: number; h: number } {
+  const b = unionBounds(members);
+  return {
+    x: Math.round(b.x),
+    y: Math.round(b.y),
+    w: Math.max(1, Math.round(b.w)),
+    h: Math.max(1, Math.round(b.h)),
+  };
 }

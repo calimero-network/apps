@@ -122,6 +122,23 @@ pub struct Layer {
     /// percent, 100 = 1:1
     pub scale_x:      i32,
     pub scale_y:      i32,
+    /// Horizontal shear in degrees (-80..=80), 0 = none.
+    #[serde(default)]
+    pub skew_x:       i32,
+    /// Vertical shear in degrees (-80..=80), 0 = none.
+    #[serde(default)]
+    pub skew_y:       i32,
+    /// Mirror across the layer's vertical centre line.
+    #[serde(default)]
+    pub flip_h:       bool,
+    /// Mirror across the layer's horizontal centre line.
+    #[serde(default)]
+    pub flip_v:       bool,
+    /// Corner-pin warp: JSON `{"tl":[dx,dy],"tr":[…],"br":[…],"bl":[…]}` in the
+    /// layer's own pixel units. Opaque to the contract (like `adjustments.curves`)
+    /// — the renderer subdivides the quad into a triangle mesh. Empty = no warp.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub warp:         String,
 
     /// PNG pixel data for raster layers (blob id). Empty for non-raster kinds.
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -644,6 +661,86 @@ impl MeroPixArt {
         Ok(())
     }
 
+    /// Patch the free-transform params of a layer: rotation, scale, shear, mirror
+    /// and corner-pin warp.
+    ///
+    /// Separate from `update_layer` (which already carries fifteen arguments) so
+    /// the transform gizmo and the Transform panel commit exactly the fields they
+    /// own. Every arg is optional — an untouched control sends `None` and the
+    /// stored value survives. `warp` is round-tripped verbatim; an empty string
+    /// clears the warp.
+    pub fn update_transform(
+        &mut self,
+        id: String,
+        rotation: Option<i32>,
+        scale_x: Option<i32>, scale_y: Option<i32>,
+        skew_x: Option<i32>, skew_y: Option<i32>,
+        flip_h: Option<bool>, flip_v: Option<bool>,
+        warp: Option<String>,
+        updated_at: u64,
+    ) -> app::Result<()> {
+        self.require_editor()?;
+        if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
+            if let Some(v) = rotation { l.rotation = v; }
+            if let Some(v) = scale_x  { l.scale_x  = v; }
+            if let Some(v) = scale_y  { l.scale_y  = v; }
+            if let Some(v) = skew_x   { l.skew_x   = v.clamp(-80, 80); }
+            if let Some(v) = skew_y   { l.skew_y   = v.clamp(-80, 80); }
+            if let Some(v) = flip_h   { l.flip_h   = v; }
+            if let Some(v) = flip_v   { l.flip_v   = v; }
+            if let Some(v) = warp     { l.warp     = v; }
+            l.updated_at = updated_at;
+            drop(l);
+            app::emit!(Event::LayerUpdated(id));
+        }
+        Ok(())
+    }
+
+    /// Re-parent several layers in one call, so "group the selection" is a single
+    /// state transition rather than one RPC per layer.
+    ///
+    /// A layer may not become its own ancestor: every requested parent is walked
+    /// up the (pre-move) tree first and the pair is dropped if the move would
+    /// close a cycle, which would otherwise make `get_layers` unrenderable for
+    /// every peer. Unknown ids are skipped.
+    pub fn move_layers(
+        &mut self,
+        moves: Vec<(String, Option<String>)>,
+        updated_at: u64,
+    ) -> app::Result<()> {
+        self.require_editor()?;
+        for (id, parent_id) in moves {
+            if let Some(ref parent) = parent_id {
+                if *parent == id || self.is_descendant_of(parent, &id) { continue; }
+            }
+            if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
+                l.parent_id  = parent_id;
+                l.updated_at = updated_at;
+            }
+        }
+        app::emit!(Event::LayersReordered());
+        Ok(())
+    }
+
+    /// True when `candidate` sits anywhere under `ancestor` in the layer tree.
+    /// Depth-capped so a pre-existing cycle in replicated state cannot hang the
+    /// guest.
+    fn is_descendant_of(&self, candidate: &str, ancestor: &str) -> bool {
+        let mut cur = candidate.to_string();
+        for _ in 0..64 {
+            let parent = match self.layers.get(&cur) {
+                Ok(Some(l)) => l.parent_id.clone(),
+                _ => return false,
+            };
+            match parent {
+                Some(p) if p == ancestor => return true,
+                Some(p) => cur = p,
+                None => return false,
+            }
+        }
+        false
+    }
+
     /// Replace a raster layer's pixel data with a freshly rendered blob (after a
     /// destructive edit: brush, eraser, fill, crop bake, filter, transform bake).
     pub fn update_layer_content(
@@ -900,6 +997,8 @@ mod tests {
             blend_mode: "normal".to_owned(),
             x: 0, y: 0, width: 100, height: 100, rotation: 0,
             scale_x: 100, scale_y: 100,
+            skew_x: 0, skew_y: 0, flip_h: false, flip_v: false,
+            warp: String::new(),
             blob_id: String::new(),
             mask_blob_id: None,
             fill: String::new(),
@@ -1014,6 +1113,160 @@ mod tests {
         app.call(|s| s.delete_layer("g1".to_owned())).unwrap();
         let c = app.view(|s| s.get_layer("c1".to_owned())).unwrap();
         assert_eq!(c.parent_id, None);
+    }
+
+    #[test]
+    fn update_transform_patches_only_what_it_is_given() {
+        let mut app = new_doc();
+        let mut l = sample_layer("l1");
+        l.rotation = 15;
+        l.scale_x = 120;
+        app.call(|s| s.add_layer(l)).unwrap();
+
+        // Shear + mirror + warp, leaving rotation/scale untouched.
+        app.call(|s| s.update_transform(
+            "l1".to_owned(), None, None, None,
+            Some(12), Some(-8), Some(true), None,
+            Some(r#"{"tl":[4,0],"tr":[0,0],"br":[0,0],"bl":[0,6]}"#.to_owned()),
+            2,
+        )).unwrap();
+
+        let l = app.view(|s| s.get_layer("l1".to_owned())).unwrap();
+        assert_eq!((l.rotation, l.scale_x), (15, 120), "untouched fields survive");
+        assert_eq!((l.skew_x, l.skew_y), (12, -8));
+        assert!(l.flip_h);
+        assert!(!l.flip_v);
+        assert!(l.warp.contains("\"bl\":[0,6]"));
+        assert_eq!(l.updated_at, 2);
+    }
+
+    /// A skew past vertical would make the layer's transform matrix singular, so
+    /// the contract clamps rather than trusting the client's number.
+    #[test]
+    fn update_transform_clamps_skew_to_a_renderable_range() {
+        let mut app = new_doc();
+        app.call(|s| s.add_layer(sample_layer("l1"))).unwrap();
+        app.call(|s| s.update_transform(
+            "l1".to_owned(), None, None, None, Some(400), Some(-999), None, None, None, 2,
+        )).unwrap();
+        let l = app.view(|s| s.get_layer("l1".to_owned())).unwrap();
+        assert_eq!((l.skew_x, l.skew_y), (80, -80));
+    }
+
+    #[test]
+    fn update_transform_with_an_empty_warp_clears_it() {
+        let mut app = new_doc();
+        app.call(|s| s.add_layer(sample_layer("l1"))).unwrap();
+        app.call(|s| s.update_transform(
+            "l1".to_owned(), None, None, None, None, None, None, None,
+            Some(r#"{"tl":[9,9],"tr":[0,0],"br":[0,0],"bl":[0,0]}"#.to_owned()), 2,
+        )).unwrap();
+        assert!(!app.view(|s| s.get_layer("l1".to_owned())).unwrap().warp.is_empty());
+
+        app.call(|s| s.update_transform(
+            "l1".to_owned(), None, None, None, None, None, None, None, Some(String::new()), 3,
+        )).unwrap();
+        assert!(app.view(|s| s.get_layer("l1".to_owned())).unwrap().warp.is_empty());
+    }
+
+    #[test]
+    fn viewer_cannot_transform_a_layer() {
+        let mut app = new_doc();
+        app.call(|s| s.add_layer(sample_layer("l1"))).unwrap();
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.update_transform(
+                "l1".to_owned(), Some(90), None, None, None, None, None, None, None, 2,
+            ))
+            .is_err());
+        assert_eq!(app.view(|s| s.get_layer("l1".to_owned())).unwrap().rotation, 0);
+    }
+
+    #[test]
+    fn move_layers_reparents_a_whole_selection_at_once() {
+        let mut app = new_doc();
+        let mut group = sample_layer("g1");
+        group.kind = "group".to_owned();
+        app.call(|s| s.add_layer(group)).unwrap();
+        app.call(|s| s.add_layer(sample_layer("a"))).unwrap();
+        app.call(|s| s.add_layer(sample_layer("b"))).unwrap();
+
+        app.call(|s| s.move_layers(
+            vec![("a".to_owned(), Some("g1".to_owned())), ("b".to_owned(), Some("g1".to_owned()))],
+            5,
+        )).unwrap();
+
+        for id in ["a", "b"] {
+            let l = app.view(|s| s.get_layer(id.to_owned())).unwrap();
+            assert_eq!(l.parent_id.as_deref(), Some("g1"));
+            assert_eq!(l.updated_at, 5);
+        }
+
+        // …and back out to the root.
+        app.call(|s| s.move_layers(vec![("a".to_owned(), None)], 6)).unwrap();
+        assert_eq!(app.view(|s| s.get_layer("a".to_owned())).unwrap().parent_id, None);
+    }
+
+    /// Dropping a group into its own child would make the tree unrenderable for
+    /// every peer, so the pair is refused instead of stored.
+    #[test]
+    fn move_layers_refuses_to_close_a_cycle() {
+        let mut app = new_doc();
+        for id in ["outer", "inner"] {
+            let mut g = sample_layer(id);
+            g.kind = "group".to_owned();
+            app.call(|s| s.add_layer(g)).unwrap();
+        }
+        app.call(|s| s.move_layers(vec![("inner".to_owned(), Some("outer".to_owned()))], 2)).unwrap();
+
+        // outer → inner would close the loop, and self-parenting is refused too.
+        app.call(|s| s.move_layers(
+            vec![("outer".to_owned(), Some("inner".to_owned())), ("inner".to_owned(), Some("inner".to_owned()))],
+            3,
+        )).unwrap();
+
+        assert_eq!(app.view(|s| s.get_layer("outer".to_owned())).unwrap().parent_id, None);
+        assert_eq!(
+            app.view(|s| s.get_layer("inner".to_owned())).unwrap().parent_id.as_deref(),
+            Some("outer"),
+        );
+    }
+
+    #[test]
+    fn move_layers_is_editor_gated_and_skips_unknown_ids() {
+        let mut app = new_doc();
+        app.call(|s| s.add_layer(sample_layer("a"))).unwrap();
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.move_layers(
+                vec![("a".to_owned(), Some("ghost".to_owned()))], 2,
+            ))
+            .is_err());
+        // An id nobody has heard of is a no-op, not a failure.
+        app.call(|s| s.move_layers(vec![("ghost".to_owned(), None)], 3)).unwrap();
+        assert_eq!(app.view(|s| s.get_layers()).len(), 1);
+    }
+
+    /// Nested groups: deleting the outer group must not leave a grandchild
+    /// pointing at a layer that no longer exists.
+    #[test]
+    fn deleting_a_nested_group_only_reparents_its_own_children() {
+        let mut app = new_doc();
+        for id in ["outer", "inner"] {
+            let mut g = sample_layer(id);
+            g.kind = "group".to_owned();
+            if id == "inner" { g.parent_id = Some("outer".to_owned()); }
+            app.call(|s| s.add_layer(g)).unwrap();
+        }
+        let mut leaf = sample_layer("leaf");
+        leaf.parent_id = Some("inner".to_owned());
+        app.call(|s| s.add_layer(leaf)).unwrap();
+
+        app.call(|s| s.delete_layer("outer".to_owned())).unwrap();
+        assert_eq!(app.view(|s| s.get_layer("inner".to_owned())).unwrap().parent_id, None);
+        assert_eq!(
+            app.view(|s| s.get_layer("leaf".to_owned())).unwrap().parent_id.as_deref(),
+            Some("inner"),
+            "the grandchild stays inside the group that still exists",
+        );
     }
 
     #[test]

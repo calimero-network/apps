@@ -5,7 +5,12 @@ import { getLayerCanvas, getMaskCanvas, peekLayerCanvas, peekMaskCanvas } from "
 import { composite } from "../utils/compositor";
 import { createCanvas, ctx2d, hexToRgb } from "../utils/raster";
 import { docToLayerLocal, normRect, selectionPathDoc, selectionPathLocal } from "../utils/geometry";
-import type { DocumentInfo, Guide, Layer, Selection, TextProps } from "../types";
+import {
+  boxSize, centerOf, cornersOf, scaleOf, serializeWarp, unionBounds, warpOf,
+} from "../utils/transform";
+import { handlePoints, hitHandle, scaleSigns, type HandleName } from "../utils/gizmo";
+import { groupBounds, movableLayers } from "../utils/layerTree";
+import type { DocumentInfo, Guide, Layer, Selection, TextProps, WarpCorners } from "../types";
 import styles from "./CanvasStage.module.css";
 
 // ── Snapping ────────────────────────────────────────────────────────────────
@@ -18,6 +23,14 @@ function snapCandidates(orient: "h" | "v", doc: DocumentInfo, view: ViewSettings
     for (let p = 0; p <= max; p += Math.max(2, view.gridSize)) out.push(p);
   }
   return out;
+}
+
+/** Rotate a vector by `deg` degrees — screen axes → layer axes and back. */
+function rotateVec(x: number, y: number, deg: number): { x: number; y: number } {
+  const r = (deg * Math.PI) / 180;
+  const cos = Math.cos(r);
+  const sin = Math.sin(r);
+  return { x: x * cos - y * sin, y: x * sin + y * cos };
 }
 
 /** Smallest offset that snaps any reference point onto a candidate within tol. */
@@ -38,8 +51,10 @@ interface Props {
   commitPixels: (layerId: string) => void;
   /** upload the layer's mask pixels → update_layer_mask */
   commitMaskPixels: (layerId: string) => void;
-  /** persist a metadata patch → update_layer (transform/move) */
+  /** persist a metadata patch → update_layer (position/props) */
   commitMeta: (layerId: string, patch: Partial<Layer>) => void;
+  /** persist a transform patch → update_transform (rotate/scale/skew/flip/warp) */
+  commitTransform: (layerId: string, patch: Partial<Layer>) => void;
   /** create a new document-sized raster layer from a baked canvas (shapes/gradient) */
   onCreateRasterLayer: (opts: { name: string; x: number; y: number; canvas: HTMLCanvasElement }) => void;
   /** create a new text layer at a document point; resolves to its id */
@@ -57,7 +72,7 @@ interface Props {
 }
 
 type Mode =
-  | "paint" | "move" | "scale" | "rotate" | "pan"
+  | "paint" | "move" | "scale" | "rotate" | "skew" | "warp" | "pan"
   | "marquee" | "lasso" | "crop" | "shape" | "gradient" | "clone" | "none";
 
 interface DragState {
@@ -67,15 +82,19 @@ interface DragState {
   lastX: number;
   lastY: number;
   origin?: Layer;
-  originMulti?: Layer[]; // snapshots of all selected layers when moving several together
-  handle?: string;
+  originMulti?: Layer[]; // snapshots of every layer a move drags (folder contents included)
+  handle?: HandleName;
+  /** the warp this drag started from, so pin drags are absolute not cumulative */
+  originWarp?: WarpCorners;
+  /** the grabbed point in the layer's local pixel space (warp/skew maths) */
+  startLocal?: { x: number; y: number };
   points?: number[]; // lasso, doc space
   cloneOffset?: { x: number; y: number }; // doc-space source - start
   cloneSnap?: HTMLCanvasElement;
 }
 
 export default function CanvasStage({
-  commitPixels, commitMaskPixels, commitMeta,
+  commitPixels, commitMaskPixels, commitMeta, commitTransform,
   onCreateRasterLayer, onCreateTextLayer, onCommitText, onDeleteLayer, onCrop,
   onCursorMove, overlay,
 }: Props) {
@@ -92,7 +111,7 @@ export default function CanvasStage({
 
   const {
     doc, layers, zoom, panX, panY, renderTick,
-    activeTool, selectedLayerId, selectedLayerIds, editingMaskOf, editingTextId,
+    activeTool, transformMode, selectedLayerId, selectedLayerIds, editingMaskOf, editingTextId,
     primaryColor, secondaryColor, brushSize, brushHardness, brushOpacity, brushType,
     selection, shapeKind, shapeStroke, gradientType, gradientFill, cloneSource, clipboard,
     view, guides,
@@ -140,13 +159,18 @@ export default function CanvasStage({
 
     // selection bounding box + transform handles
     const sel = layers.find((l) => l.id === selectedLayerId);
+    const gizmo = activeTool === "transform" || activeTool === "move";
     const multi = selectedLayerIds.length > 1
       ? layers.filter((l) => selectedLayerIds.includes(l.id))
       : [];
-    if (multi.length > 1 && (activeTool === "transform" || activeTool === "move")) {
+    if (gizmo && sel?.kind === "group") {
+      // A folder has no pixels of its own — outline what it contains, so a
+      // selected group reads as one object covering its artwork.
+      drawGroupSelection(ctx, groupBounds(layers, sel.id), multi, zoom);
+    } else if (multi.length > 1 && gizmo) {
       drawMultiSelection(ctx, multi, zoom);
-    } else if (sel && (activeTool === "transform" || activeTool === "move")) {
-      drawSelection(ctx, sel, zoom, activeTool === "transform");
+    } else if (sel && gizmo) {
+      drawSelection(ctx, sel, zoom, activeTool === "transform", transformMode === "warp");
     }
 
     // live previews
@@ -156,7 +180,7 @@ export default function CanvasStage({
     if (selection) drawAnts(ctx, selection, zoom, doc.width, doc.height);
 
     ctx.restore();
-  }, [doc, layers, zoom, panX, panY, selectedLayerId, selectedLayerIds, activeTool, renderTick, selection, primaryColor, shapeKind, shapeStroke, gradientType, view]);
+  }, [doc, layers, zoom, panX, panY, selectedLayerId, selectedLayerIds, activeTool, transformMode, renderTick, selection, primaryColor, shapeKind, shapeStroke, gradientType, view]);
 
   useEffect(() => { draw(); }, [draw]);
 
@@ -450,17 +474,35 @@ export default function CanvasStage({
     }
 
     if ((activeTool === "move" || activeTool === "transform") && sel) {
-      const handle = activeTool === "transform" ? hitHandle(sel, x, y, zoom) : null;
+      const warpMode = transformMode === "warp";
+      // A folder has no gizmo handles of its own — grabbing it always moves the
+      // subtree, which is the whole point of grouping.
+      const handle = activeTool === "transform" && sel.kind !== "group"
+        ? hitHandle(sel, x, y, zoom, warpMode)
+        : null;
       drag.current.origin = { ...sel };
-      // When several layers are selected, a plain Move drags them all together
-      // (transform/scale/rotate still acts on the primary layer only).
-      const multi = layers.filter((l) => selectedLayerIds.includes(l.id));
-      if (activeTool === "move" && !handle && multi.length > 1) {
-        drag.current.originMulti = multi.map((l) => ({ ...l }));
-      }
       drag.current.handle = handle ?? undefined;
-      drag.current.mode = handle === "rot" ? "rotate" : handle ? "scale" : "move";
-      pushHistory([], activeTool === "transform" ? "Transform" : multi.length > 1 ? "Move Layers" : "Move");
+      // Every layer this drag should translate: the selection with folder
+      // contents expanded, locked layers dropped.
+      const movable = movableLayers(layers, selectedLayerIds.length > 0 ? selectedLayerIds : [sel.id]);
+      if (!handle && movable.length > 1) {
+        drag.current.originMulti = movable.map((l) => ({ ...l }));
+      }
+      if (handle?.startsWith("warp-")) {
+        drag.current.mode = "warp";
+        drag.current.originWarp = warpOf(sel);
+        drag.current.startLocal = docToLayerLocal(sel, x, y);
+      } else if (handle?.startsWith("skew-")) {
+        drag.current.mode = "skew";
+      } else {
+        drag.current.mode = handle === "rot" ? "rotate" : handle ? "scale" : "move";
+      }
+      const label = drag.current.mode === "move"
+        ? (movable.length > 1 ? (sel.kind === "group" ? "Move Group" : "Move Layers") : "Move")
+        : drag.current.mode === "warp" ? "Warp"
+        : drag.current.mode === "skew" ? "Skew"
+        : drag.current.mode === "rotate" ? "Rotate" : "Scale";
+      pushHistory([], label);
     }
   };
 
@@ -552,19 +594,84 @@ export default function CanvasStage({
 
     if (st.mode === "scale" && st.origin) {
       const ox = st.origin;
-      const sX = Math.max(5, Math.round((ox.scaleX || 100) * (1 + (x - st.startX) / Math.max(40, ox.width))));
-      const sY = Math.max(5, Math.round((ox.scaleY || 100) * (1 + (y - st.startY) / Math.max(40, ox.height))));
-      useEditorStore.getState().upsertLayer({ ...sel, scaleX: sX, scaleY: sY });
+      // Work in the layer's own axes: a rotated layer must widen along ITS
+      // width, not along the screen's x. The handle decides the sign, so the
+      // grabbed corner follows the cursor instead of running away from it.
+      const d = rotateVec(x - st.startX, y - st.startY, -(ox.rotation || 0));
+      const { x: signX, y: signY } = scaleSigns(st.handle ?? "br");
+      const sX = Math.max(5, Math.round((ox.scaleX || 100) * (1 + (signX * d.x) / Math.max(40, ox.width))));
+      const sY = Math.max(5, Math.round((ox.scaleY || 100) * (1 + (signY * d.y) / Math.max(40, ox.height))));
+      // Shift keeps the aspect ratio, as everywhere else.
+      const uniform = e.shiftKey;
+      const next = uniform
+        ? { scaleX: sX, scaleY: Math.max(5, Math.round((ox.scaleY || 100) * (sX / (ox.scaleX || 100)))) }
+        : { scaleX: sX, scaleY: sY };
+      // Dragging a top/left handle grows the layer towards the cursor, so the
+      // opposite edge must stay put: shift the origin by the size change.
+      const before = boxSize(ox);
+      const after = boxSize({ ...ox, ...next });
+      const shift = rotateVec(
+        signX < 0 ? before.w - after.w : 0,
+        signY < 0 ? before.h - after.h : 0,
+        ox.rotation || 0,
+      );
+      useEditorStore.getState().upsertLayer({
+        ...sel, ...next,
+        x: Math.round(ox.x + shift.x),
+        y: Math.round(ox.y + shift.y),
+      });
       bumpRender();
       return;
     }
 
     if (st.mode === "rotate" && st.origin) {
-      const ox = st.origin;
-      const cx = ox.x + ox.width / 2;
-      const cy = ox.y + ox.height / 2;
-      const ang = (Math.atan2(y - cy, x - cx) * 180) / Math.PI + 90;
+      const { cx, cy } = centerOf(st.origin);
+      let ang = (Math.atan2(y - cy, x - cx) * 180) / Math.PI + 90;
+      if (e.shiftKey) ang = Math.round(ang / 15) * 15; // Shift snaps to 15°
       useEditorStore.getState().upsertLayer({ ...sel, rotation: Math.round(ang) });
+      bumpRender();
+      return;
+    }
+
+    if (st.mode === "skew" && st.origin) {
+      const ox = st.origin;
+      const d = rotateVec(x - st.startX, y - st.startY, -(ox.rotation || 0));
+      const { sx, sy } = scaleOf(ox);
+      const halfW = Math.max(1, (ox.width * Math.abs(sx)) / 2);
+      const halfH = Math.max(1, (ox.height * Math.abs(sy)) / 2);
+      const clampDeg = (v: number) => Math.max(-80, Math.min(80, Math.round(v)));
+      const deg = (t: number) => (Math.atan(t) * 180) / Math.PI;
+      if (st.handle === "skew-top" || st.handle === "skew-bottom") {
+        // Horizontal shear: how far the grabbed edge slid sideways, over its
+        // distance from the centre. Grabbing the bottom edge shears the other way.
+        const dir = st.handle === "skew-top" ? -1 : 1;
+        const t = Math.tan((clampDeg(ox.skewX) * Math.PI) / 180) + (dir * d.x) / halfH;
+        useEditorStore.getState().upsertLayer({ ...sel, skewX: clampDeg(deg(t)) });
+      } else {
+        const dir = st.handle === "skew-left" ? -1 : 1;
+        const t = Math.tan((clampDeg(ox.skewY) * Math.PI) / 180) + (dir * d.y) / halfW;
+        useEditorStore.getState().upsertLayer({ ...sel, skewY: clampDeg(deg(t)) });
+      }
+      bumpRender();
+      return;
+    }
+
+    if (st.mode === "warp" && st.origin && st.originWarp && st.startLocal) {
+      // Pin drags are computed in the layer's LOCAL space (the space warp offsets
+      // live in), so the pin tracks the cursor even on a rotated or scaled layer.
+      const local = docToLayerLocal(st.origin, x, y);
+      const dx = local.x - st.startLocal.x;
+      const dy = local.y - st.startLocal.y;
+      const corner = (st.handle ?? "").slice(5) as keyof WarpCorners;
+      const base = st.originWarp[corner] ?? [0, 0];
+      const next: WarpCorners = {
+        tl: [...st.originWarp.tl] as [number, number],
+        tr: [...st.originWarp.tr] as [number, number],
+        br: [...st.originWarp.br] as [number, number],
+        bl: [...st.originWarp.bl] as [number, number],
+      };
+      next[corner] = [Math.round(base[0] + dx), Math.round(base[1] + dy)];
+      useEditorStore.getState().upsertLayer({ ...sel, warp: serializeWarp(next) });
       bumpRender();
       return;
     }
@@ -600,13 +707,25 @@ export default function CanvasStage({
       finishStroke(dirtyLayer.current);
       dirtyLayer.current = null;
     } else if (st.mode === "move" && st.originMulti) {
+      // One update_layer per moved layer — the folder itself included, so its own
+      // x/y keeps tracking its contents.
       const cur = useEditorStore.getState().layers;
       for (const o of st.originMulti) {
         const l = cur.find((x) => x.id === o.id);
-        if (l) commitMeta(l.id, { x: l.x, y: l.y });
+        if (l && (l.x !== o.x || l.y !== o.y)) commitMeta(l.id, { x: l.x, y: l.y });
       }
-    } else if ((st.mode === "move" || st.mode === "scale" || st.mode === "rotate") && sel) {
-      commitMeta(sel.id, { x: sel.x, y: sel.y, scaleX: sel.scaleX, scaleY: sel.scaleY, rotation: sel.rotation });
+    } else if (st.mode === "move" && sel) {
+      commitMeta(sel.id, { x: sel.x, y: sel.y });
+    } else if (st.mode === "scale" && sel) {
+      // Scaling from a top/left handle also moves the origin.
+      commitMeta(sel.id, { x: sel.x, y: sel.y });
+      commitTransform(sel.id, { scaleX: sel.scaleX, scaleY: sel.scaleY });
+    } else if (st.mode === "rotate" && sel) {
+      commitTransform(sel.id, { rotation: sel.rotation });
+    } else if (st.mode === "skew" && sel) {
+      commitTransform(sel.id, { skewX: sel.skewX, skewY: sel.skewY });
+    } else if (st.mode === "warp" && sel) {
+      commitTransform(sel.id, { warp: sel.warp ?? "" });
     }
 
     live.current = null;
@@ -765,6 +884,12 @@ export default function CanvasStage({
             if (!c || c === "Double-click to edit") onDeleteLayer(id);
           }}
         />
+      )}
+
+      {activeTool === "transform" && transformMode === "warp" && (
+        <div className={styles.hint} data-testid="warp-hint">
+          Warp — drag the four corner pins. Switch back to Free to scale or rotate.
+        </div>
       )}
 
       {cloneSource && activeTool === "clone" && (
@@ -1048,82 +1173,130 @@ function drawLivePreview(
   ctx.restore();
 }
 
-function handlePoints(l: Layer) {
-  const sx = (l.scaleX || 100) / 100;
-  const sy = (l.scaleY || 100) / 100;
-  const w = l.width * sx;
-  const h = l.height * sy;
-  return {
-    cx: l.x + w / 2,
-    cy: l.y + h / 2,
-    tl: [l.x, l.y], tr: [l.x + w, l.y], bl: [l.x, l.y + h], br: [l.x + w, l.y + h],
-    rot: [l.x + w / 2, l.y - 28],
-    w, h,
-  };
+function tracePath(ctx: CanvasRenderingContext2D, pts: Array<{ x: number; y: number }>) {
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.closePath();
 }
 
-function drawSelection(ctx: CanvasRenderingContext2D, l: Layer, zoom: number, handles: boolean) {
+function square(ctx: CanvasRenderingContext2D, p: { x: number; y: number }, size: number) {
+  ctx.fillRect(p.x - size / 2, p.y - size / 2, size, size);
+}
+
+function dot(ctx: CanvasRenderingContext2D, p: { x: number; y: number }, r: number) {
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawSelection(
+  ctx: CanvasRenderingContext2D, l: Layer, zoom: number, handles: boolean, warpMode = false,
+) {
   const p = handlePoints(l);
   ctx.save();
-  ctx.translate(p.cx, p.cy);
-  if (l.rotation) ctx.rotate((l.rotation * Math.PI) / 180);
-  ctx.translate(-p.cx, -p.cy);
   ctx.strokeStyle = "#A5FF11";
   ctx.lineWidth = 1.5 / zoom;
   ctx.setLineDash([4 / zoom, 3 / zoom]);
-  ctx.strokeRect(l.x, l.y, p.w, p.h);
+  tracePath(ctx, [p.tl, p.tr, p.br, p.bl]);
+  ctx.stroke();
   ctx.setLineDash([]);
-  if (handles) {
+
+  if (handles && warpMode) {
+    // Warp: only the four corner pins, drawn as rings so they read differently
+    // from the solid scale handles.
+    const r = 6 / zoom;
+    ctx.lineWidth = 2 / zoom;
+    for (const c of [p.tl, p.tr, p.br, p.bl]) {
+      ctx.fillStyle = "rgba(15,20,25,0.85)";
+      dot(ctx, c, r);
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  } else if (handles) {
     const hs = 7 / zoom;
     ctx.fillStyle = "#A5FF11";
-    for (const c of [p.tl, p.tr, p.bl, p.br]) ctx.fillRect(c[0] - hs / 2, c[1] - hs / 2, hs, hs);
+    for (const c of [p.tl, p.tr, p.bl, p.br]) square(ctx, c, hs);
+    // edge midpoints = shear grips
+    ctx.fillStyle = "rgba(165,255,17,0.75)";
+    for (const c of [p.top, p.bottom, p.left, p.right]) square(ctx, c, hs * 0.8);
+    // rotation knob on a stalk
+    ctx.strokeStyle = "#A5FF11";
+    ctx.lineWidth = 1.5 / zoom;
     ctx.beginPath();
-    ctx.moveTo(p.cx, l.y);
-    ctx.lineTo(p.rot[0], p.rot[1]);
+    ctx.moveTo(p.top.x, p.top.y);
+    ctx.lineTo(p.rot.x, p.rot.y);
     ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(p.rot[0], p.rot[1], hs * 0.7, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillStyle = "#A5FF11";
+    dot(ctx, p.rot, hs * 0.7);
+  }
+  ctx.restore();
+}
+
+/** Outline of a selected folder: one solid box around everything it contains,
+ *  plus a faint outline per member so it is clear what travels with it. */
+function drawGroupSelection(
+  ctx: CanvasRenderingContext2D,
+  bounds: { x: number; y: number; w: number; h: number },
+  members: Layer[],
+  zoom: number,
+) {
+  ctx.save();
+  ctx.strokeStyle = "rgba(165,255,17,0.4)";
+  ctx.lineWidth = 1 / zoom;
+  ctx.setLineDash([3 / zoom, 3 / zoom]);
+  for (const l of members) {
+    if (l.kind === "group") continue;
+    tracePath(ctx, cornersOf(l));
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  if (bounds.w > 0 && bounds.h > 0) {
+    ctx.strokeStyle = "#A5FF11";
+    ctx.lineWidth = 1.5 / zoom;
+    ctx.strokeRect(bounds.x, bounds.y, bounds.w, bounds.h);
+    // corner ticks, so a folder box is distinguishable from a layer box
+    const t = 8 / zoom;
+    ctx.lineWidth = 2.5 / zoom;
+    const corners: Array<[number, number, number, number]> = [
+      [bounds.x, bounds.y, 1, 1],
+      [bounds.x + bounds.w, bounds.y, -1, 1],
+      [bounds.x, bounds.y + bounds.h, 1, -1],
+      [bounds.x + bounds.w, bounds.y + bounds.h, -1, -1],
+    ];
+    for (const [x, y, sx, sy] of corners) {
+      ctx.beginPath();
+      ctx.moveTo(x + sx * t, y);
+      ctx.lineTo(x, y);
+      ctx.lineTo(x, y + sy * t);
+      ctx.stroke();
+    }
   }
   ctx.restore();
 }
 
 // Combined bounding box around several selected layers (axis-aligned union of
-// their scaled boxes). Drawn when 2+ layers are selected under Move/Transform.
+// their transformed quads). Drawn when 2+ layers are selected under Move/Transform.
 function drawMultiSelection(ctx: CanvasRenderingContext2D, layers: Layer[], zoom: number) {
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const l of layers) {
-    const w = l.width * (l.scaleX || 100) / 100;
-    const h = l.height * (l.scaleY || 100) / 100;
-    x0 = Math.min(x0, l.x); y0 = Math.min(y0, l.y);
-    x1 = Math.max(x1, l.x + w); y1 = Math.max(y1, l.y + h);
     // per-layer faint outline so it's clear which layers are in the set
     ctx.save();
     ctx.strokeStyle = "rgba(165,255,17,0.45)";
     ctx.lineWidth = 1 / zoom;
     ctx.setLineDash([3 / zoom, 3 / zoom]);
-    ctx.strokeRect(l.x, l.y, w, h);
+    tracePath(ctx, cornersOf(l));
+    ctx.stroke();
     ctx.restore();
   }
-  if (!isFinite(x0)) return;
+  const b = unionBounds(layers);
+  if (b.w <= 0 && b.h <= 0) return;
   ctx.save();
   ctx.strokeStyle = "#A5FF11";
   ctx.lineWidth = 1.5 / zoom;
   ctx.setLineDash([]);
-  ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+  ctx.strokeRect(b.x, b.y, b.w, b.h);
   ctx.restore();
-}
-
-function hitHandle(l: Layer, x: number, y: number, zoom: number): string | null {
-  const p = handlePoints(l);
-  const tol = 10 / zoom;
-  const near = (px: number, py: number) => Math.hypot(x - px, y - py) < tol;
-  if (near(p.rot[0], p.rot[1])) return "rot";
-  if (near(p.br[0], p.br[1])) return "br";
-  if (near(p.tr[0], p.tr[1])) return "tr";
-  if (near(p.bl[0], p.bl[1])) return "bl";
-  if (near(p.tl[0], p.tl[1])) return "tl";
-  return null;
 }
 
 // ── Shape / gradient baking ─────────────────────────────────────────────────────

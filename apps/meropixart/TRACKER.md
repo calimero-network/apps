@@ -105,7 +105,10 @@ Dev ports: node1 `2460`/`2560`, node2 `2461`/`2561` · frontend `5176`
 - [x] Bucket fill (flood fill w/ tolerance)
 - [x] Eyedropper (samples composited pixel)
 - [x] Move (translate via drag)
-- [x] Transform (scale + rotate handles on bounding box)
+- [x] Transform (scale + rotate handles on bounding box; shear via the edge grips)
+- [x] Shear / mirror / corner-pin warp — `skew_x`, `skew_y`, `flip_h`, `flip_v`, `warp`
+      on the contract, one matrix + triangle-mesh renderer in `utils/transform.ts`,
+      a numeric Transform panel, and `Apply` to bake into pixels
 - [x] Text layers (content, font, size, color, bold/italic, align)
 - [x] Fill layers (solid color)
 - [x] Layer masks (paint black=hide / white=reveal, grayscale blob)
@@ -113,11 +116,21 @@ Dev ports: node1 `2460`/`2560`, node2 `2461`/`2561` · frontend `5176`
 - [x] Non-destructive adjustments (brightness/contrast/saturation/hue/exposure/blur/invert) — live CSS filter
 - [x] Curves (per-channel RGB/R/G/B spline editor, baked via LUT) + filter presets (grayscale/sepia/blur)
 - [x] Layer folders / groups (nesting, inherited visibility + opacity)
+- [x] Folders as a real tree in the panel — collapsible rows, drag-nest, a root
+      drop strip, rename, content counts, ⌘G / ⌘⇧G, and "selecting a folder
+      selects its contents" so a canvas drag moves the group as one
+      (`utils/layerTree.ts`, `move_layers` on the contract)
 - [x] Canvas resize (via Settings → update_document width/height)
 - [x] Image upload → raster layer; export flatten → PNG / JPG download
+- [x] Showcase projects — four bundled documents authored as paint recipes
+      (`src/showcase/`), loaded through the ordinary contract calls, offered from
+      *File ▸ Open Showcase Project…* and as a starter in the New Project modal
 - [ ] Marquee / lasso selection → crop-to-selection (FOLLOW-UP)
 - [ ] Dedicated crop tool (FOLLOW-UP — resize works via Settings)
-- [ ] Warp / free-transform mesh (FOLLOW-UP)
+- [x] Warp — corner-pin (four handles, bilinear, drawn as a subdivided triangle
+      mesh because Canvas 2D has no projective transform). A finer mesh than 2×2
+      (Photoshop ships 4×4, which can bow an EDGE — four pins cannot) is a
+      follow-up; the preset names deliberately promise only what pins can do.
 - [ ] Gradient tool, Clone stamp, Shape-draw tool (FOLLOW-UP — shapes available as fill layers)
 - [ ] Standalone Levels UI + adjustment layers (FOLLOW-UP — curves covers tone)
 
@@ -247,10 +260,20 @@ mocked **38/38** (gallery thumbnails are still checkerboard placeholders — a
 separate follow-up).
 
 ## Remaining work / follow-ups
-- Advanced tools: crop tool, warp mesh, clone stamp polish, standalone Levels + adjustment layers (marquee/lasso/gradient/shape/clone shipped earlier).
+- Advanced tools: clone stamp polish, adjustment layers (crop tool, marquee/lasso,
+  gradient, shapes, standalone Levels and the corner-pin warp all shipped).
+- **Warp mesh finer than 2×2** — four corner pins cannot bow an edge; a 4×4 mesh
+  (Photoshop's) could. The preset list is honest about this today.
+- **Per-parent layer ordering.** `layer_index` is global, so nesting affects
+  inherited visibility/opacity but not paint order: dragging a row into a folder
+  does not re-slot it in the folder's own stack. Reordering renumbers the whole
+  flattened tree, hidden rows included, so nothing silently reshuffles.
+- Group compositing isolation (a folder's blend mode applies per member layer, not
+  to the folder's flattened result).
 - Playwright integration suite + merobox workflow execution (need Docker / live nodes).
-- Group compositing isolation (currently approximated via inherited opacity/visibility, flat paint order).
-- Project thumbnails in the gallery (placeholder checkerboard today).
+- Project thumbnails in the gallery (placeholder checkerboard today) — the showcase
+  picker now renders real previews through the compositor, which is the mechanism a
+  gallery thumbnail could reuse.
 
 ---
 

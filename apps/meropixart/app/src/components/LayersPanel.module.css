@@ -18,6 +18,26 @@
   color: var(--accent);
   font-weight: 600;
 }
+.headerRight { display: flex; align-items: center; gap: 8px; }
+.headerBtn {
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: -1px;
+  color: var(--text-dim);
+  padding: 3px 5px;
+  border-radius: var(--radius-sm);
+}
+.headerBtn:hover { color: var(--text); background: var(--bg-3); }
+
+.groupMeta { flex: 1; font-size: 11px; color: var(--text-dim); }
+.ungroupBtn {
+  font-size: 11px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px 7px;
+}
+.ungroupBtn:hover { color: var(--text); border-color: var(--border-strong); background: var(--bg-3); }
 
 .props {
   padding: 10px 12px;
@@ -73,6 +93,52 @@
 .selected { background: var(--bg-4) !important; box-shadow: inset 2px 0 0 var(--accent); }
 .primary { box-shadow: inset 3px 0 0 var(--accent); }
 .dragging { opacity: 0.5; }
+
+/* ── Folder rows ─────────────────────────────────────────────────────────── */
+.groupItem { background: var(--bg-2); font-weight: 600; }
+.groupItem:hover { background: var(--bg-3); }
+.twirl {
+  width: 14px; height: 18px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-dim); font-size: 10px; line-height: 1;
+}
+.twirl:hover { color: var(--accent); }
+.twirlSpacer { width: 14px; flex-shrink: 0; }
+.folderThumb {
+  width: 30px; height: 30px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--accent);
+}
+.folderThumb svg { display: block; }
+.nameText { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.count {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-faint);
+  background: var(--bg-0);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+/* Drop feedback: a nesting drop tints the whole folder row, a reorder drop
+   only draws the insertion edge. */
+.nestTarget { outline: 1px solid var(--accent); outline-offset: -1px; background: var(--bg-4) !important; }
+.dropTarget { box-shadow: inset 0 2px 0 var(--accent); }
+.rootDrop {
+  margin: 6px 8px;
+  padding: 10px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.rootDrop.dropTarget {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: none;
+}
 
 .eye {
   width: 20px; height: 20px; flex-shrink: 0;

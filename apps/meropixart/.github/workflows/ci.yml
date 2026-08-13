@@ -52,7 +52,10 @@ jobs:
   e2e-tests:
     name: E2E Tests (Playwright)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The mocked suite covers the editor chrome, the layer-folder tree, free
+    # transform and loading each bundled showcase end to end. A showcase load is
+    # ~30 sequential RPCs, so allow more headroom than a pure-UI suite needs.
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -89,6 +92,18 @@ jobs:
           name: playwright-report
           path: app/e2e-report/
           retention-days: 7
+
+      # Full-resolution renders of every bundled showcase project, produced by
+      # e2e/showcase-render.spec.ts. Download these to review a change to a
+      # showcase recipe, the warp mesh or the compositor by eye — the alternative
+      # is booting a node and creating a project.
+      - name: Upload showcase renders
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: showcase-renders
+          path: app/e2e-artifacts/
+          retention-days: 14
 
   rust-check:
     name: Rust Type Check

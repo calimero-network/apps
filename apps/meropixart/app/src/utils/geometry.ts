@@ -5,19 +5,15 @@
 // pixel selection used to constrain painting/fill/shape/gradient operations.
 
 import type { Layer, Selection } from "../types";
+import { docToLocal } from "./transform";
 
-/** Map a document-space point into a layer's local (unscaled, unrotated) pixels. */
+/** Map a document-space point into a layer's local (untransformed) pixels.
+ *
+ *  Delegates to the single transform definition in `utils/transform`, so shear
+ *  and mirror are honoured here too — a brush stroke on a skewed or flipped
+ *  layer lands where the cursor is, not where an unsheared box would put it. */
 export function docToLayerLocal(layer: Layer, dx: number, dy: number): { x: number; y: number } {
-  const sx = (layer.scaleX || 100) / 100;
-  const sy = (layer.scaleY || 100) / 100;
-  const cx = layer.x + (layer.width * sx) / 2;
-  const cy = layer.y + (layer.height * sy) / 2;
-  const x = dx - cx;
-  const y = dy - cy;
-  const r = (-layer.rotation * Math.PI) / 180;
-  const rx = x * Math.cos(r) - y * Math.sin(r);
-  const ry = x * Math.sin(r) + y * Math.cos(r);
-  return { x: rx / sx + layer.width / 2, y: ry / sy + layer.height / 2 };
+  return docToLocal(layer, dx, dy);
 }
 
 /** Document bounds used to build the outer ring of an inverted selection. */

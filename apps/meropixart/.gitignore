@@ -16,6 +16,7 @@ app/.env.integration
 app/e2e-report/
 app/playwright-report/
 app/test-results/
+app/e2e-artifacts/
 
 # macOS
 .DS_Store

@@ -2,12 +2,52 @@ import { create } from "zustand";
 import { v4 as uuid } from "uuid";
 import type {
   BrushType, DocumentInfo, GradientFill, GradientType, Guide, Layer, PanelId,
-  Role, Selection, ShapeKind, Tool, Unit,
+  Role, Selection, ShapeKind, Tool, TransformMode, Unit,
 } from "../types";
 import { snapshotLayerCanvas, setLayerCanvas, getLayerCanvas } from "./layerCanvases";
 import { ctx2d, loadImageFromSrc } from "../utils/raster";
+import { expandSelection } from "../utils/layerTree";
+
+/**
+ * Fill in transform fields a layer may arrive without.
+ *
+ * `skewX`/`skewY`/`flipH`/`flipV`/`warp` were added to the contract after the
+ * first release, and `#[serde(default)]` means an older stored layer simply
+ * omits them. Every layer entering the store goes through here so the rest of
+ * the app can treat them as always-present numbers rather than sprinkling `?? 0`
+ * across the compositor and the gizmo.
+ */
+export function normalizeLayer(l: Layer): Layer {
+  if (
+    typeof l.skewX === "number" && typeof l.skewY === "number"
+    && typeof l.flipH === "boolean" && typeof l.flipV === "boolean"
+  ) return l;
+  return {
+    ...l,
+    skewX: l.skewX ?? 0,
+    skewY: l.skewY ?? 0,
+    flipH: l.flipH ?? false,
+    flipV: l.flipV ?? false,
+    warp: l.warp ?? "",
+  };
+}
 
 const MAX_HISTORY = 40;
+
+/**
+ * Which dock panels start collapsed to just their header.
+ *
+ * Transform and History are closed on purpose: five expanded panels push the
+ * Layers panel — the one people actually live in — below the fold on a 1000px-tall
+ * window. The canvas gizmo is the primary way to transform something, and
+ * Edit ▸ Transform Numerically… opens the panel when exact values are wanted.
+ *
+ * Exported so the test suite asserts the documented default rather than whatever
+ * a previous test left in this module-level store.
+ */
+export const DEFAULT_PANEL_COLLAPSED: Record<PanelId, boolean> = {
+  navigator: false, adjustments: false, transform: true, history: true, layers: false,
+};
 
 // A history entry captures the layers metadata plus a pixel snapshot (dataURL)
 // of any layer canvases that the operation is about to mutate.
@@ -38,6 +78,8 @@ export interface EditorState {
   editingTextId: string | null; // text layer being edited inline, or null
 
   activeTool: Tool;
+  /** Which gizmo the Transform tool shows (scale/rotate box vs. warp pins). */
+  transformMode: TransformMode;
   zoom: number;
   panX: number;
   panY: number;
@@ -72,6 +114,10 @@ export interface EditorState {
   panels: Record<PanelId, boolean>;
   /** which visible panels are collapsed to just their header */
   panelCollapsed: Record<PanelId, boolean>;
+  /** folder rows collapsed in the layers panel — view state, per user, so it is
+   *  deliberately NOT contract state (two people can browse the same document
+   *  with different folders open) */
+  collapsedGroups: Record<string, boolean>;
 
   undoStack: HistoryEntry[];
   redoStack: HistoryEntry[];
@@ -86,9 +132,12 @@ export interface EditorState {
   setSelectedLayers: (ids: string[]) => void;
   /** Add/remove a layer from the multi-selection (Cmd/Ctrl-click). */
   toggleLayerSelection: (id: string) => void;
+  /** Select a folder plus everything inside it (the panel's folder rows). */
+  selectSubtree: (id: string) => void;
   setEditingMask: (id: string | null) => void;
   setEditingText: (id: string | null) => void;
   setTool: (t: Tool) => void;
+  setTransformMode: (m: TransformMode) => void;
   setZoom: (z: number) => void;
   setPan: (x: number, y: number) => void;
   setPrimaryColor: (c: string) => void;
@@ -114,6 +163,10 @@ export interface EditorState {
   clearGuides: () => void;
   togglePanel: (id: PanelId) => void;
   togglePanelCollapsed: (id: PanelId) => void;
+  toggleGroupCollapsed: (id: string) => void;
+  setGroupCollapsed: (id: string, collapsed: boolean) => void;
+  /** Collapse/expand every folder at once (the panel header's chevron). */
+  setAllGroupsCollapsed: (collapsed: boolean) => void;
 
   // ── history ──
   pushHistory: (affectedLayerIds: string[], label?: string) => void;
@@ -135,6 +188,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   editingTextId: null,
 
   activeTool: "move",
+  transformMode: "free",
   zoom: 1,
   panX: 0,
   panY: 0,
@@ -168,19 +222,21 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     checkerSize: 8,
   },
   guides: [],
-  panels: { navigator: true, adjustments: true, history: true, layers: true },
-  // History starts collapsed to keep the dock compact (it's a tall list).
-  panelCollapsed: { navigator: false, adjustments: false, history: true, layers: false },
+  panels: { navigator: true, adjustments: true, transform: true, history: true, layers: true },
+  panelCollapsed: { ...DEFAULT_PANEL_COLLAPSED },
+  collapsedGroups: {},
 
   undoStack: [],
   redoStack: [],
 
   setDoc: (doc) => set({ doc }),
 
-  setLayers: (layers) => set({ layers: [...layers].sort((a, b) => a.layerIndex - b.layerIndex) }),
+  setLayers: (layers) =>
+    set({ layers: [...layers].map(normalizeLayer).sort((a, b) => a.layerIndex - b.layerIndex) }),
 
-  upsertLayer: (layer) =>
+  upsertLayer: (raw) =>
     set((s) => {
+      const layer = normalizeLayer(raw);
       const idx = s.layers.findIndex((l) => l.id === layer.id);
       const next = idx >= 0
         ? s.layers.map((l) => (l.id === layer.id ? layer : l))
@@ -199,21 +255,52 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       };
     }),
 
+  // Selecting a folder selects its contents too (see utils/layerTree —
+  // `expandSelection` keeps the folder itself last, so it stays the primary
+  // layer whose properties the panels show).
   selectLayer: (id) =>
-    set({ selectedLayerId: id, selectedLayerIds: id ? [id] : [], editingMaskOf: null, editingTextId: null }),
+    set((s) => ({
+      selectedLayerId: id,
+      selectedLayerIds: id ? expandSelection(s.layers, [id]) : [],
+      editingMaskOf: null,
+      editingTextId: null,
+    })),
+
+  selectSubtree: (id) =>
+    set((s) => ({
+      selectedLayerId: id,
+      selectedLayerIds: expandSelection(s.layers, [id]),
+      editingMaskOf: null,
+      editingTextId: null,
+    })),
 
   setSelectedLayers: (ids) =>
-    set({ selectedLayerIds: ids, selectedLayerId: ids[ids.length - 1] ?? null, editingMaskOf: null, editingTextId: null }),
+    set((s) => ({
+      selectedLayerIds: expandSelection(s.layers, ids),
+      selectedLayerId: ids[ids.length - 1] ?? null,
+      editingMaskOf: null,
+      editingTextId: null,
+    })),
 
   toggleLayerSelection: (id) =>
     set((s) => {
       const has = s.selectedLayerIds.includes(id);
-      const ids = has ? s.selectedLayerIds.filter((x) => x !== id) : [...s.selectedLayerIds, id];
-      return { selectedLayerIds: ids, selectedLayerId: has ? (ids[ids.length - 1] ?? null) : id, editingMaskOf: null, editingTextId: null };
+      // Removing a folder from the selection removes its contents with it.
+      const drop = new Set(has ? expandSelection(s.layers, [id]) : []);
+      const ids = has
+        ? s.selectedLayerIds.filter((x) => !drop.has(x))
+        : expandSelection(s.layers, [...s.selectedLayerIds, id]);
+      return {
+        selectedLayerIds: ids,
+        selectedLayerId: has ? (ids[ids.length - 1] ?? null) : id,
+        editingMaskOf: null,
+        editingTextId: null,
+      };
     }),
   setEditingMask: (id) => set({ editingMaskOf: id }),
   setEditingText: (id) => set({ editingTextId: id }),
   setTool: (t) => set({ activeTool: t }),
+  setTransformMode: (transformMode) => set({ transformMode }),
   setZoom: (z) => set({ zoom: Math.min(16, Math.max(0.05, z)) }),
   setPan: (x, y) => set({ panX: x, panY: y }),
   setPrimaryColor: (c) => set({ primaryColor: c }),
@@ -247,6 +334,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   clearGuides: () => set({ guides: [] }),
   togglePanel: (id) => set((s) => ({ panels: { ...s.panels, [id]: !s.panels[id] } })),
   togglePanelCollapsed: (id) => set((s) => ({ panelCollapsed: { ...s.panelCollapsed, [id]: !s.panelCollapsed[id] } })),
+  toggleGroupCollapsed: (id) =>
+    set((s) => ({ collapsedGroups: { ...s.collapsedGroups, [id]: !s.collapsedGroups[id] } })),
+  setGroupCollapsed: (id, collapsed) =>
+    set((s) => ({ collapsedGroups: { ...s.collapsedGroups, [id]: collapsed } })),
+  setAllGroupsCollapsed: (collapsed) =>
+    set((s) => {
+      const next: Record<string, boolean> = {};
+      for (const l of s.layers) if (l.kind === "group") next[l.id] = collapsed;
+      return { collapsedGroups: next };
+    }),
 
   pushHistory: (affectedLayerIds, label = "Edit") =>
     set((s) => {

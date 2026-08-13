@@ -1,10 +1,12 @@
 import { useEditorStore } from "../store/editorStore";
-import { BRUSH_TYPES, SHAPE_KINDS, type TextProps } from "../types";
+import { BRUSH_TYPES, SHAPE_KINDS, type Layer, type TextProps } from "../types";
 import styles from "./OptionsBar.module.css";
 
 interface Props {
   /** patch the selected text layer's typography */
   onUpdateText: (id: string, patch: Partial<TextProps>) => void;
+  /** patch the selected layer's transform (persists via update_transform) */
+  onTransform: (id: string, patch: Partial<Layer>) => void;
 }
 
 /** Photoshop-style contextual options bar — controls for the active tool. */
@@ -13,7 +15,7 @@ const FONTS = [
   "Courier New", "Verdana", "Trebuchet MS", "Impact", "Comic Sans MS",
 ];
 
-export default function OptionsBar({ onUpdateText }: Props) {
+export default function OptionsBar({ onUpdateText, onTransform }: Props) {
   const s = useEditorStore();
   const { activeTool } = s;
   const sel = s.layers.find((l) => l.id === s.selectedLayerId);
@@ -86,6 +88,45 @@ export default function OptionsBar({ onUpdateText }: Props) {
         </>
       )}
 
+      {activeTool === "transform" && (
+        <>
+          <span className={styles.toolName}>Transform</span>
+          <Field label="Mode">
+            <div className={styles.segmented}>
+              <button
+                className={s.transformMode === "free" ? styles.segOn : ""}
+                data-testid="transform-mode-free"
+                onClick={() => s.setTransformMode("free")}
+              >Free</button>
+              <button
+                className={s.transformMode === "warp" ? styles.segOn : ""}
+                data-testid="transform-mode-warp"
+                onClick={() => s.setTransformMode("warp")}
+              >Warp</button>
+            </div>
+          </Field>
+          {sel && (
+            <>
+              <button className={`${styles.btn} ${sel.flipH ? styles.segOn : ""}`} data-testid="options-flip-h"
+                title="Flip horizontal" onClick={() => onTransform(sel.id, { flipH: !sel.flipH })}>Flip H</button>
+              <button className={`${styles.btn} ${sel.flipV ? styles.segOn : ""}`} data-testid="options-flip-v"
+                title="Flip vertical" onClick={() => onTransform(sel.id, { flipV: !sel.flipV })}>Flip V</button>
+              <button className={styles.btn} data-testid="options-transform-reset"
+                title="Reset this layer's transform"
+                onClick={() => onTransform(sel.id, {
+                  rotation: 0, skewX: 0, skewY: 0, flipH: false, flipV: false,
+                  scaleX: 100, scaleY: 100, warp: "",
+                })}>Reset</button>
+            </>
+          )}
+          <span className={styles.note}>
+            {s.transformMode === "warp"
+              ? "Drag the corner pins to bend the layer."
+              : "Corners scale, edges skew, the top knob rotates. Shift constrains."}
+          </span>
+        </>
+      )}
+
       {(activeTool === "marquee" || activeTool === "lasso") && (
         <>
           <span className={styles.toolName}>{activeTool === "marquee" ? "Rectangular Marquee" : "Lasso"}</span>
@@ -136,7 +177,7 @@ export default function OptionsBar({ onUpdateText }: Props) {
         </>
       )}
 
-      {!showText && (activeTool === "move" || activeTool === "transform" || activeTool === "hand"
+      {!showText && (activeTool === "move" || activeTool === "hand"
         || activeTool === "zoom" || activeTool === "eyedropper" || activeTool === "bucket"
         || activeTool === "crop"
         || (activeTool === "text" && sel?.kind !== "text")) && (

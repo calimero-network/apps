@@ -75,6 +75,16 @@ export interface Layer {
   rotation: number;
   scaleX: number; // percent, 100 = 1:1
   scaleY: number;
+  /** horizontal shear in degrees, -80..80 (0 = none) */
+  skewX: number;
+  /** vertical shear in degrees, -80..80 (0 = none) */
+  skewY: number;
+  /** mirror across the layer's vertical centre line */
+  flipH: boolean;
+  /** mirror across the layer's horizontal centre line */
+  flipV: boolean;
+  /** corner-pin warp, JSON-encoded `WarpCorners` (empty/absent = no warp) */
+  warp?: string;
   blobId?: string;
   maskBlobId?: string | null;
   fill?: string;
@@ -228,4 +238,21 @@ export interface Guide {
 }
 
 /** Dockable right-rail panels toggled from the Window menu. */
-export type PanelId = "navigator" | "adjustments" | "history" | "layers";
+export type PanelId = "navigator" | "adjustments" | "transform" | "history" | "layers";
+
+// ── Free transform ───────────────────────────────────────────────────────────
+
+/** Corner-pin warp offsets, in the layer's own (unscaled) pixel units. Each
+ *  entry displaces that corner of the layer quad; all-zero = no warp. */
+export interface WarpCorners {
+  tl: [number, number];
+  tr: [number, number];
+  br: [number, number];
+  bl: [number, number];
+}
+
+export const NEUTRAL_WARP: WarpCorners = { tl: [0, 0], tr: [0, 0], br: [0, 0], bl: [0, 0] };
+
+/** Which gizmo the Transform tool shows: the scale/rotate box, or the four
+ *  corner-pin warp pins. */
+export type TransformMode = "free" | "warp";

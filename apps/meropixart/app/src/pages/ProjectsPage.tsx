@@ -10,6 +10,7 @@ import { extractErrorMessage, humanizeError } from "../utils/errorMessage";
 import { encodeInvitationObject } from "../utils/invitation";
 import { truncateMiddle } from "../utils/format";
 import { getStoredTeamName, teamLabel } from "../utils/teamName";
+import { SHOWCASE_PROJECTS } from "../showcase";
 import type { Project, DocumentInfo } from "../types";
 import styles from "./ProjectsPage.module.css";
 
@@ -71,6 +72,8 @@ export default function ProjectsPage() {
   const [customW, setCustomW] = useState("1280");
   const [customH, setCustomH] = useState("720");
   const [creating, setCreating] = useState(false);
+  /** Showcase to open the new project with ("" = blank canvas). */
+  const [starter, setStarter] = useState("");
 
   // Invitation state
   const [invitation, setInvitation] = useState("");
@@ -184,6 +187,10 @@ export default function ProjectsPage() {
   }, []);
 
   function resolveDimensions(): { width: number; height: number } | null {
+    // A showcase brings its own canvas — its layers are laid out for that size,
+    // so letting a preset override it would crop the artwork.
+    const showcase = SHOWCASE_PROJECTS.find((p) => p.id === starter);
+    if (showcase) return { width: showcase.width, height: showcase.height };
     if (presetIdx >= 0) {
       const p = DIMENSION_PRESETS[presetIdx];
       return { width: p.width, height: p.height };
@@ -263,6 +270,14 @@ export default function ProjectsPage() {
       ]);
       setNewName("");
       setShowCreate(false);
+      // Starting from a showcase means going straight into the editor: the
+      // `showcase` query param is what tells it to build the layers (only ever
+      // into an empty document — see EditorPage's auto-load guard).
+      if (starter && id) {
+        setStarter("");
+        navigate(`/teams/${teamId}/projects/${id}?showcase=${encodeURIComponent(starter)}`);
+        return;
+      }
     } catch (err) {
       // Surface node rejections (e.g. the namespace-admin gate on subgroup
       // creation) instead of failing silently in the network console.
@@ -495,8 +510,37 @@ export default function ProjectsPage() {
               style={{ marginBottom: 16 }}
             />
 
-            <label className="mp-label" style={{ display: "block", marginBottom: 8 }}>Canvas size</label>
-            <div className={styles.presets}>
+            <label className="mp-label" style={{ display: "block", marginBottom: 8 }}>Start from</label>
+            <div className={styles.starters}>
+              <button
+                type="button"
+                className={`${styles.starter} ${!starter ? styles.starterActive : ""}`}
+                onClick={() => setStarter("")}
+                data-testid="starter-blank"
+              >
+                <span className={styles.starterName}>Blank canvas</span>
+                <span className={styles.starterHint}>Pick a size below</span>
+              </button>
+              {SHOWCASE_PROJECTS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={`${styles.starter} ${starter === p.id ? styles.starterActive : ""}`}
+                  onClick={() => setStarter(p.id)}
+                  data-testid={`starter-${p.id}`}
+                  title={p.tagline}
+                >
+                  <span className={styles.starterName}>{p.name}</span>
+                  <span className={styles.starterHint}>{p.width} × {p.height} · {p.layers.length} layers</span>
+                </button>
+              ))}
+            </div>
+
+            <label className="mp-label" style={{ display: "block", margin: "16px 0 8px" }}>
+              Canvas size
+              {starter && <span className={styles.starterLocked}> — set by the showcase</span>}
+            </label>
+            <div className={`${styles.presets} ${starter ? styles.presetsDisabled : ""}`}>
               {DIMENSION_PRESETS.map((p, i) => (
                 <button
                   key={p.label}
@@ -520,7 +564,7 @@ export default function ProjectsPage() {
               </button>
             </div>
 
-            {presetIdx < 0 && (
+            {presetIdx < 0 && !starter && (
               <div className={styles.customRow}>
                 <div className={styles.customField}>
                   <label className="mp-label" htmlFor="np-w">Width</label>

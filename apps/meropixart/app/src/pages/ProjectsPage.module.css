@@ -184,6 +184,32 @@
 .presetDims { font-size: 13px; font-weight: 600; color: var(--text); }
 .presetLabel { font-size: 11px; color: var(--text-faint); }
 
+/* A showcase fixes the canvas, so the size presets grey out rather than vanish —
+   the size is still information worth showing. */
+.presetsDisabled { opacity: 0.4; pointer-events: none; }
+.starterLocked { font-weight: 400; color: var(--text-faint); }
+
+.starters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+.starter {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+  text-align: left;
+  padding: 9px 11px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.starter:hover { border-color: var(--border-strong); }
+.starterActive { border-color: var(--accent); background: var(--accent-soft); }
+.starterName { font-size: 13px; font-weight: 600; color: var(--text); }
+.starterHint { font-size: 11px; color: var(--text-faint); }
+
 .customRow {
   display: flex; align-items: flex-end; gap: 10px;
   margin-bottom: 16px;
