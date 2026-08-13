@@ -25,6 +25,8 @@ export interface Board {
   calledWith(method: string): RpcCall[];
   /** Replaces what `get_elements` will return on the next fetch. */
   setElements(next: Element[]): void;
+  /** Bodies of every blob upload, in order — what a flatten writes out. */
+  blobUploads: string[];
 }
 
 export interface BoardOptions {
@@ -37,7 +39,11 @@ export interface BoardOptions {
    * Defaults to the Playwright project name, so every spec covers both.
    */
   tauri?: boolean;
-  /** Serve a real 8x8 PNG for any blob fetch, so image elements decode. */
+  /**
+   * Answer the blob endpoints: uploads return a blob id, fetches return a real
+   * 8x8 PNG so image elements decode. Anything that flattens a group needs this,
+   * or the upload leaves the mock and hits the network.
+   */
   serveBlob?: boolean;
   /**
    * Make chosen contract methods fail, to simulate a board whose context runs an
@@ -53,6 +59,7 @@ export async function openBoard(page: Page, opts: BoardOptions = {}): Promise<Bo
     role: opts.role ?? "admin",
   };
   const calls: RpcCall[] = [];
+  const blobUploads: string[] = [];
 
   await page.addInitScript(() => {
     // JWT payload: {"sub":"test-identity"}
@@ -89,6 +96,27 @@ export async function openBoard(page: Page, opts: BoardOptions = {}): Promise<Bo
       body: JSON.stringify({ data: [TEST_IDENTITY] }),
     }),
   );
+  if (opts.serveBlob) {
+    // An 8x8 red PNG, enough for FabricImage to decode.
+    const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAFElEQVR4nGP8z4AAT" +
+      "AxDkjEqBwCbtgH9AoTPogAAAABJRU5ErkJggg==";
+    await page.route("**/admin-api/blobs**", async (route: Route) => {
+      if (route.request().method() === "PUT") {
+        blobUploads.push(route.request().postData() ?? "");
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ data: { blob_id: `blob-${blobUploads.length}`, size: 1 } }),
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "image/png",
+        body: Buffer.from(PNG, "base64"),
+      });
+    });
+  }
+
   // SSE would retry forever against a node that is not there.
   await page.route("**/events**", (r: Route) => r.abort());
   await page.route("**/sse**", (r: Route) => r.abort());
@@ -217,6 +245,7 @@ export async function openBoard(page: Page, opts: BoardOptions = {}): Promise<Bo
     setElements: (next: Element[]) => {
       state.elements = next;
     },
+    blobUploads,
   };
 }
 

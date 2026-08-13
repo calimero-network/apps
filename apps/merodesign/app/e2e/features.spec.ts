@@ -888,14 +888,16 @@ test.describe("T16 – Opacity control", () => {
     await expect(page.getByTestId("opacity-slider")).toHaveValue("100", { timeout: 3000 });
   });
 
-  test("opacity value label updates when slider changes", async ({ page }) => {
+  test("opacity value field follows the slider", async ({ page }) => {
     await gotoCanvas(page);
     await page.getByText("Layers").click();
     await page.locator('[class*="layerItem"]').first().click();
     await page.getByText("Props").click();
     const slider = page.getByTestId("opacity-slider");
     await slider.fill("30");
-    await expect(page.getByText("30%")).toBeVisible({ timeout: 2000 });
+    // The read-out is an editable number field now, not a text label — it shows
+    // the number, with the unit alongside it.
+    await expect(page.getByTestId("prop-opacity")).toHaveValue("30", { timeout: 2000 });
   });
 
   test("opacity change triggers update_element RPC with correct opacity", async ({ page }) => {
@@ -998,26 +1000,27 @@ test.describe("T17 – Text alignment controls", () => {
 
   test("left button is active by default (no text_align set)", async ({ page }) => {
     await gotoWithTextEl(page);
-    // Left button should have the active style class
-    await expect(page.getByTestId("align-h-left")).toHaveClass(/styleBtnActive/, { timeout: 3000 });
+    // The segmented control reports selection through aria-checked, which is
+    // what a screen reader and a keyboard user both go by.
+    await expect(page.getByTestId("align-h-left")).toHaveAttribute("aria-checked", "true", { timeout: 3000 });
   });
 
   test("top button is active by default (no vertical_align set)", async ({ page }) => {
     await gotoWithTextEl(page);
-    await expect(page.getByTestId("align-v-top")).toHaveClass(/styleBtnActive/, { timeout: 3000 });
+    await expect(page.getByTestId("align-v-top")).toHaveAttribute("aria-checked", "true", { timeout: 3000 });
   });
 
   test("clicking center alignment activates it", async ({ page }) => {
     await gotoWithTextEl(page);
     await page.getByTestId("align-h-center").click();
-    await expect(page.getByTestId("align-h-center")).toHaveClass(/styleBtnActive/, { timeout: 2000 });
-    await expect(page.getByTestId("align-h-left")).not.toHaveClass(/styleBtnActive/);
+    await expect(page.getByTestId("align-h-center")).toHaveAttribute("aria-checked", "true", { timeout: 2000 });
+    await expect(page.getByTestId("align-h-left")).toHaveAttribute("aria-checked", "false");
   });
 
   test("clicking bottom vertical alignment activates it", async ({ page }) => {
     await gotoWithTextEl(page);
     await page.getByTestId("align-v-bottom").click();
-    await expect(page.getByTestId("align-v-bottom")).toHaveClass(/styleBtnActive/, { timeout: 2000 });
+    await expect(page.getByTestId("align-v-bottom")).toHaveAttribute("aria-checked", "true", { timeout: 2000 });
   });
 
   test("alignment buttons NOT visible for rect element", async ({ page }) => {

@@ -97,6 +97,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
     const {
       activeTool,
       selectedElementId,
+      selectedElementIds,
       elements,
       background,
       imageCache,
@@ -130,14 +131,30 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       return result;
     }
 
+    /**
+     * Every export used to be `await save…()` with no catch, so a rejection —
+     * which is exactly what the Tauri path produced — surfaced as an unhandled
+     * promise in a console nobody had open, and as nothing at all in the UI.
+     */
+    async function runExport(what: string, fn: () => Promise<boolean>) {
+      try {
+        if (await fn()) showToast(`${what} exported`, "success");
+      } catch (err) {
+        showToast(
+          `Could not export the ${what.toLowerCase()}: ${err instanceof Error ? err.message : String(err)}`,
+          "error",
+        );
+      }
+    }
+
     useImperativeHandle(ref, () => ({
       async exportPng() {
         const url = withSolidBgData(() => fabricRef.current!.toDataURL({ format: "png", multiplier: 2 }));
-        await saveDataUrl(url, "merodesign-export.png");
+        await runExport("PNG", () => saveDataUrl(url, "merodesign-export.png"));
       },
       async exportSvg() {
         const svg = withSolidBgData(() => fabricRef.current!.toSVG());
-        await saveText(svg, "merodesign-export.svg", "image/svg+xml");
+        await runExport("SVG", () => saveText(svg, "merodesign-export.svg", "image/svg+xml"));
       },
       async exportSelectedPng() {
         const fc = fabricRef.current;
@@ -150,7 +167,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           }
           return fc.toDataURL({ format: "png", multiplier: 2 });
         });
-        await saveDataUrl(url, "merodesign-selection.png");
+        await runExport("PNG", () => saveDataUrl(url, "merodesign-selection.png"));
       },
       async exportSelectedSvg() {
         const fc = fabricRef.current;
@@ -165,10 +182,10 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           const svg = fc.toSVG();
           hidden.forEach((o) => { o.visible = true; });
           fc.renderAll();
-          await saveText(svg, "merodesign-selection.svg", "image/svg+xml");
+          await runExport("SVG", () => saveText(svg, "merodesign-selection.svg", "image/svg+xml"));
         } else {
           const svg = fc.toSVG();
-          await saveText(svg, "merodesign-export.svg", "image/svg+xml");
+          await runExport("SVG", () => saveText(svg, "merodesign-export.svg", "image/svg+xml"));
         }
       },
     }));
@@ -190,6 +207,10 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         selection: true,
       });
       fabricRef.current = fc;
+      // Hangs the live canvas off its own element. The e2e suite asserts on
+      // Fabric's own notion of what is selected (there is no DOM for it), and it
+      // is the only way to inspect canvas state from a debugger console.
+      (canvasElRef.current as HTMLCanvasElement & { __fabricCanvas?: Canvas }).__fabricCanvas = fc;
 
       const resize = () => {
         const { w: nw, h: nh } = getSize();
@@ -369,17 +390,51 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       fc.renderAll();
     }, [readOnly, elements, imageCache]);
 
-    /* ── sync store selectedElementId → canvas active object ────── */
+    /* ── sync store selection → canvas active object(s) ──────────── */
+    // Item 1: this used to read `selectedElementId` only, so selecting a group
+    // or shift-clicking several rows in the layers panel highlighted exactly one
+    // shape on the canvas and moved exactly one. A multi-selection is an
+    // ActiveSelection in Fabric, so build one.
     useEffect(() => {
       const fc = fabricRef.current;
-      if (!fc || !selectedElementId) return;
+      if (!fc) return;
       const all = fc.getObjects() as (FabricObject & { data?: Element })[];
-      const obj = all.find((o) => o.data?.id === selectedElementId);
-      if (obj && fc.getActiveObject() !== obj) {
-        fc.setActiveObject(obj);
-        fc.renderAll();
+
+      if (selectedElementIds.length === 0) {
+        if (fc.getActiveObject()) {
+          fc.discardActiveObject();
+          fc.requestRenderAll();
+        }
+        return;
       }
-    }, [selectedElementId]);
+
+      const wanted = new Set(selectedElementIds);
+      const objects = all.filter((o) => o.data?.id && wanted.has(o.data.id));
+      if (objects.length === 0) return;
+
+      const active = fc.getActiveObject();
+      if (objects.length === 1) {
+        if (active !== objects[0]) {
+          fc.discardActiveObject();
+          fc.setActiveObject(objects[0]);
+          fc.requestRenderAll();
+        }
+        return;
+      }
+
+      // Already showing exactly this set? Leave it alone — rebuilding mid-drag
+      // would drop the object from under the cursor.
+      if (active instanceof ActiveSelection) {
+        const current = active.getObjects() as (FabricObject & { data?: Element })[];
+        const same = current.length === objects.length
+          && current.every((o) => o.data?.id && wanted.has(o.data.id));
+        if (same) return;
+      }
+      fc.discardActiveObject();
+      const selection = new ActiveSelection(objects, { canvas: fc });
+      fc.setActiveObject(selection);
+      fc.requestRenderAll();
+    }, [selectedElementIds, selectedElementId, elements, imageCache]);
 
     /* ── tool + interaction handlers ────────────────────────────── */
     useEffect(() => {
@@ -745,40 +800,12 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           return;
         }
 
-        // Ctrl+G: group selected objects
-        if (mod && e.key === "g" && !e.shiftKey) {
-          e.preventDefault();
-          if (readOnlyRef.current) return;
-          const active = fc.getActiveObject();
-          if (active && "getObjects" in active && typeof (active as { getObjects?: unknown }).getObjects === "function") {
-            const objs = (active as { getObjects: () => FabricObject[] }).getObjects();
-            if (objs.length > 1) {
-              const group = new Group(objs, { selectable: true, evented: true });
-              objs.forEach((o) => fc.remove(o));
-              fc.discardActiveObject();
-              fc.add(group);
-              fc.setActiveObject(group);
-              fc.renderAll();
-            }
-          }
-          return;
-        }
+        // ⌘G / ⇧⌘G are handled in CanvasPage: grouping is a label change in
+        // contract state (see utils/groups), not a Fabric Group. The old handler
+        // here built a local Fabric Group that no peer ever saw and that the very
+        // next elements→canvas sync threw away.
 
-        // Ctrl+Shift+G: ungroup
-        if (mod && e.shiftKey && e.key === "G") {
-          e.preventDefault();
-          if (readOnlyRef.current) return;
-          const active = fc.getActiveObject() as (FabricObject & { getObjects?: () => FabricObject[] }) | null;
-          if (active instanceof Group) {
-            const objs = active.getObjects();
-            fc.remove(active);
-            objs.forEach((o) => { fc.add(o); });
-            fc.renderAll();
-          }
-          return;
-        }
-
-        // Delete / Backspace / Escape remove the selected element
+        // Delete / Backspace / Escape remove the selection
         if (e.key !== "Delete" && e.key !== "Backspace" && e.key !== "Escape") return;
         if (previewRef.current) return;
         // While placing a comment, Escape cancels that (handled in CanvasPage) —
@@ -787,14 +814,35 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         const focusedTag = (document.activeElement as HTMLElement)?.tagName?.toLowerCase();
         if (focusedTag === "input" || focusedTag === "textarea" || focusedTag === "select") return;
         const active = fc.getActiveObject() as (FabricObject & { data?: Element }) | null;
-        if (!active?.data?.id) return;
-        if (active.type === "i-text" && (active as IText).isEditing) return;
+        if (active?.type === "i-text" && (active as IText).isEditing) return;
+
+        // Every selected element, not just the active object: an ActiveSelection
+        // carries no `.data` of its own, so the old guard returned here and a
+        // multi-selection could not be deleted at all.
+        const ids = useCanvasStore.getState().selectedElementIds;
+        const targets = ids.length > 0
+          ? ids
+          : active?.data?.id
+            ? [active.data.id]
+            : [];
+        // Nothing selected: Escape does nothing at all. It must not fall through
+        // to anything else on the page.
+        if (targets.length === 0) return;
+        e.preventDefault();
         if (readOnlyRef.current) return; // viewers can't delete
-        fc.remove(active);
-        fc.renderAll();
+
+        fc.discardActiveObject();
+        for (const obj of fc.getObjects() as (FabricObject & { data?: Element })[]) {
+          if (obj.data?.id && targets.includes(obj.data.id)) fc.remove(obj);
+        }
+        fc.requestRenderAll();
         snapshot();
-        removeElement(active.data.id);
-        await rpcCall(contextId, "delete_element", { id: active.data.id }).catch((e) => reportFailure.current("delete_element", e));
+        selectElements([]);
+        for (const id of targets) {
+          removeElement(id);
+          await rpcCall(contextId, "delete_element", { id })
+            .catch((err) => reportFailure.current("delete_element", err));
+        }
       };
 
       const onKeyUp = (e: KeyboardEvent) => {

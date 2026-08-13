@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { v4 as uuid } from "uuid";
 import { rpcCall, adminGet, adminUploadBlob, adminGetBlob, joinContext } from "../api/rpc";
 import { useSse } from "../hooks/useSse";
+import { useGroupActions } from "../hooks/useGroupActions";
 import { useMero } from "@calimero-network/mero-react";
 import { useCanvasStore } from "../store/canvasStore";
 import { useUsernameStore } from "../store/usernameStore";
@@ -46,6 +47,8 @@ export default function CanvasPage() {
   // (clear, project import which replaces the board) are gated on this.
   const [isAdmin, setIsAdmin] = useState(false);
   const [viewport, setViewport] = useState({ zoom: 1, panX: 0, panY: 0 });
+  // ⌘G / ⇧⌘G. Same implementation the layers panel's buttons use.
+  const { groupSelection, ungroupSelection } = useGroupActions(projectId ?? "", !canEdit);
   const cursorThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // "loading" = first attempt; "syncing" = context not yet available on this node, retrying
@@ -106,17 +109,62 @@ export default function CanvasPage() {
   function handleBack() { navigate(`/teams/${teamId}/projects`); }
   function handleLogout() { logout(); navigate("/login"); }
 
-  // ESC exits preview / comment mode (not username modal — that's blocking)
+  /**
+   * Escape, and the group shortcuts.
+   *
+   * Escape used to unconditionally clear preview AND comment mode on every
+   * press, wherever it came from. It now does one thing at a time, in the order
+   * a user expects — leave preview, else cancel comment placement, else let the
+   * canvas delete the selection (FabricCanvas), else nothing — and it never
+   * leaves this page: `preventDefault` on the canvas board stops the browser or
+   * the desktop shell acting on the same key. With nothing selected it is a
+   * deliberate no-op.
+   *
+   * The listener is registered in the capture phase so it runs before anything
+   * outside the app that might be listening for the same key, but it does not
+   * stop propagation: FabricCanvas's own handler (which owns deletion) still has
+   * to see it.
+   */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !showUsernameModal) {
-        setPreviewMode(false);
-        setAddingComment(false);
+      if (showUsernameModal) return;
+
+      const mod = e.metaKey || e.ctrlKey;
+      const tag = (document.activeElement as HTMLElement | null)?.tagName?.toLowerCase();
+      const typing = tag === "input" || tag === "textarea" || tag === "select";
+
+      if (mod && (e.key === "g" || e.key === "G") && !typing) {
+        e.preventDefault();
+        if (e.shiftKey) void ungroupSelection();
+        else void groupSelection();
+        return;
       }
+
+      if (e.key !== "Escape") return;
+      if (typing) return; // the focused field owns its own Escape
+
+      // Leaving preview or cancelling a comment CONSUMES the key:
+      // `stopImmediatePropagation` keeps it from reaching the canvas handler,
+      // which would otherwise delete the selected element on the same press.
+      if (previewMode) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setPreviewMode(false);
+        return;
+      }
+      if (addingComment) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setAddingComment(false);
+        return;
+      }
+      // Anything left is the canvas's to handle (delete the selection, or —
+      // with nothing selected — do nothing). Keep the key inside the app.
+      e.preventDefault();
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [setPreviewMode, showUsernameModal]);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [setPreviewMode, showUsernameModal, previewMode, addingComment, groupSelection, ungroupSelection]);
 
   // Load initial data. Retries every 3 s if the context isn't available yet on
   // this node (e.g. the project was created on a peer and sync is in progress).
@@ -407,7 +455,13 @@ export default function CanvasPage() {
 
   async function handleSaveProject() {
     if (!projectId) return;
-    await exportProject(projectId).catch(() => {});
+    // Swallowing this is how item 9 stayed invisible for so long: the save
+    // rejected in the desktop app and the UI said nothing at all.
+    try {
+      await exportProject(projectId);
+    } catch (e) {
+      showToast(extractErrorMessage(e, "Could not save the project file"), "error");
+    }
   }
 
   async function handleImportProject(snapshot: ProjectSnapshot) {

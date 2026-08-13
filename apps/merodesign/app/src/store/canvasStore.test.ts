@@ -290,4 +290,60 @@ describe("canvasStore", () => {
       expect(pasted!.layerIndex).toBe(2);
     });
   });
+
+  describe("selection and labels", () => {
+    it("toggleSelected adds and removes one id", () => {
+      const store = useCanvasStore.getState();
+      store.selectElements(["a", "b"]);
+      useCanvasStore.getState().toggleSelected("c");
+      expect(useCanvasStore.getState().selectedElementIds).toEqual(["a", "b", "c"]);
+      useCanvasStore.getState().toggleSelected("b");
+      expect(useCanvasStore.getState().selectedElementIds).toEqual(["a", "c"]);
+    });
+
+    it("keeps selectedElementId pointing at the first of the set", () => {
+      useCanvasStore.getState().selectElements(["a", "b"]);
+      expect(useCanvasStore.getState().selectedElementId).toBe("a");
+      useCanvasStore.getState().selectElements([]);
+      expect(useCanvasStore.getState().selectedElementId).toBeNull();
+    });
+
+    it("setElementLabel writes the label onto the element, not only the side table", () => {
+      useCanvasStore.getState().setElements([makeEl("a")]);
+      useCanvasStore.getState().setElementLabel("a", "screen/one");
+      // Exports and the canvas read el.label; the layers tree read the side
+      // table. Keeping only one of them in step showed a rename in the panel
+      // and nowhere else.
+      expect(useCanvasStore.getState().elements[0].label).toBe("screen/one");
+      expect(useCanvasStore.getState().elementLabels.a).toBe("screen/one");
+    });
+
+    it("setElementLabels applies a whole group patch at once", () => {
+      useCanvasStore.getState().setElements([makeEl("a"), makeEl("b")]);
+      useCanvasStore.getState().setElementLabels({ a: "G/a", b: "G/b" });
+      expect(useCanvasStore.getState().elements.map((e) => e.label)).toEqual(["G/a", "G/b"]);
+    });
+
+    it("drops a local override once contract state agrees", () => {
+      useCanvasStore.getState().setElements([makeEl("a")]);
+      useCanvasStore.getState().setElementLabel("a", "G/a");
+      // The board comes back from the node carrying the same label.
+      useCanvasStore.getState().setElements([{ ...makeEl("a"), label: "G/a" }]);
+      expect(useCanvasStore.getState().elementLabels.a).toBeUndefined();
+    });
+
+    it("keeps a local override that contract state has not caught up with", () => {
+      useCanvasStore.getState().setElements([makeEl("a")]);
+      useCanvasStore.getState().setElementLabel("a", "G/a");
+      useCanvasStore.getState().setElements([{ ...makeEl("a"), label: "" }]);
+      expect(useCanvasStore.getState().elementLabels.a).toBe("G/a");
+    });
+
+    it("toggleGroupCollapsed flips one group at a time", () => {
+      useCanvasStore.getState().toggleGroupCollapsed("screen");
+      expect(useCanvasStore.getState().collapsedGroups.screen).toBe(true);
+      useCanvasStore.getState().toggleGroupCollapsed("screen");
+      expect(useCanvasStore.getState().collapsedGroups.screen).toBe(false);
+    });
+  });
 });

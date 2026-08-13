@@ -16,11 +16,11 @@ _`pnpm tasks --check` fails CI if this drifts. A task is only "done" when a spec
 _exists for it and contains at least one live test; the count is × 2 because every spec_
 _runs in both the browser and the Tauri project._
 
-**13 of 15 done** · 55 task tests × 2 projects = 110 runs in CI
+**14 of 15 done** · 63 task tests × 2 projects = 126 runs in CI
 
 | # | Item | Status | Plan | Spec | CI runs |
 | --- | --- | --- | --- | --- | --- |
-| 1 | Multi-select and move layers | not started | PR 2 | — | 0 |
+| 1 | Multi-select and move layers | **done** | PR 2 | `task-01-multi-select.spec.ts` | 7 × 2 = 14 |
 | 2 | Line and arrow render invisible | **done** | PR 3 + PR 4 | `task-02-line-arrow.spec.ts` | 6 × 2 = 12 |
 | 3 | Pencil tool does nothing | **done** | PR 5 | `task-03-pencil.spec.ts` | 5 × 2 = 10 |
 | 4 | Layer up/down should move one step | **done** | PR 6 | `task-04-layer-order.spec.ts` | 4 × 2 = 8 |
@@ -28,7 +28,7 @@ _runs in both the browser and the Tauri project._
 | 6 | Stroke/fill ignored on images | **done** | PR 8 | `task-06-image-stroke.spec.ts` | 5 × 2 = 10 |
 | 7 | Stroke ignored on text | **done** | PR 9 | `task-07-text-stroke.spec.ts` | 4 × 2 = 8 |
 | 8 | Usernames on canvas, comments, members | **done** | PR 10 | `task-08-comment-usernames.spec.ts` | 4 × 2 = 8 |
-| 9 | Save PNG/SVG/.merodesign in Tauri | **done** | PR 11 | `task-09-tauri-save.spec.ts` | 5 × 2 = 10 |
+| 9 | Save PNG/SVG/.merodesign in Tauri | **done** | PR 11 | `task-09-tauri-save.spec.ts` | 6 × 2 = 12 |
 | 10 | Comments overlay navbar dropdowns | **done** | PR 12 | `task-10-comment-zorder.spec.ts` | 5 × 2 = 10 |
 | 11 | Images not embedded in code export | **done** | PR 13 | `task-11-code-export.spec.ts` | 3 × 2 = 6 |
 | 12 | Usernames in project settings | **done** | PR 10 | `task-12-settings-usernames.spec.ts` | 2 × 2 = 4 |
@@ -47,11 +47,23 @@ _runs in both the browser and the Tauri project._
 | **Navbar dropdowns above comment pins** | item 10 | 5 × 2 |
 | **"Open starter project"** — loads a five-screen design and persists it into contract state | new feature | 10 × 2 |
 | **Test toolkit + `tauri` Playwright project** | plan PR 0 | — |
+| **Saving in the desktop app, for real** — the plugin route never existed; downloads go the way mero-pixart's do | item 9 (re-fixed) | 6 × 2 |
+| **Multi-selection on the canvas** — the store→canvas sync read one id, so several selected layers highlighted and moved as one | item 1 | 7 × 2 |
+| **Groups, frames and merge** — a layers *tree* over `label` paths, ⌘G/⇧⌘G, per-group export, flatten to one image | item 15 (first slice) | 11 × 2 |
+| **Escape** — deletes the selection (all of it), or does nothing; never leaves the page | reported after the list | 5 × 2 |
+| **The inspector control kit** — number fields that can be typed into, and painted select/checkbox/switch/segmented/slider/colour | reported after the list | 34 unit |
 
 Each fix was verified in **both** directions: green with the fix, red with it reverted. That check
 caught a vacuous spec — the first version of the item-10 test sampled each menu item's centre, but a
 menu item is 200px wide and a comment pin is 20px, so the sample points never overlapped a pin and the
 whole spec passed with the bug fully present. It now samples pin centres.
+
+It also caught the item-9 spec itself. That one drove the export through a Tauri bridge stub that
+answered *every* invoke, so it proved the app called `plugin:dialog|save` and `plugin:fs|write_file` —
+and nothing more. The desktop shell has no `tauri-plugin-fs` at all, and grants `dialog:allow-save`
+only to its `main` window, never to the `app-*` windows apps run in. Both calls rejected in the real
+product while the spec stayed green. The rule that follows: a stub may not answer a command the real
+host does not implement.
 
 `app/e2e/tasks/` is one spec file per item, named `task-NN-*.spec.ts`; that naming is what the status
 table above is generated from.

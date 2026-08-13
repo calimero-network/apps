@@ -1,11 +1,35 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { rpcCall } from "../api/rpc";
 import { useCanvasStore } from "../store/canvasStore";
 import { useToast } from "../contexts/ToastContext";
 import { createMutationReporter } from "../utils/mutationErrors";
 import { escapeHtml, escapeCss } from "../utils/sanitize";
+import {
+  buildLayerTree,
+  elementIdsOf,
+  nameOf,
+  renameElement,
+  renameGroup,
+  ungroupPath,
+  type GroupNode,
+  type LayerNode,
+} from "../utils/groups";
+import {
+  applyLabelPatch,
+  exportElementsAsPng,
+  exportElementsAsSvg,
+  flattenElements,
+} from "../utils/groupOps";
+import NumberField from "./ui/NumberField";
+import Select from "./ui/Select";
+import Slider from "./ui/Slider";
+import ColorField from "./ui/ColorField";
+import { Checkbox, Segmented, Switch } from "./ui/Toggle";
+import LayerRowMenu from "./LayerRowMenu";
+import { useGroupActions } from "../hooks/useGroupActions";
 import type { Element } from "../types";
 import styles from "./PropertiesPanel.module.css";
+import controls from "./ui/controls.module.css";
 
 const FONTS = [
   "sans-serif", "serif", "monospace",
@@ -22,7 +46,11 @@ interface Props {
 }
 
 export default function PropertiesPanel({ contextId, readOnly = false }: Props) {
-  const { selectedElementId, selectedElementIds, elements, elementLabels, imageCache, upsertElement, removeElement, selectElement, selectElements, setElementLabel } = useCanvasStore();
+  const {
+    selectedElementId, selectedElementIds, elements, elementLabels, imageCache, background,
+    collapsedGroups, upsertElement, removeElement, selectElement, selectElements, toggleSelected,
+    setElementLabel, setElementLabels, toggleGroupCollapsed, cacheImage, snapshot,
+  } = useCanvasStore();
   const el = elements.find((e) => e.id === selectedElementId);
   const { showToast } = useToast();
   // Contract mutations used to be `.catch(() => {})`. On a board running an older
@@ -33,9 +61,18 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
   const rpcDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [tab, setTab] = useState<PanelTab>("properties");
   const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
+  const [editingGroupPath, setEditingGroupPath] = useState<string | null>(null);
   const [labelDraft, setLabelDraft] = useState("");
+  const [filter, setFilter] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [pendingFlatten, setPendingFlatten] = useState<string | null>(null);
   const [protoCopied, setProtoCopied] = useState(false);
   const [protoAllCopied, setProtoAllCopied] = useState(false);
+
+  const selectedElements = useMemo(
+    () => elements.filter((e) => selectedElementIds.includes(e.id)),
+    [elements, selectedElementIds],
+  );
 
   function scheduleRpc(fn: () => void) {
     if (rpcDebounceRef.current) clearTimeout(rpcDebounceRef.current);
@@ -58,6 +95,21 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
         ),
       }).catch((e) => reportFailure.current("update_element", e)),
     );
+  }
+
+  /** Same shape as `update`, but for one specific element (bulk edits). */
+  function updateOne(target: Element, patch: Record<string, unknown>) {
+    if (readOnly) return;
+    const updated = { ...target, ...patch, updatedAt: Date.now() };
+    upsertElement(updated);
+    rpcCall(contextId, "update_element", {
+      id: target.id,
+      x: null, y: null, width: null, height: null,
+      rotation: null, fill: null, stroke: null,
+      stroke_width: null, opacity: null, corner_radius: null,
+      updated_at: updated.updatedAt,
+      ...Object.fromEntries(Object.entries(patch).map(([k, v]) => [toSnake(k), v])),
+    }).catch((e) => reportFailure.current("update_element", e));
   }
 
   function updateTextStyle(patch: {
@@ -103,8 +155,19 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     if (readOnly) return;
     const id = targetId ?? el?.id;
     if (!id) return;
+    snapshot();
     removeElement(id);
     await rpcCall(contextId, "delete_element", { id }).catch((e) => reportFailure.current("delete_element", e));
+  }
+
+  async function handleDeleteMany(ids: string[]) {
+    if (readOnly || ids.length === 0) return;
+    snapshot();
+    for (const id of ids) {
+      removeElement(id);
+      await rpcCall(contextId, "delete_element", { id }).catch((e) => reportFailure.current("delete_element", e));
+    }
+    selectElements([]);
   }
 
   async function handleBringToFront(targetEl?: Element) {
@@ -160,18 +223,119 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     }).catch((e) => reportFailure.current("set_layer_index", e));
   }
 
-  function startLabelEdit(e: Element) {
-    setEditingLabelId(e.id);
-    setLabelDraft(elementLabels[e.id] ?? e.data.kind);
+  /* ── groups ─────────────────────────────────────────────────────────── */
+
+  const labelDeps = {
+    contextId,
+    applyLabels: setElementLabels,
+    onError: (method: string, error: unknown) => reportFailure.current(method, error),
+  };
+
+  // Grouping lives in a hook so the canvas shortcuts (⌘G / ⇧⌘G) and these
+  // buttons cannot drift apart.
+  const { groupSelection, ungroupSelection, frameSelection } = useGroupActions(contextId, readOnly);
+
+  async function handleGroupSelection() {
+    await groupSelection();
+    setTab("layers");
   }
 
-  function commitLabel() {
-    if (editingLabelId) setElementLabel(editingLabelId, labelDraft.trim() || editingLabelId.slice(0, 6));
-    setEditingLabelId(null);
+  async function handleFrameSelection() {
+    await frameSelection();
+    setTab("layers");
   }
 
-  function getElementLabel(e: Element) {
-    return elementLabels[e.id] || `${e.data.kind}`;
+  async function handleUngroup(path: string) {
+    if (readOnly) return;
+    const patch = ungroupPath(elements, path);
+    await applyLabelPatch(patch, labelDeps);
+    showToast(`Ungrouped ${Object.keys(patch).length} layers`, "info");
+  }
+
+  function elementsOfNode(node: LayerNode): Element[] {
+    const ids = new Set(elementIdsOf(node));
+    return elements.filter((e) => ids.has(e.id));
+  }
+
+  async function withBusy(key: string, fn: () => Promise<unknown>) {
+    setBusy(key);
+    try {
+      await fn();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : String(e), "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleExportNode(node: LayerNode, format: "png" | "svg") {
+    const members = elementsOfNode(node);
+    const name = (node.kind === "group" ? node.name : node.name) || "selection";
+    await withBusy(`${format}:${node.kind === "group" ? node.path : node.id}`, async () => {
+      const options = {
+        filename: `${name.replace(/[^\w .-]+/g, "-")}.${format}`,
+        imageCache,
+        background,
+        padding: 8,
+      };
+      const ok = format === "png"
+        ? await exportElementsAsPng(members, options)
+        : await exportElementsAsSvg(members, options);
+      if (ok) showToast(`Exported “${name}” as ${format.toUpperCase()}`, "success");
+    });
+  }
+
+  async function handleFlatten(node: GroupNode) {
+    if (readOnly) return;
+    const members = elementsOfNode(node);
+    if (members.length === 0) return;
+    await withBusy(`flatten:${node.path}`, async () => {
+      snapshot();
+      await flattenElements(members, node.path, {
+        ...labelDeps,
+        imageCache,
+        cacheImage,
+        onFlattened: (created, removedIds) => {
+          upsertElement(created);
+          removedIds.forEach(removeElement);
+          selectElement(created.id);
+        },
+      });
+      showToast(`Merged ${members.length} layers into one image`, "success");
+    });
+    setPendingFlatten(null);
+  }
+
+  function startLabelEdit(node: LayerNode) {
+    if (node.kind === "group") {
+      setEditingGroupPath(node.path);
+      setEditingLabelId(null);
+    } else {
+      setEditingLabelId(node.id);
+      setEditingGroupPath(null);
+    }
+    setLabelDraft(node.name);
+  }
+
+  async function commitLabel() {
+    const draft = labelDraft.trim();
+    if (editingGroupPath) {
+      const path = editingGroupPath;
+      setEditingGroupPath(null);
+      if (draft) await applyLabelPatch(renameGroup(elements, path, draft), labelDeps);
+      return;
+    }
+    if (editingLabelId) {
+      const target = elements.find((e) => e.id === editingLabelId);
+      setEditingLabelId(null);
+      if (target && draft) {
+        const label = renameElement(target, draft);
+        setElementLabel(target.id, label);
+        await rpcCall(contextId, "update_element_label", {
+          id: target.id, label, updated_at: Date.now(),
+        }).catch((e) => reportFailure.current("update_element_label", e));
+      }
+    }
   }
 
   function getKindIcon(kind: string) {
@@ -265,63 +429,208 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
   }
 
   // ── LAYERS TAB ────────────────────────────────────────────────────────────────
-  const sortedLayers = [...elements].sort((a, b) => b.layerIndex - a.layerIndex);
+
+  /**
+   * The tree, filtered. A filter keeps any element whose name matches and any
+   * group whose path matches — with 470 layers on the starter board, walking the
+   * tree by hand is not a way to find anything.
+   */
+  const tree = useMemo(() => {
+    const query = filter.trim().toLowerCase();
+    const source = query
+      ? elements.filter((e) => {
+          const label = (elementLabels[e.id] ?? e.label ?? "").toLowerCase();
+          return label.includes(query) || nameOf(e).toLowerCase().includes(query);
+        })
+      : elements;
+    return buildLayerTree(source, elementLabels);
+  }, [elements, elementLabels, filter]);
+
+  function selectNode(node: LayerNode, e: React.MouseEvent) {
+    const ids = elementIdsOf(node);
+    if (e.shiftKey) {
+      const merged = [...new Set([...selectedElementIds, ...ids])];
+      selectElements(merged);
+    } else if (e.metaKey || e.ctrlKey) {
+      if (ids.length === 1) toggleSelected(ids[0]);
+      else selectElements([...new Set([...selectedElementIds, ...ids])]);
+    } else {
+      selectElements(ids);
+    }
+  }
+
+  function renderNode(node: LayerNode, depth: number): React.ReactNode {
+    const indent = { paddingLeft: 6 + depth * 12 };
+
+    if (node.kind === "group") {
+      const collapsed = !!collapsedGroups[node.path] && !filter;
+      const allSelected = node.elementIds.length > 0
+        && node.elementIds.every((id) => selectedElementIds.includes(id));
+      const someSelected = !allSelected && node.elementIds.some((id) => selectedElementIds.includes(id));
+      return (
+        <div key={`g:${node.path}`}>
+          <div
+            className={[
+              styles.layerItem,
+              styles.groupItem,
+              allSelected ? styles.layerItemActive : "",
+              someSelected ? styles.layerItemPartial : "",
+            ].filter(Boolean).join(" ")}
+            style={indent}
+            data-testid={`layer-group-${node.path}`}
+            onClick={(e) => selectNode(node, e)}
+          >
+            <button
+              className={styles.disclosure}
+              title={collapsed ? "Expand" : "Collapse"}
+              data-testid={`layer-toggle-${node.path}`}
+              onClick={(e) => { e.stopPropagation(); toggleGroupCollapsed(node.path); }}
+            >
+              {collapsed ? "▸" : "▾"}
+            </button>
+            <span className={styles.groupIcon} aria-hidden="true">▣</span>
+            {editingGroupPath === node.path ? (
+              <input
+                autoFocus
+                className={styles.layerLabelInput}
+                value={labelDraft}
+                onChange={(ev) => setLabelDraft(ev.target.value)}
+                onBlur={commitLabel}
+                onKeyDown={(ev) => {
+                  if (ev.key === "Enter") commitLabel();
+                  if (ev.key === "Escape") { ev.stopPropagation(); setEditingGroupPath(null); }
+                }}
+                onClick={(ev) => ev.stopPropagation()}
+              />
+            ) : (
+              <span
+                className={styles.layerName}
+                onDoubleClick={(ev) => { ev.stopPropagation(); startLabelEdit(node); }}
+              >
+                {node.name}
+              </span>
+            )}
+            <span className={styles.groupCount}>{node.elementIds.length}</span>
+            <LayerRowMenu
+              testId={`group-menu-${node.path}`}
+              actions={[
+                { label: "Select contents", onSelect: () => selectElements(node.elementIds) },
+                { label: "Rename group", onSelect: () => startLabelEdit(node), disabled: readOnly },
+                { label: "Ungroup", onSelect: () => handleUngroup(node.path), disabled: readOnly, testId: `ungroup-${node.path}` },
+                { label: busy === `png:${node.path}` ? "Exporting…" : "Export PNG", onSelect: () => handleExportNode(node, "png"), testId: `export-group-png-${node.path}` },
+                { label: busy === `svg:${node.path}` ? "Exporting…" : "Export SVG", onSelect: () => handleExportNode(node, "svg"), testId: `export-group-svg-${node.path}` },
+                {
+                  label: pendingFlatten === node.path ? "Merge — confirm" : "Merge into one image",
+                  onSelect: () => {
+                    if (pendingFlatten === node.path) handleFlatten(node);
+                    else setPendingFlatten(node.path);
+                  },
+                  disabled: readOnly,
+                  testId: `flatten-${node.path}`,
+                },
+                { label: `Delete ${node.elementIds.length} layers`, onSelect: () => handleDeleteMany(node.elementIds), danger: true, disabled: readOnly },
+              ]}
+            />
+          </div>
+          {!collapsed && node.children.map((child) => renderNode(child, depth + 1))}
+        </div>
+      );
+    }
+
+    const element = node.element;
+    return (
+      <div
+        key={node.id}
+        className={`${styles.layerItem} ${selectedElementIds.includes(node.id) ? styles.layerItemActive : ""}`}
+        style={indent}
+        data-testid={`layer-item-${node.id}`}
+        onClick={(e) => selectNode(node, e)}
+      >
+        <span className={styles.layerIcon}>{getKindIcon(element.data.kind)}</span>
+        {editingLabelId === node.id ? (
+          <input
+            autoFocus
+            className={styles.layerLabelInput}
+            value={labelDraft}
+            onChange={(ev) => setLabelDraft(ev.target.value)}
+            onBlur={commitLabel}
+            onKeyDown={(ev) => {
+              if (ev.key === "Enter") commitLabel();
+              if (ev.key === "Escape") { ev.stopPropagation(); setEditingLabelId(null); }
+            }}
+            onClick={(ev) => ev.stopPropagation()}
+          />
+        ) : (
+          <span className={styles.layerName} title={node.path || node.name} onDoubleClick={(ev) => { ev.stopPropagation(); startLabelEdit(node); }}>
+            {node.name}
+          </span>
+        )}
+        <div className={styles.layerActions}>
+          <button
+            className={styles.layerOrderBtn}
+            title="Move up"
+            data-testid={`layer-up-${node.id}`}
+            onClick={(ev) => { ev.stopPropagation(); handleMoveUp(element); }}
+          >↑</button>
+          <button
+            className={styles.layerOrderBtn}
+            title="Move down"
+            data-testid={`layer-down-${node.id}`}
+            onClick={(ev) => { ev.stopPropagation(); handleMoveDown(element); }}
+          >↓</button>
+          <button
+            className={styles.layerDeleteBtn}
+            onClick={(ev) => { ev.stopPropagation(); handleDelete(node.id); }}
+            title="Delete"
+          >×</button>
+        </div>
+      </div>
+    );
+  }
 
   const layersPanelContent = (
-    <div className={styles.layerList}>
-      {sortedLayers.map((e) => (
-        <div
-          key={e.id}
-          className={`${styles.layerItem} ${selectedElementIds.includes(e.id) ? styles.layerItemActive : ""}`}
-          onClick={(ev) => {
-            if (ev.shiftKey) {
-              const next = selectedElementIds.includes(e.id)
-                ? selectedElementIds.filter((id) => id !== e.id)
-                : [...selectedElementIds, e.id];
-              selectElements(next.length > 0 ? next : [e.id]);
-            } else {
-              selectElement(e.id);
-            }
-          }}
-        >
-          <span className={styles.layerIcon}>{getKindIcon(e.data.kind)}</span>
-          {editingLabelId === e.id ? (
-            <input
-              autoFocus
-              className={styles.layerLabelInput}
-              value={labelDraft}
-              onChange={(ev) => setLabelDraft(ev.target.value)}
-              onBlur={commitLabel}
-              onKeyDown={(ev) => { if (ev.key === "Enter" || ev.key === "Escape") commitLabel(); }}
-              onClick={(ev) => ev.stopPropagation()}
-            />
-          ) : (
-            <span className={styles.layerName} onDoubleClick={(ev) => { ev.stopPropagation(); startLabelEdit(e); }}>
-              {getElementLabel(e)}
-            </span>
-          )}
-          <div className={styles.layerActions}>
-            <button
-              className={styles.layerOrderBtn}
-              title="Move up"
-              data-testid={`layer-up-${e.id}`}
-              onClick={(ev) => { ev.stopPropagation(); handleMoveUp(e); }}
-            >↑</button>
-            <button
-              className={styles.layerOrderBtn}
-              title="Move down"
-              data-testid={`layer-down-${e.id}`}
-              onClick={(ev) => { ev.stopPropagation(); handleMoveDown(e); }}
-            >↓</button>
-            <button
-              className={styles.layerDeleteBtn}
-              onClick={(ev) => { ev.stopPropagation(); handleDelete(e.id); }}
-              title="Delete"
-            >×</button>
-          </div>
+    <div className={styles.layersPane}>
+      <div className={styles.layersToolbar}>
+        <input
+          className={styles.layerFilter}
+          placeholder="Find a layer…"
+          value={filter}
+          data-testid="layer-filter"
+          onChange={(e) => setFilter(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setFilter(""); } }}
+        />
+        <div className={styles.layersActions}>
+          <button
+            className={controls.iconButton}
+            disabled={readOnly || selectedElementIds.length < 2}
+            title="Group the selected layers (⌘G)"
+            data-testid="group-selection"
+            onClick={handleGroupSelection}
+          >Group</button>
+          <button
+            className={controls.iconButton}
+            disabled={readOnly || selectedElementIds.length === 0}
+            title="Ungroup (⇧⌘G)"
+            data-testid="ungroup-selection"
+            onClick={ungroupSelection}
+          >Ungroup</button>
+          <button
+            className={controls.iconButton}
+            disabled={readOnly || selectedElementIds.length === 0}
+            title="Wrap the selection in a frame"
+            data-testid="frame-selection"
+            onClick={handleFrameSelection}
+          >Frame</button>
         </div>
-      ))}
-      {elements.length === 0 && <p className={styles.hint}>No elements yet.</p>}
+      </div>
+
+      <div className={styles.layerList}>
+        {tree.map((node) => renderNode(node, 0))}
+        {elements.length === 0 && <p className={styles.hint}>No elements yet.</p>}
+        {elements.length > 0 && tree.length === 0 && (
+          <p className={styles.hint}>No layer matches “{filter}”.</p>
+        )}
+      </div>
     </div>
   );
 
@@ -368,15 +677,96 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
   );
 
   // ── PROPERTIES TAB ────────────────────────────────────────────────────────────
-  const propertiesPanel = selectedElementIds.length > 1 ? (
-    <div className={styles.emptyState}>
-      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ccc" strokeWidth="1.5" strokeLinecap="round">
-        <rect x="2" y="2" width="9" height="9" rx="1"/><rect x="13" y="2" width="9" height="9" rx="1"/>
-        <rect x="2" y="13" width="9" height="9" rx="1"/><rect x="13" y="13" width="9" height="9" rx="1"/>
-      </svg>
-      <p>{selectedElementIds.length} elements selected</p>
+
+  /** Bulk alignment for a multi-selection, against the selection's own bounds. */
+  function alignSelection(edge: "left" | "hcenter" | "right" | "top" | "vmiddle" | "bottom") {
+    if (readOnly || selectedElements.length < 2) return;
+    const minX = Math.min(...selectedElements.map((e) => e.x));
+    const maxX = Math.max(...selectedElements.map((e) => e.x + e.width));
+    const minY = Math.min(...selectedElements.map((e) => e.y));
+    const maxY = Math.max(...selectedElements.map((e) => e.y + e.height));
+    snapshot();
+    for (const target of selectedElements) {
+      switch (edge) {
+        case "left":    updateOne(target, { x: Math.round(minX) }); break;
+        case "right":   updateOne(target, { x: Math.round(maxX - target.width) }); break;
+        case "hcenter": updateOne(target, { x: Math.round((minX + maxX) / 2 - target.width / 2) }); break;
+        case "top":     updateOne(target, { y: Math.round(minY) }); break;
+        case "bottom":  updateOne(target, { y: Math.round(maxY - target.height) }); break;
+        case "vmiddle": updateOne(target, { y: Math.round((minY + maxY) / 2 - target.height / 2) }); break;
+      }
+    }
+  }
+
+  const multiPanel = (
+    <div className={styles.propContent}>
+      <div className={styles.kindRow}>
+        <span className={styles.kindBadge}>{selectedElementIds.length} selected</span>
+        <button
+          className={controls.iconButton}
+          data-testid="clear-selection"
+          onClick={() => selectElements([])}
+        >Clear</button>
+      </div>
+
+      <div className={styles.group}>
+        <div className={styles.groupTitle}>Align</div>
+        <div className={styles.alignGrid}>
+          {([
+            ["left", "⇤", "Align left"],
+            ["hcenter", "⇹", "Align horizontal centres"],
+            ["right", "⇥", "Align right"],
+            ["top", "⤒", "Align top"],
+            ["vmiddle", "⇳", "Align vertical centres"],
+            ["bottom", "⤓", "Align bottom"],
+          ] as const).map(([edge, glyph, title]) => (
+            <button
+              key={edge}
+              className={controls.iconButton}
+              title={title}
+              disabled={readOnly}
+              data-testid={`align-${edge}`}
+              onClick={() => alignSelection(edge)}
+            >{glyph}</button>
+          ))}
+        </div>
+      </div>
+
+      <div className={styles.group}>
+        <div className={styles.groupTitle}>Organise</div>
+        <div className={styles.stackRow}>
+          <button className={controls.iconButton} disabled={readOnly} data-testid="group-selection-props" onClick={handleGroupSelection}>Group</button>
+          <button className={controls.iconButton} disabled={readOnly} onClick={handleFrameSelection}>Frame</button>
+          <button className={controls.iconButton} disabled={readOnly} onClick={ungroupSelection}>Ungroup</button>
+        </div>
+        <div className={styles.stackRow} style={{ marginTop: 6 }}>
+          <button
+            className={controls.iconButton}
+            data-testid="export-selection-png"
+            onClick={() => handleExportNode({ kind: "group", path: "selection", name: "selection", children: [], elementIds: selectedElementIds, layerIndex: 0 }, "png")}
+          >Export PNG</button>
+          <button
+            className={controls.iconButton}
+            data-testid="export-selection-svg"
+            onClick={() => handleExportNode({ kind: "group", path: "selection", name: "selection", children: [], elementIds: selectedElementIds, layerIndex: 0 }, "svg")}
+          >Export SVG</button>
+        </div>
+      </div>
+
+      <div className={styles.deleteRow}>
+        <button
+          className={`${controls.iconButton} ${controls.iconButtonDanger}`}
+          disabled={readOnly}
+          data-testid="delete-selection"
+          onClick={() => handleDeleteMany(selectedElementIds)}
+        >
+          Delete {selectedElementIds.length} layers
+        </button>
+      </div>
     </div>
-  ) : !el ? (
+  );
+
+  const propertiesPanel = selectedElementIds.length > 1 ? multiPanel : !el ? (
     <div className={styles.emptyState}>
       <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ccc" strokeWidth="1.5" strokeLinecap="round">
         <rect x="3" y="3" width="18" height="18" rx="2"/>
@@ -391,61 +781,57 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
       <div className={styles.kindRow}>
         <span className={styles.kindBadge}>{el.data.kind}</span>
         <div className={styles.layerBtns}>
-          <button className={styles.layerBtn} title="Bring to Front" data-testid="bring-to-front" onClick={() => handleBringToFront()}>↑ Front</button>
-          <button className={styles.layerBtn} title="Send to Back" data-testid="send-to-back" onClick={() => handleSendToBack()}>↓ Back</button>
+          <button className={controls.iconButton} title="Bring to Front" data-testid="bring-to-front" onClick={() => handleBringToFront()}>↑ Front</button>
+          <button className={controls.iconButton} title="Send to Back" data-testid="send-to-back" onClick={() => handleSendToBack()}>↓ Back</button>
         </div>
+      </div>
+
+      {/* Name */}
+      <div className={styles.group}>
+        <div className={styles.groupTitle}>Name</div>
+        <input
+          className={styles.textInput}
+          value={nameOf(el)}
+          data-testid="element-name"
+          disabled={readOnly}
+          onChange={(e) => {
+            const label = renameElement(el, e.target.value);
+            setElementLabel(el.id, label);
+          }}
+          onBlur={() => {
+            rpcCall(contextId, "update_element_label", {
+              id: el.id, label: el.label ?? "", updated_at: Date.now(),
+            }).catch((e) => reportFailure.current("update_element_label", e));
+          }}
+        />
       </div>
 
       {/* Position + Size */}
       <div className={styles.group}>
         <div className={styles.groupTitle}>Position &amp; Size</div>
         <div className={styles.grid2}>
-          <div className={styles.fieldWrap}>
-            <label className={styles.fieldLabel}>X</label>
-            <input type="number" className={styles.field}
-              value={el.x} onChange={(e) => update({ x: Number(e.target.value) })} />
-          </div>
-          <div className={styles.fieldWrap}>
-            <label className={styles.fieldLabel}>Y</label>
-            <input type="number" className={styles.field}
-              value={el.y} onChange={(e) => update({ y: Number(e.target.value) })} />
-          </div>
-          <div className={styles.fieldWrap}>
-            <label className={styles.fieldLabel}>W</label>
-            <input type="number" className={styles.field} min={1}
-              value={el.width} onChange={(e) => update({ width: Math.max(1, Number(e.target.value)) })} />
-          </div>
-          <div className={styles.fieldWrap}>
-            <label className={styles.fieldLabel}>H</label>
-            <input type="number" className={styles.field} min={1}
-              value={el.height} onChange={(e) => update({ height: Math.max(1, Number(e.target.value)) })} />
-          </div>
-          <div className={styles.fieldWrap} style={{ gridColumn: "span 2" }}>
-            <label className={styles.fieldLabel}>Rotation</label>
-            <input type="number" className={styles.field}
-              value={el.rotation} onChange={(e) => update({ rotation: Number(e.target.value) })} />
-          </div>
+          <NumberField label="X" value={el.x} disabled={readOnly} testId="prop-x"
+            onChange={(v) => update({ x: v })} />
+          <NumberField label="Y" value={el.y} disabled={readOnly} testId="prop-y"
+            onChange={(v) => update({ y: v })} />
+          <NumberField label="W" min={1} value={el.width} disabled={readOnly} testId="prop-w"
+            onChange={(v) => update({ width: v })} />
+          <NumberField label="H" min={1} value={el.height} disabled={readOnly} testId="prop-h"
+            onChange={(v) => update({ height: v })} />
+          <NumberField label="∠" suffix="°" value={el.rotation} disabled={readOnly} testId="prop-rotation"
+            onChange={(v) => update({ rotation: v })} />
           {/* item 14: corner radius, clamped so a large value cannot invert the shape */}
           {el.data.kind === "rect" && (
-            <div className={styles.fieldWrap} style={{ gridColumn: "span 2" }}>
-              <label className={styles.fieldLabel}>Corner radius</label>
-              <input
-                type="number"
-                className={styles.field}
-                min={0}
-                max={Math.floor(Math.min(el.width, el.height) / 2)}
-                data-testid="prop-corner-radius"
-                value={el.cornerRadius ?? 0}
-                onChange={(e) =>
-                  update({
-                    cornerRadius: Math.max(
-                      0,
-                      Math.min(Number(e.target.value) || 0, Math.floor(Math.min(el.width, el.height) / 2)),
-                    ),
-                  })
-                }
-              />
-            </div>
+            <NumberField
+              label="⌒"
+              min={0}
+              max={Math.floor(Math.min(el.width, el.height) / 2)}
+              value={el.cornerRadius ?? 0}
+              disabled={readOnly}
+              testId="prop-corner-radius"
+              title="Corner radius"
+              onChange={(v) => update({ cornerRadius: v })}
+            />
           )}
         </div>
       </div>
@@ -457,71 +843,71 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
           <textarea
             className={styles.textarea}
             value={el.data.content ?? ""}
+            disabled={readOnly}
+            data-testid="prop-text-content"
             onChange={(e) => updateTextStyle({ content: e.target.value })}
+            onKeyDown={(e) => { if (e.key === "Escape") e.stopPropagation(); }}
             rows={2}
           />
-          <div className={styles.grid2}>
-            <div className={styles.fieldWrap} style={{ gridColumn: "span 2" }}>
-              <label className={styles.fieldLabel}>Font</label>
-              <select className={styles.select}
-                value={el.data.fontFamily ?? "sans-serif"}
-                onChange={(e) => updateTextStyle({ fontFamily: e.target.value })}>
-                {FONTS.map((f) => <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>)}
-              </select>
-            </div>
-            <div className={styles.fieldWrap}>
-              <label className={styles.fieldLabel}>Size</label>
-              <input type="number" className={styles.field} min={6} max={288}
-                value={el.data.fontSize ?? 24}
-                onChange={(e) => updateTextStyle({ fontSize: Number(e.target.value) })} />
-            </div>
-            <div className={styles.fieldWrap}>
-              <label className={styles.fieldLabel}>Style</label>
-              <div className={styles.styleBtns}>
-                <button
-                  className={`${styles.styleBtn} ${el.data.bold ? styles.styleBtnActive : ""}`}
-                  style={{ fontWeight: "bold" }}
-                  onClick={() => updateTextStyle({ bold: !el.data.bold })}
-                >B</button>
-                <button
-                  className={`${styles.styleBtn} ${el.data.italic ? styles.styleBtnActive : ""}`}
-                  style={{ fontStyle: "italic" }}
-                  onClick={() => updateTextStyle({ italic: !el.data.italic })}
-                >I</button>
-              </div>
-            </div>
+          <div className={styles.fieldStack}>
+            <label className={styles.fieldLabel}>Font</label>
+            <Select
+              value={el.data.fontFamily ?? "sans-serif"}
+              disabled={readOnly}
+              testId="prop-font"
+              ariaLabel="Font family"
+              options={FONTS.map((f) => ({ value: f, label: f, style: { fontFamily: f } }))}
+              onChange={(f) => updateTextStyle({ fontFamily: f })}
+            />
+          </div>
+          <div className={styles.grid2} style={{ marginTop: 6 }}>
+            <NumberField
+              label="Aa" min={6} max={288} value={el.data.fontSize ?? 24}
+              disabled={readOnly} testId="prop-font-size" title="Font size"
+              onChange={(v) => updateTextStyle({ fontSize: v })}
+            />
+            <Segmented
+              value={null}
+              ariaLabel="Font style"
+              disabled={readOnly}
+              segments={[
+                { value: "bold", content: "B", title: "Bold", style: { fontWeight: 700, color: el.data.bold ? "var(--c-accent)" : undefined } },
+                { value: "italic", content: "I", title: "Italic", style: { fontStyle: "italic", color: el.data.italic ? "var(--c-accent)" : undefined } },
+              ]}
+              onChange={(v) => updateTextStyle(v === "bold" ? { bold: !el.data.bold } : { italic: !el.data.italic })}
+            />
           </div>
 
-          {/* Horizontal alignment */}
-          <div className={styles.fieldWrap} style={{ marginTop: 6 }}>
-            <label className={styles.fieldLabel}>Align H</label>
-            <div className={styles.styleBtns} data-testid="align-h-btns">
-              {(["left", "center", "right"] as const).map((a) => (
-                <button
-                  key={a}
-                  data-testid={`align-h-${a}`}
-                  className={`${styles.styleBtn} ${(el.data.text_align ?? "left") === a ? styles.styleBtnActive : ""}`}
-                  title={`Align ${a}`}
-                  onClick={() => updateTextStyle({ text_align: a })}
-                >{a === "left" ? "⇐" : a === "center" ? "≡" : "⇒"}</button>
-              ))}
-            </div>
+          <div className={styles.fieldStack} style={{ marginTop: 6 }}>
+            <label className={styles.fieldLabel}>Align</label>
+            <Segmented
+              testId="align-h-btns"
+              ariaLabel="Horizontal alignment"
+              disabled={readOnly}
+              value={el.data.text_align ?? "left"}
+              segments={[
+                { value: "left", content: "⇤", title: "Align left", testId: "align-h-left" },
+                { value: "center", content: "≡", title: "Align centre", testId: "align-h-center" },
+                { value: "right", content: "⇥", title: "Align right", testId: "align-h-right" },
+              ]}
+              onChange={(a) => updateTextStyle({ text_align: a })}
+            />
           </div>
 
-          {/* Vertical alignment */}
-          <div className={styles.fieldWrap} style={{ marginTop: 4 }}>
-            <label className={styles.fieldLabel}>Align V</label>
-            <div className={styles.styleBtns} data-testid="align-v-btns">
-              {(["top", "middle", "bottom"] as const).map((a) => (
-                <button
-                  key={a}
-                  data-testid={`align-v-${a}`}
-                  className={`${styles.styleBtn} ${(el.data.vertical_align ?? "top") === a ? styles.styleBtnActive : ""}`}
-                  title={`Align ${a}`}
-                  onClick={() => updateTextStyle({ vertical_align: a })}
-                >{a === "top" ? "⇈" : a === "middle" ? "↕" : "⇊"}</button>
-              ))}
-            </div>
+          <div className={styles.fieldStack} style={{ marginTop: 6 }}>
+            <label className={styles.fieldLabel}>Vertical</label>
+            <Segmented
+              testId="align-v-btns"
+              ariaLabel="Vertical alignment"
+              disabled={readOnly}
+              value={el.data.vertical_align ?? "top"}
+              segments={[
+                { value: "top", content: "⤒", title: "Align top", testId: "align-v-top" },
+                { value: "middle", content: "⇳", title: "Align middle", testId: "align-v-middle" },
+                { value: "bottom", content: "⤓", title: "Align bottom", testId: "align-v-bottom" },
+              ]}
+              onChange={(a) => updateTextStyle({ vertical_align: a })}
+            />
           </div>
         </div>
       )}
@@ -530,65 +916,60 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
       <div className={styles.group}>
         <div className={styles.groupTitle}>Appearance</div>
 
-        {/* Fill */}
         <div className={styles.colorRow}>
-          <input
-            type="checkbox"
-            className={styles.check}
+          <Checkbox
             checked={!!el.fill && el.fill !== "transparent"}
-            onChange={(e) => update({ fill: e.target.checked ? "#4F8EF7" : "transparent" })}
+            disabled={readOnly}
+            testId="fill-toggle"
+            label="Fill"
+            onChange={(on) => update({ fill: on ? "#4F8EF7" : "transparent" })}
           />
-          <span className={styles.colorLabel}>Fill</span>
           {el.fill && el.fill !== "transparent" ? (
-            <input type="color" className={styles.colorSwatch}
-              value={el.fill} data-testid="fill-color"
-              onChange={(e) => update({ fill: e.target.value })} />
+            <ColorField value={el.fill} disabled={readOnly} testId="fill-color" title="Fill colour"
+              onChange={(c) => update({ fill: c })} />
           ) : (
             <span className={styles.colorNone}>—</span>
-          )}
-          {el.fill && el.fill !== "transparent" && (
-            <span className={styles.colorHex}>{el.fill}</span>
           )}
         </div>
 
-        {/* Stroke */}
         <div className={styles.colorRow}>
-          <input
-            type="checkbox"
-            className={styles.check}
+          <Checkbox
             checked={!!el.stroke && el.stroke !== "transparent" && el.stroke !== "none"}
-            onChange={(e) => update({ stroke: e.target.checked ? "#000000" : "transparent" })}
+            disabled={readOnly}
+            testId="stroke-toggle"
+            label="Stroke"
+            onChange={(on) => update({ stroke: on ? "#000000" : "transparent" })}
           />
-          <span className={styles.colorLabel}>Stroke</span>
           {el.stroke && el.stroke !== "transparent" && el.stroke !== "none" ? (
-            <input type="color" className={styles.colorSwatch}
-              value={el.stroke} data-testid="stroke-color"
-              onChange={(e) => update({ stroke: e.target.value })} />
+            <ColorField value={el.stroke} disabled={readOnly} testId="stroke-color" title="Stroke colour"
+              onChange={(c) => update({ stroke: c })} />
           ) : (
             <span className={styles.colorNone}>—</span>
-          )}
-          {el.stroke && el.stroke !== "transparent" && el.stroke !== "none" && (
-            <span className={styles.colorHex}>{el.stroke}</span>
           )}
         </div>
 
         {el.stroke && el.stroke !== "transparent" && el.stroke !== "none" && (
-          <div className={styles.fieldWrap} style={{ marginTop: 4 }}>
-            <label className={styles.fieldLabel}>Stroke W</label>
-            <input type="number" className={styles.field} min={1} max={50}
-              value={el.strokeWidth}
-              onChange={(e) => update({ strokeWidth: Number(e.target.value) })} />
+          <div className={styles.fieldRow}>
+            <label className={styles.fieldLabel}>Width</label>
+            <NumberField
+              min={1} max={50} value={el.strokeWidth} disabled={readOnly} testId="prop-stroke-width"
+              onChange={(v) => update({ strokeWidth: v })}
+            />
           </div>
         )}
 
-        {/* Opacity */}
         <div className={styles.opacityRow}>
-          <span className={styles.colorLabel}>Opacity</span>
-          <input type="range" min={0} max={100}
-            value={el.opacity} className={styles.slider}
-            data-testid="opacity-slider"
-            onChange={(e) => update({ opacity: Number(e.target.value) })} />
-          <span className={styles.opacityVal}>{el.opacity}%</span>
+          <span className={styles.fieldLabel}>Opacity</span>
+          <Slider
+            value={el.opacity} min={0} max={100} disabled={readOnly}
+            testId="opacity-slider" ariaLabel="Opacity"
+            onChange={(v) => update({ opacity: v })}
+          />
+          <NumberField
+            value={el.opacity} min={0} max={100} suffix="%" disabled={readOnly}
+            testId="prop-opacity" className={styles.opacityNumber}
+            onChange={(v) => update({ opacity: v })}
+          />
         </div>
       </div>
 
@@ -596,74 +977,92 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
       <div className={styles.group}>
         <div className={styles.shadowRow}>
           <div className={styles.groupTitle} style={{ marginBottom: 0 }}>Shadow</div>
-          <input type="checkbox" className={styles.check}
-            disabled={readOnly}
+          <Switch
             checked={(el.shadowBlur ?? 0) > 0}
-            onChange={(e) => {
+            disabled={readOnly}
+            testId="shadow-toggle"
+            onChange={(on) => {
               const updatedAt = Date.now();
-              if (e.target.checked) {
+              if (on) {
                 upsertElement({ ...el, shadowColor: "rgba(0,0,0,0.3)", shadowOffsetX: 0, shadowOffsetY: 4, shadowBlur: 12, updatedAt });
                 rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: "rgba(0,0,0,0.3)", shadow_offset_x: 0, shadow_offset_y: 4, shadow_blur: 12, updated_at: updatedAt }).catch((e) => reportFailure.current("update_shadow", e));
               } else {
                 upsertElement({ ...el, shadowColor: null, shadowOffsetX: null, shadowOffsetY: null, shadowBlur: null, updatedAt });
                 rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: null, shadow_offset_x: null, shadow_offset_y: null, shadow_blur: null, updated_at: updatedAt }).catch((e) => reportFailure.current("update_shadow", e));
               }
-            }} />
+            }}
+          />
         </div>
 
         {(el.shadowBlur ?? 0) > 0 && (
-          <div className={styles.grid2} style={{ marginTop: 6 }}>
-            <div className={styles.fieldWrap} style={{ gridColumn: "span 2" }}>
-              <label className={styles.fieldLabel}>Color</label>
-              <input type="color" className={styles.colorSwatch}
-                disabled={readOnly}
+          <>
+            <div className={styles.fieldRow} style={{ marginTop: 6 }}>
+              <label className={styles.fieldLabel}>Colour</label>
+              <ColorField
                 value={el.shadowColor?.startsWith("rgba") ? "#000000" : (el.shadowColor ?? "#000000")}
-                onChange={(e) => {
-                  const updatedAt = Date.now();
-                  upsertElement({ ...el, shadowColor: e.target.value, updatedAt });
-                  rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: e.target.value, shadow_offset_x: el.shadowOffsetX ?? null, shadow_offset_y: el.shadowOffsetY ?? null, shadow_blur: el.shadowBlur ?? null, updated_at: updatedAt }).catch((e) => reportFailure.current("update_shadow", e));
-                }} />
-            </div>
-            <div className={styles.fieldWrap}>
-              <label className={styles.fieldLabel}>Blur</label>
-              <input type="number" className={styles.field} min={0} max={50}
                 disabled={readOnly}
-                value={el.shadowBlur ?? 0}
-                onChange={(e) => {
+                testId="shadow-color"
+                onChange={(c) => {
                   const updatedAt = Date.now();
-                  upsertElement({ ...el, shadowBlur: Number(e.target.value), updatedAt });
-                  rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: el.shadowColor ?? null, shadow_offset_x: el.shadowOffsetX ?? null, shadow_offset_y: el.shadowOffsetY ?? null, shadow_blur: Number(e.target.value), updated_at: updatedAt }).catch((e) => reportFailure.current("update_shadow", e));
-                }} />
+                  upsertElement({ ...el, shadowColor: c, updatedAt });
+                  rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: c, shadow_offset_x: el.shadowOffsetX ?? null, shadow_offset_y: el.shadowOffsetY ?? null, shadow_blur: el.shadowBlur ?? null, updated_at: updatedAt }).catch((e) => reportFailure.current("update_shadow", e));
+                }}
+              />
             </div>
-            <div className={styles.fieldWrap}>
-              <label className={styles.fieldLabel}>Offset X</label>
-              <input type="number" className={styles.field}
-                disabled={readOnly}
-                value={el.shadowOffsetX ?? 0}
-                onChange={(e) => {
+            <div className={styles.grid2} style={{ marginTop: 6 }}>
+              <NumberField
+                label="Blur" min={0} max={50} value={el.shadowBlur ?? 0} disabled={readOnly} testId="shadow-blur"
+                onChange={(v) => {
                   const updatedAt = Date.now();
-                  upsertElement({ ...el, shadowOffsetX: Number(e.target.value), updatedAt });
-                  rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: el.shadowColor ?? null, shadow_offset_x: Number(e.target.value), shadow_offset_y: el.shadowOffsetY ?? null, shadow_blur: el.shadowBlur ?? null, updated_at: updatedAt }).catch((e) => reportFailure.current("update_shadow", e));
-                }} />
-            </div>
-            <div className={styles.fieldWrap}>
-              <label className={styles.fieldLabel}>Offset Y</label>
-              <input type="number" className={styles.field}
-                disabled={readOnly}
-                value={el.shadowOffsetY ?? 0}
-                onChange={(e) => {
+                  upsertElement({ ...el, shadowBlur: v, updatedAt });
+                  rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: el.shadowColor ?? null, shadow_offset_x: el.shadowOffsetX ?? null, shadow_offset_y: el.shadowOffsetY ?? null, shadow_blur: v, updated_at: updatedAt }).catch((e) => reportFailure.current("update_shadow", e));
+                }}
+              />
+              <NumberField
+                label="X" value={el.shadowOffsetX ?? 0} disabled={readOnly} testId="shadow-x"
+                onChange={(v) => {
                   const updatedAt = Date.now();
-                  upsertElement({ ...el, shadowOffsetY: Number(e.target.value), updatedAt });
-                  rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: el.shadowColor ?? null, shadow_offset_x: el.shadowOffsetX ?? null, shadow_offset_y: Number(e.target.value), shadow_blur: el.shadowBlur ?? null, updated_at: updatedAt }).catch((e) => reportFailure.current("update_shadow", e));
-                }} />
+                  upsertElement({ ...el, shadowOffsetX: v, updatedAt });
+                  rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: el.shadowColor ?? null, shadow_offset_x: v, shadow_offset_y: el.shadowOffsetY ?? null, shadow_blur: el.shadowBlur ?? null, updated_at: updatedAt }).catch((e) => reportFailure.current("update_shadow", e));
+                }}
+              />
+              <NumberField
+                label="Y" value={el.shadowOffsetY ?? 0} disabled={readOnly} testId="shadow-y"
+                onChange={(v) => {
+                  const updatedAt = Date.now();
+                  upsertElement({ ...el, shadowOffsetY: v, updatedAt });
+                  rpcCall(contextId, "update_shadow", { id: el.id, shadow_color: el.shadowColor ?? null, shadow_offset_x: el.shadowOffsetX ?? null, shadow_offset_y: v, shadow_blur: el.shadowBlur ?? null, updated_at: updatedAt }).catch((e) => reportFailure.current("update_shadow", e));
+                }}
+              />
             </div>
-          </div>
+          </>
         )}
       </div>
 
-      {/* Delete */}
+      {/* Export + delete */}
+      <div className={styles.group}>
+        <div className={styles.groupTitle}>Export</div>
+        <div className={styles.stackRow}>
+          <button
+            className={controls.iconButton}
+            data-testid="export-element-png"
+            onClick={() => handleExportNode({ kind: "element", id: el.id, name: nameOf(el), path: el.label ?? "", element: el, layerIndex: el.layerIndex }, "png")}
+          >PNG</button>
+          <button
+            className={controls.iconButton}
+            data-testid="export-element-svg"
+            onClick={() => handleExportNode({ kind: "element", id: el.id, name: nameOf(el), path: el.label ?? "", element: el, layerIndex: el.layerIndex }, "svg")}
+          >SVG</button>
+        </div>
+      </div>
+
       <div className={styles.deleteRow}>
-        <button className={styles.deleteBtn} data-testid="delete-element" disabled={readOnly} onClick={() => handleDelete()}>
+        <button
+          className={`${controls.iconButton} ${controls.iconButtonDanger}`}
+          data-testid="delete-element"
+          disabled={readOnly}
+          onClick={() => handleDelete()}
+        >
           Delete element
         </button>
       </div>
@@ -672,7 +1071,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
   );
 
   return (
-    <div className={styles.panel}>
+    <div className={`${styles.panel} ${controls.kit}`}>
       <div className={styles.tabBar}>
         {(["properties", "layers", "prototype"] as PanelTab[]).map((t) => (
           <button key={t} className={`${styles.tabBtn} ${tab === t ? styles.tabBtnActive : ""}`} onClick={() => setTab(t)}>
