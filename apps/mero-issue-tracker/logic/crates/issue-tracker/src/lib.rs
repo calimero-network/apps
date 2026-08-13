@@ -17,6 +17,7 @@
 //!   `Comment` map values (#2577 nested-register re-keying).
 //! - `app::emit!`, named-struct returns (no tuples — ABI-safe views).
 
+use calimero_sdk::abi::AbiType;
 use calimero_sdk::app;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::env;
@@ -52,7 +53,7 @@ const LABEL_SEP: char = '\u{1}';
 /// A single issue on the board. `id`, `created_by`, `created_at` are set once at
 /// creation; every mutable field is a `LwwRegister` so concurrent edits converge
 /// last-writer-wins. Labels live in a separate flat index (see `IssueTracker`).
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct Issue {
     pub id: String,
@@ -130,7 +131,7 @@ impl RekeyTarget for Issue {
 /// A discussion entry on an issue. `id`, `issue_id`, `author`, `created_at` are
 /// immutable; `body` and `edited_at` are LWW registers. Only the `author` may
 /// edit or delete (enforced in-logic against the immutable field).
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct Comment {
     pub id: String,
@@ -173,7 +174,7 @@ impl RekeyTarget for Comment {
 // ---------------------------------------------------------------------------
 
 /// An issue as returned to the frontend/scripts.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct IssueView {
     pub id: String,
@@ -191,7 +192,7 @@ pub struct IssueView {
 }
 
 /// A comment as returned to the frontend/scripts.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct CommentView {
     pub id: String,
@@ -203,7 +204,7 @@ pub struct CommentView {
 }
 
 /// A full issue plus its comment thread (named struct — never a tuple return).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct IssueDetail {
     pub issue: IssueView,
@@ -211,7 +212,7 @@ pub struct IssueDetail {
 }
 
 /// One board column's live count (named struct — never a `(String, u64)` tuple).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct StatusCount {
     pub status: String,
@@ -219,7 +220,7 @@ pub struct StatusCount {
 }
 
 /// This context's repository metadata. `repo_url` is empty until `set_repo_url`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct RepoInfo {
     pub repo_url: String,
@@ -688,9 +689,11 @@ impl IssueTracker {
 // ---------------------------------------------------------------------------
 
 impl IssueTracker {
-    /// Base58 of the current executor — the public, shareable identity string.
+    /// Base58 of the executing identity — the public, shareable identity string.
+    /// Device, not account: this is the executor key the frontend compares
+    /// `created_by`/`author` against when gating edit and delete.
     fn caller(&self) -> String {
-        bs58::encode(env::executor_id()).into_string()
+        bs58::encode(env::device_id()).into_string()
     }
 
     fn issue_exists(&self, issue_id: &str) -> app::Result<bool> {
@@ -814,6 +817,7 @@ mod tests {
 
     use super::*;
 
+    // `call_as` moves the device, which is the axis `caller()` reads.
     const OTHER: [u8; 32] = [0x22; 32];
 
     fn new_issue(app: &mut TestHost<IssueTracker>) -> String {
@@ -1139,7 +1143,7 @@ mod tests {
             .call(|s| s.add_comment(id.clone(), "mine".into()))
             .unwrap();
 
-        // A different executor is not the author — both must be rejected.
+        // A different executor is not the author - both must be rejected.
         assert!(app
             .call_as(OTHER, |s| s.edit_comment(c.clone(), "hax".into()))
             .is_err());

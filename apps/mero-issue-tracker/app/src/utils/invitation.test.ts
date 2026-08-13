@@ -1,48 +1,75 @@
 import { describe, it, expect } from 'vitest';
-import { encodeInvitation, decodeInvitation } from './invitation';
+import {
+  APP_SLUG,
+  decodeInvitation,
+  encodeInvitation,
+  generateInvitationDeepLink,
+  generateInvitationUrl,
+  parseInvitationInput,
+} from './invitation';
+import { APP_PACKAGE } from '../config';
 
-// A realistic invitation shape: nested object with a byte-array identity,
-// exactly the kind of payload we want to hide behind a copy-safe code.
+/** Deterministic stand-in for a 32/64-byte identity or signature blob. */
+const bytes = (n: number, seed: number) =>
+  Array.from({ length: n }, (_, i) => (i * 37 + seed * 101) % 256);
+
+// Mirrors a real namespace invitation: the byte-array blobs are what make the
+// payload big, and they are why the codec compresses before encoding. Using a
+// realistic size here keeps the length assertions meaningful — a toy object is
+// small enough that base58's ~1.37x expansion outweighs any compression.
 const SAMPLE = {
   invitations: [
     {
       groupId: '20150f8a24c5cd0569743966240da01966b91d85e1c1e3a535ba3de98b864f59',
       invitation: {
         invitation: {
-          inviter_identity: [117, 166, 29, 200, 171, 136, 188, 45, 69, 32],
+          inviter_identity: bytes(32, 1),
+          invitee_identity: bytes(32, 2),
+          group_id: bytes(32, 3),
+          context_id: bytes(32, 4),
+          expires_at: 1786000000000,
         },
+        inviter_signature: bytes(64, 5),
       },
-      groupAlias: 'Red',
+      groupAlias: 'Engineering',
     },
   ],
 };
 
 describe('invitation codec', () => {
-  it('round-trips an invitation object through base64', () => {
+  it('round-trips an invitation object', () => {
     const code = encodeInvitation(SAMPLE);
-    expect(typeof code).toBe('string');
-    // base64 token must not look like raw JSON
     expect(code.startsWith('{')).toBe(false);
     expect(decodeInvitation(code)).toEqual(SAMPLE);
   });
 
-  it('produces a base64-only token (no JSON punctuation)', () => {
-    const code = encodeInvitation(SAMPLE);
-    expect(code).toMatch(/^[A-Za-z0-9+/=]+$/);
+  it('produces a base58 token (no URL-unsafe characters)', () => {
+    expect(encodeInvitation(SAMPLE)).toMatch(/^[1-9A-HJ-NP-Za-km-z]+$/);
+  });
+
+  it('is markedly shorter than the base64 it replaced', () => {
+    const json = JSON.stringify(SAMPLE);
+    const base64Length = Buffer.from(json, 'utf8').toString('base64').length;
+    expect(encodeInvitation(SAMPLE).length).toBeLessThan(base64Length * 0.75);
   });
 
   it('still decodes raw JSON (backward compatibility)', () => {
-    const raw = JSON.stringify(SAMPLE);
-    expect(decodeInvitation(raw)).toEqual(SAMPLE);
+    expect(decodeInvitation(JSON.stringify(SAMPLE))).toEqual(SAMPLE);
+  });
+
+  it('still decodes a legacy plain-base64 code', () => {
+    const legacy = btoa(
+      String.fromCharCode(...new TextEncoder().encode(JSON.stringify(SAMPLE))),
+    );
+    expect(decodeInvitation(legacy)).toEqual(SAMPLE);
   });
 
   it('tolerates surrounding + internal whitespace in a code', () => {
     const code = encodeInvitation(SAMPLE);
-    const messy = `  ${code.slice(0, 8)}\n${code.slice(8)}  `;
-    expect(decodeInvitation(messy)).toEqual(SAMPLE);
+    expect(decodeInvitation(`  ${code.slice(0, 8)}\n${code.slice(8)}  `)).toEqual(SAMPLE);
   });
 
-  it('preserves unicode in captions/names', () => {
+  it('preserves unicode in names', () => {
     const obj = { groupAlias: 'Café ☕ 团队', n: 1 };
     expect(decodeInvitation(encodeInvitation(obj))).toEqual(obj);
   });
@@ -51,17 +78,49 @@ describe('invitation codec', () => {
     expect(() => decodeInvitation('   ')).toThrow();
   });
 
-  it('throws on a non-base64 / non-JSON string', () => {
-    // contains characters outside the base64 alphabet
+  it('throws on a string that decodes to nothing meaningful', () => {
     expect(() => decodeInvitation('not a code !!!')).toThrow();
+    expect(() => decodeInvitation(btoa('this is not json'))).toThrow();
+  });
+});
+
+describe('shareable links', () => {
+  const payload = JSON.stringify(SAMPLE);
+
+  it('builds an HTTPS link on the deep-link host, slugged by package id', () => {
+    const url = new URL(generateInvitationUrl(payload));
+    expect(url.origin).toBe('https://links.calimero.network');
+    expect(url.pathname).toBe(`/${APP_PACKAGE}/join`);
+    expect(url.searchParams.get('invitation')).toBeTruthy();
   });
 
-  it('throws when base64 decodes to non-JSON', () => {
-    const garbage = encodeInvitation('plain string that is valid json actually');
-    // valid JSON string -> fine; build a truly invalid one:
-    const notJson = btoa('this is not json');
-    expect(() => decodeInvitation(notJson)).toThrow();
-    // sanity: the valid one does NOT throw
-    expect(() => decodeInvitation(garbage)).not.toThrow();
+  it('keeps the slug equal to the published package id', () => {
+    // The desktop launcher resolves by Application.package and the landing page
+    // asks the registry for that same package, so a friendly name would break both.
+    expect(APP_SLUG).toBe(APP_PACKAGE);
+  });
+
+  it('builds a calimero:// link for platforms that cannot intercept HTTPS', () => {
+    expect(generateInvitationDeepLink(payload)).toMatch(
+      new RegExp(`^calimero://${APP_PACKAGE}/join\\?invitation=.+`),
+    );
+  });
+
+  it('round-trips the payload through the web link', () => {
+    expect(parseInvitationInput(generateInvitationUrl(payload))).toBe(payload);
+  });
+
+  it('round-trips the payload through the desktop link', () => {
+    expect(parseInvitationInput(generateInvitationDeepLink(payload))).toBe(payload);
+  });
+
+  it('accepts a pasted link, a bare code, or raw JSON', () => {
+    expect(decodeInvitation(generateInvitationUrl(payload))).toEqual(SAMPLE);
+    expect(decodeInvitation(encodeInvitation(SAMPLE))).toEqual(SAMPLE);
+    expect(decodeInvitation(payload)).toEqual(SAMPLE);
+  });
+
+  it('rejects a link with no invitation param', () => {
+    expect(parseInvitationInput('https://links.calimero.network/x/join')).toBeNull();
   });
 });

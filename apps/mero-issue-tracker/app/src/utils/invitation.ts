@@ -1,65 +1,124 @@
 /**
- * Invitation share-code encoding.
+ * Invitation encoding and shareable deep links.
  *
  * A raw namespace invitation is a large JSON object full of byte arrays
- * (e.g. `inviter_identity: [117, 166, …]`) — ugly and fragile to copy/paste.
- * We wrap it in a single compact, copy-safe **base64** token for sharing, and
- * decode it back on join. `decodeInvitation` also accepts raw JSON so older
- * links (and hand-pasted JSON) keep working.
+ * (e.g. `inviter_identity: [117, 166, …]`) — far too long to paste into a URL
+ * verbatim. We deflate it and base58 it, then wrap that in an HTTPS deep link
+ * built by the platform SDK. Decoding accepts every older shape we ever emitted
+ * (plain base64, base64url, percent-encoded JSON) so an invite in flight during
+ * an upgrade still works.
  */
+import bs58 from 'bs58';
+import { deflateSync, inflateSync } from 'fflate';
+import { createLink } from '@calimero-network/mero-platform';
+import { APP_PACKAGE } from '../config';
 
-/** Encode any JSON-serialisable invitation object to a base64 share code. */
-export function encodeInvitation(invitation: unknown): string {
-  return base64FromUtf8(JSON.stringify(invitation));
+/**
+ * Deep-link slug. The desktop launcher resolves a link by `Application.package`,
+ * and links.calimero.network resolves the web frontend by asking the registry
+ * for that same package — so the slug IS the package id, not a friendly name.
+ */
+export const APP_SLUG = APP_PACKAGE;
+
+/** Device-local transport for the desktop app; not a shareable link. */
+export const CALIMERO_JOIN_DEEP_LINK = `calimero://${APP_SLUG}/join`;
+
+/** Deflate + base58. Roughly halves the link length versus raw base64 JSON. */
+export function encodeInvitationPayload(payload: string): string {
+  return bs58.encode(deflateSync(new TextEncoder().encode(payload), { level: 9 }));
 }
 
 /**
- * Decode a share code back to the invitation object. Accepts either:
- *   - a base64 token produced by `encodeInvitation`, or
- *   - raw JSON (backward compatibility).
- * Throws if the input is neither.
+ * Decode a share code back to its JSON string, trying every format we have
+ * emitted. Each candidate must parse as JSON to be accepted — base58 and base64
+ * alphabets overlap, so a successful *decode* is not evidence of the right
+ * format. Returns null when nothing yields JSON.
  */
-export function decodeInvitation(input: string): unknown {
-  const s = input.trim();
-  if (!s) throw new Error('Empty invitation.');
+export function decodeInvitationPayload(encoded: string): string | null {
+  if (!encoded || typeof encoded !== 'string') return null;
+  const s = encoded.trim().replace(/\s+/g, '');
+  if (!s) return null;
 
-  // Raw JSON (back-compat): base64 of a JSON object never starts with { or [.
-  if (s.startsWith('{') || s.startsWith('[')) {
-    return JSON.parse(s);
+  for (const candidate of decodeCandidates(s)) {
+    if (candidate === null) continue;
+    try {
+      JSON.parse(candidate);
+      return candidate;
+    } catch { /* wrong format — keep trying */ }
   }
-
-  // Otherwise treat it as a base64 token → JSON.
-  let json: string;
-  try {
-    json = utf8FromBase64(s);
-  } catch {
-    throw new Error('Invitation code is not valid base64.');
-  }
-  try {
-    return JSON.parse(json);
-  } catch {
-    throw new Error('Invitation code does not contain a valid invitation.');
-  }
+  return null;
 }
 
-// ── base64 <-> UTF-8 helpers (browser + Node) ──────────────────────────────
-function base64FromUtf8(s: string): string {
-  if (typeof btoa === 'function' && typeof TextEncoder !== 'undefined') {
-    const bytes = new TextEncoder().encode(s);
-    let bin = '';
-    for (const b of bytes) bin += String.fromCharCode(b);
-    return btoa(bin);
+function* decodeCandidates(s: string): Generator<string | null> {
+  yield tryOr(() => new TextDecoder().decode(inflateSync(bs58.decode(s))));
+  yield tryOr(() => new TextDecoder().decode(bs58.decode(s)));
+  yield tryOr(() => utf8FromBase64(s));
+  yield tryOr(() => decodeURIComponent(s));
+  yield s;
+}
+
+function tryOr(fn: () => string): string | null {
+  try { return fn(); } catch { return null; }
+}
+
+/**
+ * Normalise user input to the invitation JSON string. Accepts a full link
+ * (`https://links.calimero.network/…?invitation=…` or `calimero://…`), a bare
+ * share code, or raw JSON.
+ */
+export function parseInvitationInput(input: string): string | null {
+  const s = input.trim();
+  if (!s) return null;
+
+  if (/^(https?|calimero):\/\//.test(s)) {
+    const raw = tryOr(() => new URL(s).searchParams.get('invitation') ?? '');
+    return raw ? decodeInvitationPayload(raw) : null;
   }
-  // Node fallback (e.g. unit tests on older runtimes).
-  return Buffer.from(s, 'utf-8').toString('base64');
+  if (s.startsWith('{') || s.startsWith('[')) {
+    return tryOr(() => (JSON.parse(s), s));
+  }
+  return decodeInvitationPayload(s);
+}
+
+/**
+ * The canonical shareable link (HTTPS). One link works everywhere: a device with
+ * Calimero Desktop installed hands it to the app, and otherwise the landing page
+ * resolves this package's published `links.frontend` from the registry and
+ * forwards the query untouched. Sharing `window.location.origin` instead would
+ * pin the invite to whichever deployment the inviter happened to be on.
+ */
+export function generateInvitationUrl(payload: string): string {
+  return createLink(APP_SLUG, 'join', { invitation: encodeInvitationPayload(payload) });
+}
+
+/** `calimero://…/join?invitation=…` — for Windows/Linux, which cannot intercept the HTTPS link. */
+export function generateInvitationDeepLink(payload: string): string {
+  return `${CALIMERO_JOIN_DEEP_LINK}?invitation=${encodeInvitationPayload(payload)}`;
+}
+
+// ── Object-level helpers used by the invite/join call sites ─────────────────
+
+/** Encode an invitation object to a share code. */
+export function encodeInvitation(invitation: unknown): string {
+  return encodeInvitationPayload(JSON.stringify(invitation));
+}
+
+/** Decode a share code, link, or raw JSON back to the invitation object. */
+export function decodeInvitation(input: string): unknown {
+  if (!input.trim()) throw new Error('Empty invitation.');
+  const json = parseInvitationInput(input);
+  if (!json) throw new Error('That does not look like a valid invite link or code.');
+  return JSON.parse(json);
 }
 
 function utf8FromBase64(b64: string): string {
-  const clean = b64.replace(/\s+/g, '');
+  // Accept base64url (-_) alongside standard base64, and re-pad either way.
+  const std = b64.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = std.length % 4;
+  const padded = pad ? std + '='.repeat(4 - pad) : std;
   if (typeof atob === 'function' && typeof TextDecoder !== 'undefined') {
-    const bin = atob(clean);
-    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
-    return new TextDecoder().decode(bytes);
+    const bin = atob(padded);
+    return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
   }
-  return Buffer.from(clean, 'base64').toString('utf-8');
+  return Buffer.from(padded, 'base64').toString('utf-8');
 }

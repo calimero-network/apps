@@ -16,12 +16,21 @@ importers:
       '@calimero-network/mero-js':
         specifier: ^7.1.0
         version: 7.1.0
+      '@calimero-network/mero-platform':
+        specifier: ^0.1.0
+        version: 0.1.0
       '@calimero-network/mero-react':
         specifier: ^4.6.0
         version: 4.6.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@calimero-network/mero-ui':
         specifier: 1.5.0
         version: 1.5.0(@floating-ui/dom@1.7.6)(@tiptap/core@3.22.5(@tiptap/pm@3.22.5))(@tiptap/pm@3.22.5)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      bs58:
+        specifier: ^6.0.0
+        version: 6.0.0
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       react:
         specifier: ^19.1.1
         version: 19.2.5
@@ -215,6 +224,9 @@ packages:
   '@calimero-network/mero-js@7.1.0':
     resolution: {integrity: sha512-6uX84yBc+v/tF792A/+51Udb5PWuvtYB8QynEDiXPHPqPVDqiByi8o+AP+Wc32gUE7tRQWz+s8DjdGsJOHzU6w==}
     engines: {node: '>=18.0.0'}
+
+  '@calimero-network/mero-platform@0.1.0':
+    resolution: {integrity: sha512-ocEdeeou3GYdRlXxThuXtf4Klfi18g8Dpvl3urBGUgwHbhchMN/6KrGKr3jUj5XlcRnIPlvUmNEN1PoJ8oYp6w==}
 
   '@calimero-network/mero-react@4.6.0':
     resolution: {integrity: sha512-wmeOYtPgGyUGU2490iRtsBNLx5eihKreVubp+fJ590ho2HON4WK6lgvSjRCJdtoVlZfOV9ahxKfEa1HcOv5xlA==}
@@ -1283,6 +1295,9 @@ packages:
     resolution: {integrity: sha512-wvUjBtSGN7+7SjNpq/9M2Tg350UZD3q62IFZLbRAR1bSMlCo1ZaeW+BJ+D090e4hIIZLBcTDWe4Mh4jvUDajzQ==}
     engines: {node: '>= 0.4'}
 
+  base-x@5.0.1:
+    resolution: {integrity: sha512-M7uio8Zt++eg3jPj+rHMfCC+IuygQHHCOU+IYsVtik6FWjuYpVt/+MRKcgsAMHh8mMFAwnB+Bs+mTrFiXjMzKg==}
+
   base64-js@1.5.1:
     resolution: {integrity: sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==}
 
@@ -1344,6 +1359,9 @@ packages:
     resolution: {integrity: sha512-48xSriZYYg+8qXna9kwqjIVzuQxi+KYWp2+5nCYnYKPTr0LvD89Jqk2Or5ogxz0NUMfIjhh2lIUX/LyX9B4oIg==}
     engines: {node: ^6 || ^7 || ^8 || ^9 || ^10 || ^11 || ^12 || >=13.7}
     hasBin: true
+
+  bs58@6.0.0:
+    resolution: {integrity: sha512-PD0wEnEYg6ijszw/u8s+iI3H17cTymlrwkKhDhPZq+Sokl3AU4htyBFTjAeNAlCCmg0f53g6ih3jATyCKftTfw==}
 
   buffer-xor@1.0.3:
     resolution: {integrity: sha512-571s0T7nZWK6vB67HI5dyUF7wXiNcfaPPPTl6zYCNApANjIvYJTg7hlud/+cJpdAhS7dVzqMLmfhfHR3rAcOjQ==}
@@ -1775,6 +1793,9 @@ packages:
     peerDependenciesMeta:
       picomatch:
         optional: true
+
+  fflate@0.8.3:
+    resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
 
   figures@2.0.0:
     resolution: {integrity: sha512-Oa2M9atig69ZkfwiApY8F2Yy+tzMbazyvqv21R0NsSC8floSOC09BbT1ITWAdoMGQvJ/aZnR1KMwdx9tvHnTNA==}
@@ -3575,6 +3596,8 @@ snapshots:
 
   '@calimero-network/mero-js@7.1.0': {}
 
+  '@calimero-network/mero-platform@0.1.0': {}
+
   '@calimero-network/mero-react@4.6.0(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
       '@calimero-network/mero-js': 7.1.0
@@ -4595,6 +4618,8 @@ snapshots:
     dependencies:
       possible-typed-array-names: 1.1.0
 
+  base-x@5.0.1: {}
+
   base64-js@1.5.1: {}
 
   baseline-browser-mapping@2.10.27: {}
@@ -4684,6 +4709,10 @@ snapshots:
       electron-to-chromium: 1.5.351
       node-releases: 2.0.38
       update-browserslist-db: 1.2.3(browserslist@4.28.2)
+
+  bs58@6.0.0:
+    dependencies:
+      base-x: 5.0.1
 
   buffer-xor@1.0.3: {}
 
@@ -5220,6 +5249,8 @@ snapshots:
   fdir@6.5.0(picomatch@4.0.5):
     optionalDependencies:
       picomatch: 4.0.5
+
+  fflate@0.8.3: {}
 
   figures@2.0.0:
     dependencies:

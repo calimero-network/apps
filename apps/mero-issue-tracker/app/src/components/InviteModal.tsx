@@ -1,18 +1,20 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { tokens as t } from '../theme';
-import { encodeInvitation } from '../utils/invitation';
+import { generateInvitationDeepLink, generateInvitationUrl } from '../utils/invitation';
 
 interface InviteModalProps {
   onInvite: () => Promise<unknown>;
   onClose: () => void;
 }
 
+type CopyTarget = 'web' | 'desktop';
+
 export default function InviteModal({ onInvite, onClose }: InviteModalProps) {
-  const [code, setCode] = useState<string | null>(null);
+  const [payload, setPayload] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<CopyTarget | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -20,13 +22,14 @@ export default function InviteModal({ onInvite, onClose }: InviteModalProps) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  const webUrl = useMemo(() => (payload ? generateInvitationUrl(payload) : ''), [payload]);
+  const desktopUrl = useMemo(() => (payload ? generateInvitationDeepLink(payload) : ''), [payload]);
+
   const handleGenerate = async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await onInvite();
-      // Wrap the raw invitation in a single compact, copy-safe base64 code.
-      setCode(encodeInvitation(result));
+      setPayload(JSON.stringify(await onInvite()));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create invitation.');
     } finally {
@@ -34,13 +37,14 @@ export default function InviteModal({ onInvite, onClose }: InviteModalProps) {
     }
   };
 
-  const handleCopy = async () => {
-    if (!code) return;
+  const handleCopy = async (target: CopyTarget) => {
+    const value = target === 'web' ? webUrl : desktopUrl;
+    if (!value) return;
     try {
-      await navigator.clipboard.writeText(code);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch { /* clipboard blocked — no-op */ }
+      await navigator.clipboard.writeText(value);
+      setCopied(target);
+      setTimeout(() => setCopied(null), 1800);
+    } catch { /* clipboard blocked — the link stays selectable in the field */ }
   };
 
   return (
@@ -57,22 +61,28 @@ export default function InviteModal({ onInvite, onClose }: InviteModalProps) {
         </IconBadge>
 
         <h3 id="inv-title">Invite to workspace</h3>
-        <p className="sub">Generate an invite code and share it with anyone you want to join this workspace.</p>
+        <p className="sub">Generate an invite link and share it with anyone you want to join this workspace.</p>
 
-        {!code ? (
+        {!payload ? (
           <PrimaryBtn data-testid="generate-invite-btn" style={{ width: '100%', marginTop: 22 }} onClick={handleGenerate} disabled={loading}>
-            {loading ? <Spin /> : 'Generate invite code'}
+            {loading ? <Spin /> : 'Generate invite link'}
           </PrimaryBtn>
         ) : (
           <>
             <Field>
-              <label>Invite code</label>
-              <textarea data-testid="invite-code-output" readOnly value={code} rows={4} onFocus={(e) => e.currentTarget.select()} />
+              <label>Invite link</label>
+              <textarea data-testid="invite-code-output" readOnly value={webUrl} rows={3} onFocus={(e) => e.currentTarget.select()} />
             </Field>
-            <PrimaryBtn data-testid="copy-invite-btn" style={{ width: '100%' }} onClick={handleCopy}>
-              {copied ? 'Copied ✓' : 'Copy invite code'}
+            <PrimaryBtn data-testid="copy-invite-btn" style={{ width: '100%' }} onClick={() => void handleCopy('web')}>
+              {copied === 'web' ? 'Copied ✓' : 'Copy invite link'}
             </PrimaryBtn>
-            <p className="hint">The recipient pastes this into “Join with invitation”.</p>
+            <SecondaryBtn data-testid="copy-desktop-link-btn" style={{ width: '100%', marginTop: 10 }} onClick={() => void handleCopy('desktop')}>
+              {copied === 'desktop' ? 'Copied ✓' : 'Copy desktop link'}
+            </SecondaryBtn>
+            <p className="hint">
+              Opening the link joins the workspace directly. The desktop link is for
+              Windows and Linux, which can’t intercept the web one.
+            </p>
           </>
         )}
 
@@ -129,6 +139,14 @@ const PrimaryBtn = styled.button`
   color: ${t.color.onAccent}; background: ${t.color.accent}; border: 1px solid transparent;
   transition: background 0.15s;
   &:hover:not(:disabled) { background: #b6ff5e; }
+  &:disabled { opacity: 0.6; cursor: default; }
+`;
+const SecondaryBtn = styled.button`
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 10px 18px; font-size: 13px; font-weight: 600; border-radius: ${t.radius}; cursor: pointer;
+  color: ${t.color.text}; background: ${t.color.raised}; border: 1px solid ${t.color.border};
+  transition: background 0.15s, border-color 0.15s;
+  &:hover:not(:disabled) { background: ${t.color.raised2}; }
   &:disabled { opacity: 0.6; cursor: default; }
 `;
 const ErrorLine = styled.p`margin: 12px 0 0; font-size: 12.5px; color: ${t.color.urgent};`;

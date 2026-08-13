@@ -1,14 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { tokens as t } from '../theme';
 
 interface JoinModalProps {
   onJoin: (invitationCode: string) => Promise<void>;
   onClose: () => void;
+  /** Prefill from a captured deep link; `autoSubmit` also joins straight away. */
+  initialCode?: string;
+  autoSubmit?: boolean;
 }
 
-export default function JoinModal({ onJoin, onClose }: JoinModalProps) {
-  const [code, setCode] = useState('');
+export default function JoinModal({ onJoin, onClose, initialCode = '', autoSubmit = false }: JoinModalProps) {
+  const [code, setCode] = useState(initialCode);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -18,18 +21,27 @@ export default function JoinModal({ onJoin, onClose }: JoinModalProps) {
     return () => window.removeEventListener('keydown', onKey);
   }, [joining, onClose]);
 
-  const handleJoin = async () => {
-    if (!code.trim() || joining) return;
+  const handleJoin = useCallback(async (value: string) => {
+    if (!value.trim() || joining) return;
     setJoining(true);
     setError(null);
     try {
-      await onJoin(code.trim());
+      await onJoin(value.trim());
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to join — check the invite code.');
+      setError(err instanceof Error ? err.message : 'Failed to join — check the invite link.');
     } finally {
       setJoining(false);
     }
-  };
+  }, [joining, onJoin]);
+
+  // A deep-link arrival joins on its own; the field stays populated so a failure
+  // leaves the user one click from retrying rather than back at a blank form.
+  const autoJoined = useRef(false);
+  useEffect(() => {
+    if (!autoSubmit || autoJoined.current || !initialCode.trim()) return;
+    autoJoined.current = true;
+    void handleJoin(initialCode);
+  }, [autoSubmit, initialCode, handleJoin]);
 
   return (
     <Overlay onClick={() => !joining && onClose()}>
@@ -45,17 +57,17 @@ export default function JoinModal({ onJoin, onClose }: JoinModalProps) {
         </IconBadge>
 
         <h3 id="join-title">Join with invitation</h3>
-        <p className="sub">Paste the invite code you received to join the workspace.</p>
+        <p className="sub">Paste the invite link you received to join the workspace.</p>
 
         <Field>
-          <label htmlFor="join-code">Invite code</label>
+          <label htmlFor="join-code">Invite link</label>
           <textarea
             id="join-code"
             data-testid="join-code-input"
             autoFocus
             value={code}
             onChange={(e) => { setCode(e.target.value); setError(null); }}
-            placeholder="Paste your invite code…"
+            placeholder="Paste your invite link…"
             rows={4}
             disabled={joining}
           />
@@ -65,7 +77,7 @@ export default function JoinModal({ onJoin, onClose }: JoinModalProps) {
 
         <Actions>
           <SecondaryBtn onClick={onClose} disabled={joining}>Cancel</SecondaryBtn>
-          <PrimaryBtn data-testid="join-submit-btn" onClick={handleJoin} disabled={!code.trim() || joining}>
+          <PrimaryBtn data-testid="join-submit-btn" onClick={() => void handleJoin(code)} disabled={!code.trim() || joining}>
             {joining ? <Spin /> : 'Join workspace'}
           </PrimaryBtn>
         </Actions>

@@ -92,14 +92,16 @@ function captureInvitation(): void {
   );
 }
 
-/** Consume a captured invitation (returns it once, then clears it). */
-export function takePendingInvitation(): string | null {
-  const v = localStorage.getItem(INVITATION_KEY);
-  if (v) localStorage.removeItem(INVITATION_KEY);
-  return v;
-}
-
-/** Peek at a captured invitation without consuming it (e.g. to show a banner). */
+/**
+ * Read a captured invitation WITHOUT consuming it. The join is only attempted
+ * once the user is authenticated, and a failed attempt has to stay retryable,
+ * so the value is cleared explicitly on success or cancel — not on read.
+ */
 export function peekPendingInvitation(): string | null {
   return localStorage.getItem(INVITATION_KEY);
+}
+
+/** Forget a captured invitation (joined successfully, or the user dismissed it). */
+export function clearPendingInvitation(): void {
+  localStorage.removeItem(INVITATION_KEY);
 }

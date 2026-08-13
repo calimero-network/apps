@@ -76,10 +76,17 @@ tool and env reference is under [MCP setup](#mcp-setup) below and in
 ## Setup
 
 ```bash
-pnpm install          # workspace deps (app + mcp)
-pnpm logic:build      # compile the wasm + ABI and sign the .mpk bundle
-pnpm app:codegen      # regenerate the typed client from the ABI (logic/crates/*/res/abi.json)
+pnpm install                    # workspace deps (app + mcp)
+./scripts/setup-cargo-mero.sh   # install the pinned cargo-mero (checksum-verified)
+pnpm logic:build                # compile the wasm + ABI and sign the .mpk bundle
+pnpm app:codegen                # regenerate the typed client from the ABI (logic/crates/*/res/abi.json)
 ```
+
+`scripts/setup-cargo-mero.sh` pins the cargo-mero release and CI installs the
+same one through `.github/actions/setup-cargo-mero`, so local and CI builds are
+produced by the same tool.
+The pin moves together with the SDK tags in `logic/Cargo.toml`: the tool refuses
+a bundle whose SDK emits no `__calimero_abi`.
 
 `pnpm logic:build` runs `cargo mero bundle`, which compiles each service, embeds
 its ABI, records a SHA-256 per artifact, and signs the manifest.
@@ -110,11 +117,35 @@ package:
 cargo mero key generate --output ~/.calimero-studio/studio-dev-signing.key.json
 ```
 
-`pnpm logic:build:release` uses `$MERO_SIGN_KEY` instead, for the production key.
+Set `$MERO_SIGN_KEY_FILE` to a production key file to sign with that instead.
+The release workflow does exactly this, from the `MERO_SIGN_KEY` organization
+secret.
 
 Do not build a bundle you intend to publish with `cargo mero bundle --dev`. That
 flag signs with a well-known key shared by every developer, so the registry sees
 an identity that does not own the package and refuses the upload.
+
+## Releasing
+
+`.github/workflows/deploy-bundle.yml` publishes to the
+[Calimero App Registry](https://apps.calimero.network) on every push to `main`.
+Bumping `appVersion` in `studio.config.json` IS the release: the workflow asks
+the registry whether that exact version exists and stops when it does, so an
+ordinary merge costs one short check job and nothing else.
+
+Because the registry answers the question, re-runs, reverts and squashed merges
+all behave - unlike a diff against the previous commit.
+A manual `workflow_dispatch` run takes a version input, but it is only checked
+against `studio.config.json` rather than overriding it.
+Every release records the core commit its SDK deps resolved to in the run
+summary, and an optional `core_rev` dispatch input fails the release when that
+commit is not the one you expected.
+
+Publishing needs two organization secrets: `MERO_SIGN_KEY` (the full JSON of the
+production signing key) and `CALIMERO_REGISTRY_API_KEY` (from the registry
+Organizations page, under CLI Access).
+The registry pins the signer per package, so the workflow refuses to publish
+when the key's `signerId` differs from the one already on record.
 
 ## Run the app
 

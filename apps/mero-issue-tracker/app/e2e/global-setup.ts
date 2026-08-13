@@ -63,13 +63,10 @@ const DATA_DIR = path.resolve(__dirname, '..', '.playwright-data');
 const MPK_PATH = resolveMpkPath();
 const STATE_FILE = path.resolve(DATA_DIR, 'pw-state.json');
 
-// Current merod gates creation of the first root key on a fresh embedded node
-// behind an out-of-band bootstrap secret (MERO_AUTH_BOOTSTRAP_SECRET on the
-// node + a matching bootstrap_secret in the token request); without it the
-// first login is rejected as "Invalid username or password". The password is
-// also subject to an 8-char minimum on the creation path. These are test-only
+// merod provisions the admin account at `init` and refuses to start embedded
+// auth without one, so the credentials go in there rather than into the first
+// login. The password is subject to an 8-char minimum. These are test-only
 // throwaway credentials for a loopback node.
-const BOOTSTRAP_SECRET = 'playwright-e2e-bootstrap';
 const ADMIN_USER = 'admin';
 const ADMIN_PASSWORD = 'adminadmin';
 
@@ -113,7 +110,6 @@ async function authenticate(adminUrl: string): Promise<{
       provider_data: {
         username: ADMIN_USER,
         password: ADMIN_PASSWORD,
-        bootstrap_secret: BOOTSTRAP_SECRET,
       },
     }),
   });
@@ -155,7 +151,14 @@ function initNode(node: typeof NODES[0]): void {
     `"${MEROD_BINARY}" --home "${DATA_DIR}" --node "${node.name}" init ` +
     `--server-port ${node.serverPort} --swarm-port ${node.swarmPort} ` +
     `--auth-mode embedded`,
-    { stdio: 'pipe' },
+    {
+      stdio: 'pipe',
+      env: {
+        ...process.env,
+        MERO_AUTH_ADMIN_USER: ADMIN_USER,
+        MERO_AUTH_ADMIN_PASSWORD: ADMIN_PASSWORD,
+      },
+    },
   );
   execSync(
     `"${MEROD_BINARY}" --home "${DATA_DIR}" --node "${node.name}" ` +
@@ -187,9 +190,6 @@ function runNode(node: typeof NODES[0]): ChildProcess {
   const proc = spawn(MEROD_BINARY, ['--home', DATA_DIR, '--node', node.name, 'run'], {
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: false,
-    // The bootstrap secret must be present in the node's env for the first
-    // login to be allowed to mint the initial root key.
-    env: { ...process.env, MERO_AUTH_BOOTSTRAP_SECRET: BOOTSTRAP_SECRET },
   });
   const logFile = path.join(DATA_DIR, `${node.name}.log`);
   const logStream = createWriteStream(logFile);

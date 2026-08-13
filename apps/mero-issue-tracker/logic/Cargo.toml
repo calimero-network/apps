@@ -12,9 +12,13 @@ resolver = "2"
 package = "network.calimero.mero-issue-tracker"
 name = "mero-issue-tracker"
 description = "A private, real-time issue board for a small engineering team - create, triage, and discuss issues together"
-author = "Calimero"
+# Must match the registry username that owns the package; the registry returns
+# 403 not_owner on a mismatch.
+author = "calimero-network"
 min-runtime-version = "0.1.0"
 frontend = "https://mero-issue-tracker-app.vercel.app/"
+# The tool's stock Calimero mark - the repo ships no icon of its own.
+icon = "default"
 
 [[workspace.metadata.calimero.services]]
 name = "issue-tracker"
@@ -27,13 +31,11 @@ crate = "issue-tracker-issue-tracker"
 # so app and node stay in step automatically. Keep it a real release tag
 # (never `branch = "master"`): it's what builds use when the release lookup
 # is unreachable.
-calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.15" }
-calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.15" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.15" }
-calimero-wasm-abi = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.15" }
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.20" }
+calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.20" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.20" }
 thiserror = "1.0.56"
 bs58 = "0.4"
-serde_json = "1.0.113"
 serial_test = "3"
 issue-tracker-types = { path = "crates/types" }
 

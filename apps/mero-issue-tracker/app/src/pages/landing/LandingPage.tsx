@@ -49,7 +49,7 @@ const FAQS: [string, string][] = [
   ['How does the board work?', 'Create an issue with a summary, impact, repro and resolution criteria - it starts in Open and moves through In progress, Blocked and Done as your team works it. Every change syncs to all teammates within seconds.'],
   ['Where does our data live?', 'On your own Calimero node, as CRDT collections that merge conflict-free across peers. There is no central database — nothing about your issues is held on a third-party server.'],
   ['What is a context?', 'A context is a shared, encrypted space your team joins by invitation. Everyone in it sees the same board in real time, synced directly between nodes.'],
-  ['How do teammates join?', 'Connect your node, then share an invitation code. Anyone you invite joins the board and starts triaging instantly — no accounts, no sign-up.'],
+  ['How do teammates join?', 'Connect your node, then share an invite link. Anyone you invite joins the board and starts triaging instantly — no accounts, no sign-up.'],
   ['Who can edit comments?', 'Anyone on the team can comment on an issue, but only the author can edit or delete their own comments — authorship is enforced on the backend.'],
   ['Do we need crypto or a wallet?', 'No. You connect with a node identity. There is no token, no wallet and no gas — just your node and the teammates you invite.'],
 ];

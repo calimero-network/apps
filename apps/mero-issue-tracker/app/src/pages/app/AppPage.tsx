@@ -16,6 +16,7 @@ import NamespaceCreateDialog from '../../components/NamespaceCreateDialog';
 import AddRepoDialog from '../../components/AddRepoDialog';
 import NsEmptyState from '../../components/NsEmptyState';
 import AliasGate from '../../components/AliasGate';
+import { clearPendingInvitation, peekPendingInvitation } from '../../auth/ssoBootstrap';
 import type { AppCtx, Filters } from './appContext';
 
 const EMPTY_FILTERS: Filters = { status: '', priority: '', assignee: '', label: '' };
@@ -53,6 +54,16 @@ export default function AppPage(): React.ReactElement | null {
 
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // A `?invitation=` deep link captured before React mounted (see ssoBootstrap).
+  // Read once, here rather than at capture time, because joining needs an
+  // authenticated session. It is forgotten on a successful join or an explicit
+  // cancel, never on a failure — so a transient error stays retryable.
+  const [pendingInvite, setPendingInvite] = useState<string | null>(() => peekPendingInvitation());
+  const forgetPendingInvite = useCallback(() => {
+    clearPendingInvitation();
+    setPendingInvite(null);
+  }, []);
 
   const effectiveAssignee = myIssues ? (currentUser ? aliases.resolve(currentUser) : '') : filters.assignee;
   const hookFilters = useMemo(
@@ -153,10 +164,16 @@ export default function AppPage(): React.ReactElement | null {
       {showCreateNs && (
         <NamespaceCreateDialog onCreate={ws.createNamespace} onClose={() => setShowCreateNs(false)} />
       )}
-      {showJoin && (
+      {(showJoin || pendingInvite) && (
         <JoinModal
-          onJoin={async (code) => { await ws.join(code); setShowJoin(false); }}
-          onClose={() => setShowJoin(false)}
+          initialCode={pendingInvite ?? ''}
+          autoSubmit={!!pendingInvite}
+          onJoin={async (code) => {
+            await ws.join(code);
+            forgetPendingInvite();
+            setShowJoin(false);
+          }}
+          onClose={() => { forgetPendingInvite(); setShowJoin(false); }}
         />
       )}
       {showAddRepo && (
