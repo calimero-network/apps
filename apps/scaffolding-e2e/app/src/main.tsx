@@ -67,11 +67,19 @@ import App from "./App.tsx";
   }
 })();
 
+// Must match [package.metadata.calimero] package in logic/Cargo.toml — the
+// registry resolves an ApplicationId from it. Falling back to it (rather than to
+// "", which resolves to nothing and leaves the app wedged after login) is what
+// lets the hosted build run with no env vars configured at all.
+const DEFAULT_PACKAGE = "com.calimero.scaffolding-e2e";
+
 // Mode 1: direct app ID — set VITE_APP_ID in .env (app already installed on node).
-//          Requires logic/res/e2e_kv_store.wasm copied to frontend/public/app.wasm
-//          (npm run sync-wasm does this).
-// Mode 2: package name — set VITE_APPLICATION_PACKAGE in .env. Auth frontend resolves
-//          the app ID from the node's installed packages or the Calimero registry.
+//          Requires logic/res/scaffolding_e2e.wasm copied to frontend/public/app.wasm
+//          (npm run sync-wasm does this). Local-only: a hosted deploy has no
+//          app.wasm to serve, and the app ID differs per install anyway.
+// Mode 2: package name — set VITE_APPLICATION_PACKAGE in .env, or leave it unset
+//          to get DEFAULT_PACKAGE. Auth frontend resolves the app ID from the
+//          node's installed packages or the Calimero registry.
 // VITE_APP_ID takes priority if both are set.
 const appId = import.meta.env.VITE_APP_ID?.trim();
 const packageName = import.meta.env.VITE_APPLICATION_PACKAGE?.trim();
@@ -80,11 +88,11 @@ const providerProps = appId
   ? {
       clientApplicationId: appId,
       // Serve the WASM from Vite public/ so merod can install it if needed.
-      // Run `npm run sync-wasm` to copy logic/res/e2e_kv_store.wasm → public/app.wasm
+      // Run `npm run sync-wasm` to copy logic/res/scaffolding_e2e.wasm → public/app.wasm
       applicationPath: `${window.location.origin}/app.wasm`,
     }
   : {
-      packageName: packageName ?? "",
+      packageName: packageName || DEFAULT_PACKAGE,
       registryUrl: "https://apps.calimero.network",
     };
 

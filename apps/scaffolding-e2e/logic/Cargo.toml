@@ -42,9 +42,13 @@ github = "https://github.com/calimero-network/scaffolding-e2e-application"
 # older than this installs the bundle happily and then dies at context creation
 # with `link error: unknown import`.
 min-runtime-version = "0.11.0-rc.20"
-# No `frontend` key on purpose: the scaffold's UI is meant to be run locally
-# (`cd frontend && pnpm dev`), so there is no hosted URL for a deep link to
-# forward to. Add one here if this app is ever deployed.
+# Where the desktop app and links.calimero.network send a deep link for this
+# package. The hosted build is the same `frontend/` in this repo (Vercel project
+# root = `frontend`); it still talks to whatever node the user connects to from
+# its own connect screen, so hosting it does not tie it to any node. Running it
+# locally (`cd frontend && pnpm dev`) stays fully supported and is what the
+# README walks through — this key only affects the deep link.
+frontend = "https://scaffolding-e2e.vercel.app/"
 
 [dependencies]
 # Pin a real release tag, never `branch = "master"`: master rides unreleased

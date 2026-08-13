@@ -141,6 +141,29 @@ Open `http://localhost:5173`. Click **Connect**, then select the context you cre
 
 ---
 
+## Hosted frontend
+
+The same frontend is deployed at **https://scaffolding-e2e.vercel.app/** — that URL is the
+`frontend` key in the bundle manifest, so it is what the desktop app and
+`links.calimero.network` open for `com.calimero.scaffolding-e2e`.
+
+It is a convenience, not a replacement for the local run: it is a static build with no node
+of its own, so you still need the node from step 1 and the context from step 6. The connect
+screen takes any node URL (default `http://localhost:2528`), and the app ID is resolved from
+the registry by package name, so the hosted build needs **no environment variables** — Vercel
+project settings are just root directory `frontend`, and `vercel.json` supplies the rest.
+
+Reaching a `localhost` node from the hosted page works out of the box: merod's default CORS
+config is permissive (`allowed_origins` unset ⇒ any origin, private-network requests allowed),
+and browsers exempt `http://localhost` from mixed-content blocking. A node that has set an
+explicit `allowed_origins` list must include `https://scaffolding-e2e.vercel.app`.
+
+Mode 1 (`VITE_APP_ID` + `npm run sync-wasm`) does **not** work on the hosted build: it serves
+the WASM from `public/app.wasm`, which only exists in a local checkout. The hosted build always
+runs in mode 2, resolving the app ID from the registry by package name.
+
+---
+
 ## Opening from Merobox
 
 If you open the app from the Merobox desktop app, authentication and node URL are injected automatically via the URL hash — you skip the connect screen entirely.
