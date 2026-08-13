@@ -12,6 +12,7 @@ import { log } from "../utils/logger";
 import { registerContextIdentities } from "../utils/selfIdentity";
 import { DM_CONTEXT_ALIAS_PREFIX } from "../utils/dmContext";
 import { getMessengerDisplayName } from "../utils/messengerName";
+import { findSelfMember } from "../utils/groupMemberIdentity";
 
 const LEFT_CONTEXTS_KEY = "curb:left_contexts";
 
@@ -234,12 +235,16 @@ export function useGroupContexts() {
               // added me (Restricted) or I created/explicitly joined
               // (Open). Inherited members via CAN_JOIN_OPEN_SUBGROUPS on
               // the namespace root never appear here.
+              // Matched through `findSelfMember` rather than by `===`: member
+              // rows can be keyed by ACCOUNT while `selfIdentity` is a signing
+              // key (calimero-network/core#3402), and the two spaces are
+              // related by a one-way hash. A direct comparison would report
+              // every joined channel as not-joined.
               const selfIdentity = sgMembersResp?.data?.selfIdentity;
-              const isDirectMember =
-                !!selfIdentity &&
-                !!sgMembersResp?.data?.members.some(
-                  (m) => m.identity === selfIdentity,
-                );
+              const isDirectMember = !!findSelfMember({
+                members: sgMembersResp?.data?.members ?? [],
+                selfIdentity,
+              });
               if (sgListResp.data) {
                 // Belt-and-suspenders: drop contexts whose own alias is
                 // DM-prefixed (subgroup rename edge case).

@@ -12,6 +12,7 @@ import {
   canJoinOpenSubgroups,
   canManageVisibility,
 } from "../utils/groupCapabilities";
+import { findSelfMember } from "../utils/groupMemberIdentity";
 
 interface CurrentGroupPermissionsState {
   loading: boolean;
@@ -91,9 +92,12 @@ export function useCurrentGroupPermissions(groupId: string) {
       const { memberIdentity, members } = identityResponse.data;
       setGroupMemberIdentity(groupId, memberIdentity);
 
-      const currentMember = members.find(
-        (member) => member.identity === memberIdentity,
-      );
+      // Not `member.identity === memberIdentity`: the server can key member
+      // rows by ACCOUNT while reporting `selfIdentity` as a signing key, and
+      // an account is a one-way hash of the key. A direct comparison then
+      // matches nothing, this returns `initialState`, and the user loses every
+      // permission — an admin included. See calimero-network/core#3402.
+      const currentMember = findSelfMember({ members, selfIdentity: memberIdentity });
 
       if (!currentMember) {
         if (!silent) setState(initialState);
