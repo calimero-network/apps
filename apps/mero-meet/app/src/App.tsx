@@ -2,8 +2,10 @@ import { type ReactNode, useEffect, useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
 import { APP_ENABLED } from "./lib/tauri";
+import { resolveBootScreen } from "./lib/boot";
 import { getContextId, clearActiveRoom } from "./lib/session";
 import LandingPage from "./pages/LandingPage";
+import DesktopSignInPage from "./pages/DesktopSignInPage";
 import RoomsPage from "./pages/RoomsPage";
 import LobbyPage from "./pages/LobbyPage";
 import CallView from "./call/CallView";
@@ -11,9 +13,20 @@ import { CallProvider } from "./call/CallContext";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useMero();
-  if (isLoading) return null; // wait for the auth probe; avoids a flash
-  if (!isAuthenticated) return <LandingPage />;
-  return <>{children}</>;
+  // NOT `isAuthenticated ? children : <LandingPage/>`. Inside the desktop the web
+  // landing page ("Desktop app required — Get Calimero Desktop") is a dead end:
+  // it tells the user to install the app they opened this window from and offers
+  // nothing to click. See lib/boot.ts.
+  switch (resolveBootScreen({ appEnabled: APP_ENABLED, isLoading, isAuthenticated })) {
+    case "loading":
+      return null; // wait for the auth probe; avoids a flash
+    case "web-landing":
+      return <LandingPage />;
+    case "desktop-signin":
+      return <DesktopSignInPage />;
+    case "app":
+      return <>{children}</>;
+  }
 }
 
 // Context ids already confirmed to exist on the node during this app load —

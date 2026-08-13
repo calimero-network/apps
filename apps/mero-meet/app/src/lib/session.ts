@@ -18,6 +18,7 @@
 let contextId: string | null = null;
 let executorPublicKey: string | null = null;
 let applicationId: string | null = null;
+let nodeUrl: string | null = null;
 let devMode = false;
 
 // The desktop passes the session (app id, room context, identity, dev mode) in
@@ -32,7 +33,7 @@ function persistSession(): void {
   try {
     localStorage.setItem(
       SESSION_KEY,
-      JSON.stringify({ applicationId, contextId, executorPublicKey, devMode }),
+      JSON.stringify({ applicationId, contextId, executorPublicKey, nodeUrl, devMode }),
     );
   } catch {
     /* ignore blocked storage */
@@ -47,6 +48,7 @@ function restoreSession(): void {
     applicationId = s.applicationId ?? applicationId;
     contextId = s.contextId ?? contextId;
     executorPublicKey = s.executorPublicKey ?? executorPublicKey;
+    nodeUrl = s.nodeUrl ?? nodeUrl;
     if (typeof s.devMode === "boolean") devMode = s.devMode;
   } catch {
     /* ignore malformed/blocked storage */
@@ -71,6 +73,11 @@ export function captureSessionFromHash(): void {
       p.get("executor_public_key") ?? p.get("executorPublicKey") ?? executorPublicKey;
     applicationId =
       p.get("app-id") ?? p.get("application_id") ?? p.get("applicationId") ?? applicationId;
+    // Keep the node the desktop pointed us at. MeroProvider stores it too, but
+    // it drops the value whenever it rejects a callback or the user logs out —
+    // exactly the states where the sign-in screen still needs to name and probe
+    // the node. Trailing slash stripped so it concatenates predictably.
+    nodeUrl = (p.get("node_url") ?? p.get("nodeUrl"))?.replace(/\/+$/, "") ?? nodeUrl;
     // The desktop app forwards its developer-mode setting here.
     if (p.has("dev_mode")) devMode = p.get("dev_mode") === "1";
   }
@@ -111,6 +118,14 @@ export function getExecutorPublicKey(): string | null {
 /** The installed Mero Meet application id (needed to create rooms). */
 export function getApplicationId(): string | null {
   return applicationId;
+}
+
+/**
+ * The node the desktop opened us against, as handed over in the SSO hash (or
+ * restored from a previous open). No trailing slash. Null on the plain web.
+ */
+export function getBootNodeUrl(): string | null {
+  return nodeUrl;
 }
 
 /**

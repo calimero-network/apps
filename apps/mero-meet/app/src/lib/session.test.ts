@@ -38,6 +38,30 @@ describe("captureSessionFromHash", () => {
     expect(s.isDeveloperMode()).toBe(true);
   });
 
+  it("keeps the node the desktop opened us against, trailing slash stripped", async () => {
+    // The sign-in screen needs this to name and probe the node in exactly the
+    // states where MeroProvider has dropped its own copy (rejected callback,
+    // logout) — see pages/DesktopSignInPage.tsx.
+    const s = await freshSession("#node_url=http%3A%2F%2Flocalhost%3A2528%2F&access_token=t");
+    expect(s.getBootNodeUrl()).toBe("http://localhost:2528");
+  });
+
+  it("accepts the camelCase node url the dev harness may hand over", async () => {
+    const s = await freshSession("#nodeUrl=http%3A%2F%2Flocalhost%3A2529&access_token=t");
+    expect(s.getBootNodeUrl()).toBe("http://localhost:2529");
+  });
+
+  it("persists the node url across a hash-less refresh", async () => {
+    await freshSession("#app-id=app1&node_url=http%3A%2F%2Flocalhost%3A2528");
+    const s = await freshSession("");
+    expect(s.getBootNodeUrl()).toBe("http://localhost:2528");
+  });
+
+  it("has no node url on the plain web", async () => {
+    const s = await freshSession("");
+    expect(s.getBootNodeUrl()).toBeNull();
+  });
+
   it("prefers fresh hash values over the persisted session (deep-link wins)", async () => {
     await freshSession("#app-id=app1&context_id=old-ctx&executor_public_key=old-pk");
     const s = await freshSession("#context_id=new-ctx&executor_public_key=new-pk");
