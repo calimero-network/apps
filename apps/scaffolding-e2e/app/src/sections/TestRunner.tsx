@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { getExecutorPublicKey } from "@calimero-network/calimero-client";
+import { getContextIdentity } from "../lib/mero";
 import * as api from "../api/kvStore";
 
 
@@ -313,7 +313,7 @@ const TESTS: TestCase[] = [
     name: "get_user_simple_for own executor key returns stored value",
     group: "User Storage",
     fn: async (r) => {
-      const myKey = getExecutorPublicKey() ?? "";
+      const myKey = getContextIdentity() ?? "";
       noErr(await api.setUserSimple(`self_${r}`));
       eq(out<string | null>(await api.getUserSimpleFor(myKey)), `self_${r}`);
     },
@@ -1067,7 +1067,7 @@ const TESTS: TestCase[] = [
     name: "shared_is_writer for our own account → true (after a successful set)",
     group: "Shared Storage",
     fn: async (r) => {
-      // Our ACCOUNT id, not getExecutorPublicKey(): core 0.11 keys the writer
+      // Our ACCOUNT id, not getContextIdentity(): core 0.11 keys the writer
       // set by account, and the device key names an account nobody holds.
       const me = out<api.Identity>(await api.whoami()).account_id;
       noErr(await api.sharedSet(`iw_${r}`));

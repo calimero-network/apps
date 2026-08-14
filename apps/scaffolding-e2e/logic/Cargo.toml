@@ -47,8 +47,22 @@ min-runtime-version = "0.11.0-rc.20"
 # root = `frontend`); it still talks to whatever node the user connects to from
 # its own connect screen, so hosting it does not tie it to any node. Running it
 # locally (`cd frontend && pnpm dev`) stays fully supported and is what the
-# README walks through — this key only affects the deep link.
-frontend = "https://scaffolding-e2e.vercel.app/"
+# README walks through.
+#
+# ⚠️ This is NOT only a deep link. The auth frontend treats the registry-declared
+# frontend origin as this app's registered redirect URI: a hosted page is trusted
+# to receive tokens only when its origin matches this URL (loopback and the node's
+# own origin are always trusted, so local development never notices). Point this at
+# the wrong host and login on the hosted build dies with
+#
+#     Login callback destination is not allowed.
+#
+# …which is exactly what happened while this said `scaffolding-e2e.vercel.app`, a
+# project that does not exist, and the app was deployed as
+# `scaffolding-e2e-application.vercel.app`. If the Vercel project is ever renamed,
+# this must be updated AND the bundle republished — the manifest in the registry is
+# what auth reads, not this file.
+frontend = "https://scaffolding-e2e-application.vercel.app/"
 
 [dependencies]
 # Pin a real release tag, never `branch = "master"`: master rides unreleased

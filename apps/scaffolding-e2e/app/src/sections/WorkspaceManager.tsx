@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { getContextId, getExecutorPublicKey } from "@calimero-network/calimero-client";
+import { getContextId, getContextIdentity } from "../lib/mero";
 import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import { SyncBar } from "../components/SyncBar";
 import { FieldHelp } from "../components/FieldHelp";
@@ -786,7 +786,7 @@ function WsMembers() {
   useEffect(() => {
     load();
     const ctxId = getContextId();
-    const myKey = getExecutorPublicKey();
+    const myKey = getContextIdentity();
     if (ctxId) {
       getAllContextIdentities(ctxId)
         .then((ids) => {

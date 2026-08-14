@@ -1,6 +1,6 @@
 # Calimero Scaffolding E2E Application
 
-A full-stack Calimero app for testing and exploring the SDK. The backend is a Rust/WASM app (`logic/`) and the frontend is a React app (`frontend/`) that lets you call every method interactively and run an automated test suite against a live node.
+A full-stack Calimero app for testing and exploring the SDK. The backend is a Rust/WASM app (`logic/`) and the frontend is a React app (`frontend/`) — built on `@calimero-network/mero-react`, the same SDK the other mero apps use — that lets you call every method interactively and run an automated test suite against a live node.
 
 ---
 
@@ -297,5 +297,22 @@ To change the icon, edit `logic/res/icon.svg` and run `logic/gen-icon.sh`.
 **`app install` fails** — run `./logic/build-bundle.sh` first.
 
 **Frontend shows "node: not set"** — set `VITE_NODE_URL` in `.env` or open the app from Merobox.
+
+**Login fails with "Login callback destination is not allowed."** — the node's auth
+frontend only hands tokens to an origin it trusts: loopback, its own origin, or the
+frontend URL the app registry declares for this package. On a hosted deploy that
+last one is the only route, so `frontend` in `logic/Cargo.toml`'s
+`[package.metadata.calimero]` must match the deployed origin EXACTLY — and the
+bundle must have been republished since it changed, because auth reads the
+manifest in the registry, not this repo. Check what the registry currently
+declares with:
+
+```bash
+curl -s "https://apps.calimero.network/api/v2/bundles?package=com.calimero.scaffolding-e2e" \
+  | jq '.[].links'
+```
+
+Local development never hits this (loopback is always trusted), which is why it
+can ship broken.
 
 **Context state not syncing** — both nodes need to be able to reach each other on the P2P port shown in the merod startup logs.

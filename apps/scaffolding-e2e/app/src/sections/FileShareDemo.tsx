@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from "react";
-import { getAppEndpointKey } from "@calimero-network/calimero-client";
+import { getNodeUrl } from "../lib/mero";
 import * as api from "../api/kvStore";
 import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import { SyncBar } from "../components/SyncBar";
@@ -76,7 +76,7 @@ export function FileShareDemo() {
       const blobRes = await api.getBlobIdB58(file.id);
       const blobId = (blobRes as { result?: { output?: string } })?.result?.output;
       if (!blobId) throw new Error("Could not get blob ID");
-      const nodeUrl = getAppEndpointKey();
+      const nodeUrl = getNodeUrl();
       if (!nodeUrl) throw new Error("Node URL not set");
       await downloadBlobFrom(nodeUrl, blobId, file.name, file.mime_type);
     } catch (err) {

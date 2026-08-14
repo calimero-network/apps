@@ -1,7 +1,4 @@
-import {
-  getAppEndpointKey,
-  getAccessToken,
-} from "@calimero-network/calimero-client";
+import { getAccessToken, getNodeUrl } from "../lib/mero";
 
 let _onUnauthorized: (() => void) | null = null;
 
@@ -45,9 +42,9 @@ function parseAdminError(status: number, body: string): string {
 }
 
 async function adminFetch(path: string, opts?: RequestInit): Promise<unknown> {
-  const baseUrl = getAppEndpointKey();
+  const baseUrl = getNodeUrl();
   const token = getAccessToken();
-  if (!baseUrl) throw new Error("Node URL not set — call setAppEndpointKey() first");
+  if (!baseUrl) throw new Error("Node URL not set — connect to a node first");
   if (!token) throw new Error("Not authenticated — no access token");
 
   const res = await fetch(`${baseUrl}${path}`, {

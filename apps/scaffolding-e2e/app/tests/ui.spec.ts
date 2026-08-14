@@ -172,13 +172,27 @@ async function setupMocks(page: Page) {
   // Grant clipboard permissions so navigator.clipboard.writeText() resolves natively
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
 
-  // Inject auth state and clipboard mock before the app JS runs
+  // Inject auth state and clipboard mock before the app JS runs.
+  //
+  // These are the SDK's own storage keys, so they moved with the SDK. mero-react
+  // reads raw strings under a `mero:` prefix, and its LocalStorageTokenStore keeps
+  // the token PAIR under `mero-tokens` — writing the old `access-token` /
+  // `app-url` / `context-id` keys leaves the app on the Connect screen, which is
+  // how this migration announced itself.
   await page.addInitScript(
-    ({ jwt, ctxId, identity, nodeUrl }) => {
-      localStorage.setItem("access-token", JSON.stringify(jwt));
-      localStorage.setItem("app-url", JSON.stringify(nodeUrl));
-      localStorage.setItem("context-id", JSON.stringify(ctxId));
-      localStorage.setItem("context-identity", JSON.stringify(identity));
+    ({ jwt, ctxId, identity, nodeUrl, appId }) => {
+      localStorage.setItem("mero-tokens", JSON.stringify({
+        access_token: jwt,
+        refresh_token: "fake-refresh",
+        expires_at: Date.now() + 7_200_000,
+      }));
+      localStorage.setItem("mero:access_token", jwt);
+      localStorage.setItem("mero:refresh_token", "fake-refresh");
+      localStorage.setItem("mero:expires_at", String(Date.now() + 7_200_000));
+      localStorage.setItem("mero:node_url", nodeUrl);
+      localStorage.setItem("mero:context_id", ctxId);
+      localStorage.setItem("mero:context_identity", identity);
+      localStorage.setItem("mero:application_id", appId);
       localStorage.setItem("calimero-active-tab", "concepts");
 
       // Clipboard is unavailable in headless Chrome — mock it so copy-flash tests work
@@ -191,8 +205,12 @@ async function setupMocks(page: Page) {
         configurable: true,
       });
     },
-    { jwt, ctxId: FAKE_CTX_ID, identity: FAKE_IDENTITY, nodeUrl: NODE_URL },
+    { jwt, ctxId: FAKE_CTX_ID, identity: FAKE_IDENTITY, nodeUrl: NODE_URL, appId: FAKE_APP_ID },
   );
+
+  // mero-react decides `isAuthenticated` by probing the node, not by reading
+  // storage — an unmocked probe means the Connect screen no matter what is stored.
+  await page.route("**/auth/validate", (route) => route.fulfill({ status: 200 }));
 
   // Single handler for all node API calls
   await page.route(`${NODE_URL}/**`, async (route) => {

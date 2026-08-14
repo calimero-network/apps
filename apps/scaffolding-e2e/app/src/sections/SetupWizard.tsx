@@ -3,8 +3,8 @@ import { useState, useEffect } from "react";
 import {
   getContextId,
   setContextId,
-  setExecutorPublicKey,
-} from "@calimero-network/calimero-client";
+  setContextIdentity,
+} from "../lib/mero";
 import {
   listContexts,
   createContext,
@@ -693,7 +693,7 @@ function OwnerStep2Context({
     try {
       const identities = await getContextIdentities(ctx.id);
       setContextId(ctx.id);
-      if (identities[0]) setExecutorPublicKey(identities[0]);
+      if (identities[0]) setContextIdentity(identities[0]);
       setSelectedCtxId(ctx.id);
     } catch (e) { setErr(String(e)); }
   }
@@ -974,7 +974,7 @@ function JoinerStep2Context({ onDone }: { onDone: (ctxId: string) => void }) {
       await joinContextById(ctxId.trim());
       const identities = await getContextIdentities(ctxId.trim());
       setContextId(ctxId.trim());
-      if (identities[0]) setExecutorPublicKey(identities[0]);
+      if (identities[0]) setContextIdentity(identities[0]);
       setOk(true);
       onDone(ctxId.trim());
     } catch (e) { setErr(String(e)); } finally { setLoading(false); }

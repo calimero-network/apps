@@ -1,22 +1,14 @@
-import {
-  getContextId,
-  getExecutorPublicKey,
-  rpcClient,
-} from "@calimero-network/calimero-client";
+import { rpcRaw } from "./rpc";
 
-function ctx() {
-  return {
-    contextId: getContextId() ?? "",
-    executorPublicKey: getExecutorPublicKey() ?? "",
-  };
-}
-
+// Every section displays what the node returned, so these return the JSON-RPC
+// envelope (`{ result: { output, logs } }` or `{ error }`) rather than a bare
+// value — that is what `ResultBox` renders and what the Test Runner asserts on.
+//
+// The executor public key used to be passed with every call. It is not any more:
+// the node derives the caller from the bearer token, which is the only version it
+// would trust. `whoami` is how the UI learns both halves of its own identity.
 function call<A extends Record<string, unknown>, R>(method: string, argsJson: A) {
-  const { contextId, executorPublicKey } = ctx();
-  return rpcClient.execute<A, R>(
-    { contextId, method, argsJson, executorPublicKey },
-    { headers: { "Content-Type": "application/json" } },
-  );
+  return rpcRaw<R>(method, argsJson);
 }
 
 /** Both halves of the caller's identity — see the contract's `whoami`. */

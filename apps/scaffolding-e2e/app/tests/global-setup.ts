@@ -14,7 +14,10 @@ const PASSWORD = process.env.E2E_PASSWORD ?? "password";
 
 function isTokenExpired(rawValue: string): boolean {
   try {
-    const token = JSON.parse(rawValue) as string;
+    // The stored value is now the raw JWT. It used to be JSON-stringified, and
+    // `JSON.parse` on a raw JWT throws — which this function would have caught and
+    // reported as "expired", quietly forcing a fresh login on every single run.
+    const token = rawValue.startsWith('"') ? (JSON.parse(rawValue) as string) : rawValue;
     const payload = token.split(".")[1];
     const decoded = JSON.parse(Buffer.from(payload, "base64").toString("utf-8")) as { exp?: number };
     return !decoded.exp || decoded.exp * 1000 < Date.now();
@@ -31,8 +34,11 @@ function isSessionComplete(): boolean {
       state.origins ?? [];
     const ls = origins.find((o) => o.origin.includes("localhost:5173"))?.localStorage ?? [];
 
-    const accessTokenEntry = ls.find((e) => e.name === "access-token");
-    const hasContextId = ls.some((e) => e.name === "context-id");
+    // mero-react's keys: raw strings under a `mero:` prefix, plus the token
+    // store's `mero-tokens` pair. The previous SDK used `access-token` /
+    // `context-id` and JSON-stringified every value.
+    const accessTokenEntry = ls.find((e) => e.name === "mero:access_token");
+    const hasContextId = ls.some((e) => e.name === "mero:context_id");
 
     if (!accessTokenEntry || !hasContextId) return false;
 
@@ -49,25 +55,23 @@ function isSessionComplete(): boolean {
 
 // If the app is in multi-context mode, auth-frontend returns tokens with no
 // context_id. The app's useEffect then tries to auto-select the first context
-// from the admin API. If no context exists yet (fresh node), context-id is
+// from the admin API. If no context exists yet (fresh node), the context id is
 // never stored and the wait times out.
 //
 // This function: reads token + node URL from the browser's localStorage, calls
 // the admin API to check for contexts, creates one if the list is empty, then
-// writes context-id + executor-public-key directly into localStorage so the
+// writes the context id + identity directly into localStorage so the
 // app picks them up on the next React render cycle.
 async function ensureContextExists(
   page: import("@playwright/test").Page,
 ): Promise<void> {
-  const { token, nodeUrl, appId } = await page.evaluate(() => {
-    const rawToken = localStorage.getItem("access-token");
-    const token = rawToken ? JSON.parse(rawToken) as string : null;
-    const rawUrl = localStorage.getItem("app-url");
-    const nodeUrl = rawUrl ? JSON.parse(rawUrl) as string : null;
-    const rawAppId = localStorage.getItem("application-id");
-    const appId = rawAppId ? JSON.parse(rawAppId) as string : null;
-    return { token, nodeUrl, appId };
-  });
+  const { token, nodeUrl, appId } = await page.evaluate(() => ({
+    // Raw strings now — no JSON.parse. Parsing a raw value throws, and throwing
+    // here reads as "not logged in", which is a long way from the real cause.
+    token: localStorage.getItem("mero:access_token"),
+    nodeUrl: localStorage.getItem("mero:node_url"),
+    appId: localStorage.getItem("mero:application_id"),
+  }));
 
   if (!token || !nodeUrl) {
     throw new Error("[global-setup] No access token or node URL in localStorage after redirect.");
@@ -131,12 +135,12 @@ async function ensureContextExists(
     console.log(`[global-setup] Context created: ${contextId}`);
   }
 
-  // Write context-id and executor key into localStorage so the app picks them up
+  // Write the context id and identity into localStorage so the app picks them up
   await page.evaluate(
     ({ contextId, memberPublicKey }) => {
-      localStorage.setItem("context-id", JSON.stringify(contextId));
+      localStorage.setItem("mero:context_id", contextId);
       if (memberPublicKey) {
-        localStorage.setItem("context-identity", JSON.stringify(memberPublicKey));
+        localStorage.setItem("mero:context_identity", memberPublicKey);
       }
     },
     { contextId, memberPublicKey },
@@ -242,7 +246,7 @@ export default async function globalSetup(_config: FullConfig) {
     const autoSelected = await page
       .waitForFunction(
         () => {
-          const raw = localStorage.getItem("context-id");
+          const raw = localStorage.getItem("mero:context_id");
           return !!raw && raw.length > 10;
         },
         { timeout: 8_000, polling: 500 },
@@ -251,7 +255,7 @@ export default async function globalSetup(_config: FullConfig) {
       .catch(() => false);
 
     if (!autoSelected) {
-      console.log("[global-setup] context-id not set automatically — ensuring context exists…");
+      console.log("[global-setup] context id not set automatically — ensuring context exists…");
       // Debug: show what's in localStorage so key-name mismatches are visible
       const lsSnapshot = await page.evaluate(() => {
         const out: Record<string, string | null> = {};
@@ -265,12 +269,12 @@ export default async function globalSetup(_config: FullConfig) {
       await ensureContextExists(page);
     }
 
-    // 10. Final confirmation context-id is in localStorage
-    const ctxId = await page.evaluate(() => localStorage.getItem("context-id"));
+    // 10. Final confirmation the context id is in localStorage
+    const ctxId = await page.evaluate(() => localStorage.getItem("mero:context_id"));
     if (!ctxId || ctxId.length <= 10) {
-      throw new Error("[global-setup] context-id still missing after ensureContextExists.");
+      throw new Error("[global-setup] context id still missing after ensureContextExists.");
     }
-    console.log(`[global-setup] context-id set: ${JSON.parse(ctxId)}`);
+    console.log(`[global-setup] context id set: ${ctxId}`);
 
     // 11. Save session
     fs.mkdirSync(path.dirname(AUTH_FILE), { recursive: true });

@@ -2,7 +2,8 @@ name: Frontend - Playwright Tests
 
 # Runs mocked Playwright UI tests and TypeScript type check for the frontend.
 # Mocked tests use playwright.mocked.config.ts — no live Calimero node required.
-# WASM is still built so the app can load app.wasm at runtime during tests.
+# WASM is still built so `pnpm sync-wasm` has something to copy and the live-node
+# suite can install the app it tests against.
 
 permissions:
   contents: read
@@ -59,6 +60,13 @@ jobs:
       - name: Type check
         working-directory: frontend
         run: pnpm exec tsc -b --noEmit
+
+      # Vitest, like every other mero app. Covers the SDK boundary this frontend
+      # sits on: the JSON-RPC envelope (a byte-array `output` vs parsed JSON, a
+      # byte-array error message) and the auth/token/context accessors.
+      - name: Unit tests
+        working-directory: frontend
+        run: pnpm test
 
   # ── Build WASM ─────────────────────────────────────────────────────────────────
   build-wasm:

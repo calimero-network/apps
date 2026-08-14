@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 import { ResultBox } from "../components/ResultBox";
-import { getAppEndpointKey } from "@calimero-network/calimero-client";
+import { getNodeUrl } from "../lib/mero";
 import * as api from "../api/kvStore";
 import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import { SyncBar } from "../components/SyncBar";
@@ -84,7 +84,7 @@ export function BlobStorage() {
       );
       const fid = (res as { result?: { output?: string } })?.result?.output;
       if (fid) {
-        const nodeUrl = getAppEndpointKey();
+        const nodeUrl = getNodeUrl();
         if (nodeUrl) await api.setMetadata("_blob_nodes", fid, nodeUrl);
         setFileId(fid);
         setUploadProgress({ text: `Registered — file_id: ${fid.slice(0, 20)}…`, ok: true });
@@ -108,7 +108,7 @@ export function BlobStorage() {
       const blobRes = await api.getBlobIdB58(file.id);
       const blobId = (blobRes as { result?: { output?: string } })?.result?.output;
       if (!blobId) throw new Error("Could not get blob ID");
-      const nodeUrl = getAppEndpointKey();
+      const nodeUrl = getNodeUrl();
       if (!nodeUrl) throw new Error("Node URL not set");
       await downloadBlobFrom(nodeUrl, blobId, file.name, file.mime_type);
     } catch (err) {

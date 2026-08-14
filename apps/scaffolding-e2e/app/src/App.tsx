@@ -1,14 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useMero } from "@calimero-network/mero-react";
 import {
-  getContextId,
-  getAppEndpointKey,
-  setAppEndpointKey,
-  setContextId,
-  setExecutorPublicKey,
   clearContextId,
-  useCalimero,
-  ConnectionType,
-} from "@calimero-network/calimero-client";
+  getContextId,
+  getNodeUrl,
+  setContextId,
+  setContextIdentity,
+  setNodeUrl,
+} from "./lib/mero";
 import { listContexts, getContextIdentities, setUnauthorizedHandler, type ContextRecord } from "./api/adminApi";
 import { Concepts } from "./sections/Concepts";
 import { KvOperations } from "./sections/KvOperations";
@@ -126,7 +125,7 @@ function ContextBar({ nodeUrl, contextId, onMenuToggle, children }: { nodeUrl: s
   const inputRef = useRef<HTMLInputElement>(null);
 
   function startEdit() {
-    setDraft(getAppEndpointKey() ?? "");
+    setDraft(getNodeUrl() ?? "");
     setEditing(true);
     setTimeout(() => inputRef.current?.focus(), 0);
   }
@@ -134,7 +133,7 @@ function ContextBar({ nodeUrl, contextId, onMenuToggle, children }: { nodeUrl: s
   function commitEdit() {
     const trimmed = draft.trim();
     if (trimmed) {
-      setAppEndpointKey(trimmed);
+      setNodeUrl(trimmed);
       // Update ?node= in the URL so the override survives a reload.
       const u = new URL(window.location.href);
       u.searchParams.set("node", trimmed);
@@ -147,7 +146,7 @@ function ContextBar({ nodeUrl, contextId, onMenuToggle, children }: { nodeUrl: s
   const [nodeBUrlCopied, setNodeBUrlCopied] = useState(false);
 
   function getNodeBUrl() {
-    const base = getAppEndpointKey() ?? "http://localhost:2528";
+    const base = getNodeUrl() ?? "http://localhost:2528";
     const suggested = base.replace(/(\d+)(?!.*\d)/, (m) => String(Number(m) + 1));
     const u = new URL(window.location.origin + window.location.pathname);
     u.searchParams.set("node", suggested);
@@ -321,15 +320,18 @@ function ContextBar({ nodeUrl, contextId, onMenuToggle, children }: { nodeUrl: s
 }
 
 function ConnectScreen() {
-  const { login, isOnline } = useCalimero();
+  // `connectToNode` replaces the old `login({ type, url })`: mero-react's login
+  // modal no longer has Local/Remote tabs, so a URL is all it takes.
+  const { connectToNode, isOnline } = useMero();
   const [url, setUrl] = useState(
-    getAppEndpointKey() ?? import.meta.env.VITE_NODE_URL ?? "http://localhost:2528",
+    getNodeUrl() ?? import.meta.env.VITE_NODE_URL ?? "http://localhost:2528",
   );
 
   function connect() {
     const trimmed = url.trim();
     if (!trimmed) return;
-    login({ type: ConnectionType.Custom, url: trimmed });
+    setNodeUrl(trimmed);
+    connectToNode(trimmed);
   }
 
   return (
@@ -438,11 +440,11 @@ function ConnectScreen() {
 async function applyContext(ctx: ContextRecord) {
   const identities = await getContextIdentities(ctx.id);
   setContextId(ctx.id);
-  if (identities[0]) setExecutorPublicKey(identities[0]);
+  if (identities[0]) setContextIdentity(identities[0]);
 }
 
 export default function App() {
-  const { isAuthenticated, logout } = useCalimero();
+  const { isAuthenticated, logout } = useMero();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const handleLogout = useCallback(() => {
@@ -466,7 +468,7 @@ export default function App() {
   const [contextId, setContextIdState] = useState<string | null>(getContextId);
   const [contexts, setContexts] = useState<ContextRecord[]>([]);
 
-  const nodeUrl = getAppEndpointKey();
+  const nodeUrl = getNodeUrl();
 
   // After auth, fetch all contexts and auto-select the preferred one.
   useEffect(() => {

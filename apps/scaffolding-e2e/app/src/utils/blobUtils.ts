@@ -1,8 +1,4 @@
-import {
-  getAppEndpointKey,
-  getAccessToken,
-  getContextId,
-} from "@calimero-network/calimero-client";
+import { getAccessToken, getContextId, getNodeUrl } from "../lib/mero";
 import { notifyUnauthorized } from "../api/adminApi";
 
 export function formatBytes(n: number) {
@@ -12,7 +8,7 @@ export function formatBytes(n: number) {
 }
 
 export async function uploadBlobToNode(file: File): Promise<string> {
-  const nodeUrl = getAppEndpointKey();
+  const nodeUrl = getNodeUrl();
   const token = getAccessToken();
   if (!nodeUrl) throw new Error("Node URL not set");
 

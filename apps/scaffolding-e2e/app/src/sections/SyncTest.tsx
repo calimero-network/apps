@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { getAppEndpointKey } from "@calimero-network/calimero-client";
+import { getNodeUrl } from "../lib/mero";
 import * as api from "../api/kvStore";
 
 // Both frontends (Node A and Node B) connect to the same sync server.
@@ -43,7 +43,7 @@ async function serverFetch(serverUrl: string, path: string, opts?: RequestInit):
 export function SyncTest() {
   const [serverUrl, setServerUrl] = useState(DEFAULT_SERVER);
   const [serverOk, setServerOk] = useState<boolean | null>(null);
-  const nodeUrl = getAppEndpointKey() ?? "unknown";
+  const nodeUrl = getNodeUrl() ?? "unknown";
   const nodeLabel = nodeUrl.replace(/^https?:\/\//, "");
 
   // ── Writer state ───────────────────────────────────────────────────────────
@@ -95,7 +95,7 @@ export function SyncTest() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           runId, action: "write", key, value,
-          nodeUrl: getAppEndpointKey() ?? "unknown",
+          nodeUrl: getNodeUrl() ?? "unknown",
         }),
       }) as RunStatus;
 
@@ -180,7 +180,7 @@ export function SyncTest() {
             body: JSON.stringify({
               runId: pending.runId, action: "read",
               key: testKey, value: readValue,
-              nodeUrl: getAppEndpointKey() ?? "unknown",
+              nodeUrl: getNodeUrl() ?? "unknown",
             }),
           }) as RunStatus;
 
