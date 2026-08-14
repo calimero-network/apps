@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import { openEditor, waitForCalls, type RpcRecord } from "./support/mocks";
+import { callsTo, openEditor, waitForCalls, type RpcRecord } from "./support/mocks";
 
 // Layer folders, end to end in a real browser: creating them, nesting, collapsing,
 // renaming, selecting a folder's contents, dragging a folder on the canvas and
@@ -266,5 +266,58 @@ test.describe("Layer folders", () => {
     });
     await expect(layers(page).getByText("Header")).toBeVisible();
     await expect(page.getByTestId("group-selected")).toHaveCount(0);
+  });
+});
+
+// ── Older app builds ────────────────────────────────────────────────────────
+//
+// A context pins the app build it was created with, so a document made before
+// folders shipped keeps a contract with no `move_layers`. That used to fail
+// grouping outright with `method "move_layers" not found`.
+test.describe("Folders on a contract that predates them", () => {
+  test("grouping falls back to one move_layer per layer", async ({ page }) => {
+    const log = await openEditor(page, { missingMethods: ["move_layers"] });
+    for (let i = 0; i < 2; i++) {
+      await page.getByRole("button", { name: "New raster layer" }).click();
+    }
+    const rows = page.locator("[data-testid^='layer-row-']");
+    await rows.first().click();
+    await rows.nth(1).click({ modifiers: ["Shift"] });
+    await page.getByTestId("group-selected").click();
+
+    // The folder still exists and still holds both layers…
+    await expect(page.locator("[data-testid^='layer-row-'][data-kind='group']")).toHaveCount(1);
+    await expect(page.getByTestId("group-content-count")).toContainText("2 layers inside");
+
+    // …persisted through the older per-layer method, once per member.
+    const moves = await waitForCalls(log, "move_layer", 2);
+    expect(moves).toHaveLength(2);
+    for (const call of moves) expect(call.args.parent_id).toBeTruthy();
+
+    // and the user is told once, rather than left wondering
+    await expect(page.getByText(/predates folders/)).toBeVisible();
+  });
+
+  test("it tries the new method once, then stops asking", async ({ page }) => {
+    const log = await openEditor(page, { missingMethods: ["move_layers"] });
+    for (let i = 0; i < 2; i++) {
+      await page.getByRole("button", { name: "New raster layer" }).click();
+      await page.getByTestId("group-selected").click();
+    }
+    await waitForCalls(log, "move_layer", 2);
+    expect(callsTo(log, "move_layers")).toHaveLength(1);
+  });
+
+  test("ungrouping works on the old contract too", async ({ page }) => {
+    const log = await openEditor(page, { missingMethods: ["move_layers"] });
+    await page.getByRole("button", { name: "New raster layer" }).click();
+    await page.getByTestId("group-selected").click();
+    await waitForCalls(log, "move_layer", 1);
+
+    await page.getByTestId("ungroup-selected").click();
+    await expect(page.locator("[data-testid^='layer-row-'][data-kind='group']")).toHaveCount(0);
+    // the child is lifted out via move_layer, and the folder deleted
+    await waitForCalls(log, "move_layer", 2);
+    await waitForCalls(log, "delete_layer", 1);
   });
 });

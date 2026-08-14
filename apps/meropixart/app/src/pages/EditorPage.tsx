@@ -4,6 +4,8 @@ import { v4 as uuid } from "uuid";
 import {
   rpcCall, adminGet, adminUploadBlob, adminGetBlob, joinContext,
 } from "../api/rpc";
+import { resetMethodSupport, rpcWithFallback } from "../api/compat";
+import { mapLimit } from "../utils/concurrency";
 import { useSse } from "../hooks/useSse";
 import { useToast } from "../contexts/ToastContext";
 import { useEditorStore } from "../store/editorStore";
@@ -15,7 +17,7 @@ import {
   bytesToImage, canvasToPngBytes, createCanvas, ctx2d, applyCurves, parseCurves,
   applyLevels, type LevelsData,
 } from "../utils/raster";
-import { composite } from "../utils/compositor";
+import { composite, invalidatePrepared } from "../utils/compositor";
 import { applyFilter } from "../utils/filters";
 import { invertSelection, selectionPathLocal } from "../utils/geometry";
 import { bakeTransform, unionBounds } from "../utils/transform";
@@ -46,6 +48,10 @@ import UsernameModal from "../components/UsernameModal";
 import styles from "./EditorPage.module.css";
 
 const ts = () => Date.now();
+
+/** How many blob uploads to keep in flight while loading a showcase. Enough to
+ *  hide the round-trips, few enough that a node is not hammered by one click. */
+const UPLOAD_CONCURRENCY = 4;
 
 export default function EditorPage() {
   const { teamId, projectId } = useParams();
@@ -157,6 +163,10 @@ export default function EditorPage() {
     reset.clearGuides();
     reset.clearHistory();
     clearAllCanvases();
+    invalidatePrepared();
+    // A different project can be running a different app build, so the
+    // "this method is missing" verdicts must not carry over.
+    resetMethodSupport();
     loadedBlobs.current = new Set();
     setReady(false);
     setMembers([]);
@@ -355,6 +365,39 @@ export default function EditorPage() {
   }, [ctxId, showToast]);
 
   /**
+   * Re-parent layers, preferring the one-shot `move_layers`.
+   *
+   * A document whose installed app predates that method falls back to one
+   * `move_layer` per layer — the same result, more round-trips. Without this,
+   * grouping on an older contract failed outright with
+   * `method "move_layers" not found`.
+   */
+  const persistMoves = useCallback(async (
+    moves: Array<[string, string | null]>, updatedAt: number,
+  ) => {
+    if (moves.length === 0) return;
+    const layersNow = useEditorStore.getState().layers;
+    await rpcWithFallback(
+      "move_layers",
+      () => rpcCall(ctxId, "move_layers", { moves, updated_at: updatedAt }),
+      async () => {
+        for (const [id, parentId] of moves) {
+          const layer = layersNow.find((l) => l.id === id);
+          await rpcCall(ctxId, "move_layer", {
+            id,
+            parent_id: parentId,
+            layer_index: layer?.layerIndex ?? 0,
+            updated_at: updatedAt,
+          });
+        }
+      },
+      () => showToast(
+        "This project's app build predates folders — grouping is being saved one layer at a time.",
+      ),
+    );
+  }, [ctxId, showToast]);
+
+  /**
    * Persist a free-transform patch via `update_transform`.
    *
    * Kept apart from `commitMeta` so the two never fight: position/props go
@@ -368,18 +411,31 @@ export default function EditorPage() {
     upsertLayer({ ...l, ...patch, updatedAt: now });
     bumpRender();
     const ri = (v: number | undefined) => (v == null ? null : Math.round(v));
-    rpcCall(ctxId, "update_transform", {
-      id,
-      rotation: ri(patch.rotation),
-      scale_x: ri(patch.scaleX),
-      scale_y: ri(patch.scaleY),
-      skew_x: ri(patch.skewX),
-      skew_y: ri(patch.skewY),
-      flip_h: patch.flipH ?? null,
-      flip_v: patch.flipV ?? null,
-      warp: patch.warp ?? null,
-      updated_at: now,
-    }).catch((e) => showToast(errMsg(e), "error"));
+    // An older app build has no `update_transform`; rotation and scale still fit
+    // through `update_layer`, and shear/mirror/warp are told they cannot be saved
+    // rather than failing the whole call.
+    rpcWithFallback(
+      "update_transform",
+      () => rpcCall(ctxId, "update_transform", {
+        id,
+        rotation: ri(patch.rotation),
+        scale_x: ri(patch.scaleX),
+        scale_y: ri(patch.scaleY),
+        skew_x: ri(patch.skewX),
+        skew_y: ri(patch.skewY),
+        flip_h: patch.flipH ?? null,
+        flip_v: patch.flipV ?? null,
+        warp: patch.warp ?? null,
+        updated_at: now,
+      }),
+      () => commitMeta(id, {
+        rotation: patch.rotation, scaleX: patch.scaleX, scaleY: patch.scaleY,
+      }),
+      () => showToast(
+        "This project's app build predates shear, mirror and warp — those stay local; "
+        + "rotation and scale are still saved.",
+      ),
+    ).catch((e) => showToast(errMsg(e), "error"));
   }, [ctxId, canEdit, upsertLayer, bumpRender, showToast]);
 
   const onUpdateMeta = useCallback((id: string, patch: Partial<Layer>) => {
@@ -531,14 +587,11 @@ export default function EditorPage() {
 
     try {
       await rpcCall(ctxId, "add_layer", { layer: group });
-      // One RPC for the whole selection: the contract's move_layers also refuses
-      // any pair that would close a cycle.
-      await rpcCall(ctxId, "move_layers", {
-        moves: members.map((m) => [m.id, group.id]),
-        updated_at: now,
-      });
+      // One RPC for the whole selection where the contract has it: `move_layers`
+      // also refuses any pair that would close a cycle.
+      await persistMoves(members.map((m) => [m.id, group.id]), now);
     } catch (e) { showToast(errMsg(e), "error"); }
-  }, [ctxId, canEdit, upsertLayer, bumpRender, showToast]);
+  }, [ctxId, canEdit, upsertLayer, bumpRender, persistMoves, showToast]);
 
   /** Dissolve a folder: its children move up to the folder's own parent, and the
    *  now-empty folder layer is deleted. Contents keep their pixels and order. */
@@ -560,15 +613,10 @@ export default function EditorPage() {
     bumpRender();
 
     try {
-      if (children.length > 0) {
-        await rpcCall(ctxId, "move_layers", {
-          moves: children.map((c) => [c.id, grandparent]),
-          updated_at: now,
-        });
-      }
+      await persistMoves(children.map((c) => [c.id, grandparent]), now);
       await rpcCall(ctxId, "delete_layer", { id });
     } catch (e) { showToast(errMsg(e), "error"); }
-  }, [ctxId, canEdit, upsertLayer, removeLayer, bumpRender, showToast]);
+  }, [ctxId, canEdit, upsertLayer, removeLayer, bumpRender, persistMoves, showToast]);
 
   /**
    * Bake a layer's live transform into its pixels: render it through its own
@@ -998,21 +1046,65 @@ export default function EditorPage() {
       selectLayer(null);
       bumpRender();
 
-      // 4. Persist. Parents before children, so `move_layers` never names a
-      //    folder the node has not seen yet.
-      const ordered = [...built.layers].sort((a, b) => Number(b.kind === "group") - Number(a.kind === "group"));
-      for (const layer of ordered) {
-        // parentId is applied in a single move_layers call afterwards
-        await rpcCall(ctxId, "add_layer", { layer: { ...layer, parentId: null } });
-        if (built.canvases.has(layer.id)) await commitPixels(layer.id);
-        if (built.masks.has(layer.id)) await commitMaskPixels(layer.id);
-      }
-      const moves = built.layers
-        .filter((l) => l.parentId)
-        .map((l) => [l.id, l.parentId]);
-      if (moves.length > 0) {
-        await rpcCall(ctxId, "move_layers", { moves, updated_at: ts() });
-      }
+      // 4. Persist.
+      //
+      // Strictly sequentially this was ~90 round-trips with a PNG encode between
+      // each — and because the per-layer commit path also writes to the store, it
+      // recomposited the whole document 28 times on the way. Loading a showcase
+      // took seconds and pinned the main thread.
+      //
+      // So: bounded-concurrency phases, and the store is written once at the end.
+      // `parentId` is applied by a single `move_layers` afterwards, which is why
+      // the layers can be created in any order.
+      await mapLimit(built.layers, UPLOAD_CONCURRENCY, (layer) =>
+        rpcCall(ctxId, "add_layer", { layer: { ...layer, parentId: null } }));
+
+      const contentPatches = await mapLimit(
+        built.layers.filter((l) => built.canvases.has(l.id) || built.masks.has(l.id)),
+        UPLOAD_CONCURRENCY,
+        async (layer) => {
+          const patch: { id: string; blobId?: string; maskBlobId?: string } = { id: layer.id };
+          const pixels = built.canvases.get(layer.id);
+          if (pixels) {
+            const { blobId } = await adminUploadBlob(await canvasToPngBytes(pixels), ctxId);
+            if (blobId) {
+              loadedBlobs.current.add(blobId);
+              patch.blobId = blobId;
+              await rpcCall(ctxId, "update_layer_content", {
+                id: layer.id, blob_id: blobId,
+                width: pixels.width, height: pixels.height, updated_at: ts(),
+              });
+            }
+          }
+          const mask = built.masks.get(layer.id);
+          if (mask) {
+            const { blobId } = await adminUploadBlob(await canvasToPngBytes(mask), ctxId);
+            if (blobId) {
+              loadedBlobs.current.add(blobId);
+              patch.maskBlobId = blobId;
+              await rpcCall(ctxId, "update_layer_mask", {
+                id: layer.id, mask_blob_id: blobId, updated_at: ts(),
+              });
+            }
+          }
+          return patch;
+        },
+      );
+
+      await persistMoves(
+        built.layers.filter((l) => l.parentId).map((l) => [l.id, l.parentId!]),
+        ts(),
+      );
+
+      // One store write for every blob id we just minted, instead of one per layer.
+      const patchById = new Map(contentPatches.map((p) => [p.id, p]));
+      setLayers(built.layers.map((l) => {
+        const patch = patchById.get(l.id);
+        return patch
+          ? { ...l, blobId: patch.blobId ?? l.blobId, maskBlobId: patch.maskBlobId ?? l.maskBlobId }
+          : l;
+      }));
+      bumpRender();
 
       setShowShowcase(false);
       showToast(`Loaded “${project.name}” — ${built.layers.length} layers.`, "success");
@@ -1023,7 +1115,7 @@ export default function EditorPage() {
     }
   }, [
     ctxId, doc, canEdit, setDoc, setLayers, selectLayer, clearHistory, removeLayer,
-    setZoom, setPan, bumpRender, commitPixels, commitMaskPixels, showToast,
+    setZoom, setPan, bumpRender, persistMoves, showToast,
   ]);
 
   // A deep link (`?showcase=aurora`) opens straight into a populated document —

@@ -259,6 +259,24 @@ Verified: tsc clean · lint 0 errors · build clean · vitest 17/17 · Playwrigh
 mocked **38/38** (gallery thumbnails are still checkerboard placeholders — a
 separate follow-up).
 
+## Performance notes
+
+- **Compositor: prepared-layer cache.** Dragging in Sunset Ridge cost ~47ms a
+  frame because two reflection layers carry a `blur` adjustment and `ctx.filter`
+  re-ran the gaussian on every pointer move. Each layer's masked+filtered pixels
+  are now baked once and keyed by a signature that excludes position/rotation/
+  opacity. Measured drag cost: ridge 46.6→6.7ms, aurora 10.8→6.2ms, bauhaus
+  6.8→5.2ms, transform-lab 2.5→1.5ms.
+- **The warp is deliberately not baked.** One blit beats 288 clipped mesh draws
+  for a small layer but loses badly for a large one (Aurora's 900×520 card:
+  15.0ms baked vs 6.4ms live). Only a warp+blur layer bakes, because padding and
+  the mesh's source rect are incompatible.
+- **`draw()` reuses the flattened document** unless something the composite reads
+  changed, so pan and zoom no longer recomposite.
+- **Loading a showcase** runs its `add_layer` calls and its blob uploads at
+  bounded concurrency (`utils/concurrency.ts`) and writes the store once, instead
+  of ~90 sequential round-trips each triggering a recomposite.
+
 ## Remaining work / follow-ups
 - Advanced tools: clone stamp polish, adjustment layers (crop tool, marquee/lasso,
   gradient, shapes, standalone Levels and the corner-pin warp all shipped).

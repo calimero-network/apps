@@ -65,6 +65,12 @@ mero-pixart/
 └── .github/        CI workflows
 ```
 
+The compositor caches each layer's prepared pixels (mask + adjustment filter),
+keyed by a signature that deliberately excludes position, rotation and opacity —
+so dragging one layer re-prepares only that layer. Without it, a `blur`
+adjustment re-ran a full gaussian pass per layer on every pointer move
+(`utils/compositor.ts` documents the measurements).
+
 The WASM contract holds **layer metadata** (kind, `parentId` for folder nesting,
 transform — position, scale, rotation, shear, mirror, corner-pin warp — opacity,
 blend mode, adjustments, text props) and **blob references** — the actual pixels are stored as

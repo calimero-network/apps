@@ -32,6 +32,10 @@ export const TEST_MEMBER = {
 };
 
 export interface MockOptions {
+  /** Contract methods this node's installed app does NOT have — answered with the
+   *  runtime's `method "x" not found`, so the frontend's compatibility fallbacks
+   *  can be exercised against an older app build. */
+  missingMethods?: string[];
   /** Document metadata `get_document` answers with. */
   doc?: Partial<{
     name: string; description: string; width: number; height: number;
@@ -73,6 +77,7 @@ export async function mockNode(page: Page, opts: MockOptions = {}): Promise<RpcR
   };
   const layers = opts.layers ?? [];
   const role = opts.role ?? "admin";
+  const missing = new Set(opts.missingMethods ?? []);
 
   // mero-react ≥4.1.1 probes HEAD /auth/validate; older builds probed contexts.
   await page.route("**/auth/validate", (route) => route.fulfill({ status: 200 }));
@@ -107,6 +112,18 @@ export async function mockNode(page: Page, opts: MockOptions = {}): Promise<RpcR
     };
     const method = body?.params?.method ?? "";
     log.push({ method, args: body?.params?.argsJson ?? {} });
+
+    if (missing.has(method)) {
+      // Exactly what calimero-runtime returns for an export the WASM lacks:
+      // `#[error("method {name:?} not found")]`.
+      return route.fulfill({
+        status: 200, contentType: "application/json",
+        body: JSON.stringify({
+          jsonrpc: "2.0", id: 1,
+          error: { code: -32000, message: `method "${method}" not found` },
+        }),
+      });
+    }
 
     let value: unknown = null;
     switch (method) {

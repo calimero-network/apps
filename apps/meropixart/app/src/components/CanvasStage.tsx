@@ -119,6 +119,33 @@ export default function CanvasStage({
     setSelection, setCloneSource, setClipboard, setEditingText, selectLayer,
   } = useEditorStore();
 
+  // ── Flattened-document cache ─────────────────────────────────────────────
+  //
+  // `draw()` runs for pan and zoom too, and those change nothing about the
+  // document — only how it is blitted. Recompositing for a pan was pure waste
+  // (and on a 23-layer showcase, visible waste). The composite is reused unless
+  // something it actually depends on changed.
+  //
+  // `renderTick` covers every imperative pixel mutation (that is what bumps it),
+  // and the metadata string covers everything else the compositor reads. Zoom and
+  // pan are deliberately absent.
+  const flatCache = useRef<{ sig: string; canvas: HTMLCanvasElement } | null>(null);
+  const flattened = (ls: Layer[], d: DocumentInfo): HTMLCanvasElement => {
+    const sig = `${renderTick}|${d.width}x${d.height}|${d.background}|` + ls.map((l) =>
+      [
+        l.id, l.layerIndex, l.visible ? 1 : 0, l.parentId ?? "", l.opacity, l.blendMode,
+        l.x, l.y, l.width, l.height, l.rotation, l.scaleX, l.scaleY,
+        l.skewX, l.skewY, l.flipH ? 1 : 0, l.flipV ? 1 : 0, l.warp ?? "", l.fill ?? "",
+        l.maskBlobId ?? "",
+      ].join(","),
+    ).join(";");
+    const hit = flatCache.current;
+    if (hit && hit.sig === sig) return hit.canvas;
+    const canvas = composite(ls, d.width, d.height, { background: d.background });
+    flatCache.current = { sig, canvas };
+    return canvas;
+  };
+
   // ── Render ──────────────────────────────────────────────────────────────
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -145,8 +172,7 @@ export default function CanvasStage({
     // checkerboard behind the document (transparency)
     drawCheckerboard(ctx, doc.width, doc.height, view.checkerSize);
 
-    const flat = composite(layers, doc.width, doc.height, { background: doc.background });
-    ctx.drawImage(flat, 0, 0);
+    ctx.drawImage(flattened(layers, doc), 0, 0);
 
     // optional grid overlay
     if (view.showGrid) drawGrid(ctx, doc.width, doc.height, view.gridSize, zoom);

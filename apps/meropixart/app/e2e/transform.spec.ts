@@ -279,3 +279,27 @@ test.describe("Transform tool on the canvas", () => {
     await expect(page.getByTestId("transform-panel").getByText("Select a layer")).toBeVisible();
   });
 });
+
+// ── Older app builds ────────────────────────────────────────────────────────
+test.describe("Transform on a contract that predates it", () => {
+  test("rotation still saves, through the older update_layer", async ({ page }) => {
+    const log = await openEditor(page, { missingMethods: ["update_transform"] });
+    await addLayer(page);
+    await openTransformPanel(page);
+    await page.getByTestId("rotate-cw").click();
+
+    const updates = await waitForCalls(log, "update_layer", 1);
+    expect(updates.some((r) => r.args.rotation === 90)).toBe(true);
+    await expect(page.getByText(/predates shear, mirror and warp/)).toBeVisible();
+  });
+
+  test("the warp controls stay usable locally rather than erroring", async ({ page }) => {
+    const log = await openEditor(page, { missingMethods: ["update_transform"] });
+    await addLayer(page);
+    await openTransformPanel(page);
+    await page.getByTestId("warp-preset-twist").click();
+    // the panel reflects it (local state), and nothing threw
+    await expect(page.getByTestId("warp-reset")).toBeEnabled();
+    await waitForCalls(log, "update_layer", 1);
+  });
+});
