@@ -30,8 +30,8 @@ const css = `
 // back to drag-to-look wherever pointer lock is unavailable (the desktop
 // webview), and "click to play" is then simply a lie.
 const HINTS = {
-  lock: "click to play — WASD move · LMB/Q break · RMB/E place · 1-9 blocks · M map · O options",
-  drag: "drag to look — WASD move · LMB/Q break · RMB/E place · 1-9 blocks · M map · O options",
+  lock: "click to play — WASD move · ←↑↓→ look · LMB/Q break · RMB/E place · 1-9 blocks · M map · O options",
+  drag: "drag to look — WASD move · ←↑↓→ look · LMB/Q break · RMB/E place · 1-9 blocks · M map · O options",
 };
 
 export class Hud {

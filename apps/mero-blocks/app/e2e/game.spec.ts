@@ -147,10 +147,12 @@ test.describe("keyboard controls (trackpad-friendly)", () => {
     expect((await input(page)).uiOpen).toBe(false);
   });
 
-  // The desktop runs the app in a Tauri WKWebView, where requestPointerLock is
-  // a silent no-op: it neither locks nor errors, so `movementX` never arrives
-  // and the camera used to be completely dead there. These two lock down the
-  // fallback and, just as importantly, that the web path is untouched.
+  // The desktop runs the app in a Tauri (wry) WKWebView, whose WKUIDelegate has
+  // no pointer-lock handler at all — the lock is simply never granted, so a look
+  // path gated on `document.pointerLockElement` never opens and the camera is
+  // dead there, trackpad or mouse. These lock down the fallback, the desktop's
+  // no-click-needed arming, and — just as importantly — that the web path is
+  // untouched.
   const camera = (page: import("@playwright/test").Page) =>
     page.evaluate(() =>
       (
@@ -238,6 +240,76 @@ test.describe("keyboard controls (trackpad-friendly)", () => {
     );
     expect((await camera(page)).dragLook).toBe(false);
     await expect(page.getByTestId("hint")).toContainText("click to play");
+  });
+
+  test("in the desktop shell drag-to-look is armed before the first click", async ({ page }) => {
+    // NOTE: requestPointerLock is deliberately left intact — the arming has to
+    // come from recognizing the runtime, not from watching the API fail. That is
+    // the whole point: on the desktop the old code burned the player's first
+    // click and half a second discovering what `window.isTauri` already said.
+    await page.addInitScript(() => {
+      (window as never as { isTauri: boolean }).isTauri = true;
+    });
+    await enterGame(page);
+
+    expect((await camera(page)).dragLook).toBe(true);
+    await expect(page.getByTestId("hint")).toContainText("drag to look");
+
+    // and the very first press already turns the camera — no probe click first
+    const canvas = page.getByTestId("game-canvas");
+    const box = (await canvas.boundingBox())!;
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    const before = await camera(page);
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.mouse.move(cx + 200, cy, { steps: 10 });
+    await page.mouse.up();
+    expect((await camera(page)).yaw).not.toBeCloseTo(before.yaw, 3);
+  });
+
+  test("arrow keys turn the camera with no pointer at all", async ({ page }) => {
+    await enterGame(page);
+    const start = await camera(page);
+
+    await page.keyboard.down("ArrowRight");
+    await page.waitForTimeout(300);
+    await page.keyboard.up("ArrowRight");
+    const turned = await camera(page);
+    // right = yaw decreasing, the same convention the mouse uses
+    expect(turned.yaw).toBeLessThan(start.yaw - 0.1);
+
+    await page.keyboard.down("ArrowUp");
+    await page.waitForTimeout(300);
+    await page.keyboard.up("ArrowUp");
+    const raised = await camera(page);
+    expect(raised.pitch).toBeGreaterThan(turned.pitch + 0.1);
+
+    // released keys stop the turn — no drift
+    const settled = await camera(page);
+    await page.waitForTimeout(150);
+    expect((await camera(page)).yaw).toBeCloseTo(settled.yaw, 6);
+  });
+
+  test("a trackpad flick nudges the hotbar one slot, not thirty", async ({ page }) => {
+    await enterGame(page);
+    await expect(page.getByTestId("slot-0")).toHaveClass(/sel/);
+
+    // One gentle two-finger scroll on a MacBook: a stream of small deltas, not
+    // one notch. Bound straight to the hotbar this used to step 20 times (and
+    // land on slot 2 by wrapping); it is worth exactly one notch.
+    await page.evaluate(() => {
+      for (let i = 0; i < 20; i++)
+        window.dispatchEvent(new WheelEvent("wheel", { deltaY: 5, deltaMode: 0 }));
+    });
+    await expect(page.getByTestId("slot-1")).toHaveClass(/sel/);
+    await expect(page.getByTestId("slot-2")).not.toHaveClass(/sel/);
+
+    // a real mouse notch still steps immediately — one event, one slot
+    await page.evaluate(() =>
+      window.dispatchEvent(new WheelEvent("wheel", { deltaY: 100, deltaMode: 0 })),
+    );
+    await expect(page.getByTestId("slot-2")).toHaveClass(/sel/);
   });
 
   test("options menu has a working sensitivity slider", async ({ page }) => {

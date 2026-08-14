@@ -228,8 +228,9 @@ export class Landing {
       <p class="mbl-tag">P2P worlds on Calimero — no game server</p>
       <div class="mbl-card" data-testid="play-card"><div id="mbl-play"></div></div>
       <div class="mbl-controls" data-testid="controls">
-        <kbd>WASD</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>LMB</kbd>/<kbd>Q</kbd> break
-        &nbsp; <kbd>RMB</kbd>/<kbd>E</kbd> place &nbsp; <kbd>M</kbd> map &nbsp; <kbd>O</kbd> options
+        <kbd>WASD</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>←↑↓→</kbd> look
+        &nbsp; <kbd>LMB</kbd>/<kbd>Q</kbd> break &nbsp; <kbd>RMB</kbd>/<kbd>E</kbd> place
+        &nbsp; <kbd>M</kbd> map &nbsp; <kbd>O</kbd> options
       </div>
       <div class="mbl-social" data-testid="social-links">
         ${SOCIALS.map(

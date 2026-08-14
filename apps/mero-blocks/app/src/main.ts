@@ -13,6 +13,8 @@ import { raycast } from "./engine/raycast";
 import { dayFactor, skyColor } from "./engine/sim";
 import { generateWorld, spawnPoint } from "./engine/terrain";
 import { WorldStore, WORLD_CX, WORLD_CY, WORLD_CZ, chunkKey } from "./engine/world";
+import { arrowLook, pointerLockAvailable } from "./input/look";
+import { WheelSteps } from "./input/wheel";
 import { inviteLink } from "./net/inviteLink";
 import { createWorldInvite } from "./net/admin";
 import { GameClient } from "./net/client";
@@ -214,6 +216,8 @@ async function boot(): Promise<void> {
     }
     if (uiOpen()) return; // menus swallow gameplay keys
     keys.add(e.code);
+    // arrows are a look control here — never let them scroll the page instead
+    if (e.code.startsWith("Arrow")) e.preventDefault();
     // keyboard mining/placing — no mouse buttons needed on a trackpad
     if (e.code === "KeyQ" && !e.repeat) {
       breakHeld = true;
@@ -236,9 +240,16 @@ async function boot(): Promise<void> {
     if (e.code === "KeyQ") breakHeld = false;
     if (e.code === "KeyE") placeHeld = false;
   });
+  // A trackpad's two-finger scroll is a stream of tiny deltas plus a momentum
+  // tail, not one notch — bound directly to the hotbar it cycled every slot
+  // several times per flick. WheelSteps turns the stream into notches (a mouse
+  // wheel's ~100px notch still steps immediately).
+  const wheelSteps = new WheelSteps();
   window.addEventListener("wheel", (e) => {
     if (uiOpen()) return;
-    sel = (sel + (e.deltaY > 0 ? 1 : -1) + HOTBAR.length) % HOTBAR.length;
+    const steps = wheelSteps.push(e.deltaY, e.deltaMode);
+    if (steps === 0) return;
+    sel = (((sel + steps) % HOTBAR.length) + HOTBAR.length) % HOTBAR.length;
     hud.setHotbarSel(sel);
   });
 
@@ -271,6 +282,14 @@ async function boot(): Promise<void> {
     hud.setLookMode("drag");
     hud.setHint(true);
   };
+
+  // Where the lock provably cannot be granted (the desktop's wry webview), don't
+  // spend a click and a grace window finding that out: arm drag-to-look before
+  // the first frame, so the first press already turns the camera and the hint
+  // says "drag to look" instead of the lie "click to play". A lock that does
+  // arrive later still retires the fallback (pointerlockchange, below), so a
+  // fixed webview needs no change here.
+  if (!pointerLockAvailable()) armDragLook();
 
   canvas.addEventListener("click", () => {
     if (uiOpen() || dragLook) return;
@@ -420,6 +439,14 @@ async function boot(): Promise<void> {
 
     // physics at fixed 60Hz (menus freeze movement, not the world)
     const menusOpen = uiOpen();
+    // Arrow keys turn the camera. This is the one look control that needs no
+    // pointer at all — on a trackpad, where there is no button to hold down for
+    // drag-to-look, it is the difference between playable and not.
+    if (!menusOpen) {
+      const { dYaw, dPitch } = arrowLook(keys, dtMs, options.getSensitivity());
+      yaw += dYaw;
+      pitch = Math.max(-1.55, Math.min(1.55, pitch + dPitch));
+    }
     const forward = menusOpen ? 0 : (keys.has("KeyW") ? 1 : 0) - (keys.has("KeyS") ? 1 : 0);
     const strafe = menusOpen ? 0 : (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
     // right vector is forward × up = (cos yaw, 0, -sin yaw) — the strafe Z
