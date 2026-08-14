@@ -24,7 +24,7 @@ export default defineConfig({
       name: "mocked",
       use: { ...devices["Desktop Chrome"] },
       testMatch: "**/*.spec.ts",
-      testIgnore: "**/integration/**",
+      testIgnore: ["**/integration/**", "**/perf/**"],
     },
     {
       // The same specs again, with the Tauri bridge stubbed. tauri-app opens this
@@ -33,12 +33,21 @@ export default defineConfig({
       name: "tauri",
       use: { ...devices["Desktop Chrome"] },
       testMatch: "**/*.spec.ts",
-      testIgnore: "**/integration/**",
+      testIgnore: ["**/integration/**", "**/perf/**"],
     },
     {
       name: "integration",
       use: { ...devices["Desktop Chrome"] },
       testMatch: "**/integration/**/*.spec.ts",
+    },
+    {
+      // The canvas bench. Never part of a CI run: it prints timings rather than
+      // asserting, and a shared runner's numbers mean nothing. Run it by hand
+      // with `--project=perf`.
+      name: "perf",
+      use: { ...devices["Desktop Chrome"] },
+      testMatch: "**/perf/**/*.spec.ts",
+      fullyParallel: false,
     },
   ],
 

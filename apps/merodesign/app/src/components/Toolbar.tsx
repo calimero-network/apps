@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { resolveName } from "../hooks/useMemberNames";
+import { countRender } from "../utils/renderCount";
+import { useShallow } from "zustand/react/shallow";
 import { useCanvasStore, type Background } from "../store/canvasStore";
 import { fileToDataUrl } from "../utils/export";
 import { getImageDimensions } from "../utils/image";
@@ -141,7 +143,21 @@ export default function Toolbar({
   onOpenStarter,
   boardHasContent = false,
 }: Props) {
-  const { activeTool, setTool, background, setBackground, undo, redo, undoStack, redoStack } = useCanvasStore();
+  countRender("Toolbar");
+  // Selector: the toolbar shows a tool, a background and two stack depths, and
+  // has no reason to re-render when an element moves or the selection changes.
+  const { activeTool, setTool, background, setBackground, undo, redo, undoStack, redoStack } = useCanvasStore(
+    useShallow((s) => ({
+      activeTool: s.activeTool,
+      setTool: s.setTool,
+      background: s.background,
+      setBackground: s.setBackground,
+      undo: s.undo,
+      redo: s.redo,
+      undoStack: s.undoStack,
+      redoStack: s.redoStack,
+    })),
+  );
   // Loading the starter clears the board, so an occupied board asks once. Kept as
   // in-menu state rather than window.confirm: a native dialog cannot be driven in
   // the Tauri webview e2e project.

@@ -167,3 +167,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     };
   },
 }));
+
+// Dev-only handle for the perf bench (`e2e/perf/`), which has to drive a remote
+// element update the way SSE does — from outside React — and time the repaint.
+// `import.meta.env.DEV` is statically false in a production build, so the whole
+// statement is dropped by the bundler.
+if (import.meta.env.DEV) {
+  (window as unknown as Record<string, unknown>).__canvasStore = useCanvasStore;
+}

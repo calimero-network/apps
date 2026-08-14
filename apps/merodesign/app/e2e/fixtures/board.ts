@@ -43,8 +43,19 @@ export interface BoardOptions {
    * Answer the blob endpoints: uploads return a blob id, fetches return a real
    * 8x8 PNG so image elements decode. Anything that flattens a group needs this,
    * or the upload leaves the mock and hits the network.
+   *
+   * ⚠️ The default bitmap is 8x8 and **fully transparent** — it decodes, which is
+   * all most specs need, but it paints nothing. A spec that asserts on where an
+   * image landed must pass `opaqueBlob` or it is reading the board behind the
+   * image and passing for the wrong reason.
    */
   serveBlob?: boolean;
+  /**
+   * Serve an opaque red 8x8 bitmap instead of the transparent default, so a spec
+   * can assert an image's paint order in pixels. Off by default: the stroke specs
+   * (task-06) measure border pixels against a bitmap that contributes none.
+   */
+  opaqueBlob?: boolean;
   /**
    * Make chosen contract methods fail, to simulate a board whose context runs an
    * older bundle: `{ set_layer_index: "Method not found" }`.
@@ -97,9 +108,14 @@ export async function openBoard(page: Page, opts: BoardOptions = {}): Promise<Bo
     }),
   );
   if (opts.serveBlob) {
-    // An 8x8 red PNG, enough for FabricImage to decode.
-    const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAFElEQVR4nGP8z4AAT" +
+    // 8x8 PNGs. The transparent one is the default and was previously commented
+    // as "red" — it is not, and that mislabelling is what makes a naive pixel
+    // assertion about an image pass for the wrong reason.
+    const TRANSPARENT_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAFElEQVR4nGP8z4AAT" +
       "AxDkjEqBwCbtgH9AoTPogAAAABJRU5ErkJggg==";
+    const RED_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAEklEQVR42mP4" +
+      "z8DwHx9mGBkKAMLXf4HVAzL9AAAAAElFTkSuQmCC";
+    const PNG = opts.opaqueBlob ? RED_PNG : TRANSPARENT_PNG;
     await page.route("**/admin-api/blobs**", async (route: Route) => {
       if (route.request().method() === "PUT") {
         blobUploads.push(route.request().postData() ?? "");

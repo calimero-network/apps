@@ -29,6 +29,8 @@ import { applyTopLeftOrigin } from "../utils/fabricDefaults";
 import { isPaintable } from "../utils/color";
 import { createMutationReporter } from "../utils/mutationErrors";
 import { useToast } from "../contexts/ToastContext";
+import { countRender } from "../utils/renderCount";
+import { useShallow } from "zustand/react/shallow";
 import { useCanvasStore } from "../store/canvasStore";
 import { saveDataUrl, saveText } from "../utils/saveFile";
 import type { Element } from "../types";
@@ -36,6 +38,42 @@ import styles from "./FabricCanvas.module.css";
 
 // Must run before any Fabric object is constructed — see fabricDefaults.ts.
 applyTopLeftOrigin();
+
+/**
+ * Dev-only counters for the perf bench (`e2e/perf/`). Wall-clock alone cannot
+ * tell "the canvas was rebuilt once" from "it was rebuilt fifty times and each
+ * one was fast enough to hide"; these can. Dropped from production builds.
+ */
+function countBuild(objects: number): void {
+  if (!import.meta.env.DEV) return;
+  const w = window as unknown as { __canvasBuilds?: { syncs: number; objects: number } };
+  const c = (w.__canvasBuilds ??= { syncs: 0, objects: 0 });
+  c.syncs += 1;
+  c.objects += objects;
+}
+
+/**
+ * A Fabric object the canvas sync owns. `data` is the element it was built from
+ * — identity, not a copy, which is what makes the reconcile cheap. `srcKey` is
+ * the image bytes it was decoded from, so a blob arriving later can be told
+ * apart from the same element re-rendered for another reason.
+ */
+type CanvasObject = FabricObject & { data?: Element; srcKey?: string };
+
+/**
+ * Put the canvas back in layer order. Fabric paints in insertion order, so
+ * anything added or replaced lands on top no matter what its layerIndex says.
+ * A no-op when the order is already right, which is the common case.
+ */
+function restack(fc: Canvas): void {
+  const objects = fc.getObjects() as CanvasObject[];
+  // Transient objects (drag preview, brush stroke) have no element and belong
+  // on top; sorting them to the end keeps them visible.
+  const layerOf = (o: CanvasObject) => (o.data ? o.data.layerIndex : Number.MAX_SAFE_INTEGER);
+  const target = [...objects].sort((a, b) => layerOf(a) - layerOf(b));
+  if (target.every((o, i) => o === objects[i])) return;
+  target.forEach((o, i) => fc.moveObjectTo(o, i));
+}
 
 export interface FabricCanvasHandle {
   exportPng: () => Promise<void>;
@@ -76,6 +114,7 @@ function makeDotPattern(bgColor: string): HTMLCanvasElement {
 
 const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
   ({ contextId, previewMode = false, addingComment = false, readOnly = false, onViewportChange }, ref) => {
+    countRender("FabricCanvas");
     const canvasElRef = useRef<HTMLCanvasElement>(null);
     const fabricRef = useRef<Canvas | null>(null);
     const previewRef = useRef(previewMode);
@@ -87,6 +126,8 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
     const previewObjRef = useRef<FabricObject | null>(null);
     const handPanningRef = useRef(false);
     const handPanLastRef = useRef({ x: 0, y: 0 });
+    /** Per-element load counter, so a superseded image decode drops its result. */
+    const imageTokensRef = useRef(new Map<string, number>());
     const [zoom, setZoom] = useState(1);
     const { showToast } = useToast();
     // See utils/mutationErrors: these used to be `.catch(() => {})`, so a failed
@@ -94,6 +135,8 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
     const reportFailure = useRef(createMutationReporter((m) => showToast(m, "error")));
     reportFailure.current = createMutationReporter((m) => showToast(m, "error"));
 
+    // Bare `useCanvasStore()` subscribes to the whole store, so renaming a layer
+    // or collapsing a group in the panel re-rendered the canvas for nothing.
     const {
       activeTool,
       selectedElementId,
@@ -111,7 +154,26 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       redo,
       copyElement,
       getPasted,
-    } = useCanvasStore();
+    } = useCanvasStore(
+      useShallow((s) => ({
+        activeTool: s.activeTool,
+        selectedElementId: s.selectedElementId,
+        selectedElementIds: s.selectedElementIds,
+        elements: s.elements,
+        background: s.background,
+        imageCache: s.imageCache,
+        selectElement: s.selectElement,
+        selectElements: s.selectElements,
+        upsertElement: s.upsertElement,
+        removeElement: s.removeElement,
+        cacheImage: s.cacheImage,
+        snapshot: s.snapshot,
+        undo: s.undo,
+        redo: s.redo,
+        copyElement: s.copyElement,
+        getPasted: s.getPasted,
+      })),
+    );
 
     previewRef.current = previewMode;
     addingCommentRef.current = addingComment;
@@ -291,26 +353,68 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
     }, [background]);
 
     /* ── sync elements store → canvas ───────────────────────────── */
+    // This used to be `fc.clear()` followed by a rebuild of every element, on
+    // every change to `elements` OR `imageCache`. Two things made that expensive
+    // out of proportion to what actually changed:
+    //
+    //   - one peer nudging one shape rebuilt the whole board. At 300 elements
+    //     that is 300 Fabric constructions for a 1px move (49.6ms median frame,
+    //     115ms p95 — measured, see e2e/perf/).
+    //   - `cacheImage` writes one blob at a time, and each write is its own
+    //     store change, so loading a board of N images rebuilt the canvas N
+    //     times and re-decoded every already-loaded image each round: N²/2
+    //     constructions and N²/2 `FabricImage.fromURL` decodes. 50 images cost
+    //     2445ms and built 2500 objects.
+    //
+    // So reconcile instead. An object is reused when the element it was built
+    // from is the very same object (`upsertElement` replaces one entry and keeps
+    // the rest by reference) and, for images, when its bytes have not changed.
+    // Everything else — add, remove, rebuild, restack — is per-element.
     useEffect(() => {
       const fc = fabricRef.current;
       if (!fc) return;
       const activeObj = fc.getActiveObject() as (IText & { isEditing?: boolean }) | null;
       if (activeObj?.isEditing) return;
-      // A rebuild would destroy a live multi-selection: fc.clear() drops the
-      // ActiveSelection and the user's drag target vanishes under the cursor.
+      // Reconciling would destroy a live multi-selection: an ActiveSelection
+      // owns its members, so re-adding one drops it out from under the cursor.
       if (fc.getActiveObject() instanceof ActiveSelection) return;
 
       const prevSelectedId = useCanvasStore.getState().selectedElementId;
 
-      fc.clear();
-      const src = makeDotPattern(backgroundRef.current);
-      fc.set("backgroundColor", new Pattern({ source: src, repeat: "repeat" }));
-
       const sorted = [...elements].sort((a, b) => a.layerIndex - b.layerIndex);
+      const wanted = new Map(sorted.map((el) => [el.id, el]));
+
+      // Objects without an element id are transient (the drag preview, a brush
+      // path mid-stroke) and are not ours to remove.
+      const existing = new Map<string, CanvasObject>();
+      for (const o of fc.getObjects() as CanvasObject[]) {
+        const id = o.data?.id;
+        if (!id) continue;
+        if (!wanted.has(id)) { fc.remove(o); continue; }
+        existing.set(id, o);
+      }
+
+      let built = 0;
+      let structureChanged = false;
+
       for (const el of sorted) {
-        if (el.data.kind === "image" || el.data.kind === "svg") {
-          const cached = imageCache[el.id];
+        const current = existing.get(el.id);
+        const cached = imageCache[el.id];
+        const isImage = el.data.kind === "image" || el.data.kind === "svg";
+        // Reference equality is the whole trick: an element the user did not
+        // touch is the same object across a store write, so its Fabric object
+        // is still correct and is left completely alone.
+        if (current && current.data === el && (!isImage || current.srcKey === cached)) continue;
+        if (current) { fc.remove(current); existing.delete(el.id); }
+        structureChanged = true;
+        built += 1;
+
+        if (isImage) {
           if (cached) {
+            // Late arrivals must not stack up: a second blob for the same element
+            // invalidates the first load, which may still be decoding.
+            const token = (imageTokensRef.current.get(el.id) ?? 0) + 1;
+            imageTokensRef.current.set(el.id, token);
             FabricImage.fromURL(cached).then((img) => {
               const sx = el.width / (img.width || el.width);
               const sy = el.height / (img.height || el.height);
@@ -330,8 +434,18 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
                 selectable: !readOnlyRef.current,
                 evented: !readOnlyRef.current,
               });
+              // Superseded while decoding, or the canvas went away under us.
+              if (fabricRef.current !== fc) return;
+              if (imageTokensRef.current.get(el.id) !== token) return;
+              (img as CanvasObject).srcKey = cached;
+              const stale = (fc.getObjects() as CanvasObject[]).find((o) => o.data?.id === el.id);
+              if (stale) fc.remove(stale);
               fc.add(img);
               if (prevSelectedId && el.id === prevSelectedId) fc.setActiveObject(img);
+              // An image finishes decoding after the synchronous shapes are
+              // already placed, so it would otherwise always land on top
+              // regardless of its layer index.
+              restack(fc);
               fc.renderAll();
             });
           } else {
@@ -354,8 +468,9 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
               originX: "center", originY: "center",
             });
             const group = new Group([bg, label], { left: el.x, top: el.y, selectable: !readOnlyRef.current, evented: !readOnlyRef.current });
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (group as any).data = el;
+            const placeholder = group as CanvasObject;
+            placeholder.data = el;
+            placeholder.srcKey = undefined;
             fc.add(group);
             if (prevSelectedId && el.id === prevSelectedId) fc.setActiveObject(group);
           }
@@ -370,6 +485,10 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           if (prevSelectedId && el.id === prevSelectedId) fc.setActiveObject(obj);
         }
       }
+
+      // Anything rebuilt was appended, so it now sits on top of its own layer.
+      if (structureChanged) restack(fc);
+      countBuild(built);
       fc.renderAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [elements, imageCache]);
@@ -388,6 +507,9 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         o.evented = !readOnly;
       });
       fc.renderAll();
+    // `elements`/`imageCache` are still deps: an object built while this effect
+    // was not running must still get the current interactivity. It is a property
+    // set per object with no allocation, unlike the sync above.
     }, [readOnly, elements, imageCache]);
 
     /* ── sync store selection → canvas active object(s) ──────────── */

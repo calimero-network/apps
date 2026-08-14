@@ -1,5 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { rpcCall } from "../api/rpc";
+import { countRender } from "../utils/renderCount";
+import { useShallow } from "zustand/react/shallow";
 import { useCanvasStore } from "../store/canvasStore";
 import { useToast } from "../contexts/ToastContext";
 import { createMutationReporter } from "../utils/mutationErrors";
@@ -46,11 +48,35 @@ interface Props {
 }
 
 export default function PropertiesPanel({ contextId, readOnly = false }: Props) {
+  countRender("PropertiesPanel");
+  // Selector: this panel legitimately tracks most of the store, but not the undo
+  // stacks, the clipboard, the active tool or preview mode — and a change to any
+  // of those used to re-render the whole layers tree.
   const {
     selectedElementId, selectedElementIds, elements, elementLabels, imageCache, background,
     collapsedGroups, upsertElement, removeElement, selectElement, selectElements, toggleSelected,
     setElementLabel, setElementLabels, toggleGroupCollapsed, cacheImage, snapshot,
-  } = useCanvasStore();
+  } = useCanvasStore(
+    useShallow((s) => ({
+      selectedElementId: s.selectedElementId,
+      selectedElementIds: s.selectedElementIds,
+      elements: s.elements,
+      elementLabels: s.elementLabels,
+      imageCache: s.imageCache,
+      background: s.background,
+      collapsedGroups: s.collapsedGroups,
+      upsertElement: s.upsertElement,
+      removeElement: s.removeElement,
+      selectElement: s.selectElement,
+      selectElements: s.selectElements,
+      toggleSelected: s.toggleSelected,
+      setElementLabel: s.setElementLabel,
+      setElementLabels: s.setElementLabels,
+      toggleGroupCollapsed: s.toggleGroupCollapsed,
+      cacheImage: s.cacheImage,
+      snapshot: s.snapshot,
+    })),
+  );
   const el = elements.find((e) => e.id === selectedElementId);
   const { showToast } = useToast();
   // Contract mutations used to be `.catch(() => {})`. On a board running an older

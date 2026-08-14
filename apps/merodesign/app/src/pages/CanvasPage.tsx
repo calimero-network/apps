@@ -5,6 +5,8 @@ import { rpcCall, adminGet, adminUploadBlob, adminGetBlob, joinContext } from ".
 import { useSse } from "../hooks/useSse";
 import { useGroupActions } from "../hooks/useGroupActions";
 import { useMero } from "@calimero-network/mero-react";
+import { countRender } from "../utils/renderCount";
+import { useShallow } from "zustand/react/shallow";
 import { useCanvasStore } from "../store/canvasStore";
 import { useUsernameStore } from "../store/usernameStore";
 import type { CanvasComment, CursorState, Element, Member } from "../types";
@@ -24,10 +26,27 @@ function normalizeCursor(c: CursorState): CursorState {
 }
 
 export default function CanvasPage() {
+  countRender("CanvasPage");
   const { teamId, projectId } = useParams<{ teamId: string; projectId: string }>();
   const navigate = useNavigate();
   const { logout } = useMero();
-  const { setElements, upsertElement, removeElement, cacheImage, elements, imageCache, previewMode, setPreviewMode } = useCanvasStore();
+  // Selector, not the bare store. `useCanvasStore()` subscribes to every field,
+  // so selecting a shape — which touches nothing this page renders — used to
+  // re-render CanvasPage and, through it, the canvas, the toolbar and the whole
+  // layers tree. Measured at 300 elements: 309ms p95 for a click. See e2e/perf/.
+  const { setElements, upsertElement, removeElement, cacheImage, elements, imageCache, previewMode, setPreviewMode } =
+    useCanvasStore(
+      useShallow((s) => ({
+        setElements: s.setElements,
+        upsertElement: s.upsertElement,
+        removeElement: s.removeElement,
+        cacheImage: s.cacheImage,
+        elements: s.elements,
+        imageCache: s.imageCache,
+        previewMode: s.previewMode,
+        setPreviewMode: s.setPreviewMode,
+      })),
+    );
   const { showToast } = useToast();
   const { getUsername, setUsername } = useUsernameStore();
 
