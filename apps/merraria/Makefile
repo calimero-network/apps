@@ -1,4 +1,4 @@
-.PHONY: setup build dev unit e2e test typecheck logic-build logic-test clean workflows bundle publish
+.PHONY: setup build dev unit e2e test typecheck logic-build logic-test clean workflows bundle bundle-release publish
 
 setup: ## install frontend deps
 	cd app && pnpm install
@@ -18,8 +18,8 @@ e2e: ## mocked end-to-end tests (playwright)
 typecheck:
 	cd app && pnpm typecheck
 
-logic-build: ## build the WASM contract -> logic/res/merraria.wasm
-	cd logic && ./build.sh
+logic-build: ## build the WASM contract -> logic/res/merraria.wasm (+ res/abi.json)
+	cd logic && cargo mero build
 
 logic-test: ## contract unit tests on the native mock host
 	cd logic && cargo test
@@ -32,8 +32,11 @@ clean:
 workflows: logic-build ## 2-node merobox e2e (needs docker)
 	cd workflows && merobox bootstrap run e2e.yml; merobox stop --all || true
 
-bundle: ## build the signed .mpk registry bundle -> logic/res/merraria-<ver>.mpk
-	cd logic && ./build-bundle.sh
+bundle: ## dev-signed .mpk for local installs -> logic/dist/com.calimero.merraria-<ver>.mpk
+	cd logic && cargo mero bundle --dev
 
-publish: bundle ## build + push the bundle to the Calimero App Registry
-	calimero-registry bundle push logic/res/merraria-*.mpk --remote
+bundle-release: ## publishable .mpk signed with $$MERO_SIGN_KEY_FILE, version bumped off the registry
+	cd logic && cargo mero bundle --key "$$MERO_SIGN_KEY_FILE" --bump patch
+
+publish: ## push an already-built bundle to the Calimero App Registry (needs $$CALIMERO_API_KEY)
+	calimero-registry bundle push logic/dist/com.calimero.merraria-*.mpk --remote

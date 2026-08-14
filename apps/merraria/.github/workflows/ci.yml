@@ -46,8 +46,15 @@ jobs:
           workspaces: logic
       - name: Contract unit tests (native, TestHost)
         run: cargo test
-      - name: WASM build
-        run: ./build.sh
+      - name: Install cargo-mero
+        uses: ./.github/actions/install-cargo-mero
+
+      # `cargo mero build` compiles to wasm32, runs wasm-opt -Oz (bundled, not
+      # from PATH) and embeds the ABI as the calimero_abi_v1 section — the
+      # section the node reads to plan an upgrade, so the wasm CI publishes has
+      # to be built by the same tool the release does.
+      - name: WASM build (+ ABI embed)
+        run: cargo mero build
       - uses: actions/upload-artifact@v4
         with:
           name: contract-wasm

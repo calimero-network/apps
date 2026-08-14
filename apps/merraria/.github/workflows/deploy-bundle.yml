@@ -1,43 +1,175 @@
-# Builds and publishes the logic bundle to the Calimero App Registry on every
-# merge to main that touches logic/. The bundle version is resolved inside
-# build-bundle.sh: it fetches the latest published appVersion for
-# com.calimero.merraria from the registry and bumps the patch.
+# Builds, signs, and publishes the com.calimero.merraria bundle to the Calimero App
+# Registry on every default-branch merge that touches logic/.
 #
-# Required repository secrets:
-#   MERO_SIGN_KEY              — full JSON content of a mero-sign key file
-#                                ({private_key, public_key, signer_id}); must
-#                                be the key that signed the previous version,
-#                                OR any key if the package is linked to an org
-#                                the API-key owner is a member of.
-#   CALIMERO_REGISTRY_API_KEY  — API token from the registry Organizations
-#                                page (CLI Access section).
+# THE REGISTRY OWNS THE VERSION. The check job asks it for the highest published
+# appVersion and increments the patch; an empty registry starts at 0.0.1. So a
+# release never has to bump a number by hand and can never collide with a
+# published version.
+#
+# That is why logic/Cargo.toml's `version` is NOT the release version — cargo
+# needs a version field, but this workflow ignores it. Do not read a released
+# version out of the tree; read it from the registry or this workflow's summary.
+#
+# Trade-off, stated plainly: there is no idempotency. Re-running this job, or a
+# second push touching logic/, mints ANOTHER version of the same content. That
+# is the cost of not hand-maintaining the number.
+#
+# Signing uses a PRODUCTION mero-sign key held in ORGANIZATION secrets (never the
+# dev key — the registry refuses dev signatures). Required secrets:
+#   MERO_SIGN_KEY              - full JSON of the production signing key file
+#                                ({private_key, public_key, signer_id}). Must be
+#                                the key that signed this package's first
+#                                version: the registry pins the signer per
+#                                package, and the node derives the
+#                                ApplicationId from (package, signer), so a
+#                                different key publishes a DIFFERENT app.
+#   CALIMERO_REGISTRY_API_KEY  - API token from the registry Organizations page
+#                                (CLI Access). Read by cargo-mero as
+#                                CALIMERO_API_KEY.
 
 name: Deploy Bundle
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
     paths:
-      - 'logic/**'
+      - "logic/**"
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Override the version to publish, e.g. 1.2.3 (no leading v). Leave blank to let the registry decide."
+        required: false
+        type: string
+      core_rev:
+        description: "Require the SDK deps to resolve to this core commit (leave blank to accept whatever the pinned tag resolves to)"
+        required: false
+        type: string
 
-# Queue deploys instead of cancelling: each run resolves its version from the
-# registry, so concurrent runs could race to the same version number.
+permissions:
+  contents: read
+
+# Serialize releases: the registry rejects a duplicate version, and two pushes
+# publishing at once shouldn't interleave. Never cancel in progress — a
+# half-finished publish is worse than a queued one.
 concurrency:
   group: deploy-bundle
   cancel-in-progress: false
 
-env:
-  CARGO_TERM_COLOR: always
-  # Keep in sync with the calimero-sdk tag in logic/Cargo.toml
-  MERO_SIGN_REF: 0.11.0-rc.13
-
 jobs:
+  # Cheap gate: resolves the version from the registry, so an unrelated edit does
+  # not pay for a Rust build before deciding what to release.
+  check:
+    name: Resolve the next version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      publish: ${{ steps.decide.outputs.publish }}
+      package: ${{ steps.pkg.outputs.package }}
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Read the package id
+        id: pkg
+        # logic/Cargo.toml is the only place the package is spelled; a rename
+        # there must not leave this workflow verifying and publishing against
+        # the old id.
+        run: |
+          package=$(awk '/^\[package\.metadata\.calimero\]/{f=1; next} /^\[/{f=0} f && /^package/{gsub(/package *= *"|"/,""); print; exit}' logic/Cargo.toml)
+          case "$package" in
+            "" ) echo "::error::could not read package from logic/Cargo.toml [package.metadata.calimero]"; exit 1 ;;
+            *[!a-zA-Z0-9.-]* ) echo "::error::unexpected characters in package id '$package'"; exit 1 ;;
+          esac
+          echo "package=$package" >> "$GITHUB_OUTPUT"
+          echo "Package: $package"
+
+      - name: Resolve the next version from the registry
+        id: ver
+        env:
+          # Through the environment, never inlined: a template expression is
+          # substituted into the script before the shell sees it, so a crafted
+          # input would run as code.
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          PACKAGE: ${{ steps.pkg.outputs.package }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "$INPUT_VERSION" ]; then
+            # An explicit dispatch override wins, but must still be well formed.
+            if [[ ! "$INPUT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::version override must be exactly X.Y.Z (got '$INPUT_VERSION')"
+              exit 1
+            fi
+            echo "version=$INPUT_VERSION" >> "$GITHUB_OUTPUT"
+            echo "::notice::publishing $PACKAGE $INPUT_VERSION (explicit override)"
+            exit 0
+          fi
+
+          # An unreachable registry must not read as "nothing published" — that
+          # would reset the lineage to the floor and sign BELOW what is already
+          # out there. Only a well-formed answer is allowed to decide.
+          if ! response=$(curl -fsS --retry 3 --retry-delay 2 --max-time 30 \
+              "https://apps.calimero.network/api/v2/bundles?package=$PACKAGE"); then
+            echo "::error::could not reach the registry to resolve the next version"
+            exit 1
+          fi
+          if ! jq -e 'type == "array"' >/dev/null <<<"$response"; then
+            echo "::error::registry response is not a bundle list (expected a JSON array): $response"
+            exit 1
+          fi
+
+          count=$(jq -r 'length' <<<"$response")
+          if [ "$count" = "0" ]; then
+            # First publish. 0.0.1, not cargo-mero's built-in 0.1.0 floor — the
+            # registry was reset and the whole fleet restarts from the same place.
+            version="0.0.1"
+            echo "::notice::nothing published for $PACKAGE yet — starting at $version"
+          else
+            # Highest readable appVersion, patch+1. A listing with entries but no
+            # parseable version is an unrecognized scheme: fail rather than
+            # default, which would sign below what is published.
+            version=$(jq -r '
+              [ .[].appVersion // empty
+                | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))
+                | split(".") | map(tonumber) ]
+              | sort
+              | if length == 0 then "" else (last | "\(.[0]).\(.[1]).\(.[2]+1)") end
+            ' <<<"$response")
+            if [ -z "$version" ]; then
+              echo "::error::registry listed $count bundle(s) for $PACKAGE but none had a readable X.Y.Z appVersion"
+              exit 1
+            fi
+            echo "::notice::highest published is $(jq -r '[.[].appVersion // empty]|join(", ")' <<<"$response") — releasing $version"
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Confirm that version is actually free
+        id: decide
+        env:
+          PACKAGE: ${{ steps.pkg.outputs.package }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          # Belt and braces. The resolved version should be unpublished by
+          # construction, so a 200 here means the resolution logic is wrong (or a
+          # concurrent release landed) — either way, stop rather than fail deep in
+          # the publish step after signing.
+          code=$(curl -s -o /dev/null -w '%{http_code}' --retry 3 --retry-delay 2 --max-time 30 \
+            "https://apps.calimero.network/api/v2/bundles/$PACKAGE/$VERSION" || echo "000")
+          case "$code" in
+            404) echo "publish=true" >> "$GITHUB_OUTPUT" ;;
+            200) echo "::error::$PACKAGE $VERSION is already published — version resolution disagrees with the registry"; exit 1 ;;
+            *)   echo "::error::registry returned $code asking about $PACKAGE $VERSION — refusing to publish blind"; exit 1 ;;
+          esac
+
   deploy:
     name: Build, sign & publish bundle
+    needs: check
+    if: needs.check.outputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
-
     steps:
       - name: Check required secrets
         env:
@@ -49,82 +181,190 @@ jobs:
           [ -n "$CALIMERO_REGISTRY_API_KEY" ] || { echo "::error::CALIMERO_REGISTRY_API_KEY secret is not set"; missing=1; }
           exit $missing
 
-      - name: Checkout
-        uses: actions/checkout@v7
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.89.0"
           targets: wasm32-unknown-unknown
 
-      - name: Cache Cargo registry
-        uses: actions/cache@v6
+      - name: Cache cargo
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: cargo-deploy-${{ runner.os }}-${{ hashFiles('logic/Cargo.lock') }}
-          restore-keys: cargo-deploy-${{ runner.os }}-
+            logic/target
+          key: logic-${{ runner.os }}-${{ hashFiles('logic/Cargo.toml') }}
+          restore-keys: logic-${{ runner.os }}-
 
-      - name: Install wasm-opt
-        run: sudo apt-get update -q && sudo apt-get install -y -q binaryen
-
-      - name: Cache mero-sign
-        id: cache-mero-sign
-        uses: actions/cache@v6
-        with:
-          path: ~/.cargo/bin/mero-sign
-          key: mero-sign-${{ runner.os }}-${{ env.MERO_SIGN_REF }}
-
-      - name: Install mero-sign
-        if: steps.cache-mero-sign.outputs.cache-hit != 'true'
-        run: |
-          cargo install mero-sign --locked \
-            --git https://github.com/calimero-network/core \
-            --tag "$MERO_SIGN_REF"
+      # Named to match mero-drive's step; the action DIRECTORY keeps this repo's
+      # existing name (install-cargo-mero) rather than being renamed for cosmetic
+      # parity — it already pins rc.20, caches, and falls back to building from
+      # the tag.
+      - name: Setup cargo-mero
+        uses: ./.github/actions/install-cargo-mero
 
       - name: Write signing key
+        id: signkey
         env:
           MERO_SIGN_KEY: ${{ secrets.MERO_SIGN_KEY }}
-        run: printf '%s' "$MERO_SIGN_KEY" > "$RUNNER_TEMP/mero-sign-key.json"
+        run: |
+          umask 077
+          printf '%s' "$MERO_SIGN_KEY" > "$RUNNER_TEMP/mero-sign-key.json"
+          # Published as an output (the signerId is a public key, not a secret) so
+          # the post-publish check can confirm the registry recorded THIS signer.
+          signer=$(jq -r '.signer_id // ""' "$RUNNER_TEMP/mero-sign-key.json")
+          echo "signer_id=$signer" >> "$GITHUB_OUTPUT"
 
-      - name: Build & sign bundle
+      - name: Verify signer matches the published package
         env:
-          MERO_SIGN_KEY_FILE: ${{ runner.temp }}/mero-sign-key.json
-        run: ./logic/build-bundle.sh
+          # The well-known public dev key's signerId. A dev-signed lineage cannot
+          # be continued (the registry refuses dev signatures), so a package still
+          # pinned to it is treated as a first real publish.
+          DEV_SIGNER: did:key:z6MknF3p5L5FDHJQ7FREUapuX4Wmp4MtF6WrHYaXS2B3eZQd
+          PACKAGE: ${{ needs.check.outputs.package }}
+        run: |
+          local_signer=$(cargo mero key derive-signer-id --key "$RUNNER_TEMP/mero-sign-key.json")
 
-      # registry-cli >=1.15 requires node >= 24; the runner default is 20
-      - name: Set up Node 24
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
+          # An unreachable registry must not look like an unpublished package:
+          # that would silently skip the very check this step exists for. Fail the
+          # release instead, and only treat a well-formed empty list as a first
+          # publish.
+          if ! response=$(curl -fsS --retry 3 --retry-delay 2 --max-time 30 \
+              "https://apps.calimero.network/api/v2/bundles?package=$PACKAGE"); then
+            echo "::error::could not reach the registry to verify the signer — refusing to publish blind"
+            exit 1
+          fi
+          if ! published_signer=$(printf '%s' "$response" | jq -er '.[0].signerId // ""'); then
+            echo "::error::registry returned a response this step cannot parse: $response"
+            exit 1
+          fi
 
-      - name: Install calimero-registry CLI
-        run: npm install -g @calimero-network/registry-cli
+          if [ -z "$published_signer" ]; then
+            echo "::notice::no bundles published yet for $PACKAGE — skipping signer check (first publish)"
+          elif [ "$published_signer" = "$DEV_SIGNER" ]; then
+            echo "::notice::published lineage is dev-key-signed and cannot be continued; publishing under this key mints a NEW application id (one-time identity break — existing installs see a new app, not an upgrade)"
+          elif [ "$local_signer" != "$published_signer" ]; then
+            echo "::error::key's signerId ($local_signer) does not match the published signerId ($published_signer) — the registry pins the signer per package, so publishing with a different key would land as a new application id instead of an upgrade. Use the key that signed the first published version."
+            exit 1
+          else
+            echo "signer matches published package ($local_signer)"
+          fi
+
+      # The SDK deps are pinned to an explicit core release tag, so the revision
+      # is already determined — this records WHICH commit that tag resolved to, so
+      # a signed release is never traceable only to a moving name, and lets a
+      # release optionally require a specific one.
+      - name: Resolve and record the core revision
+        id: core
+        working-directory: logic
+        env:
+          EXPECTED_CORE_REV: ${{ github.event.inputs.core_rev }}
+        run: |
+          cargo generate-lockfile --quiet
+          rev=$(awk -F'#' '/^source = "git\+https:\/\/github.com\/calimero-network\/core/{print $2; exit}' Cargo.lock | tr -d '"')
+          if [ -z "$rev" ]; then
+            echo "::error::could not determine which core revision the SDK deps resolved to"
+            exit 1
+          fi
+          if [ -n "$EXPECTED_CORE_REV" ] && [ "$rev" != "$EXPECTED_CORE_REV" ]; then
+            echo "::error::core resolved to $rev but this release requested $EXPECTED_CORE_REV"
+            exit 1
+          fi
+          echo "rev=$rev" >> "$GITHUB_OUTPUT"
+          echo "::notice::signing a bundle built against core $rev"
+
+      # --output pins the filename so the publish step never reconstructs a
+      # versioned one (the default is dist/<package>-<version>.mpk) and can never
+      # pick up a stale .mpk from an earlier build.
+      - name: Build & sign bundle
+        working-directory: logic
+        env:
+          PACKAGE: ${{ needs.check.outputs.package }}
+          VERSION: ${{ needs.check.outputs.version }}
+        # --app-version, not --bump: the check job already resolved the number
+        # against the registry, and cargo-mero's own --bump floors an empty
+        # registry at 0.1.0 rather than the 0.0.1 this fleet restarts from. (The
+        # two flags are mutually exclusive anyway.)
+        run: cargo mero bundle --key "$RUNNER_TEMP/mero-sign-key.json" --app-version "$VERSION" --output "dist/$PACKAGE.mpk"
+
+      - name: Remove signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/mero-sign-key.json"
 
       - name: Publish to App Registry
+        working-directory: logic
         env:
           CALIMERO_API_KEY: ${{ secrets.CALIMERO_REGISTRY_API_KEY }}
           CALIMERO_REGISTRY_URL: https://apps.calimero.network
+          PACKAGE: ${{ needs.check.outputs.package }}
+        run: cargo mero publish "dist/$PACKAGE.mpk"
+
+      # The registry attributes a publish to whatever account owns the API key it
+      # was made with, and stamps `metadata.author` with that account's username —
+      # it does NOT use the `author` field from Cargo.toml. So a personal API key
+      # silently publishes an org app under a personal name, with nothing in the
+      # run log to show it.
+      #
+      # That is exactly what happened here: a repo-level CALIMERO_REGISTRY_API_KEY
+      # shadowed the organization secret (repo secrets win), and this package went
+      # out as author "frand". mero-ar, which has no repo-level secrets and so uses
+      # the org key, published correctly as "calimero-network".
+      #
+      # This step fails the run if the registry did not record the expected
+      # publisher, so the same mistake can never ship quietly again.
+      - name: Verify the registry recorded the expected publisher and signer
+        env:
+          PACKAGE: ${{ needs.check.outputs.package }}
+          VERSION: ${{ needs.check.outputs.version }}
+          EXPECTED_AUTHOR: ${{ vars.EXPECTED_REGISTRY_AUTHOR || 'calimero-network' }}
+          EXPECTED_SIGNER: ${{ steps.signkey.outputs.signer_id }}
         run: |
-          shopt -s nullglob
-          mpks=(logic/res/merraria-*.mpk)
-          if [ ${#mpks[@]} -ne 1 ]; then
-            echo "::error::expected exactly one .mpk in logic/res, found: ${mpks[*]:-none}"
+          set -euo pipefail
+          url="https://apps.calimero.network/api/v2/bundles/$PACKAGE/$VERSION"
+          # The publish is not necessarily readable the instant it returns.
+          for attempt in 1 2 3 4 5; do
+            manifest=$(curl -sf "$url") && break
+            echo "manifest not readable yet (attempt $attempt)"
+            sleep 5
+          done
+          if [ -z "${manifest:-}" ]; then
+            echo "::error::published $PACKAGE $VERSION but could not read it back from the registry"
             exit 1
           fi
-          echo "Publishing ${mpks[0]}"
-          calimero-registry bundle push "${mpks[0]}" --remote
+
+          author=$(printf '%s' "$manifest" | jq -r '.metadata.author // ""')
+          signer=$(printf '%s' "$manifest" | jq -r '.signerId // ""')
+          echo "registry recorded author=$author signerId=$signer"
+
+          if [ "$author" != "$EXPECTED_AUTHOR" ]; then
+            echo "::error::published as \"$author\" but expected \"$EXPECTED_AUTHOR\". The API key used is not the organization's. Remove any repo-level CALIMERO_REGISTRY_API_KEY secret so the organization secret applies (a repo secret shadows an org secret of the same name)."
+            exit 1
+          fi
+
+          # Guards the more dangerous half: the node derives ApplicationId from
+          # (package, signer), so a changed signer silently ships a DIFFERENT app
+          # and orphans every installed instance and invite link.
+          if [ -n "$EXPECTED_SIGNER" ] && [ "$signer" != "$EXPECTED_SIGNER" ]; then
+            echo "::error::registry recorded signer $signer but this run signed with $EXPECTED_SIGNER"
+            exit 1
+          fi
+
+          echo "::notice::$PACKAGE $VERSION published as $author (signer $signer)"
 
       - name: Summary
+        env:
+          PACKAGE: ${{ needs.check.outputs.package }}
+          VERSION: ${{ needs.check.outputs.version }}
+          CORE_REV: ${{ steps.core.outputs.rev }}
         run: |
-          mpk=$(basename logic/res/merraria-*.mpk .mpk)
-          version="${mpk#merraria-}"
           {
             echo "### Bundle published :rocket:"
             echo ""
-            echo "- **Package:** \`com.calimero.merraria\`"
-            echo "- **Version:** \`${version}\`"
+            echo "- **Package:** \`$PACKAGE\`"
+            echo "- **Version:** \`$VERSION\`"
+            echo "- **Core revision:** \`$CORE_REV\`"
             echo "- **Registry:** https://apps.calimero.network"
           } >> "$GITHUB_STEP_SUMMARY"

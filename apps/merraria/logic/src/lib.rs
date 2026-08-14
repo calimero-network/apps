@@ -5,6 +5,7 @@
 //! carries only the tile-override diff (dig = 0/air, never a map-remove) and
 //! player presence with the mero-meet room-clock + two-pass mark/grace reap.
 
+use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, env as sdk_env, PublicKey};
@@ -27,7 +28,7 @@ const REAP_GRACE_SECS: u64 = 30;
 // ── Stored records ───────────────────────────────────────────────────────────
 
 /// One tile override: `t` is the tile id (0 = air / dug out).
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -48,7 +49,7 @@ impl RekeyTarget for TileOverride {
     fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -80,7 +81,7 @@ impl RekeyTarget for Player {
     fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -103,7 +104,7 @@ impl RekeyTarget for ReapMark {
 
 // ── Views / args ─────────────────────────────────────────────────────────────
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -113,7 +114,7 @@ pub struct WorldMeta {
     pub created_at: u64,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Edit {
@@ -122,7 +123,7 @@ pub struct Edit {
     pub t: u8,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Transform {
@@ -135,7 +136,7 @@ pub struct Transform {
     pub action: String,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -144,7 +145,7 @@ pub struct TileEntry {
     pub t: u8,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -199,8 +200,15 @@ impl Merraria {
         }
     }
 
+    /// The real signer of this invocation. Never trust a client-supplied id.
+    ///
+    /// `device_id()` is the rc.20 successor of `executor_id()`: same bytes (the
+    /// executing key), so stored player ids and the identities the frontend
+    /// compares against group membership keep matching. `account_id()` is a
+    /// DIFFERENT value — a hash of the key for an unenrolled node — so switching
+    /// to it would orphan every existing world's player rows.
     fn caller() -> PublicKey {
-        sdk_env::executor_id().into()
+        sdk_env::device_id().into()
     }
 
     fn caller_id() -> MemberId {

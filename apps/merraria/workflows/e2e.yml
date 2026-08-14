@@ -14,7 +14,7 @@ force_pull_image: true
 nodes:
   chain_id: testnet-1
   count: 2
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.13
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.20
   prefix: calimero-node
   # Off the default 2428/2528 AND off mero-blocks' 2760/2660 range.
   base_port: 2780
