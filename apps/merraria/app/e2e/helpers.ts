@@ -106,3 +106,112 @@ export async function enterOnline(page: Page): Promise<void> {
   await page.getByTestId("connect-btn").click();
   await page.waitForFunction(() => "__mt" in window);
 }
+
+// ---- world picker / admin-API mocks -----------------------------------
+// The picker states (logged into a node, no world yet) and the admin routes
+// world creation walks are shared by landing.spec and auth.spec.
+
+export const PACKAGE_NAME = "com.calimero.merraria";
+export const APP_ID = "app-e2e";
+export const NS_ID = "ns-e2e";
+export const GROUP_ID = "grp-e2e";
+
+/**
+ * Logged into a node with no world chosen — the state a web callback leaves.
+ * Init scripts re-run on every navigation, so this must NOT clobber a session
+ * the test has since built (creating a world and then reloading is a real
+ * flow); it seeds only when there is nothing there.
+ */
+export function seedAuthOnly(page: Page): Promise<void> {
+  return page.addInitScript(
+    ({ nodeUrl }) => {
+      if (localStorage.getItem("mt-session")) return;
+      localStorage.setItem(
+        "mt-session",
+        JSON.stringify({
+          nodeUrl,
+          contextId: null,
+          applicationId: null,
+          executorPublicKey: null,
+          devMode: false,
+        }),
+      );
+      localStorage.setItem(
+        "mero-tokens",
+        JSON.stringify({ access_token: "e2e-token", refresh_token: "r", expires_at: "" }),
+      );
+    },
+    { nodeUrl: NODE_URL },
+  );
+}
+
+/** request bodies captured by mockAdmin for assertions */
+export interface CapturedBodies {
+  namespace?: Record<string, unknown>;
+  group?: Record<string, unknown>;
+  context?: Record<string, unknown>;
+}
+
+export interface AdminOverrides {
+  /** replace the /admin-api/applications payload (default: our package) */
+  applications?: unknown;
+}
+
+/**
+ * Mock the admin API world creation walks: namespace → open subgroup → context.
+ * NOTE: register AFTER mockNode — later routes win, and these must shadow
+ * mockNode's generic admin-api handler for /applications and /contexts.
+ */
+export async function mockAdmin(
+  page: Page,
+  contexts: Record<string, unknown>[],
+  captured: CapturedBodies,
+  overrides: AdminOverrides = {},
+): Promise<void> {
+  await page.route(`${NODE_URL}/admin-api/namespaces/for-application/*`, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: [] }) }),
+  );
+  await page.route(`${NODE_URL}/admin-api/namespaces`, (route) => {
+    captured.namespace = route.request().postDataJSON();
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: { namespaceId: NS_ID } }),
+    });
+  });
+  await page.route(`${NODE_URL}/admin-api/namespaces/${NS_ID}/groups`, (route) => {
+    captured.group = route.request().postDataJSON();
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: { groupId: GROUP_ID } }),
+    });
+  });
+  await page.route(`${NODE_URL}/admin-api/applications`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(
+        overrides.applications ?? { data: { apps: [{ id: APP_ID, package: PACKAGE_NAME }] } },
+      ),
+    }),
+  );
+  await page.route(`${NODE_URL}/admin-api/contexts`, (route) => {
+    if (route.request().method() === "POST") {
+      captured.context = route.request().postDataJSON();
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: { contextId: "ctx-created", memberPublicKey: "pk-me" } }),
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: { contexts } }),
+    });
+  });
+  await page.route(`${NODE_URL}/admin-api/contexts/*/join`, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
+  );
+}

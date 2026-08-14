@@ -1,6 +1,14 @@
 import { expect, test } from "@playwright/test";
 import { decodeInvite, encodeInvite } from "../src/net/inviteCodec";
-import { CTX_ID, freshState, mockNode, NODE_URL, seedSession } from "./helpers";
+import {
+  CTX_ID,
+  freshState,
+  mockAdmin,
+  mockNode,
+  NODE_URL,
+  seedAuthOnly,
+  seedSession,
+} from "./helpers";
 
 test.describe("landing page", () => {
   test("shows the animated world, hero, play card and Calimero links", async ({ page }) => {
@@ -169,82 +177,6 @@ test.describe("landing page", () => {
 });
 
 test.describe("world picker (web auth, no context yet)", () => {
-  const seedAuthOnly = (page: import("@playwright/test").Page) =>
-    page.addInitScript(
-      ({ nodeUrl }) => {
-        localStorage.setItem(
-          "mt-session",
-          JSON.stringify({ nodeUrl, contextId: null, applicationId: null, executorPublicKey: null, devMode: false }),
-        );
-        localStorage.setItem(
-          "mero-tokens",
-          JSON.stringify({ access_token: "e2e-token", refresh_token: "r", expires_at: "" }),
-        );
-      },
-      { nodeUrl: NODE_URL },
-    );
-
-  /** request bodies captured by mockAdmin for assertions */
-  interface CapturedBodies {
-    namespace?: Record<string, unknown>;
-    group?: Record<string, unknown>;
-    context?: Record<string, unknown>;
-  }
-
-  // NOTE: register AFTER mockNode — later routes win, and these must shadow
-  // mockNode's generic admin-api handler for /applications and /contexts.
-  const mockAdmin = async (
-    page: import("@playwright/test").Page,
-    contexts: { id: string; applicationId?: string }[],
-    captured: CapturedBodies,
-  ) => {
-    // world creation walks namespace → open subgroup → context
-    await page.route(`${NODE_URL}/admin-api/namespaces/for-application/*`, (route) =>
-      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: [] }) }),
-    );
-    await page.route(`${NODE_URL}/admin-api/namespaces`, (route) => {
-      captured.namespace = route.request().postDataJSON();
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ data: { namespaceId: "ns-e2e" } }),
-      });
-    });
-    await page.route(`${NODE_URL}/admin-api/namespaces/ns-e2e/groups`, (route) => {
-      captured.group = route.request().postDataJSON();
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ data: { groupId: "grp-e2e" } }),
-      });
-    });
-    await page.route(`${NODE_URL}/admin-api/applications`, (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ data: { apps: [{ id: "app-e2e", package: "com.calimero.merraria" }] } }),
-      }),
-    );
-    await page.route(`${NODE_URL}/admin-api/contexts`, (route) => {
-      if (route.request().method() === "POST") {
-        captured.context = route.request().postDataJSON();
-        return route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({ data: { contextId: "ctx-created", memberPublicKey: "pk-me" } }),
-        });
-      }
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ data: { contexts } }),
-      });
-    });
-    await page.route(`${NODE_URL}/admin-api/contexts/*/join`, (route) =>
-      route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
-    );
-  };
-
   test("lists this app's worlds as named cards and joins one", async ({ page }) => {
     await seedAuthOnly(page);
     // the game itself needs jsonrpc once we join; must register FIRST

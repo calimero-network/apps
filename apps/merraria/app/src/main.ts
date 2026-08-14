@@ -13,6 +13,7 @@ import { captureSessionFromHash, ensureFreshToken, getSession, hasConnection } f
 import { RemotePlayer, SyncEngine, Transform } from "./net/sync";
 import { GameRenderer, RemoteDraw } from "./renderer";
 import { loadWorld, playerInBounds, saveWorld } from "./state/persistence";
+import { WheelSteps } from "./input/wheel";
 import { Hud } from "./ui/hud";
 import { Landing, LaunchChoice } from "./ui/landing";
 import { PauseMenu } from "./ui/overlays";
@@ -195,9 +196,16 @@ async function boot(): Promise<void> {
     }
   });
   window.addEventListener("keyup", (e) => keys.delete(e.code));
+  // A trackpad's two-finger scroll is a stream of tiny deltas plus a momentum
+  // tail, not one notch — bound directly to the hotbar it cycled every slot
+  // several times per flick. WheelSteps turns the stream into notches (a mouse
+  // wheel's ~100px notch still steps immediately).
+  const wheelSteps = new WheelSteps();
   window.addEventListener("wheel", (e) => {
     if (menu.open) return;
-    sel = (sel + (e.deltaY > 0 ? 1 : -1) + HOTBAR.length) % HOTBAR.length;
+    const steps = wheelSteps.push(e.deltaY, e.deltaMode);
+    if (steps === 0) return;
+    sel = (((sel + steps) % HOTBAR.length) + HOTBAR.length) % HOTBAR.length;
     hud.setHotbarSel(sel);
   });
   window.addEventListener("mousemove", (e) => {
