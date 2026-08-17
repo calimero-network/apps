@@ -99,7 +99,11 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install merobox
-        run: pip install merobox
+        # Pinned, and pinned TOGETHER with the merod image in workflows/e2e.yml.
+        # merobox talks to the node's admin API directly, so an unpinned merobox
+        # silently starts speaking a newer node's payloads and the e2e reds on a
+        # commit that changed nothing (0.6.54 dropped upgradePolicy for rc.21).
+        run: pip install merobox==0.6.55 && merobox --version
       - name: Run 2-node world e2e (build → sync → break → converge)
         working-directory: workflows
         run: |
@@ -107,7 +111,10 @@ jobs:
             if merobox bootstrap run e2e.yml; then exit 0; fi
             echo "attempt ${attempt} failed — cleaning up and retrying"
             merobox stop --all || true
-            rm -rf data
+            # The node containers run as root, so their data/ is root-owned and a
+            # plain rm dies on it — under `bash -e` that killed the job before
+            # attempt 2 ever ran, making this loop a no-op on a real failure.
+            sudo rm -rf data || true
             sleep 5
           done
           exit 1

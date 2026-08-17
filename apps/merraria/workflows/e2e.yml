@@ -14,7 +14,13 @@ force_pull_image: true
 nodes:
   chain_id: testnet-1
   count: 2
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.20
+  # Must move in lockstep with the merobox pin in .github/workflows/ci.yml:
+  # merobox speaks the node's admin API directly, so a node older than the
+  # merobox that drives it 400s on payload changes. rc.21 removed the upgrade
+  # policy concept (core#3393) and merobox 0.6.54 dropped the field to match —
+  # rc.20 + merobox >=0.6.54 fails `create_namespace` with
+  # "missing field `upgradePolicy`".
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.22
   prefix: calimero-node
   # Off the default 2428/2528 AND off mero-blocks' 2760/2660 range.
   base_port: 2780

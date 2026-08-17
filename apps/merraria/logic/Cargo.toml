@@ -29,7 +29,12 @@ slug = "com.calimero.merraria"
 icon = "../app/public/icon-512.png"
 tags = ["game", "sandbox", "multiplayer"]
 github = "https://github.com/calimero-network/merraria"
-min-runtime-version = "0.1.0"
+# Kept equal to the SDK tag above, the way mero-ar/pixart/stream/scaffolding do
+# it — "0.1.0" was cargo-mero's placeholder floor, not a claim anyone verified.
+# The bundle does NOT actually need rc.22 host functions (the rc.20 and rc.22
+# builds import the same 18 `env.*` symbols); this is the conservative,
+# truthful "what it was built and e2e'd against".
+min-runtime-version = "0.11.0-rc.22"
 frontend = "https://merraria.vercel.app/"
 
 [dependencies]
@@ -41,14 +46,14 @@ bs58 = "0.5.1"
 # Pin a real release tag, never `branch = "master"`: master rides unreleased
 # protocol work against nodes that run the release, and `latest` does not exist
 # on the remote (it only ever resolves from a warm cargo cache).
-calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.20" }
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.20" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.20" }
+calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.22" }
+calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.22" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.22" }
 thiserror = "1.0.56"
 
 [dev-dependencies]
 # "testing" enables the native mock host (TestHost) for `cargo test`
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.20", features = ["testing"] }
+calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.22", features = ["testing"] }
 
 [profile.app-release]
 inherits = "release"
