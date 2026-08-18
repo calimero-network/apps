@@ -54,7 +54,7 @@ jobs:
           cargo mero build
 
       - name: Install merobox
-        run: pip install merobox==0.6.24 && merobox --version
+        run: pip install merobox==0.6.55 && merobox --version
 
       - name: Run integration-setup workflow
         working-directory: workflows

@@ -320,10 +320,16 @@ impl MeroDesign {
 
     /// The real signer of this invocation. Never trust a client-supplied id.
     ///
-    /// `device_id()` is the rc.20 successor of `executor_id()` — the same bytes,
-    /// so member ids and the identities the frontend reads from
-    /// `identities-owned` keep matching. Authorization uses
-    /// [`Self::caller_account`] instead; see `accounts`.
+    /// A member id here is a DEVICE key, and stays one: it is what the frontend
+    /// reads back from `identities-owned`, and it is what every element in an
+    /// already-published document is authored by. Re-keying it would rewrite
+    /// stored state for no gain, because authorization does not run through it
+    /// — [`Self::caller_account`] does, resolved via `accounts`, so two devices
+    /// of one person already share one set of permissions.
+    ///
+    /// Do NOT reach for `env::executor_id()` to get this. It used to be the
+    /// same bytes; at rc.23 that shim resolves to the ACCOUNT (core #3510), so
+    /// it now means the opposite of what this function returns.
     fn caller() -> PublicKey {
         sdk_env::device_id().into()
     }

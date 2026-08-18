@@ -10,7 +10,7 @@ wait_timeout: 120
 nodes:
   chain_id: testnet-1
   count: 2
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.20
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.23
   prefix: calimero-node
 
 steps:
@@ -28,12 +28,25 @@ steps:
     path: "../logic/res/merodesign.wasm"
     dev: true
 
+  # `create_namespace`, not `create_group`: merobox renamed the namespace verbs
+  # once namespaces stopped being "a group that happens to have no parent".
+  # The PARAMETER is still `group_id` — a namespace IS a root group — so only
+  # the step type moves.
   - name: Create Namespace
-    type: create_group
+    type: create_namespace
     node: calimero-node-1
     application_id: "{{app_id}}"
     outputs:
       namespace_id: namespaceId
+
+  # Namespaces are RESTRICTED by default: without this, node 2 joins and then
+  # 403s on its first `call`, which reads as a sync failure rather than a
+  # permission one. 15 = the full read/write/execute/manage-member bits.
+  - name: Set Default Member Capabilities
+    type: set_default_capabilities
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    capabilities: 15
 
   - name: Create Board
     type: create_context
@@ -45,29 +58,56 @@ steps:
       context_id: contextId
       member_public_key: memberPublicKey
 
+  # Mints an identity on node 2 so it has something to accept the invitation
+  # WITH. Its `publicKey` is deliberately NOT captured: the key that authorizes
+  # a `call` is the CONTEXT member key returned by join_context below, and using
+  # the raw identity key as executor_public_key produces an authorization error
+  # that reads like the contract rejecting the caller.
   - name: Create Identity on Node 2
     type: create_identity
     node: calimero-node-2
-    outputs:
-      public_key_2: publicKey
 
-  - name: Invite and Join
-    type: create_group_invitation
+  - name: Wait for Identity Propagation
+    type: wait
+    seconds: 3
+
+  - name: Invite Node 2
+    type: create_namespace_invitation
     node: calimero-node-1
     group_id: "{{namespace_id}}"
     outputs:
       invitation_2: invitation
 
-  - name: Node 2 Joins
-    type: join_group
+  - name: Node 2 Joins Namespace
+    type: join_namespace
     node: calimero-node-2
     group_id: "{{namespace_id}}"
     invitation: "{{invitation_2}}"
 
+  - name: Settle After Namespace Join
+    type: wait
+    seconds: 5
+
+  # The board was created BEFORE node 2 was invited, but node 2 still has to be
+  # told it exists. Without this explicit pull, join_context below fails with
+  # "context not found" — a race that passes locally on a warm mesh and fails on
+  # a cold CI runner.
+  - name: Force Node 2 to Sync Namespace State
+    type: sync_group
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+
+  - name: Settle After Sync
+    type: wait
+    seconds: 5
+
+  # The CONTEXT member key, which is what authorizes node 2's calls below.
   - name: Node 2 Joins Context
     type: join_context
     node: calimero-node-2
     context_id: "{{context_id}}"
+    outputs:
+      public_key_2: memberPublicKey
 
   - name: Sync
     type: wait_for_sync
