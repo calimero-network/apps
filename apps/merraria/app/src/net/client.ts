@@ -1,6 +1,10 @@
 // GameClient: session + JSON-RPC + SSE subscription in one connect() call.
 
-import { SseClient, type SseEventData } from "@calimero-network/mero-js";
+import {
+  SseClient,
+  type GroupMembershipEventData,
+  type SseEventData,
+} from "@calimero-network/mero-js";
 import { getAccessToken, getSession } from "./session";
 import { rpcExecute, RpcTarget } from "./rpc";
 import { decodeSseEvents, GameEvent } from "./events";
@@ -64,7 +68,12 @@ export class GameClient {
       getAuthToken: async () => getAccessToken() ?? "",
       reconnectDelayMs: 8000,
     });
-    this.sse.on("event", (evt: SseEventData) => {
+    // mero-js 7 widened the "event" stream to a union: group-membership events
+    // ride the same channel, keyed by groupId instead of contextId. We only ever
+    // subscribe to a context, so one of those is never ours — and the `in` check
+    // is what lets the compiler agree before we read contextId.
+    this.sse.on("event", (evt: SseEventData | GroupMembershipEventData) => {
+      if (!("contextId" in evt)) return;
       if (evt.contextId && evt.contextId !== contextId) return;
       for (const ev of decodeSseEvents(evt.data)) onEvent(ev);
     });

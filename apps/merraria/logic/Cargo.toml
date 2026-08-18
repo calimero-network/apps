@@ -31,10 +31,13 @@ tags = ["game", "sandbox", "multiplayer"]
 github = "https://github.com/calimero-network/merraria"
 # Kept equal to the SDK tag above, the way mero-ar/pixart/stream/scaffolding do
 # it — "0.1.0" was cargo-mero's placeholder floor, not a claim anyone verified.
-# The bundle does NOT actually need rc.22 host functions (the rc.20 and rc.22
-# builds import the same 18 `env.*` symbols); this is the conservative,
-# truthful "what it was built and e2e'd against".
-min-runtime-version = "0.11.0-rc.22"
+# The bundle does NOT actually need an rc.23 host: core's `crates/sys` (the whole
+# host import surface) is byte-identical between rc.22 and rc.23, and this wasm
+# imports the same 18 `env.*` symbols it did before. rc.23's identity change is a
+# meaning change inside two of them, not a new one. So this stays the
+# conservative, truthful "what it was built and e2e'd against", not a floor
+# anyone measured.
+min-runtime-version = "0.11.0-rc.23"
 frontend = "https://merraria.vercel.app/"
 
 [dependencies]
@@ -46,14 +49,14 @@ bs58 = "0.5.1"
 # Pin a real release tag, never `branch = "master"`: master rides unreleased
 # protocol work against nodes that run the release, and `latest` does not exist
 # on the remote (it only ever resolves from a warm cargo cache).
-calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.22" }
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.22" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.22" }
+calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.23" }
+calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.23" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.23" }
 thiserror = "1.0.56"
 
 [dev-dependencies]
 # "testing" enables the native mock host (TestHost) for `cargo test`
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.22", features = ["testing"] }
+calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.23", features = ["testing"] }
 
 [profile.app-release]
 inherits = "release"

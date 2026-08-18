@@ -1,4 +1,6 @@
 [toolchain]
 channel = "1.89.0"
-components = ["cargo", "clippy"]
+# rustfmt is in rustup's default profile anyway, but CI now gates on
+# `cargo fmt --check`, so name it rather than rely on the profile.
+components = ["cargo", "clippy", "rustfmt"]
 targets = ["wasm32-unknown-unknown"]

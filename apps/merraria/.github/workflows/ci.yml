@@ -44,6 +44,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: logic
+      # fmt and clippy were never gated here, so main drifted out of rustfmt
+      # shape unnoticed (14 diffs by the rc.23 migration). Cheap to run, and the
+      # only thing that keeps the tree in the state the migration bar asserts.
+      - name: Formatting
+        run: cargo fmt --check
+      - name: Lints
+        run: cargo clippy --all-targets -- -D warnings
       - name: Contract unit tests (native, TestHost)
         run: cargo test
       - name: Install cargo-mero

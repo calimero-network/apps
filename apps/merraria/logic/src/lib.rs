@@ -202,11 +202,25 @@ impl Merraria {
 
     /// The real signer of this invocation. Never trust a client-supplied id.
     ///
-    /// `device_id()` is the rc.20 successor of `executor_id()`: same bytes (the
-    /// executing key), so stored player ids and the identities the frontend
-    /// compares against group membership keep matching. `account_id()` is a
-    /// DIFFERENT value — a hash of the key for an unenrolled node — so switching
-    /// to it would orphan every existing world's player rows.
+    /// Deliberately the DEVICE, audited against rc.23's account/device split
+    /// (core #3510, which flipped the `executor_id` shim from device to account
+    /// before deleting it). The rule there is that an identity doing *ownership*
+    /// takes the account — a writer set, an owner field, "is the caller a
+    /// member". This contract has none of those: a tile override is
+    /// `{t, updated_at}` with no author, a world has no owner, and nothing here
+    /// is ever compared against a group member list.
+    ///
+    /// The one thing this id names is an AVATAR, and an avatar is one
+    /// installation: a single position that a client heartbeats twice a second.
+    /// Keyed by account, a person's laptop and phone collapse into one row whose
+    /// x/y the two clients overwrite in turn, and neither can see the other.
+    /// Core's own words for `device_id` are "right for per-writer state and wrong
+    /// for per-person state" — a live avatar is per-writer state.
+    /// `one_person_on_two_devices_gets_two_avatars` holds this down.
+    ///
+    /// Same axis on the client: `sync.ts` suppresses its own echo by comparing an
+    /// event's member id against the context identity the node handed it, which
+    /// is a device key. "Is this the machine that wrote it" is a device question.
     fn caller() -> PublicKey {
         sdk_env::device_id().into()
     }
@@ -326,7 +340,11 @@ impl Merraria {
             y: t.y,
             dir: t.dir,
             sel: t.sel,
-            action: if t.action.is_empty() { "idle".to_owned() } else { t.action },
+            action: if t.action.is_empty() {
+                "idle".to_owned()
+            } else {
+                t.action
+            },
             left: false,
             joined_at,
             updated_at,
@@ -460,6 +478,9 @@ mod tests {
 
     const ALICE: [u8; 32] = [0x11; 32];
     const BOB: [u8; 32] = [0x22; 32];
+    /// Alice's second machine. `call_as` moves the device and leaves the account
+    /// alone, so ALICE and ALICE_PHONE are one person on two installations.
+    const ALICE_PHONE: [u8; 32] = [0x33; 32];
 
     fn id_of(bytes: [u8; 32]) -> String {
         bs58::encode(bytes).into_string()
@@ -508,8 +529,10 @@ mod tests {
     #[test]
     fn same_tile_upserts_never_duplicates() {
         let mut app = new_world();
-        app.call_as(ALICE, |s| s.set_tiles(vec![Edit { x: 1, y: 1, t: 3 }], 1000))
-            .unwrap();
+        app.call_as(ALICE, |s| {
+            s.set_tiles(vec![Edit { x: 1, y: 1, t: 3 }], 1000)
+        })
+        .unwrap();
         app.call_as(BOB, |s| s.set_tiles(vec![Edit { x: 1, y: 1, t: 0 }], 1010))
             .unwrap();
         let overrides = app.view(|s| s.get_overrides());
@@ -539,15 +562,23 @@ mod tests {
     #[test]
     fn oversized_batch_is_rejected() {
         let mut app = new_world();
-        let edits: Vec<Edit> = (0..513).map(|i| Edit { x: i % 100, y: 1, t: 1 }).collect();
+        let edits: Vec<Edit> = (0..513)
+            .map(|i| Edit {
+                x: i % 100,
+                y: 1,
+                t: 1,
+            })
+            .collect();
         assert!(app.call_as(ALICE, |s| s.set_tiles(edits, 1000)).is_err());
     }
 
     #[test]
     fn join_heartbeat_roster_lifecycle() {
         let mut app = new_world();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
-        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 33.0), 1003)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 33.0), 1003))
+            .unwrap();
         let players = app.view(|s| s.get_players(1005));
         assert_eq!(players.len(), 1);
         assert!(players[0].online);
@@ -561,11 +592,15 @@ mod tests {
     #[test]
     fn reap_needs_mark_plus_frozen_grace_and_self_heals() {
         let mut app = new_world();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
-        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
+            .unwrap();
 
-        app.call_as(BOB, |s| s.heartbeat(t("Bob", 0.0), 1040)).unwrap(); // marks Alice
-        app.call_as(BOB, |s| s.heartbeat(t("Bob", 0.0), 1075)).unwrap(); // grace passed -> reap
+        app.call_as(BOB, |s| s.heartbeat(t("Bob", 0.0), 1040))
+            .unwrap(); // marks Alice
+        app.call_as(BOB, |s| s.heartbeat(t("Bob", 0.0), 1075))
+            .unwrap(); // grace passed -> reap
         let alice = app
             .view(|s| s.get_players(1076))
             .into_iter()
@@ -573,7 +608,8 @@ mod tests {
             .unwrap();
         assert!(!alice.online);
 
-        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 5.0), 1080)).unwrap();
+        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 5.0), 1080))
+            .unwrap();
         let alice = app
             .view(|s| s.get_players(1081))
             .into_iter()
@@ -585,10 +621,14 @@ mod tests {
     #[test]
     fn skewed_fast_clock_cannot_instantly_reap_peers() {
         let mut app = new_world();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
-        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
-        app.call_as(BOB, |s| s.heartbeat(t("Bob", 0.0), 1600)).unwrap(); // 10 min ahead
-        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 0.0), 1002)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.heartbeat(t("Bob", 0.0), 1600))
+            .unwrap(); // 10 min ahead
+        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 0.0), 1002))
+            .unwrap();
         let alice = app
             .view(|s| s.get_players(1603))
             .into_iter()
@@ -600,8 +640,10 @@ mod tests {
     #[test]
     fn backward_clock_never_freezes_liveness() {
         let mut app = new_world();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 5000)).unwrap();
-        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 0.0), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 5000))
+            .unwrap();
+        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 0.0), 1000))
+            .unwrap();
         let players = app.view(|s| s.get_players(5002));
         assert!(players[0].online);
     }
@@ -609,18 +651,60 @@ mod tests {
     #[test]
     fn rejoin_preserves_joined_at_and_position() {
         let mut app = new_world();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
-        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 42.0), 1005)).unwrap();
-        app.call_as(ALICE, |s| s.join("Alice2".to_owned(), 1010)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 42.0), 1005))
+            .unwrap();
+        app.call_as(ALICE, |s| s.join("Alice2".to_owned(), 1010))
+            .unwrap();
         let players = app.view(|s| s.get_players(1011));
         assert_eq!(players[0].x, 42.0, "position survives rejoin");
         assert_eq!(players[0].name, "Alice2");
     }
 
+    /// The rc.23 identity decision, made executable. `caller()` is the device on
+    /// purpose (see its doc comment): an avatar is per-installation, so one
+    /// person playing on two machines is two avatars standing in two places.
+    /// Under `account_id()` both machines would write the SAME row and their
+    /// heartbeats would overwrite each other's position twice a second — this
+    /// test is what would catch that swap.
+    #[test]
+    fn one_person_on_two_devices_gets_two_avatars() {
+        let mut app = new_world();
+        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 10.0), 1000))
+            .unwrap();
+        app.call_as(ALICE_PHONE, |s| s.heartbeat(t("Alice", 90.0), 1001))
+            .unwrap();
+
+        let players = app.view(|s| s.get_players(1002));
+        assert_eq!(players.len(), 2, "two installations, two avatars");
+        let laptop = players.iter().find(|p| p.id == id_of(ALICE)).unwrap();
+        let phone = players.iter().find(|p| p.id == id_of(ALICE_PHONE)).unwrap();
+        assert_eq!(laptop.x, 10.0);
+        assert_eq!(
+            phone.x, 90.0,
+            "the second machine did not overwrite the first"
+        );
+    }
+
+    /// The other axis: two people on machines of their own are still two rows,
+    /// so the device keying above never collapses distinct players either.
+    #[test]
+    fn two_accounts_on_their_own_devices_are_two_players() {
+        let mut app = new_world();
+        app.call_as_account(ALICE, ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as_account(BOB, BOB, |s| s.join("Bob".to_owned(), 1001))
+            .unwrap();
+        let players = app.view(|s| s.get_players(1002));
+        assert_eq!(players.len(), 2);
+    }
+
     #[test]
     fn heartbeat_without_join_creates_a_live_row() {
         let mut app = new_world();
-        app.call_as(ALICE, |s| s.heartbeat(t("Ghost", 1.0), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.heartbeat(t("Ghost", 1.0), 1000))
+            .unwrap();
         let players = app.view(|s| s.get_players(1001));
         assert_eq!(players.len(), 1);
         assert!(players[0].online);
@@ -636,8 +720,10 @@ mod tests {
     #[test]
     fn concurrent_edits_by_two_players_both_land() {
         let mut app = new_world();
-        app.call_as(ALICE, |s| s.set_tiles(vec![Edit { x: 1, y: 1, t: 3 }], 1000))
-            .unwrap();
+        app.call_as(ALICE, |s| {
+            s.set_tiles(vec![Edit { x: 1, y: 1, t: 3 }], 1000)
+        })
+        .unwrap();
         app.call_as(BOB, |s| s.set_tiles(vec![Edit { x: 2, y: 2, t: 8 }], 1000))
             .unwrap();
         assert_eq!(app.view(|s| s.get_overrides()).len(), 2);
@@ -665,7 +751,8 @@ mod tests {
     #[test]
     fn empty_action_defaults_to_idle_and_join_starts_idle() {
         let mut app = new_world();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
         let p = &app.view(|s| s.get_players(1001))[0];
         assert_eq!(p.action, "idle");
         let tr = Transform {
@@ -694,7 +781,14 @@ mod tests {
         let applied = app
             .call_as(ALICE, |s| {
                 s.set_tiles(
-                    vec![Edit { x: 0, y: 0, t: 1 }, Edit { x: 399, y: 199, t: 1 }],
+                    vec![
+                        Edit { x: 0, y: 0, t: 1 },
+                        Edit {
+                            x: 399,
+                            y: 199,
+                            t: 1,
+                        },
+                    ],
                     1000,
                 )
             })
@@ -705,8 +799,10 @@ mod tests {
     #[test]
     fn tile_lww_stamps_are_monotonic_per_key() {
         let mut app = new_world();
-        app.call_as(ALICE, |s| s.set_tiles(vec![Edit { x: 2, y: 2, t: 7 }], 9000))
-            .unwrap();
+        app.call_as(ALICE, |s| {
+            s.set_tiles(vec![Edit { x: 2, y: 2, t: 7 }], 9000)
+        })
+        .unwrap();
         app.call_as(BOB, |s| s.set_tiles(vec![Edit { x: 2, y: 2, t: 4 }], 1000))
             .unwrap();
         let overrides = app.view(|s| s.get_overrides());
