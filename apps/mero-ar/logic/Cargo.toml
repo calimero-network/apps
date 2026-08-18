@@ -30,11 +30,13 @@ author = "Calimero"
 slug = "com.calimero.mero-ar"
 tags = ["ar", "spatial", "collaboration"]
 github = "https://github.com/calimero-network/mero-ar"
-# The oldest node that can run this bundle. It must name a real runtime: the
-# contract calls `env::device_id()`/`env::account_id()` and stores an
-# `AccessControl`/`Ownable`, none of which exist before 0.11.0-rc.20, so an
-# older node must be told to refuse the install rather than fail at first call.
-min-runtime-version = "0.11.0-rc.20"
+# The oldest node that can run this bundle, and the SDK tag it was built and
+# tested against. It must name a real runtime: the roster, the admin tier and
+# the room's owner are all keyed by `env::account_id()`, and an rc.22-or-older
+# node hands the same 32 bytes a DIFFERENT meaning through the `executor_id`
+# shim — nothing errors, the room just counts one person twice. So an older node
+# must refuse the install rather than diverge quietly.
+min-runtime-version = "0.11.0-rc.23"
 
 [dependencies]
 borsh = "0.10.3"
@@ -42,11 +44,13 @@ borsh-derive = "0.10.3"
 # Pin a real release tag, never `branch = "master"`: master rides unreleased
 # protocol work against nodes that run the release. All SDK crates must share
 # the exact same tag (the workspace version at a tag is 0.0.0).
-calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.20" }
-calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.20" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.20" }
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.23" }
+calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.23" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.23" }
 thiserror = "1.0.56"
 serde_json = "1.0.113"
+# Renders a `DeviceId` the way core writes every id — see `caller_device`.
+hex = { version = "0.4", default-features = false, features = ["alloc"] }
 
 [profile.app-release]
 inherits = "release"

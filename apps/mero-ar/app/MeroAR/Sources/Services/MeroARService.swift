@@ -10,15 +10,17 @@ import MeroKit
 /// the contract's serde derives expect. `MeroJSON` applies no key strategy, so
 /// what is written here is what goes on the wire.
 ///
-/// **Every call carries `executorPublicKey: memberId`.** Since core rc.20 the
-/// contract attributes each write to `env::device_id()` — which *is* this key —
-/// and authorizes it against that device's account. Omit it and the node
-/// executes as the context's owning identity, so every member's objects would be
-/// attributed to (and authorized as) whoever created the room.
+/// **No call carries `executorPublicKey`.** The node resolves the caller from
+/// the auth token on the request and hands the contract `env::account_id()`; the
+/// JSON-RPC `execute` payload has no such field to read, so passing one only
+/// looked like it was steering something. Who a write is attributed to is
+/// decided by which session signed it, not by an argument.
 public final class MeroARService {
     public let mero: Mero
     public let contextId: String
-    /// This device's identity in the context, from `/contexts/{id}/identities-owned`.
+    /// Who this session is in the room: an account id (64 hex), as
+    /// `whoami` on the contract reports it. Compare roster rows, object authors,
+    /// and the room owner against this — never against a context identity key.
     public let memberId: String
 
     public init(mero: Mero, contextId: String, memberId: String) {
@@ -27,10 +29,15 @@ public final class MeroARService {
         self.memberId = memberId
     }
 
-    /// The identity this device owns in `contextId`, joining + pulling state
+    /// Ensure this node holds an identity in `contextId`, joining + pulling state
     /// first if the context arrived by invitation and was never opened here.
-    /// Without an owned identity there is nothing to sign calls with.
-    public static func resolveIdentity(mero: Mero, contextId: String) async throws -> String {
+    ///
+    /// Still required, and still the honest failure point: the node's membership
+    /// check runs against this identity, so without one every call is rejected.
+    /// It is no longer the *member id* though — see [`whoami`] — so the returned
+    /// key is proof of membership and nothing more.
+    @discardableResult
+    public static func ensureIdentity(mero: Mero, contextId: String) async throws -> String {
         if let owned = try? await mero.admin.getContextIdentitiesOwned(contextId),
            let identity = owned.identities.first, !identity.isEmpty {
             return identity
@@ -42,6 +49,16 @@ public final class MeroARService {
             throw MeroARError.noIdentity
         }
         return identity
+    }
+
+    /// The account this session writes as, straight from the contract.
+    ///
+    /// The node-level `GET /admin-api/identity` (rc.23's replacement for the
+    /// deleted per-namespace identity route) reports the same account, but it
+    /// needs an admin scope and answers in a vocabulary this app otherwise never
+    /// uses. Asking the room keeps one source for "who am I here".
+    public static func whoami(mero: Mero, contextId: String) async throws -> String {
+        try await mero.rpc.execute(contextId: contextId, method: "whoami", argsJson: [:])
     }
 
     private func ms() -> UInt64 { UInt64(Date().timeIntervalSince1970 * 1000) }
@@ -190,8 +207,7 @@ public final class MeroARService {
     // ── RPC plumbing ──────────────────────────────────────────────────────────
 
     private func call<T: Decodable>(_ method: String, _ args: [String: JSONValue] = [:]) async throws -> T {
-        try await mero.rpc.execute(
-            contextId: contextId, method: method, argsJson: args, executorPublicKey: memberId)
+        try await mero.rpc.execute(contextId: contextId, method: method, argsJson: args)
     }
 
     /// A mutation whose return value we don't need. A contract method returning

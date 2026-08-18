@@ -27,7 +27,7 @@ wait_timeout: 120
 nodes:
   chain_id: testnet-1
   count: 2
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.20
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.23
   prefix: calimero-node
 
 steps:
@@ -47,11 +47,20 @@ steps:
     dev: true
 
   - name: Create Namespace
-    type: create_group
+    type: create_namespace
     node: calimero-node-1
     application_id: "{{app_id}}"
     outputs:
       namespace_id: namespaceId
+
+  # Namespaces are RESTRICTED by default, so a joining node 403s on its first
+  # `call` without this — which reads as a sync failure rather than a permission
+  # one. 15 = the full read/write/execute/manage-member bits.
+  - name: Set Default Member Capabilities
+    type: set_default_capabilities
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    capabilities: 15
 
   - name: Create Room Context
     type: create_context
@@ -64,14 +73,14 @@ steps:
       member_public_key: memberPublicKey
 
   - name: Invite Node 2
-    type: create_group_invitation
+    type: create_namespace_invitation
     node: calimero-node-1
     group_id: "{{namespace_id}}"
     outputs:
       invitation_2: invitation
 
   - name: Node 2 Joins Namespace
-    type: join_group
+    type: join_namespace
     node: calimero-node-2
     group_id: "{{namespace_id}}"
     invitation: "{{invitation_2}}"
@@ -125,10 +134,10 @@ steps:
     args: {}
     outputs:
       members_on_node_1: result
-      # Bob's member id as the CONTRACT recorded it — `env::device_id()` of
-      # whatever identity node 2 signed with. Node 1 never joins here, so the
-      # roster is exactly one entry. This is also how the app names a member in a
-      # grant: it reads the id out of `list_roles`, never a key it made up.
+      # Bob's member id as the CONTRACT recorded it — his ACCOUNT since rc.23,
+      # not the key he signed with. Node 1 never joins here, so the roster is
+      # exactly one entry. This is also how the app names a member in a grant:
+      # it reads the id out of `list_roles`, never a key it made up.
       bob_member_id: result.output.0.id
 
   # A gate that localizes the next failure. `join` writes the member entry and
@@ -354,11 +363,21 @@ steps:
     outputs:
       lock_held: result
 
+  # Two halves, and both are needed: `not_contains` alone passes against an
+  # empty or errored payload, so the second statement is its positive control.
+  #
+  # The holder is asserted as "somebody, still", not as a specific id. Since
+  # rc.23 the lock is keyed by the caller's ACCOUNT — a lock belongs to a
+  # person, so the phone can release what the laptop took — and the scenario
+  # has no way to name node 1's account: merobox surfaces `memberPublicKey`
+  # (a context member KEY) and nothing account-shaped. Asserting the key here
+  # is what made this fail; asserting it is non-null keeps the real claim,
+  # which is that Bob's edit was dropped AND the lock survived his attempt.
   - name: Assert Non-Holder Edit Dropped
     type: assert
     statements:
       - "not_contains({{lock_held}}, '999')"
-      - "contains({{lock_held}}, '{{member_public_key}}')"
+      - "not_contains({{lock_held}}, 'lockedBy\": null')"
 
   # An admin can break a lock somebody else holds — otherwise a member who
   # leaves mid-edit wedges the object for good.
@@ -543,6 +562,22 @@ steps:
     statements:
       - "contains({{presence}}, '{{bob_member_id}}')"
 
+  # Ask the contract who node 1 is, rather than assuming it is the context
+  # member key. Since rc.23 every member id in this contract is an ACCOUNT —
+  # `whoami()` returns exactly what the roster, objects, locks and comments are
+  # keyed by — while `member_public_key` is the context member KEY that
+  # authorizes a call. They are different values in different alphabets, so
+  # asserting one against the other silently never matches.
+  - name: Node 1 Reads Its Own Member Id
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: whoami
+    args: {}
+    outputs:
+      alice_member_id: result.output
+
   - name: Node 1 Reads The Roster
     type: call
     node: calimero-node-1
@@ -556,7 +591,7 @@ steps:
   - name: Assert Roster Has Both Members
     type: assert
     statements:
-      - "contains({{roster}}, '{{member_public_key}}')"
+      - "contains({{roster}}, '{{alice_member_id}}')"
       - "contains({{roster}}, '{{bob_member_id}}')"
       - "contains({{roster}}, 'admin')"
       - "contains({{roster}}, 'viewer')"

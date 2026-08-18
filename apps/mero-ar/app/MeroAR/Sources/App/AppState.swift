@@ -109,7 +109,12 @@ public final class AppState: ObservableObject {
     }
 
     private func enterRoom(client: Mero, nodeUrl: String, contextId: String, username: String) async throws {
-        let memberId = try await MeroARService.resolveIdentity(mero: client, contextId: contextId)
+        // Two steps, because they answer different questions: the first proves
+        // this node is in the context at all (and joins if an invitation was
+        // never opened here), the second asks the room which ACCOUNT it will see
+        // our writes as. Since rc.23 those are not the same value.
+        try await MeroARService.ensureIdentity(mero: client, contextId: contextId)
+        let memberId = try await MeroARService.whoami(mero: client, contextId: contextId)
         let service = MeroARService(mero: client, contextId: contextId, memberId: memberId)
         let store = SceneStore(service: service)
 

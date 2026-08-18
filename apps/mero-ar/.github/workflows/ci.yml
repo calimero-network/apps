@@ -89,7 +89,7 @@ jobs:
       - name: Build WASM
         run: cd logic && cargo mero build
       - name: Install merobox
-        run: pipx install merobox || pip install merobox
+        run: pip install merobox==0.6.55
       # Schema-check first: a typo in a step name/field otherwise only shows up
       # after several minutes of node boot.
       - name: Validate workflow schemas

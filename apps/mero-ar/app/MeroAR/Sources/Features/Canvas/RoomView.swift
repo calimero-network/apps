@@ -73,7 +73,7 @@ struct ARRoomView: View {
     // ── Chrome ────────────────────────────────────────────────────────────────
 
     private var statusPill: some View {
-        Label("\(store.objects.count) objects · \(store.presence.count) here",
+        Label("\(store.objects.count) objects · \(store.onlineMembers.count) here",
               systemImage: "cube.transparent")
             .font(.caption).padding(8).background(.thinMaterial, in: Capsule())
     }
