@@ -196,6 +196,33 @@ test.describe("resolving the installed application", () => {
     await expect(page.getByTestId("create-error")).toContainText("not installed on this node");
     expect(captured.namespace).toBeUndefined(); // nothing was created at all
   });
+
+  test("an application id handed over by SSO is still checked against the node", async ({
+    page,
+  }) => {
+    // The desktop passes an app id in the hash, and a browser remembers the
+    // last one it saw — both go stale the moment the node reinstalls the app or
+    // the player points at a different node. A stale id is not a recoverable
+    // mistake: POST /admin-api/namespaces answers an unknown application with a
+    // bare 500 that never mentions application ids.
+    const captured: CapturedBodies = {};
+    await seedAuthOnly(page);
+    await mockNode(page, freshState());
+    await mockAdmin(page, [], captured, {
+      applications: { data: { apps: [{ id: APP_ID, package: PACKAGE_NAME }] } },
+    });
+
+    await page.goto(
+      "/#access_token=cb-token&refresh_token=cb-refresh" +
+        "&application_id=app-from-another-node&context_identity=pk-me",
+    );
+    await page.getByTestId("create-world-open-btn").click();
+    await page.getByTestId("world-name-input").fill("e2e world");
+    await page.getByTestId("create-world-btn").click();
+    await page.waitForFunction(() => "__mb" in window);
+
+    expect((captured.namespace as Record<string, unknown>).applicationId).toBe(APP_ID);
+  });
 });
 
 test.describe("creating a world", () => {

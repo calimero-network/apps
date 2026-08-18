@@ -8,7 +8,9 @@
 //      &context_identity=…[&node_url=…]
 //    (mero-js parseAuthCallback format; node_url may be absent — we stashed
 //    it before redirecting, see auth.ts takePendingNodeUrl).
-// App-id resolution prefers hash > stored > env (the mero-chat SSO-strip lesson).
+// The app id captured here is only a PREFERENCE: admin.ts re-checks it against
+// the apps the node reports before anything is built on it (there is no env
+// var in that order, and must not be — see resolveApplicationId).
 
 import { takePendingNodeUrl } from "./auth";
 import { TOKENS_KEY, jwtExpiryMs, readStoredTokens, shouldSeedTokens } from "./authTokens";

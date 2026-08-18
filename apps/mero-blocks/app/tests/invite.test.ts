@@ -229,6 +229,7 @@ describe("createWorldInvite", () => {
     updateSession({ contextId: "ctx-77" });
     mockRoutes([
       ["/admin-api/contexts/ctx-77/group", "grp-77"],
+      ["/admin-api/applications", { apps: [{ id: "app-1", package: "com.calimero.meroblocks" }] }],
       ["/admin-api/namespaces/for-application/app-1", [{ namespaceId: "ns-1" }]],
       ["/admin-api/namespaces/ns-1/groups", [{ groupId: "grp-77", name: "overworld" }]],
       ["/admin-api/groups/grp-77", { subgroupVisibility: "open" }],
@@ -246,6 +247,7 @@ describe("createWorldInvite", () => {
     updateSession({ contextId: "ctx-77", namespaceId: null, groupId: null });
     const calls = mockRoutes([
       ["/admin-api/contexts/ctx-77/group", "grp-77"],
+      ["/admin-api/applications", { apps: [{ id: "app-1", package: "com.calimero.meroblocks" }] }],
       ["/admin-api/namespaces/for-application/app-1", [{ namespaceId: "ns-77" }]],
       ["/admin-api/namespaces/ns-77/groups", [{ groupId: "grp-77" }]],
       ["/admin-api/groups/grp-77", { subgroupVisibility: "open" }],

@@ -6,9 +6,10 @@ import {
   packageOf,
   parseApplications,
   parseContexts,
+  pickApplicationId,
   resolveApplicationId,
 } from "../src/net/admin";
-import { resetSession, updateSession } from "../src/net/session";
+import { getSession, resetSession, updateSession } from "../src/net/session";
 
 const manifestBytes = (pkg: string) =>
   Array.from(new TextEncoder().encode(JSON.stringify({ package: pkg })));
@@ -61,12 +62,46 @@ describe("shape-tolerant parsers", () => {
   });
 });
 
+describe("pickApplicationId (precedence, and every candidate validated)", () => {
+  const blocks = { id: "blocks", package: "com.calimero.meroblocks" };
+  const meet = { id: "meet", package: "com.calimero.meromeet" };
+
+  it("prefers the session id when the node has it installed", () => {
+    expect(pickApplicationId([meet, blocks], "meet")).toBe("meet");
+  });
+
+  it("ignores a session id this node does not have installed", () => {
+    // The stale-id case: a remembered id from another node or another build.
+    expect(pickApplicationId([meet, blocks], "from-another-node")).toBe("blocks");
+  });
+
+  it("falls back to our package, then to a lone app, then to nothing", () => {
+    expect(pickApplicationId([meet, blocks], "")).toBe("blocks");
+    expect(pickApplicationId([meet], "")).toBe("meet");
+    expect(pickApplicationId([meet, { id: "x", package: "com.other" }], "")).toBe("");
+    expect(pickApplicationId([], "session")).toBe("");
+  });
+});
+
 describe("resolveApplicationId", () => {
-  it("prefers the session app id without any network call", async () => {
+  it("checks the session app id against the node instead of trusting it", async () => {
     updateSession({ applicationId: "app-hash" });
-    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      okJson({ data: { apps: [{ id: "app-hash", package: "com.calimero.meroblocks" }] } }),
+    );
     expect(await resolveApplicationId()).toBe("app-hash");
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/admin-api/applications");
+  });
+
+  it("drops a stale session app id the node does not know", async () => {
+    updateSession({ applicationId: "stale" });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      okJson({ data: { apps: [{ id: "real", package: "com.calimero.meroblocks" }] } }),
+    );
+    expect(await resolveApplicationId()).toBe("real");
+    // cleared, so the next call cannot resurrect it
+    expect(getSession().applicationId).toBe("real");
   });
 
   it("matches the installed app by package name", async () => {

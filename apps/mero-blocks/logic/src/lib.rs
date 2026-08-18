@@ -230,11 +230,31 @@ impl MeroBlocks {
 
     /// The real signer of this invocation. Never trust a client-supplied id.
     ///
-    /// `device_id()` is the rc.20 successor of `executor_id()`: same bytes (the
-    /// executing key), so stored player ids and the identities the frontend
-    /// compares against group membership keep matching. `account_id()` is a
-    /// DIFFERENT value — a hash of the key for an unenrolled node — so switching
-    /// to it would orphan every existing world's player rows.
+    /// **`device_id()` on purpose, and it stays that way at rc.23.** The rule
+    /// core states for the account/device split is that an identity used for
+    /// OWNERSHIP takes the account: writer sets, `Map<identity, Vote>`, "is the
+    /// caller the owner/a member". This contract has none of those — it stores
+    /// no owner, no roles, and never compares a caller against the group's
+    /// member list (membership is enforced by the node before a call reaches us,
+    /// and group members are accounts now anyway).
+    ///
+    /// What it keys by this value is a PLAYER ROW: a name, a transform and a
+    /// heartbeat — presence for one running instance of the game. That is the
+    /// "this installation" case the split keeps `device_id()` for. Two devices of
+    /// one person are two avatars standing in two places, and they must be:
+    /// `account_id()` would collapse them onto one row whose position is decided
+    /// by whichever device heartbeated last, so an idle phone would teleport the
+    /// laptop's avatar every second, and `reap_stale_players`' `id == me` guard
+    /// would stop protecting the other device's row.
+    ///
+    /// It is also the id the frontend already holds: `device_id()` is the
+    /// context's `executor_public_key`, which is exactly what
+    /// `/admin-api/contexts/:id/identities-owned` hands the client as "me". An
+    /// account here would make every `p.id === myId` comparison false.
+    ///
+    /// `env::executor_id()` is deliberately not used: at rc.23 that shim resolves
+    /// to the ACCOUNT (core #3510), so it no longer means what it did when this
+    /// file was written against rc.20.
     fn caller() -> PublicKey {
         sdk_env::device_id().into()
     }
@@ -811,5 +831,28 @@ mod tests {
             .unwrap();
         let overrides = app.view(|s| s.get_overrides());
         assert_eq!(overrides[0].b, 4, "later edit wins even with a slow clock");
+    }
+
+    /// Pins the account/device decision made at rc.23 (see `caller`): a player
+    /// row is per-INSTALLATION, so one person on two devices is two avatars in
+    /// two places. If someone "fixes" `caller()` to `account_id()`, the two
+    /// heartbeats below collapse onto one row and this fails — which is the
+    /// point, because nothing else in the app would have complained.
+    #[test]
+    fn one_account_on_two_devices_is_two_players() {
+        const PERSON: [u8; 32] = [0x33; 32];
+        let mut app = new_world();
+        app.call_as_account(PERSON, ALICE, |s| s.heartbeat(t("laptop", 10.0), 1000))
+            .unwrap();
+        app.call_as_account(PERSON, BOB, |s| s.heartbeat(t("phone", 90.0), 1000))
+            .unwrap();
+
+        let players = app.view(|s| s.get_players(1001));
+        assert_eq!(players.len(), 2, "one account, two devices, two avatars");
+        let mut xs: Vec<f64> = players.iter().map(|p| p.x).collect();
+        xs.sort_by(f64::total_cmp);
+        assert_eq!(xs, vec![10.0, 90.0], "each device keeps its own position");
+        assert_eq!(players.iter().filter(|p| p.id == id_of(ALICE)).count(), 1);
+        assert_eq!(players.iter().filter(|p| p.id == id_of(BOB)).count(), 1);
     }
 }

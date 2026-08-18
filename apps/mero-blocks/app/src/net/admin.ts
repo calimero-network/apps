@@ -197,17 +197,45 @@ const appId = (app: Record<string, unknown>): string =>
   String(app.id ?? app.applicationId ?? app.application_id ?? "");
 
 /**
- * Application id: session (URL hash wins — the mero-chat lesson) > installed
- * app matching our package name > lone installed app.
+ * Pick our application id out of the node's installed apps.
+ *
+ * Order: the id this session was handed (the SSO/auth-callback hash, which the
+ * desktop fills in — the mero-chat lesson: the URL beats anything remembered) >
+ * the installed app carrying our package name > the lone app on a dev node.
+ *
+ * Every candidate is a PREFERENCE, checked against what this node actually has;
+ * none of them is an override. There is deliberately no `VITE_APPLICATION_ID`
+ * here and there must never be one: the id is `hash(package, signer)`, so it is
+ * per-install and differs between a registry-signed release and a local
+ * `cargo mero bundle --dev` of the same code. A baked id cannot be right for
+ * both, and being wrong is not recoverable at runtime — the node answers a
+ * request carrying an unknown application with an opaque `500` that never
+ * mentions application ids (MeroDesign shipped a build wedged exactly that way).
  */
-export async function resolveApplicationId(): Promise<string | null> {
-  const s = getSession();
-  if (s.applicationId) return s.applicationId;
-  const apps = parseApplications(await adminGet("/admin-api/applications"));
+export function pickApplicationId(
+  apps: Record<string, unknown>[],
+  sessionAppId: string,
+): string {
+  if (sessionAppId && apps.some((a) => appId(a) === sessionAppId)) return sessionAppId;
   const match = apps.find((a) => packageOf(a) === PACKAGE_NAME);
   const chosen = match ?? (apps.length === 1 ? apps[0] : undefined);
-  const id = chosen ? appId(chosen) : "";
-  if (id) updateSession({ applicationId: id });
+  return chosen ? appId(chosen) : "";
+}
+
+/**
+ * Resolve the application id from the node, never from configuration.
+ *
+ * The node is asked even when the session already carries an id: a remembered
+ * id survives switching nodes and reinstalling the app, and an id this node
+ * doesn't know is worse than no id at all (see `pickApplicationId`). A session
+ * value that fails the check is cleared rather than left to come back on the
+ * next call.
+ */
+export async function resolveApplicationId(): Promise<string | null> {
+  const sessionAppId = getSession().applicationId ?? "";
+  const apps = parseApplications(await adminGet("/admin-api/applications"));
+  const id = pickApplicationId(apps, sessionAppId);
+  if (id !== sessionAppId) updateSession({ applicationId: id || null });
   return id || null;
 }
 
@@ -332,8 +360,12 @@ async function resolveNamespaceForContext(contextId: string): Promise<string> {
   const s = getSession();
   if (s.namespaceId && s.contextId === contextId) return s.namespaceId;
   const groupId = await groupOfContext(contextId);
-  const appId = s.applicationId ?? (await resolveApplicationId()) ?? "";
-  const spaces = await adminGet<unknown>(`/admin-api/namespaces/for-application/${appId}`);
+  // Resolved, not read off the session: `for-application/<unknown id>` is one of
+  // the routes that answers an id this node doesn't have with an opaque 500.
+  const applicationId = (await resolveApplicationId()) ?? "";
+  const spaces = await adminGet<unknown>(
+    `/admin-api/namespaces/for-application/${applicationId}`,
+  );
   const list = Array.isArray(spaces) ? (spaces as Record<string, unknown>[]) : [];
   for (const ns of list) {
     const nsId = pick(ns, "namespaceId", "namespace_id", "id");
