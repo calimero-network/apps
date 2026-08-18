@@ -72,7 +72,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install merobox
-        run: pip install merobox
+        run: pip install merobox==0.6.55
       - name: Run signaling e2e (offer/answer/ice through the contract)
         working-directory: workflows
         run: merobox bootstrap run e2e.yml

@@ -15,7 +15,7 @@ force_pull_image: true
 nodes:
   chain_id: testnet-1
   count: 2
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.20
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.23
   prefix: calimero-node
   # Off the default 2428/2528 so the workflow doesn't collide with a local
   # dev merod a developer may already be running.
@@ -163,10 +163,13 @@ steps:
     args: { now: 1751955010 }
     executor_public_key: "{{alice_key}}"
     outputs:
-      # start_call returns the call-id string; capture the unwrapped `output`
-      # (not `result`, which wraps it as {"output": "..."} and can't be passed
-      # back into a String arg).
-      call_id: output
+      # `result.output`, not a bare `output`. start_call returns the call-id
+      # string and it does need unwrapping — `result` alone is
+      # {"output": "..."} and cannot be fed back into a String arg — but the
+      # path is rooted at `result`. A bare `output` resolves to nothing and
+      # merobox fails the step with OUTPUT_CAPTURE_FAILED rather than a missing
+      # value, so it reads like the call failed when it succeeded.
+      call_id: result.output
 
   - name: Sync call start
     type: wait_for_sync

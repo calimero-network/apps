@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSubscription } from "@calimero-network/mero-react";
+import {
+  useSubscription,
+  type SubscriptionEventData,
+} from "@calimero-network/mero-react";
 import { CallEngine, type OutSignal, type DiagEntry, type PeerStat } from "../lib/webrtc";
 import { BackgroundProcessor, type BgEffect } from "../lib/effects";
 import { getContextId, getExecutorPublicKey, getUsername } from "../lib/session";
@@ -500,7 +503,12 @@ export function useCallController(): CallController {
 
   // ── React to SSE events (snappy) ────────────────────────────────────────────
   const onEvent = useCallback(
-    (evt: { contextId: string; data: unknown }) => {
+    (evt: SubscriptionEventData) => {
+      // mero-js 7.3 widened this stream: the same subscription now also carries
+      // group-membership events, which name a `groupId` and no context at all.
+      // Only a context event can be one of our contract's, so anything without a
+      // `contextId` is not ours to read — and its `data` has a different shape.
+      if (!("contextId" in evt)) return;
       const data = evt.data as Record<string, unknown> | null;
       const type = data && typeof data === "object" ? Object.keys(data)[0] : "";
       if (type === "SignalPosted") void drainSignals();

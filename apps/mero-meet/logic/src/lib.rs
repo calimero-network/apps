@@ -21,9 +21,9 @@
 
 use std::str::FromStr;
 
+use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::abi::AbiType;
 use calimero_sdk::{app, env as sdk_env, AccountId, PublicKey};
 use calimero_storage::address::Id;
 use calimero_storage::collections::crdt_meta::MergeError;
@@ -234,6 +234,8 @@ impl RekeyTarget for ChatMessage {
 #[serde(rename_all = "camelCase")]
 pub struct RoomInfo {
     pub name: String,
+    /// The room owner, as an ACCOUNT (hex). Ownership is a person, so this is
+    /// the account and not one of their member keys — see `get_room`.
     pub owner: Option<String>,
     pub member_count: u32,
     /// Members seen within `PRESENCE_TTL_SECS` of `now`.
@@ -372,18 +374,44 @@ impl MeroMeet {
 
     // ── Identity & authorization helpers ──────────────────────────────────────
 
-    /// The real signer of this invocation. Never trust a client-supplied id.
+    /// The real signer of this invocation, as the DEVICE that made it. Never
+    /// trust a client-supplied id.
     ///
-    /// `device_id()` is the rc.20 successor of `executor_id()` — the same bytes,
-    /// so member ids and the identities the frontend reads from
-    /// `identities-owned` keep matching. Authorization uses
-    /// [`Self::caller_account`]; see `accounts`.
+    /// `device_id()` is deliberate and survives the rc.23 audit — it is the one
+    /// thing in this contract that genuinely means "this installation". A member
+    /// id here is one *seat in the call*, not one person:
+    ///
+    ///   - a presence row carries a mic and a camera, and someone dialled in
+    ///     from a phone and a laptop has two of each, muted independently;
+    ///   - `post_signal`'s `from`/`to` address one end of one WebRTC peer
+    ///     connection. SDP and ICE describe a machine's transports; delivering
+    ///     an answer to "the person" would hand it to the wrong device half the
+    ///     time, and the mesh is per-device by construction;
+    ///   - the reaper judges liveness per window (`reap_marks` is keyed by the
+    ///     same id): a closed laptop lid must drop that seat without evicting
+    ///     the phone still in the call;
+    ///   - it is the KEY of `accounts`, which is a device→account table and so
+    ///     device-keyed by definition.
+    ///
+    /// Collapsing these to the account would make one person on two machines a
+    /// single, self-contradictory participant. Ownership and roles are the
+    /// opposite case and go through [`Self::caller_account`].
+    ///
+    /// Keeping it also preserves the match with the identity the frontend reads
+    /// from `/contexts/{id}/identities-owned`, which is a context member key —
+    /// a device — and is what every id the UI compares against is.
     fn caller() -> PublicKey {
         sdk_env::device_id().into()
     }
 
     /// The account this call is authorized as — what `AccessControl` and
     /// `Ownable` gate on. Two devices of one person report the same account.
+    ///
+    /// Every ownership question in this contract resolves here: room owner, the
+    /// host tier, and any grant naming a member. rc.23 makes this what the
+    /// legacy `executor_id()` shim returns too (core #3510), so it is now the
+    /// default answer to "who is calling" and `device_id()` is the exception
+    /// that has to argue for itself — which it does, above.
     fn caller_account() -> AccountId {
         AccountId::from(sdk_env::account_id())
     }
@@ -397,19 +425,6 @@ impl MeroMeet {
         }
     }
 
-    /// A member id belonging to `account`, or the account's own string form when
-    /// none is known. Reverse of [`Self::account_of`].
-    fn member_of(&self, account: &AccountId) -> String {
-        if let Ok(entries) = self.accounts.entries() {
-            for (id, known) in entries {
-                if known.get() == account {
-                    return id;
-                }
-            }
-        }
-        account.to_string()
-    }
-
     /// Resolve a client-supplied member key to the account a grant can name.
     fn require_account(&self, member: &str) -> app::Result<AccountId> {
         // Validate the key shape first, so a typo reads as "invalid key" rather
@@ -417,9 +432,9 @@ impl MeroMeet {
         let _ = Self::parse_pk(member)?;
         match self.account_of(member) {
             Some(account) => Ok(account),
-            None => app::bail!(
-                "that member hasn't joined this room yet, so their account is unknown"
-            ),
+            None => {
+                app::bail!("that member hasn't joined this room yet, so their account is unknown")
+            }
         }
     }
 
@@ -518,9 +533,14 @@ impl MeroMeet {
             .count() as u32;
         RoomInfo {
             name: self.room_name_str(),
-            // The owner is an account; report it as the member id clients
-            // already know, falling back to the account's own string form.
-            owner: self.room_name.owner().map(|a| self.member_of(&a)),
+            // Reported as the ACCOUNT, not a member key. This used to walk
+            // `accounts` backwards to find *a* device of the owner, which is
+            // both lossy (an owner on a phone and a laptop has two, and the map
+            // has no defined order) and a category error now that rc.23 makes
+            // every membership id an account. Owning a room is something a
+            // person does; a client that wants a face to put next to it can
+            // resolve the account through the lobby.
+            owner: self.room_name.owner().map(|a| a.to_string()),
             member_count: members.len() as u32,
             online_count: online,
             active_call: self.active_call.get().clone(),
@@ -649,9 +669,13 @@ impl MeroMeet {
                 _ => {
                     // First sighting as stale (or they moved since the last
                     // mark): (re)start the grace clock.
-                    let _ = self
-                        .reap_marks
-                        .insert(id.clone(), ReapMark { marked_at: room_now, row_ts });
+                    let _ = self.reap_marks.insert(
+                        id.clone(),
+                        ReapMark {
+                            marked_at: room_now,
+                            row_ts,
+                        },
+                    );
                 }
             }
         }
@@ -1045,6 +1069,11 @@ mod tests {
     const ALICE: [u8; 32] = [0x11; 32];
     const BOB: [u8; 32] = [0x22; 32];
 
+    /// Alice's second machine. `call_as` moves the DEVICE and keeps the account,
+    /// so this and `ALICE` are one person sitting at two computers — the case the
+    /// account/device split exists for.
+    const ALICE_PHONE: [u8; 32] = [0x1A; 32];
+
     // The host tier is keyed by ACCOUNT since rc.20, and `call_as` keeps the
     // caller's account on purpose (two devices of one person). A test peer that
     // must NOT inherit the creator's host rights needs its own account.
@@ -1064,8 +1093,10 @@ mod tests {
     #[test]
     fn join_lists_members_and_online_respects_ttl() {
         let mut app = new_room();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
-        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1005)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1005))
+            .unwrap();
 
         let lobby = app.view(|s| s.get_lobby(1008));
         assert_eq!(lobby.members.len(), 2);
@@ -1079,7 +1110,8 @@ mod tests {
     #[test]
     fn heartbeat_refreshes_online_status() {
         let mut app = new_room();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
         app.call_as(ALICE, |s| s.heartbeat(1040)).unwrap();
         let lobby = app.view(|s| s.get_lobby(1045));
         assert_eq!(lobby.online, vec![id_of(ALICE)]);
@@ -1090,8 +1122,10 @@ mod tests {
     #[test]
     fn start_call_shares_one_session_and_last_leave_ends_it() {
         let mut app = new_room();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
-        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
+            .unwrap();
 
         let id1 = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
         let id2 = app.call_as(BOB, |s| s.start_call(1002)).unwrap();
@@ -1100,18 +1134,28 @@ mod tests {
 
         app.call_as(ALICE, |s| s.leave_call(1010)).unwrap();
         assert_eq!(app.view(|s| s.get_call_participants()).len(), 1);
-        assert_ne!(app.view(|s| s.active_call_id()), "", "call survives while someone is in it");
+        assert_ne!(
+            app.view(|s| s.active_call_id()),
+            "",
+            "call survives while someone is in it"
+        );
 
         app.call_as(BOB, |s| s.leave_call(1011)).unwrap();
-        assert_eq!(app.view(|s| s.active_call_id()), "", "last leave ends the call");
+        assert_eq!(
+            app.view(|s| s.active_call_id()),
+            "",
+            "last leave ends the call"
+        );
         assert!(app.view(|s| s.get_call_participants()).is_empty());
     }
 
     #[test]
     fn live_call_is_joined_not_reaped() {
         let mut app = new_room();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
-        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
+            .unwrap();
         let id1 = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
         // Bob joins 9s later — Alice's presence is fresh, so same session.
         let id2 = app.call_as(BOB, |s| s.start_call(1010)).unwrap();
@@ -1121,15 +1165,20 @@ mod tests {
     #[test]
     fn stale_ghost_participant_is_reaped_after_mark_and_grace() {
         let mut app = new_room();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
         let ghost = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
 
         // Alice's window died: no leave_call, heartbeats stop. 1000s later Bob
         // calls. The FIRST pass only MARKS Alice (an instant kill here is the
         // clock-skew bug: a joiner with a fast clock murdered live calls).
-        app.call_as(BOB, |s| s.join("Bob".to_owned(), 2000)).unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 2000))
+            .unwrap();
         let joined = app.call_as(BOB, |s| s.start_call(2001)).unwrap();
-        assert_eq!(joined, ghost, "session survives until the ghost is PROVEN dead");
+        assert_eq!(
+            joined, ghost,
+            "session survives until the ghost is PROVEN dead"
+        );
         // Alice's row stays frozen through the grace window → next pass reaps.
         app.call_as(BOB, |s| s.heartbeat(2040)).unwrap();
         assert_eq!(app.view(|s| s.get_call_participants()), vec![id_of(BOB)]);
@@ -1138,13 +1187,15 @@ mod tests {
     #[test]
     fn fully_dead_call_is_ended_and_next_start_is_fresh() {
         let mut app = new_room();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
         let ghost = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
 
         // Alice crashed; Bob sits in the LOBBY. His first beat marks her, his
         // second (past the grace) reaps her — the empty call is killed, and
         // the next start mints a fresh session ("everybody leaves → kill it").
-        app.call_as(BOB, |s| s.join("Bob".to_owned(), 2000)).unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 2000))
+            .unwrap();
         app.call_as(BOB, |s| s.heartbeat(2005)).unwrap();
         app.call_as(BOB, |s| s.heartbeat(2040)).unwrap();
         assert!(app.view(|s| s.get_call_participants()).is_empty());
@@ -1156,8 +1207,10 @@ mod tests {
     #[test]
     fn heartbeat_reaps_crashed_participants() {
         let mut app = new_room();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
-        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
+            .unwrap();
         let call = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
         let _ = app.call_as(BOB, |s| s.start_call(1002)).unwrap();
 
@@ -1176,12 +1229,20 @@ mod tests {
             vec![id_of(BOB)],
             "crashed peer dropped from the roster"
         );
-        assert_eq!(app.view(|s| s.active_call_id()), call, "call survives for the living");
+        assert_eq!(
+            app.view(|s| s.active_call_id()),
+            call,
+            "call survives for the living"
+        );
 
         // The ghost's own presence was cleared too — the lobby must stop
         // saying "in call" forever about someone whose window closed.
         let lobby = app.view(|s| s.get_lobby(1106));
-        let alice = lobby.members.iter().find(|m| m.member_id == id_of(ALICE)).unwrap();
+        let alice = lobby
+            .members
+            .iter()
+            .find(|m| m.member_id == id_of(ALICE))
+            .unwrap();
         assert_eq!(alice.call_id, None, "ghost presence no longer in-call");
         assert_eq!(alice.status, "away");
     }
@@ -1189,8 +1250,10 @@ mod tests {
     #[test]
     fn heartbeat_reap_ends_call_when_last_living_participant_is_a_ghost() {
         let mut app = new_room();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
-        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
+            .unwrap();
         let _ = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
 
         // Alice (the only participant) crashes; Bob is in the lobby, not the
@@ -1204,8 +1267,10 @@ mod tests {
     #[test]
     fn heartbeat_does_not_reap_fresh_participants() {
         let mut app = new_room();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
-        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
+            .unwrap();
         let _ = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
         // 30s later Alice is inside the reap window — a lagging beat is not
         // death (she is not even marked).
@@ -1221,11 +1286,16 @@ mod tests {
         // silent", ended her live call and minted his own session — both
         // users ended up alone in a call ("black screen").
         let mut app = new_room();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
-        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1090)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1090))
+            .unwrap();
         let a = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
         let b = app.call_as(BOB, |s| s.start_call(1092)).unwrap();
-        assert_eq!(a, b, "skewed joiner joins the running session, never kills it");
+        assert_eq!(
+            a, b,
+            "skewed joiner joins the running session, never kills it"
+        );
 
         // Both keep beating on their own (skewed) clocks; nobody gets reaped.
         for i in 0..20u64 {
@@ -1236,7 +1306,11 @@ mod tests {
         assert_eq!(app.view(|s| s.active_call_id()), a);
         // And BOTH read as online to any viewer, regardless of viewer clock.
         let lobby = app.view(|s| s.get_lobby(1060));
-        assert_eq!(lobby.online.len(), 2, "skewed-behind member still shows online");
+        assert_eq!(
+            lobby.online.len(),
+            2,
+            "skewed-behind member still shows online"
+        );
     }
 
     #[test]
@@ -1245,9 +1319,11 @@ mod tests {
         // making Alice look stale for a moment. One heartbeat from her (on
         // her own slow clock) must clear the mark before the grace expires.
         let mut app = new_room();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
         let call = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
-        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1600)).unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1600))
+            .unwrap();
         let joined = app.call_as(BOB, |s| s.start_call(1601)).unwrap();
         assert_eq!(joined, call, "first stale sighting may only mark, not kill");
 
@@ -1263,7 +1339,8 @@ mod tests {
     #[test]
     fn leaving_the_room_also_leaves_the_call() {
         let mut app = new_room();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
         let _ = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
         app.call_as(ALICE, |s| s.leave(1002)).unwrap();
         assert_eq!(app.view(|s| s.active_call_id()), "");
@@ -1273,11 +1350,15 @@ mod tests {
     #[test]
     fn end_call_requires_host() {
         let mut app = new_room();
-        app.call_as_account(BOB_ACCOUNT, BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
-        let _ = app.call_as_account(BOB_ACCOUNT, BOB, |s| s.start_call(1001)).unwrap();
+        app.call_as_account(BOB_ACCOUNT, BOB, |s| s.join("Bob".to_owned(), 1000))
+            .unwrap();
+        let _ = app
+            .call_as_account(BOB_ACCOUNT, BOB, |s| s.start_call(1001))
+            .unwrap();
 
         assert!(
-            app.call_as_account(BOB_ACCOUNT, BOB, |s| s.end_call()).is_err(),
+            app.call_as_account(BOB_ACCOUNT, BOB, |s| s.end_call())
+                .is_err(),
             "non-host cannot end for everyone"
         );
         app.call(|s| s.end_call()).unwrap(); // creator (admin) can
@@ -1292,8 +1373,10 @@ mod tests {
         // forever — a crashed window lingered as a phantom participant and the
         // call never died.
         let mut app = new_room();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
-        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
+            .unwrap();
         let _ = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
         let _ = app.call_as(BOB, |s| s.start_call(1002)).unwrap();
 
@@ -1324,8 +1407,10 @@ mod tests {
         // call — this is the frontend's self-heal path ("roster lost us →
         // start_call") — and the leftover mark must not re-reap them.
         let mut app = new_room();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
-        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
+            .unwrap();
         let call = app.call_as(ALICE, |s| s.start_call(1001)).unwrap();
         let _ = app.call_as(BOB, |s| s.start_call(1002)).unwrap();
 
@@ -1349,15 +1434,29 @@ mod tests {
     #[test]
     fn signals_are_addressed_seq_filtered_and_sender_unique() {
         let mut app = new_room();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
-        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
+            .unwrap();
 
         app.call_as(ALICE, |s| {
-            s.post_signal(id_of(BOB), "offer".to_owned(), "sdp-a".to_owned(), "c1".to_owned(), 1001)
+            s.post_signal(
+                id_of(BOB),
+                "offer".to_owned(),
+                "sdp-a".to_owned(),
+                "c1".to_owned(),
+                1001,
+            )
         })
         .unwrap();
         app.call_as(BOB, |s| {
-            s.post_signal(id_of(ALICE), "answer".to_owned(), "sdp-b".to_owned(), "c1".to_owned(), 1002)
+            s.post_signal(
+                id_of(ALICE),
+                "answer".to_owned(),
+                "sdp-b".to_owned(),
+                "c1".to_owned(),
+                1002,
+            )
         })
         .unwrap();
 
@@ -1369,7 +1468,10 @@ mod tests {
 
         // Ids embed the sender so two nodes minting the same seq concurrently
         // can never collide on a map key (which silently dropped one signal).
-        assert_eq!(bobs[0].id, format!("sig-{}-{}", bobs[0].seq, &id_of(ALICE)[..8]));
+        assert_eq!(
+            bobs[0].id,
+            format!("sig-{}-{}", bobs[0].seq, &id_of(ALICE)[..8])
+        );
 
         // after_seq filtering.
         let alices = app.call_as(ALICE, |s| s.get_signals(0));
@@ -1382,7 +1484,13 @@ mod tests {
     fn posting_requires_room_membership() {
         let mut app = new_room();
         let denied = app.call_as(ALICE, |s| {
-            s.post_signal(id_of(BOB), "offer".to_owned(), "sdp".to_owned(), "c1".to_owned(), 1000)
+            s.post_signal(
+                id_of(BOB),
+                "offer".to_owned(),
+                "sdp".to_owned(),
+                "c1".to_owned(),
+                1000,
+            )
         });
         assert!(denied.is_err());
     }
@@ -1390,25 +1498,41 @@ mod tests {
     #[test]
     fn backward_clock_cannot_freeze_liveness() {
         let mut app = new_room();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
         // Alice's clock jumps BACKWARD (NTP correction) — her next heartbeats
         // carry older wall times. updated_at must still advance monotonically,
         // or the LWW merge would reject every future write and she'd read as
         // a ghost forever while demonstrably alive.
         app.call_as(ALICE, |s| s.heartbeat(900)).unwrap();
         let lobby = app.view(|s| s.get_lobby(1005));
-        assert_eq!(lobby.online, vec![id_of(ALICE)], "still online after clock jump");
-        assert!(lobby.members[0].updated_at > 1000, "updated_at advanced past the join");
+        assert_eq!(
+            lobby.online,
+            vec![id_of(ALICE)],
+            "still online after clock jump"
+        );
+        assert!(
+            lobby.members[0].updated_at > 1000,
+            "updated_at advanced past the join"
+        );
     }
 
     #[test]
     fn posting_a_signal_counts_as_liveness() {
         let mut app = new_room();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
-        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
+            .unwrap();
         // Alice's heartbeats stop (throttled window) but she keeps negotiating.
         app.call_as(ALICE, |s| {
-            s.post_signal(id_of(BOB), "offer".to_owned(), "sdp".to_owned(), "c1".to_owned(), 1050)
+            s.post_signal(
+                id_of(BOB),
+                "offer".to_owned(),
+                "sdp".to_owned(),
+                "c1".to_owned(),
+                1050,
+            )
         })
         .unwrap();
         let lobby = app.view(|s| s.get_lobby(1060));
@@ -1423,11 +1547,17 @@ mod tests {
     #[test]
     fn chat_roundtrip_broadcast_and_seq_filtered() {
         let mut app = new_room();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
-        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
+            .unwrap();
 
-        let s1 = app.call_as(ALICE, |s| s.post_message("hi all".to_owned(), 1001)).unwrap();
-        let s2 = app.call_as(BOB, |s| s.post_message("hey".to_owned(), 1002)).unwrap();
+        let s1 = app
+            .call_as(ALICE, |s| s.post_message("hi all".to_owned(), 1001))
+            .unwrap();
+        let s2 = app
+            .call_as(BOB, |s| s.post_message("hey".to_owned(), 1002))
+            .unwrap();
         assert!(s2 > s1);
 
         // Broadcast: BOTH members read the same history, oldest first, with the
@@ -1438,7 +1568,10 @@ mod tests {
         assert_eq!(all[0].username, "Alice");
         assert_eq!(all[1].username, "Bob");
         // Sender-unique id (same LWW-seq-collision defence as signals).
-        assert_eq!(all[0].id, format!("msg-{}-{}", all[0].seq, &id_of(ALICE)[..8]));
+        assert_eq!(
+            all[0].id,
+            format!("msg-{}-{}", all[0].seq, &id_of(ALICE)[..8])
+        );
 
         // after_seq filtering drains only the new tail.
         let tail = app.call_as(BOB, |s| s.get_messages(s1));
@@ -1449,10 +1582,15 @@ mod tests {
     #[test]
     fn chat_requires_membership_and_rejects_empty_or_oversized() {
         let mut app = new_room();
-        assert!(app.call_as(ALICE, |s| s.post_message("hi".to_owned(), 1000)).is_err());
+        assert!(app
+            .call_as(ALICE, |s| s.post_message("hi".to_owned(), 1000))
+            .is_err());
 
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
-        assert!(app.call_as(ALICE, |s| s.post_message("   ".to_owned(), 1001)).is_err());
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        assert!(app
+            .call_as(ALICE, |s| s.post_message("   ".to_owned(), 1001))
+            .is_err());
         let huge = "x".repeat(super::MAX_MESSAGE_CHARS + 1);
         assert!(app.call_as(ALICE, |s| s.post_message(huge, 1002)).is_err());
     }
@@ -1460,10 +1598,12 @@ mod tests {
     #[test]
     fn chat_prunes_to_cap_dropping_lowest_seqs() {
         let mut app = new_room();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
         let over = 5;
         for i in 0..(super::MAX_MESSAGES as u64 + over) {
-            app.call_as(ALICE, |s| s.post_message(format!("m{i}"), 1000 + i)).unwrap();
+            app.call_as(ALICE, |s| s.post_message(format!("m{i}"), 1000 + i))
+                .unwrap();
         }
         let msgs = app.call_as(ALICE, |s| s.get_messages(0));
         assert_eq!(msgs.len(), super::MAX_MESSAGES);
@@ -1473,11 +1613,18 @@ mod tests {
     #[test]
     fn mailbox_prunes_to_cap_dropping_lowest_seqs() {
         let mut app = new_room();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
         let over = 8;
         for i in 0..(MAX_SIGNALS as u64 + over) {
             app.call_as(ALICE, |s| {
-                s.post_signal(id_of(BOB), "ice".to_owned(), format!("c{i}"), "c1".to_owned(), 1000 + i)
+                s.post_signal(
+                    id_of(BOB),
+                    "ice".to_owned(),
+                    format!("c{i}"),
+                    "c1".to_owned(),
+                    1000 + i,
+                )
             })
             .unwrap();
         }
@@ -1511,6 +1658,55 @@ mod tests {
     /// `call_as` deliberately keeps the caller's account (two devices of one
     /// person), so a peer that must not inherit the creator's rights needs its
     /// own account.
+    /// One person on two machines is TWO seats and ONE host.
+    ///
+    /// This is the whole reason member ids stay device-scoped while the host
+    /// tier is account-scoped (see `caller` / `caller_account`). A phone and a
+    /// laptop each have their own mic, camera and WebRTC endpoint, so they are
+    /// two participants; the person operating them is one host.
+    #[test]
+    fn one_person_on_two_devices_is_two_seats_and_one_host() {
+        let mut app = new_room();
+        app.call_as(ALICE, |s| s.join("Alice (laptop)".to_owned(), 1000))
+            .unwrap();
+        app.call_as(ALICE_PHONE, |s| s.join("Alice (phone)".to_owned(), 1000))
+            .unwrap();
+
+        let lobby = app.view(|s| s.get_lobby(1002));
+        assert_eq!(lobby.members.len(), 2, "each machine is its own seat");
+
+        app.call_as(ALICE, |s| s.start_call(1003)).unwrap();
+        app.call_as(ALICE_PHONE, |s| s.start_call(1004)).unwrap();
+        assert_eq!(
+            app.view(|s| s.get_call_participants()).len(),
+            2,
+            "both machines are in the call and must signal to each other"
+        );
+
+        // The tier follows the person onto whichever machine they are at…
+        assert!(app.view(|s| s.is_member_host(id_of(ALICE))));
+        assert!(app.view(|s| s.is_member_host(id_of(ALICE_PHONE))));
+        // …and stops at the person, not the room.
+        app.call_as_account(BOB_ACCOUNT, BOB, |s| s.join("Bob".to_owned(), 1005))
+            .unwrap();
+        assert!(!app.view(|s| s.is_member_host(id_of(BOB))));
+    }
+
+    /// Owning a room is something a PERSON does, so `RoomInfo.owner` reports the
+    /// account. It used to report a member key found by walking the device→account
+    /// table backwards, which picked an arbitrary one of the owner's machines.
+    #[test]
+    fn room_owner_is_reported_as_an_account() {
+        let app = new_room();
+        let owner = app
+            .view(|s| s.get_room(1000))
+            .owner
+            .expect("a fresh room has an owner");
+        assert_eq!(owner.len(), 64, "an AccountId renders as 32 bytes of hex");
+        assert!(owner.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_ne!(owner, id_of(ALICE), "not a bs58 member key");
+    }
+
     #[test]
     fn a_non_owner_cannot_rename_the_room() {
         let mut app = new_room();

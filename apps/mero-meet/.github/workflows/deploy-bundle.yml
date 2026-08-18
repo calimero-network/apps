@@ -201,8 +201,8 @@ jobs:
 
       # Named to match mero-drive's step; the action DIRECTORY keeps this repo's
       # existing name (install-cargo-mero) rather than being renamed for cosmetic
-      # parity — it already pins rc.20, caches, and falls back to building from
-      # the tag.
+      # parity — it already pins the SDK tag, caches, and falls back to building
+      # from the tag.
       - name: Setup cargo-mero
         uses: ./.github/actions/install-cargo-mero
 
@@ -296,6 +296,36 @@ jobs:
           CALIMERO_REGISTRY_URL: https://apps.calimero.network
           PACKAGE: ${{ needs.check.outputs.package }}
         run: cargo mero publish "dist/$PACKAGE.mpk"
+
+      # A publish that did not publish is the failure mode this repo has to
+      # rule out. `cargo mero publish` exiting 0 means the upload was accepted,
+      # not that the version is servable: three other apps in the fleet reported
+      # a green deploy for versions the registry has never listed, and nobody
+      # noticed until an install failed. So ask the registry for the EXACT
+      # version we just signed and refuse to call the job successful without it.
+      #
+      # Retried, because the listing endpoint is cached for a short while after
+      # a publish and a single immediate 404 is not proof of anything. A 404 that
+      # survives the whole window is.
+      - name: Verify the published version is actually in the registry
+        env:
+          PACKAGE: ${{ needs.check.outputs.package }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          set -uo pipefail
+          url="https://apps.calimero.network/api/v2/bundles/$PACKAGE/$VERSION"
+          for attempt in $(seq 1 10); do
+            code=$(curl -s -o /tmp/bundle.json -w '%{http_code}' --max-time 30 "$url" || echo "000")
+            if [ "$code" = "200" ]; then
+              echo "::notice::registry serves $PACKAGE $VERSION (attempt $attempt)"
+              jq -r '"published appVersion: \(.appVersion // "?")  signer: \(.signerId // "?")"' /tmp/bundle.json || true
+              exit 0
+            fi
+            echo "attempt $attempt: registry answered $code for $PACKAGE $VERSION — retrying in 15s"
+            sleep 15
+          done
+          echo "::error::published $PACKAGE $VERSION but the registry does not serve it (last status $code). The publish step reported success, so this is a silent drop — do NOT treat this release as shipped."
+          exit 1
 
       - name: Summary
         env:

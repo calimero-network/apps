@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useSubscription } from "@calimero-network/mero-react";
+import {
+  useSubscription,
+  type SubscriptionEventData,
+} from "@calimero-network/mero-react";
 import { useMeroMeet } from "./useMeroMeet";
 import { getExecutorPublicKey } from "../lib/session";
 import type { ChatMessage } from "../types";
@@ -58,7 +61,11 @@ export function useChat(enabled: boolean) {
   }, [enabled, supported, drain]);
 
   const onEvent = useCallback(
-    (evt: { data: unknown }) => {
+    (evt: SubscriptionEventData) => {
+      // Group-membership events ride this stream too since mero-js 7.3 and have
+      // no context; skip them rather than reading a `member` key as a contract
+      // event name (see the same guard in useCall).
+      if (!("contextId" in evt)) return;
       const data = evt.data as Record<string, unknown> | null;
       const type = data && typeof data === "object" ? Object.keys(data)[0] : "";
       if (type === "MessagePosted") void drain();
