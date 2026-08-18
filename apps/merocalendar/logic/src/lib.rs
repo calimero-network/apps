@@ -13,6 +13,7 @@
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
+use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, env};
@@ -41,7 +42,7 @@ pub enum Event {
 /// public key (matches the identity the frontend reads from
 /// `/contexts/{id}/identities-owned`), so the UI can resolve `owner`/`peers`
 /// public keys to names.
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -75,7 +76,7 @@ impl MergeableTrait for Member {
 
 // ── Shared event state (synced) ───────────────────────────────────────────────
 
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct CalendarEventState {
@@ -153,7 +154,7 @@ impl Default for PrivateCalendar {
 
 /// A calendar event as returned to the frontend. `private` distinguishes
 /// node-local entries from shared ones so the UI can render them uniformly.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct CalendarEvent {
     pub id: String,
@@ -168,7 +169,7 @@ pub struct CalendarEvent {
     pub private: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct CreateCalendarEvent {
     pub title: String,
@@ -181,7 +182,7 @@ pub struct CreateCalendarEvent {
     pub peers: Vec<UserId>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct UpdateCalendarEvent {
     pub title: Option<String>,
@@ -218,12 +219,35 @@ impl CalendarState {
     // ── Identity helpers ──────────────────────────────────────────────────────
 
     /// The real signer of this invocation. Never trust a client-supplied id.
+    ///
+    /// The ACCOUNT, not the device. Everything this id is used for is
+    /// ownership — `event.owner`, the `peers` list, the username map, every
+    /// "is the caller allowed to edit this" check — and ownership belongs to a
+    /// person. Keyed by device, the same human who created an event on a
+    /// laptop cannot edit it from a phone, and appears twice in `peers`.
+    ///
+    /// This reverses the rc.20-era note that used to sit here. That note was
+    /// right at the time: rc.20 split account from device and left the legacy
+    /// `executor_id()` shim meaning the device. rc.23 flips the shim to the
+    /// ACCOUNT (core #3510) precisely because reaching for an identity is
+    /// almost always an ownership question, and it also makes the node's own
+    /// group-members listing answer with accounts (#3522) — so a device id
+    /// here would no longer match the member list it is compared against.
+    ///
+    /// The old note's other argument — that changing this orphans stored
+    /// events — does not apply: this app has never published to the registry,
+    /// so there is no deployed calendar whose rows would be stranded.
     fn caller() -> UserId {
-        UserId::new(env::executor_id())
+        UserId::new(env::account_id())
     }
 
-    /// Base58 string form of the caller — matches the identity the frontend
-    /// reads from `/contexts/{id}/identities-owned`.
+    /// String form of the caller's ACCOUNT — the member id this calendar
+    /// stores and puts on the wire.
+    ///
+    /// Deliberately NOT the context key the frontend reads from
+    /// `/contexts/{id}/identities-owned`: that is a device key, and since
+    /// rc.23 the node's group-members listing is keyed by account, so this is
+    /// the id a member row can actually be matched against.
     fn caller_id() -> String {
         Self::caller().to_string()
     }
@@ -273,12 +297,12 @@ impl CalendarState {
     // ── Shared events ─────────────────────────────────────────────────────────
 
     pub fn get_events(&self) -> app::Result<Vec<CalendarEvent>> {
-        let executor_id = Self::caller();
+        let caller = Self::caller();
 
         let mut events = Vec::new();
         for (id, event) in self.events.entries()? {
             // Only surface events the caller owns or is invited to.
-            if event.owner != executor_id && !event.peers.contains(&executor_id) {
+            if event.owner != caller && !event.peers.contains(&caller) {
                 continue;
             }
             events.push(CalendarEvent {
@@ -306,12 +330,12 @@ impl CalendarState {
         app::log!("Creating calendar event {:?}", event_data);
 
         let id = self.generate_id();
-        let executor_id = Self::caller();
+        let caller = Self::caller();
 
         let event = CalendarEventState {
             title: event_data.title,
             description: event_data.description,
-            owner: executor_id,
+            owner: caller,
             start: event_data.start,
             end: event_data.end,
             event_type: event_data.event_type,
@@ -509,8 +533,16 @@ mod tests {
 
     use super::*;
 
+    // A second and third PERSON. Both axes move together: `call_as` alone
+    // shifts only the device and leaves the account, which models one person's
+    // second machine — and since `caller()` reads the account, a test using it
+    // for "somebody else" silently asserts nothing. The SDK's own note makes
+    // the point: an app that aggregates per person and one that aggregates per
+    // replica behave identically until the two axes actually disagree.
     const OTHER: [u8; 32] = [0x22; 32];
+    const OTHER_DEVICE: [u8; 32] = [0xA2; 32];
     const THIRD: [u8; 32] = [0x33; 32];
+    const THIRD_DEVICE: [u8; 32] = [0xA3; 32];
 
     fn new_app() -> TestHost<CalendarState> {
         TestHost::new(CalendarState::init)
@@ -539,7 +571,8 @@ mod tests {
         assert_eq!(members[0].username, "alice");
 
         // Rename does not create a second member; it bumps the LWW clock.
-        app.call(|s| s.set_username("alice2".to_owned(), 2)).unwrap();
+        app.call(|s| s.set_username("alice2".to_owned(), 2))
+            .unwrap();
         let members = app.view(|s| s.get_members()).unwrap();
         assert_eq!(members.len(), 1);
         assert_eq!(members[0].username, "alice2");
@@ -556,7 +589,7 @@ mod tests {
     fn members_are_keyed_per_identity() {
         let mut app = new_app();
         app.call(|s| s.set_username("alice".to_owned(), 1)).unwrap();
-        app.call_as(OTHER, |s| s.set_username("bob".to_owned(), 1))
+        app.call_as_account(OTHER, OTHER_DEVICE, |s| s.set_username("bob".to_owned(), 1))
             .unwrap();
         assert_eq!(app.view(|s| s.get_members()).unwrap().len(), 2);
     }
@@ -566,7 +599,7 @@ mod tests {
     #[test]
     fn owner_can_create_and_see_event() {
         let mut app = new_app();
-        let me = UserId::new(app.executor_id());
+        let me = UserId::new(app.account_id());
         let id = app.call(|s| s.create_event(event(vec![]), 10)).unwrap();
         let events = app.view(|s| s.get_events()).unwrap();
         assert_eq!(events.len(), 1);
@@ -595,15 +628,27 @@ mod tests {
         app.call(|s| s.create_event(event(vec![UserId::new(OTHER)]), 10))
             .unwrap();
         // The invited peer sees it.
-        assert_eq!(app.call_as(OTHER, |s| s.get_events()).unwrap().len(), 1);
+        assert_eq!(
+            app.call_as_account(OTHER, OTHER_DEVICE, |s| s.get_events())
+                .unwrap()
+                .len(),
+            1
+        );
         // An uninvited identity sees nothing.
-        assert_eq!(app.call_as(THIRD, |s| s.get_events()).unwrap().len(), 0);
+        assert_eq!(
+            app.call_as_account(THIRD, THIRD_DEVICE, |s| s.get_events())
+                .unwrap()
+                .len(),
+            0
+        );
     }
 
     #[test]
     fn only_owner_can_update_or_delete() {
         let mut app = new_app();
-        let id = app.call(|s| s.create_event(event(vec![UserId::new(OTHER)]), 10)).unwrap();
+        let id = app
+            .call(|s| s.create_event(event(vec![UserId::new(OTHER)]), 10))
+            .unwrap();
 
         let patch = UpdateCalendarEvent {
             title: Some("Renamed".to_owned()),
@@ -617,9 +662,15 @@ mod tests {
 
         // A peer (non-owner) cannot edit or delete.
         assert!(app
-            .call_as(OTHER, |s| s.update_event(id.clone(), patch.clone(), 11))
+            .call_as_account(OTHER, OTHER_DEVICE, |s| s.update_event(
+                id.clone(),
+                patch.clone(),
+                11
+            ))
             .is_err());
-        assert!(app.call_as(OTHER, |s| s.delete_event(id.clone())).is_err());
+        assert!(app
+            .call_as_account(OTHER, OTHER_DEVICE, |s| s.delete_event(id.clone()))
+            .is_err());
 
         // The owner can.
         app.call(|s| s.update_event(id.clone(), patch, 11)).unwrap();

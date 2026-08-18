@@ -1,20 +1,30 @@
+# The only job that runs the real frontend against a real node: merobox boots a
+# two-node stack and seeds it (workflows/integration-setup.yml leaves the nodes
+# UP on purpose), then Playwright's `integration` project drives the app against
+# node 1's admin/RPC port. Everything the mocked suite in ci.yml asserts is
+# assumed; what this proves is that the wire format between app, mero-js and the
+# node still matches.
 name: Integration Tests (Full Stack)
 
 on:
   push:
-    branches: [main, master]
+    # `main` only — the repo's default branch, verified 2026-08-18. A name in
+    # this list that does not exist silently never matches; it does not error.
+    branches: [main]
     paths:
       - "logic/**"
       - "app/**"
       - "workflows/**"
       - "scripts/**"
+      - ".github/workflows/integration-ci.yml"
   pull_request:
-    branches: [main, master]
+    branches: [main]
     paths:
       - "logic/**"
       - "app/**"
       - "workflows/**"
       - "scripts/**"
+      - ".github/workflows/integration-ci.yml"
 
 concurrency:
   group: integration-ci-${{ github.ref }}
@@ -27,11 +37,13 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.89.0"
           targets: wasm32-unknown-unknown
+
       - name: Cache Cargo
         uses: actions/cache@v4
         with:
@@ -41,20 +53,43 @@ jobs:
             logic/target
           key: cargo-${{ runner.os }}-${{ hashFiles('logic/Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
-      - name: Build WASM
-        run: |
-          cd logic
-          cargo build --target wasm32-unknown-unknown --profile app-release
-          mkdir -p res
-          cp target/wasm32-unknown-unknown/app-release/merocalendar.wasm res/
+
+      - name: Install cargo-mero
+        uses: ./.github/actions/install-cargo-mero
+
+      # Replaces the old raw `cargo build --profile app-release` + `cp` pair.
+      # `cargo mero build` writes logic/res/merocalendar.wasm — the path
+      # workflows/integration-setup.yml installs from — and embeds the
+      # `calimero_abi_v1` section the node needs. The hand-copied build produced
+      # a wasm with no ABI, i.e. not the artifact deploy-bundle.yml ships.
+      - name: Build WASM (+ ABI embed)
+        working-directory: logic
+        run: cargo mero build
+
       - name: Install merobox
-        run: pip install merobox==0.6.24 && merobox --version
+        # Pinned in LOCKSTEP with the merod image in workflows/*.yml (rc.22).
+        # merobox speaks the node's admin API directly: rc.20 and older REQUIRE
+        # `upgradePolicy` on create_namespace, merobox 0.6.54+ no longer sends it
+        # (core#3393 removed the concept in rc.21). Bumping one pin without the
+        # other reds the first step of every scenario on a commit that changed
+        # nothing. calimero-client-py — merobox's unpinned dep and the layer that
+        # actually builds the request — is echoed so that failure is diagnosable
+        # from the log instead of a bisect.
+        run: |
+          pip install merobox==0.6.55
+          merobox --version
+          pip show calimero-client-py | sed -n 's/^Version: /calimero-client-py /p'
+
       - name: Run integration-setup workflow
         working-directory: workflows
         run: |
           merobox stop --all 2>/dev/null || true
           merobox nuke --force 2>/dev/null || true
+          # Root-owned (the containers run as root); a plain rm fails and, under
+          # the default `bash -e`, would abort the step.
+          sudo rm -rf data || true
           merobox bootstrap run integration-setup.yml
+
       - uses: pnpm/action-setup@v6
         with:
           version: 9
@@ -69,20 +104,32 @@ jobs:
       - name: Install Playwright browsers
         working-directory: app
         run: pnpm exec playwright install chromium --with-deps
+
       - name: Run integration tests
         working-directory: app
         run: pnpm exec playwright test --project=integration
         env:
           CI: "true"
           INTEGRATION_MODE: "true"
+          # Off Vite's default 5173: a health check against a stray server on the
+          # default port passes while driving a different app entirely.
           PW_PORT: "5174"
-          # merobox exposes node-1's RPC/Admin server on 2528 (2428 is P2P).
+          # merobox exposes node-1's RPC/Admin server on 2528. 2428 is the P2P
+          # port and answers nothing useful over HTTP — pointing this at 2428 is
+          # the classic way to get a connection-refused that reads as "the node
+          # never came up". This must stay consistent with the (default) port
+          # allocation in workflows/integration-setup.yml, which sets no
+          # base_port/base_rpc_port override.
           INTEGRATION_NODE_URL: "http://localhost:2528"
+
       - name: Stop nodes
         if: always()
+        working-directory: workflows
         run: |
           merobox stop --all 2>/dev/null || true
           merobox nuke --force 2>/dev/null || true
+          sudo rm -rf data || true
+
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4

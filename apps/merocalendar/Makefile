@@ -1,4 +1,4 @@
-.PHONY: help setup install build bundle dev restart frontend dev-node dev-node2 dev-invite stop \
+.PHONY: help setup install build bundle bundle-release publish dev restart frontend dev-node dev-node2 dev-invite stop \
         logic-build logic-bundle logic-test-rust app-install app-build app-typecheck app-lint \
         test unit e2e e2e-ui integration workflows workflows-no-build logic-test clean
 
@@ -17,8 +17,10 @@ help:
 	@echo ""
 	@echo "  Build"
 	@echo "    build          Build Rust WASM logic + frontend"
-	@echo "    logic-build    Compile logic/src → logic/res/merocalendar.wasm"
-	@echo "    bundle         Build WASM + create signed .mpk release bundle"
+	@echo "    logic-build    Compile logic/src → logic/res/merocalendar.wasm (+ abi.json)"
+	@echo "    bundle         Dev-signed .mpk for local installs (logic/dist/)"
+	@echo "    bundle-release Publishable .mpk signed with \$$MERO_SIGN_KEY_FILE"
+	@echo "    publish        Push a built .mpk to the Calimero App Registry"
 	@echo "    app-build      Bundle frontend (dist/)"
 	@echo ""
 	@echo "  Dev"
@@ -55,13 +57,31 @@ install: app-install
 
 # ── Build ──────────────────────────────────────────────────────────────────────
 
+# `cargo mero build` (core #3374) replaced the per-app build.sh: it drives cargo,
+# wasm-opt and the copy into res/, and additionally emits res/abi.json +
+# res/state-schema.json and embeds the ABI in the wasm — which the old script
+# could not do at all. Install it with:
+#   cargo install --git https://github.com/calimero-network/core --tag 0.11.0-rc.22 cargo-mero
+# and keep the tag equal to logic/Cargo.toml's calimero-sdk tag: the ABI emitter
+# is versioned with core.
 logic-build:
-	cd logic && ./build.sh
+	cd logic && cargo mero build
 
+# Every manifest field now comes from [package.metadata.calimero] in
+# logic/Cargo.toml, so there is no manifest heredoc to keep in sync any more.
 logic-bundle:
-	cd logic && ./build-bundle.sh
+	cd logic && cargo mero bundle --dev
 
 bundle: logic-bundle
+
+# --bump patch asks the registry for the highest published appVersion and
+# increments it, which is what the deleted build-bundle.sh's curl|python3
+# version resolver used to do by hand.
+bundle-release:
+	cd logic && cargo mero bundle --key "$$MERO_SIGN_KEY_FILE" --bump patch
+
+publish:
+	cd logic && cargo mero publish dist/com.calimero.merocalendar-*.mpk
 
 logic-test-rust:
 	cd logic && cargo test
@@ -142,5 +162,5 @@ stop:
 # ── Clean ──────────────────────────────────────────────────────────────────
 
 clean:
-	cd logic && rm -rf res target
+	cd logic && rm -rf res dist target
 	cd app && rm -rf dist dev-dist build e2e-report playwright-report test-results

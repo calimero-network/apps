@@ -31,7 +31,18 @@ rustup target list --installed | grep -q "wasm32-unknown-unknown" \
   || { rustup target add wasm32-unknown-unknown && ok "wasm32-unknown-unknown added"; }
 
 step "Building Rust WASM logic…"
-cd "$REPO_ROOT/logic" && bash build.sh
+# `cargo mero build`, not the old `logic/build.sh`. cargo-mero replaced the
+# per-app build scripts: it applies the release profile, runs the wasm-opt it
+# bundles (never one off PATH), emits the ABI from a HOST build and embeds it as
+# the `calimero_abi_v1` section, then writes logic/res/merocalendar.wasm — the
+# same path build.sh used, so nothing downstream moves. The ABI section is not
+# cosmetic: the node reads it to plan an upgrade, so a wasm built the old way is
+# not the artifact CI and the registry publish produce.
+# Install it with:  cargo install --git https://github.com/calimero-network/core \
+#                     --tag 0.11.0-rc.22 cargo-mero --locked
+command -v cargo-mero >/dev/null 2>&1 \
+  || { err "cargo-mero not found — install it (see comment above)"; exit 1; }
+cd "$REPO_ROOT/logic" && cargo mero build
 ok "logic/res/merocalendar.wasm built"
 
 step "Installing frontend dependencies…"

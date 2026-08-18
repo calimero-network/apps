@@ -62,9 +62,10 @@ export default function TeamsPage() {
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Mero Calendar's own application id, resolved once per mount (see appId.ts).
-  // Prefer the resolved id over a possibly-stale id from persisted auth; only
-  // fall back to that if resolution fails. Shared by list/create/join/open so
-  // every namespace + context is scoped to the right app.
+  // Resolution already prefers the session's id, but only when the node really
+  // has it — so the persisted id is a fallback for the case where we could not
+  // reach /applications at all. Shared by list/create/join/open so every
+  // namespace + context is scoped to the right app.
   const appIdRef = useRef<string>("");
   const ensureAppId = useCallback(async (): Promise<string> => {
     if (appIdRef.current) return appIdRef.current;

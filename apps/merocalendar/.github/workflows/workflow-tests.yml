@@ -1,16 +1,26 @@
+# Drives the merobox scenarios in the top-level workflows/ directory against real
+# merod containers: a single-node contract CRUD pass (logic-test.yml) and a
+# two-node CRDT sync pass (e2e.yml). This is the only place the contract is
+# exercised through the actual node — `cargo test` runs against TestHost, which
+# cannot see a sync bug.
 name: Workflow Tests (merobox)
 
 on:
   push:
-    branches: [main, master]
+    # `main` only — the repo's default branch, verified 2026-08-18. A branch name
+    # in this list that does not exist never matches and never errors, so a
+    # copied-in `master` reads as a working filter while producing zero runs.
+    branches: [main]
     paths:
       - "logic/**"
       - "workflows/**"
+      - ".github/workflows/workflow-tests.yml"
   pull_request:
-    branches: [main, master]
+    branches: [main]
     paths:
       - "logic/**"
       - "workflows/**"
+      - ".github/workflows/workflow-tests.yml"
 
 concurrency:
   group: workflow-tests-${{ github.ref }}
@@ -23,11 +33,13 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.89.0"
           targets: wasm32-unknown-unknown
+
       - name: Cache Cargo
         uses: actions/cache@v4
         with:
@@ -37,14 +49,44 @@ jobs:
             logic/target
           key: cargo-${{ runner.os }}-${{ hashFiles('logic/Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
-      - name: Build WASM
-        run: |
-          cd logic
-          cargo build --target wasm32-unknown-unknown --profile app-release
-          mkdir -p res
-          cp target/wasm32-unknown-unknown/app-release/merocalendar.wasm res/
+
+      - name: Install cargo-mero
+        uses: ./.github/actions/install-cargo-mero
+
+      # Was: `cargo build --target wasm32-unknown-unknown --profile app-release`
+      # followed by a hand-written `cp target/.../merocalendar.wasm res/`.
+      # `cargo mero build` replaces both — it applies the release profile, runs
+      # the bundled wasm-opt, embeds the `calimero_abi_v1` section, and writes
+      # logic/res/merocalendar.wasm itself, which is the exact path the scenarios
+      # in workflows/ install from. It also means the wasm these scenarios prove
+      # out is byte-for-byte the one deploy-bundle.yml signs; the old hand-copied
+      # build was a different artifact with no ABI section, so a scenario passing
+      # said nothing about what shipped.
+      - name: Build WASM (+ ABI embed)
+        working-directory: logic
+        run: cargo mero build
+
       - name: Install merobox
-        run: pip install merobox==0.6.24 && merobox --version
+        # merobox and the merod image in workflows/*.yml must move in LOCKSTEP.
+        # merobox drives the node's admin API directly, so a mismatch fails on
+        # the very first step with a payload error and reads like a contract bug
+        # on a commit that changed nothing:
+        #   * merod <= rc.20 REQUIRES `upgradePolicy` on create_namespace;
+        #     merobox 0.6.54 dropped it (core#3393 removed the concept in rc.21),
+        #     so new merobox + old node => "missing field `upgradePolicy`".
+        #   * old merobox + rc.21+ node => the reverse, an unknown-field reject.
+        # The scenarios here pin merod 0.11.0-rc.22, so merobox must be >= 0.6.54.
+        # Changing either pin without the other is the failure mode.
+        #
+        # calimero-client-py is merobox's unpinned dependency and is the layer
+        # that actually builds the request, so it is echoed into the log: when
+        # this job breaks on a no-op commit, that line is what identifies the
+        # culprit without a bisect.
+        run: |
+          pip install merobox==0.6.55
+          merobox --version
+          pip show calimero-client-py | sed -n 's/^Version: /calimero-client-py /p'
+
       - name: Run e2e workflow (two-node sync)
         working-directory: workflows
         run: |
@@ -55,6 +97,11 @@ jobs:
             if [ $attempt -gt 1 ]; then
               merobox stop --all || true
               merobox nuke --force || true
+              # The node containers run as root, so workflows/data/ is root-owned
+              # and a plain `rm -rf` dies on it. Under the default `bash -e` that
+              # killed the job before the retry ever ran, turning this loop into
+              # a no-op on exactly the flake it exists to absorb.
+              sudo rm -rf data || true
               sleep 2
             fi
             if merobox bootstrap run e2e.yml; then success=true; break; fi
@@ -62,7 +109,9 @@ jobs:
           done
           merobox stop --all || true
           merobox nuke --force || true
+          sudo rm -rf data || true
           [ "$success" = true ] || exit 1
+
       - name: Run logic-test workflow (single-node CRUD)
         working-directory: workflows
         run: |
@@ -73,6 +122,7 @@ jobs:
             if [ $attempt -gt 1 ]; then
               merobox stop --all || true
               merobox nuke --force || true
+              sudo rm -rf data || true
               sleep 2
             fi
             if merobox bootstrap run logic-test.yml; then success=true; break; fi
@@ -80,4 +130,12 @@ jobs:
           done
           merobox stop --all || true
           merobox nuke --force || true
+          sudo rm -rf data || true
           [ "$success" = true ] || exit 1
+
+      - name: Stop nodes
+        if: always()
+        working-directory: workflows
+        run: |
+          merobox stop --all || true
+          merobox nuke --force || true

@@ -1,29 +1,63 @@
 [package]
 name = "merocalendar"
 description = "Mero Calendar — collaborative p2p calendar on Calimero"
+# NOT the release version. cargo requires a version field, but nothing reads it
+# for a release: the registry owns the number, and `cargo mero bundle --bump
+# patch` asks the registry for the highest published appVersion and increments
+# it. Bumping this changes nothing about what ships.
 version = "0.1.0"
 edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-# Calimero SDK pinned to 0.11.0-rc.14. rc.6+ is published only as a git tag on the
-# core repo (crates.io stops at rc.5), and the workspace package version at the
-# tag is "0.0.0" — so a plain `= "0.11.0-rc.14"` version requirement cannot match.
-# Use the git tag form (same approach every other post-rc.5 app uses). All crates
-# share one tag so they resolve to a single, compatible commit.
+# Read by `cargo mero bundle` (core #3374): every field the node and the
+# registry actually render now has a producer here, so nothing is hand-written
+# into a manifest.json any more — this block replaces the heredoc that
+# build-bundle.sh used to emit. `appVersion` is deliberately absent; the release
+# workflow resolves it from the registry.
+[package.metadata.calimero]
+package = "com.calimero.merocalendar"
+name = "Mero Calendar"
+description = "A collaborative, peer-to-peer calendar on the Calimero network. Shared team calendars and private events — your schedule on your own nodes."
+author = "Calimero"
+# The desktop resolves a deep link (calimero://<slug>/… and
+# https://links.calimero.network/<slug>/…) by this slug, so it MUST stay equal
+# to the package id the app's invite links carry.
+slug = "com.calimero.merocalendar"
+# `bundle` refuses to run without an icon decision. The repo has no PNG app
+# icon (app/src/assets only carries SVGs and a .ico), so take the sentinel that
+# ships the Calimero mark rather than a `--no-icon` flag: keeping the decision
+# in the manifest means every `cargo mero bundle` invocation — local or CI —
+# works unflagged. Swap this for a path once app/public gains an icon-512.png.
+icon = "default"
+tags = ["calendar", "scheduling", "collaboration"]
+github = "https://github.com/calimero-network/mero-calendar"
+# The oldest node that can run this bundle. It must name a real runtime: the
+# contract calls `env::account_id()`, which does not exist before 0.11.0-rc.20,
+# so an older node has to refuse the install rather than trap at first call.
+# Kept equal to the SDK tag below — that is what this was built and tested
+# against; "0.1.0" was cargo-mero's placeholder floor, not a verified claim.
+min-runtime-version = "0.11.0-rc.23"
+frontend = "https://mero-calendar.vercel.app/"
+
 [dependencies]
 base64 = "0.22.1"
 bs58 = "0.5.1"
-calimero-sdk = { git = "https://github.com/calimero-network/core", branch = "master" }
-calimero-storage = { git = "https://github.com/calimero-network/core", branch = "master" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core", branch = "master" }
+# SDK crates are not on crates.io past rc.5 — must be git tag deps, and all
+# three must share the exact same tag (the workspace version at a tag is
+# "0.0.0", so a plain version requirement can never match). Pin a real release
+# tag, never `branch = "master"`: master rides unreleased protocol work against
+# nodes that run the release, and it silently drifts under you between builds.
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.23" }
+calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.23" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.23" }
 thiserror = "1.0.56"
 
 [dev-dependencies]
 # Enables register_crdt_merge + the native mock host so TestHost can drive
 # CRDT state under `cargo test`.
-calimero-storage = { git = "https://github.com/calimero-network/core", branch = "master", features = ["testing"] }
+calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.23", features = ["testing"] }
 
 [profile.app-release]
 inherits = "release"

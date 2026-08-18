@@ -4,6 +4,16 @@ description: >
   member username registration, shared event CRUD with owner gating, and
   node-local private events kept separate from the shared calendar.
 
+# merobox assertion traps this file is written around — read before editing:
+#   * A `call` output captured as `result` is the whole JSON-RPC envelope
+#     ({id, jsonrpc, result: {output: ...}}). Use `result.output` when the value
+#     is fed back into another step's args; `result` is fine when it is only a
+#     haystack for contains().
+#   * `assert` splits its statement on EVERY comma, so a needle containing a
+#     comma silently becomes two arguments. Every needle below is comma-free.
+#   * A comparison of two unresolved values passes (null == null), and a
+#     `not_contains` against an empty haystack passes too — so a not_contains is
+#     only evidence when a matching positive contains ran against the same call.
 stop_all_nodes: true
 restart: false
 wait_timeout: 120
@@ -11,7 +21,13 @@ wait_timeout: 120
 nodes:
   chain_id: testnet-1
   count: 1
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.6
+  # Must move in LOCKSTEP with the merobox pin in .github/workflows/. merobox
+  # talks to the node's admin API directly, so an image older than the merobox
+  # driving it fails on the FIRST step with a payload error that reads like a
+  # contract bug: rc.20 and older require `upgradePolicy` on create_namespace,
+  # and merobox 0.6.54+ stopped sending it (core#3393 dropped the concept in
+  # rc.21). rc.22 pairs with merobox >= 0.6.54; this repo pins 0.6.55.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.22
   prefix: calimero-node
 
 steps:
@@ -25,7 +41,7 @@ steps:
       app_id: applicationId
 
   - name: Create Namespace
-    type: create_group
+    type: create_namespace
     node: calimero-node-1
     application_id: "{{app_id}}"
     outputs:
@@ -172,7 +188,11 @@ steps:
     statements:
       - "contains({{private_events}}, 'Dentist')"
 
-  - name: Assert Private Event NOT in Shared Calendar
+  # A `call`, not an assert — it re-reads the shared calendar so the assert that
+  # follows has a haystack that is known to be non-empty (the shared event is
+  # still in it). A not_contains on its own would also pass against an empty or
+  # errored result.
+  - name: Re-read Shared Calendar After Private Event
     type: call
     node: calimero-node-1
     context_id: "{{context_id}}"
@@ -182,9 +202,13 @@ steps:
     outputs:
       shared_after_private: result
 
-  - name: Assert Shared Has No Dentist
+  # The contains() is the positive control for the not_contains(): it proves the
+  # haystack is the real shared calendar and not an empty/errored payload, which
+  # a lone not_contains would happily pass against.
+  - name: Assert Private Event Stayed Out of the Shared Calendar
     type: assert
     statements:
+      - "contains({{shared_after_private}}, 'Renamed Standup')"
       - "not_contains({{shared_after_private}}, 'Dentist')"
 
   # ── Delete ──────────────────────────────────────────────────────────────────
@@ -207,6 +231,10 @@ steps:
     outputs:
       final_events: result
 
+  # No positive control is available here — a correct delete leaves the shared
+  # calendar empty, so there is nothing left to assert the presence of. This
+  # assertion would therefore also pass if get_events had returned nothing at
+  # all; the preceding steps are what establish that it does return the list.
   - name: Assert Event Deleted
     type: assert
     statements:

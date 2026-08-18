@@ -113,11 +113,21 @@ green "Clean slate ready"
 # ── Init node2 ────────────────────────────────────────────────────────────────
 
 step "Initialising node2 at $NODE_HOME"
-merod --node "$NODE_NAME" --home "$NODE_HOME" init \
+# Since the init-time-admin-creds cutover, `merod init --auth-mode embedded`
+# REFUSES to run without --admin-user plus one of --admin-password-file /
+# --admin-password-stdin: there is no setup code any more, so credentials are
+# provisioned before the node ever listens. Without these two flags init aborts
+# outright, which is why this script had been dead against every current merod.
+# The password goes in on stdin to keep it out of the process list, and it is the
+# same $ADMIN_PASS used further down to mint the session token — one source of
+# truth for the credentials.
+printf '%s' "$ADMIN_PASS" | merod --node "$NODE_NAME" --home "$NODE_HOME" init \
   --server-host 127.0.0.1 \
   --server-port "$NODE_PORT" \
   --swarm-port  "$NODE_P2P_PORT" \
-  --auth-mode embedded
+  --auth-mode embedded \
+  --admin-user "$ADMIN_USER" \
+  --admin-password-stdin
 green "Node2 initialised"
 
 # ── Bootstrap directly to node1 ───────────────────────────────────────────────

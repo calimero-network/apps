@@ -18,7 +18,7 @@ your own nodes, shared only with the people you invite.
 
 | Layer | Path | Stack |
 |-------|------|-------|
-| Contract ("logic") | `logic/` | Rust → WASM, `calimero-sdk` / `calimero-storage` `0.11.0-rc.8` |
+| Contract ("logic") | `logic/` | Rust → WASM, `calimero-sdk` / `calimero-storage` `0.11.0-rc.22` |
 | Frontend ("app") | `app/` | React 19 + Vite 6, `@calimero-network/mero-react` + `mero-js` + `mero-ui` |
 
 The contract keeps shared events in synced CRDT state (`UnorderedMap`), members +
@@ -28,7 +28,12 @@ state changes over SSE.
 
 ## Prerequisites
 
-- Rust + `wasm32-unknown-unknown` target, `jq`, `wasm-opt` (optional)
+- Rust + `wasm32-unknown-unknown` target (pinned by `logic/rust-toolchain.toml`)
+- [`cargo-mero`](https://github.com/calimero-network/core/tree/master/tools/cargo-mero),
+  pinned to the same core tag as the SDK — the ABI emitter is versioned with core:
+  ```bash
+  cargo install --git https://github.com/calimero-network/core --tag 0.11.0-rc.22 cargo-mero
+  ```
 - Node 20+ and `pnpm`
 - A local [`merod`](https://github.com/calimero-network/core) node for development
 - `merobox` + Docker for the workflow/integration tests (optional)
@@ -57,11 +62,19 @@ Open the app, connect your node, create or join a team, and start scheduling.
 ## Build
 
 ```bash
-make logic-build   # logic/src → logic/res/merocalendar.wasm
-make app-build     # frontend → app/dist
-make build         # both
-make bundle        # build WASM + create a signed .mpk release bundle
+make logic-build     # logic/src → logic/res/{merocalendar.wasm,abi.json,state-schema.json}
+make app-build       # frontend → app/dist
+make build           # both
+make bundle          # dev-signed .mpk → logic/dist/ (fine locally, refused by the registry)
+make bundle-release  # publishable .mpk, signed with $MERO_SIGN_KEY_FILE
+make publish         # push a built .mpk to the App Registry (needs $CALIMERO_API_KEY)
 ```
+
+`cargo mero` reads the bundle manifest — package, slug, icon, tags, links,
+`minRuntimeVersion` — straight out of `[package.metadata.calimero]` in
+`logic/Cargo.toml`; there is no hand-written `manifest.json` to keep in sync.
+The release version is not taken from that file either: `--bump patch` asks the
+registry for the highest published `appVersion` and increments it.
 
 ## Test
 
@@ -83,8 +96,8 @@ integration specs that run against a real merobox-bootstrapped node.
 ```
 logic/                Rust smart contract (the calendar state machine)
   src/lib.rs          contract: events, members, private events + #[cfg(test)] tests
-  build.sh            compile to res/merocalendar.wasm
-  build-bundle.sh     package a signed .mpk (com.calimero.merocalendar)
+  Cargo.toml          SDK pins + [package.metadata.calimero] bundle manifest
+  build.sh            shim over `cargo mero build`, kept for scripts/dev-node.sh
 app/                  React frontend
   src/api/            rpc.ts (JSON-RPC + admin-api), dataSource, appId
   src/pages/          landing, login, teams, calendar

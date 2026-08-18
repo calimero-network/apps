@@ -24,7 +24,10 @@ impl<const N: usize, const S: usize> Id<N, S> {
     };
 
     pub const fn new(id: [u8; N]) -> Self {
-        let _guard = Self::SIZE_GUARD;
+        // Naming the const is what forces its const-eval, i.e. the compile-time
+        // check that S can hold the base58 form of N bytes. Bound to `()` and
+        // not `_guard` so clippy::let_unit_value does not read it as a mistake.
+        let () = Self::SIZE_GUARD;
 
         Self {
             bytes: id,
@@ -107,7 +110,7 @@ impl<'de, const N: usize, const S: usize> Deserialize<'de> for Id<N, S> {
 
         let encoded = Container::deserialize(deserializer)?;
 
-        Self::from_str(&*encoded.0).map_err(de::Error::custom)
+        Self::from_str(&encoded.0).map_err(de::Error::custom)
     }
 }
 
@@ -191,6 +194,24 @@ macro_rules! define {
                 f: &mut $crate::types::id::__private::fmt::Formatter<'_>
             ) -> $crate::types::id::__private::fmt::Result {
                 $crate::types::id::__private::fmt::Display::fmt(&self.0, f)
+            }
+        }
+
+        // rc.20+ requires every type that crosses the ABI boundary to describe
+        // itself. This mirrors core's own `impl_bytes32_abi!`, which is how
+        // `PublicKey`/`ContextId` describe: a fixed-size byte scalar. We cannot
+        // call that macro (calimero-wasm-abi is not a direct dependency here),
+        // and the derive cannot help either — it would need `Id<N, S>` to
+        // implement the trait, and `Id` is generic over the length.
+        //
+        // The gate matches what `#[derive(AbiType)]` emits: the manifest is
+        // assembled by a host build, so the trait does not exist on wasm32.
+        #[cfg(not(target_arch = "wasm32"))]
+        impl ::calimero_sdk::abi::AbiType for $name {
+            fn type_ref(
+                _reg: &mut ::calimero_sdk::abi::TypeRegistry,
+            ) -> ::calimero_sdk::abi::TypeRef {
+                ::calimero_sdk::abi::TypeRef::bytes_with_size($len, None)
             }
         }
 
