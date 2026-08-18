@@ -135,7 +135,7 @@ jobs:
       # `result.output` dotted-path extraction, and on the `repeat` step. 0.6.49 is
       # the version they were validated against.
       - name: Install merobox
-        run: pip install "merobox>=0.6.49"
+        run: pip install merobox==0.6.55
 
       - name: Run ${{ matrix.scenario.file }}
         working-directory: workflows

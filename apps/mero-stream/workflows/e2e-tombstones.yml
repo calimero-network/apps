@@ -21,7 +21,7 @@ nodes:
   chain_id: testnet-1
   count: 2
   # Keep in step with logic/Cargo.toml's calimero-* tag.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.20
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.23
   prefix: calimero-node
   # merobox defaults nodes to RUST_LOG=debug, which produced ~12 MB of logs per
   # node in two minutes here and is real CPU on a 2-vCPU CI runner hosting both

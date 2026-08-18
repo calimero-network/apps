@@ -13,10 +13,10 @@ importers:
   .:
     dependencies:
       '@calimero-network/mero-js':
-        specifier: ^7.1.0
+        specifier: ^7.3.2
         version: 7.3.2
       '@calimero-network/mero-react':
-        specifier: ^4.6.0
+        specifier: ^4.6.1
         version: 4.6.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@calimero-network/mero-ui':
         specifier: 1.5.0

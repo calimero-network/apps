@@ -598,10 +598,17 @@ impl MeroStream {
 
     /// The real signer of this invocation. Never trust a client-supplied id.
     ///
-    /// `device_id()` is the rc.20 successor of `executor_id()` (core #3320 split
-    /// identity into account + device). Same bytes, so member ids — and the
-    /// identities the frontend reads from `identities-owned` — keep matching.
-    /// Authorization gates on [`Self::caller_account`]; see the `accounts` field.
+    /// A member id here is a DEVICE key, and stays one. A stream is per-writer
+    /// state — one person broadcasting from a laptop and watching on a phone is
+    /// genuinely two peers — and it is what the frontend reads back from
+    /// `identities-owned`. Authorization is the opposite case and gates on
+    /// [`Self::caller_account`]; see the `accounts` field, which records the
+    /// device→account pairing so two devices of one person share permissions.
+    ///
+    /// Do NOT reach for `env::executor_id()` to get this. rc.20 split identity
+    /// into account + device (core #3320) and left that shim meaning the
+    /// device; rc.23 flips it to the ACCOUNT (core #3510), so it now means the
+    /// opposite of what this function returns.
     fn caller() -> PublicKey {
         sdk_env::device_id().into()
     }

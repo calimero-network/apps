@@ -17,7 +17,7 @@ nodes:
   count: 2
   # Must match the `calimero-*` tag in logic/Cargo.toml — contract and node have
   # to agree. Bump both together.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.20
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.23
   prefix: calimero-node
   # merobox defaults to RUST_LOG=debug, which is ~12 MB of logs per node per
   # couple of minutes and real CPU on a 2-vCPU runner hosting every node. `info`
