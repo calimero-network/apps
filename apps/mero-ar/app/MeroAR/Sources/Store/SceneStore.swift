@@ -6,6 +6,10 @@ import MeroKit
 @MainActor
 public final class SceneStore: ObservableObject {
     @Published public private(set) var objects: [String: SceneObject] = [:]
+    /// Camera poses by DEVICE — one entry per installation in the room, so a
+    /// member on two devices renders as two viewpoints. Keyed by
+    /// `Presence.identity`; to ask whether a *person* is here use
+    /// ``onlineMembers``.
     @Published public private(set) var presence: [String: Presence] = [:]
     @Published public private(set) var members: [Member] = []
     @Published public private(set) var roles: [MemberRole] = []
@@ -33,6 +37,10 @@ public final class SceneStore: ObservableObject {
     public var canEdit: Bool { myRole == "admin" || myRole == "editor" }
     public var isAdmin: Bool { myRole == "admin" }
     public var memberId: String { service.memberId }
+
+    /// The members with at least one device in the room. The roster keys on
+    /// accounts, `presence` keys on devices, so this is the join between them.
+    public var onlineMembers: Set<String> { Set(presence.values.map(\.member)) }
 
     public func bootstrap(username: String) async {
         do {

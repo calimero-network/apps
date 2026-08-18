@@ -9,21 +9,30 @@
 //! Element, Presence ≈ cursor, SpatialComment ≈ comment. Conflict resolution is
 //! version-then-timestamp LWW via `MergeableTrait`.
 //!
-//! # Identity (core 0.11.0-rc.20)
+//! # Identity (core 0.11.0-rc.23)
 //!
-//! Nothing here trusts a client-supplied member id. Every write attributes
-//! itself to the real signer — `env::device_id()`, the rc.20 successor of
-//! `executor_id()` — and authorization gates on `env::account_id()`, because
-//! `AccessControl` and `Ownable` are account-keyed since rc.20 (one person, many
-//! devices: the gate is the person, not the phone). The two are bridged by the
-//! `accounts` self-registration map; see its field docs.
+//! Nothing here trusts a client-supplied member id. A member IS an account —
+//! `env::account_id()`, the person — and so is every ownership record: the
+//! roster, an object's author, a lock holder, a comment's author, the
+//! `AccessControl` admin tier and the `Ownable` room name. Someone in the room
+//! on a phone and an iPad is one member holding one role, not two.
+//!
+//! rc.20 keyed the roster by device and carried a self-registration map to reach
+//! the account a grant had to name. rc.23 retires that twice over: the legacy
+//! `executor_id()` shim now resolves to the account (core #3510), and group
+//! membership is stated in accounts (core #3522). So the bridge is gone and a
+//! member id is a 64-hex `AccountId` everywhere — including in what an admin
+//! types to grant a role.
+//!
+//! `env::device_id()` survives in exactly one place: presence. See
+//! [`MeroAR::update_presence`].
 
 use std::str::FromStr;
 
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::{app, env as sdk_env, AccountId, BlobId, PublicKey};
+use calimero_sdk::{app, env as sdk_env, AccountId, BlobId};
 use calimero_storage::address::Id;
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::rekey::RekeyTarget;
@@ -31,8 +40,10 @@ use calimero_storage::collections::{
     AccessControl, LwwRegister, Mergeable as MergeableTrait, Ownable, UnorderedMap,
 };
 
-type ObjectId  = String;
-type MemberId  = String;
+type ObjectId = String;
+/// A member, written the way `AccountId` renders: 64 hex characters. Never a
+/// bs58 key — those are 32 bytes too, so nothing downstream would object.
+type MemberId = String;
 type CommentId = String;
 
 /// Named role granted on top of the admin tier. Editors may place, move, and
@@ -202,14 +213,18 @@ impl MergeableTrait for Member {
     }
 }
 
-// ── Presence (camera pose per identity) ───────────────────────────────────────
+// ── Presence (camera pose per DEVICE) ─────────────────────────────────────────
 
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct Presence {
+    /// The device holding this camera — a room id for a viewpoint, not a member.
     pub identity:        String,
+    /// The member that device speaks for, so the roster can light up the person
+    /// a viewpoint belongs to. Two of these may name the same member.
+    pub member:          MemberId,
     pub camera_position: Vec3,
     pub camera_rotation: Quat,
     pub updated_at:      u64,
@@ -264,9 +279,8 @@ pub struct RoomInfo {
     pub member_count:  u32,
     pub world_map_blob: String,
     pub version:       u64,
-    /// Room owner, reported as the member id clients already know (the device
-    /// key), or the owning account's own string form when no device of that
-    /// account has written here yet. `None` before the first owner edit.
+    /// Room owner as a member id. `None` before the first owner edit — the
+    /// `Ownable` cell has no owner to report until then.
     pub owner:         Option<MemberId>,
 }
 
@@ -335,16 +349,10 @@ pub struct MeroAR {
     comments:      UnorderedMap<CommentId, SpatialComment>,
     /// Role registry whose admin tier is a signed writer set. Grants/revokes are
     /// admin-gated at merge; the room creator is the sole initial admin.
-    roles:         AccessControl,
-    /// member key (device) → the account that device speaks for, self-registered
-    /// on join and on every presence update.
     ///
-    /// `AccessControl` and `Ownable` are keyed by `AccountId` since core rc.20,
-    /// while the ids this room shows and the app passes as `executorPublicKey`
-    /// are device keys. Nothing on the wire maps one to the other, and a device
-    /// can only ever assert its OWN pairing (both halves come from the host), so
-    /// this is a self-registration rather than an admin-maintained table.
-    accounts:      UnorderedMap<MemberId, LwwRegister<AccountId>>,
+    /// Keyed by account, like every other map here — which is why rc.20's
+    /// device→account registration map is gone rather than merely unused.
+    roles:         AccessControl,
 }
 
 // ── Logic ──────────────────────────────────────────────────────────────────────
@@ -353,14 +361,11 @@ pub struct MeroAR {
 impl MeroAR {
     #[app::init]
     pub fn init(name: String) -> MeroAR {
-        // Ownership and the admin tier are ACCOUNT-scoped; the room's member ids
-        // stay device-scoped (see `accounts`).
+        // One id for ownership, the admin tier, and the roster.
         let me = Self::caller_account();
         // Deliberately NOT seeding the `Ownable` cell here — see `initial_name`.
         // The value would be silently dropped and the room would come up unnamed.
         let room_name = Ownable::new_owned_by(me);
-        let mut accounts = UnorderedMap::new();
-        let _ = accounts.insert(Self::caller_id(), LwwRegister::new(me));
         MeroAR {
             room_name,
             initial_name:   LwwRegister::new(name),
@@ -371,83 +376,46 @@ impl MeroAR {
             presence:       UnorderedMap::new(),
             comments:       UnorderedMap::new(),
             roles:          AccessControl::new(me),
-            accounts,
         }
     }
 
     // ── Identity & authorization ──────────────────────────────────────────────
 
-    /// The real signer of this invocation. Never trust a client-supplied id.
+    /// Who is calling, as a person. Never trust a client-supplied id.
     ///
-    /// `device_id()` is the rc.20 successor of `executor_id()` — the same bytes,
-    /// so member ids keep matching the identities the app reads from
-    /// `/contexts/{id}/identities-owned` and passes as `executorPublicKey`.
-    /// Authorization uses [`Self::caller_account`] instead; see `accounts`.
-    fn caller() -> PublicKey {
-        sdk_env::device_id().into()
-    }
-
-    /// Base58 string form of the caller — the member id this room stores.
-    fn caller_id() -> String {
-        String::from(Self::caller())
-    }
-
-    /// The account this call is authorized as — what `AccessControl` and
-    /// `Ownable` gate on. Distinct from [`Self::caller`]: two devices of one
-    /// person report the same account and different device keys.
+    /// The single authorization subject here: `AccessControl`, `Ownable`, the
+    /// roster, and every "did you write this" comparison gate on this one value,
+    /// so a second device of the same person inherits the first one's standing
+    /// instead of arriving as a stranger.
     fn caller_account() -> AccountId {
         AccountId::from(sdk_env::account_id())
     }
 
-    /// A member id belonging to `account`, or the account's own string form when
-    /// none is known. Reverse of [`Self::account_of`].
-    fn member_of(&self, account: &AccountId) -> String {
-        if let Ok(entries) = self.accounts.entries() {
-            for (id, known) in entries {
-                if known.get() == account {
-                    return id;
-                }
-            }
-        }
-        account.to_string()
+    /// String form of the caller's account — the member id this room stores and
+    /// puts on the wire.
+    fn caller_id() -> String {
+        Self::caller_account().to_string()
     }
 
-    /// The account a member's device speaks for, if that member has ever written
-    /// to this room.
-    fn account_of(&self, member: &str) -> Option<AccountId> {
-        match self.accounts.get(member) {
-            Ok(Some(reg)) => Some(*reg.get()),
-            _ => None,
-        }
+    /// The installation executing this call, NOT the person behind it.
+    ///
+    /// The one place a device id is the right answer in this contract: a camera
+    /// pose is a property of the phone holding the camera, so a member in the
+    /// room on two devices is genuinely two viewpoints and must not overwrite
+    /// themselves. Rendered hex to match how every other id here is written.
+    fn caller_device() -> String {
+        hex::encode(sdk_env::device_id())
     }
 
-    /// Resolve a client-supplied member key to the account a grant can name.
-    fn require_account(&self, member: &str) -> app::Result<AccountId> {
-        // Validate the key shape first, so a typo reads as "invalid key" rather
-        // than "hasn't entered the room".
-        let _ = Self::parse_pk(member)?;
-        match self.account_of(member) {
-            Some(account) => Ok(account),
-            None => app::bail!(
-                "that member hasn't entered this room yet, so their account is unknown — \
-                 ask them to open it once, then set the role"
-            ),
-        }
-    }
-
-    /// Record the caller's device→account pairing. Idempotent: an unchanged
-    /// pairing writes nothing, so the hot paths add no CRDT delta.
-    fn remember_account(&mut self) {
-        let me = Self::caller_id();
-        let account = Self::caller_account();
-        if matches!(self.accounts.get(&me), Ok(Some(known)) if *known.get() == account) {
-            return;
-        }
-        let _ = self.accounts.insert(me, LwwRegister::new(account));
-    }
-
-    fn parse_pk(value: &str) -> app::Result<PublicKey> {
-        PublicKey::from_str(value).map_err(|_| app::err!("invalid member public key"))
+    /// Read a client-supplied member id back into the account a grant names.
+    ///
+    /// A plain parse since rc.23: a member id IS an account id, so a role can be
+    /// set for someone before they have ever opened the room — which rc.20's
+    /// device→account bridge could not do, because it had nothing to look up
+    /// until that member wrote something.
+    fn parse_member(member: &str) -> app::Result<AccountId> {
+        AccountId::from_str(member)
+            .map_err(|_| app::err!("that is not a member id — expected 64 hex characters"))
     }
 
     /// True if `who` may mutate the scene (admin or explicit editor).
@@ -486,7 +454,7 @@ impl MeroAR {
 
     /// Grant a member the editor role. Admin-only (enforced at merge).
     pub fn grant_editor(&mut self, member: String) -> app::Result<()> {
-        let who = self.require_account(&member)?;
+        let who = Self::parse_member(&member)?;
         self.roles.grant(ROLE_EDITOR, who)?;
         app::emit!(Event::RoleUpdated(member));
         Ok(())
@@ -494,7 +462,7 @@ impl MeroAR {
 
     /// Revoke a member's editor role (downgrade to viewer). Admin-only.
     pub fn revoke_editor(&mut self, member: String) -> app::Result<()> {
-        let who = self.require_account(&member)?;
+        let who = Self::parse_member(&member)?;
         self.roles.revoke(ROLE_EDITOR, &who)?;
         app::emit!(Event::RoleUpdated(member));
         Ok(())
@@ -502,11 +470,21 @@ impl MeroAR {
 
     /// Effective role of a member: "admin", "editor", or "viewer".
     pub fn get_role(&self, member: String) -> String {
-        // Unknown account = no grant can name them = viewer.
-        match self.account_of(&member) {
-            Some(account) => self.role_label(&account),
-            None => "viewer".to_string(),
+        match Self::parse_member(&member) {
+            Ok(account) => self.role_label(&account),
+            // Not an account id, so no grant could ever name them — viewer.
+            Err(_) => "viewer".to_string(),
         }
+    }
+
+    /// The caller's own member id, so a client can mark "you" in the roster and
+    /// recognise itself as the room's owner.
+    ///
+    /// The node-level `GET /admin-api/identity` reports the same account, but it
+    /// needs an admin scope and a second round trip; this answers in the one
+    /// vocabulary the rest of these methods already speak.
+    pub fn whoami(&self) -> String {
+        Self::caller_id()
     }
 
     /// Effective role of the caller — what the app's edit gate reads.
@@ -524,9 +502,9 @@ impl MeroAR {
         let mut out = Vec::new();
         if let Ok(entries) = self.members.entries() {
             for (id, _) in entries {
-                let role = match self.account_of(&id) {
-                    Some(account) => self.role_label(&account),
-                    None => "viewer".to_string(),
+                let role = match Self::parse_member(&id) {
+                    Ok(account) => self.role_label(&account),
+                    Err(_) => "viewer".to_string(),
                 };
                 out.push(MemberRole { member: id, role });
             }
@@ -536,7 +514,7 @@ impl MeroAR {
 
     /// Hand the room (and its owner-gated name) to another member. Owner-only.
     pub fn transfer_ownership(&mut self, new_owner: String) -> app::Result<()> {
-        let owner = self.require_account(&new_owner)?;
+        let owner = Self::parse_member(&new_owner)?;
         // Only the current owner can pass the `Ownable` transfer guard below, so
         // the caller IS the previous owner.
         let previous = Self::caller_account();
@@ -576,7 +554,7 @@ impl MeroAR {
             member_count:   self.members.len().unwrap_or(0) as u32,
             world_map_blob: self.world_map_blob.get().clone(),
             version:        *self.version.get(),
-            owner:          self.room_name.owner().map(|a| self.member_of(&a)),
+            owner:          self.room_name.owner().map(|a| a.to_string()),
         }
     }
 
@@ -603,12 +581,10 @@ impl MeroAR {
 
     // ── Members ───────────────────────────────────────────────────────────────
 
-    /// Enter the room under `username`. The member id is the real signer, so a
-    /// device can only ever create/refresh its own entry.
+    /// Enter the room under `username`. The member id is the caller's account, so
+    /// a client can only ever create/refresh its own entry — and a second device
+    /// of an existing member re-enters as that member rather than as a stranger.
     pub fn join(&mut self, username: String, avatar: Option<String>, timestamp: u64) {
-        // Register the pairing even for a repeat join: it is what lets an admin
-        // name this member in a grant at all.
-        self.remember_account();
         let member_id = Self::caller_id();
         if self.members.contains(&member_id).unwrap_or(false) { return; }
         let m = Member { id: member_id.clone(), username, avatar, joined_at: timestamp };
@@ -664,8 +640,10 @@ impl MeroAR {
     /// caller. Applies version-then-timestamp LWW so stale edits are dropped.
     pub fn update_transform(&mut self, id: String, transform: Transform, updated_at: u64) -> app::Result<()> {
         self.require_editor()?;
-        // The lock holder is a device key, and so is the caller — never a
-        // client-supplied "editor" string.
+        // The lock holder is an ACCOUNT, and so is the caller — never a
+        // client-supplied "editor" string. Keyed by account, the phone can
+        // release what the laptop took, which is what a person expects of
+        // their own lock.
         let editor = Self::caller_id();
         let next = self.bump_version();
         if let Ok(Some(mut obj)) = self.objects.get_mut(&id) {
@@ -796,18 +774,26 @@ impl MeroAR {
 
     // ── Presence ──────────────────────────────────────────────────────────────
 
-    /// Publish the caller's camera pose. Open to viewers — being in the room is
-    /// not an edit — and keyed by the real signer, so nobody can puppet another
-    /// member's avatar.
+    /// Publish this device's camera pose. Open to viewers — being in the room is
+    /// not an edit — and keyed by the host-reported device, so nobody can puppet
+    /// another viewpoint.
     ///
-    /// Every client streams its pose, so this is where a member's device→account
-    /// pairing reliably becomes known to the rest of the room.
+    /// The **only** device-keyed state in this contract. A pose belongs to the
+    /// phone that took it: a member holding the room open on two devices is two
+    /// cameras in the scene, and keying this by account would make each pose
+    /// stomp the other twice a second. `member` carries the account so the
+    /// roster can still tell whose viewpoint it is.
     pub fn update_presence(&mut self, camera_position: Vec3, camera_rotation: Quat, updated_at: u64) {
-        self.remember_account();
-        let identity = Self::caller_id();
-        let p = Presence { identity: identity.clone(), camera_position, camera_rotation, updated_at };
-        let _ = self.presence.insert(identity.clone(), p);
-        app::emit!(Event::PresenceUpdated(identity));
+        let device = Self::caller_device();
+        let p = Presence {
+            identity: device.clone(),
+            member:   Self::caller_id(),
+            camera_position,
+            camera_rotation,
+            updated_at,
+        };
+        let _ = self.presence.insert(device.clone(), p);
+        app::emit!(Event::PresenceUpdated(device));
     }
 
     pub fn get_presence(&self) -> Vec<Presence> {

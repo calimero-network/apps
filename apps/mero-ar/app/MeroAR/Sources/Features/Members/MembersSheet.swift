@@ -67,8 +67,10 @@ struct MembersSheet: View {
 
     private func memberRow(_ row: Row) -> some View {
         HStack(spacing: 12) {
+            // Rows are members (accounts) and presence is per device, so ask
+            // "is any device of this member here" rather than indexing by row id.
             Circle()
-                .fill(store.presence[row.id] != nil ? Theme.accent3 : Color.white.opacity(0.2))
+                .fill(store.onlineMembers.contains(row.id) ? Theme.accent3 : Color.white.opacity(0.2))
                 .frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {

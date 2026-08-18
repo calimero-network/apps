@@ -22,7 +22,7 @@ wait_timeout: 120
 nodes:
   chain_id: testnet-1
   count: 1
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.20
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.23
   prefix: calimero-node
 
 steps:
@@ -36,7 +36,7 @@ steps:
       app_id: applicationId
 
   - name: Create Namespace
-    type: create_group
+    type: create_namespace
     node: calimero-node-1
     application_id: "{{app_id}}"
     outputs:
@@ -145,11 +145,27 @@ steps:
     outputs:
       members: result
 
+  # Ask the contract who we are, rather than assuming it is the context member
+  # key. Since rc.23 every member id here is an ACCOUNT — what the members map,
+  # roster, objects, locks, presence and comments are all keyed by — while
+  # `member_public_key` is the context member KEY that authorizes a call. They
+  # are different values in different alphabets, so asserting one against the
+  # other silently never matches.
+  - name: Read Own Member Id
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: whoami
+    args: {}
+    outputs:
+      my_member_id: result.output
+
   - name: Assert Member Is The Signer
     type: assert
     statements:
       - "contains({{members}}, 'Alice')"
-      - "contains({{members}}, '{{member_public_key}}')"
+      - "contains({{members}}, '{{my_member_id}}')"
 
   - name: List Roles
     type: call
@@ -165,7 +181,7 @@ steps:
     type: assert
     statements:
       - "contains({{roster}}, 'admin')"
-      - "contains({{roster}}, '{{member_public_key}}')"
+      - "contains({{roster}}, '{{my_member_id}}')"
 
   # ── Add object with nested transform ──────────────────────────────────────
   # `createdBy` is deliberately a lie here: the contract must overwrite it with
@@ -206,7 +222,7 @@ steps:
     statements:
       - "contains({{objects}}, 'o1')"
       - "contains({{objects}}, 'cube')"
-      - "contains({{objects}}, '{{member_public_key}}')"
+      - "contains({{objects}}, '{{my_member_id}}')"
       - "not_contains({{objects}}, 'spoofedauthor')"
       - "not_contains({{objects}}, 'spoofedholder')"
 
@@ -265,7 +281,7 @@ steps:
   - name: Assert Locked By The Signer
     type: assert
     statements:
-      - "contains({{locked}}, '{{member_public_key}}')"
+      - "contains({{locked}}, '{{my_member_id}}')"
 
   - name: Holder Moves To 222
     type: call
@@ -389,7 +405,7 @@ steps:
   - name: Assert Presence Keyed By Signer
     type: assert
     statements:
-      - "contains({{presence}}, '{{member_public_key}}')"
+      - "contains({{presence}}, '{{my_member_id}}')"
 
   # ── Spatial comment: author is the signer ─────────────────────────────────
   - name: Add Comment
@@ -418,7 +434,7 @@ steps:
     type: assert
     statements:
       - "contains({{comments}}, 'spatialnote')"
-      - "contains({{comments}}, '{{member_public_key}}')"
+      - "contains({{comments}}, '{{my_member_id}}')"
 
   - name: Delete Own Comment
     type: call
@@ -480,7 +496,7 @@ steps:
     statements:
       - "contains({{room_after}}, 'Renamed Studio')"
       - "contains({{room_after}}, 'worldmapblobref')"
-      - "contains({{room_after}}, '{{member_public_key}}')"
+      - "contains({{room_after}}, '{{my_member_id}}')"
 
   # ── Delete ────────────────────────────────────────────────────────────────
   - name: Delete Object

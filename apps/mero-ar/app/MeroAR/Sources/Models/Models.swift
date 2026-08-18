@@ -91,7 +91,13 @@ public struct Member: Codable, Identifiable, Equatable {
 }
 
 public struct Presence: Codable, Equatable {
+    /// The DEVICE holding this camera — not a member id. Since rc.23 a member is
+    /// an account, and one member with the room open on a phone and an iPad is
+    /// two presences: two viewpoints, one person.
     public var identity: String
+    /// The member that viewpoint belongs to. Two presences may carry the same
+    /// one, so match the roster on this and never on `identity`.
+    public var member: String
     public var cameraPosition: Vec3
     public var cameraRotation: Quat
     public var updatedAt: UInt64
