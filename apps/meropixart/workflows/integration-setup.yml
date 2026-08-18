@@ -11,7 +11,7 @@ wait_timeout: 120
 nodes:
   chain_id: testnet-1
   count: 2
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.20
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.23
   prefix: calimero-node
 
 steps:
@@ -30,11 +30,20 @@ steps:
     dev: true
 
   - name: Create Namespace
-    type: create_group
+    type: create_namespace
     node: calimero-node-1
     application_id: "{{app_id}}"
     outputs:
       namespace_id: namespaceId
+
+  # Namespaces are RESTRICTED by default, so a joining node 403s on its first
+  # `call` without this — which reads as a sync failure rather than a permission
+  # one. 15 = the full read/write/execute/manage-member bits.
+  - name: Set Default Member Capabilities
+    type: set_default_capabilities
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    capabilities: 15
 
   - name: Create Project Context
     type: create_context
@@ -57,14 +66,14 @@ steps:
     seconds: 3
 
   - name: Invite Node 2
-    type: create_group_invitation
+    type: create_namespace_invitation
     node: calimero-node-1
     group_id: "{{namespace_id}}"
     outputs:
       invitation_2: invitation
 
   - name: Node 2 Joins Namespace
-    type: join_group
+    type: join_namespace
     node: calimero-node-2
     group_id: "{{namespace_id}}"
     invitation: "{{invitation_2}}"

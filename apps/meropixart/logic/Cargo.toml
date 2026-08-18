@@ -36,11 +36,11 @@ icon = "../app/public/icon-512.png"
 tags = ["image-editing", "collaboration", "layers"]
 github = "https://github.com/calimero-network/mero-pixart"
 # The release this contract is BUILT for, not a floor inherited from an older
-# template. An rc.20 build imports host functions (e.g. storage_index_meta_clear)
+# template. An rc.23 build imports host functions (e.g. storage_index_meta_clear)
 # that earlier merod has no implementation for: claiming 0.1.0 lets such a node
 # install the bundle happily and then fail at context creation with "unknown
 # import". Keep this equal to the calimero-sdk tag above.
-min-runtime-version = "0.11.0-rc.20"
+min-runtime-version = "0.11.0-rc.23"
 frontend = "https://mero-pixart.vercel.app/"
 
 [dependencies]
@@ -50,16 +50,16 @@ borsh-derive = "0.10.3"
 # protocol work against nodes that run the release. All SDK crates must share the
 # exact same tag (the workspace version at a tag is 0.0.0, so a version
 # requirement cannot match).
-calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.20" }
-calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.20" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.20" }
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.23" }
+calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.23" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.23" }
 thiserror = "1.0.56"
 serde_json = "1.0.113"
 
 [dev-dependencies]
 # Enables register_crdt_merge + the native mock host so TestHost can drive
 # CRDT state (incl. the permissioned components) under `cargo test`.
-calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.20", features = ["testing"] }
+calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.23", features = ["testing"] }
 
 [profile.app-release]
 inherits = "release"

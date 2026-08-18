@@ -1,3 +1,9 @@
+// The `#[app::logic]` methods below are the app's RPC surface, and a patch call
+// takes one optional argument per field it can change. Collapsing those into a
+// params struct to satisfy the lint would rewrite the ABI and every call site in
+// the frontend for no gain the caller can see.
+#![allow(clippy::too_many_arguments)]
+
 use std::str::FromStr;
 
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
@@ -14,6 +20,13 @@ use calimero_storage::collections::{
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type LayerId  = String;
+/// A member of this document, written the way an `AccountId` renders: 64 hex
+/// characters. Since core rc.23 a member is a PERSON everywhere — the node's
+/// group listing answers with accounts, `AccessControl` and `Ownable` gate on
+/// accounts, and `env::executor_id()` resolves to one — so the document keys its
+/// roster, its roles and its authorship by the same thing. It is deliberately
+/// not the bs58 a public key renders in; the two are both 32 bytes and nothing
+/// downstream would object to the wrong one.
 type MemberId = String;
 
 /// Named role granted on top of the admin tier. Editors may mutate the
@@ -232,14 +245,25 @@ pub struct MemberRole {
     pub role:   String,
 }
 
-// ── Cursor state (ephemeral — last known position per identity) ────────────────
+// ── Cursor state (ephemeral — last known position per device) ─────────────────
+//
+// The one thing in this document keyed by DEVICE rather than by account: a
+// pointer belongs to a screen, so someone with the document open on a laptop and
+// a tablet has two of them. Keying this by account would make the two
+// installations fight over one LWW cell and the remaining participants would
+// watch a single cursor teleport between two people's hands.
 
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct CursorState {
+    /// The device this pointer belongs to (bs58 context key) — unique per open
+    /// installation, so it is what the map is keyed by.
     pub identity:   String,
+    /// The member (account) behind that device, so the overlay can label the
+    /// pointer with a username without a second lookup table.
+    pub account:    MemberId,
     pub x:          i64,
     pub y:          i64,
     pub updated_at: u64,
@@ -294,23 +318,13 @@ pub struct MeroPixArt {
 
     layers:          UnorderedMap<LayerId, Layer>,
     members:         UnorderedMap<MemberId, Member>,
+    /// Keyed by DEVICE, not by member — see `CursorState`. The only map here
+    /// that is.
     cursors:         UnorderedMap<String, CursorState>,
 
     // Role registry whose admin tier is a signed writer set. Grants/revokes are
     // admin-gated at merge; the creator is the sole initial admin.
     roles:           AccessControl,
-
-    /// member (device) key → the account that device speaks for, self-registered
-    /// on join and on every cursor move.
-    ///
-    /// `AccessControl` and `Ownable` are keyed by `AccountId` since core rc.20
-    /// (#3320 split identity into an account — the person, the authorization
-    /// subject — and a device, the replica). Nothing on the wire maps a device key
-    /// to an account: the group-members listing returns device keys and no
-    /// account, so without this an admin could not name a member in a grant at
-    /// all. A device can only ever assert its OWN pairing (both halves come from
-    /// the host), so this is not an admin-maintained table and cannot be spoofed.
-    accounts:        UnorderedMap<MemberId, LwwRegister<AccountId>>,
 }
 
 // ── Logic ─────────────────────────────────────────────────────────────────────
@@ -319,8 +333,8 @@ pub struct MeroPixArt {
 impl MeroPixArt {
     #[app::init]
     pub fn init(name: String, description: String, width: u32, height: u32) -> MeroPixArt {
-        // Ownership and the admin tier are ACCOUNT-scoped; the document's member
-        // ids stay device-scoped (see `accounts`).
+        // Ownership, the admin tier and the member roster are all ACCOUNT-scoped
+        // — one person, one entry, however many machines they open this on.
         let me = Self::caller_account();
         // Deliberately NOT seeding the `Ownable` cells here. On rc.20 the cell is
         // still detached from the state tree at init: the writer set carries
@@ -329,8 +343,6 @@ impl MeroPixArt {
         // the plain `initial_*` registers instead; see `doc_name_str`.
         let doc_name = Ownable::new_owned_by(me);
         let doc_description = Ownable::new_owned_by(me);
-        let mut accounts = UnorderedMap::new();
-        let _ = accounts.insert(Self::caller_id(), LwwRegister::new(me));
         MeroPixArt {
             doc_name,
             doc_description,
@@ -343,80 +355,57 @@ impl MeroPixArt {
             members:       UnorderedMap::new(),
             cursors:       UnorderedMap::new(),
             roles:         AccessControl::new(me),
-            accounts,
         }
     }
 
     // ── Identity & authorization helpers ────────────────────────────────────────
 
-    /// The real signer of this invocation. Never trust a client-supplied id.
+    /// Who this call is authorized as: the person, not the machine. Never trust
+    /// a client-supplied id.
     ///
-    /// `device_id()` is the rc.20 successor of `executor_id()` — the same bytes,
-    /// so member ids and the identities the frontend reads from
-    /// `identities-owned` keep matching. Authorization uses
-    /// [`Self::caller_account`] instead; see `accounts`.
-    fn caller() -> PublicKey {
-        sdk_env::device_id().into()
-    }
-
-    /// The account this call is authorized as — what `AccessControl` and
-    /// `Ownable` gate on. Distinct from [`Self::caller`]: two devices of one
-    /// person report the same account and different device keys.
+    /// This is what everything in this document that means "whose" is keyed by —
+    /// the roster, the roles, `Ownable`, layer authorship. rc.23 made the point
+    /// unavoidable by resolving the legacy `env::executor_id()` here too (core
+    /// #3510), and by making the node's own group-members listing answer with
+    /// accounts (#3522), so the document and the node finally name a member the
+    /// same way.
     fn caller_account() -> AccountId {
         AccountId::from(sdk_env::account_id())
     }
 
-    /// Base58 string form of the caller — matches the identity the frontend
-    /// reads from `/contexts/{id}/identities-owned`.
-    fn caller_id() -> String {
-        String::from(Self::caller())
+    /// Hex string form of the caller's account — this document's member id.
+    fn caller_id() -> MemberId {
+        Self::caller_account().to_string()
     }
 
-    /// A member id belonging to `account`, or the account's own string form when
-    /// none is known. Reverse of [`Self::account_of`].
-    fn member_of(&self, account: &AccountId) -> String {
-        if let Ok(entries) = self.accounts.entries() {
-            for (id, known) in entries {
-                if known.get() == account {
-                    return id;
-                }
-            }
-        }
-        account.to_string()
+    /// The installation this call came from, as the bs58 context key the
+    /// frontend reads back from `/contexts/{id}/identities-owned`.
+    ///
+    /// Kept on `device_id()` deliberately and used for exactly one thing: the
+    /// cursor map. A pointer is a property of a screen, not of a person, so this
+    /// genuinely means "this installation" — the same human on a second machine
+    /// must get a second cursor, and would get a fight over one cell if this
+    /// were an account. Every other identity in this file is
+    /// [`Self::caller_account`]; if you are about to reach for this one for
+    /// anything that answers "whose is it", you want that instead.
+    fn caller_device() -> PublicKey {
+        sdk_env::device_id().into()
     }
 
-    /// The account a member's device speaks for, if that member has ever written
-    /// to this document.
-    fn account_of(&self, member: &str) -> Option<AccountId> {
-        match self.accounts.get(member) {
-            Ok(Some(reg)) => Some(*reg.get()),
-            _ => None,
-        }
-    }
-
-    /// Resolve a client-supplied member key to the account a grant can name.
+    /// Resolve a client-supplied member id to the account a grant can name.
+    ///
+    /// Nothing to look up any more: a member id IS an account since rc.23, so
+    /// this is a parse. That also means an admin can hand a role to someone who
+    /// has never opened the document — under rc.20 the contract had to learn a
+    /// member's device→account pairing from their own writes first, and grants
+    /// to anyone else were refused.
     fn require_account(&self, member: &str) -> app::Result<AccountId> {
-        // Validate the key shape first, so a typo reads as "invalid key" rather
-        // than "hasn't opened the document".
-        let _ = Self::parse_pk(member)?;
-        match self.account_of(member) {
-            Some(account) => Ok(account),
-            None => app::bail!(
-                "that member hasn't opened this document yet, so their account is unknown — \
-                 ask them to open it once, then set the role"
-            ),
-        }
-    }
-
-    /// Record the caller's device→account pairing. Idempotent: an unchanged
-    /// pairing writes nothing, so the hot paths add no CRDT delta.
-    fn remember_account(&mut self) {
-        let me = Self::caller_id();
-        let account = Self::caller_account();
-        if matches!(self.accounts.get(&me), Ok(Some(known)) if *known.get() == account) {
-            return;
-        }
-        let _ = self.accounts.insert(me, LwwRegister::new(account));
+        AccountId::from_str(member).map_err(|_| {
+            app::err!(
+                "that is not a member id — expected the 64-character account id \
+                 the members list shows, not a public key"
+            )
+        })
     }
 
     fn is_editor(&self, who: &AccountId) -> bool {
@@ -437,10 +426,6 @@ impl MeroPixArt {
             return Ok(());
         }
         app::bail!("admin access is required for this operation");
-    }
-
-    fn parse_pk(value: &str) -> app::Result<PublicKey> {
-        PublicKey::from_str(value).map_err(|_| app::err!("invalid member public key"))
     }
 
     /// Announce a blob to the context so it propagates to all members.
@@ -471,15 +456,13 @@ impl MeroPixArt {
         DocumentInfo {
             name:         self.doc_name_str(),
             description:  self.doc_description_str(),
-            width:        self.canvas_width.get().clone(),
-            height:       self.canvas_height.get().clone(),
+            width:        *self.canvas_width.get(),
+            height:       *self.canvas_height.get(),
             background:   self.background.get().clone(),
             layer_count:  self.layers.len().unwrap_or(0) as u32,
             member_count: self.members.len().unwrap_or(0) as u32,
-            // The owner is an account; report it as the member id clients already
-            // know, falling back to the account's own string when no device of
-            // that account has written here yet.
-            owner:        self.doc_name.owner().map(|a| self.member_of(&a)),
+            // An account IS a member id now, so this needs no translation.
+            owner:        self.doc_name.owner().map(|a| a.to_string()),
         }
     }
 
@@ -538,10 +521,11 @@ impl MeroPixArt {
     }
 
     pub fn get_role(&self, member: String) -> String {
-        // Unknown account = no grant can name them = viewer.
-        match self.account_of(&member) {
-            Some(account) => self.role_label(&account),
-            None => "viewer".to_string(),
+        // Anything that is not a member id names nobody, and nobody holds a
+        // grant — the same answer as a member who was never granted one.
+        match AccountId::from_str(&member) {
+            Ok(account) => self.role_label(&account),
+            Err(_) => "viewer".to_string(),
         }
     }
 
@@ -557,9 +541,9 @@ impl MeroPixArt {
         let mut out = Vec::new();
         if let Ok(entries) = self.members.entries() {
             for (id, _) in entries {
-                let role = match self.account_of(&id) {
-                    Some(account) => self.role_label(&account),
-                    None => "viewer".to_string(),
+                let role = match AccountId::from_str(&id) {
+                    Ok(account) => self.role_label(&account),
+                    Err(_) => "viewer".to_string(),
                 };
                 out.push(MemberRole { member: id, role });
             }
@@ -579,10 +563,9 @@ impl MeroPixArt {
 
     // ── Members ───────────────────────────────────────────────────────────────
 
+    /// Add the caller to the roster. Keyed by account, so opening the document
+    /// on a second machine does not add a second "member".
     pub fn join(&mut self, username: String, avatar: Option<String>, timestamp: u64) {
-        // Register the pairing even for a repeat join: it is what lets an admin
-        // name this member in a grant at all.
-        self.remember_account();
         let member_id = Self::caller_id();
         if self.members.contains(&member_id).unwrap_or(false) { return; }
         let m = Member {
@@ -612,9 +595,13 @@ impl MeroPixArt {
 
     // ── Layers ──────────────────────────────────────────────────────────────────
 
-    pub fn add_layer(&mut self, layer: Layer) -> app::Result<String> {
+    pub fn add_layer(&mut self, mut layer: Layer) -> app::Result<String> {
         self.require_editor()?;
         let id = layer.id.clone();
+        // Authorship is whose, so it is the caller's account and not whatever the
+        // client put in the field — a member cannot sign someone else's name to a
+        // layer, and the value matches the ids the members list is written in.
+        layer.created_by = Self::caller_id();
         Self::announce_blob(&layer.blob_id);
         if let Some(ref mask) = layer.mask_blob_id { Self::announce_blob(mask); }
         let _ = self.layers.insert(id.clone(), layer);
@@ -949,13 +936,19 @@ impl MeroPixArt {
     // ── Cursor tracking ───────────────────────────────────────────────────────
 
     /// Broadcast the caller's cursor. Presence is open to all members
-    /// (including viewers); the identity is the real signer, not client-supplied.
+    /// (including viewers); both ids are the real signer's, not client-supplied.
     pub fn update_cursor(&mut self, x: i64, y: i64, updated_at: u64) {
-        // Every client moves its cursor, so this is where a member's
-        // device→account pairing reliably becomes known to the rest of the document.
-        self.remember_account();
-        let identity = Self::caller_id();
-        let cs = CursorState { identity: identity.clone(), x, y, updated_at };
+        // Keyed by DEVICE: one pointer per open window, so a member editing from
+        // two machines shows two. The account rides along so the overlay can put
+        // their username on both.
+        let identity = String::from(Self::caller_device());
+        let cs = CursorState {
+            identity: identity.clone(),
+            account: Self::caller_id(),
+            x,
+            y,
+            updated_at,
+        };
         let _ = self.cursors.insert(identity.clone(), cs);
         app::emit!(Event::CursorMoved(identity));
     }
@@ -975,10 +968,17 @@ mod tests {
 
     const OTHER: [u8; 32] = [0x22; 32];
 
-    // Roles and ownership are keyed by ACCOUNT since rc.20, and `call_as` keeps
-    // the caller's account on purpose (two devices of one person). A second
+    // Roles, ownership and the member roster are keyed by ACCOUNT, and `call_as`
+    // keeps the caller's account on purpose (two devices of one person). A second
     // PERSON therefore needs their own account.
     const OTHER_ACCOUNT: [u8; 32] = [0xA2; 32];
+
+    /// The member id an account is written as — hex, which is what
+    /// [`MeroPixArt::require_account`] parses. `String::from(PublicKey::…)` gives
+    /// bs58 and is now rejected by shape.
+    fn member_id(account: [u8; 32]) -> MemberId {
+        AccountId::from(account).to_string()
+    }
 
     fn new_doc() -> TestHost<MeroPixArt> {
         TestHost::new(|| MeroPixArt::init("Untitled".to_owned(), "desc".to_owned(), 800, 600))
@@ -1041,15 +1041,13 @@ mod tests {
     #[test]
     fn viewer_cannot_edit_editor_can() {
         let mut app = new_doc();
-        // Joining is what registers bob's device→account pairing, which is what
-        // makes him nameable in a grant at all.
         app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s.join("bob".to_owned(), None, 1));
         assert!(app
             .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.add_layer(sample_layer("l1")))
             .is_err());
         assert_eq!(app.view(|s| s.get_layers()).len(), 0);
 
-        let bob = String::from(PublicKey::from(OTHER));
+        let bob = member_id(OTHER_ACCOUNT);
         app.call(|s| s.grant_editor(bob.clone())).unwrap();
         assert_eq!(app.view(|s| s.get_role(bob.clone())), "editor");
         app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s.add_layer(sample_layer("l1")))
@@ -1062,21 +1060,53 @@ mod tests {
             .is_err());
     }
 
-    /// A grant can only name a member the document has already heard from, so an
-    /// admin naming a stranger gets told that rather than a permission error.
+    /// Under rc.20 a grant could only name someone the document had already heard
+    /// from, because that was the only way it learned their account. Members are
+    /// accounts now, so an admin can set a role from the node's members list
+    /// alone — before the invitee has ever opened the document.
     #[test]
-    fn granting_an_unknown_member_explains_itself() {
+    fn a_member_can_be_granted_before_they_ever_open_the_document() {
         let mut app = new_doc();
-        let stranger = String::from(PublicKey::from([0x44u8; 32]));
+        let stranger = member_id([0x44u8; 32]);
+        app.call(|s| s.grant_editor(stranger.clone())).unwrap();
+        assert_eq!(app.view(|s| s.get_role(stranger)), "editor");
+    }
+
+    /// The ids are both 32 bytes and nothing downstream would object, so a public
+    /// key pasted where a member id belongs has to be rejected by shape here.
+    #[test]
+    fn a_public_key_is_not_a_member_id() {
+        let mut app = new_doc();
+        let key = String::from(PublicKey::from([0x44u8; 32]));
         // `calimero_sdk::types::Error` is Debug-only, not Display.
-        let err = format!("{:?}", app.call(|s| s.grant_editor(stranger)).unwrap_err());
-        assert!(err.contains("hasn't opened this document yet"), "unexpected: {err}");
+        let err = format!("{:?}", app.call(|s| s.grant_editor(key)).unwrap_err());
+        assert!(err.contains("not a member id"), "unexpected: {err}");
+    }
+
+    /// The one thing still keyed by device. Two windows of one person are two
+    /// pointers on everyone else's screen, both labelled with that person — which
+    /// is why `CursorState` carries the account as well as the device.
+    #[test]
+    fn one_person_on_two_devices_has_two_cursors_and_one_membership() {
+        let mut app = new_doc();
+        const LAPTOP: [u8; 32] = [0x01; 32];
+        const TABLET: [u8; 32] = [0x02; 32];
+
+        app.call_as_account(OTHER_ACCOUNT, LAPTOP, |s| s.join("bob".to_owned(), None, 1));
+        app.call_as_account(OTHER_ACCOUNT, TABLET, |s| s.join("bob".to_owned(), None, 2));
+        assert_eq!(app.view(|s| s.get_members()).len(), 1);
+
+        app.call_as_account(OTHER_ACCOUNT, LAPTOP, |s| s.update_cursor(10, 10, 3));
+        app.call_as_account(OTHER_ACCOUNT, TABLET, |s| s.update_cursor(80, 80, 4));
+        let cursors = app.view(|s| s.get_cursors());
+        assert_eq!(cursors.len(), 2);
+        assert!(cursors.iter().all(|c| c.account == member_id(OTHER_ACCOUNT)));
     }
 
     #[test]
     fn non_admin_cannot_grant_roles() {
         let mut app = new_doc();
-        let third = String::from(PublicKey::from([0x33u8; 32]));
+        let third = member_id([0x33u8; 32]);
         assert!(app
             .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.grant_editor(third))
             .is_err());
@@ -1310,11 +1340,9 @@ mod tests {
     #[test]
     fn ownership_transfer_moves_control() {
         let mut app = new_doc();
-        // The new owner must be known to the document before they can be named.
         app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s.join("bob".to_owned(), None, 1));
-        let other = String::from(PublicKey::from(OTHER));
+        let other = member_id(OTHER_ACCOUNT);
         app.call(|s| s.transfer_ownership(other.clone())).unwrap();
-        // The owner is an account; it is reported back as the member id.
         assert_eq!(app.view(|s| s.get_document()).owner, Some(other.clone()));
         app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s
             .update_document(Some("Owned".to_owned()), None, None, None, None))
