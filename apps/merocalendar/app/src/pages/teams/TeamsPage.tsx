@@ -137,7 +137,10 @@ export default function TeamsPage() {
         applicationId: await ensureAppId(),
         alias: name,
         name,
-        upgradePolicy: "LazyOnAccess",
+        // No `upgradePolicy`: core removed the concept in rc.21 and mero-js
+        // dropped it from CreateNamespaceRequest in 9.0.0. An rc.24 node accepts
+        // the field and ignores it, so this was silently doing nothing while
+        // reading as though a policy were being chosen.
       });
       const id = data.namespaceId ?? data.groupId ?? data.id ?? "";
       if (id) setStoredTeamName(id, name);

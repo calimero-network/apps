@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import {
   SseClient,
   type GroupMembershipEventData,
+  type GroupMigrationEventData,
   type SseEventData,
 } from "@calimero-network/mero-js";
 import { useMero } from "@calimero-network/mero-react";
@@ -30,10 +31,15 @@ export function useSse(
       reconnectDelayMs: 8000,
     });
 
-    // mero-js 7 widened this handler: an `event` can also be a group-membership
-    // event, which is keyed by `groupId` and carries no `contextId`. Only
-    // context events matter here, so narrow on the discriminating field.
-    const handler = (evt: SseEventData | GroupMembershipEventData) => {
+    // The `event` union keeps growing, and the additions are not context events:
+    // mero-js 7 added group-membership, mero-js 13 added group-migration. Both
+    // are keyed by `groupId` and carry no `contextId`. Only context events matter
+    // here, so the runtime narrowing below is on the discriminating field and
+    // survives the next addition — but the declared type still has to name every
+    // member, because the union is not exported.
+    const handler = (
+      evt: SseEventData | GroupMembershipEventData | GroupMigrationEventData,
+    ) => {
       if ("contextId" in evt && evt.contextId === contextId) {
         onEventRef.current(evt.data);
       }
