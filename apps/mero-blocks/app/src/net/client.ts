@@ -3,6 +3,7 @@
 import {
   SseClient,
   type GroupMembershipEventData,
+  type GroupMigrationEventData,
   type SseEventData,
 } from "@calimero-network/mero-js";
 import { getAccessToken, getSession } from "./session";
@@ -71,7 +72,7 @@ export class GameClient {
     // mero-js ≥7.1 widened the handler to context events OR group-membership
     // events; the latter carries a groupId and no contextId, and says nothing
     // about the world, so drop it here.
-    this.sse.on("event", (evt: SseEventData | GroupMembershipEventData) => {
+    this.sse.on("event", (evt: SseEventData | GroupMembershipEventData | GroupMigrationEventData) => {
       if (!("contextId" in evt)) return;
       if (evt.contextId && evt.contextId !== contextId) return;
       for (const ev of decodeSseEvents(evt.data)) onEvent(ev);
