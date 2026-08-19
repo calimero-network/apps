@@ -25,12 +25,17 @@ author = "Calimero"
 # https://links.calimero.network/<slug>/…) by this slug, so it MUST stay equal
 # to the package id the app's invite links carry.
 slug = "com.calimero.merocalendar"
-# `bundle` refuses to run without an icon decision. The repo has no PNG app
-# icon (app/src/assets only carries SVGs and a .ico), so take the sentinel that
-# ships the Calimero mark rather than a `--no-icon` flag: keeping the decision
-# in the manifest means every `cargo mero bundle` invocation — local or CI —
-# works unflagged. Swap this for a path once app/public gains an icon-512.png.
-icon = "default"
+# Embedded into the manifest as a data: URI, which is what gives the app a real
+# icon in the registry and — via tauri-app's `ensure_app_launcher_icon` — in the
+# macOS Dock and the per-app bundle the desktop writes into ~/Applications. The
+# bundled icon is preferred over fetching the frontend's PWA manifest because it
+# is deterministic and works offline. Regenerate with
+# `node app/scripts/gen-icons.mjs`.
+#
+# This was `icon = "default"`, the sentinel that ships the generic Calimero mark
+# — which is why the registry served this app the byte-identical icon to
+# mero-issue-tracker.
+icon = "../app/public/icon-512.png"
 tags = ["calendar", "scheduling", "collaboration"]
 github = "https://github.com/calimero-network/mero-calendar"
 # The oldest node that can run this bundle. It must name a real runtime: the
