@@ -9,7 +9,7 @@
 //! Element, Presence ≈ cursor, SpatialComment ≈ comment. Conflict resolution is
 //! version-then-timestamp LWW via `MergeableTrait`.
 //!
-//! # Identity (core 0.11.0-rc.23)
+//! # Identity (core 0.11.0-rc.24)
 //!
 //! Nothing here trusts a client-supplied member id. A member IS an account —
 //! `env::account_id()`, the person — and so is every ownership record: the
