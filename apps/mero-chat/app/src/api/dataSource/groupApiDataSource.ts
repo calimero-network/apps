@@ -38,6 +38,7 @@ import type {
   SyncGroupResponse,
   UpgradeGroupRequest,
   UpgradeGroupResponse,
+  VisibilityMode,
 } from "../groupApi";
 import {
   parseGroupInvitationPayload,
@@ -667,141 +668,101 @@ export class GroupApiDataSource implements GroupApi {
   }
 
   /**
-   * NOT MIGRATED — the endpoint no longer exists.
-   *
-   * core 40639c13 ("remove per-context join/invite/visibility/allowlist,
-   * groups-only model") deleted GET/PUT /groups/:id/contexts/:cid/visibility
-   * and GET/POST /groups/:id/contexts/:cid/allowlist. Per-context visibility
-   * and allowlists were replaced by subgroup membership as the access
-   * boundary: an admin creates a restricted subgroup, adds members to it
-   * explicitly, and puts the contexts there.
-   *
-   * The replacement calls are setSubgroupVisibility / addGroupMembers /
-   * removeGroupMembers, all of which this file already exposes. Rewiring the
-   * admin UI (ChannelsTab's VisibilityBadge and AllowlistContainer) onto that
-   * model is a product change, not a transport change, so it is deliberately
-   * out of scope here — these keep hitting the old route and keep failing, as
-   * they already do against any node newer than the removal.
+   * Core is 1-group-per-context: `get_group_for_context` returns a single
+   * group id. Per-context visibility and allowlists were not removed in
+   * 40639c13 so much as re-addressed — they are the visibility and membership
+   * of the context's OWN group, reached through that group rather than through
+   * a (group, context) pair.
    */
+  private async contextGroupId(contextId: string): Promise<string> {
+    const groupId = await getMeroJs().admin.getContextGroup(
+      normalizeContextId(contextId),
+    );
+    const resolved =
+      typeof groupId === "string"
+        ? groupId
+        : ((groupId as { data?: string } | null)?.data ?? "");
+    if (!resolved) {
+      throw new Error(`No group backs context ${contextId}`);
+    }
+    return resolved;
+  }
+
   async getContextVisibility(
     groupId: string,
     contextId: string,
   ): ApiResponse<ContextVisibility> {
     try {
-      const response = await axios.get(
-        `${this.base()}/groups/${groupId}/contexts/${contextId}/visibility`,
-        { headers: getAuthHeaders() },
-      );
-      return response.status === 200
-        ? ok(response.data.data)
-        : httpFail(response.status, response.statusText);
-    } catch {
-      // Endpoint not available on all merod versions — fail silently
-      return fail(404, "getContextVisibility not supported");
+      const cgid = await this.contextGroupId(contextId);
+      const info = await getMeroJs().admin.getGroupInfo(cgid);
+      return ok({
+        mode: (info as { subgroupVisibility?: VisibilityMode })
+          .subgroupVisibility as VisibilityMode,
+        // The old per-context payload carried a creator; group info does not
+        // expose one, and no caller reads it.
+        creator: "",
+      });
+    } catch (error) {
+      return catchError("getContextVisibility", error);
     }
   }
 
-  /**
-   * NOT MIGRATED — the endpoint no longer exists.
-   *
-   * core 40639c13 ("remove per-context join/invite/visibility/allowlist,
-   * groups-only model") deleted GET/PUT /groups/:id/contexts/:cid/visibility
-   * and GET/POST /groups/:id/contexts/:cid/allowlist. Per-context visibility
-   * and allowlists were replaced by subgroup membership as the access
-   * boundary: an admin creates a restricted subgroup, adds members to it
-   * explicitly, and puts the contexts there.
-   *
-   * The replacement calls are setSubgroupVisibility / addGroupMembers /
-   * removeGroupMembers, all of which this file already exposes. Rewiring the
-   * admin UI (ChannelsTab's VisibilityBadge and AllowlistContainer) onto that
-   * model is a product change, not a transport change, so it is deliberately
-   * out of scope here — these keep hitting the old route and keep failing, as
-   * they already do against any node newer than the removal.
-   */
   async setContextVisibility(
     groupId: string,
     contextId: string,
     request: SetContextVisibilityRequest,
   ): ApiResponse<void> {
     try {
-      const response = await axios.put(
-        `${this.base()}/groups/${groupId}/contexts/${contextId}/visibility`,
-        request,
-        { headers: getAuthHeaders() },
-      );
-      return response.status === 200
-        ? ok(undefined as void)
-        : httpFail(response.status, response.statusText);
+      const cgid = await this.contextGroupId(contextId);
+      // The group-level request names the field `subgroupVisibility`; the
+      // per-context one called the same value `mode`.
+      await getMeroJs().admin.setSubgroupVisibility(cgid, {
+        subgroupVisibility: request.mode,
+      });
+      return ok(undefined as void);
     } catch (error) {
       return catchError("setContextVisibility", error);
     }
   }
 
-  /**
-   * NOT MIGRATED — the endpoint no longer exists.
-   *
-   * core 40639c13 ("remove per-context join/invite/visibility/allowlist,
-   * groups-only model") deleted GET/PUT /groups/:id/contexts/:cid/visibility
-   * and GET/POST /groups/:id/contexts/:cid/allowlist. Per-context visibility
-   * and allowlists were replaced by subgroup membership as the access
-   * boundary: an admin creates a restricted subgroup, adds members to it
-   * explicitly, and puts the contexts there.
-   *
-   * The replacement calls are setSubgroupVisibility / addGroupMembers /
-   * removeGroupMembers, all of which this file already exposes. Rewiring the
-   * admin UI (ChannelsTab's VisibilityBadge and AllowlistContainer) onto that
-   * model is a product change, not a transport change, so it is deliberately
-   * out of scope here — these keep hitting the old route and keep failing, as
-   * they already do against any node newer than the removal.
-   */
   async getContextAllowlist(
     groupId: string,
     contextId: string,
   ): ApiResponse<string[]> {
     try {
-      const response = await axios.get(
-        `${this.base()}/groups/${groupId}/contexts/${contextId}/allowlist`,
-        { headers: getAuthHeaders() },
-      );
-      return response.status === 200
-        ? ok(response.data.data)
-        : httpFail(response.status, response.statusText);
+      const cgid = await this.contextGroupId(contextId);
+      // The allowlist IS the membership of the context's own group.
+      const listed = await getMeroJs().admin.listGroupMembers(cgid);
+      const members = Array.isArray(listed)
+        ? (listed as Array<{ identity: string }>)
+        : ((listed as { members?: Array<{ identity: string }> })?.members ?? []);
+      return ok(members.map((m) => m.identity));
     } catch (error) {
       return catchError("getContextAllowlist", error);
     }
   }
 
-  /**
-   * NOT MIGRATED — the endpoint no longer exists.
-   *
-   * core 40639c13 ("remove per-context join/invite/visibility/allowlist,
-   * groups-only model") deleted GET/PUT /groups/:id/contexts/:cid/visibility
-   * and GET/POST /groups/:id/contexts/:cid/allowlist. Per-context visibility
-   * and allowlists were replaced by subgroup membership as the access
-   * boundary: an admin creates a restricted subgroup, adds members to it
-   * explicitly, and puts the contexts there.
-   *
-   * The replacement calls are setSubgroupVisibility / addGroupMembers /
-   * removeGroupMembers, all of which this file already exposes. Rewiring the
-   * admin UI (ChannelsTab's VisibilityBadge and AllowlistContainer) onto that
-   * model is a product change, not a transport change, so it is deliberately
-   * out of scope here — these keep hitting the old route and keep failing, as
-   * they already do against any node newer than the removal.
-   */
   async manageContextAllowlist(
     groupId: string,
     contextId: string,
     request: ManageAllowlistRequest,
   ): ApiResponse<void> {
     try {
-      const response = await axios.post(
-        `${this.base()}/groups/${groupId}/contexts/${contextId}/allowlist`,
-        request,
-        { headers: getAuthHeaders() },
-      );
-      return response.status === 200
-        ? ok(undefined as void)
-        : httpFail(response.status, response.statusText);
+      const cgid = await this.contextGroupId(contextId);
+      if (request.add?.length) {
+        await getMeroJs().admin.addGroupMembers(cgid, {
+          members: request.add.map((identity) => ({
+            identity,
+            role: "Member" as const,
+          })),
+        });
+      }
+      if (request.remove?.length) {
+        await getMeroJs().admin.removeGroupMembers(cgid, {
+          members: request.remove,
+        });
+      }
+      return ok(undefined as void);
     } catch (error) {
       return catchError("manageContextAllowlist", error);
     }
