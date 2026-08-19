@@ -75,15 +75,16 @@ jobs:
         #     merobox 0.6.54 dropped it (core#3393 removed the concept in rc.21),
         #     so new merobox + old node => "missing field `upgradePolicy`".
         #   * old merobox + rc.21+ node => the reverse, an unknown-field reject.
-        # The scenarios here pin merod 0.11.0-rc.22, so merobox must be >= 0.6.54.
+        # The scenarios here pin merod 0.11.0-rc.24, so merobox must be >= 0.6.55.
         # Changing either pin without the other is the failure mode.
         #
-        # calimero-client-py is merobox's unpinned dependency and is the layer
-        # that actually builds the request, so it is echoed into the log: when
-        # this job breaks on a no-op commit, that line is what identifies the
-        # culprit without a bisect.
+        # calimero-client-py is the layer that actually builds the request, and
+        # merobox only requires `>=0.6.28` — so an unpinned install silently
+        # tracks core master and can break this job on a no-op commit. It is
+        # now pinned explicitly alongside merobox, and still echoed into the
+        # log so a future drift is identifiable without a bisect.
         run: |
-          pip install merobox==0.6.55
+          pip install "merobox==0.6.55" "calimero-client-py==0.6.29"
           merobox --version
           pip show calimero-client-py | sed -n 's/^Version: /calimero-client-py /p'
 

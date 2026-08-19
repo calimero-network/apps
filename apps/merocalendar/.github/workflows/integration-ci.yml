@@ -76,7 +76,7 @@ jobs:
         # actually builds the request — is echoed so that failure is diagnosable
         # from the log instead of a bisect.
         run: |
-          pip install merobox==0.6.55
+          pip install "merobox==0.6.55" "calimero-client-py==0.6.29"
           merobox --version
           pip show calimero-client-py | sed -n 's/^Version: /calimero-client-py /p'
 

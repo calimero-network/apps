@@ -17,7 +17,7 @@ nodes:
   # contract bug: rc.20 and older require `upgradePolicy` on create_namespace,
   # and merobox 0.6.54+ stopped sending it (core#3393 dropped the concept in
   # rc.21). rc.22 pairs with merobox >= 0.6.54; this repo pins 0.6.55.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.22
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.24
   prefix: calimero-node
 
 steps:

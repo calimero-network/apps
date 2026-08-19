@@ -61,7 +61,7 @@ install: app-install
 # wasm-opt and the copy into res/, and additionally emits res/abi.json +
 # res/state-schema.json and embeds the ABI in the wasm — which the old script
 # could not do at all. Install it with:
-#   cargo install --git https://github.com/calimero-network/core --tag 0.11.0-rc.22 cargo-mero
+#   cargo install --git https://github.com/calimero-network/core --tag 0.11.0-rc.24 cargo-mero
 # and keep the tag equal to logic/Cargo.toml's calimero-sdk tag: the ABI emitter
 # is versioned with core.
 logic-build:

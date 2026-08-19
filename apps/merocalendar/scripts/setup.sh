@@ -39,7 +39,7 @@ step "Building Rust WASM logic…"
 # cosmetic: the node reads it to plan an upgrade, so a wasm built the old way is
 # not the artifact CI and the registry publish produce.
 # Install it with:  cargo install --git https://github.com/calimero-network/core \
-#                     --tag 0.11.0-rc.22 cargo-mero --locked
+#                     --tag 0.11.0-rc.24 cargo-mero --locked
 command -v cargo-mero >/dev/null 2>&1 \
   || { err "cargo-mero not found — install it (see comment above)"; exit 1; }
 cd "$REPO_ROOT/logic" && cargo mero build
