@@ -54,8 +54,8 @@ make workflows    # 2-node signaling e2e (needs Docker + merobox)
 ```
 
 The contract compiles to `logic/res/mero_meet.wasm`. Build deps follow the
-calimero rc.7 convention: `calimero-sdk` / `-storage` / `-storage-macros` are
-git-tag deps on `core.git` (`tag = "0.11.0-rc.7"`), not crates.io versions.
+calimero git-tag convention: `calimero-sdk` / `-storage` / `-storage-macros` are
+git-tag deps on `core.git` (`tag = "0.11.0-rc.24"`), not crates.io versions.
 
 ## Contract API (RPC)
 
