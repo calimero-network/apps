@@ -91,7 +91,7 @@ export default function TeamsPage() {
     try {
       const data = await adminPost<{ namespaceId?: string; groupId?: string; id?: string }>(
         "/namespaces",
-        { applicationId: await ensureAppId(), alias: name, name, upgradePolicy: "LazyOnAccess" },
+        { applicationId: await ensureAppId(), alias: name, name },
       );
       const id = data.namespaceId ?? data.groupId ?? data.id ?? "";
       // Cache the name so it survives even if the server later returns no alias,

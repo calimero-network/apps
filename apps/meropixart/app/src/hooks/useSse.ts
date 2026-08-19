@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import {
   SseClient,
   type GroupMembershipEventData,
+  type GroupMigrationEventData,
   type SseEventData,
 } from "@calimero-network/mero-js";
 import { useMero } from "@calimero-network/mero-react";
@@ -28,7 +29,7 @@ export function useSse(
     // mero-js 7 widened this handler: an `event` can also be a group-membership
     // event, which is keyed by `groupId` and carries no `contextId`. This hook
     // only forwards context events, so narrow on the discriminating field.
-    const handler = (evt: SseEventData | GroupMembershipEventData) => {
+    const handler = (evt: SseEventData | GroupMembershipEventData | GroupMigrationEventData) => {
       if ("contextId" in evt && evt.contextId === contextId) {
         onEventRef.current(evt.data);
       }
