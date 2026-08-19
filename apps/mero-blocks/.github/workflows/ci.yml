@@ -98,7 +98,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install merobox
-        run: pip install merobox
+        run: pip install "merobox==0.6.55" "calimero-client-py==0.6.29"
       # merod occasionally hits a RocksDB manifest race right after init on CI
       # disks ("MANIFEST-xxxxxx: No such file or directory") — retry from a
       # clean slate rather than fail the pipeline on a startup flake.

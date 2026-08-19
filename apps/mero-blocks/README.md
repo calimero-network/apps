@@ -57,7 +57,7 @@ See **[PLAN.md](./PLAN.md)** for the full design document.
 ```
 
 - **Contract** (`logic/`, Rust on calimero-sdk, pinned to core
-  **0.11.0-rc.13** git tags — the latest rc): `overrides: UnorderedMap<"x,y,z",
+  **0.11.0-rc.24** git tags): `overrides: UnorderedMap<"x,y,z",
   {b, updatedAt}>` with per-key LWW, `players` presence map, room-clock reap.
 - **Engine** (`app/src/engine/`, pure TS — unit-testable without a GPU):
   deterministic terrain (value noise + trees + ores), culled chunk mesher with
@@ -147,7 +147,7 @@ make publish         # calimero-registry bundle push --remote (needs $CALIMERO_A
 
 The bundle is built by [`cargo mero`](https://github.com/calimero-network/core/tree/master/tools/cargo-mero)
 (install it from the core release that matches the SDK tag in
-`logic/Cargo.toml`: `cargo install --git https://github.com/calimero-network/core --tag 0.11.0-rc.20 cargo-mero`).
+`logic/Cargo.toml`: `cargo install --git https://github.com/calimero-network/core --tag 0.11.0-rc.24 cargo-mero`).
 It compiles the wasm, embeds the ABI, hashes every artifact and renders the
 manifest from `[package.metadata.calimero]` — the app's name, description,
 author, icon, tags, links and deep-link `slug` all live there, not in a script.
