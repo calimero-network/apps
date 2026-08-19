@@ -1,24 +1,56 @@
 [package]
 name = "mero-tag"
 description = "Mero Tag — distributed real-time location sharing on Calimero"
+# NOT the release version. cargo requires a version field, but
+# .github/workflows/deploy-bundle.yml ignores it: the registry owns the number —
+# the check job takes the highest published appVersion and increments the patch.
 version = "0.1.0"
 edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+# Read by `cargo mero bundle` (core #3374): every field the node and the registry
+# render has a producer here, so nothing hand-writes a manifest.json. There was
+# no metadata block at all before, which is why this app has never appeared on
+# the registry — `bundle` had no package id, slug or icon decision to work from.
+#
+# `appVersion` is deliberately absent: deploy-bundle.yml resolves it from the
+# registry and increments the patch.
+#
+# No `frontend`: this ships as a native iOS app, not a web app a node would open.
+[package.metadata.calimero]
+package = "com.calimero.mero-tag"
+name = "Mero Tag"
+description = "Mero Tag — distributed, real-time location sharing on the Calimero p2p network."
+author = "Calimero"
+# The desktop resolves a deep link (calimero://<slug>/…) by Application.package,
+# so the slug IS the package id.
+slug = "com.calimero.mero-tag"
+tags = ["location", "tracking", "geofencing"]
+github = "https://github.com/calimero-network/mero-tag"
+# The oldest node that can run this bundle, and the SDK tag it was built and
+# tested against. Absent before, which meant cargo-mero fell back to its "0.1.0"
+# placeholder floor — a claim that any node at all can run this wasm.
+min-runtime-version = "0.11.0-rc.24"
+
 [dependencies]
 borsh = "0.10.3"
 borsh-derive = "0.10.3"
-calimero-sdk = { git = "https://github.com/calimero-network/core", branch = "master" }
-calimero-storage = { git = "https://github.com/calimero-network/core", branch = "master" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core", branch = "master" }
+# Pin a real release tag, never `branch = "master"`: master rides unreleased
+# protocol work against nodes that run the release, and a moving dep means the
+# signed bundle is not reproducible — the same commit could publish twice with
+# different bytes. All SDK crates must share the exact same tag (the workspace
+# version at a tag is 0.0.0, so version strings cannot express this).
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.24" }
+calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.24" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.24" }
 thiserror = "1.0.56"
 serde_json = "1.0.113"
 
-[build-dependencies]
-calimero-wasm-abi = { git = "https://github.com/calimero-network/core", branch = "master" }
-serde_json = "1.0.113"
+# No [build-dependencies]: there is no build.rs in this crate, so the
+# calimero-wasm-abi build-dep was pulling an unpinned copy of core for nothing.
+# `cargo mero build` emits and embeds the ABI itself.
 
 [profile.app-release]
 inherits = "release"

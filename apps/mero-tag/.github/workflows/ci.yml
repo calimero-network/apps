@@ -1,0 +1,124 @@
+# CI for Mero Tag.
+#
+# This replaces workflows/ci.yml, which sat next to the merobox scenarios with a
+# comment reading "Mirror into .github/workflows/ to enable on GitHub" — so it
+# was never active. It also declared `branches: [main]` while this repo's default
+# is `master`, which is the failure mode that hides itself: mirroring it as-is
+# would have produced a workflow that runs on no push at all.
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  logic:
+    name: WASM contract (Rust)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: logic
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.89.0
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy
+      - name: Install cargo-mero
+        uses: ./.github/actions/install-cargo-mero
+      - run: cargo test
+      - run: cargo clippy --target wasm32-unknown-unknown --profile app-release -- -D warnings
+      # `cargo mero build`, not `bash build.sh`: the hand-rolled script produced a
+      # wasm with no `calimero_abi_v1` section, so what CI proved was not what
+      # shipped. This emits and embeds the ABI, which also means a public type
+      # missing an `AbiType` impl fails here rather than at bundle time.
+      - name: Build WASM (+ ABI embed)
+        run: cargo mero build
+
+  merokit:
+    name: MeroKit (Swift)
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: app/MeroKit
+    steps:
+      - uses: actions/checkout@v4
+      # Pinned rather than inherited: the installed simulator runtimes differ per
+      # Xcode, so a default bump silently changes what this job is testing.
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app
+      # The verify binary is pure logic and needs no Xcode, so it runs first and
+      # fails fast if the client cannot even construct its requests.
+      - run: swift run merokit-verify
+      - run: swift test
+
+  app:
+    name: iOS app build
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - working-directory: app/MeroTag
+        run: xcodegen generate
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app
+
+      # Addressed by UDID after waiting, not by name. On a cold runner
+      # CoreSimulator is often not up yet, so xcodebuild's device list comes back
+      # EMPTY and it fails after a 60s search with "no available devices matched"
+      # even though the image ships plenty. Touching simctl starts the service.
+      # A name like 'iPhone 17' additionally breaks whenever the image renames
+      # its models.
+      - name: Wait for a simulator, then run app tests
+        working-directory: app/MeroTag
+        run: |
+          set -euo pipefail
+          udid=""
+          for attempt in $(seq 1 20); do
+            udid=$(xcrun simctl list devices available -j \
+              | python3 -c 'import json,sys;d=json.load(sys.stdin)["devices"];print(next((x["udid"] for rt in d for x in d[rt] if "iPhone" in x["name"]), ""))')
+            [ -n "$udid" ] && break
+            echo "attempt $attempt: no iPhone simulator yet, waiting…"
+            sleep 5
+          done
+          if [ -z "$udid" ]; then
+            echo "::error::no iOS simulator became available — tests did NOT run"
+            xcrun simctl list devices
+            exit 1
+          fi
+          echo "using simulator $udid"
+          xcrun simctl boot "$udid" || true
+          xcodebuild test -project MeroTag.xcodeproj -scheme MeroTag \
+            -destination "platform=iOS Simulator,id=$udid" \
+            -derivedDataPath .build -only-testing:MeroTagTests \
+            CODE_SIGNING_ALLOWED=NO
+
+  logic-workflows:
+    name: WASM logic workflows (merobox)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.89.0
+        with:
+          targets: wasm32-unknown-unknown
+      - run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Install cargo-mero
+        uses: ./.github/actions/install-cargo-mero
+      - name: Build WASM
+        run: cd logic && cargo mero build
+      # Both pinned. merobox only requires `calimero-client-py>=0.6.28`, and
+      # client-py is the layer that actually builds the admin-API request — so an
+      # unpinned install tracks core master and reddens this job on a commit that
+      # changed nothing. The pair must match the merod image in workflows/.
+      - name: Install merobox
+        run: |
+          pip install "merobox==0.6.55" "calimero-client-py==0.6.29"
+          merobox --version
+          pip show calimero-client-py | sed -n 's/^Version: /calimero-client-py /p'
+      # Schema-check first: a typo in a step name or field otherwise only shows up
+      # after several minutes of node boot.
+      - name: Validate workflow schema
+        run: cd workflows && merobox bootstrap validate logic-test.yml
+      - name: Run merobox workflow (boots merod in Docker)
+        run: bash scripts/workflows.sh logic-test.yml
