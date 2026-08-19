@@ -132,7 +132,6 @@ export async function createStreamNamespace(
   onStatus("Creating the namespace…");
   const ns = await admin.createNamespace({
     applicationId: opts.applicationId,
-    upgradePolicy: "LazyOnAccess",
     name: opts.name,
   });
 
