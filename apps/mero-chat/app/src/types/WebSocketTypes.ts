@@ -47,8 +47,14 @@ export type MembershipChangeKind =
   | "MemberRemoved";
 
 export interface GroupMembershipData {
-  member: string;
-  role?: string;
+  /**
+   * The member's ACCOUNT, hex-encoded 32 bytes (64 chars) — the principal the
+   * governance rows name, not a bs58 device/signing key. mero-js renamed the
+   * field (`member` -> `memberAccount`) precisely so a consumer still comparing
+   * this against a device key fails loudly instead of silently never matching.
+   */
+  memberAccount: string;
+  role?: "Admin" | "Member" | "ReadOnly" | "ReadOnlyTee";
 }
 
 export interface WebSocketEvent {
