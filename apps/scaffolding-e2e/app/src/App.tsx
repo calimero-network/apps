@@ -2,8 +2,10 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useMero } from "@calimero-network/mero-react";
 import {
   clearContextId,
+  discoverLocalNodes,
   getContextId,
   getNodeUrl,
+  localNodeUrl,
   setContextId,
   setContextIdentity,
   setNodeUrl,
@@ -146,7 +148,9 @@ function ContextBar({ nodeUrl, contextId, onMenuToggle, children }: { nodeUrl: s
   const [nodeBUrlCopied, setNodeBUrlCopied] = useState(false);
 
   function getNodeBUrl() {
-    const base = getNodeUrl() ?? "http://localhost:2528";
+    // `localNodeUrl(2528)` rather than a literal: one place decides what a local
+    // node URL looks like, and it is the SDK's.
+    const base = getNodeUrl() ?? localNodeUrl(2528);
     const suggested = base.replace(/(\d+)(?!.*\d)/, (m) => String(Number(m) + 1));
     const u = new URL(window.location.origin + window.location.pathname);
     u.searchParams.set("node", suggested);
@@ -319,20 +323,38 @@ function ContextBar({ nodeUrl, contextId, onMenuToggle, children }: { nodeUrl: s
   );
 }
 
-function ConnectScreen() {
-  // `connectToNode` replaces the old `login({ type, url })`: mero-react's login
-  // modal no longer has Local/Remote tabs, so a URL is all it takes.
+// Exported for `ConnectScreen.test.tsx`; the app still renders it internally.
+export function ConnectScreen() {
+  // `connectToNode` replaces the old `login({ type, url })` — mero-react's login
+  // modal has no Local/Remote tabs any more. That is NOT the same as "so the app
+  // must supply the URL": the SDK ships port discovery (mero-js
+  // `discoverLocalNodes`, re-exported by mero-react), and this screen used to
+  // skip it and pre-fill a hardcoded `http://localhost:2528` instead. A typed
+  // URL is one transposed digit from an "unreachable node" that is really a typo,
+  // and it cannot find the second node of a two-node dev stack at all.
   const { connectToNode, isOnline } = useMero();
-  const [url, setUrl] = useState(
-    getNodeUrl() ?? import.meta.env.VITE_NODE_URL ?? "http://localhost:2528",
-  );
+  const [url, setUrl] = useState(getNodeUrl() ?? import.meta.env.VITE_NODE_URL ?? "");
+  /** `null` while probing; `[]` means nothing local answered. */
+  const [found, setFound] = useState<string[] | null>(null);
 
-  function connect() {
-    const trimmed = url.trim();
-    if (!trimmed) return;
-    setNodeUrl(trimmed);
-    connectToNode(trimmed);
-  }
+  useEffect(() => {
+    // Aborted on unmount so a slow probe cannot setState into a dead component.
+    const ac = new AbortController();
+    discoverLocalNodes({ signal: ac.signal })
+      .then((urls) => setFound(urls))
+      .catch(() => setFound([]));
+    return () => ac.abort();
+  }, []);
+
+  const connect = useCallback(
+    (target: string) => {
+      const trimmed = target.trim();
+      if (!trimmed) return;
+      setNodeUrl(trimmed);
+      connectToNode(trimmed);
+    },
+    [connectToNode],
+  );
 
   return (
     <div
@@ -370,6 +392,7 @@ function ConnectScreen() {
           </div>
         </div>
 
+        {/* Discovered nodes first — one click, nothing to type. */}
         <div style={{ marginBottom: 20 }}>
           <label
             style={{
@@ -382,26 +405,85 @@ function ConnectScreen() {
               marginBottom: 8,
             }}
           >
-            Node URL
+            Local nodes
+          </label>
+          {found === null && (
+            <div style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
+              Looking on ports 2428, 2429, 2528, 2529&hellip;
+            </div>
+          )}
+          {found?.length === 0 && (
+            <div style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
+              No local node answered. Start one with <code>merod</code>, or enter a
+              URL below.
+            </div>
+          )}
+          {found && found.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {found.map((u) => (
+                <button
+                  key={u}
+                  className="btn-calimero"
+                  style={{
+                    width: "100%",
+                    padding: "9px 12px",
+                    fontSize: 13,
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                  onClick={() => connect(u)}
+                >
+                  <span
+                    style={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: "50%",
+                      background: "var(--color-success, #43d17a)",
+                      flex: "none",
+                    }}
+                  />
+                  <code style={{ fontSize: 12 }}>{u}</code>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <label
+            style={{
+              display: "block",
+              fontSize: 11,
+              fontWeight: 600,
+              color: "var(--color-text-muted)",
+              textTransform: "uppercase",
+              letterSpacing: "0.5px",
+              marginBottom: 8,
+            }}
+          >
+            Or another node
           </label>
           <input
             className="form-control"
             style={{ width: "100%", boxSizing: "border-box" }}
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && connect()}
-            placeholder="http://localhost:2528"
-            autoFocus
-          />
+            onKeyDown={(e) => e.key === "Enter" && connect(url)}
+            placeholder={localNodeUrl(2528)}
+            />
           <div style={{ fontSize: 11, color: "var(--color-text-muted)", marginTop: 7 }}>
-            Pre-filled from <code>VITE_NODE_URL</code>. Edit if your node is on a different host.
+            For a remote node, or a local one on a non-standard port. Pre-filled from{" "}
+            <code>VITE_NODE_URL</code> when set.
           </div>
         </div>
 
         <button
           className="btn-calimero"
           style={{ width: "100%", padding: "10px 14px", fontSize: 13 }}
-          onClick={connect}
+          onClick={() => connect(url)}
+          disabled={!url.trim()}
         >
           Connect &amp; Login
         </button>

@@ -1,4 +1,4 @@
-import { getAccessToken, getNodeUrl } from "../lib/mero";
+import { getAccessToken, getNodeUrl, nodeEndpoint } from "../lib/mero";
 
 let _onUnauthorized: (() => void) | null = null;
 
@@ -47,7 +47,10 @@ async function adminFetch(path: string, opts?: RequestInit): Promise<unknown> {
   if (!baseUrl) throw new Error("Node URL not set — connect to a node first");
   if (!token) throw new Error("Not authenticated — no access token");
 
-  const res = await fetch(`${baseUrl}${path}`, {
+  // Naive `${baseUrl}${path}` concatenation produced `//admin-api/...` whenever
+  // the stored node URL ended in a slash. `nodeEndpoint` normalises the base and
+  // preserves a path prefix.
+  const res = await fetch(nodeEndpoint(baseUrl, path.replace(/^\//, "")), {
     ...opts,
     headers: {
       Authorization: `Bearer ${token}`,

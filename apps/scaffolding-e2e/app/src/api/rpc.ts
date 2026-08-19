@@ -13,7 +13,7 @@
 //     — the message itself as a byte array. Decoding it is the difference between
 //     showing "that key is frozen" and showing a wall of numbers.
 
-import { getAccessToken, getContextId, getNodeUrl } from "../lib/mero";
+import { getAccessToken, getContextId, getNodeUrl, nodeEndpoint } from "../lib/mero";
 
 /**
  * The node's JSON-RPC envelope, with `output` parsed.
@@ -125,7 +125,10 @@ export async function rpcRaw<T = unknown>(
     );
   }
 
-  const response = await fetch(`${nodeUrl.replace(/\/$/, "")}/jsonrpc`, {
+  // `nodeEndpoint`, not a hand-rolled join: it normalises the base first, so a
+  // node URL carrying a path prefix (a NODE_PATH_PREFIX deployment like
+  // `http://host/node1`) keeps that segment instead of losing it.
+  const response = await fetch(nodeEndpoint(nodeUrl, "jsonrpc"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

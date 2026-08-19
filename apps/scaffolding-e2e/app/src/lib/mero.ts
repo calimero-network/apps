@@ -17,10 +17,15 @@
 
 import {
   clearAllStorage,
+  DEFAULT_LOCAL_NODE_PORTS,
+  discoverLocalNodes,
   getContextId,
   getContextIdentity,
   getNodeUrl,
   LocalStorageTokenStore,
+  localNodeUrl,
+  nodeEndpoint,
+  probeNodeHealth,
   setContextId,
   setContextIdentity,
   setNodeUrl,
@@ -34,6 +39,27 @@ export {
   setContextId,
   setContextIdentity,
   setNodeUrl,
+};
+
+// ── Node discovery ───────────────────────────────────────────────────────────
+//
+// These come from the SDK; this app used to ask the user to type a node URL and
+// pre-filled it with a hardcoded `http://localhost:2528`. That was never
+// necessary — mero-js has shipped port discovery the whole time mero-react has
+// re-exported it, and a hand-typed URL is one transposed digit away from an
+// "unreachable node" that is really a typo.
+//
+//   DEFAULT_LOCAL_NODE_PORTS  [2428, 2429, 2528, 2529] — both dev-stack nodes
+//   discoverLocalNodes()      probes those in parallel, returns healthy bases
+//   probeNodeHealth(url)      one base; resolves false rather than throwing
+//   localNodeUrl(port)        the canonical base URL for a local port
+//   nodeEndpoint(base, path)  join that survives a base carrying a path prefix
+export {
+  DEFAULT_LOCAL_NODE_PORTS,
+  discoverLocalNodes,
+  localNodeUrl,
+  nodeEndpoint,
+  probeNodeHealth,
 };
 
 /** The same store `MeroProvider` uses, so tokens written here are the ones the
