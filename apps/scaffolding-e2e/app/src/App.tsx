@@ -423,28 +423,15 @@ export function ConnectScreen() {
               {found.map((u) => (
                 <button
                   key={u}
-                  className="btn-calimero"
-                  style={{
-                    width: "100%",
-                    padding: "9px 12px",
-                    fontSize: 13,
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                  }}
+                  className="node-option"
                   onClick={() => connect(u)}
+                  title={`Connect to ${u}`}
                 >
-                  <span
-                    style={{
-                      width: 7,
-                      height: 7,
-                      borderRadius: "50%",
-                      background: "var(--color-success, #43d17a)",
-                      flex: "none",
-                    }}
-                  />
-                  <code style={{ fontSize: 12 }}>{u}</code>
+                  <span className="node-option-dot" />
+                  {/* A plain span, not <code>: the global `code` rule paints
+                      text brand-green, which is unreadable on any green fill and
+                      needlessly loud here. */}
+                  <span>{u}</span>
                 </button>
               ))}
             </div>
