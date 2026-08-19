@@ -5,6 +5,7 @@
   &__icon__down {
     margin-left: 10px;
     font-size: 0.8em;
+    color: var(--mc-text-dim);
   }
 
   &__header {
@@ -12,9 +13,13 @@
     display: flex;
     align-items: center;
     cursor: pointer;
+    border-radius: 4px;
 
     &:hover {
-      background-color: #f6f6f6;
+      // Was #f6f6f6 — a light grey that disappears against the dark theme's
+      // surface. `--mc-hover` is the token the other option rows already use,
+      // so the picker follows [data-theme] like the rest of the app.
+      background-color: var(--mc-hover);
     }
   }
 
@@ -23,21 +28,43 @@
     width: 25px;
     outline: none;
     border-radius: 4px;
+    // A swatch can be near-white; without an edge it vanishes on a white
+    // surface and the control looks empty.
+    border: 1px solid var(--mc-border);
   }
 
   &__list {
-    margin: 0;
-    display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    row-gap: 10px;
+    position: absolute;
     left: 0;
     top: calc(100% + 8px);
-    width: 276px;
-    position: absolute;
-    padding: 15px 9px 9px 15px;
-    border-radius: 4px;
-    background: rgb(255, 255, 255);
-    border: 0px solid rgba(0, 0, 0, 0.25);
-    box-shadow: rgb(0 0 0 / 25%) 0px 1px 4px;
+    // The bug: with no z-index this panel painted in DOM order, so every form
+    // row and button *after* the picker drew on top of it — the grid appeared
+    // to bleed through the rest of the dialog. Sits above sibling content while
+    // staying inside the modal's own stacking context (the modal is z-index 100
+    // and establishes a context via its transform, so this does not need to
+    // out-rank it).
+    z-index: 50;
+
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 10px;
+
+    // Was a hard 276px, which overflowed the dialog on a narrow window. Shrinks
+    // to fit the viewport instead, and scrolls rather than growing past it.
+    width: max-content;
+    max-width: min(276px, calc(100vw - 2rem));
+    max-height: 240px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+
+    margin: 0;
+    padding: 12px;
+    list-style: none;
+
+    background: var(--mc-surface);
+    color: var(--mc-text);
+    border: 1px solid var(--mc-border);
+    border-radius: 6px;
+    box-shadow: var(--shadow);
   }
 }

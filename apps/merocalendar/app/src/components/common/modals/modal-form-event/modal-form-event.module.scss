@@ -215,9 +215,12 @@
   list-style: none;
   margin: 0;
   padding: 4px;
-  z-index: 20;
+  // 50, matching the colour picker and the shared Select, so which panel wins
+  // does not depend on which component happens to be mounted.
+  z-index: 50;
   max-height: 220px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .peers__option {
   display: flex;

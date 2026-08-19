@@ -6,13 +6,15 @@
 
   &__header {
     padding: 0.4em 2em 0.4em 1em;
-    box-shadow: 0 2px 3px rgba(0, 0, 0, 0.15);
+    box-shadow: var(--shadow-sm);
     font-weight: 500;
     font-size: 1.3rem;
     color: var(--accent);
     background: var(--mc-surface);
+    border-radius: 4px;
     display: flex;
     align-items: center;
+    cursor: pointer;
 
     &__title {
       &::first-letter {
@@ -27,31 +29,44 @@
   }
 
   &__list {
-    padding: 0;
+    padding: 8px 0;
     margin: 0;
     background: var(--mc-surface);
+    color: var(--mc-text);
     font-size: 14px;
     font-weight: 400;
-    padding: 8px 0;
-    
+    list-style: none;
+
     &:first-child {
       padding-top: 0.8em;
     }
-    
+
     &__container {
-      width: 300px;
-      height: auto;
       position: absolute;
       right: 0;
       top: calc(100% + 12px);
-      z-index: 10;
-      box-shadow: 0px 8px 10px 1px rgb(0 0 0 / 14%), 0px 3px 14px 2px rgb(0 0 0 / 12%), 0px 5px 5px -3px rgb(0 0 0 / 20%);
-      border-radius: 2px;
-      overflow: hidden;
+      // Raised from 10 to sit in the same band as the other dropdowns in this
+      // app (the modal's peers list and the colour picker), so which panel wins
+      // stops depending on which component happens to be mounted.
+      z-index: 50;
 
-      @media screen and (max-width: 400px) {
-        width: 250px;
-      }
+      // Was a fixed 300px with a 250px break at 400px. `min()` handles every
+      // width in one rule and cannot overflow a narrow viewport.
+      width: max-content;
+      min-width: 220px;
+      max-width: min(300px, calc(100vw - 2rem));
+
+      // The missing half: a long option list (every peer in a team) grew
+      // unbounded and ran off the bottom of the screen with no way to reach the
+      // entries past the fold.
+      max-height: 320px;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+
+      background: var(--mc-surface);
+      border: 1px solid var(--mc-border);
+      border-radius: 6px;
+      box-shadow: var(--shadow);
     }
   }
 }
