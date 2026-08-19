@@ -3,7 +3,8 @@ import {
   getNodeUrl as getAppEndpointKey,
   getContextIdentity as getExecutorPublicKey,
 } from "@calimero-network/mero-react";
-import { getAuthConfig } from "../meroJsClient";
+import { getAuthConfig, getMeroJs } from "../meroJsClient";
+import type { CreateContextRequest } from "@calimero-network/mero-js";
 import type { ApiResponse } from "../types";
 import { getApplicationId } from "../../constants/config";
 import type {
@@ -18,6 +19,22 @@ import type {
 } from "../nodeApi";
 
 const DEFAULT_NODE_ENDPOINT = "http://localhost:2428";
+
+/**
+ * mero-js throws on a non-2xx instead of returning a status, so every migrated
+ * call funnels its error through here to keep the `ApiResponse` envelope the
+ * data sources have always returned. `status` is carried when the SDK supplies
+ * one (HTTPError), so callers that branch on 404 keep working.
+ */
+function sdkError(context: string, error: unknown) {
+  const code = (error as { status?: number })?.status ?? 500;
+  const message =
+    error instanceof Error
+      ? error.message
+      : `An unexpected error occurred during ${context}`;
+  console.error(`${context} failed:`, error);
+  return { data: null, error: { code, message } } as const;
+}
 
 // Helper function to get auth headers
 function getAuthHeaders() {
@@ -49,8 +66,6 @@ export class ContextApiDataSource implements NodeApi {
       const bytes = encoder.encode(jsonString);
       const byteArray = Array.from(bytes);
 
-      const nodeEndpoint = getAppEndpointKey() || DEFAULT_NODE_ENDPOINT;
-
       const body: Record<string, unknown> = {
         applicationId: getApplicationId(),
         protocol: "near",
@@ -68,28 +83,13 @@ export class ContextApiDataSource implements NodeApi {
         body.name = props.name;
       }
 
-      const response = await axios.post(
-        `${nodeEndpoint}/admin-api/contexts`,
-        body,
-        {
-          headers: getAuthHeaders(),
-        },
+      // `body` carries `protocol`, which CreateContextRequest does not model;
+      // core still expects it, so the cast keeps sending it rather than
+      // dropping a field the node reads.
+      const data = await getMeroJs().admin.createContext(
+        body as unknown as CreateContextRequest,
       );
-
-      if (response.status === 200) {
-        return {
-          data: response.data.data,
-          error: null,
-        };
-      } else {
-        return {
-          data: null,
-          error: {
-            code: response.status,
-            message: response.statusText,
-          },
-        };
-      }
+      return { data, error: null };
     } catch (error) {
       console.error("createContext failed:", error);
       let errorMessage = "An unexpected error occurred during createContext";
@@ -108,6 +108,18 @@ export class ContextApiDataSource implements NodeApi {
 
   async joinContext(props: JoinContextProps): ApiResponse<string> {
     try {
+      // NOT MIGRATED — the endpoint no longer exists. core 40639c13
+      // ("remove per-context join/invite/visibility/allowlist, groups-only
+      // model") deleted POST /contexts/join along with context-level
+      // invitations. mero-js's `joinContext(contextId)` is a different
+      // operation: it posts to /contexts/{id}/join to subscribe to a context
+      // you already have group access to.
+      //
+      // The replacement flow is joinGroup (join the namespace via a group
+      // invitation) followed by joinGroupContext (subscribe to the context),
+      // both already implemented in groupApiDataSource. This method has no
+      // callers left in the app; it is kept only to satisfy the NodeApi
+      // interface and should be removed with it.
       const nodeEndpoint = getAppEndpointKey() || DEFAULT_NODE_ENDPOINT;
       const response = await axios.post(
         `${nodeEndpoint}/admin-api/contexts/join`,
@@ -153,108 +165,42 @@ export class ContextApiDataSource implements NodeApi {
     props: VerifyContextProps,
   ): ApiResponse<VerifyContextResponse> {
     try {
-      const nodeEndpoint = getAppEndpointKey() || DEFAULT_NODE_ENDPOINT;
-      const response = await axios.get(
-        `${nodeEndpoint}/admin-api/contexts/${props.contextId}`,
-        {
-          headers: getAuthHeaders(),
-        },
-      );
-
-      if (response.status === 200) {
-        return {
-          data: {
-            joined: response.data.data.rootHash ? true : false,
-            isSynced:
-              response.data.data.rootHash !==
-              "11111111111111111111111111111111",
-          },
-          error: null,
-        };
-      } else {
-        return {
-          data: null,
-          error: {
-            code: response.status,
-            message: response.statusText,
-          },
-        };
-      }
-    } catch (error) {
-      console.error("Error fetching context:", error);
+      // Core renamed `rootHash` to `contextStateHash`; the old key never
+      // populated, so `joined` was permanently false and `isSynced`
+      // permanently true. Read the field core actually sends.
+      const ctx = await getMeroJs().admin.getContext(props.contextId);
       return {
-        data: null,
-        error: { code: 500, message: "Failed to fetch context data." },
+        data: {
+          joined: !!ctx.contextStateHash,
+          isSynced: ctx.contextStateHash !== "11111111111111111111111111111111",
+        },
+        error: null,
       };
+    } catch (error) {
+      return sdkError("verifyContext", error);
     }
   }
 
   async createIdentity(): ApiResponse<CreateIdentityResponse> {
     try {
-      const nodeEndpoint = getAppEndpointKey() || DEFAULT_NODE_ENDPOINT;
-      const response = await axios.post(
-        `${nodeEndpoint}/admin-api/identity/context`,
-        {},
-        {
-          headers: getAuthHeaders(),
-        },
-      );
-
-      if (response.status === 200) {
-        return {
-          data: response.data.data,
-          error: null,
-        };
-      } else {
-        return {
-          data: null,
-          error: { code: response.status, message: response.statusText },
-        };
-      }
+      const data = await getMeroJs().admin.generateContextIdentity();
+      return { data, error: null };
     } catch (error) {
-      console.error("createIdentity failed:", error);
-      let errorMessage = "An unexpected error occurred during createIdentity";
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      }
-      return {
-        data: null,
-        error: { code: 500, message: errorMessage },
-      };
+      return sdkError("createIdentity", error);
     }
   }
 
   async deleteContext(props: DeleteContextProps): ApiResponse<string> {
     try {
-      const nodeEndpoint = getAppEndpointKey() || DEFAULT_NODE_ENDPOINT;
-      const response = await axios.delete(
-        `${nodeEndpoint}/admin-api/contexts/${props.contextId}`,
-        {
-          headers: getAuthHeaders(),
-          data: { requester: getExecutorPublicKey() },
-        },
-      );
-      if (response.status === 200) {
-        return {
-          data: response.data.data,
-          error: null,
-        };
-      } else {
-        return {
-          data: null,
-          error: { code: response.status, message: response.statusText },
-        };
-      }
-    } catch (error) {
-      console.error("Delete context failed:", error);
-      let errorMessage = "An unexpected error occurred during delete context";
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      }
-      return {
-        data: null,
-        error: { code: 500, message: errorMessage },
+      const data = await getMeroJs().admin.deleteContext(props.contextId, {
+        requester: getExecutorPublicKey() ?? undefined,
+      });
+      return { data, error: null } as unknown as {
+        data: string;
+        error: null;
       };
+    } catch (error) {
+      return sdkError("deleteContext", error);
     }
   }
 
@@ -271,7 +217,6 @@ export class ContextApiDataSource implements NodeApi {
     name?: string;
   }): ApiResponse<CreateContextResponse> {
     try {
-      const nodeEndpoint = getAppEndpointKey() || DEFAULT_NODE_ENDPOINT;
       const jsonString = JSON.stringify(params.initializationParams);
       const byteArray = Array.from(new TextEncoder().encode(jsonString));
 
@@ -290,61 +235,33 @@ export class ContextApiDataSource implements NodeApi {
       if (params.alias) body.alias = params.alias;
       if (params.name) body.name = params.name;
 
-      const response = await axios.post(
-        `${nodeEndpoint}/admin-api/contexts`,
-        body,
-        { headers: getAuthHeaders() },
+      // As in createContext: `protocol` and `alias` are not on
+      // CreateContextRequest but core reads them, so pass the body through.
+      const data = await getMeroJs().admin.createContext(
+        body as unknown as CreateContextRequest,
       );
-
-      if (response.status === 200) {
-        return { data: response.data.data, error: null };
-      } else {
-        return {
-          data: null,
-          error: { code: response.status, message: response.statusText },
-        };
-      }
+      return { data, error: null };
     } catch (error) {
-      console.error("createGroupContext failed:", error);
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "An unexpected error occurred during createGroupContext";
-      return { data: null, error: { code: 500, message: errorMessage } };
+      return sdkError("createGroupContext", error);
     }
   }
 
   async listContexts(): ApiResponse<import("../nodeApi").ContextInfo[]> {
     try {
-      const nodeEndpoint = getAppEndpointKey() || DEFAULT_NODE_ENDPOINT;
-      const response = await axios.get(`${nodeEndpoint}/admin-api/contexts`, {
-        headers: getAuthHeaders(),
-      });
+      const { contexts: rawContexts = [] } =
+        await getMeroJs().admin.getContexts();
 
-      if (response.status === 200) {
-        // The response structure is { data: { contexts: [...] } }
-        const rawContexts =
-          response.data.data?.contexts || response.data?.contexts || [];
+      // Core's wire key is `contextStateHash`; `rootHash` never populated, so
+      // the sync indicator in ContextSwitcher was stuck. Keep the field name
+      // the ContextInfo interface exposes, fed from the key core sends.
+      const contexts = rawContexts.map((ctx) => ({
+        contextId: ctx.id,
+        applicationId: ctx.applicationId,
+        lastUpdate: 0,
+        rootHash: ctx.contextStateHash,
+      }));
 
-        // Map the API response to our ContextInfo interface
-        // API uses 'id' but our interface expects 'contextId'
-        const contexts = rawContexts.map((ctx: { id: string; applicationId: string; lastUpdate?: number; rootHash?: string }) => ({
-          contextId: ctx.id,
-          applicationId: ctx.applicationId,
-          lastUpdate: ctx.lastUpdate || 0,
-          rootHash: ctx.rootHash,
-        }));
-
-        return {
-          data: contexts,
-          error: null,
-        };
-      } else {
-        return {
-          data: null,
-          error: { code: response.status, message: response.statusText },
-        };
-      }
+      return { data: contexts, error: null };
     } catch (error) {
       console.error("listContexts failed:", error);
       let errorMessage = "An unexpected error occurred while fetching contexts";

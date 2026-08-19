@@ -1,7 +1,7 @@
 import axios from "axios";
 import bs58 from "bs58";
 import { getNodeUrl as getAppEndpointKey } from "@calimero-network/mero-react";
-import { getAuthConfig } from "../meroJsClient";
+import { getAuthConfig, getMeroJs } from "../meroJsClient";
 import type { ApiResponse } from "../types";
 import type {
   ContextVisibility,
@@ -257,6 +257,20 @@ function normalizeGroupInvitationPayload(
 }
 
 function catchError<T>(context: string, error: unknown): Result<T> {
+  // mero-js throws HTTPError (which carries `status`) rather than returning a
+  // status code. Map it first so callers that branch on 404/405 — listGroups'
+  // fallback to the legacy /groups route, for one — keep working after the
+  // transport moved off axios.
+  const sdkStatus = (error as { status?: number })?.status;
+  if (typeof sdkStatus === "number" && !axios.isAxiosError(error)) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : `An unexpected error occurred during ${context}`;
+    console.error(`${context} failed:`, error);
+    return fail(sdkStatus, message);
+  }
+
   if (axios.isAxiosError(error)) {
     const status = error.response?.status ?? 500;
     const responseError = error.response?.data?.error;
@@ -281,20 +295,23 @@ export interface BlobUploadResult {
   size: number;
 }
 
-/** Direct blob upload via axios – bypasses the calimero-client SDK which misparses the server's `data` envelope. */
+/**
+ * Blob upload. The axios version existed because the OLD calimero-client
+ * misparsed the server's `data` envelope; mero-js unwraps it correctly, so this
+ * now goes through the SDK. Core answers with snake_case `blob_id`, which the
+ * SDK response type does not model, hence the widened read below.
+ */
 export async function uploadBlobDirect(file: File): ApiResponse<BlobUploadResult> {
   try {
     const buffer = await file.arrayBuffer();
-    const response = await axios.put(
-      `${getNodeEndpoint()}/admin-api/blobs`,
-      buffer,
-      { headers: { ...getAuthHeaders(), "Content-Type": "application/octet-stream" } },
-    );
-    const raw = response.data?.data ?? response.data;
-    if (!raw?.blob_id) {
+    const raw = (await getMeroJs().admin.uploadBlob({ data: buffer })) as unknown as
+      | { blob_id?: string; blobId?: string; size?: number }
+      | undefined;
+    const blobId = raw?.blob_id ?? raw?.blobId;
+    if (!blobId) {
       return fail(500, "Upload succeeded but server returned no blob_id");
     }
-    return ok({ blobId: raw.blob_id as string, size: raw.size as number });
+    return ok({ blobId, size: raw?.size ?? 0 });
   } catch (error) {
     return catchError("uploadBlobDirect", error);
   }
@@ -311,13 +328,11 @@ export class GroupApiDataSource implements GroupApi {
     try {
       // Server expects `name` post-054a784f; keep `alias` for older nodes.
       const body = { ...request, name: request.alias };
-      const response = await axios.post(`${this.base()}/namespaces`, body, {
-        headers: getAuthHeaders(),
-      });
-      if (response.status !== 200) {
-        return httpFail(response.status, response.statusText);
-      }
-      const data = response.data.data;
+      const data = (await getMeroJs().admin.createNamespace(
+        body as unknown as Parameters<
+          ReturnType<typeof getMeroJs>["admin"]["createNamespace"]
+        >[0],
+      )) as unknown as { namespaceId?: string; groupId?: string; id?: string };
       const groupId = data?.namespaceId ?? data?.groupId ?? data?.id;
       if (!groupId) {
         return fail(500, "Namespace creation response missing ID");
@@ -330,12 +345,9 @@ export class GroupApiDataSource implements GroupApi {
 
   async getGroup(groupId: string): ApiResponse<GroupInfo> {
     try {
-      const response = await axios.get(`${this.base()}/groups/${groupId}`, {
-        headers: getAuthHeaders(),
-      });
-      return response.status === 200
-        ? ok(response.data.data)
-        : httpFail(response.status, response.statusText);
+      return ok(
+        (await getMeroJs().admin.getGroupInfo(groupId)) as unknown as GroupInfo,
+      );
     } catch (error) {
       return catchError("getGroup", error);
     }
@@ -345,39 +357,38 @@ export class GroupApiDataSource implements GroupApi {
     try {
       // /namespaces is the correct endpoint (matches POST /namespaces in createGroup).
       // Fall back to /groups for older merod versions.
-      let response;
+      const admin = getMeroJs().admin;
+      const appId = import.meta.env.VITE_APPLICATION_ID as string | undefined;
+      let payload: unknown;
       try {
-        const appId = import.meta.env.VITE_APPLICATION_ID as string | undefined;
-        const url = appId
-          ? `${this.base()}/namespaces/for-application/${appId}`
-          : `${this.base()}/namespaces`;
-        response = await axios.get(url, {
+        payload = appId
+          ? await admin.listNamespacesForApplication(appId)
+          : await admin.listNamespaces();
+      } catch (firstError) {
+        // Older merod does not serve /namespaces; fall back to the legacy
+        // /groups route. mero-js throws HTTPError carrying `status`.
+        const status = (firstError as { status?: number })?.status;
+        if (status !== 404 && status !== 405) throw firstError;
+        const legacy = await axios.get(`${this.base()}/groups`, {
           headers: getAuthHeaders(),
         });
-      } catch (firstError) {
-        if (
-          axios.isAxiosError(firstError) &&
-          (firstError.response?.status === 404 || firstError.response?.status === 405)
-        ) {
-          response = await axios.get(`${this.base()}/groups`, {
-            headers: getAuthHeaders(),
-          });
-        } else {
-          throw firstError;
+        if (legacy.status !== 200) {
+          return httpFail(legacy.status, legacy.statusText);
         }
-      }
-
-      if (response.status !== 200) {
-        return httpFail(response.status, response.statusText);
+        payload = legacy.data.data;
       }
 
       // Normalise: server may nest under .namespaces / .groups, and use namespaceId vs groupId
-      const raw: unknown[] = Array.isArray(response.data.data)
-        ? response.data.data
-        : Array.isArray(response.data.data?.namespaces)
-          ? response.data.data.namespaces
-          : Array.isArray(response.data.data?.groups)
-            ? response.data.data.groups
+      const p = payload as {
+        namespaces?: unknown[];
+        groups?: unknown[];
+      } | null;
+      const raw: unknown[] = Array.isArray(payload)
+        ? (payload as unknown[])
+        : Array.isArray(p?.namespaces)
+          ? p!.namespaces
+          : Array.isArray(p?.groups)
+            ? p!.groups
             : [];
 
       const groups: GroupSummary[] = raw
@@ -418,13 +429,8 @@ export class GroupApiDataSource implements GroupApi {
       // Content-Type: application/json" unless we send both the header and
       // a JSON body. Both fields on DeleteGroupApiRequest are optional, so
       // an empty `{}` body is accepted.
-      const response = await axios.delete(`${this.base()}/groups/${groupId}`, {
-        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
-        data: {},
-      });
-      return response.status === 200
-        ? ok(response.data.data?.isDeleted ?? true)
-        : httpFail(response.status, response.statusText);
+      const data = await getMeroJs().admin.deleteGroup(groupId, {});
+      return ok(data?.isDeleted ?? true);
     } catch (error) {
       return catchError("deleteGroup", error);
     }
@@ -435,16 +441,14 @@ export class GroupApiDataSource implements GroupApi {
     request?: CreateInvitationRequest,
   ): ApiResponse<CreateInvitationResponse> {
     try {
-      const response = await axios.post(
-        `${this.base()}/namespaces/${groupId}/invite`,
-        request ?? {},
-        { headers: getAuthHeaders() },
+      const created = await getMeroJs().admin.createNamespaceInvitation(
+        groupId,
+        request as unknown as Parameters<
+          ReturnType<typeof getMeroJs>["admin"]["createNamespaceInvitation"]
+        >[1],
       );
-      if (response.status !== 200) {
-        return httpFail(response.status, response.statusText);
-      }
 
-      const invitationPayload = normalizeGroupInvitationPayload(response.data.data);
+      const invitationPayload = normalizeGroupInvitationPayload(created);
       if (!invitationPayload) {
         return fail(500, "Invalid workspace invitation response");
       }
@@ -473,17 +477,17 @@ export class GroupApiDataSource implements GroupApi {
         return fail(400, "Could not extract namespace ID from invitation");
       }
 
-      const response = await axios.post(
-        `${this.base()}/namespaces/${namespaceId}/join`,
-        { invitation: request.invitation },
-        { headers: getAuthHeaders() },
-      );
-      if (response.status !== 200) {
-        return httpFail(response.status, response.statusText);
-      }
-      const data = response.data.data;
+      const data = (await getMeroJs().admin.joinNamespace(namespaceId, {
+        invitation: request.invitation,
+      } as unknown as Parameters<
+        ReturnType<typeof getMeroJs>["admin"]["joinNamespace"]
+      >[1])) as unknown as {
+        namespaceId?: string;
+        groupId?: string;
+        memberIdentity?: string;
+      };
       const groupId = data?.namespaceId ?? data?.groupId ?? namespaceId;
-      return ok({ groupId, memberIdentity: data?.memberIdentity ?? '' });
+      return ok({ groupId, memberIdentity: data?.memberIdentity ?? "" });
     } catch (error) {
       return catchError("joinGroup", error);
     }
@@ -494,16 +498,10 @@ export class GroupApiDataSource implements GroupApi {
   ): ApiResponse<{ members: GroupMember[]; selfIdentity?: string }> {
     return cachedRequest(`listMembers:${groupId}`, async () => {
       try {
-        const response = await axios.get(
-          `${this.base()}/groups/${groupId}/members`,
-          { headers: getAuthHeaders() },
-        );
-        if (response.status !== 200) {
-          return httpFail(response.status, response.statusText);
-        }
-        // Handle both wrapped ({ data: { members, selfIdentity } }) and
-        // unwrapped ({ members, selfIdentity }) API response shapes.
-        const raw: unknown = response.data.data ?? response.data;
+        // mero-js unwraps the `{ data: ... }` envelope, but the shape below
+        // still tolerates both a bare array and a `{ members, selfIdentity }`
+        // object, because core has served each at different versions.
+        const raw: unknown = await getMeroJs().admin.listGroupMembers(groupId);
         const rawMembers: Array<{ identity: string; role: string; name?: string; alias?: string }> = Array.isArray(raw)
           ? (raw as Array<{ identity: string; role: string; name?: string; alias?: string }>)
           : Array.isArray((raw as { members?: unknown })?.members)
@@ -567,14 +565,10 @@ export class GroupApiDataSource implements GroupApi {
 
   async addGroupMember(groupId: string, identity: string): ApiResponse<void> {
     try {
-      const response = await axios.post(
-        `${this.base()}/groups/${groupId}/members`,
-        { members: [{ identity, role: "Member" }] },
-        { headers: getAuthHeaders() },
-      );
-      return response.status === 200
-        ? ok(undefined as void)
-        : httpFail(response.status, response.statusText);
+      await getMeroJs().admin.addGroupMembers(groupId, {
+        members: [{ identity, role: "Member" }],
+      });
+      return ok(undefined as void);
     } catch (error) {
       return catchError("addGroupMember", error);
     }
@@ -586,14 +580,8 @@ export class GroupApiDataSource implements GroupApi {
   ): ApiResponse<void> {
     try {
       const body: RemoveMemberRequest = { members: [memberIdentity] };
-      const response = await axios.post(
-        `${this.base()}/groups/${groupId}/members/remove`,
-        body,
-        { headers: getAuthHeaders() },
-      );
-      return response.status === 200
-        ? ok(undefined as void)
-        : httpFail(response.status, response.statusText);
+      await getMeroJs().admin.removeGroupMembers(groupId, body);
+      return ok(undefined as void);
     } catch (error) {
       return catchError("removeMember", error);
     }
@@ -602,17 +590,12 @@ export class GroupApiDataSource implements GroupApi {
   async listGroupContexts(groupId: string): ApiResponse<GroupContextEntry[]> {
     return cachedRequest(`listGroupContexts:${groupId}`, async () => {
     try {
-      const response = await axios.get(
-        `${this.base()}/groups/${groupId}/contexts`,
-        { headers: getAuthHeaders() },
-      );
-      if (response.status !== 200) {
-        return httpFail(response.status, response.statusText);
-      }
-
-      const rawContexts: unknown[] = Array.isArray(response.data.data)
-        ? response.data.data
-        : [];
+      const listed = await getMeroJs().admin.listGroupContexts(groupId);
+      const rawContexts: unknown[] = Array.isArray(listed)
+        ? (listed as unknown[])
+        : Array.isArray((listed as { contexts?: unknown[] })?.contexts)
+          ? ((listed as { contexts: unknown[] }).contexts)
+          : [];
       const contexts = rawContexts
         .map((entry: unknown) => normalizeGroupContextEntry(entry))
         .filter((entry: GroupContextEntry | null): entry is GroupContextEntry => entry !== null)
@@ -630,18 +613,10 @@ export class GroupApiDataSource implements GroupApi {
   ): ApiResponse<JoinGroupContextResponse> {
     try {
       const contextId = normalizeContextId(request.contextId);
-      const response = await axios.post(
-        `${this.base()}/contexts/${contextId}/join`,
-        {},
-        { headers: getAuthHeaders() },
-      );
-      if (response.status !== 200) {
-        return httpFail(response.status, response.statusText);
-      }
-      const data = response.data.data;
+      const data = await getMeroJs().admin.joinContext(contextId);
       return ok({
         contextId: data?.contextId ?? contextId,
-        memberPublicKey: data?.memberPublicKey ?? '',
+        memberPublicKey: data?.memberPublicKey ?? "",
       });
     } catch (error) {
       return catchError("joinGroupContext", error);
@@ -651,19 +626,11 @@ export class GroupApiDataSource implements GroupApi {
   async leaveContext(contextId: string): ApiResponse<LeaveContextResponse> {
     try {
       const normalizedId = normalizeContextId(contextId);
-      const response = await axios.post(
-        `${this.base()}/contexts/${normalizedId}/leave`,
-        {},
-        { headers: getAuthHeaders() },
-      );
-      if (response.status !== 200) {
-        return httpFail(response.status, response.statusText);
-      }
-      const data = response.data.data;
-      return ok({
-        contextId: data?.contextId ?? normalizedId,
-        memberPublicKey: data?.memberPublicKey ?? "",
-      });
+      // mero-js returns void here; the response body was never read by any
+      // caller (`memberPublicKey` is only consumed off a JOIN result), so the
+      // envelope keeps its shape with the id echoed back.
+      await getMeroJs().admin.leaveContext(normalizedId);
+      return ok({ contextId: normalizedId, memberPublicKey: "" });
     } catch (error) {
       return catchError("leaveContext", error);
     }
@@ -671,19 +638,8 @@ export class GroupApiDataSource implements GroupApi {
 
   async leaveGroup(groupId: string): ApiResponse<LeaveGroupResponse> {
     try {
-      const response = await axios.post(
-        `${this.base()}/groups/${groupId}/leave`,
-        {},
-        { headers: getAuthHeaders() },
-      );
-      if (response.status !== 200) {
-        return httpFail(response.status, response.statusText);
-      }
-      const data = response.data.data;
-      return ok({
-        groupId: data?.groupId ?? groupId,
-        memberPublicKey: data?.memberPublicKey ?? "",
-      });
+      await getMeroJs().admin.leaveGroup(groupId);
+      return ok({ groupId, memberPublicKey: "" });
     } catch (error) {
       return catchError("leaveGroup", error);
     }
@@ -691,19 +647,8 @@ export class GroupApiDataSource implements GroupApi {
 
   async leaveNamespace(namespaceId: string): ApiResponse<LeaveNamespaceResponse> {
     try {
-      const response = await axios.post(
-        `${this.base()}/namespaces/${namespaceId}/leave`,
-        {},
-        { headers: getAuthHeaders() },
-      );
-      if (response.status !== 200) {
-        return httpFail(response.status, response.statusText);
-      }
-      const data = response.data.data;
-      return ok({
-        namespaceId: data?.namespaceId ?? namespaceId,
-        memberPublicKey: data?.memberPublicKey ?? "",
-      });
+      await getMeroJs().admin.leaveNamespace(namespaceId);
+      return ok({ namespaceId, memberPublicKey: "" });
     } catch (error) {
       return catchError("leaveNamespace", error);
     }
@@ -711,19 +656,33 @@ export class GroupApiDataSource implements GroupApi {
 
   async syncGroup(groupId: string): ApiResponse<SyncGroupResponse> {
     try {
-      const response = await axios.post(
-        `${this.base()}/groups/${groupId}/sync`,
-        {},
-        { headers: getAuthHeaders() },
+      return ok(
+        (await getMeroJs().admin.syncGroup(
+          groupId,
+        )) as unknown as SyncGroupResponse,
       );
-      return response.status === 200
-        ? ok(response.data.data)
-        : httpFail(response.status, response.statusText);
     } catch (error) {
       return catchError("syncGroup", error);
     }
   }
 
+  /**
+   * NOT MIGRATED — the endpoint no longer exists.
+   *
+   * core 40639c13 ("remove per-context join/invite/visibility/allowlist,
+   * groups-only model") deleted GET/PUT /groups/:id/contexts/:cid/visibility
+   * and GET/POST /groups/:id/contexts/:cid/allowlist. Per-context visibility
+   * and allowlists were replaced by subgroup membership as the access
+   * boundary: an admin creates a restricted subgroup, adds members to it
+   * explicitly, and puts the contexts there.
+   *
+   * The replacement calls are setSubgroupVisibility / addGroupMembers /
+   * removeGroupMembers, all of which this file already exposes. Rewiring the
+   * admin UI (ChannelsTab's VisibilityBadge and AllowlistContainer) onto that
+   * model is a product change, not a transport change, so it is deliberately
+   * out of scope here — these keep hitting the old route and keep failing, as
+   * they already do against any node newer than the removal.
+   */
   async getContextVisibility(
     groupId: string,
     contextId: string,
@@ -742,6 +701,23 @@ export class GroupApiDataSource implements GroupApi {
     }
   }
 
+  /**
+   * NOT MIGRATED — the endpoint no longer exists.
+   *
+   * core 40639c13 ("remove per-context join/invite/visibility/allowlist,
+   * groups-only model") deleted GET/PUT /groups/:id/contexts/:cid/visibility
+   * and GET/POST /groups/:id/contexts/:cid/allowlist. Per-context visibility
+   * and allowlists were replaced by subgroup membership as the access
+   * boundary: an admin creates a restricted subgroup, adds members to it
+   * explicitly, and puts the contexts there.
+   *
+   * The replacement calls are setSubgroupVisibility / addGroupMembers /
+   * removeGroupMembers, all of which this file already exposes. Rewiring the
+   * admin UI (ChannelsTab's VisibilityBadge and AllowlistContainer) onto that
+   * model is a product change, not a transport change, so it is deliberately
+   * out of scope here — these keep hitting the old route and keep failing, as
+   * they already do against any node newer than the removal.
+   */
   async setContextVisibility(
     groupId: string,
     contextId: string,
@@ -761,6 +737,23 @@ export class GroupApiDataSource implements GroupApi {
     }
   }
 
+  /**
+   * NOT MIGRATED — the endpoint no longer exists.
+   *
+   * core 40639c13 ("remove per-context join/invite/visibility/allowlist,
+   * groups-only model") deleted GET/PUT /groups/:id/contexts/:cid/visibility
+   * and GET/POST /groups/:id/contexts/:cid/allowlist. Per-context visibility
+   * and allowlists were replaced by subgroup membership as the access
+   * boundary: an admin creates a restricted subgroup, adds members to it
+   * explicitly, and puts the contexts there.
+   *
+   * The replacement calls are setSubgroupVisibility / addGroupMembers /
+   * removeGroupMembers, all of which this file already exposes. Rewiring the
+   * admin UI (ChannelsTab's VisibilityBadge and AllowlistContainer) onto that
+   * model is a product change, not a transport change, so it is deliberately
+   * out of scope here — these keep hitting the old route and keep failing, as
+   * they already do against any node newer than the removal.
+   */
   async getContextAllowlist(
     groupId: string,
     contextId: string,
@@ -778,6 +771,23 @@ export class GroupApiDataSource implements GroupApi {
     }
   }
 
+  /**
+   * NOT MIGRATED — the endpoint no longer exists.
+   *
+   * core 40639c13 ("remove per-context join/invite/visibility/allowlist,
+   * groups-only model") deleted GET/PUT /groups/:id/contexts/:cid/visibility
+   * and GET/POST /groups/:id/contexts/:cid/allowlist. Per-context visibility
+   * and allowlists were replaced by subgroup membership as the access
+   * boundary: an admin creates a restricted subgroup, adds members to it
+   * explicitly, and puts the contexts there.
+   *
+   * The replacement calls are setSubgroupVisibility / addGroupMembers /
+   * removeGroupMembers, all of which this file already exposes. Rewiring the
+   * admin UI (ChannelsTab's VisibilityBadge and AllowlistContainer) onto that
+   * model is a product change, not a transport change, so it is deliberately
+   * out of scope here — these keep hitting the old route and keep failing, as
+   * they already do against any node newer than the removal.
+   */
   async manageContextAllowlist(
     groupId: string,
     contextId: string,
@@ -802,13 +812,12 @@ export class GroupApiDataSource implements GroupApi {
     identity: string,
   ): ApiResponse<MemberCapabilities> {
     try {
-      const response = await axios.get(
-        `${this.base()}/groups/${groupId}/members/${identity}/capabilities`,
-        { headers: getAuthHeaders() },
+      return ok(
+        (await getMeroJs().admin.getMemberCapabilities(
+          groupId,
+          identity,
+        )) as unknown as MemberCapabilities,
       );
-      return response.status === 200
-        ? ok(response.data.data)
-        : httpFail(response.status, response.statusText);
     } catch (error) {
       return catchError("getMemberCapabilities", error);
     }
@@ -820,14 +829,8 @@ export class GroupApiDataSource implements GroupApi {
     request: SetMemberCapabilitiesRequest,
   ): ApiResponse<void> {
     try {
-      const response = await axios.put(
-        `${this.base()}/groups/${groupId}/members/${identity}/capabilities`,
-        request,
-        { headers: getAuthHeaders() },
-      );
-      return response.status === 200
-        ? ok(undefined as void)
-        : httpFail(response.status, response.statusText);
+      await getMeroJs().admin.setMemberCapabilities(groupId, identity, request);
+      return ok(undefined as void);
     } catch (error) {
       return catchError("setMemberCapabilities", error);
     }
@@ -839,14 +842,10 @@ export class GroupApiDataSource implements GroupApi {
     request: SetMemberMetadataRequest,
   ): ApiResponse<void> {
     try {
-      const response = await axios.put(
-        `${this.base()}/groups/${groupId}/members/${identity}/metadata`,
-        { name: request.name },
-        { headers: getAuthHeaders() },
-      );
-      return response.status === 200
-        ? ok(undefined as void)
-        : httpFail(response.status, response.statusText);
+      await getMeroJs().admin.setMemberMetadata(groupId, identity, {
+        name: request.name,
+      });
+      return ok(undefined as void);
     } catch (error) {
       return catchError("setMemberMetadata", error);
     }
@@ -854,14 +853,8 @@ export class GroupApiDataSource implements GroupApi {
 
   async setGroupMetadata(groupId: string, name: string): ApiResponse<void> {
     try {
-      const response = await axios.put(
-        `${this.base()}/groups/${groupId}/metadata`,
-        { name },
-        { headers: getAuthHeaders() },
-      );
-      return response.status === 200
-        ? ok(undefined as void)
-        : httpFail(response.status, response.statusText);
+      await getMeroJs().admin.setGroupMetadata(groupId, { name });
+      return ok(undefined as void);
     } catch (error) {
       return catchError("setGroupMetadata", error);
     }
@@ -869,14 +862,8 @@ export class GroupApiDataSource implements GroupApi {
 
   async setContextAlias(groupId: string, contextId: string, name: string): ApiResponse<void> {
     try {
-      const response = await axios.put(
-        `${this.base()}/groups/${groupId}/contexts/${contextId}/metadata`,
-        { name },
-        { headers: getAuthHeaders() },
-      );
-      return response.status === 200
-        ? ok(undefined as void)
-        : httpFail(response.status, response.statusText);
+      await getMeroJs().admin.setContextMetadata(groupId, contextId, { name });
+      return ok(undefined as void);
     } catch (error) {
       return catchError("setContextAlias", error);
     }
@@ -887,14 +874,8 @@ export class GroupApiDataSource implements GroupApi {
     request: SetDefaultCapabilitiesRequest,
   ): ApiResponse<void> {
     try {
-      const response = await axios.put(
-        `${this.base()}/groups/${groupId}/settings/default-capabilities`,
-        request,
-        { headers: getAuthHeaders() },
-      );
-      return response.status === 200
-        ? ok(undefined as void)
-        : httpFail(response.status, response.statusText);
+      await getMeroJs().admin.setDefaultCapabilities(groupId, request);
+      return ok(undefined as void);
     } catch (error) {
       return catchError("setDefaultCapabilities", error);
     }
@@ -905,14 +886,8 @@ export class GroupApiDataSource implements GroupApi {
     request: SetSubgroupVisibilityRequest,
   ): ApiResponse<void> {
     try {
-      const response = await axios.put(
-        `${this.base()}/groups/${groupId}/settings/subgroup-visibility`,
-        request,
-        { headers: getAuthHeaders() },
-      );
-      return response.status === 200
-        ? ok(undefined as void)
-        : httpFail(response.status, response.statusText);
+      await getMeroJs().admin.setSubgroupVisibility(groupId, request);
+      return ok(undefined as void);
     } catch (error) {
       return catchError("setSubgroupVisibility", error);
     }
@@ -920,18 +895,19 @@ export class GroupApiDataSource implements GroupApi {
 
   async listSubgroups(namespaceId: string): ApiResponse<SubgroupEntry[]> {
     try {
-      const response = await axios.get(
-        `${this.base()}/groups/${namespaceId}/subgroups`,
-        { headers: getAuthHeaders() },
-      );
-      return response.status === 200
-        ? ok((response.data.subgroups as Array<{ group_id?: string; groupId?: string; name?: string; alias?: string }>).map(s => ({
+      // mero-js returns the array directly; core has also served it wrapped
+      // as `{ subgroups: [...] }`, so accept either.
+      const listed = await getMeroJs().admin.listSubgroups(namespaceId);
+      const rawSubgroups = (Array.isArray(listed)
+        ? listed
+        : ((listed as unknown as { subgroups?: unknown[] })?.subgroups ??
+          [])) as Array<{ group_id?: string; groupId?: string; name?: string; alias?: string }>;
+      return ok(rawSubgroups.map((s) => ({
             groupId: (s.group_id ?? s.groupId) as string,
             // Server returns `name` post-054a784f (formerly `alias`).
             // Keep frontend field name as `alias` so display code stays put.
-            alias: s.name ?? s.alias,
-          })))
-        : httpFail(response.status, response.statusText);
+        alias: s.name ?? s.alias,
+      })));
     } catch (error) {
       return catchError("listSubgroups", error);
     }
@@ -950,14 +926,11 @@ export class GroupApiDataSource implements GroupApi {
       const body: Record<string, unknown> = {};
       if (request.groupName) body.groupName = request.groupName;
       if (request.name) body.groupName = request.name;
-      const response = await axios.post(
-        `${this.base()}/namespaces/${namespaceId}/groups`,
+      const data = await getMeroJs().admin.createGroupInNamespace(
+        namespaceId,
         body,
-        { headers: getAuthHeaders() },
       );
-      return response.status === 200
-        ? ok({ groupId: response.data.data.groupId as string })
-        : httpFail(response.status, response.statusText);
+      return ok({ groupId: (data as { groupId: string }).groupId });
     } catch (error) {
       return catchError("createSubgroup", error);
     }
@@ -968,14 +941,13 @@ export class GroupApiDataSource implements GroupApi {
     request: ReparentGroupRequest,
   ): ApiResponse<void> {
     try {
-      const response = await axios.post(
-        `${this.base()}/groups/${groupId}/reparent`,
-        { new_parent_id: request.newParentId },
-        { headers: getAuthHeaders() },
-      );
-      return response.status === 200
-        ? ok(undefined)
-        : httpFail(response.status, response.statusText);
+      // Core takes snake_case here; the SDK request type mirrors the wire.
+      await getMeroJs().admin.reparentGroup(groupId, {
+        new_parent_id: request.newParentId,
+      } as unknown as Parameters<
+        ReturnType<typeof getMeroJs>["admin"]["reparentGroup"]
+      >[1]);
+      return ok(undefined);
     } catch (error) {
       return catchError("reparentGroup", error);
     }
@@ -986,14 +958,13 @@ export class GroupApiDataSource implements GroupApi {
     request: UpgradeGroupRequest,
   ): ApiResponse<UpgradeGroupResponse> {
     try {
-      const response = await axios.post(
-        `${this.base()}/groups/${groupId}/upgrade`,
-        request,
-        { headers: getAuthHeaders() },
+      const data = await getMeroJs().admin.upgradeGroup(
+        groupId,
+        request as unknown as Parameters<
+          ReturnType<typeof getMeroJs>["admin"]["upgradeGroup"]
+        >[1],
       );
-      return response.status === 200
-        ? ok(response.data.data)
-        : httpFail(response.status, response.statusText);
+      return ok(data as unknown as UpgradeGroupResponse);
     } catch (error) {
       return catchError("triggerUpgrade", error);
     }
@@ -1003,13 +974,8 @@ export class GroupApiDataSource implements GroupApi {
     groupId: string,
   ): ApiResponse<GroupUpgradeStatus | null> {
     try {
-      const response = await axios.get(
-        `${this.base()}/groups/${groupId}/upgrade/status`,
-        { headers: getAuthHeaders() },
-      );
-      return response.status === 200
-        ? ok(response.data.data ?? null)
-        : httpFail(response.status, response.statusText);
+      const data = await getMeroJs().admin.getGroupUpgradeStatus(groupId);
+      return ok((data ?? null) as unknown as GroupUpgradeStatus | null);
     } catch (error) {
       return catchError("getUpgradeStatus", error);
     }
