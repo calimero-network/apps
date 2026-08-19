@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMero } from "@calimero-network/mero-react";
-import { adminGet, adminPut, rpcCall } from "../api/rpc";
+import { adminGet, adminPut, getNodeIdentity, rpcCall } from "../api/rpc";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
 import { truncateMiddle } from "../utils/format";
@@ -26,9 +26,11 @@ interface MemberEntry {
   name?: string;
 }
 
+// No `selfIdentity` here: rc.23 removed it from this response (#3522). The
+// caller's own account comes from `getNodeIdentity()` instead.
 type MembersResponse =
   | MemberEntry[]
-  | { members?: MemberEntry[]; data?: MemberEntry[]; selfIdentity?: string; self_identity?: string };
+  | { members?: MemberEntry[]; data?: MemberEntry[] };
 
 interface Props {
   type: "team" | "project";
@@ -94,6 +96,24 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
     }
   }
 
+  // Who this node is, asked node-level. Not tied to `membersGroupId`: one
+  // account serves every namespace, so this is fetched once per modal.
+  useEffect(() => {
+    let cancelled = false;
+    getNodeIdentity()
+      .then((me) => {
+        if (!cancelled) setSelfIdentity(me.accountId ?? "");
+      })
+      .catch(() => {
+        // A node that cannot say who it is leaves moderation disabled rather
+        // than guessing an identity and offering controls that would 403.
+        if (!cancelled) setSelfIdentity("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     setLoadingMembers(true);
@@ -103,9 +123,6 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
         const arr: MemberEntry[] = Array.isArray(raw)
           ? raw
           : raw.members ?? raw.data ?? [];
-        const self = Array.isArray(raw)
-          ? ""
-          : (raw.selfIdentity ?? raw.self_identity ?? "");
         setMembers(
           arr
             .map((m) => ({
@@ -115,7 +132,6 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
             }))
             .filter((m) => m.identity),
         );
-        setSelfIdentity(self ?? "");
       })
       .catch(() => {
         if (!cancelled) setMembers([]);
