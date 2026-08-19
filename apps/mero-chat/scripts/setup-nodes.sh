@@ -154,11 +154,19 @@ start_node_merod() {
   rm -rf "$home"
 
   step "Initialising $name at $home"
-  merod --node "$name" --home "$home" init \
+  # `--auth-mode embedded` refuses to init without an admin account: the node
+  # must never listen before one exists. Verified to hold on both 0.11.0-rc.20
+  # and 0.11.0-rc.24, so this script could not have started a node against its
+  # own pinned merod before this. Provision the admin here with the same
+  # credentials bootstrap_auth logs in with below; the password goes over stdin
+  # so it stays out of the process table.
+  printf '%s' "$ADMIN_PASS" | merod --node "$name" --home "$home" init \
     --server-host 127.0.0.1 \
     --server-port "$port" \
     --swarm-port  "$p2p_port" \
-    --auth-mode embedded
+    --auth-mode embedded \
+    --admin-user "$ADMIN_USER" \
+    --admin-password-stdin
 
   step "Starting $name"
   merod --node "$name" --home "$home" run > "/tmp/curb-merod-${name}.log" 2>&1 &
