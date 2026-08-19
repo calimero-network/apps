@@ -67,31 +67,60 @@ fragment propagates.
 
 Events (SSE): `Initialized`, `MemberJoined`, `FramePosted(seq)`, `FramesPruned(beforeSeq)`.
 
-## Two approaches, both live in this app
+## Three approaches, all live in this app
 
 The task doc lists three ways to move media through Calimero. This repo now
-implements two of them, on separate routes, because they fail for opposite
-reasons and the contrast IS the finding:
+implements all three — two on separate routes, and the third as a **transport
+switch on `/live`** — because they fail for different reasons and the contrast IS
+the finding:
 
-| | `/stream` — approach 3 | `/live` — approach 2 |
-|---|---|---|
-| Where the codec runs | **inside the WASM app** | **in the browser** (WebCodecs) |
-| Codec | toy: 4-bit quantize + RLE | real: hardware H.264 |
-| Resolution | 64×48 greyscale | **640×480** |
-| Why it's capped there | every node must compute bit-identical bytes (C1), and real codecs are float-heavy → non-deterministic | not capped by determinism — the app never computes the media, so a float codec is fine |
-| Node CPU per frame | ~9.93 ms measured | ~0 (a memcpy; no codec work) |
-| New state at 480p30 | ~4.6 MB/s (≈230× chat) | ~188 KB/s (≈9× chat) |
-| Compression | ~2–10× | ~60× |
-| Remaining risk | WASM CPU **and** replication | replication + tombstones only |
+| | `/stream` — approach 3 | `/live` — approach 2 | `/live` — approach 1 |
+|---|---|---|---|
+| How the bytes travel | `encode_frame` (state) | `post_chunk` (state) | **`set_ephemeral`** (presence) |
+| Where the codec runs | **inside the WASM app** | **in the browser** (WebCodecs) | in the browser (WebCodecs) |
+| Codec | toy: 4-bit quantize + RLE | real: hardware H.264 | real: hardware H.264 |
+| Resolution | 64×48 greyscale | **640×480** | **640×480** |
+| Why it's capped there | every node must compute bit-identical bytes (C1), and real codecs are float-heavy → non-deterministic | not capped by determinism — the app never computes the media, so a float codec is fine | same |
+| Node CPU per frame | ~9.93 ms measured | ~0 (a memcpy; no codec work) | ~0, and no WASM run at all |
+| New state at 480p30 | ~4.6 MB/s (≈230× chat) | ~188 KB/s (≈9× chat) | **zero — nothing is persisted** |
+| Tombstones to reap it | yes | yes (`prune_chunks`) | **none — a 7 s TTL sweeps it** |
+| Receive path | `FramePosted` → `get_frame` | `ChunkPosted` → `get_chunks` | the bytes ride the event |
+| Compression | ~2–10× | ~60× | ~60× |
+| Remaining risk | WASM CPU **and** replication | replication + tombstones | 16 KiB slices; a lossy channel |
 
 Approach 2 needs a **keyframe-clamped reaper**: a delta frame is undecodable
 without the keyframe it references, so pruning past the newest keyframe leaves a
 stream that replicates happily and shows nothing. That clamp is the one piece of
 media awareness the app has, and it's unit- and e2e-tested.
 
-**Neither is shippable media.** Approach 2 removes the CPU wall; whether
-replication can carry 188 KB/s of permanently-stored, tombstone-generating state
-is exactly what the P3 run is for.
+### Approach 1 — media on ephemeral presence (core `0.11.0-rc.24`)
+
+core#3427 added **ephemeral presence**: a per-author, in-memory, signed,
+group-key-encrypted slice that gossips between nodes without a WASM run, without
+a state delta, and without ever touching the DAG. The node sweeps it after 7 s
+and re-publishes the holder's own slice every 2.5 s. That is a much better shape
+for live media than replicated state, and `/live` can now use it — flip the
+transport switch next to the bitrate slider. **No contract change: this is a node
+RPC, so `logic/` is untouched and the same bundle serves both.**
+
+What it costs, and `app/src/lib/ephemeralFrames.ts` is where it is paid:
+
+- A slice is capped at **16 KiB**, so a keyframe is fragmented. A delta frame at
+  1.5 Mbps / 25 fps is ~7.5 KB — one fragment, unaffected.
+- A slice is a single-writer **register**, not a queue. Every publish emits its
+  own event, so it behaves as a lossy 16 KiB datagram channel — but the node
+  drops an envelope whose LWW seq is at or below the highest it has applied, and
+  the outbound publish is spawned per call. So a multi-fragment keyframe can lose
+  a fragment; it is then never shown, and the next keyframe is the retry.
+- The node **suppresses the event when a slice's bytes are unchanged**, so the
+  framing header carries a per-sender `msgSeq` that advances every frame. Without
+  it, two byte-identical frames in a row would make the second invisible.
+- A replayed entry (the seed a new subscriber gets, carrying `ageMs`) is a *stale*
+  frame by definition, and is dropped rather than decoded.
+
+**None of the three is shippable media.** Approach 2 removes the CPU wall,
+approach 1 removes the storage wall as well; what is left on approach 1 is a
+16 KiB MTU and a channel that is allowed to drop things.
 
 ## Status (phased — see the task doc §7)
 
@@ -114,6 +143,7 @@ is exactly what the P3 run is for.
   | `e2e-tombstones.yml` | 2 | C3 across the wire — after 40 frames force pruning, both nodes agree on the exact bounded window, and a *post-prune* frame is not shadowed by prune tombstones |
   | `e2e-fanout.yml` | 3 | gossip fan-out at K=2 — one sender, **both** peers decode to the same checksum |
 | `e2e-live-chunks.yml` | 2 | **approach 2** — opaque codec bytes cross byte-identically, and `prune_chunks(everything)` still leaves the peer a decodable keyframe |
+  | `e2e-ephemeral-frames.yml` | 2 | **approach 1** — a frame published with `set_ephemeral` reaches node 2 byte-identically as a live delta, a 45 KB frame reassembles from its fragments, and node 1's `contextStateHash` is unchanged throughout (the load-bearing no-DAG-growth guard, against a non-null baseline) |
 - **Browser leg — ✅ AUTOMATED.** `make e2e-call` runs the whole two-node 480p
   call unattended: `cargo mero build` → both nodes → app install → namespace,
   context and open invitation → vite → two Chrome contexts → sender encodes,

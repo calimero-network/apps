@@ -115,6 +115,8 @@ jobs:
             file: e2e-fanout.yml
           - name: approach 2 opaque chunks
             file: e2e-live-chunks.yml
+          - name: approach 1 ephemeral frames
+            file: e2e-ephemeral-frames.yml
     steps:
       - uses: actions/checkout@v4
 
@@ -130,6 +132,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      # The ephemeral scenario's `script` step shells out to `node` (presence has
+      # no read endpoint, so its assertions are an SSE subscriber). Pinned rather
+      # than left to the runner image's default, which drifts: the script uses
+      # global fetch + ReadableStream, and a silent downgrade to an older Node
+      # would fail it for a reason that has nothing to do with the transport.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       # Floor, not an exact pin: the scenarios rely on `create_mesh` publishing its
       # default {{context_id}}/{{member_public_key}}/{{public_key}} names, on
       # `result.output` dotted-path extraction, and on the `repeat` step. 0.6.49 is

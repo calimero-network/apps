@@ -53,7 +53,18 @@ export function webCodecsAvailable(): boolean {
 
 /** What the sender hands the app for one encoded chunk. */
 export interface OutboundChunk {
+  /** Base64, for the `post_chunk` JSON-RPC hop (approach 2). */
   dataB64: string;
+  /**
+   * The same access unit as raw bytes, for the ephemeral-presence transport
+   * (approach 1), which frames bytes directly and has no reason to pay for
+   * base64.
+   *
+   * Both are handed over rather than one being derived at the call site because
+   * `copyTo` has already produced this buffer here — the two transports then
+   * cost one allocation between them instead of one each.
+   */
+  bytes: Uint8Array;
   isKeyframe: boolean;
   timestampUs: number;
   byteLength: number;
@@ -99,6 +110,7 @@ export async function createEncoder(opts: {
       const buf = new Uint8Array(chunk.byteLength);
       chunk.copyTo(buf);
       opts.onChunk({
+        bytes: buf,
         dataB64: bytesToBase64(buf),
         isKeyframe: chunk.type === "key",
         timestampUs: chunk.timestamp,
@@ -144,13 +156,25 @@ export async function createEncoder(opts: {
   };
 }
 
+/**
+ * One chunk to decode, in whichever encoding its transport delivered.
+ *
+ * A union rather than an optional pair: `post_chunk` returns base64 and the
+ * ephemeral path delivers raw bytes, and "neither field set" must not be
+ * representable — it would decode as an empty access unit and throw inside the
+ * decoder, which closes it.
+ */
+export type ChunkPayload =
+  { bytes: Uint8Array; dataB64?: never } | { dataB64: string; bytes?: never };
+
+export type InboundChunk = {
+  isKeyframe: boolean;
+  timestampUs: number;
+} & ChunkPayload;
+
 export interface DecoderHandle {
   /** Feed one chunk. Must arrive in seq order, keyframe first. */
-  push: (c: {
-    dataB64: string;
-    isKeyframe: boolean;
-    timestampUs: number;
-  }) => void;
+  push: (c: InboundChunk) => void;
   close: () => void;
 }
 
@@ -207,7 +231,7 @@ export function createDecoder(opts: {
         new EncodedVideoChunk({
           type: c.isKeyframe ? "key" : "delta",
           timestamp: c.timestampUs,
-          data: base64ToBytes(c.dataB64),
+          data: c.bytes !== undefined ? c.bytes : base64ToBytes(c.dataB64),
         }),
       );
     },

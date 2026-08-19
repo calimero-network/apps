@@ -282,3 +282,40 @@
   color: var(--text-faint);
   font-weight: 500;
 }
+
+/* Transport switch on the /live route. Two radio-style buttons rather than a
+   <select>: the choice is between two named things the page explains right below,
+   and a collapsed dropdown hides the one you are not on — which is exactly the
+   comparison this control exists to make. */
+.transport {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.transportBtn {
+  padding: 8px 14px;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.transportBtn + .transportBtn {
+  border-left: 1px solid var(--border);
+}
+.transportBtn:hover:not(:disabled) {
+  color: var(--text);
+}
+/* Solid accent rather than a tint: index.css ships a light and a dark palette,
+   and a fixed low-alpha wash reads as "selected" in only one of them. */
+.transportBtn[aria-pressed="true"] {
+  background: var(--accent);
+  color: #fff;
+}
+.transportBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

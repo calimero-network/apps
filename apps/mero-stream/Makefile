@@ -29,7 +29,7 @@ help:
 	@echo "    e2e-ui              stream -> room -> invite code -> join on node2, ALL clicked"
 	@echo "    cargo-mero          Install/verify cargo-mero pinned to rc.20"
 	@echo ""
-	@echo "  workflows      merobox 2-node e2e (P2 — needs Docker + merobox>=0.6.49)"
+	@echo "  workflows      merobox 2-node e2e (P2 — needs Docker + merobox>=0.6.49, node)"
 	@echo "  load-curve     P3 load generator usage (drives encode_frame → CSV)"
 	@echo "  clean          Remove build artifacts"
 	@echo ""
@@ -128,15 +128,20 @@ e2e-ui-headed:
 e2e-call-prod:
 	@bash scripts/e2e-live-call.sh --prod --headless
 
-# P2: all three e2e scenarios over merobox. Requires Docker + merobox>=0.6.49.
-# Each runs as its own CI matrix leg (.github/workflows/ci.yml). Run sequentially
-# here so a laptop isn't hosting seven nodes at once; the port bases differ
-# (2760/2780/2800) so they would not clash if you do parallelize them.
+# P2: every e2e scenario over merobox. Requires Docker + merobox>=0.6.49, and
+# `node` on PATH for the ephemeral scenario (its assertions are an SSE subscriber
+# — presence has no read endpoint; the wrapper is workflows/e2e-ephemeral-frames.sh,
+# which has to live there because merobox rejects a `script:` path containing
+# '..'). Each runs as its own CI matrix leg
+# (.github/workflows/ci.yml). Run sequentially here so a laptop isn't hosting nine
+# nodes at once; the port bases differ (2760/2780/2800/2820/2840) so they would
+# not clash if you do parallelize them.
 workflows: logic-build
 	cd workflows && merobox bootstrap run e2e.yml
 	cd workflows && merobox bootstrap run e2e-tombstones.yml
 	cd workflows && merobox bootstrap run e2e-fanout.yml
 	cd workflows && merobox bootstrap run e2e-live-chunks.yml
+	cd workflows && merobox bootstrap run e2e-ephemeral-frames.yml
 
 # P3: the load curve. Needs a running context — `make workflows` leaves two nodes
 # up and prints the context id + both member keys, or use `make dev-nodes`.

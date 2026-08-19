@@ -239,6 +239,36 @@ export default function LivePage() {
             onChange={(e) => s.setBitrate(Number(e.target.value))}
           />
         </label>
+        {/* Switchable while a call is running, on purpose: flipping mid-run is how
+            you compare the two on one camera and one link. It resets the decoders
+            (a decoder mid-GOP cannot continue from the other transport's first
+            frame), so expect one keyframe interval of blank tiles. */}
+        <div
+          className={styles.transport}
+          role="group"
+          aria-label="Transport"
+          data-testid="transport-switch"
+          data-transport={s.transport}
+        >
+          <button
+            type="button"
+            className={styles.transportBtn}
+            aria-pressed={s.transport === "contract"}
+            data-testid="transport-contract"
+            onClick={() => s.setTransport("contract")}
+          >
+            post_chunk (state)
+          </button>
+          <button
+            type="button"
+            className={styles.transportBtn}
+            aria-pressed={s.transport === "ephemeral"}
+            data-testid="transport-ephemeral"
+            onClick={() => s.setTransport("ephemeral")}
+          >
+            ephemeral (no DAG)
+          </button>
+        </div>
       </section>
 
       <section className={styles.metrics}>
@@ -315,9 +345,40 @@ export default function LivePage() {
         <p className={styles.note}>
           <strong>Encoding at</strong> can sit below the bitrate slider: the
           slider is a ceiling, and send-side congestion control backs off when{" "}
-          <code>post_chunk</code> starts queueing. The browser cannot see
-          whether the node is relayed, so post latency is the signal.
+          the publish starts queueing. The browser cannot see whether the node
+          is relayed, so post latency is the signal. The two transports are not
+          on the same scale — <code>post_chunk</code> waits for a WASM run and a
+          storage commit, <code>set_ephemeral</code> returns once the node has
+          encrypted and queued the slice — so compare a transport against
+          itself, never one against the other.
         </p>
+        {s.transport === "ephemeral" ? (
+          <p className={styles.note} data-testid="transport-note">
+            <strong>Ephemeral transport (core 0.11.0-rc.24).</strong> Frames
+            ride an ephemeral-presence slice: encrypted under the context group
+            key, signed, gossiped, never persisted, never in the DAG, swept by
+            the node after 7 s. So every counter in this panel <em>should</em>{" "}
+            stay at zero while the tiles above are moving — that is the
+            measurement, not a broken read. There is also no{" "}
+            <code>get_chunks</code> round-trip on this path, because the bytes
+            arrive in the event itself.
+            <br />
+            What it costs: a slice is capped at 16 KiB, so a keyframe is
+            fragmented, and the channel is a single-writer register — an
+            envelope that arrives after a newer one is dropped. A delta frame is
+            one fragment and unaffected; a keyframe that loses a fragment is
+            simply never shown, and the next keyframe is the retry. Watch{" "}
+            <strong>Seq gaps</strong> for exactly that.
+          </p>
+        ) : (
+          <p className={styles.note} data-testid="transport-note">
+            <strong>Contract transport.</strong> Every access unit is written
+            into replicated state, so the counters above are the cost of the
+            picture — and <code>prune_chunks</code> writes <em>more</em> deltas
+            (tombstones) to walk it back. Switch to the ephemeral transport to
+            run the same camera through a channel that writes nothing at all.
+          </p>
+        )}
       </section>
 
       <section className={styles.metrics}>
