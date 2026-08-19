@@ -6,7 +6,7 @@ Everything you need to do before opening the frontend for the first time.
 
 ## Prerequisites
 
-Install `merod` and `meroctl` (v0.11.0-rc.20):
+Install `merod` and `meroctl` (v0.11.0-rc.24):
 
 ```bash
 ./install-calimero.sh
@@ -70,7 +70,7 @@ Install the app toolchain once, pinned to the same core release as the SDK in
 
 ```bash
 cargo install --git https://github.com/calimero-network/core \
-  --tag 0.11.0-rc.20 cargo-mero --locked
+  --tag 0.11.0-rc.24 cargo-mero --locked
 ```
 
 ```bash

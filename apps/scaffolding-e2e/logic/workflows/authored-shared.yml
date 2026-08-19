@@ -7,7 +7,7 @@ nuke_on_start: true
 nodes:
   chain_id: testnet-1
   count: 3
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.20
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.24
   prefix: e2e-node
 
 steps:
@@ -38,6 +38,26 @@ steps:
       - "is_set({{node1_key}})"
       - "is_set({{public_key_e2e-node-2}})"
       - "is_set({{public_key_e2e-node-3}})"
+
+  # Ownership is reported as an ACCOUNT (`owner_of` returns `AccountId`), while
+  # merobox only knows each node's base58 DEVICE key — `node1_key` above. So
+  # node-1 has to say who it is before any owner can be asserted. Comparing an
+  # owner against `node1_key` instead does not fail loudly: it compares a 64-hex
+  # account to a base58 key, so the assertion can only ever be vacuous.
+  - name: node-1 reports its own account id
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: whoami
+    args: {}
+    outputs:
+      n1_account: result.output.account_id
+
+  - name: Verify node-1 account id is populated
+    type: assert
+    statements:
+      - "is_set({{n1_account}})"
 
   # ─── AuthoredMap: insert from node-1, others can read but cannot mutate ────
 
@@ -92,7 +112,7 @@ steps:
   - name: Assert authored owner is node-1
     type: json_assert
     statements:
-      - 'json_equal({{n3_owner}}, {"output": "{{node1_key}}"})'
+      - 'json_equal({{n3_owner}}, {"output": "{{n1_account}}"})'
 
   # node-1 (owner) updates the entry — should succeed
   - name: node-1 updates its own authored entry
@@ -422,6 +442,19 @@ steps:
     statements:
       - 'json_equal({{slot0_index}}, 0)'
 
+  # node-2 can only land on index 1 once it has actually received slot 0 —
+  # `authored_vec_push` appends to the vector it can see locally. Without this
+  # barrier the next assertion is a race, and it returned index 0.
+  - name: Wait for slot0 to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+      - e2e-node-3
+    timeout: 30
+    check_interval: 2
+
   - name: node-2 pushes second authored vector entry
     type: call
     node: e2e-node-2
@@ -478,7 +511,7 @@ steps:
   - name: Assert slot0 owner is node-1
     type: json_assert
     statements:
-      - 'json_equal({{slot0_owner}}, {"output": "{{node1_key}}"})'
+      - 'json_equal({{slot0_owner}}, {"output": "{{n1_account}}"})'
 
   - name: node-1 updates its own slot0
     type: call

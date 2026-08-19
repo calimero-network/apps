@@ -92,11 +92,17 @@ jobs:
 
       # From PyPI — the old apt repo at calimero-network.github.io/merobox no
       # longer serves a Release file. See e2e-merobox.yml.
+      #
+      # Exactly pinned, and pinned TOGETHER with the merod image below — this
+      # nightly is what caught the drift: unpinned merobox picked up 0.6.55,
+      # which dropped `upgradePolicy` for rc.21, and every run against the
+      # rc.20 image died at `create_namespace` with
+      # `HTTP 400: missing field 'upgradePolicy'`.
       - name: Install merobox
-        run: pip install "merobox>=0.6.49" && merobox --version
+        run: pip install "merobox==0.6.55" "calimero-client-py==0.6.29" && merobox --version
 
       - name: Pull merod image
-        run: docker pull ghcr.io/calimero-network/merod:0.11.0-rc.20
+        run: docker pull ghcr.io/calimero-network/merod:0.11.0-rc.24
 
       - name: Override test duration
         run: |

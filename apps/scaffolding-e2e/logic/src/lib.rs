@@ -24,7 +24,7 @@ use std::collections::BTreeMap;
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::Serialize;
-use calimero_sdk::{app, env, AccountId, PublicKey};
+use calimero_sdk::{app, env, AccountId};
 use calimero_storage::collections::{
     AuthoredMap, AuthoredVector, Counter, FrozenStorage, GCounter, LwwRegister, Mergeable,
     ReplicatedGrowableArray, SharedStorage, UnorderedMap, UnorderedSet, UserStorage, Vector,
@@ -184,11 +184,14 @@ pub enum Event<'a> {
 
     // User Storage Events
     UserSimpleSet {
-        device_id: PublicKey,
+        /// The ACCOUNT whose slot was written — `UserStorage` is keyed by
+        /// account since rc.21, so a device id here would name a slot nobody
+        /// can read back.
+        account_id: AccountId,
         value: &'a str,
     },
     UserNestedSet {
-        device_id: PublicKey,
+        account_id: AccountId,
         key: &'a str,
         value: &'a str,
     },
@@ -315,8 +318,8 @@ pub enum Event<'a> {
 pub enum Error<'a> {
     #[error("key not found: {0}")]
     NotFound(&'a str),
-    #[error("user data not found for key: {0}")]
-    UserNotFound(PublicKey),
+    #[error("user data not found for account: {0}")]
+    UserNotFound(AccountId),
     #[error("frozen data not found for hash: {0}")]
     FrozenNotFound(&'a str),
     #[error("no public hash set yet")]
@@ -325,8 +328,16 @@ pub enum Error<'a> {
 
 // HELPER FUNCTIONS
 
-fn encode_identity(identity: &[u8; 32]) -> String {
-    bs58::encode(identity).into_string()
+/// The caller's ACCOUNT as 64 hex characters.
+///
+/// Every "who did this" field in this contract is an account, because that is
+/// the only authorization subject core 0.11 recognises and the only thing the
+/// storage layer reports back (`owner_of`, `writers()`). Rendering is hex, not
+/// base58 — core writes ids as hex precisely so an id is never mistaken for a
+/// key, and a base58 value here would never compare equal to what a query
+/// returns.
+fn caller_account() -> String {
+    AccountId::from(env::account_id()).to_string()
 }
 
 fn encode_blob_id_base58(blob_id_bytes: &[u8; BLOB_ID_SIZE]) -> String {
@@ -429,9 +440,9 @@ impl E2eKvStore {
     /// core 0.11 split one `executor_id` into two things, and app code has to
     /// know which one it is holding:
     ///
-    /// * `device_id` — this installation. The CRDT replica id, what
-    ///   `authored_*` reports as an owner, and what the node's group-membership
-    ///   listing calls `identity`. Base58, like everywhere else it appears.
+    /// * `device_id` — this installation. The CRDT replica id, and what the
+    ///   node's group-membership listing calls `identity`. Base58, like
+    ///   everywhere else a key appears.
     /// * `account_id` — the person. The only authorization subject: the
     ///   `shared_*` writer set is keyed by it. 64 hex characters.
     ///
@@ -587,10 +598,10 @@ impl E2eKvStore {
     // USER STORAGE - SIMPLE
 
     pub fn set_user_simple(&mut self, value: String) -> app::Result<()> {
-        let device_id = env::device_id();
-        app::log!("Setting simple value for user {:?}: {:?}", device_id, value);
+        let account = AccountId::from(env::account_id());
+        app::log!("Setting simple value for user {:?}: {:?}", account, value);
         app::emit!(Event::UserSimpleSet {
-            device_id: device_id.into(),
+            account_id: account,
             value: &value
         });
         self.user_items_simple.insert(value.into())?;
@@ -598,27 +609,39 @@ impl E2eKvStore {
     }
 
     pub fn get_user_simple(&self) -> app::Result<Option<String>> {
-        let device_id = env::device_id();
-        app::log!("Getting simple value for user {:?}", device_id);
+        app::log!(
+            "Getting simple value for user {:?}",
+            AccountId::from(env::account_id())
+        );
         Ok(self.user_items_simple.get()?.map(|v| v.get().clone()))
     }
 
-    pub fn get_user_simple_for(&self, user_key: PublicKey) -> app::Result<Option<String>> {
-        app::log!("Getting simple value for specific user {:?}", user_key);
+    /// Read another user's slot of `UserStorage`, addressed by ACCOUNT.
+    ///
+    /// Takes 64-hex, not the base58 device key: rc.21 rekeyed `UserStorage`
+    /// from `UnorderedMap<PublicKey, T>` to `UnorderedMap<AccountId, T>`, so a
+    /// device key now names a slot nobody writes to and this would answer
+    /// `None` forever rather than failing. Get the value from `whoami`, the
+    /// same way `shared_add_writer` does.
+    pub fn get_user_simple_for(&self, account_hex: String) -> app::Result<Option<String>> {
+        let account: AccountId = account_hex
+            .parse()
+            .map_err(|e| app::err!("not an account id (expected 64 hex chars): {e}"))?;
+        app::log!("Getting simple value for specific user {:?}", account);
         Ok(self
             .user_items_simple
-            .get_for_user(&user_key)?
+            .get_for_user(&account)?
             .map(|v| v.get().clone()))
     }
 
     // USER STORAGE - NESTED
 
     pub fn set_user_nested(&mut self, key: String, value: String) -> app::Result<()> {
-        let device_id = env::device_id();
+        let account = AccountId::from(env::account_id());
         app::log!(
             "Setting nested key {:?} for user {:?}: {:?}",
             key,
-            device_id,
+            account,
             value
         );
 
@@ -627,7 +650,7 @@ impl E2eKvStore {
         self.user_items_nested.insert(nested_map)?;
 
         app::emit!(Event::UserNestedSet {
-            device_id: device_id.into(),
+            account_id: account,
             key: &key,
             value: &value
         });
@@ -635,8 +658,11 @@ impl E2eKvStore {
     }
 
     pub fn get_user_nested(&self, key: &str) -> app::Result<Option<String>> {
-        let device_id = env::device_id();
-        app::log!("Getting nested key {:?} for user {:?}", key, device_id);
+        app::log!(
+            "Getting nested key {:?} for user {:?}",
+            key,
+            AccountId::from(env::account_id())
+        );
 
         let nested_map = self.user_items_nested.get()?;
         match nested_map {
@@ -697,8 +723,7 @@ impl E2eKvStore {
         };
         let guess_hash = Sha256::digest(guess.as_bytes());
         let guess_hash_hex = hex::encode(guess_hash);
-        let who_b = env::device_id();
-        let who = bs58::encode(who_b).into_string();
+        let who = caller_account();
         let success = guess_hash_hex == public_hash_hex;
         app::emit!(Event::Guessed {
             game_id,
@@ -737,8 +762,7 @@ impl E2eKvStore {
         let file_id = format!("file_{current_counter}");
         self.file_counter.set(current_counter + 1);
 
-        let uploader_id = env::device_id();
-        let uploader = encode_blob_id_base58(&uploader_id);
+        let uploader = caller_account();
         let timestamp = env::time_now();
 
         // Announce blob to network for peer discovery
@@ -1007,8 +1031,7 @@ impl E2eKvStore {
     // RGA DOCUMENT (from collaborative-editor)
 
     pub fn rga_insert_text(&mut self, position: usize, text: String) -> app::Result<()> {
-        let editor_id = env::device_id();
-        let editor = encode_identity(&editor_id);
+        let editor = caller_account();
 
         app::log!(
             "Inserting '{}' at position {} by {}",
@@ -1031,8 +1054,7 @@ impl E2eKvStore {
     }
 
     pub fn rga_delete_text(&mut self, start: usize, end: usize) -> app::Result<()> {
-        let editor_id = env::device_id();
-        let editor = encode_identity(&editor_id);
+        let editor = caller_account();
 
         app::log!("Deleting text from {} to {} by {}", start, end, editor);
 
@@ -1062,8 +1084,7 @@ impl E2eKvStore {
             app::bail!("Title cannot be empty");
         }
 
-        let editor_id = env::device_id();
-        let editor = encode_identity(&editor_id);
+        let editor = caller_account();
 
         let old_title = self.rga_get_title();
 
@@ -1111,7 +1132,7 @@ impl E2eKvStore {
     // AUTHORED MAP
 
     pub fn authored_insert(&mut self, key: String, value: String) -> app::Result<()> {
-        let owner = bs58::encode(env::device_id()).into_string();
+        let owner = caller_account();
         self.authored_items
             .insert(key.clone(), value.clone().into())?;
         app::emit!(Event::AuthoredInserted {
@@ -1162,7 +1183,7 @@ impl E2eKvStore {
     // SHARED STORAGE
 
     pub fn shared_set(&mut self, value: String) -> app::Result<()> {
-        let by = bs58::encode(env::device_id()).into_string();
+        let by = caller_account();
         self.shared_data.insert(LwwRegister::new(value.clone()))?;
         app::emit!(Event::SharedSet {
             value: value.clone(),
@@ -1218,7 +1239,7 @@ impl E2eKvStore {
 
     pub fn authored_vec_push(&mut self, value: String) -> app::Result<usize> {
         let index = self.authored_vec.push(LwwRegister::new(value.clone()))?;
-        let owner = bs58::encode(env::device_id()).into_string();
+        let owner = caller_account();
         app::emit!(Event::AuthoredVecPushed {
             index,
             value,

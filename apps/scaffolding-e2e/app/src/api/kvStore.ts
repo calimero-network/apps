@@ -71,9 +71,16 @@ export const setUserSimple = (value: string) =>
 export const getUserSimple = () =>
   call<Record<string, never>, string | null>("get_user_simple", {});
 
-export const getUserSimpleFor = (user_key: string) =>
-  call<{ user_key: string }, string | null>("get_user_simple_for", {
-    user_key,
+/**
+ * Read another user's `UserStorage` slot, addressed by ACCOUNT (64 hex).
+ *
+ * Not the base58 device key: rc.21 rekeyed `UserStorage` by account, so a
+ * device key names a slot nobody writes to and this answers `null` forever
+ * instead of erroring. Get the value from `whoami().account_id`.
+ */
+export const getUserSimpleFor = (account_hex: string) =>
+  call<{ account_hex: string }, string | null>("get_user_simple_for", {
+    account_hex,
   });
 
 export const setUserNested = (key: string, value: string) =>

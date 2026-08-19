@@ -7,7 +7,7 @@ near_devnet: false
 
 nodes:
   count: 3
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.20
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.24
   prefix: e2e-node
 
 steps:
@@ -493,6 +493,22 @@ steps:
     check_interval: 2
     trigger_sync: true
 
+  # UserStorage is keyed by ACCOUNT since rc.21 (it was UnorderedMap<PublicKey,
+  # T>, it is now UnorderedMap<AccountId, T>), and merobox only knows each
+  # node's DEVICE key — `memberPublicKey` above. So node-1 has to report its own
+  # account id, the same way the shared-writer steps do in authored-shared.yml.
+  # Passing node1_key here does not fail: it names a slot nobody wrote to, so
+  # every read below would answer null and the asserts would be proving nothing.
+  - name: node-1 reports its own account id
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: whoami
+    args: {}
+    outputs:
+      n1_account: result.output.account_id
+
   # Node 2 can read node-1's user storage
   - name: Get node-1 user value from node-2
     type: call
@@ -500,7 +516,7 @@ steps:
     context_id: "{{context_id}}"
     method: get_user_simple_for
     args:
-      user_key: "{{node1_key}}"
+      account_hex: "{{n1_account}}"
     outputs:
       node1_profile_from_node2: result
 
@@ -516,7 +532,7 @@ steps:
     context_id: "{{context_id}}"
     method: get_user_simple_for
     args:
-      user_key: "{{node1_key}}"
+      account_hex: "{{n1_account}}"
     outputs:
       node1_profile_from_node3: result
 
@@ -559,6 +575,17 @@ steps:
     check_interval: 2
     trigger_sync: true
 
+  # Same as node-1 above: address the slot by account, not by device key.
+  - name: node-2 reports its own account id
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: whoami
+    args: {}
+    outputs:
+      n2_account: result.output.account_id
+
   # Node 1 can read node-2's user storage
   - name: Get node-2 user value from node-1
     type: call
@@ -566,7 +593,7 @@ steps:
     context_id: "{{context_id}}"
     method: get_user_simple_for
     args:
-      user_key: "{{public_key_e2e-node-2}}"
+      account_hex: "{{n2_account}}"
     outputs:
       node2_profile_from_node1: result
 
@@ -582,7 +609,7 @@ steps:
     context_id: "{{context_id}}"
     method: get_user_simple_for
     args:
-      user_key: "{{public_key_e2e-node-2}}"
+      account_hex: "{{n2_account}}"
     outputs:
       node2_profile_from_node3: result
 

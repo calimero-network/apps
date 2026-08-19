@@ -198,13 +198,18 @@ export async function listNamespaces(): Promise<NamespaceRecord[]> {
   return body?.data ?? [];
 }
 
+// No `upgradePolicy` in the body: core#3393 deleted the upgrade policy concept
+// in rc.21 (`Automatic` had no receiver-side implementation and permanently
+// gated sync on affected peers, so lazy-on-access is the only behaviour now).
+// It was a REQUIRED field on rc.20 and is absent from the request type on
+// rc.21+, so this body is the one that works on the node this app targets.
 export async function createNamespace(
   applicationId: string,
 ): Promise<{ namespaceId: string }> {
   const body = await adminFetch("/admin-api/namespaces", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ applicationId, upgradePolicy: "Automatic" }),
+    body: JSON.stringify({ applicationId }),
   }) as { data?: { namespaceId?: string } };
   const namespaceId = body?.data?.namespaceId;
   if (!namespaceId) throw new Error(`createNamespace: no namespaceId in response: ${JSON.stringify(body)}`);

@@ -6,7 +6,7 @@ name = "scaffolding-e2e"
 # (0.0.1 when nothing is published yet). Bumping this changes nothing about what
 # gets released, so do not read a shipped version out of the tree; read it from
 # the registry or the workflow's run summary.
-version = "0.0.1"
+version = "0.0.2"
 authors = ["Calimero Limited <info@calimero.network>"]
 edition = "2021"
 repository = "https://github.com/calimero-network/scaffolding-e2e-application"
@@ -41,7 +41,7 @@ github = "https://github.com/calimero-network/scaffolding-e2e-application"
 # build imports host functions that only exist from that release on, so a node
 # older than this installs the bundle happily and then dies at context creation
 # with `link error: unknown import`.
-min-runtime-version = "0.11.0-rc.20"
+min-runtime-version = "0.11.0-rc.24"
 # Where the desktop app and links.calimero.network send a deep link for this
 # package. The hosted build is the same `frontend/` in this repo (Vercel project
 # root = `frontend`); it still talks to whatever node the user connects to from
@@ -69,9 +69,9 @@ frontend = "https://scaffolding-e2e-application.vercel.app/"
 # protocol work against nodes that run the release. All SDK crates must share
 # the exact same tag (the workspace version at a tag is 0.0.0, so version
 # strings cannot express this).
-calimero-sdk            = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.20" }
-calimero-storage        = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.20" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.20" }
+calimero-sdk            = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.24" }
+calimero-storage        = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.24" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.24" }
 thiserror = "1.0.56"
 sha2      = "0.10.8"
 hex       = "0.4.3"

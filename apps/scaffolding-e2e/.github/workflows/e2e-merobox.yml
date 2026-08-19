@@ -2,7 +2,7 @@ name: E2E - Merobox Workflows
 
 # Runs all merobox workflow tests against the scaffolding-e2e WASM app.
 # Build: WASM compiled from Rust source, then all workflows run in parallel.
-# Uses ghcr.io/calimero-network/merod:0.11.0-rc.20 — pinned RC for reproducibility.
+# Uses ghcr.io/calimero-network/merod:0.11.0-rc.24 — pinned RC for reproducibility.
 
 permissions:
   contents: read
@@ -135,13 +135,18 @@ jobs:
       # stopped serving a Release file and took every job in this matrix down
       # with a 404 from `apt-get update` — before any of them reached a test.
       #
-      # A floor rather than an exact pin: these workflows rely on `result.output`
-      # dotted-path extraction, which older releases do not do.
+      # EXACTLY pinned, and pinned TOGETHER with the merod image below. merobox
+      # drives the node's admin API directly, so an unpinned merobox silently
+      # starts speaking a newer node's payloads and the e2e reds on a commit
+      # that changed nothing. That is not hypothetical: merobox 0.6.55 dropped
+      # `upgradePolicy` to match rc.21 (core#3393), and against the rc.20 image
+      # this file used to pin, every `create_namespace` died with
+      # `HTTP 400: missing field 'upgradePolicy'`. Move these two together.
       - name: Install merobox
-        run: pip install "merobox>=0.6.49" && merobox --version
+        run: pip install "merobox==0.6.55" "calimero-client-py==0.6.29" && merobox --version
 
       - name: Pull merod image
-        run: docker pull ghcr.io/calimero-network/merod:0.11.0-rc.20
+        run: docker pull ghcr.io/calimero-network/merod:0.11.0-rc.24
 
       - name: Run ${{ matrix.workflow }}
         run: |

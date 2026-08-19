@@ -88,17 +88,17 @@ export function UserStorage() {
         </div>
 
         <div className="method-card">
-          <div className="method-name">get_user_simple_for(user_key)</div>
+          <div className="method-name">get_user_simple_for(account_hex)</div>
           <div className="method-inputs">
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <input
                 className="form-control"
                 style={{ flex: 1 }}
-                placeholder="user public key (base58)"
+                placeholder="user account id (64 hex)"
                 value={forUserKey}
                 onChange={(e) => setForUserKey(e.target.value)}
               />
-              <FieldHelp text="The base58-encoded Ed25519 public key of another context member. Get it from ws_list_members, or from their node's context bar (executor key)." />
+              <FieldHelp text="The 64-hex account id of another context member — a person, not a device. Get it from their node's whoami(). The base58 device key will NOT work: rc.21 rekeyed user storage by account, so a device key names an empty slot and this returns null rather than an error." />
             </div>
           </div>
           <button

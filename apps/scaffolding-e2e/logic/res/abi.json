@@ -782,7 +782,7 @@
       "kind": "record",
       "fields": [
         {
-          "name": "device_id",
+          "name": "account_id",
           "type": {
             "kind": "bytes",
             "size": 32
@@ -806,7 +806,7 @@
       "kind": "record",
       "fields": [
         {
-          "name": "device_id",
+          "name": "account_id",
           "type": {
             "kind": "bytes",
             "size": 32
@@ -1460,10 +1460,9 @@
       "name": "get_user_simple_for",
       "params": [
         {
-          "name": "user_key",
+          "name": "account_hex",
           "type": {
-            "kind": "bytes",
-            "size": 32
+            "kind": "string"
           }
         }
       ],

@@ -1,5 +1,4 @@
 import { useState, useCallback } from "react";
-import { getContextIdentity } from "../lib/mero";
 import * as api from "../api/kvStore";
 
 
@@ -310,12 +309,15 @@ const TESTS: TestCase[] = [
 
   {
     id: "user-simple-for-self",
-    name: "get_user_simple_for own executor key returns stored value",
+    name: "get_user_simple_for own account id returns stored value",
     group: "User Storage",
     fn: async (r) => {
-      const myKey = getContextIdentity() ?? "";
+      // The account, not getContextIdentity()'s device key — rc.21 rekeyed
+      // UserStorage by account. Passing the device key returns null, which
+      // would read as "nothing stored" rather than as a wrong address.
+      const myAccount = out<api.Identity>(await api.whoami()).account_id;
       noErr(await api.setUserSimple(`self_${r}`));
-      eq(out<string | null>(await api.getUserSimpleFor(myKey)), `self_${r}`);
+      eq(out<string | null>(await api.getUserSimpleFor(myAccount)), `self_${r}`);
     },
   },
   {

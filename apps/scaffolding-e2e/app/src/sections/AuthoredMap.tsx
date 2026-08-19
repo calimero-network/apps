@@ -169,7 +169,7 @@ export function AuthoredMap() {
         <div className="method-card">
           <div className="method-name">authored_get_owner(key)</div>
           <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 10 }}>
-            Returns the base58 public key of the node that owns this entry.
+            Returns the 64-hex account id of the member that owns this entry — an account (a person), not a base58 device key.
           </p>
           <div className="method-inputs">
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>

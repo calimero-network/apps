@@ -152,7 +152,7 @@ export function AuthoredVector() {
         <div className="method-card">
           <div className="method-name">authored_vec_get_owner(index)</div>
           <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 10 }}>
-            Returns the base58 public key of the node that owns this slot.
+            Returns the 64-hex account id of the member that owns this slot — an account (a person), not a base58 device key.
           </p>
           <div className="method-inputs">
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>

@@ -824,10 +824,18 @@ const ID_FORMATS: {
     description: "Identifies a context instance. Derived from the context's Ed25519 public key.",
   },
   {
-    label: "Identity / Public Key",
+    label: "Device Key",
     encoding: "base58",
     size: "32 bytes",
-    description: "Ed25519 public key identifying a node member. Used as executor ID in method calls.",
+    description:
+      "Ed25519 public key identifying one installation. Passed as executorPublicKey on a call, and used by the CRDT layer as the replica id. Never an authorization subject.",
+  },
+  {
+    label: "Account ID",
+    encoding: "hex",
+    size: "32 bytes",
+    description:
+      "Identifies a person, and is the only thing that authorizes anything: writer sets, entry ownership and group membership are all keyed by it. One account can hold several device keys. Rendered hex, deliberately unlike a key, so the two are never pasted interchangeably.",
   },
   {
     label: "Group ID",

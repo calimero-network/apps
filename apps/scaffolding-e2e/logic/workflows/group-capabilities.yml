@@ -15,7 +15,7 @@ near_devnet: false
 
 nodes:
   count: 2
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.20
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.24
   prefix: e2e-node
 
 steps:
@@ -72,13 +72,17 @@ steps:
     namespace_id: '{{namespace_id}}'
     invitation: '{{invite_node2}}'
     outputs:
-      identity_node2: memberIdentity
+      # `memberAccount`, not `memberIdentity`: capability endpoints address a
+      # member by ACCOUNT and reject anything that is not 64 hex characters
+      # with `HTTP 400: Invalid account format`. `memberIdentity` is still the
+      # base58 device key.
+      account_node2: memberAccount
 
   - name: Get node-2 capabilities
     type: get_member_capabilities
     node: e2e-node-1
     group_id: '{{namespace_id}}'
-    member_id: '{{identity_node2}}'
+    member_id: '{{account_node2}}'
     outputs:
       node2_caps: capabilities
 
@@ -94,14 +98,14 @@ steps:
     type: set_member_capabilities
     node: e2e-node-1
     group_id: '{{namespace_id}}'
-    member_id: '{{identity_node2}}'
+    member_id: '{{account_node2}}'
     capabilities: 1
 
   - name: Get node-2 capabilities after restriction
     type: get_member_capabilities
     node: e2e-node-1
     group_id: '{{namespace_id}}'
-    member_id: '{{identity_node2}}'
+    member_id: '{{account_node2}}'
     outputs:
       node2_caps_after: capabilities
 

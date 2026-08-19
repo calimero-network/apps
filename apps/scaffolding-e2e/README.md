@@ -56,7 +56,7 @@ SDK in `logic/Cargo.toml` — the ABI emitter is versioned with core):
 
 ```bash
 cargo install --git https://github.com/calimero-network/core \
-  --tag 0.11.0-rc.20 cargo-mero --locked
+  --tag 0.11.0-rc.24 cargo-mero --locked
 ```
 
 Then build:
@@ -248,6 +248,31 @@ Methods exposed:
 - `shared_is_writer(account_hex)` — check if an account is authorized
 - `shared_is_frozen()` — whether the storage was locked at construction
 
+### UserStorage
+
+A per-user slot: each caller reads and writes their own entry, and everyone can
+read everyone else's. Same device/account split as `SharedStorage` above — and
+it moved. Through rc.20 this was `UnorderedMap<PublicKey, T>`, keyed by the
+**device**; from rc.21 it is `UnorderedMap<AccountId, T>`, keyed by the
+**account**, so a person gets one slot rather than one per machine.
+
+Both ids are 32 bytes, so the state schema is byte-identical and nothing
+fails loudly — but the addresses changed. **A context created on rc.20 or
+earlier keeps its user-storage bytes under the old device keys, where nothing
+reads them any more: `get_user_simple` will answer `null` for a user who
+plainly has data.** There is no migration; recreate the context.
+
+For the same reason `get_user_simple_for` takes a 64-hex `account_hex`, not a
+base58 device key. A device key is not rejected — it names an empty slot, so
+you get `null` rather than an error. Get the value from `whoami()`.
+
+Frontend: **Storage → User Storage**
+
+Methods exposed:
+- `set_user_simple(value)` / `get_user_simple()` — the caller's own slot
+- `get_user_simple_for(account_hex)` — another user's slot, by account
+- `set_user_nested(key, value)` / `get_user_nested(key)` — a nested map per user
+
 ---
 
 ## Publishing to the App Registry
@@ -292,7 +317,7 @@ To change the icon, edit `logic/res/icon.svg` and run `logic/gen-icon.sh`.
 
 **`merod` / `meroctl` not found** — run `./install-calimero.sh` and restart your terminal.
 
-**`cargo mero` not found** — `cargo install --git https://github.com/calimero-network/core --tag 0.11.0-rc.20 cargo-mero --locked`.
+**`cargo mero` not found** — `cargo install --git https://github.com/calimero-network/core --tag 0.11.0-rc.24 cargo-mero --locked`.
 
 **`app install` fails** — run `./logic/build-bundle.sh` first.
 
