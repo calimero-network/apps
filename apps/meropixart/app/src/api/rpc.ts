@@ -130,6 +130,31 @@ export async function adminGet<T>(path: string): Promise<T> {
   return res.data.data ?? (res.data as T);
 }
 
+/** What `GET /admin-api/identity` answers with. */
+export interface NodeIdentity {
+  /** The person: 64 hex characters. What member listings name members by. */
+  accountId: string;
+  /** This installation, when the node reports one. */
+  deviceId?: string;
+  publicKey?: string;
+}
+
+/**
+ * Ask the NODE who it is.
+ *
+ * core 0.11.0-rc.23 (#3522) deleted `GET /namespaces/:id/identity` and dropped
+ * `selfIdentity` from the group member listing — "who am I" was always a
+ * node-level question, and one identity is shared across namespaces. Compare
+ * `accountId` against a member's `identity`, which rc.23 also made an account.
+ *
+ * Reading `selfIdentity` off the member listing instead does not fail: the
+ * field is simply absent, so "am I an admin" silently answers false and every
+ * moderation control stays disabled.
+ */
+export async function getNodeIdentity(): Promise<NodeIdentity> {
+  return adminGet<NodeIdentity>("/identity");
+}
+
 /**
  * List namespaces scoped to a single application. Falls back to the unscoped
  * `/namespaces` endpoint on older merod versions that lack the scoped route.

@@ -7,7 +7,7 @@ description = "MeroPixArt — collaborative p2p image editor on Calimero"
 # (0.0.1 when nothing is published yet). Bumping this changes nothing about what
 # gets released, so do not read a shipped version out of the tree; read it from
 # the registry or the workflow's run summary.
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 
 [lib]
@@ -40,7 +40,7 @@ github = "https://github.com/calimero-network/mero-pixart"
 # that earlier merod has no implementation for: claiming 0.1.0 lets such a node
 # install the bundle happily and then fail at context creation with "unknown
 # import". Keep this equal to the calimero-sdk tag above.
-min-runtime-version = "0.11.0-rc.23"
+min-runtime-version = "0.11.0-rc.24"
 frontend = "https://mero-pixart.vercel.app/"
 
 [dependencies]
@@ -50,16 +50,16 @@ borsh-derive = "0.10.3"
 # protocol work against nodes that run the release. All SDK crates must share the
 # exact same tag (the workspace version at a tag is 0.0.0, so a version
 # requirement cannot match).
-calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.23" }
-calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.23" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.23" }
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.24" }
+calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.24" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.24" }
 thiserror = "1.0.56"
 serde_json = "1.0.113"
 
 [dev-dependencies]
 # Enables register_crdt_merge + the native mock host so TestHost can drive
 # CRDT state (incl. the permissioned components) under `cargo test`.
-calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.23", features = ["testing"] }
+calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.24", features = ["testing"] }
 
 [profile.app-release]
 inherits = "release"

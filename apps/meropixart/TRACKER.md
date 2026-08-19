@@ -44,7 +44,7 @@ Dev ports: node1 `2460`/`2560`, node2 `2461`/`2561` · frontend `5176`
 > 1.6.1** (rc.6 needs borsh 1.x). The unused `calimero-wasm-abi` build-dep was
 > dropped (no `build.rs`; the crate was renamed `mero-abi` in core anyway).
 > 10/10 `cargo test` pass; WASM builds to `res/meropixart.wasm` (~1.17 MB).
-> Merobox/CI runtime image bumped to `merod:0.11.0-rc.6`. Verified end-to-end on
+> Merobox/CI runtime image bumped to `merod:0.11.0-rc.24`. Verified end-to-end on
 > a live node (install + init + RPCs).
 
 - [x] `Cargo.toml`, `rust-toolchain.toml`, `build.sh`, `build-bundle.sh`, `calimero.json`
@@ -191,7 +191,7 @@ Dev ports: node1 `2460`/`2560`, node2 `2461`/`2561` · frontend `5176`
 
 **SDK note:** pinned `0.11.0-rc.6` for all Calimero crates via git tag (crates.io
 stops at rc.5; rc.6 is a git tag only). borsh `1.6.1`. Merod runtime image in
-workflows = `merod:0.11.0-rc.6`. Contract verified live (the rc.6 build also runs
+workflows = `merod:0.11.0-rc.24`. Contract verified live (the rc.6 build also runs
 on the locally-installed `merod 0.11.0-rc.4` — the host ABI is stable across RCs).
 
 ## 2026-06-25 — UI pass (requirements.md)

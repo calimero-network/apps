@@ -53,7 +53,7 @@ jobs:
           cp target/wasm32-unknown-unknown/app-release/meropixart.wasm res/
 
       - name: Install merobox
-        run: pip install merobox==0.6.55 && merobox --version
+        run: pip install "merobox==0.6.55" "calimero-client-py==0.6.29" && merobox --version
 
       - name: Run integration-setup workflow
         working-directory: workflows
