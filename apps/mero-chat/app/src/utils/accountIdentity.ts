@@ -26,9 +26,10 @@ const DEFAULT_ENDPOINT = "http://localhost:2428";
  * encoding succeeds.
  */
 export async function loadSelfAccountIdentity(
-  namespaceId: string,
+  // Kept for call-site compatibility: identity is node-wide, not per-namespace,
+  // so the value is no longer used to build the request.
+  _namespaceId?: string,
 ): Promise<string | null> {
-  if (!namespaceId) return null;
 
   const base = getNodeUrl() || DEFAULT_ENDPOINT;
   const cfg = getAuthConfig();
@@ -36,10 +37,11 @@ export async function loadSelfAccountIdentity(
   if (cfg?.jwtToken) headers.Authorization = `Bearer ${cfg.jwtToken}`;
 
   try {
-    const res = await axios.get(
-      `${base}/admin-api/namespaces/${namespaceId}/account`,
-      { headers },
-    );
+    // `/admin-api/namespaces/{id}/account` 404s on merod 0.11.0-rc.24 — the
+    // per-namespace route is gone. Identity is node-wide and served here, which
+    // is also what mero-js's own `getNamespaceIdentity` resolves to. Response
+    // shape is unchanged (`data.accountId`, `data.deviceId`).
+    const res = await axios.get(`${base}/admin-api/identity`, { headers });
     const accountHex: string = res.data?.data?.accountId ?? "";
     const deviceHex: string = res.data?.data?.deviceId ?? "";
     if (!accountHex) return null;
