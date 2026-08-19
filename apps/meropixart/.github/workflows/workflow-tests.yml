@@ -49,7 +49,24 @@ jobs:
           cp target/wasm32-unknown-unknown/app-release/meropixart.wasm res/
 
       - name: Install merobox
-        run: pip install "merobox==0.6.55" "calimero-client-py==0.6.29" && merobox --version
+        # calimero-client-py is pinned TOO, and that is not belt-and-braces:
+        # merobox depends on it unpinned (`>=0.6.28`), and it is the layer that
+        # actually builds the admin-API request. Pinning merobox alone pins
+        # nothing about the wire format, so an unpinned install tracks core
+        # master and reddens this job on a commit that changed nothing.
+        #
+        # The pair must match the node image in workflows/. That image is now
+        # merod 0.11.0-rc.24, so this is the rc.24-era pair. (It used to be
+        # merobox/client-py 0.6.24, the last releases that kept the
+        # `upgradePolicy` shim every rc.20 node still required — obsolete now
+        # that no image here is on rc.20.)
+        #
+        # The installed client-py version is echoed below: when this job breaks
+        # on a no-op commit, that line identifies the culprit without a bisect.
+        run: |
+          pip install "merobox==0.6.55" "calimero-client-py==0.6.29"
+          merobox --version
+          pip show calimero-client-py | sed -n 's/^Version: /calimero-client-py /p'
 
       - name: Run E2E workflow
         working-directory: workflows

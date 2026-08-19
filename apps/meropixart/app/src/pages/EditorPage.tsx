@@ -52,6 +52,10 @@ const ts = () => Date.now();
 /** How many blob uploads to keep in flight while loading a showcase. Enough to
  *  hide the round-trips, few enough that a node is not hammered by one click. */
 const UPLOAD_CONCURRENCY = 4;
+// Downloads are cheaper than uploads (no PNG encode, and `adminGetBlob` serves
+// repeat opens straight from IndexedDB), so this can sit higher than the upload
+// width without burying the node.
+const DOWNLOAD_CONCURRENCY = 6;
 
 export default function EditorPage() {
   const { teamId, projectId } = useParams();
@@ -104,35 +108,73 @@ export default function EditorPage() {
   }, [ctxId]);
 
   // ── Loaders ───────────────────────────────────────────────────────────────
+  //
+  // Opening a showcase means pulling ~15-17 blobs. Two things used to make that
+  // the slowest thing in the app, and they compounded:
+  //
+  //   • the fetches were a `for` loop with an `await` in it, so 15 round-trips to
+  //     the node happened strictly one after another — the upload path had
+  //     already been given `mapLimit` for exactly this reason (see the showcase
+  //     writer below), the download path never was;
+  //   • every single arriving blob called `bumpRender()`, and a bump invalidates
+  //     the flattened-document cache, so the whole document was recomposited once
+  //     per blob. Measured on the bundled showcases (scripts/perf-bench.html):
+  //     Aurora 135ms, Sunset Ridge 154ms, Bauhaus 116ms of pure recompositing,
+  //     on top of a React render cascade each time.
+  //
+  // Now: bounded-concurrency fetches, and redraws coalesced onto an animation
+  // frame. The canvas still fills in progressively — that is worth keeping — but
+  // at most one recomposite per frame instead of one per blob.
+  const renderFrame = useRef<number | null>(null);
+  const scheduleRender = useCallback(() => {
+    if (renderFrame.current !== null) return;
+    renderFrame.current = requestAnimationFrame(() => {
+      renderFrame.current = null;
+      bumpRender();
+    });
+  }, [bumpRender]);
+  useEffect(() => () => {
+    if (renderFrame.current !== null) cancelAnimationFrame(renderFrame.current);
+  }, []);
+
   const loadBlobs = useCallback(async (ls: Layer[]) => {
+    // One job per blob rather than per layer, so a layer's pixels and its mask
+    // are two independent fetches and neither waits on the other.
+    const jobs: { blobId: string; layer: Layer; kind: "pixels" | "mask" }[] = [];
     for (const l of ls) {
       if (l.blobId && !loadedBlobs.current.has(l.blobId)) {
         loadedBlobs.current.add(l.blobId);
-        try {
-          const buf = await adminGetBlob(l.blobId, ctxId);
-          const img = await bytesToImage(buf);
-          const c = getLayerCanvas(l.id, l.width || img.width, l.height || img.height);
-          const cx = ctx2d(c);
-          cx.clearRect(0, 0, c.width, c.height);
-          cx.drawImage(img, 0, 0);
-          setLayerCanvas(l.id, c);
-          bumpRender();
-        } catch { loadedBlobs.current.delete(l.blobId); }
+        jobs.push({ blobId: l.blobId, layer: l, kind: "pixels" });
       }
       if (l.maskBlobId && !loadedBlobs.current.has(l.maskBlobId)) {
         loadedBlobs.current.add(l.maskBlobId);
-        try {
-          const buf = await adminGetBlob(l.maskBlobId, ctxId);
-          const img = await bytesToImage(buf);
-          const c = getMaskCanvas(l.id, l.width || img.width, l.height || img.height);
-          const cx = ctx2d(c);
-          cx.clearRect(0, 0, c.width, c.height);
-          cx.drawImage(img, 0, 0);
-          bumpRender();
-        } catch { loadedBlobs.current.delete(l.maskBlobId); }
+        jobs.push({ blobId: l.maskBlobId, layer: l, kind: "mask" });
       }
     }
-  }, [ctxId, bumpRender]);
+    if (jobs.length === 0) return;
+
+    await mapLimit(jobs, DOWNLOAD_CONCURRENCY, async ({ blobId, layer, kind }) => {
+      try {
+        const buf = await adminGetBlob(blobId, ctxId);
+        const img = await bytesToImage(buf);
+        const c = kind === "pixels"
+          ? getLayerCanvas(layer.id, layer.width || img.width, layer.height || img.height)
+          : getMaskCanvas(layer.id, layer.width || img.width, layer.height || img.height);
+        const cx = ctx2d(c);
+        cx.clearRect(0, 0, c.width, c.height);
+        cx.drawImage(img, 0, 0);
+        if (kind === "pixels") setLayerCanvas(layer.id, c);
+        scheduleRender();
+      } catch {
+        // Let it be retried by the next refetch rather than leaving the layer
+        // permanently blank.
+        loadedBlobs.current.delete(blobId);
+      }
+    }).catch(() => { /* individual failures are already swallowed above */ });
+
+    // A final bump, in case the last frame's redraw landed before the last blob.
+    scheduleRender();
+  }, [ctxId, scheduleRender]);
 
   const refetch = useCallback(async () => {
     try {

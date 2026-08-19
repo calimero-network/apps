@@ -1110,17 +1110,60 @@ function TextEditor({
 
 // ── Draw helpers ─────────────────────────────────────────────────────────────
 
-function drawCheckerboard(ctx: CanvasRenderingContext2D, w: number, h: number, size = 8) {
-  const s = Math.max(2, size);
-  ctx.save();
-  ctx.fillStyle = "#15191f";
-  ctx.fillRect(0, 0, w, h);
-  ctx.fillStyle = "#1d232b";
-  for (let y = 0; y < h; y += s) {
-    for (let x = 0; x < w; x += s) {
-      if (((Math.floor(x / s)) + (Math.floor(y / s))) % 2 === 0) ctx.fillRect(x, y, s, s);
-    }
+const CHECKER_DARK = "#15191f";
+const CHECKER_LIGHT = "#1d232b";
+
+/**
+ * The 2x2-square tile the transparency checkerboard repeats, cached per square
+ * size. Two squares on a side, so the tile itself is the repeating unit.
+ */
+const checkerTiles = new Map<number, HTMLCanvasElement>();
+
+function checkerTile(s: number): HTMLCanvasElement {
+  let tile = checkerTiles.get(s);
+  if (!tile) {
+    tile = createCanvas(s * 2, s * 2);
+    const tctx = ctx2d(tile);
+    tctx.fillStyle = CHECKER_DARK;
+    tctx.fillRect(0, 0, s * 2, s * 2);
+    tctx.fillStyle = CHECKER_LIGHT;
+    // Match the old parity: a square is light when (x/s + y/s) is even, so the
+    // top-left and bottom-right of the tile are the light ones.
+    tctx.fillRect(0, 0, s, s);
+    tctx.fillRect(s, s, s, s);
+    checkerTiles.set(s, tile);
   }
+  return tile;
+}
+
+/**
+ * Transparency checkerboard behind the document.
+ *
+ * This used to be a nested loop of `fillRect`, one per square, which is
+ * ~40,000 canvas calls per frame on a 1400x1800 document and ~113,000 on a
+ * 2400x3000 one — every pan, every zoom step, every redraw, and completely
+ * independent of how many layers the document has. That is why moving the view
+ * around felt heavy on a document where nothing else was going on.
+ *
+ * A repeating pattern draws the identical pixels in ONE fill. Smoothing is
+ * forced off for it: `draw()` turns smoothing on below 3x zoom, and a smoothed
+ * pattern would blur what were previously crisp square edges.
+ */
+function drawCheckerboard(ctx: CanvasRenderingContext2D, w: number, h: number, size = 8) {
+  const s = Math.max(2, Math.round(size));
+  const pattern = ctx.createPattern(checkerTile(s), "repeat");
+  ctx.save();
+  const smoothing = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = false;
+  if (pattern) {
+    ctx.fillStyle = pattern;
+  } else {
+    // A context that cannot make a pattern (jsdom in the unit suite) still gets
+    // the base colour rather than a transparent hole.
+    ctx.fillStyle = CHECKER_DARK;
+  }
+  ctx.fillRect(0, 0, w, h);
+  ctx.imageSmoothingEnabled = smoothing;
   ctx.restore();
 }
 

@@ -84,6 +84,44 @@ export default function ShowcasePicker({ hasContent, onPick, onClose, busy }: Pr
 /** A card image, rendered once per project and cached for the session. */
 const thumbCache = new Map<string, string>();
 
+// ── One poster per frame ─────────────────────────────────────────────────────
+//
+// Each card used to schedule its own `requestAnimationFrame`. That reads like
+// staggering, but it is not: four callbacks registered in the same tick all run
+// in the SAME frame, so opening the gallery did every render back to back with
+// nothing painting in between. Measured at full resolution
+// (scripts/perf-bench.html): Aurora 169ms, Sunset Ridge 134ms, Bauhaus 93ms,
+// Transform Lab 21ms — 478ms of unbroken main-thread work before the modal could
+// respond to anything, and worse in the desktop webview than in Chrome.
+//
+// A single queue with one render per frame keeps the cost the same but makes it
+// interruptible: the modal paints immediately and the posters fill in one by one,
+// which is what the old comment claimed was happening.
+const thumbQueue: (() => void)[] = [];
+let pumping = false;
+
+function pumpThumbs(): void {
+  if (pumping) return;
+  pumping = true;
+  const step = () => {
+    const job = thumbQueue.shift();
+    if (!job) { pumping = false; return; }
+    job();
+    if (thumbQueue.length > 0) requestAnimationFrame(step);
+    else pumping = false;
+  };
+  requestAnimationFrame(step);
+}
+
+function queueThumb(job: () => void): () => void {
+  thumbQueue.push(job);
+  pumpThumbs();
+  return () => {
+    const i = thumbQueue.indexOf(job);
+    if (i >= 0) thumbQueue.splice(i, 1);
+  };
+}
+
 function Thumb({ project }: { project: ShowcaseProject }) {
   const [url, setUrl] = useState<string>(() => thumbCache.get(project.id) ?? "");
   const alive = useRef(true);
@@ -91,9 +129,10 @@ function Thumb({ project }: { project: ShowcaseProject }) {
   useEffect(() => {
     alive.current = true;
     if (thumbCache.has(project.id)) return () => { alive.current = false; };
-    // Rendering four full-size posters at once would block the modal's first
-    // paint, so each card renders on the next frame and fills in.
-    const handle = requestAnimationFrame(() => {
+    const cancel = queueThumb(() => {
+      // Skip work for a card that unmounted while it sat in the queue — closing
+      // the gallery should not keep the main thread busy rendering its posters.
+      if (!alive.current) return;
       try {
         const data = renderShowcaseThumb(project, 520, 520).toDataURL("image/png");
         thumbCache.set(project.id, data);
@@ -103,7 +142,7 @@ function Thumb({ project }: { project: ShowcaseProject }) {
         // placeholder — the card is still usable.
       }
     });
-    return () => { alive.current = false; cancelAnimationFrame(handle); };
+    return () => { alive.current = false; cancel(); };
   }, [project]);
 
   return (
