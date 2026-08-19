@@ -7,7 +7,7 @@ description = "Streaming media over Calimero — in-WASM codec capacity probe (T
 # (0.0.1 when nothing is published yet). Bumping this changes nothing about what
 # gets released, so do not read a shipped version out of the tree; read it from
 # the registry or the workflow's run summary.
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 
 [lib]
@@ -41,7 +41,7 @@ tags = ["streaming", "video", "webcodecs", "capacity-probe"]
 github = "https://github.com/calimero-network/mero-stream"
 # rc.20 is where `device_id()` replaced `executor_id()` and AccessControl/Ownable
 # became account-keyed, so an older node cannot run this build.
-min-runtime-version = "0.11.0-rc.23"
+min-runtime-version = "0.11.0-rc.24"
 # MUST be the exact origin the frontend is deployed on. This is not cosmetic
 # metadata: the embedded auth frontend uses it as the registered-redirect-URI
 # equivalent. `callbackUrl.ts` compares `frontend.origin === callbackOrigin`, and a
@@ -88,9 +88,9 @@ base64 = "0.22"
 borsh = "1.6.1"
 borsh-derive = "1.6.1"
 bs58 = "0.5.1"
-calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.23" }
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.23" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.23" }
+calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.24" }
+calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.24" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.24" }
 thiserror = "1.0.56"
 
 # NOTE: there is deliberately no `[build-dependencies]` section, and this crate
@@ -106,7 +106,7 @@ thiserror = "1.0.56"
 [dev-dependencies]
 # Enables the native mock host so TestHost can drive contract state under
 # `cargo test` (same as mero-meet).
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.23", features = ["testing"] }
+calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.24", features = ["testing"] }
 
 [profile.app-release]
 inherits = "release"
