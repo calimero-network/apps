@@ -105,7 +105,6 @@ export default function RoomsPage() {
       // 1. Namespace to hold the room.
       const ns = await mero.admin.createNamespace({
         applicationId: appId,
-        upgradePolicy: "LazyOnAccess",
         name: roomName,
       });
       // 2. Let members do everything in this namespace (15 = all base caps).
