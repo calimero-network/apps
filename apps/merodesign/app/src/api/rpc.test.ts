@@ -270,7 +270,7 @@ describe("adminPost", () => {
 
   it("sends the request body", async () => {
     mockPost.mockResolvedValue({ data: { data: {} } });
-    const body = { alias: "test", upgradePolicy: "LazyOnAccess" };
+    const body = { alias: "test" };
     await adminPost("/namespaces", body);
     expect(mockPost.mock.calls[0][1]).toEqual(body);
   });
