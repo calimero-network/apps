@@ -13,8 +13,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@calimero-network/mero-js": "^7.3.2",
-    "@calimero-network/mero-react": "^4.6.1",
+    "@calimero-network/mero-js": "^13.1.0",
+    "@calimero-network/mero-react": "^6.0.0",
     "bs58": "^6.0.0",
     "fflate": "^0.8.3",
     "react": "^19.2.7",

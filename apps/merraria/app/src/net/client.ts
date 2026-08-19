@@ -3,6 +3,7 @@
 import {
   SseClient,
   type GroupMembershipEventData,
+  type GroupMigrationEventData,
   type SseEventData,
 } from "@calimero-network/mero-js";
 import { getAccessToken, getSession } from "./session";
@@ -72,7 +73,7 @@ export class GameClient {
     // ride the same channel, keyed by groupId instead of contextId. We only ever
     // subscribe to a context, so one of those is never ours — and the `in` check
     // is what lets the compiler agree before we read contextId.
-    this.sse.on("event", (evt: SseEventData | GroupMembershipEventData) => {
+    this.sse.on("event", (evt: SseEventData | GroupMembershipEventData | GroupMigrationEventData) => {
       if (!("contextId" in evt)) return;
       if (evt.contextId && evt.contextId !== contextId) return;
       for (const ev of decodeSseEvents(evt.data)) onEvent(ev);

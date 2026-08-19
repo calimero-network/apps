@@ -260,7 +260,6 @@ export async function createWorld(
   // inside every invite for this world.
   const created = await adminPost<Record<string, unknown>>("/admin-api/namespaces", {
     applicationId,
-    upgradePolicy: "Automatic",
     name,
     alias: name,
   });

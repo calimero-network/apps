@@ -156,7 +156,10 @@ describe("createWorld (own namespace → open subgroup → context)", () => {
     ]);
     const nsBody = calls[0].body as Record<string, unknown>;
     expect(nsBody.applicationId).toBe("app-1");
-    expect(nsBody.upgradePolicy).toBe("Automatic");
+    // Asserted ABSENT: core dropped the upgrade-policy concept in rc.21 and
+    // mero-js removed it from CreateNamespaceRequest in 9.0.0. An rc.24 node
+    // accepts the field and ignores it, so sending it only misled the reader.
+    expect(nsBody.upgradePolicy).toBeUndefined();
     expect(nsBody.name).toBe("myworld"); // one namespace per world, named after it
     expect(nsBody.alias).toBe("myworld"); // curb compat: older nodes read `alias`
     const groupBody = calls[1].body as Record<string, unknown>;
