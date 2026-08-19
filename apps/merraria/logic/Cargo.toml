@@ -7,7 +7,7 @@ description = "Calimero voxel world state (tile overrides + player presence)"
 # (0.0.1 when nothing is published yet). Bumping this changes nothing about what
 # gets released, so do not read a shipped version out of the tree; read it from
 # the registry or the workflow's run summary.
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 
 [lib]
@@ -37,7 +37,7 @@ github = "https://github.com/calimero-network/merraria"
 # meaning change inside two of them, not a new one. So this stays the
 # conservative, truthful "what it was built and e2e'd against", not a floor
 # anyone measured.
-min-runtime-version = "0.11.0-rc.23"
+min-runtime-version = "0.11.0-rc.24"
 frontend = "https://merraria.vercel.app/"
 
 [dependencies]
@@ -49,14 +49,14 @@ bs58 = "0.5.1"
 # Pin a real release tag, never `branch = "master"`: master rides unreleased
 # protocol work against nodes that run the release, and `latest` does not exist
 # on the remote (it only ever resolves from a warm cargo cache).
-calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.23" }
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.23" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.23" }
+calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.24" }
+calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.24" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.24" }
 thiserror = "1.0.56"
 
 [dev-dependencies]
 # "testing" enables the native mock host (TestHost) for `cargo test`
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.23", features = ["testing"] }
+calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.24", features = ["testing"] }
 
 [profile.app-release]
 inherits = "release"

@@ -21,7 +21,7 @@ nodes:
   # rc.20 + merobox >=0.6.54 fails `create_namespace` with
   # "missing field `upgradePolicy`". rc.23 needs >=0.6.55 for the same reason
   # (core#3483 rebuilt merobox's bundled client-py), which is what CI pins.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.23
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.24
   prefix: calimero-node
   # Off the default 2428/2528 AND off mero-blocks' 2760/2660 range.
   base_port: 2780

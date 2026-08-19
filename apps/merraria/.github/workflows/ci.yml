@@ -110,7 +110,7 @@ jobs:
         # merobox talks to the node's admin API directly, so an unpinned merobox
         # silently starts speaking a newer node's payloads and the e2e reds on a
         # commit that changed nothing (0.6.54 dropped upgradePolicy for rc.21).
-        run: pip install merobox==0.6.55 && merobox --version
+        run: pip install "merobox==0.6.55" "calimero-client-py==0.6.29" && merobox --version
       - name: Run 2-node world e2e (build → sync → break → converge)
         working-directory: workflows
         run: |
