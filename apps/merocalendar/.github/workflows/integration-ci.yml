@@ -101,9 +101,32 @@ jobs:
       - name: Install frontend dependencies
         working-directory: app
         run: pnpm install --frozen-lockfile
-      - name: Install Playwright browsers
+      - name: Resolve Playwright version
+        id: pw
         working-directory: app
-        run: pnpm exec playwright install chromium --with-deps
+        run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium
+
+      - name: Install Playwright browsers
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 8
+        working-directory: app
+        run: pnpm exec playwright install --with-deps chromium
+
+      # A cache hit restores the browser but not the shared libraries it
+      # links against. This is the apt half alone — seconds, and it cannot
+      # pull a browser.
+      - name: Install browser system deps
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        timeout-minutes: 8
+        working-directory: app
+        run: pnpm exec playwright install-deps chromium
 
       - name: Run integration tests
         working-directory: app
