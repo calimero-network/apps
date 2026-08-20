@@ -886,6 +886,156 @@ const TESTS: TestCase[] = [
   },
 
   {
+    id: "acl-roles-defined",
+    name: "acl_roles lists the roles the contract defines",
+    group: "Access Control",
+    fn: async () => {
+      const roles = out<Record<string, string[]>>(await api.aclRoles());
+      // The vocabulary is the contract's. A UI hard-coding its own list gets a
+      // dropdown whose every option is rejected by acl_grant.
+      isArray(Object.keys(roles));
+      gte(Object.keys(roles).length, 1);
+      eq(roles["editor"]?.join(",") ?? "", "write");
+    },
+  },
+  {
+    id: "acl-init-seeds-one-admin",
+    name: "init seeds exactly one admin, and it is the caller",
+    group: "Access Control",
+    fn: async () => {
+      const me = out<api.Identity>(await api.whoami());
+      const admins = out<string[]>(await api.aclAdmins());
+      isArray(admins);
+      // Exactly one: a deterministic multi-admin seed is not possible in init,
+      // so a second admin can only arrive via acl_grant_admin.
+      eq(admins.length, 1);
+      eq(admins[0], me.account_id);
+      eq(out<boolean>(await api.aclIsAdmin(me.account_id)), true);
+    },
+  },
+  {
+    id: "acl-grant-then-has-role",
+    name: "acl_grant + acl_has_role + acl_members_of agree",
+    group: "Access Control",
+    fn: async () => {
+      const me = out<api.Identity>(await api.whoami());
+      noErr(await api.aclGrant("editor", me.account_id));
+      eq(out<boolean>(await api.aclHasRole("editor", me.account_id)), true);
+      const members = out<string[]>(await api.aclMembersOf("editor"));
+      if (!members.includes(me.account_id))
+        throw new Error("granted account missing from members_of");
+      const mine = out<string[]>(await api.aclMyRoles());
+      if (!mine.includes("editor")) throw new Error("my_roles missing the granted role");
+    },
+  },
+  {
+    id: "acl-unknown-role-rejected",
+    name: "an undefined role name is rejected, not stored",
+    group: "Access Control",
+    fn: async (r) => {
+      const me = out<api.Identity>(await api.whoami());
+      // AccessControl itself accepts any name, so without the app-level check a
+      // typo becomes a real role with one member that acl_project never
+      // projects — a grant that looks applied and confers nothing.
+      expectErr(await api.aclGrant(`nonsense_${r}`, me.account_id));
+    },
+  },
+  {
+    id: "acl-projection-is-separate",
+    name: "a grant reaches the capability map only after acl_project",
+    group: "Access Control",
+    fn: async () => {
+      const me = out<api.Identity>(await api.whoami());
+      noErr(await api.aclGrant("moderator", me.account_id));
+      const accounts = out<number>(await api.aclProject());
+      gte(accounts, 1);
+      const caps = out<Record<string, string[]>>(await api.aclCapabilities());
+      // The caller is an admin, and project_onto always gives admins the full
+      // mask so a projection can never lock them out of the document.
+      const mine = caps[me.account_id] ?? [];
+      for (const op of ["write", "delete", "admin"]) {
+        if (!mine.includes(op)) throw new Error(`admin lost '${op}' after projection`);
+      }
+    },
+  },
+  {
+    id: "acl-revoke-then-regrant",
+    name: "revoke then re-grant converges (no tombstone)",
+    group: "Access Control",
+    fn: async () => {
+      const me = out<api.Identity>(await api.whoami());
+      noErr(await api.aclGrant("editor", me.account_id));
+      noErr(await api.aclRevoke("editor", me.account_id));
+      eq(out<boolean>(await api.aclHasRole("editor", me.account_id)), false);
+      // A revoke stores `false` instead of removing the entry, so membership is
+      // a plain LWW boolean — unlike the set case, this cannot lose the re-add.
+      noErr(await api.aclGrant("editor", me.account_id));
+      eq(out<boolean>(await api.aclHasRole("editor", me.account_id)), true);
+    },
+  },
+  {
+    id: "acl-last-admin-protected",
+    name: "revoking the last admin is refused",
+    group: "Access Control",
+    fn: async () => {
+      const me = out<api.Identity>(await api.whoami());
+      const admins = out<string[]>(await api.aclAdmins());
+      // Only meaningful while the caller is the sole admin — otherwise this is
+      // an ordinary revoke and would succeed.
+      if (admins.length !== 1) return;
+      expectErr(await api.aclRevokeAdmin(me.account_id));
+      eq(out<boolean>(await api.aclIsAdmin(me.account_id)), true);
+    },
+  },
+  {
+    id: "acl-doc-write-as-admin",
+    name: "the admin can write the guarded document",
+    group: "Access Control",
+    fn: async (r) => {
+      await api.aclProject();
+      noErr(await api.aclDocSet(`guarded_${r}`));
+      eq(out<string>(await api.aclDocGet()), `guarded_${r}`);
+    },
+  },
+
+  {
+    id: "ownable-init-owner",
+    name: "init makes the caller the owner",
+    group: "Ownable",
+    fn: async () => {
+      const me = out<api.Identity>(await api.whoami());
+      eq(out<string | null>(await api.ownedOwner()), me.account_id);
+      eq(out<boolean>(await api.ownedIsOwner(me.account_id)), true);
+    },
+  },
+  {
+    id: "ownable-owner-writes",
+    name: "the owner can write and read back",
+    group: "Ownable",
+    fn: async (r) => {
+      noErr(await api.ownedSet(`owned_${r}`));
+      eq(out<string>(await api.ownedGet()), `owned_${r}`);
+    },
+  },
+  {
+    id: "ownable-transfer-is-one-way",
+    name: "owned_transfer moves the single writer, with no undo",
+    group: "Ownable",
+    fn: async () => {
+      const me = out<api.Identity>(await api.whoami());
+      const owner = out<string | null>(await api.ownedOwner());
+      // Transferring away from this node would lock the cell for the rest of
+      // the suite and cannot be undone from here, so this asserts the invariant
+      // Ownable enforces instead: exactly one writer, and it is the owner.
+      // The cross-node transfer is what the merobox scenario covers.
+      eq(owner, me.account_id);
+      eq(out<boolean>(await api.ownedIsOwner(me.account_id)), true);
+      expectErr(await api.ownedTransfer("not-an-account"));
+      eq(out<string | null>(await api.ownedOwner()), me.account_id);
+    },
+  },
+
+  {
     id: "rga-title",
     name: "set_title + get_title round-trip",
     group: "RGA Document",
@@ -1271,6 +1421,8 @@ const GROUP_ORDER = [
   "RGA Document",
   "Authored Map",
   "Shared Storage",
+  "Access Control",
+  "Ownable",
   "Workspace",
 ];
 

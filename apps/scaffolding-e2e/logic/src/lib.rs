@@ -18,6 +18,8 @@
 //! - **Shared Storage**: Group-writable single value with rotatable writer set
 //! - **Workspace Registry**: An app-level directory of channels (contexts),
 //!   groups and member roles, plus a cross-context `xcall` ping
+//! - **Access Control**: Named roles projected onto per-account capability masks
+//! - **Ownable**: Single-owner storage with authenticated ownership transfer
 //!
 //! Each feature area is organized into its own method group with clear prefixes.
 
@@ -30,10 +32,11 @@ use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::Serialize;
 use calimero_sdk::{app, env, AccountId, ContextId};
 use calimero_storage::collections::{
-    AuthoredMap, AuthoredVector, Counter, FrozenStorage, GCounter, LwwRegister, Mergeable,
-    ReplicatedGrowableArray, SharedStorage, SortedMap, SortedSet, UnorderedMap, UnorderedSet,
-    UserStorage, Vector,
+    AccessControl, AuthoredMap, AuthoredVector, Counter, FrozenStorage, GCounter, LwwRegister,
+    Mergeable, Ownable, ReplicatedGrowableArray, SharedStorage, SortedMap, SortedSet, UnorderedMap,
+    UnorderedSet, UserStorage, Vector,
 };
+use calimero_storage::entities::OpMask;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
@@ -49,6 +52,18 @@ const ROLE_ADMIN: &str = "admin";
 const ROLE_MEMBER: &str = "member";
 const ROLE_READ_ONLY: &str = "read-only";
 const WS_ROLES: [&str; 3] = [ROLE_ADMIN, ROLE_MEMBER, ROLE_READ_ONLY];
+/// The demo roles, and the capability each confers on `acl_doc`.
+///
+/// `AccessControl` does not enumerate role names — a role only exists as
+/// `role\0member` keys in its registry — so the set of roles an app recognises
+/// has to live in the app. Keeping it as a constant is also what lets
+/// `acl_project` stay a zero-argument call: the projection needs every
+/// (role, mask) pair at once, and a caller passing a partial list would silently
+/// strip capabilities from the roles it omitted.
+const ACL_ROLES: [(&str, OpMask); 2] = [
+    ("editor", OpMask::WRITE),
+    ("moderator", OpMask::WRITE.union(OpMask::DELETE)),
+];
 
 // HELPER TYPES
 
@@ -190,6 +205,23 @@ pub struct E2eKvStore {
     /// Content-addressed immutable storage
     frozen_items: FrozenStorage<String>,
 
+    // --- Access Control ---
+    /// Named-role registry. Its backing writer set IS the admin tier, so
+    /// "who may grant a role" and "who may rotate the admins" are the same
+    /// authenticated question — there is no separate admin bookkeeping to drift.
+    acl: AccessControl,
+    /// Capability-guarded document. Its per-account `OpMask` map is PROJECTED
+    /// from `acl`'s roles by `acl_project`; it is deliberately not a second
+    /// source of truth, which is why nothing here writes the map directly.
+    acl_doc: SharedStorage<LwwRegister<String>>,
+
+    // --- Ownable ---
+    /// Single-owner cell. `SharedStorage` above is a flat writer SET; this is
+    /// the degenerate case with one writer plus a real transfer operation, and
+    /// `Ownable` enforces the at-most-one invariant that `SharedStorage` does
+    /// not.
+    owned_doc: Ownable<LwwRegister<String>>,
+
     // --- Private Game (public hash tracking) ---
     /// Maps game_id -> SHA256(secret) hex
     games: UnorderedMap<String, LwwRegister<String>>,
@@ -308,6 +340,38 @@ pub enum Event<'a> {
     FrozenAdded {
         hash: [u8; 32],
         value: &'a str,
+    },
+
+    // Access Control Events
+    AdminGranted {
+        account: String,
+        by: String,
+    },
+    AdminRevoked {
+        account: String,
+        by: String,
+    },
+    RoleGranted {
+        role: String,
+        account: String,
+        by: String,
+    },
+    RoleRevoked {
+        role: String,
+        account: String,
+        by: String,
+    },
+    /// The role registry was pushed onto `acl_doc`'s capability map. Separate
+    /// from the grant events because it is a separate signed action — a grant
+    /// that has not been projected yet confers nothing on the document.
+    CapabilitiesProjected {
+        accounts: usize,
+    },
+
+    // Ownable Events
+    OwnershipTransferred {
+        from: String,
+        to: String,
     },
 
     // Private Game Events
@@ -489,6 +553,52 @@ fn caller_account() -> String {
     AccountId::from(env::account_id()).to_string()
 }
 
+/// Parse a 64-hex account id, with a message that says which of the two id
+/// kinds was expected.
+///
+/// Every authorization subject in this contract is an ACCOUNT. Passing a base58
+/// DEVICE key here is the recurring mistake, and it has to fail loudly — as a
+/// `String` argument it would otherwise be stored as an account nobody holds.
+fn parse_account(account_hex: &str) -> app::Result<AccountId> {
+    account_hex
+        .parse()
+        .map_err(|e| app::err!("not an account id (expected 64 hex chars): {e}"))
+}
+
+/// A capability mask as the operation names a client can display.
+fn describe_mask(mask: OpMask) -> Vec<String> {
+    let mut ops = Vec::new();
+    for (bit, name) in [
+        (OpMask::WRITE, "write"),
+        (OpMask::DELETE, "delete"),
+        (OpMask::ADMIN, "admin"),
+    ] {
+        if mask.contains(bit) {
+            ops.push(name.to_owned());
+        }
+    }
+    ops
+}
+
+/// Reject a role this app does not define.
+///
+/// `AccessControl` accepts any name, so without this a typo becomes a real role
+/// with one member that `acl_project` never projects — a grant that looks
+/// applied and confers nothing.
+fn check_known_role(role: &str) -> app::Result<()> {
+    if !ACL_ROLES.iter().any(|(known, _)| *known == role) {
+        app::bail!(
+            "unknown role '{role}' (this app defines: {})",
+            ACL_ROLES
+                .iter()
+                .map(|(r, _)| *r)
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+    Ok(())
+}
+
 fn encode_blob_id_base58(blob_id_bytes: &[u8; BLOB_ID_SIZE]) -> String {
     let mut buf = [0u8; BASE58_ENCODED_MAX_SIZE];
     // Both unwraps are infallible for this input: a 32-byte value base58-encodes
@@ -547,6 +657,23 @@ impl E2eKvStore {
             user_items_nested: UserStorage::new(),
             // Frozen Storage
             frozen_items: FrozenStorage::new(),
+            // Access Control — the init caller is the sole initial admin.
+            //
+            // ⚠️ Sole, and that is not a simplification: seeding two admins here
+            // would need both account ids to be known to whoever runs `init`,
+            // and every node deriving the SAME set, which nothing in `init`
+            // guarantees. The second admin arrives through `acl_grant_admin`,
+            // which is an authenticated rotation. This is the gap that blocks
+            // migrations needing a pre-seeded multi-admin state.
+            acl: AccessControl::new_admin_caller(),
+            acl_doc: SharedStorage::new(
+                std::iter::once(AccountId::from(env::account_id())).collect(),
+                false,
+            ),
+            // Ownable — `new_owned_by_caller` exists here and NOT on
+            // `SharedStorage`, so the owner case is spelled once rather than
+            // hand-rolled as a one-element writer set.
+            owned_doc: Ownable::new_owned_by_caller(),
             // Private Game
             games: UnorderedMap::new(),
             // Blob Storage
@@ -860,6 +987,253 @@ impl E2eKvStore {
             .frozen_items
             .get(&hash)?
             .ok_or(Error::FrozenNotFound("Frozen value is not found"))?)
+    }
+
+    // ACCESS CONTROL
+    //
+    // Two layers that look alike and are not:
+    //
+    //   * `acl` is a REGISTRY of named roles. Granting a role writes an entry;
+    //     it confers nothing by itself.
+    //   * `acl_doc`'s capability map is what the merge check actually reads. It
+    //     is PROJECTED from the registry by `acl_project`, as a separate signed
+    //     action.
+    //
+    // So a grant is only in force once it has been projected. That is not a
+    // security hole — merge always enforces whatever the map currently says, so
+    // the window is "not yet permitted", never "wrongly permitted" — but it is
+    // the thing to check first when a grant appears not to work.
+    //
+    // Admins are exactly the writer set of the registry's backing storage, so
+    // "who may grant" needs no separate bookkeeping and cannot drift out of sync
+    // with itself.
+
+    /// Whether `account_hex` is an admin.
+    pub fn acl_is_admin(&self, account_hex: String) -> app::Result<bool> {
+        Ok(self.acl.is_admin(&parse_account(&account_hex)?))
+    }
+
+    /// Every admin, as 64-hex account ids.
+    pub fn acl_admins(&self) -> app::Result<Vec<String>> {
+        Ok(self.acl.admins().iter().map(ToString::to_string).collect())
+    }
+
+    /// Add an admin. Admin-only, and enforced at merge as a writer-set rotation
+    /// rather than by the fail-fast guard alone.
+    pub fn acl_grant_admin(&mut self, account_hex: String) -> app::Result<()> {
+        let account = parse_account(&account_hex)?;
+        self.acl.grant_admin(account)?;
+        app::emit!(Event::AdminGranted {
+            account: account_hex,
+            by: caller_account(),
+        });
+
+        // ⚠️ Projecting here is not a convenience, it closes a chicken-and-egg.
+        //
+        // Admin-ness lives on the REGISTRY. `acl_project` writes the guarded
+        // DOCUMENT, and `set_capabilities` guards `Op::Admin` against that
+        // document's own capability map. A newly granted admin is not in that
+        // map yet, so it cannot run the projection that would put it there:
+        // `Action not allowed: Executor is not authorised for this operation`.
+        // Somebody who already holds the mask has to project first, and the only
+        // caller guaranteed to hold it is the one making the grant — right here.
+        //
+        // Role grants deliberately do NOT self-project: "a grant confers nothing
+        // until it is projected" is a real property worth seeing. Admin grants
+        // are the one case where leaving it unprojected has no upside and locks
+        // the new admin out.
+        let _accounts = self.acl_project()?;
+        Ok(())
+    }
+
+    /// Remove an admin.
+    ///
+    /// Removing yourself is permitted and is not reversible from your side —
+    /// there is no separate owner above this tier to appeal to. Emptying the set
+    /// entirely would leave the registry unwritable forever, so that is refused.
+    pub fn acl_revoke_admin(&mut self, account_hex: String) -> app::Result<()> {
+        let account = parse_account(&account_hex)?;
+        if self.acl.admins().len() <= 1 && self.acl.is_admin(&account) {
+            app::bail!("refusing to revoke the last admin — the registry would be frozen");
+        }
+        self.acl.revoke_admin(&account)?;
+        app::emit!(Event::AdminRevoked {
+            account: account_hex,
+            by: caller_account(),
+        });
+
+        // Symmetrically: a revoked admin has to lose `FULL` on the document too,
+        // or the grant is revoked in name only. The caller still holds the mask
+        // at this point — `set_capabilities` guards against the PRE-rotation map
+        // — so this succeeds even when revoking yourself, and the resulting map
+        // correctly excludes you.
+        let _accounts = self.acl_project()?;
+        Ok(())
+    }
+
+    /// The roles this app recognises, and the capability each confers.
+    ///
+    /// `AccessControl` stores a role only as `role\0member` keys, so it cannot
+    /// enumerate role names — the list is app state, and this method is how a
+    /// client learns it instead of hard-coding it.
+    pub fn acl_roles(&self) -> app::Result<BTreeMap<String, Vec<String>>> {
+        Ok(ACL_ROLES
+            .iter()
+            .map(|(role, mask)| ((*role).to_owned(), describe_mask(*mask)))
+            .collect())
+    }
+
+    pub fn acl_grant(&mut self, role: String, account_hex: String) -> app::Result<()> {
+        let account = parse_account(&account_hex)?;
+        check_known_role(&role)?;
+        self.acl.grant(&role, account)?;
+        app::emit!(Event::RoleGranted {
+            role,
+            account: account_hex,
+            by: caller_account(),
+        });
+        Ok(())
+    }
+
+    /// Revoke a role.
+    ///
+    /// A revoke stores `false` rather than deleting the entry, so membership
+    /// stays a plain last-writer-wins boolean with no tombstone — which is why
+    /// re-granting after a revoke converges, unlike the set-tombstone case.
+    pub fn acl_revoke(&mut self, role: String, account_hex: String) -> app::Result<()> {
+        let account = parse_account(&account_hex)?;
+        check_known_role(&role)?;
+        self.acl.revoke(&role, &account)?;
+        app::emit!(Event::RoleRevoked {
+            role,
+            account: account_hex,
+            by: caller_account(),
+        });
+        Ok(())
+    }
+
+    pub fn acl_has_role(&self, role: String, account_hex: String) -> app::Result<bool> {
+        Ok(self.acl.has_role(&role, &parse_account(&account_hex)?)?)
+    }
+
+    pub fn acl_members_of(&self, role: String) -> app::Result<Vec<String>> {
+        Ok(self
+            .acl
+            .members_of(&role)?
+            .iter()
+            .map(ToString::to_string)
+            .collect())
+    }
+
+    /// The CALLER's roles, resolved by account.
+    pub fn acl_my_roles(&self) -> app::Result<Vec<String>> {
+        let me = AccountId::from(env::account_id());
+        let mut mine = Vec::new();
+        for (role, _) in &ACL_ROLES {
+            if self.acl.has_role(role, &me)? {
+                mine.push((*role).to_owned());
+            }
+        }
+        Ok(mine)
+    }
+
+    /// Push the role registry onto `acl_doc`'s capability map.
+    ///
+    /// Must be re-run after ANY grant, revoke, or admin change: the registry
+    /// write and this projection are separate signed actions, and only the map
+    /// is consulted at merge. Admins are always given `FULL` by `project_onto`
+    /// so a projection can never lock them out of the document they administer.
+    pub fn acl_project(&mut self) -> app::Result<usize> {
+        // ⚠️ The count is computed from the REGISTRY, not read back from
+        // `acl_doc.capabilities()` after the rotation.
+        //
+        // Reading it back in the same execution does not reflect the rotation:
+        // projecting {n1} -> {n1, n2} answered 2, and then projecting
+        // {n1, n2} -> {n1} answered 2 again. Both are what you get if the
+        // in-execution read unions the staged set with the persisted one instead
+        // of replacing it. A separate later call reads the correct set — the e2e
+        // asserts exactly that — so this is a same-execution visibility rule, not
+        // a lost write.
+        //
+        // Counting the registry sidesteps it and cannot drift from what
+        // `project_onto` does, because it walks the same two inputs: the members
+        // of each role, plus the admins (whom `project_onto` always grants
+        // `FULL`).
+        let mut covered: BTreeSet<AccountId> = BTreeSet::new();
+        for (role, _) in &ACL_ROLES {
+            covered.extend(self.acl.members_of(role)?);
+        }
+        covered.extend(self.acl.admins());
+
+        let masks: Vec<(&str, OpMask)> = ACL_ROLES.to_vec();
+        self.acl.project_onto(&masks, &mut self.acl_doc)?;
+
+        let accounts = covered.len();
+        app::emit!(Event::CapabilitiesProjected { accounts });
+        Ok(accounts)
+    }
+
+    /// The projected map: account -> the operations it may perform on `acl_doc`.
+    ///
+    /// This, not `acl_members_of`, is what a merge check reads. Comparing the
+    /// two is how you see an un-projected grant.
+    pub fn acl_capabilities(&self) -> app::Result<BTreeMap<String, Vec<String>>> {
+        Ok(self
+            .acl_doc
+            .capabilities()
+            .into_iter()
+            .map(|(account, mask)| (account.to_string(), describe_mask(mask)))
+            .collect())
+    }
+
+    /// Write the guarded document. Requires `WRITE` in the PROJECTED map.
+    pub fn acl_doc_set(&mut self, value: String) -> app::Result<()> {
+        self.acl_doc.insert(LwwRegister::new(value))?;
+        Ok(())
+    }
+
+    pub fn acl_doc_get(&self) -> app::Result<String> {
+        Ok(self.acl_doc.get()?.get().clone())
+    }
+
+    // OWNABLE
+
+    /// The owner, or `None`.
+    ///
+    /// `Ownable` holds at most one writer by construction. A malformed
+    /// multi-writer cell answers `None` rather than picking one, so this can
+    /// never report a non-deterministic owner.
+    pub fn owned_owner(&self) -> app::Result<Option<String>> {
+        Ok(self.owned_doc.owner().map(|o| o.to_string()))
+    }
+
+    pub fn owned_is_owner(&self, account_hex: String) -> app::Result<bool> {
+        Ok(self.owned_doc.is_owner(&parse_account(&account_hex)?))
+    }
+
+    pub fn owned_set(&mut self, value: String) -> app::Result<()> {
+        self.owned_doc.insert(LwwRegister::new(value))?;
+        Ok(())
+    }
+
+    pub fn owned_get(&self) -> app::Result<String> {
+        Ok(self.owned_doc.get()?.get().clone())
+    }
+
+    /// Hand ownership to `account_hex`. Owner-only, and one-way: the previous
+    /// owner is no longer a writer once this lands, so there is no undo.
+    pub fn owned_transfer(&mut self, account_hex: String) -> app::Result<()> {
+        let from = self
+            .owned_doc
+            .owner()
+            .map_or_else(String::new, |o| o.to_string());
+        self.owned_doc
+            .transfer_ownership(parse_account(&account_hex)?)?;
+        app::emit!(Event::OwnershipTransferred {
+            from,
+            to: account_hex,
+        });
+        Ok(())
     }
 
     // PRIVATE STORAGE

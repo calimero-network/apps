@@ -107,6 +107,51 @@
           }
         },
         {
+          "name": "acl",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "bool"
+            },
+            "crdt_type": "shared_storage"
+          }
+        },
+        {
+          "name": "acl_doc",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "owned_doc",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            }
+          }
+        },
+        {
           "name": "games",
           "type": {
             "kind": "map",
@@ -448,6 +493,40 @@
         }
       ]
     },
+    "Event_AdminGranted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_AdminRevoked": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "Event_AuthoredInserted": {
       "kind": "record",
       "fields": [
@@ -546,6 +625,17 @@
           "name": "value",
           "type": {
             "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_CapabilitiesProjected": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "accounts",
+          "type": {
+            "kind": "u32"
           }
         }
       ]
@@ -831,6 +921,23 @@
         }
       ]
     },
+    "Event_OwnershipTransferred": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "from",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "to",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "Event_PnCounterChanged": {
       "kind": "record",
       "fields": [
@@ -894,6 +1001,52 @@
       "fields": [
         {
           "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_RoleGranted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "role",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_RoleRevoked": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "role",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "by",
           "type": {
             "kind": "string"
           }
@@ -1292,6 +1445,205 @@
     }
   },
   "methods": [
+    {
+      "name": "acl_admins",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      }
+    },
+    {
+      "name": "acl_capabilities",
+      "params": [],
+      "returns": {
+        "kind": "map",
+        "key": {
+          "kind": "string"
+        },
+        "value": {
+          "kind": "list",
+          "items": {
+            "kind": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "acl_doc_get",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "acl_doc_set",
+      "params": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "acl_grant",
+      "params": [
+        {
+          "name": "role",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account_hex",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "acl_grant_admin",
+      "params": [
+        {
+          "name": "account_hex",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "acl_has_role",
+      "params": [
+        {
+          "name": "role",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account_hex",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "bool"
+      }
+    },
+    {
+      "name": "acl_is_admin",
+      "params": [
+        {
+          "name": "account_hex",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "bool"
+      }
+    },
+    {
+      "name": "acl_members_of",
+      "params": [
+        {
+          "name": "role",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      }
+    },
+    {
+      "name": "acl_my_roles",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      }
+    },
+    {
+      "name": "acl_project",
+      "params": [],
+      "returns": {
+        "kind": "u32"
+      }
+    },
+    {
+      "name": "acl_revoke",
+      "params": [
+        {
+          "name": "role",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account_hex",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "acl_revoke_admin",
+      "params": [
+        {
+          "name": "account_hex",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "acl_roles",
+      "params": [],
+      "returns": {
+        "kind": "map",
+        "key": {
+          "kind": "string"
+        },
+        "value": {
+          "kind": "list",
+          "items": {
+            "kind": "string"
+          }
+        }
+      }
+    },
     {
       "name": "add_frozen",
       "params": [
@@ -1976,6 +2328,62 @@
         "value": {
           "kind": "string"
         }
+      }
+    },
+    {
+      "name": "owned_get",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "owned_is_owner",
+      "params": [
+        {
+          "name": "account_hex",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "bool"
+      }
+    },
+    {
+      "name": "owned_owner",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "owned_set",
+      "params": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "owned_transfer",
+      "params": [
+        {
+          "name": "account_hex",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
       }
     },
     {
@@ -2810,6 +3218,18 @@
   ],
   "events": [
     {
+      "name": "AdminGranted",
+      "payload": {
+        "$ref": "Event_AdminGranted"
+      }
+    },
+    {
+      "name": "AdminRevoked",
+      "payload": {
+        "$ref": "Event_AdminRevoked"
+      }
+    },
+    {
       "name": "AuthoredInserted",
       "payload": {
         "$ref": "Event_AuthoredInserted"
@@ -2843,6 +3263,12 @@
       "name": "AuthoredVecUpdated",
       "payload": {
         "$ref": "Event_AuthoredVecUpdated"
+      }
+    },
+    {
+      "name": "CapabilitiesProjected",
+      "payload": {
+        "$ref": "Event_CapabilitiesProjected"
       }
     },
     {
@@ -2939,6 +3365,12 @@
       }
     },
     {
+      "name": "OwnershipTransferred",
+      "payload": {
+        "$ref": "Event_OwnershipTransferred"
+      }
+    },
+    {
       "name": "PnCounterChanged",
       "payload": {
         "$ref": "Event_PnCounterChanged"
@@ -2960,6 +3392,18 @@
       "name": "Removed",
       "payload": {
         "$ref": "Event_Removed"
+      }
+    },
+    {
+      "name": "RoleGranted",
+      "payload": {
+        "$ref": "Event_RoleGranted"
+      }
+    },
+    {
+      "name": "RoleRevoked",
+      "payload": {
+        "$ref": "Event_RoleRevoked"
       }
     },
     {

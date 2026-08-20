@@ -128,6 +128,30 @@ const RPC_RESULTS: Record<string, unknown> = {
   authored_vec_get_owner: FAKE_IDENTITY,
   authored_vec_entries: ["slot-0", "slot-1", ""],
   authored_vec_len: 3,
+  // Access Control & Ownable
+  //
+  // `acl_capabilities` deliberately shows MORE than `acl_members_of` here: that
+  // difference is the projection, and a fixture where the two agreed would hide
+  // the one thing this section exists to explain.
+  acl_roles: { editor: ["write"], moderator: ["write", "delete"] },
+  acl_is_admin: true,
+  acl_admins: [FAKE_ACCOUNT],
+  acl_grant_admin: null,
+  acl_revoke_admin: null,
+  acl_grant: null,
+  acl_revoke: null,
+  acl_has_role: true,
+  acl_members_of: [FAKE_ACCOUNT],
+  acl_my_roles: ["editor"],
+  acl_project: 2,
+  acl_capabilities: { [FAKE_ACCOUNT]: ["write", "delete", "admin"] },
+  acl_doc_set: null,
+  acl_doc_get: "guarded-value",
+  owned_owner: FAKE_ACCOUNT,
+  owned_is_owner: true,
+  owned_set: null,
+  owned_get: "owned-value",
+  owned_transfer: null,
   // Shared Storage
   shared_set: null,
   shared_get: "shared-value",
@@ -384,6 +408,7 @@ test.describe("Sidebar navigation", () => {
     { item: "Authored Vector", heading: "Authored Vector" },
     { item: "Shared Storage", heading: "Shared Storage" },
     { item: "Context Members", heading: "Context Members" },
+    { item: "Roles & Ownership", heading: "Access Control & Ownership" },
     { item: "Counters", heading: "CRDT Counters" },
     { item: "LWW Registers", heading: "CRDT Registers" },
     { item: "Nested Maps", heading: "CRDT Nested Maps" },

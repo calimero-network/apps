@@ -443,5 +443,84 @@ export const sharedRotateWriters = (account_hexes: string[]) =>
 export const sharedIsWriter = (account_hex: string) =>
   call<{ account_hex: string }, boolean>("shared_is_writer", { account_hex });
 
+// ── Access Control ───────────────────────────────────────────────────────────
+//
+// Two layers that look alike and are not. `acl*` is a REGISTRY of named roles;
+// `aclCapabilities` is the per-account op mask that the merge check actually
+// reads, and it is PROJECTED from the registry by `aclProject` as a separate
+// signed action. A grant is only in force once it has been projected — comparing
+// `aclMembersOf` against `aclCapabilities` is how you see one that has not been.
+
+export const aclIsAdmin = (account_hex: string) =>
+  call<{ account_hex: string }, boolean>("acl_is_admin", { account_hex });
+
+export const aclAdmins = () =>
+  call<Record<string, never>, string[]>("acl_admins", {});
+
+/**
+ * Add an admin. **Projects as part of the same call.**
+ *
+ * Admin-ness lives on the registry, but `acl_project` writes the guarded
+ * document and is gated on that document's capability map — so an admin who has
+ * not been projected cannot run the projection that would grant it the mask.
+ * Role grants deliberately do NOT self-project; admin grants have to.
+ */
+export const aclGrantAdmin = (account_hex: string) =>
+  call<{ account_hex: string }, void>("acl_grant_admin", { account_hex });
+
+export const aclRevokeAdmin = (account_hex: string) =>
+  call<{ account_hex: string }, void>("acl_revoke_admin", { account_hex });
+
+/** role -> the operations it confers. The contract is the authority on this. */
+export const aclRoles = () =>
+  call<Record<string, never>, Record<string, string[]>>("acl_roles", {});
+
+export const aclGrant = (role: string, account_hex: string) =>
+  call<{ role: string; account_hex: string }, void>("acl_grant", { role, account_hex });
+
+export const aclRevoke = (role: string, account_hex: string) =>
+  call<{ role: string; account_hex: string }, void>("acl_revoke", { role, account_hex });
+
+export const aclHasRole = (role: string, account_hex: string) =>
+  call<{ role: string; account_hex: string }, boolean>("acl_has_role", { role, account_hex });
+
+export const aclMembersOf = (role: string) =>
+  call<{ role: string }, string[]>("acl_members_of", { role });
+
+export const aclMyRoles = () =>
+  call<Record<string, never>, string[]>("acl_my_roles", {});
+
+/** Re-run after ANY grant, revoke or admin change. Returns the account count. */
+export const aclProject = () =>
+  call<Record<string, never>, number>("acl_project", {});
+
+/** account -> operations. This, not the role registry, is what merge enforces. */
+export const aclCapabilities = () =>
+  call<Record<string, never>, Record<string, string[]>>("acl_capabilities", {});
+
+export const aclDocSet = (value: string) =>
+  call<{ value: string }, void>("acl_doc_set", { value });
+
+export const aclDocGet = () =>
+  call<Record<string, never>, string>("acl_doc_get", {});
+
+// ── Ownable ──────────────────────────────────────────────────────────────────
+
+export const ownedOwner = () =>
+  call<Record<string, never>, string | null>("owned_owner", {});
+
+export const ownedIsOwner = (account_hex: string) =>
+  call<{ account_hex: string }, boolean>("owned_is_owner", { account_hex });
+
+export const ownedSet = (value: string) =>
+  call<{ value: string }, void>("owned_set", { value });
+
+export const ownedGet = () =>
+  call<Record<string, never>, string>("owned_get", {});
+
+/** One-way: after this the previous owner is no longer a writer. */
+export const ownedTransfer = (account_hex: string) =>
+  call<{ account_hex: string }, void>("owned_transfer", { account_hex });
+
 export const sharedIsFrozen = () =>
   call<Record<string, never>, boolean>("shared_is_frozen", {});

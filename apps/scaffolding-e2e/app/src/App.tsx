@@ -19,6 +19,7 @@ import { FrozenStorage } from "./sections/FrozenStorage";
 import { PrivateStorage } from "./sections/PrivateStorage";
 import { BlobStorage } from "./sections/BlobStorage";
 import { ContextMembers } from "./sections/ContextMembers";
+import { AccessControlSection } from "./sections/AccessControl";
 import { CrdtCounters } from "./sections/CrdtCounters";
 import { CrdtRegisters } from "./sections/CrdtRegisters";
 import { CrdtMetadata } from "./sections/CrdtMetadata";
@@ -53,6 +54,7 @@ type SectionId =
   | "authored-vector"
   | "shared-storage"
   | "members"
+  | "acl"
   | "counters"
   | "registers"
   | "metadata"
@@ -85,6 +87,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "authored-vector", label: "Authored Vector", icon: "⬡", group: "Storage" },
   { id: "shared-storage", label: "Shared Storage", icon: "🔗", group: "Storage" },
   { id: "members", label: "Context Members", icon: "🛡", group: "Access" },
+  { id: "acl", label: "Roles & Ownership", icon: "🔑", group: "Access" },
   { id: "counters", label: "Counters", icon: "🔢", group: "CRDT" },
   { id: "registers", label: "LWW Registers", icon: "📝", group: "CRDT" },
   { id: "metadata", label: "Nested Maps", icon: "🗂", group: "CRDT" },
@@ -114,6 +117,7 @@ function renderSection(id: SectionId) {
     case "authored-vector": return <AuthoredVector />;
     case "shared-storage": return <SharedStorage />;
     case "members": return <ContextMembers />;
+    case "acl": return <AccessControlSection />;
     case "counters": return <CrdtCounters />;
     case "registers": return <CrdtRegisters />;
     case "metadata": return <CrdtMetadata />;

@@ -120,6 +120,8 @@ jobs:
             file: workflows/workspace-registry.yml
           - workflow: sorted-collections
             file: workflows/sorted-collections.yml
+          - workflow: access-control
+            file: workflows/access-control.yml
 
     steps:
       - name: Checkout code

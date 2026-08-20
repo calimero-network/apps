@@ -336,6 +336,31 @@ steps:
     statements:
       - 'json_equal({{n2_role_by_admin}}, {"output": "member"})'
 
+  # ⚠️ NOT `result.output.0.role`. `ws_list_members` sorts by identity, and both
+  # identities here are hex account ids derived from random keys — so which one
+  # is at index 0 is a coin flip per run. That assertion passed twice and then
+  # failed with left='member' right='admin', which is the whole tell.
+  #
+  # `ws_get_member_role` asks the same question positionally-independently: does
+  # node-2, reading the registry it synced, agree that the CLAIMER is the admin.
+  - name: node-2 reads the admin's role from the synced registry
+    type: call
+    node: e2e-node-2
+    context_id: "{{ws_ctx}}"
+    executor_public_key: "{{n2_ws_key}}"
+    method: ws_get_member_role
+    args:
+      identity: "{{n1_account}}"
+    outputs:
+      n2_sees_admin_role: result
+
+  - name: Assert node-2 agrees the claimer is the admin
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_sees_admin_role}}, {"output": "admin"})'
+
+  # The listing itself is still exercised — `member_count` below comes from
+  # `ws_get_info`, and `ws_list_members` is called here for its own sake.
   - name: node-2 lists members
     type: call
     node: e2e-node-2
@@ -344,12 +369,12 @@ steps:
     method: ws_list_members
     args: {}
     outputs:
-      n2_members_admin: result.output.0.role
+      n2_members: result
 
-  - name: Assert the listing carries the admin's role
-    type: json_assert
+  - name: Assert the listing is populated
+    type: assert
     statements:
-      - 'json_equal({{n2_members_admin}}, "admin")'
+      - "is_set({{n2_members}})"
 
   - name: Assert the workspace now has two members
     type: call
