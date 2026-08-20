@@ -1,3 +1,11 @@
+## 0.5.0 (2026-08-20)
+
+* Merge pull request #7 from calimero-network/chore/app-version-0.1.8 ([26c9de5](https://github.com/calimero-network/mero-issue-tracker/commit/26c9de5)), closes [#7](https://github.com/calimero-network/mero-issue-tracker/issues/7)
+* Merge pull request #9 from calimero-network/ci/playwright-cache-and-timeouts ([c4ddffe](https://github.com/calimero-network/mero-issue-tracker/commit/c4ddffe)), closes [#9](https://github.com/calimero-network/mero-issue-tracker/issues/9)
+* ci: cache the Playwright browser, and cap the two jobs that had no ceiling ([711e3c4](https://github.com/calimero-network/mero-issue-tracker/commit/711e3c4)), closes [calimero-network/scaffolding-e2e-application#15](https://github.com/calimero-network/scaffolding-e2e-application/issues/15)
+* feat: publish to the app registry and share invitations as deep links (#8) ([2d8a9b4](https://github.com/calimero-network/mero-issue-tracker/commit/2d8a9b4)), closes [#8](https://github.com/calimero-network/mero-issue-tracker/issues/8)
+* chore(app): bump the app version to 0.1.8 ([56e628c](https://github.com/calimero-network/mero-issue-tracker/commit/56e628c))
+
 ## 0.4.0 (2026-07-30)
 
 * Merge authorship-identity fix ([d203427](https://github.com/calimero-network/mero-issue-tracker/commit/d203427))
