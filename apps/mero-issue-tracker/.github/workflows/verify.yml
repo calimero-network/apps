@@ -308,6 +308,16 @@ jobs:
             exit 1
           fi
 
+      # `playwright install --with-deps` below skips the ~170 MB download when the
+      # browser is already here, which is the half worth saving. The install
+      # stays inside the run block: every command in there tees into one shared
+      # log, and pulling it out would break that.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-chromium-verify
+
       - name: Playwright e2e
         id: e2e
         # BLOCKING by default — Playwright outcomes feed the verify check's
@@ -317,6 +327,7 @@ jobs:
         # stage=e2e-missing-specs as the failure.
         if: steps.specs.outcome == 'success'
         continue-on-error: true
+        timeout-minutes: 25
         run: |
           set -o pipefail
           cd app
@@ -339,6 +350,7 @@ jobs:
     needs: [build, merobox, e2e]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       # Stage logs cross as artifacts (they're multi-KB text, not scalar
       # outputs). continue-on-error: a skipped upstream job leaves no artifact,
