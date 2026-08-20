@@ -2,6 +2,11 @@ import axios from "axios";
 import bs58 from "bs58";
 import { getNodeUrl as getAppEndpointKey } from "@calimero-network/mero-react";
 import { getAuthConfig, getMeroJs } from "../meroJsClient";
+import {
+  getSelfAccountHex,
+  hexToBase58,
+  loadSelfAccountIdentity,
+} from "../../utils/accountIdentity";
 import type { ApiResponse } from "../types";
 import type {
   ContextVisibility,
@@ -549,8 +554,29 @@ export class GroupApiDataSource implements GroupApi {
 
     const { members, selfIdentity } = membersResponse.data;
 
-    // Prefer selfIdentity from the API — it's authoritative and avoids heuristic matching.
+    // Members are keyed by ACCOUNT. This node's own account is the
+    // authoritative answer to "which row is me", and unlike a device key it is
+    // stable across every device the same person signs in from — which is the
+    // whole point of the account/device split.
+    //
+    // It has to win over `selfIdentity`: core does not always send that field,
+    // and where it does it is still a PublicKey, so comparing it to an
+    // account-keyed row never matches. Falling through to the stored identity
+    // is worse still — that is a device key, which is how members ended up
+    // nameless (setMemberMetadata rejects a device key with "Invalid account
+    // format: expected 64 hex characters").
+    if (!getSelfAccountHex()) {
+      await loadSelfAccountIdentity();
+    }
+    const selfAccount = getSelfAccountHex();
+    const selfRow = selfAccount
+      ? members.find(
+          (m) => m.identity.toLowerCase() === selfAccount.toLowerCase(),
+        )
+      : undefined;
+
     const resolvedIdentity =
+      selfRow?.identity ||
       selfIdentity ||
       resolveCurrentGroupMemberIdentity({ members, storedMemberIdentity }).memberIdentity;
 
@@ -749,17 +775,25 @@ export class GroupApiDataSource implements GroupApi {
   ): ApiResponse<void> {
     try {
       const cgid = await this.contextGroupId(contextId);
+      // `listGroupMembers` (and therefore getContextAllowlist) reports
+      // identities HEX-encoded, but the membership writes decode them as
+      // base58 — feeding a read straight back into a write 400s with
+      // "buffer provided to decode base58 encoded string into was too small".
+      // Normalise so the read/write round-trip closes.
+      const toBase58 = (identity: string) =>
+        /^[0-9a-f]{64}$/i.test(identity) ? hexToBase58(identity) : identity;
+
       if (request.add?.length) {
         await getMeroJs().admin.addGroupMembers(cgid, {
           members: request.add.map((identity) => ({
-            identity,
+            identity: toBase58(identity),
             role: "Member" as const,
           })),
         });
       }
       if (request.remove?.length) {
         await getMeroJs().admin.removeGroupMembers(cgid, {
-          members: request.remove,
+          members: request.remove.map(toBase58),
         });
       }
       return ok(undefined as void);

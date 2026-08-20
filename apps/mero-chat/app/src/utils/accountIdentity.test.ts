@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import axios from "axios";
-import { hexToBase58, loadSelfAccountIdentity } from "./accountIdentity";
+import {
+  hexToBase58,
+  loadSelfAccountIdentity,
+  sameAccount,
+  toAccountBase58,
+  toAccountHex,
+} from "./accountIdentity";
 import {
   clearRegisteredContextIdentities,
   isSelfSender,
@@ -91,5 +97,41 @@ describe("loadSelfAccountIdentity", () => {
 
     await expect(loadSelfAccountIdentity()).resolves.toBeNull();
     expect(isSelfSender(accountB58, "ctx-1")).toBe(false);
+  });
+});
+
+describe("account id canonicalisation", () => {
+  // Observed on a live rc.24 node: the SAME two members, served hex by the
+  // admin API and base58 by the contract's `get_profiles`.
+  const user1Hex = "e8b65145da3670b152e06eb3e2c00a5b41ca8907aac0a4ef24486bffa6283670";
+  const user1B58 = "GfQq3fL5PC9Lw4fV3EAFQmoaoGyWMig2GvQgp3u3ZYeK";
+  const user2Hex = "7528078a29c19803bbe1e370410b58992c0d1e436bec701ed33a4b3305bc916c";
+  const user2B58 = "8tL6y7jzsTyff1UdKFzW67mMP91GGQCGSAzugpX6poKy";
+
+  it("maps between the two encodings the app actually receives", () => {
+    expect(hexToBase58(user1Hex)).toBe(user1B58);
+    expect(toAccountHex(user1B58)).toBe(user1Hex);
+    expect(toAccountBase58(user1Hex)).toBe(user1B58);
+  });
+
+  it("is idempotent, so a value can be canonicalised twice safely", () => {
+    expect(toAccountHex(toAccountHex(user2B58))).toBe(user2Hex);
+    expect(toAccountBase58(toAccountBase58(user2Hex))).toBe(user2B58);
+  });
+
+  it("recognises the same account across encodings", () => {
+    // This is the comparison the self-DM guard makes. `===` returned false for
+    // these two, so the guard never fired.
+    expect(sameAccount(user1Hex, user1B58)).toBe(true);
+    expect(sameAccount(user2B58, user2Hex)).toBe(true);
+    expect(sameAccount(user1Hex, user2B58)).toBe(false);
+  });
+
+  it("passes through anything that is not a 32-byte account", () => {
+    // Device keys, aliases and test placeholders must survive untouched —
+    // converting is the helper's job, destroying is not.
+    expect(toAccountHex("member-a")).toBe("member-a");
+    expect(toAccountHex("")).toBe("");
+    expect(sameAccount("", user1Hex)).toBe(false);
   });
 });
