@@ -34,6 +34,10 @@ jobs:
   typecheck:
     name: TypeScript
     runs-on: ubuntu-latest
+    # Every job here is minutes of work. Without a ceiling a hung step runs to
+    # the account default of 6 hours: `playwright install --with-deps` did
+    # exactly that on PR #15 (6h1m) and on mero-pixart #22 (24m).
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -72,6 +76,7 @@ jobs:
   build-wasm:
     name: Build WASM
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -133,6 +138,7 @@ jobs:
     name: Playwright (mocked UI)
     needs: build-wasm
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -172,9 +178,36 @@ jobs:
           echo "VITE_NODE_URL=http://localhost:2528" >> .env
           echo "VITE_APPLICATION_PACKAGE=com.calimero.scaffolding-e2e" >> .env
 
-      - name: Install Playwright browsers
+      # The browser binary is ~170 MB and the version is pinned by the lockfile,
+      # so it is cacheable. `--with-deps` (the apt half) is NOT cacheable and is
+      # the half that hangs, so it runs on its own, once, only on a cache miss.
+      - name: Resolve Playwright version
+        id: pw
         working-directory: frontend
+        run: |
+          echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium
+
+      - name: Install Playwright browsers
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        working-directory: frontend
+        timeout-minutes: 8
         run: pnpm exec playwright install --with-deps chromium
+
+      # A cache hit restores the binary but not the shared libraries it links
+      # against. This is the apt half alone — seconds, and it cannot pull a
+      # browser.
+      - name: Install browser system deps
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        working-directory: frontend
+        timeout-minutes: 8
+        run: pnpm exec playwright install-deps chromium
 
       - name: Run mocked tests
         working-directory: frontend

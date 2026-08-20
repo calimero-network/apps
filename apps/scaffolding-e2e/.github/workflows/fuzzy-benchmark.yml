@@ -36,6 +36,7 @@ jobs:
   build-wasm:
     name: Build WASM
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -114,6 +115,27 @@ jobs:
             DURATION="15"
           fi
           echo "Using duration: ${DURATION} minutes (trigger: ${{ github.event_name }})"
+          echo "DURATION=${DURATION}" >> "$GITHUB_ENV"
+
+          # `--verbose` makes merobox echo every step result. One of the
+          # scenarios is `kv_entries_scan`, which calls `entries` — the WHOLE kv
+          # map. At the 15-minute duration the map is small and the dump is
+          # noise; at 60 minutes it is ~5000 keys, printed once per scan run, and
+          # the log passes 160k lines. That is what has killed every nightly
+          # since 2026-08-14: the load test itself passed 100% (0 failed
+          # assertions across 21 scenarios) and the job was then killed part-way
+          # through a dump, before it could even upload its logs.
+          #
+          # Assertions are reported at normal verbosity, so the long runs lose
+          # nothing that the summary reads.
+          case "$DURATION" in ''|*[!0-9]*) DURATION=15 ;; esac
+          if [ "$DURATION" -gt 20 ]; then
+            echo "VERBOSE_FLAG=" >> "$GITHUB_ENV"
+            echo "Long run (${DURATION}m): --verbose disabled, see fuzzy-benchmark.yml"
+          else
+            echo "VERBOSE_FLAG=--verbose" >> "$GITHUB_ENV"
+          fi
+
           cd logic
           sed -i "s/\(duration_minutes: \)[0-9]*/\1$DURATION/" workflows/fuzzy-test.yml
 
@@ -151,7 +173,7 @@ jobs:
           merobox bootstrap run \
               workflows/fuzzy-test.yml \
               --e2e-mode \
-              --verbose 2>&1 | tee ../fuzzy-test-logs/merobox-output.log
+              ${VERBOSE_FLAG} 2>&1 | tee ../fuzzy-test-logs/merobox-output.log
 
           exit_code=$?
           set +o pipefail

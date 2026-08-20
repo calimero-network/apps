@@ -28,6 +28,7 @@ jobs:
   test-lint:
     name: Test, Lint & Format Check
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: sync-test-server
