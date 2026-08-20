@@ -50,7 +50,8 @@ function clearStaleSessionData() {
   for (const key of SESSION_STALE_KEYS) {
     localStorage.removeItem(key);
   }
-  // Clear dynamic sessionLastActivity_* keys
+  // Legacy `sessionLastActivity*` rows from the removed inactivity auto-logout.
+  // Nothing reads them any more; purge so they don't linger in storage forever.
   const toRemove: string[] = [];
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
