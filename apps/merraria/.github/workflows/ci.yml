@@ -14,6 +14,7 @@ jobs:
   app:
     name: App (typecheck + unit tests + build)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: app
@@ -35,6 +36,7 @@ jobs:
   logic:
     name: Logic (contract tests + WASM build)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: logic
@@ -70,6 +72,7 @@ jobs:
   e2e-mocked:
     name: E2E (Playwright, mocked node)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: app
@@ -84,7 +87,29 @@ jobs:
           cache: pnpm
           cache-dependency-path: app/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
+      - name: Resolve Playwright version
+        id: pw
+        run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium
+
+      - name: Install Playwright browsers
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 8
+        run: pnpm exec playwright install --with-deps chromium
+
+      # A cache hit restores the browser but not the shared libraries it
+      # links against. This is the apt half alone — seconds, and it cannot
+      # pull a browser.
+      - name: Install browser system deps
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        timeout-minutes: 8
+        run: pnpm exec playwright install-deps chromium
       - run: pnpm e2e
       - uses: actions/upload-artifact@v4
         if: failure()
@@ -95,6 +120,7 @@ jobs:
   e2e-merobox:
     name: E2E (2-node mining world over merobox)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: logic
     steps:
       - uses: actions/checkout@v4
