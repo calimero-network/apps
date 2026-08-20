@@ -128,6 +128,14 @@ const RPC_RESULTS: Record<string, unknown> = {
   rga_append_text: null,
   rga_clear: null,
   // Workspace
+  //
+  // ⚠️ These fixtures are NOT evidence that the contract has these methods.
+  // Every one of them was mocked here for weeks while `logic/src/lib.rs`
+  // defined none of them — this suite was green, and the whole Workspace
+  // Manager section was dead against a live node. The check that catches that
+  // is scripts/check-contract-calls.mjs, which reads the ABI; it runs under
+  // `pnpm test`. Keep these shapes matching the contract's return types, but
+  // do not treat a green run here as coverage.
   ws_init: null,
   ws_get_info: {
     name: "Test Workspace",
@@ -139,18 +147,31 @@ const RPC_RESULTS: Record<string, unknown> = {
   ws_register_channel: null,
   ws_unregister_channel: null,
   ws_list_channels: [
-    { context_id: FAKE_CTX_ID, name: "general", topic: "Announcements", created_by: FAKE_IDENTITY },
+    {
+      context_id: FAKE_CTX_ID,
+      name: "general",
+      topic: "Announcements",
+      created_by: FAKE_IDENTITY,
+      registered_at: 1_787_000_000_000,
+    },
   ],
   ws_register_group: null,
   ws_unregister_group: null,
   ws_list_groups: [
-    { group_id: "grp-id-fake12345678", name: "Engineering", description: "Engineering team", created_by: FAKE_IDENTITY },
+    {
+      group_id: "grp-id-fake12345678",
+      name: "Engineering",
+      description: "Engineering team",
+      created_by: FAKE_IDENTITY,
+      registered_at: 1_787_000_000_000,
+    },
   ],
   ws_set_member_role: null,
   ws_get_member_role: "member",
   ws_my_role: "admin",
   ws_list_members: [{ identity: FAKE_IDENTITY, role: "admin" }],
   ws_ping_channel: null,
+  ws_ping_count: 0,
 };
 
 // ── Auth helpers ──────────────────────────────────────────────────────────────

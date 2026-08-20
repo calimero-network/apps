@@ -1,6 +1,41 @@
 {
   "schema_version": "wasm-abi/1",
   "types": {
+    "ChannelRecord": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "context_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "topic",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "registered_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "E2eKvStore": {
       "kind": "record",
       "fields": [
@@ -308,6 +343,80 @@
               }
             }
           }
+        },
+        {
+          "name": "ws_name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "ws_admin",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "ws_channels",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ChannelRecord"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "ws_groups",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "WsGroupRecord"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "ws_roles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "ws_pings",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "counter"
+          }
         }
       ]
     },
@@ -413,6 +522,58 @@
         }
       ]
     },
+    "Event_ChannelPinged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "to_context",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ChannelRegistered": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "context_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ChannelUnregistered": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "context_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "Event_DocumentCreated": {
       "kind": "record",
       "fields": [
@@ -511,6 +672,40 @@
         }
       ]
     },
+    "Event_GroupRegistered": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "group_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_GroupUnregistered": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "group_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "Event_Guessed": {
       "kind": "record",
       "fields": [
@@ -545,6 +740,29 @@
         },
         {
           "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_MemberRoleSet": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "identity",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "role",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "by",
           "type": {
             "kind": "string"
           }
@@ -604,6 +822,24 @@
           "name": "operation",
           "type": {
             "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_PongReceived": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "from_context",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "count",
+          "type": {
+            "kind": "u64"
           }
         }
       ]
@@ -820,6 +1056,23 @@
         }
       ]
     },
+    "Event_WorkspaceInitialized": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "admin",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "FileRecord": {
       "kind": "record",
       "fields": [
@@ -885,6 +1138,23 @@
         }
       ]
     },
+    "MemberRecord": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "identity",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "role",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "NestedMap": {
       "kind": "record",
       "fields": [
@@ -904,6 +1174,76 @@
               }
             },
             "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
+    "WorkspaceInfo": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "admin",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "channel_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "group_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "member_count",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "WsGroupRecord": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "group_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "registered_at",
+          "type": {
+            "kind": "u64"
           }
         }
       ]
@@ -2016,6 +2356,217 @@
       "returns": {
         "$ref": "Identity"
       }
+    },
+    {
+      "name": "ws_get_info",
+      "params": [],
+      "returns": {
+        "$ref": "WorkspaceInfo"
+      }
+    },
+    {
+      "name": "ws_get_member_role",
+      "params": [
+        {
+          "name": "identity",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "ws_init",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "ws_list_channels",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "ChannelRecord"
+        }
+      }
+    },
+    {
+      "name": "ws_list_groups",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "WsGroupRecord"
+        }
+      }
+    },
+    {
+      "name": "ws_list_members",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "MemberRecord"
+        }
+      }
+    },
+    {
+      "name": "ws_my_role",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "ws_ping_channel",
+      "params": [
+        {
+          "name": "target_context_id_b58",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "ws_ping_count",
+      "params": [],
+      "returns": {
+        "kind": "u64"
+      }
+    },
+    {
+      "name": "ws_pong",
+      "params": [
+        {
+          "name": "from_context",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "xcall_callable": true,
+      "xcall_callers": "same_app"
+    },
+    {
+      "name": "ws_register_channel",
+      "params": [
+        {
+          "name": "context_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "topic",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "ws_register_group",
+      "params": [
+        {
+          "name": "group_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "ws_set_member_role",
+      "params": [
+        {
+          "name": "identity",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "role",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "ws_unregister_channel",
+      "params": [
+        {
+          "name": "context_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "ws_unregister_group",
+      "params": [
+        {
+          "name": "group_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
     }
   ],
   "events": [
@@ -2056,6 +2607,24 @@
       }
     },
     {
+      "name": "ChannelPinged",
+      "payload": {
+        "$ref": "Event_ChannelPinged"
+      }
+    },
+    {
+      "name": "ChannelRegistered",
+      "payload": {
+        "$ref": "Event_ChannelRegistered"
+      }
+    },
+    {
+      "name": "ChannelUnregistered",
+      "payload": {
+        "$ref": "Event_ChannelUnregistered"
+      }
+    },
+    {
       "name": "Cleared"
     },
     {
@@ -2089,6 +2658,18 @@
       }
     },
     {
+      "name": "GroupRegistered",
+      "payload": {
+        "$ref": "Event_GroupRegistered"
+      }
+    },
+    {
+      "name": "GroupUnregistered",
+      "payload": {
+        "$ref": "Event_GroupUnregistered"
+      }
+    },
+    {
       "name": "Guessed",
       "payload": {
         "$ref": "Event_Guessed"
@@ -2098,6 +2679,12 @@
       "name": "Inserted",
       "payload": {
         "$ref": "Event_Inserted"
+      }
+    },
+    {
+      "name": "MemberRoleSet",
+      "payload": {
+        "$ref": "Event_MemberRoleSet"
       }
     },
     {
@@ -2116,6 +2703,12 @@
       "name": "PnCounterChanged",
       "payload": {
         "$ref": "Event_PnCounterChanged"
+      }
+    },
+    {
+      "name": "PongReceived",
+      "payload": {
+        "$ref": "Event_PongReceived"
       }
     },
     {
@@ -2188,6 +2781,12 @@
       "name": "UserSimpleSet",
       "payload": {
         "$ref": "Event_UserSimpleSet"
+      }
+    },
+    {
+      "name": "WorkspaceInitialized",
+      "payload": {
+        "$ref": "Event_WorkspaceInitialized"
       }
     }
   ],

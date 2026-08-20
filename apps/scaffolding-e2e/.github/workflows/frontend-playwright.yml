@@ -97,13 +97,35 @@ jobs:
       - name: Build WASM
         run: cd logic && ./build.sh
 
+      # `scripts/check-contract-calls.mjs` reads the COMMITTED ABI — it has to,
+      # because the TypeScript job that runs it does not build the contract. So a
+      # stale abi.json would let it validate the frontend against a snapshot of
+      # a contract that no longer exists and report success. `cargo mero build`
+      # resolves the ABI from the compiled `__calimero_abi()`, so this is the
+      # authoritative copy; if it differs, commit it.
+      - name: Assert the committed ABI matches the built contract
+        run: |
+          if ! git diff --quiet -- logic/res/abi.json logic/res/state-schema.json; then
+            echo "::error::logic/res/abi.json is stale. Run logic/build.sh and commit the result."
+            git --no-pager diff --stat -- logic/res/abi.json logic/res/state-schema.json
+            git --no-pager diff -- logic/res/abi.json | head -200
+            exit 1
+          fi
+          echo "committed ABI matches the built contract"
+
+      # `always()` because the ABI gate above runs first: when it fails, this
+      # artifact holds the regenerated abi.json, which is exactly what the
+      # failure is asking you to commit. Withholding it would make the error
+      # true and useless at the same time.
       - name: Upload WASM artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: frontend-wasm-${{ github.sha }}
           path: |
             logic/res/scaffolding_e2e.wasm
             logic/res/abi.json
+            logic/res/state-schema.json
           retention-days: 1
 
   # ── Playwright mocked UI tests ─────────────────────────────────────────────────

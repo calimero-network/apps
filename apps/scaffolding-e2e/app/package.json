@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "sync-wasm": "mkdir -p public && cp ../logic/res/scaffolding_e2e.wasm public/app.wasm && echo 'Copied to public/app.wasm'",
     "test": "vitest run",
+    "check:contract": "node scripts/check-contract-calls.mjs",
     "test:headed": "playwright test --headed",
     "test:ui": "playwright test --ui",
     "test:mocked": "playwright test --config=playwright.mocked.config.ts",

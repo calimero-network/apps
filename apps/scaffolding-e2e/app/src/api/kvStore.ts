@@ -225,7 +225,14 @@ export interface ChannelRecord {
   context_id: string;
   name: string;
   topic: string;
+  /** The ACCOUNT that registered it, 64 hex — not a device key. */
   created_by: string;
+  /**
+   * `env::time_now()` at registration. Exists so the record can be an atomic
+   * LWW leaf: two members registering the same context id concurrently
+   * converge on the later write instead of on a mixture of the two.
+   */
+  registered_at: number;
 }
 
 export interface WsGroupRecord {
@@ -233,6 +240,7 @@ export interface WsGroupRecord {
   name: string;
   description: string;
   created_by: string;
+  registered_at: number;
 }
 
 export interface WorkspaceInfo {
@@ -297,6 +305,16 @@ export const wsPingChannel = (target_context_id_b58: string) =>
   call<{ target_context_id_b58: string }, void>("ws_ping_channel", {
     target_context_id_b58,
   });
+
+/**
+ * Pongs this context has received.
+ *
+ * `ws_ping_channel` only QUEUES the xcall, so its result says "queued", never
+ * "delivered". This counter on the *target* is the only way to see one land —
+ * which is why the ping card reads it back rather than trusting its own reply.
+ */
+export const wsPingCount = () =>
+  call<Record<string, never>, number>("ws_ping_count", {});
 
 // AuthoredMap
 export const authoredInsert = (key: string, value: string) =>

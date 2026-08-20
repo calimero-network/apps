@@ -73,6 +73,7 @@ jobs:
           path: |
             logic/res/scaffolding_e2e.wasm
             logic/res/abi.json
+            logic/res/state-schema.json
             logic/res/*.mpk
           retention-days: 1
 
@@ -113,6 +114,8 @@ jobs:
             file: workflows/simple-sync.yml
           - workflow: authored-shared
             file: workflows/authored-shared.yml
+          - workflow: workspace-registry
+            file: workflows/workspace-registry.yml
 
     steps:
       - name: Checkout code
@@ -147,6 +150,12 @@ jobs:
 
       - name: Pull merod image
         run: docker pull ghcr.io/calimero-network/merod:0.11.0-rc.24
+
+      # Schema-checks the scenario without starting a node: a misspelled step
+      # type or a missing required field fails here in a second instead of
+      # 40 minutes into a run, or — worse — silently doing nothing.
+      - name: Validate ${{ matrix.workflow }}
+        run: cd logic && merobox bootstrap validate ${{ matrix.file }}
 
       - name: Run ${{ matrix.workflow }}
         run: |

@@ -21,6 +21,7 @@ import {
   wsListMembers,
   wsMyRole,
   wsPingChannel,
+  wsPingCount,
   type WorkspaceInfo,
   type ChannelRecord,
   type WsGroupRecord,
@@ -536,7 +537,19 @@ function WsChannels({ onRefresh }: { onRefresh: () => void }) {
     setStatus("...");
     const res = await wsPingChannel(pingId.trim());
     const err = extractError(res);
-    setStatus(err ? `Error: ${err}` : `Ping sent to ${pingId.trim()}`);
+    if (err) {
+      setStatus(`Error: ${err}`);
+      return;
+    }
+    // "Queued", not "delivered": `env::xcall` only enqueues, and whether the
+    // node then dispatches or denies it is invisible to the caller. The count
+    // read back here is THIS context's own pongs — it moves when someone pings
+    // us, not when we ping them.
+    const count = extractOutput<number>(await wsPingCount());
+    setStatus(
+      `Ping queued for ${pingId.trim()} — executes on the next proposal cycle. ` +
+        `Pongs received by this context so far: ${count ?? 0}.`,
+    );
   }
 
   return (

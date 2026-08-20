@@ -14,6 +14,8 @@
 //! - **RGA Document**: ReplicatedGrowableArray for text editing
 //! - **Authored Map**: Shared keyspace with per-entry ownership; any member inserts, only owner mutates
 //! - **Shared Storage**: Group-writable single value with rotatable writer set
+//! - **Workspace Registry**: An app-level directory of channels (contexts),
+//!   groups and member roles, plus a cross-context `xcall` ping
 //!
 //! Each feature area is organized into its own method group with clear prefixes.
 
@@ -24,7 +26,7 @@ use std::collections::BTreeMap;
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::Serialize;
-use calimero_sdk::{app, env, AccountId};
+use calimero_sdk::{app, env, AccountId, ContextId};
 use calimero_storage::collections::{
     AuthoredMap, AuthoredVector, Counter, FrozenStorage, GCounter, LwwRegister, Mergeable,
     ReplicatedGrowableArray, SharedStorage, UnorderedMap, UnorderedSet, UserStorage, Vector,
@@ -36,6 +38,14 @@ use thiserror::Error;
 
 const BLOB_ID_SIZE: usize = 32;
 const BASE58_ENCODED_MAX_SIZE: usize = 44;
+
+/// Workspace roles. Kept in lockstep with the frontend's `ROLES` in
+/// `sections/ContextMembers.tsx` — the contract is the authority, and an
+/// unknown role is rejected rather than stored.
+const ROLE_ADMIN: &str = "admin";
+const ROLE_MEMBER: &str = "member";
+const ROLE_READ_ONLY: &str = "read-only";
+const WS_ROLES: [&str; 3] = [ROLE_ADMIN, ROLE_MEMBER, ROLE_READ_ONLY];
 
 // HELPER TYPES
 
@@ -75,6 +85,68 @@ pub struct FileRecord {
 }
 
 calimero_storage::impl_atomic_lww_leaf!(FileRecord, uploaded_at);
+
+/// A channel in the workspace directory: another Calimero **context**, made
+/// discoverable by registering its id here.
+///
+/// `registered_at` exists for the same reason `FileRecord::uploaded_at` does —
+/// `impl_atomic_lww_leaf!` needs a field to order concurrent writes by, and
+/// this is a whole-record value, not a struct of independently mergeable CRDT
+/// fields. Two members registering the same context id concurrently converge on
+/// the later write rather than on a field-by-field mixture of the two.
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct ChannelRecord {
+    /// The target context, base58. The map key as well as a field, so a
+    /// listing needs no zip with its keys.
+    pub context_id: String,
+    pub name: String,
+    pub topic: String,
+    /// The ACCOUNT that registered it, 64 hex — see `caller_account`.
+    pub created_by: String,
+    pub registered_at: u64,
+}
+
+calimero_storage::impl_atomic_lww_leaf!(ChannelRecord, registered_at);
+
+/// A group in the workspace directory — the app-level mirror of a node subgroup.
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct WsGroupRecord {
+    pub group_id: String,
+    pub name: String,
+    pub description: String,
+    pub created_by: String,
+    pub registered_at: u64,
+}
+
+calimero_storage::impl_atomic_lww_leaf!(WsGroupRecord, registered_at);
+
+/// A workspace member and the role the app grants them.
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct MemberRecord {
+    /// Whatever the caller passed to `ws_set_member_role`. Free-form on
+    /// purpose: see `ws_set_member_role` for why this is NOT an `AccountId`.
+    pub identity: String,
+    pub role: String,
+}
+
+/// Summary of the workspace, for the header card.
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct WorkspaceInfo {
+    pub name: String,
+    /// The ACCOUNT that ran `ws_init`, 64 hex.
+    pub admin: String,
+    pub channel_count: usize,
+    pub group_count: usize,
+    pub member_count: usize,
+}
 
 // PRIVATE STATE (Node-local, NOT synchronized)
 
@@ -162,6 +234,26 @@ pub struct E2eKvStore {
     // --- Shared Storage ---
     /// Group-writable single value; writers rotate at runtime
     shared_data: SharedStorage<LwwRegister<String>>,
+
+    // --- Workspace Registry ---
+    /// Workspace name. Empty is the "not initialized" sentinel — a workspace
+    /// cannot be named "" (`ws_init` rejects it), so the two states never
+    /// collide.
+    ws_name: LwwRegister<String>,
+    /// The account that ran `ws_init`, 64 hex. Empty until then.
+    ws_admin: LwwRegister<String>,
+    /// context_id -> channel. Keyed by the context id so a re-register of the
+    /// same context updates rather than duplicates.
+    ws_channels: UnorderedMap<String, ChannelRecord>,
+    /// group_id -> group.
+    ws_groups: UnorderedMap<String, WsGroupRecord>,
+    /// identity -> role. `LwwRegister` (not a plain `String`) so two admins
+    /// changing one member's role concurrently converge instead of one write
+    /// being lost.
+    ws_roles: UnorderedMap<String, LwwRegister<String>>,
+    /// Pongs received via `xcall`. Grow-only: a pong is an event that happened,
+    /// and no node can un-happen another node's.
+    ws_pings: Counter,
 }
 
 // EVENTS
@@ -308,6 +400,41 @@ pub enum Event<'a> {
     SharedWriterAdded {
         writer: String,
     },
+
+    // Workspace Registry Events
+    WorkspaceInitialized {
+        name: String,
+        admin: String,
+    },
+    ChannelRegistered {
+        context_id: String,
+        name: String,
+        by: String,
+    },
+    ChannelUnregistered {
+        context_id: String,
+    },
+    GroupRegistered {
+        group_id: String,
+        name: String,
+        by: String,
+    },
+    GroupUnregistered {
+        group_id: String,
+    },
+    MemberRoleSet {
+        identity: String,
+        role: String,
+        by: String,
+    },
+    ChannelPinged {
+        to_context: ContextId,
+        by: String,
+    },
+    PongReceived {
+        from_context: ContextId,
+        count: u64,
+    },
 }
 
 // ERRORS
@@ -429,6 +556,17 @@ impl E2eKvStore {
                 std::iter::once(AccountId::from(env::account_id())).collect(),
                 false,
             ),
+            // Workspace Registry — deliberately NOT seeded with the deployer as
+            // admin. `init` runs once per context, and the workspace is claimed
+            // later by whoever calls `ws_init`; seeding it here would make the
+            // context creator the permanent admin of a workspace that may not
+            // exist yet.
+            ws_name: LwwRegister::new(String::new()),
+            ws_admin: LwwRegister::new(String::new()),
+            ws_channels: UnorderedMap::new(),
+            ws_groups: UnorderedMap::new(),
+            ws_roles: UnorderedMap::new(),
+            ws_pings: Counter::new(),
         }
     }
 
@@ -1275,5 +1413,352 @@ impl E2eKvStore {
 
     pub fn authored_vec_len(&self) -> app::Result<usize> {
         self.authored_vec.len().map_err(Into::into)
+    }
+
+    // WORKSPACE REGISTRY
+    //
+    // An app-level directory sitting *above* the node's own namespaces,
+    // subgroups and contexts. The node knows which contexts exist and who is a
+    // member; it does not know that context X is "#general" or that account Y is
+    // an admin of this particular workspace. That is app state, and this is the
+    // shape real apps (curb, mero-chat) give it.
+    //
+    // Two membership layers meet here, and conflating them is the classic bug:
+    //
+    //   * NODE membership — who can execute against this context at all. Core
+    //     enforces it; nothing below can widen it.
+    //   * WORKSPACE role — what the app lets a member do. Enforced here, and
+    //     only meaningful for callers the node already admitted.
+
+    /// Claim the workspace and become its admin.
+    ///
+    /// Not seeded in `init`: a context can exist before anyone decides to run a
+    /// workspace in it, and the claim is what makes `caller_account()` the
+    /// admin. First caller wins, and there is no transfer — this is a scaffold,
+    /// and a role-transfer flow would be the interesting part of a different
+    /// example.
+    pub fn ws_init(&mut self, name: String) -> app::Result<()> {
+        if !self.ws_name.get().is_empty() {
+            app::bail!(
+                "workspace already initialized as '{}' by {}",
+                self.ws_name.get(),
+                self.ws_admin.get()
+            );
+        }
+        if name.trim().is_empty() {
+            app::bail!("workspace name cannot be empty");
+        }
+
+        let admin = caller_account();
+        self.ws_name.set(name.clone());
+        self.ws_admin.set(admin.clone());
+        self.ws_roles
+            .insert(admin.clone(), LwwRegister::new(ROLE_ADMIN.to_owned()))?;
+
+        app::emit!(Event::WorkspaceInitialized {
+            name: name.clone(),
+            admin: admin.clone(),
+        });
+        app::log!("Workspace '{}' initialized by {}", name, admin);
+        Ok(())
+    }
+
+    /// Name, admin and the three counts behind the header card.
+    ///
+    /// Errors — rather than returning an empty summary — while unclaimed, so a
+    /// caller cannot mistake "no workspace here" for "an empty workspace".
+    pub fn ws_get_info(&self) -> app::Result<WorkspaceInfo> {
+        let name = self.ws_name.get().clone();
+        if name.is_empty() {
+            app::bail!("workspace not initialized: call ws_init first");
+        }
+        Ok(WorkspaceInfo {
+            name,
+            admin: self.ws_admin.get().clone(),
+            channel_count: self.ws_channels.len()?,
+            group_count: self.ws_groups.len()?,
+            member_count: self.ws_roles.len()?,
+        })
+    }
+
+    /// Add a context to the directory, or update the entry for one already in
+    /// it. Any member may register; `read-only` may not.
+    pub fn ws_register_channel(
+        &mut self,
+        context_id: String,
+        name: String,
+        topic: String,
+    ) -> app::Result<()> {
+        let by = self.require_writer()?;
+        if context_id.trim().is_empty() {
+            app::bail!("context_id cannot be empty");
+        }
+
+        self.ws_channels.insert(
+            context_id.clone(),
+            ChannelRecord {
+                context_id: context_id.clone(),
+                name: name.clone(),
+                topic,
+                created_by: by.clone(),
+                registered_at: env::time_now(),
+            },
+        )?;
+
+        app::emit!(Event::ChannelRegistered {
+            context_id: context_id.clone(),
+            name,
+            by,
+        });
+        Ok(())
+    }
+
+    pub fn ws_unregister_channel(&mut self, context_id: String) -> app::Result<()> {
+        let _by = self.require_writer()?;
+        if self.ws_channels.remove(&context_id)?.is_none() {
+            app::bail!("no channel registered for context {context_id}");
+        }
+        app::emit!(Event::ChannelUnregistered {
+            context_id: context_id.clone(),
+        });
+        Ok(())
+    }
+
+    /// The directory. Readable by anyone the node admitted, member or not —
+    /// a listing is how a new member finds out what to join.
+    pub fn ws_list_channels(&self) -> app::Result<Vec<ChannelRecord>> {
+        let mut channels = Vec::new();
+        for (_, record) in self.ws_channels.entries()? {
+            channels.push(record.clone());
+        }
+        // `UnorderedMap` iteration order is not part of its contract, so sort
+        // for a stable listing — two nodes must render the same table.
+        channels.sort_by(|a, b| a.context_id.cmp(&b.context_id));
+        Ok(channels)
+    }
+
+    pub fn ws_register_group(
+        &mut self,
+        group_id: String,
+        name: String,
+        description: String,
+    ) -> app::Result<()> {
+        let by = self.require_writer()?;
+        if group_id.trim().is_empty() {
+            app::bail!("group_id cannot be empty");
+        }
+
+        self.ws_groups.insert(
+            group_id.clone(),
+            WsGroupRecord {
+                group_id: group_id.clone(),
+                name: name.clone(),
+                description,
+                created_by: by.clone(),
+                registered_at: env::time_now(),
+            },
+        )?;
+
+        app::emit!(Event::GroupRegistered {
+            group_id: group_id.clone(),
+            name,
+            by,
+        });
+        Ok(())
+    }
+
+    pub fn ws_unregister_group(&mut self, group_id: String) -> app::Result<()> {
+        let _by = self.require_writer()?;
+        if self.ws_groups.remove(&group_id)?.is_none() {
+            app::bail!("no group registered with id {group_id}");
+        }
+        app::emit!(Event::GroupUnregistered {
+            group_id: group_id.clone(),
+        });
+        Ok(())
+    }
+
+    pub fn ws_list_groups(&self) -> app::Result<Vec<WsGroupRecord>> {
+        let mut groups = Vec::new();
+        for (_, record) in self.ws_groups.entries()? {
+            groups.push(record.clone());
+        }
+        groups.sort_by(|a, b| a.group_id.cmp(&b.group_id));
+        Ok(groups)
+    }
+
+    /// Grant `identity` a workspace role. Admin only.
+    ///
+    /// `identity` is a free-form `String`, not an `AccountId`, and that is not
+    /// laziness: the UI grants roles to node identities it read from the admin
+    /// API's group-membership listing, which reports base58 DEVICE keys, while
+    /// `caller_account()` is a 64-hex ACCOUNT. Nothing on the wire maps one to
+    /// the other (see `whoami`), so this map has to hold whichever of the two
+    /// the operator pasted. The consequence is explicit rather than hidden:
+    /// **only a role granted under the caller's own `account_id` is a role that
+    /// `ws_my_role` will ever return** — everything else is a directory entry.
+    /// This is the app-level mirror of the writer-set trap in `shared_*`.
+    pub fn ws_set_member_role(&mut self, identity: String, role: String) -> app::Result<()> {
+        let by = self.require_admin()?;
+        if identity.trim().is_empty() {
+            app::bail!("identity cannot be empty");
+        }
+        if !WS_ROLES.contains(&role.as_str()) {
+            app::bail!(
+                "unknown role '{role}' (expected one of: {})",
+                WS_ROLES.join(", ")
+            );
+        }
+        if identity == by && role != ROLE_ADMIN {
+            app::bail!("an admin cannot demote themselves — the workspace would have none");
+        }
+
+        let mut entry = self.ws_roles.entry(identity.clone())?.or_default()?;
+        entry.set(role.clone());
+
+        app::emit!(Event::MemberRoleSet {
+            identity: identity.clone(),
+            role: role.clone(),
+            by,
+        });
+        Ok(())
+    }
+
+    /// `identity`'s role, or the empty string if they have none.
+    pub fn ws_get_member_role(&self, identity: String) -> app::Result<String> {
+        Ok(self
+            .ws_roles
+            .get(&identity)?
+            .map_or_else(String::new, |role| role.get().clone()))
+    }
+
+    /// The CALLER's role, resolved by account. Empty string if they have none —
+    /// including the case where a role was granted under their device key
+    /// instead; see `ws_set_member_role`.
+    pub fn ws_my_role(&self) -> app::Result<String> {
+        self.ws_get_member_role(caller_account())
+    }
+
+    pub fn ws_list_members(&self) -> app::Result<Vec<MemberRecord>> {
+        let mut members = Vec::new();
+        for (identity, role) in self.ws_roles.entries()? {
+            members.push(MemberRecord {
+                identity,
+                role: role.get().clone(),
+            });
+        }
+        members.sort_by(|a, b| a.identity.cmp(&b.identity));
+        Ok(members)
+    }
+
+    /// Ping another context in the directory, via `xcall` to its `ws_pong`.
+    ///
+    /// Fire-and-forget by design: `env::xcall` only QUEUES the call, so a
+    /// successful return here means "queued", never "delivered". Whether the
+    /// node then dispatches it or denies it is invisible from inside the
+    /// contract — watch `ws_ping_count` on the target, not the result of this.
+    ///
+    /// The parameter is named `target_context_id_b58` because that is what the
+    /// frontend sends. The TYPE is `ContextId`, so the SDK does the base58
+    /// decode and a malformed id fails at the boundary rather than here.
+    pub fn ws_ping_channel(&mut self, target_context_id_b58: ContextId) -> app::Result<()> {
+        let by = self.require_writer()?;
+
+        #[derive(calimero_sdk::serde::Serialize)]
+        #[serde(crate = "calimero_sdk::serde")]
+        struct PongParams {
+            from_context: ContextId,
+        }
+
+        let params = calimero_sdk::serde_json::to_vec(&PongParams {
+            from_context: ContextId::from(env::context_id()),
+        })?;
+
+        env::xcall(target_context_id_b58.as_ref(), "ws_pong", &params);
+
+        app::log!("queued ws_pong xcall to {}", target_context_id_b58);
+        app::emit!(Event::ChannelPinged {
+            to_context: target_context_id_b58,
+            by,
+        });
+        Ok(())
+    }
+
+    /// Receive a ping from another context.
+    ///
+    /// `#[app::xcall(from_same_app)]` is the trust boundary and the node
+    /// enforces it: a context running a DIFFERENT application is rejected
+    /// before this body runs. The checks below are what is left over for the
+    /// app — rejecting a direct call (which carries no origin) and refusing a
+    /// caller whose self-reported `from_context` disagrees with the origin the
+    /// node set.
+    ///
+    /// Not in the frontend's API surface, and it cannot be: a direct call is
+    /// exactly what this rejects.
+    #[app::xcall(from_same_app)]
+    pub fn ws_pong(&mut self, from_context: ContextId) -> app::Result<()> {
+        let Some(origin) = env::xcall_origin().map(ContextId::from) else {
+            app::bail!("ws_pong is xcall-only: no cross-context origin (direct call rejected)");
+        };
+        if origin != from_context {
+            app::bail!(
+                "xcall provenance mismatch: node-set origin {origin} != claimed from_context {from_context}"
+            );
+        }
+
+        self.ws_pings.increment()?;
+        let count = self.ws_pings.value()?;
+
+        app::emit!(Event::PongReceived {
+            from_context,
+            count,
+        });
+        app::log!(
+            "ws_pong from {} accepted; count now {}",
+            from_context,
+            count
+        );
+        Ok(())
+    }
+
+    /// Pongs received. The only way to observe that a `ws_ping_channel`
+    /// actually landed.
+    pub fn ws_ping_count(&self) -> app::Result<u64> {
+        Ok(self.ws_pings.value()?)
+    }
+
+    /// The caller's account, if the workspace is claimed and they may write to
+    /// the directory. `read-only` and non-members are refused.
+    fn require_writer(&self) -> app::Result<String> {
+        let me = self.require_member()?;
+        let role = self.ws_get_member_role(me.clone())?;
+        if role == ROLE_READ_ONLY {
+            app::bail!("role '{ROLE_READ_ONLY}' cannot modify the workspace directory");
+        }
+        Ok(me)
+    }
+
+    /// The caller's account, if the workspace is claimed and they hold any role.
+    fn require_member(&self) -> app::Result<String> {
+        if self.ws_name.get().is_empty() {
+            app::bail!("workspace not initialized: call ws_init first");
+        }
+        let me = caller_account();
+        if self.ws_get_member_role(me.clone())?.is_empty() {
+            app::bail!(
+                "account {me} has no workspace role — an admin must grant one with ws_set_member_role"
+            );
+        }
+        Ok(me)
+    }
+
+    /// The caller's account, if they are an admin.
+    fn require_admin(&self) -> app::Result<String> {
+        let me = self.require_member()?;
+        let role = self.ws_get_member_role(me.clone())?;
+        if role != ROLE_ADMIN {
+            app::bail!("role '{role}' cannot manage members; '{ROLE_ADMIN}' required");
+        }
+        Ok(me)
     }
 }
