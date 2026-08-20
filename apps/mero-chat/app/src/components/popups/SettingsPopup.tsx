@@ -513,7 +513,7 @@ export default function SettingsPopup({
 
       setUploading(true);
       try {
-        const uploadRes = await uploadBlobDirect(file);
+        const uploadRes = await uploadBlobDirect(file, getContextId() || undefined);
         if (!uploadRes.data?.blobId) {
           addToast({ title: "Avatar", message: "Upload failed", type: "channel", duration: 3000 });
           return;

@@ -3,6 +3,7 @@ import { styled } from "styled-components";
 import type { ChatFile, FileObject } from "../types/Common";
 import { useState } from "react";
 import { uploadBlobDirect } from "../api/dataSource/groupApiDataSource";
+import { getContextId } from "@calimero-network/mero-react";
 
 const UploadComponentWrapper = styled.div``;
 
@@ -109,7 +110,7 @@ export default function UploadComponent({
         await onReplace(currentFile ?? null);
       }
 
-      const res = await uploadBlobDirect(file);
+      const res = await uploadBlobDirect(file, getContextId() || undefined);
 
       if (res.error || !res.data?.blobId) {
         throw new Error(res.error?.message || "Failed to upload attachment");

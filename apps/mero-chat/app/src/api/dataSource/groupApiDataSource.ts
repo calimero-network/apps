@@ -307,10 +307,23 @@ export interface BlobUploadResult {
  * now goes through the SDK. Core answers with snake_case `blob_id`, which the
  * SDK response type does not model, hence the widened read below.
  */
-export async function uploadBlobDirect(file: File): ApiResponse<BlobUploadResult> {
+export async function uploadBlobDirect(
+  file: File,
+  /**
+   * Context to announce the blob to. Without it core stores the bytes locally
+   * but never advertises them, so a peer that later asks for the blob has no
+   * way to discover who holds it — the image stays stuck on "loading" for
+   * everyone except the uploader. `downloadBlob` has always passed a context;
+   * this is the missing other half.
+   */
+  contextId?: string,
+): ApiResponse<BlobUploadResult> {
   try {
     const buffer = await file.arrayBuffer();
-    const raw = (await getMeroJs().admin.uploadBlob({ data: buffer })) as unknown as
+    const raw = (await getMeroJs().admin.uploadBlob({
+      data: buffer,
+      ...(contextId ? { contextId } : {}),
+    })) as unknown as
       | { blob_id?: string; blobId?: string; size?: number }
       | undefined;
     const blobId = raw?.blob_id ?? raw?.blobId;
