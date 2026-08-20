@@ -262,6 +262,34 @@
           }
         },
         {
+          "name": "sorted_items",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            },
+            "crdt_type": "sorted_map"
+          }
+        },
+        {
+          "name": "sorted_tags",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            },
+            "crdt_type": "sorted_set"
+          }
+        },
+        {
           "name": "rga_document",
           "type": {
             "kind": "record",
@@ -907,6 +935,20 @@
           "name": "writer",
           "type": {
             "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_SharedWritersRotated": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "writers",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
           }
         }
       ]
@@ -2285,6 +2327,23 @@
       }
     },
     {
+      "name": "shared_rotate_writers",
+      "params": [
+        {
+          "name": "account_hexes",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
       "name": "shared_set",
       "params": [
         {
@@ -2296,6 +2355,186 @@
       ],
       "returns": {
         "kind": "unit"
+      }
+    },
+    {
+      "name": "sorted_get",
+      "params": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "sorted_keys",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      }
+    },
+    {
+      "name": "sorted_last_key",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "sorted_len",
+      "params": [],
+      "returns": {
+        "kind": "u32"
+      }
+    },
+    {
+      "name": "sorted_range",
+      "params": [
+        {
+          "name": "start",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "end",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "map",
+        "key": {
+          "kind": "string"
+        },
+        "value": {
+          "kind": "string"
+        }
+      }
+    },
+    {
+      "name": "sorted_remove",
+      "params": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "bool"
+      }
+    },
+    {
+      "name": "sorted_set",
+      "params": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "sorted_tag_add",
+      "params": [
+        {
+          "name": "tag",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "bool"
+      }
+    },
+    {
+      "name": "sorted_tag_contains",
+      "params": [
+        {
+          "name": "tag",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "bool"
+      }
+    },
+    {
+      "name": "sorted_tag_remove",
+      "params": [
+        {
+          "name": "tag",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "bool"
+      }
+    },
+    {
+      "name": "sorted_tags_all",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      }
+    },
+    {
+      "name": "sorted_tags_last",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "sorted_tags_range",
+      "params": [
+        {
+          "name": "start",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "end",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
       }
     },
     {
@@ -2739,6 +2978,12 @@
       "name": "SharedWriterAdded",
       "payload": {
         "$ref": "Event_SharedWriterAdded"
+      }
+    },
+    {
+      "name": "SharedWritersRotated",
+      "payload": {
+        "$ref": "Event_SharedWritersRotated"
       }
     },
     {

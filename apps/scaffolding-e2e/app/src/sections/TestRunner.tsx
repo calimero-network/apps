@@ -730,6 +730,162 @@ const TESTS: TestCase[] = [
   },
 
   {
+    id: "sorted-set-get",
+    name: "sorted_set + sorted_get round-trip",
+    group: "Sorted Collections",
+    fn: async (r) => {
+      noErr(await api.sortedSet(`s_${r}`, `v_${r}`));
+      eq(out<string | null>(await api.sortedGet(`s_${r}`)), `v_${r}`);
+    },
+  },
+  {
+    id: "sorted-keys-ascending",
+    name: "sorted_keys returns keys in ascending order",
+    group: "Sorted Collections",
+    fn: async (r) => {
+      // Inserted out of order on purpose — the index, not the insertion order,
+      // is what decides the listing.
+      noErr(await api.sortedSet(`k_${r}_c`, "3"));
+      noErr(await api.sortedSet(`k_${r}_a`, "1"));
+      noErr(await api.sortedSet(`k_${r}_b`, "2"));
+      const keys = out<string[]>(await api.sortedKeys());
+      isArray(keys);
+      const mine = keys.filter((k) => k.startsWith(`k_${r}_`));
+      eq(mine.length, 3);
+      eq(mine.join(","), [...mine].sort().join(","), "keys are ascending");
+    },
+  },
+  {
+    id: "sorted-range-half-open",
+    name: "sorted_range is half-open: start in, end out",
+    group: "Sorted Collections",
+    fn: async (r) => {
+      noErr(await api.sortedSet(`r_${r}_a`, "1"));
+      noErr(await api.sortedSet(`r_${r}_b`, "2"));
+      noErr(await api.sortedSet(`r_${r}_c`, "3"));
+      const got = out<Record<string, string>>(await api.sortedRange(`r_${r}_a`, `r_${r}_c`));
+      // `_a` and `_b`, never `_c`. Getting this wrong is the single most common
+      // range bug, and an inclusive-end implementation passes every other
+      // assertion in this group.
+      eq(Object.keys(got).sort().join(","), [`r_${r}_a`, `r_${r}_b`].join(","));
+    },
+  },
+  {
+    id: "sorted-last-key",
+    name: "sorted_last_key returns the largest key",
+    group: "Sorted Collections",
+    fn: async (r) => {
+      noErr(await api.sortedSet(`zzz_${r}`, "last"));
+      const keys = out<string[]>(await api.sortedKeys());
+      const last = out<string | null>(await api.sortedLastKey());
+      notEmpty(last, "sorted_last_key");
+      const expected = [...keys].sort();
+      eq(last, expected.length ? expected[expected.length - 1] : null);
+    },
+  },
+  {
+    id: "sorted-remove",
+    name: "sorted_remove reports whether the key was there",
+    group: "Sorted Collections",
+    fn: async (r) => {
+      noErr(await api.sortedSet(`rm_${r}`, "x"));
+      eq(out<boolean>(await api.sortedRemove(`rm_${r}`)), true);
+      eq(out<boolean>(await api.sortedRemove(`rm_${r}`)), false);
+      eq(out<string | null>(await api.sortedGet(`rm_${r}`)), null);
+    },
+  },
+  {
+    id: "sorted-len",
+    name: "sorted_len grows with an insert",
+    group: "Sorted Collections",
+    fn: async (r) => {
+      const before = out<number>(await api.sortedLen());
+      noErr(await api.sortedSet(`len_${r}`, "x"));
+      eq(out<number>(await api.sortedLen()), before + 1);
+    },
+  },
+  {
+    id: "sorted-tag-add-idempotent",
+    name: "sorted_tag_add returns true once, then false",
+    group: "Sorted Collections",
+    fn: async (r) => {
+      eq(out<boolean>(await api.sortedTagAdd(`tag_${r}`)), true);
+      eq(out<boolean>(await api.sortedTagAdd(`tag_${r}`)), false);
+      eq(out<boolean>(await api.sortedTagContains(`tag_${r}`)), true);
+    },
+  },
+  {
+    id: "sorted-tag-readd-after-remove",
+    name: "a removed element can be re-added and is present again",
+    group: "Sorted Collections",
+    fn: async (r) => {
+      // Insert-after-remove on a set used to never converge across nodes
+      // (fixed in rc.10). Single-node this only checks the tombstone is cleared
+      // locally; the merobox scenario is what checks convergence.
+      eq(out<boolean>(await api.sortedTagAdd(`re_${r}`)), true);
+      eq(out<boolean>(await api.sortedTagRemove(`re_${r}`)), true);
+      eq(out<boolean>(await api.sortedTagContains(`re_${r}`)), false);
+      eq(out<boolean>(await api.sortedTagAdd(`re_${r}`)), true);
+      eq(out<boolean>(await api.sortedTagContains(`re_${r}`)), true);
+    },
+  },
+  {
+    id: "sorted-tags-ascending",
+    name: "sorted_tags_all returns elements in ascending order",
+    group: "Sorted Collections",
+    fn: async (r) => {
+      noErr(await api.sortedTagAdd(`ord_${r}_c`));
+      noErr(await api.sortedTagAdd(`ord_${r}_a`));
+      noErr(await api.sortedTagAdd(`ord_${r}_b`));
+      const all = out<string[]>(await api.sortedTagsAll());
+      isArray(all);
+      const mine = all.filter((t) => t.startsWith(`ord_${r}_`));
+      eq(mine.join(","), [...mine].sort().join(","), "elements are ascending");
+    },
+  },
+  {
+    id: "sorted-tags-range",
+    name: "sorted_tags_range is half-open too",
+    group: "Sorted Collections",
+    fn: async (r) => {
+      noErr(await api.sortedTagAdd(`tr_${r}_a`));
+      noErr(await api.sortedTagAdd(`tr_${r}_b`));
+      noErr(await api.sortedTagAdd(`tr_${r}_c`));
+      const got = out<string[]>(await api.sortedTagsRange(`tr_${r}_a`, `tr_${r}_c`));
+      eq(got.join(","), [`tr_${r}_a`, `tr_${r}_b`].join(","));
+    },
+  },
+  {
+    id: "sorted-tags-last",
+    name: "sorted_tags_last returns the largest element",
+    group: "Sorted Collections",
+    fn: async (r) => {
+      noErr(await api.sortedTagAdd(`zzz_tag_${r}`));
+      const all = [...out<string[]>(await api.sortedTagsAll())].sort();
+      eq(
+        out<string | null>(await api.sortedTagsLast()),
+        all.length ? all[all.length - 1] : null,
+      );
+    },
+  },
+
+  {
+    id: "shared-rotate-writers",
+    name: "shared_rotate_writers keeps the caller able to write",
+    group: "Shared Storage",
+    fn: async (r) => {
+      // A rotation REPLACES the set, so rotating to exactly [me] is the only
+      // version of this that is safe to run against a shared node: any other
+      // set could lock this context's cell against whoever set it up.
+      const me = out<api.Identity>(await api.whoami());
+      noErr(await api.sharedRotateWriters([me.account_id]));
+      eq(out<boolean>(await api.sharedIsWriter(me.account_id)), true);
+      noErr(await api.sharedSet(`rotated_${r}`));
+      eq(out<string>(await api.sharedGet()), `rotated_${r}`);
+    },
+  },
+
+  {
     id: "rga-title",
     name: "set_title + get_title round-trip",
     group: "RGA Document",
@@ -1111,6 +1267,7 @@ const GROUP_ORDER = [
   "CRDT Metadata",
   "CRDT Metrics",
   "CRDT Tags",
+  "Sorted Collections",
   "RGA Document",
   "Authored Map",
   "Shared Storage",

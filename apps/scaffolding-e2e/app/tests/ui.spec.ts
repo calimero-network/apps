@@ -94,6 +94,24 @@ const RPC_RESULTS: Record<string, unknown> = {
   add_tag: null,
   has_tag: true,
   get_tag_count: 3,
+  // Sorted collections. The ordering the UI shows comes from the contract's
+  // index, so these fixtures are deliberately ALREADY ascending — a mock that
+  // returned them shuffled would be testing a client-side sort that does not
+  // and should not exist.
+  sorted_set: null,
+  sorted_get: "sorted-value",
+  sorted_keys: ["alpha", "beta", "gamma"],
+  sorted_range: { alpha: "1", beta: "2" },
+  sorted_last_key: "gamma",
+  sorted_remove: true,
+  sorted_len: 3,
+  sorted_tag_add: true,
+  sorted_tag_remove: true,
+  sorted_tag_contains: true,
+  sorted_tags_all: ["blue", "green", "red"],
+  sorted_tags_range: ["blue", "green"],
+  sorted_tags_last: "red",
+  shared_rotate_writers: null,
   // Authored Map
   authored_insert: null,
   authored_update: null,
@@ -371,6 +389,7 @@ test.describe("Sidebar navigation", () => {
     { item: "Nested Maps", heading: "CRDT Nested Maps" },
     { item: "Metrics Vector", heading: "CRDT Metrics Vector" },
     { item: "Tags Set", heading: "CRDT Tags Set" },
+    { item: "Sorted Collections", heading: "Sorted Collections" },
     { item: "RGA Document", heading: "RGA Document" },
   ];
 
@@ -819,6 +838,22 @@ test.describe("CRDT Registers", () => {
 });
 
 test.describe("CRDT Tags", () => {
+  test("sorted map and sorted set method cards are present", async ({ page }) => {
+    await navigateTo(page, "Sorted Collections");
+    for (const method of [
+      "sorted_set",
+      "sorted_range",
+      "sorted_last_key",
+      "sorted_tag_add",
+      "sorted_tags_range",
+      "sorted_tags_last",
+    ]) {
+      await expect(
+        page.locator(".method-name", { hasText: method }).first(),
+      ).toBeVisible();
+    }
+  });
+
   test("add_tag and has_tag method cards are present", async ({ page }) => {
     await navigateTo(page, "Tags Set");
     // CrdtTags has method-name divs for add_tag, has_tag, get_tag_count

@@ -11,6 +11,8 @@
 //! - **Blob API**: Blob upload, announce, and discovery
 //! - **Context Admin**: Member management
 //! - **Nested CRDTs**: Complex nested CRDT compositions
+//! - **Sorted Collections**: `SortedMap`/`SortedSet` — key-ordered storage
+//!   driven through the WASM host's ordered-index path (range seeks, `last`)
 //! - **RGA Document**: ReplicatedGrowableArray for text editing
 //! - **Authored Map**: Shared keyspace with per-entry ownership; any member inserts, only owner mutates
 //! - **Shared Storage**: Group-writable single value with rotatable writer set
@@ -21,7 +23,7 @@
 
 #![allow(clippy::len_without_is_empty)]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
@@ -29,7 +31,8 @@ use calimero_sdk::serde::Serialize;
 use calimero_sdk::{app, env, AccountId, ContextId};
 use calimero_storage::collections::{
     AuthoredMap, AuthoredVector, Counter, FrozenStorage, GCounter, LwwRegister, Mergeable,
-    ReplicatedGrowableArray, SharedStorage, UnorderedMap, UnorderedSet, UserStorage, Vector,
+    ReplicatedGrowableArray, SharedStorage, SortedMap, SortedSet, UnorderedMap, UnorderedSet,
+    UserStorage, Vector,
 };
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -214,6 +217,19 @@ pub struct E2eKvStore {
     crdt_metrics: Vector<Counter>,
     /// Map of sets (union merge)
     crdt_tags: UnorderedMap<String, UnorderedSet<String>>,
+
+    // --- Sorted Collections (key-ordered; range seeks, min/max) ---
+    //
+    // `UnorderedMap` above and `SortedMap` here are not two flavours of the same
+    // thing: only the sorted pair maintains the WASM host's ORDERED INDEX
+    // (`storage_index_set`), which is what makes a range seek or a `last()` a
+    // seek rather than a full scan. Nothing else in this app exercises that
+    // host path, so a regression in it would show up in no test here.
+    /// Key-ordered map.
+    sorted_items: SortedMap<String, LwwRegister<String>>,
+    /// Element-ordered set — the `SortedSet` counterpart of `sorted_items`,
+    /// through the same host index path.
+    sorted_tags: SortedSet<String>,
 
     // --- RGA Document ---
     /// Collaborative text document
@@ -400,6 +416,12 @@ pub enum Event<'a> {
     SharedWriterAdded {
         writer: String,
     },
+    /// The writer set was REPLACED. Distinct from `SharedWriterAdded` on
+    /// purpose: a rotation can drop writers, and a listener that only ever sees
+    /// "added" events would build a set that never shrinks.
+    SharedWritersRotated {
+        writers: Vec<String>,
+    },
 
     // Workspace Registry Events
     WorkspaceInitialized {
@@ -538,6 +560,9 @@ impl E2eKvStore {
             crdt_metadata: UnorderedMap::new(),
             crdt_metrics: Vector::new(),
             crdt_tags: UnorderedMap::new(),
+            // Sorted Collections
+            sorted_items: SortedMap::new(),
+            sorted_tags: SortedSet::new(),
             // RGA
             rga_document: ReplicatedGrowableArray::new(),
             rga_edit_count: GCounter::new(),
@@ -1166,6 +1191,97 @@ impl E2eKvStore {
         Ok(count as u64)
     }
 
+    // SORTED COLLECTIONS
+    //
+    // The unordered collections above are enough for "store this and read it
+    // back". These are what a client needs to PAGE: keys in ascending order, a
+    // half-open range seek, and the largest key without reading the rest. They
+    // are also the only methods in this app that drive the WASM host's ordered
+    // index — `sorted_set` maintains it via `storage_index_set`, and
+    // `sorted_keys`/`sorted_range` read it back via `storage_index_scan` — so
+    // they are load-bearing coverage, not a second way to do a map.
+    //
+    // Ported from core's `apps/scaffolding-e2e`, which had grown these while
+    // this repo had not.
+
+    // --- SortedMap (key-ordered) ---
+
+    pub fn sorted_set(&mut self, key: String, value: String) -> app::Result<()> {
+        self.sorted_items.insert(key, LwwRegister::new(value))?;
+        Ok(())
+    }
+
+    pub fn sorted_get(&self, key: String) -> app::Result<Option<String>> {
+        Ok(self.sorted_items.get(&key)?.map(|v| v.get().clone()))
+    }
+
+    /// All keys in ascending order (index-backed).
+    pub fn sorted_keys(&self) -> app::Result<Vec<String>> {
+        Ok(self.sorted_items.keys()?.collect())
+    }
+
+    /// Entries whose keys fall in `[start, end)`, ascending. Half-open, like
+    /// every Rust range — `end` is NOT returned.
+    pub fn sorted_range(
+        &self,
+        start: String,
+        end: String,
+    ) -> app::Result<BTreeMap<String, String>> {
+        Ok(self
+            .sorted_items
+            .range(start..end)?
+            .map(|(k, v)| (k, v.get().clone()))
+            .collect())
+    }
+
+    /// The largest key (a reverse seek, not a scan).
+    pub fn sorted_last_key(&self) -> app::Result<Option<String>> {
+        Ok(self.sorted_items.last()?.map(|(k, _)| k))
+    }
+
+    pub fn sorted_remove(&mut self, key: String) -> app::Result<bool> {
+        Ok(self.sorted_items.remove(&key)?.is_some())
+    }
+
+    pub fn sorted_len(&self) -> app::Result<usize> {
+        self.sorted_items.len().map_err(Into::into)
+    }
+
+    // --- SortedSet (element-ordered) ---
+
+    /// Insert `tag`; `true` if it was newly added.
+    pub fn sorted_tag_add(&mut self, tag: String) -> app::Result<bool> {
+        Ok(self.sorted_tags.insert(tag)?)
+    }
+
+    /// Remove `tag`; `true` if it was present.
+    ///
+    /// ⚠️ `UnorderedSet` used to never converge on insert-after-remove; that was
+    /// fixed in rc.10, and the sorted variant shares the tombstone machinery.
+    /// The e2e re-adds a removed tag for exactly that reason.
+    pub fn sorted_tag_remove(&mut self, tag: String) -> app::Result<bool> {
+        Ok(self.sorted_tags.remove(&tag)?)
+    }
+
+    pub fn sorted_tag_contains(&self, tag: String) -> app::Result<bool> {
+        Ok(self.sorted_tags.contains(&tag)?)
+    }
+
+    /// All elements in ascending order (index-backed).
+    pub fn sorted_tags_all(&self) -> app::Result<Vec<String>> {
+        Ok(self.sorted_tags.iter()?.collect())
+    }
+
+    /// Elements in `[start, end)`, ascending.
+    pub fn sorted_tags_range(&self, start: String, end: String) -> app::Result<Vec<String>> {
+        Ok(self.sorted_tags.range(start..end)?.collect())
+    }
+
+    /// The largest element (a reverse seek).
+    pub fn sorted_tags_last(&self) -> app::Result<Option<String>> {
+        self.sorted_tags.last().map_err(Into::into)
+    }
+
     // RGA DOCUMENT (from collaborative-editor)
 
     pub fn rga_insert_text(&mut self, position: usize, text: String) -> app::Result<()> {
@@ -1358,6 +1474,35 @@ impl E2eKvStore {
         self.shared_data.rotate_writers(new_writers)?;
         app::emit!(Event::SharedWriterAdded {
             writer: account_hex.clone(),
+        });
+        Ok(())
+    }
+
+    /// Replace the whole writer set in one rotation.
+    ///
+    /// `shared_add_writer` can only ever union a key in, so nothing in this app
+    /// could REMOVE a writer — which left the interesting half of the writer set
+    /// untested: retroactive revocation, and two nodes rotating concurrently to
+    /// sets that disagree on membership.
+    ///
+    /// The caller must be a current writer, and passing a set that excludes
+    /// themselves is allowed and permanent as far as this method is concerned —
+    /// it is how revocation is tested, and there is no way back in.
+    pub fn shared_rotate_writers(&mut self, account_hexes: Vec<String>) -> app::Result<()> {
+        let mut new_writers = BTreeSet::new();
+        for account_hex in &account_hexes {
+            let account: AccountId = account_hex
+                .parse()
+                .map_err(|e| app::err!("not an account id (expected 64 hex chars): {e}"))?;
+            let _inserted = new_writers.insert(account);
+        }
+        if new_writers.is_empty() {
+            app::bail!("refusing to rotate to an empty writer set — the cell would be unwritable");
+        }
+
+        self.shared_data.rotate_writers(new_writers)?;
+        app::emit!(Event::SharedWritersRotated {
+            writers: account_hexes,
         });
         Ok(())
     }

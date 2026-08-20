@@ -224,6 +224,28 @@ html, body, #root {
   margin-bottom: 10px;
 }
 
+/* Sub-heading inside a section that has more than one collection type. */
+.method-group-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin: 24px 0 12px;
+}
+
+.method-group-title:first-of-type {
+  margin-top: 0;
+}
+
+/* A one-line note under the method signature, above its inputs. */
+.method-hint {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-text-muted);
+  margin: -4px 0 10px;
+}
+
 .input-row {
   display: flex;
   gap: 8px;

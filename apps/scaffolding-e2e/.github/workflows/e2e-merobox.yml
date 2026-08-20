@@ -118,6 +118,8 @@ jobs:
             file: workflows/authored-shared.yml
           - workflow: workspace-registry
             file: workflows/workspace-registry.yml
+          - workflow: sorted-collections
+            file: workflows/sorted-collections.yml
 
     steps:
       - name: Checkout code

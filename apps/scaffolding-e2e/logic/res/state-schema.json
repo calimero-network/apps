@@ -262,6 +262,34 @@
           }
         },
         {
+          "name": "sorted_items",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            },
+            "crdt_type": "sorted_map"
+          }
+        },
+        {
+          "name": "sorted_tags",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            },
+            "crdt_type": "sorted_set"
+          }
+        },
+        {
           "name": "rga_document",
           "type": {
             "kind": "record",

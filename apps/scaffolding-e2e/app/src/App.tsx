@@ -24,6 +24,7 @@ import { CrdtRegisters } from "./sections/CrdtRegisters";
 import { CrdtMetadata } from "./sections/CrdtMetadata";
 import { CrdtMetrics } from "./sections/CrdtMetrics";
 import { CrdtTags } from "./sections/CrdtTags";
+import { SortedCollections } from "./sections/SortedCollections";
 import { RgaDocument } from "./sections/RgaDocument";
 import { WorkspaceManager } from "./sections/WorkspaceManager";
 import { AuthoredMap } from "./sections/AuthoredMap";
@@ -57,6 +58,7 @@ type SectionId =
   | "metadata"
   | "metrics"
   | "tags"
+  | "sorted"
   | "rga";
 
 interface NavItem {
@@ -88,6 +90,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "metadata", label: "Nested Maps", icon: "🗂", group: "CRDT" },
   { id: "metrics", label: "Metrics Vector", icon: "📊", group: "CRDT" },
   { id: "tags", label: "Tags Set", icon: "🏷", group: "CRDT" },
+  { id: "sorted", label: "Sorted Collections", icon: "🔤", group: "CRDT" },
   { id: "rga", label: "RGA Document", icon: "📄", group: "CRDT" },
 ];
 
@@ -116,6 +119,7 @@ function renderSection(id: SectionId) {
     case "metadata": return <CrdtMetadata />;
     case "metrics": return <CrdtMetrics />;
     case "tags": return <CrdtTags />;
+    case "sorted": return <SortedCollections />;
     case "rga": return <RgaDocument />;
   }
 }

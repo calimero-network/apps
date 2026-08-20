@@ -193,6 +193,58 @@ export const hasTag = (key: string, tag: string) =>
 export const getTagCount = (key: string) =>
   call<{ key: string }, number>("get_tag_count", { key });
 
+// ── Sorted collections ───────────────────────────────────────────────────────
+//
+// `SortedMap`/`SortedSet` are not sorted flavours of the unordered pair above:
+// only these maintain the WASM host's ORDERED INDEX, which is what makes a range
+// query or "the largest key" a seek instead of a full scan. Ranges are half-open
+// — `[start, end)`, like every Rust range — so `end` is never returned.
+
+export const sortedSet = (key: string, value: string) =>
+  call("sorted_set", { key, value });
+
+export const sortedGet = (key: string) =>
+  call<{ key: string }, string | null>("sorted_get", { key });
+
+export const sortedKeys = () =>
+  call<Record<string, never>, string[]>("sorted_keys", {});
+
+export const sortedRange = (start: string, end: string) =>
+  call<{ start: string; end: string }, Record<string, string>>("sorted_range", {
+    start,
+    end,
+  });
+
+export const sortedLastKey = () =>
+  call<Record<string, never>, string | null>("sorted_last_key", {});
+
+export const sortedRemove = (key: string) =>
+  call<{ key: string }, boolean>("sorted_remove", { key });
+
+export const sortedLen = () =>
+  call<Record<string, never>, number>("sorted_len", {});
+
+export const sortedTagAdd = (tag: string) =>
+  call<{ tag: string }, boolean>("sorted_tag_add", { tag });
+
+export const sortedTagRemove = (tag: string) =>
+  call<{ tag: string }, boolean>("sorted_tag_remove", { tag });
+
+export const sortedTagContains = (tag: string) =>
+  call<{ tag: string }, boolean>("sorted_tag_contains", { tag });
+
+export const sortedTagsAll = () =>
+  call<Record<string, never>, string[]>("sorted_tags_all", {});
+
+export const sortedTagsRange = (start: string, end: string) =>
+  call<{ start: string; end: string }, string[]>("sorted_tags_range", {
+    start,
+    end,
+  });
+
+export const sortedTagsLast = () =>
+  call<Record<string, never>, string | null>("sorted_tags_last", {});
+
 export const rgaInsertText = (position: number, text: string) =>
   call("rga_insert_text", { position, text });
 
@@ -375,6 +427,18 @@ export const sharedGetWriters = () =>
 // authorization subject. Get yours from whoami().
 export const sharedAddWriter = (account_hex: string) =>
   call<{ account_hex: string }, void>("shared_add_writer", { account_hex });
+
+/**
+ * Replace the whole writer set.
+ *
+ * `sharedAddWriter` can only union a key in, so it can never take one away.
+ * This is the only way to REVOKE, and it is not reversible from the caller's
+ * side: rotate to a set that excludes yourself and you are out.
+ */
+export const sharedRotateWriters = (account_hexes: string[]) =>
+  call<{ account_hexes: string[] }, void>("shared_rotate_writers", {
+    account_hexes,
+  });
 
 export const sharedIsWriter = (account_hex: string) =>
   call<{ account_hex: string }, boolean>("shared_is_writer", { account_hex });
