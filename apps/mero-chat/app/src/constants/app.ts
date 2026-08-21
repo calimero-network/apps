@@ -8,7 +8,6 @@ export const RECENT_MESSAGES_CHECK_SIZE = 5;
 export const THREAD_MESSAGE_PAGE_SIZE = 20;
 
 // Timeouts (in milliseconds)
-export const IDLE_TIMEOUT_MS = 3600000; // 1 hour - auto-logout after inactivity
 export const SUBSCRIPTION_INIT_DELAY_MS = 500; // Delay before subscribing to events
 export const API_REQUEST_TIMEOUT_MS = 10000; // 10 seconds
 

@@ -291,9 +291,6 @@ export enum ClientMethod {
   SAVE_DRAFT = "save_draft",
   GET_DRAFT = "get_draft",
   DELETE_DRAFT = "delete_draft",
-  // Presence / heartbeat — silent CRDT write, no SSE event.
-  HEARTBEAT = "heartbeat",
-  GET_PRESENCE = "get_presence",
 }
 
 /// Per-context moderation role. Mirrors the Rust `Role` enum.
@@ -362,6 +359,4 @@ export interface ClientApi {
   setMemberRole(props: SetMemberRoleProps): ApiResponse<string>;
   getMemberRole(props: GetMemberRoleProps): ApiResponse<Role>;
   listRoles(props: ListRolesProps): ApiResponse<MemberRoleEntry[]>;
-  heartbeat(contextId: string, executorPublicKey: string): ApiResponse<void>;
-  getPresence(contextId: string, executorPublicKey: string, thresholdMs: number): ApiResponse<string[]>;
 }

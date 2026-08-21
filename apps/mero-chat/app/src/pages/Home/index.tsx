@@ -42,7 +42,10 @@ import {
   setContextMemberIdentity,
 } from "../../constants/config";
 import { getAppEntryState } from "../../utils/appEntry";
-import { loadSelfAccountIdentity } from "../../utils/accountIdentity";
+import {
+  loadSelfAccountIdentity,
+  sameAccount,
+} from "../../utils/accountIdentity";
 import { getMessengerDisplayName, getIdentityDisplayName, getStoredExecutorIdentity } from "../../utils/messengerName";
 import {
   createDmContextInGroup,
@@ -976,7 +979,11 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
         };
       }
       setGroupMemberIdentity(groupId, myIdentity);
-      if (myIdentity === otherIdentity) {
+      // `myIdentity` is an account in HEX (admin API); `otherIdentity` comes
+      // from the picker, i.e. the contract's `get_profiles`, in BASE58. Same
+      // account, different encoding — a raw `===` never matched, so the
+      // self-DM guard was inert.
+      if (sameAccount(myIdentity, otherIdentity)) {
         return {
           data: "",
           error: "Cannot create DM: you cannot DM yourself",

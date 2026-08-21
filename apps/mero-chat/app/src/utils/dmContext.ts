@@ -1,4 +1,5 @@
 import type { ApiResponse } from "../api/types";
+import { toAccountHex } from "./accountIdentity";
 import type { GroupContextEntry } from "../api/groupApi";
 import type { CreateContextResponse } from "../api/nodeApi";
 import type { ContextInfo } from "../types/Common";
@@ -306,14 +307,23 @@ export async function createDmContextInGroup(
   // 2b) Record both parties' display names as namespace-level member aliases
   // so listMembers(namespaceId) returns them immediately after governance
   // sync — no WASM state required. This is what useDMs reads for the DM list.
+  // These identities can arrive base58 (from the contract's `get_profiles`) or
+  // hex (from the admin members list). setMemberMetadata only accepts hex and
+  // rejects anything else with "Invalid account format: expected 64 hex
+  // characters", so canonicalise before writing — otherwise both names are
+  // silently dropped and the DM shows "Unnamed member".
   if (params.otherUsername) {
     params.groupApi
-      .setMemberMetadata(params.groupId, params.otherIdentity, { name: params.otherUsername })
+      .setMemberMetadata(params.groupId, toAccountHex(params.otherIdentity), {
+        name: params.otherUsername,
+      })
       .catch(() => {/* best-effort */});
   }
   if (params.myUsername) {
     params.groupApi
-      .setMemberMetadata(params.groupId, params.myIdentity, { name: params.myUsername })
+      .setMemberMetadata(params.groupId, toAccountHex(params.myIdentity), {
+        name: params.myUsername,
+      })
       .catch(() => {/* best-effort */});
   }
 

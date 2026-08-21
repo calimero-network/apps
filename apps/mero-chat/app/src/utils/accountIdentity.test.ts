@@ -1,9 +1,32 @@
-import { describe, expect, it } from "vitest";
-import { hexToBase58 } from "./accountIdentity";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import axios from "axios";
+import {
+  hexToBase58,
+  loadSelfAccountIdentity,
+  sameAccount,
+  toAccountBase58,
+  toAccountHex,
+} from "./accountIdentity";
+import {
+  clearRegisteredContextIdentities,
+  isSelfSender,
+} from "./selfIdentity";
+
+vi.mock("axios", () => ({ default: { get: vi.fn() } }));
+vi.mock("@calimero-network/mero-react", () => ({
+  getNodeUrl: () => "http://node.test",
+  getContextIdentity: () => "",
+}));
+vi.mock("../api/meroJsClient", () => ({ getAuthConfig: () => ({ jwtToken: "t" }) }));
+vi.mock("../constants/config", () => ({
+  getContextMemberIdentity: () => "",
+  getGroupId: () => "",
+  getGroupMemberIdentity: () => "",
+}));
 
 describe("hexToBase58", () => {
   it("matches the encoding the contract emits on `sender`", () => {
-    // Captured from a live node: GET /admin-api/namespaces/{ns}/account
+    // Captured from a live node: GET /admin-api/identity
     // returned this accountId (hex), and the WASM stamped the base58 form on
     // the message. The self-check failed because the app only ever held
     // device ids, which live in a different identifier space entirely.
@@ -27,5 +50,88 @@ describe("hexToBase58", () => {
   it("returns empty for malformed input", () => {
     expect(hexToBase58("")).toBe("");
     expect(hexToBase58("abc")).toBe("");
+  });
+});
+
+describe("loadSelfAccountIdentity", () => {
+  const accountHex =
+    "baa372f40192959e17d8dd8c8ba93cd4483cb4cbf2c8527f11c4b4aabc3ab68b";
+  const accountB58 = "DZZPSfWzipi1aH8YxjJop8eS3oJXUHaE5kbL67V6s3MU";
+
+  beforeEach(() => {
+    vi.mocked(axios.get).mockReset();
+    clearRegisteredContextIdentities();
+  });
+
+  it("reads the node-wide identity route, not the per-namespace one", async () => {
+    // `/admin-api/namespaces/{id}/account` 404s on merod 0.11.0-rc.24. When it
+    // did, nothing was registered as self and every ownership check silently
+    // failed — the user could not edit or delete their own messages.
+    vi.mocked(axios.get).mockResolvedValue({
+      data: { data: { accountId: accountHex, deviceId: null } },
+    });
+
+    await loadSelfAccountIdentity("some-namespace");
+
+    const url = vi.mocked(axios.get).mock.calls[0][0] as string;
+    expect(url).toBe("http://node.test/admin-api/identity");
+    expect(url).not.toContain("/namespaces/");
+  });
+
+  it("registers the base58 account id, which is what `sender` carries", async () => {
+    vi.mocked(axios.get).mockResolvedValue({
+      data: { data: { accountId: accountHex, deviceId: null } },
+    });
+
+    await loadSelfAccountIdentity();
+
+    // The contract stamps `sender` with the base58 form; a message from this
+    // node must now resolve as self.
+    expect(isSelfSender(accountB58, "ctx-1")).toBe(true);
+    expect(isSelfSender(accountHex, "ctx-1")).toBe(true);
+    expect(isSelfSender("someone-else", "ctx-1")).toBe(false);
+  });
+
+  it("returns null and registers nothing when the node has no account id", async () => {
+    vi.mocked(axios.get).mockResolvedValue({ data: { data: {} } });
+
+    await expect(loadSelfAccountIdentity()).resolves.toBeNull();
+    expect(isSelfSender(accountB58, "ctx-1")).toBe(false);
+  });
+});
+
+describe("account id canonicalisation", () => {
+  // Observed on a live rc.24 node: the SAME two members, served hex by the
+  // admin API and base58 by the contract's `get_profiles`.
+  const user1Hex = "e8b65145da3670b152e06eb3e2c00a5b41ca8907aac0a4ef24486bffa6283670";
+  const user1B58 = "GfQq3fL5PC9Lw4fV3EAFQmoaoGyWMig2GvQgp3u3ZYeK";
+  const user2Hex = "7528078a29c19803bbe1e370410b58992c0d1e436bec701ed33a4b3305bc916c";
+  const user2B58 = "8tL6y7jzsTyff1UdKFzW67mMP91GGQCGSAzugpX6poKy";
+
+  it("maps between the two encodings the app actually receives", () => {
+    expect(hexToBase58(user1Hex)).toBe(user1B58);
+    expect(toAccountHex(user1B58)).toBe(user1Hex);
+    expect(toAccountBase58(user1Hex)).toBe(user1B58);
+  });
+
+  it("is idempotent, so a value can be canonicalised twice safely", () => {
+    expect(toAccountHex(toAccountHex(user2B58))).toBe(user2Hex);
+    expect(toAccountBase58(toAccountBase58(user2Hex))).toBe(user2B58);
+  });
+
+  it("recognises the same account across encodings", () => {
+    // This is the comparison the self-DM guard makes. `===` returned false for
+    // these two, so the guard never fired.
+    expect(sameAccount(user1Hex, user1B58)).toBe(true);
+    expect(sameAccount(user2B58, user2Hex)).toBe(true);
+    expect(sameAccount(user1Hex, user2B58)).toBe(false);
+  });
+
+  it("passes through anything that is not a 32-byte account", () => {
+    // Device keys, aliases and test placeholders must survive untouched —
+    // converting is the helper's job, destroying is not.
+    expect(toAccountHex("member-a")).toBe("member-a");
+    expect(toAccountHex("")).toBe("");
+    expect(sameAccount("", user1Hex)).toBe(false);
   });
 });

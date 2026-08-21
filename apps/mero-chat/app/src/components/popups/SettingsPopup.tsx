@@ -5,7 +5,6 @@ import BaseModal from "../common/popups/BaseModal";
 import { useMero, getContextIdentity as getExecutorPublicKey, getContextId } from "@calimero-network/mero-react";
 import {
   clearStoredSession,
-  clearSessionActivity,
   clearNamespaceReady,
 } from "../../utils/session";
 import {
@@ -513,7 +512,7 @@ export default function SettingsPopup({
 
       setUploading(true);
       try {
-        const uploadRes = await uploadBlobDirect(file);
+        const uploadRes = await uploadBlobDirect(file, getContextId() || undefined);
         if (!uploadRes.data?.blobId) {
           addToast({ title: "Avatar", message: "Upload failed", type: "channel", duration: 3000 });
           return;
@@ -582,7 +581,6 @@ export default function SettingsPopup({
   const handleLogout = () => {
     const nodeUrl = localStorage.getItem("mero:node_url");
     clearStoredSession();
-    clearSessionActivity();
     clearWorkspaceSelection();
     clearNamespaceReady();
     clearMessengerDisplayName();

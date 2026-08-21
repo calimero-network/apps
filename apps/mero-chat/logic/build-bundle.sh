@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # logic/build-bundle.sh — package the built wasm into a signed .mpk bundle.
 #
-# `cargo mero build` (0.11.0-rc.20) only emits res/curb.wasm; it does not
+# `cargo mero build` (0.11.0-rc.24) only emits res/curb.wasm; it does not
 # produce a bundle. The registry pipeline (.github/workflows/deploy-bundle.yml)
 # builds one in CI with a release key, which is no help locally — and a raw-wasm
 # install carries no manifest, so the node ends up with empty metadata and
@@ -36,7 +36,10 @@ PACKAGE=$(manifest_value package)
 APP_NAME=$(manifest_value name)
 DESCRIPTION=$(manifest_value description)
 AUTHOR=$(manifest_value author)
-FRONTEND_URL=$(manifest_value frontend)
+# Local testing needs the bundle to point at a dev server rather than the
+# published site. Override without editing Cargo.toml:
+#   CURB_FRONTEND_URL=http://localhost:5173 ./build-bundle.sh
+FRONTEND_URL="${CURB_FRONTEND_URL:-$(manifest_value frontend)}"
 ICON_SRC=$(manifest_value icon)
 PKG_SHORT="${PACKAGE##*.}"
 

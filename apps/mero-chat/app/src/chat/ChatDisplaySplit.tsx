@@ -24,6 +24,7 @@ import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import { scrollbarStyles } from "../styles/scrollbar";
 import { log } from "../utils/logger";
 import { useMyChannelRole } from "../hooks/useMyChannelRole";
+import { isSelfSender } from "../utils/selfIdentity";
 import {
   getMessengerDisplayName,
   setMessengerDisplayName,
@@ -324,17 +325,28 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
       toggleEmojiSelector: toggleEmojiSelector,
       openMobileReactions: openMobileReactions,
       setOpenMobileReactions: setOpenMobileReactions,
+      // `message.sender` is an ACCOUNT id (the contract stamps it with
+      // `env::account_id()`), while `getExecutorPublicKey()` is a bs58 DEVICE
+      // key. Comparing them directly can never match, so "is this mine?" was
+      // always false and the Edit/Delete entries never rendered on your own
+      // messages. Same defect #14 fixed for DM counterparts, at a call site
+      // that was missed. `isSelfSender` checks every identity this node owns,
+      // account ids included; the DM's context identity rides along as a hint.
       editable: (message: CurbMessage) =>
-        message.sender ===
-        (activeChat.type === "direct_message"
-          ? activeChat.contextIdentity || getExecutorPublicKey()
-          : getExecutorPublicKey()),
+        isSelfSender(
+          message.sender,
+          resolvedContextId,
+          activeChat.contextIdentity,
+          getExecutorPublicKey(),
+        ),
       deleteable: (message: CurbMessage) =>
         canDeleteAny ||
-        message.sender ===
-          (activeChat.type === "direct_message"
-            ? activeChat.contextIdentity || getExecutorPublicKey()
-            : getExecutorPublicKey()),
+        isSelfSender(
+          message.sender,
+          resolvedContextId,
+          activeChat.contextIdentity,
+          getExecutorPublicKey(),
+        ),
       onEditModeRequested: (message: CurbMessage) =>
         onEditModeRequested(message, isThread),
       onEditModeCancelled: (message: CurbMessage) =>
@@ -393,6 +405,7 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
               ? activeChat.name
               : activeChat.username || activeChat.name
           }
+          isChannel={activeChat.type === "channel"}
           contextId={resolvedContextId}
           sendMessage={sendMessage}
           resetImage={resetImage}
