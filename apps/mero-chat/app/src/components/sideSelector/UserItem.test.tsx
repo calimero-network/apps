@@ -6,6 +6,15 @@ vi.mock("@calimero-network/mero-ui", () => ({
   Avatar: ({ name }: { name: string }) => <div>{name}</div>,
 }));
 
+// Presence now rides the node's ephemeral channel, so the real hook needs a
+// MeroProvider. These tests cover the display name and the join confirmation,
+// not presence — isolate it rather than standing up a client for it. (The old
+// contract-polling hook degraded silently without a provider, which is why
+// this mock wasn't needed before.)
+vi.mock("../../hooks/usePresence", () => ({
+  usePresence: () => ({ isOnline: () => false, hasOtherOnline: () => false }),
+}));
+
 vi.mock("../IdentityAvatar", () => ({
   IdentityAvatar: ({ name }: { name: string }) => <div>{name}</div>,
 }));

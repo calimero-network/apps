@@ -489,9 +489,6 @@ pub struct MeroChat {
     /// Per-user per-channel draft text. Key: "{base58_user_id}:{channel_name}".
     /// Effectively private — each user only reads/writes their own keys.
     drafts: UnorderedMap<String, LwwRegister<String>>,
-    /// Per-user last heartbeat timestamp (ms since epoch). Silent CRDT write —
-    /// no event emitted, but gossips to all nodes so presence is cross-node.
-    heartbeats: UnorderedMap<UserId, LwwRegister<u64>>,
 }
 
 #[app::logic]
@@ -541,7 +538,6 @@ impl MeroChat {
             read_receipts: UnorderedMap::new(),
             deleted_messages: UnorderedSet::new(),
             drafts: UnorderedMap::new(),
-            heartbeats: UnorderedMap::new(),
         }
     }
 
@@ -791,35 +787,6 @@ impl MeroChat {
         let key = draft_key(&Self::executor_id().to_string(), &channel);
         let _ = self.drafts.remove(&key);
         Ok(())
-    }
-
-    // ── Presence / heartbeat ───────────────────────────────────────────────
-
-    /// Record the caller as online. Call every ~30 s while the app is active.
-    /// No event is emitted — the write is a silent CRDT gossip so it won't
-    /// trigger SSE noise on subscribers. Banned members are excluded.
-    pub fn heartbeat(&mut self) -> app::Result<()> {
-        self.require_not_banned()?;
-        let me = Self::executor_id();
-        let _ = self.heartbeats.insert(me, LwwRegister::new(env::time_now()));
-        Ok(())
-    }
-
-    /// Return base58 identity strings of members whose last heartbeat is
-    /// within `threshold_ns` nanoseconds of the current time.
-    /// `env::time_now()` returns nanoseconds since epoch, so the caller
-    /// should pass milliseconds × 1_000_000 (e.g. 90_000 ms → 90_000_000_000 ns).
-    pub fn get_presence(&self, threshold_ns: u64) -> Vec<String> {
-        let now = env::time_now();
-        let mut online = Vec::new();
-        if let Ok(entries) = self.heartbeats.entries() {
-            for (uid, ts) in entries {
-                if now.saturating_sub(*ts.get()) <= threshold_ns {
-                    online.push(uid.to_string());
-                }
-            }
-        }
-        online
     }
 
     // ── Moderation: roles + ban gate ───────────────────────────────────────

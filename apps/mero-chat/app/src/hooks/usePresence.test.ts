@@ -1,228 +1,90 @@
 /**
  * Unit tests for usePresence
  *
- * Verifies:
- *   - heartbeat is called on mount and on interval
- *   - getPresence is called on mount and on interval
- *   - isOnline returns true for identities returned by getPresence
- *   - isOnline returns false for identities not returned
- *   - hook is disabled (no calls) when contextId or executorPublicKey is undefined
- *   - interval is cleared on unmount
+ * Presence moved from a WASM `heartbeat` + `get_presence` poll to the node's
+ * ephemeral channel, so the assertions about those calls are gone with them.
+ * What survives is the behaviour callers actually depend on:
+ *
+ *   - isOnline is true for identities present in the context, false otherwise
+ *   - hasOtherOnline ignores your own key and reports anyone else
+ *   - the hook is disabled (no subscription, no publish) without both a
+ *     contextId and an executorPublicKey
+ *   - entering a context announces you exactly once
  */
 
-import { act, renderHook } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { usePresence, THRESHOLD_MS, HEARTBEAT_INTERVAL_MS } from "./usePresence";
+import { renderHook } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// ── Mock ClientApiDataSource ────────────────────────────────────────────────
+import { usePresence } from "./usePresence";
 
-const mockHeartbeat = vi.fn();
-const mockGetPresence = vi.fn();
+const mockSetPresence = vi.fn();
+let mockPeers = new Map<string, Record<string, never>>();
+const mockUseEphemeral = vi.fn();
 
-vi.mock("../api/dataSource/clientApiDataSource", () => ({
-  ClientApiDataSource: class {
-    heartbeat = mockHeartbeat;
-    getPresence = mockGetPresence;
+vi.mock("@calimero-network/mero-react", () => ({
+  useEphemeral: (contextId: string | null) => {
+    mockUseEphemeral(contextId);
+    return { peers: mockPeers, setPresence: mockSetPresence, ageOf: () => undefined, error: null };
   },
 }));
 
-// ── Timer mocks ──────────────────────────────────────────────────────────────
+const ME = "myContextKey";
+const OTHER = "otherContextKey";
 
 beforeEach(() => {
-  vi.useFakeTimers();
   vi.clearAllMocks();
-
-  // Default: heartbeat succeeds silently, getPresence returns nobody online.
-  // Return API-style responses (not thrown errors) to match the hook's expectations.
-  mockHeartbeat.mockResolvedValue({ data: null, error: null });
-  mockGetPresence.mockResolvedValue({ data: [], error: null });
+  mockPeers = new Map();
 });
-
-afterEach(() => {
-  vi.useRealTimers();
-});
-
-// Flush all pending microtasks (promise resolutions) without advancing timers.
-async function flushPromises() {
-  // Two rounds of microtask flushing handle chained .then() callbacks.
-  await act(async () => {
-    await Promise.resolve();
-    await Promise.resolve();
-  });
-}
-
-const CTX = "ctx-test-123";
-const KEY = "key-alice-456";
-
-// ─────────────────────────────────────────────────────────────────────────────
 
 describe("usePresence", () => {
-  it("calls heartbeat on mount", async () => {
-    renderHook(() => usePresence(CTX, KEY));
-    await flushPromises();
-
-    expect(mockHeartbeat).toHaveBeenCalledWith(CTX, KEY);
+  it("reports an identity present in the context as online", () => {
+    mockPeers = new Map([[OTHER, {}]]);
+    const { result } = renderHook(() => usePresence("ctx-1", ME));
+    expect(result.current.isOnline(OTHER)).toBe(true);
   });
 
-  it("calls getPresence on mount", async () => {
-    renderHook(() => usePresence(CTX, KEY));
-    await flushPromises();
-
-    expect(mockGetPresence).toHaveBeenCalledTimes(1);
-    expect(mockGetPresence.mock.calls[0][0]).toBe(CTX);
-    expect(mockGetPresence.mock.calls[0][1]).toBe(KEY);
+  it("reports an identity absent from the context as offline", () => {
+    mockPeers = new Map([[OTHER, {}]]);
+    const { result } = renderHook(() => usePresence("ctx-1", ME));
+    expect(result.current.isOnline("somebodyElse")).toBe(false);
   });
 
-  it("passes threshold_ns = THRESHOLD_MS × 1_000_000 to getPresence", async () => {
-    renderHook(() => usePresence(CTX, KEY));
-    await flushPromises();
-
-    const thresholdArg = mockGetPresence.mock.calls[0][2] as number;
-    expect(thresholdArg).toBe(THRESHOLD_MS * 1_000_000);
+  it("reports nobody online when the context is empty", () => {
+    const { result } = renderHook(() => usePresence("ctx-1", ME));
+    expect(result.current.isOnline(OTHER)).toBe(false);
+    expect(result.current.hasOtherOnline(ME)).toBe(false);
   });
 
-  it("isOnline returns true for identities in getPresence response", async () => {
-    mockGetPresence.mockResolvedValue({ data: ["alice.near", "bob.near"], error: null });
-
-    const { result } = renderHook(() => usePresence(CTX, KEY));
-    await flushPromises();
-
-    expect(result.current.isOnline("alice.near")).toBe(true);
-    expect(result.current.isOnline("bob.near")).toBe(true);
+  // The DM fallback: used when `dm.otherIdentity` hasn't resolved to a context
+  // executor key yet, so the caller can only ask "is anyone but me here?".
+  it("hasOtherOnline finds a peer that is not my own key", () => {
+    mockPeers = new Map([[OTHER, {}]]);
+    const { result } = renderHook(() => usePresence("ctx-1", ME));
+    expect(result.current.hasOtherOnline(ME)).toBe(true);
   });
 
-  it("isOnline returns false for identities not in response", async () => {
-    mockGetPresence.mockResolvedValue({ data: ["alice.near"], error: null });
-
-    const { result } = renderHook(() => usePresence(CTX, KEY));
-    await flushPromises();
-
-    expect(result.current.isOnline("alice.near")).toBe(true);
-    expect(result.current.isOnline("charlie.near")).toBe(false);
+  it("hasOtherOnline ignores my own key", () => {
+    // `peers` excludes our own echo, but a caller may pass a key that happens
+    // to be in the map; it must never count as "someone else".
+    mockPeers = new Map([[ME, {}]]);
+    const { result } = renderHook(() => usePresence("ctx-1", ME));
+    expect(result.current.hasOtherOnline(ME)).toBe(false);
   });
 
-  it("isOnline returns false when nobody is online", async () => {
-    mockGetPresence.mockResolvedValue({ data: [], error: null });
-
-    const { result } = renderHook(() => usePresence(CTX, KEY));
-    await flushPromises();
-
-    expect(result.current.isOnline("anyone.near")).toBe(false);
+  it("announces presence once on entering a context", () => {
+    renderHook(() => usePresence("ctx-1", ME));
+    expect(mockSetPresence).toHaveBeenCalledTimes(1);
   });
 
-  it("polls again on the interval", async () => {
-    mockGetPresence
-      .mockResolvedValueOnce({ data: [], error: null })              // initial poll
-      .mockResolvedValueOnce({ data: ["alice.near"], error: null }); // after interval
-
-    const { result } = renderHook(() => usePresence(CTX, KEY));
-
-    // Let initial calls resolve
-    await flushPromises();
-    expect(result.current.isOnline("alice.near")).toBe(false);
-
-    // Advance one interval → fires, then flush the resulting promises
-    await act(async () => {
-      vi.advanceTimersByTime(HEARTBEAT_INTERVAL_MS);
-    });
-    await flushPromises();
-
-    expect(result.current.isOnline("alice.near")).toBe(true);
+  it("is disabled without a contextId", () => {
+    renderHook(() => usePresence(undefined, ME));
+    expect(mockUseEphemeral).toHaveBeenCalledWith(null);
+    expect(mockSetPresence).not.toHaveBeenCalled();
   });
 
-  it("heartbeat is called again on the interval", async () => {
-    renderHook(() => usePresence(CTX, KEY));
-
-    await flushPromises();
-    const initialCalls = mockHeartbeat.mock.calls.length;
-    expect(initialCalls).toBeGreaterThan(0);
-
-    await act(async () => {
-      vi.advanceTimersByTime(HEARTBEAT_INTERVAL_MS);
-    });
-    await flushPromises();
-
-    expect(mockHeartbeat.mock.calls.length).toBeGreaterThan(initialCalls);
-  });
-
-  it("makes no calls when contextId is undefined", async () => {
-    renderHook(() => usePresence(undefined, KEY));
-    await flushPromises();
-
-    expect(mockHeartbeat).not.toHaveBeenCalled();
-    expect(mockGetPresence).not.toHaveBeenCalled();
-  });
-
-  it("makes no calls when executorPublicKey is undefined", async () => {
-    renderHook(() => usePresence(CTX, undefined));
-    await flushPromises();
-
-    expect(mockHeartbeat).not.toHaveBeenCalled();
-    expect(mockGetPresence).not.toHaveBeenCalled();
-  });
-
-  it("makes no calls when both args are undefined", async () => {
-    renderHook(() => usePresence(undefined, undefined));
-    await flushPromises();
-
-    expect(mockHeartbeat).not.toHaveBeenCalled();
-    expect(mockGetPresence).not.toHaveBeenCalled();
-  });
-
-  it("clears the interval on unmount — no further calls", async () => {
-    const { unmount } = renderHook(() => usePresence(CTX, KEY));
-
-    await flushPromises();
-    const callsAtUnmount = mockHeartbeat.mock.calls.length;
-    unmount();
-
-    await act(async () => {
-      vi.advanceTimersByTime(60_000);
-    });
-    await flushPromises();
-
-    expect(mockHeartbeat.mock.calls.length).toBe(callsAtUnmount);
-  });
-
-  it("online set updates when presence changes between polls", async () => {
-    mockGetPresence
-      .mockResolvedValueOnce({ data: ["alice.near", "bob.near"], error: null })
-      .mockResolvedValueOnce({ data: ["alice.near"], error: null }); // bob went offline
-
-    const { result } = renderHook(() => usePresence(CTX, KEY));
-
-    await flushPromises();
-    expect(result.current.isOnline("bob.near")).toBe(true);
-
-    await act(async () => {
-      vi.advanceTimersByTime(HEARTBEAT_INTERVAL_MS);
-    });
-    await flushPromises();
-
-    expect(result.current.isOnline("bob.near")).toBe(false);
-    expect(result.current.isOnline("alice.near")).toBe(true);
-  });
-
-  it("handles API error response gracefully — online set unchanged", async () => {
-    // Return an API-style error (not a thrown error) so the void-chain doesn't
-    // create unhandled rejections. The hook only checks resp.data so null data
-    // leaves the online set untouched.
-    mockGetPresence
-      .mockResolvedValueOnce({ data: ["alice.near"], error: null })
-      .mockResolvedValueOnce({ data: null, error: { code: 500, message: "Network error" } });
-
-    const { result } = renderHook(() => usePresence(CTX, KEY));
-
-    await flushPromises();
-    expect(result.current.isOnline("alice.near")).toBe(true);
-
-    // Second poll returns error response — online set should retain previous value
-    await act(async () => {
-      vi.advanceTimersByTime(HEARTBEAT_INTERVAL_MS);
-    });
-    await flushPromises();
-
-    // Set is unchanged (data was null so the if branch was skipped)
-    expect(result.current.isOnline("alice.near")).toBe(true);
+  it("is disabled without an executorPublicKey", () => {
+    renderHook(() => usePresence("ctx-1", undefined));
+    expect(mockUseEphemeral).toHaveBeenCalledWith(null);
+    expect(mockSetPresence).not.toHaveBeenCalled();
   });
 });
