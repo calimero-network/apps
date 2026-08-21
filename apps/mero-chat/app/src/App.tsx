@@ -2,18 +2,13 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
 import { useEffect, useState, lazy, Suspense } from "react";
 import { LoadingSpinner } from "./components/LoadingSpinner";
-import {
-  isSessionExpired,
-  updateSessionActivity,
-  isNamespaceReady,
-} from "./utils/session";
+import { isNamespaceReady } from "./utils/session";
 import { hasLiveSession } from "./utils/authTokens";
 import { ToastProvider, useToast } from "./contexts/ToastContext";
 import { ToastManager } from "./components/common/ToastManager";
 
 const Login = lazy(() => import("./pages/Login"));
 const Home = lazy(() => import("./pages/Home"));
-const IdleTimeoutWrapper = lazy(() => import("./components/IdleTimeoutWrapper"));
 
 function ToastDisplay() {
   const { toasts, removeToast } = useToast();
@@ -21,7 +16,7 @@ function ToastDisplay() {
 }
 
 function App() {
-  const { isAuthenticated, isLoading, logout } = useMero();
+  const { isAuthenticated, isLoading } = useMero();
   const [providerTimedOut, setProviderTimedOut] = useState(false);
 
   useEffect(() => {
@@ -33,17 +28,13 @@ function App() {
     return () => clearTimeout(id);
   }, [isLoading]);
 
-  // Session expiry check and activity tracking
-  useEffect(() => {
-    if (isAuthenticated) {
-      if (isSessionExpired()) {
-        sessionStorage.clear();
-        logout();
-      } else {
-        updateSessionActivity();
-      }
-    }
-  }, [isAuthenticated, logout]);
+  // A session ends when the user ends it. There is deliberately no inactivity
+  // expiry here: this is a chat app, and being idle — or leaving the tab open in
+  // the background overnight — is normal use, not a reason to destroy someone's
+  // session. Staying signed in costs nothing extra in exposure either, since the
+  // refresh token sits in the same localStorage the access token already does.
+  // Token lifetime is handled underneath us: core's access tokens last an hour,
+  // and mero-js silently refreshes them on the first 401.
 
   // canEnterApp requires both a valid auth session AND explicit namespace selection
   // in this browser session (sessionStorage flag). This prevents the app from
@@ -81,9 +72,7 @@ function App() {
             path="/"
             element={
               canEnterApp ? (
-                <IdleTimeoutWrapper>
-                  <Home isConfigSet={isAuthenticated} />
-                </IdleTimeoutWrapper>
+                <Home isConfigSet={isAuthenticated} />
               ) : (
                 <Navigate to="/login" replace />
               )

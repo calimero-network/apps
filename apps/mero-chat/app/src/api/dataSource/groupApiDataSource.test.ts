@@ -2,10 +2,26 @@ import bs58 from "bs58";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GroupApiDataSource } from "./groupApiDataSource";
 
-const { mockAxiosGet, mockAxiosPost, mockAxiosPut } = vi.hoisted(() => ({
+const {
+  mockAxiosGet,
+  mockAxiosPost,
+  mockAxiosPut,
+  mockCreateNamespace,
+  mockCreateNamespaceInvitation,
+  mockJoinNamespace,
+  mockJoinContext,
+  mockListGroupContexts,
+  mockSetMemberMetadata,
+} = vi.hoisted(() => ({
   mockAxiosGet: vi.fn(),
   mockAxiosPost: vi.fn(),
   mockAxiosPut: vi.fn(),
+  mockCreateNamespace: vi.fn(),
+  mockCreateNamespaceInvitation: vi.fn(),
+  mockJoinNamespace: vi.fn(),
+  mockJoinContext: vi.fn(),
+  mockListGroupContexts: vi.fn(),
+  mockSetMemberMetadata: vi.fn(),
 }));
 
 vi.mock("axios", () => ({
@@ -21,8 +37,22 @@ vi.mock("@calimero-network/mero-react", () => ({
   getNodeUrl: () => "http://localhost:2428",
 }));
 
+// The data source now issues its admin calls through mero-js rather than
+// axios, so the assertions below check the SDK method and its arguments. The
+// SDK unwraps core's `{ data: ... }` envelope, so mocks resolve the inner
+// payload directly.
 vi.mock("../meroJsClient", () => ({
   getAuthConfig: () => ({ jwtToken: "token" }),
+  getMeroJs: () => ({
+    admin: {
+      createNamespace: mockCreateNamespace,
+      listGroupContexts: mockListGroupContexts,
+      setMemberMetadata: mockSetMemberMetadata,
+      createNamespaceInvitation: mockCreateNamespaceInvitation,
+      joinNamespace: mockJoinNamespace,
+      joinContext: mockJoinContext,
+    },
+  }),
 }));
 
 describe("GroupApiDataSource", () => {
@@ -30,18 +60,16 @@ describe("GroupApiDataSource", () => {
     mockAxiosGet.mockReset();
     mockAxiosPost.mockReset();
     mockAxiosPut.mockReset();
+    mockCreateNamespace.mockReset();
+    mockCreateNamespaceInvitation.mockReset();
+    mockJoinNamespace.mockReset();
+    mockJoinContext.mockReset();
+    mockListGroupContexts.mockReset();
+    mockSetMemberMetadata.mockReset();
   });
 
   it("passes the optional alias when creating a namespace (workspace)", async () => {
-    mockAxiosPost.mockResolvedValue({
-      status: 200,
-      data: {
-        data: {
-          namespaceId: "group-1",
-        },
-      },
-      statusText: "OK",
-    });
+    mockCreateNamespace.mockResolvedValue({ namespaceId: "group-1" });
 
     const dataSource = new GroupApiDataSource();
     const response = await dataSource.createGroup({
@@ -50,23 +78,14 @@ describe("GroupApiDataSource", () => {
       alias: "Product Team",
     });
 
-    expect(mockAxiosPost).toHaveBeenCalledWith(
-      "http://localhost:2428/admin-api/namespaces",
-      {
-        applicationId: "app-1",
-        upgradePolicy: "LazyOnAccess",
-        alias: "Product Team",
-        // Post-054a784f the server field is `name`; createGroup now sends
-        // both for transition compat.
-        name: "Product Team",
-      },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer token",
-        },
-      },
-    );
+    expect(mockCreateNamespace).toHaveBeenCalledWith({
+      applicationId: "app-1",
+      upgradePolicy: "LazyOnAccess",
+      alias: "Product Team",
+      // Post-054a784f the server field is `name`; createGroup now sends
+      // both for transition compat.
+      name: "Product Team",
+    });
     expect(response).toEqual({
       data: {
         groupId: "group-1",
@@ -76,11 +95,7 @@ describe("GroupApiDataSource", () => {
   });
 
   it("also accepts groupId in namespace creation response for backward compatibility", async () => {
-    mockAxiosPost.mockResolvedValue({
-      status: 200,
-      data: { data: { groupId: "group-2" } },
-      statusText: "OK",
-    });
+    mockCreateNamespace.mockResolvedValue({ groupId: "group-2" });
 
     const dataSource = new GroupApiDataSource();
     const response = await dataSource.createGroup({
@@ -92,10 +107,7 @@ describe("GroupApiDataSource", () => {
   });
 
   it("returns the invitation group alias when the backend wraps the payload", async () => {
-    mockAxiosPost.mockResolvedValue({
-      status: 200,
-      data: {
-        data: {
+    mockCreateNamespaceInvitation.mockResolvedValue({
           invitation: {
             invitation: {
               inviter_identity: "admin",
@@ -109,9 +121,6 @@ describe("GroupApiDataSource", () => {
             inviter_signature: "signature",
           },
           groupAlias: "Product Team",
-        },
-      },
-      statusText: "OK",
     });
 
     const dataSource = new GroupApiDataSource();
@@ -150,15 +159,9 @@ describe("GroupApiDataSource", () => {
       },
       inviter_signature: "signature",
     };
-    mockAxiosPost.mockResolvedValue({
-      status: 200,
-      data: {
-        data: {
-          namespaceId: "group-1",
-          memberIdentity: "member-1",
-        },
-      },
-      statusText: "OK",
+    mockJoinNamespace.mockResolvedValue({
+      namespaceId: "group-1",
+      memberIdentity: "member-1",
     });
 
     const dataSource = new GroupApiDataSource();
@@ -168,16 +171,7 @@ describe("GroupApiDataSource", () => {
     });
 
     // namespace ID is extracted from invitation.invitation.group_id = "group-1"
-    expect(mockAxiosPost).toHaveBeenCalledWith(
-      "http://localhost:2428/admin-api/namespaces/group-1/join",
-      { invitation },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer token",
-        },
-      },
-    );
+    expect(mockJoinNamespace).toHaveBeenCalledWith("group-1", { invitation });
     expect(response).toEqual({
       data: {
         groupId: "group-1",
@@ -200,27 +194,21 @@ describe("GroupApiDataSource", () => {
       },
       inviter_signature: "signature",
     };
-    mockAxiosPost.mockResolvedValue({
-      status: 200,
-      data: { data: { namespaceId: "abcdef", memberIdentity: "member-1" } },
-      statusText: "OK",
+    mockJoinNamespace.mockResolvedValue({
+      namespaceId: "abcdef",
+      memberIdentity: "member-1",
     });
 
     const dataSource = new GroupApiDataSource();
     await dataSource.joinGroup({ invitation: invitation as never, groupAlias: "Team" });
 
-    expect(mockAxiosPost).toHaveBeenCalledWith(
-      "http://localhost:2428/admin-api/namespaces/abcdef/join",
-      { invitation },
-      expect.any(Object),
-    );
+    expect(mockJoinNamespace).toHaveBeenCalledWith("abcdef", { invitation });
   });
 
   it("joins a context by POSTing to /contexts/{contextId}/join without a group ID in URL", async () => {
-    mockAxiosPost.mockResolvedValue({
-      status: 200,
-      data: { data: { contextId: "ctx-1", memberPublicKey: "pk-1" } },
-      statusText: "OK",
+    mockJoinContext.mockResolvedValue({
+      contextId: "ctx-1",
+      memberPublicKey: "pk-1",
     });
 
     const dataSource = new GroupApiDataSource();
@@ -228,11 +216,7 @@ describe("GroupApiDataSource", () => {
       contextId: "ctx-1",
     });
 
-    expect(mockAxiosPost).toHaveBeenCalledWith(
-      "http://localhost:2428/admin-api/contexts/ctx-1/join",
-      {},
-      expect.any(Object),
-    );
+    expect(mockJoinContext).toHaveBeenCalledWith("ctx-1");
     expect(response).toEqual({
       data: { contextId: "ctx-1", memberPublicKey: "pk-1" },
       error: null,
@@ -248,17 +232,12 @@ describe("GroupApiDataSource", () => {
       contextBytes,
     );
 
-    mockAxiosGet.mockResolvedValue({
-      status: 200,
-      data: {
-        data: [
-          {
-            contextId: hexContextId,
-            alias: "Project Alpha",
-          },
-        ],
+    mockListGroupContexts.mockResolvedValue([
+      {
+        contextId: hexContextId,
+        alias: "Project Alpha",
       },
-    });
+    ]);
 
     const dataSource = new GroupApiDataSource();
     const response = await dataSource.listGroupContexts("group-1");
@@ -275,29 +254,16 @@ describe("GroupApiDataSource", () => {
   });
 
   it("updates a member alias through the admin member alias endpoint", async () => {
-    mockAxiosPut.mockResolvedValue({
-      status: 200,
-      data: {
-        data: undefined,
-      },
-      statusText: "OK",
-    });
+    mockSetMemberMetadata.mockResolvedValue(undefined);
 
     const dataSource = new GroupApiDataSource();
     const response = await dataSource.setMemberMetadata("group-1", "member-1", {
       name: "Taylor",
     });
 
-    expect(mockAxiosPut).toHaveBeenCalledWith(
-      "http://localhost:2428/admin-api/groups/group-1/members/member-1/metadata",
-      { name: "Taylor" },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer token",
-        },
-      },
-    );
+    expect(mockSetMemberMetadata).toHaveBeenCalledWith("group-1", "member-1", {
+      name: "Taylor",
+    });
     expect(response).toEqual({
       data: undefined,
       error: null,

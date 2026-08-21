@@ -5,13 +5,11 @@ import SettingsPopup from "./SettingsPopup";
 const {
   mockLogout,
   mockClearStoredSession,
-  mockClearSessionActivity,
   mockClearWorkspaceSelection,
   mockNavigate,
 } = vi.hoisted(() => ({
   mockLogout: vi.fn(),
   mockClearStoredSession: vi.fn(),
-  mockClearSessionActivity: vi.fn(),
   mockClearWorkspaceSelection: vi.fn(),
   mockNavigate: vi.fn(),
 }));
@@ -29,7 +27,6 @@ vi.mock("react-router-dom", () => ({
 
 vi.mock("../../utils/session", () => ({
   clearStoredSession: mockClearStoredSession,
-  clearSessionActivity: mockClearSessionActivity,
   clearNamespaceReady: vi.fn(),
 }));
 
@@ -77,7 +74,6 @@ describe("SettingsPopup", () => {
   beforeEach(() => {
     mockLogout.mockReset();
     mockClearStoredSession.mockReset();
-    mockClearSessionActivity.mockReset();
     mockClearWorkspaceSelection.mockReset();
     mockNavigate.mockReset();
     sessionStorage.clear();
@@ -132,7 +128,6 @@ describe("SettingsPopup", () => {
     fireEvent.click(screen.getByRole("button", { name: /^logout$/i }));
 
     expect(mockClearStoredSession).toHaveBeenCalled();
-    expect(mockClearSessionActivity).toHaveBeenCalled();
     expect(mockLogout).toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
     expect(setIsOpen).toHaveBeenCalledWith(false);

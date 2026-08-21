@@ -10,3 +10,5 @@ data/
 **/node_modules/
 calimero.json
 .local-signing-key.json
+# local-only: vercel CLI scratch
+.vercel/

@@ -3,6 +3,7 @@ import { styled, keyframes } from "styled-components";
 import { Button, Input } from "@calimero-network/mero-ui";
 import { getNodeUrl } from "@calimero-network/mero-react";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
+import { log } from "../../utils/logger";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 import type { GroupSummary } from "../../api/groupApi";
 import {
@@ -349,10 +350,21 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
       // this member with `name: null` and the channel/DM/admin UIs all
       // fall through to displaying the raw identity string.
       if (username) {
-        api.current
+        void api.current
           .setMemberMetadata(namespaceId, memberIdentity, { name: username })
-          .catch(() => {
-            /* non-fatal */
+          .then((res) => {
+            // Was silently swallowed. That is how this shipped broken: core
+            // rejects a device key with "Invalid account format: expected 64
+            // hex characters", the member stayed nameless, and nothing said so.
+            if (res.error) {
+              log.warn(
+                "NamespaceEntry",
+                `could not publish member name: ${res.error.message}`,
+              );
+            }
+          })
+          .catch((err) => {
+            log.warn("NamespaceEntry", "could not publish member name", err);
           });
       }
     }

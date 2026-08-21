@@ -9,6 +9,35 @@ import { registerAccountIdentity } from "./selfIdentity";
 const DEFAULT_ENDPOINT = "http://localhost:2428";
 
 /**
+ * This node's ACCOUNT, cached after the first `/admin-api/identity` read.
+ *
+ * Account vs device is the distinction the app kept getting wrong: an account
+ * is one person across all their devices, a device key signs for one of them.
+ * Core identifies members, roles, message senders and member metadata by
+ * ACCOUNT; the device key is only ever an `executorPublicKey`. Anything
+ * user-facing that keys off a device key breaks the moment the same person
+ * signs in from a second device.
+ *
+ * Admin routes want the hex form, the contract emits base58 — keep both.
+ */
+let selfAccount: { hex: string; base58: string } | null = null;
+
+/** This node's account id, hex — the form every admin route expects. */
+export function getSelfAccountHex(): string {
+  return selfAccount?.hex ?? "";
+}
+
+/** This node's account id, base58 — the form the contract stamps on `sender`. */
+export function getSelfAccountBase58(): string {
+  return selfAccount?.base58 ?? "";
+}
+
+/** Test seam. */
+export function clearSelfAccount(): void {
+  selfAccount = null;
+}
+
+/**
  * Fetch this node's ACCOUNT id for a namespace and register it as "self".
  *
  * Core master splits identity in two:
@@ -26,9 +55,10 @@ const DEFAULT_ENDPOINT = "http://localhost:2428";
  * encoding succeeds.
  */
 export async function loadSelfAccountIdentity(
-  namespaceId: string,
+  // Kept for call-site compatibility: identity is node-wide, not per-namespace,
+  // so the value is no longer used to build the request.
+  _namespaceId?: string,
 ): Promise<string | null> {
-  if (!namespaceId) return null;
 
   const base = getNodeUrl() || DEFAULT_ENDPOINT;
   const cfg = getAuthConfig();
@@ -36,10 +66,11 @@ export async function loadSelfAccountIdentity(
   if (cfg?.jwtToken) headers.Authorization = `Bearer ${cfg.jwtToken}`;
 
   try {
-    const res = await axios.get(
-      `${base}/admin-api/namespaces/${namespaceId}/account`,
-      { headers },
-    );
+    // `/admin-api/namespaces/{id}/account` 404s on merod 0.11.0-rc.24 — the
+    // per-namespace route is gone. Identity is node-wide and served here, which
+    // is also what mero-js's own `getNamespaceIdentity` resolves to. Response
+    // shape is unchanged (`data.accountId`, `data.deviceId`).
+    const res = await axios.get(`${base}/admin-api/identity`, { headers });
     const accountHex: string = res.data?.data?.accountId ?? "";
     const deviceHex: string = res.data?.data?.deviceId ?? "";
     if (!accountHex) return null;
@@ -53,6 +84,7 @@ export async function loadSelfAccountIdentity(
       registerAccountIdentity(hexToBase58(deviceHex));
     }
 
+    selfAccount = { hex: accountHex, base58: accountB58 };
     log.info("AccountIdentity", `self account ${accountB58} (${accountHex})`);
     return accountB58;
   } catch (error) {
@@ -71,3 +103,24 @@ export function hexToBase58(hex: string): string {
   }
   return bs58.encode(bytes);
 }
+
+/** base58 → hex, the encoding the admin routes require. */
+export function base58ToHex(id: string): string {
+  try {
+    return Array.from(bs58.decode(id))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Canonical account-id conversions now live in `@calimero-network/mero-js`
+ * (13.2.0+). They were duplicated here while the SDK lacked them; re-exported
+ * rather than re-implemented so there is one definition of what an account id
+ * is — the same admin-hex vs contract-base58 mismatch that silently broke
+ * member lookups is exactly the bug two copies would reintroduce.
+ */
+export { sameAccount, toAccountBase58, toAccountHex } from "@calimero-network/mero-js";
+

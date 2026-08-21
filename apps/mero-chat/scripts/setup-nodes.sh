@@ -33,7 +33,11 @@ NODE_2_URL="http://localhost:${NODE_2_PORT}"
 ADMIN_USER="${E2E_ADMIN_USER:-admin}"
 ADMIN_PASS="${E2E_ADMIN_PASS:-calimero1234}"
 
-WASM_PATH="$REPO_ROOT/logic/res/curb.wasm"
+# Defaults to the raw wasm. Point it at a signed .mpk to install WITH metadata
+# (name, icon, links.frontend) — a raw-wasm install carries none, so the app
+# shows no name or icon and desktop offers no "Open" entry:
+#   CURB_WASM_PATH=$REPO_ROOT/logic/res/com.calimero.chat-0.1.0.mpk
+WASM_PATH="${CURB_WASM_PATH:-$REPO_ROOT/logic/res/curb.wasm}"
 ENV_OUT="$REPO_ROOT/app/.env.integration"
 
 USE_MEROBOX=false

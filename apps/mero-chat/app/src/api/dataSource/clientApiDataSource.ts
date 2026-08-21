@@ -1738,45 +1738,4 @@ export class ClientApiDataSource implements ClientApi {
     }
   }
 
-  async heartbeat(contextId: string, executorPublicKey: string): ApiResponse<void> {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await getJsonRpcClient().execute<any, void>(
-        {
-          contextId,
-          method: ClientMethod.HEARTBEAT,
-          argsJson: {},
-          executorPublicKey,
-        },
-        { headers: { "Content-Type": "application/json" }, timeout: 5000 },
-      );
-      if (response?.error) {
-        return { data: null, error: { code: response.error.code, message: "heartbeat failed" } };
-      }
-      return { data: undefined, error: null };
-    } catch {
-      return { data: null, error: { code: 500, message: "heartbeat failed" } };
-    }
-  }
-
-  async getPresence(contextId: string, executorPublicKey: string, thresholdMs: number): ApiResponse<string[]> {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await getJsonRpcClient().execute<any, string[]>(
-        {
-          contextId,
-          method: ClientMethod.GET_PRESENCE,
-          argsJson: { threshold_ns: thresholdMs },
-          executorPublicKey,
-        },
-        { headers: { "Content-Type": "application/json" }, timeout: 5000 },
-      );
-      if (response?.error) {
-        return { data: [], error: null };
-      }
-      return { data: (response?.result.output as string[]) ?? [], error: null };
-    } catch {
-      return { data: [], error: null };
-    }
-  }
 }

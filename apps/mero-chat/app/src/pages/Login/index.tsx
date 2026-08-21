@@ -1,6 +1,6 @@
 import React from "react";
 import { useMero, ConnectButton } from "@calimero-network/mero-react";
-import { clearStoredSession, clearSessionActivity, clearNamespaceReady } from "../../utils/session";
+import { clearStoredSession, clearNamespaceReady } from "../../utils/session";
 import { INVITATION_STORAGE_KEY } from "../../utils/invitation";
 import { useNavigate } from "react-router-dom";
 import LandingPage from "./LandingPage";
@@ -67,7 +67,6 @@ export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
   const handleLogout = async () => {
     const nodeUrl = localStorage.getItem("mero:node_url");
     clearStoredSession();
-    clearSessionActivity();
     clearNamespaceReady();
     sessionStorage.clear();
     logout();
