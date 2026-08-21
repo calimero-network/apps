@@ -84,6 +84,35 @@ jobs:
           merobox nuke --force || true
           [ "$success" = true ] || exit 1
 
+      - name: Run messaging-lifecycle workflow (2-node)
+        working-directory: workflows
+        run: |
+          max_attempts=2
+          attempt=1
+          success=false
+          while [ $attempt -le $max_attempts ]; do
+            if [ $attempt -gt 1 ]; then
+              merobox stop --all || true
+              merobox nuke --force || true
+              # nuke is not sufficient on its own: it reports "No Calimero node
+              # data directories found" while data/ still holds state and -init
+              # containers survive. This test asserts on fixed message markers,
+              # so surviving state from attempt 1 could satisfy attempt 2 and
+              # turn a real failure into a pass.
+              docker rm -f $(docker ps -aq --filter name=msg-node) 2>/dev/null || true
+              rm -rf data/
+              sleep 2
+            fi
+            if merobox bootstrap run messaging-lifecycle.yml; then
+              success=true
+              break
+            fi
+            attempt=$((attempt + 1))
+          done
+          merobox stop --all || true
+          merobox nuke --force || true
+          [ "$success" = true ] || exit 1
+
       - name: Run integration-setup workflow (2-node)
         working-directory: workflows
         run: |
