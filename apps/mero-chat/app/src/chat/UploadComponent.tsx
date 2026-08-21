@@ -1,7 +1,7 @@
 import React from "react";
 import { styled } from "styled-components";
 import type { ChatFile, FileObject } from "../types/Common";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { uploadBlobDirect } from "../api/dataSource/groupApiDataSource";
 import { getContextId } from "@calimero-network/mero-react";
 
@@ -59,6 +59,12 @@ interface UploadComponentProps {
   text: string;
   onError?: (error: string | null) => void;
   onUploaded?: () => void;
+  /**
+   * Mirrors the in-flight state outward so the composer's status bar can
+   * report it. Must be referentially stable (`useCallback`) — it is an effect
+   * dependency here.
+   */
+  onUploadingChange?: (uploading: boolean) => void;
   expectedHash?: string;
   onReplace?: (previous: ChatFile | null) => Promise<void> | void;
 }
@@ -95,8 +101,25 @@ export default function UploadComponent({
   onUploaded,
   expectedHash: _expectedHash = "",
   onReplace,
+  onUploadingChange,
 }: UploadComponentProps) {
   const [uploading, setUploading] = useState(false);
+
+  // Derived from `uploading` rather than called alongside every `setUploading`,
+  // so the two can't drift as the upload path grows more exit routes.
+  useEffect(() => {
+    onUploadingChange?.(uploading);
+  }, [uploading, onUploadingChange]);
+
+  // Closing the upload popup unmounts this component while the request is
+  // still in flight. Without this the status bar would keep announcing an
+  // upload it can no longer hear the end of.
+  useEffect(
+    () => () => {
+      onUploadingChange?.(false);
+    },
+    [onUploadingChange],
+  );
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const uploadFileUpdateState = async (file: globalThis.File) => {

@@ -21,6 +21,8 @@ import { getMeroJs } from "../api/meroJsClient";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import { extractUsernames } from "../utils/mentions";
 import { RichTextEditor } from "@calimero-network/mero-ui";
+
+import { formatTyping, useEphemeralPresence } from "../hooks/useEphemeralPresence";
 import { useToast } from "../contexts/ToastContext";
 
 const MentionDropdown = styled.ul`
@@ -305,49 +307,6 @@ export const IconSend = ({
   </IconSendSvg>
 );
 
-const Placeholder = styled.div<{
-  $placeholderPosition: string;
-  $placeholderPositionMobile: string;
-}>`
-  position: absolute;
-  z-index: 10;
-  bottom: ${({ $placeholderPosition }) =>
-    $placeholderPosition && $placeholderPosition};
-  left: 25px;
-  color: #686672;
-  font-size: 12px;
-  font-style: normal;
-  font-weight: 400;
-  line-height: 150%;
-  pointer-events: none;
-  @media (max-width: 1024px) {
-    font-size: 12px;
-    font-style: normal;
-    font-weight: 400;
-    line-height: 150%;
-    bottom: -10px;
-    left: 14px;
-  }
-
-  &.desktop {
-    display: block;
-  }
-
-  &.mobile {
-    display: none;
-  }
-
-  @media (max-width: 1024px) {
-    &.desktop {
-      display: none;
-    }
-
-    &.mobile {
-      display: block;
-    }
-  }
-`;
-
 const DraftBadge = styled.span`
   font-size: 0.66rem;
   color: rgba(255, 255, 255, 0.3);
@@ -381,6 +340,40 @@ const ReadOnlyField = styled.div<{ $banned?: boolean }>`
   }
 `;
 
+/**
+ * The strip under the composer. One slot, several possible occupants — see
+ * `StatusBar` in the render for the precedence. Always mounted at a fixed
+ * height so the composer never shifts as the occupant changes.
+ */
+export const StatusBar = styled.div`
+  height: 18px;
+  padding: 0 25px;
+  font-size: 12px;
+  line-height: 18px;
+  color: #686672;
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  @media (max-width: 1024px) {
+    padding: 0 14px;
+  }
+
+  .typing {
+    font-style: italic;
+    color: #9ca3af;
+  }
+
+  .upload {
+    color: #9ca3af;
+  }
+
+  .separator {
+    color: #4b4954;
+  }
+`;
+
 export const ActionsWrapper = styled.div`
   position: absolute;
   right: 24px;
@@ -407,6 +400,8 @@ const AttachmentPreviewContainer = styled.div`
 
 interface MessageInputProps {
   selectedChat: string;
+  /** Channels are addressed as `#name`; a DM is addressed by the person. */
+  isChannel?: boolean;
   contextId?: string;
   sendMessage: (payload: SendMessagePayload) => Promise<void> | void;
   resetImage: () => void;
@@ -422,6 +417,7 @@ interface MessageInputProps {
 
 export default function MessageInput({
   selectedChat,
+  isChannel = false,
   contextId,
   sendMessage,
   resetImage,
@@ -433,6 +429,23 @@ export default function MessageInput({
   isBanned,
 }: MessageInputProps) {
   const [canWriteMessage, setCanWriteMessage] = useState(false);
+  const {
+    typing: typingNames,
+    noteTyping,
+    clearTyping,
+  } = useEphemeralPresence(contextId ?? null);
+  // Which kind of attachment is currently uploading, for the status bar. Two
+  // independent UploadComponents report in, so each clears only its own kind —
+  // a finishing file upload must not silently cancel an in-flight image one.
+  const [uploadingKind, setUploadingKind] = useState<"image" | "file" | null>(
+    null,
+  );
+  const handleImageUploading = useCallback((busy: boolean) => {
+    setUploadingKind((prev) => (busy ? "image" : prev === "image" ? null : prev));
+  }, []);
+  const handleFileUploading = useCallback((busy: boolean) => {
+    setUploadingKind((prev) => (busy ? "file" : prev === "file" ? null : prev));
+  }, []);
   const [showUpload, setShowUpload] = useState(false);
   const [message, setMessage] = useState<MessageWithReactions | null>(null);
   const [mentionQuery, setMentionQuery] = useState("");
@@ -465,7 +478,6 @@ export default function MessageInput({
     });
   }, []);
   const [emojiSelectorOpen, setEmojiSelectorOpen] = useState(false);
-  const placeholderPosition = "-10px";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const editorRef = useRef<any>(null);
   const { addToast } = useToast();
@@ -527,12 +539,35 @@ export default function MessageInput({
   );
 
   // Memoize placeholder text to avoid recalculation
+  // "Message #general" / "Message User1" — a channel is a place and carries
+  // the `#`, a DM is a person and does not. A thread says what it is rather
+  // than where it is, so it keeps its own wording.
   const placeholderText = useMemo(() => {
     if (openThread && isThread) {
       return "Reply in thread";
     }
-    return `Type message in ${selectedChat}`;
-  }, [openThread, isThread, selectedChat]);
+    return isChannel ? `Message #${selectedChat}` : `Message ${selectedChat}`;
+  }, [openThread, isThread, isChannel, selectedChat]);
+
+  // The composer takes ONE placeholder string, so the desktop/mobile variants
+  // are chosen here. They used to be two elements toggled by a CSS breakpoint,
+  // which only worked while the placeholder was rendered as its own node
+  // below the input.
+  const [isNarrow, setIsNarrow] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 1024px)").matches,
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const query = window.matchMedia("(max-width: 1024px)");
+    const onChange = (event: MediaQueryListEvent) => setIsNarrow(event.matches);
+    // Re-read on mount: the viewport can have changed between the lazy
+    // initialiser and this effect.
+    setIsNarrow(query.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
 
   const placeholderTextMobile = useMemo(() => {
     if (openThread && isThread) {
@@ -542,8 +577,8 @@ export default function MessageInput({
       selectedChat.length === 44
         ? `${selectedChat.toLowerCase().slice(0, 6)}...${selectedChat.toLowerCase().slice(-4)}`
         : selectedChat;
-    return `Type message in ${chatName}`;
-  }, [openThread, isThread, selectedChat]);
+    return isChannel ? `Message #${chatName}` : `Message ${chatName}`;
+  }, [openThread, isThread, isChannel, selectedChat]);
 
   const resolvedContextId = useMemo(() => {
     if (contextId && contextId.length > 0) {
@@ -800,6 +835,7 @@ export default function MessageInput({
 
       try {
         await sendMessage(payload);
+        clearTyping();
         if (!isThread) clearDraft();
         clearUploadedImage();
         clearUploadedFile();
@@ -954,9 +990,15 @@ export default function MessageInput({
                       setDraft(value);
                     }
                     detectMention(value);
+                    // Empty composer means "stopped", not "typing slowly".
+                    if (value.trim()) {
+                      noteTyping();
+                    } else {
+                      clearTyping();
+                    }
                   }}
                   onSend={showMentions ? undefined : handleSendMessageEnter}
-                  placeholder={placeholderText}
+                  placeholder={isNarrow ? placeholderTextMobile : placeholderText}
                   maxHeight={50}
                   style={{ fontSize: "14px" }}
                   className="full-width-editor"
@@ -983,22 +1025,6 @@ export default function MessageInput({
                 </AttachmentPreviewContainer>
               )}
             </FullWidthWrapper>
-            <>
-              <Placeholder
-                $placeholderPosition={placeholderPosition}
-                $placeholderPositionMobile={placeholderPosition}
-                className="desktop"
-              >
-                {placeholderText}
-              </Placeholder>
-              <Placeholder
-                $placeholderPosition={placeholderPosition}
-                $placeholderPositionMobile={placeholderPosition}
-                className="mobile"
-              >
-                {placeholderTextMobile}
-              </Placeholder>
-            </>
           </Wrapper>
           <ActionsWrapper>
             {hasDraft && !isThread && <DraftBadge>Draft</DraftBadge>}
@@ -1030,6 +1056,7 @@ export default function MessageInput({
                   onError={handleUploadError}
                   onUploaded={handleAttachmentUploaded}
                   onReplace={handleReplaceImage}
+                  onUploadingChange={handleImageUploading}
                   key="images-component"
                 />
                 <UploadComponent
@@ -1041,6 +1068,7 @@ export default function MessageInput({
                   onError={handleUploadError}
                   onUploaded={handleAttachmentUploaded}
                   onReplace={handleReplaceFile}
+                  onUploadingChange={handleFileUploading}
                   key="files-component"
                 />
               </UploadContainer>
@@ -1057,6 +1085,33 @@ export default function MessageInput({
           </ReadOnlyField>
         </Container>
       )}
+      {/*
+        Status bar. Precedence, most transient first: what someone is doing
+        right now beats what you could do. Typing is other people's live
+        activity; the placeholder is the standing hint, shown when there is
+        nothing more specific to say. Upload progress slots in above typing.
+      */}
+      <StatusBar aria-live="polite">
+        {/*
+          Upload and typing are independent facts, not competing ones — your
+          attachment going up says nothing about whether someone else is
+          writing — so both show, rather than one masking the other. The
+          placeholder is NOT here: it belongs inside the composer, where a
+          placeholder goes.
+        */}
+        {uploadingKind && (
+          // Indeterminate by necessity: the upload is a single streaming PUT
+          // and neither `fetch` nor the node reports progress, so a percentage
+          // here could only be invented.
+          <span className="upload">Uploading {uploadingKind}…</span>
+        )}
+        {uploadingKind && typingNames.length > 0 && (
+          <span className="separator"> · </span>
+        )}
+        {typingNames.length > 0 && (
+          <span className="typing">{formatTyping(typingNames)}</span>
+        )}
+      </StatusBar>
     </>
   );
 }

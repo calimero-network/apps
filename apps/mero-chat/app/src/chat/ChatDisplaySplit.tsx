@@ -405,6 +405,7 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
               ? activeChat.name
               : activeChat.username || activeChat.name
           }
+          isChannel={activeChat.type === "channel"}
           contextId={resolvedContextId}
           sendMessage={sendMessage}
           resetImage={resetImage}
