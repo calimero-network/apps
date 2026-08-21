@@ -191,9 +191,14 @@ export function useDMs() {
             try {
               const profilesResp = await clientApi.getProfiles(ctxId, joinedIdentity);
               if (profilesResp.data && Array.isArray(profilesResp.data)) {
+                // `p.identity` is an ACCOUNT (the contract keys profiles by
+                // `env::account_id()`), `joinedIdentity` is a device key, so
+                // `p.identity !== joinedIdentity` is true for EVERY profile —
+                // including our own, which `.find` would then return as the
+                // counterpart. Ask whether the profile is ours instead.
                 const other = profilesResp.data.find(
                   (p: { identity: string; username: string }) =>
-                    p.identity !== joinedIdentity,
+                    !isSelfSender(p.identity, ctxId, joinedIdentity),
                 );
                 if (other) {
                   otherUsername = other.username;

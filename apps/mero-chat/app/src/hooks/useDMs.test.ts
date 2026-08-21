@@ -436,6 +436,53 @@ describe("useDMs (1-group-per-context)", () => {
     expect(dms[0].otherUsername).toBe("Alice");
   });
 
+  it("does not pick our own profile as the counterpart in the get_profiles fallback", async () => {
+    // get_profiles keys profiles by ACCOUNT (the contract inserts
+    // `UserId::new(env::account_id())`), while joinedIdentity is a device key.
+    // `p.identity !== joinedIdentity` is therefore true for every row, so a
+    // plain !== would return whichever came first — here, us.
+    registerAccountIdentity("account-me");
+
+    mockListSubgroups.mockResolvedValue({
+      data: [{ groupId: "dm-sg-1", alias: "DM_CONTEXT_member-me_member-you" }],
+      error: null,
+    });
+    mockListGroupContexts.mockImplementation(async (id: string) =>
+      id === "dm-sg-1"
+        ? {
+            data: [{ contextId: "ctx-1", alias: "DM_CONTEXT_member-me_member-you" }],
+            error: null,
+          }
+        : { data: [], error: null },
+    );
+    mockFetchContextIdentities.mockResolvedValue({
+      data: { data: { identities: ["device-me"] } },
+    });
+    // No {c,o} description → the get_profiles fallback runs.
+    mockGetContextInfo.mockResolvedValue({
+      data: { name: "DM", context_type: "Dm", creator: "account-me", description: "" },
+      error: null,
+    });
+    // Our own profile is listed FIRST, so `.find` reaches it before the peer's.
+    mockGetProfiles.mockResolvedValue({
+      data: [
+        { identity: "account-me", username: "Me" },
+        { identity: "account-you", username: "You" },
+      ],
+      error: null,
+    });
+
+    const { result } = renderHook(() => useDMs());
+    let dms: Awaited<ReturnType<typeof result.current.fetchDms>> = [];
+    await act(async () => {
+      dms = await result.current.fetchDms("namespace-1");
+    });
+
+    expect(dms).toHaveLength(1);
+    expect(dms[0].otherUsername).toBe("You");
+    expect(dms[0].otherIdentity).toBe("account-you");
+  });
+
   it("falls back to get_profiles when description is not participant metadata", async () => {
     mockListSubgroups.mockResolvedValue({
       data: [{ groupId: "dm-sg-1", alias: "DM_CONTEXT_member-me_member-you" }],
