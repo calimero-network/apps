@@ -55,23 +55,39 @@ export function useEphemeralPresence(contextId: string | null): UseEphemeralPres
   const claimingTyping = useRef(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Announce ourselves on entering a context. Presence has a node-side TTL, so
-  // leaving needs no explicit teardown — we simply stop being re-published.
-  useEffect(() => {
-    if (!contextId) return;
-    claimingTyping.current = false;
-    setPresence({ name: getMessengerDisplayName(), typing: false });
-  }, [contextId, setPresence]);
+  // `setPresence` is rebound when the context changes, so the cleanup below
+  // must capture the publisher belonging to the context being LEFT — reading
+  // the current one would send the retraction to the context just entered.
+  const publishRef = useRef(setPresence);
+  publishRef.current = setPresence;
 
-  // A pending idle-clear from a context we have already left must not fire
-  // into the new one.
-  useEffect(
-    () => () => {
-      if (idleTimer.current) clearTimeout(idleTimer.current);
-      idleTimer.current = null;
-    },
-    [contextId],
-  );
+  // Announce ourselves on entering a context, and retract typing on the way
+  // out.
+  //
+  // Leaving needs an explicit retraction: the node re-publishes every
+  // locally-set slice on its own heartbeat (~2.5s) with a bumped seq, so a
+  // slice left saying `typing: true` is kept alive indefinitely rather than
+  // ageing out of the TTL. Walking away mid-word would otherwise show peers
+  // "X is typing…" forever.
+  useEffect(() => {
+    if (!contextId) return undefined;
+    const publish = publishRef.current;
+    claimingTyping.current = false;
+    publish({ name: getMessengerDisplayName(), typing: false });
+
+    return () => {
+      if (idleTimer.current) {
+        clearTimeout(idleTimer.current);
+        idleTimer.current = null;
+      }
+      // Only if we were mid-claim; an unconditional publish would resurrect a
+      // slice in a context we are no longer in.
+      if (claimingTyping.current) {
+        claimingTyping.current = false;
+        publish({ name: getMessengerDisplayName(), typing: false });
+      }
+    };
+  }, [contextId, setPresence]);
 
   const clearTyping = useCallback(() => {
     if (idleTimer.current) {
