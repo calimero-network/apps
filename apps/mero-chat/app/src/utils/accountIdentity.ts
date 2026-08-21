@@ -115,37 +115,12 @@ export function base58ToHex(id: string): string {
   }
 }
 
-const HEX_ACCOUNT = /^[0-9a-f]{64}$/i;
-
 /**
- * Canonicalise an account id to hex.
- *
- * The same account reaches the app in two encodings: admin routes serve and
- * require HEX, while the contract stamps `sender` and keys `get_profiles` in
- * BASE58. Comparing across the two, or handing a contract id to an admin
- * route, silently fails — a 400 on write, a never-matching `===` on read.
+ * Canonical account-id conversions now live in `@calimero-network/mero-js`
+ * (13.2.0+). They were duplicated here while the SDK lacked them; re-exported
+ * rather than re-implemented so there is one definition of what an account id
+ * is — the same admin-hex vs contract-base58 mismatch that silently broke
+ * member lookups is exactly the bug two copies would reintroduce.
  */
-export function toAccountHex(id: string): string {
-  const trimmed = (id ?? "").trim();
-  if (!trimmed) return "";
-  if (HEX_ACCOUNT.test(trimmed)) return trimmed.toLowerCase();
-  const decoded = base58ToHex(trimmed);
-  // Only a 32-byte value is an account. Anything else — a device key, a test
-  // placeholder, an alias — is passed through untouched: converting is this
-  // helper's job, destroying what it cannot convert is not.
-  return HEX_ACCOUNT.test(decoded) ? decoded : trimmed;
-}
+export { sameAccount, toAccountBase58, toAccountHex } from "@calimero-network/mero-js";
 
-/** Canonicalise an account id to base58 — the form the contract emits. */
-export function toAccountBase58(id: string): string {
-  const trimmed = (id ?? "").trim();
-  if (!trimmed) return "";
-  return HEX_ACCOUNT.test(trimmed) ? hexToBase58(trimmed) : trimmed;
-}
-
-/** True when both ids denote the same account, whatever encoding each is in. */
-export function sameAccount(a: string, b: string): boolean {
-  const ha = toAccountHex(a);
-  const hb = toAccountHex(b);
-  return !!ha && ha === hb;
-}
