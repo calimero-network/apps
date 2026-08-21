@@ -2,17 +2,18 @@
 set -euo pipefail
 
 # Install the released cargo-mero binary from core, so the tool that writes
-# bundle contents cannot drift under us. This release is the first carrying the
-# bundle-manifest capabilities the metadata table uses (icon, slug, versioned
-# output path).
-RELEASE=0.11.0-rc.20
+# bundle contents cannot drift under us. Keep this equal to the calimero-sdk tag
+# in logic/Cargo.toml. (0.11.0-rc.20 was the first release carrying the
+# bundle-manifest capabilities the metadata table uses: icon, slug, versioned
+# output path.)
+RELEASE=0.11.0-rc.24
 
 # Per-asset SHA-256, so a re-uploaded asset under the same tag cannot swap the
 # binary silently. Refresh these together with RELEASE:
 #   shasum -a 256 cargo-mero_<target>.tar.gz
-CHECKSUM_aarch64_apple_darwin=9c28ec40692669cbf2249c07afa824ab3296c720fb26670c90de2ca515261d86
-CHECKSUM_aarch64_unknown_linux_gnu=68e5746d499fdd75b428f78628a27053158fdcf1ea7149f48f51a68c8c8eac8d
-CHECKSUM_x86_64_unknown_linux_gnu=86e32bd1a7fd976dafaa8269dfdfe4e8d89b35f0a62f3a6f6d3c4a6387ec9331
+CHECKSUM_aarch64_apple_darwin=8245979e06dcd0604f5f95bdf5c8a439215f95191af18ff1a17eb0f71200e3cc
+CHECKSUM_aarch64_unknown_linux_gnu=b3146e26aaed3fd180a64799a52a1c0cbe0ae15321835b5567be5d8d166f91ea
+CHECKSUM_x86_64_unknown_linux_gnu=6c6e0d4f94bdc9243fdff82a50c30348560a832f6f99055a491d97671fbeec92
 
 # The CI action asks for this rather than grepping the line above, so
 # reformatting it cannot silently break the action.

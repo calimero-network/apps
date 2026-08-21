@@ -168,7 +168,7 @@ describe("useWebSocketEvents", () => {
     await fireEvent({
       groupId: "group-1",
       type: "MemberJoined",
-      data: { member: "member-1", role: "User" },
+      data: { memberAccount: "a".repeat(64), role: "Member" },
     } as unknown as WebSocketEvent);
 
     expect(listener).toHaveBeenCalledTimes(1);
@@ -179,6 +179,26 @@ describe("useWebSocketEvents", () => {
         membershipKind: "MemberJoined",
       }),
     );
+  });
+
+  it("drops group-migration events instead of treating them as membership or state mutations", async () => {
+    const listener = vi.fn();
+    renderHook(() => useWebSocketEvents(listener), { wrapper });
+
+    // Migration events are group-keyed like membership events, so a guard that
+    // only checks for `groupId` would misclassify them.
+    await fireEvent({
+      groupId: "group-1",
+      type: "MigrationStarted",
+      data: {
+        fromVersion: "1.0.0",
+        toVersion: "2.0.0",
+        toStateVersion: 2,
+        localContextsTotal: 3,
+      },
+    } as unknown as WebSocketEvent);
+
+    expect(listener).not.toHaveBeenCalled();
   });
 
   it("uses the latest listener reference when callback prop changes", async () => {

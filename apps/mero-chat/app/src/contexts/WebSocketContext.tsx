@@ -9,19 +9,45 @@ import React, {
 import { useSubscription } from "@calimero-network/mero-react";
 import type {
   GroupMembershipEventData,
+  GroupMigrationEventData,
   SubscriptionEventData,
 } from "@calimero-network/mero-react";
 import type {
   WebSocketEvent,
   StateMutationData,
-  GroupMembershipData,
 } from "../types/WebSocketTypes";
 import { log } from "../utils/logger";
+
+// Both group-keyed families carry `groupId`, so presence of that field alone
+// no longer separates them: mero-react 6 widened SubscriptionEventData to
+// include GroupMigrationEventData. Narrow on the type tag instead, or a
+// migration event would be handled as a membership change.
+const MEMBERSHIP_KINDS = ["MemberJoined", "MemberAdded", "MemberRemoved"] as const;
+const MIGRATION_KINDS = [
+  "MigrationStarted",
+  "MigrationProgress",
+  "CascadeProgress",
+  "MigrationCompleted",
+] as const;
 
 function isGroupMembershipEvent(
   event: SubscriptionEventData,
 ): event is GroupMembershipEventData {
-  return typeof (event as GroupMembershipEventData).groupId === "string";
+  const e = event as GroupMembershipEventData;
+  return (
+    typeof e.groupId === "string" &&
+    (MEMBERSHIP_KINDS as readonly string[]).includes(e.type)
+  );
+}
+
+function isGroupMigrationEvent(
+  event: SubscriptionEventData,
+): event is GroupMigrationEventData {
+  const e = event as GroupMigrationEventData;
+  return (
+    typeof e.groupId === "string" &&
+    (MIGRATION_KINDS as readonly string[]).includes(e.type)
+  );
 }
 
 interface WebSocketContextValue {
@@ -59,13 +85,25 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
     // no `contextId`, no `data.events`. Coercing everything to
     // "StateMutation" (as this did) made them indistinguishable from a
     // context event with no execution events, so every listener dropped them.
+    // Migration events are group-keyed too but carry none of the membership or
+    // state-mutation payload. Coercing them into StateMutation is the same bug
+    // the membership branch above exists to fix, so drop them explicitly until
+    // a consumer needs them.
+    if (isGroupMigrationEvent(event)) {
+      log.info(
+        "WebSocketContext",
+        `[SSE] ignoring migration event ${event.type} on groupId=${event.groupId}`,
+      );
+      return;
+    }
+
     const wsEvent: WebSocketEvent = isGroupMembershipEvent(event)
       ? {
           contextId: "",
           type: "GroupMembership",
           groupId: event.groupId,
           membershipKind: event.type,
-          membership: event.data as GroupMembershipData,
+          membership: event.data,
         }
       : {
           contextId: event.contextId,
