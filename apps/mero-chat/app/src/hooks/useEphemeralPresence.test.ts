@@ -1,16 +1,22 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { formatTyping, useEphemeralPresence } from "./useEphemeralPresence";
+import {
+  formatTyping,
+  TYPING_STALE_MS,
+  useEphemeralPresence,
+} from "./useEphemeralPresence";
 
 // The hook publishes through mero-react's `useEphemeral`. Record which context
 // each publish went to, so a slice published into the context being *left* is
 // distinguishable from one published into the context being entered.
 const publishes: Array<{ ctx: string | null; slice: Record<string, unknown> }> = [];
 
+let peersFixture = new Map<string, Record<string, unknown>>();
+
 vi.mock("@calimero-network/mero-react", () => ({
   useEphemeral: (contextId: string | null) => ({
-    peers: new Map(),
+    peers: peersFixture,
     ageOf: () => undefined,
     error: null,
     setPresence: (slice: Record<string, unknown>) =>
@@ -91,5 +97,54 @@ describe("useEphemeralPresence — leaving a context while typing", () => {
     expect(
       publishes.some((p) => p.ctx === "ctx-b" && p.slice.typing === true),
     ).toBe(false);
+  });
+});
+
+describe("useEphemeralPresence — a peer that goes away without retracting", () => {
+  beforeEach(() => {
+    publishes.length = 0;
+    peersFixture = new Map();
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // The node re-publishes every locally-set slice on its own ~2.5s heartbeat,
+  // so a force-quit / crashed / disconnected client's `typing: true` is kept
+  // alive indefinitely — the 7s node-side TTL never fires because the node,
+  // not the client, is the thing being kept alive. Verified against a live
+  // rig: a peer published typing:true once, went silent, and no removal
+  // arrived in 20s. So staleness must be decided here.
+  it("stops reporting a peer as typing once their claim goes stale", () => {
+    peersFixture = new Map([["peer-1", { name: "Ana", typing: true }]]);
+    const { result, rerender } = renderHook(() => useEphemeralPresence("ctx-a"));
+    expect(result.current.typing).toEqual(["Ana"]);
+
+    // The node keeps republishing the identical slice; no fresh keystroke.
+    act(() => {
+      vi.advanceTimersByTime(TYPING_STALE_MS + 500);
+    });
+    rerender();
+
+    expect(result.current.typing).toEqual([]);
+  });
+
+  it("keeps reporting a peer whose claim is refreshed by a real change", () => {
+    peersFixture = new Map([["peer-1", { name: "Ana", typing: true }]]);
+    const { result, rerender } = renderHook(() => useEphemeralPresence("ctx-a"));
+
+    act(() => {
+      vi.advanceTimersByTime(TYPING_STALE_MS - 1_000);
+    });
+    // A genuine new keystroke: the peer re-asserts with a changed slice.
+    peersFixture = new Map([["peer-1", { name: "Ana", typing: true, seq: 2 }]]);
+    rerender();
+    act(() => {
+      vi.advanceTimersByTime(2_000);
+    });
+    rerender();
+
+    expect(result.current.typing).toEqual(["Ana"]);
   });
 });

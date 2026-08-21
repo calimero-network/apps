@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEphemeral } from "@calimero-network/mero-react";
 
 import { getMessengerDisplayName } from "../utils/messengerName";
@@ -32,6 +32,22 @@ function displayName(slice: PresenceSlice | undefined): string {
 
 /** How long after the last keystroke we stop claiming to be typing. */
 const TYPING_IDLE_MS = 3_000;
+
+/**
+ * How long a peer's `typing` claim is honoured without a genuine change.
+ *
+ * The node re-publishes every locally-set slice on its own ~2.5s heartbeat, so
+ * a peer whose client force-quit, crashed, slept or lost the network keeps
+ * asserting `typing: true` forever — the 7s node-side TTL never fires, because
+ * what it keeps alive is the *node's* liveness, not the client's. Verified on a
+ * live rig: a peer published `typing: true` once, went silent, and no removal
+ * arrived in 20s.
+ *
+ * So staleness is decided here, from the last time a peer's slice actually
+ * CHANGED. Slightly longer than our own `TYPING_IDLE_MS` so a healthy peer's
+ * retraction normally wins the race and this only catches the ungraceful exits.
+ */
+export const TYPING_STALE_MS = 7_000;
 
 export interface UseEphemeralPresenceResult {
   /** Display names of everyone currently present, excluding you. */
@@ -120,12 +136,49 @@ export function useEphemeralPresence(contextId: string | null): UseEphemeralPres
     [peers],
   );
 
+  // Last time each peer's slice was observed to CHANGE. Not the last time it
+  // arrived — the node's heartbeat refreshes arrival every ~2.5s regardless of
+  // whether the peer is still there.
+  const lastChangeRef = useRef(new Map<string, { fingerprint: string; at: number }>());
+  const [staleTick, setStaleTick] = useState(0);
+
+  const now = Date.now();
+  for (const [author, slice] of peers) {
+    const fingerprint = JSON.stringify(slice);
+    const seen = lastChangeRef.current.get(author);
+    if (!seen || seen.fingerprint !== fingerprint) {
+      lastChangeRef.current.set(author, { fingerprint, at: now });
+    }
+  }
+  for (const author of [...lastChangeRef.current.keys()]) {
+    if (!peers.has(author)) lastChangeRef.current.delete(author);
+  }
+
+  // Re-render when the oldest live claim crosses the staleness line, so the
+  // indicator clears on its own rather than waiting for the next slice.
+  useEffect(() => {
+    const claims = [...peers.entries()].filter(([, s]) => s?.typing);
+    if (claims.length === 0) return undefined;
+    const oldest = Math.min(
+      ...claims.map(([a]) => lastChangeRef.current.get(a)?.at ?? Date.now()),
+    );
+    const remaining = TYPING_STALE_MS - (Date.now() - oldest);
+    const timer = setTimeout(() => setStaleTick((n) => n + 1), Math.max(remaining, 50));
+    return () => clearTimeout(timer);
+  }, [peers, staleTick]);
+
   const typing = useMemo(
     () =>
-      [...peers.values()]
-        .filter((slice) => slice?.typing)
-        .map((slice) => displayName(slice)),
-    [peers],
+      [...peers.entries()]
+        .filter(([author, slice]) => {
+          if (!slice?.typing) return false;
+          const seen = lastChangeRef.current.get(author);
+          return !seen || Date.now() - seen.at < TYPING_STALE_MS;
+        })
+        .map(([, slice]) => displayName(slice)),
+    // `staleTick` is the dependency that matters: it fires when a claim ages
+    // out with no new slice to trigger a recompute.
+    [peers, staleTick],
   );
 
   return { online, typing, noteTyping, clearTyping, error };
