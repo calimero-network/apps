@@ -63,7 +63,7 @@ jobs:
       # ── Install merobox ───────────────────────────────────────────────────────
 
       - name: Install merobox
-        run: pip install merobox==0.6.24 && merobox --version
+        run: pip install merobox==0.6.58 calimero-client-py==0.6.30 && merobox --version
 
       # ── Start nodes + install curb app + create context + seed messages ───────
       # integration-setup.yml sets stop_all_nodes: false so nodes stay running.

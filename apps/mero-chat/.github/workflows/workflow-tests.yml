@@ -60,7 +60,7 @@ jobs:
         run: cargo mero bundle --dev
 
       - name: Install merobox
-        run: pip install merobox==0.6.62 && merobox --version
+        run: pip install merobox==0.6.58 calimero-client-py==0.6.30 && merobox --version
 
       - name: Run E2E workflow (3-node)
         working-directory: workflows
