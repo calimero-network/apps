@@ -38,7 +38,7 @@ github = "https://github.com/calimero-network/mero-design"
 # placeholder floor, not a claim anyone verified — while the contract called
 # host functions no runtime that old has, so the bundle advertised that it ran
 # on a node where it cannot even instantiate.
-min-runtime-version = "0.11.0-rc.24"
+min-runtime-version = "0.11.0-rc.25"
 frontend = "https://mero-design.vercel.app/"
 
 [dependencies]
@@ -47,16 +47,16 @@ borsh-derive = "0.10.3"
 # Pin a real release tag, never `branch = "master"`: master rides unreleased
 # protocol work against nodes that run the release. All SDK crates must share
 # the exact same tag (the workspace version at a tag is 0.0.0).
-calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.24" }
-calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.24" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.24" }
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.25" }
+calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.25" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.25" }
 thiserror = "1.0.56"
 serde_json = "1.0.113"
 
 [dev-dependencies]
 # Enables register_crdt_merge + the native mock host so TestHost can drive
 # CRDT state (incl. the permissioned components) under `cargo test`.
-calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.24", features = ["testing"] }
+calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.25", features = ["testing"] }
 
 [profile.app-release]
 inherits = "release"
