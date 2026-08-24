@@ -43,7 +43,7 @@ github = "https://github.com/calimero-network/mero-calendar"
 # so an older node has to refuse the install rather than trap at first call.
 # Kept equal to the SDK tag below — that is what this was built and tested
 # against; "0.1.0" was cargo-mero's placeholder floor, not a verified claim.
-min-runtime-version = "0.11.0-rc.24"
+min-runtime-version = "0.11.0-rc.25"
 frontend = "https://mero-calendar.vercel.app/"
 
 [dependencies]
@@ -54,15 +54,15 @@ bs58 = "0.5.1"
 # "0.0.0", so a plain version requirement can never match). Pin a real release
 # tag, never `branch = "master"`: master rides unreleased protocol work against
 # nodes that run the release, and it silently drifts under you between builds.
-calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.24" }
-calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.24" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.24" }
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.25" }
+calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.25" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.25" }
 thiserror = "1.0.56"
 
 [dev-dependencies]
 # Enables register_crdt_merge + the native mock host so TestHost can drive
 # CRDT state under `cargo test`.
-calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.24", features = ["testing"] }
+calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.25", features = ["testing"] }
 
 [profile.app-release]
 inherits = "release"
