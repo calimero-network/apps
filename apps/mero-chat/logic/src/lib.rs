@@ -1275,15 +1275,39 @@ impl MeroChat {
         }
     }
 
+    /// Add or remove the CALLER's reaction to a message.
+    ///
+    /// `user_supplied` is ignored — see below. It remains in the signature so
+    /// existing clients keep working.
     pub fn update_reaction(
         &mut self,
         message_id: MessageId,
         emoji: String,
-        user: String,
+        #[allow(unused_variables)] user: String,
         add: bool,
     ) -> app::Result<String> {
+        let user_supplied = user;
         self.require_not_banned()?;
         let action = if add { "added" } else { "removed" };
+
+        // `user` arrives from the caller and is therefore forgeable — not by a
+        // crafted delta, but through the plain public ABI: anyone could call
+        // this with someone else's name and attribute a reaction to them, or
+        // pass add:false to remove theirs. Derive the identity from the
+        // executor instead, exactly as `send_message` does for
+        // `sender_username`, so the stored value is the caller's own.
+        //
+        // The parameter is kept for ABI compatibility and deliberately ignored.
+        let executor_id = Self::executor_id();
+        let user = match self.profiles.get(&executor_id) {
+            Ok(Some(profile)) => profile.username.get().clone(),
+            // No profile yet: fall back to the caller's account id rather than
+            // to the supplied string. It is not a display name, but it is
+            // unforgeable, and a reaction attributed to the wrong person is
+            // worse than one attributed to a raw id.
+            _ => executor_id.to_string(),
+        };
+        let _ = user_supplied;
 
         let mut reactions_entry = self.reactions.entry(message_id.clone())?.or_insert(UnorderedMap::new())?;
         let mut emoji_entry = reactions_entry.entry(emoji)?.or_insert(UnorderedSet::new())?;
@@ -1531,6 +1555,38 @@ mod tests {
         // A banned caller's state-mutating action is rejected by the ban gate.
         let r = app.call_as_account(USER, USER, |s| s.save_draft("general".to_owned(), "hi".to_owned()));
         assert!(r.is_err());
+    }
+
+    #[test]
+    fn a_reaction_is_attributed_to_the_caller_not_the_argument() {
+        // `update_reaction` took the reacting user as a caller-supplied string
+        // and never compared it to the executor. That made impersonation
+        // reachable through the PLAIN PUBLIC ABI — no forged delta, no modified
+        // client: call it with someone else's name to add a reaction as them,
+        // or with add:false to remove theirs.
+        let mut app = new_chat();
+
+        // MODR reacts, but claims to be USER.
+        let claimed = UserId::new(USER).to_string();
+        app.call_as_account(MODR, MODR, |s| {
+            s.update_reaction("msg-1".to_owned(), "\u{1f44d}".to_owned(), claimed.clone(), true)
+        })
+        .unwrap();
+
+        let reactors = app
+            .view(|s| s.get_reactions_for_message(&"msg-1".to_owned()))
+            .unwrap_or_default();
+        let thumbs: Vec<String> = reactors.get("\u{1f44d}").cloned().unwrap_or_default();
+
+        assert!(
+            !thumbs.contains(&claimed),
+            "the caller must not be able to react as another user; got {thumbs:?}"
+        );
+        assert_eq!(
+            thumbs.len(),
+            1,
+            "exactly one reactor — the caller — should be recorded; got {thumbs:?}"
+        );
     }
 
     #[test]
