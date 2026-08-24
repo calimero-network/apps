@@ -528,14 +528,15 @@ steps:
     statements:
       - "is_set({{dm_id}})"
 
+  # NOTE: invite_identity has no per-context scoping — it invites to the
+  # NAMESPACE. This step used to also pass context_id/capability/grantee_id/
+  # granter_id, which merobox has never had fields for and silently dropped.
+  # They are removed rather than "fixed" because removing them changes nothing
+  # that runs; what they imply this step does, it has never done.
   - name: Invite Bob to DM Context
     type: invite_identity
     node: calimero-node-1
     namespace_id: "{{namespace_id}}"
-    context_id: "{{dm_id}}"
-    capability: member
-    grantee_id: "{{bob_key}}"
-    granter_id: "{{alice_key}}"
     outputs:
       bob_dm_invite: invitation
 
@@ -543,8 +544,6 @@ steps:
     type: join_context
     node: calimero-node-2
     context_id: "{{dm_id}}"
-    invitee_id: "{{bob_key}}"
-    invitation: "{{bob_dm_invite}}"
 
   - name: Wait for DM Context Sync
     type: wait_for_sync
