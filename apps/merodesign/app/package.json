@@ -22,7 +22,7 @@
     "@calimero-network/mero-js": "^13.1.0",
     "@calimero-network/mero-platform": "^0.1.0",
     "@calimero-network/mero-react": "^6.0.0",
-    "@calimero-network/mero-ui": "1.4.0",
+    "@calimero-network/mero-ui": "1.5.1",
     "axios": "^1.18.0",
     "clsx": "^2.1.1",
     "fabric": "^7.4.0",
