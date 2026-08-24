@@ -1086,12 +1086,20 @@ impl MeroChat {
                 }
             };
 
+            if normalized_search.is_none() {
+                return Ok(self.page_unfiltered(&thread_messages, limit, offset, false));
+            }
+
             let filtered = self.collect_messages_with_reactions(
                 &thread_messages,
                 normalized_search.as_deref(),
                 false,
             );
             return Ok(Self::paginate(filtered, limit, offset));
+        }
+
+        if normalized_search.is_none() {
+            return Ok(self.page_unfiltered(&self.messages, limit, offset, true));
         }
 
         let filtered = self.collect_messages_with_reactions(
@@ -1140,59 +1148,125 @@ impl MeroChat {
                 if !Self::message_matches_search(&message, search_term) {
                     continue;
                 }
-
-                let reactions = self.get_reactions_for_message(message.id.get());
-
-                let (thread_count, thread_last_timestamp) = if include_threads {
-                    self.get_thread_info(message.id.get())
-                } else {
-                    (0, 0)
-                };
-
-                let mentions_vec: Vec<UserId> = if let Ok(iter) = message.mentions.iter() {
-                    iter.collect()
-                } else {
-                    Vec::new()
-                };
-                let mentions_usernames_vec: Vec<String> =
-                    if let Ok(iter) = message.mentions_usernames.iter() {
-                        iter.map(|r| r.get().clone()).collect()
-                    } else {
-                        Vec::new()
-                    };
-
-                let msg_id = message.id.get().clone();
-                let is_deleted = message.deleted.as_ref().map(|r| **r).unwrap_or(false)
-                    || self
-                        .deleted_messages
-                        .contains(&msg_id)
-                        .unwrap_or(false);
-                let text = if is_deleted {
-                    String::new()
-                } else {
-                    message.text.get().clone()
-                };
-
-                result.push(MessageWithReactions {
-                    timestamp: *message.timestamp,
-                    sender: message.sender,
-                    sender_username: message.sender_username.get().clone(),
-                    id: msg_id,
-                    text,
-                    mentions: mentions_vec,
-                    mentions_usernames: mentions_usernames_vec,
-                    files: attachments_vector_to_public(&message.files),
-                    images: attachments_vector_to_public(&message.images),
-                    reactions,
-                    deleted: if is_deleted { Some(true) } else { message.deleted.as_ref().map(|r| **r) },
-                    edited_on: message.edited_on.as_ref().map(|r| **r),
-                    thread_count,
-                    thread_last_timestamp,
-                    parent_message_id: None,
-                });
+                result.push(self.message_to_public(&message, include_threads));
             }
         }
         result
+    }
+
+    /// One stored message rendered for the API.
+    ///
+    /// Split out of the scan above so the scanning path and the windowed path
+    /// below cannot drift in what they return.
+    fn message_to_public(&self, message: &Message, include_threads: bool) -> MessageWithReactions {
+        let reactions = self.get_reactions_for_message(message.id.get());
+
+        let (thread_count, thread_last_timestamp) = if include_threads {
+            self.get_thread_info(message.id.get())
+        } else {
+            (0, 0)
+        };
+
+        let mentions_vec: Vec<UserId> = if let Ok(iter) = message.mentions.iter() {
+            iter.collect()
+        } else {
+            Vec::new()
+        };
+        let mentions_usernames_vec: Vec<String> = if let Ok(iter) = message.mentions_usernames.iter()
+        {
+            iter.map(|r| r.get().clone()).collect()
+        } else {
+            Vec::new()
+        };
+
+        let msg_id = message.id.get().clone();
+        let is_deleted = message.deleted.as_ref().map(|r| **r).unwrap_or(false)
+            || self.deleted_messages.contains(&msg_id).unwrap_or(false);
+        let text = if is_deleted {
+            String::new()
+        } else {
+            message.text.get().clone()
+        };
+
+        MessageWithReactions {
+            timestamp: *message.timestamp,
+            sender: message.sender,
+            sender_username: message.sender_username.get().clone(),
+            id: msg_id,
+            text,
+            mentions: mentions_vec,
+            mentions_usernames: mentions_usernames_vec,
+            files: attachments_vector_to_public(&message.files),
+            images: attachments_vector_to_public(&message.images),
+            reactions,
+            deleted: if is_deleted {
+                Some(true)
+            } else {
+                message.deleted.as_ref().map(|r| **r)
+            },
+            edited_on: message.edited_on.as_ref().map(|r| **r),
+            thread_count,
+            thread_last_timestamp,
+            parent_message_id: None,
+        }
+    }
+
+    /// The page `paginate` would return, without materialising everything
+    /// before it.
+    ///
+    /// Only correct when nothing is filtered out, which is exactly the
+    /// no-search case: every stored message occupies a slot in the response
+    /// (a deleted one keeps its place with blanked text), so `total` is the
+    /// collection's length and the window is the same slice `paginate` takes.
+    ///
+    /// Worth stating why this matters, because the old path looked harmless:
+    /// it decoded every message, then did a nested reactions lookup and a
+    /// thread lookup per message, and only then threw away all but one page.
+    /// Cost grew with history until a single `get_messages` exhausted the gas
+    /// limit — measured at ~2,300 messages, while `send_message` stayed flat
+    /// past 20,000.
+    fn page_unfiltered(
+        &self,
+        messages: &AuthoredVector<Message>,
+        limit: Option<usize>,
+        offset: Option<usize>,
+        include_threads: bool,
+    ) -> FullMessageResponse {
+        let total = messages.len().unwrap_or(0);
+        if total == 0 {
+            return FullMessageResponse {
+                total_count: 0,
+                messages: Vec::new(),
+                start_position: 0,
+            };
+        }
+
+        let limit_value = limit.unwrap_or(total);
+        let offset_value = offset.unwrap_or(0);
+
+        if offset_value >= total {
+            return FullMessageResponse {
+                total_count: total as u32,
+                messages: Vec::new(),
+                start_position: offset_value as u32,
+            };
+        }
+
+        let end_idx = total - offset_value;
+        let start_idx = end_idx.saturating_sub(limit_value);
+
+        let mut page = Vec::with_capacity(end_idx - start_idx);
+        for idx in start_idx..end_idx {
+            if let Ok(Some(message)) = messages.get(idx) {
+                page.push(self.message_to_public(&message, include_threads));
+            }
+        }
+
+        FullMessageResponse {
+            total_count: total as u32,
+            messages: page,
+            start_position: offset_value as u32,
+        }
     }
 
     fn get_reactions_for_message(
@@ -1587,6 +1661,96 @@ mod tests {
             1,
             "exactly one reactor — the caller — should be recorded; got {thumbs:?}"
         );
+    }
+
+    /// The windowed read must be a pure optimisation: same page, same
+    /// total_count, same start_position as the scan it replaces.
+    ///
+    /// Worth pinning every combination rather than one happy path, because
+    /// `paginate` counts its window from the END of the collection — offset 0
+    /// is the NEWEST page, not the oldest — and an off-by-one in that
+    /// arithmetic returns plausible-looking messages from the wrong place.
+    #[test]
+    fn the_windowed_page_matches_the_scan_it_replaces() {
+        let mut app = new_chat();
+
+        for i in 0..25 {
+            app.call(|s| {
+                s.send_message(
+                    format!("m{i}"),
+                    Vec::new(),
+                    Vec::new(),
+                    None,
+                    i as u64,
+                    "creator".to_owned(),
+                    None,
+                    None,
+                )
+            })
+            .unwrap();
+        }
+
+        for (limit, offset) in [
+            (None, None),
+            (Some(1), None),
+            (Some(5), None),
+            (Some(5), Some(0)),
+            (Some(5), Some(5)),
+            (Some(5), Some(23)),
+            (Some(5), Some(25)),
+            (Some(5), Some(100)),
+            (Some(100), Some(0)),
+            (Some(0), Some(0)),
+        ] {
+            let (windowed, scanned) = app.view(|s| {
+                let windowed = s.page_unfiltered(&s.messages, limit, offset, true);
+                let scanned = MeroChat::paginate(
+                    s.collect_messages_with_reactions(&s.messages, None, true),
+                    limit,
+                    offset,
+                );
+                (windowed, scanned)
+            });
+
+            assert_eq!(
+                windowed.total_count, scanned.total_count,
+                "total_count differs at limit={limit:?} offset={offset:?}"
+            );
+            assert_eq!(
+                windowed.start_position, scanned.start_position,
+                "start_position differs at limit={limit:?} offset={offset:?}"
+            );
+
+            let got: Vec<&str> = windowed.messages.iter().map(|m| m.text.as_str()).collect();
+            let want: Vec<&str> = scanned.messages.iter().map(|m| m.text.as_str()).collect();
+            assert_eq!(
+                got, want,
+                "page differs at limit={limit:?} offset={offset:?}"
+            );
+        }
+    }
+
+    /// An empty collection took a separate early-return in `paginate`
+    /// (start_position 0, not the requested offset); the windowed path must
+    /// keep that, not "improve" it.
+    #[test]
+    fn the_windowed_page_matches_the_scan_when_there_are_no_messages() {
+        let app = new_chat();
+
+        let (windowed, scanned) = app.view(|s| {
+            let windowed = s.page_unfiltered(&s.messages, Some(10), Some(7), true);
+            let scanned = MeroChat::paginate(
+                s.collect_messages_with_reactions(&s.messages, None, true),
+                Some(10),
+                Some(7),
+            );
+            (windowed, scanned)
+        });
+
+        assert_eq!(windowed.total_count, scanned.total_count);
+        assert_eq!(windowed.start_position, scanned.start_position);
+        assert!(windowed.messages.is_empty());
+        assert!(scanned.messages.is_empty());
     }
 
     #[test]
