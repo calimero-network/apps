@@ -474,6 +474,16 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
               ? activeChat.name
               : activeChat.username || activeChat.name
           }
+          // A channel's name IS its identity in the contract, so it keys the
+          // draft directly. A DM's displayed name is a person's chosen label —
+          // rename yourself and the old key becomes unreachable, orphaning the
+          // draft with no error. Its context is the stable thing: one per
+          // conversation, and never renamed.
+          draftKey={
+            activeChat.type === "channel"
+              ? activeChat.name
+              : resolvedContextId || activeChat.id
+          }
           isChannel={activeChat.type === "channel"}
           contextId={resolvedContextId}
           sendMessage={sendMessage}

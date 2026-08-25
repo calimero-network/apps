@@ -369,3 +369,65 @@ describe("useDraft — channel switch", () => {
     expect(mockGetDraft).toHaveBeenNthCalledWith(2, "ctx-123", "identity-abc", "channel-b");
   });
 });
+
+describe("useDraft — the key is an identity, not a label", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    mockGetContextId.mockReturnValue("ctx-123");
+    mockGetContextIdentity.mockReturnValue("identity-abc");
+    mockGetDraft.mockResolvedValue({ data: "" });
+    mockSaveDraft.mockResolvedValue({ data: undefined });
+    mockDeleteDraft.mockResolvedValue({ data: undefined });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("keeps a DM draft reachable when the other person renames themselves", async () => {
+    // A DM used to be keyed by the counterpart's DISPLAY NAME. A rename then
+    // changed the key: the draft stayed in storage and became unreachable, with
+    // nothing to report it. Keyed by the conversation's context instead, the
+    // name can change freely.
+    const dmContext = "ctx-dm-with-alice";
+    mockGetDraft.mockResolvedValue({ data: "unsent reply" });
+
+    const { result, rerender } = renderHook(({ key }) => useDraft(key), {
+      initialProps: { key: dmContext },
+    });
+    await flushPromises();
+    expect(result.current.draft).toBe("unsent reply");
+
+    // Alice becomes "Alice (away)". The key does not move with her.
+    rerender({ key: dmContext });
+    await flushPromises();
+
+    expect(result.current.draft).toBe("unsent reply");
+    for (const call of mockGetDraft.mock.calls) {
+      expect(call[2]).toBe(dmContext);
+    }
+  });
+
+  it("reloads when the conversation actually changes", async () => {
+    // The flip side: a different key IS a different draft, and must not show
+    // the previous conversation's text.
+    mockGetDraft.mockResolvedValue({ data: "draft for general" });
+    const { result, rerender } = renderHook(({ key }) => useDraft(key), {
+      initialProps: { key: "general" },
+    });
+    await flushPromises();
+    expect(result.current.draft).toBe("draft for general");
+
+    mockGetDraft.mockResolvedValue({ data: "draft for random" });
+    rerender({ key: "random" });
+    await flushPromises();
+
+    expect(result.current.draft).toBe("draft for random");
+    expect(mockGetDraft).toHaveBeenLastCalledWith(
+      "ctx-123",
+      "identity-abc",
+      "random",
+    );
+  });
+});

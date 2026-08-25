@@ -400,6 +400,16 @@ const AttachmentPreviewContainer = styled.div`
 
 interface MessageInputProps {
   selectedChat: string;
+  /**
+   * Stable key this conversation's draft is stored under.
+   *
+   * Separate from `selectedChat`, which is what the composer SHOWS. A channel
+   * can use its name for both, but a DM is displayed by the counterpart's
+   * display name — and a name is not an identity. Keying the draft on it meant
+   * a rename silently orphaned the draft: still in storage, no longer
+   * reachable, and no error to notice.
+   */
+  draftKey?: string;
   /** Channels are addressed as `#name`; a DM is addressed by the person. */
   isChannel?: boolean;
   contextId?: string;
@@ -417,6 +427,7 @@ interface MessageInputProps {
 
 export default function MessageInput({
   selectedChat,
+  draftKey,
   isChannel = false,
   contextId,
   sendMessage,
@@ -482,8 +493,11 @@ export default function MessageInput({
   const editorRef = useRef<any>(null);
   const { addToast } = useToast();
   // Drafts: disabled for thread replies to keep things simple.
+  // Falls back to the displayed name only where no key was supplied, so a
+  // caller that has not been updated keeps working rather than losing drafts.
+  const draftScope = draftKey ?? selectedChat;
   const { draft: channelDraft, hasDraft, setDraft, clearDraft } = useDraft(
-    isThread ? undefined : selectedChat,
+    isThread ? undefined : draftScope,
   );
   // Tracks which channel's draft has already been applied to the editor.
   const draftAppliedRef = useRef<string | undefined>(undefined);
@@ -717,8 +731,8 @@ export default function MessageInput({
   // Pre-populate the editor with the persisted draft when it loads.
   useEffect(() => {
     if (!channelDraft || isThread) return;
-    if (draftAppliedRef.current === selectedChat) return;
-    draftAppliedRef.current = selectedChat;
+    if (draftAppliedRef.current === draftScope) return;
+    draftAppliedRef.current = draftScope;
     setMessage({
       id: "",
       text: channelDraft,
@@ -986,7 +1000,7 @@ export default function MessageInput({
                           }
                     );
                     if (!isThread) {
-                      draftAppliedRef.current = selectedChat;
+                      draftAppliedRef.current = draftScope;
                       setDraft(value);
                     }
                     detectMention(value);
