@@ -124,3 +124,17 @@ export function base58ToHex(id: string): string {
  */
 export { sameAccount, toAccountBase58, toAccountHex } from "@calimero-network/mero-js";
 
+
+/**
+ * A short, honest stand-in for an account with no name yet.
+ *
+ * Used where a display name is missing — a member whose metadata has not synced
+ * yet, or one who has left the namespace. Showing a truncated account is
+ * preferable to showing a name captured at some earlier moment: the account is
+ * still true, whereas a stale name asserts something that may no longer be.
+ */
+export function shortAccount(account: string | undefined): string {
+  const id = (account ?? "").trim();
+  if (!id) return "unknown";
+  return id.length >= 8 ? `${id.slice(0, 4)}…${id.slice(-4)}` : id;
+}

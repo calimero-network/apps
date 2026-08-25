@@ -236,24 +236,36 @@ export function getDmDisplayName(params: {
   otherIdentity?: string;
   contextId: string;
 }): string {
-  // Display chain — both sources are inherently per-viewer:
-  //   - otherUsername: from the WASM `get_profiles` query on this node,
-  //     filtered to the participant who isn't our own joined identity.
-  //   - otherAlias:    from `listMembers(namespace)` on this node,
-  //     looked up by the participant's namespace identity.
+  // Namespace member metadata FIRST. It is the one name a person owns and can
+  // change, it is keyed by their namespace identity, and it replicates through
+  // governance — so a rename shows up everywhere that reads it.
+  //
+  // Everything else here is a snapshot taken when the DM was created, and a
+  // snapshot cannot be renamed. `otherUsername` comes either from the DM
+  // context's description (`{c,o}`, frozen at creation) or from the WASM
+  // `get_profiles` of that context, whose profile map is per-context and was
+  // seeded from whatever name the creator happened to hold at the time.
+  // Preferring those made a rename visible in the channel list and invisible in
+  // the DM list — the same person under two names, permanently.
+  //
+  // They stay as fallbacks because they are available earlier: the description
+  // arrives with `get_info`, whereas the member list needs governance sync. So
+  // this is "live value if we have it, snapshot to bridge the gap", not
+  // "snapshot wins forever".
+  //
   // We deliberately do NOT consult the DM context's WASM `info.name`,
   // because it's stamped once at create time by the inviter as
   // `"DM: <otherUsername>"` and replicates as the same string to both
   // parties — using it would make the recipient see their own name as
   // the DM title instead of the inviter's.
-  const username = params.otherUsername?.trim();
-  if (username) {
-    return username;
-  }
-
   const alias = params.otherAlias?.trim();
   if (alias) {
     return alias;
+  }
+
+  const username = params.otherUsername?.trim();
+  if (username) {
+    return username;
   }
 
   // Both per-viewer sources empty → governance sync hasn't propagated yet.

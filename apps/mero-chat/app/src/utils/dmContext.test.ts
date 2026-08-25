@@ -170,12 +170,29 @@ describe("dmContext", () => {
     expect(identitiesAliased).toContain("member-b");
   });
 
-  it("prefers the username, falls back to alias, then truncated identity", () => {
+  // Precedence deliberately inverted: namespace member metadata (`otherAlias`)
+  // is the live, renameable, governance-replicated name and now wins.
+  // `otherUsername` is a snapshot — the DM description's `{c,o}`, frozen when
+  // the DM was created, or the per-context WASM profile seeded from it — so
+  // preferring it meant a rename showed in the channel list and never in the
+  // DM list. It stays as a fallback only because it arrives earlier, with
+  // `get_info`, before governance sync delivers the member list.
+  it("prefers the namespace alias, falls back to the snapshot username, then truncated identity", () => {
     expect(
       getDmDisplayName({
         contextId: "ctx-1",
         otherUsername: "Alice",
         otherAlias: "Alice Alias",
+        otherIdentity: "member-a",
+      }),
+    ).toBe("Alice Alias");
+
+    // The snapshot bridges the gap before the member list has synced.
+    expect(
+      getDmDisplayName({
+        contextId: "ctx-1",
+        otherUsername: "Alice",
+        otherAlias: "",
         otherIdentity: "member-a",
       }),
     ).toBe("Alice");

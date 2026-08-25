@@ -83,7 +83,6 @@ export interface ChannelMeta {
   members: User[];
   createdAt: string;
   createdBy: string;
-  createdByUsername: string;
   owner: string;
   inviteOnly: boolean;
   unreadMessages: {
@@ -184,6 +183,10 @@ export interface MessageRendererProps {
   autocompleteAccounts: AccountData[];
   authToken: string | undefined;
   privateIpfsEndpoint: string;
+  /** Id of the message a permalink pointed at, so it can be marked. */
+  focusMessageId?: string | null;
+  /** Copy a shareable link to a message; omitted where linking is unavailable. */
+  copyMessageLink?: (message: CurbMessage) => void;
   contextId?: string;
 }
 

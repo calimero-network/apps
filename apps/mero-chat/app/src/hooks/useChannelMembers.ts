@@ -3,6 +3,7 @@ import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import { GroupApiDataSource } from "../api/dataSource/groupApiDataSource";
 import type { ResponseData } from "../api/types";
 import { log } from "../utils/logger";
+import { nameRepository } from "../repositories/names/useNames";
 
 /**
  * Custom hook for managing channel-specific members and non-invited users
@@ -30,33 +31,29 @@ export function useChannelMembers() {
   //   `!isSelf && !isOwnerRow`, so this mismatch never reaches a real
   //   WASM call.
   //
-  // Display-name chain (richest first):
-  //   1. context profile username  (from `get_profiles`)
-  //   2. subgroup member alias
-  //   3. namespace member alias    (e.g. "NodeUser" — workspace handle)
-  //   4. raw identity              (last resort)
+  // Display-name chain (authoritative first):
+  //   1. namespace member alias    — the live, renameable, governance-replicated
+  //                                  name; the single source of truth
+  //   2. subgroup member alias     — snapshot, scoped to one subgroup
+  //   3. context profile username  — snapshot, scoped to one context
+  //                                  (`get_profiles`)
+  //   4. raw identity              — last resort
+  //
+  // 2 and 3 are kept only because they can be present before governance sync
+  // delivers the member list. They must never outrank 1, or a rename lands in
+  // some views and not others.
   //
   // Legacy fallback: when `subgroupId` is unavailable (DMs routed through
   // this path), use `get_profiles` alone.
   const fetchChannelMembers = useCallback(
-    async (
-      channelId: string,
-      subgroupId?: string,
-      namespaceId?: string,
-    ) => {
+    async (channelId: string, subgroupId?: string) => {
       setLoading(true);
       setError(null);
 
       try {
         if (subgroupId) {
           const groupApi = new GroupApiDataSource();
-          const clientApi = new ClientApiDataSource();
-          const [membersResp, profilesResp, namespaceMembersResp] =
-            await Promise.all([
-              groupApi.listMembers(subgroupId),
-              clientApi.getChannelMembers({ channel: { name: channelId } }),
-              namespaceId ? groupApi.listMembers(namespaceId) : Promise.resolve(null),
-            ]);
+          const membersResp = await groupApi.listMembers(subgroupId);
 
           if (membersResp.error || !membersResp.data) {
             setError(
@@ -65,25 +62,20 @@ export function useChannelMembers() {
             return;
           }
 
-          const profileUsernameByIdentity =
-            profilesResp.data ?? new Map<string, string>();
-          const namespaceAliasByIdentity = new Map<string, string>();
-          if (namespaceMembersResp?.data?.members) {
-            namespaceMembersResp.data.members.forEach((m) => {
-              const alias = m.alias?.trim();
-              if (alias) namespaceAliasByIdentity.set(m.identity, alias);
-            });
-          }
-
+          // Names come from the repository, not from a map assembled here.
+          //
+          // This used to fetch the namespace member list itself and merge it
+          // with subgroup aliases and per-context WASM profiles — a second
+          // cache with its own precedence, which is how the same person ended
+          // up displayed differently in the member list and in the messages
+          // beside it. The repository is the one resolver; its batcher turns
+          // these per-member calls into a single request.
           const memberMap = new Map<string, string>();
-          membersResp.data.members.forEach((m) => {
-            const display =
-              profileUsernameByIdentity.get(m.identity) ||
-              m.alias?.trim() ||
-              namespaceAliasByIdentity.get(m.identity) ||
-              "Unnamed member";
-            memberMap.set(m.identity, display);
-          });
+          await Promise.all(
+            membersResp.data.members.map(async (m) => {
+              memberMap.set(m.identity, await nameRepository.resolve(m.identity));
+            }),
+          );
           setChannelUsers(memberMap);
           return;
         }
@@ -132,9 +124,11 @@ export function useChannelMembers() {
   }, []);
 
   const fetchBoth = useCallback(
-    async (channelId: string, subgroupId?: string, namespaceId?: string) => {
+    // `namespaceId` is gone: the name repository resolves the namespace itself,
+    // so callers no longer thread it through just to build a name map.
+    async (channelId: string, subgroupId?: string) => {
       await Promise.all([
-        fetchChannelMembers(channelId, subgroupId, namespaceId),
+        fetchChannelMembers(channelId, subgroupId),
         fetchNonInvitedUsers(channelId),
       ]);
     },

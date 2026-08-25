@@ -5,12 +5,12 @@ import type { DMContextInfo } from "./useDMs";
 import { getStoredSession } from "../utils/session";
 import type { NotificationType } from "../utils/notificationSound";
 import { log } from "../utils/logger";
+import { useNameResolver } from "../repositories/names/useNames";
 import type {
   WebSocketEvent,
   ExecutionEventData,
 } from "../types/WebSocketTypes";
 import { bytesParser } from "../utils/bytesParser";
-import { getMessengerDisplayName } from "../utils/messengerName";
 import { isSelfSender } from "../utils/selfIdentity";
 
 /**
@@ -91,6 +91,12 @@ export function useChatHandlers(
   activeChat: ActiveChat | null,
   refs: ChatHandlersRefs
 ) {
+  // Notification titles need a display name, and the only place one lives is
+  // the namespace's member metadata — resolved from the sender's account at
+  // the moment the notification fires, so it is whatever that person is called
+  // now.
+  const { displayName: resolveSenderName } = useNameResolver();
+
   // All callbacks come through refs - much simpler!
 
   // Track if we're already fetching messages to prevent concurrent calls
@@ -131,9 +137,6 @@ export function useChatHandlers(
         if (newMessages.length > 0) {
           // Check if messages belong to the currently active chat
           const activeChatName = activeChatRef.current.name;
-          const activeDMName = activeChatRef.current.username;
-          const lastIndex = newMessages.length - 1;
-          const lastMessageTest = newMessages[lastIndex];
 
           let messagesBelongToActiveChat = false;
 
@@ -143,8 +146,11 @@ export function useChatHandlers(
             } else if (contextId && activeChatRef.current?.contextId) {
               messagesBelongToActiveChat = contextId === activeChatRef.current.contextId;
             } else {
-              messagesBelongToActiveChat =
-                lastMessageTest.senderUsername === activeDMName;
+              // No context id to compare, and a message no longer carries a
+              // name to guess from. Comparing display names was never a
+              // routing decision anyway — two people with the same name made
+              // it wrong, and a rename made it wrong for one of them.
+              messagesBelongToActiveChat = false;
             }
           } else {
             // Prefer contextId match (reliable) over channel name string comparison
@@ -174,18 +180,19 @@ export function useChatHandlers(
             const isFromCurrentUser = mine(lastMessage.sender);
 
             // Show notification for ALL channel messages (not just active chat)
-            if (
-              !isFromCurrentUser &&
-              lastMessage.senderUsername &&
-              lastMessage.text
-            ) {
+            // Guarded on the TEXT, not on a sender name. This used to require
+            // `senderUsername` to be truthy, so once messages stopped carrying
+            // one the condition would be permanently false and channel
+            // notifications would silently stop — a behaviour change no type
+            // error would have reported.
+            if (!isFromCurrentUser && lastMessage.text) {
               // Use message.group to show the correct channel name
               const channelName = lastMessage.group || activeChatName;
               if (shouldNotifyMessage) {
                 refs.notifyChannel.current(
                   lastMessage.id,
                   channelName,
-                  lastMessage.senderUsername,
+                  resolveSenderName(lastMessage.sender),
                   lastMessage.text
                 );
               }
@@ -194,15 +201,11 @@ export function useChatHandlers(
             const isFromCurrentUser = lastMessage && mine(lastMessage.sender);
 
             // Show notification for DM messages from other users
-            if (
-              !isFromCurrentUser &&
-              lastMessage.senderUsername &&
-              lastMessage.text
-            ) {
+            if (!isFromCurrentUser && lastMessage.text) {
               if (shouldNotifyMessage) {
                 refs.notifyDM.current(
                   lastMessage.id,
-                  lastMessage.senderUsername,
+                  resolveSenderName(lastMessage.sender),
                   lastMessage.text
                 );
               }
@@ -319,22 +322,24 @@ export function useChatHandlers(
           const msg = msgs[msgs.length - 1];
           // msg.sender is the sender's identity in this context.
           // contextIdentity is our identity in this context.
-          // Also skip messages the current user sent from their display name
-          // (secondary check via messengerDisplayName for old-style DMs).
-          const isMine =
-            isSelfSender(msg.sender, contextId, contextIdentity) ||
-            msg.sender_username === getMessengerDisplayName();
+          //
+          // Identity only. This used to also treat "the display name equals
+          // mine" as proof the message was mine, which is not an identity
+          // check: two people who pick the same name silence each other's
+          // notifications, and a rename breaks your own. Messages no longer
+          // carry a name at all.
+          const isMine = isSelfSender(msg.sender, contextId, contextIdentity);
 
           if (!isMine && msg.text && !msg.deleted) {
             if (isDMContext) {
-              refs.notifyDM.current(msg.id, msg.sender_username, msg.text);
+              refs.notifyDM.current(msg.id, resolveSenderName(msg.sender), msg.text);
             } else {
               const contextName =
                 refs.contextNameMap.current.get(contextId) ?? messageGroup;
               refs.notifyChannel.current(
                 msg.id,
                 contextName,
-                msg.sender_username,
+                resolveSenderName(msg.sender),
                 msg.text,
               );
             }
@@ -382,15 +387,12 @@ export function useChatHandlers(
 
         const msgs = resp.data?.messages;
         const msg = msgs && msgs.length > 0 ? msgs[msgs.length - 1] : null;
-        const isMine =
-          msg &&
-          (isSelfSender(msg.sender, contextId, contextIdentity) ||
-            msg.sender_username === getMessengerDisplayName());
+        const isMine = msg && isSelfSender(msg.sender, contextId, contextIdentity);
 
         if (!isMine) {
           const contextName =
             refs.contextNameMap.current.get(contextId) ?? messageGroup;
-          const sender = msg?.sender_username ?? "Someone";
+          const sender = resolveSenderName(msg?.sender);
           const text = msg?.text ?? "";
           const msgId = msg?.id ?? `thread-${Date.now()}`;
           refs.notifyThread.current(msgId, contextName, sender, text);

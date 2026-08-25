@@ -9,6 +9,7 @@ import { getContextIdentity } from "@calimero-network/mero-react";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
 import { isRestrictedChannelType } from "../../utils/channelVisibility";
 import { useToast } from "../../contexts/ToastContext";
+import { useDisplayName } from "../../repositories/names/useNames";
 
 const Wrapper = styled.div``;
 
@@ -78,6 +79,12 @@ const DetailsContainer: React.FC<DetailsContainerProps> = (props) => {
   const [selectedTabIndex, setSelectedTabIndex] = useState(initialTabIndex);
   const { addToast } = useToast();
 
+  // Resolved from the creator's ACCOUNT, like every other name in the app.
+  // The channel record used to carry a `created_by_username` snapshot, which
+  // froze whatever the creator was called on the day they made the channel and
+  // never followed a rename.
+  const creatorName = useDisplayName(channelMeta.createdBy);
+
   const ChannelName = () => {
     const isPrivateChannel = isRestrictedChannelType(channelMeta.channelType);
 
@@ -142,11 +149,7 @@ const DetailsContainer: React.FC<DetailsContainerProps> = (props) => {
       {selectedTabIndex === 0 && (
         <AboutDetails
           dateCreated={channelMeta.createdAt}
-          manager={
-            channelMeta.createdByUsername ||
-            userList.get(channelMeta.createdBy) ||
-            channelMeta.createdBy
-          }
+          manager={creatorName}
           isOwner={isOwner}
           handleDeleteChannel={handleDeleteChannel}
           isDeleting={props.isDeleting}

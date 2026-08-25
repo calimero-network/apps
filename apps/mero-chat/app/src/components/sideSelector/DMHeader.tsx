@@ -1,5 +1,6 @@
 import { styled } from "styled-components";
 import StartDMPopup, { type CreateContextResult } from "../popups/StartDMPopup";
+import { sameAccount } from "../../utils/accountIdentity";
 import { useCallback, useMemo, memo } from "react";
 import { getGroupId } from "../../constants/config";
 import { useCurrentGroupPermissions } from "../../hooks/useCurrentGroupPermissions";
@@ -98,13 +99,16 @@ const DMHeader = memo(function DMHeader({
           error: "User not found — they may not be in the workspace or a DM already exists",
         };
       }
-      // Belt-and-suspenders: filteredMembers already hides existing DM contacts,
-      // but guard here too for races. Check by both identity key and username
-      // since namespaceMemberIdentity can be empty when alias parsing fails.
-      const username = availableMembers.get(identity) || "";
+      // Belt-and-suspenders: filteredMembers already hides existing DM
+      // contacts, but guard here too for races.
+      //
+      // By ACCOUNT only. This also compared display names, which meant two
+      // members with the same name blocked each other's DMs and a renamed
+      // member stopped matching their own. `sameAccount` normalises the
+      // base58/hex forms, which is what the name check was compensating for.
       if (privateDMs.some((dm) =>
-        (dm.namespaceMemberIdentity || dm.otherIdentity) === identity ||
-        (username && dm.otherUsername && dm.otherUsername === username)
+        sameAccount(dm.namespaceMemberIdentity, identity) ||
+        sameAccount(dm.otherIdentity, identity)
       )) {
         return {
           isValid: false,

@@ -31,7 +31,6 @@ export function useChannels() {
             channelType: channelInfo.channel_type,
             description: "",
             owner: channelInfo.created_by,
-            createdByUsername: channelInfo.created_by_username,
             members: [],
             createdBy: channelInfo.created_by,
             inviteOnly: false,
