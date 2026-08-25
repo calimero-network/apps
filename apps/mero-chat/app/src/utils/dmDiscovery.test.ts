@@ -31,6 +31,18 @@ describe("resolveDmCounterpart", () => {
     expect(resolveDmCounterpart([ME_HEX, THEM_HEX], ME_BASE58)).toBe(THEM_HEX);
   });
 
+  it("matches an identity that is not in a form sameAccount recognises", () => {
+    // `sameAccount` normalises hex and base58; given anything else — a
+    // placeholder, a truncated id, an encoding added later — it answers
+    // "different" even for two IDENTICAL strings. Relying on it alone would
+    // mean the counterpart silently fails to match and the DM is dropped or
+    // attributed to the wrong person. Equal strings are the same account by
+    // definition, so that is checked first.
+    expect(resolveDmCounterpart(["member-me", "member-you"], "member-me")).toBe(
+      "member-you",
+    );
+  });
+
   it("is not a DM when I am not in it", () => {
     // Being able to SEE a two-person group does not make it mine.
     expect(resolveDmCounterpart([THEM_HEX, THIRD_HEX], ME_HEX)).toBeNull();

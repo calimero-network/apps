@@ -83,6 +83,81 @@ describe("useDMs (1-group-per-context)", () => {
     });
   });
 
+  it("discovers a DM from subgroup MEMBERSHIP when there is no alias or metadata", async () => {
+    // The invitee's real situation, captured from two live nodes: the subgroup
+    // name was never stored (a 140-byte DM alias into a 64-byte field), and the
+    // context entry arrives bare — `{ contextId }` and nothing else. Both of
+    // the old discovery branches fail, so the person who did not create the DM
+    // never saw it.
+    //
+    // Membership answers it without anything having to be named: listing a
+    // restricted subgroup's members succeeds only for its members, and the
+    // counterpart is the member who is not me.
+    mockListSubgroups.mockResolvedValue({
+      data: [{ groupId: "dm-sg-1" }], // no alias — the server dropped it
+      error: null,
+    });
+    mockListGroupContexts.mockImplementation(async (id: string) =>
+      id === "dm-sg-1"
+        ? { data: [{ contextId: "ctx-1" }], error: null } // bare, as observed
+        : { data: [], error: null },
+    );
+    mockListMembers.mockImplementation(async (id: string) =>
+      id === "dm-sg-1"
+        ? {
+            data: {
+              members: [
+                { identity: "member-me", role: "Member" },
+                { identity: "member-you", role: "Admin" },
+              ],
+            },
+            error: null,
+          }
+        : { data: { members: [] }, error: null },
+    );
+    mockFetchContextIdentities.mockRejectedValue(new Error("not joined"));
+
+    const { result } = renderHook(() => useDMs());
+
+    let dms: Awaited<ReturnType<typeof result.current.fetchDms>> = [];
+    await act(async () => {
+      dms = await result.current.fetchDms("namespace-1");
+    });
+
+    expect(dms).toEqual([
+      expect.objectContaining({ contextId: "ctx-1", otherIdentity: "member-you" }),
+    ]);
+  });
+
+  it("does not offer a subgroup I am not a member of as a DM", async () => {
+    // A non-member gets 403 from listMembers. Treating that as "no members" and
+    // carrying on would be how someone else's conversation appears in my list.
+    mockListSubgroups.mockResolvedValue({
+      data: [{ groupId: "not-mine" }],
+      error: null,
+    });
+    mockListGroupContexts.mockImplementation(async (id: string) =>
+      id === "not-mine"
+        ? { data: [{ contextId: "ctx-theirs" }], error: null }
+        : { data: [], error: null },
+    );
+    mockListMembers.mockImplementation(async (id: string) =>
+      id === "not-mine"
+        ? { data: null, error: { code: 403, message: "node is not a member of group" } }
+        : { data: { members: [] }, error: null },
+    );
+    mockFetchContextIdentities.mockRejectedValue(new Error("not joined"));
+
+    const { result } = renderHook(() => useDMs());
+
+    let dms: Awaited<ReturnType<typeof result.current.fetchDms>> = [];
+    await act(async () => {
+      dms = await result.current.fetchDms("namespace-1");
+    });
+
+    expect(dms).toEqual([]);
+  });
+
   it("prefers shared DM metadata for unjoined DM discovery", async () => {
     // Each DM lives in its own restricted subgroup with one context inside.
     mockListSubgroups.mockResolvedValue({

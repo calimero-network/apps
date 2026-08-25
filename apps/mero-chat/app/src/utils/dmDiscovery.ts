@@ -27,13 +27,22 @@ import { sameAccount } from "./accountIdentity";
  */
 
 /**
- * The other participant, or `null` if this is not a DM I am part of.
+ * Are these the same account, whatever form each arrived in?
  *
- * Comparisons go through `sameAccount` because the two halves come from
- * different places in different encodings: the members list is hex from the
- * admin API, while the identity being compared against is often base58 from the
- * contract. A raw `===` never matches, and every DM would look like someone
- * else's.
+ * Two checks, and both are needed. `sameAccount` normalises hex and base58 —
+ * the members list is hex from the admin API while the identity compared
+ * against is often base58 from the contract, so a raw `===` never matches and
+ * every DM would look like someone else's. But given anything it cannot
+ * normalise, `sameAccount` answers "different" even for two IDENTICAL strings,
+ * and then a real counterpart silently fails to match. Equal strings are the
+ * same account by definition, so that is settled first.
+ */
+function isSameAccount(left: string, right: string): boolean {
+  return left === right || sameAccount(left, right);
+}
+
+/**
+ * The other participant, or `null` if this is not a DM I am part of.
  */
 export function resolveDmCounterpart(
   members: readonly string[],
@@ -44,7 +53,7 @@ export function resolveDmCounterpart(
   const present = members.filter((member) => member?.trim());
   if (present.length !== 2) return null;
 
-  const others = present.filter((member) => !sameAccount(member, myAccount));
+  const others = present.filter((member) => !isSameAccount(member, myAccount));
 
   // Exactly one must be me and one must not. Anything else — two of me, or
   // neither of me — is a group this logic should not draw a conclusion from.
