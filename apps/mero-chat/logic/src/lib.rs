@@ -148,7 +148,6 @@ const ROLE_MOD: &str = "mod";
 pub struct Message {
     pub timestamp: LwwRegister<u64>,
     pub sender: UserId,
-    pub sender_username: LwwRegister<String>,
     pub mentions: UnorderedSet<UserId>,
     pub mentions_usernames: Vector<LwwRegister<String>>,
     pub files: Vector<Attachment>,
@@ -162,7 +161,6 @@ pub struct Message {
 impl MergeableTrait for Message {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         MergeableTrait::merge(&mut self.timestamp, &other.timestamp)?;
-        MergeableTrait::merge(&mut self.sender_username, &other.sender_username)?;
         MergeableTrait::merge(&mut self.id, &other.id)?;
         MergeableTrait::merge(&mut self.text, &other.text)?;
         MergeableTrait::merge(&mut self.mentions, &other.mentions)?;
@@ -198,10 +196,6 @@ impl RekeyTarget for Message {
         calimero_storage::rekey_field_if_supported!(
             &mut self.timestamp,
             field_child_id(parent_id, "timestamp")
-        );
-        calimero_storage::rekey_field_if_supported!(
-            &mut self.sender_username,
-            field_child_id(parent_id, "sender_username")
         );
         calimero_storage::rekey_field_if_supported!(
             &mut self.mentions,
@@ -250,7 +244,6 @@ impl Clone for Message {
         Message {
             timestamp: self.timestamp.clone(),
             sender: self.sender,
-            sender_username: self.sender_username.clone(),
             mentions: {
                 let mut new_set = UnorderedSet::new();
                 if let Ok(iter) = self.mentions.iter() {
@@ -301,10 +294,9 @@ impl Serialize for Message {
         S: calimero_sdk::serde::Serializer,
     {
         use calimero_sdk::serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("Message", 11)?;
+        let mut state = serializer.serialize_struct("Message", 10)?;
         state.serialize_field("timestamp", &*self.timestamp)?;
         state.serialize_field("sender", &self.sender)?;
-        state.serialize_field("sender_username", self.sender_username.get())?;
 
         let mentions_vec: Vec<UserId> = if let Ok(iter) = self.mentions.iter() {
             iter.collect()
@@ -336,9 +328,19 @@ impl Serialize for Message {
 #[serde(crate = "calimero_sdk::serde")]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct MessageWithReactions {
+    /// Position in the channel's append-only vector.
+    ///
+    /// A STABLE cursor, and the reason clients can page and resume without
+    /// gaps: appends land at the end and never renumber what came before, and
+    /// a delete keeps its slot (the text is blanked, the entry stays). So an
+    /// index a client stored two hours ago still names the same message.
+    ///
+    /// Counting a window from the END, which `get_messages` does, has no such
+    /// property: every append shifts it and a client paging that way re-reads
+    /// or skips messages. Use `get_messages_from` for anything that resumes.
+    pub index: u64,
     pub timestamp: u64,
     pub sender: UserId,
-    pub sender_username: String,
     pub mentions: Vec<UserId>,
     pub mentions_usernames: Vec<String>,
     pub files: Vec<AttachmentPublic>,
@@ -346,7 +348,7 @@ pub struct MessageWithReactions {
     pub id: MessageId,
     pub text: String,
     pub edited_on: Option<u64>,
-    pub reactions: Option<HashMap<String, Vec<String>>>,
+    pub reactions: Option<HashMap<String, Vec<UserId>>>,
     pub deleted: Option<bool>,
     pub thread_count: u32,
     pub thread_last_timestamp: u64,
@@ -464,7 +466,7 @@ pub struct MeroChat {
     creator: LwwRegister<String>,
     messages: AuthoredVector<Message>,
     threads: UnorderedMap<MessageId, ThreadVec>,
-    reactions: UnorderedMap<MessageId, UnorderedMap<String, UnorderedSet<String>>>,
+    reactions: UnorderedMap<MessageId, UnorderedMap<String, UnorderedSet<UserId>>>,
     profiles: AuthoredMap<UserId, StoredProfile>,
     /// Per-context moderation roles, backed by a writer-set-guarded registry.
     /// The admin tier IS the writer set, so a non-admin's forged `grant`/
@@ -1035,7 +1037,6 @@ impl MeroChat {
         let msg = Message {
             timestamp: LwwRegister::new(timestamp),
             sender: executor_id,
-            sender_username: LwwRegister::new(sender_username),
             mentions: mentions_set,
             mentions_usernames: mentions_usernames_vec,
             files: files_vector,
@@ -1144,11 +1145,11 @@ impl MeroChat {
     ) -> Vec<MessageWithReactions> {
         let mut result = Vec::new();
         if let Ok(iter) = messages.iter() {
-            for message in iter {
+            for (index, message) in iter.enumerate() {
                 if !Self::message_matches_search(&message, search_term) {
                     continue;
                 }
-                result.push(self.message_to_public(&message, include_threads));
+                result.push(self.message_to_public(&message, include_threads, index as u64));
             }
         }
         result
@@ -1158,7 +1159,12 @@ impl MeroChat {
     ///
     /// Split out of the scan above so the scanning path and the windowed path
     /// below cannot drift in what they return.
-    fn message_to_public(&self, message: &Message, include_threads: bool) -> MessageWithReactions {
+    fn message_to_public(
+        &self,
+        message: &Message,
+        include_threads: bool,
+        index: u64,
+    ) -> MessageWithReactions {
         let reactions = self.get_reactions_for_message(message.id.get());
 
         let (thread_count, thread_last_timestamp) = if include_threads {
@@ -1189,9 +1195,9 @@ impl MeroChat {
         };
 
         MessageWithReactions {
+            index,
             timestamp: *message.timestamp,
             sender: message.sender,
-            sender_username: message.sender_username.get().clone(),
             id: msg_id,
             text,
             mentions: mentions_vec,
@@ -1258,7 +1264,7 @@ impl MeroChat {
         let mut page = Vec::with_capacity(end_idx - start_idx);
         for idx in start_idx..end_idx {
             if let Ok(Some(message)) = messages.get(idx) {
-                page.push(self.message_to_public(&message, include_threads));
+                page.push(self.message_to_public(&message, include_threads, idx as u64));
             }
         }
 
@@ -1269,10 +1275,14 @@ impl MeroChat {
         }
     }
 
+    /// Emoji -> the ACCOUNTS that reacted with it.
+    ///
+    /// Accounts, not names: the client resolves them, so a rename is reflected
+    /// on reactions already given rather than only on new ones.
     fn get_reactions_for_message(
         &self,
         message_id: &str,
-    ) -> Option<HashMap<String, Vec<String>>> {
+    ) -> Option<HashMap<String, Vec<UserId>>> {
         match self.reactions.get(message_id) {
             Ok(Some(reactions)) => {
                 let mut hashmap = HashMap::new();
@@ -1351,44 +1361,31 @@ impl MeroChat {
 
     /// Add or remove the CALLER's reaction to a message.
     ///
-    /// `user_supplied` is ignored — see below. It remains in the signature so
-    /// existing clients keep working.
+    /// Reactions are keyed by ACCOUNT. They used to be keyed by display name,
+    /// which is wrong in both directions: renaming split your own reaction into
+    /// two, and two members who chose the same name shared one — each able to
+    /// remove the other's. A name is also caller-supplied, so it was forgeable
+    /// through the plain public ABI: anyone could react as someone else, or
+    /// pass `add: false` to take theirs away.
+    ///
+    /// The client resolves accounts to names for display.
     pub fn update_reaction(
         &mut self,
         message_id: MessageId,
         emoji: String,
-        #[allow(unused_variables)] user: String,
         add: bool,
     ) -> app::Result<String> {
-        let user_supplied = user;
         self.require_not_banned()?;
         let action = if add { "added" } else { "removed" };
 
-        // `user` arrives from the caller and is therefore forgeable — not by a
-        // crafted delta, but through the plain public ABI: anyone could call
-        // this with someone else's name and attribute a reaction to them, or
-        // pass add:false to remove theirs. Derive the identity from the
-        // executor instead, exactly as `send_message` does for
-        // `sender_username`, so the stored value is the caller's own.
-        //
-        // The parameter is kept for ABI compatibility and deliberately ignored.
         let executor_id = Self::executor_id();
-        let user = match self.profiles.get(&executor_id) {
-            Ok(Some(profile)) => profile.username.get().clone(),
-            // No profile yet: fall back to the caller's account id rather than
-            // to the supplied string. It is not a display name, but it is
-            // unforgeable, and a reaction attributed to the wrong person is
-            // worse than one attributed to a raw id.
-            _ => executor_id.to_string(),
-        };
-        let _ = user_supplied;
 
         let mut reactions_entry = self.reactions.entry(message_id.clone())?.or_insert(UnorderedMap::new())?;
         let mut emoji_entry = reactions_entry.entry(emoji)?.or_insert(UnorderedSet::new())?;
         if add {
-            let _ = emoji_entry.insert(user);
+            let _ = emoji_entry.insert(executor_id);
         } else {
-            let _ = emoji_entry.remove(&user);
+            let _ = emoji_entry.remove(&executor_id);
         }
         drop(emoji_entry);
         drop(reactions_entry);
@@ -1682,7 +1679,6 @@ mod tests {
                     Vec::new(),
                     None,
                     i as u64,
-                    "creator".to_owned(),
                     None,
                     None,
                 )
