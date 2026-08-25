@@ -488,9 +488,10 @@ pub struct MeroChat {
     /// Written by delete_message regardless of AuthoredVector ownership, so
     /// admins/mods can delete messages they didn't author.
     deleted_messages: UnorderedSet<String>,
-    /// Per-user per-channel draft text. Key: "{base58_user_id}:{channel_name}".
-    /// Effectively private — each user only reads/writes their own keys.
-    drafts: UnorderedMap<String, LwwRegister<String>>,
+    // Drafts are NOT here: they are node-local, in `Drafts`. They lived on this
+    // synced state until it was noticed that "each user only reads/writes their
+    // own keys" describes the API, not the storage — the bytes replicated to
+    // everyone regardless.
 }
 
 #[app::logic]
@@ -539,7 +540,6 @@ impl MeroChat {
             banned: UnorderedMap::new(),
             read_receipts: UnorderedMap::new(),
             deleted_messages: UnorderedSet::new(),
-            drafts: UnorderedMap::new(),
         }
     }
 
@@ -763,10 +763,12 @@ impl MeroChat {
     pub fn save_draft(&mut self, channel: String, text: String) -> app::Result<()> {
         self.require_not_banned()?;
         let key = draft_key(&Self::executor_id().to_string(), &channel);
+        let mut drafts = Drafts::private_load_or_default()?;
+        let mut drafts = drafts.as_mut();
         if text.is_empty() {
-            let _ = self.drafts.remove(&key);
+            let _ = drafts.entries.remove(&key)?;
         } else {
-            let _ = self.drafts.insert(key, LwwRegister::new(text));
+            let _ = drafts.entries.insert(key, text)?;
         }
         Ok(())
     }
@@ -775,11 +777,15 @@ impl MeroChat {
     /// string if none exists.
     pub fn get_draft(&self, channel: String) -> String {
         let key = draft_key(&Self::executor_id().to_string(), &channel);
-        self.drafts
+        let Ok(drafts) = Drafts::private_load_or_default() else {
+            return String::new();
+        };
+        drafts
+            .entries
             .get(&key)
             .ok()
             .flatten()
-            .map(|r| r.get().clone())
+            .map(|text| text.clone())
             .unwrap_or_default()
     }
 
@@ -787,7 +793,8 @@ impl MeroChat {
     pub fn delete_draft(&mut self, channel: String) -> app::Result<()> {
         self.require_not_banned()?;
         let key = draft_key(&Self::executor_id().to_string(), &channel);
-        let _ = self.drafts.remove(&key);
+        let mut drafts = Drafts::private_load_or_default()?;
+        let _ = drafts.as_mut().entries.remove(&key)?;
         Ok(())
     }
 
