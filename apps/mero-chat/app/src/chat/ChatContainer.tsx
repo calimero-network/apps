@@ -24,13 +24,22 @@ import type { ResponseData } from "../api/types";
 import type { ChannelInfo, UserId } from "../api/clientApi";
 import { extractAndAddMentions } from "../utils/mentions";
 import ChatSearchOverlay from "./ChatSearchOverlay";
-import { getMessengerDisplayName } from "../utils/messengerName";
+import { isSelfSender } from "../utils/selfIdentity";
+import { getSelfAccountBase58 } from "../utils/accountIdentity";
 
 interface ChatContainerProps {
   activeChat: ActiveChat;
   setIsOpenSearchChannel: () => void;
   onJoinedChat: () => void;
   loadInitialChatMessages: () => Promise<ChatMessagesData>;
+  /** Id of the message a permalink pointed at, if this view was opened by one. */
+  focusMessageId?: string | null;
+  /** Copy a shareable link to a message. */
+  copyMessageLink?: (message: CurbMessage) => void;
+  /** Leave a permalink's window and return to the newest messages. */
+  onJumpToPresent?: () => void;
+  /** Bump to reload the newest window without changing channel. */
+  reloadKey?: number;
   incomingMessages: CurbMessage[];
   loadPrevMessages: (id: string) => Promise<ChatMessagesDataWithOlder>;
   loadInitialThreadMessages: (
@@ -100,6 +109,10 @@ function ChatContainer({
   setIsOpenSearchChannel,
   onJoinedChat,
   loadInitialChatMessages,
+  focusMessageId,
+  copyMessageLink,
+  onJumpToPresent,
+  reloadKey,
   incomingMessages,
   loadPrevMessages,
   loadInitialThreadMessages,
@@ -705,6 +718,10 @@ function ChatContainer({
             isEmojiSelectorVisible={isEmojiSelectorVisible}
             setIsEmojiSelectorVisible={setIsEmojiSelectorVisible}
             messageWithEmojiSelector={messageWithEmojiSelector}
+            focusMessageId={focusMessageId}
+            copyMessageLink={copyMessageLink}
+            onJumpToPresent={onJumpToPresent}
+            reloadKey={reloadKey}
           />
           {openThread && (
             <ThreadWrapper>
@@ -749,7 +766,13 @@ function ChatContainer({
 
 // Custom comparison to prevent re-renders when only function references change
 export default memo(ChatContainer, (prevProps, nextProps) => {
-  // Re-render only if these key values actually change
+  // Re-render only if these key values actually change.
+  //
+  // NOTE: this list is hand-maintained, so a prop added to `ChatContainerProps`
+  // and NOT added here is silently ignored forever — the component keeps
+  // rendering with the old value and nothing reports it. That is exactly what
+  // happened to the permalink props: `focusMessageId` changed, this comparator
+  // said "equal", and the linked message was never marked.
   return (
     prevProps.activeChat.id === nextProps.activeChat.id &&
     prevProps.activeChat.contextId === nextProps.activeChat.contextId &&
@@ -765,6 +788,10 @@ export default memo(ChatContainer, (prevProps, nextProps) => {
     prevProps.isSearchingMessages === nextProps.isSearchingMessages &&
     prevProps.searchHasMore === nextProps.searchHasMore &&
     prevProps.searchError === nextProps.searchError &&
-    prevProps.isSearchOverlayOpen === nextProps.isSearchOverlayOpen
+    prevProps.isSearchOverlayOpen === nextProps.isSearchOverlayOpen &&
+    prevProps.focusMessageId === nextProps.focusMessageId &&
+    prevProps.reloadKey === nextProps.reloadKey &&
+    prevProps.onJumpToPresent === nextProps.onJumpToPresent &&
+    prevProps.copyMessageLink === nextProps.copyMessageLink
   );
 });

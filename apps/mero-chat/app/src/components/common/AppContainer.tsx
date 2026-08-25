@@ -43,6 +43,10 @@ interface AppContainerProps {
   nonInvitedUserList: UserId[];
   onDMSelected: (dm: DMContextInfo) => void;
   loadInitialChatMessages: () => Promise<ChatMessagesData>;
+  focusMessageId?: string | null;
+  copyMessageLink?: (message: CurbMessage) => void;
+  onJumpToPresent?: () => void;
+  reloadKey?: number;
   incomingMessages: CurbMessage[];
   channels: GroupContextChannel[];
   subgroups: SubgroupEntry[];
@@ -99,6 +103,10 @@ function AppContainer({
   nonInvitedUserList,
   onDMSelected,
   loadInitialChatMessages,
+  focusMessageId,
+  copyMessageLink,
+  onJumpToPresent,
+  reloadKey,
   incomingMessages,
   channels,
   subgroups,
@@ -210,6 +218,10 @@ function AppContainer({
                 setIsOpenSearchChannel={() => openSearchPage()}
                 onJoinedChat={onJoinedChat}
                 loadInitialChatMessages={loadInitialChatMessages}
+                focusMessageId={focusMessageId}
+                copyMessageLink={copyMessageLink}
+                onJumpToPresent={onJumpToPresent}
+                reloadKey={reloadKey}
                 incomingMessages={incomingMessages}
                 loadPrevMessages={loadPrevMessages}
                 loadInitialThreadMessages={loadInitialThreadMessages}

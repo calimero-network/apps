@@ -6,6 +6,7 @@ import { ElementPosition } from "../types/curbTypes";
 import ChatTextIcon from "./Icons/ChatTextIcon";
 import CheckMarkIcon from "./Icons/CheckMarkIcon";
 import EditMessageIcon from "./Icons/EditMessageIcon";
+import LinkIcon from "./Icons/LinkIcon";
 import EmojiWinkIcon from "./Icons/EmojiWinkIcon";
 import GrinningFaceIcon from "./Icons/GrinningFaceIcon";
 import ThumbsUpIcon from "./Icons/ThumbsUpIcon";
@@ -106,6 +107,8 @@ const ActionsPopup: React.FC<{
   editMessage: () => void;
   deleteMessage: () => void;
   openMessageReactionsList: () => void;
+  /** Copy a shareable link to this message. Absent where linking makes no sense. */
+  copyLink?: () => void;
   editable?: boolean;
   deletable?: boolean;
   isThread: boolean;
@@ -119,6 +122,7 @@ const ActionsPopup: React.FC<{
   editMessage,
   deleteMessage,
   openMessageReactionsList,
+  copyLink,
   editable = false,
   deletable = false,
   isThread,
@@ -137,6 +141,14 @@ const ActionsPopup: React.FC<{
       onClick: openMessageReactionsList,
     },
   ];
+
+  if (copyLink) {
+    moreActionArray.push({
+      name: "Copy link",
+      icon: <LinkIcon />,
+      onClick: copyLink,
+    });
+  }
 
   if (editable) {
     moreActionArray.push({

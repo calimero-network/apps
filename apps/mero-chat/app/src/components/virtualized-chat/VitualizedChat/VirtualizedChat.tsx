@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import type { ListRange } from "react-virtuoso";
 import { Virtuoso } from "react-virtuoso";
 import styled from "styled-components";
@@ -67,7 +67,22 @@ export interface VirtualizedChatProps<T extends Message> {
   style?: React.CSSProperties;
   chatId: string;
   shouldTriggerNewItemIndicator?: (item: T) => boolean;
+  /**
+   * Id of a message to bring into view — the one a permalink pointed at.
+   *
+   * Addressed by id rather than position because the caller knows which
+   * MESSAGE it wants, and its position in the loaded window shifts every time
+   * older messages are prepended above it.
+   */
+  focusMessageId?: string | null;
+  /** Bump to reload the initial window without changing channel. */
+  reloadKey?: number;
 }
+
+/** How often to re-ask for the linked message once the first try misses. */
+const FOCUS_SCROLL_RETRY_MS = 120;
+/** Give up after ~1.5s rather than fighting the page indefinitely. */
+const FOCUS_SCROLL_ATTEMPTS = 12;
 
 const VirtualizedChat = <T extends Message>({
   loadPrevMessages,
@@ -78,6 +93,8 @@ const VirtualizedChat = <T extends Message>({
   newMessageIndicator = DefaultNewMessageIndicator,
   onItemNewItemRender,
   shouldTriggerNewItemIndicator,
+  focusMessageId,
+  reloadKey,
   style,
   chatId,
 }: VirtualizedChatProps<T>): React.ReactElement => {
@@ -103,6 +120,7 @@ const VirtualizedChat = <T extends Message>({
     updateMessages,
   } = useMessageLoader({
     chatId,
+    reloadKey,
     loadInitialMessages,
     loadPrevMessages,
     store,
@@ -121,6 +139,8 @@ const VirtualizedChat = <T extends Message>({
     chatId,
     isLoadingInitial,
     messageCount: messages.length,
+    // A linked message decides where the view sits, not the newest message.
+    suppressInitialScroll: !!focusMessageId,
   });
 
   const { hasNewMessages, showNewMessageIndicator, hideNewMessageIndicator } =
@@ -153,6 +173,54 @@ const VirtualizedChat = <T extends Message>({
     },
     [onItemNewItemRender, oldestMessageReported, store, firstItemIndex],
   );
+
+  // Bring a linked message into view.
+  //
+  // Re-issued until the DOM says the message is actually visible, rather than
+  // fired once and assumed. The first attempt necessarily runs before the list
+  // has measured anything: every row is still its estimated
+  // `defaultItemHeight` (80px) while real messages are nearer a third of that,
+  // so "centre item 25" is computed against heights that are wrong and
+  // overshoots — landing the linked message above the top of the pane, hidden
+  // behind the header. Once rows are measured the same request lands correctly,
+  // so the fix is to ask again until it does.
+  const lastFocusedRef = useRef<string | null>(null);
+  const scrollerElRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!focusMessageId) {
+      lastFocusedRef.current = null;
+      return;
+    }
+    if (lastFocusedRef.current === focusMessageId) return;
+
+    const position = messages.findIndex((m) => m.id === focusMessageId);
+    if (position < 0) return; // Not loaded yet; a later render will find it.
+    lastFocusedRef.current = focusMessageId;
+
+    /** Is the linked message inside the visible part of the list? */
+    const isVisible = (): boolean => {
+      const scroller = scrollerElRef.current;
+      const row = scroller?.querySelector(`[data-index="${position}"]`);
+      if (!scroller || !row) return false;
+      const pane = scroller.getBoundingClientRect();
+      const rect = row.getBoundingClientRect();
+      return rect.top >= pane.top && rect.bottom <= pane.bottom;
+    };
+
+    let attempts = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const attempt = () => {
+      if (isVisible()) return;
+      listRef.current?.scrollToIndex({ index: position, align: "center" });
+      attempts += 1;
+      if (attempts < FOCUS_SCROLL_ATTEMPTS) {
+        timer = setTimeout(attempt, FOCUS_SCROLL_RETRY_MS);
+      }
+    };
+    attempt();
+
+    return () => clearTimeout(timer);
+  }, [focusMessageId, messages, listRef]);
 
   // Render individual message items
   // Memoized to prevent unnecessary re-renders (Virtuoso best practice)
@@ -220,6 +288,10 @@ const VirtualizedChat = <T extends Message>({
           atBottomStateChange={handleAtBottomStateChange}
           atBottomThreshold={VIRTUOSO_CONFIGS.atBottomThreshold}
           ref={listRef}
+          scrollerRef={(el) => {
+            scrollerElRef.current =
+              el && "scrollTop" in el ? (el as HTMLElement) : null;
+          }}
           overscan={VIRTUOSO_CONFIGS.overscan}
           increaseViewportBy={VIRTUOSO_CONFIGS.viewport}
           defaultItemHeight={VIRTUOSO_CONFIGS.defaultItemHeight}

@@ -7,6 +7,7 @@ import type { AccountData, CurbMessage, CurbFile } from "../types/curbTypes";
 import { ElementPosition } from "../types/curbTypes";
 import { formatTimeAgo } from "../utils";
 import { downloadBlob } from "../../../api/meroJsClient";
+import { useDisplayName } from "../../../repositories/names/useNames";
 
 import { POPUP_POSITION_SWITCH_HEIGHT } from "./AutocompleteList";
 import { IdentityAvatar } from "../../IdentityAvatar";
@@ -43,7 +44,7 @@ const ActionsContainerMobile = styled.div<{ $addPadding: boolean }>`
   }
 `;
 
-const MessageContainer = styled.div<{ $editmode: boolean }>`
+const MessageContainer = styled.div<{ $editmode: boolean; $focused?: boolean }>`
   width: 100%;
   border-radius: 4px;
   box-sizing: border-box;
@@ -61,6 +62,14 @@ const MessageContainer = styled.div<{ $editmode: boolean }>`
     padding-right: 14px;
   }
   ${({ $editmode }) => $editmode && "background-color: #0A131E;"}
+  /* A message arrived at by link: marked so the reader can see WHICH message
+     the link meant, rather than landing mid-conversation and guessing. Fades
+     rather than latching, so it does not look like persistent state. */
+  ${({ $focused }) =>
+    $focused &&
+    `background-color: rgba(160, 255, 90, 0.10);
+     box-shadow: inset 2px 0 0 #A0FF5A;
+     transition: background-color 1.2s ease-out;`}
   @media (min-width: 1025px) {
     &:hover ${ActionsContainer} {
       visibility: visible;
@@ -323,6 +332,10 @@ interface MessageProps {
   editMessage: () => void;
   cancelEditMessage: () => void;
   deleteMessage: () => void;
+  /** True for the message a permalink pointed at. */
+  isFocused?: boolean;
+  /** Copy a shareable link to this message; omitted where linking is unavailable. */
+  copyLink?: () => void;
   openMobileReactions: string;
   setOpenMobileReactions: (messageId: string) => void;
   submitEditedMessage: (text: string) => void;
@@ -395,6 +408,15 @@ const Message = (props: MessageProps) => {
   }, [props.message.status]);
 
   // Memoize formatted time to avoid recalculating on every render
+  // The name is resolved from the account, every render. Messages carry an
+  // account and nothing else — a display name belongs to the person, not to
+  // the message they sent, so a rename applies to everything they have ever
+  // said rather than only to what they say next.
+  //
+  // A sender with no metadata yet (or who has left the namespace) falls back to
+  // a truncated account, which is at least true, rather than to a stale name.
+  const senderDisplayName = useDisplayName(props.message.sender);
+
   const formattedTime = useMemo(() => {
     return formatTimeAgo(props.message.timestamp / 1000, false);
   }, [props.message.timestamp]);
@@ -521,6 +543,7 @@ const Message = (props: MessageProps) => {
       <MessageContainer
         {...attrs}
         $editmode={props.message?.editMode ? true : false}
+        $focused={props.isFocused}
       >
         <ActionsContainer id={`actions-container-${props.message.id}`}>
           <MessageActions
@@ -532,6 +555,7 @@ const Message = (props: MessageProps) => {
             editMessage={props.editMessage}
             deleteMessage={props.deleteMessage}
             openMessageReactionsList={() => openMessageReactionsList(undefined)}
+            copyLink={props.copyLink}
             isThread={props.isThread}
             isMoreActionVisible={isMoreActionVisible}
             setIsMoreActionVisible={setIsMoreActionVisible}
@@ -577,10 +601,10 @@ const Message = (props: MessageProps) => {
         {showHeader && (
           <SenderInfoContainer>
             <ProfileIconContainerMsg>
-              <IdentityAvatar size="sm" identity={props.message.sender} contextId={props.contextId} name={props.message.senderUsername} />
+              <IdentityAvatar size="sm" identity={props.message.sender} contextId={props.contextId} name={senderDisplayName} />
             </ProfileIconContainerMsg>
             <NameContainerSender>
-              {props.message.senderUsername}
+              {senderDisplayName}
             </NameContainerSender>
             <MessageTime>{formattedTime}</MessageTime>
           </SenderInfoContainer>

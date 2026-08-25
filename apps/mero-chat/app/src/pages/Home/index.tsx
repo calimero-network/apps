@@ -56,6 +56,13 @@ import { useNamespaceMembershipWatch } from "../../hooks/useNamespaceMembershipW
 import { buildDmMemberOptions } from "../../utils/dmMemberOptions";
 import { useUnreadCounts } from "../../hooks/useUnreadCounts";
 import { useAppBadge } from "../../hooks/useAppBadge";
+import { useToast } from "../../contexts/ToastContext";
+import {
+  messagePermalink,
+  parseMessagePermalink,
+  resolveMessageLink,
+} from "../../utils/permalink";
+import type { MessageLink } from "../../utils/permalink";
 
 export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   const { mero: app } = useCalimero();
@@ -99,6 +106,22 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   const [isOpenSearchChannel, setIsOpenSearchChannel] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeChat, setActiveChat] = useState<ActiveChat | null>(null);
+
+  // ── Message permalinks ────────────────────────────────────────────────────
+  //
+  // Read once, from the URL that opened the app. Held in a ref as well as
+  // state because `loadInitialChatMessages` is a stable callback and must see
+  // the current value without being rebuilt (rebuilding it would retrigger the
+  // message list's load effect).
+  const [pendingLink] = useState<MessageLink | null>(() =>
+    typeof window === "undefined"
+      ? null
+      : parseMessagePermalink(window.location.search),
+  );
+  const pendingLinkRef = useRef<MessageLink | null>(pendingLink);
+  const [focusMessageId, setFocusMessageId] = useState<string | null>(null);
+  const [messagesReloadKey, setMessagesReloadKey] = useState(0);
+  const { addToast } = useToast();
   const [currentOpenThread, setCurrentOpenThread] = useState<
     CurbMessage | undefined
   >(undefined);
@@ -198,8 +221,8 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   const getChannelUsersRef = useRef(channelMembersHook.fetchChannelMembers);
   getChannelUsersRef.current = channelMembersHook.fetchChannelMembers;
 
-  const getChannelUsers = useCallback(async (id: string, subgroupId?: string, namespaceId?: string) => {
-    return getChannelUsersRef.current(id, subgroupId, namespaceId);
+  const getChannelUsers = useCallback(async (id: string, subgroupId?: string) => {
+    return getChannelUsersRef.current(id, subgroupId);
   }, []);
 
   // Pin the channel→subgroup resolver in a ref so re-renders don't
@@ -219,16 +242,16 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     // Pass the channel's subgroupId so `useChannelMembers` can read the
     // canonical member list from the admin API. Without this it falls
     // back to `get_profiles` which misses members who haven't set a
-    // profile yet (the typical state for freshly-added users). The
-    // namespaceId provides a final alias fallback so users render with
-    // their workspace handle (e.g. "NodeUser") instead of their raw
-    // identity until they post their first message in the channel.
+    // profile yet (the typical state for freshly-added users).
+    //
+    // No namespaceId: display names no longer come from this call at all.
+    // They are resolved per account by the name repository, which reads the
+    // namespace member metadata itself.
     const contextId = activeChatRef.current?.contextId ?? activeChatRef.current?.id;
     const subgroupId = contextId
       ? getSubgroupForContextRef.current(contextId)
       : undefined;
-    const namespaceId = getGroupId() || undefined;
-    await getChannelUsersRef.current(channelId, subgroupId, namespaceId);
+    await getChannelUsersRef.current(channelId, subgroupId);
   }, []);
 
   const lastSelectedChatIdRef = useRef<string>("");
@@ -314,8 +337,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
         const subgroupId = resolvedChat.contextId
           ? getSubgroupForContextRef.current(resolvedChat.contextId)
           : undefined;
-        const namespaceId = getGroupId() || undefined;
-        getChannelUsers(resolvedChat.id, subgroupId, namespaceId);
+        getChannelUsers(resolvedChat.id, subgroupId);
       }
     }
 
@@ -709,6 +731,45 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
 
   const loadInitialChatMessages =
     useCallback(async (): Promise<ChatMessagesData> => {
+      // A pending permalink is consumed HERE rather than in an effect of its
+      // own, because this is the one function the message list calls to fill
+      // itself. Loading the link's window anywhere else would race the normal
+      // load and lose — the list would briefly show the linked conversation
+      // and then replace it with the newest page.
+      const link = pendingLinkRef.current;
+      if (link && activeChatRef.current?.contextId === link.contextId) {
+        pendingLinkRef.current = null;
+        const window = await mainMessagesRef.current.openMessageLink(
+          activeChatRef.current,
+          link.index,
+        );
+        const resolution = resolveMessageLink(window.messages, link);
+        if (resolution.status === "found") {
+          setFocusMessageId(resolution.message.id);
+          return window;
+        }
+
+        // Either the position holds nothing, or it holds a different message
+        // than the link named. Both mean the link cannot be honoured, and
+        // showing whatever happens to sit at that position would be the one
+        // failure a permalink must never have: the reader sees a real message
+        // in a real conversation with no way to tell it is the wrong one.
+        //
+        // Falling through to the normal load also avoids rendering the link's
+        // empty window, which read as "No messages yet" for a channel full of
+        // messages.
+        setFocusMessageId(null);
+        addToast({
+          title: "Message not found",
+          message:
+            resolution.status === "mismatch"
+              ? "That link points to a message that is no longer here. Showing the latest messages instead."
+              : "That link points to a message this channel doesn't have. Showing the latest messages instead.",
+          type: "channel",
+          duration: 5000,
+        });
+      }
+
       const result = await mainMessagesRef.current.loadInitial(
         activeChatRef.current,
       );
@@ -728,6 +789,83 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
 
       return result;
     }, []);
+
+  /**
+   * Open the channel a permalink points at, once it is known to this node.
+   *
+   * Only selects the channel; the message window itself is loaded by
+   * `loadInitialChatMessages`, which the list calls when the channel changes.
+   * Runs on every channel-list update because a link is routinely opened
+   * before the channel it names has finished loading.
+   */
+  useEffect(() => {
+    const link = pendingLinkRef.current;
+    if (!link) return;
+    if (activeChatRef.current?.contextId === link.contextId) return;
+
+    const channel = groupContextsHook.channels.find(
+      (ch) =>
+        ch.contextId === link.contextId && ch.isJoined && ch.contextIdentity,
+    );
+    if (!channel?.contextIdentity) return; // Not synced yet — try again later.
+
+    void updateSelectedActiveChatRef.current({
+      type: "channel",
+      contextId: link.contextId,
+      id: link.contextId,
+      name:
+        channel.info?.name ?? channel.alias ?? link.contextId.substring(0, 8),
+      contextIdentity: channel.contextIdentity,
+    });
+  }, [groupContextsHook.channels]);
+
+  /** Put a link to one message on the clipboard. */
+  const copyMessageLink = useCallback((message: CurbMessage) => {
+    const contextId = activeChatRef.current?.contextId;
+    // A message with no index has no position to link to yet — an optimistic
+    // send that the node has not accepted. Better no link than one that points
+    // at whatever later lands in that slot.
+    if (!contextId || message.index === undefined) {
+      addToast({
+        title: "Can't link this message yet",
+        message: "It hasn't been accepted by the node, so it has no position.",
+        type: "channel",
+        duration: 4000,
+      });
+      return;
+    }
+
+    const url = messagePermalink({
+      contextId,
+      index: message.index,
+      messageId: message.id,
+    });
+    void navigator.clipboard
+      ?.writeText(url)
+      .then(() =>
+        addToast({
+          title: "Link copied",
+          message: "Anyone in this channel can open it.",
+          type: "channel",
+          duration: 3000,
+        }),
+      )
+      .catch(() =>
+        addToast({
+          title: "Could not copy the link",
+          message: "Copying was blocked; try again from a focused window.",
+          type: "channel",
+          duration: 4000,
+        }),
+      );
+  }, [addToast]);
+
+  /** Leave a permalink's window and load the newest messages again. */
+  const jumpToPresent = useCallback(() => {
+    setFocusMessageId(null);
+    pendingLinkRef.current = null;
+    setMessagesReloadKey((key) => key + 1);
+  }, []);
 
   // Group-based channels (each context = one channel)
   const channels = useMemo(
@@ -992,15 +1130,19 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
 
       const otherUsername = dmMembers.get(otherIdentity) || chatMembers.get(otherIdentity) || "";
 
-      // Dedup: check by identity key AND by username — namespaceMemberIdentity
-      // can be empty when the server doesn't echo the alias back on context
-      // entries, so the username from get_info's description is a second line
-      // of defence.
+      // Dedup by ACCOUNT, never by display name.
+      //
+      // This used to also match on `otherUsername`, as "a second line of
+      // defence" for when the identity key was missing. It is not a defence:
+      // two people who choose the same name collapse into one DM, and someone
+      // who renames stops matching their own. `sameAccount` handles the
+      // base58/hex split that made the raw `===` unreliable in the first place,
+      // which is the problem the name comparison was really papering over.
       const freshDms = await fetchDmsWithGroup();
       const existingDm = (freshDms ?? []).find(
         (dm) =>
-          dm.namespaceMemberIdentity === otherIdentity ||
-          (otherUsername && dm.otherUsername && dm.otherUsername === otherUsername),
+          sameAccount(dm.namespaceMemberIdentity, otherIdentity) ||
+          sameAccount(dm.otherIdentity, otherIdentity),
       );
       if (existingDm?.contextId) {
         return { data: existingDm.contextId, error: "" };
@@ -1088,6 +1230,10 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
       nonInvitedUserList={channelMembersHook.nonInvitedUsers}
       onDMSelected={onDMSelected}
       loadInitialChatMessages={loadInitialChatMessages}
+      focusMessageId={focusMessageId}
+      copyMessageLink={copyMessageLink}
+      onJumpToPresent={focusMessageId ? jumpToPresent : undefined}
+      reloadKey={messagesReloadKey}
       incomingMessages={mainMessages.incomingMessages}
       channels={channels}
       subgroups={groupContextsHook.subgroups}

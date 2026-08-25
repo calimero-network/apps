@@ -63,7 +63,60 @@ interface ChatDisplaySplitProps {
   isEmojiSelectorVisible: boolean;
   setIsEmojiSelectorVisible: (isVisible: boolean) => void;
   messageWithEmojiSelector: CurbMessage | null;
+  /** Id of the message a permalink pointed at, if this view was opened by one. */
+  focusMessageId?: string | null;
+  /** Copy a shareable link to a message. */
+  copyMessageLink?: (message: CurbMessage) => void;
+  /**
+   * Leave a permalink's window and return to the newest messages.
+   *
+   * Needed because arriving by link leaves the view in the middle of the
+   * history: scrolling up loads older messages, but nothing loads newer ones,
+   * so without this the reader is stranded in the past with no way forward.
+   */
+  onJumpToPresent?: () => void;
+  /** Bump to reload the newest window without changing channel. */
+  reloadKey?: number;
 }
+
+/**
+ * Shown while the view is parked on a permalink's window.
+ *
+ * Arriving by link leaves the reader in the middle of the history with no way
+ * forward — scrolling up loads older messages, nothing loads newer ones. This
+ * is the way back, and saying so explicitly is better than letting someone
+ * discover the dead end by scrolling at it.
+ */
+const PermalinkBanner = styled.div`
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background-color: #1d1d21;
+  border: 1px solid #2f2f35;
+  color: #fff;
+  font-size: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+`;
+
+const PermalinkBannerButton = styled.button`
+  background: none;
+  border: none;
+  padding: 0;
+  color: #a0ff5a;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  &:hover {
+    text-decoration: underline;
+  }
+`;
 
 const ContainerPadding = styled.div<{ $isThread?: boolean }>`
   @media (max-width: 1024px) {
@@ -200,6 +253,10 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
   isEmojiSelectorVisible,
   setIsEmojiSelectorVisible,
   messageWithEmojiSelector,
+  focusMessageId,
+  copyMessageLink,
+  onJumpToPresent,
+  reloadKey,
 }: ChatDisplaySplitProps) {
   const [accountId, setAccountId] = useState<string | undefined>(undefined);
   const [username, setUsername] = useState<string>("");
@@ -360,6 +417,8 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
       authToken: undefined,
       privateIpfsEndpoint: "https://ipfs.io",
       contextId: resolvedContextId,
+      focusMessageId,
+      copyMessageLink,
     };
     return messageRenderer(params)(message, prevMessage);
   };
@@ -371,6 +430,14 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
           style={currentContainerPaddingStyle}
           $isThread={isThread && !!openThread}
         >
+          {focusMessageId && onJumpToPresent && !isThread && (
+            <PermalinkBanner>
+              <span>Viewing a linked message</span>
+              <PermalinkBannerButton type="button" onClick={onJumpToPresent}>
+                Jump to present
+              </PermalinkBannerButton>
+            </PermalinkBanner>
+          )}
           {openThread && isThread && (
             <ThreadHeader
               onClose={() => {
@@ -393,6 +460,8 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
               message.sender !== accountId
             }
             render={renderMessage}
+            focusMessageId={focusMessageId}
+            reloadKey={reloadKey}
             chatId={
               isThread && openThread?.id ? openThread.id : activeChat.id || ""
             }
@@ -434,7 +503,13 @@ const ChatDisplaySplit = memo(function ChatDisplaySplit({
 
 // Custom comparison to prevent re-renders from function reference changes
 export default memo(ChatDisplaySplit, (prevProps, nextProps) => {
-  // Only re-render if these critical values change
+  // Only re-render if these critical values change.
+  //
+  // Hand-maintained, like `ChatContainer`'s: a prop missing from this list is
+  // frozen at its first value with nothing to indicate it. Both comparators
+  // silently swallowed the permalink props — the parent re-rendered with the
+  // new value, this component kept the old one, and "Jump to present" appeared
+  // to do nothing at all.
   return (
     prevProps.activeChat.id === nextProps.activeChat.id &&
     prevProps.activeChat.contextId === nextProps.activeChat.contextId &&
@@ -442,6 +517,10 @@ export default memo(ChatDisplaySplit, (prevProps, nextProps) => {
     prevProps.updatedMessages === nextProps.updatedMessages &&
     prevProps.openThread?.id === nextProps.openThread?.id &&
     prevProps.isEmojiSelectorVisible === nextProps.isEmojiSelectorVisible &&
-    prevProps.openMobileReactions === nextProps.openMobileReactions
+    prevProps.openMobileReactions === nextProps.openMobileReactions &&
+    prevProps.focusMessageId === nextProps.focusMessageId &&
+    prevProps.reloadKey === nextProps.reloadKey &&
+    prevProps.onJumpToPresent === nextProps.onJumpToPresent &&
+    prevProps.copyMessageLink === nextProps.copyMessageLink
   );
 });

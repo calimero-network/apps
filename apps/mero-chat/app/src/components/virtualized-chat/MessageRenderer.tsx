@@ -24,6 +24,10 @@ interface MessageRendererProps {
   authToken: string | undefined;
   privateIpfsEndpoint: string;
   contextId?: string;
+  /** Id of the message a permalink pointed at, so it can be marked. */
+  focusMessageId?: string | null;
+  /** Copy a shareable link to a message; omitted where linking is unavailable. */
+  copyMessageLink?: (message: CurbMessage) => void;
 }
 
 // Create ImageRepository singleton outside the function to prevent memory leaks
@@ -50,6 +54,8 @@ const messageRender = ({
   authToken,
   privateIpfsEndpoint,
   contextId,
+  focusMessageId,
+  copyMessageLink,
 }: MessageRendererProps) => {
   // Reuse the same ImageRepository instance to maintain cache and prevent memory leaks
   if (!imageRepositoryInstance) {
@@ -96,6 +102,10 @@ const messageRender = ({
         authToken={authToken}
         privateIpfsEndpoint={privateIpfsEndpoint}
         contextId={contextId}
+        isFocused={!!focusMessageId && message.id === focusMessageId}
+        copyLink={
+          copyMessageLink ? () => copyMessageLink(message) : undefined
+        }
       />
     );
   };
