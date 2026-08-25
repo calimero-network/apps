@@ -131,17 +131,44 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      # merobox has had a console-verbosity knob since 0.6.30 (merobox#271): `quiet`
+      # keeps the banners and the final pass/fail summary and drops the per-step
+      # API-response dumps. Day to day that is what you want; to get the full detail
+      # back, re-run the job with "Enable debug logging" and GitHub sets runner.debug,
+      # which flips this to `verbose`. No second workflow, no flag to remember.
+      #
+      # It goes through $GITHUB_ENV rather than a workflow-level `env:` because the
+      # `runner` context does not exist at workflow or job level — only inside a step.
+      - name: Quiet merobox and its nodes on the happy path
+        run: |
+          # merobox's own console output.
+          echo "MEROBOX_LOG_LEVEL=${{ runner.debug == '1' && 'verbose' || 'quiet' }}" >> "$GITHUB_ENV"
+          # RUST_LOG for the merod nodes merobox boots. This has to go on the CLI:
+          # `bootstrap run --log-level` defaults to "debug", so the value is never
+          # None and merobox's `config.get("log_level")` fallback is unreachable — a
+          # `log_level:` key in the workflow YAML is silently ignored.
+          echo "MEROD_LOG=${{ runner.debug == '1' && 'debug' || 'info' }}" >> "$GITHUB_ENV"
+      # calimero-client-py publishes an sdist and no manylinux wheel, so a cold
+      # `pip install` compiles its Rust extension on the runner — 92 seconds of a
+      # 134-second step, measured. pip stores wheels it builds itself under
+      # ~/.cache/pip/wheels and reuses them, so keying this cache on the exact pins
+      # makes every run after the first a few seconds. Bump the key with the pins.
+      - name: Cache pip (calimero-client-py builds from source)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-merobox-0.6.55-ccpy-0.6.29
       - name: Install merobox
         # Pinned, and pinned TOGETHER with the merod image in workflows/e2e.yml.
         # merobox talks to the node's admin API directly, so an unpinned merobox
         # silently starts speaking a newer node's payloads and the e2e reds on a
         # commit that changed nothing (0.6.54 dropped upgradePolicy for rc.21).
-        run: pip install "merobox==0.6.55" "calimero-client-py==0.6.29" && merobox --version
+        run: pip install -q --disable-pip-version-check "merobox==0.6.55" "calimero-client-py==0.6.29" && merobox --version
       - name: Run 2-node world e2e (build → sync → break → converge)
         working-directory: workflows
         run: |
           for attempt in 1 2 3; do
-            if merobox bootstrap run e2e.yml; then exit 0; fi
+            if merobox bootstrap run --log-level "$MEROD_LOG" e2e.yml; then exit 0; fi
             echo "attempt ${attempt} failed — cleaning up and retrying"
             merobox stop --all || true
             # The node containers run as root, so their data/ is root-owned and a
