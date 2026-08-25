@@ -39,7 +39,11 @@ FILES=("$@")
 FAIL=0
 for f in "${FILES[@]}"; do
   step "Running workflow: $f"
-  ( cd "$WORKFLOWS_DIR" && merobox bootstrap run "$f" )
+  # MEROD_LOG sets RUST_LOG for the merod nodes merobox boots; it has to go on
+  # the CLI, because `bootstrap run --log-level` defaults to "debug" and so
+  # merobox's `log_level:` workflow-YAML fallback is never reached. Defaults to
+  # info here and locally; CI raises it to debug on a debug re-run.
+  ( cd "$WORKFLOWS_DIR" && merobox bootstrap run --log-level "${MEROD_LOG:-info}" "$f" )
   if [ $? -eq 0 ]; then green "$f passed"; else red "$f FAILED"; FAIL=1; fi
   (cd "$WORKFLOWS_DIR" && merobox nuke --force >/dev/null 2>&1) || true
 done

@@ -6,6 +6,13 @@ on:
     branches: [master]
   pull_request:
 
+# Without this, a push landing on top of an in-flight push leaves BOTH runs to
+# completion — and this repo's `app` job is a macOS runner, billed at ten times
+# the Linux rate. Superseded runs are the most expensive thing here.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   logic:
     name: WASM contract (Rust)
@@ -53,6 +60,9 @@ jobs:
       # which also survives the image renaming its iPhone models.
       - name: Wait for a simulator, then run app tests
         working-directory: app/MeroAR
+        env:
+          # Empty on a debug re-run, so the full build transcript comes back.
+          XCB_QUIET: ${{ runner.debug == '1' && '' || '-quiet' }}
         run: |
           set -euo pipefail
           udid=""
@@ -70,7 +80,11 @@ jobs:
           fi
           echo "using simulator $udid"
           xcrun simctl boot "$udid" || true
-          xcodebuild test -project MeroAR.xcodeproj -scheme MeroAR \
+          # -quiet drops xcodebuild's build graph — the SwiftCompile /
+          # WriteAuxiliaryFile / `cd …` lines that are 95% of this job's log and
+          # tell you nothing when it passes. Warnings, errors and the test
+          # summary still print. A debug re-run gets the full transcript back.
+          xcodebuild test $XCB_QUIET -project MeroAR.xcodeproj -scheme MeroAR \
             -destination "platform=iOS Simulator,id=$udid" \
             -derivedDataPath .build -only-testing:MeroARTests \
             CODE_SIGNING_ALLOWED=NO
@@ -88,8 +102,35 @@ jobs:
         uses: ./.github/actions/install-cargo-mero
       - name: Build WASM
         run: cd logic && cargo mero build
+      # merobox has had a console-verbosity knob since 0.6.30 (merobox#271): `quiet`
+      # keeps the banners and the final pass/fail summary and drops the per-step
+      # API-response dumps. Day to day that is what you want; to get the full detail
+      # back, re-run the job with "Enable debug logging" and GitHub sets runner.debug,
+      # which flips this to `verbose`. No second workflow, no flag to remember.
+      #
+      # It goes through $GITHUB_ENV rather than a workflow-level `env:` because the
+      # `runner` context does not exist at workflow or job level — only inside a step.
+      - name: Quiet merobox and its nodes on the happy path
+        run: |
+          # merobox's own console output.
+          echo "MEROBOX_LOG_LEVEL=${{ runner.debug == '1' && 'verbose' || 'quiet' }}" >> "$GITHUB_ENV"
+          # RUST_LOG for the merod nodes merobox boots. This has to go on the CLI:
+          # `bootstrap run --log-level` defaults to "debug", so the value is never
+          # None and merobox's `config.get("log_level")` fallback is unreachable — a
+          # `log_level:` key in the workflow YAML is silently ignored.
+          echo "MEROD_LOG=${{ runner.debug == '1' && 'debug' || 'info' }}" >> "$GITHUB_ENV"
+      # calimero-client-py publishes an sdist and no manylinux wheel, so a cold
+      # `pip install` compiles its Rust extension on the runner — 92 seconds of a
+      # 134-second step, measured. pip stores wheels it builds itself under
+      # ~/.cache/pip/wheels and reuses them, so keying this cache on the exact pins
+      # makes every run after the first a few seconds. Bump the key with the pins.
+      - name: Cache pip (calimero-client-py builds from source)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-merobox-0.6.55-ccpy-0.6.29
       - name: Install merobox
-        run: pip install "merobox==0.6.55" "calimero-client-py==0.6.29"
+        run: pip install -q --disable-pip-version-check "merobox==0.6.55" "calimero-client-py==0.6.29"
       # Schema-check first: a typo in a step name/field otherwise only shows up
       # after several minutes of node boot.
       - name: Validate workflow schemas
