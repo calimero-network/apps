@@ -19,15 +19,18 @@
  *
  *   1. Both pages authenticate off the URL hash and join the context.
  *   2. WebCodecs H.264 is really available (not the "use Chrome" fallback).
- *   3. BOTH peers encode: chunks posted climbs, no post errors.
- *   4. State CROSSES NODES: each peer's OWN node reports live chunks. This is the
- *      Calimero claim — node2 reads it from node2, not from node1's API.
- *   5. EACH peer decodes the OTHER's real video: exactly one remote tile, 640x480,
+ *   3. BOTH peers publish: post rate climbs, no publish errors.
+ *   4. EACH peer decodes the OTHER's real video: exactly one remote tile, 640x480,
  *      non-uniform pixels that CHANGE between samples. Blank and frozen both fail.
  *      Running this for BOTH sides is what catches a single-shared-decoder
  *      implementation, which looks perfectly correct with one sender.
- *   6. The reaper stays keyframe-clamped: oldest live chunk never runs past last
- *      keyframe seq, so the window can't strand an undecodable delta.
+ *   5. THE DAG STAYS EMPTY while all of that is true. This replaced an assertion
+ *      that replicated chunks CROSSED NODES, and the swap is the point: media now
+ *      rides ephemeral presence, so `liveChunks` climbing would mean the call had
+ *      fallen back to writing every access unit into replicated state. Asserting
+ *      zero here is strictly stronger than asserting non-zero was — a broken
+ *      transport cannot satisfy "pictures move AND nothing was written".
+ *   6. Broadcaster slots read 2/4 with two people live, and neither peer yielded.
  *
  * WHY REAL CHROME, NOT PLAYWRIGHT'S CHROMIUM: Playwright ships open-source
  * Chromium, which has no proprietary codecs — H.264 encode/decode is simply
@@ -58,7 +61,6 @@ const URLS_FILE = argOf("--urls") ?? "/tmp/mero-stream-dev-urls.txt";
 const ARTIFACTS = resolve(REPO, "data/browser-call");
 const HEADLESS = process.env.HEADLESS === "1";
 const CALL_SECONDS = Number(process.env.CALL_SECONDS ?? 20);
-const FPS = Number(process.env.CALL_FPS ?? 25);
 
 function argOf(flag) {
   const i = process.argv.indexOf(flag);
@@ -209,9 +211,14 @@ async function main() {
     // ── 1. Join ──────────────────────────────────────────────────────────────
     c.step("Waiting for both peers to join the context");
     for (const p of [sender, receiver]) {
-      const joined = p.page.locator('[data-testid="join-state"]');
+      // Gate on the ATTRIBUTE, not the rendered text. The text is a participant
+      // count now ("2 here"), and matching prose is how an e2e breaks on a
+      // copy edit.
+      const joined = p.page.locator(
+        '[data-testid="join-state"][data-joined="true"]',
+      );
       try {
-        await joined.filter({ hasText: "joined" }).waitFor({ timeout: 45_000 });
+        await joined.waitFor({ timeout: 45_000 });
         c.ok(`${p.name} joined`);
       } catch {
         check(false, `${p.name} never joined the context`);
@@ -256,11 +263,11 @@ async function main() {
     // filtered only on `track`, never on `from`. Two senders are two independent
     // H.264 bitstreams, so interleaving them into a single decoder produces an
     // error or a smear — invisible until somebody actually starts both sides.
-    c.step(`Starting capture on BOTH peers at ${FPS} fps`);
+    c.step("Starting capture on BOTH peers at the shipped defaults");
     const startCapture = async (p) => {
-      const fpsSlider = p.page.locator('input[type="range"]').first();
-      if ((await fpsSlider.count()) > 0) await fpsSlider.fill(String(FPS));
-
+      // No fps override any more. The slider moved into the data dialog, and the
+      // shipped default (25 fps / 1.5 Mbps) is exactly the configuration whose
+      // numbers we want — overriding it would measure something nobody runs.
       const toggle = p.page.locator('[data-testid="capture-toggle"]');
       await toggle.waitFor({ state: "visible", timeout: 15_000 });
       // Playwright waits for the button to be enabled (disabled until join lands).
@@ -278,28 +285,25 @@ async function main() {
       check(await startCapture(p), `capture is running on ${p.name}`);
     }
 
+    // Every measurement below lives in the "See more data" dialog, so open it
+    // once here and leave it open. It is modal, which is why this happens AFTER
+    // capture is running — the control bar behind it is inert.
+    for (const p of [sender, receiver]) {
+      await p.page.locator('[data-testid="details-toggle"]').click();
+      await p.page
+        .locator('[data-testid="data-dialog"]')
+        .waitFor({ state: "visible", timeout: 10_000 });
+    }
+
     const posted = await waitForMetric(
       sender.page,
-      "chunks-posted",
+      "post-rate",
       (v) => v > 0,
       45_000,
     );
-    check((posted ?? 0) > 0, `sender posted chunks (nextChunkSeq=${posted})`);
+    check((posted ?? 0) > 0, `sender is publishing frames (${posted}/s)`);
 
-    // ── 4. State crosses nodes ───────────────────────────────────────────────
-    c.step("Waiting for chunks to replicate to the receiver's own node");
-    const rxLive = await waitForMetric(
-      receiver.page,
-      "live-chunks",
-      (v) => v > 0,
-      60_000,
-    );
-    check(
-      (rxLive ?? 0) > 0,
-      `receiver's node holds replicated chunks (liveChunks=${rxLive})`,
-    );
-
-    // ── 5. EACH peer decodes the OTHER's real video ──────────────────────────
+    // ── 4. EACH peer decodes the OTHER's real video ──────────────────────────
     c.step("Verifying BOTH peers decode actual pixels from each other");
     for (const p of [sender, receiver]) {
       const rate = await waitForMetric(
@@ -419,16 +423,16 @@ async function main() {
       return out;
     };
     const txStats = await read(sender, [
-      "chunks-posted",
       "live-chunks",
       "live-bytes-kib",
       "pruned-chunks",
-      "last-keyframe-seq",
-      "oldest-live-chunk",
       "post-rate",
       "ingest-kib-s",
       "compression-ratio",
-      "post-rtt-p50",
+      "publish-rtt",
+      "duty-cycle",
+      "slices-per-sec",
+      "upstream-estimate",
       "post-errors",
     ]);
     const rxStats = await read(receiver, [
@@ -437,13 +441,11 @@ async function main() {
       "latency-p50",
       "latency-p95",
       "seq-gaps",
-      "last-keyframe-seq",
-      "oldest-live-chunk",
     ]);
 
     check(
       (txStats["post-errors"] ?? 0) === 0,
-      `no post errors (${txStats["post-errors"]})`,
+      `no publish errors (${txStats["post-errors"]})`,
     );
     check(
       (txStats["post-rate"] ?? 0) > 0,
@@ -454,42 +456,61 @@ async function main() {
       `sustained decode rate ${rxStats["decode-rate"]}/s`,
     );
 
-    // The keyframe clamp, observed rather than unit-tested: the oldest retained
-    // chunk must never be newer than the last keyframe, or the window has
-    // stranded a delta with no reference.
-    for (const [name, s] of [
+    // ── 5. The DAG stayed empty ──────────────────────────────────────────────
+    //
+    // The load-bearing assertion of the whole transport, and it is only
+    // meaningful BECAUSE the two checks above passed: pictures moved on both
+    // sides while nothing was written to replicated state. Either half alone
+    // proves nothing — zero chunks with a frozen tile is just a dead call.
+    for (const [name, st] of [
       ["sender", txStats],
       ["receiver", rxStats],
     ]) {
-      const oldest = s["oldest-live-chunk"];
-      const kf = s["last-keyframe-seq"];
-      if (oldest !== null && kf !== null) {
-        check(
-          oldest <= kf,
-          `${name} reaper stayed keyframe-clamped (oldest=${oldest} <= keyframe=${kf})`,
-        );
-      } else {
-        c.warn(
-          `${name}: no prune yet, clamp not exercised (oldest=${oldest}, kf=${kf})`,
-        );
-      }
+      check(
+        (st["live-chunks"] ?? 0) === 0,
+        `${name}: nothing entered the DAG (liveChunks=${st["live-chunks"]})`,
+      );
+    }
+    check(
+      (txStats["pruned-chunks"] ?? 0) === 0,
+      `no tombstones, because there was nothing to reap (pruned=${txStats["pruned-chunks"]})`,
+    );
+
+    // ── 6. Broadcaster slots ─────────────────────────────────────────────────
+    for (const p of [sender, receiver]) {
+      const pill = p.page.locator('[data-testid="slots-readout"]');
+      const occupied = Number(await pill.getAttribute("data-occupied"));
+      check(
+        occupied === 2,
+        `${p.name} sees 2 broadcasters in the 4 slots (got ${occupied})`,
+      );
+      const yielded = await p.page
+        .locator('[data-testid="yielded-notice"]')
+        .count();
+      check(
+        yielded === 0,
+        `${p.name} did not yield its slot with only 2 of 4 taken`,
+      );
     }
 
     // ── Report ───────────────────────────────────────────────────────────────
     c.step("Measurements");
     const table = {
-      "sender: chunks posted": txStats["chunks-posted"],
       "sender: post rate /s": txStats["post-rate"],
       "sender: ingest KiB/s": txStats["ingest-kib-s"],
       "sender: compression x": txStats["compression-ratio"],
-      "sender: post RTT p50 ms": txStats["post-rtt-p50"],
-      "sender: live bytes KiB": txStats["live-bytes-kib"],
-      "sender: pruned (tombstones)": txStats["pruned-chunks"],
-      "receiver: live chunks": rxStats["live-chunks"],
+      "sender: publish RTT p50 ms": txStats["publish-rtt"],
+      "sender: publishes needed /s": txStats["slices-per-sec"],
+      "sender: send loop used %": txStats["duty-cycle"],
+      "sender: est. upstream Mbps": txStats["upstream-estimate"],
+      "sender: DAG live chunks": txStats["live-chunks"],
+      "sender: DAG live bytes KiB": txStats["live-bytes-kib"],
+      "sender: tombstones": txStats["pruned-chunks"],
       "receiver: decode rate /s": rxStats["decode-rate"],
       "receiver: latency p50 ms": rxStats["latency-p50"],
       "receiver: latency p95 ms": rxStats["latency-p95"],
       "receiver: seq gaps": rxStats["seq-gaps"],
+      "receiver: DAG live chunks": rxStats["live-chunks"],
     };
     for (const [k, v] of Object.entries(table))
       c.info(`${k.padEnd(30)} ${v ?? "—"}`);

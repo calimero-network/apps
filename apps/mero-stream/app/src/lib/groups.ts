@@ -154,6 +154,53 @@ export async function createStreamNamespace(
 
 // ── Rooms (subgroups) ─────────────────────────────────────────────────────────
 
+/**
+ * Where a redeemed invitation should land the user.
+ *
+ * Returned rather than navigated to, because the two callers that redeem — the
+ * paste field and the link prompt — live in different parts of the tree and only
+ * the caller knows how it wants to route.
+ */
+export type Redeemed =
+  | { kind: "room"; contextId: string; identity: string; roomName?: string }
+  | { kind: "namespace"; namespaceId: string }
+  | { kind: "joined" };
+
+/**
+ * Accept an invitation and enter whatever it granted.
+ *
+ * Extracted so the paste path and the link path cannot drift: they used to be one
+ * inline sequence in StreamsPage, which meant the app-wide invitation prompt
+ * either had to duplicate it or could not exist. A room invitation needs BOTH
+ * joins — the namespace grant and then the room's context — and forgetting the
+ * second leaves someone a member of a stream staring at a call they cannot enter.
+ */
+export async function redeemInvite(
+  admin: AdminLike,
+  payload: StreamInvitePayload,
+  onStatus: (message: string) => void,
+): Promise<Redeemed> {
+  const accepted = await acceptInvite(admin, payload, onStatus);
+
+  if (accepted.roomId && accepted.contextId) {
+    const identity = await enterRoomContext(
+      admin,
+      { roomId: accepted.roomId, contextId: accepted.contextId },
+      onStatus,
+    );
+    return {
+      kind: "room",
+      contextId: accepted.contextId,
+      identity,
+      roomName: accepted.roomName,
+    };
+  }
+  if (accepted.namespaceId) {
+    return { kind: "namespace", namespaceId: accepted.namespaceId };
+  }
+  return { kind: "joined" };
+}
+
 export interface RoomRow {
   roomId: string;
   name: string;

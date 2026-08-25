@@ -62,10 +62,10 @@ const MAGIC_0 = 0x4d;
 const MAGIC_1 = 0x53;
 
 /** Bump on any header change. A receiver drops a version it does not know. */
-export const FRAME_VERSION = 1;
+export const FRAME_VERSION = 2;
 
 /** Bytes before the variable-length codec string. See the layout below. */
-const HEADER_FIXED_BYTES = 32;
+const HEADER_FIXED_BYTES = 40;
 
 // Header layout, little-endian throughout:
 //
@@ -82,9 +82,20 @@ const HEADER_FIXED_BYTES = 32;
 //   13   2     height         u16
 //   15   8     timestampUs    u64 — the media clock the decoder needs
 //   23   8     createdAtMs    u64 — sender wall clock, for the §4 latency probe
-//   31   1     codecLen       u8
-//   32   …     codec          ASCII
+//   31   8     startedAtMs    u64 — when THIS sender began its current
+//                              broadcast; the broadcaster-slot ranking key.
+//                              See lib/slots.ts.
+//   39   1     codecLen       u8
+//   40   …     codec          ASCII
 //   …    …     payload
+//
+// `startedAtMs` is what made this header v2. It has to ride in the media itself
+// rather than in a separate presence record because presence is a single-writer
+// register per author: a slot claim published between two frames would be
+// overwritten by the next frame, so the claim and the frames cannot be separate
+// messages on this channel. Carrying it in every fragment costs 8 bytes against
+// a 16 KiB budget and means a receiver can rank a sender from the first fragment
+// it ever sees of them, with no separate handshake.
 //
 // The codec string rides in EVERY fragment rather than only in fragment 0. It
 // costs ~11 bytes against a 16 KiB budget, and it makes each fragment
@@ -112,6 +123,16 @@ export interface LiveFrame {
   timestampUs: number;
   /** Sender wall clock, unix MILLISECONDS (same unit as `MediaChunk::created_at`). */
   createdAtMs: number;
+  /**
+   * Unix ms at which this sender began its CURRENT broadcast — constant for the
+   * whole run, unlike `createdAtMs` which changes every frame.
+   *
+   * The broadcaster-slot ranking key: every peer sorts active broadcasters by
+   * `(startedAtMs, memberId)` and yields its own capture if it falls outside the
+   * cap, so this value has to be identical in every fragment a sender emits and
+   * agreed on by every receiver. See lib/slots.ts.
+   */
+  startedAtMs: number;
   /** The exact codec string the peer's decoder must be configured with. */
   codec: string;
   /** The encoded access unit. Opaque — this module never parses it. */
@@ -127,6 +148,7 @@ export interface FrameFragment {
   height: number;
   timestampUs: number;
   createdAtMs: number;
+  startedAtMs: number;
   codec: string;
   fragIndex: number;
   fragCount: number;
@@ -219,7 +241,12 @@ export function encodeFragments(frame: LiveFrame): Uint8Array[] {
       BigInt(Math.max(0, Math.round(frame.createdAtMs))),
       true,
     );
-    buf[31] = codec.length;
+    view.setBigUint64(
+      31,
+      BigInt(Math.max(0, Math.round(frame.startedAtMs))),
+      true,
+    );
+    buf[39] = codec.length;
     buf.set(codec, HEADER_FIXED_BYTES);
     buf.set(payload, HEADER_FIXED_BYTES + codec.length);
 
@@ -243,7 +270,7 @@ export function decodeFragment(slice: Uint8Array): FrameFragment | null {
   if (slice[0] !== MAGIC_0 || slice[1] !== MAGIC_1) return null;
   if (slice[2] !== FRAME_VERSION) return null;
 
-  const codecLen = slice[31];
+  const codecLen = slice[39];
   const payloadStart = HEADER_FIXED_BYTES + codecLen;
   if (slice.length < payloadStart) return null;
 
@@ -268,6 +295,7 @@ export function decodeFragment(slice: Uint8Array): FrameFragment | null {
     height: view.getUint16(13, true),
     timestampUs: Number(view.getBigUint64(15, true)),
     createdAtMs: Number(view.getBigUint64(23, true)),
+    startedAtMs: Number(view.getBigUint64(31, true)),
     codec,
     fragIndex,
     fragCount,
@@ -422,6 +450,7 @@ function toFrame(header: FrameFragment, bytes: Uint8Array): LiveFrame {
     height: header.height,
     timestampUs: header.timestampUs,
     createdAtMs: header.createdAtMs,
+    startedAtMs: header.startedAtMs,
     codec: header.codec,
     bytes,
   };

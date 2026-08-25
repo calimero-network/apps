@@ -1,0 +1,217 @@
+name: Mero Stream — capacity ladder (how many people can actually broadcast?)
+description: >
+  MEASURES the broadcaster cap instead of asserting it. `lib/capacity.ts` derives
+  two upper bounds — gossipsub fan-out for upstream bandwidth, and the serial
+  publish loop for RTT — but neither says what a real node sustains, and
+  `MAX_BROADCASTERS` should not be a number somebody liked the look of.
+
+  Four nodes, one context. The script ramps 1 → 2 → 3 → 4 concurrent authors,
+  each publishing a realistic 640x480 / 25 fps / 1.5 Mbps stream on ephemeral
+  presence (49 single-fragment deltas and one four-fragment keyframe per 2 s,
+  fragments serialised per author exactly as `publishEphemeralFrame` serialises
+  them). Node 4 subscribes over SSE and counts what actually arrives.
+
+  Per rung it reports achieved fps, achieved publish rate against the ~26.5/s the
+  schedule demands, publish RTT p50/p95, the implied send-loop duty cycle,
+  delivered frames per author as a ratio of frames sent, and reassembly failures.
+  The highest rung still holding >=90% delivery at >=90% of the target frame rate
+  is the cap, and the script prints that number.
+
+  ASSERTIONS ARE DELIBERATELY WEAK. A measurement that fails the build when the
+  answer is "3 works, 4 does not" has destroyed the information it existed to
+  collect. What is asserted is that the RIG worked: each presence author carried
+  exactly one node's msgSeq range (per-author isolation — the exact class of bug
+  the 2026-08-07 shared-counter retro was about), the single-author rung was
+  healthy, and `contextStateHash` is byte-identical across the entire ladder so
+  nothing reached the DAG.
+
+  Author attribution is DERIVED, not supplied: node i publishes msgSeq in
+  [i*1_000_000, (i+1)*1_000_000), so the observer infers the sender from the
+  framing header and then CHECKS the author→node mapping is 1:1. Stronger than
+  trusting a preloaded key, and it avoids depending on which output name merobox
+  exposes for a member identity.
+
+  NOTE the observer changes role on the last rung: nodes 1..S publish and node 4
+  observes, so for S=1..3 it is a pure spectator and at S=4 it is also the fourth
+  publisher — which is what the real app does, where every participant is also a
+  receiver. Node 1's send-side series is the one comparable across all four rungs.
+
+force_pull_image: true
+
+nodes:
+  chain_id: testnet-1
+  count: 4
+  # rc.24 is a FLOOR, not a preference: `set_ephemeral` does not exist before it.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.24
+  prefix: calimero-node
+  log_level: info
+  # Distinct from e2e.yml (2760/2660), tombstones (2780/2680), fanout
+  # (2800/2700), live-chunks (2820/2720), ephemeral-frames (2840/2740). The
+  # script builds its URLs by hand, so these have to be pinned: with
+  # base_rpc_port set, merobox publishes host port base_rpc_port + i for node
+  # i+1, making localhost:2760..2763 stable.
+  base_port: 2860
+  base_rpc_port: 2760
+
+steps:
+  - name: Install application on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: "../logic/res/mero_stream.wasm"
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Create the stream mesh with THREE joining nodes
+    type: create_mesh
+    context_node: calimero-node-1
+    application_id: "{{app_id}}"
+    path: "../logic/res/mero_stream.wasm"
+    nodes:
+      - calimero-node-2
+      - calimero-node-3
+      - calimero-node-4
+    capability: member
+    params: '{"name": "ladder"}'
+
+  - name: Wait for the context on all four nodes
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+      - calimero-node-3
+      - calimero-node-4
+    timeout: 90
+
+  # Membership through the contract, so the roster the app reads is real. The
+  # media itself never touches the contract on this transport — that is the
+  # point — but `join` is still how a participant gets a display name.
+  - name: Alice joins
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    method: join
+    args: { username: "Alice", now: 1751955000 }
+
+  - name: Bob joins
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: join
+    args: { username: "Bob", now: 1751955001 }
+
+  - name: Carol joins
+    type: call
+    node: calimero-node-3
+    context_id: "{{context_id}}"
+    method: join
+    args: { username: "Carol", now: 1751955002 }
+
+  - name: Dave joins
+    type: call
+    node: calimero-node-4
+    context_id: "{{context_id}}"
+    method: join
+    args: { username: "Dave", now: 1751955003 }
+
+  - name: Sync the roster across all four
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+      - calimero-node-3
+      - calimero-node-4
+    timeout: 90
+
+  # `get_stats` rather than `get_members`, and `json_subset` rather than a length
+  # check: merobox's assertion DSL has no `len()` and rejects the whole statement
+  # as "Unrecognized JSON assertion" — which reads like a value mismatch but is a
+  # parse failure. memberCount is the same fact in a form the DSL can express.
+  - name: The furthest node reads the roster
+    type: call
+    node: calimero-node-4
+    context_id: "{{context_id}}"
+    method: get_stats
+    args: {}
+    executor_public_key: "{{public_key_calimero-node-4}}"
+    outputs:
+      dave_stats: result
+
+  - name: Assert all four members are visible from the furthest node
+    type: json_assert
+    statements:
+      - 'json_subset({{dave_stats}}, {"output": {"memberCount": 4, "name": "ladder"}})'
+
+  - name: Run the capacity ladder
+    # Same '..' guard as e2e-ephemeral-frames: merobox rejects a `script:` path
+    # containing '..' as path traversal, so the .sh wrapper next door does the
+    # hop up to app/e2e/.
+    type: script
+    script: e2e-capacity-ladder.sh
+    target: local
+    # Positional args: node1..node4 RPC urls, then the context id.
+    args:
+      - "http://localhost:2760"
+      - "http://localhost:2761"
+      - "http://localhost:2762"
+      - "http://localhost:2763"
+      - "{{context_id}}"
+    timeout: 600
+
+  # ── The rate-share rung (a NEGATIVE result, kept deliberately) ──────────────
+  #
+  # The ladder above measures the FULL-RATE workload and finds the cliff: 96%
+  # delivery at one author, 43% at two. `adaptiveFps` in app/src/lib/capacity.ts
+  # responds by dividing the rate among broadcasters, on the theory that the loss
+  # tracks the AGGREGATE publish rate rather than the head-count.
+  #
+  # That theory was measured, and it is WRONG. This rung re-runs two authors at the
+  # rate the app actually uses — 13 fps / 750 kbps each, ~27.8 slices/s between
+  # them, the same aggregate the healthy one-author rung put on the wire — and
+  # delivery reaches 61-70%, not 96%. Halving it again would not help either.
+  #
+  # Kept, and kept running, precisely BECAUSE it is negative: it is the evidence
+  # that concurrent author count is the variable rather than publish rate, that no
+  # client-side pacing reaches the cause, and that the remaining work is core-side.
+  # Deleting a disproving measurement is how a disproved theory comes back.
+  - name: Measure two authors at the shared rate (expect ~60-70%, NOT 96%)
+    type: script
+    script: e2e-capacity-ladder.sh
+    target: local
+    args:
+      - "http://localhost:2760"
+      - "http://localhost:2761"
+      - "http://localhost:2762"
+      - "http://localhost:2763"
+      - "{{context_id}}"
+      # rungs, fps, seconds, bitrate — positional, because whether merobox
+      # forwards an `env:` block to a script step is not worth discovering from a
+      # 6-minute CI job.
+      #
+      # 13 fps AND 750 kbps: `adaptiveEncoding` divides BOTH, and the bitrate half
+      # is the point. An earlier version of this step divided only the frame rate
+      # and reached 70% delivery instead of 43% — better, and short — because a
+      # fixed bitrate over fewer frames makes each frame bigger, and the keyframe
+      # grew from 4 fragments to 7. Halving the bitrate too keeps the fragment
+      # shape identical to the healthy single-author rung.
+      - "2"
+      - "13"
+      - "12"
+      - "750000"
+    timeout: 300
+
+  - name: Assert no panics or fatal errors on any node
+    type: assert_log_absent
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+      - calimero-node-3
+      - calimero-node-4
+    patterns:
+      - "panicked at"
+      - "thread 'main' panicked"
+      - "FATAL"
+
+stop_all_nodes: true

@@ -117,6 +117,12 @@ jobs:
             file: e2e-live-chunks.yml
           - name: approach 1 ephemeral frames
             file: e2e-ephemeral-frames.yml
+          # MEASURES the broadcaster cap rather than asserting it. Its own
+          # assertions are deliberately weak (the rig, not the answer), so a rung
+          # that degrades reports a number instead of reddening the build — read
+          # the printed table, and the uploaded results.json.
+          - name: capacity ladder (1-4 authors)
+            file: e2e-capacity-ladder.yml
     steps:
       - uses: actions/checkout@v4
 
@@ -189,6 +195,18 @@ jobs:
           # second failing scenario and lose exactly the logs we need.
           name: merobox-node-logs-${{ strategy.job-index }}
           path: workflows/data/container-logs/
+          if-no-files-found: ignore
+
+      # The capacity ladder's whole output is a measurement, so it has to survive
+      # the job even when the job passes. `if: always()` rather than `failure()`
+      # for exactly that reason, and `if-no-files-found: ignore` because every
+      # other scenario in the matrix writes nothing here.
+      - name: Upload capacity-ladder results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capacity-ladder-${{ strategy.job-index }}
+          path: data/capacity-ladder/
           if-no-files-found: ignore
 
       - name: Stop nodes

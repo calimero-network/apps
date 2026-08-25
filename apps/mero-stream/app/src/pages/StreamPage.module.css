@@ -57,7 +57,7 @@
 .nameInput {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 9px 12px;
   color: var(--text);
   font-size: 0.9rem;
@@ -72,7 +72,7 @@
   background: var(--surface-strong);
   color: var(--text);
   border: 1px solid var(--border-strong);
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 9px 16px;
   font-weight: 600;
   font-size: 0.9rem;
@@ -88,7 +88,7 @@
   font-size: 0.9rem;
   background: rgba(255, 83, 101, 0.08);
   border: 1px solid rgba(255, 83, 101, 0.25);
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 10px 14px;
 }
 
@@ -117,7 +117,7 @@
   width: 100%;
   aspect-ratio: 4 / 3;
   background: #000;
-  border-radius: 10px;
+  border-radius: var(--radius);
   /* The captured/decoded buffers are tiny (64×48); scale them up crisply so the
      probe's actual fidelity is visible rather than blurred by the browser. */
   image-rendering: pixelated;
@@ -134,16 +134,15 @@
 .startBtn,
 .stopBtn {
   border: none;
-  border-radius: 12px;
-  padding: 12px 24px;
-  font-weight: 700;
+  border-radius: var(--radius-lg);
+  padding: 10px 20px;
+  font-weight: 600;
   font-size: 0.95rem;
   cursor: pointer;
-  color: #fff;
+  color: var(--accent-fg);
 }
 .startBtn {
-  background: var(--accent-grad);
-  box-shadow: var(--shadow-glow);
+  background: var(--accent);
 }
 .stopBtn {
   background: var(--red);
@@ -204,7 +203,7 @@
   font-family: inherit;
   font-size: 0.78rem;
   padding: 7px 12px;
-  border-radius: 10px;
+  border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--bg-elev);
   color: var(--text-dim);
@@ -226,7 +225,7 @@
 .metric {
   background: var(--bg-elev);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   padding: 12px 14px;
   display: flex;
   flex-direction: column;

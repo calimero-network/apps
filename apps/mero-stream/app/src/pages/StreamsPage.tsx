@@ -1,18 +1,21 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
 import { getApplicationId, setActiveRoom, setRoomName } from "../lib/session";
 import { decodeInvite } from "../lib/inviteCodec";
 import {
-  acceptInvite,
   createStreamNamespace,
-  enterRoomContext,
   listStreamNamespaces,
   mintNamespaceInvite,
+  redeemInvite,
   type NamespaceRow,
 } from "../lib/groups";
-import { ActionButton, InviteBox, StatusNote, Spinner } from "../components/ui";
-import styles from "./StreamsPage.module.css";
+import { ActionButton, StatusNote, Spinner } from "../components/ui";
+import { initials } from "../lib/people";
+import InviteSheet from "../components/InviteSheet";
+import { invitationFromRaw } from "../lib/inviteLink";
+import { useDialogOpen } from "../hooks/useDialogOpen";
+import styles from "./Manage.module.css";
 
 /**
  * Streams = NAMESPACES. One level up from where this page used to sit.
@@ -42,6 +45,8 @@ export default function StreamsPage() {
   const [listing, setListing] = useState(true);
   const [name, setName] = useState("");
   const [joinCode, setJoinCode] = useState("");
+  const [showJoin, setShowJoin] = useState(false);
+  const joinDialogRef = useRef<HTMLDialogElement | null>(null);
 
   // One key names the action in flight ("create", "join", `invite:<id>`), instead
   // of a single `busy` boolean. With a boolean, clicking Invite disabled Create,
@@ -54,7 +59,6 @@ export default function StreamsPage() {
   const [invite, setInvite] = useState<{ id: string; code: string } | null>(
     null,
   );
-  const [copied, setCopied] = useState(false);
 
   /**
    * Run one action under its own key, with step status wired to `onStatus`.
@@ -138,8 +142,7 @@ export default function StreamsPage() {
           onStatus,
         );
         setInvite({ id: ns.namespaceId, code });
-        setCopied(false);
-        setDone(`Invite code ready for “${ns.name}”.`);
+        setDone(`Invite ready for “${ns.name}”.`);
       });
     },
     [mero, run],
@@ -150,199 +153,276 @@ export default function StreamsPage() {
    * namespace invitation too, so someone with no prior membership gets both joins
    * from one paste). A room code that names its context takes you into the call.
    */
-  const join = useCallback(() => {
-    if (!mero) return;
-    const payload = decodeInvite(joinCode);
-    if (!payload) {
-      setError(
-        "That invite code is not valid. Paste the whole code — it is one long line with no spaces.",
-      );
-      return;
-    }
-    void run("join", async (onStatus) => {
-      const accepted = await acceptInvite(mero.admin, payload, onStatus);
-      setJoinCode("");
-      onStatus("Refreshing your streams…");
-      await load(false);
-
-      if (accepted.roomId && accepted.contextId) {
-        const identity = await enterRoomContext(
-          mero.admin,
-          { roomId: accepted.roomId, contextId: accepted.contextId },
-          onStatus,
+  const acceptCode = useCallback(
+    (raw: string) => {
+      if (!mero) return;
+      // Accept a LINK pasted into the code field, not just a code. People paste
+      // whatever they were sent, and the two are indistinguishable to them —
+      // rejecting a link here would be the app refusing its own invitation.
+      // Accepts a platform link, a `calimero://` deep link, this app's older
+      // `?invite=` link, or the bare code — people paste whatever they were sent.
+      const candidate = invitationFromRaw(raw) ?? raw;
+      const payload = decodeInvite(candidate);
+      if (!payload) {
+        setError(
+          "That invite is not valid. If you pasted a code, paste the whole thing — it is one long line with no spaces.",
         );
-        if (accepted.roomName)
-          setRoomName(accepted.contextId, accepted.roomName);
-        setActiveRoom(accepted.contextId, identity);
-        navigate("/live");
         return;
       }
-      if (accepted.namespaceId) {
-        navigate(`/streams/${accepted.namespaceId}`);
-        return;
-      }
-      setDone("Joined. Your streams are listed below.");
-    });
-  }, [mero, joinCode, run, load, navigate]);
+      void run("join", async (onStatus) => {
+        // Shared with the app-level link prompt, so the two cannot drift. A room
+        // invitation needs BOTH joins — the namespace grant and the room's
+        // context — and this sequence is where that lives.
+        const landed = await redeemInvite(mero.admin, payload, onStatus);
+        setJoinCode("");
+        onStatus("Refreshing your streams…");
+        await load(false);
 
-  const copy = useCallback(async () => {
-    if (!invite) return;
-    try {
-      await navigator.clipboard.writeText(invite.code);
-      setCopied(true);
-    } catch {
-      // Clipboard access can be denied (insecure context, permissions). The code
-      // is in a selectable input, so say that instead of failing silently.
-      setError("Could not reach the clipboard — select the code and copy it.");
-    }
-  }, [invite]);
+        if (landed.kind === "room") {
+          if (landed.roomName) setRoomName(landed.contextId, landed.roomName);
+          setActiveRoom(landed.contextId, landed.identity);
+          navigate("/live");
+          return;
+        }
+        if (landed.kind === "namespace") {
+          navigate(`/streams/${landed.namespaceId}`);
+          return;
+        }
+        setDone("Joined. Your streams are listed below.");
+      });
+    },
+    [mero, run, load, navigate],
+  );
+
+  const join = useCallback(() => {
+    acceptCode(joinCode);
+    setShowJoin(false);
+  }, [acceptCode, joinCode]);
+
+  useDialogOpen(joinDialogRef, showJoin);
 
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <h1 className={styles.title}>
-          Mero Stream <span className={styles.version}>v{__APP_VERSION__}</span>
-        </h1>
-        <p className={styles.subtitle}>
-          A <strong>stream</strong> is a namespace you invite people to. Inside
-          it, each <strong>room</strong> is one video call. This is a Task-3
-          capacity probe — media rides the contract, not WebRTC.
-        </p>
+      <header className={styles.topbar}>
+        <div className={styles.brand}>
+          <h1 className={styles.brandName}>Mero Stream</h1>
+          <span className={styles.version}>v{__APP_VERSION__}</span>
+        </div>
+        <span className={styles.spacer} />
+        <button
+          type="button"
+          className={styles.ghostBtn}
+          onClick={() => setShowJoin(true)}
+          data-testid="open-join"
+        >
+          Join with a link or code
+        </button>
       </header>
 
-      <section className={styles.createBar}>
-        <input
-          className={styles.input}
-          placeholder="New stream name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && create()}
-          maxLength={60}
-          disabled={pending === "create"}
-          data-testid="stream-name-input"
-        />
-        <ActionButton
-          onClick={create}
-          pending={pending === "create"}
-          pendingLabel="Creating…"
-          disabled={!name.trim() || !mero}
-          testId="create-stream"
-        >
-          Create stream
-        </ActionButton>
-      </section>
+      <main className={styles.content}>
+        <div className={styles.heading}>
+          <h2 className={styles.title}>Your streams</h2>
+          <p className={styles.subtitle}>
+            A <strong>stream</strong> is a namespace you invite people to.
+            Inside it, each <strong>room</strong> is one video call — 640×480
+            H.264 carried on ephemeral presence, so nothing is written to
+            replicated state.
+          </p>
+        </div>
 
-      <section className={styles.createBar}>
-        <input
-          className={styles.input}
-          placeholder="Paste an invite code — for a stream or a room"
-          value={joinCode}
-          onChange={(e) => setJoinCode(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && join()}
-          disabled={pending === "join"}
-          data-testid="join-code-input"
-        />
-        <ActionButton
-          onClick={join}
-          pending={pending === "join"}
-          pendingLabel="Joining…"
-          disabled={!joinCode.trim() || !mero}
-          testId="join-submit"
-        >
-          Join
-        </ActionButton>
-      </section>
+        <div className={styles.toolbar}>
+          <input
+            className={styles.input}
+            placeholder="Name a new stream"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && create()}
+            maxLength={60}
+            disabled={pending === "create"}
+            data-testid="stream-name-input"
+          />
+          <ActionButton
+            onClick={create}
+            pending={pending === "create"}
+            pendingLabel="Creating…"
+            disabled={!name.trim() || !mero}
+            testId="create-stream"
+          >
+            Create stream
+          </ActionButton>
+        </div>
 
-      {/* Step-level status: these flows are 3-6 round-trips deep, and naming the
-          step is what separates "loading" from "hung". */}
-      {status && (
-        <StatusNote tone="pending" testId="streams-status">
-          {status}
-        </StatusNote>
-      )}
-      {!status && done && (
-        <StatusNote tone="ok" testId="streams-done">
-          {done}
-        </StatusNote>
-      )}
-      {error && (
-        <StatusNote tone="error" testId="streams-error">
-          {error}
-        </StatusNote>
-      )}
+        {/* Step-level status: these flows are 3-6 round-trips deep, and naming
+            the step is what separates "loading" from "hung". */}
+        {status && (
+          <StatusNote tone="pending" testId="streams-status">
+            {status}
+          </StatusNote>
+        )}
+        {!status && done && (
+          <StatusNote tone="ok" testId="streams-done">
+            {done}
+          </StatusNote>
+        )}
+        {error && (
+          <StatusNote tone="error" testId="streams-error">
+            {error}
+          </StatusNote>
+        )}
 
-      <section className={styles.list}>
-        <h2 className={styles.listTitle}>
-          Your streams
+        {/* Page level, not inside the card. An invite sheet is a full-width
+            object — QR beside a link beside an explanation — and in a ~440px
+            grid cell its right-hand column collapsed to about 180px: the link
+            input vanished, the scope pill overflowed and the hint wrapped one
+            word per line. */}
+        {invite && (
+          <InviteSheet
+            code={invite.code}
+            scope={`Whole stream · ${
+              namespaces.find((n) => n.namespaceId === invite.id)?.name ??
+              "stream"
+            }`}
+            hint={
+              <>
+                Anyone with this link can join that stream and every room in it.
+                Opening it shows them what they have been invited to and a Join
+                button — in the web app, the installed app, or the desktop
+                launcher. To invite someone into one specific call, open the
+                stream and use <strong>Invite</strong> on that room.
+              </>
+            }
+          />
+        )}
+
+        <div className={styles.sectionHead}>
+          <h3 className={styles.sectionTitle}>
+            {namespaces.length} stream{namespaces.length === 1 ? "" : "s"}
+          </h3>
           {listing && (
-            <span className={styles.listLoading}>
+            <span className={styles.sectionNote}>
               <Spinner label="Loading streams" /> loading…
             </span>
           )}
-        </h2>
+        </div>
 
         {!listing && namespaces.length === 0 && (
-          <p className={styles.muted}>
-            No streams yet. Create one above, or paste an invite code to join
-            someone else&apos;s.
-          </p>
+          <div className={styles.empty}>
+            <span className={styles.emptyTitle}>No streams yet</span>
+            <span className={styles.emptyHint}>
+              Create one above to start a call, or use{" "}
+              <strong>Join with a link or code</strong> if someone invited you.
+            </span>
+          </div>
         )}
 
-        {namespaces.map((ns) => (
-          <div key={ns.namespaceId}>
-            <div className={styles.rowWrap}>
-              <button
-                className={styles.row}
-                onClick={() => navigate(`/streams/${ns.namespaceId}`)}
+        {namespaces.length > 0 && (
+          <div className={styles.grid}>
+            {namespaces.map((ns) => (
+              <article
+                key={ns.namespaceId}
+                className={styles.card}
                 data-testid="stream-row"
                 data-namespace={ns.namespaceId}
               >
-                <span className={styles.streamAvatar}>
-                  {ns.name.slice(0, 2).toUpperCase()}
-                </span>
-                <span className={styles.rowText}>
-                  <span className={styles.rowName}>{ns.name}</span>
-                  <span className={styles.rowMeta}>
-                    {ns.roomCount} room{ns.roomCount === 1 ? "" : "s"} ·{" "}
-                    {ns.memberCount} member{ns.memberCount === 1 ? "" : "s"}
+                <div className={styles.cardTop}>
+                  <span className={styles.avatar} aria-hidden="true">
+                    {initials(ns.name)}
                   </span>
+                  <span className={styles.cardText}>
+                    <span className={styles.cardName} title={ns.name}>
+                      {ns.name}
+                    </span>
+                    <span className={styles.cardMeta}>
+                      <span className={styles.pill}>
+                        {ns.roomCount} room{ns.roomCount === 1 ? "" : "s"}
+                      </span>
+                      <span className={styles.pill}>
+                        {ns.memberCount} member
+                        {ns.memberCount === 1 ? "" : "s"}
+                      </span>
+                    </span>
+                  </span>
+                </div>
+                <span className={styles.cardId} title={ns.namespaceId}>
+                  {ns.namespaceId}
                 </span>
-                <span className={styles.enter}>Open →</span>
-              </button>
-              {/* Outside the row <button> on purpose: nested interactive elements
-                  are invalid HTML and the inner click does not reliably fire. */}
-              <ActionButton
-                onClick={() => mintInvite(ns)}
-                pending={pending === `invite:${ns.namespaceId}`}
-                pendingLabel="Minting…"
-                variant="secondary"
-                testId="invite-btn"
-                title="Mint a code that invites someone to this whole stream"
-              >
-                Invite
-              </ActionButton>
-            </div>
-
-            {invite?.id === ns.namespaceId && (
-              <InviteBox
-                code={invite.code}
-                scope={`Whole stream · ${ns.name}`}
-                copied={copied}
-                onCopy={() => void copy()}
-                hint={
-                  <>
-                    Anyone with this code can join <strong>{ns.name}</strong>{" "}
-                    and every room in it. They paste it into{" "}
-                    <em>Paste an invite code</em> above and land on the room
-                    list. To drop someone straight into one call, open the
-                    stream and use <strong>Invite</strong> on that room.
-                  </>
-                }
-              />
-            )}
+                <div className={styles.cardActions}>
+                  <button
+                    type="button"
+                    className={styles.openBtn}
+                    onClick={() => navigate(`/streams/${ns.namespaceId}`)}
+                    data-testid="open-stream"
+                  >
+                    Open
+                  </button>
+                  {/* Outside any wrapping button: nested interactive elements are
+                      invalid HTML and the inner click does not reliably fire. */}
+                  <ActionButton
+                    onClick={() => mintInvite(ns)}
+                    pending={pending === `invite:${ns.namespaceId}`}
+                    pendingLabel="Minting…"
+                    variant="secondary"
+                    testId="invite-btn"
+                    title="Invite someone to this whole stream"
+                  >
+                    Invite
+                  </ActionButton>
+                </div>
+              </article>
+            ))}
           </div>
-        ))}
-      </section>
+        )}
+      </main>
+
+      <dialog
+        ref={joinDialogRef}
+        className={styles.dialog}
+        data-testid="join-dialog"
+        onClose={() => setShowJoin(false)}
+      >
+        <div className={styles.dialogHead}>
+          <h2 className={styles.dialogTitle}>Join a stream or room</h2>
+          <span className={styles.spacer} />
+          <button
+            type="button"
+            className={styles.ghostBtn}
+            onClick={() => setShowJoin(false)}
+            data-testid="join-dialog-close"
+          >
+            Close
+          </button>
+        </div>
+        <div className={styles.dialogBody}>
+          <div className={styles.dialogRow}>
+            <input
+              className={styles.dialogInput}
+              placeholder="Paste an invite link or code"
+              value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && join()}
+              disabled={pending === "join"}
+              data-testid="join-code-input"
+              aria-label="Invite link or code"
+            />
+            <ActionButton
+              onClick={join}
+              pending={pending === "join"}
+              pendingLabel="Joining…"
+              disabled={!joinCode.trim() || !mero}
+              testId="join-submit"
+            >
+              Join
+            </ActionButton>
+          </div>
+          <p className={styles.help}>
+            An invite <strong>link</strong> normally just needs opening — it
+            brings you here and joins on its own. Paste one in only if it did
+            not survive however it was sent to you. A raw <strong>code</strong>{" "}
+            is one long line of base58 with no spaces, and any mero app&apos;s
+            code works here.
+          </p>
+        </div>
+      </dialog>
     </div>
   );
 }

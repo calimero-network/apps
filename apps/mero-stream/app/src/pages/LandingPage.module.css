@@ -87,7 +87,7 @@
 .primary,
 .secondary {
   padding: 13px 26px;
-  border-radius: 10px;
+  border-radius: var(--radius);
   font-weight: 600;
   text-decoration: none;
   font-size: 0.98rem;
@@ -102,9 +102,11 @@
   color: #e8ecf4;
   border: 1px solid rgba(255, 255, 255, 0.12);
 }
-.primary:hover,
+.primary:hover {
+  background: var(--accent-hover);
+}
 .secondary:hover {
-  transform: translateY(-1px);
+  background: var(--surface-hover);
 }
 
 .hint {

@@ -1,79 +1,101 @@
 /* ── Theme tokens ───────────────────────────────────────────────────────────
  *
- * Trimmed from mero-meet. Dark is the default; a light palette is provided for
- * completeness (selected via `data-theme="light"` on <html>). Mero Stream has no
- * theme toggle UI — it's a diagnostic app — but the variables keep the pages
- * re-themable and consistent with the other mero apps.
+ * A deliberately PLAIN palette: neutral slate surfaces, one blue accent, flat
+ * fills, hairline borders, small radii. Nothing here is a gradient and nothing
+ * glows.
+ *
+ * What it replaced and why: the previous theme carried
+ * `--accent-grad: linear-gradient(135deg, #6d83ff, #a06bff)`, a matching
+ * `--shadow-glow`, and two large radial washes painted onto <body>. On a video
+ * app those are actively harmful rather than merely a matter of taste — a violet
+ * cast behind the tiles is the one thing you cannot subtract from your judgement
+ * of a decoded picture, which is most of what this app is for. The stage is now
+ * a flat neutral ground so the only colour on screen is the video.
+ *
+ * Dark is the default; light is available via `data-theme="light"` on <html>.
+ * There is no toggle UI — the tokens exist so the pages stay re-themable and
+ * consistent with the other mero apps.
  */
 :root,
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: #090b10;
-  --bg-elev: #12151d;
-  --surface: rgba(255, 255, 255, 0.045);
-  --surface-hover: rgba(255, 255, 255, 0.08);
-  --surface-strong: rgba(255, 255, 255, 0.1);
-  --border: rgba(255, 255, 255, 0.09);
-  --border-strong: rgba(255, 255, 255, 0.16);
+  --bg: #0c0d10;
+  --bg-elev: #15171b;
+  --surface: #1b1e23;
+  --surface-hover: #22262c;
+  --surface-strong: #2a2f36;
+  --border: #262a31;
+  --border-strong: #363c45;
 
-  --text: #eef1f7;
-  --text-dim: #9aa6bd;
-  --text-faint: #69748a;
+  --text: #e8eaed;
+  --text-dim: #9ba1ab;
+  --text-faint: #6b7280;
 
-  --accent: #6d83ff;
-  --accent-2: #a06bff;
-  --accent-grad: linear-gradient(135deg, #6d83ff 0%, #a06bff 100%);
-  --green: #43d17f;
-  --red: #ff5365;
-  --amber: #ffb74d;
+  --accent: #3b82f6;
+  --accent-hover: #2f6fdc;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(59, 130, 246, 0.14);
+  --green: #22c55e;
+  --red: #ef4444;
+  --red-hover: #dc2626;
+  --amber: #f59e0b;
 
-  --radius-sm: 10px;
-  --radius: 14px;
-  --radius-lg: 20px;
-  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.3);
-  --shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-  --shadow-glow: 0 8px 30px rgba(109, 131, 255, 0.35);
+  /* The video stage sits on its own ground, darker than the chrome around it,
+     so a black letterbox inside a tile reads as part of the picture rather than
+     as a hole in the page. */
+  --stage: #08090b;
+  --tile: #000000;
 
-  --page-glow-1: rgba(109, 131, 255, 0.14);
-  --page-glow-2: rgba(160, 107, 255, 0.1);
-  --scrollbar: rgba(255, 255, 255, 0.12);
-  --scrollbar-hover: rgba(255, 255, 255, 0.2);
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
 
-  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --scrollbar: #363c45;
+  --scrollbar-hover: #4a515c;
+
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
 
-  --bg: #f4f6fb;
+  --bg: #ffffff;
   --bg-elev: #ffffff;
-  --surface: rgba(15, 23, 42, 0.04);
-  --surface-hover: rgba(15, 23, 42, 0.07);
-  --surface-strong: rgba(15, 23, 42, 0.09);
-  --border: rgba(15, 23, 42, 0.1);
-  --border-strong: rgba(15, 23, 42, 0.18);
+  --surface: #f6f7f9;
+  --surface-hover: #eef0f3;
+  --surface-strong: #e4e7ec;
+  --border: #e2e5ea;
+  --border-strong: #cbd1da;
 
-  --text: #16192a;
-  --text-dim: #566079;
-  --text-faint: #8a93a8;
+  --text: #14171c;
+  --text-dim: #5b636f;
+  --text-faint: #8b929d;
 
-  --accent: #4f63e8;
-  --accent-2: #8a4fe6;
-  --accent-grad: linear-gradient(135deg, #4f63e8 0%, #8a4fe6 100%);
-  --green: #17a95c;
-  --red: #e23b4d;
-  --amber: #d98515;
+  --accent: #2563eb;
+  --accent-hover: #1d4fd7;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(37, 99, 235, 0.1);
+  --green: #16a34a;
+  --red: #dc2626;
+  --red-hover: #b91c1c;
+  --amber: #d97706;
 
-  --shadow-sm: 0 2px 10px rgba(15, 23, 42, 0.08);
-  --shadow: 0 12px 40px rgba(15, 23, 42, 0.16);
-  --shadow-glow: 0 8px 30px rgba(79, 99, 232, 0.25);
+  /* Even in light mode the stage stays dark. A white surround around video is
+     the single fastest way to make a correctly decoded frame look wrong. */
+  --stage: #101216;
+  --tile: #000000;
 
-  --page-glow-1: rgba(79, 99, 232, 0.12);
-  --page-glow-2: rgba(138, 79, 230, 0.1);
-  --scrollbar: rgba(15, 23, 42, 0.18);
-  --scrollbar-hover: rgba(15, 23, 42, 0.3);
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow: 0 4px 16px rgba(16, 24, 40, 0.1);
+
+  --scrollbar: #cbd1da;
+  --scrollbar-hover: #aab2bd;
 }
 
 * {
@@ -90,10 +112,6 @@ body,
 
 body {
   background: var(--bg);
-  background-image:
-    radial-gradient(1100px 600px at 78% -10%, var(--page-glow-1), transparent 60%),
-    radial-gradient(900px 520px at 12% 8%, var(--page-glow-2), transparent 55%);
-  background-attachment: fixed;
   color: var(--text);
   font-family: var(--font);
   -webkit-font-smoothing: antialiased;

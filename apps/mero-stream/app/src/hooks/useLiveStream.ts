@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useMero, useSubscription } from "@calimero-network/mero-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMero } from "@calimero-network/mero-react";
 import { useMeroStream } from "./useMeroStream";
 import {
   createDecoder,
@@ -11,14 +11,24 @@ import {
 } from "../lib/webcodecs";
 import {
   bytesCodec,
+  maxPayloadBytes,
   decodeFragment,
   encodeFragments,
   FrameReassembler,
   nextMsgSeq,
 } from "../lib/ephemeralFrames";
 import { ProbeRecorder, type ProbeSnapshot } from "../lib/metrics";
+import { evaluateSlots, type Claim, type SlotView } from "../lib/slots";
+import {
+  adaptiveEncoding,
+  dutyCycle,
+  pressure,
+  sendBudget,
+  type Pressure,
+  type SendBudget,
+} from "../lib/capacity";
 import { initialCongestion, nextBitrate, recordPost } from "../lib/congestion";
-import type { LiveStats, SenderCursor } from "../types";
+import type { LiveStats } from "../types";
 
 // 480p — the resolution approach 3 could never reach. Its toy in-WASM codec was
 // pinned at 64x48 because the app had to produce bit-identical bytes on every
@@ -38,16 +48,7 @@ const DEFAULT_BITRATE = 1_500_000;
 // - the reaper cannot prune past the newest keyframe, so a LONG gap pins the
 //   whole window and live state stops being bounded
 // - and a peer joining mid-stream sees nothing until the next one arrives
-const KEYFRAME_INTERVAL_MS = 2000;
-
-// Safety net only — SSE ChunkPosted carries the urgency, and `drain` now coalesces
-// rather than dropping notifications, so this no longer sets the latency floor.
-//
-// It used to be 1000 ms AND drain() dropped any event arriving mid-flight, so the
-// next fetch waited for this timer: latency landed roughly uniformly in 0..1000 ms,
-// i.e. mean ~500 ms / p95 ~950 ms. Measured before the fix: p50 505 ms, p95 960 ms.
-// The distribution WAS this constant.
-const RECEIVE_POLL_MS = 250;
+export const KEYFRAME_INTERVAL_MS = 2000;
 
 // 25 fps by default (slider still reaches 30). Note this does NOT change the state
 // rate: the encoder targets a fixed BITRATE, so 15 -> 25 fps buys smoothness at
@@ -56,36 +57,24 @@ const RECEIVE_POLL_MS = 250;
 const DEFAULT_FPS = 25;
 
 /**
- * How the encoded bytes travel between peers.
+ * Consecutive `set_ephemeral` failures, with no success ever, that are reported
+ * as "this node cannot do ephemeral presence" rather than as a dropped frame.
  *
- * * `contract` — approach 2, unchanged: `post_chunk` writes every access unit
- *   into replicated state (~188 KB/s of new state at 1.5 Mbps), a `ChunkPosted`
- *   event notifies, the receiver reads it back with `get_chunks`, and the
- *   keyframe-clamped reaper walks the window back with tombstones.
- * * `ephemeral` — approach 1, new in core 0.11.0-rc.24 (core#3427): the bytes
- *   ride an ephemeral-presence slice. Never persisted, never in the DAG, no WASM
- *   run, swept by the node on a 7 s TTL, and delivered IN the event — so the
- *   receiver's `get_chunks` round-trip disappears too.
+ * Named `…_UNSUPPORTED_AFTER`, not `…_FALLBACK_AFTER`: there is no transport left
+ * to fall back TO, so tripping this produces a stated error naming the required
+ * core version. The old name survived the transport removal and said the opposite
+ * of what the code does.
  *
- * The default stays `contract` on purpose. This app is a capacity probe and its
- * published numbers are that path's; the switch exists so the two can be
- * measured back to back in one run, on one machine, against the same camera —
- * which is a far stronger comparison than two separate sessions. See
- * lib/ephemeralFrames.ts for what the ephemeral channel costs to use.
+ * Not one, deliberately: a node that predates core 0.11.0-rc.24 rejects the
+ * method every time, but a single transient failure on the very first frame
+ * would otherwise be reported as a missing feature. Requiring a streak — and
+ * only while nothing has ever succeeded — separates "this node cannot do it"
+ * from "that one call didn't land".
+ *
+ * There is no longer a transport to fall back TO (see the module note above), so
+ * tripping this is a hard, explained error instead of a silent demotion.
  */
-export type LiveTransport = "contract" | "ephemeral";
-
-/**
- * Consecutive `set_ephemeral` failures, with no success ever, that demote the
- * transport back to `contract`.
- *
- * Not one, deliberately: a node that predates rc.24 rejects the method every
- * time, but a single transient failure on the very first frame would otherwise
- * strand the whole session on the contract path. Requiring a streak — and only
- * while nothing has ever succeeded — separates "this node cannot do it" from
- * "that one call didn't land".
- */
-const EPHEMERAL_FALLBACK_AFTER = 3;
+const EPHEMERAL_UNSUPPORTED_AFTER = 3;
 
 // Drop a sender's tile and decoder after this long without a chunk from them. Long
 // enough to ride out a stall or a keyframe gap, short enough that someone who left
@@ -95,8 +84,16 @@ const PEER_TIMEOUT_MS = 6000;
 /** Internal per-sender decode state. */
 interface PeerState {
   from: string;
+  /** When this sender CLAIMS it began broadcasting — remote input, not a fact. */
+  startedAtMs: number;
+  /**
+   * Local ms at which we first saw a frame from this sender. Floors the claim
+   * above so a spoofed `startedAtMs: 0` cannot squat a slot forever — see
+   * `effectiveStart` in lib/slots.ts.
+   */
+  firstSeenAt: number;
   decoder: DecoderHandle | null;
-  /** True once this sender's first keyframe has been seen — see the gate in `drainOnce`. */
+  /** True once this sender's first keyframe has been seen — see the gate in `renderChunk`. */
   started: boolean;
   framesDecoded: number;
   lastSeenAt: number;
@@ -108,6 +105,8 @@ interface PeerState {
 /** One remote participant, as the UI needs to render it. */
 export interface RemotePeer {
   from: string;
+  /** When this sender began its current broadcast — the slot ranking key. */
+  startedAtMs: number;
   width: number;
   height: number;
   framesDecoded: number;
@@ -122,13 +121,30 @@ export interface LiveController {
   /** Register/unregister a tile's canvas so this sender's decoder can target it. */
   attachPeerCanvas: (from: string, el: HTMLCanvasElement | null) => void;
   running: boolean;
+  /**
+   * Start broadcasting. A no-op when {@link slots}`.mayClaim` is false — the
+   * button is disabled there too, but the guard lives here so a stale click or a
+   * driver script cannot open a fifth stream.
+   */
   start: () => void;
   stop: () => void;
+  /**
+   * Broadcaster-slot occupancy.
+   *
+   * Recomputed on the 1 s reap tick, immediately after our own `start()`/`stop()`,
+   * and when a NEW remote broadcaster's first frame arrives — the last of those
+   * was missing, and the doc here claimed it anyway. It is not cosmetic: `start()`
+   * gates on `slotsRef.current.mayClaim`, so a stale count let someone click
+   * "Go live" into an already-full call and then get yielded a second later.
+   * Bounded work — once per new sender, not per frame.
+   */
+  slots: SlotView;
+  /** Set when this client yielded its own slot to earlier broadcasters. */
+  yielded: boolean;
+  /** Dismiss the yield notice (the "Go live" control re-arms on its own). */
+  clearYielded: () => void;
   fps: number;
   setFps: (n: number) => void;
-  /** How the encoded bytes travel. See {@link LiveTransport}. */
-  transport: LiveTransport;
-  setTransport: (t: LiveTransport) => void;
   /** The user's requested ceiling. */
   bitrate: number;
   setBitrate: (n: number) => void;
@@ -138,7 +154,45 @@ export interface LiveController {
    * picture with no explanation is how the retro's call felt from the inside.
    */
   effectiveBitrate: number;
+  /**
+   * The frame rate actually being captured: `fps` divided among the live
+   * broadcasters. Surfaced because a call that quietly halves your frame rate
+   * when someone else goes live, with nothing saying so, reads as the app
+   * degrading for no reason. See `adaptiveFps` in lib/capacity.ts.
+   */
+  effectiveFps: number;
+  /**
+   * The send-loop budget for what is ACTUALLY being encoded.
+   *
+   * Computed here, once, rather than in each panel that displays it. Both the
+   * control-bar strip and the data dialog derived it independently from raw
+   * inputs, and they drifted: one used the slider ceiling and the other the
+   * shared rate, so the two disagreed the moment a second broadcaster went live.
+   * One source removes the class of bug rather than that instance of it.
+   */
+  budget: SendBudget;
+  /**
+   * Fraction of each second the serial send loop spends waiting on publishes, at
+   * the measured publish RTT — plus its severity band.
+   *
+   * Here for the same reason `budget` is. Both panels derived this independently
+   * from raw inputs, and `budget` was centralised precisely to close that class of
+   * drift; leaving the next derived value in two places reopened it. The comment
+   * in CallPage claiming "from the hook, not recomputed here" was already untrue
+   * of `duty`.
+   */
+  duty: number;
+  load: Pressure;
+  /**
+   * Replicated-state counters, refreshed only by {@link refreshStats}.
+   *
+   * On this transport they are all expected to stay at ZERO while the tiles are
+   * moving — that is the proof the media never touched the DAG, not a broken
+   * read. Polled on demand rather than every second because it is a contract
+   * round-trip to read a table nothing writes to.
+   */
   stats: LiveStats | null;
+  refreshStats: () => void;
   probe: ProbeSnapshot;
   downloadCsv: () => void;
   resetProbe: () => void;
@@ -148,15 +202,24 @@ export interface LiveController {
 }
 
 /**
- * The approach-2 loop: hardware-encode in the browser, replicate opaque bytes.
+ * The call loop: hardware-encode in the browser, carry the bytes on ephemeral
+ * presence, decode one stream per remote sender.
  *
- * SEND: getUserMedia(640x480) -> VideoEncoder -> EncodedVideoChunk -> base64 ->
- * post_chunk. The app stores the bytes without understanding them.
+ * SEND: getUserMedia(640x480) -> VideoEncoder -> EncodedVideoChunk -> framed
+ * into <=16 KiB fragments -> `set_ephemeral`. No WASM run, no state delta,
+ * nothing in the DAG.
  *
- * RECEIVE: on ChunkPosted (SSE) -> get_chunks(cursor) -> VideoDecoder -> canvas.
- * A joiner sends an empty cursor set and the contract starts each sender at that
- * sender's own newest keyframe: a decoder fed a delta frame with no reference
- * throws rather than degrading.
+ * RECEIVE: the `Ephemeral` event CARRIES the bytes -> reassemble -> VideoDecoder
+ * -> canvas. There is no cursor and no backlog, so a joiner's only way in is to
+ * wait out each sender's next keyframe (bounded by KEYFRAME_INTERVAL_MS): a
+ * decoder fed a delta frame with no reference throws rather than degrading.
+ *
+ * `post_chunk` — writing every access unit into replicated state — used to be
+ * the default here and switchable at runtime. It is gone from this path: it cost
+ * ~188 KB/s of permanently-stored, tombstone-generating state plus a second
+ * round-trip on receive, to deliver the same picture. The contract methods
+ * remain (see useMeroStream) so the recorded Task-3 numbers stay reproducible,
+ * but nothing in the call UI reaches them.
  */
 export function useLiveStream(enabled: boolean): LiveController {
   const stream = useMeroStream();
@@ -164,8 +227,8 @@ export function useLiveStream(enabled: boolean): LiveController {
   streamRef.current = stream;
 
   // The MeroJs instance, for `mero.ephemeral`. mero-js only grew this surface in
-  // 13.x (against core rc.24); on an older node the calls fail and the transport
-  // demotes itself — see EPHEMERAL_FALLBACK_AFTER.
+  // 13.x (against core rc.24); on an older node every call fails and the app says
+  // so outright — there is nothing to demote to. See EPHEMERAL_UNSUPPORTED_AFTER.
   const { mero } = useMero();
   const meroRef = useRef(mero);
   meroRef.current = mero;
@@ -187,26 +250,16 @@ export function useLiveStream(enabled: boolean): LiveController {
   const peerCanvasRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
   const captureTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastKeyframeAtRef = useRef(0);
-  const drainingRef = useRef(false);
-  // Set when a notification arrives while a drain is already running, so the drain
-  // repeats instead of the notification being lost. See `drain`.
-  const drainPendingRef = useRef(false);
   // Every sender observed in the RAW chunk stream, including ourselves.
   //
-  // This used to carry a caveat that seq gaps were only computable with a single
-  // sender, because the contract allocated seqs from ONE shared space and a
-  // second poster made any single sender's seqs non-contiguous (297 "gaps" in a
-  // run that lost nothing). Seq spaces are per sender now, so each sender's seqs
-  // ARE contiguous and a span-based gap count is meaningful again regardless of
-  // how many people are in the call.
+  // `msgSeq` is per sender and monotone, so each sender's seqs ARE contiguous
+  // and a span-based gap count is meaningful. (It was not always: the contract
+  // path allocated seqs from ONE shared space, so a second poster made any single
+  // sender's seqs non-contiguous — 297 "gaps" in a run that lost nothing.)
   const sendersSeenRef = useRef<Set<string>>(new Set());
-  // Read position per sender — see `drainOnce`. A sender absent from this map
-  // has never been seen, and the contract starts them at their own newest
-  // keyframe.
-  const cursorsRef = useRef<Map<string, number>>(new Map());
   const probeRef = useRef(new ProbeRecorder());
 
-  // ── ephemeral transport state ───────────────────────────────────────────────
+  // ── send-side framing state ─────────────────────────────────────────────────
   // Our own frame counter. Per SENDER and monotone: it is what lets a receiver
   // order and dedup fragments, and — because it changes every frame — what stops
   // two byte-identical frames in a row from making the second one invisible (the
@@ -217,11 +270,6 @@ export function useLiveStream(enabled: boolean): LiveController {
   const ephemeralOkRef = useRef(false);
 
   const [running, setRunning] = useState(false);
-  const [transport, setTransportState] = useState<LiveTransport>("contract");
-  // Read by `onEncodedChunk`, which is deliberately dep-free so its identity
-  // never changes (see the useMeroStream note on object identity) — a state read
-  // there would capture the value from the render that created it.
-  const transportRef = useRef<LiveTransport>("contract");
   const [fps, setFps] = useState(DEFAULT_FPS);
   const [bitrate, setBitrate] = useState(DEFAULT_BITRATE);
   // What the encoder is ACTUALLY running at. `bitrate` is the user's ceiling;
@@ -232,19 +280,10 @@ export function useLiveStream(enabled: boolean): LiveController {
   // its identity never changes (see the useMeroStream note on object identity).
   const bitrateRef = useRef(DEFAULT_BITRATE);
 
-  // The slider is authoritative. A manual change takes effect at once and resets
-  // the controller's baseline — being walked back up in 1.25x steps after
-  // dragging the slider would read as the app ignoring you.
-  useEffect(() => {
-    bitrateRef.current = bitrate;
-    congestionRef.current = {
-      ...congestionRef.current,
-      current: bitrate,
-      lastAdjustedAt: Date.now(),
-    };
-    setEffectiveBitrate(bitrate);
-  }, [bitrate]);
   const [stats, setStats] = useState<LiveStats | null>(null);
+  // Monotonic request id for `refreshStats`, so a slow response cannot overwrite
+  // a fresher one.
+  const statsSeqRef = useRef(0);
   const [probe, setProbe] = useState<ProbeSnapshot>(() =>
     probeRef.current.snapshot(),
   );
@@ -252,26 +291,88 @@ export function useLiveStream(enabled: boolean): LiveController {
   const [error, setError] = useState<string | null>(null);
   const [remotePeers, setRemotePeers] = useState<RemotePeer[]>([]);
 
+  // ── broadcaster slots ───────────────────────────────────────────────────────
+  // When WE began our current broadcast. Stamped once at start and carried in
+  // every frame header, because the ranking every peer computes has to agree on
+  // it (see lib/slots.ts). A ref as well as state: `publishEphemeralFrame` is
+  // deliberately dep-free, so it cannot read the state value.
+  const startedAtRef = useRef<number | null>(null);
+  const [slots, setSlots] = useState<SlotView>(() =>
+    evaluateSlots({
+      others: [],
+      me: null,
+      myStartedAtMs: null,
+      nowMs: Date.now(),
+      timeoutMs: PEER_TIMEOUT_MS,
+    }),
+  );
+  const [yielded, setYielded] = useState(false);
+  // The rate every broadcaster actually captures at. Divided among the live
+  // broadcasters because the measured frame loss on this transport tracks the
+  // AGGREGATE slice rate across the context, not the head-count — two people at
+  // 13 fps put the same load on the wire as one at 25, which is the rate that
+  // measured 96% delivery. `Math.max(1, …)` so a solo broadcaster is not divided
+  // by the zero occupancy reported before its own claim lands.
+  const shared = useMemo(
+    () => adaptiveEncoding({ fps, bitrate }, Math.max(1, slots.occupied)),
+    [fps, bitrate, slots.occupied],
+  );
+  const effectiveFps = shared.fps;
+  const sharedBitrate = shared.bitrate;
+  // Derived from what the encoder is actually running at, never from the slider.
+  // Memoized for a STABLE REFERENCE as much as for the arithmetic: this is
+  // returned on the controller and read by two panels, so re-allocating it every
+  // 1 Hz tick would defeat any memoization those panels ever grow.
+  const budget = useMemo(
+    () =>
+      sendBudget({
+        fps: effectiveFps,
+        bitrate: effectiveBitrate,
+        keyframeIntervalMs: KEYFRAME_INTERVAL_MS,
+        fragmentPayloadBytes: maxPayloadBytes(
+          encoderRef.current?.codec ?? "avc1.42001f",
+        ),
+      }),
+    [effectiveFps, effectiveBitrate],
+  );
+
+  // The CEILING congestion control works below, and it is the SHARED bitrate —
+  // the slider divided among the live broadcasters — not the slider itself. Two
+  // mechanisms stack here and they are different: sharing responds to how many
+  // people are broadcasting, congestion control responds to how slowly publishes
+  // are landing.
+  //
+  // A change to either takes effect at once and resets the controller's baseline.
+  // Being walked back up in 1.25x steps after dragging the slider (or after a
+  // broadcaster left) would read as the app ignoring you.
+  useEffect(() => {
+    bitrateRef.current = sharedBitrate;
+    congestionRef.current = {
+      ...congestionRef.current,
+      current: sharedBitrate,
+      lastAdjustedAt: Date.now(),
+    };
+    setEffectiveBitrate(sharedBitrate);
+  }, [sharedBitrate]);
+
+  // Measured, not assumed: `encodeMsP50` is the median time a publish took, which
+  // for a serial send loop is exactly the number the budget is spent against.
+  const duty = dutyCycle(budget, probe.encodeMsP50 ?? 0);
+
+  // Read by `start`, which is dep-free so its identity stays stable.
+  const slotsRef = useRef(slots);
+  slotsRef.current = slots;
+
   useEffect(() => setSupported(webCodecsAvailable()), []);
 
-  /**
-   * Switch transport, resetting everything that is transport-scoped.
-   *
-   * Decoders are dropped rather than kept: a decoder mid-GOP on one transport
-   * cannot continue from the other's first frame (which is a delta ~24 times out
-   * of 25), so keeping it would just throw and self-heal a beat later. Clearing
-   * the peers re-arms the keyframe gate, which is the honest way in.
-   */
-  const setTransport = useCallback((next: LiveTransport) => {
-    transportRef.current = next;
-    setTransportState(next);
-    ephemeralFailsRef.current = 0;
-    ephemeralOkRef.current = false;
-    for (const peer of peersRef.current.values()) peer.decoder?.close();
-    peersRef.current.clear();
-    cursorsRef.current.clear();
-    setRemotePeers([]);
-  }, []);
+  // Release the claim whenever capture stops, for ANY reason — the yield path
+  // and the error paths both clear `running` without going through `stop()`.
+  // Leaving `startedAtRef` set would keep us ranked as a broadcaster while
+  // publishing nothing, holding a slot against everyone else.
+  useEffect(() => {
+    if (running) return;
+    startedAtRef.current = null;
+  }, [running]);
 
   // Blank out seqGaps once a second REMOTE sender exists. Kept here rather than
   // inside ProbeRecorder so that module stays pure and framework-free: only the
@@ -299,12 +400,41 @@ export function useLiveStream(enabled: boolean): LiveController {
         .sort((a, b) => a.from.localeCompare(b.from))
         .map((p) => ({
           from: p.from,
+          startedAtMs: p.startedAtMs,
           width: p.width,
           height: p.height,
           framesDecoded: p.framesDecoded,
           decoding: p.started,
         })),
     );
+  }, []);
+
+  /**
+   * Recompute broadcaster-slot occupancy from the peer map and publish it.
+   *
+   * Occupancy is derived from the MEDIA STREAM itself — a broadcaster is anyone
+   * whose frame arrived within PEER_TIMEOUT_MS, plus us while capturing. Nobody
+   * publishes a separate claim record, and not for want of trying: presence is a
+   * single-writer register per author, so a claim published between two frames
+   * would be overwritten by the next frame. The media IS the claim, which is
+   * also why `startedAtMs` had to go into the frame header.
+   */
+  const recomputeSlots = useCallback((): SlotView => {
+    const claims: Claim[] = [...peersRef.current.values()].map((peer) => ({
+      id: peer.from,
+      startedAtMs: peer.startedAtMs,
+      firstSeenAt: peer.firstSeenAt,
+      lastSeenAt: peer.lastSeenAt,
+    }));
+    const view = evaluateSlots({
+      others: claims,
+      me: streamRef.current.executorId ?? null,
+      myStartedAtMs: startedAtRef.current,
+      nowMs: Date.now(),
+      timeoutMs: PEER_TIMEOUT_MS,
+    });
+    setSlots(view);
+    return view;
   }, []);
 
   const attachPeerCanvas = useCallback(
@@ -334,18 +464,15 @@ export function useLiveStream(enabled: boolean): LiveController {
   //
   // `renderChunk` is the transport-INDEPENDENT half: peer bookkeeping, the
   // per-sender keyframe gate, decoder construction and self-heal, and the §4
-  // probe sample. Both transports land here — `post_chunk` + `get_chunks`
-  // (approach 2) and ephemeral presence (approach 1) — because everything below
-  // is about H.264 and WebCodecs, not about how the bytes travelled. The decoder
-  // self-heal in particular was hard-won (see `onError`), and having one copy of
-  // it is the only way both transports keep it.
+  // probe sample. It is kept separate from the subscription that feeds it because
+  // everything in here is about H.264 and WebCodecs, not about how the bytes
+  // travelled. The decoder self-heal in particular was hard-won (see `onError`).
   const renderChunk = useCallback(
     (c: {
       from: string;
       /**
-       * Sender-scoped, monotone frame number. The contract's chunk `seq` on one
-       * transport and the framing header's `msgSeq` on the other; both are
-       * per-sender and never reused, which is all the gap metric needs.
+       * Sender-scoped, monotone frame number — the framing header's `msgSeq`.
+       * Per-sender and never reused, which is all the gap metric needs.
        */
       seq: number;
       isKeyframe: boolean;
@@ -355,6 +482,8 @@ export function useLiveStream(enabled: boolean): LiveController {
       timestampUs: number;
       /** Sender wall clock, unix ms — the §4 latency numerator. */
       createdAt: number;
+      /** When this sender began its current broadcast — the slot ranking key. */
+      startedAtMs: number;
       data: ChunkPayload;
       encodedBytes: number;
     }) => {
@@ -362,6 +491,8 @@ export function useLiveStream(enabled: boolean): LiveController {
       if (!peer) {
         peer = {
           from: c.from,
+          startedAtMs: c.startedAtMs,
+          firstSeenAt: Date.now(),
           decoder: null,
           started: false,
           framesDecoded: 0,
@@ -372,25 +503,33 @@ export function useLiveStream(enabled: boolean): LiveController {
         };
         peersRef.current.set(c.from, peer);
         publishPeers();
+        // A new broadcaster changes occupancy, so the slot view must not wait for
+        // the next tick. Only in this branch: `renderChunk` runs per frame, and
+        // this is the one path where the peer SET changed.
+        recomputeSlots();
       }
       peer.lastSeenAt = Date.now();
+      // A sender that restarted its broadcast reports a NEW startedAtMs, and the
+      // ranking must follow it — otherwise someone who stopped and came back
+      // keeps their original priority forever, which is not first-come-first-
+      // served any more.
+      //
+      // `firstSeenAt` is deliberately NOT refreshed here. It is our own record of
+      // when this sender appeared, and it exists to floor the value on the line
+      // above; moving it forward on every frame would let a sender walk its own
+      // floor along and re-acquire the backdating advantage the floor removes.
+      // A sender who genuinely leaves is dropped from the map by the reaper, and
+      // gets a fresh `firstSeenAt` when they come back.
+      peer.startedAtMs = c.startedAtMs;
 
       // PER-PEER KEYFRAME GATE. Each sender is an independent H.264 bitstream, so
       // a delta is only decodable against a keyframe FROM THE SAME SENDER.
       //
-      // On the contract transport this used to be the ONLY protection: there was
-      // one global keyframe pointer (whoever keyframed last), so a joiner's
-      // cursor landed mid-GOP for every other sender, and the reaper — clamping
-      // to that same global pointer — could prune one sender's only keyframe
-      // while protecting another's. Both are fixed in the contract now
-      // (per-sender keyframes, per-sender reaper), so there it is defence in
-      // depth rather than the load-bearing fix.
-      //
-      // On the ephemeral transport it is load-bearing again, and for a different
-      // reason: presence has no cursor and no backlog at all. A joiner simply
-      // starts receiving whatever is being published right now, which is a delta
-      // frame ~24 times out of 25, and its only way in is to wait out the sender's
-      // next keyframe (bounded by KEYFRAME_INTERVAL_MS).
+      // It is load-bearing on this transport: presence has no cursor and no
+      // backlog at all. A joiner simply starts receiving whatever is being
+      // published right now, which is a delta frame ~24 times out of 25, and its
+      // only way in is to wait out the sender's next keyframe (bounded by
+      // KEYFRAME_INTERVAL_MS).
       if (!peer.started) {
         if (!c.isKeyframe) return;
         peer.started = true;
@@ -412,8 +551,8 @@ export function useLiveStream(enabled: boolean): LiveController {
           // stall on a freshly-joined room, and it was not key delivery as suspected.
           //
           // A single missing reference frame is entirely expected here (the reaper
-          // can prune a keyframe during a join, gossip can reorder, and on the
-          // ephemeral transport a lost fragment simply drops a frame), so the honest
+          // can prune a keyframe during a join, gossip can reorder, and a lost
+          // fragment simply drops a frame), so the honest
           // response is to rebuild rather than to give up: drop the decoder and clear
           // `started`, and the gate above re-arms on this sender's next keyframe —
           // bounded by KEYFRAME_INTERVAL_MS.
@@ -457,92 +596,12 @@ export function useLiveStream(enabled: boolean): LiveController {
         rawBytes: LIVE_WIDTH * LIVE_HEIGHT,
       });
     },
-    [publishPeers],
+    // Both deps are `[]`-dep callbacks, so `renderChunk` keeps the stable
+    // identity the subscription effect relies on.
+    [publishPeers, recomputeSlots],
   );
 
-  // ── RECEIVE, approach 2: notify (ChunkPosted) then read (get_chunks) ─────────
-  //
-  // COALESCES rather than drops. The guard used to be a bare
-  // `if (drainingRef.current) return;`, which threw away every `ChunkPosted` that
-  // arrived while a fetch was in flight — and nothing rescheduled, so the next read
-  // waited for the fallback poll. With that poll at 1 s, latency landed roughly
-  // uniformly in 0..1000 ms: mean ~500 ms, p95 ~950 ms. Measured p50 505 / p95 960,
-  // i.e. the "slow receiver" was this guard, not the network and not the decoder
-  // (which already runs `optimizeForLatency: true`).
-  //
-  // Now a mid-flight notification sets `drainPendingRef` and the loop below repeats
-  // once. Bounded — one extra pass per burst, no unbounded recursion — and no
-  // notification is lost.
-  //
-  // The ephemeral transport has no equivalent: the frame bytes ride the event
-  // itself, so there is nothing to go back and fetch.
-  const drainOnce = useCallback(async () => {
-    // ONE cursor PER SENDER. Seq spaces are per sender in the contract, so a
-    // single global cursor cannot express "I am at 40 in Alice's stream and 12
-    // in Bob's" — and the shared counter it used to read from is exactly what
-    // made two senders overwrite each other (see retro/review.md).
-    //
-    // Still one round-trip: `get_chunks` takes the whole cursor set at once.
-    // Senders we have never seen are omitted, and the contract starts those at
-    // their own newest keyframe — which is what the separate `keyframeCursor()`
-    // call used to do, badly, with a single global pointer.
-    const cursors: SenderCursor[] = [...cursorsRef.current].map(
-      ([from, afterSeq]) => ({ from, afterSeq }),
-    );
-
-    const chunks = await streamRef.current.getChunks(cursors);
-    if (!chunks || chunks.length === 0) return;
-
-    const me = streamRef.current.executorId;
-
-    for (const c of chunks) {
-      const seen = cursorsRef.current.get(c.from) ?? 0;
-      if (c.seq > seen) cursorsRef.current.set(c.from, c.seq);
-      if (c.track !== 0) continue; // video only for now; audio rides track 1
-      sendersSeenRef.current.add(c.from); // BEFORE the self-skip below
-
-      // Never decode our own stream: the local preview already shows it, and
-      // decoding it would double the receiver's work for no picture.
-      if (me && c.from === me) continue;
-
-      renderChunk({
-        from: c.from,
-        seq: c.seq,
-        isKeyframe: c.isKeyframe,
-        width: c.width,
-        height: c.height,
-        codec: c.codec,
-        timestampUs: c.timestampUs,
-        createdAt: c.createdAt,
-        data: { dataB64: c.dataB64 },
-        encodedBytes: Math.floor((c.dataB64.length * 3) / 4),
-      });
-    }
-  }, [renderChunk]);
-
-  const drain = useCallback(async () => {
-    if (drainingRef.current) {
-      drainPendingRef.current = true;
-      return;
-    }
-    drainingRef.current = true;
-    try {
-      // Repeat while notifications arrived mid-flight. `drainOnce` keeps its early
-      // returns; the loop lives out here so those returns cannot skip a pending
-      // pass. Bounded by how fast chunks actually arrive, not unbounded recursion.
-      do {
-        drainPendingRef.current = false;
-        await drainOnce();
-      } while (drainPendingRef.current);
-    } catch {
-      /* transient RPC error — SSE or the poll retries */
-    } finally {
-      drainingRef.current = false;
-      drainPendingRef.current = false;
-    }
-  }, [drainOnce]);
-
-  // ── RECEIVE, approach 1: the frame rides the Ephemeral event itself ──────────
+  // ── RECEIVE: the frame rides the Ephemeral event itself ─────────────────────
   //
   // No cursors, no backlog, no read-back. A subscriber gets what is being
   // published now, which is why the keyframe gate in `renderChunk` is the only
@@ -554,7 +613,7 @@ export function useLiveStream(enabled: boolean): LiveController {
   // needs every delta as it arrives, because each one is a distinct frame — a
   // register would silently coalesce two frames into whichever landed last.
   useEffect(() => {
-    if (!enabled || transport !== "ephemeral") return;
+    if (!enabled) return;
     const contextId = stream.contextId;
     const ephemeral = mero?.ephemeral;
     if (!contextId || !ephemeral) return;
@@ -618,6 +677,7 @@ export function useLiveStream(enabled: boolean): LiveController {
           codec: frame.codec,
           timestampUs: frame.timestampUs,
           createdAt: frame.createdAtMs,
+          startedAtMs: frame.startedAtMs,
           data: { bytes: frame.bytes },
           encodedBytes: frame.bytes.length,
         });
@@ -629,7 +689,7 @@ export function useLiveStream(enabled: boolean): LiveController {
       off();
       reassemblerRef.current = null;
     };
-  }, [enabled, transport, mero, stream.contextId, renderChunk, publishPeers]);
+  }, [enabled, mero, stream.contextId, renderChunk, publishPeers]);
 
   // ── SEND ────────────────────────────────────────────────────────────────────
   /**
@@ -671,6 +731,9 @@ export function useLiveStream(enabled: boolean): LiveController {
         height: LIVE_HEIGHT,
         timestampUs: Math.max(0, Math.round(c.timestampUs)),
         createdAtMs: Date.now(),
+        // Falls back to now rather than 0: a 0 here would rank us ahead of
+        // everyone alive and hold a slot we never claimed.
+        startedAtMs: startedAtRef.current ?? Date.now(),
         codec: encoderRef.current?.codec ?? "avc1.42001f",
         bytes: c.bytes,
       });
@@ -690,57 +753,33 @@ export function useLiveStream(enabled: boolean): LiveController {
       timestampUs: number;
     }) => {
       const startedAt = Date.now();
-      const via = transportRef.current;
       let ok = false;
       try {
-        if (via === "ephemeral") {
-          await publishEphemeralFrame(c);
-          ephemeralOkRef.current = true;
-          ephemeralFailsRef.current = 0;
-        } else {
-          await streamRef.current.postChunk({
-            dataB64: c.dataB64,
-            track: 0,
-            isKeyframe: c.isKeyframe,
-            codec: encoderRef.current?.codec ?? "avc1.42001f",
-            width: LIVE_WIDTH,
-            height: LIVE_HEIGHT,
-            timestampUs: Math.max(0, Math.round(c.timestampUs)),
-          });
-        }
+        await publishEphemeralFrame(c);
+        ephemeralOkRef.current = true;
+        ephemeralFailsRef.current = 0;
         ok = true;
       } catch (e) {
-        const detail =
-          e instanceof Error
-            ? e.message
-            : via === "ephemeral"
-              ? "set_ephemeral failed"
-              : "post_chunk failed";
-        if (via === "ephemeral") {
-          // A failure because the session is not up yet says nothing about what
-          // the node can do, so it must not accumulate toward the capability
-          // verdict below — the user would be told to upgrade a node that is
-          // perfectly capable.
-          const sessionReady = Boolean(meroRef.current);
-          if (sessionReady) ephemeralFailsRef.current += 1;
-          // A node that predates rc.24 has no `set_ephemeral` at all, and the
-          // exact shape of its rejection is not something to guess at: a request
-          // naming an unknown method fails to deserialize server-side, so this
-          // reads the streak rather than a specific code. Demote only while
-          // NOTHING has ever succeeded — after a first success, a failure is a
-          // dropped frame, not a missing feature.
-          if (
-            sessionReady &&
-            !ephemeralOkRef.current &&
-            ephemeralFailsRef.current >= EPHEMERAL_FALLBACK_AFTER
-          ) {
-            setTransport("contract");
-            setError(
-              `Ephemeral presence is unavailable on this node (needs core 0.11.0-rc.24) — fell back to post_chunk. Last error: ${detail}`,
-            );
-          } else {
-            setError(detail);
-          }
+        const detail = e instanceof Error ? e.message : "set_ephemeral failed";
+        // A failure because the session is not up yet says nothing about what
+        // the node can do, so it must not accumulate toward the capability
+        // verdict below — the user would be told to upgrade a node that is
+        // perfectly capable.
+        const sessionReady = Boolean(meroRef.current);
+        if (sessionReady) ephemeralFailsRef.current += 1;
+        // A node that predates rc.24 has no `set_ephemeral` at all, and the
+        // exact shape of its rejection is not something to guess at: a request
+        // naming an unknown method fails to deserialize server-side, so this
+        // reads the streak rather than a specific code. Only while NOTHING has
+        // ever succeeded — after a first success, a failure is a dropped frame.
+        if (
+          sessionReady &&
+          !ephemeralOkRef.current &&
+          ephemeralFailsRef.current >= EPHEMERAL_UNSUPPORTED_AFTER
+        ) {
+          setError(
+            `This node cannot carry media on ephemeral presence (needs core 0.11.0-rc.24 or newer). Last error: ${detail}`,
+          );
         } else {
           setError(detail);
         }
@@ -749,17 +788,17 @@ export function useLiveStream(enabled: boolean): LiveController {
         probeRef.current.recordEncode({ startedAt, durationMs, ok });
 
         // Feed the send-side congestion controller. How long the publish takes —
-        // `post_chunk` or the frame's `set_ephemeral` fragments — is the only view
+        // the frame's `set_ephemeral` fragments — is the only view
         // the browser has of whether the node can absorb what we are producing;
         // libp2p transport state (relayed vs direct) is not exposed to the app. In
         // the retro's failed call the sender kept encoding at a fixed 1.5 Mbps
         // into a pipe that had stopped moving.
         //
-        // The two transports are not measured on the same scale and the panel says
-        // so: `post_chunk` waits on a WASM run plus a storage commit, while
         // `set_ephemeral` returns once the node has encrypted and queued the
-        // slice. The controller only ever compares a transport against itself, so
-        // it stays meaningful either way.
+        // slice, so this is a much tighter signal than `post_chunk`'s WASM run
+        // plus storage commit ever was — but it is also the send loop's own
+        // budget: fragments are published serially, so 26.5 slices/s at 25 fps
+        // cannot outrun one publish RTT. See lib/capacity.ts.
         const now = Date.now();
         const folded = recordPost(congestionRef.current, { durationMs, ok });
         const next = nextBitrate(folded, bitrateRef.current, now);
@@ -767,9 +806,9 @@ export function useLiveStream(enabled: boolean): LiveController {
         if (next.current !== folded.current) setEffectiveBitrate(next.current);
       }
     },
-    // Both are `useCallback`s with stable identities, so this keeps the dep-free
+    // A `useCallback` with a stable identity, so this keeps the dep-free
     // property the encoder effect relies on (see the useMeroStream note).
-    [publishEphemeralFrame, setTransport],
+    [publishEphemeralFrame],
   );
 
   useEffect(() => {
@@ -789,7 +828,12 @@ export function useLiveStream(enabled: boolean): LiveController {
           );
         }
         const media = await navigator.mediaDevices.getUserMedia({
-          video: { width: LIVE_WIDTH, height: LIVE_HEIGHT, frameRate: fps },
+          video: {
+            width: LIVE_WIDTH,
+            height: LIVE_HEIGHT,
+            // `fps`, the user's ceiling — NOT the shared rate. See the dep array.
+            frameRate: fps,
+          },
         });
         if (cancelled) {
           media.getTracks().forEach((t) => t.stop());
@@ -818,8 +862,36 @@ export function useLiveStream(enabled: boolean): LiveController {
       mediaRef.current = null;
       if (videoEl) videoEl.srcObject = null;
     };
-    // Deliberately NOT keyed on bitrate — see the encoder effect below.
+    // Keyed on `running` and the user's `fps` ONLY. Deliberately NOT on
+    // `effectiveFps` or bitrate.
+    //
+    // `effectiveFps` changes whenever the number of live broadcasters changes,
+    // which is not a user action — so depending on it here re-ran `getUserMedia`
+    // every time someone else started or stopped: the webcam light blinks, the
+    // track drops, and the picture goes black for a beat. On BOTH broadcasters at
+    // once, at precisely the moment the transport is already losing frames to a
+    // second sender. Adding churn to the worst moment is the opposite of what the
+    // rate sharing is for.
+    //
+    // The camera's own `frameRate` is a constraint, not a clock: frames are fed to
+    // the encoder by the capture interval below, which does track `effectiveFps`.
+    // A live change is applied to the existing track instead — see the next effect.
   }, [running, fps]);
+
+  // Apply a shared-rate change to the LIVE track rather than reacquiring it.
+  //
+  // `applyConstraints` is best effort and a device may refuse; that is fine and
+  // is why the rejection is swallowed. It is a hint that lets the camera stop
+  // producing frames nobody will encode — the capture interval is what actually
+  // sets the rate, so failing to apply it costs a little power and nothing else.
+  useEffect(() => {
+    if (!running) return;
+    const track = mediaRef.current?.getVideoTracks()[0];
+    if (!track) return;
+    void track.applyConstraints({ frameRate: effectiveFps }).catch(() => {
+      /* device refused the hint — the capture interval still paces us */
+    });
+  }, [running, effectiveFps]);
 
   // The encoder is a SEPARATE effect from the camera on purpose.
   //
@@ -837,7 +909,7 @@ export function useLiveStream(enabled: boolean): LiveController {
         const enc = await createEncoder({
           width: LIVE_WIDTH,
           height: LIVE_HEIGHT,
-          framerate: fps,
+          framerate: effectiveFps,
           bitrate: effectiveBitrate,
           onChunk: (c) => void onEncodedChunk(c),
           onError: (e) => setError(e.message),
@@ -861,12 +933,12 @@ export function useLiveStream(enabled: boolean): LiveController {
       encoderRef.current?.close();
       encoderRef.current = null;
     };
-  }, [running, fps, effectiveBitrate, onEncodedChunk]);
+  }, [running, effectiveFps, effectiveBitrate, onEncodedChunk]);
 
   // Feed the encoder on a fixed cadence.
   useEffect(() => {
     if (!running) return;
-    const period = Math.max(1, Math.round(1000 / Math.max(1, fps)));
+    const period = Math.max(1, Math.round(1000 / Math.max(1, effectiveFps)));
     const id = setInterval(() => {
       const video = localVideoRef.current;
       const enc = encoderRef.current;
@@ -882,40 +954,13 @@ export function useLiveStream(enabled: boolean): LiveController {
     }, period);
     captureTimerRef.current = id;
     return () => clearInterval(id);
-  }, [running, fps]);
+  }, [running, effectiveFps]);
 
-  // ── SSE + fallback poll + stats ──────────────────────────────────────────────
-  // ChunkPosted is approach 2's notification that there is something to read
-  // back. The ephemeral transport delivers the bytes in its own event, so both
-  // this and the fallback poll below stay off there — polling `get_chunks` on
-  // that path would burn a round-trip a second to read a table nothing writes to.
-  const onEvent = useCallback(
-    (evt: { data: unknown }) => {
-      if (transportRef.current !== "contract") return;
-      const data = evt.data as Record<string, unknown> | null;
-      const type = data && typeof data === "object" ? Object.keys(data)[0] : "";
-      if (type === "ChunkPosted") void drain();
-    },
-    [drain],
-  );
-  useSubscription(
-    enabled && stream.contextId ? [stream.contextId] : [],
-    onEvent,
-  );
-
-  useEffect(() => {
-    if (!enabled || transport !== "contract") return;
-    void drain();
-    const id = setInterval(() => void drain(), RECEIVE_POLL_MS);
-    return () => clearInterval(id);
-  }, [enabled, transport, drain]);
-
+  // ── Peer reaping + probe tick ───────────────────────────────────────────────
   useEffect(() => {
     if (!enabled) return;
     const id = setInterval(() => {
       setProbe(withGapValidity(probeRef.current.snapshot()));
-      void streamRef.current.getLiveStats().then((s) => s && setStats(s));
-
       // Reap senders that have gone quiet, and close their decoders. Leaking
       // decoders (and the VideoFrames they hold) stalls the whole pipeline once the
       // buffer pool drains — the same failure the single-peer path already had to
@@ -927,32 +972,32 @@ export function useLiveStream(enabled: boolean): LiveController {
         peer.decoder?.close();
         peersRef.current.delete(from);
         peerCanvasRef.current.delete(from);
-        // Drop their cursor too, so if they come back they are treated as a
-        // fresh sender and the contract starts them at their own newest
-        // keyframe. Keeping the stale cursor would replay whatever backlog
-        // accumulated while they were gone, oldest-first, before reaching
-        // anything current.
-        cursorsRef.current.delete(from);
-        // Same reasoning on the ephemeral transport: forgetting them drops any
-        // half-received frame AND the replay gate, so a sender who comes back
-        // with a restarted msgSeq is not mistaken for a replay of the old one and
-        // muted for good.
+        // Forgetting them in the reassembler drops any half-received frame AND
+        // the replay gate, so a sender who comes back with a restarted msgSeq is
+        // not mistaken for a replay of the old one and muted for good.
         reassemblerRef.current?.forget(from);
         reaped = true;
       }
       // Republish every tick so framesDecoded/decoding stay live in the UI.
       publishPeers();
       if (reaped) probeRef.current.snapshot();
+
+      // Yield OUR OWN capture, and only ever our own. Nothing here can stop
+      // another participant — see the note at the top of lib/slots.ts for why
+      // that asymmetry is what makes a cooperative cap safe to ship.
+      if (recomputeSlots().mustYield) {
+        setYielded(true);
+        setRunning(false);
+      }
     }, 1000);
     return () => clearInterval(id);
-  }, [enabled, publishPeers, withGapValidity]);
+  }, [enabled, publishPeers, withGapValidity, recomputeSlots]);
 
   useEffect(
     () => () => {
       for (const peer of peersRef.current.values()) peer.decoder?.close();
       peersRef.current.clear();
       peerCanvasRef.current.clear();
-      cursorsRef.current.clear();
       sendersSeenRef.current.clear();
       reassemblerRef.current = null;
     },
@@ -970,6 +1015,68 @@ export function useLiveStream(enabled: boolean): LiveController {
     URL.revokeObjectURL(url);
   }, []);
 
+  /**
+   * Read the replicated-state counters once.
+   *
+   * NOT on the 1 s tick. On this transport every counter here is expected to
+   * stay at zero for the whole call — that is the measurement — so polling it
+   * every second is a contract round-trip to read a table nothing writes to.
+   * The data dialog calls this while it is open and nobody pays for it while it
+   * is closed.
+   */
+  const refreshStats = useCallback(() => {
+    // Sequenced AND caught. Two separate problems with the obvious one-liner:
+    //
+    //   * No `.catch()` makes a transient RPC failure an unhandled rejection,
+    //     where every other polling path in this app swallows it and lets the
+    //     next tick retry.
+    //   * No sequencing means that if a round-trip ever outlives the dialog's 1 s
+    //     tick (slow node, relayed link, GC pause), an older response can land
+    //     after a newer one and overwrite fresh state with stale — in the panel
+    //     whose whole job is to be an accurate proof that nothing was written.
+    const seq = ++statsSeqRef.current;
+    void streamRef.current
+      .getLiveStats()
+      .then((v) => {
+        if (seq !== statsSeqRef.current) return; // superseded
+        if (v) setStats(v);
+      })
+      .catch(() => {
+        /* transient RPC error — the dialog's next tick retries */
+      });
+  }, []);
+
+  /**
+   * Claim a broadcaster slot and start capturing.
+   *
+   * `startedAtMs` is stamped HERE, before the camera is even open, so it is the
+   * moment we claimed rather than the moment the first frame happened to encode.
+   * Camera permission can take seconds and the encoder another beat; using a
+   * later instant would make a slow device lose every race to a fast one that
+   * clicked after it.
+   */
+  const start = useCallback(() => {
+    // Re-checked here and not only on the button: a stale click, or a driver
+    // script, must not be able to open a fifth stream. `slotsRef` rather than
+    // `slots` so this callback keeps a stable identity.
+    if (startedAtRef.current !== null) return; // already claiming
+    if (!slotsRef.current.mayClaim) return;
+    startedAtRef.current = Date.now();
+    setYielded(false);
+    setRunning(true);
+    // Reflect the claim at once instead of waiting out the 1 s tick, so the
+    // occupancy readout does not lag the button that changed it.
+    recomputeSlots();
+  }, [recomputeSlots]);
+
+  const stop = useCallback(() => {
+    startedAtRef.current = null;
+    setRunning(false);
+    recomputeSlots();
+  }, [recomputeSlots]);
+
+  const clearYielded = useCallback(() => setYielded(false), []);
+
   const resetProbe = useCallback(() => {
     probeRef.current.reset();
     setProbe(withGapValidity(probeRef.current.snapshot()));
@@ -980,16 +1087,22 @@ export function useLiveStream(enabled: boolean): LiveController {
     remotePeers,
     attachPeerCanvas,
     running,
-    start: useCallback(() => setRunning(true), []),
-    stop: useCallback(() => setRunning(false), []),
+    start,
+    stop,
+    slots,
+    yielded,
+    clearYielded,
     fps,
     setFps,
-    transport,
-    setTransport,
     bitrate,
     setBitrate,
     effectiveBitrate,
+    effectiveFps,
+    budget,
+    duty,
+    load: pressure(duty),
     stats,
+    refreshStats,
     probe,
     downloadCsv,
     resetProbe,

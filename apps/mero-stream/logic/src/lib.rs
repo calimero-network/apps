@@ -1470,6 +1470,18 @@ mod tests {
 
     const ALICE: [u8; 32] = [0x11; 32];
     const BOB: [u8; 32] = [0x22; 32];
+    /// Two more, for the four-broadcaster tests.
+    ///
+    /// The CONTRACT is not capped at all: `post_chunk` accepts any member. These
+    /// tests exist because every per-sender guard in here had only ever been
+    /// proved against TWO senders — exactly the number that cannot distinguish
+    /// "isolated per sender" from "isolated from the one other sender". Four is
+    /// the useful test width regardless of what any client permits.
+    ///
+    /// (The client's cooperative cap is a separate thing, currently 2 and set by
+    /// measurement in `app/src/lib/slots.ts`. It has no bearing on these tests.)
+    const CAROL: [u8; 32] = [0x33; 32];
+    const DAVE: [u8; 32] = [0x44; 32];
     /// `AccessControl` and `Ownable` are keyed by ACCOUNT since rc.20, and
     /// `call_as` keeps the caller's account on purpose (two devices, one person).
     /// A test peer that must NOT inherit the creator's rights needs its own.
@@ -2695,5 +2707,281 @@ mod tests {
         app.call_as(ALICE, |s| s.rename_stream("renamed".to_owned()))
             .unwrap();
         assert_eq!(app.view(|s| s.get_stats()).name, "renamed");
+    }
+    // ── Four broadcasters: the shipped cap, exercised as a cap ───────────────────
+    //
+    // Every per-sender guarantee below already had a two-sender test. Two is the
+    // weakest interesting number: with one other sender, "each sender is isolated"
+    // and "the two senders do not collide" are indistinguishable, and an
+    // off-by-one that leaks into the NEXT sender's buffer has no next sender to
+    // leak into. Four is what the app now permits, so four is what these check.
+
+    /// Every broadcaster joins and posts `frames` interleaved, keyframe first —
+    /// the shape of a real four-way call rather than four sequential monologues.
+    fn four_way(frames: u64) -> (TestHost<MeroStream>, [[u8; 32]; 4]) {
+        let who = [ALICE, BOB, CAROL, DAVE];
+        let mut app = new_stream();
+        for (i, w) in who.iter().enumerate() {
+            app.call_as(*w, |s| s.join(format!("peer{i}"), 1000))
+                .unwrap();
+        }
+        for k in 0..frames {
+            for (i, w) in who.iter().enumerate() {
+                // Distinct bytes per sender AND per frame, so a mix-up is visible
+                // rather than merely possible.
+                let payload = format!("s{i}-f{k}");
+                post(&mut app, *w, payload.as_bytes(), k == 0, 1000 + k).unwrap();
+            }
+        }
+        (app, who)
+    }
+
+    #[test]
+    fn four_senders_keep_four_independent_seq_spaces() {
+        let (mut app, who) = four_way(6);
+
+        // Each sender minted 1..=6 from its OWN counter. Nothing another sender
+        // does may move it — with one shared counter these would be 1..=24.
+        for w in who {
+            let st = sender_stats(&mut app, w);
+            assert_eq!(st.next_seq, 6, "sender {} lost its own seq space", id_of(w));
+        }
+
+        let all = app.view(|s| s.get_chunks(from_zero(&who)));
+        assert_eq!(all.len(), 24, "no chunk may be lost to a key collision");
+
+        // And every chunk still carries its own sender's bytes.
+        for c in &all {
+            let idx = who.iter().position(|w| id_of(*w) == c.from).unwrap();
+            let got = BASE64.decode(c.data_b64.as_bytes()).unwrap();
+            let want = format!("s{idx}-f{}", c.seq - 1);
+            assert_eq!(
+                String::from_utf8(got).unwrap(),
+                want,
+                "chunk {} from {} carries another sender's payload",
+                c.seq,
+                c.from
+            );
+        }
+    }
+
+    #[test]
+    fn a_fourth_sender_does_not_reap_the_other_three() {
+        // `post_chunk` runs the reaper on every post. The two-sender version of
+        // this test proves a sender does not reap "the other one"; with three
+        // others it also proves the reaper is not walking the whole table.
+        let (mut app, who) = four_way(3);
+        let before: Vec<u32> = who
+            .iter()
+            .map(|w| sender_stats(&mut app, *w).live_chunks)
+            .collect();
+
+        // Dave alone keeps posting, well past the live window, so his own reaper
+        // runs many times over.
+        for k in 0..40u64 {
+            post(&mut app, DAVE, b"dave", false, 2000 + k).unwrap();
+        }
+
+        for (i, w) in who.iter().enumerate().take(3) {
+            let st = sender_stats(&mut app, *w);
+            assert_eq!(
+                st.live_chunks,
+                before[i],
+                "sender {} lost chunks to Dave's reaper",
+                id_of(*w)
+            );
+            assert_eq!(st.pruned, 0, "sender {} was pruned by Dave", id_of(*w));
+        }
+    }
+
+    #[test]
+    fn a_joiner_starts_at_all_four_senders_own_keyframes() {
+        // A joiner sends an EMPTY cursor set. Each sender is an independent
+        // bitstream, so the contract has to pick four different entry points —
+        // one global keyframe pointer would hand three of the four a delta frame
+        // with no reference, which a decoder throws on rather than degrading.
+        let (mut app, who) = four_way(2);
+        for w in who {
+            post(&mut app, w, b"kf2", true, 1010).unwrap();
+            post(&mut app, w, b"delta", false, 1011).unwrap();
+        }
+
+        let served = app.view(|s| s.get_chunks(vec![]));
+        for w in who {
+            let mine: Vec<_> = served.iter().filter(|c| c.from == id_of(w)).collect();
+            assert!(
+                !mine.is_empty(),
+                "joiner was served nothing at all from {}",
+                id_of(w)
+            );
+            assert!(
+                mine[0].is_keyframe,
+                "joiner starts mid-GOP for {} (first served seq {})",
+                id_of(w),
+                mine[0].seq
+            );
+        }
+
+        // Four cursors back, one per sender, and each at that sender's keyframe.
+        let cursors = app.view(|s| s.keyframe_cursors());
+        assert_eq!(cursors.len(), 4);
+    }
+
+    #[test]
+    fn one_departed_sender_out_of_four_is_swept_and_the_rest_survive() {
+        // The stale sweep runs from ANOTHER sender's post. With two senders,
+        // "sweep the departed one" and "sweep everyone but me" produce the same
+        // observable result. With four they do not.
+        //
+        // `now` here is MILLISECONDS (post_chunk's clock, unlike every other
+        // method's seconds), and the sweep ZEROES a departed sender's buffer
+        // rather than dropping the row — so this reads live_chunks, not presence
+        // in the sender list.
+        let (mut app, who) = four_way(2);
+        for w in who {
+            assert_eq!(sender_stats(&mut app, w).live_chunks, 2);
+        }
+
+        // Alice, Bob and Carol carry on well past the stale horizon; Dave left.
+        let late = 1000 + STALE_SENDER_MS + 1000;
+        for k in 0..3u64 {
+            for w in [ALICE, BOB, CAROL] {
+                post(&mut app, w, b"still-here", k == 0, late + k).unwrap();
+            }
+        }
+
+        assert_eq!(
+            sender_stats(&mut app, DAVE).live_chunks,
+            0,
+            "the departed sender's buffer was never collected"
+        );
+        for w in [ALICE, BOB, CAROL] {
+            assert!(
+                sender_stats(&mut app, w).live_chunks > 0,
+                "live sender {} was swept as stale",
+                id_of(w)
+            );
+        }
+    }
+    #[test]
+    fn four_senders_cursors_advance_independently() {
+        // The receive loop keeps one cursor PER sender and passes the whole set in
+        // one call. A cursor set that is behind on one sender and current on the
+        // others must return exactly the gap — not everything, and not nothing.
+        let (app, who) = four_way(5);
+
+        let mut cursors: Vec<SenderCursor> = who
+            .iter()
+            .map(|w| SenderCursor {
+                from: id_of(*w),
+                after_seq: 5,
+            })
+            .collect();
+        assert!(
+            app.view(|s| s.get_chunks(cursors.clone())).is_empty(),
+            "a fully caught-up cursor set must return nothing"
+        );
+
+        // Rewind ONE sender by two frames.
+        cursors[2].after_seq = 3;
+        let got = app.view(|s| s.get_chunks(cursors));
+        assert_eq!(
+            got.len(),
+            2,
+            "only the rewound sender's gap should come back"
+        );
+        assert!(got.iter().all(|c| c.from == id_of(CAROL)));
+        assert_eq!(
+            got.iter().map(|c| c.seq).collect::<Vec<_>>(),
+            vec![4, 5],
+            "the gap must come back in ascending seq order"
+        );
+    }
+
+    #[test]
+    fn an_absent_cursor_among_four_is_treated_as_a_new_sender() {
+        // Omitting a sender is how the receive loop says "never seen them" — after
+        // a peer timeout it DELETES the cursor rather than keeping a stale one, so
+        // a returning peer must be served from their keyframe and not replayed
+        // from wherever they left off.
+        let (mut app, who) = four_way(2);
+        for w in who {
+            post(&mut app, w, b"kf", true, 1005).unwrap();
+        }
+
+        // Caught up on three, absent for Carol.
+        let cursors: Vec<SenderCursor> = [ALICE, BOB, DAVE]
+            .iter()
+            .map(|w| SenderCursor {
+                from: id_of(*w),
+                after_seq: 3,
+            })
+            .collect();
+
+        let got = app.view(|s| s.get_chunks(cursors));
+        assert!(
+            got.iter().all(|c| c.from == id_of(CAROL)),
+            "only the omitted sender should be served"
+        );
+        assert!(
+            got.first().is_some_and(|c| c.is_keyframe),
+            "an omitted sender must start at their own keyframe, not their oldest chunk"
+        );
+    }
+
+    #[test]
+    fn live_stats_report_all_four_senders_separately() {
+        let (app, _who) = four_way(4);
+        let stats = app.view(|s| s.get_live_stats());
+        assert_eq!(stats.senders.len(), 4);
+
+        // The aggregate must be the sum of the parts. A shared counter would make
+        // liveChunks agree while the per-sender rows disagreed, or vice versa.
+        let summed: u32 = stats.senders.iter().map(|s| s.live_chunks).sum();
+        assert_eq!(stats.live_chunks, summed);
+        let summed_bytes: u64 = stats.senders.iter().map(|s| s.live_bytes).sum();
+        assert_eq!(stats.live_bytes, summed_bytes);
+
+        for row in &stats.senders {
+            assert_eq!(row.next_seq, 4);
+            assert_eq!(
+                row.last_keyframe, 1,
+                "each sender keyframed on its own frame 1"
+            );
+        }
+    }
+
+    #[test]
+    fn a_non_member_among_four_broadcasters_still_cannot_post() {
+        // The membership gate is per call, not per stream: a fifth identity that
+        // never joined must be refused even while four members are mid-call.
+        let (mut app, _) = four_way(2);
+        const ELI: [u8; 32] = [0x55; 32];
+        assert!(
+            post(&mut app, ELI, b"gatecrash", true, 1100).is_err(),
+            "a non-member posted into a running four-way call"
+        );
+        assert_eq!(
+            app.view(|s| s.get_live_stats()).senders.len(),
+            4,
+            "the refused post must not create a sender row"
+        );
+    }
+
+    #[test]
+    fn a_four_member_roster_is_complete_and_ordered_by_nobody_in_particular() {
+        // `get_members` is what labels the tiles. All four have to be there, each
+        // with the name THEY joined under — a roster that loses one leaves a tile
+        // captioned with a truncated public key.
+        let (app, who) = four_way(1);
+        let members = app.view(|s| s.get_members());
+        assert_eq!(members.len(), 4);
+        for (i, w) in who.iter().enumerate() {
+            let m = members
+                .iter()
+                .find(|m| m.member_id == id_of(*w))
+                .unwrap_or_else(|| panic!("roster is missing {}", id_of(*w)));
+            assert_eq!(m.username, format!("peer{i}"));
+        }
     }
 }

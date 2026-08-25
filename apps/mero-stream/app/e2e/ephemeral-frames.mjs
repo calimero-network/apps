@@ -37,6 +37,13 @@
 // Defaults match workflows/e2e-ephemeral-frames.yml's pinned base_rpc_port
 // (2740), so running this by hand against that scenario needs only the context id
 // and node 1's key.
+import {
+  EPHEMERAL_MAX_BYTES,
+  HEADER_FIXED_BYTES,
+  decodeHeader,
+  encodeFragments,
+} from "./lib/frame.mjs";
+
 const NODE1_URL = process.argv[2] || "http://localhost:2740";
 const NODE2_URL = process.argv[3] || "http://localhost:2741";
 const CONTEXT_ID = process.argv[4] || "";
@@ -74,69 +81,18 @@ if (!NODE1_KEY)
     "NODE1_KEY is empty — the author assertion cannot run, and an assertion that verifies nothing reads as coverage",
   );
 
-// ── framing (publish side only; see the header note) ──────────────────────────
-
-const EPHEMERAL_MAX_BYTES = 16_384;
-const HEADER_FIXED_BYTES = 32;
+// ── framing ──────────────────────────────────────────────────────────────────
+// Shared with e2e/capacity-ladder.mjs and byte-checked against the TypeScript
+// source of truth by src/lib/frameParity.test.ts. It used to be hand-retyped in
+// both drivers, so a header change (v2 moved `codecLen` from offset 31 to 39) had
+// to be applied in three places with nothing comparing them.
 const CODEC = "avc1.42001f";
 
-function encodeFragments({
-  msgSeq,
-  isKeyframe,
-  width,
-  height,
-  timestampUs,
-  createdAtMs,
-  codec,
-  bytes,
-}) {
-  const codecBytes = new Uint8Array([...codec].map((c) => c.charCodeAt(0)));
-  const capacity = EPHEMERAL_MAX_BYTES - HEADER_FIXED_BYTES - codecBytes.length;
-  const fragCount = Math.max(1, Math.ceil(bytes.length / capacity));
-  const out = [];
-
-  for (let i = 0; i < fragCount; i++) {
-    const payload = bytes.subarray(i * capacity, (i + 1) * capacity);
-    const buf = new Uint8Array(
-      HEADER_FIXED_BYTES + codecBytes.length + payload.length,
-    );
-    const view = new DataView(buf.buffer);
-    buf[0] = 0x4d; // "M"
-    buf[1] = 0x53; // "S"
-    buf[2] = 1; // version
-    buf[3] = 0; // track: video
-    buf[4] = isKeyframe ? 1 : 0;
-    view.setUint32(5, msgSeq, true);
-    buf[9] = i;
-    buf[10] = fragCount;
-    view.setUint16(11, width, true);
-    view.setUint16(13, height, true);
-    view.setBigUint64(15, BigInt(timestampUs), true);
-    view.setBigUint64(23, BigInt(createdAtMs), true);
-    buf[31] = codecBytes.length;
-    buf.set(codecBytes, HEADER_FIXED_BYTES);
-    buf.set(payload, HEADER_FIXED_BYTES + codecBytes.length);
-    out.push(buf);
-  }
-  return out;
-}
-
-/** Read the header fields a receiver needs, from a slice as it came off the wire. */
+/** Header fields plus the payload, which is what this driver reassembles. */
 function readHeader(slice) {
-  if (slice.length < HEADER_FIXED_BYTES) return null;
-  if (slice[0] !== 0x4d || slice[1] !== 0x53 || slice[2] !== 1) return null;
-  const codecLen = slice[31];
-  const view = new DataView(slice.buffer, slice.byteOffset, slice.byteLength);
-  return {
-    msgSeq: view.getUint32(5, true),
-    fragIndex: slice[9],
-    fragCount: slice[10],
-    isKeyframe: slice[4] === 1,
-    codec: String.fromCharCode(
-      ...slice.subarray(HEADER_FIXED_BYTES, HEADER_FIXED_BYTES + codecLen),
-    ),
-    payload: slice.slice(HEADER_FIXED_BYTES + codecLen),
-  };
+  const h = decodeHeader(slice);
+  if (!h) return null;
+  return { ...h, payload: slice.slice(h.payloadStart) };
 }
 
 /** Deterministic, incompressible-ish bytes — a real access unit is not a run of zeroes. */
@@ -373,6 +329,7 @@ const smallFragments = encodeFragments({
   height: 480,
   timestampUs: 1_000_000,
   createdAtMs: 1_700_000_000_000,
+  startedAtMs: 1_700_000_000_000,
   codec: CODEC,
   bytes: smallFrame,
 });
@@ -450,6 +407,7 @@ for (let attempt = 1; attempt <= BIG_ATTEMPTS; attempt++) {
     height: 480,
     timestampUs: 2_000_000 + attempt,
     createdAtMs: 1_700_000_000_000 + attempt,
+    startedAtMs: 1_700_000_000_000,
     codec: CODEC,
     bytes: bigFrame,
   });

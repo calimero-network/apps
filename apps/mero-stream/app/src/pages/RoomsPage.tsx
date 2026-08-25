@@ -10,8 +10,10 @@ import {
   mintRoomInvite,
   type RoomRow,
 } from "../lib/groups";
-import { ActionButton, InviteBox, StatusNote, Spinner } from "../components/ui";
-import styles from "./StreamsPage.module.css";
+import { ActionButton, StatusNote, Spinner } from "../components/ui";
+import InviteSheet from "../components/InviteSheet";
+import { initials } from "../lib/people";
+import styles from "./Manage.module.css";
 
 /**
  * Rooms inside one stream (namespace). A room is a SUBGROUP plus the context bound
@@ -53,7 +55,6 @@ export default function RoomsPage() {
     scope: string;
     hint: React.ReactNode;
   } | null>(null);
-  const [copied, setCopied] = useState(false);
 
   const run = useCallback(
     async (
@@ -181,8 +182,7 @@ export default function RoomsPage() {
             </>
           ),
         });
-        setCopied(false);
-        setDone(`Invite code ready for “${room.name}”.`);
+        setDone(`Invite ready for “${room.name}”.`);
       });
     },
     [mero, namespaceId, nsName, run],
@@ -209,63 +209,17 @@ export default function RoomsPage() {
           </>
         ),
       });
-      setCopied(false);
-      setDone(`Invite code ready for “${nsName}”.`);
+      setDone(`Invite ready for “${nsName}”.`);
     });
   }, [mero, namespaceId, nsName, run]);
 
-  const copy = useCallback(async () => {
-    if (!invite) return;
-    try {
-      await navigator.clipboard.writeText(invite.code);
-      setCopied(true);
-    } catch {
-      setError("Could not reach the clipboard — select the code and copy it.");
-    }
-  }, [invite]);
-
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <button
-          className={styles.backBtn}
-          onClick={() => navigate("/streams")}
-          data-testid="back-to-streams"
-        >
-          ← All streams
-        </button>
-        <h1 className={styles.title}>
-          {nsName || <span className={styles.muteInline}>Loading…</span>}
-        </h1>
-        <p className={styles.subtitle}>
-          Each room is one video call. Everyone invited to this stream can join
-          any room in it — a room code just drops them straight into that call.
-        </p>
-      </header>
-
-      <section className={styles.createBar}>
-        <input
-          className={styles.input}
-          placeholder="New room name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && create()}
-          maxLength={60}
-          disabled={pending === "create"}
-          data-testid="room-name-input"
-        />
-        <ActionButton
-          onClick={create}
-          pending={pending === "create"}
-          pendingLabel="Creating…"
-          disabled={!name.trim() || !mero}
-          testId="create-room"
-        >
-          Create room
-        </ActionButton>
-      </section>
-
-      <section className={styles.actionBar}>
+      <header className={styles.topbar}>
+        <div className={styles.brand}>
+          <h1 className={styles.brandName}>Mero Stream</h1>
+        </div>
+        <span className={styles.spacer} />
         <ActionButton
           onClick={inviteToNamespace}
           pending={pending === "invite:namespace"}
@@ -273,7 +227,7 @@ export default function RoomsPage() {
           variant="secondary"
           size="small"
           testId="invite-namespace"
-          title="Mint a code that invites someone to this whole stream"
+          title="Invite someone to this whole stream"
         >
           Invite to stream
         </ActionButton>
@@ -287,99 +241,182 @@ export default function RoomsPage() {
         >
           Refresh
         </ActionButton>
-      </section>
+      </header>
 
-      {status && (
-        <StatusNote tone="pending" testId="rooms-status">
-          {status}
-        </StatusNote>
-      )}
-      {!status && done && (
-        <StatusNote tone="ok" testId="rooms-done">
-          {done}
-        </StatusNote>
-      )}
-      {error && (
-        <StatusNote tone="error" testId="rooms-error">
-          {error}
-        </StatusNote>
-      )}
+      <main className={styles.content}>
+        <nav className={styles.crumbs} aria-label="Breadcrumb">
+          <button
+            type="button"
+            className={styles.crumbLink}
+            onClick={() => navigate("/streams")}
+            data-testid="back-to-streams"
+          >
+            All streams
+          </button>
+          <span aria-hidden="true">/</span>
+          <span>{nsName || "…"}</span>
+        </nav>
 
-      {invite && (
-        <InviteBox
-          code={invite.code}
-          scope={invite.scope}
-          hint={invite.hint}
-          copied={copied}
-          onCopy={() => void copy()}
-        />
-      )}
+        <div className={styles.heading}>
+          <h2 className={styles.title}>
+            {nsName || <span className={styles.muteInline}>Loading…</span>}
+          </h2>
+          <p className={styles.subtitle}>
+            Each <strong>room</strong> is one video call. Everyone invited to
+            this stream can join any room in it — a room link just drops them
+            straight into that call.
+          </p>
+        </div>
 
-      <section className={styles.list}>
-        <h2 className={styles.listTitle}>
-          Rooms
+        <div className={styles.toolbar}>
+          <input
+            className={styles.input}
+            placeholder="Name a new room"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && create()}
+            maxLength={60}
+            disabled={pending === "create"}
+            data-testid="room-name-input"
+          />
+          <ActionButton
+            onClick={create}
+            pending={pending === "create"}
+            pendingLabel="Creating…"
+            disabled={!name.trim() || !mero}
+            testId="create-room"
+          >
+            Create room
+          </ActionButton>
+        </div>
+
+        {status && (
+          <StatusNote tone="pending" testId="rooms-status">
+            {status}
+          </StatusNote>
+        )}
+        {!status && done && (
+          <StatusNote tone="ok" testId="rooms-done">
+            {done}
+          </StatusNote>
+        )}
+        {error && (
+          <StatusNote tone="error" testId="rooms-error">
+            {error}
+          </StatusNote>
+        )}
+
+        {invite && (
+          <InviteSheet
+            code={invite.code}
+            scope={invite.scope}
+            hint={invite.hint}
+          />
+        )}
+
+        <div className={styles.sectionHead}>
+          <h3 className={styles.sectionTitle}>
+            {rooms.length} room{rooms.length === 1 ? "" : "s"}
+          </h3>
           {listing && (
-            <span className={styles.listLoading}>
+            <span className={styles.sectionNote}>
               <Spinner label="Loading rooms" /> loading…
             </span>
           )}
-        </h2>
+        </div>
 
         {!listing && rooms.length === 0 && (
-          <p className={styles.muted}>
-            No rooms in this stream yet. Create one above to start a call.
-          </p>
+          <div className={styles.empty}>
+            <span className={styles.emptyTitle}>No rooms in this stream</span>
+            <span className={styles.emptyHint}>
+              Create one above to start a call. Everyone already in the stream
+              can join it without a new invitation.
+            </span>
+          </div>
         )}
 
-        {rooms.map((room) => (
-          <div key={room.roomId} className={styles.rowWrap}>
-            <button
-              className={styles.row}
-              onClick={() => enter(room)}
-              disabled={pending === `enter:${room.roomId}`}
-              data-testid="room-row"
-              data-room={room.roomId}
-              data-joined={room.joined}
-            >
-              <span className={styles.streamAvatar}>
-                {room.name.slice(0, 2).toUpperCase()}
-              </span>
-              <span className={styles.rowText}>
-                <span className={styles.rowName}>{room.name}</span>
-                <span className={styles.rowMeta}>
-                  {room.memberCount} member{room.memberCount === 1 ? "" : "s"}
-                  {room.contextId
-                    ? room.joined
-                      ? " · you are in this room"
-                      : " · not joined yet"
-                    : " · waiting for the context to replicate"}
+        {rooms.length > 0 && (
+          <div className={styles.grid}>
+            {rooms.map((room) => (
+              <article
+                key={room.roomId}
+                className={styles.card}
+                data-testid="room-row"
+                data-room={room.roomId}
+                data-joined={room.joined}
+              >
+                <div className={styles.cardTop}>
+                  <span className={styles.avatar} aria-hidden="true">
+                    {initials(room.name)}
+                  </span>
+                  <span className={styles.cardText}>
+                    <span className={styles.cardName} title={room.name}>
+                      {room.name}
+                    </span>
+                    <span className={styles.cardMeta}>
+                      <span className={styles.pill}>
+                        {room.memberCount} member
+                        {room.memberCount === 1 ? "" : "s"}
+                      </span>
+                      {/* Three distinct states, and the third is not a failure:
+                          a room whose context has not replicated to this node
+                          yet cannot be entered, and saying so beats a button
+                          that does nothing. */}
+                      {!room.contextId ? (
+                        <span
+                          className={`${styles.pill} ${styles.pillWaiting}`}
+                        >
+                          syncing
+                        </span>
+                      ) : room.joined ? (
+                        <span className={`${styles.pill} ${styles.pillJoined}`}>
+                          joined
+                        </span>
+                      ) : (
+                        <span className={styles.pill}>not joined</span>
+                      )}
+                    </span>
+                  </span>
+                </div>
+                <span className={styles.cardId} title={room.contextId ?? ""}>
+                  {room.contextId ?? "waiting for the context to replicate"}
                 </span>
-              </span>
-              <span className={styles.enter}>
-                {pending === `enter:${room.roomId}` ? (
-                  <>
-                    <Spinner label="Joining" /> joining…
-                  </>
-                ) : room.joined ? (
-                  "Open →"
-                ) : (
-                  "Join →"
-                )}
-              </span>
-            </button>
-            <ActionButton
-              onClick={() => inviteToRoom(room)}
-              pending={pending === `invite:${room.roomId}`}
-              pendingLabel="Minting…"
-              variant="secondary"
-              testId="invite-room"
-              title="Mint a code that invites someone to this room only"
-            >
-              Invite
-            </ActionButton>
+                <div className={styles.cardActions}>
+                  <button
+                    type="button"
+                    className={styles.openBtn}
+                    onClick={() => enter(room)}
+                    data-testid="enter-room"
+                    disabled={
+                      pending === `enter:${room.roomId}` || !room.contextId
+                    }
+                  >
+                    {pending === `enter:${room.roomId}` ? (
+                      <>
+                        <Spinner label="Joining" /> joining…
+                      </>
+                    ) : room.joined ? (
+                      "Open call"
+                    ) : (
+                      "Join call"
+                    )}
+                  </button>
+                  <ActionButton
+                    onClick={() => inviteToRoom(room)}
+                    pending={pending === `invite:${room.roomId}`}
+                    pendingLabel="Minting…"
+                    variant="secondary"
+                    testId="invite-room"
+                    title="Invite someone straight into this room"
+                  >
+                    Invite
+                  </ActionButton>
+                </div>
+              </article>
+            ))}
           </div>
-        ))}
-      </section>
+        )}
+      </main>
     </div>
   );
 }

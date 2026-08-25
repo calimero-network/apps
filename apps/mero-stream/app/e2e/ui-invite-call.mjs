@@ -201,6 +201,19 @@ async function main() {
     await nameInput.fill(streamName);
 
     await watchStatuses(peerA.page);
+    // The paste fallback shares `acceptCode` with the link path, but the DIALOG
+    // is new surface: a code field nobody can open is not a fallback. Checked
+    // here, on the streams page, because that is the only page that has it.
+    await peerA.page.locator('[data-testid="open-join"]').click();
+    const joinDialog = peerA.page.locator('[data-testid="join-dialog"]');
+    await joinDialog.waitFor({ state: "visible", timeout: 15_000 });
+    check(
+      await peerA.page.locator('[data-testid="join-code-input"]').isVisible(),
+      "the invite-code field is reachable from the Join dialog",
+    );
+    await peerA.page.locator('[data-testid="join-dialog-close"]').click();
+    await joinDialog.waitFor({ state: "hidden", timeout: 10_000 });
+
     await peerA.page.locator('[data-testid="create-stream"]').click();
 
     // Creating a stream must land on THAT STREAM'S ROOM LIST. Asserting the route
@@ -240,8 +253,7 @@ async function main() {
       `creating a room lands on /live, the 480p route (${new URL(peerA.page.url()).pathname})`,
     );
     await peerA.page
-      .locator('[data-testid="join-state"]')
-      .filter({ hasText: "joined" })
+      .locator('[data-testid="join-state"][data-joined="true"]')
       .waitFor({ timeout: 60_000 });
     c.ok("peerA is joined to the room's context");
 
@@ -267,8 +279,36 @@ async function main() {
 
     await watchStatuses(peerA.page);
     await peerA.page.locator('[data-testid="invite-room"]').first().click();
+    // The LINK is the primary artefact now. The raw code is still there, behind a
+    // <details> — read both, because they have to agree and each is a different
+    // promise: the link must open the app on the invitation, and the code must
+    // stay the cross-app token every other mero app can read.
+    const linkInput = peerA.page.locator('[data-testid="invite-link"]');
+    await linkInput.waitFor({ state: "visible", timeout: 60_000 });
+    const inviteLink = await linkInput.inputValue();
+    check(
+      inviteLink.includes("links.calimero.network") &&
+        inviteLink.includes("invitation="),
+      `minted a platform invitation link (${inviteLink.length} chars)`,
+    );
+    check(
+      inviteLink.includes("com.calimero.merostream/join"),
+      "the link addresses this app by slug and the join intent, not a route",
+    );
+
+    // `inputValue()` reads a value without requiring visibility, so the collapsed
+    // disclosure does not need opening — but open it anyway, because a code
+    // nobody can reach is not a fallback.
+    await peerA.page.locator('[data-testid="invite-box"] summary').click();
+    const deepLink = await peerA.page
+      .locator('[data-testid="invite-deep-link"]')
+      .inputValue();
+    check(
+      deepLink.startsWith("calimero://com.calimero.merostream/join?"),
+      "the desktop link uses the custom scheme and the same slug",
+    );
     const codeInput = peerA.page.locator('[data-testid="invite-code"]');
-    await codeInput.waitFor({ state: "visible", timeout: 60_000 });
+    await codeInput.waitFor({ state: "visible", timeout: 15_000 });
     inviteCode = await codeInput.inputValue();
 
     check(inviteCode.length > 0, `minted a code (${inviteCode.length} chars)`);
@@ -277,6 +317,10 @@ async function main() {
     check(
       !/[+/=\s"'{}]/.test(inviteCode),
       "the code is one pasteable token — no JSON, no whitespace, no +/=",
+    );
+    check(
+      inviteLink.includes(encodeURIComponent(inviteCode)),
+      "the link carries exactly the code shown in the fallback",
     );
     // The scope must be stated, because a namespace code and a room code look
     // identical — both are one base58 blob — and they do different things.
@@ -316,24 +360,55 @@ async function main() {
       `the Copy button confirms it copied (“${copyLabel.trim()}”)`,
     );
 
-    // ── 4. node2: paste the code, land in the call ───────────────────────────
-    c.step("node2: paste that code — namespace + room + context in one join");
+    // ── 4. node2: OPEN THE LINK, land in the call ────────────────────────────
+    //
+    // The interesting property to prove end to end: the invitation rides a QUERY
+    // parameter while the SSO session rides the HASH, so both are read off one
+    // URL by two different features without either clobbering the other. That
+    // ordering (`?invitation=…#access_token=…`) is what the app must cope with,
+    // and a unit test can assert the parsing but not the coexistence.
+    //
+    // Uses `?invitation=` on the app's OWN url rather than the links.calimero
+    // host, because that host redirects to the DEPLOYED frontend, which is not
+    // this dev server. It is also exactly the shape the launcher hands an app,
+    // and the platform controller treats the two identically (null slug/action
+    // with the params intact), so the same code path is covered.
+    //
+    // The paste path is not skipped, only demoted: it shares `acceptCode` with
+    // this one, and the dialog is opened and exercised below.
+    c.step(
+      "node2: open the invitation LINK — namespace + room + context, no pasting",
+    );
+    const session = sessionHash(
+      env.DEV_NODE_URL_2,
+      env.DEV_ACCESS_TOKEN_2,
+      env.DEV_REFRESH_TOKEN_2,
+      env.DEV_APP_ID_2 || env.DEV_APP_ID,
+    );
     peerB = await mk(
       "peerB",
-      `${VITE_URL}/streams${sessionHash(
-        env.DEV_NODE_URL_2,
-        env.DEV_ACCESS_TOKEN_2,
-        env.DEV_REFRESH_TOKEN_2,
-        env.DEV_APP_ID_2 || env.DEV_APP_ID,
-      )}`,
+      `${VITE_URL}/streams?invitation=${encodeURIComponent(inviteCode)}${session}`,
     );
-    const joinInput = peerB.page.locator('[data-testid="join-code-input"]');
-    await joinInput.waitFor({ state: "visible", timeout: 30_000 });
-    await peerB.page.screenshot({ path: `${ARTIFACTS}/picker-empty.png` });
-    await joinInput.fill(inviteCode);
+
+    // The link no longer joins on its own, and that is the point: joining is a
+    // state change, so a forwarded link or a refreshed background tab must not
+    // do it silently. It shows what you are about to join and waits for a click.
+    const prompt = peerB.page.locator('[data-testid="invite-prompt"]');
+    await prompt.waitFor({ state: "visible", timeout: 60_000 });
+    check(
+      ((await prompt.textContent()) ?? "").includes(roomName),
+      `the invitation names what it grants (looking for “${roomName}”)`,
+    );
+
+    // The capability must already be out of the address bar at this point —
+    // BEFORE anything is accepted — or it sits there while the user decides.
+    check(
+      !peerB.page.url().includes("invitation="),
+      "the invitation parameter was stripped before the prompt was answered",
+    );
 
     await watchStatuses(peerB.page);
-    await peerB.page.locator('[data-testid="join-submit"]').click();
+    await peerB.page.locator('[data-testid="invite-accept"]').click();
 
     // The join walks the chain (namespace, then the room), then waits for the
     // context identity — with a fallback to an explicit joinContext, because
@@ -346,8 +421,7 @@ async function main() {
       "pasting a room code took node2 straight into the call",
     );
     await peerB.page
-      .locator('[data-testid="join-state"]')
-      .filter({ hasText: "joined" })
+      .locator('[data-testid="join-state"][data-joined="true"]')
       .waitFor({ timeout: 60_000 });
     c.ok("peerB is joined to the room's context on its OWN node");
 
@@ -370,7 +444,7 @@ async function main() {
     // It is already a member, so this also checks that re-entering a joined room
     // does not go through the join path again.
     c.step("node1: re-enter the room from the room list");
-    await peerA.page.locator('[data-testid="room-row"]').first().click();
+    await peerA.page.locator('[data-testid="enter-room"]').first().click();
     await peerA.page
       .locator('[data-testid="capture-toggle"]')
       .waitFor({ state: "visible", timeout: 60_000 });
@@ -379,8 +453,7 @@ async function main() {
       "clicking a joined room row opens the call",
     );
     await peerA.page
-      .locator('[data-testid="join-state"]')
-      .filter({ hasText: "joined" })
+      .locator('[data-testid="join-state"][data-joined="true"]')
       .waitFor({ timeout: 60_000 });
 
     // Distinct display names, so the tile labels can be checked. A tile captioned
@@ -389,15 +462,44 @@ async function main() {
     c.step("Naming both peers");
     const nameOf = { peerA: `alice-${STAMP}`, peerB: `bob-${STAMP}` };
     for (const p of [peerA, peerB]) {
+      // The nickname control lives in the People dialog now, not wedged into the
+      // top bar. First run auto-opens it for a browser with no stored name, so
+      // this handles either state rather than assuming one.
+      const dialog = p.page.locator('[data-testid="people-dialog"]');
+      if (!(await dialog.isVisible())) {
+        await p.page.locator('[data-testid="identity-btn"]').click();
+      }
+      await dialog.waitFor({ state: "visible", timeout: 15_000 });
+
       await p.page
         .locator('[data-testid="username-input"]')
         .fill(nameOf[p.name]);
       await p.page.locator('[data-testid="username-submit"]').click();
+      // Confirmed by the dialog. The rename has nothing else of its own to wait
+      // on — `joined` is already true and re-joining just updates the stored
+      // name — but it IS verified downstream too: the tile-caption assertion
+      // below reads the name back off the OTHER peer's contract state, which is
+      // the only place a rename can really be observed.
       await p.page
-        .locator('[data-testid="join-state"]')
-        .filter({ hasText: "joined" })
-        .waitFor({ timeout: 30_000 });
-      c.ok(`${p.name} joined as ${nameOf[p.name]}`);
+        .locator('[data-testid="nickname-saved"]')
+        .waitFor({ timeout: 15_000 });
+
+      // The roster must show us, by the name we just set, marked as ourselves.
+      const selfRow = p.page.locator(
+        '[data-testid="person-row"][data-self="true"]',
+      );
+      check(
+        (await selfRow.count()) === 1,
+        `${p.name}: exactly one roster row is marked as self`,
+      );
+      check(
+        ((await selfRow.first().textContent()) ?? "").includes(nameOf[p.name]),
+        `${p.name}: the roster shows the new nickname back`,
+      );
+
+      await p.page.locator('[data-testid="people-dialog-close"]').click();
+      await dialog.waitFor({ state: "hidden", timeout: 10_000 });
+      c.ok(`${p.name} set their nickname to ${nameOf[p.name]}`);
     }
 
     c.step("Both peers start capture");
@@ -516,6 +618,43 @@ async function main() {
         `${p.name} still decoding after the hold (${rate}/s)`,
       );
     }
+
+    // Broadcaster slots: two people live, four slots, nobody yielded. Worth
+    // asserting HERE rather than only in a unit test, because the number every
+    // peer reads is derived from the media it actually received — a unit test can
+    // only prove the comparator, not that both sides saw the same claims.
+    c.step("Checking broadcaster slots");
+    for (const p of [peerA, peerB]) {
+      const occupied = Number(
+        await p.page
+          .locator('[data-testid="slots-readout"]')
+          .getAttribute("data-occupied"),
+      );
+      check(
+        occupied === 2,
+        `${p.name} sees 2 of 4 broadcast slots taken (got ${occupied})`,
+      );
+      check(
+        (await p.page.locator('[data-testid="yielded-notice"]').count()) === 0,
+        `${p.name} did not yield with only 2 of 4 slots taken`,
+      );
+    }
+
+    // The dialog is where every measurement went, so a driver that never opens
+    // it would not notice the whole panel failing to mount.
+    c.step("Opening the data dialog");
+    await peerA.page.locator('[data-testid="details-toggle"]').click();
+    const dialog = peerA.page.locator('[data-testid="data-dialog"]');
+    await dialog.waitFor({ state: "visible", timeout: 10_000 });
+    const dagChunks = Number(
+      await peerA.page
+        .locator('[data-testid="live-chunks"]')
+        .getAttribute("data-value"),
+    );
+    check(
+      dagChunks === 0,
+      `the call wrote nothing to replicated state (liveChunks=${dagChunks})`,
+    );
 
     for (const p of [peerA, peerB]) {
       await p.page.screenshot({ path: `${ARTIFACTS}/${p.name}.png` });

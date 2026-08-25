@@ -17,5 +17,8 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  // `e2e/lib` is included so src/lib/frameParity.test.ts can type-check its
+  // import of the shared framing module. The rest of e2e/ stays out: those are
+  // node scripts, not part of the app's type graph.
+  "include": ["src", "e2e/lib"]
 }

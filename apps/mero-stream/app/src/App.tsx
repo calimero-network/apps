@@ -2,11 +2,12 @@ import { type ReactNode, useEffect, useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
 import { getContextId, clearActiveRoom } from "./lib/session";
+import InvitationPrompt from "./components/InvitationPrompt";
 import LandingPage from "./pages/LandingPage";
 import StreamsPage from "./pages/StreamsPage";
 import RoomsPage from "./pages/RoomsPage";
 import StreamPage from "./pages/StreamPage";
-import LivePage from "./pages/LivePage";
+import CallPage from "./pages/CallPage";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useMero();
@@ -72,62 +73,70 @@ export default function App() {
   // authenticated. The desktop shell and the URL hash still work exactly as
   // before — they just aren't the only options.
   return (
-    <Routes>
-      {/* Default to /live (480p H.264), not /stream (64x48 in-WASM toy codec).
-          Both this and StreamsPage used to send you to /stream, so every entry and
-          every reload landed on the 64x48 route and 480p was unreachable without
-          hand-editing the URL. /stream stays as an explicit comparison route — the
-          approach-3 baseline is a measured Task-3 result, not dead weight. */}
-      <Route
-        path="/"
-        element={
-          <Navigate to={getContextId() ? "/live" : "/streams"} replace />
-        }
-      />
-      <Route
-        path="/streams"
-        element={
-          <RequireAuth>
-            <StreamsPage />
-          </RequireAuth>
-        }
-      />
-      {/* Rooms inside one stream. A namespace holds many rooms and each room is
+    <>
+      {/* App level, deliberately. An invitation link can land on ANY route —
+          someone with a stored context is redirected to /live on boot — so a
+          prompt that lived on the streams page simply never appeared for them.
+          Same shape as the bug where room links pointed at a route with no
+          redemption code: a handler on one route is a handler that misses. */}
+      <InvitationPrompt />
+      <Routes>
+        {/* Default to /live — the call. `/stream` (64x48, in-WASM toy codec) is
+          NOT product surface: it is the measured approach-3 baseline and a real
+          Task-3 result, so it stays reachable by URL and unreferenced by any nav
+          or switch. Both this and StreamsPage used to send you to /stream, so
+          every entry and every reload landed on the 64x48 route and 480p was
+          unreachable without hand-editing the URL. */}
+        <Route
+          path="/"
+          element={
+            <Navigate to={getContextId() ? "/live" : "/streams"} replace />
+          }
+        />
+        <Route
+          path="/streams"
+          element={
+            <RequireAuth>
+              <StreamsPage />
+            </RequireAuth>
+          }
+        />
+        {/* Rooms inside one stream. A namespace holds many rooms and each room is
           one call, so the room list needs its own route — the picker used to
           create a namespace and a single context together and could never show a
           second call in the same stream. */}
-      <Route
-        path="/streams/:namespaceId"
-        element={
-          <RequireAuth>
-            <RoomsPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/stream"
-        element={
-          <RequireAuth>
-            <RequireStream>
-              <StreamPage />
-            </RequireStream>
-          </RequireAuth>
-        }
-      />
-      {/* Approach 2: 480p H.264 encoded in the browser, app stores opaque bytes.
-          Same auth + stream requirements as /stream; a separate route so the
-          measured approach-3 baseline stays reachable and untouched. */}
-      <Route
-        path="/live"
-        element={
-          <RequireAuth>
-            <RequireStream>
-              <LivePage />
-            </RequireStream>
-          </RequireAuth>
-        }
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        <Route
+          path="/streams/:namespaceId"
+          element={
+            <RequireAuth>
+              <RoomsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/stream"
+          element={
+            <RequireAuth>
+              <RequireStream>
+                <StreamPage />
+              </RequireStream>
+            </RequireAuth>
+          }
+        />
+        {/* The call: 640x480 H.264 encoded in the browser, carried on ephemeral
+          presence. Same auth + stream requirements as /stream. */}
+        <Route
+          path="/live"
+          element={
+            <RequireAuth>
+              <RequireStream>
+                <CallPage />
+              </RequireStream>
+            </RequireAuth>
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
   );
 }

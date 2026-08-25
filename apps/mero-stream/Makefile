@@ -1,4 +1,4 @@
-.PHONY: help setup build bundle logic-build logic-test logic-bundle app-install app-build app-typecheck app-test dev dev-nodes dev-stop workflows load-curve clean cargo-mero e2e-call e2e-call-headless e2e-call-keep e2e-call-prod e2e-suite e2e-ui e2e-ui-headed
+.PHONY: help setup build bundle logic-build logic-test logic-bundle app-install app-build app-typecheck app-test dev dev-nodes dev-stop workflows load-curve clean cargo-mero e2e-call e2e-call-headless e2e-call-keep e2e-call-prod e2e-suite e2e-ui e2e-ui-headed shots ladder
 
 help:
 	@echo ""
@@ -27,6 +27,8 @@ help:
 	@echo "    e2e-call-prod       Against app/dist — the artifact Vercel serves"
 	@echo "    e2e-suite           4-scenario 2-node suite (namespace/invite/room) + stream"
 	@echo "    e2e-ui              stream -> room -> invite code -> join on node2, ALL clicked"
+	@echo "    shots               Screenshot every call-UI state (no node, no camera)"
+	@echo "    ladder              MEASURE the broadcaster cap: 1-4 authors on 4 nodes"
 	@echo "    cargo-mero          Install/verify cargo-mero pinned to rc.20"
 	@echo ""
 	@echo "  workflows      merobox 2-node e2e (P2 — needs Docker + merobox>=0.6.49, node)"
@@ -94,6 +96,20 @@ dev-stop:
 # would hide a regression where it started). So the codec ends were untested.
 # This drives real Chrome — REQUIRED, since Playwright's bundled Chromium has no
 # proprietary codecs and therefore no H.264 at all.
+# Screenshots of the call UI in every state, with NO node and NO camera: the
+# harness in app/e2e/shots/ aliases the two hooks that need them and renders the
+# production CallPage / DataDialog / CSS. Output lands in data/shots/, which is
+# gitignored -- these are review artifacts, not source.
+shots:
+	@cd app && pnpm exec node e2e/shots.mjs
+
+# Measures the broadcaster cap rather than asserting it: 4 nodes, 1->4 concurrent
+# authors at a real 25 fps / 1.5 Mbps, reporting achieved fps, publish RTT and
+# delivery ratio per rung. Results land in data/capacity-ladder/results.json.
+# Runs 4 merod containers -- CI territory, not a laptop.
+ladder: logic-build
+	@cd workflows && merobox bootstrap run e2e-capacity-ladder.yml
+
 e2e-call:
 	@bash scripts/e2e-live-call.sh
 

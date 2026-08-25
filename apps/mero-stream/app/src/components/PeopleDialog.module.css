@@ -1,0 +1,242 @@
+/* ── Identity + people ─────────────────────────────────────────────────────
+ *
+ * One dialog, two jobs, in the order they matter to someone opening it: set the
+ * name other people see, then see who else is here. They were separate ideas and
+ * are better together — "who is in this room" and "what am I called in it" are
+ * the same question asked from two sides, and a name field on its own gives you
+ * no way to check it landed.
+ */
+.dialog {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg-elev);
+  color: var(--text);
+  font-family: var(--font);
+  padding: 0;
+  width: min(460px, calc(100vw - 32px));
+  max-height: min(80vh, 720px);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.dialog::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.headTitle {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.headSpacer {
+  flex: 1;
+}
+
+.closeBtn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  padding: 5px 12px;
+  font-size: 0.85rem;
+  font-family: inherit;
+  cursor: pointer;
+}
+.closeBtn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.body {
+  padding: 18px;
+  overflow-y: auto;
+  max-height: calc(min(80vh, 720px) - 60px);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ── Name ─────────────────────────────────────────────────────────────────── */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.help {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.nameRow {
+  display: flex;
+  gap: 8px;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 9px 11px;
+  font-size: 0.95rem;
+  font-family: inherit;
+}
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+/* An unset name is the one state worth nudging: the tiles show it to everybody. */
+.input[data-unset="true"] {
+  border-color: var(--amber);
+}
+
+.saveBtn {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--accent-fg);
+  padding: 9px 18px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.saveBtn:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+.saveBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.saved {
+  font-size: 0.8rem;
+  color: var(--green);
+}
+
+/* ── People ───────────────────────────────────────────────────────────────── */
+.sectionTitle {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.person {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 12px;
+  background: var(--surface);
+  font-size: 0.92rem;
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.avatarSelf {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.who {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.id {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.74rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.badgeLive {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.empty {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-faint);
+}

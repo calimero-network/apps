@@ -31,6 +31,7 @@ function frame(over: Partial<LiveFrame> = {}): LiveFrame {
     height: 480,
     timestampUs: 1_234_567,
     createdAtMs: 1_700_000_000_123,
+    startedAtMs: 1_700_000_000_000,
     codec: CODEC,
     bytes: payload(1000),
     ...over,
@@ -60,6 +61,7 @@ describe("fragment framing", () => {
       height: 720,
       timestampUs: 98_765_432,
       createdAtMs: 1_755_500_000_999,
+      startedAtMs: 1_755_499_999_000,
     });
     const slices = encodeFragments(f);
     expect(slices).toHaveLength(1);
@@ -72,6 +74,7 @@ describe("fragment framing", () => {
     expect(got.height).toBe(720);
     expect(got.timestampUs).toBe(98_765_432);
     expect(got.createdAtMs).toBe(1_755_500_000_999);
+    expect(got.startedAtMs).toBe(1_755_499_999_000);
     expect(got.fragIndex).toBe(0);
     expect(got.fragCount).toBe(1);
     expect(got.payload).toEqual(f.bytes);
@@ -162,6 +165,7 @@ describe("wire layout", () => {
         height: 480,
         timestampUs: 0x0102,
         createdAtMs: 0x0304,
+        startedAtMs: 0x0506,
         codec: "vp8",
         bytes: new Uint8Array([0xaa, 0xbb]),
       }),
@@ -170,7 +174,7 @@ describe("wire layout", () => {
     expect([...slice]).toEqual([
       0x4d,
       0x53, // 0  magic "MS"
-      0x01, // 2  version
+      0x02, // 2  version
       0x01, // 3  track
       0x01, // 4  flags: keyframe
       0x04,
@@ -199,19 +203,28 @@ describe("wire layout", () => {
       0x00,
       0x00,
       0x00, // 23 createdAtMs u64 LE
-      0x03, // 31 codecLen
+      0x06,
+      0x05,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00, // 31 startedAtMs u64 LE
+      0x03, // 39 codecLen
       0x76,
       0x70,
-      0x38, // 32 "vp8"
+      0x38, // 40 "vp8"
       0xaa,
       0xbb, // payload
     ]);
   });
 
-  it("keeps the fixed header at 32 bytes", () => {
+  it("keeps the fixed header at 40 bytes", () => {
     // maxPayloadBytes is stated in terms of it, and the e2e's encoder hard-codes
     // it. Asserted directly so a change cannot pass unnoticed through arithmetic.
-    expect(maxPayloadBytes("vp8")).toBe(EPHEMERAL_MAX_BYTES - 32 - 3);
+    // Was 32 before `startedAtMs` (header v2) added 8 bytes.
+    expect(maxPayloadBytes("vp8")).toBe(EPHEMERAL_MAX_BYTES - 40 - 3);
   });
 });
 
@@ -239,7 +252,8 @@ describe("decodeFragment rejects anything that is not ours", () => {
 
   it("returns null when the declared codec length runs past the slice", () => {
     const s = encodeFragments(frame({ bytes: new Uint8Array(0) }))[0];
-    s[31] = 200;
+    s[39] = 200; // codecLen, at offset 39 since header v2
+
     expect(decodeFragment(s)).toBeNull();
   });
 
