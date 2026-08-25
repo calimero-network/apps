@@ -18,6 +18,16 @@ import {
 } from "../constants/app";
 
 /**
+ * How much conversation to load either side of a linked message.
+ *
+ * Enough to read the exchange it belongs to; a single message out of context
+ * is rarely what the person sharing the link meant.
+ */
+const PERMALINK_RADIUS = 25;
+import { bindChannel, messageSync } from "../repositories/messages";
+import { getContextId } from "@calimero-network/mero-react";
+
+/**
  * Custom hook for managing messages in a chat
  * Handles loading, pagination, and incoming messages
  */
@@ -25,7 +35,6 @@ export function useMessages() {
   const [messages, setMessages] = useState<CurbMessage[]>([]);
   const [incomingMessages, setIncomingMessages] = useState<CurbMessage[]>([]);
   const [totalCount, setTotalCount] = useState(0);
-  const [offset, setOffset] = useState(MESSAGE_PAGE_SIZE);
   const [searchResults, setSearchResults] = useState<CurbMessage[]>([]);
   const [searchTotalCount, setSearchTotalCount] = useState(0);
   const [searchOffset, setSearchOffset] = useState(0);
@@ -33,6 +42,13 @@ export function useMessages() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const messagesRef = useRef<CurbMessage[]>([]);
+  /**
+   * Index of the oldest message currently on screen — where scrolling up
+   * continues from. Deliberately NOT the store's low bound: a catch-up can
+   * leave the store holding far more than is painted, and continuing from the
+   * store would return a block that does not join onto the view.
+   */
+  const oldestShownRef = useRef<number | null>(null);
 
   /**
    * Load initial messages for a chat
@@ -40,41 +56,61 @@ export function useMessages() {
   const loadInitial = useCallback(
     async (activeChat: ActiveChat | null): Promise<ChatMessagesData> => {
       if (!activeChat?.name) {
-        return {
-          messages: [],
-          totalCount: 0,
-          hasMore: false,
-        };
+        return { messages: [], totalCount: 0, hasMore: false };
       }
 
       const isDM = activeChat.type === "direct_message";
-      const response: ResponseData<FullMessageResponse> =
-        await new ClientApiDataSource().getMessages({
-          group: { name: (isDM ? "private_dm" : activeChat.name) || "" },
-          limit: MESSAGE_PAGE_SIZE,
-          offset: 0,
-          is_dm: isDM,
-          dm_identity: activeChat.contextIdentity,
-        });
+      const contextId = getContextId() || "";
+      bindChannel({
+        contextId,
+        group: { name: (isDM ? "private_dm" : activeChat.name) || "" },
+        isDm: isDM,
+        dmIdentity: activeChat.contextIdentity,
+      });
 
-      if (response.data) {
-        const messagesArray = transformMessagesToUI(response.data.messages);
-        messagesRef.current = messagesArray;
-        setMessages(messagesArray);
-        setTotalCount(response.data.total_count);
-        setOffset(MESSAGE_PAGE_SIZE);
+      // Paint what is on disk first. A channel opened after two hours away
+      // shows its conversation immediately rather than an empty pane with a
+      // spinner over it, and shows it even when the node cannot be reached.
+      const stored = await messageSync.newest(contextId, MESSAGE_PAGE_SIZE);
+      if (stored.length > 0) {
+        oldestShownRef.current = stored[0].index;
+        const painted = transformMessagesToUI(stored);
+        messagesRef.current = painted;
+        setMessages(painted);
+      }
 
+      try {
+        // Then reconcile. On a current channel this costs one count call and
+        // transfers nothing.
+        await messageSync.catchUp(contextId);
+      } catch (error) {
+        // The node is unreachable. What was painted above is still the best
+        // answer available, so this is not a failure of the open — it is a
+        // stale view that the next catch-up repairs.
+        console.warn("catchUp failed; showing stored history", error);
         return {
-          messages: messagesArray,
-          totalCount: response.data.total_count,
-          hasMore: response.data.start_position < response.data.total_count,
+          messages: messagesRef.current,
+          totalCount: messagesRef.current.length,
+          hasMore: messagesRef.current.length > 0,
         };
       }
 
+      const fresh = await messageSync.newest(contextId, MESSAGE_PAGE_SIZE);
+      oldestShownRef.current = fresh[0]?.index ?? null;
+      const messagesArray = transformMessagesToUI(fresh);
+      messagesRef.current = messagesArray;
+      setMessages(messagesArray);
+
+      const cursor = await messageSync.cursor(contextId);
+      const total = cursor?.knownTotal ?? messagesArray.length;
+      setTotalCount(total);
+
       return {
-        messages: [],
-        totalCount: 0,
-        hasMore: false,
+        messages: messagesArray,
+        totalCount: total,
+        // More history exists below what is painted whenever the local window
+        // does not reach the first message.
+        hasMore: (oldestShownRef.current ?? 0) > 0,
       };
     },
     [],
@@ -88,51 +124,104 @@ export function useMessages() {
       activeChat: ActiveChat | null,
       _chatId: string,
     ): Promise<ChatMessagesDataWithOlder> => {
-      if (!activeChat || offset >= totalCount) {
+      if (!activeChat) {
+        return { messages: [], totalCount, hasOlder: false };
+      }
+
+      const contextId = getContextId() || "";
+
+      try {
+        // Storage answers first and the node is asked only for what storage
+        // does not hold — and whatever is fetched is written down, so the same
+        // scroll never costs a second request.
+        const older = await messageSync.loadOlder(
+          contextId,
+          MESSAGE_PAGE_SIZE,
+          oldestShownRef.current ?? undefined,
+        );
+        if (older.length > 0) oldestShownRef.current = older[0].index;
+        const messagesArray = transformMessagesToUI(older);
+        const cursor = await messageSync.cursor(contextId);
         return {
-          messages: [],
-          totalCount,
-          hasOlder: false,
+          messages: messagesArray,
+          totalCount: cursor?.knownTotal ?? totalCount,
+          // More to scroll to whenever the view has not reached the first
+          // message — again a property of the VIEW, not of store coverage.
+          hasOlder: (oldestShownRef.current ?? 0) > 0,
         };
+      } catch (error) {
+        // Offline mid-scroll. Report no older messages rather than "you have
+        // reached the beginning": the caller can ask again, and claiming the
+        // channel ends here would be wrong.
+        console.warn("loadOlder failed", error);
+        return { messages: [], totalCount, hasOlder: true };
+      }
+    },
+    [totalCount],
+  );
+
+  /**
+   * Open a link to one message: load the conversation around it.
+   *
+   * `PERMALINK_RADIUS` messages either side, which is enough to read the
+   * exchange the link was pointing at rather than one orphaned line.
+   *
+   * Note what this does NOT do: it does not move the channel's cursor, and it
+   * leaves the view showing a window from the middle of the history. Scrolling
+   * up continues from the top of that window, but there is no path back down to
+   * the newest messages from here — returning to the present means loading the
+   * channel again. A "jump to present" affordance should call `loadInitial`.
+   */
+  const openMessageLink = useCallback(
+    async (
+      activeChat: ActiveChat | null,
+      index: number,
+    ): Promise<ChatMessagesData> => {
+      if (!activeChat?.name) {
+        return { messages: [], totalCount: 0, hasMore: false };
       }
 
       const isDM = activeChat.type === "direct_message";
-      const response: ResponseData<FullMessageResponse> =
-        await new ClientApiDataSource().getMessages({
-          group: {
-            name: (isDM ? "private_dm" : activeChat.name) || "",
-          },
-          limit: MESSAGE_PAGE_SIZE,
-          offset,
-          is_dm: isDM,
-          dm_identity: activeChat.contextIdentity,
-        });
+      const contextId = getContextId() || "";
+      bindChannel({
+        contextId,
+        group: { name: (isDM ? "private_dm" : activeChat.name) || "" },
+        isDm: isDM,
+        dmIdentity: activeChat.contextIdentity,
+      });
 
-      if (response.data) {
-        const messagesArray = transformMessagesToUI(response.data.messages);
-        const returnedCount = messagesArray.length;
-        if (returnedCount > 0) {
-          setOffset((prev) => prev + returnedCount);
+      try {
+        const around = await messageSync.loadAround(
+          contextId,
+          index,
+          PERMALINK_RADIUS,
+        );
+        if (around.length === 0) {
+          // The link points past the end of this channel — a stale link, or one
+          // for a channel this node has not synced. Better to show nothing than
+          // to silently open somewhere else and look like it worked.
+          return { messages: [], totalCount: 0, hasMore: false };
         }
 
-        const nextOffset = offset + returnedCount;
-        const total = response.data.total_count;
-        const hasOlder = nextOffset < total;
+        oldestShownRef.current = around[0].index;
+        const messagesArray = transformMessagesToUI(around);
+        messagesRef.current = messagesArray;
+        setMessages(messagesArray);
+
+        const cursor = await messageSync.cursor(contextId);
+        setTotalCount(cursor?.knownTotal ?? messagesArray.length);
 
         return {
           messages: messagesArray,
-          totalCount: total,
-          hasOlder,
+          totalCount: cursor?.knownTotal ?? messagesArray.length,
+          hasMore: around[0].index > 0,
         };
+      } catch (error) {
+        console.warn("openMessageLink failed", error);
+        return { messages: [], totalCount: 0, hasMore: false };
       }
-
-      return {
-        messages: [],
-        totalCount: 0,
-        hasOlder: false,
-      };
     },
-    [offset, totalCount],
+    [],
   );
 
   /**
@@ -385,7 +474,10 @@ export function useMessages() {
     setMessages([]);
     setIncomingMessages([]);
     setTotalCount(0);
-    setOffset(MESSAGE_PAGE_SIZE);
+    oldestShownRef.current = null;
+    // No pagination position to reset: how far back a channel is loaded lives
+    // in its stored cursor, which must survive switching away and back — that
+    // is the whole point of keeping it.
     clearSearch();
   }, [clearSearch]);
 
@@ -403,6 +495,7 @@ export function useMessages() {
     messagesRef,
     loadInitial,
     loadPrevious,
+    openMessageLink,
     checkForNewMessages,
     addIncoming,
     addOptimistic,

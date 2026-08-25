@@ -21,12 +21,19 @@ export enum MessageStatus {
 }
 
 export interface CurbMessage {
+  /**
+   * Absolute position in the channel, or undefined for a message that has no
+   * position yet (an optimistic send, before the node assigns one).
+   *
+   * Carried so a rendered message can be linked to: the permalink anchor is a
+   * position, not an id. See `utils/permalink.ts`.
+   */
+  index?: number;
   id: MessageId; // id can be temporary or permanent
   text: CurbString;
   nonce: CurbString;
   key: string;
   timestamp: U64;
-  senderUsername?: CurbString; // Optional to match our usage
   sender: AccountId;
   reactions: Option<HashMap<CurbString, Vec<AccountId>>>;
   threadCount?: number;

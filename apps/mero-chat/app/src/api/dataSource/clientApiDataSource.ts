@@ -24,6 +24,8 @@ import {
   type GetChannelMembersProps,
   type GetChatMembersProps,
   type GetMessagesProps,
+  type GetMessagesFromProps,
+  type GetMessageCountProps,
   type GetNonMemberUsersProps,
   type GetUsernameProps,
   type InviteToChannelProps,
@@ -47,7 +49,6 @@ import {
   type UserId,
   type SearchAllMessagesProps,
 } from "../clientApi";
-import { getMessengerDisplayName } from "../../utils/messengerName";
 
 // Backward-compat shim: dataSource code calls
 //   getJsonRpcClient().execute<any, T>(params, config)
@@ -308,7 +309,6 @@ export class ClientApiDataSource implements ClientApi {
           channel_type: out?.context_type ?? "",
           created_at: out?.created_at ?? 0,
           created_by: out?.creator ?? "",
-          created_by_username: "",
           links_allowed: true,
           read_only: false,
           unread_count: 0,
@@ -498,6 +498,80 @@ export class ClientApiDataSource implements ClientApi {
     }
   }
 
+  async getMessagesFrom(props: GetMessagesFromProps): ApiResponse<FullMessageResponse> {
+    return this.readMessages(props, ClientMethod.GET_MESSAGES_FROM, {
+      start: props.start,
+      limit: props.limit,
+    });
+  }
+
+  async getMessageCount(props: GetMessageCountProps): ApiResponse<number> {
+    const result = await this.readMessages<number>(
+      props,
+      ClientMethod.GET_MESSAGE_COUNT,
+      {},
+    );
+    return result;
+  }
+
+  /**
+   * The shared body of the read calls: context and identity resolution, the
+   * error unwrapping, and the DM-vs-channel executor choice are identical
+   * across them, and drifting copies of that is how one call ends up executing
+   * as the wrong identity.
+   */
+  private async readMessages<T = FullMessageResponse>(
+    props: {
+      is_dm?: boolean;
+      dm_identity?: UserId;
+      refetch_context_id?: string;
+      refetch_identity?: UserId;
+    },
+    method: ClientMethod,
+    argsJson: Record<string, unknown>,
+  ): ApiResponse<T> {
+    try {
+      const useContext = props.refetch_context_id ? props.refetch_context_id : getContextId() || "";
+      const useIdentity = props.refetch_identity ? props.refetch_identity : (props.is_dm ? props.dm_identity : getExecutorPublicKey()) || "";
+      const response = await getJsonRpcClient().execute<
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        any,
+        T
+      >(
+        {
+          contextId: useContext,
+          method,
+          argsJson,
+          executorPublicKey: useIdentity,
+        },
+        {
+          headers: { "Content-Type": "application/json" },
+          timeout: 10000,
+        },
+      );
+      if (response?.error) {
+        return {
+          data: null,
+          error: {
+            code: response?.error.code,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            message: (response?.error.error.cause.info as any).message,
+          },
+        };
+      }
+      return { data: response?.result.output as T, error: null };
+    } catch (error) {
+      console.error(`${method} failed:`, error);
+      let errorMessage = `An unexpected error occurred during ${method}`;
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      return { data: null, error: { code: 500, message: errorMessage } };
+    }
+  }
+
   async getMessages(props: GetMessagesProps): ApiResponse<FullMessageResponse> {
     try {
       const useContext = props.refetch_context_id ? props.refetch_context_id : getContextId() || "";
@@ -634,7 +708,6 @@ export class ClientApiDataSource implements ClientApi {
             mentions_usernames: props.usernames,
             parent_message: props.parent_message,
             timestamp: props.timestamp,
-            sender_username: getMessengerDisplayName(),
             ...(props.files && props.files.length > 0
               ? { files: props.files }
               : {}),
@@ -818,7 +891,6 @@ export class ClientApiDataSource implements ClientApi {
           argsJson: {
             message_id: props.messageId,
             emoji: props.emoji,
-            user: props.userId,
             add: props.add,
           },
           executorPublicKey:
