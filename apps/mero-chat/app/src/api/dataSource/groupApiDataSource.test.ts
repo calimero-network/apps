@@ -12,6 +12,7 @@ const {
   mockJoinContext,
   mockListGroupContexts,
   mockSetMemberMetadata,
+  mockCreateGroupInNamespace,
 } = vi.hoisted(() => ({
   mockAxiosGet: vi.fn(),
   mockAxiosPost: vi.fn(),
@@ -22,6 +23,7 @@ const {
   mockJoinContext: vi.fn(),
   mockListGroupContexts: vi.fn(),
   mockSetMemberMetadata: vi.fn(),
+  mockCreateGroupInNamespace: vi.fn(),
 }));
 
 vi.mock("axios", () => ({
@@ -51,6 +53,7 @@ vi.mock("../meroJsClient", () => ({
       createNamespaceInvitation: mockCreateNamespaceInvitation,
       joinNamespace: mockJoinNamespace,
       joinContext: mockJoinContext,
+      createGroupInNamespace: mockCreateGroupInNamespace,
     },
   }),
 }));
@@ -268,5 +271,64 @@ describe("GroupApiDataSource", () => {
       data: undefined,
       error: null,
     });
+  });
+
+  // ── The 64-byte name cap ─────────────────────────────────────────────────
+  //
+  // Over the cap the server keeps the group and DROPS the name, returning 200.
+  // Nothing downstream can tell that apart from "the user chose no name", which
+  // is how every DM ever created ended up nameless: a 140-byte alias written to
+  // a 64-byte field, silently, on every single write.
+
+  it("refuses a subgroup name the server would silently drop", async () => {
+    mockCreateGroupInNamespace.mockResolvedValue({ groupId: "g-1" });
+    const dataSource = new GroupApiDataSource();
+
+    const response = await dataSource.createSubgroup("ns-1", {
+      groupName: "a".repeat(65),
+    });
+
+    expect(response.error?.message).toMatch(/too long/i);
+    expect(mockCreateGroupInNamespace).not.toHaveBeenCalled();
+  });
+
+  it("refuses a name that is short in characters but over the byte cap", async () => {
+    mockCreateGroupInNamespace.mockResolvedValue({ groupId: "g-1" });
+    const dataSource = new GroupApiDataSource();
+
+    // 20 emoji: well under any character limit, 80 bytes on the wire.
+    const response = await dataSource.createSubgroup("ns-1", {
+      groupName: "🎉".repeat(20),
+    });
+
+    expect(response.error).not.toBeNull();
+    expect(mockCreateGroupInNamespace).not.toHaveBeenCalled();
+  });
+
+  it("still creates a subgroup with an acceptable name", async () => {
+    mockCreateGroupInNamespace.mockResolvedValue({ groupId: "g-1" });
+    const dataSource = new GroupApiDataSource();
+
+    const response = await dataSource.createSubgroup("ns-1", {
+      groupName: "general",
+    });
+
+    expect(response.data).toEqual({ groupId: "g-1" });
+    expect(mockCreateGroupInNamespace).toHaveBeenCalledWith("ns-1", {
+      groupName: "general",
+    });
+  });
+
+  it("refuses an over-long namespace name too", async () => {
+    const dataSource = new GroupApiDataSource();
+
+    const response = await dataSource.createGroup({
+      applicationId: "app-1",
+      upgradePolicy: "Automatic",
+      alias: "n".repeat(80),
+    });
+
+    expect(response.error).not.toBeNull();
+    expect(mockCreateNamespace).not.toHaveBeenCalled();
   });
 });
