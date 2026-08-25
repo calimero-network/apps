@@ -186,17 +186,26 @@ function ChatContainer({
   const handleReaction = useCallback(
     async (message: CurbMessage, reaction: string, isThread: boolean) => {
       const isDM = activeChatRef.current?.type === "direct_message";
-      const username = getMessengerDisplayName();
+      // "Have I already reacted" is an identity question, so ask it of the
+      // ACCOUNT. This compared display names, which meant a rename made your
+      // own reaction look like someone else's and two members sharing a name
+      // toggled each other's.
       const accounts = message.reactions?.[reaction] ?? [];
-      const isAdding = !(
-        Array.isArray(accounts) && accounts.includes(username)
-      );
+      const alreadyReacted =
+        Array.isArray(accounts) &&
+        accounts.some((account) =>
+          isSelfSender(
+            account,
+            activeChatRef.current?.contextId ?? "",
+            activeChatRef.current?.contextIdentity,
+          ),
+        );
+      const isAdding = !alreadyReacted;
 
       try {
         const response = await new ClientApiDataSource().updateReaction({
           messageId: message.id,
           emoji: reaction,
-          userId: username,
           add: isAdding,
           is_dm: isDM,
           dm_identity: activeChatRef.current?.contextIdentity,
@@ -204,14 +213,31 @@ function ChatContainer({
         if (response.data || !response.error) {
           // Use isAdding (captured at call time) so the update is idempotent
           // regardless of whether a WebSocket update arrived first.
+          // Reactions are keyed by ACCOUNT — the id the contract stamps from
+          // `executor_id()`, in the base58 form it emits. The name that used to
+          // sit here was a leftover from when messages carried a username, and
+          // it no longer exists in any scope: reacting threw before the
+          // optimistic update could run.
+          const selfAccount = getSelfAccountBase58();
           const updateFunction = (msg: CurbMessage) => {
             const msgAccounts = msg.reactions?.[reaction] ?? [];
             const updatedAccounts = isAdding
-              ? (msgAccounts.includes(username) ? msgAccounts : [...msgAccounts, username])
-              : msgAccounts.filter((a: string) => a !== username);
+              ? msgAccounts.includes(selfAccount)
+                ? msgAccounts
+                : [...msgAccounts, selfAccount]
+              : msgAccounts.filter((a: string) => a !== selfAccount);
             return { reactions: { ...msg.reactions, [reaction]: updatedAccounts } };
           };
-          if (isThread) {
+          // Without a known account there is nothing correct to paint: adding
+          // an empty id would render a phantom reactor and, worse, make the
+          // "did I react" check true for everyone. The write already succeeded,
+          // so the event carries the real state along shortly.
+          if (!selfAccount) {
+            log.warn(
+              "ChatContainer",
+              "No self account yet; skipping optimistic reaction update",
+            );
+          } else if (isThread) {
             setUpdatedThreadMessages([
               { id: message.id, descriptor: { updateFunction } },
             ]);
@@ -292,7 +318,6 @@ function ChatContainer({
         key: tempId,
         timestamp: Date.now(),
         sender,
-        senderUsername: getMessengerDisplayName() || undefined,
         reactions: {},
         editedOn: undefined,
         mentions,
@@ -375,7 +400,6 @@ function ChatContainer({
         sender: isDM
           ? activeChatRef.current?.contextIdentity || getExecutorPublicKey() || ""
           : getExecutorPublicKey() || "",
-        senderUsername: getMessengerDisplayName() || undefined,
         reactions: {},
         editedOn: undefined,
         mentions,
