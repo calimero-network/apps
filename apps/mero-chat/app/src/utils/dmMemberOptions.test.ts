@@ -49,20 +49,49 @@ describe("buildDmMemberOptions", () => {
     expect(options.get("member-b")).toBe("Label Only");
   });
 
-  it("omits members with no label (no alias and not in labelsByIdentity)", () => {
-    // Members without any display name are excluded from the picker —
-    // showing raw identity hashes in the DM/channel member list is confusing.
+  it("includes a member with no name, shown as a truncated account", () => {
+    // Reverses an earlier decision. The comment here used to read "showing raw
+    // identity hashes in the DM member list is confusing" — true, but the
+    // remedy was to drop the person from the list entirely, which made them
+    // impossible to message and said nothing about why. A truncated account is
+    // the honest middle: identifiable, unmistakably not a name.
     const options = buildDmMemberOptions({
       groupMembers: [
         { identity: "member-me", role: "Member" },
-        { identity: "member-a", role: "Member" },
+        { identity: "abcd1234efgh5678", role: "Member" },
       ],
       currentMemberIdentity: "member-me",
       labelsByIdentity: new Map(),
     });
 
-    expect(options.size).toBe(0);
+    expect(options.size).toBe(1);
+    expect(options.get("abcd1234efgh5678")).toBe("abcd…5678");
     expect(options.has("member-me")).toBe(false);
-    expect(options.has("member-a")).toBe(false);
   });
+
+  it("still prefers a real name over the account fallback", () => {
+    const options = buildDmMemberOptions({
+      groupMembers: [
+        { identity: "member-me", role: "Member" },
+        { identity: "abcd1234efgh5678", alias: "Alice", role: "Member" },
+      ],
+      currentMemberIdentity: "member-me",
+      labelsByIdentity: new Map(),
+    });
+
+    expect(options.get("abcd1234efgh5678")).toBe("Alice");
+  });
+
+  it("never lists you as someone to message", () => {
+    // The self-exclusion must not depend on having a name: without it, an
+    // unnamed user would now appear in their own picker.
+    const options = buildDmMemberOptions({
+      groupMembers: [{ identity: "member-me", role: "Member" }],
+      currentMemberIdentity: "member-me",
+      labelsByIdentity: new Map(),
+    });
+
+    expect(options.size).toBe(0);
+  });
+
 });
