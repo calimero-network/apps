@@ -966,35 +966,59 @@ impl MeroChat {
         UserId::new(env::account_id())
     }
 
+    /// A message's id: a digest of what identifies it, never a copy of it.
+    ///
+    /// This function used to build a buffer called `hash_input` and hex-encode
+    /// it WITHOUT hashing, so the id was
+    /// `hex(account ‖ plaintext ‖ timestamp ‖ counter)`. The message text came
+    /// back out of it verbatim, and the id grew with the message — a 37-char
+    /// message produced a 184-char id.
+    ///
+    /// That is not a cosmetic defect. Ids are the app's only handle on a
+    /// message: they key `threads`, `reactions` and `deleted_messages`, they
+    /// travel in events, and they are what any "link to this message" feature
+    /// would put in a URL — where the plaintext would then reach every client,
+    /// proxy log, scanner and chat history that touched the link.
+    ///
+    /// The digest covers the same four fields, so ids stay unique for the same
+    /// reasons they were before: the counter separates two identical messages
+    /// sent by the same account in the same millisecond.
     fn get_message_id(
         &self,
         account: &UserId,
         message: &str,
         timestamp: u64,
     ) -> MessageId {
-        let mut hash_input = Vec::new();
-        hash_input.extend_from_slice(account.as_ref());
-        hash_input.extend_from_slice(message.as_bytes());
-        hash_input.extend_from_slice(&timestamp.to_be_bytes());
+        use sha2::{Digest, Sha256};
 
         let message_counter = self.messages.len().unwrap_or(0) as u64 + 1;
-        hash_input.extend_from_slice(&message_counter.to_be_bytes());
 
-        let mut s = MessageId::with_capacity(hash_input.len() * 2);
-        for &b in &hash_input {
+        let mut hasher = Sha256::new();
+        hasher.update(account.as_ref());
+        hasher.update(message.as_bytes());
+        hasher.update(timestamp.to_be_bytes());
+        hasher.update(message_counter.to_be_bytes());
+        let digest = hasher.finalize();
+
+        let mut s = MessageId::with_capacity(digest.len() * 2);
+        for &b in &digest {
             write!(&mut s, "{:02x}", b).unwrap();
         }
+        // The timestamp suffix is kept: it is already public in the message it
+        // names, and it keeps ids roughly time-ordered for debugging.
         format!("{}_{}", s, timestamp)
     }
 
     fn message_matches_search(message: &Message, search_term: Option<&str>) -> bool {
         match search_term {
             Some(term) => {
-                let message_text = message.text.get();
-                if message_text.to_lowercase().contains(term) {
-                    return true;
-                }
-                message.sender_username.get().to_lowercase().contains(term)
+                // Text only. Sender names are namespace member metadata now,
+                // not message state, so the contract has nothing to match a
+                // name against. Searching by sender belongs on the client,
+                // which can resolve accounts to their CURRENT names — and get
+                // the right answer after a rename, which matching a stamped
+                // string never could.
+                message.text.get().to_lowercase().contains(term)
             }
             None => true,
         }
@@ -1007,17 +1031,11 @@ impl MeroChat {
         mentions_usernames: Vec<String>,
         parent_message: Option<MessageId>,
         timestamp: u64,
-        sender_username: String,
         files: Option<Vec<AttachmentInput>>,
         images: Option<Vec<AttachmentInput>>,
     ) -> app::Result<Message> {
         self.require_not_banned()?;
         let executor_id = Self::executor_id();
-
-        let sender_username = match self.profiles.get(&executor_id) {
-            Ok(Some(profile)) => profile.username.get().clone(),
-            _ => sender_username,
-        };
 
         let message_id = self.get_message_id(&executor_id, &message, timestamp);
         let current_context = env::context_id();

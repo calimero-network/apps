@@ -12,6 +12,9 @@ base64 = "0.23.0"
 borsh = "1.6.1"
 borsh-derive = "1.6.1"
 bs58 = "0.5.1"
+# Message ids are a digest, not a transcript — see `get_message_id`. Already in
+# the tree via the SDK, so this adds no code to the wasm.
+sha2 = { version = "0.10", default-features = false }
 # Tracks core master; Cargo.lock is what actually pins the commit, so a bump
 # is a deliberate `cargo update`, reviewed as its own diff.
 calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.24" }
