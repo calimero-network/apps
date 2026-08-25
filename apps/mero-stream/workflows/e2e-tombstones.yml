@@ -23,12 +23,6 @@ nodes:
   # Keep in step with logic/Cargo.toml's calimero-* tag.
   image: ghcr.io/calimero-network/merod:0.11.0-rc.24
   prefix: calimero-node
-  # merobox defaults nodes to RUST_LOG=debug, which produced ~12 MB of logs per
-  # node in two minutes here and is real CPU on a 2-vCPU CI runner hosting both
-  # nodes. `info` still keeps every WARN this scenario is diagnosed from (sync
-  # timeouts, delta-worker budget overruns). Use debug when you need
-  # `artifact_len` — that delta-size marker is debug-only.
-  log_level: info
   # Distinct from e2e.yml's 2760/2660 so the two scenarios can run concurrently.
   base_port: 2780
   base_rpc_port: 2680
