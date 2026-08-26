@@ -6,7 +6,7 @@
   "description": "Mero Calendar \u2014 shared p2p team calendars on Calimero",
   "type": "module",
   "dependencies": {
-    "@calimero-network/mero-js": "^13.2.2",
+    "@calimero-network/mero-js": "^13.2.5",
     "@calimero-network/mero-react": "^6.0.0",
     "@calimero-network/mero-ui": "^1.5.1",
     "@reduxjs/toolkit": "^1.8.3",
