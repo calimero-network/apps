@@ -13,8 +13,8 @@ importers:
   .:
     dependencies:
       '@calimero-network/mero-js':
-        specifier: ^13.1.0
-        version: 13.1.0
+        specifier: ^13.2.5
+        version: 13.2.5
       '@calimero-network/mero-platform':
         specifier: ^0.1.0
         version: 0.1.0
@@ -115,8 +115,8 @@ packages:
     peerDependencies:
       react: ^18.3.1
 
-  '@calimero-network/mero-js@13.1.0':
-    resolution: {integrity: sha512-P9N2KJFAnwWqweMD9VsjULs8Cd7P14B8UZ2+WD5VBf1RoZaPARtbA/5jLi50qHafBaXxVeeECBsY0yRSkHOEnw==}
+  '@calimero-network/mero-js@13.2.5':
+    resolution: {integrity: sha512-ctTBfL0EP+zOv14XdKeNLLKrA5lc/5y2h5WBf/0WpZa0UMiZMg67dy8hy5IPrDvoXrTRVhxyfKrlBgTtjI7cZg==}
     engines: {node: '>=18.0.0'}
 
   '@calimero-network/mero-platform@0.1.0':
@@ -1055,6 +1055,7 @@ packages:
   eslint@9.39.4:
     resolution: {integrity: sha512-XoMjdBOwe/esVgEvLmNsD3IRHkm7fbKIUGvrleloJXUZgDHig2IPWNniv+GwjyJXzuNqVjlr5+4yVUZjycJwfQ==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'
@@ -1692,13 +1693,13 @@ snapshots:
     dependencies:
       react: 19.2.7
 
-  '@calimero-network/mero-js@13.1.0': {}
+  '@calimero-network/mero-js@13.2.5': {}
 
   '@calimero-network/mero-platform@0.1.0': {}
 
   '@calimero-network/mero-react@6.0.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
-      '@calimero-network/mero-js': 13.1.0
+      '@calimero-network/mero-js': 13.2.5
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
 
