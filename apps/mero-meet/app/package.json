@@ -2,6 +2,7 @@
   "name": "mero-meet",
   "private": true,
   "version": "0.4.0",
+  "packageManager": "pnpm@9.15.9",
   "description": "Calimero Mero Meet \u2014 decentralized video calling (desktop)",
   "keywords": [
     "calimero",
