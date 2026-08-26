@@ -19,7 +19,7 @@ nodes:
   chain_id: testnet-1
   count: 2
   # Keep in step with logic/Cargo.toml's calimero-* tag.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.24
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.25
   prefix: calimero-node
   # Distinct from e2e.yml (2760/2660), tombstones (2780/2680), fanout (2800/2700).
   base_port: 2820

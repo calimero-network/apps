@@ -42,7 +42,7 @@ nodes:
   # Keep in step with logic/Cargo.toml's calimero-* tag. rc.24 is a FLOOR here,
   # not a preference: `set_ephemeral` does not exist before it, and an older node
   # fails this scenario at the publish step.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.24
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.25
   prefix: calimero-node
   # Distinct from e2e.yml (2760/2660), tombstones (2780/2680), fanout
   # (2800/2700), live-chunks (2820/2720). The script step builds its URLs by

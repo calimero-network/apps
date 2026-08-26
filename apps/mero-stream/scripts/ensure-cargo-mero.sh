@@ -19,14 +19,14 @@
 #
 # Usage:
 #   bash scripts/ensure-cargo-mero.sh          # install if missing/mismatched
-#   CARGO_MERO_TAG=0.11.0-rc.24 bash scripts/ensure-cargo-mero.sh
+#   CARGO_MERO_TAG=0.11.0-rc.25 bash scripts/ensure-cargo-mero.sh
 #   bash scripts/ensure-cargo-mero.sh --force  # reinstall unconditionally
 set -euo pipefail
 
 # Keep in lockstep with the four git tags in logic/Cargo.toml and the merod image
 # in workflows/*.yml. See reference: core has NO moving `latest` tag, so an
 # explicit rc is the only honest pin.
-CARGO_MERO_TAG="${CARGO_MERO_TAG:-0.11.0-rc.24}"
+CARGO_MERO_TAG="${CARGO_MERO_TAG:-0.11.0-rc.25}"
 CORE_GIT="${CARGO_MERO_CORE_GIT:-https://github.com/calimero-network/core}"
 
 green() { printf '\033[32m  ✓  %s\033[0m\n' "$*"; }

@@ -135,7 +135,7 @@ approach 1 removes the storage wall as well; what is left on approach 1 is a
   Desktop/dev-gated, off any call path. **54 unit tests** across the luma path,
   the §4 metric arithmetic, and session bootstrap.
 - **P2 — e2e — ✅ DONE.** Three merobox scenarios, all in CI against merod
-  `0.11.0-rc.24`:
+  `0.11.0-rc.25`:
 
   | Scenario | Nodes | Proves |
   |---|---|---|
@@ -240,7 +240,7 @@ concurrently on one host.
 
 Toolchain: Rust `1.89.0` (pinned in `logic/rust-toolchain.toml`), pnpm for the
 frontend. The contract pins `calimero-*` to the core release **tag**
-`0.11.0-rc.24`, which must match the merod image in `workflows/e2e.yml` — bump
+`0.11.0-rc.25`, which must match the merod image in `workflows/e2e.yml` — bump
 them together. (Not `branch = "master"`: that rides unreleased protocol work
 against a released node. Not `tag = "latest"` either: core has no such tag, so it
 resolves only from a warm cargo cache and fails on CI.)
