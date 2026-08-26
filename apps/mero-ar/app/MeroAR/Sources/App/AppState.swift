@@ -67,7 +67,7 @@ public final class AppState: ObservableObject {
             return
         }
         guard !contextId.isEmpty else {
-            loginError = "Enter the room id to join."
+            loginError = "Paste an invite, or enter the room id to join."
             return
         }
 
@@ -84,7 +84,18 @@ public final class AppState: ObservableObject {
                     // presents its bootstrap secret (core rc.14+). Harmless once
                     // an account exists, so it is always safe to send.
                     bootstrapSecret: setupCode?.isEmpty == false ? setupCode : nil))
-            try await enterRoom(client: client, nodeUrl: trim(nodeUrl), contextId: contextId, username: username)
+            // The one field takes either a room id or an invitation. An
+            // invitation has to be redeemed on this node first — join the
+            // namespace and wait for the room to sync — which yields the context
+            // id the rest of the flow expects. Everything downstream is unchanged.
+            let room: String
+            if let invite = RoomInvite.decode(pasted: contextId) {
+                room = try await MeroARService.redeem(invite, mero: client)
+            } else {
+                room = contextId
+            }
+            try await enterRoom(
+                client: client, nodeUrl: trim(nodeUrl), contextId: room, username: username)
         } catch {
             loginError = message(for: error)
         }
