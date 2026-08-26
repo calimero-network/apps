@@ -16,7 +16,7 @@
     "test:all": "vitest run && playwright test --project=mocked"
   },
   "dependencies": {
-    "@calimero-network/mero-js": "^13.2.2",
+    "@calimero-network/mero-js": "^13.2.5",
     "@calimero-network/mero-react": "^6.0.0",
     "@calimero-network/mero-ui": "1.5.1",
     "react": "^19.1.0",
