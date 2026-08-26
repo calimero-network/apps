@@ -43,18 +43,33 @@ borsh     = "1.6.1"
 #
 # `[package.metadata]` is NOT on cargo's inheritable list. Setting
 # `min-runtime-version.workspace = true` in an app does not resolve — cargo
-# passes the literal `{"workspace": true}` straight through to cargo-mero,
-# which expects a version string. (Verified against cargo, not assumed.)
+# passes the literal `{"workspace": true}` straight through, and cargo-mero
+# expects a version string. (Verified by running cargo, not assumed.)
 #
 # So these are the authority and `scripts/check-app-metadata.sh` asserts every
-# app matches them. A check, not inheritance. `cargo metadata` does expose this
-# table, so teaching `cargo mero` to read it as a fallback would make the check
-# redundant — worth an upstream PR.
+# app matches them. A check, not inheritance.
+#
+# ⚠️ `cargo mero` PARSES this table too, with `deny_unknown_fields` — CI proved
+# it by rejecting a `merod-image` key here:
+#
+#     Error: invalid [..metadata.calimero] table: unknown field `merod-image`,
+#     expected one of `package`, `name`, `description`, `author`, `icon`,
+#     `slug`, `license`, `tags`, `github`, `docs`, `min-runtime-version`,
+#     `frontend`, `services`
+#
+# So only cargo-mero's own field names may appear here. Anything fleet-wide that
+# is NOT one of them lives in `[workspace.metadata.mero-apps]` below, which
+# cargo-mero does not read.
 [workspace.metadata.calimero]
 # Keep equal to the SDK tag above. A build imports host functions that only
-# exist from that release on; an older node installs the bundle happily and
-# then dies at context creation with `link error: unknown import`.
+# exist from that release on; an older node installs the bundle happily and then
+# dies at context creation with `link error: unknown import`.
 min-runtime-version = "0.11.0-rc.25"
+
+# Fleet-wide values that are ours, not cargo-mero's. Read by
+# scripts/check-app-metadata.sh and by CI; ignored by every tool that does not
+# know the table name, which is the point.
+[workspace.metadata.mero-apps]
 # The merod image every merobox workflow runs against. Matched to the SDK tag so
 # contract and node always agree — the fleet ran three different images against
 # one SDK before this.

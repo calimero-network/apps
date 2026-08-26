@@ -197,9 +197,21 @@ contract's bytes.
 
 `scripts/check-app-metadata.sh` fails if any app's `min-runtime-version` drifts
 from the workspace value. That check exists because
-`[package.metadata.calimero]` **cannot be inherited** — `.workspace = true`
+`[package.metadata.calimero]` **cannot be inherited by cargo** — `.workspace = true`
 inside `[package.metadata]` resolves to the literal `{"workspace": true}`, since
 `metadata` is not on cargo's inheritable list.
+
+⚠️ **`cargo mero` parses `[workspace.metadata.calimero]` too, with
+`deny_unknown_fields`.** Only its own field names may appear there:
+
+```
+Error: invalid [..metadata.calimero] table: unknown field `merod-image`,
+expected one of `package`, `name`, `description`, `author`, `icon`, `slug`,
+`license`, `tags`, `github`, `docs`, `min-runtime-version`, `frontend`, `services`
+```
+
+So fleet-wide values that are *ours* rather than cargo-mero's live in
+`[workspace.metadata.mero-apps]`, which no tool but ours reads.
 
 ### Adding an app
 
