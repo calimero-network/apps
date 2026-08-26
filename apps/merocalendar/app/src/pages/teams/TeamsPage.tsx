@@ -14,7 +14,13 @@ import CalendarLogo from "../../components/common/logo/CalendarLogo";
 import ThemeToggle from "../../components/common/theme-toggle/ThemeToggle";
 import { useToast } from "../../contexts/ToastContext";
 import { extractErrorMessage, humanizeError } from "../../utils/errorMessage";
-import { decodeInvitationObject, encodeInvitationObject } from "../../utils/invitation";
+import {
+  decodeInvitationObject,
+  encodeInvitationObject,
+  invitationLink,
+  invitationTokenFrom,
+} from "../../utils/invitation";
+import { onInvitation } from "../../utils/invitationIntents";
 import {
   getStoredTeamName,
   setStoredTeamName,
@@ -163,9 +169,10 @@ export default function TeamsPage() {
     setTeams((prev) => prev.filter((t) => t.groupId !== teamId));
   }
 
-  async function joinTeam() {
-    const raw = joinCode.trim();
-    if (!raw) return;
+  async function joinTeam(codeOverride?: string): Promise<boolean> {
+    // Accept either a shared invitation link or the bare token inside it.
+    const raw = invitationTokenFrom(codeOverride ?? joinCode);
+    if (!raw) return false;
     setJoining(true);
     setJoinError("");
     try {
@@ -201,6 +208,7 @@ export default function TeamsPage() {
       );
       setJoinCode("");
       showToast("Joined team. Syncing calendar…", "success");
+      return true;
     } catch (err) {
       const msg = extractErrorMessage(
         err,
@@ -208,6 +216,7 @@ export default function TeamsPage() {
       );
       setJoinError(msg);
       showToast(msg);
+      return false;
     } finally {
       setJoining(false);
     }
@@ -217,6 +226,34 @@ export default function TeamsPage() {
   // the team, join + open it; otherwise create exactly one (subgroup → open
   // visibility → context with empty init params, since the calendar contract's
   // init() takes no args).
+  // ── An invitation link opened this app ──────────────────────────────────────
+  //
+  // Fill the join field and try it once, so a shared link actually joins the
+  // team instead of landing the recipient here with the token stuck in the
+  // address bar (which is what happened before capture existed).
+  //
+  // The intent is acked ONLY on a successful join. A failure leaves it in the
+  // durable store, so a transient one (node still starting, no online member)
+  // is retried on the next load rather than lost — no need to guess which error
+  // messages are permanent. `attemptedInvites` stops it retrying in a loop
+  // within this session; the token stays in the field for a manual retry.
+  const attemptedInvites = useRef<Set<string>>(new Set());
+  useEffect(
+    () =>
+      onInvitation(({ token, resolve }) => {
+        setJoinCode(token);
+        if (attemptedInvites.current.has(token)) return;
+        attemptedInvites.current.add(token);
+        void joinTeam(token).then((joined) => {
+          if (joined) resolve();
+        });
+      }),
+    // joinTeam is re-created every render but only reads `joinCode` when no
+    // token is passed, and we always pass one — so the captured closure is safe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
   async function openTeam(teamId: string) {
     setMenuOpenId(null);
     setOpening(teamId);
@@ -323,8 +360,10 @@ export default function TeamsPage() {
 
   async function copyInvite() {
     if (!inviteFor) return;
-    await navigator.clipboard.writeText(inviteFor.code);
-    showToast("Invitation copied to clipboard.", "success");
+    // Share the canonical link, not the bare token: it opens the desktop app
+    // where installed and the web build otherwise.
+    await navigator.clipboard.writeText(invitationLink(inviteFor.code));
+    showToast("Invitation link copied to clipboard.", "success");
   }
 
   function handleLogout() {
@@ -465,12 +504,12 @@ export default function TeamsPage() {
               placeholder="Paste invitation code…"
               value={joinCode}
               onChange={(e) => setJoinCode(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && joinTeam()}
+              onKeyDown={(e) => { if (e.key === "Enter") void joinTeam(); }}
               data-testid="join-code-input"
             />
             <button
               className="mc-btn"
-              onClick={joinTeam}
+              onClick={() => void joinTeam()}
               disabled={joining || !joinCode.trim()}
               data-testid="join-team-btn"
             >
