@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@calimero-network/mero-js": "^13.2.5",
+    "@calimero-network/mero-platform": "^0.1.0",
     "@calimero-network/mero-react": "^6.0.4",
     "bs58": "^6.0.0",
     "fflate": "^0.8.3",

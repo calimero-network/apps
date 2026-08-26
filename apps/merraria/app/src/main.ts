@@ -8,6 +8,8 @@ import { generateWorld, spawnPoint } from "./engine/terrain";
 import { AIR, HOTBAR, STARTING_INVENTORY } from "./engine/tiles";
 import { TileStore } from "./engine/world";
 import { createWorldInvite } from "./net/admin";
+import { inviteLink } from "./net/inviteLink";
+import { primeInviteCapture } from "./net/invitationIntents";
 import { GameClient } from "./net/client";
 import { captureSessionFromHash, ensureFreshToken, getSession, hasConnection } from "./net/session";
 import { RemotePlayer, SyncEngine, Transform } from "./net/sync";
@@ -17,6 +19,15 @@ import { WheelSteps } from "./input/wheel";
 import { Hud } from "./ui/hud";
 import { Landing, LaunchChoice } from "./ui/landing";
 import { PauseMenu } from "./ui/overlays";
+
+// ── Inbound invite links ──────────────────────────────────────────────────────
+//
+// Primed before anything else runs: the launcher opens this app by appending
+// `?invitation=…` to its own frontend URL, and the landing flow rewrites the URL
+// as it goes. Capture is durable, so an invite arriving before a node is
+// connected survives the web-login redirect and is replayed once the world
+// picker can act on it.
+primeInviteCapture();
 
 const SAVE_MS = 5000;
 const MINIMAP_MS = 500; // live map: remote miners move on it in near real time
@@ -167,7 +178,7 @@ async function boot(): Promise<void> {
       void sync?.leave();
       window.location.reload(); // back to the landing/launcher
     },
-    onInvite: () => createWorldInvite(),
+    onInvite: async () => inviteLink(await createWorldInvite()),
     onZoomChange: (zoom) => renderer.setZoom(zoom),
   });
   renderer.setZoom(menu.getZoom()); // restore the player's zoom choice
