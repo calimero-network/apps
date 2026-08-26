@@ -56,16 +56,27 @@ describe("decodeInvitation", () => {
     expect(decodeInvitation(encoded)).toBe(raw);
   });
 
-  it("handles missing padding (no trailing =)", () => {
-    // base64 for "a" is "YQ==" — stripped to "YQ" in base64url
-    const encoded = "YQ";
-    expect(decodeInvitation(encoded)).toBe("a");
+  // These two used to assert base64url padding mechanics on arbitrary short
+  // strings ("YQ" -> "a"). That is no longer this function's contract: it decodes
+  // INVITATIONS, which are always JSON, and it now tries base58 first because the
+  // two alphabets overlap and a short string is ambiguous between them. Padding
+  // is still exercised, but through a real invitation — see
+  // "decodes the legacy base64url form" below, whose token has no trailing "=".
+  it("returns an undecodable short string unchanged rather than mojibake", () => {
+    // "YQ" is valid base58 AND valid base64url. Neither reading yields JSON, so
+    // guessing would hand the caller garbage; the input comes back untouched and
+    // the caller's JSON.parse fails the way it always did.
+    expect(decodeInvitation("YQ")).toBe("YQ");
+    expect(decodeInvitation("YWI")).toBe("YWI");
   });
 
-  it("handles 1-char padding needed", () => {
-    // base64 for "ab" is "YWI=" — stripped to "YWI"
-    const encoded = "YWI";
-    expect(decodeInvitation(encoded)).toBe("ab");
+  it("decodes the legacy base64url form, so links already shared keep working", () => {
+    const payload = JSON.stringify({ invitation: { group_id: "abc" }, __teamName: "T" });
+    const bytes = new TextEncoder().encode(payload);
+    let bin = "";
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    const legacy = btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+    expect(decodeInvitation(legacy)).toBe(payload);
   });
 
   it("converts - back to + and _ back to /", () => {
