@@ -1,6 +1,7 @@
 {
   "name": "mero-calendar",
   "version": "0.1.0",
+  "packageManager": "pnpm@9.15.9",
   "private": true,
   "description": "Mero Calendar \u2014 shared p2p team calendars on Calimero",
   "type": "module",
