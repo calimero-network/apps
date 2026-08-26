@@ -13,5 +13,17 @@
 #
 # Cache ~/.cache/pip in CI: calimero-client-py ships an sdist only, so every
 # uncached job compiles a Rust wheel (~70s measured).
-merobox==0.6.55
-calimero-client-py==0.6.29
+# ⚠️ 0.6.59 is a FLOOR against an rc.25 node, not a preference. rc.25 renamed
+# the namespace-join response field `groupId` -> `namespaceId`; merobox picked
+# that up in 0.6.59. On 0.6.55 (which the rest of the fleet pins) a two-node
+# `create_mesh` dies at the join with a truncated
+#
+#     Join namespace failed for <node>: join_namespace failed: Client error:
+#
+# which names neither the field nor the version. Found by this repo's own CI.
+#
+# calimero-client-py is the layer that actually builds the request, and merobox
+# 0.6.59 only requires `>=0.6.31` — so leaving it unpinned tracks core master
+# and can break a no-op commit.
+merobox==0.6.59
+calimero-client-py==0.6.31
