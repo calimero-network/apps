@@ -10,6 +10,9 @@ final class MeroARUITests: XCTestCase {
         let enter = app.buttons["Enter a Room"]
         XCTAssertTrue(enter.waitForExistence(timeout: 5))
         enter.tap()
-        XCTAssertTrue(app.buttons["Enter Room"].waitForExistence(timeout: 3))
+        // 5s, matching the two waits above. At 3s this failed intermittently on
+        // a loaded machine — the welcome screen animates out before the login
+        // card mounts, so this is the slowest step in the test, not the fastest.
+        XCTAssertTrue(app.buttons["Enter Room"].waitForExistence(timeout: 5))
     }
 }

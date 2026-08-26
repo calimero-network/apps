@@ -36,7 +36,23 @@ struct LoginCard: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                MeroField(icon: "cube", placeholder: "Room (Context ID)", text: $contextId)
+                // One field for both: a room id typed by hand, or an invite
+                // someone sent. Which one it is decides itself — an invitation
+                // decodes, a room id does not — so there is no mode to pick and
+                // nothing to get wrong. The icon follows suit as confirmation
+                // that the paste was understood.
+                MeroField(
+                    icon: RoomInvite.looksLikeInvite(contextId) ? "envelope.open" : "cube",
+                    placeholder: "Paste an invite, or a Room ID",
+                    text: $contextId
+                )
+
+                if RoomInvite.looksLikeInvite(contextId) {
+                    Text("Invite recognised — you'll join the room on entry.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
 
                 if let error = app.loginError {
                     Text(error)

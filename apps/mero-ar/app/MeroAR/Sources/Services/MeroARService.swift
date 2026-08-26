@@ -57,6 +57,81 @@ public final class MeroARService {
     /// deleted per-namespace identity route) reports the same account, but it
     /// needs an admin scope and answers in a vocabulary this app otherwise never
     /// uses. Asking the room keeps one source for "who am I here".
+    // MARK: - Invitations
+
+    /// Mint a shareable invitation to this room.
+    ///
+    /// The room lives in a namespace (its root group); the invitation is issued
+    /// against that namespace, and the context id rides along so the joiner can
+    /// enter the room directly instead of polling to see which context appeared.
+    public func createRoomInvite() async throws -> RoomInvite {
+        guard let namespaceId = try await mero.admin.getContextGroup(contextId) else {
+            throw MeroError.decoding("this room has no namespace to invite into")
+        }
+        // The SDK models this endpoint as either-shape: a plain namespace
+        // invitation, or a recursive one carrying an entry per group. We ask for
+        // the plain kind, but handle both rather than crashing on a node that
+        // answers recursively — take the entry for this namespace, or the first.
+        let result = try await mero.admin.createNamespaceInvitation(namespaceId)
+        let signed: SignedGroupOpenInvitation
+        switch result {
+        case .single(let data):
+            signed = data.invitation
+        case .recursive(let data):
+            let match = data.invitations.first { $0.groupId == namespaceId }
+            guard let entry = match ?? data.invitations.first else {
+                throw MeroError.decoding("the node returned an invitation with no entries")
+            }
+            signed = entry.invitation
+        }
+        let name = (try? await getRoom().name) ?? ""
+        return RoomInvite(
+            namespaceId: namespaceId,
+            contextId: contextId,
+            roomName: name,
+            invitation: signed
+        )
+    }
+
+    /// Redeem an invitation on this node, and return the room context to enter.
+    ///
+    /// Mirrors what `scripts/dev-invite.sh` does by hand: join the namespace, pull
+    /// it so the room's context arrives, then hand back the context id.
+    ///
+    /// The namespace join tolerates failure on purpose — it fails when this node
+    /// is already a member, which is a perfectly good state to continue from. The
+    /// context is what actually decides whether this worked.
+    public static func redeem(_ invite: RoomInvite, mero: Mero) async throws -> String {
+        do {
+            _ = try await mero.admin.joinNamespace(
+                invite.namespaceId,
+                request: JoinNamespaceRequest(invitation: invite.invitation)
+            )
+        } catch {
+            // Already a member, most likely. The sync + context join below decide.
+        }
+
+        // Cross-node sync is asynchronous: the room context does not exist here
+        // the instant the namespace join returns. Pull, then look for it, and
+        // give it a few attempts before calling it a failure.
+        for attempt in 1...6 {
+            _ = try? await mero.admin.syncGroup(invite.namespaceId)
+            if let contexts = try? await mero.admin.syncGroupContexts(invite.namespaceId),
+                contexts.contains(where: { $0.contextId == invite.contextId })
+            {
+                return invite.contextId
+            }
+            if attempt < 6 {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+            }
+        }
+
+        // The namespace is joined but the room has not arrived. Returning the id
+        // anyway would drop the user into a room this node does not have.
+        throw MeroError.decoding(
+            "joined the space, but the room has not synced here yet — try again shortly")
+    }
+
     public static func whoami(mero: Mero, contextId: String) async throws -> String {
         try await mero.rpc.execute(contextId: contextId, method: "whoami", argsJson: [:])
     }

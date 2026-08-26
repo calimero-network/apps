@@ -10,6 +10,12 @@ struct MembersSheet: View {
     @ObservedObject var store: SceneStore
     @Environment(\.dismiss) private var dismiss
 
+    /// The invite link, once minted. Held so the share sheet has something to
+    /// present and so a second tap does not mint a second invitation.
+    @State private var inviteLink: String?
+    @State private var inviting = false
+    @State private var inviteError: String?
+
     var body: some View {
         NavigationStack {
             List {
@@ -21,6 +27,49 @@ struct MembersSheet: View {
                     Text("\(rows.count) member\(rows.count == 1 ? "" : "s")")
                 } footer: {
                     Text(footerText)
+                }
+
+                Section {
+                    Button {
+                        Task { await mintInvite() }
+                    } label: {
+                        HStack {
+                            Label("Invite someone", systemImage: "square.and.arrow.up")
+                            if inviting {
+                                Spacer()
+                                ProgressView()
+                            }
+                        }
+                    }
+                    .disabled(inviting)
+
+                    if let link = inviteLink {
+                        ShareLink(item: link) {
+                            Label("Share link", systemImage: "link")
+                        }
+                        Text(link)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .lineLimit(3)
+                    }
+
+                    if let inviteError {
+                        Text(inviteError)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                } header: {
+                    Text("Invite")
+                } footer: {
+                    // Says plainly where the link is meant to be opened, because
+                    // the answer is not obvious: this app talks to a node on a
+                    // computer, so the link is for that computer, not the phone.
+                    Text(
+                        "Send this link to someone. Opened on a computer with Calimero Desktop it "
+                            + "installs Mero AR if needed and joins this room. They can also paste "
+                            + "it into the app's room field."
+                    )
                 }
             }
             .listStyle(.insetGrouped)
@@ -35,6 +84,19 @@ struct MembersSheet: View {
             .refreshable { await store.refreshRoster() }
         }
         .task { await store.refreshRoster() }
+    }
+
+    /// Mint a namespace invitation for this room and build its shareable link.
+    private func mintInvite() async {
+        inviting = true
+        inviteError = nil
+        defer { inviting = false }
+        do {
+            let invite = try await store.service.createRoomInvite()
+            inviteLink = try invite.shareableLink()
+        } catch {
+            inviteError = "Could not create an invite: \(error.localizedDescription)"
+        }
     }
 
     /// `myRole` is empty until it first resolves — don't render "You are a ."
