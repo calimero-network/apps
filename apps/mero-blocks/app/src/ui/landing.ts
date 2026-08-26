@@ -26,6 +26,7 @@ import {
   resolveApplicationId,
   worldNameOf,
 } from "../net/admin";
+import { onInvite } from "../net/invitationIntents";
 import { beginWebLogin } from "../net/auth";
 import { inviteLink } from "../net/inviteLink";
 import { clearSession, getSession, hasConnection, isAuthenticated, updateSession } from "../net/session";
@@ -192,6 +193,10 @@ const SOCIALS: { label: string; href: string; icon: string }[] = [
 
 export class Landing {
   private root: HTMLElement;
+  /** Unsubscribe for the invite-link listener, so re-rendering does not stack them. */
+  private unsubscribeInvite: (() => void) | null = null;
+  /** Codes already tried this session — stops a failed link reopening the modal. */
+  private attemptedInvites = new Set<string>();
   private panorama: Panorama;
 
   constructor(parent: HTMLElement) {
@@ -303,6 +308,18 @@ export class Landing {
     el.querySelector("[data-testid=join-invite-open-btn]")!.addEventListener("click", () =>
       this.openInviteModal(done),
     );
+
+    // An invite LINK opened the app. This is the first state where joining is
+    // possible (a node is connected), and the captured intent is replayed to us
+    // however long ago it arrived — including from before the web-login
+    // redirect. `attemptedInvites` keeps a failed one from reopening the modal
+    // on every re-render of this card.
+    this.unsubscribeInvite?.();
+    this.unsubscribeInvite = onInvite(({ token, resolve }) => {
+      if (this.attemptedInvites.has(token)) return;
+      this.attemptedInvites.add(token);
+      this.openInviteModal(done, { code: token, resolve });
+    });
 
     const inviteBtn = el.querySelector<HTMLButtonElement>("[data-testid=invite-btn]");
     inviteBtn?.addEventListener("click", async () => {
@@ -515,7 +532,16 @@ export class Landing {
   }
 
   /** popup: join with a pasted invite. Locks (incl. close) while joining. */
-  private openInviteModal(done: (c: LaunchChoice) => void): void {
+  /**
+   * `prefill` is set when an invite LINK opened the app rather than the user
+   * pasting a code. The modal opens with the code in place and submits itself,
+   * so following a link joins the world instead of asking the recipient to
+   * re-enter what the link already carried. The intent is acked only on success.
+   */
+  private openInviteModal(
+    done: (c: LaunchChoice) => void,
+    prefill?: { code: string; resolve: () => void },
+  ): void {
     const shade = document.createElement("div");
     shade.className = "mbl-modal-shade";
     shade.dataset.testid = "invite-modal";
@@ -533,6 +559,9 @@ export class Landing {
     `;
     this.root.appendChild(shade);
     let busy = false;
+    // Set only for a link-opened invite; called once the join actually succeeds
+    // so a transient failure leaves the intent in the store to retry next load.
+    let prefillAck: (() => void) | null = null;
     const closeBtn = shade.querySelector<HTMLButtonElement>("[data-testid=invite-close]")!;
     const joinBtn = shade.querySelector<HTMLButtonElement>("[data-testid=join-invite-btn]")!;
     const errEl = shade.querySelector<HTMLElement>("[data-testid=picker-error]")!;
@@ -556,6 +585,7 @@ export class Landing {
       joinBtn.textContent = "Joining…";
       try {
         await acceptWorldInvite(code);
+        prefillAck?.();
         shade.remove();
         done(this.readChoice());
       } catch (e) {
@@ -566,6 +596,13 @@ export class Landing {
         joinBtn.textContent = "Join world";
       }
     });
+
+    if (prefill) {
+      const input = shade.querySelector<HTMLInputElement>("#mbl-invite");
+      if (input) input.value = prefill.code;
+      prefillAck = prefill.resolve;
+      joinBtn.click();
+    }
   }
 
   // state 1: anonymous — the game is online-only, so the only path forward is

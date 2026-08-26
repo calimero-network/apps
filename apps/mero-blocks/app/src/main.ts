@@ -16,6 +16,7 @@ import { WorldStore, WORLD_CX, WORLD_CY, WORLD_CZ, chunkKey } from "./engine/wor
 import { arrowLook, pointerLockAvailable } from "./input/look";
 import { WheelSteps } from "./input/wheel";
 import { inviteLink } from "./net/inviteLink";
+import { primeInviteCapture } from "./net/invitationIntents";
 import { createWorldInvite } from "./net/admin";
 import { GameClient } from "./net/client";
 import { captureSessionFromHash, getSession, hasConnection } from "./net/session";
@@ -25,6 +26,17 @@ import { loadWorld, saveWorld } from "./state/persistence";
 import { Hud } from "./ui/hud";
 import { Landing, LaunchChoice } from "./ui/landing";
 import { PauseMenu, WorldMap } from "./ui/overlays";
+
+// ── Inbound invite links ──────────────────────────────────────────────────────
+//
+// Primed before anything else runs: the launcher opens this app by appending
+// `?invitation=…` to its own frontend URL, and the landing flow rewrites the URL
+// as it goes. Capture is durable, so an invite that arrives before a node is
+// connected survives the web-login redirect and is replayed once the world
+// picker can act on it. Until now this app built shareable links but never read
+// one back, so opening one dropped the recipient on the landing page with the
+// code stuck in the address bar.
+primeInviteCapture();
 
 const REACH = 6;
 const EDIT_REPEAT_MS = 250;
