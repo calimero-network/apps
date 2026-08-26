@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { adminPost } from "../api/rpc";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
-import { encodeInvitationObject } from "../utils/invitation";
+import { encodeInvitationObject, invitationLink } from "../utils/invitation";
 import { truncateMiddle } from "../utils/format";
 import { getStoredTeamName } from "../utils/teamName";
 import styles from "./InviteModal.module.css";
@@ -46,8 +46,11 @@ export default function InviteModal({ teamId, onClose }: Props) {
 
   async function copy() {
     if (!invitation || copying) return;
-    await navigator.clipboard.writeText(invitation);
-    showToast("Invitation copied to clipboard.", "success");
+    // Share the canonical link, not the bare token: it opens the desktop app
+    // where installed and the web build otherwise, so the recipient does not have
+    // to know what to do with an opaque string.
+    await navigator.clipboard.writeText(invitationLink(invitation));
+    showToast("Invitation link copied to clipboard.", "success");
     // Brief loader, then reset to the "generate" state so each share is fresh.
     setCopying(true);
     if (resetRef.current) clearTimeout(resetRef.current);

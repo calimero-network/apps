@@ -7,7 +7,8 @@ import Logo from "../components/Logo";
 import SettingsModal from "../components/SettingsModal";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
-import { decodeInvitationObject } from "../utils/invitation";
+import { decodeInvitationObject, invitationTokenFrom } from "../utils/invitation";
+import { onInvitation } from "../utils/invitationIntents";
 import { setStoredTeamName, teamLabel } from "../utils/teamName";
 import type { Team } from "../types";
 import styles from "./TeamsPage.module.css";
@@ -116,9 +117,10 @@ export default function TeamsPage() {
     setTeams((prev) => prev.filter((t) => t.groupId !== teamId));
   }
 
-  async function joinTeam() {
-    const raw = joinCode.trim();
-    if (!raw) return;
+  async function joinTeam(codeOverride?: string): Promise<boolean> {
+    // Accept either a shared invitation link or the bare token inside it.
+    const raw = invitationTokenFrom(codeOverride ?? joinCode);
+    if (!raw) return false;
     setJoining(true);
     setJoinError("");
     try {
@@ -154,14 +156,44 @@ export default function TeamsPage() {
       }));
       setJoinCode("");
       showToast("Joined team. Syncing projects…", "success");
+      return true;
     } catch (err) {
       const msg = extractErrorMessage(err, "Could not join. Check the invitation code.");
       setJoinError(msg);
       showToast(msg);
+      return false;
     } finally {
       setJoining(false);
     }
   }
+
+  // ── An invitation link opened this app ──────────────────────────────────────
+  //
+  // Fill the join field and try it once, so a shared link actually joins the
+  // team instead of landing the recipient on this page with the token stuck in
+  // the address bar (which is what happened before capture existed).
+  //
+  // The intent is acked ONLY on a successful join. A failure leaves it in the
+  // durable store, so a transient one (node still starting, no online member)
+  // is retried on the next load rather than lost — no need to guess which error
+  // messages are permanent. `attemptedInvites` stops it retrying in a loop
+  // within this session; the token stays in the field for a manual retry.
+  const attemptedInvites = useRef<Set<string>>(new Set());
+  useEffect(
+    () =>
+      onInvitation(({ token, resolve }) => {
+        setJoinCode(token);
+        if (attemptedInvites.current.has(token)) return;
+        attemptedInvites.current.add(token);
+        void joinTeam(token).then((joined) => {
+          if (joined) resolve();
+        });
+      }),
+    // joinTeam is re-created every render but only reads `joinCode` when no
+    // token is passed, and we always pass one — so the captured closure is safe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   function handleLogout() {
     logout();
@@ -245,12 +277,12 @@ export default function TeamsPage() {
               placeholder="Paste invitation code…"
               value={joinCode}
               onChange={(e) => setJoinCode(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && joinTeam()}
+              onKeyDown={(e) => { if (e.key === "Enter") void joinTeam(); }}
               data-testid="join-code-input"
             />
             <button
               className="mp-btn"
-              onClick={joinTeam}
+              onClick={() => void joinTeam()}
               disabled={joining || !joinCode.trim()}
               data-testid="join-team-btn"
             >

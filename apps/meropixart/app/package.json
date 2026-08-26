@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "packageManager": "pnpm@9.15.9",
-  "description": "MeroPixArt \u2014 collaborative p2p image editor on Calimero",
+  "description": "MeroPixArt — collaborative p2p image editor on Calimero",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -17,15 +17,18 @@
   },
   "dependencies": {
     "@calimero-network/mero-js": "^13.2.5",
+    "@calimero-network/mero-platform": "^0.1.0",
     "@calimero-network/mero-react": "^6.0.4",
     "@calimero-network/mero-ui": "1.5.1",
+    "axios": "^1.12.0",
+    "bs58": "^6.0.0",
+    "clsx": "^2.1.1",
+    "fflate": "^0.8.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.15.1",
-    "zustand": "^5.0.5",
     "uuid": "^11.1.0",
-    "axios": "^1.12.0",
-    "clsx": "^2.1.1"
+    "zustand": "^5.0.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.25.0",
