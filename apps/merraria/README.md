@@ -49,7 +49,7 @@ See **[PLAN.md](./PLAN.md)** for the full design document.
 ```
 
 - **Contract** (`logic/`, Rust on calimero-sdk, pinned to core
-  **0.11.0-rc.24** git tags): `overrides:
+  **0.11.0-rc.25** git tags): `overrides:
   UnorderedMap<"x,y", {t, updatedAt}>` with per-key LWW + presence map.
 - **Engine** (`app/src/engine/`, pure TS): deterministic terrain, 2D
   flood-fill lighting (80k cells — full recompute per edit is fast enough),
