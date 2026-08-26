@@ -2,6 +2,7 @@
   "name": "meropixart",
   "private": true,
   "version": "0.1.0",
+  "packageManager": "pnpm@9.15.9",
   "description": "MeroPixArt \u2014 collaborative p2p image editor on Calimero",
   "type": "module",
   "scripts": {
