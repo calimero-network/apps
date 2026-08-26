@@ -9,7 +9,7 @@ inputs:
   version:
     description: core release tag the tool is pinned to; keep equal to the calimero-sdk tag in logic/Cargo.toml
     required: false
-    default: 0.11.0-rc.24
+    default: 0.11.0-rc.25
 
 runs:
   using: composite

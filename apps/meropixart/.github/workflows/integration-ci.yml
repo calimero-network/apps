@@ -87,7 +87,7 @@ jobs:
         # master and reddens this job on a commit that changed nothing.
         #
         # The pair must match the node image in workflows/. That image is now
-        # merod 0.11.0-rc.24, so this is the rc.24-era pair. (It used to be
+        # merod 0.11.0-rc.25, so this is the rc.25-era pair. (It used to be
         # merobox/client-py 0.6.24, the last releases that kept the
         # `upgradePolicy` shim every rc.20 node still required — obsolete now
         # that no image here is on rc.20.)

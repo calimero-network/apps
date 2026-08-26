@@ -159,16 +159,16 @@ Contract tests: `cd logic && cargo test`.
 
 ## SDK pin
 
-The contract pins all Calimero crates to **`0.11.0-rc.24`** via the **core git tag**:
+The contract pins all Calimero crates to **`0.11.0-rc.25`** via the **core git tag**:
 
 ```toml
-calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.24" }
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.25" }
 ```
 
 The rc is published only as a git tag (crates.io stops at rc.5) and the workspace
 package version at the tag is `0.0.0`, so a plain version requirement can't match —
 the git-tag form is required. Uses `borsh` 1.x. The merod runtime image used by the
-merobox workflows is `ghcr.io/calimero-network/merod:0.11.0-rc.24`.
+merobox workflows is `ghcr.io/calimero-network/merod:0.11.0-rc.25`.
 
 ## Data Model
 
