@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
 import { getApplicationId, setActiveRoom, getRoomName, setRoomName } from "../lib/session";
 import { invitationTokenFrom, parseRoomInvitation } from "../lib/invitation";
+import { onInvitation } from "../lib/invitationIntents";
 import ThemeToggle from "../components/ThemeToggle";
 import styles from "./RoomsPage.module.css";
 
@@ -97,7 +98,7 @@ export default function RoomsPage() {
     if (!roomName || !mero) return;
     if (!appId) {
       setError("Missing application id — reopen Mero Meet from the desktop app.");
-      return;
+      return false;
     }
     setBusy(true);
     setError(null);
@@ -132,13 +133,13 @@ export default function RoomsPage() {
     }
   }, [name, mero, appId, navigate, loadRooms]);
 
-  const joinByCode = useCallback(async () => {
+  const joinByCode = useCallback(async (codeOverride?: string): Promise<boolean> => {
     // Accept either a shared invitation link or the bare token inside it.
-    const code = invitationTokenFrom(joinCode);
-    if (!code || !mero) return;
+    const code = invitationTokenFrom(codeOverride ?? joinCode);
+    if (!code || !mero) return false;
     if (!appId) {
       setError("Missing application id — reopen Mero Meet from the desktop app.");
-      return;
+      return false;
     }
     setBusy(true);
     setError(null);
@@ -170,12 +171,38 @@ export default function RoomsPage() {
       setActiveRoom(contextId, joined.memberPublicKey);
       setJoinCode("");
       navigate("/lobby");
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not join with that code.");
+      return false;
     } finally {
       setBusy(false);
     }
   }, [joinCode, mero, appId, navigate]);
+
+  // ── An invitation link opened this app ──────────────────────────────────────
+  //
+  // Fill the join box and try it once, so a shared link actually joins the room
+  // instead of landing the recipient here with the token stuck in the address
+  // bar. Waits for `mero` and `appId`, because joining needs both — the intent
+  // is durable, so arriving before the session is ready is fine.
+  //
+  // Acked ONLY on a successful join: a failure stays in the store and is retried
+  // on the next load, which is what should happen when the room context simply
+  // has not synced yet (`joinByCode` polls for it and can legitimately time
+  // out). `attemptedInvites` stops it looping within this session.
+  const attemptedInvites = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!mero || !appId) return;
+    return onInvitation(({ token, resolve }) => {
+      setJoinCode(token);
+      if (attemptedInvites.current.has(token)) return;
+      attemptedInvites.current.add(token);
+      void joinByCode(token).then((joined) => {
+        if (joined) resolve();
+      });
+    });
+  }, [mero, appId, joinByCode]);
 
   return (
     <div className={styles.page}>
@@ -213,7 +240,7 @@ export default function RoomsPage() {
           onKeyDown={(e) => e.key === "Enter" && joinByCode()}
           disabled={busy}
         />
-        <button className={styles.joinBtn} onClick={joinByCode} disabled={busy || !joinCode.trim()}>
+        <button className={styles.joinBtn} onClick={() => void joinByCode()} disabled={busy || !joinCode.trim()}>
           Join
         </button>
       </section>

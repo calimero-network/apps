@@ -6,8 +6,20 @@ import "@calimero-network/mero-ui/styles.css";
 import App from "./App";
 import { APP_ENABLED } from "./lib/tauri";
 import { captureSessionFromHash } from "./lib/session";
+import { primeInvitationCapture } from "./lib/invitationIntents";
 import { initTheme } from "./lib/theme";
 import "./index.css";
+
+// ── Inbound invitation links ──────────────────────────────────────────────────
+//
+// Must run before React mounts: the launcher opens this app by appending
+// `?invitation=…` to its own frontend URL, and Router replaces the URL on the
+// first navigation — child effects fire before parent effects, so there is no
+// component early enough to read it reliably. Capture is durable, so an
+// invitation arriving before login survives the auth round-trip. Until now this
+// app built shareable links but never read one back, so opening one landed the
+// recipient on the rooms list with the token stuck in the address bar.
+primeInvitationCapture();
 
 // Resolve the light/dark theme before first paint (avoids a flash of the wrong
 // theme). Reads the persisted choice or the OS preference.

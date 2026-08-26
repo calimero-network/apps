@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.4.0",
   "packageManager": "pnpm@9.15.9",
-  "description": "Calimero Mero Meet \u2014 decentralized video calling (desktop)",
+  "description": "Calimero Mero Meet — decentralized video calling (desktop)",
   "keywords": [
     "calimero",
     "video",
@@ -31,6 +31,8 @@
     "@calimero-network/mero-react": "^6.0.4",
     "@calimero-network/mero-ui": "1.5.1",
     "@mediapipe/tasks-vision": "^0.10.0",
+    "bs58": "^6.0.0",
+    "fflate": "^0.8.2",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.15.1",
