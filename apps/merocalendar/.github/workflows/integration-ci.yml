@@ -92,7 +92,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: pip-${{ runner.os }}-merobox-0.6.55-ccpy-0.6.29
+          key: pip-${{ runner.os }}-merobox-0.6.66-ccpy-0.6.33
       - name: Install merobox
         # Pinned in LOCKSTEP with the merod image in workflows/*.yml (rc.22).
         # merobox speaks the node's admin API directly: rc.20 and older REQUIRE
@@ -103,7 +103,7 @@ jobs:
         # actually builds the request — is echoed so that failure is diagnosable
         # from the log instead of a bisect.
         run: |
-          pip install -q --disable-pip-version-check "merobox==0.6.55" "calimero-client-py==0.6.29"
+          pip install -q --disable-pip-version-check "merobox==0.6.66" "calimero-client-py==0.6.33"
           merobox --version
           pip show calimero-client-py | sed -n 's/^Version: /calimero-client-py /p'
 
