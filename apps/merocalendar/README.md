@@ -18,7 +18,7 @@ your own nodes, shared only with the people you invite.
 
 | Layer | Path | Stack |
 |-------|------|-------|
-| Contract ("logic") | `logic/` | Rust → WASM, `calimero-sdk` / `calimero-storage` `0.11.0-rc.24` |
+| Contract ("logic") | `logic/` | Rust → WASM, `calimero-sdk` / `calimero-storage` `0.11.0-rc.25` |
 | Frontend ("app") | `app/` | React 19 + Vite 6, `@calimero-network/mero-react` + `mero-js` + `mero-ui` |
 
 The contract keeps shared events in synced CRDT state (`UnorderedMap`), members +
@@ -32,7 +32,7 @@ state changes over SSE.
 - [`cargo-mero`](https://github.com/calimero-network/core/tree/master/tools/cargo-mero),
   pinned to the same core tag as the SDK — the ABI emitter is versioned with core:
   ```bash
-  cargo install --git https://github.com/calimero-network/core --tag 0.11.0-rc.24 cargo-mero
+  cargo install --git https://github.com/calimero-network/core --tag 0.11.0-rc.25 cargo-mero
   ```
 - Node 20+ and `pnpm`
 - A local [`merod`](https://github.com/calimero-network/core) node for development

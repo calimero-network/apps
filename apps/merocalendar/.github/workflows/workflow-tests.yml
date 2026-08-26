@@ -102,7 +102,7 @@ jobs:
         #     merobox 0.6.54 dropped it (core#3393 removed the concept in rc.21),
         #     so new merobox + old node => "missing field `upgradePolicy`".
         #   * old merobox + rc.21+ node => the reverse, an unknown-field reject.
-        # The scenarios here pin merod 0.11.0-rc.24, so merobox must be >= 0.6.55.
+        # The scenarios here pin merod 0.11.0-rc.25, so merobox must be >= 0.6.55.
         # Changing either pin without the other is the failure mode.
         #
         # calimero-client-py is the layer that actually builds the request, and
