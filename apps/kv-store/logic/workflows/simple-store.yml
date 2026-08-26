@@ -1,0 +1,377 @@
+name: KV Store E2E
+description: >
+  Two nodes converge on one UnorderedMap<String, LwwRegister<String>>.
+
+  Covers the whole RPC surface: set, get, get_result, get_unchecked,
+  update_if_exists, get_or_insert, entries, len, remove, clear — and asserts the
+  three behaviours that are easy to get subtly wrong:
+
+    * `update_if_exists` must NOT insert when the key is absent
+    * `get_or_insert` must return the EXISTING value, not the one passed in
+    * `remove` and `clear` must not emit for a no-op
+
+force_pull_image: false
+nuke_on_start: true
+near_devnet: false
+
+nodes:
+  count: 2
+  # Matched to the calimero-sdk tag in the root Cargo.toml. Keep the two in
+  # lockstep: the wasm imports host functions that only exist from that release
+  # on, and an older node installs it happily then dies at context creation
+  # with `link error: unknown import`.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.25
+  prefix: kv-node
+
+steps:
+  - name: Install application on node-1
+    type: install_application
+    node: kv-node-1
+    path: res/kv_store.wasm
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Assert application installed
+    type: assert
+    statements:
+      - "is_set({{app_id}})"
+
+  - name: Create mesh with node-2
+    type: create_mesh
+    context_node: kv-node-1
+    application_id: "{{app_id}}"
+    path: res/kv_store.wasm
+    nodes:
+      - kv-node-2
+    capability: member
+    outputs:
+      context_id: contextId
+      node1_key: memberPublicKey
+
+  - name: Verify mesh keys are populated
+    type: assert
+    statements:
+      - "is_set({{context_id}})"
+      - "is_set({{node1_key}})"
+      - "is_set({{public_key_kv-node-2}})"
+
+  # ─── update_if_exists must not insert ─────────────────────────────────────
+
+  # Run BEFORE any write, so the map is genuinely empty. Running it after a set
+  # would pass whether or not the guard works.
+  - name: node-1 tries update_if_exists on an absent key
+    type: call
+    node: kv-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: update_if_exists
+    args:
+      key: "absent"
+      value: "nope"
+    outputs:
+      update_absent: result
+
+  - name: Assert update_if_exists reported no update
+    type: json_assert
+    statements:
+      - 'json_equal({{update_absent}}, {"output": false})'
+
+  - name: node-1 confirms nothing was inserted
+    type: call
+    node: kv-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: len
+    args: {}
+    outputs:
+      len_after_noop: result
+
+  - name: Assert the store is still empty
+    type: json_assert
+    statements:
+      - 'json_equal({{len_after_noop}}, {"output": 0})'
+
+  # ─── set / get, and convergence ───────────────────────────────────────────
+
+  - name: node-1 sets a key
+    type: call
+    node: kv-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: set
+    args:
+      key: "greeting"
+      value: "hello"
+
+  - name: Wait for the write to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - kv-node-1
+      - kv-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads the key
+    type: call
+    node: kv-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_kv-node-2}}"
+    method: get
+    args:
+      key: "greeting"
+    outputs:
+      n2_get: result
+
+  - name: Assert node-2 sees node-1's write
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_get}}, {"output": "hello"})'
+
+  - name: node-2 reads an absent key
+    type: call
+    node: kv-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_kv-node-2}}"
+    method: get
+    args:
+      key: "nothing_here"
+    outputs:
+      n2_missing: result
+
+  # `get` returns Option<String>. The ABI flattens that to `string`, so the
+  # generated TS client types this as non-null — the wire says otherwise, and
+  # this is the assertion that records the truth.
+  - name: Assert an absent key reads as null
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_missing}}, {"output": null})'
+
+  # ─── update_if_exists now that the key is there ───────────────────────────
+
+  - name: node-2 updates the existing key
+    type: call
+    node: kv-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_kv-node-2}}"
+    method: update_if_exists
+    args:
+      key: "greeting"
+      value: "hei"
+    outputs:
+      update_present: result
+
+  - name: Assert the update landed
+    type: json_assert
+    statements:
+      - 'json_equal({{update_present}}, {"output": true})'
+
+  - name: Wait for node-2's update to reach node-1
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - kv-node-1
+      - kv-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # The in-place `get_mut` path has to produce a NEW timestamp, or LWW will not
+  # prefer it on the other replica and node-1 keeps its own older value.
+  - name: node-1 reads the updated key
+    type: call
+    node: kv-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: get_result
+    args:
+      key: "greeting"
+    outputs:
+      n1_updated: result
+
+  - name: Assert the in-place update converged
+    type: json_assert
+    statements:
+      - 'json_equal({{n1_updated}}, {"output": "hei"})'
+
+  # ─── get_or_insert returns the EXISTING value ────────────────────────────
+
+  - name: node-1 calls get_or_insert on the existing key
+    type: call
+    node: kv-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: get_or_insert
+    args:
+      key: "greeting"
+      value: "SHOULD_NOT_WIN"
+    outputs:
+      goi_existing: result
+
+  # If this returned the argument, `or_insert` would be overwriting — the whole
+  # point of the entry API is that it does not.
+  - name: Assert get_or_insert kept the stored value
+    type: json_assert
+    statements:
+      - 'json_equal({{goi_existing}}, {"output": "hei"})'
+
+  - name: node-1 calls get_or_insert on a fresh key
+    type: call
+    node: kv-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: get_or_insert
+    args:
+      key: "fresh"
+      value: "inserted"
+    outputs:
+      goi_fresh: result
+
+  - name: Assert get_or_insert inserted on a vacant entry
+    type: json_assert
+    statements:
+      - 'json_equal({{goi_fresh}}, {"output": "inserted"})'
+
+  # ─── entries / len ───────────────────────────────────────────────────────
+
+  - name: Wait for both keys to converge
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - kv-node-1
+      - kv-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads all entries
+    type: call
+    node: kv-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_kv-node-2}}"
+    method: entries
+    args: {}
+    outputs:
+      n2_entries: result
+
+  - name: Assert node-2 sees both keys
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_entries}}, {"output": {"fresh": "inserted", "greeting": "hei"}})'
+
+  - name: node-2 reads the length
+    type: call
+    node: kv-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_kv-node-2}}"
+    method: len
+    args: {}
+    outputs:
+      n2_len: result
+
+  - name: Assert the length matches the listing
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_len}}, {"output": 2})'
+
+  # ─── remove ──────────────────────────────────────────────────────────────
+
+  - name: node-1 removes a key
+    type: call
+    node: kv-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: remove
+    args:
+      key: "fresh"
+    outputs:
+      removed: result
+
+  - name: Assert remove returned the value it took out
+    type: json_assert
+    statements:
+      - 'json_equal({{removed}}, {"output": "inserted"})'
+
+  - name: node-1 removes the same key again
+    type: call
+    node: kv-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: remove
+    args:
+      key: "fresh"
+    outputs:
+      removed_again: result
+
+  - name: Assert a second remove is a no-op returning null
+    type: json_assert
+    statements:
+      - 'json_equal({{removed_again}}, {"output": null})'
+
+  - name: Wait for the removal to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - kv-node-1
+      - kv-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads entries after the removal
+    type: call
+    node: kv-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_kv-node-2}}"
+    method: entries
+    args: {}
+    outputs:
+      n2_after_remove: result
+
+  # A tombstone that loses the merge would resurrect the key here and nowhere
+  # else — a single-node check passes throughout.
+  - name: Assert the removal converged
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_after_remove}}, {"output": {"greeting": "hei"}})'
+
+  # ─── clear ───────────────────────────────────────────────────────────────
+
+  - name: node-2 clears the store
+    type: call
+    node: kv-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_kv-node-2}}"
+    method: clear
+    args: {}
+
+  - name: Wait for the clear to reach node-1
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - kv-node-1
+      - kv-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 reads the length after the clear
+    type: call
+    node: kv-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: len
+    args: {}
+    outputs:
+      len_after_clear: result
+
+  - name: Assert the clear converged
+    type: json_assert
+    statements:
+      - 'json_equal({{len_after_clear}}, {"output": 0})'
+
+stop_all_nodes: false
+restart: false
+wait_timeout: 180

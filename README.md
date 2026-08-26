@@ -12,8 +12,9 @@ This repository consolidates apps that currently live in their own repos, so the
 one dependency graph, one CI pipeline, and one release process instead of drifting apart in fifteen
 places.
 
-> **Status: scaffolding.** The repo exists; the migration has not started. Each app below still lives
-> in its own repository and remains the source of truth until it is moved here.
+> **Status: migrating, one app at a time.** `kv-store` is in. Every other app below still lives in
+> its own repository and remains the source of truth until it is moved here. See
+> [Migrating an app](#migrating-an-app).
 
 ---
 
@@ -47,7 +48,15 @@ single atomic change with a single CI signal.
 
 ## Apps
 
-### Collaboration & productivity
+### In this repo
+
+| App | What it is |
+| --- | --- |
+| [kv-store](apps/kv-store) | The reference app. An `UnorderedMap<String, LwwRegister<String>>` exercised end to end, with a typed client generated from the contract's own ABI. Start here. |
+
+### Still in their own repos
+
+#### Collaboration & productivity
 
 | App | What it is |
 | --- | --- |
@@ -58,14 +67,14 @@ single atomic change with a single CI signal.
 | [mero-drive](https://github.com/calimero-network/mero-drive) | Peer-to-peer file storage and documents. |
 | [mero-issue-tracker](https://github.com/calimero-network/mero-issue-tracker) | Issue tracker for dev teams whose backlog lives on their own nodes. |
 
-### Communication
+#### Communication
 
 | App | What it is |
 | --- | --- |
 | [mero-chat-pwa](https://github.com/calimero-network/mero-chat-pwa) | Group channels and DMs as an installable PWA, with offline support. |
 | [mero-meet](https://github.com/calimero-network/mero-meet) | Video calling — a context is the room, the contract is the signaling relay, media flows direct over WebRTC. No SFU. |
 
-### Games
+#### Games
 
 | App | What it is |
 | --- | --- |
@@ -73,14 +82,14 @@ single atomic change with a single CI signal.
 | [merraria](https://github.com/calimero-network/merraria) | Terraria-style 2D mining sandbox — seed-generated terrain, CRDT tile diff, in a ~45 kB bundle. |
 | [battleships](https://github.com/calimero-network/battleships) | Turn-based Battleships, the smallest end-to-end example of contract-mediated game state. |
 
-### Native / mobile
+#### Native / mobile
 
 | App | What it is |
 | --- | --- |
 | [mero-tag](https://github.com/calimero-network/mero-tag) | AirTag/Find My-style iOS location sharing between your own nodes. SwiftUI + MapKit. |
 | [mero-ar](https://github.com/calimero-network/mero-ar) | Collaborative spatial editing — several people scan one room and edit a shared 3D scene. ARKit + RealityKit. |
 
-### Experiments
+#### Experiments
 
 | App | What it is |
 | --- | --- |
@@ -113,31 +122,121 @@ The frontend never talks to a server. It talks to *its own* node over JSON-RPC, 
 contract locally, and the resulting state delta gossips to the other members of the context. The
 "multiplayer" is a property of the network, not of the application code.
 
-## Planned layout
+## Layout
 
 ```
-apps/
-├── apps/                  # one directory per application
-│   ├── mero-design/
-│   ├── mero-meet/
-│   └── ...
-├── packages/              # code shared across apps
-│   ├── ui/                #   components above the design system
-│   └── testing/           #   shared merobox fixtures + Playwright helpers
-├── crates/                # Rust shared by the contracts
-├── .github/workflows/     # per-app CI, path-filtered
-└── pnpm-workspace.yaml
+apps/                       one directory per application
+└── kv-store/
+    ├── logic/              Rust → WASM. A workspace member.
+    │   ├── src/lib.rs
+    │   ├── tests/          TestHost + convergence, no node needed
+    │   ├── res/            abi.json + state-schema.json, emitted by cargo mero
+    │   └── workflows/      merobox e2e
+    └── app/                Vite + React + TS. A pnpm workspace package.
+        └── src/generated/  typed client, generated from res/abi.json
+
+crates/                     Rust shared between contracts (empty, wired)
+packages/                   frontend code shared between apps (empty, wired)
+scripts/                    check-app-metadata.sh, codegen.mjs
+.github/workflows/          ci.yml · release.yml · publish-bundle.yml (reusable)
+
+Cargo.toml                  ONE SDK pin, and the release profiles
+pnpm-workspace.yaml         ONE version per JS dependency, via catalog:
+requirements-e2e.txt        merobox AND calimero-client-py, pinned together
+tsconfig.base.json
 ```
 
-Frontends are a pnpm workspace; contracts are a Cargo workspace; CI path-filters so touching one app
-does not rebuild the other fourteen.
+Contracts are a Cargo workspace; frontends are a pnpm workspace; CI path-filters
+so touching one app does not rebuild the others — and a change to the workspace
+root fans out to all of them, because bumping the SDK changes every contract's
+bytes.
 
-## Migration approach
+## One pin, one place
 
-Apps move one at a time, with git history preserved (`git subtree` / `git filter-repo`), and only
-when the app is already on the current core RC — the monorepo is not the place to do a version
-upgrade. Order runs from the most actively developed to the least, so shared code gets extracted
-early rather than retrofitted. Each source repo is archived with a pointer here once its app lands.
+The problem this repo exists to solve, measured across the nine app repos on
+2026-08-26:
+
+| pin | distinct values in the fleet |
+| --- | --- |
+| `calimero-sdk` tag | **5** — rc.15, rc.23, rc.24, rc.25, `branch = "master"` |
+| `merod` image | 3 |
+| `merobox` | 3, one repo unpinned |
+| `calimero-client-py` | pinned in **1 of 9** |
+| `typescript` / `vite` / `vitest` / `react` | 3 / 3 / 4 / 4 |
+
+Thirteen pins × nine apps is up to 117 places to edit for one decision. Here it
+is 13.
+
+Two of those rows are not cosmetic. **`calimero-client-py` is a transitive
+dependency of merobox that tracks core master** — pinning merobox alone pins
+nothing, and 0.6.27 broke `create_namespace` while 0.6.26 broke `join_namespace`,
+so a commit changing nothing could turn the e2e red. And every copy of the
+release workflow hard-coded its own default branch, so copying it into a repo
+whose default was the other name produced a workflow that was valid YAML, passed
+lint, and **never ran**. One repo has one default branch.
+
+## Working in here
+
+```bash
+pnpm install                          # whole workspace, one lockfile
+cargo mero build -p <app>             # contract → wasm + ABI
+pnpm -F <app> codegen                 # ABI → typed client
+pnpm -F <app> dev
+
+cargo test --workspace                # every app's Rust tests, SDK compiled once
+pnpm -r test
+bash scripts/check-app-metadata.sh    # registry metadata vs the workspace
+```
+
+### Bumping core
+
+Edit the three `calimero-sdk*` tags plus `min-runtime-version` and `merod-image`
+in the root `Cargo.toml`, run `cargo update`, push. CI rebuilds every app and the
+release workflow republishes all of them, because the SDK pin changes every
+contract's bytes.
+
+`scripts/check-app-metadata.sh` fails if any app's `min-runtime-version` drifts
+from the workspace value. That check exists because
+`[package.metadata.calimero]` **cannot be inherited** — `.workspace = true`
+inside `[package.metadata]` resolves to the literal `{"workspace": true}`, since
+`metadata` is not on cargo's inheritable list.
+
+### Adding an app
+
+A directory. `apps/<name>/{logic,app}`, `logic/Cargo.toml` with
+`.workspace = true` deps and a `[package.metadata.calimero]` block, `app/package.json`
+with `catalog:` versions. Both matrices are derived from `cargo metadata`, so
+there is no list to update.
+
+⚠️ **Profiles must stay at the workspace root.** Cargo *ignores* `[profile.*]` in
+a member and then refuses to build:
+
+```
+warning: profiles for the non root package will be ignored
+error: profile `app-release` is not defined
+```
+
+`cargo mero build` selects `app-release`, so an app that brought its own profile
+block simply fails. Delete it on the way in.
+
+## Migrating an app
+
+Apps move one at a time, with git history preserved (`git subtree` / `git filter-repo`).
+
+**Migrate an app at whatever SDK version it is already on, then bump it here.**
+Never both in one step — when a build goes red it should have one possible cause.
+
+Each move is mechanical: bring the tree in, delete its workflow files and its
+copy of the cargo-mero action, rewrite `logic/Cargo.toml` to `.workspace = true`
+and move its profile block to the root, rewrite `app/package.json` to
+`catalog:`. No app behaviour changes.
+
+Each source repo is archived with a pointer here once its app lands.
+
+Two apps are out of scope. **mero-chat** was abandoned 2026-08-19 (stuck on
+rc.20 / mero-js 7 / mero-react 4) — won't-fix. **mero-ar** and **mero-tag** are
+Swift/Xcode projects with no frontend URL; they share neither the pnpm nor the
+Cargo surface this repo is built around.
 
 ## Related
 

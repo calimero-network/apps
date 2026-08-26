@@ -1,0 +1,66 @@
+[package]
+name = "kv-store"
+description = "Calimero KV Store — the reference app"
+# NOT the release version. Cargo requires a version field; the release workflow
+# ignores it, because the REGISTRY owns the number: it takes the highest
+# published appVersion for this package and increments the patch (0.0.1 when
+# nothing is published). Bumping this changes nothing about what ships, so never
+# read a shipped version out of the tree.
+version = "0.0.1"
+edition.workspace      = true
+authors.workspace      = true
+license.workspace      = true
+repository.workspace    = true
+publish = false
+
+[lib]
+# `cdylib` for the wasm the node loads. `rlib` as well so `cargo test` can link
+# the crate — without it `tests/converge.rs` cannot `use kv_store::KvStore`.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+calimero-sdk.workspace     = true
+calimero-storage.workspace = true
+thiserror.workspace        = true
+
+[dev-dependencies]
+# The `testing` feature enables the native mock host, which is what lets
+# `TestHost` and `converge_app` drive real CRDT state under `cargo test` with no
+# node and no wasm.
+calimero-storage = { workspace = true, features = ["testing"] }
+
+# Read by `cargo mero build` / `cargo mero bundle`. Every field the node and the
+# registry render has a producer here, so nothing hand-writes a manifest.json.
+#
+# `appVersion` is deliberately absent — the release workflow resolves it from
+# the registry and passes `--app-version`.
+#
+# NOTE: none of this can be inherited from the workspace. `[package.metadata]`
+# is not on cargo's inheritable list, so `min-runtime-version.workspace = true`
+# resolves to the literal `{"workspace": true}`. `scripts/check-app-metadata.sh`
+# asserts the fleet-wide values match `[workspace.metadata.calimero]` instead.
+[package.metadata.calimero]
+package = "com.calimero.kv-store"
+name = "KV Store"
+description = "The reference Calimero app: an UnorderedMap<String, LwwRegister<String>> exercised end to end, with a typed client generated from the contract's own ABI."
+author = "Calimero"
+# The slug IS the package id: the desktop and links.calimero.network resolve a
+# deep link by `Application.package`, so these must never drift apart.
+slug = "com.calimero.kv-store"
+tags = ["example", "reference", "kv", "crdt"]
+github = "https://github.com/calimero-network/apps"
+# Asserted equal to [workspace.metadata.calimero] in CI. Three bundles in the
+# registry still advertise 0.1.0 — cargo-mero's placeholder floor, which nobody
+# verified — which is the failure that check exists to prevent.
+min-runtime-version = "0.11.0-rc.25"
+# ⚠️ NOT just a deep-link target. The auth frontend treats the registry-declared
+# frontend origin as this app's registered redirect URI, compared by EXACT
+# ORIGIN. Point it at the wrong host and hosted login fails *after* credentials
+# are accepted, while local and desktop login keep working (loopback is always
+# trusted) — which is how mero-stream shipped a guessed origin and nobody
+# noticed for weeks.
+#
+# So this must be filled in only once the Vercel project exists and its
+# production URL is known, and changing it later requires REPUBLISHING the
+# bundle.
+frontend = "https://mero-kv-store.vercel.app/"

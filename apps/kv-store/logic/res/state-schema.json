@@ -1,0 +1,32 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "KvStore": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "items",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [],
+  "events": [],
+  "state_root": "KvStore",
+  "state_version": 1
+}

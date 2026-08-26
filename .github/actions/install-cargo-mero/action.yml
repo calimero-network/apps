@@ -1,0 +1,36 @@
+name: Install cargo-mero
+description: >
+  Install the cargo-mero toolchain, from cache when possible. One copy for the
+  whole repo — the fleet had this action duplicated across seven repos plus an
+  eighth under a different name.
+
+inputs:
+  version:
+    description: The core tag to install cargo-mero from. Keep matched to the SDK tag in the root Cargo.toml.
+    required: false
+    default: "0.11.0-rc.25"
+
+runs:
+  using: composite
+  steps:
+    - name: Cache cargo-mero
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/bin/cargo-mero
+        key: cargo-mero-${{ runner.os }}-${{ inputs.version }}
+
+    - name: Install cargo-mero
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      # Installed from the same tag the SDK is pinned to, so the bundler and the
+      # contract cannot disagree about the manifest format.
+      run: |
+        cargo install --locked \
+          --git https://github.com/calimero-network/core.git \
+          --tag "${{ inputs.version }}" \
+          cargo-mero
+
+    - name: Report the version
+      shell: bash
+      run: cargo mero --version

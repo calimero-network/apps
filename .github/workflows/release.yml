@@ -1,0 +1,113 @@
+# Decide which apps to publish, then call the reusable pipeline once per app.
+#
+# The `shared` filter is the capability the per-repo setup could not express at
+# all: bumping the SDK changes EVERY contract's bytes, so a change to the
+# workspace root must fan out to every app. Before this, that meant remembering
+# to touch nine repos and hoping each one's own `paths:` filter fired.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/*/logic/**"
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  workflow_dispatch:
+    inputs:
+      app:
+        description: Publish this app only (empty = every app)
+        required: false
+        type: string
+      version:
+        description: Explicit X.Y.Z. Empty lets the registry decide.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    name: Select apps
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      apps: ${{ steps.pick.outputs.apps }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # `list-files: shell` so the per-app decision below reads real paths
+          # rather than re-deriving them.
+          list-files: shell
+          filters: |
+            shared:
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'crates/**'
+            logic:
+              - 'apps/*/logic/**'
+
+      - name: Pick the apps to publish
+        id: pick
+        env:
+          DISPATCH_APP: ${{ inputs.app }}
+          SHARED: ${{ steps.filter.outputs.shared }}
+          LOGIC_FILES: ${{ steps.filter.outputs.logic_files }}
+        run: |
+          set -euo pipefail
+
+          all=$(cargo metadata --no-deps --format-version 1 \
+            | jq -c '[.packages[] | select(.metadata.calimero != null) | .name]')
+
+          if [ -n "$DISPATCH_APP" ]; then
+            # An explicit dispatch must name a real app, or the run would
+            # silently publish nothing.
+            if ! jq -e --arg a "$DISPATCH_APP" 'index($a)' >/dev/null <<<"$all"; then
+              echo "::error::'$DISPATCH_APP' is not an app in this workspace: $all"
+              exit 1
+            fi
+            apps=$(jq -c --arg a "$DISPATCH_APP" '[$a]' <<<"$all")
+            echo "::notice::explicit dispatch — publishing $DISPATCH_APP only"
+
+          elif [ "$SHARED" = "true" ]; then
+            # The SDK pin or a shared crate moved, so every contract's bytes
+            # changed. Publish all of them.
+            apps="$all"
+            echo "::notice::workspace-level change — publishing every app: $apps"
+
+          else
+            # Map the changed logic/ paths back to app directory names.
+            apps=$(printf '%s\n' $LOGIC_FILES \
+              | sed -n 's|^apps/\([^/]*\)/logic/.*|\1|p' \
+              | sort -u | jq -R . | jq -sc .)
+            echo "::notice::changed apps: $apps"
+          fi
+
+          # An empty matrix would make the publish job vanish, which reads as
+          # success. Say so instead.
+          if [ "$apps" = "[]" ]; then
+            echo "::notice::no app logic changed — nothing to publish"
+          fi
+          echo "apps=$apps" >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Publish
+    needs: select
+    if: needs.select.outputs.apps != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.select.outputs.apps) }}
+    uses: ./.github/workflows/publish-bundle.yml
+    with:
+      app: ${{ matrix.app }}
+      version: ${{ inputs.version || '' }}
+    secrets: inherit

@@ -1,0 +1,276 @@
+# Per-app CI, path-filtered.
+#
+# The filter is the point. A frontend-only change must not pay for a WASM build
+# or spin up merobox containers, and a change to the workspace root must fan out
+# to EVERY app — because bumping the SDK changes every contract's bytes. The
+# per-repo setup this replaces could not express the second half at all.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  # ── what changed ───────────────────────────────────────────────────────────
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      apps: ${{ steps.set.outputs.apps }}
+      logic: ${{ steps.filter.outputs.logic }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      shared: ${{ steps.filter.outputs.shared }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            shared:
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'crates/**'
+              - 'packages/**'
+              - 'pnpm-workspace.yaml'
+              - 'pnpm-lock.yaml'
+              - 'tsconfig.base.json'
+              - 'scripts/**'
+              - '.github/**'
+            logic:
+              - 'apps/*/logic/**'
+            frontend:
+              - 'apps/*/app/**'
+
+      # One place that answers "which apps does this run cover". Kept as a
+      # script rather than a hand-maintained matrix so adding an app is adding a
+      # directory.
+      - name: Resolve the app matrix
+        id: set
+        run: |
+          apps=$(cargo metadata --no-deps --format-version 1 \
+            | jq -c '[.packages[] | select(.metadata.calimero != null) | .name]')
+          echo "apps=$apps" >> "$GITHUB_OUTPUT"
+          echo "apps: $apps"
+
+  # ── workspace-wide, cheap, always ──────────────────────────────────────────
+  metadata:
+    name: App metadata
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/check-app-metadata.sh
+
+  rust:
+    name: Rust (fmt, clippy, test)
+    needs: changes
+    if: needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+
+      # ONE cache for the whole workspace, keyed on the single Cargo.lock. This
+      # is where the monorepo pays for itself: `calimero-sdk` is compiled once
+      # and every app links the same artifacts, instead of nine repos each
+      # building it into nine separate caches.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      # Covers every app's TestHost tests and tests/converge.rs in one
+      # invocation, sharing the compiled SDK.
+      - run: cargo test --workspace
+
+  wasm:
+    name: Build WASM (${{ matrix.app }})
+    needs: changes
+    if: needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.changes.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - uses: ./.github/actions/install-cargo-mero
+
+      - name: Build
+        run: cargo mero build -p ${{ matrix.app }}
+
+      # `cargo mero build` resolves the ABI from the compiled `__calimero_abi()`,
+      # so this is the authoritative copy. A stale committed ABI would let the
+      # generated-client check validate against a snapshot of a contract that no
+      # longer exists and report success.
+      - name: Assert the committed ABI matches the built contract
+        run: |
+          if ! git diff --quiet -- 'apps/*/logic/res/abi.json' 'apps/*/logic/res/state-schema.json'; then
+            echo "::error::a committed ABI is stale. Run 'cargo mero build -p ${{ matrix.app }}' and 'pnpm -F ${{ matrix.app }} codegen', then commit."
+            git --no-pager diff --stat -- 'apps/*/logic/res/'
+            git --no-pager diff -- 'apps/*/logic/res/abi.json' | head -200
+            exit 1
+          fi
+          echo "committed ABI matches the built contract"
+
+      # `always()` so a failing ABI gate still hands over the regenerated file —
+      # which is exactly what the error asks you to commit. Withholding it makes
+      # the error true and useless at the same time.
+      - name: Upload wasm + ABI
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-${{ matrix.app }}-${{ github.sha }}
+          path: |
+            apps/*/logic/res/*.wasm
+            apps/*/logic/res/abi.json
+            apps/*/logic/res/state-schema.json
+          retention-days: 3
+
+  frontend:
+    name: Frontend (typecheck, test, build)
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.logic == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # `tsc -b`, never `tsc --noEmit`: the app tsconfig is a solution file, and
+      # --noEmit on a solution file checks nothing and exits 0.
+      - run: pnpm -r typecheck
+
+      # Regenerating and diffing is what turns a contract/frontend mismatch into
+      # a failed build rather than a runtime 500. It needs no node and no wasm —
+      # it reads the committed ABI, which the `wasm` job proves is current.
+      - name: Assert the generated clients are current
+        run: |
+          pnpm -r codegen
+          if ! git diff --quiet -- 'apps/*/app/src/generated'; then
+            echo "::error::a generated client is stale. Run 'pnpm -r codegen' and commit."
+            git --no-pager diff -- 'apps/*/app/src/generated'
+            exit 1
+          fi
+          echo "generated clients match the committed ABIs"
+
+      - run: pnpm -r test
+      - run: pnpm -r build
+
+  e2e:
+    name: E2E (${{ matrix.app }})
+    needs: changes
+    if: needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.changes.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - uses: ./.github/actions/install-cargo-mero
+
+      - run: cargo mero build -p ${{ matrix.app }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # calimero-client-py ships an sdist ONLY, so an uncached job compiles a
+      # Rust wheel (~70s measured).
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements-e2e.txt') }}
+
+      # Both pins come from ONE file. Pinning merobox alone pins nothing:
+      # calimero-client-py is a transitive dep that tracks core master.
+      - run: pip install -r requirements-e2e.txt && merobox --version
+
+      # Free schema gate. Catches a YAML mistake before fourteen containers
+      # start, instead of after.
+      - name: Validate workflows
+        working-directory: apps/${{ matrix.app }}/logic
+        run: |
+          shopt -s nullglob
+          for f in workflows/*.yml; do merobox bootstrap validate "$f"; done
+
+      - name: Run workflows
+        working-directory: apps/${{ matrix.app }}/logic
+        run: |
+          shopt -s nullglob
+          for f in workflows/*.yml; do
+            echo "::group::$f"
+            merobox bootstrap run "$f" --log-level info
+            echo "::endgroup::"
+          done
+
+      - name: Collect node logs
+        if: failure()
+        run: merobox logs --tail 200 || true

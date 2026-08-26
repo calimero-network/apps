@@ -1,0 +1,33 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# merobox drops several hundred MB of node state here
+data/
+logic/data/
+apps/*/logic/workflows/data/
+
+# Signed bundles are build output; the registry is the distribution channel
+dist/*.mpk
+apps/*/logic/dist/
+
+# Local env
+.env
+.env.local
+*.local
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+
+# OS
+.DS_Store
+
+# tsc -b declaration output
+dist-types/

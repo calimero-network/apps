@@ -1,0 +1,32 @@
+{
+  "name": "kv-store",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "codegen": "node ../../../scripts/codegen.mjs --input ../logic/res/abi.json --out src/generated --client KvStoreClient"
+  },
+  "dependencies": {
+    "@calimero-network/mero-js": "catalog:",
+    "@calimero-network/mero-react": "catalog:",
+    "@calimero-network/mero-ui": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@calimero-network/abi-codegen": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "jsdom": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}

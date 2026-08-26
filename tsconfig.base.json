@@ -1,0 +1,34 @@
+{
+  "// note": [
+    "Extended by every app. Apps override `include` and paths only.",
+    "",
+    "Run type checking with `tsc -b`, NEVER `tsc --noEmit`. In this project",
+    "shape the app tsconfig is a solution file (it only holds `references`),",
+    "and `--noEmit` on a solution file checks NOTHING while exiting 0. Seven",
+    "repos in the fleet ran exactly that under a target called `typecheck`."
+  ],
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "useDefineForClassFields": true,
+    "composite": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "declarationMap": true,
+    "sourceMap": true
+  }
+}
