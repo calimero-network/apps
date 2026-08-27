@@ -1,0 +1,6 @@
+# Pinned to the toolchain .github/workflows/* installs, so a local `cargo mero
+# build` and CI compile the wasm with the same rustc.
+[toolchain]
+channel = "1.89.0"
+components = ["cargo", "clippy", "rustfmt"]
+targets = ["wasm32-unknown-unknown"]

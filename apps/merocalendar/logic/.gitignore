@@ -1,0 +1,3 @@
+# `cargo mero bundle` output. The .mpk is a build artifact — the registry holds
+# the published copies.
+dist/
