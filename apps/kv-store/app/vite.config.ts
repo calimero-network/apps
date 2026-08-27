@@ -12,7 +12,13 @@ export default defineConfig({
     // `tsc -b` writes declarations under dist-types/. Without this, vitest
     // discovers the compiled copies of the test files and runs them a second
     // time, from a directory where their relative paths no longer resolve.
-    exclude: ["**/node_modules/**", "**/dist/**", "**/dist-types/**"],
+    // ⚠️ `**/e2e/**` is load-bearing. vitest's default include matches
+    // `*.spec.ts` as well as `*.test.ts`, so without it vitest collects the
+    // Playwright specs and dies inside `test.describe()` with a message about
+    // duplicate @playwright/test installs — which points nowhere near the
+    // actual cause. The split is: vitest owns `*.test.ts`, Playwright owns
+    // `e2e/*.spec.ts`.
+    exclude: ["**/node_modules/**", "**/dist/**", "**/dist-types/**", "**/e2e/**"],
     server: {
       deps: {
         // ⚠️ @calimero-network/mero-platform@0.1.0 ships DIRECTORY imports
