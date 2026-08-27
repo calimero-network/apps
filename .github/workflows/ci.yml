@@ -322,20 +322,38 @@ jobs:
 
       # The exact artifact the wasm job built and the ABI gate validated, so the
       # e2e runs the same bytes rather than a second independent build.
+      #
+      # `path:` is the app's res/ directory, NOT the repo root. upload-artifact
+      # strips the least-common-ancestor of the paths it was given — all three
+      # were under `apps/<app>/logic/res/`, so the archive holds bare filenames
+      # and downloading to `.` scattered them across the repo root. The
+      # verification step below is what turned that into a one-line error
+      # instead of a merobox failure deep inside `install_application`.
       - uses: actions/download-artifact@v4
         with:
           name: wasm-${{ matrix.app }}-${{ github.sha }}
-          path: .
+          path: apps/${{ matrix.app }}/logic/res
 
       - name: Verify the contract arrived
         run: |
           set -euo pipefail
-          wasm=$(find apps -path 'apps/*/logic/res/*.wasm' -print -quit)
-          if [ -z "$wasm" ]; then
-            echo "::error::no wasm in the downloaded artifact — the e2e would run against nothing"
+          res="apps/${{ matrix.app }}/logic/res"
+          # ⚠️ This job — and publish-bundle.yml — index a DIRECTORY by cargo
+          # PACKAGE name. That holds while every app directory is named like its
+          # crate, which scripts/app-packages.sh no longer assumes for the
+          # path->app mapping. Assert it here so the first app where they differ
+          # says so, rather than failing as "no wasm".
+          if [ ! -d "apps/${{ matrix.app }}/logic" ]; then
+            echo "::error::no apps/${{ matrix.app }}/logic — this app's directory is not named after its cargo package, which this job assumes"
             exit 1
           fi
-          echo "using $wasm ($(stat -c%s "$wasm" 2>/dev/null || stat -f%z "$wasm") bytes)"
+          wasm=$(find "$res" -name '*.wasm' -print -quit)
+          if [ -z "$wasm" ]; then
+            echo "::error::no wasm in the downloaded artifact — the e2e would run against nothing"
+            ls -la "$res" || true
+            exit 1
+          fi
+          echo "using $wasm ($(wc -c <"$wasm") bytes)"
 
       - uses: actions/setup-python@v5
         with:
