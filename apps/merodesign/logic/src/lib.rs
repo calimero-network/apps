@@ -1,8 +1,8 @@
 use std::str::FromStr;
 
+use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::abi::AbiType;
 use calimero_sdk::{app, env as sdk_env, AccountId, BlobId, PublicKey};
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{
@@ -11,9 +11,9 @@ use calimero_storage::collections::{
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type ElementId  = String;
-type MemberId   = String;
-type CommentId  = String;
+type ElementId = String;
+type MemberId = String;
+type CommentId = String;
 
 /// Named role granted on top of the admin tier. Editors may mutate the canvas;
 /// everyone else is read-only ("viewer"). The board creator is the sole initial
@@ -42,7 +42,9 @@ pub enum ElementData {
         #[serde(default, skip_serializing_if = "String::is_empty")]
         points: String,
     },
-    Path { points: String },
+    Path {
+        points: String,
+    },
     Text {
         content: String,
         #[serde(rename = "fontSize")]
@@ -81,29 +83,29 @@ pub enum ElementData {
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct Element {
-    pub id:             ElementId,
-    pub data:           ElementData,
-    pub x:              i64,
-    pub y:              i64,
-    pub width:          u32,
-    pub height:         u32,
-    pub rotation:       i32,
-    pub fill:           String,
-    pub stroke:         String,
-    pub stroke_width:   u32,
-    pub opacity:        u8,
-    pub layer_index:    u32,
-    pub created_by:     MemberId,
-    pub created_at:     u64,
-    pub updated_at:     u64,
-    pub shadow_color:   Option<String>,
+    pub id: ElementId,
+    pub data: ElementData,
+    pub x: i64,
+    pub y: i64,
+    pub width: u32,
+    pub height: u32,
+    pub rotation: i32,
+    pub fill: String,
+    pub stroke: String,
+    pub stroke_width: u32,
+    pub opacity: u8,
+    pub layer_index: u32,
+    pub created_by: MemberId,
+    pub created_at: u64,
+    pub updated_at: u64,
+    pub shadow_color: Option<String>,
     pub shadow_offset_x: Option<i32>,
     pub shadow_offset_y: Option<i32>,
-    pub shadow_blur:    Option<u32>,
-    pub label:          Option<String>,
+    pub shadow_blur: Option<u32>,
+    pub label: Option<String>,
     /// Corner radius in px, clamped by the client to min(width, height) / 2.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub corner_radius:  Option<u32>,
+    pub corner_radius: Option<u32>,
 }
 
 // Whole-record LWW by the monotonic `updated_at`; a leaf value with no nested
@@ -117,10 +119,10 @@ calimero_storage::impl_atomic_lww_leaf!(Element, updated_at);
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct Member {
-    pub id:                 MemberId,
-    pub username:           String,
-    pub avatar:             Option<String>,
-    pub joined_at:          u64,
+    pub id: MemberId,
+    pub username: String,
+    pub avatar: Option<String>,
+    pub joined_at: u64,
     /// Dedicated LWW clock for username/avatar edits. Merging on `joined_at`
     /// (which never changes after the first join) would freeze a member's
     /// username at its first value across nodes; this field is the real
@@ -133,8 +135,8 @@ impl MergeableTrait for Member {
         // Identity (`id`) and `joined_at` are immutable after first join; only
         // the mutable profile fields are LWW, keyed on `username_updated_at`.
         if other.username_updated_at > self.username_updated_at {
-            self.username            = other.username.clone();
-            self.avatar              = other.avatar.clone();
+            self.username = other.username.clone();
+            self.avatar = other.avatar.clone();
             self.username_updated_at = other.username_updated_at;
         }
         Ok(())
@@ -154,11 +156,11 @@ impl calimero_storage::collections::rekey::RekeyTarget for Member {
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct BoardInfo {
-    pub name:          String,
-    pub description:   String,
+    pub name: String,
+    pub description: String,
     pub element_count: u32,
-    pub member_count:  u32,
-    pub owner:         Option<String>,
+    pub member_count: u32,
+    pub owner: Option<String>,
 }
 
 /// A member paired with their effective role, for the settings/members UI.
@@ -167,7 +169,7 @@ pub struct BoardInfo {
 #[serde(rename_all = "camelCase")]
 pub struct MemberRole {
     pub member: String,
-    pub role:   String,
+    pub role: String,
 }
 
 // ── Comments ──────────────────────────────────────────────────────────────────
@@ -177,9 +179,9 @@ pub struct MemberRole {
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct CommentReply {
-    pub id:         String,
-    pub content:    String,
-    pub author:     String,
+    pub id: String,
+    pub content: String,
+    pub author: String,
     pub created_at: u64,
 }
 
@@ -188,13 +190,13 @@ pub struct CommentReply {
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct Comment {
-    pub id:         CommentId,
-    pub x:          i64,
-    pub y:          i64,
-    pub content:    String,
-    pub author:     String,
+    pub id: CommentId,
+    pub x: i64,
+    pub y: i64,
+    pub content: String,
+    pub author: String,
     pub created_at: u64,
-    pub replies:    Vec<CommentReply>,
+    pub replies: Vec<CommentReply>,
 }
 
 // Whole-record LWW by the monotonic `created_at`; a leaf value with no nested
@@ -208,9 +210,9 @@ calimero_storage::impl_atomic_lww_leaf!(Comment, created_at);
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct CursorState {
-    pub identity:   String,
-    pub x:          i64,
-    pub y:          i64,
+    pub identity: String,
+    pub x: i64,
+    pub y: i64,
     pub updated_at: u64,
 }
 
@@ -248,7 +250,7 @@ pub struct MeroDesign {
     // Both are EMPTY until the first owner edit; read them through
     // `board_name_str` / `board_description_str`, never directly. See
     // `initial_name` below.
-    board_name:        Ownable<LwwRegister<String>>,
+    board_name: Ownable<LwwRegister<String>>,
     board_description: Ownable<LwwRegister<String>>,
     // What `init` was called with.
     //
@@ -265,15 +267,15 @@ pub struct MeroDesign {
     // So the init values live here, in plain registers that persist normally, and
     // the `Ownable` cells take over from the first owner edit onwards. Written
     // once at init and never again.
-    initial_name:        LwwRegister<String>,
+    initial_name: LwwRegister<String>,
     initial_description: LwwRegister<String>,
-    elements:          UnorderedMap<ElementId, Element>,
-    members:           UnorderedMap<MemberId, Member>,
-    comments:          UnorderedMap<CommentId, Comment>,
-    cursors:           UnorderedMap<String, CursorState>,
+    elements: UnorderedMap<ElementId, Element>,
+    members: UnorderedMap<MemberId, Member>,
+    comments: UnorderedMap<CommentId, Comment>,
+    cursors: UnorderedMap<String, CursorState>,
     // Role registry whose admin tier is a signed writer set. Grants/revokes are
     // admin-gated at merge; the creator is the sole initial admin.
-    roles:             AccessControl,
+    roles: AccessControl,
     /// member key → the account that device speaks for, self-registered on join
     /// and on every cursor move.
     ///
@@ -283,7 +285,7 @@ pub struct MeroDesign {
     /// maps one to the other, and a device can only ever assert its OWN pairing
     /// (both halves come from the host), so this is a self-registration rather
     /// than an admin-maintained table.
-    accounts:          UnorderedMap<MemberId, LwwRegister<AccountId>>,
+    accounts: UnorderedMap<MemberId, LwwRegister<AccountId>>,
 }
 
 // ── Logic ─────────────────────────────────────────────────────────────────────
@@ -305,13 +307,13 @@ impl MeroDesign {
         MeroDesign {
             board_name,
             board_description,
-            initial_name:        LwwRegister::new(name),
+            initial_name: LwwRegister::new(name),
             initial_description: LwwRegister::new(description),
-            elements:          UnorderedMap::new(),
-            members:           UnorderedMap::new(),
-            comments:          UnorderedMap::new(),
-            cursors:           UnorderedMap::new(),
-            roles:             AccessControl::new(me),
+            elements: UnorderedMap::new(),
+            members: UnorderedMap::new(),
+            comments: UnorderedMap::new(),
+            cursors: UnorderedMap::new(),
+            roles: AccessControl::new(me),
             accounts,
         }
     }
@@ -430,7 +432,11 @@ impl MeroDesign {
             .get()
             .map(|r| r.get().clone())
             .unwrap_or_default();
-        if edited.is_empty() { self.initial_name.get().clone() } else { edited }
+        if edited.is_empty() {
+            self.initial_name.get().clone()
+        } else {
+            edited
+        }
     }
 
     /// As [`Self::board_name_str`], for the description.
@@ -440,28 +446,40 @@ impl MeroDesign {
             .get()
             .map(|r| r.get().clone())
             .unwrap_or_default();
-        if edited.is_empty() { self.initial_description.get().clone() } else { edited }
+        if edited.is_empty() {
+            self.initial_description.get().clone()
+        } else {
+            edited
+        }
     }
 
     pub fn get_board(&self) -> BoardInfo {
         BoardInfo {
-            name:          self.board_name_str(),
-            description:   self.board_description_str(),
+            name: self.board_name_str(),
+            description: self.board_description_str(),
             element_count: self.elements.len().unwrap_or(0) as u32,
-            member_count:  self.members.len().unwrap_or(0) as u32,
+            member_count: self.members.len().unwrap_or(0) as u32,
             // The owner is an account; report it as the member id clients
             // already know, falling back to the account's own string when no
             // device of that account has written here yet.
-            owner:         self.board_name.owner().map(|a| self.member_of(&a)),
+            owner: self.board_name.owner().map(|a| self.member_of(&a)),
         }
     }
 
     /// Rename / re-describe the board. Owner-only — the rename only converges
     /// from the board owner.
-    pub fn update_board(&mut self, name: Option<String>, description: Option<String>) -> app::Result<()> {
+    pub fn update_board(
+        &mut self,
+        name: Option<String>,
+        description: Option<String>,
+    ) -> app::Result<()> {
         self.board_name.only_owner()?;
-        if let Some(n) = name        { self.board_name.insert(LwwRegister::new(n))?; }
-        if let Some(d) = description { self.board_description.insert(LwwRegister::new(d))?; }
+        if let Some(n) = name {
+            self.board_name.insert(LwwRegister::new(n))?;
+        }
+        if let Some(d) = description {
+            self.board_description.insert(LwwRegister::new(d))?;
+        }
         app::emit!(Event::BoardUpdated());
         Ok(())
     }
@@ -558,7 +576,9 @@ impl MeroDesign {
         // name this member in a grant at all.
         self.remember_account();
         let member_id = Self::caller_id();
-        if self.members.contains(&member_id).unwrap_or(false) { return; }
+        if self.members.contains(&member_id).unwrap_or(false) {
+            return;
+        }
         let m = Member {
             id: member_id.clone(),
             username,
@@ -579,7 +599,7 @@ impl MeroDesign {
     pub fn update_member_username(&mut self, username: String, timestamp: u64) {
         let member_id = Self::caller_id();
         if let Ok(Some(mut m)) = self.members.get_mut(&member_id) {
-            m.username            = username;
+            m.username = username;
             m.username_updated_at = timestamp;
             drop(m);
             app::emit!(Event::MemberUsernameUpdated(member_id));
@@ -593,7 +613,9 @@ impl MeroDesign {
         let id = element.id.clone();
         // Announce image/svg blobs to context so they propagate to all members
         let blob_id_str = match &element.data {
-            ElementData::Image { blob_id, .. } | ElementData::Svg { blob_id, .. } => blob_id.as_str(),
+            ElementData::Image { blob_id, .. } | ElementData::Svg { blob_id, .. } => {
+                blob_id.as_str()
+            }
             _ => "",
         };
         if !blob_id_str.is_empty() {
@@ -609,27 +631,51 @@ impl MeroDesign {
     pub fn update_element(
         &mut self,
         id: String,
-        x: Option<i64>, y: Option<i64>,
-        width: Option<u32>, height: Option<u32>,
+        x: Option<i64>,
+        y: Option<i64>,
+        width: Option<u32>,
+        height: Option<u32>,
         rotation: Option<i32>,
-        fill: Option<String>, stroke: Option<String>,
-        stroke_width: Option<u32>, opacity: Option<u8>,
+        fill: Option<String>,
+        stroke: Option<String>,
+        stroke_width: Option<u32>,
+        opacity: Option<u8>,
         corner_radius: Option<u32>,
         updated_at: u64,
     ) -> app::Result<()> {
         self.require_editor()?;
         if let Ok(Some(mut el)) = self.elements.get_mut(&id) {
-            if let Some(v) = x            { el.x            = v; }
-            if let Some(v) = y            { el.y            = v; }
-            if let Some(v) = width        { el.width        = v; }
-            if let Some(v) = height       { el.height       = v; }
-            if let Some(v) = rotation     { el.rotation     = v; }
-            if let Some(v) = fill         { el.fill         = v; }
-            if let Some(v) = stroke       { el.stroke       = v; }
-            if let Some(v) = stroke_width { el.stroke_width = v; }
-            if let Some(v) = opacity      { el.opacity      = v; }
+            if let Some(v) = x {
+                el.x = v;
+            }
+            if let Some(v) = y {
+                el.y = v;
+            }
+            if let Some(v) = width {
+                el.width = v;
+            }
+            if let Some(v) = height {
+                el.height = v;
+            }
+            if let Some(v) = rotation {
+                el.rotation = v;
+            }
+            if let Some(v) = fill {
+                el.fill = v;
+            }
+            if let Some(v) = stroke {
+                el.stroke = v;
+            }
+            if let Some(v) = stroke_width {
+                el.stroke_width = v;
+            }
+            if let Some(v) = opacity {
+                el.opacity = v;
+            }
             // None means "leave alone"; 0 means "square corners".
-            if let Some(v) = corner_radius { el.corner_radius = Some(v); }
+            if let Some(v) = corner_radius {
+                el.corner_radius = Some(v);
+            }
             el.updated_at = updated_at;
             drop(el);
             app::emit!(Event::ElementUpdated(id));
@@ -637,10 +683,15 @@ impl MeroDesign {
         Ok(())
     }
 
-    pub fn update_element_label(&mut self, id: String, label: Option<String>, updated_at: u64) -> app::Result<()> {
+    pub fn update_element_label(
+        &mut self,
+        id: String,
+        label: Option<String>,
+        updated_at: u64,
+    ) -> app::Result<()> {
         self.require_editor()?;
         if let Ok(Some(mut el)) = self.elements.get_mut(&id) {
-            el.label      = label;
+            el.label = label;
             el.updated_at = updated_at;
             drop(el);
             app::emit!(Event::ElementUpdated(id));
@@ -651,25 +702,48 @@ impl MeroDesign {
     pub fn update_text_style(
         &mut self,
         id: String,
-        content: Option<String>, font_family: Option<String>,
-        font_size: Option<u32>, bold: Option<bool>, italic: Option<bool>,
-        text_align: Option<String>, vertical_align: Option<String>,
+        content: Option<String>,
+        font_family: Option<String>,
+        font_size: Option<u32>,
+        bold: Option<bool>,
+        italic: Option<bool>,
+        text_align: Option<String>,
+        vertical_align: Option<String>,
         updated_at: u64,
     ) -> app::Result<()> {
         self.require_editor()?;
         if let Ok(Some(mut el)) = self.elements.get_mut(&id) {
             if let ElementData::Text {
-                content: ref mut c, font_family: ref mut ff,
-                font_size: ref mut fs, bold: ref mut b, italic: ref mut i,
-                text_align: ref mut ta, vertical_align: ref mut va,
-            } = el.data {
-                if let Some(v) = content        { *c  = v; }
-                if let Some(v) = font_family    { *ff = v; }
-                if let Some(v) = font_size      { *fs = v; }
-                if let Some(v) = bold           { *b  = v; }
-                if let Some(v) = italic         { *i  = v; }
-                if let Some(v) = text_align     { *ta = Some(v); }
-                if let Some(v) = vertical_align { *va = Some(v); }
+                content: ref mut c,
+                font_family: ref mut ff,
+                font_size: ref mut fs,
+                bold: ref mut b,
+                italic: ref mut i,
+                text_align: ref mut ta,
+                vertical_align: ref mut va,
+            } = el.data
+            {
+                if let Some(v) = content {
+                    *c = v;
+                }
+                if let Some(v) = font_family {
+                    *ff = v;
+                }
+                if let Some(v) = font_size {
+                    *fs = v;
+                }
+                if let Some(v) = bold {
+                    *b = v;
+                }
+                if let Some(v) = italic {
+                    *i = v;
+                }
+                if let Some(v) = text_align {
+                    *ta = Some(v);
+                }
+                if let Some(v) = vertical_align {
+                    *va = Some(v);
+                }
             }
             el.updated_at = updated_at;
             drop(el);
@@ -680,7 +754,9 @@ impl MeroDesign {
 
     pub fn clear_elements(&mut self) -> app::Result<()> {
         self.require_admin()?;
-        let ids: Vec<String> = self.elements.entries()
+        let ids: Vec<String> = self
+            .elements
+            .entries()
             .map(|iter| iter.map(|(k, _)| k).collect())
             .unwrap_or_default();
         for id in ids {
@@ -692,7 +768,9 @@ impl MeroDesign {
 
     pub fn clear_comments(&mut self) -> app::Result<()> {
         self.require_admin()?;
-        let ids: Vec<String> = self.comments.entries()
+        let ids: Vec<String> = self
+            .comments
+            .entries()
             .map(|iter| iter.map(|(k, _)| k).collect())
             .unwrap_or_default();
         for id in ids {
@@ -704,17 +782,19 @@ impl MeroDesign {
     pub fn update_shadow(
         &mut self,
         id: String,
-        shadow_color: Option<String>, shadow_offset_x: Option<i32>,
-        shadow_offset_y: Option<i32>, shadow_blur: Option<u32>,
+        shadow_color: Option<String>,
+        shadow_offset_x: Option<i32>,
+        shadow_offset_y: Option<i32>,
+        shadow_blur: Option<u32>,
         updated_at: u64,
     ) -> app::Result<()> {
         self.require_editor()?;
         if let Ok(Some(mut el)) = self.elements.get_mut(&id) {
-            el.shadow_color    = shadow_color;
+            el.shadow_color = shadow_color;
             el.shadow_offset_x = shadow_offset_x;
             el.shadow_offset_y = shadow_offset_y;
-            el.shadow_blur     = shadow_blur;
-            el.updated_at      = updated_at;
+            el.shadow_blur = shadow_blur;
+            el.updated_at = updated_at;
             drop(el);
             app::emit!(Event::ElementUpdated(id));
         }
@@ -779,7 +859,13 @@ impl MeroDesign {
 
     pub fn bring_to_front(&mut self, id: String) -> app::Result<()> {
         self.require_editor()?;
-        let max_layer = self.elements.entries().unwrap().map(|(_, v)| v.layer_index).max().unwrap_or(0);
+        let max_layer = self
+            .elements
+            .entries()
+            .unwrap()
+            .map(|(_, v)| v.layer_index)
+            .max()
+            .unwrap_or(0);
         if let Ok(Some(mut el)) = self.elements.get_mut(&id) {
             el.layer_index = max_layer + 1;
         }
@@ -789,8 +875,13 @@ impl MeroDesign {
 
     pub fn send_to_back(&mut self, id: String) -> app::Result<()> {
         self.require_editor()?;
-        let other_ids: Vec<String> = self.elements.entries().unwrap()
-            .filter(|(k, _)| *k != id).map(|(k, _)| k).collect();
+        let other_ids: Vec<String> = self
+            .elements
+            .entries()
+            .unwrap()
+            .filter(|(k, _)| *k != id)
+            .map(|(k, _)| k)
+            .collect();
         for other_id in &other_ids {
             if let Ok(Some(mut other)) = self.elements.get_mut(other_id) {
                 other.layer_index = other.layer_index.saturating_add(1);
@@ -805,22 +896,48 @@ impl MeroDesign {
 
     // ── Comments ──────────────────────────────────────────────────────────────
 
-    pub fn add_comment(&mut self, id: String, x: i64, y: i64, content: String, created_at: u64) -> app::Result<()> {
+    pub fn add_comment(
+        &mut self,
+        id: String,
+        x: i64,
+        y: i64,
+        content: String,
+        created_at: u64,
+    ) -> app::Result<()> {
         self.require_editor()?;
         // Author is the real signer — not a client-supplied string — so a member
         // cannot attribute a comment to someone else.
         let author = Self::caller_id();
-        let c = Comment { id: id.clone(), x, y, content, author, created_at, replies: vec![] };
+        let c = Comment {
+            id: id.clone(),
+            x,
+            y,
+            content,
+            author,
+            created_at,
+            replies: vec![],
+        };
         let _ = self.comments.insert(id.clone(), c);
         app::emit!(Event::CommentAdded(id));
         Ok(())
     }
 
-    pub fn add_reply(&mut self, comment_id: String, reply_id: String, content: String, created_at: u64) -> app::Result<()> {
+    pub fn add_reply(
+        &mut self,
+        comment_id: String,
+        reply_id: String,
+        content: String,
+        created_at: u64,
+    ) -> app::Result<()> {
         self.require_editor()?;
         let author = Self::caller_id();
         if let Ok(Some(mut c)) = self.comments.get_mut(&comment_id) {
-            c.replies.push(CommentReply { id: reply_id, content, author, created_at });
+            c.replies.push(CommentReply {
+                id: reply_id,
+                content,
+                author,
+                created_at,
+            });
             drop(c);
             app::emit!(Event::CommentUpdated(comment_id));
         }
@@ -857,7 +974,12 @@ impl MeroDesign {
         // device→account pairing reliably becomes known to the rest of the board.
         self.remember_account();
         let identity = Self::caller_id();
-        let cs = CursorState { identity: identity.clone(), x, y, updated_at };
+        let cs = CursorState {
+            identity: identity.clone(),
+            x,
+            y,
+            updated_at,
+        };
         let _ = self.cursors.insert(identity.clone(), cs);
         app::emit!(Event::CursorMoved(identity));
     }
@@ -890,12 +1012,25 @@ mod tests {
         Element {
             id: id.to_owned(),
             data: ElementData::Rect,
-            x: 0, y: 0, width: 10, height: 10, rotation: 0,
-            fill: "#fff".to_owned(), stroke: "#000".to_owned(),
-            stroke_width: 1, opacity: 100, layer_index: 0,
-            created_by: "creator".to_owned(), created_at: 1, updated_at: 1,
-            shadow_color: None, shadow_offset_x: None, shadow_offset_y: None,
-            shadow_blur: None, label: None, corner_radius: None,
+            x: 0,
+            y: 0,
+            width: 10,
+            height: 10,
+            rotation: 0,
+            fill: "#fff".to_owned(),
+            stroke: "#000".to_owned(),
+            stroke_width: 1,
+            opacity: 100,
+            layer_index: 0,
+            created_by: "creator".to_owned(),
+            created_at: 1,
+            updated_at: 1,
+            shadow_color: None,
+            shadow_offset_x: None,
+            shadow_offset_y: None,
+            shadow_blur: None,
+            label: None,
+            corner_radius: None,
         }
     }
 
@@ -925,7 +1060,8 @@ mod tests {
         // A second person joins; with no grant they are a viewer and are refused.
         app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s.join("bob".to_owned(), None, 1));
         assert!(app
-            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.add_element(sample_element("e1")))
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s
+                .add_element(sample_element("e1")))
             .is_err());
         assert_eq!(app.view(|s| s.get_elements()).len(), 0);
 
@@ -933,8 +1069,10 @@ mod tests {
         let bob = String::from(PublicKey::from(OTHER));
         app.call(|s| s.grant_editor(bob.clone())).unwrap();
         assert_eq!(app.view(|s| s.get_role(bob.clone())), "editor");
-        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s.add_element(sample_element("e1")))
-            .unwrap();
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| {
+            s.add_element(sample_element("e1"))
+        })
+        .unwrap();
         assert_eq!(app.view(|s| s.get_elements()).len(), 1);
 
         // Revoke → back to viewer, refused again.
@@ -958,7 +1096,8 @@ mod tests {
     #[test]
     fn only_owner_renames_board() {
         let mut app = new_board();
-        app.call(|s| s.update_board(Some("Renamed".to_owned()), None)).unwrap();
+        app.call(|s| s.update_board(Some("Renamed".to_owned()), None))
+            .unwrap();
         assert_eq!(app.view(|s| s.get_board()).name, "Renamed");
         // A non-owner rename is refused.
         assert!(app
@@ -973,12 +1112,18 @@ mod tests {
         // Two divergent copies of the same member; the one with the newer
         // username_updated_at wins regardless of joined_at.
         let mut a = Member {
-            id: "m".to_owned(), username: "old".to_owned(), avatar: None,
-            joined_at: 100, username_updated_at: 100,
+            id: "m".to_owned(),
+            username: "old".to_owned(),
+            avatar: None,
+            joined_at: 100,
+            username_updated_at: 100,
         };
         let b = Member {
-            id: "m".to_owned(), username: "new".to_owned(), avatar: None,
-            joined_at: 100, username_updated_at: 200,
+            id: "m".to_owned(),
+            username: "new".to_owned(),
+            avatar: None,
+            joined_at: 100,
+            username_updated_at: 200,
         };
         a.merge(&b).unwrap();
         assert_eq!(a.username, "new");
@@ -994,10 +1139,14 @@ mod tests {
         app.call(|s| s.transfer_ownership(other.clone())).unwrap();
         assert_eq!(app.view(|s| s.get_board()).owner, Some(other.clone()));
         // The new owner can rename; the old owner can no longer.
-        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s.update_board(Some("Owned".to_owned()), None))
-            .unwrap();
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| {
+            s.update_board(Some("Owned".to_owned()), None)
+        })
+        .unwrap();
         assert_eq!(app.view(|s| s.get_board()).name, "Owned");
-        assert!(app.call(|s| s.update_board(Some("nope".to_owned()), None)).is_err());
+        assert!(app
+            .call(|s| s.update_board(Some("nope".to_owned()), None))
+            .is_err());
         // The new owner is admin; the former owner relinquished admin entirely.
         assert_eq!(app.view(|s| s.get_role(other)), "admin");
         assert_eq!(app.view(|s| s.my_role()), "viewer");
@@ -1061,8 +1210,11 @@ mod tests {
     }
 
     fn order(app: &TestHost<MeroDesign>) -> Vec<String> {
-        let mut got: Vec<(String, u32)> =
-            app.view(|s| s.get_elements()).into_iter().map(|e| (e.id, e.layer_index)).collect();
+        let mut got: Vec<(String, u32)> = app
+            .view(|s| s.get_elements())
+            .into_iter()
+            .map(|e| (e.id, e.layer_index))
+            .collect();
         got.sort_by_key(|(_, l)| *l);
         got.into_iter().map(|(id, _)| id).collect()
     }
@@ -1071,10 +1223,14 @@ mod tests {
     fn set_layer_index_moves_one_step_and_renumbers_densely() {
         let mut app = new_board();
         seed(&mut app, &["a", "b", "c"]);
-        app.call(|s| s.set_layer_index("b".to_owned(), 2, 99)).unwrap();
+        app.call(|s| s.set_layer_index("b".to_owned(), 2, 99))
+            .unwrap();
         assert_eq!(order(&app), vec!["a", "c", "b"], "one step up");
-        let layers: Vec<u32> =
-            app.view(|s| s.get_elements()).into_iter().map(|e| e.layer_index).collect();
+        let layers: Vec<u32> = app
+            .view(|s| s.get_elements())
+            .into_iter()
+            .map(|e| e.layer_index)
+            .collect();
         let mut sorted = layers.clone();
         sorted.sort_unstable();
         assert_eq!(sorted, vec![0, 1, 2], "indices stay dense — no duplicates");
@@ -1084,7 +1240,8 @@ mod tests {
     fn set_layer_index_clamps_past_the_end() {
         let mut app = new_board();
         seed(&mut app, &["a", "b"]);
-        app.call(|s| s.set_layer_index("a".to_owned(), 99, 1)).unwrap();
+        app.call(|s| s.set_layer_index("a".to_owned(), 99, 1))
+            .unwrap();
         assert_eq!(order(&app), vec!["b", "a"], "clamped to the last slot");
     }
 
@@ -1092,7 +1249,8 @@ mod tests {
     fn set_layer_index_ignores_an_unknown_id() {
         let mut app = new_board();
         seed(&mut app, &["a", "b"]);
-        app.call(|s| s.set_layer_index("nope".to_owned(), 0, 1)).unwrap();
+        app.call(|s| s.set_layer_index("nope".to_owned(), 0, 1))
+            .unwrap();
         assert_eq!(order(&app), vec!["a", "b"], "unchanged, and no panic");
     }
 
@@ -1100,7 +1258,8 @@ mod tests {
     fn set_layer_index_at_the_bottom_is_a_noop() {
         let mut app = new_board();
         seed(&mut app, &["a", "b", "c"]);
-        app.call(|s| s.set_layer_index("a".to_owned(), 0, 1)).unwrap();
+        app.call(|s| s.set_layer_index("a".to_owned(), 0, 1))
+            .unwrap();
         assert_eq!(order(&app), vec!["a", "b", "c"]);
     }
 
@@ -1110,7 +1269,11 @@ mod tests {
         seed(&mut app, &["a", "b"]);
         app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s.join("bob".to_owned(), None, 1));
         assert!(app
-            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.set_layer_index("a".to_owned(), 1, 2))
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.set_layer_index(
+                "a".to_owned(),
+                1,
+                2
+            ))
             .is_err());
         assert_eq!(order(&app), vec!["a", "b"]);
     }
@@ -1121,17 +1284,80 @@ mod tests {
     fn corner_radius_round_trips_and_zero_is_a_real_value() {
         let mut app = new_board();
         app.call(|s| s.add_element(sample_element("a"))).unwrap();
-        assert_eq!(app.view(|s| s.get_element("a".to_owned())).unwrap().corner_radius, None);
+        assert_eq!(
+            app.view(|s| s.get_element("a".to_owned()))
+                .unwrap()
+                .corner_radius,
+            None
+        );
 
-        app.call(|s| s.update_element("a".to_owned(), None, None, None, None, None, None, None, None, None, Some(12), 2)).unwrap();
-        assert_eq!(app.view(|s| s.get_element("a".to_owned())).unwrap().corner_radius, Some(12));
+        app.call(|s| {
+            s.update_element(
+                "a".to_owned(),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(12),
+                2,
+            )
+        })
+        .unwrap();
+        assert_eq!(
+            app.view(|s| s.get_element("a".to_owned()))
+                .unwrap()
+                .corner_radius,
+            Some(12)
+        );
 
         // 0 means square corners, not "leave alone"
-        app.call(|s| s.update_element("a".to_owned(), None, None, None, None, None, None, None, None, None, Some(0), 3)).unwrap();
-        assert_eq!(app.view(|s| s.get_element("a".to_owned())).unwrap().corner_radius, Some(0));
+        app.call(|s| {
+            s.update_element(
+                "a".to_owned(),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(0),
+                3,
+            )
+        })
+        .unwrap();
+        assert_eq!(
+            app.view(|s| s.get_element("a".to_owned()))
+                .unwrap()
+                .corner_radius,
+            Some(0)
+        );
 
         // None leaves it untouched while other fields change
-        app.call(|s| s.update_element("a".to_owned(), Some(5), None, None, None, None, None, None, None, None, None, 4)).unwrap();
+        app.call(|s| {
+            s.update_element(
+                "a".to_owned(),
+                Some(5),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                4,
+            )
+        })
+        .unwrap();
         let el = app.view(|s| s.get_element("a".to_owned())).unwrap();
         assert_eq!(el.corner_radius, Some(0));
         assert_eq!(el.x, 5);
@@ -1143,7 +1369,9 @@ mod tests {
     fn line_points_round_trip() {
         let mut app = new_board();
         let mut el = sample_element("l");
-        el.data = ElementData::Line { points: "0,40 60,0".to_owned() };
+        el.data = ElementData::Line {
+            points: "0,40 60,0".to_owned(),
+        };
         app.call(|s| s.add_element(el.clone())).unwrap();
         match app.view(|s| s.get_element("l".to_owned())).unwrap().data {
             ElementData::Line { points } => assert_eq!(points, "0,40 60,0"),
@@ -1161,5 +1389,4 @@ mod tests {
             other => panic!("expected a line, got {other:?}"),
         }
     }
-
 }
