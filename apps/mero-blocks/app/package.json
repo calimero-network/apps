@@ -27,7 +27,7 @@
     "@playwright/test": "catalog:",
     "@types/node": "^26.1.2",
     "@types/three": "^0.185.4",
-    "jsdom": "^30.0.1",
+    "jsdom": "catalog:",
     "typescript": "~7.0.2",
     "vite": "^8.2.0",
     "vitest": "catalog:"
