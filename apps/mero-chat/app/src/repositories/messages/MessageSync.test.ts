@@ -19,7 +19,10 @@ interface Msg {
 /** A channel on the node, as an ordered list. */
 function nodeWith(
   count: number,
-): MessageSource<Msg> & { calls: string[]; mutate: (i: number, t: string) => void } {
+): MessageSource<Msg> & {
+  calls: string[];
+  mutate: (i: number, t: string) => void;
+} {
   const all: Msg[] = Array.from({ length: count }, (_, i) => ({
     index: i,
     id: `id-${i}`,
@@ -77,6 +80,75 @@ function memoryStore(): MessageStore<Msg> & { rows: Map<number, Msg> } {
 const CTX = "ctx-1";
 
 describe("MessageSyncEngine", () => {
+  it("serves stored history immediately and revalidates it behind", async () => {
+    // Scrolling back must not wait on the node — that is why history is stored.
+    // But the stored copy froze its reactions at write time, so returning it and
+    // never asking again is how a reaction on an old message stays invisible
+    // forever. Serve it, then check it.
+    const store = memoryStore();
+    const node = nodeWith(200);
+    const engine = new MessageSyncEngine<Msg>(store, node);
+    const revalidated: Msg[][] = [];
+    engine.onRevalidated = (_ctx, messages) => revalidated.push(messages);
+
+    await engine.catchUp(CTX);
+    // Pull an older page into the store, then change it underneath.
+    await engine.loadOlder(CTX, 20, 100);
+    node.mutate(85, "m85-reacted");
+
+    // Second read of the same range is served from the store...
+    const served = await engine.loadOlder(CTX, 20, 100);
+    expect(served.find((m) => m.index === 85)?.text).toBe("m85");
+
+    await engine.settled();
+
+    // ...and the revalidation corrects it.
+    expect(store.rows.get(85)?.text).toBe("m85-reacted");
+    expect(revalidated.flat().find((m) => m.index === 85)?.text).toBe(
+      "m85-reacted",
+    );
+  });
+
+  it("does not announce a revalidation that changed nothing", async () => {
+    // Every scroll would otherwise push a re-render of rows that are identical,
+    // which is noise the UI has to diff away.
+    const store = memoryStore();
+    const node = nodeWith(200);
+    const engine = new MessageSyncEngine<Msg>(store, node);
+    const revalidated: Msg[][] = [];
+    engine.onRevalidated = (_ctx, messages) => revalidated.push(messages);
+
+    await engine.catchUp(CTX);
+    await engine.loadOlder(CTX, 20, 100);
+    await engine.settled();
+    revalidated.length = 0;
+
+    await engine.loadOlder(CTX, 20, 100);
+    await engine.settled();
+
+    expect(revalidated).toEqual([]);
+  });
+
+  it("keeps serving stored history when the node is unreachable", async () => {
+    // Revalidation is an improvement, not a precondition. A failure here must
+    // not turn a working offline scroll into an error.
+    const store = memoryStore();
+    const node = nodeWith(200);
+    const engine = new MessageSyncEngine<Msg>(store, node);
+
+    await engine.catchUp(CTX);
+    await engine.loadOlder(CTX, 20, 100);
+
+    node.range = async () => {
+      throw new Error("offline");
+    };
+
+    const served = await engine.loadOlder(CTX, 20, 100);
+    await engine.settled();
+
+    expect(served.length).toBe(20);
+  });
+
   it("refreshes one message by id, without dragging the window back", async () => {
     // A reaction names the message it changed. Refreshing THAT message is the
     // difference between a reaction appearing wherever it lands and appearing
@@ -275,11 +347,16 @@ describe("MessageSyncEngine", () => {
     expect(result.upToDate).toBe(false);
   });
 
-  it("serves older messages from the store without asking the node", async () => {
+  it("serves older messages from the store without WAITING on the node", async () => {
     // The reopen case: an earlier session backfilled further than the window
-    // being rendered now, so scrolling up must read disk rather than the node.
-    // Note this needs the store to actually HOLD those messages — after a first
-    // catch-up it does not, and going to the node then is correct, not a miss.
+    // being rendered now, so scrolling up must read disk rather than block on
+    // the node. Note this needs the store to actually HOLD those messages —
+    // after a first catch-up it does not, and going to the node then is
+    // correct, not a miss.
+    //
+    // "without waiting", not "without asking": the page is checked against the
+    // node BEHIND the read, because a stored row froze its reactions at write
+    // time. The read itself must still not await that.
     const store = memoryStore();
     const node = nodeWith(200);
     const sync = new MessageSyncEngine(store, node);
@@ -298,8 +375,13 @@ describe("MessageSyncEngine", () => {
     expect(older.map((m) => m.index)).toEqual(
       Array.from({ length: 20 }, (_, i) => 80 + i),
     );
+    // Nothing was fetched to ANSWER the read — the answer came from disk.
     expect(node.calls).toEqual([]);
     expect((await store.cursor(CTX))?.lowestIndex).toBe(80);
+
+    // The revalidation lands after, and finds nothing to correct here.
+    await sync.settled();
+    expect(node.calls).toEqual(["range(80,20)"]);
   });
 
   it("goes to the node for older messages the store does not hold", async () => {
@@ -515,7 +597,9 @@ describe("MessageSyncEngine backfill de-duplication", () => {
     node.calls.length = 0;
     const again = await sync.loadOlder(CTX, 20, 100);
 
-    // Served from the store this time — stored by the first call.
+    // Served from the store this time — stored by the first call. The read
+    // itself asks the node for nothing; the revalidation behind it does, and
+    // that is checked in its own test.
     expect(node.calls).toEqual([]);
     expect(again.map((m) => m.index)).toEqual(
       Array.from({ length: 20 }, (_, i) => 80 + i),

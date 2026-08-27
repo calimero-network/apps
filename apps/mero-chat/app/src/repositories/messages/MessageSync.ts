@@ -101,6 +101,70 @@ export class MessageSyncEngine<M extends { index: number; id?: string }> {
    */
   private readonly indexById = new Map<string, number>();
 
+  /**
+   * Called when a background revalidation found the stored copy out of date.
+   *
+   * Scrolling back serves the stored page immediately — that is what storing
+   * history is for — but the stored row froze its reactions at write time, so
+   * serving it and never asking again is how a reaction on an old message stays
+   * invisible for good. The page is checked against the node behind the read,
+   * and this fires only when something actually changed.
+   */
+  onRevalidated?: (contextId: string, messages: M[]) => void;
+
+  private readonly revalidating = new Set<Promise<void>>();
+
+  /**
+   * Resolves when background revalidations have finished.
+   *
+   * For tests and for a caller that needs a settled state. Nothing in the app
+   * awaits this: the point of revalidating behind the read is that the read
+   * does not wait.
+   */
+  async settled(): Promise<void> {
+    while (this.revalidating.size > 0) {
+      await Promise.all([...this.revalidating]);
+    }
+  }
+
+  /**
+   * Re-read a range that was served from the store, and report a difference.
+   *
+   * Failures are swallowed on purpose. Revalidation is an improvement on an
+   * answer the caller already has, so a node that cannot be reached must leave
+   * an offline scroll working rather than turn it into an error.
+   */
+  private revalidate(contextId: string, start: number, wanted: number, served: M[]): void {
+    const task = (async () => {
+      // Yield first. The read has already returned its answer; issuing the
+      // check in the same tick would put it in front of whatever the caller
+      // does next — rendering the page it just received, usually — for data
+      // nobody is waiting on.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      try {
+        const page = await this.source.range(contextId, start, wanted);
+        if (page.messages.length === 0) return;
+
+        const before = new Map(served.map((m) => [m.index, JSON.stringify(m)]));
+        const changed = page.messages.filter(
+          (m) => before.get(m.index) !== JSON.stringify(m),
+        );
+        if (changed.length === 0) return;
+
+        await this.store.put(contextId, page.messages);
+        this.remember(contextId, page.messages);
+        this.onRevalidated?.(contextId, changed);
+      } catch {
+        // See above: the stored answer stands.
+      }
+    })();
+
+    const tracked = task.finally(() => {
+      this.revalidating.delete(tracked);
+    });
+    this.revalidating.add(tracked);
+  }
+
   private remember(contextId: string, messages: readonly M[]): void {
     for (const message of messages) {
       if (message.id) {
@@ -324,6 +388,10 @@ export class MessageSyncEngine<M extends { index: number; id?: string }> {
     if (local.length === wanted) {
       await this.store.saveCursor(widen);
       this.remember(contextId, local);
+      // Serve now, check behind. `refreshNewest` covers the tail on open; this
+      // is what covers everything the user scrolls back to, which is where a
+      // reaction on an old message would otherwise stay hidden.
+      this.revalidate(contextId, start, wanted, local);
       return local;
     }
 

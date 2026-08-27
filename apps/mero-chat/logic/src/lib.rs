@@ -142,6 +142,14 @@ pub enum Event {
     MessageSent(MessageSentEvent),
     MessageSentThread(MessageSentEvent),
     ReactionUpdated(String),
+    /// Payload: the id of the message whose TEXT changed.
+    ///
+    /// Editing used to emit `MessageSent`, which is what a brand-new message
+    /// emits. A peer could not tell the two apart, so it announced an edit as
+    /// "X sent a message" and refreshed the newest page looking for it — and an
+    /// edit to an older message is not in that page, so the change never
+    /// appeared. Naming the message lets a reader refresh exactly it.
+    MessageEdited(String),
     ProfileUpdated(String),
     InfoUpdated(),
     /// Payload: target identity (base58) whose role just changed.
@@ -1584,9 +1592,11 @@ impl MeroChat {
             )?;
             drop(thread_entry);
 
-            app::emit!(Event::MessageSentThread(MessageSentEvent {
-                message_id: updated.id.get().clone(),
-            }));
+            // An edit, not a send. Emitting `MessageSent` here told every peer
+            // a new message had arrived: they announced "X sent a message" for
+            // text that was already on screen, and went looking for it in the
+            // newest page — where an edit to an older message is not.
+            app::emit!(Event::MessageEdited(updated.id.get().clone()));
             Ok(updated)
         } else {
             let updated = Self::find_and_edit(
@@ -1597,9 +1607,7 @@ impl MeroChat {
                 &executor_id,
             )?;
 
-            app::emit!(Event::MessageSent(MessageSentEvent {
-                message_id: updated.id.get().clone(),
-            }));
+            app::emit!(Event::MessageEdited(updated.id.get().clone()));
             Ok(updated)
         }
     }

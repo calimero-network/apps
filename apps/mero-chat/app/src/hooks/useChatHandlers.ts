@@ -483,6 +483,29 @@ export function useChatHandlers(
             }
             break;
 
+          case "MessageEdited": {
+            // An edit changes a message that is already on screen, or already
+            // scrolled past. Refresh the one it names — the newest-page refresh
+            // below only finds it when the edit happened to be recent, which is
+            // how an edit to an old message stayed invisible.
+            //
+            // Deliberately NOT notified. Editing used to emit `MessageSent`, so
+            // a peer announced "X sent a message" for text already delivered.
+            if (executionEvent.data) {
+              try {
+                const editedId = JSON.parse(bytesParser(executionEvent.data));
+                if (typeof editedId === "string" && editedId) {
+                  void refs.refreshReactedMessage.current(contextId, editedId);
+                }
+              } catch {
+                // Fall through to the window refresh.
+              }
+            }
+            actions.shouldNotifyMessage = false;
+            actions.fetchMessages = true;
+            break;
+          }
+
           case "ReactionUpdated": {
             // Fetch messages to get updated reactions
             const currentChat = activeChatRef.current;
