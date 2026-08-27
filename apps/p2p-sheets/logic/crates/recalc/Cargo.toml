@@ -1,11 +1,14 @@
 [package]
-name = "p2p-sheets-recalc"
+name    = "p2p-sheets-recalc"
 version = "0.1.0"
-edition = "2021"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
 
-# Pure evaluation engine (formula parser + recalc). std-only and calimero-free
-# so it links into the node crate AND compiles to browser WASM via recalc-wasm.
 [lib]
 crate-type = ["rlib"]
 
+# The pure formula engine: no calimero dependency at all, so it is shared by the
+# contract and (via recalc-wasm) the browser.
 [dependencies]

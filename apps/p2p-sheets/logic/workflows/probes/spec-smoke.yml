@@ -13,7 +13,7 @@ log_level: info
 nodes:
   count: 2
   prefix: app-node
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.8
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.26
   base_port: 12428
   base_rpc_port: 12528
 nuke_on_start: true
@@ -27,7 +27,7 @@ steps:
     name: Install p2p-sheets bundle on app-node-1
     node: app-node-1
     dev: true
-    path: ./logic/res/p2p-sheets-1.0.0.mpk
+    path: dist/com.calimero.mero-sheets.mpk
     outputs:
       app_id: applicationId
 
@@ -35,7 +35,7 @@ steps:
     name: Install p2p-sheets bundle on app-node-2
     node: app-node-2
     dev: true
-    path: ./logic/res/p2p-sheets-1.0.0.mpk
+    path: dist/com.calimero.mero-sheets.mpk
 
   - type: create_namespace
     name: Create namespace on app-node-1
