@@ -92,21 +92,31 @@ breaks:
   a second `calimero://` link would ask the user to choose between two things
   they cannot tell apart.
 
-### ⚠️ The launcher path needs a deployed frontend
+### ⚠️ The launcher path needs the frontend actually deployed
 
 The code is complete, and the **paste** path works now. Opening a link from a
-browser or Calimero Desktop additionally needs the published bundle to declare
+browser or Calimero Desktop additionally needs the *published bundle* to declare
 `links.frontend`: the launcher resolves the link to an installed app, reads that
 field, and **forgets the link** when it is missing — `"app has no frontend URL;
 cannot open"`.
 
-That field is absent on purpose (see `logic/Cargo.toml`) because there is no
-deployment yet and an origin that 404s is worse than none — it is also the
-registered redirect URI for login, compared by exact origin.
+`logic/Cargo.toml` now declares `frontend = "https://mero-kv-store.vercel.app"`,
+so the next release carries it. Two things still have to be true, and neither is
+enforced by CI:
 
-To finish it: create the Vercel project with Root Directory `apps/kv-store/app`,
-put its production origin in `frontend`, and let the release workflow publish the
-next patch.
+1. **The Vercel project must exist, named `mero-kv-store`**, with Root Directory
+   `apps/kv-store/app`. The project name is what owns `<project>.vercel.app`, so
+   a project named anything else produces a different origin and silently
+   invalidates the declared one.
+2. **It must exist before the release publishes.** The release workflow runs on
+   a push to main, so linking Vercel and merging are the same step. A merge
+   without the project leaves a published bundle authorizing a login callback at
+   an origin nobody controls — this field is the registered redirect URI, and it
+   is compared by exact origin.
+
+Until a release has actually published, the launcher path stays dark: what
+matters to the launcher is the field in the *published* bundle, not the one in
+this repo.
 
 ## Two caveats worth carrying to the next app
 

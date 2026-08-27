@@ -66,26 +66,28 @@ github = "https://github.com/calimero-network/apps"
 # registry still advertise 0.1.0 — cargo-mero's placeholder floor, which nobody
 # verified — which is the failure that check exists to prevent.
 min-runtime-version = "0.11.0-rc.25"
-# `frontend` is deliberately ABSENT until a real deployment exists.
-#
-# It is not just a deep-link target: the auth frontend treats the
-# registry-declared frontend origin as this app's registered redirect URI,
-# compared by EXACT ORIGIN. A wrong value breaks hosted login *after*
+# Doubles as this app's registered redirect URI: the auth frontend treats the
+# registry-declared frontend origin as the only callback it will authorize, and
+# compares it by EXACT ORIGIN. Get it wrong and hosted login breaks *after*
 # credentials are accepted, while local and desktop login keep working (loopback
 # is always trusted) — which is how mero-stream shipped a guessed origin and
 # nobody noticed for weeks.
 #
-# There is no correct value yet. `https://mero-kv-store.vercel.app/` was written
-# here as a placeholder and returns 404: the project does not exist. Declaring an
-# origin that resolves to nothing is worse than declaring none, because it is the
-# field that AUTHORIZES a login callback.
+# Written WITHOUT a trailing slash on purpose. An origin is scheme + host
+# (+ port) and nothing else; `window.location.origin` never carries a trailing
+# slash, so the bare form is what a literal comparison against it matches.
+# `scripts/check-app-metadata.sh` tolerates either, but only this form is
+# actually an origin.
 #
-# Absent is also the cheaper direction to be wrong in. Adding the field later is
-# additive; correcting it means republishing and every installed copy keeps the
-# old value until it upgrades. The cost of omitting it is only that the desktop
-# cannot deep-link this app yet ("app has no frontend URL; cannot open"), which
-# is true.
+# ⚠️ This resolves to nothing until the Vercel project exists. It is declared
+# ahead of the deployment deliberately: the release workflow only publishes on a
+# push to main, and the project is being linked as part of that same merge, so
+# no bundle carrying this value reaches the registry before the origin is live.
+# If that merge happens WITHOUT the Vercel project being created, this field is
+# worse than absent — it is the field that authorizes a login callback, so it
+# would authorize an origin nobody controls.
 #
-# To fill it in: create the Vercel project with Root Directory
-# apps/kv-store/app, take its production origin verbatim, put it here, and let
-# the release workflow publish the next patch.
+# Vercel project settings: Root Directory `apps/kv-store/app`, and the project
+# name decides the domain — a project named anything else yields a different
+# `<project>.vercel.app` and silently invalidates this value.
+frontend = "https://mero-kv-store.vercel.app"
