@@ -17,20 +17,20 @@ bs58 = "0.5.1"
 sha2 = { version = "0.10", default-features = false }
 # Tracks core master; Cargo.lock is what actually pins the commit, so a bump
 # is a deliberate `cargo update`, reviewed as its own diff.
-calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.26" }
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.26" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.26" }
+calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.24" }
+calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.24" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.24" }
 thiserror = "1.0.56"
 
 # ABI description is a host-build concern: the manifest is extracted by running
 # the app natively. Linking it into the wasm only bloats the module.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-calimero-wasm-abi = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.26" }
+calimero-wasm-abi = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.24" }
 
 [dev-dependencies]
 # Enables register_crdt_merge + the native mock host so TestHost can drive the
 # AccessControl writer-set state under `cargo test`.
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.26", features = ["testing"] }
+calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.24", features = ["testing"] }
 
 [profile.app-release]
 inherits = "release"
