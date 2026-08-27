@@ -1,4 +1,4 @@
 {
-  "// note": "SPA fallback. The Vercel PROJECT is what owns the production domain (<project>.vercel.app), not the repo — which is why moving an app into this monorepo keeps its URL, and therefore keeps its published bundle's links.frontend valid, with no republish.",
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }
