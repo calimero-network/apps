@@ -16,8 +16,8 @@ importers:
         specifier: ^7.1.2
         version: 7.1.2
       '@calimero-network/mero-js':
-        specifier: ^13.2.0
-        version: 13.2.0
+        specifier: ^13.3.0
+        version: 13.3.0
       '@calimero-network/mero-platform':
         specifier: ^0.1.0
         version: 0.1.0
@@ -120,6 +120,10 @@ importers:
       zustand:
         specifier: ^5.0.14
         version: 5.0.14(@types/react@19.2.17)(react@19.2.7)(use-sync-external-store@1.6.0(react@19.2.7))
+    optionalDependencies:
+      '@types/react':
+        specifier: 19.2.17
+        version: 19.2.17
     devDependencies:
       '@eslint/js':
         specifier: ^9.39.5
@@ -181,10 +185,6 @@ importers:
       workbox-window:
         specifier: ^7.4.1
         version: 7.4.1
-    optionalDependencies:
-      '@types/react':
-        specifier: 19.2.17
-        version: 19.2.17
 
 packages:
 
@@ -726,8 +726,8 @@ packages:
     peerDependencies:
       react: ^18.3.1
 
-  '@calimero-network/mero-js@13.2.0':
-    resolution: {integrity: sha512-qr9UZzsBxPzTyszeytCxOO3wNlI8ae271Fwx0koscOFWVFKgfKxmewG/P2L+sJZzORy7o+TZlXNTWlPaCP9OFQ==}
+  '@calimero-network/mero-js@13.3.0':
+    resolution: {integrity: sha512-D2XcnQK7vhabcYoAmM465PVB+vegCU/ZCkMSeA/DNyknPtEp7e+Pu+1dmnAM9a7L5bi68GtP5qntiAkNnfnaRQ==}
     engines: {node: '>=18.0.0'}
 
   '@calimero-network/mero-platform-react@0.1.0':
@@ -2818,6 +2818,7 @@ packages:
   eslint@9.29.0:
     resolution: {integrity: sha512-GsGizj2Y1rCWDu6XoEekL3RLilp0voSePurjZIkxL3wlm5o5EC9VpgaP7lrCvjnkuLvzFBQWB3vWB3K5KQTveQ==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'
@@ -5163,7 +5164,7 @@ snapshots:
     dependencies:
       react: 19.2.7
 
-  '@calimero-network/mero-js@13.2.0': {}
+  '@calimero-network/mero-js@13.3.0': {}
 
   '@calimero-network/mero-platform-react@0.1.0(react@19.2.7)':
     dependencies:
@@ -5174,7 +5175,7 @@ snapshots:
 
   '@calimero-network/mero-react@6.0.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
-      '@calimero-network/mero-js': 13.2.0
+      '@calimero-network/mero-js': 13.3.0
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
 
