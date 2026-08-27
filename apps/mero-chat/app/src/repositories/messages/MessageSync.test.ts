@@ -12,6 +12,7 @@ import {
 
 interface Msg {
   index: number;
+  id: string;
   text: string;
 }
 
@@ -21,6 +22,7 @@ function nodeWith(
 ): MessageSource<Msg> & { calls: string[]; mutate: (i: number, t: string) => void } {
   const all: Msg[] = Array.from({ length: count }, (_, i) => ({
     index: i,
+    id: `id-${i}`,
     text: `m${i}`,
   }));
   const calls: string[] = [];
@@ -75,6 +77,76 @@ function memoryStore(): MessageStore<Msg> & { rows: Map<number, Msg> } {
 const CTX = "ctx-1";
 
 describe("MessageSyncEngine", () => {
+  it("refreshes one message by id, without dragging the window back", async () => {
+    // A reaction names the message it changed. Refreshing THAT message is the
+    // difference between a reaction appearing wherever it lands and appearing
+    // only if it happens to be near the bottom.
+    const store = memoryStore();
+    const node = nodeWith(60);
+    const engine = new MessageSyncEngine<Msg>(store, node);
+
+    await engine.catchUp(CTX);
+    node.mutate(12, "m12-reacted");
+    node.calls.length = 0;
+
+    const refreshed = await engine.refreshMessage(CTX, "id-12");
+
+    expect(refreshed?.text).toBe("m12-reacted");
+    expect(store.rows.get(12)?.text).toBe("m12-reacted");
+    // Exactly the one row, not the tail.
+    expect(node.calls).toEqual(["range(12,1)"]);
+  });
+
+  it("falls back to the newest window for an id it has never seen", async () => {
+    // After a reload the engine has no id map — the rows are on disk, their
+    // ids are not. Refreshing the window is strictly better than doing
+    // nothing, and bounded.
+    const store = memoryStore();
+    const node = nodeWith(30);
+    const engine = new MessageSyncEngine<Msg>(store, node);
+
+    await engine.catchUp(CTX);
+    const cold = new MessageSyncEngine<Msg>(store, node);
+    node.mutate(29, "m29-reacted");
+    node.calls.length = 0;
+
+    const refreshed = await cold.refreshMessage(CTX, "id-29", 5);
+
+    expect(node.calls).toEqual(["range(25,5)"]);
+    expect(refreshed?.text).toBe("m29-reacted");
+  });
+
+  it("returns null when the id is unknown and not in the fallback window", async () => {
+    const store = memoryStore();
+    const node = nodeWith(30);
+    const engine = new MessageSyncEngine<Msg>(store, node);
+
+    await engine.catchUp(CTX);
+    const cold = new MessageSyncEngine<Msg>(store, node);
+
+    const refreshed = await cold.refreshMessage(CTX, "id-2", 3);
+
+    // Honest about not having found it, rather than returning something else.
+    expect(refreshed).toBeNull();
+  });
+
+  it("learns ids from every path that yields messages", async () => {
+    const store = memoryStore();
+    const node = nodeWith(200);
+    const engine = new MessageSyncEngine<Msg>(store, node);
+
+    await engine.catchUp(CTX);
+    // Scrolling back is how an older message becomes addressable.
+    await engine.loadOlder(CTX, 20, 100);
+    node.mutate(85, "m85-reacted");
+    node.calls.length = 0;
+
+    const refreshed = await engine.refreshMessage(CTX, "id-85");
+
+    expect(node.calls).toEqual(["range(85,1)"]);
+    expect(refreshed?.text).toBe("m85-reacted");
+  });
+
   it("catchUp does not notice a message that changed in place", async () => {
     // The gap this pins: catchUp walks FORWARD from the cursor. A reaction
     // mutates an existing message without changing the count, so catchUp sees
@@ -212,7 +284,7 @@ describe("MessageSyncEngine", () => {
     const node = nodeWith(200);
     const sync = new MessageSyncEngine(store, node);
 
-    for (let i = 0; i < 200; i++) store.rows.set(i, { index: i, text: `m${i}` });
+    for (let i = 0; i < 200; i++) store.rows.set(i, { index: i, id: `id-${i}`, text: `m${i}` });
     await store.saveCursor({
       contextId: CTX,
       lowestIndex: 100,
@@ -276,7 +348,7 @@ describe("MessageSyncEngine", () => {
     await sync.catchUp(CTX);
 
     node.calls.length = 0;
-    const outcome = await sync.applyLive(CTX, { index: 5, text: "live" });
+    const outcome = await sync.applyLive(CTX, { index: 5, id: "id-5", text: "live" });
 
     expect(outcome).toBe("applied");
     expect(node.calls).toEqual([]);
@@ -294,7 +366,7 @@ describe("MessageSyncEngine", () => {
     const later = nodeWith(9);
     const resumed = new MessageSyncEngine(store, later);
 
-    const outcome = await resumed.applyLive(CTX, { index: 8, text: "ahead" });
+    const outcome = await resumed.applyLive(CTX, { index: 8, id: "id-8", text: "ahead" });
 
     expect(outcome).toBe("resynced");
     // Everything in between is present, not just the message that arrived.

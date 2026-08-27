@@ -79,6 +79,10 @@ interface ChatHandlersRefs {
   fetchGroupMembers: React.MutableRefObject<() => Promise<void>>;
   onLeftChannel: React.MutableRefObject<(contextId: string) => void>;
   subscribeToContext: React.MutableRefObject<(contextId: string) => void>;
+  /** Re-read one message from the node and merge it into the open chat. */
+  refreshReactedMessage: React.MutableRefObject<
+    (contextId: string, messageId: string) => Promise<void>
+  >;
   contextIdentityMap: React.MutableRefObject<Map<string, string>>;
   contextNameMap: React.MutableRefObject<Map<string, string>>;
   dmContextIds: React.MutableRefObject<Set<string>>;

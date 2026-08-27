@@ -474,6 +474,39 @@ export function useMessages() {
   }, []);
 
   /**
+   * Re-read one message the node says changed, and merge it into the open chat.
+   *
+   * Driven by `ReactionUpdated`, which names the message it changed. Going
+   * straight to that message is what makes a reaction appear wherever it
+   * lands: refreshing the newest page only works when the message happens to
+   * be near the bottom, and reads as flakiness when it is not.
+   *
+   * `MessageStore.append` merges by id, so handing it one refreshed message is
+   * an in-place update rather than an insert — the row keeps its position and
+   * its React key, and only its reactions change.
+   */
+  const refreshReactedMessage = useCallback(
+    async (contextId: string, messageId: string) => {
+      try {
+        const refreshed = await messageSync.refreshMessage(
+          contextId,
+          messageId,
+          MESSAGE_PAGE_SIZE,
+        );
+        if (!refreshed) return;
+        const [ui] = transformMessagesToUI([refreshed]);
+        if (ui) setIncomingMessages([ui]);
+      } catch (error) {
+        // The node is unreachable, so the reaction stays as it was. The next
+        // open re-reads the window anyway; a failure here is a delay, not a
+        // lost update.
+        console.warn("refreshReactedMessage failed", error);
+      }
+    },
+    [],
+  );
+
+  /**
    * Add optimistic message (for messages being sent)
    */
   const addOptimistic = useCallback((message: CurbMessage) => {
@@ -516,6 +549,7 @@ export function useMessages() {
     openMessageLink,
     checkForNewMessages,
     addIncoming,
+    refreshReactedMessage,
     addOptimistic,
     clear,
     getCurrent,
