@@ -11,8 +11,8 @@ on:
   push:
     branches: [main]
     paths:
+      # Add "crates/**" when that directory exists.
       - "apps/*/logic/**"
-      - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
   workflow_dispatch:
@@ -49,9 +49,9 @@ jobs:
           list-files: shell
           filters: |
             shared:
+              # Add 'crates/**' when that directory exists.
               - 'Cargo.toml'
               - 'Cargo.lock'
-              - 'crates/**'
             logic:
               - 'apps/*/logic/**'
 

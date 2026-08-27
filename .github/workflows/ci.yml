@@ -44,10 +44,11 @@ jobs:
         with:
           filters: |
             shared:
+              # Add 'crates/**' and 'packages/**' here when those directories are
+              # created — a change to shared code has to fan out to every app for
+              # the same reason a Cargo.lock change does.
               - 'Cargo.toml'
               - 'Cargo.lock'
-              - 'crates/**'
-              - 'packages/**'
               - 'pnpm-workspace.yaml'
               - 'pnpm-lock.yaml'
               - 'tsconfig.base.json'

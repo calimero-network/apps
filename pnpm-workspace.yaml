@@ -10,7 +10,9 @@
 
 packages:
   - "apps/*/app"
-  - "packages/*"
+  # Add "packages/*" back alongside the first shared frontend package. Unlike
+  # Cargo, pnpm tolerates a glob that matches nothing, so this is housekeeping
+  # rather than a break waiting to happen.
 
 catalog:
   # ── Calimero ───────────────────────────────────────────────────────────────

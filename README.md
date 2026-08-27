@@ -135,8 +135,6 @@ apps/                       one directory per application
     └── app/                Vite + React + TS. A pnpm workspace package.
         └── src/generated/  typed client, generated from res/abi.json
 
-crates/                     Rust shared between contracts (empty, wired)
-packages/                   frontend code shared between apps (empty, wired)
 scripts/                    check-app-metadata.sh, codegen.mjs
 .github/workflows/          ci.yml · release.yml · publish-bundle.yml (reusable)
 

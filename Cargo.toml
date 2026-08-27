@@ -8,7 +8,10 @@
 
 [workspace]
 resolver = "2"
-members  = ["apps/*/logic", "crates/*"]
+# Add "crates/*" back alongside the first shared contract crate — and create the
+# directory in the same commit. A glob whose parent does not exist is a hard
+# error, not an empty match: `failed to read .../crates/*/Cargo.toml`.
+members  = ["apps/*/logic"]
 
 [workspace.package]
 edition    = "2021"
