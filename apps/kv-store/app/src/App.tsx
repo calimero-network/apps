@@ -10,7 +10,12 @@ export function App() {
   // Mounted at the root, unconditionally: an invitation captured before login
   // has to be redeemed as soon as the session exists, which means this cannot
   // live inside a branch that only renders once a context is chosen.
-  const { state: joinState, redeemPasted } = useJoinFromInvitation();
+  const {
+    state: joinState,
+    redeemPasted,
+    confirmJoin,
+    declineJoin,
+  } = useJoinFromInvitation();
 
   return (
     <div className="wrap">
@@ -39,10 +44,28 @@ export function App() {
       ) : !contextId ? (
         <>
           <ContextPicker applicationId={applicationId} />
-          <JoinCard state={joinState} onSubmit={redeemPasted} />
+          <JoinCard
+            state={joinState}
+            onSubmit={redeemPasted}
+            onConfirm={confirmJoin}
+            onDecline={declineJoin}
+          />
         </>
       ) : (
         <>
+          {/*
+            A link can arrive while a context is already open, and the prompt has
+            to be reachable then too — otherwise an invitation received mid-session
+            waits silently until the user happens to log out.
+          */}
+          {joinState.status !== "idle" && (
+            <JoinCard
+              state={joinState}
+              onSubmit={redeemPasted}
+              onConfirm={confirmJoin}
+              onDecline={declineJoin}
+            />
+          )}
           <KvPanel contextId={contextId} />
           <InviteCard contextId={contextId} />
         </>

@@ -12,9 +12,13 @@ import { parseInvitationInput } from "./utils/invitation";
 export function JoinCard({
   state,
   onSubmit,
+  onConfirm,
+  onDecline,
 }: {
   state: JoinState;
   onSubmit: (payloadJson: string) => void;
+  onConfirm: () => void;
+  onDecline: () => void;
 }) {
   const [input, setInput] = useState("");
   const [invalid, setInvalid] = useState(false);
@@ -57,6 +61,37 @@ export function JoinCard({
           That does not look like an invitation. Paste the whole link, or the code
           from it.
         </pre>
+      )}
+
+      {state.status === "confirm" && (
+        <div style={{ marginTop: 16 }}>
+          {/*
+            The prompt exists because following a link must not act on the
+            user's behalf: joining binds their identity to a namespace someone
+            else chose and switches their active context. Show WHAT, then ask.
+          */}
+          <p style={{ marginBottom: 8 }}>
+            An invitation is waiting. Joining adds this node to:
+          </p>
+          <table>
+            <tbody>
+              <tr>
+                <th>namespace</th>
+                <td className="mono">{state.payload.namespaceId}</td>
+              </tr>
+              <tr>
+                <th>context</th>
+                <td className="mono">{state.payload.contextId}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div className="row" style={{ marginTop: 12 }}>
+            <button onClick={onConfirm}>Join</button>
+            <button className="ghost" onClick={onDecline}>
+              Not now
+            </button>
+          </div>
+        </div>
       )}
 
       {state.status === "joining" && (

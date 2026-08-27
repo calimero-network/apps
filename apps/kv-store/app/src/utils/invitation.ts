@@ -78,6 +78,35 @@ const BASE58_ALPHABET =
   /^[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$/;
 
 /**
+ * Hard limits on anything that arrives in a link.
+ *
+ * A real invitation encodes to a few hundred characters. These are not tuning
+ * knobs — they are the defence against a decompression bomb: `inflateSync` on
+ * link-supplied bytes will happily expand a tiny crafted blob into hundreds of
+ * megabytes and take the tab with it. Worse than a one-off crash, because
+ * `PendingIntentStore` keeps the intent in localStorage and replays it on EVERY
+ * subsequent load — the tab would die again on each visit, with no obvious way
+ * for the user to clear it.
+ *
+ * 8 KiB in and 64 KiB out are both far above any legitimate payload.
+ */
+const MAX_ENCODED_CHARS = 8 * 1024;
+const MAX_DECODED_BYTES = 64 * 1024;
+
+/**
+ * Inflate with a bounded output buffer.
+ *
+ * fflate's `out` option TRUNCATES rather than throwing when the result is
+ * larger, so the buffer is deliberately one byte over the limit: a result that
+ * fills it completely means "at least MAX+1" and is rejected. Without the extra
+ * byte, a bomb would silently arrive as a valid-looking MAX-byte payload.
+ */
+function inflateBounded(bytes: Uint8Array): Uint8Array | null {
+  const out = inflateSync(bytes, { out: new Uint8Array(MAX_DECODED_BYTES + 1) });
+  return out.length > MAX_DECODED_BYTES ? null : out;
+}
+
+/**
  * Compress, then base58.
  *
  * A namespace invitation is long, and the link has to survive being pasted into
@@ -104,12 +133,22 @@ export function decodeInvitationPayload(encoded: string): string | null {
   if (!encoded || typeof encoded !== "string") return null;
   const trimmed = encoded.trim();
   if (!trimmed) return null;
+  // Refuse before decoding anything: the cheapest place to stop a hostile blob
+  // is before it reaches a decompressor.
+  if (trimmed.length > MAX_ENCODED_CHARS) return null;
 
   if (BASE58_ALPHABET.test(trimmed)) {
     try {
       const bytes = bs58.decode(trimmed);
+      if (bytes.length > MAX_ENCODED_CHARS) return null;
       try {
-        return new TextDecoder().decode(inflateSync(bytes));
+        const inflated = inflateBounded(bytes);
+        // null = over the output cap. Do NOT fall through to the
+        // "base58 but not deflated" branch here: that would return the
+        // compressed bytes as if they were text, turning a rejected bomb into
+        // garbage that looks like a payload.
+        if (inflated === null) return null;
+        return new TextDecoder().decode(inflated);
       } catch {
         // Base58 but not deflated — an older link.
         return new TextDecoder().decode(bytes);

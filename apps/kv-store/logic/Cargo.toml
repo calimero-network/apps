@@ -38,7 +38,9 @@ calimero-storage = { workspace = true, features = ["testing"] }
 # NOTE: none of this can be inherited from the workspace. `[package.metadata]`
 # is not on cargo's inheritable list, so `min-runtime-version.workspace = true`
 # resolves to the literal `{"workspace": true}`. `scripts/check-app-metadata.sh`
-# asserts the fleet-wide values match `[workspace.metadata.calimero]` instead.
+# asserts the fleet-wide values match `[workspace.metadata.mero-apps]` instead —
+# NOT `[workspace.metadata.calimero]`, which cargo-mero reads and would use to
+# REPLACE this whole table. See the root Cargo.toml.
 [package.metadata.calimero]
 package = "com.calimero.kv-store"
 name = "KV Store"
@@ -60,7 +62,7 @@ slug = "com.calimero.kv-store"
 icon = "default"
 tags = ["example", "reference", "kv", "crdt"]
 github = "https://github.com/calimero-network/apps"
-# Asserted equal to [workspace.metadata.calimero] in CI. Three bundles in the
+# Asserted equal to [workspace.metadata.mero-apps] in CI. Three bundles in the
 # registry still advertise 0.1.0 — cargo-mero's placeholder floor, which nobody
 # verified — which is the failure that check exists to prevent.
 min-runtime-version = "0.11.0-rc.25"

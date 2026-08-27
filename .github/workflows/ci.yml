@@ -147,9 +147,13 @@ jobs:
   wasm:
     name: Build WASM (${{ matrix.app }})
     needs: changes
+    # Only when a CONTRACT moved. A frontend-only change cannot alter the wasm or
+    # the ABI, so building it proves nothing — and the frontend job's codegen
+    # gate reads the COMMITTED ABI, which this job is what validates.
+    #
     # `apps != '[]'` is what makes an empty matrix a skipped job rather than a
     # job that silently succeeds having built nothing.
-    if: needs.changes.outputs.apps != '[]'
+    if: (needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true') && needs.changes.outputs.apps != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -185,6 +189,10 @@ jobs:
       # longer exists and report success.
       - name: Assert the committed ABI matches the built contract
         run: |
+          # `git add --intent-to-add` first: plain `git diff` ignores UNTRACKED
+          # files, so a new app with no committed ABI at all would sail through
+          # the gate that exists to notice exactly that.
+          git add --intent-to-add -- 'apps/*/logic/res/abi.json' 'apps/*/logic/res/state-schema.json' 2>/dev/null || true
           if ! git diff --quiet -- 'apps/*/logic/res/abi.json' 'apps/*/logic/res/state-schema.json'; then
             echo "::error::a committed ABI is stale. Run 'cargo mero build -p ${{ matrix.app }}' and 'pnpm -F ${{ matrix.app }} codegen', then commit."
             git --no-pager diff --stat -- 'apps/*/logic/res/'
@@ -260,6 +268,9 @@ jobs:
       - name: Assert the generated clients are current
         run: |
           pnpm -r codegen
+          # Same reason as the ABI gate: untracked generated output is invisible
+          # to `git diff`, so a new app could pass with no client committed.
+          git add --intent-to-add -- 'apps/*/app/src/generated' 2>/dev/null || true
           if ! git diff --quiet -- 'apps/*/app/src/generated'; then
             echo "::error::a generated client is stale. Run 'pnpm -r codegen' and commit."
             git --no-pager diff -- 'apps/*/app/src/generated'

@@ -44,8 +44,15 @@ while read -r pkg; do
   cal=$(jq -c '.metadata.calimero // empty' <<<"$pkg")
 
   if [[ -z "$cal" || "$cal" == "null" ]]; then
-    echo "::error::$name has no [package.metadata.calimero] — it cannot be bundled or published"
-    fail=1
+    # A workspace member with no calimero table is a SHARED CRATE, not a broken
+    # app — `crates/*` is exactly that, and both the root Cargo.toml and ci.yml
+    # tell you to add it. Hard-failing here would red this job the moment
+    # someone did, while the CI matrices (which select ON the table) would
+    # correctly ignore it.
+    #
+    # An APP without the table is still an error, and that is caught below by
+    # requiring every apps/*/logic member to have one.
+    echo "  --  $name (no calimero table; treated as a shared crate)"
     continue
   fi
 
@@ -103,6 +110,45 @@ while read -r pkg; do
 
   [[ $fail -eq 0 ]] && echo "  ok  $name  ($package)"
 done < <(jq -c '.packages[]' <<<"$meta")
+
+# The other direction: a crate under apps/*/logic MUST have the table, or it is
+# an app that silently cannot be bundled — and, because the CI matrices select on
+# the table, an app that no job would ever build.
+while read -r manifest name; do
+  case "$manifest" in
+    */apps/*/logic/Cargo.toml) ;;
+    *) continue ;;
+  esac
+  has=$(jq -r --arg n "$name" '.packages[] | select(.name == $n) | .metadata.calimero // empty' <<<"$meta")
+  if [[ -z "$has" ]]; then
+    echo "::error::$name lives under apps/*/logic but has no [package.metadata.calimero] — it cannot be bundled, and no CI job would build it"
+    fail=1
+  fi
+done < <(jq -r '.packages[] | [.manifest_path, .name] | @tsv' <<<"$meta")
+
+# ── every merobox scenario must run the merod image the workspace declares ──
+#
+# This is what makes `merod-image` live config rather than a comment. The drift
+# it catches is the one that started the fleet-wide rc.25 sweep: contracts pinned
+# to one release while every scenario still started a node from the previous one.
+# Green the whole time, until a contract touches a host function the older node
+# does not have.
+want_image=$(jq -r '.metadata["mero-apps"]["merod-image"] // empty' <<<"$meta")
+if [[ -z "$want_image" ]]; then
+  echo "::error::[workspace.metadata.mero-apps].merod-image is not set in the root Cargo.toml"
+  exit 1
+fi
+echo "workspace merod image: $want_image"
+
+shopt -s nullglob
+for f in apps/*/logic/workflows/*.yml; do
+  while read -r img; do
+    if [[ "$img" != "$want_image" ]]; then
+      echo "::error file=$f::runs $img, workspace declares $want_image"
+      fail=1
+    fi
+  done < <(grep -oE 'ghcr\.io/calimero-network/merod:[A-Za-z0-9._-]+' "$f" | sort -u)
+done
 
 if [[ $fail -ne 0 ]]; then
   echo

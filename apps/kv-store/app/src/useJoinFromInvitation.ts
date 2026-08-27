@@ -15,7 +15,18 @@ import {
 } from "./utils/invitation";
 
 export type JoinState =
+  /** Nothing pending. */
   | { status: "idle" }
+  /**
+   * A link arrived and is waiting for the user to say yes.
+   *
+   * Auto-redeeming was the first version and is wrong: following a link would
+   * silently join the user's identity to a namespace someone else chose and
+   * switch their active context, with no moment at which they saw what was
+   * about to happen. An invitation is a request, so it gets a prompt. The cost
+   * is one click; the alternative is a link that acts on your behalf.
+   */
+  | { status: "confirm"; payload: KvInvitationPayload }
   | { status: "joining"; payload: KvInvitationPayload }
   | { status: "failed"; message: string; retryable: boolean };
 
@@ -37,12 +48,21 @@ export function useJoinFromInvitation(): {
   state: JoinState;
   /** Redeem a pasted invitation — same path, no DeepLinkIntent to ack. */
   redeemPasted: (payloadJson: string) => void;
+  /** Accept a link-delivered invitation. */
+  confirmJoin: () => void;
+  /** Refuse one, and stop being asked. */
+  declineJoin: () => void;
 } {
   const { isAuthenticated } = useMero();
   const { joinNamespace } = useJoinNamespace();
   const { joinContext } = useJoinContext();
 
   const [state, setState] = useState<JoinState>({ status: "idle" });
+  // Set once a join has been attempted for the held intent. Without it, the
+  // retry effect below re-fires whenever `redeem`'s identity changes — which is
+  // every render if the SDK's hook callbacks are not stable — and a failed join
+  // retries in a loop.
+  const attempted = useRef(false);
   // Held here rather than in state: an intent arriving before auth must not
   // trigger a render loop, and we need the resolve/ack callback intact.
   const pending = useRef<{ intent: DeepLinkIntent; payload: KvInvitationPayload } | null>(null);
@@ -52,6 +72,7 @@ export function useJoinFromInvitation(): {
     const held = pending.current;
     if (!held || running.current) return;
     running.current = true;
+    attempted.current = true;
     setState({ status: "joining", payload: held.payload });
     try {
       await joinNamespace(held.payload.namespaceId, {
@@ -99,13 +120,33 @@ export function useJoinFromInvitation(): {
       return;
     }
     pending.current = { intent, payload };
-    if (isAuthenticated) void redeem();
+    attempted.current = false;
+    // NOT redeemed here. The user has to confirm — see JoinState.confirm.
+    setState({ status: "confirm", payload });
   });
 
-  // The retry path for an intent that arrived before the session existed.
+  // An intent that arrived before the session existed stays in `confirm` until
+  // there IS a session — otherwise the prompt would be answerable before the
+  // join could possibly work. Deliberately depends on `isAuthenticated` only:
+  // adding `redeem` here is what let a failed join retry every render.
   useEffect(() => {
-    if (isAuthenticated && pending.current) void redeem();
+    if (!isAuthenticated || attempted.current) return;
+    if (pending.current) setState({ status: "confirm", payload: pending.current.payload });
+  }, [isAuthenticated]);
+
+  /** The user said yes to a link. */
+  const confirmJoin = useCallback(() => {
+    if (!isAuthenticated || !pending.current) return;
+    void redeem();
   }, [isAuthenticated, redeem]);
+
+  /** The user said no — forget it, so it does not prompt again on every load. */
+  const declineJoin = useCallback(() => {
+    pending.current?.intent.resolve?.();
+    pending.current = null;
+    attempted.current = false;
+    setState({ status: "idle" });
+  }, []);
 
   const redeemPasted = useCallback(
     (payloadJson: string) => {
@@ -121,10 +162,13 @@ export function useJoinFromInvitation(): {
       // No intent to ack: a pasted invitation was never captured by the store,
       // so `resolve` is a no-op and the retry path is the user pasting again.
       pending.current = { intent: { resolve: () => {} } as DeepLinkIntent, payload };
+      attempted.current = false;
+      // A pasted invitation IS the confirmation — the user typed it in this
+      // session, so there is nothing to warn them about.
       void redeem();
     },
     [redeem],
   );
 
-  return { state, redeemPasted };
+  return { state, redeemPasted, confirmJoin, declineJoin };
 }

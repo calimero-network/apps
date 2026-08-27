@@ -28,6 +28,16 @@ name: Publish bundle
 
 on:
   workflow_call:
+    # Declared explicitly rather than relying on `secrets: inherit` at the call
+    # site. `inherit` forwards EVERY secret the caller can see to a job that
+    # signs and publishes with a production key; naming the two it needs means
+    # nothing else is in scope if this workflow ever grows a step that runs
+    # third-party code.
+    secrets:
+      MERO_SIGN_KEY:
+        required: true
+      CALIMERO_REGISTRY_API_KEY:
+        required: true
     inputs:
       app:
         description: The app directory under apps/ (also the cargo package name)

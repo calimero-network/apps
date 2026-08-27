@@ -119,4 +119,15 @@ jobs:
     with:
       app: ${{ matrix.app }}
       version: ${{ inputs.version || '' }}
-    secrets: inherit
+    # Only the two the publish needs — not `inherit`, which would forward every
+    # org secret into a job holding a production signing key.
+    #
+    # NOTE for whoever owns this repo: a publish here is irreversible (the
+    # registry rejects a duplicate version, so a mistaken release can only be
+    # superseded, never withdrawn) and any account with write access can trigger
+    # one by merging. An `environment:` with required reviewers on the deploy job
+    # is the gate for that, and it has to be configured in repo settings — it
+    # cannot be added from here alone.
+    secrets:
+      MERO_SIGN_KEY: ${{ secrets.MERO_SIGN_KEY }}
+      CALIMERO_REGISTRY_API_KEY: ${{ secrets.CALIMERO_REGISTRY_API_KEY }}

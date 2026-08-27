@@ -1,4 +1,5 @@
 import bs58 from "bs58";
+import { deflateSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import {
   APP_SLUG,
@@ -153,5 +154,27 @@ describe("isTerminalInvitationError", () => {
     ]) {
       expect(isTerminalInvitationError(m)).toBe(false);
     }
+  });
+});
+
+describe("hostile input", () => {
+  it("refuses an over-long encoded string before decoding it", () => {
+    // 8 KiB is the input cap; a real invitation is a few hundred characters.
+    expect(decodeInvitationPayload("1".repeat(9 * 1024))).toBeNull();
+  });
+
+  it("refuses a decompression bomb instead of expanding it", () => {
+    // ~1 MiB of zeros deflates to a couple of hundred bytes. Without the output
+    // cap this expands in the tab — and `PendingIntentStore` replays the intent
+    // from localStorage on every later load, so the tab would die on each visit
+    // with nothing obvious for the user to clear.
+    const bomb = bs58.encode(deflateSync(new Uint8Array(1024 * 1024), { level: 9 }));
+    expect(bomb.length).toBeLessThan(8 * 1024); // small enough to pass the input cap
+    expect(decodeInvitationPayload(bomb)).toBeNull();
+  });
+
+  it("still accepts a legitimate payload after the caps", () => {
+    const json = serializeInvitationPayload(PAYLOAD);
+    expect(decodeInvitationPayload(encodeInvitationPayload(json))).toBe(json);
   });
 });
