@@ -628,6 +628,12 @@ impl MeroDesign {
         Ok(id)
     }
 
+    // Clippy's 7-argument limit, allowed rather than refactored: this is a
+    // partial-update method on the CONTRACT's public API, so every parameter is
+    // an `Option<T>` field a caller may or may not be changing. Collapsing them
+    // into a struct would change the ABI — and therefore the generated client
+    // and the published contract — which a migration must not do.
+    #[allow(clippy::too_many_arguments)]
     pub fn update_element(
         &mut self,
         id: String,
@@ -699,6 +705,12 @@ impl MeroDesign {
         Ok(())
     }
 
+    // Clippy's 7-argument limit, allowed rather than refactored: this is a
+    // partial-update method on the CONTRACT's public API, so every parameter is
+    // an `Option<T>` field a caller may or may not be changing. Collapsing them
+    // into a struct would change the ABI — and therefore the generated client
+    // and the published contract — which a migration must not do.
+    #[allow(clippy::too_many_arguments)]
     pub fn update_text_style(
         &mut self,
         id: String,
