@@ -520,6 +520,17 @@ jobs:
           shopt -s nullglob
           for f in workflows/*.yml; do merobox bootstrap validate "$f"; done
 
+      # ⚠️ Tear the containers down BETWEEN scenarios, not just at the end.
+      # `nuke_on_start` in a scenario clears DATA, not a previous scenario's
+      # running containers, and scenarios pick their own node prefix while
+      # sharing the default host ports. So the second scenario to want 2428
+      # dies at:
+      #
+      #     Bind for 0.0.0.0:2428 failed: port is already allocated
+      #
+      # which reads like a runner problem rather than a missing teardown. Any
+      # app with ONE scenario — kv-store, merodesign, merraria — never sees it;
+      # scaffolding-e2e has 18.
       - name: Run workflows
         working-directory: apps/${{ matrix.app }}/logic
         run: |
@@ -527,7 +538,10 @@ jobs:
           for f in workflows/*.yml; do
             echo "::group::$f"
             merobox bootstrap run "$f" --log-level info
+            status=$?
+            merobox stop --all >/dev/null 2>&1 || true
             echo "::endgroup::"
+            [ $status -eq 0 ] || exit $status
           done
 
       # `merobox logs` takes a NODE_NAME argument — with only `--tail` it exits
